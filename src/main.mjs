@@ -4,10 +4,13 @@ import { bundleReport, retainGateArtifacts } from "./reporting/artifacts.mjs";
 import { authReportSummary, resolveRunAuthContext } from "./auth.mjs";
 import { runCleanupCommand } from "./cleanup.mjs";
 import { runCommand } from "./commands.mjs";
+import { runMatrixPlan } from "./commands/matrix-plan.mjs";
 import { compareReports, renderCompareFixerSummary, renderCompareSummary } from "./reporting/compare.mjs";
 import { parseFlags, printHelp, required, resolveFromCwd } from "./cli.mjs";
-import { applyMatrixControls, expandProfile, parseFilterList } from "./matrix/expand.mjs";
+import { matrixControlSummary } from "./matrix/controls.mjs";
+import { applyMatrixControls, expandProfile } from "./matrix/expand.mjs";
 import { evaluateGate, preflightGateRun } from "./matrix/gate.mjs";
+import { profileSummary, validateProfileTarget } from "./matrix/profile.mjs";
 import { buildCoverage } from "./matrix/coverage.mjs";
 import { assertResolvedCoverageIsRunnable, resolveCoverageObligations } from "./matrix/resolver.mjs";
 import {
@@ -152,50 +155,7 @@ async function matrixCommand(flags) {
   const [subcommand = "plan"] = flags._;
 
   if (subcommand === "plan") {
-    const registry = await loadRegistryContext();
-    const profile = await loadProfile(required(flags.profile, "--profile"));
-    const target = required(flags.target, "--target");
-    const targetPlan = resolveTarget(target, "target");
-    validateProfileTarget(profile, targetPlan);
-    const fromPlan = flags.from ? resolveTarget(flags.from, "from") : null;
-    const platform = platformInfo();
-    const entries = applyMatrixControls(await expandProfile(profile), flags, platform);
-    const resolvedCoverage = resolveCoverageObligations({
-      profile,
-      entries,
-      surfaces: registry.surfaces,
-      targetPlan
-    });
-    assertResolvedCoverageIsRunnable(resolvedCoverage);
-    for (const entry of entries.filter((item) => !item.skipReason)) {
-      validateScenarioRun(entry.scenario, flags, { targetPlan, fromPlan });
-    }
-    const response = {
-      schemaVersion: "kova.matrix.plan.v1",
-      generatedAt: new Date().toISOString(),
-      platform,
-      profile: profileSummary(profile),
-      target,
-      from: flags.from ?? null,
-      controls: matrixControlSummary(flags, targetPlan),
-      resolvedCoverage,
-      entries: entries.map((entry) => entry.plan)
-    };
-
-    if (flags.json) {
-      console.log(JSON.stringify(response, null, 2));
-      return;
-    }
-
-    console.log(`${profile.id}: ${profile.title}`);
-    console.log(`Target: ${target}`);
-    if (flags.from) {
-      console.log(`From: ${flags.from}`);
-    }
-    for (const entry of entries) {
-      const suffix = entry.skipReason ? ` [SKIP: ${entry.skipReason}]` : "";
-      console.log(`- ${entry.scenario.id} / ${entry.state.id}: ${entry.scenario.title}${suffix}`);
-    }
+    await runMatrixPlan(flags);
     return;
   }
 
@@ -489,28 +449,6 @@ function resolveEntryTimeout(entry, flags) {
   return positiveIntegerValue(flags.timeout_ms ?? entry.timeoutMs ?? entry.scenario.timeoutMs ?? 120000, "--timeout-ms");
 }
 
-function matrixControlSummary(flags, targetPlan) {
-  const requestedParallel = positiveIntegerFlag(flags, "parallel", 1);
-  const repeat = positiveIntegerFlag(flags, "repeat", 1);
-  const failFast = flags.fail_fast === true;
-  const parallel = failFast || targetPlan.kind === "local-build" ? 1 : requestedParallel;
-  return {
-    include: parseFilterList(flags.include),
-    exclude: parseFilterList(flags.exclude),
-    failFast,
-    continueOnFailure: !failFast,
-    requestedParallel,
-    parallel,
-    parallelAdjusted: parallel !== requestedParallel,
-    repeat,
-    baseline: flags.baseline ? resolveBaselinePath(flags.baseline) : null,
-    saveBaseline: flags.save_baseline ? resolveBaselinePath(flags.save_baseline) : null,
-    gate: flags.gate === true,
-    reviewedGood: flags.reviewed_good === true,
-    bundle: true
-  };
-}
-
 async function buildRepeatRecords(entry, context, callback) {
   const total = positiveIntegerValue(context.controls?.repeat ?? 1, "repeat");
   const records = [];
@@ -601,37 +539,6 @@ async function runMatrixEntries(entries, runEntry, controls) {
 
   await Promise.all(Array.from({ length: controls.parallel }, () => worker()));
   return records.filter(Boolean).flat();
-}
-
-function profileSummary(profile) {
-  return {
-    id: profile.id,
-    title: profile.title,
-    objective: profile.objective,
-    purpose: profile.purpose ?? null,
-    entryCount: profile.entries.length,
-    targetKinds: profile.targetKinds ?? null,
-    diagnostics: profile.diagnostics ?? null,
-    calibration: profile.calibration ? {
-      surfaceCount: Object.keys(profile.calibration.surfaces ?? {}).length,
-      roleCount: Object.keys(profile.calibration.roles ?? {}).length
-    } : null,
-    gate: profile.gate ? {
-      id: profile.gate.id ?? `${profile.id}-gate`,
-      blockingCount: Array.isArray(profile.gate.blocking) ? profile.gate.blocking.length : profile.entries.length,
-      warningCount: Array.isArray(profile.gate.warning) ? profile.gate.warning.length : 0
-    } : null
-  };
-}
-
-function validateProfileTarget(profile, targetPlan) {
-  const targetKinds = profile.targetKinds ?? [];
-  if (targetKinds.length === 0) {
-    return;
-  }
-  if (!targetKinds.includes(targetPlan.kind)) {
-    throw new Error(`profile '${profile.id}' requires target kind ${targetKinds.join(", ")}, got ${targetPlan.kind}`);
-  }
 }
 
 async function cleanupCommand(flags) {
