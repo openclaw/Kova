@@ -1,5 +1,6 @@
 import { parseFlags, printHelp } from "./cli.mjs";
 import { runCleanupCliCommand } from "./commands/cleanup.mjs";
+import { runInventoryCommand } from "./commands/inventory.mjs";
 import { runMatrixCommand } from "./commands/matrix.mjs";
 import { runPlanCommand } from "./commands/plan.mjs";
 import { runReportCommand } from "./commands/report.mjs";
@@ -39,6 +40,11 @@ export async function main(argv) {
 
   if (command === "matrix") {
     await runMatrixCommand(flags);
+    return;
+  }
+
+  if (command === "inventory") {
+    await runInventoryCommand(flags);
     return;
   }
 

@@ -367,6 +367,20 @@ required state traits, required target kinds, and required metrics. Invalid
 obligations, such as a scenario proving an unknown requirement or a selected
 state that cannot satisfy the requirement, fail planning before execution.
 
+`kova inventory plan --json` is planner-only and does not write a run report. It
+uses schema `kova.inventory.plan.v1` and includes:
+
+- `sources`: whether OpenClaw help, package scripts, and manifests were scanned
+- `modeledSurfaces`: current Kova surfaces
+- `capabilities`: discovered CLI commands, package scripts, plugin manifests,
+  and extension manifests with matched Kova surface ids when known
+- `coverage.warnings`: unmodeled or ambiguous discovered capabilities
+- `coverage.blockers`: selected missing or unmodeled capabilities when
+  `--require-modeled <capability>` is used
+
+Inventory warnings are discovery signal first. They do not block release gates
+until a later policy deliberately promotes them.
+
 ## Summary Output
 
 `kova report summarize <report.json> --json` returns a compact agent-facing

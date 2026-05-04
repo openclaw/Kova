@@ -35,10 +35,15 @@ node bin/kova.mjs self-check --json
 
 ```sh
 node bin/kova.mjs plan --json
+node bin/kova.mjs inventory plan --openclaw-bin openclaw --openclaw-repo /path/to/openclaw --json
 node bin/kova.mjs plan --scenario fresh-install --state missing-plugin-index --json
 node bin/kova.mjs matrix plan --profile smoke --target runtime:stable --json
 node bin/kova.mjs matrix plan --profile release --target runtime:stable --include tag:plugins --exclude state:broken-plugin-deps --json
 ```
+
+Use `inventory plan` when checking whether Kova is missing OpenClaw command,
+script, plugin, or extension surfaces. Treat unmodeled inventory entries as
+planning warnings until they are intentionally promoted to gate policy.
 
 3. Dry-run the intended scenario:
 

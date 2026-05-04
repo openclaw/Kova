@@ -230,9 +230,14 @@ Agents should use JSON plans and reports:
 
 ```sh
 node bin/kova.mjs plan --json
+node bin/kova.mjs inventory plan --openclaw-bin openclaw --openclaw-repo /path/to/openclaw --json
 node bin/kova.mjs matrix plan --profile smoke --target runtime:stable --json
 node bin/kova.mjs matrix run --profile smoke --target runtime:stable --execute --json
 ```
+
+`inventory plan` is planner-only. It compares discovered OpenClaw CLI commands,
+package scripts, and manifests with Kova surfaces and reports unmodeled
+capabilities as warnings.
 
 Kova ships repo-local agent skills:
 

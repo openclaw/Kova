@@ -143,6 +143,7 @@ export async function runSelfCheck(flags = {}) {
         throw new Error("every scenario must declare the surface requirement ids it proves");
       }
     }));
+    checks.push(await inventoryPlanCheck(tmp));
     checks.push(await jsonCommandCheck("matrix-plan-json", "node bin/kova.mjs matrix plan --profile smoke --target runtime:stable --include scenario:fresh-install --parallel 2 --json", (data) => {
       assertEqual(data.schemaVersion, "kova.matrix.plan.v1", "matrix plan schema");
       assertEqual(data.profile?.id, "smoke", "matrix profile id");
@@ -3792,6 +3793,79 @@ async function cleanupArtifactsCheck(tmp) {
     command: "node bin/kova.mjs cleanup artifacts --older-than-days 1 --execute --json",
     durationMs: dryRun.durationMs + execute.durationMs
   };
+}
+
+async function inventoryPlanCheck(tmp) {
+  const binDir = join(tmp, "inventory-bin");
+  const repoDir = join(tmp, "inventory-openclaw");
+  const openclawBin = join(binDir, "openclaw");
+  await mkdir(binDir, { recursive: true });
+  await mkdir(join(repoDir, "plugins", "bundled"), { recursive: true });
+  await mkdir(join(repoDir, "extensions", "dashboard"), { recursive: true });
+  await writeFile(openclawBin, `#!/bin/sh
+case "$1" in
+  --help)
+    cat <<'HELP'
+Usage: openclaw <command>
+
+Commands:
+  dashboard  Start dashboard
+  plugins    Manage plugins
+  unknownx   Experimental command
+HELP
+    ;;
+  dashboard)
+    echo "OpenClaw dashboard help"
+    ;;
+  plugins)
+    echo "OpenClaw plugins help"
+    ;;
+  unknownx)
+    echo "OpenClaw unknownx help"
+    ;;
+  *)
+    echo "unexpected args: $*" >&2
+    exit 2
+    ;;
+esac
+`, "utf8");
+  await chmod(openclawBin, 0o755);
+  await writeFile(join(repoDir, "package.json"), `${JSON.stringify({
+    name: "openclaw",
+    scripts: {
+      build: "pnpm build",
+      "package-release": "node scripts/package-release.mjs"
+    }
+  }, null, 2)}\n`, "utf8");
+  await writeFile(join(repoDir, "plugins", "bundled", "plugin.json"), `${JSON.stringify({
+    name: "plugins",
+    description: "Bundled plugin manifest",
+    openclawPlugin: true
+  }, null, 2)}\n`, "utf8");
+  await writeFile(join(repoDir, "extensions", "dashboard", "manifest.json"), `${JSON.stringify({
+    name: "dashboard",
+    description: "Dashboard extension",
+    openclawExtension: true
+  }, null, 2)}\n`, "utf8");
+
+  return jsonCommandCheck(
+    "inventory-plan-json",
+    `node bin/kova.mjs inventory plan --openclaw-bin ${quoteShell(openclawBin)} --openclaw-repo ${quoteShell(repoDir)} --require-modeled cli:unknownx --json`,
+    (data) => {
+      assertEqual(data.schemaVersion, "kova.inventory.plan.v1", "inventory schema");
+      assertEqual(data.sources?.find((source) => source.id === "openclaw-help")?.status, "scanned", "inventory help source");
+      assertEqual(data.sources?.find((source) => source.id === "package-scripts")?.status, "scanned", "inventory package source");
+      assertEqual(data.sources?.find((source) => source.id === "manifests")?.status, "scanned", "inventory manifests source");
+      assertEqual(data.capabilities?.some((capability) => capability.id === "cli:dashboard" && capability.matchedSurfaceIds?.includes("dashboard")), true, "dashboard command mapped");
+      assertEqual(data.capabilities?.some((capability) => capability.id === "cli:unknownx" && capability.matchStatus === "unmodeled"), true, "unknown command warning");
+      assertEqual(data.capabilities?.some((capability) => capability.kind === "package-script"), true, "package scripts discovered");
+      assertEqual(data.capabilities?.some((capability) => capability.kind === "plugin-manifest"), true, "plugin manifest discovered");
+      assertEqual(data.capabilities?.some((capability) => capability.kind === "extension-manifest"), true, "extension manifest discovered");
+      assertEqual((data.coverage?.warnings ?? []).some((warning) => warning.capability === "cli:unknownx"), true, "unmodeled warning emitted");
+      assertEqual(data.coverage?.ok, false, "required unmodeled capability blocks inventory coverage");
+      assertEqual((data.coverage?.blockers ?? []).some((blocker) => blocker.capability === "cli:unknownx"), true, "required unmodeled blocker emitted");
+    }
+  );
 }
 
 function readinessClassificationCheck() {
