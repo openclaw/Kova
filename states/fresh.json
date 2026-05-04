@@ -11,22 +11,6 @@
     "fresh-user",
     "baseline"
   ],
-  "compatibleSurfaces": [
-    "release-runtime-startup",
-    "fresh-install",
-    "bundled-plugin-startup",
-    "plugin-external-install",
-    "plugin-remove",
-    "plugin-update",
-    "plugin-bad-manifest",
-    "plugin-missing-runtime-deps",
-    "dashboard",
-    "tui",
-    "mcp-runtime",
-    "browser-automation",
-    "media-understanding",
-    "network-offline"
-  ],
   "incompatibleSurfaces": [
     "upgrade-existing-user"
   ],

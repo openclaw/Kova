@@ -52,8 +52,6 @@ export function validateStateShape(state, sourceName = "state") {
   requireString(state, "objective", errors);
   requireArray(state, "tags", errors);
   requireArray(state, "traits", errors);
-  requireArray(state, "compatibleSurfaces", errors);
-  requireArray(state, "incompatibleSurfaces", errors);
   requireString(state, "riskArea", errors);
   requireString(state, "ownerArea", errors);
   requireArray(state, "setupEvidence", errors);
@@ -69,7 +67,9 @@ export function validateStateShape(state, sourceName = "state") {
   validateSteps(state.prepare, "prepare", errors, { phaseBinding: false });
   validateSteps(state.setup, "setup", errors, { phaseBinding: true });
   validateSteps(state.cleanup, "cleanup", errors, { phaseBinding: false });
-  validateStringArray(state.compatibleSurfaces, "compatibleSurfaces", errors, { optional: true });
+  if (state.compatibleSurfaces !== undefined) {
+    errors.push("compatibleSurfaces is not supported; surface requirements own positive state compatibility");
+  }
   validateStringArray(state.incompatibleSurfaces, "incompatibleSurfaces", errors, { optional: true });
   validateStringArray(state.traits, "traits", errors);
   validateStringArray(state.setupEvidence, "setupEvidence", errors, { nonEmpty: true });

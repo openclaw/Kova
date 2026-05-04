@@ -3,21 +3,6 @@
   "title": "Dashboard",
   "ownerArea": "control-ui",
   "description": "Verify dashboard command output, websocket entry, and post-dashboard gateway health.",
-  "requiredStates": [
-    "fresh"
-  ],
-  "targetKinds": [
-    "npm",
-    "channel",
-    "runtime",
-    "local-build"
-  ],
-  "requiredMetrics": [
-    "dashboardConnectMs",
-    "gatewayReadyMs",
-    "statusMs",
-    "websocketDisconnects"
-  ],
   "processRoles": [
     "gateway",
     "command-tree",

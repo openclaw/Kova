@@ -36,10 +36,6 @@
     "failure-state",
     "old-release"
   ],
-  "compatibleSurfaces": [
-    "upgrade-existing-user"
-  ],
-  "incompatibleSurfaces": [],
   "riskArea": "upgrade-recovery",
   "ownerArea": "upgrade",
   "setupEvidence": [

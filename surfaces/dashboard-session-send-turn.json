@@ -3,23 +3,6 @@
   "title": "Dashboard Session Send Turn",
   "ownerArea": "gateway-chat-session-runtime",
   "description": "Create a dashboard session, call Gateway `sessions.send`, and wait for the assistant response in chat history to validate the same path dashboard users exercise.",
-  "requiredStates": [
-    "mock-openai-provider"
-  ],
-  "targetKinds": [
-    "npm",
-    "channel",
-    "runtime",
-    "local-build"
-  ],
-  "requiredMetrics": [
-    "agentTurnMs",
-    "agentTurnP95Ms",
-    "coldPreProviderMs",
-    "healthP95Ms",
-    "peakRssMb",
-    "pluginLoadFailures"
-  ],
   "processRoles": [
     "gateway",
     "command-tree",

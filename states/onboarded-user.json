@@ -34,11 +34,6 @@
     "onboarded-user",
     "config-state"
   ],
-  "compatibleSurfaces": [
-    "fresh-install",
-    "upgrade-existing-user"
-  ],
-  "incompatibleSurfaces": [],
   "riskArea": "onboarding-migration",
   "ownerArea": "runtime-startup",
   "setupEvidence": [

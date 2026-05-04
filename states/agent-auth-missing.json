@@ -19,10 +19,6 @@
     "mode": "missing",
     "reason": "This state intentionally bypasses Kova's default mock provider auth to test missing model credentials."
   },
-  "compatibleSurfaces": [
-    "agent-cli-local-turn"
-  ],
-  "incompatibleSurfaces": [],
   "riskArea": "agent-provider-auth",
   "ownerArea": "agent-runtime",
   "setupEvidence": [

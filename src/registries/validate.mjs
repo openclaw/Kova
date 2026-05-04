@@ -1,6 +1,13 @@
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { isKnownPlatformCoverageKey } from "../platform.mjs";
+import {
+  knownTargetKinds,
+  requirementsForScenario,
+  scenarioSupportsState,
+  surfaceSupportsState,
+  targetKindsForRequirements
+} from "./surface-requirements.mjs";
 
 export async function loadJsonRegistry({ dir, kind, selectedId, validate }) {
   const names = await readdir(dir);
@@ -47,11 +54,6 @@ export function validateRegistryReferences({ scenarios, states, profiles, surfac
   }
 
   for (const state of states) {
-    for (const surface of state.compatibleSurfaces ?? []) {
-      if (!surfaceIds.has(surface)) {
-        errors.push(`state '${state.id}' compatibleSurfaces references unknown surface '${surface}'`);
-      }
-    }
     for (const surface of state.incompatibleSurfaces ?? []) {
       if (!surfaceIds.has(surface)) {
         errors.push(`state '${state.id}' incompatibleSurfaces references unknown surface '${surface}'`);
@@ -70,13 +72,7 @@ export function validateRegistryReferences({ scenarios, states, profiles, surfac
         errors.push(`surface '${surface.id}' roleThresholds references unknown process role '${role}'`);
       }
     }
-    for (const state of surface.requiredStates ?? []) {
-      if (!stateIds.has(state)) {
-        errors.push(`surface '${surface.id}' references unknown required state '${state}'`);
-      }
-    }
     validateSurfaceRequirements(surface, { stateIds, traitIds, metricIds }, errors);
-    validateMetricList(surface.requiredMetrics ?? [], metricIds, errors, `surface '${surface.id}' requiredMetrics`);
     validateThresholdMetrics(surface.thresholds ?? {}, metricIds, errors, `surface '${surface.id}' thresholds`);
     for (const [role, thresholds] of Object.entries(surface.roleThresholds ?? {})) {
       validateThresholdMetrics(thresholds, metricIds, errors, `surface '${surface.id}' roleThresholds.${role}`);
@@ -103,13 +99,17 @@ function validateScenarioContract(scenario, surface, refs, errors) {
       errors.push(`scenario '${scenario.id}' processRoles references unknown process role '${role}'`);
     }
   }
-  const surfaceTargetKinds = new Set(surface.targetKinds ?? []);
+  const scenarioRequirements = requirementsForScenario(surface, scenario);
+  const surfaceTargetKinds = new Set(targetKindsForRequirements(scenarioRequirements));
   for (const targetKind of scenario.targetKinds ?? []) {
     if (surfaceTargetKinds.size > 0 && !surfaceTargetKinds.has(targetKind)) {
-      errors.push(`scenario '${scenario.id}' targetKinds references '${targetKind}' which is not supported by surface '${surface.id}'`);
+      errors.push(`scenario '${scenario.id}' targetKinds references '${targetKind}' which is not supported by proved requirements on surface '${surface.id}'`);
     }
   }
   const requirementIds = new Set((surface.requirements ?? []).map((requirement) => requirement.id));
+  if ((scenario.proves ?? []).length === 0) {
+    errors.push(`scenario '${scenario.id}' must prove at least one requirement for surface '${surface.id}'`);
+  }
   for (const requirement of scenario.proves ?? []) {
     if (requirementIds.size > 0 && !requirementIds.has(requirement)) {
       errors.push(`scenario '${scenario.id}' proves unknown surface requirement '${surface.id}.${requirement}'`);
@@ -119,7 +119,6 @@ function validateScenarioContract(scenario, surface, refs, errors) {
 }
 
 function validateSurfaceRequirements(surface, refs, errors) {
-  const surfaceTargetKinds = new Set(surface.targetKinds ?? []);
   for (const requirement of surface.requirements ?? []) {
     const prefix = `surface '${surface.id}' requirement '${requirement.id}'`;
     for (const state of requirement.states ?? []) {
@@ -133,8 +132,8 @@ function validateSurfaceRequirements(surface, refs, errors) {
       }
     }
     for (const targetKind of requirement.targetKinds ?? []) {
-      if (surfaceTargetKinds.size > 0 && !surfaceTargetKinds.has(targetKind)) {
-        errors.push(`${prefix} targetKinds references '${targetKind}' which is not supported by surface '${surface.id}'`);
+      if (!knownTargetKinds.includes(targetKind)) {
+        errors.push(`${prefix} targetKinds references unknown target kind '${targetKind}'`);
       }
     }
     validateMetricList(requirement.metrics ?? [], refs.metricIds, errors, `${prefix} metrics`);
@@ -264,12 +263,9 @@ function validateScenarioStatePair({ profileId, location, scenarioId, stateId, r
   if (!surface) {
     return;
   }
-  const allowedStates = scenario.states?.length > 0 ? scenario.states : surface.requiredStates ?? [];
-  if (allowedStates.length > 0 && !allowedStates.includes(state.id)) {
-    errors.push(`profile '${profileId}' ${location} pairs scenario '${scenario.id}' with state '${state.id}', but surface/scenario allows only: ${allowedStates.join(", ")}`);
-  }
-  if ((state.compatibleSurfaces ?? []).length > 0 && !state.compatibleSurfaces.includes(scenario.surface)) {
-    errors.push(`profile '${profileId}' ${location} pairs state '${state.id}' with incompatible surface '${scenario.surface}'; compatible surfaces: ${state.compatibleSurfaces.join(", ")}`);
+  const stateResult = scenarioSupportsState({ scenario, surface, state });
+  if (!stateResult.ok) {
+    errors.push(`profile '${profileId}' ${location} pairs scenario '${scenario.id}' with state '${state.id}', but ${stateResult.reason}`);
   }
   if ((state.incompatibleSurfaces ?? []).includes(scenario.surface)) {
     errors.push(`profile '${profileId}' ${location} pairs state '${state.id}' with explicitly incompatible surface '${scenario.surface}'`);
@@ -312,11 +308,9 @@ function validateStateSurfacePair({ profileId, location, surfaceId, stateId, ref
   if (!surface || !state) {
     return;
   }
-  if ((surface.requiredStates ?? []).length > 0 && !surface.requiredStates.includes(state.id)) {
-    errors.push(`profile '${profileId}' ${location} requires '${surface.id}:${state.id}', but surface allows only: ${surface.requiredStates.join(", ")}`);
-  }
-  if ((state.compatibleSurfaces ?? []).length > 0 && !state.compatibleSurfaces.includes(surface.id)) {
-    errors.push(`profile '${profileId}' ${location} requires '${surface.id}:${state.id}', but state compatible surfaces are: ${state.compatibleSurfaces.join(", ")}`);
+  const stateResult = surfaceSupportsState({ surface, state });
+  if (!stateResult.ok) {
+    errors.push(`profile '${profileId}' ${location} requires '${surface.id}:${state.id}', but ${stateResult.reason}`);
   }
   if ((state.incompatibleSurfaces ?? []).includes(surface.id)) {
     errors.push(`profile '${profileId}' ${location} requires explicitly incompatible state/surface pair '${surface.id}:${state.id}'`);

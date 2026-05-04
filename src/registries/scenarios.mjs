@@ -42,7 +42,7 @@ export function validateScenarioShape(scenario, sourceName = "scenario") {
   validateStringArray(scenario.targetValues, "targetValues", errors, { optional: true });
   validateStringArray(scenario.fromKinds, "fromKinds", errors, { optional: true });
   validateStringArray(scenario.fromValues, "fromValues", errors, { optional: true });
-  validateStringArray(scenario.proves, "proves", errors, { optional: true });
+  validateStringArray(scenario.proves, "proves", errors);
   if (scenario.requiresFrom !== undefined && typeof scenario.requiresFrom !== "boolean") {
     errors.push("requiresFrom must be a boolean when set");
   }

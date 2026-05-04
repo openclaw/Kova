@@ -34,11 +34,6 @@
     "plugin-pressure",
     "runtime-deps"
   ],
-  "compatibleSurfaces": [
-    "plugin-lifecycle",
-    "failure-containment"
-  ],
-  "incompatibleSurfaces": [],
   "riskArea": "plugin-runtime-deps",
   "ownerArea": "plugins",
   "setupEvidence": [

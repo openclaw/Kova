@@ -32,11 +32,6 @@
     "plugin-pressure",
     "migration-state"
   ],
-  "compatibleSurfaces": [
-    "fresh-install",
-    "bundled-runtime-deps"
-  ],
-  "incompatibleSurfaces": [],
   "riskArea": "plugin-index-migration",
   "ownerArea": "plugins",
   "setupEvidence": [

@@ -3,21 +3,6 @@
   "title": "Plugin Bad Manifest",
   "ownerArea": "plugins",
   "description": "Install an invalid plugin fixture and verify OpenClaw rejects it cleanly without corrupting gateway state.",
-  "requiredStates": [
-    "fresh"
-  ],
-  "targetKinds": [
-    "npm",
-    "channel",
-    "runtime",
-    "local-build"
-  ],
-  "requiredMetrics": [
-    "gatewayReadyMs",
-    "statusMs",
-    "pluginLoadFailures",
-    "diagnosticPresent"
-  ],
   "processRoles": [
     "gateway",
     "command-tree",

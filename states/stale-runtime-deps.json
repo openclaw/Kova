@@ -33,11 +33,6 @@
     "runtime-deps",
     "migration-state"
   ],
-  "compatibleSurfaces": [
-    "bundled-runtime-deps",
-    "plugin-lifecycle"
-  ],
-  "incompatibleSurfaces": [],
   "riskArea": "runtime-deps-restage",
   "ownerArea": "plugins",
   "setupEvidence": [

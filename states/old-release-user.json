@@ -35,10 +35,6 @@
     "old-release",
     "migration-state"
   ],
-  "compatibleSurfaces": [
-    "upgrade-existing-user"
-  ],
-  "incompatibleSurfaces": [],
   "riskArea": "release-upgrade",
   "ownerArea": "upgrade",
   "setupEvidence": [

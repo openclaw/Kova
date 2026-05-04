@@ -3,22 +3,6 @@
   "title": "TUI",
   "ownerArea": "terminal-ui",
   "description": "Attach the terminal UI to a running OpenClaw gateway and verify render, input responsiveness, and clean shutdown.",
-  "requiredStates": [
-    "fresh"
-  ],
-  "targetKinds": [
-    "npm",
-    "channel",
-    "runtime",
-    "local-build"
-  ],
-  "requiredMetrics": [
-    "tuiSmokeMs",
-    "gatewayReadyMs",
-    "statusMs",
-    "inputLagMs",
-    "pluginLoadFailures"
-  ],
   "processRoles": [
     "gateway",
     "command-tree",

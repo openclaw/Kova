@@ -2,14 +2,27 @@
   "id": "official-plugins",
   "title": "Official Plugins",
   "objective": "Exercise real published official OpenClaw plugin install paths from the state-owned official plugin list.",
-  "tags": ["plugins", "official-plugin", "install", "security-scan"],
-  "traits": ["fresh-user", "external-plugin", "official-plugin", "plugin-pressure"],
-  "compatibleSurfaces": ["official-plugin-install"],
-  "incompatibleSurfaces": [],
+  "tags": [
+    "plugins",
+    "official-plugin",
+    "install",
+    "security-scan"
+  ],
+  "traits": [
+    "fresh-user",
+    "external-plugin",
+    "official-plugin",
+    "plugin-pressure"
+  ],
   "riskArea": "official-plugin-install",
   "ownerArea": "plugins",
-  "setupEvidence": ["official plugin list declared", "fresh disposable env receives real plugin install commands"],
-  "cleanupGuarantees": ["temporary Kova env is destroyed after execution"],
+  "setupEvidence": [
+    "official plugin list declared",
+    "fresh disposable env receives real plugin install commands"
+  ],
+  "cleanupGuarantees": [
+    "temporary Kova env is destroyed after execution"
+  ],
   "officialPlugins": [
     {
       "id": "discord",

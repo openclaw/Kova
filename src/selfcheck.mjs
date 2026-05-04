@@ -4385,8 +4385,6 @@ function stateRegistryValidationCheck() {
         objective: "Invalid state fixture",
         tags: [],
         traits: ["not-a-real-trait"],
-        compatibleSurfaces: [],
-        incompatibleSurfaces: [],
         riskArea: "test",
         ownerArea: "test",
         setupEvidence: ["evidence"],
@@ -4406,8 +4404,6 @@ function stateRegistryValidationCheck() {
         objective: "Invalid state fixture evidence",
         tags: [],
         traits: ["fresh-user"],
-        compatibleSurfaces: [],
-        incompatibleSurfaces: [],
         riskArea: "test",
         ownerArea: "test",
         setupEvidence: [],
@@ -4426,6 +4422,7 @@ function stateRegistryValidationCheck() {
         scenarios: [{
           id: "scenario",
           surface: "known-surface",
+          proves: ["baseline"],
           states: [],
           targetKinds: [],
           processRoles: []
@@ -4433,22 +4430,25 @@ function stateRegistryValidationCheck() {
         states: [{
           id: "state",
           traits: ["fresh-user"],
-          compatibleSurfaces: ["missing-surface"],
-          incompatibleSurfaces: []
+          incompatibleSurfaces: ["missing-surface"]
         }],
         profiles: [],
         surfaces: [{
           id: "known-surface",
           processRoles: [],
-          requiredStates: [],
-          targetKinds: []
+          requirements: [{
+            id: "baseline",
+            states: ["state"],
+            targetKinds: ["runtime"],
+            metrics: []
+          }]
         }],
         processRoles: []
       });
     } catch (error) {
-      rejectedSurface = /compatibleSurfaces references unknown surface/.test(error.message);
+      rejectedSurface = /incompatibleSurfaces references unknown surface/.test(error.message);
     }
-    assertEqual(rejectedSurface, true, "unknown compatible surface rejected");
+    assertEqual(rejectedSurface, true, "unknown incompatible surface rejected");
 
     let rejectedPurpose = false;
     try {
@@ -4478,17 +4478,12 @@ function stateRegistryValidationCheck() {
         states: [{
           id: "state",
           traits: ["fresh-user"],
-          compatibleSurfaces: ["known-surface"],
-          incompatibleSurfaces: []
         }],
         profiles: [],
         surfaces: [{
           id: "known-surface",
           processRoles: [],
-          requiredStates: ["state"],
-          requiredMetrics: ["knownMetric"],
           thresholds: { knownMetric: 1 },
-          targetKinds: ["runtime"],
           requirements: [{
             id: "baseline",
             states: ["missing-state"],
@@ -4522,7 +4517,6 @@ function stateRegistryValidationCheck() {
         states: [{
           id: "state",
           traits: ["fresh-user"],
-          compatibleSurfaces: ["other-surface"],
           incompatibleSurfaces: ["known-surface"]
         }],
         profiles: [{
@@ -4540,21 +4534,28 @@ function stateRegistryValidationCheck() {
           {
             id: "known-surface",
             processRoles: [],
-            requiredStates: [],
-            targetKinds: []
+            requirements: [{
+              id: "baseline",
+              states: ["state"],
+              targetKinds: ["runtime"],
+              metrics: []
+            }]
           },
           {
             id: "other-surface",
             processRoles: [],
-            requiredStates: [],
-            targetKinds: []
+            requirements: [{
+              id: "baseline",
+              states: ["state"],
+              targetKinds: ["runtime"],
+              metrics: []
+            }]
           }
         ],
         processRoles: []
       });
     } catch (error) {
-      rejectedCoveragePair = /explicitly incompatible state\/surface pair/.test(error.message) ||
-        /state compatible surfaces/.test(error.message);
+      rejectedCoveragePair = /explicitly incompatible state\/surface pair/.test(error.message);
     }
     assertEqual(rejectedCoveragePair, true, "invalid coverage state/surface pair rejected");
 
@@ -4564,6 +4565,7 @@ function stateRegistryValidationCheck() {
         scenarios: [{
           id: "scenario",
           surface: "known-surface",
+          proves: ["baseline"],
           thresholds: { madeUpMetric: 1 },
           states: [],
           targetKinds: [],
@@ -4574,10 +4576,13 @@ function stateRegistryValidationCheck() {
         surfaces: [{
           id: "known-surface",
           processRoles: [],
-          requiredStates: [],
-          requiredMetrics: ["knownMetric"],
           thresholds: { knownMetric: 1 },
-          targetKinds: []
+          requirements: [{
+            id: "baseline",
+            states: ["state"],
+            targetKinds: ["runtime"],
+            metrics: ["knownMetric"]
+          }]
         }],
         processRoles: [],
         metrics: [{ id: "knownMetric" }]
@@ -4615,8 +4620,12 @@ function stateRegistryValidationCheck() {
         surfaces: [{
           id: "knownSurface",
           processRoles: [],
-          requiredStates: [],
-          targetKinds: []
+          requirements: [{
+            id: "baseline",
+            states: ["state"],
+            targetKinds: ["runtime"],
+            metrics: []
+          }]
         }],
         processRoles: [{ id: "knownRole" }],
         metrics: [{ id: "peakRssMb" }]
@@ -4680,6 +4689,7 @@ function scenarioCloneFirstValidationCheck() {
         title: "Bad Existing User",
         objective: "Touches source env without clone-first protection.",
         tags: ["upgrade"],
+        proves: ["baseline"],
         thresholds: {},
         phases: [{
           id: "status",
@@ -4702,6 +4712,7 @@ function scenarioCloneFirstValidationCheck() {
         title: "Bad Existing User Second Source",
         objective: "References source env after clone.",
         tags: ["upgrade"],
+        proves: ["baseline"],
         thresholds: {},
         phases: [{
           id: "clone",
@@ -4722,6 +4733,7 @@ function scenarioCloneFirstValidationCheck() {
       title: "Good Existing User",
       objective: "Clone first, then operate only on the disposable env.",
       tags: ["upgrade"],
+      proves: ["baseline"],
       thresholds: {},
       phases: [{
         id: "clone",
@@ -4763,6 +4775,7 @@ function scenarioStateCompatibilityCheck() {
         scenarios: [{
           id: "upgrade-existing-user",
           surface: "upgrade-existing-user",
+          proves: ["baseline"],
           states: [],
           targetKinds: [],
           processRoles: []
@@ -4770,7 +4783,6 @@ function scenarioStateCompatibilityCheck() {
         states: [{
           id: "fresh",
           traits: ["fresh-user"],
-          compatibleSurfaces: ["fresh-install"],
           incompatibleSurfaces: ["upgrade-existing-user"]
         }],
         profiles: [{
@@ -4780,8 +4792,12 @@ function scenarioStateCompatibilityCheck() {
         surfaces: [{
           id: "upgrade-existing-user",
           processRoles: [],
-          requiredStates: ["old-release-user"],
-          targetKinds: []
+          requirements: [{
+            id: "baseline",
+            states: ["old-release-user"],
+            targetKinds: ["runtime"],
+            metrics: []
+          }]
         }],
         processRoles: []
       });

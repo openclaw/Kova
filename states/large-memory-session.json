@@ -61,11 +61,6 @@
     "session-state",
     "performance-pressure"
   ],
-  "compatibleSurfaces": [
-    "fresh-install",
-    "soak"
-  ],
-  "incompatibleSurfaces": [],
   "riskArea": "memory-session-load",
   "ownerArea": "agent-runtime",
   "setupEvidence": [

@@ -3,26 +3,6 @@
   "title": "MCP Runtime",
   "ownerArea": "mcp-runtime",
   "description": "Start OpenClaw's MCP stdio bridge against a running gateway, list exposed tools, and prove the bridge process stops cleanly.",
-  "requiredStates": [
-    "fresh"
-  ],
-  "targetKinds": [
-    "npm",
-    "channel",
-    "runtime",
-    "local-build"
-  ],
-  "requiredMetrics": [
-    "mcpInitializeMs",
-    "mcpToolsListMs",
-    "mcpShutdownMs",
-    "mcpToolCountMin",
-    "mcpProcessLeaks",
-    "gatewayReadyMs",
-    "statusMs",
-    "pluginLoadFailures",
-    "peakRssMb"
-  ],
   "processRoles": [
     "gateway",
     "command-tree",

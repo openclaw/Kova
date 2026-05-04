@@ -33,11 +33,6 @@
     "performance-pressure",
     "workspace-pressure"
   ],
-  "compatibleSurfaces": [
-    "soak",
-    "workspace-scan"
-  ],
-  "incompatibleSurfaces": [],
   "riskArea": "workspace-scan",
   "ownerArea": "gateway",
   "setupEvidence": [

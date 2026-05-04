@@ -3,24 +3,6 @@
   "title": "Agent Gateway RPC Turn",
   "ownerArea": "gateway-agent-runtime",
   "description": "Send messages through `openclaw agent` without `--local`, forcing the CLI to cross the Gateway agent RPC boundary before the agent turn runs.",
-  "requiredStates": [
-    "mock-openai-provider"
-  ],
-  "targetKinds": [
-    "npm",
-    "channel",
-    "runtime",
-    "local-build"
-  ],
-  "requiredMetrics": [
-    "agentTurnMs",
-    "agentTurnP95Ms",
-    "agentTurnMaxMs",
-    "coldPreProviderMs",
-    "healthP95Ms",
-    "peakRssMb",
-    "pluginLoadFailures"
-  ],
   "processRoles": [
     "gateway",
     "command-tree",

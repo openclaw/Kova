@@ -33,10 +33,6 @@
     "migration-state",
     "config-state"
   ],
-  "compatibleSurfaces": [
-    "fresh-install"
-  ],
-  "incompatibleSurfaces": [],
   "riskArea": "config-migration",
   "ownerArea": "gateway",
   "setupEvidence": [

@@ -33,10 +33,6 @@
     "service-state",
     "existing-user"
   ],
-  "compatibleSurfaces": [
-    "gateway-performance"
-  ],
-  "incompatibleSurfaces": [],
   "riskArea": "gateway-restart",
   "ownerArea": "gateway",
   "setupEvidence": [

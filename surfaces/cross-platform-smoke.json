@@ -3,22 +3,6 @@
   "title": "Cross-Platform Smoke",
   "ownerArea": "platform-runtime",
   "description": "Run core OpenClaw runtime checks across supported operating systems and filesystem conditions.",
-  "requiredStates": [
-    "slow-filesystem",
-    "channel-configured"
-  ],
-  "targetKinds": [
-    "npm",
-    "channel",
-    "runtime",
-    "local-build"
-  ],
-  "requiredMetrics": [
-    "gatewayReadyMs",
-    "healthMs",
-    "syncFsStallDetected",
-    "peakRssMb"
-  ],
   "processRoles": [
     "gateway",
     "command-tree",

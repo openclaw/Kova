@@ -3,23 +3,6 @@
   "title": "OpenAI-Compatible Turn",
   "ownerArea": "gateway-openai-compatible-runtime",
   "description": "POST a user message to the OpenAI-compatible chat completions endpoint and verify the final response, provider timing, auth behavior, and gateway health.",
-  "requiredStates": [
-    "mock-openai-provider"
-  ],
-  "targetKinds": [
-    "npm",
-    "channel",
-    "runtime",
-    "local-build"
-  ],
-  "requiredMetrics": [
-    "agentTurnMs",
-    "agentTurnP95Ms",
-    "coldPreProviderMs",
-    "healthP95Ms",
-    "peakRssMb",
-    "pluginLoadFailures"
-  ],
   "processRoles": [
     "gateway",
     "command-tree",

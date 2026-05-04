@@ -1,6 +1,7 @@
 import { surfacesDir } from "../paths.mjs";
 import { validatePurposes } from "./purposes.mjs";
 import { assertNoShapeErrors, loadJsonRegistry, requireArray, requireKebabId, requireObject, requireString } from "./validate.mjs";
+import { knownTargetKinds } from "./surface-requirements.mjs";
 
 export async function loadSurfaces(selectedId) {
   return loadJsonRegistry({
@@ -17,13 +18,19 @@ export function validateSurfaceShape(surface, sourceName = "surface") {
   requireString(surface, "title", errors);
   requireString(surface, "ownerArea", errors);
   requireString(surface, "description", errors);
-  requireArray(surface, "requiredMetrics", errors);
   requireArray(surface, "processRoles", errors);
   requireObject(surface, "thresholds", errors);
   requireObject(surface, "diagnostics", errors);
+  requireArray(surface, "requirements", errors);
   validatePurposes(surface.purposes, "purposes", errors, { optional: true });
 
-  for (const key of ["requiredMetrics", "processRoles", "requiredStates", "targetKinds"]) {
+  for (const key of ["requiredStates", "targetKinds", "requiredMetrics"]) {
+    if (surface[key] !== undefined) {
+      errors.push(`${key} is not supported on surfaces; put requirement-specific contract data in requirements[]`);
+    }
+  }
+
+  for (const key of ["processRoles"]) {
     if (surface[key] === undefined) {
       continue;
     }
@@ -54,15 +61,11 @@ export function validateSurfaceShape(surface, sourceName = "surface") {
 }
 
 function validateRequirements(requirements, errors) {
-  if (requirements === undefined) {
-    return;
-  }
   if (!Array.isArray(requirements)) {
-    errors.push("requirements must be an array when set");
     return;
   }
   if (requirements.length === 0) {
-    errors.push("requirements must not be empty when set");
+    errors.push("requirements must not be empty");
   }
 
   const ids = new Set();
@@ -77,9 +80,24 @@ function validateRequirements(requirements, errors) {
     }
     validateStringArray(requirement?.states, `${prefix}.states`, errors, { optional: true });
     validateStringArray(requirement?.stateTraits, `${prefix}.stateTraits`, errors, { optional: true });
-    validateStringArray(requirement?.targetKinds, `${prefix}.targetKinds`, errors, { optional: true });
-    validateStringArray(requirement?.metrics, `${prefix}.metrics`, errors, { optional: true });
+    if (!Array.isArray(requirement?.states) && !Array.isArray(requirement?.stateTraits)) {
+      errors.push(`${prefix} must define states or stateTraits`);
+    }
+    validateStringArray(requirement?.targetKinds, `${prefix}.targetKinds`, errors);
+    validateKnownTargetKinds(requirement?.targetKinds, `${prefix}.targetKinds`, errors);
+    validateStringArray(requirement?.metrics, `${prefix}.metrics`, errors);
     validatePurposes(requirement?.purposes, `${prefix}.purposes`, errors, { optional: true });
+  }
+}
+
+function validateKnownTargetKinds(values, prefix, errors) {
+  if (!Array.isArray(values)) {
+    return;
+  }
+  for (const [index, value] of values.entries()) {
+    if (typeof value === "string" && !knownTargetKinds.includes(value)) {
+      errors.push(`${prefix}[${index}] references unknown target kind '${value}'`);
+    }
   }
 }
 

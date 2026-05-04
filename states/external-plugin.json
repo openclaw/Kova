@@ -33,12 +33,6 @@
     "external-plugin",
     "plugin-pressure"
   ],
-  "compatibleSurfaces": [
-    "plugin-lifecycle",
-    "plugin-external-install",
-    "plugin-update"
-  ],
-  "incompatibleSurfaces": [],
   "riskArea": "external-plugin-lifecycle",
   "ownerArea": "plugins",
   "setupEvidence": [

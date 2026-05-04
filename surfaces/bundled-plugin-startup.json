@@ -3,22 +3,6 @@
   "title": "Bundled Plugin Startup",
   "ownerArea": "plugins",
   "description": "Start OpenClaw with bundled plugins and prove plugin loading does not degrade the gateway.",
-  "requiredStates": [
-    "fresh",
-    "many-bundled-plugins"
-  ],
-  "targetKinds": [
-    "npm",
-    "channel",
-    "runtime",
-    "local-build"
-  ],
-  "requiredMetrics": [
-    "gatewayReadyMs",
-    "pluginLoadFailures",
-    "missingDependencyErrors",
-    "runtimeDepsStagingMs"
-  ],
   "processRoles": [
     "gateway",
     "command-tree",

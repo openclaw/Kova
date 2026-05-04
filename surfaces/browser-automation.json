@@ -3,28 +3,6 @@
   "title": "Browser Automation",
   "ownerArea": "browser-runtime",
   "description": "Start OpenClaw's browser control surface, open a tab, inspect browser state, and shut the browser profile down cleanly.",
-  "requiredStates": [
-    "fresh"
-  ],
-  "targetKinds": [
-    "npm",
-    "channel",
-    "runtime",
-    "local-build"
-  ],
-  "requiredMetrics": [
-    "gatewayReadyMs",
-    "statusMs",
-    "browserDoctorMs",
-    "browserStartMs",
-    "browserTabsMs",
-    "browserOpenMs",
-    "browserSnapshotMs",
-    "browserStopMs",
-    "browserTabCount",
-    "browserProcessLeaks",
-    "pluginLoadFailures"
-  ],
   "processRoles": [
     "gateway",
     "gateway-tree",

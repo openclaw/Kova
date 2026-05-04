@@ -3,31 +3,6 @@
   "title": "Agent CLI Local Turn",
   "ownerArea": "agent-runtime",
   "description": "Send cold, warm, repeated, and failure-mode messages through `openclaw agent --local`, then verify response latency, provider routing, gateway health, memory, and process containment.",
-  "requiredStates": [
-    "mock-openai-provider"
-  ],
-  "targetKinds": [
-    "npm",
-    "channel",
-    "runtime",
-    "local-build"
-  ],
-  "requiredMetrics": [
-    "agentTurnMs",
-    "agentTurnP95Ms",
-    "agentTurnMaxMs",
-    "coldAgentTurnMs",
-    "warmAgentTurnMs",
-    "agentColdWarmDeltaMs",
-    "coldPreProviderMs",
-    "warmPreProviderMs",
-    "agentPreProviderP95Ms",
-    "agentCleanupMaxMs",
-    "healthP95Ms",
-    "peakRssMb",
-    "providerTimeoutMentions",
-    "pluginLoadFailures"
-  ],
   "processRoles": [
     "gateway",
     "command-tree",

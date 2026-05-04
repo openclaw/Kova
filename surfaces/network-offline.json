@@ -3,22 +3,6 @@
   "title": "Network Offline",
   "ownerArea": "provider-network",
   "description": "Exercise an OpenClaw agent turn when the configured provider endpoint is unreachable and verify the failure is bounded and contained.",
-  "requiredStates": [
-    "fresh"
-  ],
-  "targetKinds": [
-    "npm",
-    "channel",
-    "runtime",
-    "local-build"
-  ],
-  "requiredMetrics": [
-    "networkFailureObserved",
-    "networkCommandTimedOut",
-    "networkStatusAfterFailureMs",
-    "networkGatewayStatusWorks",
-    "peakRssMb"
-  ],
   "processRoles": [
     "gateway",
     "command-tree",

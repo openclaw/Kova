@@ -33,12 +33,6 @@
     "plugin-pressure",
     "migration-state"
   ],
-  "compatibleSurfaces": [
-    "fresh-install",
-    "plugin-lifecycle",
-    "upgrade-existing-user"
-  ],
-  "incompatibleSurfaces": [],
   "riskArea": "plugin-index-migration",
   "ownerArea": "plugins",
   "setupEvidence": [

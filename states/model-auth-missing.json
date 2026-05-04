@@ -38,10 +38,6 @@
     "mode": "missing",
     "reason": "This state intentionally tests missing model credentials."
   },
-  "compatibleSurfaces": [
-    "provider-models"
-  ],
-  "incompatibleSurfaces": [],
   "riskArea": "provider-auth",
   "ownerArea": "providers",
   "setupEvidence": [

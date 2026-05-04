@@ -3,26 +3,6 @@
   "title": "Workspace Scan Pressure",
   "ownerArea": "workspace-runtime",
   "description": "Exercise OpenClaw with a large workspace tree to catch synchronous filesystem scans, slow command paths, memory growth, and event-loop stalls.",
-  "requiredStates": [
-    "large-workspace"
-  ],
-  "targetKinds": [
-    "npm",
-    "channel",
-    "runtime",
-    "local-build"
-  ],
-  "requiredMetrics": [
-    "warmReadyMs",
-    "statusMs",
-    "pluginsListMs",
-    "modelsListMs",
-    "soakCommandP95Ms",
-    "soakHealthP95Ms",
-    "peakRssMb",
-    "healthP95Ms",
-    "eventLoopMaxMs"
-  ],
   "processRoles": [
     "gateway",
     "gateway-tree",

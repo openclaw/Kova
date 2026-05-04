@@ -17,14 +17,11 @@ Required fields:
 - `purposes`: Kova purposes this surface is relevant to, such as `release`,
   `regression`, `diagnostic`, `performance`, `upgrade`, `plugin`, `provider`,
   or `soak`.
-- `requiredStates`: state ids or traits expected for meaningful coverage.
-- `targetKinds`: target kinds that can run the surface.
-- `requiredMetrics`: metric ids from `metrics/known.json`.
 - `processRoles`: role ids from `process-roles/*.json`.
 - `thresholds`: default pass/fail thresholds for the surface.
 - `diagnostics`: source-build timeline expectations when available.
-- `requirements`: stable requirement ids for this surface. Each requirement can
-  narrow the states, state traits, target kinds, and metrics that prove part of
+- `requirements`: stable requirement ids for this surface. Each requirement owns
+  the states or state traits, target kinds, and metrics that prove that part of
   the surface contract.
 
 Then:
@@ -53,8 +50,6 @@ Required fields:
 - `title`: short human name.
 - `objective`: what user history or degraded condition this state models.
 - `traits`: known traits validated by Kova.
-- `compatibleSurfaces`: surface ids this state can be paired with.
-- `incompatibleSurfaces`: surface ids this state must not be paired with.
 - `riskArea`: what can break when this state is used.
 - `ownerArea`: OpenClaw subsystem most likely to own state-specific failures.
 - `setupEvidence`: what proves setup happened.
@@ -65,10 +60,10 @@ inside disposable Kova envs and make the evidence explicit. Existing user state
 must be represented through clone/import metadata, not direct mutation of a
 durable env.
 
-Prefer requirement-level state ids or state traits on the surface over broad
-state compatibility lists. Keep `incompatibleSurfaces` for hard safety blocks.
-Treat broad compatibility metadata as migration support until the resolver owns
-the pairing decision.
+Put positive state compatibility on surface requirements through `states` or
+`stateTraits`. Add `incompatibleSurfaces` only for hard safety blocks where a
+fixture must never run against a surface; do not store empty compatibility
+lists.
 
 Then:
 
@@ -91,7 +86,8 @@ Self-check and plan validation must fail for:
   metrics
 - invalid state traits
 - malformed lifecycle phases
-- scenario/state pairs that violate compatibility
+- scenario/state pairs that violate requirement state contracts or hard
+  incompatibility blocks
 - profile entries that require unknown surfaces or states
 
 If a new surface or state needs exceptions to these rules, the contract is too

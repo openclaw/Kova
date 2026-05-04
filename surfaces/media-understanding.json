@@ -3,23 +3,6 @@
   "title": "Media Understanding",
   "ownerArea": "media-understanding",
   "description": "Exercise OpenClaw media understanding through the packaged capability CLI and verify provider timeouts do not stall the gateway or command path.",
-  "requiredStates": [
-    "fresh"
-  ],
-  "targetKinds": [
-    "npm",
-    "channel",
-    "runtime",
-    "local-build"
-  ],
-  "requiredMetrics": [
-    "mediaDescribeMs",
-    "mediaTimeoutObserved",
-    "mediaStatusAfterTimeoutMs",
-    "mediaGatewayStatusWorks",
-    "providerRequestCountMin",
-    "peakRssMb"
-  ],
   "processRoles": [
     "gateway",
     "command-tree",

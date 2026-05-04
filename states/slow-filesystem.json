@@ -35,11 +35,6 @@
     "plugin-pressure",
     "performance-pressure"
   ],
-  "compatibleSurfaces": [
-    "cross-platform-smoke",
-    "gateway-performance"
-  ],
-  "incompatibleSurfaces": [],
   "riskArea": "sync-filesystem-scan",
   "ownerArea": "gateway",
   "setupEvidence": [

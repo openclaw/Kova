@@ -3,23 +3,6 @@
   "title": "Official Plugin Install",
   "ownerArea": "plugins",
   "description": "Install a published official OpenClaw plugin through the exact user command path, then verify persisted registry/list state and gateway health.",
-  "requiredStates": [
-    "official-plugins"
-  ],
-  "targetKinds": [
-    "npm",
-    "channel",
-    "runtime",
-    "local-build"
-  ],
-  "requiredMetrics": [
-    "pluginInstallMs",
-    "officialPluginInstallOk",
-    "officialPluginSecurityBlocks",
-    "pluginsListMs",
-    "missingDependencyErrors",
-    "pluginLoadFailures"
-  ],
   "processRoles": [
     "gateway",
     "command-tree",

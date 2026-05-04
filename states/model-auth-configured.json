@@ -33,10 +33,6 @@
     "provider-pressure",
     "configured-auth"
   ],
-  "compatibleSurfaces": [
-    "provider-models"
-  ],
-  "incompatibleSurfaces": [],
   "riskArea": "provider-discovery",
   "ownerArea": "providers",
   "setupEvidence": [

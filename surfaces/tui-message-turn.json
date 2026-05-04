@@ -3,23 +3,6 @@
   "title": "TUI Message Turn",
   "ownerArea": "tui-agent-runtime",
   "description": "Launch the OpenClaw TUI, send a real stdin message, and require visible assistant output so Kova can catch TUI input freezes and delayed user-visible responses.",
-  "requiredStates": [
-    "mock-openai-provider"
-  ],
-  "targetKinds": [
-    "npm",
-    "channel",
-    "runtime",
-    "local-build"
-  ],
-  "requiredMetrics": [
-    "agentTurnMs",
-    "agentTurnP95Ms",
-    "coldPreProviderMs",
-    "healthP95Ms",
-    "peakRssMb",
-    "pluginLoadFailures"
-  ],
   "processRoles": [
     "gateway",
     "command-tree",

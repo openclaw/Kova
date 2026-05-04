@@ -32,11 +32,6 @@
     "failure-state",
     "config-state"
   ],
-  "compatibleSurfaces": [
-    "fresh-install",
-    "failure-containment"
-  ],
-  "incompatibleSurfaces": [],
   "riskArea": "config-normalization",
   "ownerArea": "gateway",
   "setupEvidence": [

@@ -32,10 +32,6 @@
     "existing-user",
     "channel-state"
   ],
-  "compatibleSurfaces": [
-    "cross-platform-smoke"
-  ],
-  "incompatibleSurfaces": [],
   "riskArea": "release-channel",
   "ownerArea": "runtime-startup",
   "setupEvidence": [

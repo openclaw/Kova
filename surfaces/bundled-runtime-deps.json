@@ -3,26 +3,6 @@
   "title": "Bundled Runtime Dependencies",
   "ownerArea": "plugins",
   "description": "Validate cold and warm bundled plugin runtime dependency staging behavior.",
-  "requiredStates": [
-    "missing-plugin-index",
-    "stale-runtime-deps"
-  ],
-  "targetKinds": [
-    "npm",
-    "channel",
-    "runtime",
-    "local-build"
-  ],
-  "requiredMetrics": [
-    "coldReadyMs",
-    "warmReadyMs",
-    "runtimeDepsStagingMs",
-    "coldRuntimeDepsStagingMs",
-    "warmRuntimeDepsStagingMs",
-    "warmRuntimeDepsRestageCount",
-    "runtimeDepsWarmReuseOk",
-    "missingDependencyErrors"
-  ],
   "processRoles": [
     "gateway",
     "command-tree",

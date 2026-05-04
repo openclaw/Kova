@@ -19,14 +19,6 @@
     "provider-pressure",
     "agent-state"
   ],
-  "compatibleSurfaces": [
-    "agent-cli-local-turn",
-    "agent-gateway-rpc-turn",
-    "dashboard-session-send-turn",
-    "tui-message-turn",
-    "openai-compatible-turn"
-  ],
-  "incompatibleSurfaces": [],
   "riskArea": "agent-provider-latency",
   "ownerArea": "agent-runtime",
   "setupEvidence": [

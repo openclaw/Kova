@@ -3,21 +3,6 @@
   "title": "Plugin Remove",
   "ownerArea": "plugins",
   "description": "Install and remove an external plugin, then verify install index cleanup and restart health.",
-  "requiredStates": [
-    "fresh"
-  ],
-  "targetKinds": [
-    "npm",
-    "channel",
-    "runtime",
-    "local-build"
-  ],
-  "requiredMetrics": [
-    "pluginsListMs",
-    "missingDependencyErrors",
-    "pluginLoadFailures",
-    "restartReadyMs"
-  ],
   "processRoles": [
     "gateway",
     "command-tree",
