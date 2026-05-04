@@ -236,8 +236,10 @@ node bin/kova.mjs matrix run --profile smoke --target runtime:stable --execute -
 ```
 
 `inventory plan` is planner-only. It compares discovered OpenClaw CLI commands,
-package scripts, and manifests with Kova surfaces and reports unmodeled
-capabilities as warnings.
+product-relevant package scripts, and manifests with Kova surfaces and reports
+unmodeled capabilities as warnings. Package-script discovery defaults to
+`--script-scope product`; use `--script-scope all` only when auditing repo
+maintenance scripts too.
 
 Kova ships repo-local agent skills:
 

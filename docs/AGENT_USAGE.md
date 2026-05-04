@@ -42,8 +42,10 @@ node bin/kova.mjs matrix plan --profile release --target runtime:stable --includ
 ```
 
 Use `inventory plan` when checking whether Kova is missing OpenClaw command,
-script, plugin, or extension surfaces. Treat unmodeled inventory entries as
-planning warnings until they are intentionally promoted to gate policy.
+product script, plugin, or extension surfaces. Package-script discovery defaults
+to `--script-scope product` so internal repo maintenance scripts do not drown
+out OpenClaw capability coverage. Treat unmodeled inventory entries as planning
+warnings until they are intentionally promoted to gate policy.
 
 3. Dry-run the intended scenario:
 

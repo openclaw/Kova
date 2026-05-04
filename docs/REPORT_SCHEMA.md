@@ -372,14 +372,21 @@ uses schema `kova.inventory.plan.v1` and includes:
 
 - `sources`: whether OpenClaw help, package scripts, and manifests were scanned
 - `modeledSurfaces`: current Kova surfaces
-- `capabilities`: discovered CLI commands, package scripts, plugin manifests,
-  and extension manifests with matched Kova surface ids when known
-- `coverage.warnings`: unmodeled or ambiguous discovered capabilities
+- `capabilities`: discovered CLI commands, product-relevant package scripts,
+  plugin manifests, and extension manifests with matched Kova surface ids when
+  known
+- `coverage.warnings`: unmodeled discovered capabilities
+- `coverage.ambiguous`: discovered capabilities that match multiple Kova
+  surfaces
 - `coverage.blockers`: selected missing or unmodeled capabilities when
   `--require-modeled <capability>` is used
 
 Inventory warnings are discovery signal first. They do not block release gates
 until a later policy deliberately promotes them.
+
+Package-script discovery defaults to `--script-scope product`. Use
+`--script-scope all` to include every package script or `--script-scope none` to
+scan only CLI help and manifests.
 
 ## Summary Output
 

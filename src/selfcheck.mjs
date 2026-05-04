@@ -3809,8 +3809,9 @@ case "$1" in
 Usage: openclaw <command>
 
 Commands:
+  Hint: commands suffixed with * have subcommands.
   dashboard  Start dashboard
-  plugins    Manage plugins
+  plugins *  Manage plugins
   unknownx   Experimental command
 HELP
     ;;
@@ -3833,8 +3834,9 @@ esac
   await writeFile(join(repoDir, "package.json"), `${JSON.stringify({
     name: "openclaw",
     scripts: {
+      "audit:internal": "node scripts/internal-audit.mjs",
       build: "pnpm build",
-      "package-release": "node scripts/package-release.mjs"
+      "release:check": "node scripts/release-check.mjs"
     }
   }, null, 2)}\n`, "utf8");
   await writeFile(join(repoDir, "plugins", "bundled", "plugin.json"), `${JSON.stringify({
@@ -3856,9 +3858,12 @@ esac
       assertEqual(data.sources?.find((source) => source.id === "openclaw-help")?.status, "scanned", "inventory help source");
       assertEqual(data.sources?.find((source) => source.id === "package-scripts")?.status, "scanned", "inventory package source");
       assertEqual(data.sources?.find((source) => source.id === "manifests")?.status, "scanned", "inventory manifests source");
+      assertEqual(data.sources?.find((source) => source.id === "package-scripts")?.includedScriptCount, 1, "inventory product script filter");
       assertEqual(data.capabilities?.some((capability) => capability.id === "cli:dashboard" && capability.matchedSurfaceIds?.includes("dashboard")), true, "dashboard command mapped");
+      assertEqual(data.capabilities?.some((capability) => capability.id === "cli:Hint"), false, "help parser ignores help prose");
       assertEqual(data.capabilities?.some((capability) => capability.id === "cli:unknownx" && capability.matchStatus === "unmodeled"), true, "unknown command warning");
-      assertEqual(data.capabilities?.some((capability) => capability.kind === "package-script"), true, "package scripts discovered");
+      assertEqual(data.capabilities?.some((capability) => capability.id === "script:release:check"), true, "product package scripts discovered");
+      assertEqual(data.capabilities?.some((capability) => capability.id === "script:build"), false, "internal package scripts filtered");
       assertEqual(data.capabilities?.some((capability) => capability.kind === "plugin-manifest"), true, "plugin manifest discovered");
       assertEqual(data.capabilities?.some((capability) => capability.kind === "extension-manifest"), true, "extension manifest discovered");
       assertEqual((data.coverage?.warnings ?? []).some((warning) => warning.capability === "cli:unknownx"), true, "unmodeled warning emitted");

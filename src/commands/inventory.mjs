@@ -17,13 +17,30 @@ export async function runInventoryCommand(flags) {
   console.log(`Matched: ${plan.coverage.matchedCount}`);
   console.log(`Unmodeled: ${plan.coverage.unmodeledCount}`);
   for (const source of plan.sources) {
-    const count = source.commandCount ?? source.scriptCount ?? source.capabilityCount ?? 0;
-    console.log(`- ${source.id}: ${source.status}${count ? ` (${count})` : ""}`);
+    console.log(`- ${source.id}: ${source.status}${formatSourceCount(source)}`);
   }
   if (plan.coverage.warnings.length > 0) {
-    console.log("Warnings:");
-    for (const warning of plan.coverage.warnings) {
+    const warningLimit = positiveIntegerFlag(flags.max_warnings, 25);
+    console.log(`Warnings${plan.coverage.warnings.length > warningLimit ? ` (first ${warningLimit} of ${plan.coverage.warnings.length})` : ""}:`);
+    for (const warning of plan.coverage.warnings.slice(0, warningLimit)) {
       console.log(`- ${warning.message}`);
     }
   }
+}
+
+function formatSourceCount(source) {
+  if (source.id === "package-scripts" && typeof source.scriptCount === "number") {
+    const included = source.includedScriptCount ?? source.scriptCount;
+    return ` (${included}/${source.scriptCount} scripts, scope=${source.scriptScope ?? "unknown"})`;
+  }
+  const count = source.commandCount ?? source.capabilityCount ?? 0;
+  return count ? ` (${count})` : "";
+}
+
+function positiveIntegerFlag(value, fallback) {
+  if (value === undefined || value === null || value === false) {
+    return fallback;
+  }
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }

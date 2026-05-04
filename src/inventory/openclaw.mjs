@@ -21,25 +21,98 @@ const ignoredDirs = new Set([
 ]);
 
 const commandSurfaceMap = new Map([
+  ["acp", ["agent-cli-local-turn", "agent-gateway-rpc-turn"]],
   ["agent", ["agent-cli-local-turn", "agent-gateway-rpc-turn"]],
+  ["agents", ["agent-cli-local-turn", "agent-gateway-rpc-turn", "workspace-scan"]],
   ["browser", ["browser-automation"]],
+  ["capability", ["openai-compatible-turn", "provider-models"]],
+  ["chat", ["tui", "tui-message-turn"]],
+  ["configure", ["fresh-install", "provider-models"]],
+  ["daemon", ["release-runtime-startup", "gateway-performance"]],
   ["dashboard", ["dashboard", "dashboard-session-send-turn"]],
+  ["doctor", ["failure-containment", "release-runtime-startup"]],
+  ["gateway", ["release-runtime-startup", "gateway-performance"]],
+  ["health", ["release-runtime-startup", "gateway-performance"]],
+  ["infer", ["openai-compatible-turn", "provider-models"]],
+  ["logs", ["release-runtime-startup", "gateway-performance"]],
   ["mcp", ["mcp-runtime"]],
   ["media", ["media-understanding"]],
   ["model", ["provider-models"]],
   ["models", ["provider-models"]],
+  ["node", ["release-runtime-startup", "gateway-performance"]],
+  ["nodes", ["release-runtime-startup", "gateway-performance"]],
+  ["onboard", ["fresh-install", "provider-models"]],
   ["plugin", ["plugin-lifecycle"]],
   ["plugins", ["plugin-lifecycle", "official-plugin-install"]],
   ["provider", ["provider-models"]],
   ["providers", ["provider-models"]],
+  ["setup", ["fresh-install", "release-runtime-startup"]],
   ["start", ["release-runtime-startup", "gateway-performance"]],
   ["status", ["release-runtime-startup"]],
   ["stop", ["release-runtime-startup"]],
+  ["terminal", ["tui", "tui-message-turn"]],
   ["tui", ["tui", "tui-message-turn"]],
+  ["uninstall", ["fresh-install", "failure-containment"]],
   ["update", ["upgrade-existing-user"]],
   ["upgrade", ["upgrade-existing-user"]],
   ["workspace", ["workspace-scan"]]
 ]);
+const packageScriptScopes = new Set(["product", "all", "none"]);
+const productScriptNames = new Set([
+  "gateway:dev",
+  "gateway:dev:reset",
+  "gateway:watch",
+  "gateway:watch:raw",
+  "openclaw",
+  "openclaw:rpc",
+  "plugin-sdk:api:check",
+  "plugin-sdk:check-exports",
+  "plugins:inventory:check",
+  "plugins:inventory:gen",
+  "plugins:sync",
+  "plugins:sync:check",
+  "release-metadata:check",
+  "release:check",
+  "release:openclaw:npm:check",
+  "release:openclaw:npm:verify-published",
+  "start",
+  "test:docker:live-gateway",
+  "test:docker:live-models",
+  "test:docker:npm-onboard-channel-agent",
+  "test:docker:plugin-update",
+  "test:docker:plugins",
+  "test:docker:published-upgrade-survivor",
+  "test:docker:update-migration",
+  "test:docker:upgrade-survivor",
+  "test:gateway",
+  "test:install:e2e",
+  "test:install:smoke",
+  "test:live:gateway-profiles",
+  "test:live:media",
+  "test:live:models-profiles",
+  "test:perf:budget",
+  "test:perf:groups",
+  "test:plugins:gateway-gauntlet",
+  "test:stability:gateway",
+  "test:startup:bench",
+  "test:startup:bench:check",
+  "test:startup:bench:smoke",
+  "test:startup:gateway",
+  "test:startup:memory",
+  "tui",
+  "tui:dev",
+  "ui:build",
+  "ui:dev",
+  "ui:install"
+]);
+const productScriptPrefixes = [
+  "release:plugins:",
+  "test:docker:live-acp-bind:",
+  "test:docker:live-cli-backend:",
+  "test:docker:live-gateway:",
+  "test:docker:live-models:",
+  "test:live:media:"
+];
 
 export async function buildOpenClawInventoryPlan(flags = {}) {
   const registry = await loadRegistryContext();
@@ -47,6 +120,7 @@ export async function buildOpenClawInventoryPlan(flags = {}) {
   const maxSubcommands = positiveIntegerFlag(flags, "max_subcommands", 40);
   const openclawBin = normalizeOptionalCommand(flags.openclaw_bin);
   const repoPath = normalizeOptionalPath(flags.openclaw_repo);
+  const scriptScope = normalizeScriptScope(flags.script_scope);
   const requestedSubcommands = parseList(flags.subcommands);
   const requiredModeled = parseList(flags.require_modeled);
   const sources = [];
@@ -61,7 +135,7 @@ export async function buildOpenClawInventoryPlan(flags = {}) {
   sources.push(helpInventory.source);
   capabilities.push(...helpInventory.capabilities);
 
-  const repoInventory = await discoverRepoInventory({ repoPath });
+  const repoInventory = await discoverRepoInventory({ repoPath, scriptScope });
   sources.push(...repoInventory.sources);
   capabilities.push(...repoInventory.capabilities);
 
@@ -80,7 +154,8 @@ export async function buildOpenClawInventoryPlan(flags = {}) {
     generatedAt: new Date().toISOString(),
     openclaw: {
       bin: openclawBin,
-      repoPath
+      repoPath,
+      scriptScope
     },
     sources,
     modeledSurfaces,
@@ -171,7 +246,7 @@ async function discoverCliHelp({ openclawBin, requestedSubcommands, maxSubcomman
   };
 }
 
-async function discoverRepoInventory({ repoPath }) {
+async function discoverRepoInventory({ repoPath, scriptScope }) {
   if (!repoPath) {
     return {
       sources: [
@@ -198,7 +273,8 @@ async function discoverRepoInventory({ repoPath }) {
   try {
     const packageJson = JSON.parse(await readFile(packagePath, "utf8"));
     const scripts = Object.keys(packageJson.scripts ?? {}).sort();
-    for (const script of scripts) {
+    const includedScripts = filterPackageScripts(scripts, scriptScope);
+    for (const script of includedScripts) {
       capabilities.push({
         id: `script:${script}`,
         kind: "package-script",
@@ -216,7 +292,10 @@ async function discoverRepoInventory({ repoPath }) {
       kind: "package-json",
       status: "scanned",
       path: packagePath,
-      scriptCount: scripts.length
+      scriptScope,
+      scriptCount: scripts.length,
+      includedScriptCount: includedScripts.length,
+      excludedScriptCount: scripts.length - includedScripts.length
     });
   } catch (error) {
     sources.push({
@@ -341,7 +420,10 @@ function classifyCapability(capability, surfaces) {
 
 function matchSurfaceIds(capability, surfaces) {
   const normalizedName = normalizeToken(capability.name);
-  const mapped = commandSurfaceMap.get(normalizedName) ?? [];
+  const mapped = [
+    ...(commandSurfaceMap.get(normalizedName) ?? []),
+    ...matchPackageScriptSurfaceIds(capability)
+  ];
   const surfaceIds = new Set(surfaces.map((surface) => surface.id));
   const matches = new Set(mapped.filter((id) => surfaceIds.has(id)));
 
@@ -395,23 +477,20 @@ function summarizeCoverage(capabilities, modeledSurfaces, options = {}) {
     requiredModeled,
     ok: blockers.length === 0,
     blockers,
-    warnings: [
-      ...unmodeled.map((capability) => ({
-        kind: "unmodeled-capability",
-        capability: capability.id,
-        name: capability.name,
-        source: capability.source,
-        message: `${capability.kind} ${capability.name} is not mapped to a Kova surface`
-      })),
-      ...ambiguous.map((capability) => ({
-        kind: "ambiguous-capability",
-        capability: capability.id,
-        name: capability.name,
-        source: capability.source,
-        matchedSurfaceIds: capability.matchedSurfaceIds,
-        message: `${capability.kind} ${capability.name} maps to multiple Kova surfaces`
-      }))
-    ],
+    warnings: unmodeled.map((capability) => ({
+      kind: "unmodeled-capability",
+      capability: capability.id,
+      name: capability.name,
+      source: capability.source,
+      message: `${capability.kind} ${capability.name} is not mapped to a Kova surface`
+    })),
+    ambiguous: ambiguous.map((capability) => ({
+      id: capability.id,
+      kind: capability.kind,
+      name: capability.name,
+      source: capability.source,
+      matchedSurfaceIds: capability.matchedSurfaceIds
+    })),
     unmodeled: unmodeled.map((capability) => ({
       id: capability.id,
       kind: capability.kind,
@@ -437,12 +516,81 @@ function parseHelpCommands(text) {
     if (!inCommands) {
       continue;
     }
-    const match = line.match(/^\s{2,}([a-z][a-z0-9:-]*)\b/i);
+    const match = line.match(/^\s{2,}([a-z][a-z0-9-]*)\s*(?:\*)?\s{2,}\S/);
     if (match) {
       commands.push(match[1]);
     }
   }
   return commands.filter((command) => !["help", "completion"].includes(command));
+}
+
+function filterPackageScripts(scripts, scriptScope) {
+  if (scriptScope === "none") {
+    return [];
+  }
+  if (scriptScope === "all") {
+    return scripts;
+  }
+  return scripts.filter(isProductScript);
+}
+
+function isProductScript(script) {
+  return productScriptNames.has(script) ||
+    productScriptPrefixes.some((prefix) => script.startsWith(prefix));
+}
+
+function matchPackageScriptSurfaceIds(capability) {
+  if (capability.kind !== "package-script") {
+    return [];
+  }
+  const name = String(capability.name ?? "");
+  const normalizedName = normalizeToken(name);
+  const searchableName = `${name} ${normalizedName}`;
+  const surfaceIds = new Set();
+  const add = (...ids) => {
+    for (const id of ids) {
+      surfaceIds.add(id);
+    }
+  };
+
+  if (/gateway|(^|[: -])start($|[: -])|openclaw|startup|stability/.test(searchableName)) {
+    add("release-runtime-startup", "gateway-performance");
+  }
+  if (/tui|chat|terminal/.test(searchableName)) {
+    add("tui", "tui-message-turn");
+  }
+  if (/dashboard|(^|[: -])ui[: -]/.test(searchableName)) {
+    add("dashboard", "dashboard-session-send-turn");
+  }
+  if (/plugin-sdk|plugins?|plugin-update/.test(searchableName)) {
+    add("plugin-lifecycle", "official-plugin-install");
+  }
+  if (/release|install|onboard|published-upgrade|update-migration|upgrade-survivor/.test(searchableName)) {
+    add("fresh-install", "upgrade-existing-user");
+  }
+  if (/models?|provider|capability|infer|openai/.test(searchableName)) {
+    add("provider-models", "openai-compatible-turn");
+  }
+  if (/agent|acp|cli-backend/.test(searchableName)) {
+    add("agent-cli-local-turn", "agent-gateway-rpc-turn");
+  }
+  if (/mcp/.test(searchableName)) {
+    add("mcp-runtime");
+  }
+  if (/browser/.test(searchableName)) {
+    add("browser-automation");
+  }
+  if (/media/.test(searchableName)) {
+    add("media-understanding");
+  }
+  if (/workspace/.test(searchableName)) {
+    add("workspace-scan");
+  }
+  if (/perf|soak/.test(searchableName)) {
+    add("gateway-performance", "soak");
+  }
+
+  return [...surfaceIds];
 }
 
 function firstUsefulHelpLine(text) {
@@ -473,6 +621,17 @@ function normalizeOptionalCommand(value) {
   }
   const command = String(value);
   return command.includes("/") || command.startsWith(".") ? resolveFromCwd(command) : command;
+}
+
+function normalizeScriptScope(value) {
+  if (!value || value === true) {
+    return "product";
+  }
+  const scope = String(value).trim().toLowerCase();
+  if (!packageScriptScopes.has(scope)) {
+    throw new Error(`invalid --script-scope ${scope}; expected product, all, or none`);
+  }
+  return scope;
 }
 
 function normalizeToken(value) {

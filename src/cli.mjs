@@ -39,7 +39,7 @@ Usage:
   kova setup auth [--provider <id>] [--method <mock|api-key|env-only|external-cli|oauth|skip>] [--env-var <name>] [--value <secret>] [--fallback-policy <mock|external-cli|none>] [--json]
   kova self-check [--json]
   kova plan [--scenario <id>] [--json]
-  kova inventory plan [--openclaw-bin <path>] [--openclaw-repo <path>] [--subcommands <a,b>] [--require-modeled <capability[,capability]>] [--max-subcommands <n>] [--timeout-ms <n>] [--json]
+  kova inventory plan [--openclaw-bin <path>] [--openclaw-repo <path>] [--subcommands <a,b>] [--require-modeled <capability[,capability]>] [--script-scope <product|all|none>] [--max-subcommands <n>] [--max-warnings <n>] [--timeout-ms <n>] [--json]
   kova run --target <selector> [--from <selector>] [--scenario <id>] [--state <id>] [--auth <mock|live|skip>] [--repeat <n>] [--baseline [path]] [--save-baseline [path] --reviewed-good] [--regression-thresholds <json>] [--report-dir <path>] [--health-samples <n>] [--readiness-interval-ms <n>] [--resource-sample-interval-ms <n>] [--deep-profile] [--node-profile] [--heap-snapshot] [--profile-on-failure] [--execute] [--keep-env] [--retain-on-failure] [--json]
   kova matrix plan --profile <id> --target <selector> [--from <selector>] [--include <filter>] [--exclude <filter>] [--parallel <n>] [--json]
   kova matrix run --profile <id> --target <selector> [--from <selector>] [--include <filter>] [--exclude <filter>] [--auth <mock|live|skip>] [--parallel <n>] [--repeat <n>] [--baseline [path]] [--save-baseline [path] --reviewed-good] [--regression-thresholds <json>] [--fail-fast] [--gate] [--report-dir <path>] [--health-samples <n>] [--readiness-interval-ms <n>] [--resource-sample-interval-ms <n>] [--deep-profile] [--node-profile] [--heap-snapshot] [--profile-on-failure] [--execute] [--allow-exhaustive] [--keep-env] [--retain-on-failure] [--json]
@@ -64,6 +64,7 @@ Notes:
   Kova reports on OpenClaw behavior, not OCM behavior.
   run is dry-run/report-only unless --execute is passed.
   inventory is planner-only and reports discovered OpenClaw capabilities that are not mapped to Kova surfaces.
+  inventory package-script discovery defaults to --script-scope product; use all or none to widen or disable it.
   Executed exhaustive matrix runs require --allow-exhaustive.
   cleanup artifacts is dry-run by default and only targets Kova-owned run artifact dirs.
   --repeat records independent samples and computes aggregate performance stats.
