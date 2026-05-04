@@ -339,25 +339,25 @@ definitions, state fixture definitions, surface definitions, process-role
 definitions, profile summaries, platform metadata, and supports filtering with
 `--scenario`, `--state`, and `--profile`.
 
-Every scenario must declare a `surface`. Registry validation fails before plan,
-run, or matrix output if a scenario references an unknown surface, a surface
-references an unknown process role, or a profile references an unknown
-scenario/state/surface.
+Every scenario must declare a `surface` and the requirement ids it proves.
+Registry validation fails before plan, run, or matrix output if a scenario
+references an unknown surface or requirement, a surface references an unknown
+process role, or a profile references an unknown scenario/state/requirement.
 
-Every state must declare traits, compatible surfaces, incompatible surfaces,
-risk area, owner area, setup evidence, and cleanup guarantees. Registry
-validation rejects unknown state traits, unknown surface references, and profile
-entries that pair a scenario with a state that is not allowed for the scenario's
-surface.
+Every state must declare traits, risk area, owner area, setup evidence, and
+cleanup guarantees. Positive surface compatibility is owned by surface
+requirements. Registry validation rejects unknown state traits, unknown hard
+incompatibility references, and profile entries that pair a scenario with a
+state that does not satisfy the scenario's proved requirements.
 
 Plan JSON includes `coverage`:
 
 - `surfaces`: each surface with scenario count and mapped scenarios
 - `scenarioSurfaceMap`: direct scenario-to-surface mappings
 - `surfacesWithoutScenarios`: declared surfaces with no scenario yet
-- `profiles`: per-profile selected surfaces, scenarios, states, required
-  coverage, coverage gaps, state trait coverage, state/surface pairs, and
-  trait/surface coverage
+- `profiles`: per-profile selected surfaces, scenarios, states, requirement
+  coverage, derived required coverage, coverage gaps, state trait coverage,
+  state/surface pairs, and trait/surface coverage
 
 `kova matrix plan --json` also includes `resolvedCoverage`. This is the pre-run
 contract resolver for the selected profile, target, filters, scenarios, and
@@ -455,6 +455,9 @@ the existing matrix runner and adds:
       "blocking": ["darwin-arm64"],
       "warning": ["linux-x64", "linux-arm64", "wsl2"]
     },
+    "requirements": {
+      "blocking": ["release-runtime-startup:baseline"]
+    },
     "states": {
       "blocking": ["fresh"]
     },
@@ -494,10 +497,11 @@ Filtered gate slices are partial. They can produce `DO_NOT_SHIP` when a selected
 blocking scenario fails, but they cannot produce `SHIP` because required gate
 coverage is missing. A passing filtered slice remains `PARTIAL`.
 
-Release profiles may define explicit platform/surface/scenario/state/trait and
-state-surface coverage. Profiles may also define requirement coverage using
-`surface:requirement` ids. Missing blocking coverage prevents `SHIP`; missing
-warning coverage creates warning cards. Platform coverage keys include
+Release profiles define explicit platform coverage and requirement coverage
+using `surface:requirement` ids. Surface, scenario, state, trait, and
+state-surface coverage views are derived from resolved obligations for report
+compatibility. Missing blocking requirement/platform coverage prevents `SHIP`;
+missing warning coverage creates warning cards. Platform coverage keys include
 `darwin-arm64`, `linux-x64`, `linux-arm64`, and `wsl2` where detectable.
 
 Gate cards are concise fixer records. They include severity, scenario/state,

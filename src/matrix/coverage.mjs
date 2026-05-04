@@ -1,4 +1,9 @@
 import { platformCoverageKeys } from "../platform.mjs";
+import {
+  buildEntryCoverageObligations,
+  coverageIdsFromSet,
+  deriveCoveragePolicy
+} from "./coverage-policy.mjs";
 
 export function buildCoverage({ surfaces, scenarios, states, profiles, platform }) {
   const scenarioSurfaceMap = scenarios
@@ -52,13 +57,17 @@ function profileCoverage(profile, { scenarios, states, platform }) {
     }
   }
 
-  const requiredSurfaces = coverageIds(profile, "surfaces");
-  const requiredScenarios = coverageIds(profile, "scenarios");
-  const requiredStates = coverageIds(profile, "states");
-  const requiredTraits = coverageIds(profile, "traits");
-  const requiredStateSurfaces = coverageIds(profile, "stateSurfaces");
-  const requiredRequirements = coverageIds(profile, "requirements");
-  const requiredPlatforms = coverageIds(profile, "platforms");
+  const derivedPolicy = deriveCoveragePolicy(
+    profile.gate?.coverage,
+    buildEntryCoverageObligations(profile, { scenarios, states })
+  );
+  const requiredSurfaces = coverageIdsFromSet(derivedPolicy.surfaces);
+  const requiredScenarios = coverageIdsFromSet(derivedPolicy.scenarios);
+  const requiredStates = coverageIdsFromSet(derivedPolicy.states);
+  const requiredTraits = coverageIdsFromSet(derivedPolicy.traits);
+  const requiredStateSurfaces = coverageIdsFromSet(derivedPolicy.stateSurfaces);
+  const requiredRequirements = coverageIdsFromSet(derivedPolicy.requirements);
+  const requiredPlatforms = coverageIdsFromSet(derivedPolicy.platforms);
   const coveredTraits = coveredStateTraits(profile, states);
   const currentPlatformKeys = platformCoverageKeys(platform);
 
@@ -159,14 +168,6 @@ function traitSurfaceCoverage(profile, { scenarios, states }) {
   return Object.fromEntries([...traits.entries()]
     .toSorted(([left], [right]) => left.localeCompare(right))
     .map(([trait, surfaces]) => [trait, [...surfaces].sort()]));
-}
-
-function coverageIds(profile, key) {
-  const coverage = profile.gate?.coverage?.[key];
-  if (!coverage) {
-    return [];
-  }
-  return [...new Set([...(coverage.blocking ?? []), ...(coverage.warning ?? [])])].sort();
 }
 
 function byScenario(left, right) {

@@ -5,7 +5,6 @@ import {
   knownTargetKinds,
   requirementsForScenario,
   scenarioSupportsState,
-  surfaceSupportsState,
   targetKindsForRequirements
 } from "./surface-requirements.mjs";
 
@@ -201,12 +200,7 @@ function validateProfileReferences(profile, refs, errors) {
     }
   }
 
-  validateCoverageRefs(profile, refs, errors, "surfaces", refs.surfaceIds);
-  validateCoverageRefs(profile, refs, errors, "scenarios", refs.scenarioIds);
-  validateCoverageRefs(profile, refs, errors, "states", refs.stateIds);
-  validateCoverageRefs(profile, refs, errors, "traits", refs.traitIds);
   validatePlatformCoverageRefs(profile, errors);
-  validateStateSurfaceCoverageRefs(profile, refs, errors);
   validateRequirementCoverageRefs(profile, refs, errors);
   validateCalibrationRefs(profile, refs, errors);
 }
@@ -272,51 +266,6 @@ function validateScenarioStatePair({ profileId, location, scenarioId, stateId, r
   }
 }
 
-function validateStateSurfaceCoverageRefs(profile, refs, errors) {
-  const coverage = profile.gate?.coverage?.stateSurfaces;
-  if (!coverage) {
-    return;
-  }
-  for (const level of ["blocking", "warning"]) {
-    for (const value of coverage[level] ?? []) {
-      const [surface, state, extra] = String(value).split(":");
-      if (!surface || !state || extra !== undefined) {
-        errors.push(`profile '${profile.id}' gate.coverage.stateSurfaces.${level} must use surface:state, got '${value}'`);
-        continue;
-      }
-      if (!refs.surfaceIds.has(surface)) {
-        errors.push(`profile '${profile.id}' gate.coverage.stateSurfaces.${level} references unknown surface '${surface}'`);
-      }
-      if (!refs.stateIds.has(state)) {
-        errors.push(`profile '${profile.id}' gate.coverage.stateSurfaces.${level} references unknown state '${state}'`);
-      }
-      validateStateSurfacePair({
-        profileId: profile.id,
-        location: `gate.coverage.stateSurfaces.${level}`,
-        surfaceId: surface,
-        stateId: state,
-        refs,
-        errors
-      });
-    }
-  }
-}
-
-function validateStateSurfacePair({ profileId, location, surfaceId, stateId, refs, errors }) {
-  const surface = refs.surfaceById.get(surfaceId);
-  const state = refs.stateById.get(stateId);
-  if (!surface || !state) {
-    return;
-  }
-  const stateResult = surfaceSupportsState({ surface, state });
-  if (!stateResult.ok) {
-    errors.push(`profile '${profileId}' ${location} requires '${surface.id}:${state.id}', but ${stateResult.reason}`);
-  }
-  if ((state.incompatibleSurfaces ?? []).includes(surface.id)) {
-    errors.push(`profile '${profileId}' ${location} requires explicitly incompatible state/surface pair '${surface.id}:${state.id}'`);
-  }
-}
-
 function validateRequirementCoverageRefs(profile, refs, errors) {
   const coverage = profile.gate?.coverage?.requirements;
   if (!coverage) {
@@ -337,20 +286,6 @@ function validateRequirementCoverageRefs(profile, refs, errors) {
       const requirementIds = new Set((surfaceContract.requirements ?? []).map((item) => item.id));
       if (!requirementIds.has(requirement)) {
         errors.push(`profile '${profile.id}' gate.coverage.requirements.${level} references unknown requirement '${surface}:${requirement}'`);
-      }
-    }
-  }
-}
-
-function validateCoverageRefs(profile, _refs, errors, key, allowedIds) {
-  const coverage = profile.gate?.coverage?.[key];
-  if (!coverage) {
-    return;
-  }
-  for (const level of ["blocking", "warning"]) {
-    for (const id of coverage[level] ?? []) {
-      if (!allowedIds.has(id)) {
-        errors.push(`profile '${profile.id}' gate.coverage.${key}.${level} references unknown ${key.slice(0, -1)} '${id}'`);
       }
     }
   }

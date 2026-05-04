@@ -125,50 +125,6 @@
   "gate": {
     "id": "openclaw-diagnostic",
     "coverage": {
-      "surfaces": {
-        "blocking": [
-          "release-runtime-startup",
-          "gateway-performance",
-          "bundled-runtime-deps",
-          "agent-cli-local-turn",
-          "agent-gateway-rpc-turn",
-          "dashboard-session-send-turn",
-          "tui-message-turn",
-          "openai-compatible-turn"
-        ]
-      },
-      "states": {
-        "blocking": [
-          "fresh",
-          "missing-plugin-index",
-          "many-bundled-plugins",
-          "mock-openai-provider"
-        ]
-      },
-      "stateSurfaces": {
-        "blocking": [
-          "release-runtime-startup:fresh",
-          "gateway-performance:many-bundled-plugins",
-          "bundled-runtime-deps:missing-plugin-index",
-          "agent-cli-local-turn:mock-openai-provider",
-          "agent-gateway-rpc-turn:mock-openai-provider",
-          "dashboard-session-send-turn:mock-openai-provider",
-          "tui-message-turn:mock-openai-provider",
-          "openai-compatible-turn:mock-openai-provider"
-        ]
-      },
-      "scenarios": {
-        "blocking": [
-          "release-runtime-startup",
-          "gateway-performance",
-          "bundled-runtime-deps",
-          "agent-cold-warm-message",
-          "agent-gateway-rpc-turn",
-          "dashboard-session-send-turn",
-          "tui-message-turn",
-          "openai-compatible-turn"
-        ]
-      },
       "requirements": {
         "blocking": [
           "release-runtime-startup:baseline",

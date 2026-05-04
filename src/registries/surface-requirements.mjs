@@ -61,20 +61,3 @@ export function scenarioSupportsState({ scenario, surface, state }) {
     reason: `state '${state?.id ?? "unknown"}' does not satisfy scenario '${scenario.id}' requirement state ids or traits`
   };
 }
-
-export function surfaceSupportsState({ surface, state }) {
-  const requirements = surface?.requirements ?? [];
-  if (requirements.length === 0) {
-    return {
-      ok: false,
-      reason: `surface '${surface?.id ?? "unknown"}' has no requirements`
-    };
-  }
-  if (requirements.some((requirement) => stateSatisfiesRequirement(state, requirement).ok)) {
-    return { ok: true, reason: null };
-  }
-  return {
-    ok: false,
-    reason: `state '${state?.id ?? "unknown"}' does not satisfy surface '${surface.id}' requirement state ids or traits`
-  };
-}

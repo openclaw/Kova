@@ -4464,6 +4464,26 @@ function stateRegistryValidationCheck() {
     }
     assertEqual(rejectedPurpose, true, "unknown profile purpose rejected");
 
+    let rejectedDerivedCoverage = false;
+    try {
+      validateProfileShape({
+        id: "profile",
+        title: "Bad Profile Coverage",
+        objective: "Invalid derived profile coverage.",
+        entries: [{ scenario: "scenario", state: "state" }],
+        gate: {
+          coverage: {
+            surfaces: {
+              blocking: ["surface"]
+            }
+          }
+        }
+      }, "bad-profile-coverage.json");
+    } catch (error) {
+      rejectedDerivedCoverage = /coverage\.surfaces is derived/.test(error.message);
+    }
+    assertEqual(rejectedDerivedCoverage, true, "derived profile coverage rejected");
+
     let rejectedRequirement = false;
     try {
       validateRegistryReferences({
@@ -4503,61 +4523,6 @@ function stateRegistryValidationCheck() {
         /unknown metric 'madeUpMetric'/.test(error.message);
     }
     assertEqual(rejectedRequirement, true, "invalid surface requirement and scenario proof rejected");
-
-    let rejectedCoveragePair = false;
-    try {
-      validateRegistryReferences({
-        scenarios: [{
-          id: "scenario",
-          surface: "known-surface",
-          states: [],
-          targetKinds: [],
-          processRoles: []
-        }],
-        states: [{
-          id: "state",
-          traits: ["fresh-user"],
-          incompatibleSurfaces: ["known-surface"]
-        }],
-        profiles: [{
-          id: "profile",
-          entries: [],
-          gate: {
-            coverage: {
-              stateSurfaces: {
-                blocking: ["known-surface:state"]
-              }
-            }
-          }
-        }],
-        surfaces: [
-          {
-            id: "known-surface",
-            processRoles: [],
-            requirements: [{
-              id: "baseline",
-              states: ["state"],
-              targetKinds: ["runtime"],
-              metrics: []
-            }]
-          },
-          {
-            id: "other-surface",
-            processRoles: [],
-            requirements: [{
-              id: "baseline",
-              states: ["state"],
-              targetKinds: ["runtime"],
-              metrics: []
-            }]
-          }
-        ],
-        processRoles: []
-      });
-    } catch (error) {
-      rejectedCoveragePair = /explicitly incompatible state\/surface pair/.test(error.message);
-    }
-    assertEqual(rejectedCoveragePair, true, "invalid coverage state/surface pair rejected");
 
     let rejectedMetric = false;
     try {

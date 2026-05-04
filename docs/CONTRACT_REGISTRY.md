@@ -31,8 +31,8 @@ Then:
 2. Add missing metric ids to `metrics/known.json`.
 3. Add state fixture hooks or traits in `states/*.json` only when the
    requirement needs a new user condition.
-4. Add profile coverage in `profiles/*.json` only when the surface should be
-   part of that profile.
+4. Add profile requirement coverage in `profiles/*.json` only when the surface
+   requirement should be part of that profile.
 5. Run `node bin/kova.mjs plan --json`.
 6. Run a dry-run for the scenario.
 7. Add self-check coverage if the surface introduces new evidence parsing.
@@ -68,8 +68,8 @@ lists.
 Then:
 
 1. Pair the state with compatible scenarios or profile entries.
-2. Add profile trait/state coverage only when it is required for release
-   confidence.
+2. Add or update surface requirements when this state becomes required proof
+   for a surface.
 3. Run `node bin/kova.mjs plan --json`.
 4. Dry-run at least one scenario/state pair.
 5. Execute a disposable scenario when the state lifecycle mutates files,
@@ -89,6 +89,8 @@ Self-check and plan validation must fail for:
 - scenario/state pairs that violate requirement state contracts or hard
   incompatibility blocks
 - profile entries that require unknown surfaces or states
+- profile gate coverage that uses derived policy fields instead of
+  `requirements` or `platforms`
 
 If a new surface or state needs exceptions to these rules, the contract is too
 loose. Tighten the JSON or add a focused validator.

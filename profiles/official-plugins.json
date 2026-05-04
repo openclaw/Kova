@@ -5,32 +5,6 @@
   "gate": {
     "id": "openclaw-official-plugins",
     "coverage": {
-      "states": {
-        "blocking": [
-          "official-plugins"
-        ]
-      },
-      "traits": {
-        "blocking": [
-          "official-plugin",
-          "plugin-pressure"
-        ]
-      },
-      "stateSurfaces": {
-        "blocking": [
-          "official-plugin-install:official-plugins"
-        ]
-      },
-      "surfaces": {
-        "blocking": [
-          "official-plugin-install"
-        ]
-      },
-      "scenarios": {
-        "blocking": [
-          "official-plugin-install"
-        ]
-      },
       "requirements": {
         "blocking": [
           "official-plugin-install:baseline"

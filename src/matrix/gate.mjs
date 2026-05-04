@@ -1,4 +1,5 @@
 import { platformCoverageKeys } from "../platform.mjs";
+import { deriveCoveragePolicy } from "./coverage-policy.mjs";
 
 export function preflightGateRun({ entries, flags }) {
   if (flags?.gate !== true || flags?.execute !== true) {
@@ -22,7 +23,7 @@ function scenarioUsesSourceEnv(scenario) {
 }
 
 export function evaluateGate(report, profile, options = {}) {
-  const policy = normalizeGatePolicy(profile);
+  const policy = normalizeGatePolicy(profile, options);
   const purpose = profile?.purpose ?? "release";
   const records = report.records ?? [];
   const cards = [];
@@ -155,7 +156,7 @@ function isPartialGate(report) {
   return (controls?.include?.length ?? 0) > 0 || (controls?.exclude?.length ?? 0) > 0;
 }
 
-function normalizeGatePolicy(profile) {
+function normalizeGatePolicy(profile, options = {}) {
   const gate = profile?.gate && typeof profile.gate === "object" ? profile.gate : {};
   const entries = Array.isArray(profile?.entries) ? profile.entries : [];
   const warning = normalizePolicyEntries(gate.warning ?? []);
@@ -166,97 +167,25 @@ function normalizeGatePolicy(profile) {
     id: typeof gate.id === "string" && gate.id ? gate.id : `${profile?.id ?? "matrix"}-gate`,
     blocking,
     warning,
-    coverage: normalizeCoveragePolicy(gate.coverage)
+    coverage: deriveCoveragePolicy(gate.coverage, options.resolvedCoverage?.obligations ?? [])
   };
-}
-
-function normalizeCoveragePolicy(coverage) {
-  const input = coverage && typeof coverage === "object" ? coverage : {};
-  return {
-    surfaces: normalizeCoverageSet(input.surfaces),
-    platforms: normalizeCoverageSet(input.platforms),
-    states: normalizeCoverageSet(input.states),
-    traits: normalizeCoverageSet(input.traits),
-    scenarios: normalizeCoverageSet(input.scenarios),
-    stateSurfaces: normalizeCoverageSet(input.stateSurfaces),
-    requirements: normalizeCoverageSet(input.requirements)
-  };
-}
-
-function normalizeCoverageSet(value) {
-  const input = value && typeof value === "object" ? value : {};
-  return {
-    blocking: normalizeStringList(input.blocking),
-    warning: normalizeStringList(input.warning)
-  };
-}
-
-function normalizeStringList(value) {
-  return Array.isArray(value) ? value.filter((item) => typeof item === "string" && item.length > 0) : [];
 }
 
 function buildCoverageCards(report, policy, partial, options = {}) {
   const cards = [];
-  const records = report.records ?? [];
   const resolvedCoverage = options.resolvedCoverage ?? null;
   const platformKeys = platformCoverageKeys(report.platform);
-  const scenarioKeys = new Set(records.map((record) => record.scenario).filter(Boolean));
-  const stateKeys = new Set(records.map((record) => record.state?.id).filter(Boolean));
-  const surfaceKeys = new Set(records.map((record) => record.surface ?? record.measurements?.surface).filter(Boolean));
-  const traitKeys = new Set(records.flatMap((record) => record.state?.traits ?? []).filter(Boolean));
-  const stateSurfaceKeys = new Set(records
-    .map((record) => {
-      const surface = record.surface ?? record.measurements?.surface;
-      const state = record.state?.id;
-      return surface && state ? `${surface}:${state}` : null;
-    })
-    .filter(Boolean));
   const requirementKeys = new Set((resolvedCoverage?.obligations ?? [])
     .filter((obligation) => obligation.status === "planned")
     .map((obligation) => `${obligation.surface}:${obligation.requirement}`)
     .filter((value) => !value.endsWith(":null")));
 
   addCoverageCards(cards, {
-    kind: "surface",
-    expected: policy.coverage.surfaces,
-    observed: surfaceKeys,
-    partial,
-    statusText: `${surfaceKeys.size} surface(s) present`
-  });
-  addCoverageCards(cards, {
     kind: "platform",
     expected: policy.coverage.platforms,
     observed: platformKeys,
     partial,
     statusText: report.platform ? `${report.platform.os}/${report.platform.arch}` : "unknown platform"
-  });
-  addCoverageCards(cards, {
-    kind: "scenario",
-    expected: policy.coverage.scenarios,
-    observed: scenarioKeys,
-    partial,
-    statusText: `${scenarioKeys.size} scenario(s) present`
-  });
-  addCoverageCards(cards, {
-    kind: "state",
-    expected: policy.coverage.states,
-    observed: stateKeys,
-    partial,
-    statusText: `${stateKeys.size} state(s) present`
-  });
-  addCoverageCards(cards, {
-    kind: "trait",
-    expected: policy.coverage.traits,
-    observed: traitKeys,
-    partial,
-    statusText: `${traitKeys.size} state trait(s) present`
-  });
-  addCoverageCards(cards, {
-    kind: "state-surface",
-    expected: policy.coverage.stateSurfaces,
-    observed: stateSurfaceKeys,
-    partial,
-    statusText: `${stateSurfaceKeys.size} state/surface pair(s) present`
   });
   addCoverageCards(cards, {
     kind: "requirement",

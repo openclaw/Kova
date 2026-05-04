@@ -153,7 +153,12 @@ function validateCoverage(coverage, prefix, errors) {
     errors.push(`${prefix} must be an object`);
     return;
   }
-  for (const key of ["surfaces", "scenarios", "states", "traits", "stateSurfaces", "platforms", "requirements"]) {
+  for (const key of ["surfaces", "scenarios", "states", "traits", "stateSurfaces"]) {
+    if (coverage[key] !== undefined) {
+      errors.push(`${prefix}.${key} is derived from entries and requirements; use ${prefix}.requirements instead`);
+    }
+  }
+  for (const key of ["platforms", "requirements"]) {
     const value = coverage[key];
     if (value === undefined) {
       continue;
