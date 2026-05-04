@@ -86,6 +86,7 @@
     {
       "id": "baseline",
       "states": [
+        "agent-auth-missing",
         "mock-openai-provider"
       ],
       "targetKinds": [

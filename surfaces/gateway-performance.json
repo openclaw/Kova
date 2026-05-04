@@ -65,10 +65,10 @@
     {
       "id": "baseline",
       "states": [
-        "many-bundled-plugins",
         "gateway-already-running",
-        "stale-service-state",
-        "slow-filesystem"
+        "many-bundled-plugins",
+        "slow-filesystem",
+        "stale-service-state"
       ],
       "targetKinds": [
         "npm",

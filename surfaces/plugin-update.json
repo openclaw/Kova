@@ -54,8 +54,8 @@
     {
       "id": "baseline",
       "states": [
-        "fresh",
-        "external-plugin"
+        "external-plugin",
+        "fresh"
       ],
       "targetKinds": [
         "npm",

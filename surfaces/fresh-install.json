@@ -71,13 +71,13 @@
     {
       "id": "baseline",
       "states": [
-        "fresh",
-        "onboarded-user",
-        "plugin-index",
-        "old-config-keys",
-        "large-memory-session",
         "corrupted-config",
-        "missing-plugin-index"
+        "fresh",
+        "large-memory-session",
+        "missing-plugin-index",
+        "old-config-keys",
+        "onboarded-user",
+        "plugin-index"
       ],
       "targetKinds": [
         "npm",

@@ -75,10 +75,13 @@
     {
       "id": "baseline",
       "states": [
-        "old-release-user",
+        "failed-upgrade",
         "old-release-2026-4-20-user",
         "old-release-2026-4-24-user",
-        "failed-upgrade"
+        "old-release-user",
+        "onboarded-user",
+        "plugin-index",
+        "stable-channel-user"
       ],
       "targetKinds": [
         "npm",

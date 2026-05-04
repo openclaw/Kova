@@ -146,6 +146,10 @@ export async function runSelfCheck(flags = {}) {
       assertEqual(data.schemaVersion, "kova.matrix.plan.v1", "matrix plan schema");
       assertEqual(data.profile?.id, "smoke", "matrix profile id");
       assertArrayNotEmpty(data.entries, "matrix entries");
+      assertEqual(data.resolvedCoverage?.schemaVersion, "kova.resolvedCoverage.v1", "resolved coverage schema");
+      assertEqual(data.resolvedCoverage?.statuses?.planned, 1, "resolved planned obligation count");
+      assertEqual(data.resolvedCoverage?.obligations?.[0]?.surface, "fresh-install", "resolved obligation surface");
+      assertEqual(data.resolvedCoverage?.obligations?.[0]?.requirement, "baseline", "resolved obligation requirement");
       assertEqual(data.entries.length, 1, "matrix include filter count");
       assertEqual(data.controls?.requestedParallel, 2, "matrix requested parallel");
     }));

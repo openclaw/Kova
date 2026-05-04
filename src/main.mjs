@@ -8,6 +8,7 @@ import { compareReports, renderCompareFixerSummary, renderCompareSummary } from 
 import { parseFlags, printHelp, required, resolveFromCwd } from "./cli.mjs";
 import { evaluateGate, preflightGateRun } from "./matrix/gate.mjs";
 import { buildCoverage } from "./matrix/coverage.mjs";
+import { assertResolvedCoverageIsRunnable, resolveCoverageObligations } from "./matrix/resolver.mjs";
 import {
   comparePerformanceToBaseline,
   loadBaselineStore,
@@ -166,7 +167,7 @@ async function matrixCommand(flags) {
   const [subcommand = "plan"] = flags._;
 
   if (subcommand === "plan") {
-    await loadRegistryContext();
+    const registry = await loadRegistryContext();
     const profile = await loadProfile(required(flags.profile, "--profile"));
     const target = required(flags.target, "--target");
     const targetPlan = resolveTarget(target, "target");
@@ -174,6 +175,13 @@ async function matrixCommand(flags) {
     const fromPlan = flags.from ? resolveTarget(flags.from, "from") : null;
     const platform = platformInfo();
     const entries = applyMatrixControls(await expandProfile(profile), flags, platform);
+    const resolvedCoverage = resolveCoverageObligations({
+      profile,
+      entries,
+      surfaces: registry.surfaces,
+      targetPlan
+    });
+    assertResolvedCoverageIsRunnable(resolvedCoverage);
     for (const entry of entries.filter((item) => !item.skipReason)) {
       validateScenarioRun(entry.scenario, flags, { targetPlan, fromPlan });
     }
@@ -185,6 +193,7 @@ async function matrixCommand(flags) {
       target,
       from: flags.from ?? null,
       controls: matrixControlSummary(flags, targetPlan),
+      resolvedCoverage,
       entries: entries.map((entry) => entry.plan)
     };
 

@@ -78,8 +78,8 @@
     {
       "id": "baseline",
       "states": [
-        "large-workspace",
-        "large-memory-session"
+        "large-memory-session",
+        "large-workspace"
       ],
       "targetKinds": [
         "npm",

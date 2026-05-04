@@ -63,9 +63,9 @@
     {
       "id": "baseline",
       "states": [
-        "plugin-index",
-        "external-plugin",
         "broken-plugin-deps",
+        "external-plugin",
+        "plugin-index",
         "stale-runtime-deps"
       ],
       "targetKinds": [

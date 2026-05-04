@@ -359,6 +359,14 @@ Plan JSON includes `coverage`:
   coverage, coverage gaps, state trait coverage, state/surface pairs, and
   trait/surface coverage
 
+`kova matrix plan --json` also includes `resolvedCoverage`. This is the pre-run
+contract resolver for the selected profile, target, filters, scenarios, and
+states. It does not change execution reports. It lists planned obligations as
+surface requirement, scenario, state, target kind, status, required states,
+required state traits, required target kinds, and required metrics. Invalid
+obligations, such as a scenario proving an unknown requirement or a selected
+state that cannot satisfy the requirement, fail planning before execution.
+
 ## Summary Output
 
 `kova report summarize <report.json> --json` returns a compact agent-facing
@@ -480,7 +488,8 @@ blocking scenario fails, but they cannot produce `SHIP` because required gate
 coverage is missing. A passing filtered slice remains `PARTIAL`.
 
 Release profiles may define explicit platform/surface/scenario/state/trait and
-state-surface coverage. Missing blocking coverage prevents `SHIP`; missing
+state-surface coverage. Profiles may also define requirement coverage using
+`surface:requirement` ids. Missing blocking coverage prevents `SHIP`; missing
 warning coverage creates warning cards. Platform coverage keys include
 `darwin-arm64`, `linux-x64`, `linux-arm64`, and `wsl2` where detectable.
 
