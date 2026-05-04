@@ -6,23 +6,37 @@
     "id": "openclaw-official-plugins",
     "coverage": {
       "states": {
-        "blocking": ["official-plugins"]
+        "blocking": [
+          "official-plugins"
+        ]
       },
       "traits": {
-        "blocking": ["official-plugin", "plugin-pressure"]
+        "blocking": [
+          "official-plugin",
+          "plugin-pressure"
+        ]
       },
       "stateSurfaces": {
-        "blocking": ["official-plugin-install:official-plugins"]
+        "blocking": [
+          "official-plugin-install:official-plugins"
+        ]
       },
       "surfaces": {
-        "blocking": ["official-plugin-install"]
+        "blocking": [
+          "official-plugin-install"
+        ]
       },
       "scenarios": {
-        "blocking": ["official-plugin-install"]
+        "blocking": [
+          "official-plugin-install"
+        ]
       }
     },
     "blocking": [
-      { "scenario": "official-plugin-install", "state": "official-plugins" }
+      {
+        "scenario": "official-plugin-install",
+        "state": "official-plugins"
+      }
     ],
     "warning": []
   },
@@ -32,5 +46,6 @@
       "state": "official-plugins",
       "timeoutMs": 240000
     }
-  ]
+  ],
+  "purpose": "plugin"
 }

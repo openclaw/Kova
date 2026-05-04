@@ -14,18 +14,26 @@ Required fields:
 - `title`: short human name.
 - `ownerArea`: OpenClaw subsystem likely to own failures.
 - `description`: what OpenClaw behavior this surface proves.
+- `purposes`: Kova purposes this surface is relevant to, such as `release`,
+  `regression`, `diagnostic`, `performance`, `upgrade`, `plugin`, `provider`,
+  or `soak`.
 - `requiredStates`: state ids or traits expected for meaningful coverage.
 - `targetKinds`: target kinds that can run the surface.
 - `requiredMetrics`: metric ids from `metrics/known.json`.
 - `processRoles`: role ids from `process-roles/*.json`.
 - `thresholds`: default pass/fail thresholds for the surface.
 - `diagnostics`: source-build timeline expectations when available.
+- `requirements`: stable requirement ids for this surface. Each requirement can
+  narrow the states, state traits, target kinds, and metrics that prove part of
+  the surface contract.
 
 Then:
 
-1. Add or update one scenario in `scenarios/*.json` with `"surface": "<id>"`.
+1. Add or update one scenario in `scenarios/*.json` with `"surface": "<id>"`
+   and `proves` entries for the requirement ids it exercises.
 2. Add missing metric ids to `metrics/known.json`.
-3. Add the surface to compatible states in `states/*.json`.
+3. Add state fixture hooks or traits in `states/*.json` only when the
+   requirement needs a new user condition.
 4. Add profile coverage in `profiles/*.json` only when the surface should be
    part of that profile.
 5. Run `node bin/kova.mjs plan --json`.
@@ -57,6 +65,11 @@ inside disposable Kova envs and make the evidence explicit. Existing user state
 must be represented through clone/import metadata, not direct mutation of a
 durable env.
 
+Prefer requirement-level state ids or state traits on the surface over broad
+state compatibility lists. Keep `incompatibleSurfaces` for hard safety blocks.
+Treat broad compatibility metadata as migration support until the resolver owns
+the pairing decision.
+
 Then:
 
 1. Pair the state with compatible scenarios or profile entries.
@@ -72,6 +85,10 @@ Then:
 Self-check and plan validation must fail for:
 
 - unknown surface, state, process role, metric, or profile references
+- unknown purpose references
+- scenarios that prove unknown surface requirements
+- surface requirements that reference unknown states, traits, target kinds, or
+  metrics
 - invalid state traits
 - malformed lifecycle phases
 - scenario/state pairs that violate compatibility

@@ -726,6 +726,7 @@ function profileSummary(profile) {
     id: profile.id,
     title: profile.title,
     objective: profile.objective,
+    purpose: profile.purpose ?? null,
     entryCount: profile.entries.length,
     targetKinds: profile.targetKinds ?? null,
     diagnostics: profile.diagnostics ?? null,

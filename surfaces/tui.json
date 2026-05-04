@@ -3,17 +3,73 @@
   "title": "TUI",
   "ownerArea": "terminal-ui",
   "description": "Attach the terminal UI to a running OpenClaw gateway and verify render, input responsiveness, and clean shutdown.",
-  "requiredStates": ["fresh"],
-  "targetKinds": ["npm", "channel", "runtime", "local-build"],
-  "requiredMetrics": ["tuiSmokeMs", "gatewayReadyMs", "statusMs", "inputLagMs", "pluginLoadFailures"],
-  "processRoles": ["gateway", "command-tree", "tui-cli"],
-  "thresholds": { "tuiSmokeMs": 15000, "gatewayReadyMs": 30000, "inputLagMs": 1000 },
+  "requiredStates": [
+    "fresh"
+  ],
+  "targetKinds": [
+    "npm",
+    "channel",
+    "runtime",
+    "local-build"
+  ],
+  "requiredMetrics": [
+    "tuiSmokeMs",
+    "gatewayReadyMs",
+    "statusMs",
+    "inputLagMs",
+    "pluginLoadFailures"
+  ],
+  "processRoles": [
+    "gateway",
+    "command-tree",
+    "tui-cli"
+  ],
+  "thresholds": {
+    "tuiSmokeMs": 15000,
+    "gatewayReadyMs": 30000,
+    "inputLagMs": 1000
+  },
   "roleThresholds": {
-    "gateway": { "peakRssMb": 800, "maxCpuPercent": 250 },
-    "tui-cli": { "peakRssMb": 500, "maxCpuPercent": 200 }
+    "gateway": {
+      "peakRssMb": 800,
+      "maxCpuPercent": 250
+    },
+    "tui-cli": {
+      "peakRssMb": 500,
+      "maxCpuPercent": 200
+    }
   },
   "diagnostics": {
     "timelineRequiredForSourceBuild": false,
-    "expectedSpans": ["tui.attach", "tui.input", "gateway.websocket"]
-  }
+    "expectedSpans": [
+      "tui.attach",
+      "tui.input",
+      "gateway.websocket"
+    ]
+  },
+  "purposes": [
+    "regression",
+    "release"
+  ],
+  "requirements": [
+    {
+      "id": "baseline",
+      "states": [
+        "fresh"
+      ],
+      "targetKinds": [
+        "npm",
+        "channel",
+        "runtime",
+        "local-build"
+      ],
+      "metrics": [
+        "tuiSmokeMs",
+        "gatewayReadyMs",
+        "statusMs",
+        "inputLagMs",
+        "pluginLoadFailures"
+      ]
+    }
+  ]
 }

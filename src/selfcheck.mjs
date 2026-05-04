@@ -16,6 +16,7 @@ import {
 } from "./performance/baselines.mjs";
 import { buildPerformanceSummary } from "./performance/stats.mjs";
 import { loadProcessRoles } from "./registries/process-roles.mjs";
+import { validateProfileShape } from "./registries/profiles.mjs";
 import { validateScenarioShape } from "./registries/scenarios.mjs";
 import { validateStateShape } from "./registries/states.mjs";
 import { validateRegistryReferences } from "./registries/validate.mjs";
@@ -125,13 +126,20 @@ export async function runSelfCheck(flags = {}) {
       const releaseProfile = data.profiles?.find((profile) => profile.id === "release");
       assertArrayNotEmpty(releaseCoverage?.required?.platforms, "release required platform coverage");
       assertArrayNotEmpty(releaseCoverage?.currentPlatformKeys, "current platform coverage keys");
+      assertEqual(releaseProfile?.purpose, "release", "release profile purpose");
       assertEqual((releaseProfile?.calibration?.surfaceCount ?? 0) > 0, true, "release profile calibrated surfaces");
       assertEqual((releaseProfile?.calibration?.roleCount ?? 0) > 0, true, "release profile calibrated roles");
-      assertEqual(data.surfaces.some((surface) => surface.id === "official-plugin-install"), true, "official plugin surface present");
+      const officialSurface = data.surfaces.find((surface) => surface.id === "official-plugin-install");
+      assertEqual(Boolean(officialSurface), true, "official plugin surface present");
+      assertArrayNotEmpty(officialSurface?.purposes, "official plugin surface purposes");
+      assertArrayNotEmpty(officialSurface?.requirements, "official plugin surface requirements");
       assertEqual(data.states.some((state) => state.id === "official-plugins"), true, "official plugins state present");
       assertEqual(data.scenarios.some((scenario) => scenario.id === "official-plugin-install" && scenario.surface === "official-plugin-install"), true, "official plugin scenario present");
       if (data.scenarios.some((scenario) => typeof scenario.surface !== "string" || scenario.surface.length === 0)) {
         throw new Error("every scenario must expose a surface");
+      }
+      if (data.scenarios.some((scenario) => !Array.isArray(scenario.proves) || scenario.proves.length === 0)) {
+        throw new Error("every scenario must declare the surface requirement ids it proves");
       }
     }));
     checks.push(await jsonCommandCheck("matrix-plan-json", "node bin/kova.mjs matrix plan --profile smoke --target runtime:stable --include scenario:fresh-install --parallel 2 --json", (data) => {
@@ -4315,6 +4323,65 @@ function stateRegistryValidationCheck() {
       rejectedSurface = /compatibleSurfaces references unknown surface/.test(error.message);
     }
     assertEqual(rejectedSurface, true, "unknown compatible surface rejected");
+
+    let rejectedPurpose = false;
+    try {
+      validateProfileShape({
+        id: "profile",
+        title: "Bad Profile",
+        objective: "Invalid purpose.",
+        entries: [{ scenario: "scenario", state: "state" }],
+        purpose: "made-up-purpose"
+      }, "bad-profile.json");
+    } catch (error) {
+      rejectedPurpose = /unknown purpose/.test(error.message);
+    }
+    assertEqual(rejectedPurpose, true, "unknown profile purpose rejected");
+
+    let rejectedRequirement = false;
+    try {
+      validateRegistryReferences({
+        scenarios: [{
+          id: "scenario",
+          surface: "known-surface",
+          proves: ["missing-requirement"],
+          states: [],
+          targetKinds: [],
+          processRoles: []
+        }],
+        states: [{
+          id: "state",
+          traits: ["fresh-user"],
+          compatibleSurfaces: ["known-surface"],
+          incompatibleSurfaces: []
+        }],
+        profiles: [],
+        surfaces: [{
+          id: "known-surface",
+          processRoles: [],
+          requiredStates: ["state"],
+          requiredMetrics: ["knownMetric"],
+          thresholds: { knownMetric: 1 },
+          targetKinds: ["runtime"],
+          requirements: [{
+            id: "baseline",
+            states: ["missing-state"],
+            stateTraits: ["not-a-trait"],
+            targetKinds: ["unsupported-target"],
+            metrics: ["madeUpMetric"]
+          }]
+        }],
+        processRoles: [],
+        metrics: [{ id: "knownMetric" }]
+      });
+    } catch (error) {
+      rejectedRequirement = /proves unknown surface requirement/.test(error.message) &&
+        /references unknown state 'missing-state'/.test(error.message) &&
+        /references unknown state trait 'not-a-trait'/.test(error.message) &&
+        /unsupported-target/.test(error.message) &&
+        /unknown metric 'madeUpMetric'/.test(error.message);
+    }
+    assertEqual(rejectedRequirement, true, "invalid surface requirement and scenario proof rejected");
 
     let rejectedCoveragePair = false;
     try {

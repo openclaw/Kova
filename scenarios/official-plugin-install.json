@@ -3,8 +3,16 @@
   "surface": "official-plugin-install",
   "title": "Official Plugin Install",
   "objective": "Install a real published official OpenClaw plugin exactly as users do, then prove registry/list persistence and gateway restart health.",
-  "tags": ["plugins", "official-plugin", "install", "security-scan", "release"],
-  "states": ["official-plugins"],
+  "tags": [
+    "plugins",
+    "official-plugin",
+    "install",
+    "security-scan",
+    "release"
+  ],
+  "states": [
+    "official-plugins"
+  ],
   "timeoutMs": 240000,
   "thresholds": {
     "gatewayReadyMs": 45000,
@@ -21,8 +29,14 @@
       "id": "provision",
       "title": "Provision Official Plugin Env",
       "intent": "Start a fresh disposable OpenClaw env before running the published plugin install path.",
-      "commands": ["ocm start {env} {startSelector} --json", "ocm @{env} -- plugins list"],
-      "evidence": ["fresh env started", "baseline plugin list captured"]
+      "commands": [
+        "ocm start {env} {startSelector} --json",
+        "ocm @{env} -- plugins list"
+      ],
+      "evidence": [
+        "fresh env started",
+        "baseline plugin list captured"
+      ]
     },
     {
       "id": "install",
@@ -31,14 +45,32 @@
       "commands": [
         "node {kovaRoot}/support/run-official-plugin-install.mjs --env {env} --state {kovaRoot}/states/official-plugins.json --artifact-dir {artifactDir} --timeout-ms 120000"
       ],
-      "evidence": ["published plugin install results", "security scanner results", "plugins appear in list", "registry refresh succeeds"]
+      "evidence": [
+        "published plugin install results",
+        "security scanner results",
+        "plugins appear in list",
+        "registry refresh succeeds"
+      ]
     },
     {
       "id": "restart",
       "title": "Restart After Official Plugin Install",
       "intent": "Restart the gateway so OpenClaw loads persisted official plugin state without plugin load or dependency errors.",
-      "commands": ["ocm service restart {env}", "ocm service status {env} --json", "ocm @{env} -- plugins list", "ocm logs {env} --tail 400 --raw"],
-      "evidence": ["restart readiness", "official plugin remains installed", "plugin load logs", "missing dependency scan"]
+      "commands": [
+        "ocm service restart {env}",
+        "ocm service status {env} --json",
+        "ocm @{env} -- plugins list",
+        "ocm logs {env} --tail 400 --raw"
+      ],
+      "evidence": [
+        "restart readiness",
+        "official plugin remains installed",
+        "plugin load logs",
+        "missing dependency scan"
+      ]
     }
+  ],
+  "proves": [
+    "baseline"
   ]
 }

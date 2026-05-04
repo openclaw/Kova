@@ -3,7 +3,13 @@
   "surface": "mcp-runtime",
   "title": "MCP Runtime Start/Stop",
   "objective": "Start OpenClaw's real MCP stdio bridge against the disposable gateway, perform a JSON-RPC initialize and tools/list smoke, then verify the bridge exits without leaking a runtime process.",
-  "tags": ["mcp", "stdio", "gateway", "runtime", "start-stop"],
+  "tags": [
+    "mcp",
+    "stdio",
+    "gateway",
+    "runtime",
+    "start-stop"
+  ],
   "timeoutMs": 120000,
   "thresholds": {
     "gatewayReadyMs": 30000,
@@ -23,22 +29,46 @@
       "id": "gateway",
       "title": "Gateway Start",
       "intent": "Start the gateway and confirm it is healthy before opening the MCP stdio bridge.",
-      "commands": ["ocm start {env} {startSelector} --json", "ocm @{env} -- status"],
-      "evidence": ["gateway status", "gateway port", "readiness classification"]
+      "commands": [
+        "ocm start {env} {startSelector} --json",
+        "ocm @{env} -- status"
+      ],
+      "evidence": [
+        "gateway status",
+        "gateway port",
+        "readiness classification"
+      ]
     },
     {
       "id": "mcp-bridge",
       "title": "MCP Bridge Smoke",
       "intent": "Spawn the real OpenClaw MCP stdio bridge, initialize it, list tools, and close it cleanly.",
-      "commands": ["node {kovaRoot}/support/mcp-bridge-smoke.mjs --env {env} --artifact-dir {artifactDir} --timeout-ms 30000"],
-      "evidence": ["MCP initialize timing", "tools/list timing", "tool count", "bridge process exit"]
+      "commands": [
+        "node {kovaRoot}/support/mcp-bridge-smoke.mjs --env {env} --artifact-dir {artifactDir} --timeout-ms 30000"
+      ],
+      "evidence": [
+        "MCP initialize timing",
+        "tools/list timing",
+        "tool count",
+        "bridge process exit"
+      ]
     },
     {
       "id": "post-mcp-health",
       "title": "Post-MCP Gateway Health",
       "intent": "Verify the gateway remains responsive after the MCP bridge starts and exits.",
-      "commands": ["ocm @{env} -- status", "ocm logs {env} --tail 300 --raw"],
-      "evidence": ["status after MCP bridge", "MCP bridge errors", "gateway errors"]
+      "commands": [
+        "ocm @{env} -- status",
+        "ocm logs {env} --tail 300 --raw"
+      ],
+      "evidence": [
+        "status after MCP bridge",
+        "MCP bridge errors",
+        "gateway errors"
+      ]
     }
+  ],
+  "proves": [
+    "baseline"
   ]
 }

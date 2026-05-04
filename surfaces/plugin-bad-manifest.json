@@ -3,17 +3,71 @@
   "title": "Plugin Bad Manifest",
   "ownerArea": "plugins",
   "description": "Install an invalid plugin fixture and verify OpenClaw rejects it cleanly without corrupting gateway state.",
-  "requiredStates": ["fresh"],
-  "targetKinds": ["npm", "channel", "runtime", "local-build"],
-  "requiredMetrics": ["gatewayReadyMs", "statusMs", "pluginLoadFailures", "diagnosticPresent"],
-  "processRoles": ["gateway", "command-tree", "plugin-cli"],
-  "thresholds": { "gatewayReadyMs": 30000, "statusMs": 10000 },
+  "requiredStates": [
+    "fresh"
+  ],
+  "targetKinds": [
+    "npm",
+    "channel",
+    "runtime",
+    "local-build"
+  ],
+  "requiredMetrics": [
+    "gatewayReadyMs",
+    "statusMs",
+    "pluginLoadFailures",
+    "diagnosticPresent"
+  ],
+  "processRoles": [
+    "gateway",
+    "command-tree",
+    "plugin-cli"
+  ],
+  "thresholds": {
+    "gatewayReadyMs": 30000,
+    "statusMs": 10000
+  },
   "roleThresholds": {
-    "gateway": { "peakRssMb": 800, "maxCpuPercent": 250 },
-    "plugin-cli": { "peakRssMb": 600, "maxCpuPercent": 250 }
+    "gateway": {
+      "peakRssMb": 800,
+      "maxCpuPercent": 250
+    },
+    "plugin-cli": {
+      "peakRssMb": 600,
+      "maxCpuPercent": 250
+    }
   },
   "diagnostics": {
     "timelineRequiredForSourceBuild": true,
-    "expectedSpans": ["plugins.install", "plugins.manifest.validate"]
-  }
+    "expectedSpans": [
+      "plugins.install",
+      "plugins.manifest.validate"
+    ]
+  },
+  "purposes": [
+    "diagnostic",
+    "plugin",
+    "regression",
+    "release"
+  ],
+  "requirements": [
+    {
+      "id": "baseline",
+      "states": [
+        "fresh"
+      ],
+      "targetKinds": [
+        "npm",
+        "channel",
+        "runtime",
+        "local-build"
+      ],
+      "metrics": [
+        "gatewayReadyMs",
+        "statusMs",
+        "pluginLoadFailures",
+        "diagnosticPresent"
+      ]
+    }
+  ]
 }

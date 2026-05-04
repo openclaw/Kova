@@ -3,17 +3,73 @@
   "title": "Provider And Models",
   "ownerArea": "providers",
   "description": "Exercise model/provider discovery and verify slow or unauthenticated providers do not stall the gateway.",
-  "requiredStates": ["model-auth-configured", "model-auth-missing"],
-  "targetKinds": ["npm", "channel", "runtime", "local-build"],
-  "requiredMetrics": ["modelsListMs", "statusAfterModelsMs", "gatewayResponsive", "providerTimeoutMentions"],
-  "processRoles": ["gateway", "command-tree", "model-cli"],
-  "thresholds": { "modelsListMs": 20000, "statusAfterModelsMs": 10000 },
+  "requiredStates": [
+    "model-auth-configured",
+    "model-auth-missing"
+  ],
+  "targetKinds": [
+    "npm",
+    "channel",
+    "runtime",
+    "local-build"
+  ],
+  "requiredMetrics": [
+    "modelsListMs",
+    "statusAfterModelsMs",
+    "gatewayResponsive",
+    "providerTimeoutMentions"
+  ],
+  "processRoles": [
+    "gateway",
+    "command-tree",
+    "model-cli"
+  ],
+  "thresholds": {
+    "modelsListMs": 20000,
+    "statusAfterModelsMs": 10000
+  },
   "roleThresholds": {
-    "gateway": { "peakRssMb": 800, "maxCpuPercent": 250 },
-    "model-cli": { "peakRssMb": 700, "maxCpuPercent": 250 }
+    "gateway": {
+      "peakRssMb": 800,
+      "maxCpuPercent": 250
+    },
+    "model-cli": {
+      "peakRssMb": 700,
+      "maxCpuPercent": 250
+    }
   },
   "diagnostics": {
     "timelineRequiredForSourceBuild": true,
-    "expectedSpans": ["providers.list", "models.list", "providers.timeout"]
-  }
+    "expectedSpans": [
+      "providers.list",
+      "models.list",
+      "providers.timeout"
+    ]
+  },
+  "purposes": [
+    "provider",
+    "regression",
+    "release"
+  ],
+  "requirements": [
+    {
+      "id": "baseline",
+      "states": [
+        "model-auth-configured",
+        "model-auth-missing"
+      ],
+      "targetKinds": [
+        "npm",
+        "channel",
+        "runtime",
+        "local-build"
+      ],
+      "metrics": [
+        "modelsListMs",
+        "statusAfterModelsMs",
+        "gatewayResponsive",
+        "providerTimeoutMentions"
+      ]
+    }
+  ]
 }

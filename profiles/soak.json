@@ -53,5 +53,6 @@
       "state": "mock-openai-provider",
       "timeoutMs": 360000
     }
-  ]
+  ],
+  "purpose": "soak"
 }

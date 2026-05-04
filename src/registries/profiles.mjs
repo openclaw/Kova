@@ -1,4 +1,5 @@
 import { profilesDir } from "../paths.mjs";
+import { validatePurpose } from "./purposes.mjs";
 import { assertNoShapeErrors, loadJsonRegistry, requireArray, requireKebabId, requireString } from "./validate.mjs";
 
 export async function loadProfiles(selectedId) {
@@ -22,6 +23,7 @@ export function validateProfileShape(profile, sourceName = "profile") {
   requireString(profile, "title", errors);
   requireString(profile, "objective", errors);
   requireArray(profile, "entries", errors);
+  validatePurpose(profile.purpose, "purpose", errors, { optional: true });
   validateStringArray(profile.targetKinds, "targetKinds", errors, { optional: true });
   validateDiagnostics(profile.diagnostics, "diagnostics", errors);
   validateCalibration(profile.calibration, "calibration", errors);

@@ -3,8 +3,17 @@
   "surface": "workspace-scan",
   "title": "Workspace Scan Pressure",
   "objective": "Start OpenClaw, create a large workspace fixture, restart the gateway, and verify user-facing commands stay responsive without memory, CPU, or health degradation.",
-  "tags": ["workspace", "filesystem", "performance", "gateway", "models", "plugins"],
-  "states": ["large-workspace"],
+  "tags": [
+    "workspace",
+    "filesystem",
+    "performance",
+    "gateway",
+    "models",
+    "plugins"
+  ],
+  "states": [
+    "large-workspace"
+  ],
   "timeoutMs": 240000,
   "thresholds": {
     "warmReadyMs": 30000,
@@ -24,15 +33,29 @@
       "id": "start",
       "title": "Start Gateway",
       "intent": "Start the target OpenClaw runtime before applying the large workspace fixture.",
-      "commands": ["ocm start {env} {startSelector} --json", "ocm service status {env} --json"],
-      "evidence": ["startup readiness", "gateway PID", "baseline RSS and CPU"]
+      "commands": [
+        "ocm start {env} {startSelector} --json",
+        "ocm service status {env} --json"
+      ],
+      "evidence": [
+        "startup readiness",
+        "gateway PID",
+        "baseline RSS and CPU"
+      ]
     },
     {
       "id": "restart-after-workspace",
       "title": "Restart With Large Workspace",
       "intent": "Restart the gateway after the large workspace fixture exists so startup and reload paths see filesystem pressure.",
-      "commands": ["ocm service restart {env}", "ocm service status {env} --json"],
-      "evidence": ["restart readiness", "post-fixture gateway status", "resource samples during restart"]
+      "commands": [
+        "ocm service restart {env}",
+        "ocm service status {env} --json"
+      ],
+      "evidence": [
+        "restart readiness",
+        "post-fixture gateway status",
+        "resource samples during restart"
+      ]
     },
     {
       "id": "user-facing-commands",
@@ -44,7 +67,17 @@
         "ocm @{env} -- models list",
         "node support/run-soak-loop.mjs --env {env} --duration-ms 15000 --interval-ms 1000 --timeout-ms 30000"
       ],
-      "evidence": ["status latency", "plugin list latency", "model list latency", "short repeated command p95", "health p95", "RSS and CPU peaks"]
+      "evidence": [
+        "status latency",
+        "plugin list latency",
+        "model list latency",
+        "short repeated command p95",
+        "health p95",
+        "RSS and CPU peaks"
+      ]
     }
+  ],
+  "proves": [
+    "baseline"
   ]
 }

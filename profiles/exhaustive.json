@@ -3,57 +3,236 @@
   "title": "Exhaustive Matrix",
   "objective": "Maximum local OpenClaw coverage across install, upgrade, plugins, providers, config corruption, filesystem pressure, service recovery, and performance scenarios.",
   "entries": [
-    { "scenario": "fresh-install", "state": "fresh" },
-    { "scenario": "fresh-install", "state": "onboarded-user" },
-    { "scenario": "fresh-install", "state": "plugin-index" },
-    { "scenario": "fresh-install", "state": "old-config-keys" },
-    { "scenario": "fresh-install", "state": "large-memory-session" },
-    { "scenario": "fresh-install", "state": "corrupted-config" },
-    { "scenario": "release-runtime-startup", "state": "fresh" },
-    { "scenario": "upgrade-existing-user", "state": "old-release-user", "timeoutMs": 180000 },
-    { "scenario": "upgrade-existing-user", "state": "failed-upgrade", "timeoutMs": 180000 },
-    { "scenario": "bundled-runtime-deps", "state": "missing-plugin-index" },
-    { "scenario": "bundled-runtime-deps", "state": "stale-runtime-deps" },
-    { "scenario": "plugin-lifecycle", "state": "plugin-index" },
-    { "scenario": "plugin-lifecycle", "state": "external-plugin" },
-    { "scenario": "plugin-lifecycle", "state": "broken-plugin-deps" },
-    { "scenario": "plugin-external-install", "state": "fresh" },
-    { "scenario": "official-plugin-install", "state": "official-plugins", "timeoutMs": 240000 },
-    { "scenario": "plugin-remove", "state": "fresh" },
-    { "scenario": "plugin-update", "state": "fresh" },
-    { "scenario": "plugin-bad-manifest", "state": "fresh" },
-    { "scenario": "plugin-missing-runtime-deps", "state": "fresh" },
-    { "scenario": "bundled-plugin-startup", "state": "fresh" },
-    { "scenario": "provider-models", "state": "model-auth-configured" },
-    { "scenario": "provider-models", "state": "model-auth-missing" },
-    { "scenario": "agent-cold-warm-message", "state": "mock-openai-provider", "timeoutMs": 180000 },
-    { "scenario": "agent-gateway-rpc-turn", "state": "mock-openai-provider", "timeoutMs": 180000 },
-    { "scenario": "dashboard-session-send-turn", "state": "mock-openai-provider", "timeoutMs": 180000 },
-    { "scenario": "tui-message-turn", "state": "mock-openai-provider", "timeoutMs": 180000 },
-    { "scenario": "openai-compatible-turn", "state": "mock-openai-provider", "timeoutMs": 180000 },
-    { "scenario": "agent-auth-missing", "state": "agent-auth-missing", "timeoutMs": 180000 },
-    { "scenario": "agent-long-session", "state": "mock-openai-provider", "timeoutMs": 360000 },
-    { "scenario": "agent-provider-slow", "state": "mock-openai-provider", "timeoutMs": 180000 },
-    { "scenario": "agent-provider-timeout", "state": "mock-openai-provider", "timeoutMs": 180000 },
-    { "scenario": "agent-provider-malformed", "state": "mock-openai-provider", "timeoutMs": 180000 },
-    { "scenario": "agent-provider-streaming-stall", "state": "mock-openai-provider", "timeoutMs": 180000 },
-    { "scenario": "agent-provider-concurrent", "state": "mock-openai-provider", "timeoutMs": 240000 },
-    { "scenario": "agent-provider-recovery", "state": "mock-openai-provider", "timeoutMs": 240000 },
-    { "scenario": "dashboard-readiness", "state": "fresh" },
-    { "scenario": "tui-responsiveness", "state": "fresh" },
-    { "scenario": "mcp-runtime-start-stop", "state": "fresh" },
-    { "scenario": "browser-automation-smoke", "state": "fresh", "timeoutMs": 180000 },
-    { "scenario": "media-understanding-timeout", "state": "fresh", "timeoutMs": 180000 },
-    { "scenario": "agent-network-offline", "state": "fresh", "timeoutMs": 180000 },
-    { "scenario": "gateway-performance", "state": "many-bundled-plugins" },
-    { "scenario": "gateway-performance", "state": "gateway-already-running" },
-    { "scenario": "gateway-performance", "state": "stale-service-state" },
-    { "scenario": "failure-injection", "state": "broken-plugin-deps" },
-    { "scenario": "failure-injection", "state": "corrupted-config" },
-    { "scenario": "soak", "state": "large-workspace", "timeoutMs": 240000 },
-    { "scenario": "workspace-scan-pressure", "state": "large-workspace", "timeoutMs": 240000 },
-    { "scenario": "soak", "state": "large-memory-session", "timeoutMs": 240000 },
-    { "scenario": "cross-platform-smoke", "state": "slow-filesystem" },
-    { "scenario": "cross-platform-smoke", "state": "channel-configured" }
-  ]
+    {
+      "scenario": "fresh-install",
+      "state": "fresh"
+    },
+    {
+      "scenario": "fresh-install",
+      "state": "onboarded-user"
+    },
+    {
+      "scenario": "fresh-install",
+      "state": "plugin-index"
+    },
+    {
+      "scenario": "fresh-install",
+      "state": "old-config-keys"
+    },
+    {
+      "scenario": "fresh-install",
+      "state": "large-memory-session"
+    },
+    {
+      "scenario": "fresh-install",
+      "state": "corrupted-config"
+    },
+    {
+      "scenario": "release-runtime-startup",
+      "state": "fresh"
+    },
+    {
+      "scenario": "upgrade-existing-user",
+      "state": "old-release-user",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "upgrade-existing-user",
+      "state": "failed-upgrade",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "bundled-runtime-deps",
+      "state": "missing-plugin-index"
+    },
+    {
+      "scenario": "bundled-runtime-deps",
+      "state": "stale-runtime-deps"
+    },
+    {
+      "scenario": "plugin-lifecycle",
+      "state": "plugin-index"
+    },
+    {
+      "scenario": "plugin-lifecycle",
+      "state": "external-plugin"
+    },
+    {
+      "scenario": "plugin-lifecycle",
+      "state": "broken-plugin-deps"
+    },
+    {
+      "scenario": "plugin-external-install",
+      "state": "fresh"
+    },
+    {
+      "scenario": "official-plugin-install",
+      "state": "official-plugins",
+      "timeoutMs": 240000
+    },
+    {
+      "scenario": "plugin-remove",
+      "state": "fresh"
+    },
+    {
+      "scenario": "plugin-update",
+      "state": "fresh"
+    },
+    {
+      "scenario": "plugin-bad-manifest",
+      "state": "fresh"
+    },
+    {
+      "scenario": "plugin-missing-runtime-deps",
+      "state": "fresh"
+    },
+    {
+      "scenario": "bundled-plugin-startup",
+      "state": "fresh"
+    },
+    {
+      "scenario": "provider-models",
+      "state": "model-auth-configured"
+    },
+    {
+      "scenario": "provider-models",
+      "state": "model-auth-missing"
+    },
+    {
+      "scenario": "agent-cold-warm-message",
+      "state": "mock-openai-provider",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "agent-gateway-rpc-turn",
+      "state": "mock-openai-provider",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "dashboard-session-send-turn",
+      "state": "mock-openai-provider",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "tui-message-turn",
+      "state": "mock-openai-provider",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "openai-compatible-turn",
+      "state": "mock-openai-provider",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "agent-auth-missing",
+      "state": "agent-auth-missing",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "agent-long-session",
+      "state": "mock-openai-provider",
+      "timeoutMs": 360000
+    },
+    {
+      "scenario": "agent-provider-slow",
+      "state": "mock-openai-provider",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "agent-provider-timeout",
+      "state": "mock-openai-provider",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "agent-provider-malformed",
+      "state": "mock-openai-provider",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "agent-provider-streaming-stall",
+      "state": "mock-openai-provider",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "agent-provider-concurrent",
+      "state": "mock-openai-provider",
+      "timeoutMs": 240000
+    },
+    {
+      "scenario": "agent-provider-recovery",
+      "state": "mock-openai-provider",
+      "timeoutMs": 240000
+    },
+    {
+      "scenario": "dashboard-readiness",
+      "state": "fresh"
+    },
+    {
+      "scenario": "tui-responsiveness",
+      "state": "fresh"
+    },
+    {
+      "scenario": "mcp-runtime-start-stop",
+      "state": "fresh"
+    },
+    {
+      "scenario": "browser-automation-smoke",
+      "state": "fresh",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "media-understanding-timeout",
+      "state": "fresh",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "agent-network-offline",
+      "state": "fresh",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "gateway-performance",
+      "state": "many-bundled-plugins"
+    },
+    {
+      "scenario": "gateway-performance",
+      "state": "gateway-already-running"
+    },
+    {
+      "scenario": "gateway-performance",
+      "state": "stale-service-state"
+    },
+    {
+      "scenario": "failure-injection",
+      "state": "broken-plugin-deps"
+    },
+    {
+      "scenario": "failure-injection",
+      "state": "corrupted-config"
+    },
+    {
+      "scenario": "soak",
+      "state": "large-workspace",
+      "timeoutMs": 240000
+    },
+    {
+      "scenario": "workspace-scan-pressure",
+      "state": "large-workspace",
+      "timeoutMs": 240000
+    },
+    {
+      "scenario": "soak",
+      "state": "large-memory-session",
+      "timeoutMs": 240000
+    },
+    {
+      "scenario": "cross-platform-smoke",
+      "state": "slow-filesystem"
+    },
+    {
+      "scenario": "cross-platform-smoke",
+      "state": "channel-configured"
+    }
+  ],
+  "purpose": "regression"
 }

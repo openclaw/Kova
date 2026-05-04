@@ -3,7 +3,12 @@
   "surface": "soak",
   "title": "Gateway Soak And Memory Trend",
   "objective": "Run a gateway for a longer window with repeated user-facing checks to detect memory growth, event-loop stalls, and degraded responsiveness.",
-  "tags": ["soak", "memory", "latency", "gateway"],
+  "tags": [
+    "soak",
+    "memory",
+    "latency",
+    "gateway"
+  ],
   "timeoutMs": 300000,
   "thresholds": {
     "soakMinDurationMs": 60000,
@@ -18,8 +23,15 @@
       "id": "start",
       "title": "Start Gateway",
       "intent": "Start the target runtime and capture baseline status.",
-      "commands": ["ocm start {env} {startSelector} --json", "ocm service status {env} --json"],
-      "evidence": ["baseline PID", "baseline RSS", "baseline health"]
+      "commands": [
+        "ocm start {env} {startSelector} --json",
+        "ocm service status {env} --json"
+      ],
+      "evidence": [
+        "baseline PID",
+        "baseline RSS",
+        "baseline health"
+      ]
     },
     {
       "id": "loop",
@@ -28,7 +40,14 @@
       "commands": [
         "node support/run-soak-loop.mjs --env {env} --duration-ms 60000 --interval-ms 1000 --timeout-ms 30000"
       ],
-      "evidence": ["latency trend", "RSS trend", "logs during loop"]
+      "evidence": [
+        "latency trend",
+        "RSS trend",
+        "logs during loop"
+      ]
     }
+  ],
+  "proves": [
+    "baseline"
   ]
 }

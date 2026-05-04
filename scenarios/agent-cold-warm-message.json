@@ -3,7 +3,13 @@
   "surface": "agent-cli-local-turn",
   "title": "Agent CLI Local Cold/Warm Message",
   "objective": "Send cold and warm simple messages through `openclaw agent --local`, verify mock-provider responses, and attribute latency before, during, and after provider work.",
-  "tags": ["agent", "message", "latency", "providers", "cold-warm"],
+  "tags": [
+    "agent",
+    "message",
+    "latency",
+    "providers",
+    "cold-warm"
+  ],
   "timeoutMs": 240000,
   "agent": {
     "expectedText": "KOVA_AGENT_OK"
@@ -30,8 +36,14 @@
       "id": "provision",
       "title": "Provision Agent Env",
       "intent": "Create a disposable OpenClaw env before wiring the model provider and sending local agent messages.",
-      "commands": ["ocm start {env} {startSelector} --no-service --json"],
-      "evidence": ["gateway port", "runtime binding", "env created without service"]
+      "commands": [
+        "ocm start {env} {startSelector} --no-service --json"
+      ],
+      "evidence": [
+        "gateway port",
+        "runtime binding",
+        "env created without service"
+      ]
     },
     {
       "id": "cold-agent-turn",
@@ -40,7 +52,13 @@
       "commands": [
         "ocm @{env} -- agent --local --agent main --session-id kova-agent-cold-warm --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 120 --json"
       ],
-      "evidence": ["cold command duration", "final assistant text", "mock provider request timing", "gateway health after cold turn", "role resource samples"]
+      "evidence": [
+        "cold command duration",
+        "final assistant text",
+        "mock provider request timing",
+        "gateway health after cold turn",
+        "role resource samples"
+      ]
     },
     {
       "id": "warm-agent-turn",
@@ -49,14 +67,29 @@
       "commands": [
         "ocm @{env} -- agent --local --agent main --session-id kova-agent-cold-warm --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 120 --json"
       ],
-      "evidence": ["warm command duration", "final assistant text", "mock provider request timing", "cold/warm delta", "role resource samples"]
+      "evidence": [
+        "warm command duration",
+        "final assistant text",
+        "mock provider request timing",
+        "cold/warm delta",
+        "role resource samples"
+      ]
     },
     {
       "id": "post-agent-health",
       "title": "Post-Agent Env Status",
       "intent": "Verify the env remains usable after both local agent turns and capture plugin diagnostics.",
-      "commands": ["ocm @{env} -- status"],
-      "evidence": ["env status", "plugin errors", "memory after agent turns"]
+      "commands": [
+        "ocm @{env} -- status"
+      ],
+      "evidence": [
+        "env status",
+        "plugin errors",
+        "memory after agent turns"
+      ]
     }
+  ],
+  "proves": [
+    "baseline"
   ]
 }

@@ -3,19 +3,95 @@
   "title": "Fresh Install",
   "ownerArea": "runtime-startup",
   "description": "Create a disposable fresh OpenClaw home and verify gateway, plugins, models, logs, and baseline resource use.",
-  "requiredStates": ["fresh", "onboarded-user", "plugin-index", "old-config-keys", "large-memory-session", "corrupted-config", "missing-plugin-index"],
-  "targetKinds": ["npm", "channel", "runtime", "local-build"],
-  "requiredMetrics": ["gatewayReadyMs", "statusMs", "pluginsListMs", "modelsListMs", "peakRssMb"],
-  "processRoles": ["gateway", "command-tree", "status-cli", "plugin-cli", "model-cli"],
-  "thresholds": { "gatewayReadyMs": 30000, "statusMs": 10000, "peakRssMb": 900 },
+  "requiredStates": [
+    "fresh",
+    "onboarded-user",
+    "plugin-index",
+    "old-config-keys",
+    "large-memory-session",
+    "corrupted-config",
+    "missing-plugin-index"
+  ],
+  "targetKinds": [
+    "npm",
+    "channel",
+    "runtime",
+    "local-build"
+  ],
+  "requiredMetrics": [
+    "gatewayReadyMs",
+    "statusMs",
+    "pluginsListMs",
+    "modelsListMs",
+    "peakRssMb"
+  ],
+  "processRoles": [
+    "gateway",
+    "command-tree",
+    "status-cli",
+    "plugin-cli",
+    "model-cli"
+  ],
+  "thresholds": {
+    "gatewayReadyMs": 30000,
+    "statusMs": 10000,
+    "peakRssMb": 900
+  },
   "roleThresholds": {
-    "gateway": { "peakRssMb": 800, "maxCpuPercent": 250 },
-    "status-cli": { "peakRssMb": 500, "maxCpuPercent": 200 },
-    "plugin-cli": { "peakRssMb": 600, "maxCpuPercent": 250 },
-    "model-cli": { "peakRssMb": 700, "maxCpuPercent": 250 }
+    "gateway": {
+      "peakRssMb": 800,
+      "maxCpuPercent": 250
+    },
+    "status-cli": {
+      "peakRssMb": 500,
+      "maxCpuPercent": 200
+    },
+    "plugin-cli": {
+      "peakRssMb": 600,
+      "maxCpuPercent": 250
+    },
+    "model-cli": {
+      "peakRssMb": 700,
+      "maxCpuPercent": 250
+    }
   },
   "diagnostics": {
     "timelineRequiredForSourceBuild": true,
-    "expectedSpans": ["gateway.startup", "plugins.metadata", "providers.list"]
-  }
+    "expectedSpans": [
+      "gateway.startup",
+      "plugins.metadata",
+      "providers.list"
+    ]
+  },
+  "purposes": [
+    "regression",
+    "release"
+  ],
+  "requirements": [
+    {
+      "id": "baseline",
+      "states": [
+        "fresh",
+        "onboarded-user",
+        "plugin-index",
+        "old-config-keys",
+        "large-memory-session",
+        "corrupted-config",
+        "missing-plugin-index"
+      ],
+      "targetKinds": [
+        "npm",
+        "channel",
+        "runtime",
+        "local-build"
+      ],
+      "metrics": [
+        "gatewayReadyMs",
+        "statusMs",
+        "pluginsListMs",
+        "modelsListMs",
+        "peakRssMb"
+      ]
+    }
+  ]
 }

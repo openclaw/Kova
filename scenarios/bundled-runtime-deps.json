@@ -3,7 +3,12 @@
   "surface": "bundled-runtime-deps",
   "title": "Bundled Runtime Dependency Integrity",
   "objective": "Verify bundled plugin runtime dependencies stage correctly, remain reusable on warm starts, and do not produce missing dependency errors.",
-  "tags": ["plugins", "runtime-deps", "cold-start", "warm-start"],
+  "tags": [
+    "plugins",
+    "runtime-deps",
+    "cold-start",
+    "warm-start"
+  ],
   "thresholds": {
     "coldReadyMs": 45000,
     "warmReadyMs": 20000,
@@ -16,15 +21,33 @@
       "id": "cold-start",
       "title": "Cold Runtime Dependency Start",
       "intent": "Start a fresh env and capture bundled runtime dependency staging logs.",
-      "commands": ["ocm start {env} {startSelector} --json", "ocm logs {env} --tail 300 --raw"],
-      "evidence": ["dependency staging duration", "installed dependency list", "missing dependency errors"]
+      "commands": [
+        "ocm start {env} {startSelector} --json",
+        "ocm logs {env} --tail 300 --raw"
+      ],
+      "evidence": [
+        "dependency staging duration",
+        "installed dependency list",
+        "missing dependency errors"
+      ]
     },
     {
       "id": "warm-restart",
       "title": "Warm Runtime Dependency Restart",
       "intent": "Restart with staged dependencies already present and verify no repeated expensive staging or missing dependency errors.",
-      "commands": ["ocm service restart {env}", "ocm service status {env} --json", "ocm logs {env} --tail 300 --raw"],
-      "evidence": ["warm ready time", "dependency staging reuse", "missing dependency errors"]
+      "commands": [
+        "ocm service restart {env}",
+        "ocm service status {env} --json",
+        "ocm logs {env} --tail 300 --raw"
+      ],
+      "evidence": [
+        "warm ready time",
+        "dependency staging reuse",
+        "missing dependency errors"
+      ]
     }
+  ],
+  "proves": [
+    "baseline"
   ]
 }

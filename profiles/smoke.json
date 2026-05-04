@@ -47,5 +47,6 @@
       "state": "mock-openai-provider",
       "timeoutMs": 180000
     }
-  ]
+  ],
+  "purpose": "regression"
 }

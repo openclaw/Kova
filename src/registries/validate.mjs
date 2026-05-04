@@ -43,7 +43,7 @@ export function validateRegistryReferences({ scenarios, states, profiles, surfac
       errors.push(`scenario '${scenario.id}' references unknown surface '${scenario.surface}'`);
       continue;
     }
-    validateScenarioContract(scenario, surfaceById.get(scenario.surface), { stateIds, processRoleIds, metricIds }, errors);
+    validateScenarioContract(scenario, surfaceById.get(scenario.surface), { stateIds, processRoleIds, metricIds, traitIds }, errors);
   }
 
   for (const state of states) {
@@ -75,6 +75,7 @@ export function validateRegistryReferences({ scenarios, states, profiles, surfac
         errors.push(`surface '${surface.id}' references unknown required state '${state}'`);
       }
     }
+    validateSurfaceRequirements(surface, { stateIds, traitIds, metricIds }, errors);
     validateMetricList(surface.requiredMetrics ?? [], metricIds, errors, `surface '${surface.id}' requiredMetrics`);
     validateThresholdMetrics(surface.thresholds ?? {}, metricIds, errors, `surface '${surface.id}' thresholds`);
     for (const [role, thresholds] of Object.entries(surface.roleThresholds ?? {})) {
@@ -108,7 +109,36 @@ function validateScenarioContract(scenario, surface, refs, errors) {
       errors.push(`scenario '${scenario.id}' targetKinds references '${targetKind}' which is not supported by surface '${surface.id}'`);
     }
   }
+  const requirementIds = new Set((surface.requirements ?? []).map((requirement) => requirement.id));
+  for (const requirement of scenario.proves ?? []) {
+    if (requirementIds.size > 0 && !requirementIds.has(requirement)) {
+      errors.push(`scenario '${scenario.id}' proves unknown surface requirement '${surface.id}.${requirement}'`);
+    }
+  }
   validateThresholdMetrics(scenario.thresholds ?? {}, refs.metricIds, errors, `scenario '${scenario.id}' thresholds`);
+}
+
+function validateSurfaceRequirements(surface, refs, errors) {
+  const surfaceTargetKinds = new Set(surface.targetKinds ?? []);
+  for (const requirement of surface.requirements ?? []) {
+    const prefix = `surface '${surface.id}' requirement '${requirement.id}'`;
+    for (const state of requirement.states ?? []) {
+      if (!refs.stateIds.has(state)) {
+        errors.push(`${prefix} references unknown state '${state}'`);
+      }
+    }
+    for (const trait of requirement.stateTraits ?? []) {
+      if (!refs.traitIds.has(trait)) {
+        errors.push(`${prefix} references unknown state trait '${trait}'`);
+      }
+    }
+    for (const targetKind of requirement.targetKinds ?? []) {
+      if (surfaceTargetKinds.size > 0 && !surfaceTargetKinds.has(targetKind)) {
+        errors.push(`${prefix} targetKinds references '${targetKind}' which is not supported by surface '${surface.id}'`);
+      }
+    }
+    validateMetricList(requirement.metrics ?? [], refs.metricIds, errors, `${prefix} metrics`);
+  }
 }
 
 function validateMetricList(metrics, metricIds, errors, prefix) {

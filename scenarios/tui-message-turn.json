@@ -3,7 +3,13 @@
   "surface": "tui-message-turn",
   "title": "TUI Message Turn",
   "objective": "Launch the TUI, send a real user message through stdin, and require the expected assistant response to appear in the TUI output.",
-  "tags": ["agent", "message", "tui", "input", "providers"],
+  "tags": [
+    "agent",
+    "message",
+    "tui",
+    "input",
+    "providers"
+  ],
   "timeoutMs": 180000,
   "agent": {
     "expectedText": "KOVA_AGENT_OK"
@@ -24,15 +30,28 @@
       "id": "provision",
       "title": "Provision TUI Env",
       "intent": "Create a disposable OpenClaw env without starting the gateway yet so Kova auth is applied before the gateway process boots.",
-      "commands": ["ocm start {env} {startSelector} --no-service --json"],
-      "evidence": ["gateway port", "runtime binding", "env created without service"]
+      "commands": [
+        "ocm start {env} {startSelector} --no-service --json"
+      ],
+      "evidence": [
+        "gateway port",
+        "runtime binding",
+        "env created without service"
+      ]
     },
     {
       "id": "gateway-start",
       "title": "Start Gateway",
       "intent": "Start the gateway after auth/provider config is already present in the OpenClaw home.",
-      "commands": ["ocm service install {env} --json", "ocm service start {env} --json"],
-      "evidence": ["gateway service installed", "gateway service started", "startup readiness"]
+      "commands": [
+        "ocm service install {env} --json",
+        "ocm service start {env} --json"
+      ],
+      "evidence": [
+        "gateway service installed",
+        "gateway service started",
+        "startup readiness"
+      ]
     },
     {
       "id": "tui-message-turn",
@@ -41,14 +60,31 @@
       "commands": [
         "node {kovaRoot}/support/run-tui-message-turn.mjs --env {env} --session kova-tui-message --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --expected-text KOVA_AGENT_OK --timeout 120000"
       ],
-      "evidence": ["TUI input accepted", "final assistant text rendered", "mock provider request timing", "gateway health after turn", "role resource samples"]
+      "evidence": [
+        "TUI input accepted",
+        "final assistant text rendered",
+        "mock provider request timing",
+        "gateway health after turn",
+        "role resource samples"
+      ]
     },
     {
       "id": "post-tui-health",
       "title": "Post-TUI Gateway Health",
       "intent": "Verify the gateway remains responsive after the TUI message turn.",
-      "commands": ["ocm @{env} -- status", "ocm logs {env} --tail 300 --raw"],
-      "evidence": ["gateway status", "provider logs", "plugin errors", "memory after TUI turn"]
+      "commands": [
+        "ocm @{env} -- status",
+        "ocm logs {env} --tail 300 --raw"
+      ],
+      "evidence": [
+        "gateway status",
+        "provider logs",
+        "plugin errors",
+        "memory after TUI turn"
+      ]
     }
+  ],
+  "proves": [
+    "baseline"
   ]
 }

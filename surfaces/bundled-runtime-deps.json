@@ -3,8 +3,16 @@
   "title": "Bundled Runtime Dependencies",
   "ownerArea": "plugins",
   "description": "Validate cold and warm bundled plugin runtime dependency staging behavior.",
-  "requiredStates": ["missing-plugin-index", "stale-runtime-deps"],
-  "targetKinds": ["npm", "channel", "runtime", "local-build"],
+  "requiredStates": [
+    "missing-plugin-index",
+    "stale-runtime-deps"
+  ],
+  "targetKinds": [
+    "npm",
+    "channel",
+    "runtime",
+    "local-build"
+  ],
   "requiredMetrics": [
     "coldReadyMs",
     "warmReadyMs",
@@ -15,7 +23,12 @@
     "runtimeDepsWarmReuseOk",
     "missingDependencyErrors"
   ],
-  "processRoles": ["gateway", "command-tree", "package-manager", "runtime-staging"],
+  "processRoles": [
+    "gateway",
+    "command-tree",
+    "package-manager",
+    "runtime-staging"
+  ],
   "thresholds": {
     "coldReadyMs": 45000,
     "warmReadyMs": 20000,
@@ -24,12 +37,55 @@
     "warmRuntimeDepsStagingMs": 5000
   },
   "roleThresholds": {
-    "gateway": { "peakRssMb": 800, "maxCpuPercent": 250 },
-    "runtime-staging": { "peakRssMb": 900, "maxCpuPercent": 350 },
-    "package-manager": { "peakRssMb": 900, "maxCpuPercent": 350 }
+    "gateway": {
+      "peakRssMb": 800,
+      "maxCpuPercent": 250
+    },
+    "runtime-staging": {
+      "peakRssMb": 900,
+      "maxCpuPercent": 350
+    },
+    "package-manager": {
+      "peakRssMb": 900,
+      "maxCpuPercent": 350
+    }
   },
   "diagnostics": {
     "timelineRequiredForSourceBuild": true,
-    "expectedSpans": ["runtimeDeps.stage", "plugins.runtimeDeps", "plugins.runtimeDeps.install"]
-  }
+    "expectedSpans": [
+      "runtimeDeps.stage",
+      "plugins.runtimeDeps",
+      "plugins.runtimeDeps.install"
+    ]
+  },
+  "purposes": [
+    "plugin",
+    "regression",
+    "release"
+  ],
+  "requirements": [
+    {
+      "id": "baseline",
+      "states": [
+        "missing-plugin-index",
+        "stale-runtime-deps"
+      ],
+      "targetKinds": [
+        "npm",
+        "channel",
+        "runtime",
+        "local-build"
+      ],
+      "metrics": [
+        "coldReadyMs",
+        "warmReadyMs",
+        "runtimeDepsStagingMs",
+        "coldRuntimeDepsStagingMs",
+        "warmRuntimeDepsStagingMs",
+        "warmRuntimeDepsRestageCount",
+        "runtimeDepsWarmReuseOk",
+        "missingDependencyErrors"
+      ]
+    }
+  ]
 }

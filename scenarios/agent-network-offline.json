@@ -3,9 +3,18 @@
   "surface": "network-offline",
   "title": "Agent Network Offline",
   "objective": "Run a local OpenClaw agent turn against an unreachable provider endpoint and prove OpenClaw fails clearly without taking down the gateway.",
-  "tags": ["agent", "message", "provider", "network", "offline", "containment"],
+  "tags": [
+    "agent",
+    "message",
+    "provider",
+    "network",
+    "offline",
+    "containment"
+  ],
   "timeoutMs": 180000,
-  "auth": { "mode": "none" },
+  "auth": {
+    "mode": "none"
+  },
   "thresholds": {
     "gatewayReadyMs": 30000,
     "networkFailureObserved": 1,
@@ -20,8 +29,14 @@
       "id": "provision",
       "title": "Provision Network Offline Env",
       "intent": "Start a disposable OpenClaw gateway before configuring an unreachable provider endpoint.",
-      "commands": ["ocm start {env} {startSelector} --json"],
-      "evidence": ["gateway port", "runtime binding", "startup readiness"]
+      "commands": [
+        "ocm start {env} {startSelector} --json"
+      ],
+      "evidence": [
+        "gateway port",
+        "runtime binding",
+        "startup readiness"
+      ]
     },
     {
       "id": "network-offline-turn",
@@ -30,14 +45,29 @@
       "commands": [
         "node {kovaRoot}/support/agent-network-offline.mjs --env {env} --artifact-dir {artifactDir} --timeout-seconds 20 --max-command-ms 45000"
       ],
-      "evidence": ["bounded network failure", "gateway status after failure", "role resource samples"]
+      "evidence": [
+        "bounded network failure",
+        "gateway status after failure",
+        "role resource samples"
+      ]
     },
     {
       "id": "post-network-health",
       "title": "Post-Network Gateway Health",
       "intent": "Verify the gateway remains responsive and collect logs after the network failure path.",
-      "commands": ["ocm @{env} -- status", "ocm logs {env} --tail 300 --raw"],
-      "evidence": ["gateway status", "network/provider failure logs", "plugin errors", "memory after network failure"]
+      "commands": [
+        "ocm @{env} -- status",
+        "ocm logs {env} --tail 300 --raw"
+      ],
+      "evidence": [
+        "gateway status",
+        "network/provider failure logs",
+        "plugin errors",
+        "memory after network failure"
+      ]
     }
+  ],
+  "proves": [
+    "baseline"
   ]
 }

@@ -2,10 +2,14 @@
   "id": "diagnostic",
   "title": "Source-Built Diagnostics",
   "objective": "Run release-shaped local OpenClaw builds with timeline diagnostics enabled so Kova can attribute startup, plugin, provider, agent, event-loop, CPU, and heap behavior to OpenClaw phases.",
-  "targetKinds": ["local-build"],
+  "targetKinds": [
+    "local-build"
+  ],
   "diagnostics": {
     "timelineRequired": true,
-    "timelineRequiredForTargetKinds": ["local-build"],
+    "timelineRequiredForTargetKinds": [
+      "local-build"
+    ],
     "requiredKeySpans": [
       "gateway.startup",
       "gateway.ready",
@@ -20,12 +24,30 @@
   },
   "calibration": {
     "roles": {
-      "gateway": { "peakRssMb": 1000, "maxCpuPercent": 350 },
-      "command-tree": { "peakRssMb": 1400, "maxCpuPercent": 450 },
-      "runtime-staging": { "peakRssMb": 900, "maxCpuPercent": 350 },
-      "package-manager": { "peakRssMb": 900, "maxCpuPercent": 350 },
-      "agent-cli": { "peakRssMb": 1200, "maxCpuPercent": 350 },
-      "mock-provider": { "peakRssMb": 300, "maxCpuPercent": 150 }
+      "gateway": {
+        "peakRssMb": 1000,
+        "maxCpuPercent": 350
+      },
+      "command-tree": {
+        "peakRssMb": 1400,
+        "maxCpuPercent": 450
+      },
+      "runtime-staging": {
+        "peakRssMb": 900,
+        "maxCpuPercent": 350
+      },
+      "package-manager": {
+        "peakRssMb": 900,
+        "maxCpuPercent": 350
+      },
+      "agent-cli": {
+        "peakRssMb": 1200,
+        "maxCpuPercent": 350
+      },
+      "mock-provider": {
+        "peakRssMb": 300,
+        "maxCpuPercent": 150
+      }
     },
     "surfaces": {
       "release-runtime-startup": {
@@ -104,10 +126,24 @@
     "id": "openclaw-diagnostic",
     "coverage": {
       "surfaces": {
-        "blocking": ["release-runtime-startup", "gateway-performance", "bundled-runtime-deps", "agent-cli-local-turn", "agent-gateway-rpc-turn", "dashboard-session-send-turn", "tui-message-turn", "openai-compatible-turn"]
+        "blocking": [
+          "release-runtime-startup",
+          "gateway-performance",
+          "bundled-runtime-deps",
+          "agent-cli-local-turn",
+          "agent-gateway-rpc-turn",
+          "dashboard-session-send-turn",
+          "tui-message-turn",
+          "openai-compatible-turn"
+        ]
       },
       "states": {
-        "blocking": ["fresh", "missing-plugin-index", "many-bundled-plugins", "mock-openai-provider"]
+        "blocking": [
+          "fresh",
+          "missing-plugin-index",
+          "many-bundled-plugins",
+          "mock-openai-provider"
+        ]
       },
       "stateSurfaces": {
         "blocking": [
@@ -122,18 +158,51 @@
         ]
       },
       "scenarios": {
-        "blocking": ["release-runtime-startup", "gateway-performance", "bundled-runtime-deps", "agent-cold-warm-message", "agent-gateway-rpc-turn", "dashboard-session-send-turn", "tui-message-turn", "openai-compatible-turn"]
+        "blocking": [
+          "release-runtime-startup",
+          "gateway-performance",
+          "bundled-runtime-deps",
+          "agent-cold-warm-message",
+          "agent-gateway-rpc-turn",
+          "dashboard-session-send-turn",
+          "tui-message-turn",
+          "openai-compatible-turn"
+        ]
       }
     },
     "blocking": [
-      { "scenario": "release-runtime-startup", "state": "fresh" },
-      { "scenario": "gateway-performance", "state": "many-bundled-plugins" },
-      { "scenario": "bundled-runtime-deps", "state": "missing-plugin-index" },
-      { "scenario": "agent-cold-warm-message", "state": "mock-openai-provider" },
-      { "scenario": "agent-gateway-rpc-turn", "state": "mock-openai-provider" },
-      { "scenario": "dashboard-session-send-turn", "state": "mock-openai-provider" },
-      { "scenario": "tui-message-turn", "state": "mock-openai-provider" },
-      { "scenario": "openai-compatible-turn", "state": "mock-openai-provider" }
+      {
+        "scenario": "release-runtime-startup",
+        "state": "fresh"
+      },
+      {
+        "scenario": "gateway-performance",
+        "state": "many-bundled-plugins"
+      },
+      {
+        "scenario": "bundled-runtime-deps",
+        "state": "missing-plugin-index"
+      },
+      {
+        "scenario": "agent-cold-warm-message",
+        "state": "mock-openai-provider"
+      },
+      {
+        "scenario": "agent-gateway-rpc-turn",
+        "state": "mock-openai-provider"
+      },
+      {
+        "scenario": "dashboard-session-send-turn",
+        "state": "mock-openai-provider"
+      },
+      {
+        "scenario": "tui-message-turn",
+        "state": "mock-openai-provider"
+      },
+      {
+        "scenario": "openai-compatible-turn",
+        "state": "mock-openai-provider"
+      }
     ]
   },
   "entries": [
@@ -177,5 +246,6 @@
       "state": "mock-openai-provider",
       "timeoutMs": 180000
     }
-  ]
+  ],
+  "purpose": "diagnostic"
 }

@@ -4,21 +4,66 @@
   "objective": "Broad OpenClaw release confidence across install, upgrade, bundled plugins, model/provider, UI, failure, soak, and platform smoke scenarios.",
   "calibration": {
     "roles": {
-      "gateway": { "peakRssMb": 900, "maxCpuPercent": 300 },
-      "command-tree": { "peakRssMb": 1200, "maxCpuPercent": 400 },
-      "runtime-management": { "peakRssMb": 900, "maxCpuPercent": 350 },
-      "package-manager": { "peakRssMb": 900, "maxCpuPercent": 350 },
-      "agent-cli": { "peakRssMb": 1100, "maxCpuPercent": 350 },
-      "agent-process": { "peakRssMb": 900, "maxCpuPercent": 300 },
-      "plugin-cli": { "peakRssMb": 650, "maxCpuPercent": 250 },
-      "model-cli": { "peakRssMb": 650, "maxCpuPercent": 250 },
-      "doctor-cli": { "peakRssMb": 700, "maxCpuPercent": 300 },
-      "tui-cli": { "peakRssMb": 650, "maxCpuPercent": 250 },
-      "dashboard-cli": { "peakRssMb": 650, "maxCpuPercent": 250 },
-      "openai-compatible-client": { "peakRssMb": 650, "maxCpuPercent": 250 },
-      "mcp-runtime": { "peakRssMb": 500, "maxCpuPercent": 200 },
-      "browser-sidecar": { "peakRssMb": 700, "maxCpuPercent": 250 },
-      "mock-provider": { "peakRssMb": 300, "maxCpuPercent": 150 }
+      "gateway": {
+        "peakRssMb": 900,
+        "maxCpuPercent": 300
+      },
+      "command-tree": {
+        "peakRssMb": 1200,
+        "maxCpuPercent": 400
+      },
+      "runtime-management": {
+        "peakRssMb": 900,
+        "maxCpuPercent": 350
+      },
+      "package-manager": {
+        "peakRssMb": 900,
+        "maxCpuPercent": 350
+      },
+      "agent-cli": {
+        "peakRssMb": 1100,
+        "maxCpuPercent": 350
+      },
+      "agent-process": {
+        "peakRssMb": 900,
+        "maxCpuPercent": 300
+      },
+      "plugin-cli": {
+        "peakRssMb": 650,
+        "maxCpuPercent": 250
+      },
+      "model-cli": {
+        "peakRssMb": 650,
+        "maxCpuPercent": 250
+      },
+      "doctor-cli": {
+        "peakRssMb": 700,
+        "maxCpuPercent": 300
+      },
+      "tui-cli": {
+        "peakRssMb": 650,
+        "maxCpuPercent": 250
+      },
+      "dashboard-cli": {
+        "peakRssMb": 650,
+        "maxCpuPercent": 250
+      },
+      "openai-compatible-client": {
+        "peakRssMb": 650,
+        "maxCpuPercent": 250
+      },
+      "mcp-runtime": {
+        "peakRssMb": 500,
+        "maxCpuPercent": 200
+      },
+      "browser-sidecar": {
+        "peakRssMb": 700,
+        "maxCpuPercent": 250
+      },
+      "mock-provider": {
+        "peakRssMb": 300,
+        "maxCpuPercent": 150
+      }
     },
     "surfaces": {
       "release-runtime-startup": {
@@ -172,8 +217,14 @@
     "id": "openclaw-release",
     "coverage": {
       "platforms": {
-        "blocking": ["darwin-arm64"],
-        "warning": ["linux-x64", "linux-arm64", "wsl2"]
+        "blocking": [
+          "darwin-arm64"
+        ],
+        "warning": [
+          "linux-x64",
+          "linux-arm64",
+          "wsl2"
+        ]
       },
       "states": {
         "blocking": [
@@ -188,8 +239,18 @@
         ]
       },
       "traits": {
-        "blocking": ["fresh-user", "existing-user", "old-release", "plugin-pressure", "provider-pressure"],
-        "warning": ["filesystem-pressure", "memory-pressure", "failure-state"]
+        "blocking": [
+          "fresh-user",
+          "existing-user",
+          "old-release",
+          "plugin-pressure",
+          "provider-pressure"
+        ],
+        "warning": [
+          "filesystem-pressure",
+          "memory-pressure",
+          "failure-state"
+        ]
       },
       "stateSurfaces": {
         "blocking": [
@@ -248,7 +309,16 @@
           "tui",
           "gateway-performance"
         ],
-        "warning": ["failure-containment", "soak", "workspace-scan", "mcp-runtime", "browser-automation", "media-understanding", "network-offline", "cross-platform-smoke"]
+        "warning": [
+          "failure-containment",
+          "soak",
+          "workspace-scan",
+          "mcp-runtime",
+          "browser-automation",
+          "media-understanding",
+          "network-offline",
+          "cross-platform-smoke"
+        ]
       },
       "scenarios": {
         "blocking": [
@@ -280,49 +350,175 @@
       }
     },
     "blocking": [
-      { "scenario": "release-runtime-startup", "state": "fresh" },
-      { "scenario": "fresh-install", "state": "fresh" },
-      { "scenario": "fresh-install", "state": "onboarded-user" },
-      { "scenario": "upgrade-existing-user", "state": "old-release-user" },
-      { "scenario": "upgrade-from-2026-4-20", "state": "old-release-2026-4-20-user" },
-      { "scenario": "upgrade-from-2026-4-24", "state": "old-release-2026-4-24-user" },
-      { "scenario": "bundled-runtime-deps", "state": "missing-plugin-index" },
-      { "scenario": "plugin-lifecycle", "state": "plugin-index" },
-      { "scenario": "plugin-external-install", "state": "fresh" },
-      { "scenario": "official-plugin-install", "state": "official-plugins" },
-      { "scenario": "plugin-remove", "state": "fresh" },
-      { "scenario": "plugin-update", "state": "fresh" },
-      { "scenario": "plugin-bad-manifest", "state": "fresh" },
-      { "scenario": "plugin-missing-runtime-deps", "state": "fresh" },
-      { "scenario": "bundled-plugin-startup", "state": "fresh" },
-      { "scenario": "plugin-lifecycle", "state": "external-plugin" },
-      { "scenario": "provider-models", "state": "model-auth-missing" },
-      { "scenario": "agent-cold-warm-message", "state": "mock-openai-provider" },
-      { "scenario": "agent-gateway-rpc-turn", "state": "mock-openai-provider" },
-      { "scenario": "dashboard-session-send-turn", "state": "mock-openai-provider" },
-      { "scenario": "tui-message-turn", "state": "mock-openai-provider" },
-      { "scenario": "openai-compatible-turn", "state": "mock-openai-provider" },
-      { "scenario": "dashboard-readiness", "state": "fresh" },
-      { "scenario": "tui-responsiveness", "state": "fresh" },
-      { "scenario": "gateway-performance", "state": "many-bundled-plugins" }
+      {
+        "scenario": "release-runtime-startup",
+        "state": "fresh"
+      },
+      {
+        "scenario": "fresh-install",
+        "state": "fresh"
+      },
+      {
+        "scenario": "fresh-install",
+        "state": "onboarded-user"
+      },
+      {
+        "scenario": "upgrade-existing-user",
+        "state": "old-release-user"
+      },
+      {
+        "scenario": "upgrade-from-2026-4-20",
+        "state": "old-release-2026-4-20-user"
+      },
+      {
+        "scenario": "upgrade-from-2026-4-24",
+        "state": "old-release-2026-4-24-user"
+      },
+      {
+        "scenario": "bundled-runtime-deps",
+        "state": "missing-plugin-index"
+      },
+      {
+        "scenario": "plugin-lifecycle",
+        "state": "plugin-index"
+      },
+      {
+        "scenario": "plugin-external-install",
+        "state": "fresh"
+      },
+      {
+        "scenario": "official-plugin-install",
+        "state": "official-plugins"
+      },
+      {
+        "scenario": "plugin-remove",
+        "state": "fresh"
+      },
+      {
+        "scenario": "plugin-update",
+        "state": "fresh"
+      },
+      {
+        "scenario": "plugin-bad-manifest",
+        "state": "fresh"
+      },
+      {
+        "scenario": "plugin-missing-runtime-deps",
+        "state": "fresh"
+      },
+      {
+        "scenario": "bundled-plugin-startup",
+        "state": "fresh"
+      },
+      {
+        "scenario": "plugin-lifecycle",
+        "state": "external-plugin"
+      },
+      {
+        "scenario": "provider-models",
+        "state": "model-auth-missing"
+      },
+      {
+        "scenario": "agent-cold-warm-message",
+        "state": "mock-openai-provider"
+      },
+      {
+        "scenario": "agent-gateway-rpc-turn",
+        "state": "mock-openai-provider"
+      },
+      {
+        "scenario": "dashboard-session-send-turn",
+        "state": "mock-openai-provider"
+      },
+      {
+        "scenario": "tui-message-turn",
+        "state": "mock-openai-provider"
+      },
+      {
+        "scenario": "openai-compatible-turn",
+        "state": "mock-openai-provider"
+      },
+      {
+        "scenario": "dashboard-readiness",
+        "state": "fresh"
+      },
+      {
+        "scenario": "tui-responsiveness",
+        "state": "fresh"
+      },
+      {
+        "scenario": "gateway-performance",
+        "state": "many-bundled-plugins"
+      }
     ],
     "warning": [
-      { "scenario": "agent-provider-slow", "state": "mock-openai-provider" },
-      { "scenario": "agent-provider-timeout", "state": "mock-openai-provider" },
-      { "scenario": "agent-provider-malformed", "state": "mock-openai-provider" },
-      { "scenario": "agent-provider-streaming-stall", "state": "mock-openai-provider" },
-      { "scenario": "agent-provider-concurrent", "state": "mock-openai-provider" },
-      { "scenario": "agent-provider-recovery", "state": "mock-openai-provider" },
-      { "scenario": "agent-auth-missing", "state": "agent-auth-missing" },
-      { "scenario": "agent-long-session", "state": "mock-openai-provider" },
-      { "scenario": "failure-injection", "state": "broken-plugin-deps" },
-      { "scenario": "soak", "state": "large-workspace" },
-      { "scenario": "workspace-scan-pressure", "state": "large-workspace" },
-      { "scenario": "mcp-runtime-start-stop", "state": "fresh" },
-      { "scenario": "browser-automation-smoke", "state": "fresh", "timeoutMs": 180000 },
-      { "scenario": "media-understanding-timeout", "state": "fresh", "timeoutMs": 180000 },
-      { "scenario": "agent-network-offline", "state": "fresh", "timeoutMs": 180000 },
-      { "scenario": "cross-platform-smoke", "state": "slow-filesystem" }
+      {
+        "scenario": "agent-provider-slow",
+        "state": "mock-openai-provider"
+      },
+      {
+        "scenario": "agent-provider-timeout",
+        "state": "mock-openai-provider"
+      },
+      {
+        "scenario": "agent-provider-malformed",
+        "state": "mock-openai-provider"
+      },
+      {
+        "scenario": "agent-provider-streaming-stall",
+        "state": "mock-openai-provider"
+      },
+      {
+        "scenario": "agent-provider-concurrent",
+        "state": "mock-openai-provider"
+      },
+      {
+        "scenario": "agent-provider-recovery",
+        "state": "mock-openai-provider"
+      },
+      {
+        "scenario": "agent-auth-missing",
+        "state": "agent-auth-missing"
+      },
+      {
+        "scenario": "agent-long-session",
+        "state": "mock-openai-provider"
+      },
+      {
+        "scenario": "failure-injection",
+        "state": "broken-plugin-deps"
+      },
+      {
+        "scenario": "soak",
+        "state": "large-workspace"
+      },
+      {
+        "scenario": "workspace-scan-pressure",
+        "state": "large-workspace"
+      },
+      {
+        "scenario": "mcp-runtime-start-stop",
+        "state": "fresh"
+      },
+      {
+        "scenario": "browser-automation-smoke",
+        "state": "fresh",
+        "timeoutMs": 180000
+      },
+      {
+        "scenario": "media-understanding-timeout",
+        "state": "fresh",
+        "timeoutMs": 180000
+      },
+      {
+        "scenario": "agent-network-offline",
+        "state": "fresh",
+        "timeoutMs": 180000
+      },
+      {
+        "scenario": "cross-platform-smoke",
+        "state": "slow-filesystem"
+      }
     ]
   },
   "entries": [
@@ -512,5 +708,6 @@
       "scenario": "cross-platform-smoke",
       "state": "slow-filesystem"
     }
-  ]
+  ],
+  "purpose": "release"
 }

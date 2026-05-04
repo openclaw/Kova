@@ -3,7 +3,12 @@
   "surface": "dashboard",
   "title": "Dashboard Readiness",
   "objective": "Verify OpenClaw can produce a usable dashboard URL and keep the gateway responsive after dashboard entry.",
-  "tags": ["dashboard", "control-ui", "gateway", "websocket"],
+  "tags": [
+    "dashboard",
+    "control-ui",
+    "gateway",
+    "websocket"
+  ],
   "timeoutMs": 120000,
   "thresholds": {
     "gatewayReadyMs": 30000,
@@ -18,22 +23,45 @@
       "id": "gateway",
       "title": "Gateway Start",
       "intent": "Start the gateway and classify readiness before dashboard checks.",
-      "commands": ["ocm start {env} {startSelector} --json", "ocm @{env} -- status"],
-      "evidence": ["gateway status", "gateway port", "readiness classification"]
+      "commands": [
+        "ocm start {env} {startSelector} --json",
+        "ocm @{env} -- status"
+      ],
+      "evidence": [
+        "gateway status",
+        "gateway port",
+        "readiness classification"
+      ]
     },
     {
       "id": "dashboard",
       "title": "Dashboard Link",
       "intent": "Use OpenClaw's dashboard command without opening a browser and require it to return promptly.",
-      "commands": ["ocm @{env} -- dashboard --no-open"],
-      "evidence": ["dashboard URL", "token handling", "command latency"]
+      "commands": [
+        "ocm @{env} -- dashboard --no-open"
+      ],
+      "evidence": [
+        "dashboard URL",
+        "token handling",
+        "command latency"
+      ]
     },
     {
       "id": "post-dashboard-health",
       "title": "Post-Dashboard Health",
       "intent": "Verify dashboard entry did not make the gateway or websocket layer unstable.",
-      "commands": ["ocm @{env} -- status", "ocm logs {env} --tail 300 --raw"],
-      "evidence": ["status after dashboard command", "websocket disconnect logs", "gateway errors"]
+      "commands": [
+        "ocm @{env} -- status",
+        "ocm logs {env} --tail 300 --raw"
+      ],
+      "evidence": [
+        "status after dashboard command",
+        "websocket disconnect logs",
+        "gateway errors"
+      ]
     }
+  ],
+  "proves": [
+    "baseline"
   ]
 }

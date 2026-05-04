@@ -3,9 +3,17 @@
   "surface": "agent-cli-local-turn",
   "title": "Agent Provider Slow",
   "objective": "Prove Kova can attribute a slow assistant turn to provider latency while confirming OpenClaw still returns a valid response and keeps the gateway healthy.",
-  "tags": ["agent", "message", "provider-failure", "latency", "containment"],
+  "tags": [
+    "agent",
+    "message",
+    "provider-failure",
+    "latency",
+    "containment"
+  ],
   "timeoutMs": 180000,
-  "auth": { "mode": "mock" },
+  "auth": {
+    "mode": "mock"
+  },
   "mockProvider": {
     "mode": "slow",
     "delayMs": 2500
@@ -29,8 +37,14 @@
       "id": "provision",
       "title": "Provision Agent Env",
       "intent": "Start a disposable OpenClaw gateway before wiring the slow mock provider.",
-      "commands": ["ocm start {env} {startSelector} --json"],
-      "evidence": ["gateway port", "runtime binding", "startup readiness"]
+      "commands": [
+        "ocm start {env} {startSelector} --json"
+      ],
+      "evidence": [
+        "gateway port",
+        "runtime binding",
+        "startup readiness"
+      ]
     },
     {
       "id": "slow-provider-turn",
@@ -39,14 +53,30 @@
       "commands": [
         "ocm @{env} -- agent --local --agent main --session-id kova-agent-provider-slow --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 120 --json"
       ],
-      "evidence": ["assistant response", "provider delay timing", "pre-provider timing", "role resource samples"]
+      "evidence": [
+        "assistant response",
+        "provider delay timing",
+        "pre-provider timing",
+        "role resource samples"
+      ]
     },
     {
       "id": "post-failure-health",
       "title": "Post-Failure Gateway Health",
       "intent": "Verify the gateway remains responsive after the slow provider turn.",
-      "commands": ["ocm @{env} -- status", "ocm logs {env} --tail 300 --raw"],
-      "evidence": ["gateway status", "provider logs", "plugin errors", "memory after provider delay"]
+      "commands": [
+        "ocm @{env} -- status",
+        "ocm logs {env} --tail 300 --raw"
+      ],
+      "evidence": [
+        "gateway status",
+        "provider logs",
+        "plugin errors",
+        "memory after provider delay"
+      ]
     }
+  ],
+  "proves": [
+    "baseline"
   ]
 }

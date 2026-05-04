@@ -3,7 +3,14 @@
   "surface": "dashboard-session-send-turn",
   "title": "Dashboard Session Send Turn",
   "objective": "Create a dashboard session, send a user message through Gateway `sessions.send`, and wait for final assistant text in chat history.",
-  "tags": ["agent", "message", "dashboard", "sessions", "gateway", "providers"],
+  "tags": [
+    "agent",
+    "message",
+    "dashboard",
+    "sessions",
+    "gateway",
+    "providers"
+  ],
   "timeoutMs": 180000,
   "agent": {
     "expectedText": "KOVA_AGENT_OK"
@@ -24,15 +31,28 @@
       "id": "provision",
       "title": "Provision Dashboard Env",
       "intent": "Create a disposable OpenClaw env without starting the gateway yet so Kova auth is applied before the gateway process boots.",
-      "commands": ["ocm start {env} {startSelector} --no-service --json"],
-      "evidence": ["gateway port", "runtime binding", "env created without service"]
+      "commands": [
+        "ocm start {env} {startSelector} --no-service --json"
+      ],
+      "evidence": [
+        "gateway port",
+        "runtime binding",
+        "env created without service"
+      ]
     },
     {
       "id": "gateway-start",
       "title": "Start Gateway",
       "intent": "Start the gateway after auth/provider config is already present in the OpenClaw home.",
-      "commands": ["ocm service install {env} --json", "ocm service start {env} --json"],
-      "evidence": ["gateway service installed", "gateway service started", "startup readiness"]
+      "commands": [
+        "ocm service install {env} --json",
+        "ocm service start {env} --json"
+      ],
+      "evidence": [
+        "gateway service installed",
+        "gateway service started",
+        "startup readiness"
+      ]
     },
     {
       "id": "dashboard-session-turn",
@@ -41,14 +61,31 @@
       "commands": [
         "node {kovaRoot}/support/run-dashboard-session-send-turn.mjs --env {env} --session-key kova-dashboard-session-send --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --expected-text KOVA_AGENT_OK --timeout 120000"
       ],
-      "evidence": ["sessions.send command duration", "chat history final assistant text", "mock provider request timing", "gateway health after turn", "role resource samples"]
+      "evidence": [
+        "sessions.send command duration",
+        "chat history final assistant text",
+        "mock provider request timing",
+        "gateway health after turn",
+        "role resource samples"
+      ]
     },
     {
       "id": "post-dashboard-health",
       "title": "Post-Dashboard Gateway Health",
       "intent": "Verify the gateway remains responsive after the dashboard-style message turn.",
-      "commands": ["ocm @{env} -- status", "ocm logs {env} --tail 300 --raw"],
-      "evidence": ["gateway status", "provider logs", "plugin errors", "memory after dashboard turn"]
+      "commands": [
+        "ocm @{env} -- status",
+        "ocm logs {env} --tail 300 --raw"
+      ],
+      "evidence": [
+        "gateway status",
+        "provider logs",
+        "plugin errors",
+        "memory after dashboard turn"
+      ]
     }
+  ],
+  "proves": [
+    "baseline"
   ]
 }

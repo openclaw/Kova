@@ -3,8 +3,15 @@
   "title": "Media Understanding",
   "ownerArea": "media-understanding",
   "description": "Exercise OpenClaw media understanding through the packaged capability CLI and verify provider timeouts do not stall the gateway or command path.",
-  "requiredStates": ["fresh"],
-  "targetKinds": ["npm", "channel", "runtime", "local-build"],
+  "requiredStates": [
+    "fresh"
+  ],
+  "targetKinds": [
+    "npm",
+    "channel",
+    "runtime",
+    "local-build"
+  ],
   "requiredMetrics": [
     "mediaDescribeMs",
     "mediaTimeoutObserved",
@@ -13,7 +20,11 @@
     "providerRequestCountMin",
     "peakRssMb"
   ],
-  "processRoles": ["gateway", "command-tree", "mock-provider"],
+  "processRoles": [
+    "gateway",
+    "command-tree",
+    "mock-provider"
+  ],
   "thresholds": {
     "mediaDescribeMs": 10000,
     "mediaTimeoutObserved": 1,
@@ -22,12 +33,50 @@
     "peakRssMb": 900
   },
   "roleThresholds": {
-    "gateway": { "peakRssMb": 800, "maxCpuPercent": 250 },
-    "command-tree": { "peakRssMb": 900, "maxCpuPercent": 300 },
-    "mock-provider": { "peakRssMb": 300, "maxCpuPercent": 150 }
+    "gateway": {
+      "peakRssMb": 800,
+      "maxCpuPercent": 250
+    },
+    "command-tree": {
+      "peakRssMb": 900,
+      "maxCpuPercent": 300
+    },
+    "mock-provider": {
+      "peakRssMb": 300,
+      "maxCpuPercent": 150
+    }
   },
   "diagnostics": {
     "timelineRequiredForSourceBuild": true,
-    "expectedSpans": ["media-understanding.image", "provider.request"]
-  }
+    "expectedSpans": [
+      "media-understanding.image",
+      "provider.request"
+    ]
+  },
+  "purposes": [
+    "provider",
+    "regression"
+  ],
+  "requirements": [
+    {
+      "id": "baseline",
+      "states": [
+        "fresh"
+      ],
+      "targetKinds": [
+        "npm",
+        "channel",
+        "runtime",
+        "local-build"
+      ],
+      "metrics": [
+        "mediaDescribeMs",
+        "mediaTimeoutObserved",
+        "mediaStatusAfterTimeoutMs",
+        "mediaGatewayStatusWorks",
+        "providerRequestCountMin",
+        "peakRssMb"
+      ]
+    }
+  ]
 }

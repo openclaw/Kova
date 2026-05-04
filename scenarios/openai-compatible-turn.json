@@ -3,7 +3,13 @@
   "surface": "openai-compatible-turn",
   "title": "OpenAI-Compatible Turn",
   "objective": "Send a chat-completions request to OpenClaw's OpenAI-compatible HTTP endpoint and verify the final assistant response, provider timing, auth handling, and gateway health.",
-  "tags": ["agent", "message", "openai-compatible", "http", "providers"],
+  "tags": [
+    "agent",
+    "message",
+    "openai-compatible",
+    "http",
+    "providers"
+  ],
   "timeoutMs": 180000,
   "agent": {
     "expectedText": "KOVA_AGENT_OK"
@@ -24,15 +30,28 @@
       "id": "provision",
       "title": "Provision HTTP Env",
       "intent": "Create a disposable OpenClaw env without starting the gateway yet so Kova auth is applied before the gateway process boots.",
-      "commands": ["ocm start {env} {startSelector} --no-service --json"],
-      "evidence": ["gateway port", "runtime binding", "env created without service"]
+      "commands": [
+        "ocm start {env} {startSelector} --no-service --json"
+      ],
+      "evidence": [
+        "gateway port",
+        "runtime binding",
+        "env created without service"
+      ]
     },
     {
       "id": "gateway-start",
       "title": "Start Gateway",
       "intent": "Start the gateway after auth/provider config is already present in the OpenClaw home.",
-      "commands": ["ocm service install {env} --json", "ocm service start {env} --json"],
-      "evidence": ["gateway service installed", "gateway service started", "startup readiness"]
+      "commands": [
+        "ocm service install {env} --json",
+        "ocm service start {env} --json"
+      ],
+      "evidence": [
+        "gateway service installed",
+        "gateway service started",
+        "startup readiness"
+      ]
     },
     {
       "id": "openai-compatible-turn",
@@ -41,14 +60,31 @@
       "commands": [
         "node {kovaRoot}/support/run-openai-compatible-turn.mjs --env {env} --model openai/gpt-5.5 --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --expected-text KOVA_AGENT_OK --timeout 120000"
       ],
-      "evidence": ["HTTP status", "final assistant text", "mock provider request timing", "gateway health after turn", "role resource samples"]
+      "evidence": [
+        "HTTP status",
+        "final assistant text",
+        "mock provider request timing",
+        "gateway health after turn",
+        "role resource samples"
+      ]
     },
     {
       "id": "post-http-health",
       "title": "Post-HTTP Gateway Health",
       "intent": "Verify the gateway remains responsive after the OpenAI-compatible request.",
-      "commands": ["ocm @{env} -- status", "ocm logs {env} --tail 300 --raw"],
-      "evidence": ["gateway status", "provider logs", "plugin errors", "memory after HTTP turn"]
+      "commands": [
+        "ocm @{env} -- status",
+        "ocm logs {env} --tail 300 --raw"
+      ],
+      "evidence": [
+        "gateway status",
+        "provider logs",
+        "plugin errors",
+        "memory after HTTP turn"
+      ]
     }
+  ],
+  "proves": [
+    "baseline"
   ]
 }

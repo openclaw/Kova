@@ -3,9 +3,17 @@
   "surface": "agent-cli-local-turn",
   "title": "Agent Provider Timeout",
   "objective": "Prove OpenClaw surfaces provider timeout failure clearly, keeps the gateway healthy, and leaves no retained child process state after a failed agent turn.",
-  "tags": ["agent", "message", "provider-failure", "timeout", "containment"],
+  "tags": [
+    "agent",
+    "message",
+    "provider-failure",
+    "timeout",
+    "containment"
+  ],
   "timeoutMs": 180000,
-  "auth": { "mode": "mock" },
+  "auth": {
+    "mode": "mock"
+  },
   "mockProvider": {
     "mode": "timeout",
     "stallMs": 45000
@@ -24,8 +32,14 @@
       "id": "provision",
       "title": "Provision Agent Env",
       "intent": "Start a disposable OpenClaw gateway before wiring the timeout mock provider.",
-      "commands": ["ocm start {env} {startSelector} --json"],
-      "evidence": ["gateway port", "runtime binding", "startup readiness"]
+      "commands": [
+        "ocm start {env} {startSelector} --json"
+      ],
+      "evidence": [
+        "gateway port",
+        "runtime binding",
+        "startup readiness"
+      ]
     },
     {
       "id": "timeout-provider-turn",
@@ -35,14 +49,30 @@
       "commands": [
         "node {kovaRoot}/support/expect-command-fails.mjs -- ocm @{env} -- agent --local --agent main --session-id kova-agent-provider-timeout --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 20 --json"
       ],
-      "evidence": ["clear command failure", "provider timeout/abort timing", "gateway remains supervised", "role resource samples"]
+      "evidence": [
+        "clear command failure",
+        "provider timeout/abort timing",
+        "gateway remains supervised",
+        "role resource samples"
+      ]
     },
     {
       "id": "post-failure-health",
       "title": "Post-Failure Gateway Health",
       "intent": "Verify the gateway remains responsive after the timeout failure.",
-      "commands": ["ocm @{env} -- status", "ocm logs {env} --tail 300 --raw"],
-      "evidence": ["gateway status", "provider logs", "plugin errors", "memory after timeout"]
+      "commands": [
+        "ocm @{env} -- status",
+        "ocm logs {env} --tail 300 --raw"
+      ],
+      "evidence": [
+        "gateway status",
+        "provider logs",
+        "plugin errors",
+        "memory after timeout"
+      ]
     }
+  ],
+  "proves": [
+    "baseline"
   ]
 }

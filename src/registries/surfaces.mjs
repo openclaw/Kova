@@ -1,4 +1,5 @@
 import { surfacesDir } from "../paths.mjs";
+import { validatePurposes } from "./purposes.mjs";
 import { assertNoShapeErrors, loadJsonRegistry, requireArray, requireKebabId, requireObject, requireString } from "./validate.mjs";
 
 export async function loadSurfaces(selectedId) {
@@ -20,6 +21,7 @@ export function validateSurfaceShape(surface, sourceName = "surface") {
   requireArray(surface, "processRoles", errors);
   requireObject(surface, "thresholds", errors);
   requireObject(surface, "diagnostics", errors);
+  validatePurposes(surface.purposes, "purposes", errors, { optional: true });
 
   for (const key of ["requiredMetrics", "processRoles", "requiredStates", "targetKinds"]) {
     if (surface[key] === undefined) {
@@ -46,8 +48,39 @@ export function validateSurfaceShape(surface, sourceName = "surface") {
     }
   }
   validateRoleThresholds(surface.roleThresholds, "roleThresholds", errors);
+  validateRequirements(surface.requirements, errors);
 
   assertNoShapeErrors(errors, sourceName);
+}
+
+function validateRequirements(requirements, errors) {
+  if (requirements === undefined) {
+    return;
+  }
+  if (!Array.isArray(requirements)) {
+    errors.push("requirements must be an array when set");
+    return;
+  }
+  if (requirements.length === 0) {
+    errors.push("requirements must not be empty when set");
+  }
+
+  const ids = new Set();
+  for (const [index, requirement] of requirements.entries()) {
+    const prefix = `requirements[${index}]`;
+    requireKebabId(requirement, "id", errors, prefix);
+    if (typeof requirement?.id === "string") {
+      if (ids.has(requirement.id)) {
+        errors.push(`requirements duplicate id '${requirement.id}'`);
+      }
+      ids.add(requirement.id);
+    }
+    validateStringArray(requirement?.states, `${prefix}.states`, errors, { optional: true });
+    validateStringArray(requirement?.stateTraits, `${prefix}.stateTraits`, errors, { optional: true });
+    validateStringArray(requirement?.targetKinds, `${prefix}.targetKinds`, errors, { optional: true });
+    validateStringArray(requirement?.metrics, `${prefix}.metrics`, errors, { optional: true });
+    validatePurposes(requirement?.purposes, `${prefix}.purposes`, errors, { optional: true });
+  }
 }
 
 function validateRoleThresholds(value, prefix, errors) {
@@ -70,6 +103,21 @@ function validateRoleThresholds(value, prefix, errors) {
       if (thresholds[key] !== undefined && (typeof thresholds[key] !== "number" || thresholds[key] < 0)) {
         errors.push(`${prefix}.${role}.${key} must be a non-negative number when set`);
       }
+    }
+  }
+}
+
+function validateStringArray(values, key, errors, options = {}) {
+  if (values === undefined && options.optional) {
+    return;
+  }
+  if (!Array.isArray(values)) {
+    errors.push(`${key} must be an array`);
+    return;
+  }
+  for (const [index, value] of values.entries()) {
+    if (typeof value !== "string" || value.length === 0) {
+      errors.push(`${key}[${index}] must be a non-empty string`);
     }
   }
 }

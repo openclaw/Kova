@@ -3,8 +3,15 @@
   "title": "Browser Automation",
   "ownerArea": "browser-runtime",
   "description": "Start OpenClaw's browser control surface, open a tab, inspect browser state, and shut the browser profile down cleanly.",
-  "requiredStates": ["fresh"],
-  "targetKinds": ["npm", "channel", "runtime", "local-build"],
+  "requiredStates": [
+    "fresh"
+  ],
+  "targetKinds": [
+    "npm",
+    "channel",
+    "runtime",
+    "local-build"
+  ],
   "requiredMetrics": [
     "gatewayReadyMs",
     "statusMs",
@@ -18,7 +25,13 @@
     "browserProcessLeaks",
     "pluginLoadFailures"
   ],
-  "processRoles": ["gateway", "gateway-tree", "command-tree", "browser-sidecar", "status-cli"],
+  "processRoles": [
+    "gateway",
+    "gateway-tree",
+    "command-tree",
+    "browser-sidecar",
+    "status-cli"
+  ],
   "thresholds": {
     "gatewayReadyMs": 30000,
     "statusMs": 10000,
@@ -34,12 +47,57 @@
     "peakRssMb": 1100
   },
   "roleThresholds": {
-    "gateway": { "peakRssMb": 900, "maxCpuPercent": 250 },
-    "browser-sidecar": { "peakRssMb": 700, "maxCpuPercent": 250 },
-    "status-cli": { "peakRssMb": 700, "maxCpuPercent": 250 }
+    "gateway": {
+      "peakRssMb": 900,
+      "maxCpuPercent": 250
+    },
+    "browser-sidecar": {
+      "peakRssMb": 700,
+      "maxCpuPercent": 250
+    },
+    "status-cli": {
+      "peakRssMb": 700,
+      "maxCpuPercent": 250
+    }
   },
   "diagnostics": {
     "timelineRequiredForSourceBuild": false,
-    "expectedSpans": ["browser.start", "browser.tabs", "browser.snapshot", "runtimeDeps.stage"]
-  }
+    "expectedSpans": [
+      "browser.start",
+      "browser.tabs",
+      "browser.snapshot",
+      "runtimeDeps.stage"
+    ]
+  },
+  "purposes": [
+    "diagnostic",
+    "regression"
+  ],
+  "requirements": [
+    {
+      "id": "baseline",
+      "states": [
+        "fresh"
+      ],
+      "targetKinds": [
+        "npm",
+        "channel",
+        "runtime",
+        "local-build"
+      ],
+      "metrics": [
+        "gatewayReadyMs",
+        "statusMs",
+        "browserDoctorMs",
+        "browserStartMs",
+        "browserTabsMs",
+        "browserOpenMs",
+        "browserSnapshotMs",
+        "browserStopMs",
+        "browserTabCount",
+        "browserProcessLeaks",
+        "pluginLoadFailures"
+      ]
+    }
+  ]
 }

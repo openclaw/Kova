@@ -3,18 +3,78 @@
   "title": "External Plugin Install",
   "ownerArea": "plugins",
   "description": "Install a real local external plugin and verify registry state, restart health, and dependency behavior.",
-  "requiredStates": ["fresh", "external-plugin"],
-  "targetKinds": ["npm", "channel", "runtime", "local-build"],
-  "requiredMetrics": ["gatewayReadyMs", "pluginsListMs", "missingDependencyErrors", "pluginLoadFailures"],
-  "processRoles": ["gateway", "command-tree", "plugin-cli", "runtime-staging"],
-  "thresholds": { "gatewayReadyMs": 30000, "pluginsListMs": 10000 },
+  "requiredStates": [
+    "fresh",
+    "external-plugin"
+  ],
+  "targetKinds": [
+    "npm",
+    "channel",
+    "runtime",
+    "local-build"
+  ],
+  "requiredMetrics": [
+    "gatewayReadyMs",
+    "pluginsListMs",
+    "missingDependencyErrors",
+    "pluginLoadFailures"
+  ],
+  "processRoles": [
+    "gateway",
+    "command-tree",
+    "plugin-cli",
+    "runtime-staging"
+  ],
+  "thresholds": {
+    "gatewayReadyMs": 30000,
+    "pluginsListMs": 10000
+  },
   "roleThresholds": {
-    "gateway": { "peakRssMb": 800, "maxCpuPercent": 250 },
-    "plugin-cli": { "peakRssMb": 600, "maxCpuPercent": 250 },
-    "runtime-staging": { "peakRssMb": 900, "maxCpuPercent": 350 }
+    "gateway": {
+      "peakRssMb": 800,
+      "maxCpuPercent": 250
+    },
+    "plugin-cli": {
+      "peakRssMb": 600,
+      "maxCpuPercent": 250
+    },
+    "runtime-staging": {
+      "peakRssMb": 900,
+      "maxCpuPercent": 350
+    }
   },
   "diagnostics": {
     "timelineRequiredForSourceBuild": true,
-    "expectedSpans": ["plugins.install", "plugins.registry.refresh", "plugins.load"]
-  }
+    "expectedSpans": [
+      "plugins.install",
+      "plugins.registry.refresh",
+      "plugins.load"
+    ]
+  },
+  "purposes": [
+    "plugin",
+    "regression",
+    "release"
+  ],
+  "requirements": [
+    {
+      "id": "baseline",
+      "states": [
+        "fresh",
+        "external-plugin"
+      ],
+      "targetKinds": [
+        "npm",
+        "channel",
+        "runtime",
+        "local-build"
+      ],
+      "metrics": [
+        "gatewayReadyMs",
+        "pluginsListMs",
+        "missingDependencyErrors",
+        "pluginLoadFailures"
+      ]
+    }
+  ]
 }

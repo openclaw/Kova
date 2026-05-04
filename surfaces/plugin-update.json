@@ -3,17 +3,72 @@
   "title": "Plugin Update",
   "ownerArea": "plugins",
   "description": "Run external plugin update planning and registry refresh paths without mutating durable state.",
-  "requiredStates": ["fresh", "external-plugin"],
-  "targetKinds": ["npm", "channel", "runtime", "local-build"],
-  "requiredMetrics": ["pluginUpdateDryRunMs", "pluginsListMs", "missingDependencyErrors", "pluginLoadFailures"],
-  "processRoles": ["gateway", "command-tree", "plugin-cli"],
-  "thresholds": { "pluginsListMs": 10000, "pluginUpdateDryRunMs": 20000 },
+  "requiredStates": [
+    "fresh",
+    "external-plugin"
+  ],
+  "targetKinds": [
+    "npm",
+    "channel",
+    "runtime",
+    "local-build"
+  ],
+  "requiredMetrics": [
+    "pluginUpdateDryRunMs",
+    "pluginsListMs",
+    "missingDependencyErrors",
+    "pluginLoadFailures"
+  ],
+  "processRoles": [
+    "gateway",
+    "command-tree",
+    "plugin-cli"
+  ],
+  "thresholds": {
+    "pluginsListMs": 10000,
+    "pluginUpdateDryRunMs": 20000
+  },
   "roleThresholds": {
-    "gateway": { "peakRssMb": 800, "maxCpuPercent": 250 },
-    "plugin-cli": { "peakRssMb": 600, "maxCpuPercent": 250 }
+    "gateway": {
+      "peakRssMb": 800,
+      "maxCpuPercent": 250
+    },
+    "plugin-cli": {
+      "peakRssMb": 600,
+      "maxCpuPercent": 250
+    }
   },
   "diagnostics": {
     "timelineRequiredForSourceBuild": true,
-    "expectedSpans": ["plugins.update", "plugins.registry.refresh"]
-  }
+    "expectedSpans": [
+      "plugins.update",
+      "plugins.registry.refresh"
+    ]
+  },
+  "purposes": [
+    "plugin",
+    "regression",
+    "release"
+  ],
+  "requirements": [
+    {
+      "id": "baseline",
+      "states": [
+        "fresh",
+        "external-plugin"
+      ],
+      "targetKinds": [
+        "npm",
+        "channel",
+        "runtime",
+        "local-build"
+      ],
+      "metrics": [
+        "pluginUpdateDryRunMs",
+        "pluginsListMs",
+        "missingDependencyErrors",
+        "pluginLoadFailures"
+      ]
+    }
+  ]
 }

@@ -3,9 +3,17 @@
   "surface": "agent-cli-local-turn",
   "title": "Agent Provider Concurrent Pressure",
   "objective": "Prove OpenClaw can process multiple overlapping local agent turns through the provider path, keep the gateway healthy, return correct responses, and leave no leaked child processes.",
-  "tags": ["agent", "message", "provider-failure", "concurrency", "containment"],
+  "tags": [
+    "agent",
+    "message",
+    "provider-failure",
+    "concurrency",
+    "containment"
+  ],
   "timeoutMs": 240000,
-  "auth": { "mode": "mock" },
+  "auth": {
+    "mode": "mock"
+  },
   "mockProvider": {
     "mode": "concurrent-pressure",
     "delayMs": 1500,
@@ -32,8 +40,14 @@
       "id": "provision",
       "title": "Provision Agent Env",
       "intent": "Start a disposable OpenClaw gateway before applying concurrent provider pressure.",
-      "commands": ["ocm start {env} {startSelector} --json"],
-      "evidence": ["gateway port", "runtime binding", "startup readiness"]
+      "commands": [
+        "ocm start {env} {startSelector} --json"
+      ],
+      "evidence": [
+        "gateway port",
+        "runtime binding",
+        "startup readiness"
+      ]
     },
     {
       "id": "concurrent-provider-turns",
@@ -42,14 +56,32 @@
       "commands": [
         "node {kovaRoot}/support/run-concurrent-agent-turns.mjs --env {env} --count 3 --session-prefix kova-agent-provider-concurrent --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --expected-text KOVA_AGENT_OK --timeout 120"
       ],
-      "evidence": ["assistant responses", "provider request count", "provider overlap timing", "pre-provider timing", "role resource samples", "process leak snapshot"]
+      "evidence": [
+        "assistant responses",
+        "provider request count",
+        "provider overlap timing",
+        "pre-provider timing",
+        "role resource samples",
+        "process leak snapshot"
+      ]
     },
     {
       "id": "post-concurrency-health",
       "title": "Post-Concurrency Gateway Health",
       "intent": "Verify the gateway remains responsive after concurrent agent/provider work.",
-      "commands": ["ocm @{env} -- status", "ocm logs {env} --tail 300 --raw"],
-      "evidence": ["gateway status", "provider logs", "plugin errors", "memory after concurrent turns"]
+      "commands": [
+        "ocm @{env} -- status",
+        "ocm logs {env} --tail 300 --raw"
+      ],
+      "evidence": [
+        "gateway status",
+        "provider logs",
+        "plugin errors",
+        "memory after concurrent turns"
+      ]
     }
+  ],
+  "proves": [
+    "baseline"
   ]
 }

@@ -3,22 +3,105 @@
   "title": "Release Runtime Startup",
   "ownerArea": "release-runtime",
   "description": "Start a release-shaped OpenClaw runtime and measure cold readiness, runtime dependency staging, plugin load health, and resource use.",
-  "requiredStates": ["fresh"],
-  "targetKinds": ["local-build", "npm", "channel", "runtime"],
-  "requiredMetrics": ["gatewayReadyMs", "gatewayReadyHardTimeoutMs", "statusMs", "pluginsListMs", "peakRssMb", "runtimeDepsStagingMs", "pluginLoadFailures"],
-  "processRoles": ["gateway", "gateway-tree", "command-tree", "runtime-management", "package-manager", "build-tooling", "runtime-staging", "plugin-cli"],
-  "thresholds": { "gatewayReadyMs": 30000, "gatewayReadyHardTimeoutMs": 120000, "runtimeDepsStagingMs": 30000, "peakRssMb": 900 },
+  "requiredStates": [
+    "fresh"
+  ],
+  "targetKinds": [
+    "local-build",
+    "npm",
+    "channel",
+    "runtime"
+  ],
+  "requiredMetrics": [
+    "gatewayReadyMs",
+    "gatewayReadyHardTimeoutMs",
+    "statusMs",
+    "pluginsListMs",
+    "peakRssMb",
+    "runtimeDepsStagingMs",
+    "pluginLoadFailures"
+  ],
+  "processRoles": [
+    "gateway",
+    "gateway-tree",
+    "command-tree",
+    "runtime-management",
+    "package-manager",
+    "build-tooling",
+    "runtime-staging",
+    "plugin-cli"
+  ],
+  "thresholds": {
+    "gatewayReadyMs": 30000,
+    "gatewayReadyHardTimeoutMs": 120000,
+    "runtimeDepsStagingMs": 30000,
+    "peakRssMb": 900
+  },
   "roleThresholds": {
-    "gateway": { "peakRssMb": 800, "maxCpuPercent": 250 },
-    "gateway-tree": { "peakRssMb": 1000, "maxCpuPercent": 300 },
-    "runtime-management": { "peakRssMb": 900, "maxCpuPercent": 350 },
-    "package-manager": { "peakRssMb": 900, "maxCpuPercent": 350 },
-    "build-tooling": { "peakRssMb": 900, "maxCpuPercent": 350 },
-    "runtime-staging": { "peakRssMb": 900, "maxCpuPercent": 350 },
-    "plugin-cli": { "peakRssMb": 600, "maxCpuPercent": 250 }
+    "gateway": {
+      "peakRssMb": 800,
+      "maxCpuPercent": 250
+    },
+    "gateway-tree": {
+      "peakRssMb": 1000,
+      "maxCpuPercent": 300
+    },
+    "runtime-management": {
+      "peakRssMb": 900,
+      "maxCpuPercent": 350
+    },
+    "package-manager": {
+      "peakRssMb": 900,
+      "maxCpuPercent": 350
+    },
+    "build-tooling": {
+      "peakRssMb": 900,
+      "maxCpuPercent": 350
+    },
+    "runtime-staging": {
+      "peakRssMb": 900,
+      "maxCpuPercent": 350
+    },
+    "plugin-cli": {
+      "peakRssMb": 600,
+      "maxCpuPercent": 250
+    }
   },
   "diagnostics": {
     "timelineRequiredForSourceBuild": true,
-    "expectedSpans": ["gateway.startup", "plugins.runtimeDeps", "plugins.load", "health.ready"]
-  }
+    "expectedSpans": [
+      "gateway.startup",
+      "plugins.runtimeDeps",
+      "plugins.load",
+      "health.ready"
+    ]
+  },
+  "purposes": [
+    "performance",
+    "regression",
+    "release"
+  ],
+  "requirements": [
+    {
+      "id": "baseline",
+      "states": [
+        "fresh"
+      ],
+      "targetKinds": [
+        "local-build",
+        "npm",
+        "channel",
+        "runtime"
+      ],
+      "metrics": [
+        "gatewayReadyMs",
+        "gatewayReadyHardTimeoutMs",
+        "statusMs",
+        "pluginsListMs",
+        "peakRssMb",
+        "runtimeDepsStagingMs",
+        "pluginLoadFailures"
+      ]
+    }
+  ]
 }
