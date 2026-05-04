@@ -405,6 +405,8 @@ function metricDeltas(baseline, current) {
     "timeToListeningMs",
     "timeToHealthReadyMs",
     "healthP95Ms",
+    "startupHealthP95Ms",
+    "postReadyHealthP95Ms",
     "healthFailures",
     "readinessFailures",
     "missingDependencyErrors",

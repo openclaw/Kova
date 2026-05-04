@@ -92,7 +92,7 @@ export function evaluateRecord(record, scenario, options = {}) {
   });
   const finalGatewayState = record.finalMetrics?.service?.gatewayState ?? null;
   const healthFailures = countHealthFailures(record);
-  const healthP95Ms = collectHealthP95(record);
+  const healthP95 = collectHealthP95Evidence(record);
   const soakEvidence = collectSoakEvidence(allResults);
   const mcpBridgeEvidence = collectMcpBridgeEvidence(allResults);
   const browserAutomationEvidence = collectBrowserAutomationEvidence(allResults);
@@ -191,13 +191,15 @@ export function evaluateRecord(record, scenario, options = {}) {
     });
   }
 
-  if (typeof thresholds.healthP95Ms === "number" && healthP95Ms !== null && healthP95Ms > thresholds.healthP95Ms) {
+  if (typeof thresholds.healthP95Ms === "number" && healthP95.max !== null && healthP95.max > thresholds.healthP95Ms) {
+    const healthScope = healthP95.maxPhaseKind === "startup" ? "startup" : "post-ready";
+    const phaseSuffix = healthP95.maxPhaseId ? ` during ${healthP95.maxPhaseId}` : "";
     violations.push({
       kind: "health",
       metric: "healthP95Ms",
       expected: `<= ${thresholds.healthP95Ms}`,
-      actual: healthP95Ms,
-      message: `gateway health p95 ${healthP95Ms}ms exceeded threshold ${thresholds.healthP95Ms}ms`
+      actual: healthP95.max,
+      message: `gateway ${healthScope} health p95 ${healthP95.max}ms exceeded threshold ${thresholds.healthP95Ms}ms${phaseSuffix}`
     });
   }
 
@@ -730,7 +732,11 @@ export function evaluateRecord(record, scenario, options = {}) {
     missingDependencyErrors,
     finalGatewayState,
     healthFailures,
-    healthP95Ms,
+    healthP95Ms: healthP95.max,
+    startupHealthP95Ms: healthP95.startup,
+    postReadyHealthP95Ms: healthP95.postReady,
+    healthP95PhaseId: healthP95.maxPhaseId,
+    healthP95PhaseKind: healthP95.maxPhaseKind,
     soakEvidence,
     mcpBridgeEvidence,
     mcpInitializeMs: mcpBridgeEvidence.initializeMs,
@@ -1851,24 +1857,63 @@ function countGatewayRestarts(record) {
   return commandRestarts + countLogMetric(record, "gatewayRestartMentions");
 }
 
-function collectHealthP95(record) {
-  const p95Values = [];
+const STARTUP_HEALTH_PHASE_IDS = new Set([
+  "baseline",
+  "cold-start",
+  "gateway",
+  "gateway-start",
+  "post-upgrade",
+  "provision",
+  "restart",
+  "source-runtime",
+  "start",
+  "upgrade",
+  "warm-restart"
+]);
+
+function collectHealthP95Evidence(record) {
+  const entries = [];
   for (const phase of record.phases ?? []) {
     const p95 = phase.metrics?.healthSummary?.p95Ms;
     if (typeof p95 === "number") {
-      p95Values.push(p95);
+      entries.push({
+        phaseId: phase.id ?? null,
+        phaseKind: classifyHealthPhase(phase.id),
+        p95
+      });
     }
   }
 
   const finalP95 = record.finalMetrics?.healthSummary?.p95Ms;
   if (typeof finalP95 === "number") {
-    p95Values.push(finalP95);
+    entries.push({
+      phaseId: "final",
+      phaseKind: "post-ready",
+      p95: finalP95
+    });
   }
 
-  if (p95Values.length === 0) {
-    return null;
+  if (entries.length === 0) {
+    return {
+      max: null,
+      startup: null,
+      postReady: null,
+      maxPhaseId: null,
+      maxPhaseKind: null
+    };
   }
-  return Math.max(...p95Values);
+  const maxEntry = entries.reduce((max, entry) => (entry.p95 > max.p95 ? entry : max), entries[0]);
+  return {
+    max: maxEntry.p95,
+    startup: maxNullable(...entries.filter((entry) => entry.phaseKind === "startup").map((entry) => entry.p95)),
+    postReady: maxNullable(...entries.filter((entry) => entry.phaseKind === "post-ready").map((entry) => entry.p95)),
+    maxPhaseId: maxEntry.phaseId,
+    maxPhaseKind: maxEntry.phaseKind
+  };
+}
+
+function classifyHealthPhase(phaseId) {
+  return STARTUP_HEALTH_PHASE_IDS.has(phaseId) ? "startup" : "post-ready";
 }
 
 function collectSoakEvidence(results) {

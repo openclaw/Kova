@@ -115,7 +115,12 @@ export function renderMarkdownReport(report) {
       lines.push(`- Missing dependency errors: ${record.measurements.missingDependencyErrors ?? "unknown"}`);
       lines.push(`- Final gateway state: ${record.measurements.finalGatewayState ?? "unknown"}`);
       lines.push(`- Health failures: ${record.measurements.healthFailures ?? "unknown"}`);
-      lines.push(`- Health p95: ${record.measurements.healthP95Ms ?? "unknown"} ms`);
+      lines.push(`- Phase health p95: ${record.measurements.healthP95Ms ?? "unknown"} ms`);
+      lines.push(`- Startup health p95: ${record.measurements.startupHealthP95Ms ?? "unknown"} ms`);
+      lines.push(`- Post-ready health p95: ${record.measurements.postReadyHealthP95Ms ?? "unknown"} ms`);
+      if (record.measurements.healthP95PhaseId) {
+        lines.push(`- Slowest health phase: ${record.measurements.healthP95PhaseId} (${record.measurements.healthP95PhaseKind ?? "unknown"})`);
+      }
       if (record.measurements.soakEvidence?.available) {
         lines.push(`- Soak trend: duration ${record.measurements.soakDurationMs ?? "unknown"} ms; iterations ${record.measurements.soakIterations ?? "unknown"}; command p95 ${record.measurements.soakCommandP95Ms ?? "unknown"} ms; health p95 ${record.measurements.soakHealthP95Ms ?? "unknown"} ms; RSS growth ${record.measurements.rssGrowthMb ?? "unknown"} MB; gateway RSS growth ${record.measurements.gatewayRssGrowthMb ?? "unknown"} MB`);
       }

@@ -338,6 +338,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(markdownFailureCardsCheck());
     checks.push(reportRecommendedNextScenarioCheck());
     checks.push(readinessClassificationCheck());
+    checks.push(healthP95SplitEvaluationCheck());
     checks.push(await resourceRoleAttributionCheck(tmp));
     checks.push(await resourceRootCommandRoleBoundaryCheck());
     checks.push(await resourceRolePollutionCheck());
@@ -3642,6 +3643,69 @@ function readinessClassificationCheck() {
       id: "readiness-classification",
       status: "FAIL",
       command: "evaluate synthetic slow readiness record",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function healthP95SplitEvaluationCheck() {
+  try {
+    const record = {
+      scenario: "gateway-performance",
+      title: "Gateway Performance",
+      status: "PASS",
+      phases: [
+        {
+          id: "cold-start",
+          title: "Cold start",
+          results: [],
+          metrics: {
+            logs: zeroLogMetrics(),
+            health: { ok: true },
+            healthSummary: { count: 3, okCount: 3, failureCount: 0, p95Ms: 30, maxMs: 30 }
+          }
+        },
+        {
+          id: "api-latency",
+          title: "API latency",
+          results: [],
+          metrics: {
+            logs: zeroLogMetrics(),
+            health: { ok: true },
+            healthSummary: { count: 3, okCount: 3, failureCount: 0, p95Ms: 220, maxMs: 220 }
+          }
+        }
+      ],
+      finalMetrics: {
+        service: { gatewayState: "running" },
+        logs: zeroLogMetrics(),
+        healthSummary: { count: 3, okCount: 3, failureCount: 0, p95Ms: 45, maxMs: 45 }
+      }
+    };
+    evaluateRecord(record, {
+      id: "gateway-performance",
+      thresholds: { healthP95Ms: 100 }
+    }, { surface: { thresholds: {} }, targetPlan: { kind: "local-build" } });
+
+    assertEqual(record.measurements.healthP95Ms, 220, "phase health p95");
+    assertEqual(record.measurements.startupHealthP95Ms, 30, "startup health p95");
+    assertEqual(record.measurements.postReadyHealthP95Ms, 220, "post-ready health p95");
+    assertEqual(record.measurements.healthP95PhaseId, "api-latency", "health p95 phase id");
+    assertEqual(record.measurements.healthP95PhaseKind, "post-ready", "health p95 phase kind");
+    assertEqual(record.violations.some((violation) => violation.message.includes("post-ready health p95") && violation.message.includes("api-latency")), true, "health violation names post-ready phase");
+
+    return {
+      id: "health-p95-split",
+      status: "PASS",
+      command: "evaluate health p95 startup/post-ready split",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "health-p95-split",
+      status: "FAIL",
+      command: "evaluate health p95 startup/post-ready split",
       durationMs: 0,
       message: error.message
     };
