@@ -13,9 +13,9 @@
   "thresholds": {
     "coldReadyMs": 30000,
     "warmReadyMs": 15000,
-    "healthP95Ms": 1000,
     "peakRssMb": 900,
-    "eventLoopMaxMs": 500
+    "eventLoopMaxMs": 500,
+    "postReadyHealthP95Ms": 1000
   },
   "phases": [
     {
@@ -32,7 +32,8 @@
         "RSS",
         "CPU",
         "startup logs"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "api-latency",
@@ -47,7 +48,8 @@
         "command durations",
         "health after each command",
         "logs"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "warm-restart",
@@ -61,7 +63,8 @@
         "warm ready time",
         "RSS delta",
         "startup log delta"
-      ]
+      ],
+      "healthScope": "readiness"
     }
   ],
   "proves": [

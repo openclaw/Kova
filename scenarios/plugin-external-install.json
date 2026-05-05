@@ -29,7 +29,8 @@
       "evidence": [
         "baseline plugin list",
         "gateway readiness"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "install",
@@ -45,7 +46,8 @@
         "plugin index update",
         "registry refresh",
         "plugin appears in list"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "restart",
@@ -60,7 +62,8 @@
         "restart readiness",
         "plugin load logs",
         "missing dependency scan"
-      ]
+      ],
+      "healthScope": "readiness"
     }
   ],
   "proves": [

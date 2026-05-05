@@ -224,6 +224,87 @@ Current metrics include:
 - runtime dependency staging grouped by bundled plugin when OpenClaw emits
   `runtimeDeps.stage` spans with `pluginId` attributes
 
+## Health And Readiness
+
+Records keep existing compatibility fields such as `timeToListeningMs`,
+`timeToHealthReadyMs`, `readinessClassification`, `healthFailures`, and
+`healthP95Ms`. New readers should use `records[*].measurements.health`:
+
+```json
+{
+  "schemaVersion": "kova.health.v1",
+  "readiness": {
+    "phaseId": "cold-start",
+    "listeningReadyAtMs": 2536,
+    "healthReadyAtMs": 3005,
+    "classification": "ready",
+    "severity": "pass",
+    "reason": "gateway became healthy within the readiness threshold",
+    "thresholdMs": 30000,
+    "deadlineMs": 120000,
+    "attempts": 4
+  },
+  "startupSamples": {
+    "scope": "startup-sample",
+    "count": 4,
+    "okCount": 1,
+    "failureCount": 3,
+    "p95Ms": 120,
+    "maxMs": 120,
+    "slowestPhaseId": "cold-start"
+  },
+  "postReadySamples": {
+    "scope": "post-ready",
+    "count": 9,
+    "okCount": 9,
+    "failureCount": 0,
+    "p95Ms": 469,
+    "maxMs": 652,
+    "slowestPhaseId": "api-latency"
+  },
+  "unknownSamples": {
+    "scope": "unknown",
+    "count": 0,
+    "okCount": 0,
+    "failureCount": 0,
+    "p95Ms": null,
+    "maxMs": null,
+    "slowestPhaseId": null
+  },
+  "final": {
+    "scope": "final",
+    "gatewayState": "running",
+    "ok": true,
+    "healthOk": true,
+    "failureCount": 0,
+    "p95Ms": 90,
+    "maxMs": 90,
+    "slowestPhaseId": "final"
+  },
+  "slowestSample": {
+    "scope": "post-ready",
+    "phaseId": "api-latency",
+    "durationMs": 652
+  }
+}
+```
+
+Scenario phases declare `healthScope` so the evaluator does not infer meaning
+from phase ids. Allowed values are `readiness`, `startup-sample`, `post-ready`,
+`final`, and `none`. Old or externally produced reports without phase scope are
+treated as `unknown` when summarized for compatibility.
+
+Compatibility derivation:
+
+- `timeToListeningMs`: `measurements.health.readiness.listeningReadyAtMs`
+- `timeToHealthReadyMs`: `measurements.health.readiness.healthReadyAtMs`
+- `readinessClassification`: `measurements.health.readiness.classification`
+- `healthFailures`: startup + post-ready + unknown + final health failures
+- `healthP95Ms`: max startup/post-ready p95, falling back to old aggregate p95
+  for old reports
+- `startupHealthP95Ms`: `measurements.health.startupSamples.p95Ms`
+- `postReadyHealthP95Ms`: `measurements.health.postReadySamples.p95Ms`
+
 Role-specific thresholds can fail a scenario separately from total process-tree
 thresholds. For example, a report can show that `gateway` exceeded memory while
 `package-manager` stayed normal, or that `package-manager` spiked during local
@@ -276,8 +357,8 @@ Aggregate metric fields include:
 - `samples`
 
 Current aggregate metrics include startup readiness, TCP listening, RSS, CPU,
-event-loop delay, agent turn latency, health p95, and runtime dependency
-staging.
+event-loop delay, agent turn latency, compatibility health p95, startup health
+p95, post-ready health p95, and runtime dependency staging.
 
 Baseline stores use schema `kova.baselines.v1`. Baseline read/write requires
 `--execute` so stored evidence comes from real OpenClaw runs, not dry-run plans.

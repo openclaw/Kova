@@ -36,7 +36,8 @@
       "evidence": [
         "fresh env started",
         "baseline plugin list captured"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "install",
@@ -50,7 +51,8 @@
         "security scanner results",
         "plugins appear in list",
         "registry refresh succeeds"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "restart",
@@ -67,7 +69,8 @@
         "official plugin remains installed",
         "plugin load logs",
         "missing dependency scan"
-      ]
+      ],
+      "healthScope": "readiness"
     }
   ],
   "proves": [

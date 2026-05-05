@@ -39,7 +39,8 @@
         "gateway status",
         "gateway port",
         "readiness classification"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "browser-smoke",
@@ -54,7 +55,8 @@
         "opened tab count",
         "snapshot timing",
         "browser stop timing"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "post-browser-health",
@@ -68,7 +70,8 @@
         "status after browser automation",
         "browser plugin errors",
         "gateway errors"
-      ]
+      ],
+      "healthScope": "post-ready"
     }
   ],
   "proves": [

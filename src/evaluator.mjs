@@ -1,6 +1,7 @@
 import { buildAgentTurnBreakdown } from "./collectors/agent-turns.mjs";
 import { computeProviderTurnAttribution } from "./collectors/provider.mjs";
 import { summarizeRuntimeDepsLogs } from "./collectors/logs.mjs";
+import { buildHealthMeasurement, deriveHealthCompatibility } from "./health.mjs";
 import { resolveThresholdPolicy } from "./evaluation/thresholds.mjs";
 import {
   checkAggregateThreshold,
@@ -91,8 +92,15 @@ export function evaluateRecord(record, scenario, options = {}) {
     providerSimulation: agentProviderSimulation
   });
   const finalGatewayState = record.finalMetrics?.service?.gatewayState ?? null;
-  const healthFailures = countHealthFailures(record);
-  const healthP95Ms = collectHealthP95(record);
+  const health = buildHealthMeasurement(record, scenario);
+  const healthCompatibility = deriveHealthCompatibility(health, record);
+  const healthFailures = healthCompatibility.healthFailures;
+  const healthP95Ms = healthCompatibility.healthP95Ms;
+  const startupHealthP95Ms = healthCompatibility.startupHealthP95Ms;
+  const postReadyHealthP95Ms = healthCompatibility.postReadyHealthP95Ms;
+  const startupHealthFailures = healthCompatibility.startupHealthFailures;
+  const postReadyHealthFailures = healthCompatibility.postReadyHealthFailures;
+  const finalHealthFailures = healthCompatibility.finalHealthFailures;
   const soakEvidence = collectSoakEvidence(allResults);
   const mcpBridgeEvidence = collectMcpBridgeEvidence(allResults);
   const browserAutomationEvidence = collectBrowserAutomationEvidence(allResults);
@@ -101,10 +109,10 @@ export function evaluateRecord(record, scenario, options = {}) {
   const officialPluginEvidence = collectOfficialPluginEvidence(allResults);
   const listeningFailures = countListeningFailures(record);
   const tcpConnectMaxMs = collectTcpConnectMax(record);
-  const timeToListeningMs = collectTimeToListening(record);
-  const timeToHealthReadyMs = collectTimeToHealthReady(record);
+  const timeToListeningMs = healthCompatibility.timeToListeningMs ?? collectTimeToListening(record);
+  const timeToHealthReadyMs = healthCompatibility.timeToHealthReadyMs ?? collectTimeToHealthReady(record);
   const readinessFailures = countReadinessFailures(record);
-  const readinessClassification = collectWorstReadinessClassification(record);
+  const readinessClassification = healthCompatibility.readinessClassification ?? collectWorstReadinessClassification(record);
   const coldReadyMs = maxDurationWhere(allResults, (command) => command.startsWith("ocm start "));
   const warmReadyMs = maxDurationWhere(allResults, (command) => command.startsWith("ocm service restart "));
   const upgradeMs = maxDurationWhere(allResults, (command) => command.startsWith("ocm upgrade "));
@@ -200,6 +208,56 @@ export function evaluateRecord(record, scenario, options = {}) {
       expected: `<= ${thresholds.healthP95Ms}`,
       actual: healthP95Ms,
       message: `gateway health p95 ${healthP95Ms}ms exceeded threshold ${thresholds.healthP95Ms}ms`
+    });
+  }
+
+  if (typeof thresholds.startupHealthFailures === "number" && startupHealthFailures > thresholds.startupHealthFailures) {
+    violations.push({
+      kind: "health",
+      metric: "startupHealthFailures",
+      expected: `<= ${thresholds.startupHealthFailures}`,
+      actual: startupHealthFailures,
+      message: `${startupHealthFailures} startup health check(s) failed, over threshold ${thresholds.startupHealthFailures}`
+    });
+  }
+
+  if (typeof thresholds.postReadyHealthFailures === "number" && postReadyHealthFailures > thresholds.postReadyHealthFailures) {
+    violations.push({
+      kind: "health",
+      metric: "postReadyHealthFailures",
+      expected: `<= ${thresholds.postReadyHealthFailures}`,
+      actual: postReadyHealthFailures,
+      message: `${postReadyHealthFailures} post-ready liveness check(s) failed, over threshold ${thresholds.postReadyHealthFailures}`
+    });
+  }
+
+  if (typeof thresholds.finalHealthFailures === "number" && finalHealthFailures > thresholds.finalHealthFailures) {
+    violations.push({
+      kind: "health",
+      metric: "finalHealthFailures",
+      expected: `<= ${thresholds.finalHealthFailures}`,
+      actual: finalHealthFailures,
+      message: `${finalHealthFailures} final health check(s) failed, over threshold ${thresholds.finalHealthFailures}`
+    });
+  }
+
+  if (typeof thresholds.startupHealthP95Ms === "number" && startupHealthP95Ms !== null && startupHealthP95Ms > thresholds.startupHealthP95Ms) {
+    violations.push({
+      kind: "health",
+      metric: "startupHealthP95Ms",
+      expected: `<= ${thresholds.startupHealthP95Ms}`,
+      actual: startupHealthP95Ms,
+      message: `startup health sample p95 ${startupHealthP95Ms}ms exceeded threshold ${thresholds.startupHealthP95Ms}ms`
+    });
+  }
+
+  if (typeof thresholds.postReadyHealthP95Ms === "number" && postReadyHealthP95Ms !== null && postReadyHealthP95Ms > thresholds.postReadyHealthP95Ms) {
+    violations.push({
+      kind: "health",
+      metric: "postReadyHealthP95Ms",
+      expected: `<= ${thresholds.postReadyHealthP95Ms}`,
+      actual: postReadyHealthP95Ms,
+      message: `post-ready liveness p95 ${postReadyHealthP95Ms}ms exceeded threshold ${thresholds.postReadyHealthP95Ms}ms`
     });
   }
 
@@ -747,6 +805,7 @@ export function evaluateRecord(record, scenario, options = {}) {
     agentProviderRequestCount: providerTurn?.requestCount ?? null,
     agentProviderRequestMissing: providerTurn?.missingProviderRequest ?? null,
     agentProviderAttribution: providerTurn,
+    health,
     tcpConnectMaxMs,
     timeToListeningMs,
     timeToHealthReadyMs,
@@ -758,6 +817,11 @@ export function evaluateRecord(record, scenario, options = {}) {
     finalGatewayState,
     healthFailures,
     healthP95Ms,
+    startupHealthP95Ms,
+    postReadyHealthP95Ms,
+    startupHealthFailures,
+    postReadyHealthFailures,
+    finalHealthFailures,
     soakEvidence,
     mcpBridgeEvidence,
     mcpInitializeMs: mcpBridgeEvidence.initializeMs,
@@ -1880,26 +1944,6 @@ function countGatewayRestarts(record) {
   const results = collectResults(record);
   const commandRestarts = results.filter((result) => result.command.startsWith("ocm service restart ")).length;
   return commandRestarts + countLogMetric(record, "gatewayRestartMentions");
-}
-
-function collectHealthP95(record) {
-  const p95Values = [];
-  for (const phase of record.phases ?? []) {
-    const p95 = phase.metrics?.healthSummary?.p95Ms;
-    if (typeof p95 === "number") {
-      p95Values.push(p95);
-    }
-  }
-
-  const finalP95 = record.finalMetrics?.healthSummary?.p95Ms;
-  if (typeof finalP95 === "number") {
-    p95Values.push(finalP95);
-  }
-
-  if (p95Values.length === 0) {
-    return null;
-  }
-  return Math.max(...p95Values);
 }
 
 function collectSoakEvidence(results) {

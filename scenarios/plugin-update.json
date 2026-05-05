@@ -31,7 +31,8 @@
       "evidence": [
         "plugin install record",
         "plugin appears in list"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "update",
@@ -46,7 +47,8 @@
         "plugin update dry-run output",
         "tracked plugin metadata",
         "registry refresh"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "post-update-health",
@@ -60,7 +62,8 @@
         "status after update",
         "plugin lifecycle logs",
         "dependency errors"
-      ]
+      ],
+      "healthScope": "post-ready"
     }
   ],
   "proves": [

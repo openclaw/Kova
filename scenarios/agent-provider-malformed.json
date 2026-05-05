@@ -38,7 +38,8 @@
         "gateway port",
         "runtime binding",
         "startup readiness"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "malformed-provider-turn",
@@ -53,7 +54,8 @@
         "malformed provider evidence",
         "gateway remains supervised",
         "role resource samples"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "post-failure-health",
@@ -68,7 +70,8 @@
         "provider logs",
         "plugin errors",
         "memory after malformed response"
-      ]
+      ],
+      "healthScope": "post-ready"
     }
   ],
   "proves": [

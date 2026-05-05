@@ -28,7 +28,8 @@
         "plugin list",
         "update dry-run",
         "runtime dependency errors"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "restart",
@@ -43,7 +44,8 @@
         "restart status",
         "logs",
         "missing dependency scan"
-      ]
+      ],
+      "healthScope": "readiness"
     }
   ],
   "proves": [

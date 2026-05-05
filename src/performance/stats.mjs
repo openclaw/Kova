@@ -20,6 +20,8 @@ export const PERFORMANCE_METRICS = [
   { id: "coldPreProviderMs", title: "Cold Pre-Provider", unit: "ms", regressionKey: "agentLatencyRegressionPercent" },
   { id: "warmPreProviderMs", title: "Warm Pre-Provider", unit: "ms", regressionKey: "agentLatencyRegressionPercent" },
   { id: "healthP95Ms", title: "Health p95", unit: "ms", regressionKey: "startupRegressionPercent" },
+  { id: "startupHealthP95Ms", title: "Startup Health p95", unit: "ms", regressionKey: "startupRegressionPercent" },
+  { id: "postReadyHealthP95Ms", title: "Post-Ready Health p95", unit: "ms", regressionKey: "startupRegressionPercent" },
   { id: "runtimeDepsStagingMs", title: "Runtime Deps Staging", unit: "ms", regressionKey: "startupRegressionPercent" }
 ];
 

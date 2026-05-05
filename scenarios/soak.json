@@ -16,7 +16,7 @@
     "soakCommandFailures": 0,
     "soakHealthFailures": 0,
     "rssGrowthMb": 300,
-    "healthP95Ms": 1000
+    "postReadyHealthP95Ms": 1000
   },
   "phases": [
     {
@@ -31,7 +31,8 @@
         "baseline PID",
         "baseline RSS",
         "baseline health"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "loop",
@@ -44,7 +45,8 @@
         "latency trend",
         "RSS trend",
         "logs during loop"
-      ]
+      ],
+      "healthScope": "post-ready"
     }
   ],
   "proves": [

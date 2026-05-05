@@ -142,6 +142,7 @@ export async function executeScenario(scenario, context) {
           id: phase.id,
           title: phase.title,
           intent: phase.intent,
+          healthScope: phase.healthScope,
           expectedAgentFailure: phase.expectedAgentFailure === true,
           commands,
           evidence: phase.evidence ?? [],
@@ -347,6 +348,7 @@ function buildPlannedPhases(scenario, context, envName, artifactDir, authPolicy)
       id: phase.id,
       title: phase.title,
       intent: phase.intent,
+      healthScope: phase.healthScope,
       expectedAgentFailure: phase.expectedAgentFailure === true,
       commands: materializeScenarioPhaseCommands(phase, context, envName, artifactDir),
       evidence: phase.evidence ?? []

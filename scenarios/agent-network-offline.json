@@ -36,7 +36,8 @@
         "gateway port",
         "runtime binding",
         "startup readiness"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "network-offline-turn",
@@ -49,7 +50,8 @@
         "bounded network failure",
         "gateway status after failure",
         "role resource samples"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "post-network-health",
@@ -64,7 +66,8 @@
         "network/provider failure logs",
         "plugin errors",
         "memory after network failure"
-      ]
+      ],
+      "healthScope": "post-ready"
     }
   ],
   "proves": [

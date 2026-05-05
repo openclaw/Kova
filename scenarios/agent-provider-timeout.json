@@ -39,7 +39,8 @@
         "gateway port",
         "runtime binding",
         "startup readiness"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "timeout-provider-turn",
@@ -54,7 +55,8 @@
         "provider timeout/abort timing",
         "gateway remains supervised",
         "role resource samples"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "post-failure-health",
@@ -69,7 +71,8 @@
         "provider logs",
         "plugin errors",
         "memory after timeout"
-      ]
+      ],
+      "healthScope": "post-ready"
     }
   ],
   "proves": [

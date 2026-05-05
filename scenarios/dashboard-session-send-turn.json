@@ -38,7 +38,8 @@
         "gateway port",
         "runtime binding",
         "env created without service"
-      ]
+      ],
+      "healthScope": "none"
     },
     {
       "id": "gateway-start",
@@ -52,7 +53,8 @@
         "gateway service installed",
         "gateway service started",
         "startup readiness"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "dashboard-session-turn",
@@ -67,7 +69,8 @@
         "mock provider request timing",
         "gateway health after turn",
         "role resource samples"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "post-dashboard-health",
@@ -82,7 +85,8 @@
         "provider logs",
         "plugin errors",
         "memory after dashboard turn"
-      ]
+      ],
+      "healthScope": "post-ready"
     }
   ],
   "proves": [

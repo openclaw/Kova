@@ -46,7 +46,8 @@
         "gateway port",
         "runtime binding",
         "startup readiness"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "cold-session-turn",
@@ -60,7 +61,8 @@
         "assistant text",
         "provider request timing",
         "role resource samples"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "warm-session-turn",
@@ -74,7 +76,8 @@
         "assistant text",
         "provider request timing",
         "cold/warm delta"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "session-turn-3",
@@ -88,7 +91,8 @@
         "assistant text",
         "provider request timing",
         "role resource samples"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "session-turn-4",
@@ -102,7 +106,8 @@
         "assistant text",
         "provider request timing",
         "role resource samples"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "session-turn-5",
@@ -116,7 +121,8 @@
         "assistant text",
         "provider request timing",
         "role resource samples"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "session-turn-6",
@@ -130,7 +136,8 @@
         "assistant text",
         "provider request timing",
         "role resource samples"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "post-session-health",
@@ -146,7 +153,8 @@
         "plugin errors",
         "memory after repeated turns",
         "process leak summary"
-      ]
+      ],
+      "healthScope": "post-ready"
     }
   ],
   "proves": [

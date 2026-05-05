@@ -29,7 +29,8 @@
         "dependency staging duration",
         "installed dependency list",
         "missing dependency errors"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "warm-restart",
@@ -44,7 +45,8 @@
         "warm ready time",
         "dependency staging reuse",
         "missing dependency errors"
-      ]
+      ],
+      "healthScope": "readiness"
     }
   ],
   "proves": [

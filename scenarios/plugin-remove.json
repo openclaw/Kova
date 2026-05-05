@@ -31,7 +31,8 @@
       "evidence": [
         "install record",
         "plugin appears before uninstall"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "remove",
@@ -46,7 +47,8 @@
         "uninstall output",
         "install index cleanup",
         "registry after removal"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "restart",
@@ -61,7 +63,8 @@
         "restart readiness",
         "removed plugin not loaded",
         "missing dependency scan"
-      ]
+      ],
+      "healthScope": "readiness"
     }
   ],
   "proves": [

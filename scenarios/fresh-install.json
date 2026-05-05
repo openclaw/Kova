@@ -30,7 +30,8 @@
         "env name",
         "runtime binding",
         "gateway port"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "readiness",
@@ -45,7 +46,8 @@
         "gateway state",
         "gateway PID",
         "health/status result"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "plugins",
@@ -59,7 +61,8 @@
         "plugins list output",
         "plugin update dry-run output",
         "missing dependency log scan"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "models",
@@ -72,7 +75,8 @@
         "models list duration",
         "timeout behavior",
         "gateway health after model list"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "logs",
@@ -85,7 +89,8 @@
         "startup logs",
         "missing dependency errors",
         "plugin metadata scan warnings"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "cleanup",
@@ -96,7 +101,8 @@
       ],
       "evidence": [
         "destroy result"
-      ]
+      ],
+      "healthScope": "none"
     }
   ],
   "proves": [

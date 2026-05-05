@@ -31,7 +31,8 @@
         "install result",
         "plugin entry registered",
         "gateway readiness before load"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "restart",
@@ -46,7 +47,8 @@
         "missing dependency diagnostic",
         "plugin load failure",
         "gateway remains supervised"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "survival",
@@ -59,7 +61,8 @@
       "evidence": [
         "status after plugin failure",
         "plugin list after failure"
-      ]
+      ],
+      "healthScope": "post-ready"
     }
   ],
   "proves": [

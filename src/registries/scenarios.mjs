@@ -1,6 +1,8 @@
 import { scenariosDir } from "../paths.mjs";
 import { assertNoShapeErrors, loadJsonRegistry, requireArray, requireKebabId, requireObject, requireString } from "./validate.mjs";
 
+export const HEALTH_SCOPES = ["readiness", "startup-sample", "post-ready", "final", "none"];
+
 export async function loadScenarios(selectedId) {
   return loadJsonRegistry({
     dir: scenariosDir,
@@ -108,6 +110,7 @@ function validatePhases(phases, errors) {
     requireKebabId(phase, "id", errors, prefix);
     requireString(phase, "title", errors, prefix);
     requireString(phase, "intent", errors, prefix);
+    requireString(phase, "healthScope", errors, prefix);
     requireArray(phase, "commands", errors, prefix);
     requireArray(phase, "evidence", errors, prefix);
 
@@ -120,6 +123,9 @@ function validatePhases(phases, errors) {
 
     validateStringArray(phase.commands, `${prefix}.commands`, errors);
     validateStringArray(phase.evidence, `${prefix}.evidence`, errors);
+    if (typeof phase.healthScope === "string" && !HEALTH_SCOPES.includes(phase.healthScope)) {
+      errors.push(`${prefix}.healthScope must be one of ${HEALTH_SCOPES.join(", ")}`);
+    }
     if (phase.expectedAgentFailure !== undefined && typeof phase.expectedAgentFailure !== "boolean") {
       errors.push(`${prefix}.expectedAgentFailure must be a boolean when set`);
     }

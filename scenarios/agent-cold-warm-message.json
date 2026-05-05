@@ -43,7 +43,8 @@
         "gateway port",
         "runtime binding",
         "env created without service"
-      ]
+      ],
+      "healthScope": "none"
     },
     {
       "id": "cold-agent-turn",
@@ -58,7 +59,8 @@
         "mock provider request timing",
         "gateway health after cold turn",
         "role resource samples"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "warm-agent-turn",
@@ -73,7 +75,8 @@
         "mock provider request timing",
         "cold/warm delta",
         "role resource samples"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "post-agent-health",
@@ -86,7 +89,8 @@
         "env status",
         "plugin errors",
         "memory after agent turns"
-      ]
+      ],
+      "healthScope": "post-ready"
     }
   ],
   "proves": [

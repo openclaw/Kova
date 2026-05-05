@@ -31,7 +31,8 @@
         "gateway status",
         "gateway port",
         "readiness classification"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "dashboard",
@@ -44,7 +45,8 @@
         "dashboard URL",
         "token handling",
         "command latency"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "post-dashboard-health",
@@ -58,7 +60,8 @@
         "status after dashboard command",
         "websocket disconnect logs",
         "gateway errors"
-      ]
+      ],
+      "healthScope": "post-ready"
     }
   ],
   "proves": [

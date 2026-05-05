@@ -12,8 +12,8 @@
   "thresholds": {
     "coldReadyMs": 30000,
     "warmReadyMs": 15000,
-    "healthP95Ms": 1000,
-    "peakRssMb": 900
+    "peakRssMb": 900,
+    "postReadyHealthP95Ms": 1000
   },
   "roleThresholds": {
     "gateway": {
@@ -60,7 +60,7 @@
       "metrics": [
         "coldReadyMs",
         "warmReadyMs",
-        "healthP95Ms",
+        "postReadyHealthP95Ms",
         "peakRssMb",
         "eventLoopMaxMs"
       ]

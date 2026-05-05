@@ -19,7 +19,7 @@
     "rssGrowthMb": 300,
     "gatewayRssGrowthMb": 300,
     "soakHealthP95Ms": 1000,
-    "healthP95Ms": 1000
+    "postReadyHealthP95Ms": 1000
   },
   "roleThresholds": {
     "gateway": {

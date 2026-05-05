@@ -42,7 +42,8 @@
         "gateway port",
         "runtime binding",
         "startup readiness"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "transient-provider-failure-turn",
@@ -57,7 +58,8 @@
         "provider 200 recovery evidence",
         "gateway remains supervised",
         "role resource samples"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "recovery-provider-turn",
@@ -71,7 +73,8 @@
         "provider recovery timing",
         "gateway remains healthy",
         "role resource samples"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "post-failure-health",
@@ -86,7 +89,8 @@
         "provider logs",
         "plugin errors",
         "memory after recovery"
-      ]
+      ],
+      "healthScope": "post-ready"
     }
   ],
   "proves": [

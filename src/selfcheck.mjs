@@ -356,6 +356,8 @@ export async function runSelfCheck(flags = {}) {
     checks.push(markdownFailureCardsCheck());
     checks.push(reportRecommendedNextScenarioCheck());
     checks.push(readinessClassificationCheck());
+    checks.push(healthReadinessModelCheck());
+    checks.push(oldHealthReportCompatibilityCheck());
     checks.push(await resourceRoleAttributionCheck(tmp));
     checks.push(await resourceRootCommandRoleBoundaryCheck());
     checks.push(await resourceRolePollutionCheck());
@@ -365,6 +367,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(await cleanupRetryCheck(tmp));
     checks.push(stateRegistryValidationCheck());
     checks.push(scenarioCloneFirstValidationCheck());
+    checks.push(scenarioHealthScopeValidationCheck());
     checks.push(scenarioStateCompatibilityCheck());
     checks.push(await cpuProfileParserCheck());
     checks.push(await heapProfileParserCheck());
@@ -3880,6 +3883,7 @@ function readinessClassificationCheck() {
       phases: [
         {
           id: "provision",
+          healthScope: "readiness",
           results: [],
           metrics: {
             readiness: {
@@ -3945,6 +3949,186 @@ function readinessClassificationCheck() {
       id: "readiness-classification",
       status: "FAIL",
       command: "evaluate synthetic slow readiness record",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function healthReadinessModelCheck() {
+  try {
+    const record = {
+      status: "PASS",
+      phases: [
+        {
+          id: "cold-start",
+          healthScope: "readiness",
+          results: [],
+          metrics: {
+            readiness: {
+              deadlineMs: 90000,
+              thresholdMs: 30000,
+              ready: true,
+              listeningReady: true,
+              listeningReadyAtMs: 120,
+              healthReadyAtMs: 200,
+              attempts: 2,
+              classification: {
+                state: "ready",
+                severity: "pass",
+                reason: "gateway became healthy within the readiness threshold"
+              },
+              healthAttempts: [
+                { ok: false, durationMs: 25 },
+                { ok: true, durationMs: 30 }
+              ]
+            },
+            healthSamples: [
+              { ok: true, durationMs: 40 }
+            ],
+            healthSummary: {
+              count: 1,
+              okCount: 1,
+              failureCount: 0,
+              minMs: 40,
+              p50Ms: 40,
+              p95Ms: 40,
+              maxMs: 40
+            }
+          }
+        },
+        {
+          id: "api-latency",
+          healthScope: "post-ready",
+          results: [],
+          metrics: {
+            healthSamples: [
+              { ok: true, durationMs: 10 },
+              { ok: true, durationMs: 1500 }
+            ],
+            healthSummary: {
+              count: 2,
+              okCount: 2,
+              failureCount: 0,
+              minMs: 10,
+              p50Ms: 10,
+              p95Ms: 1500,
+              maxMs: 1500
+            }
+          }
+        }
+      ],
+      finalMetrics: {
+        service: { gatewayState: "running" },
+        healthSamples: [{ ok: true, durationMs: 50 }],
+        healthSummary: {
+          count: 1,
+          okCount: 1,
+          failureCount: 0,
+          minMs: 50,
+          p50Ms: 50,
+          p95Ms: 50,
+          maxMs: 50
+        },
+        health: { ok: true, durationMs: 50 }
+      }
+    };
+    const scenario = {
+      phases: [
+        { id: "cold-start", healthScope: "readiness" },
+        { id: "api-latency", healthScope: "post-ready" }
+      ],
+      thresholds: {
+        gatewayReadyMs: 30000,
+        postReadyHealthP95Ms: 1000
+      }
+    };
+    evaluateRecord(record, scenario);
+    assertEqual(record.status, "FAIL", "post-ready health threshold fails");
+    assertEqual(record.measurements.health.schemaVersion, "kova.health.v1", "health schema");
+    assertEqual(record.measurements.timeToHealthReadyMs, 200, "readiness health ready derived");
+    assertEqual(record.measurements.startupHealthP95Ms, 30, "startup health p95 derived from readiness attempts");
+    assertEqual(record.measurements.postReadyHealthP95Ms, 1500, "post-ready health p95 derived from post-ready samples");
+    assertEqual(record.measurements.healthP95Ms, 1500, "compatibility health p95 derived");
+    assertEqual(record.measurements.health.slowestSample.scope, "post-ready", "slowest health scope");
+    assertEqual(
+      record.violations.some((violation) => violation.metric === "postReadyHealthP95Ms"),
+      true,
+      "post-ready health violation"
+    );
+    assertEqual(
+      record.violations.some((violation) => violation.metric === "timeToHealthReadyMs"),
+      false,
+      "post-ready liveness does not masquerade as readiness"
+    );
+    return {
+      id: "health-readiness-model",
+      status: "PASS",
+      command: "evaluate synthetic scoped health record",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "health-readiness-model",
+      status: "FAIL",
+      command: "evaluate synthetic scoped health record",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function oldHealthReportCompatibilityCheck() {
+  try {
+    const report = {
+      schemaVersion: "kova.report.v1",
+      generatedAt: "2026-05-05T00:00:00.000Z",
+      runId: "old-health-report",
+      mode: "execution",
+      target: "runtime:stable",
+      platform: { os: "darwin", release: "25.0.0", arch: "arm64", node: process.version },
+      summary: { total: 1, statuses: { PASS: 1 } },
+      records: [{
+        scenario: "fresh-install",
+        title: "Fresh Install",
+        status: "PASS",
+        target: "runtime:stable",
+        state: { id: "fresh", title: "Fresh" },
+        envName: "kova-old-health",
+        likelyOwner: "OpenClaw",
+        objective: "Old report compatibility.",
+        measurements: {
+          peakRssMb: 100,
+          cpuPercentMax: 10,
+          timeToListeningMs: 100,
+          timeToHealthReadyMs: 200,
+          readinessClassification: "ready",
+          healthFailures: 0,
+          healthP95Ms: 900,
+          finalGatewayState: "running"
+        },
+        phases: [],
+        violations: []
+      }]
+    };
+    const summary = renderReportSummary(report, { structured: true });
+    assertEqual(summary.scenarios[0].measurements.health, null, "old report health object absent");
+    assertEqual(summary.scenarios[0].measurements.healthP95Ms, 900, "old report health p95 summarized");
+    const markdown = renderMarkdownReport(report);
+    assertEqual(markdown.includes("Compatibility health p95: 900 ms"), true, "old report markdown compatibility p95");
+    const comparison = compareReports(report, report, { thresholds: { healthP95Ms: 0 } });
+    assertEqual(comparison.ok, true, "old report compare remains ok");
+    return {
+      id: "old-health-report-compatibility",
+      status: "PASS",
+      command: "summarize and compare legacy health report shape",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "old-health-report-compatibility",
+      status: "FAIL",
+      command: "summarize and compare legacy health report shape",
       durationMs: 0,
       message: error.message
     };
@@ -4739,6 +4923,7 @@ function scenarioCloneFirstValidationCheck() {
           id: "status",
           title: "Status",
           intent: "Unsafe durable source access.",
+          healthScope: "post-ready",
           commands: ["ocm service status {sourceEnv} --json"],
           evidence: ["status"]
         }]
@@ -4762,6 +4947,7 @@ function scenarioCloneFirstValidationCheck() {
           id: "clone",
           title: "Clone",
           intent: "Clone source.",
+          healthScope: "none",
           commands: ["ocm env clone {sourceEnv} {env} --json", "ocm logs {sourceEnv} --tail 20"],
           evidence: ["clone"]
         }]
@@ -4783,12 +4969,14 @@ function scenarioCloneFirstValidationCheck() {
         id: "clone",
         title: "Clone",
         intent: "Clone source.",
+        healthScope: "none",
         commands: ["ocm env clone {sourceEnv} {env} --json"],
         evidence: ["clone"]
       }, {
         id: "upgrade",
         title: "Upgrade",
         intent: "Upgrade disposable clone.",
+        healthScope: "readiness",
         commands: ["ocm upgrade {env} --channel beta --json"],
         evidence: ["upgrade"]
       }]
@@ -4805,6 +4993,72 @@ function scenarioCloneFirstValidationCheck() {
       id: "scenario-clone-first-validation",
       status: "FAIL",
       command: "validate source-env scenario contracts",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function scenarioHealthScopeValidationCheck() {
+  try {
+    let rejectedMissing = false;
+    try {
+      validateScenarioShape({
+        id: "missing-health-scope",
+        surface: "fresh-install",
+        title: "Missing Health Scope",
+        objective: "Scenario phase without an explicit health scope.",
+        tags: ["fresh-user"],
+        proves: ["baseline"],
+        thresholds: {},
+        phases: [{
+          id: "start",
+          title: "Start",
+          intent: "Start gateway.",
+          commands: ["ocm start {env} {startSelector} --json"],
+          evidence: ["start"]
+        }]
+      }, "missing-health-scope.json");
+    } catch (error) {
+      rejectedMissing = /phases\[0\]\.healthScope must be a non-empty string/.test(error.message);
+    }
+    assertEqual(rejectedMissing, true, "missing healthScope rejected");
+
+    let rejectedInvalid = false;
+    try {
+      validateScenarioShape({
+        id: "invalid-health-scope",
+        surface: "fresh-install",
+        title: "Invalid Health Scope",
+        objective: "Scenario phase with an invalid health scope.",
+        tags: ["fresh-user"],
+        proves: ["baseline"],
+        thresholds: {},
+        phases: [{
+          id: "start",
+          title: "Start",
+          intent: "Start gateway.",
+          healthScope: "startup",
+          commands: ["ocm start {env} {startSelector} --json"],
+          evidence: ["start"]
+        }]
+      }, "invalid-health-scope.json");
+    } catch (error) {
+      rejectedInvalid = /healthScope must be one of/.test(error.message);
+    }
+    assertEqual(rejectedInvalid, true, "invalid healthScope rejected");
+
+    return {
+      id: "scenario-health-scope-validation",
+      status: "PASS",
+      command: "validate scenario health scope contracts",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "scenario-health-scope-validation",
+      status: "FAIL",
+      command: "validate scenario health scope contracts",
       durationMs: 0,
       message: error.message
     };

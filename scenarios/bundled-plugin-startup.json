@@ -30,7 +30,8 @@
         "bundled plugin count",
         "readiness classification",
         "dependency staging"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "inspect",
@@ -46,7 +47,8 @@
         "registry refresh",
         "missing package/module errors",
         "plugin service failures"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "restart",
@@ -61,7 +63,8 @@
         "warm readiness",
         "bundled plugin reload",
         "runtime dependency reuse"
-      ]
+      ],
+      "healthScope": "readiness"
     }
   ],
   "proves": [

@@ -39,7 +39,8 @@
         "gateway port",
         "runtime binding",
         "startup readiness"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "media-timeout",
@@ -53,7 +54,8 @@
         "provider timeout observed",
         "gateway status after timeout",
         "mock provider request log"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "post-media-health",
@@ -68,7 +70,8 @@
         "provider timeout logs",
         "plugin errors",
         "memory after media timeout"
-      ]
+      ],
+      "healthScope": "post-ready"
     }
   ],
   "proves": [

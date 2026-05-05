@@ -47,7 +47,8 @@
         "gateway port",
         "runtime binding",
         "startup readiness"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "concurrent-provider-turns",
@@ -63,7 +64,8 @@
         "pre-provider timing",
         "role resource samples",
         "process leak snapshot"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "post-concurrency-health",
@@ -78,7 +80,8 @@
         "provider logs",
         "plugin errors",
         "memory after concurrent turns"
-      ]
+      ],
+      "healthScope": "post-ready"
     }
   ],
   "proves": [

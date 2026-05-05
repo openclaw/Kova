@@ -28,7 +28,8 @@
       "evidence": [
         "baseline gateway status",
         "readiness classification"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "reject-invalid-plugin",
@@ -41,7 +42,8 @@
         "install command rejected",
         "validation error",
         "no install record committed"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "post-failure-health",
@@ -56,7 +58,8 @@
         "gateway status",
         "plugin list",
         "logs after invalid install"
-      ]
+      ],
+      "healthScope": "post-ready"
     }
   ],
   "proves": [

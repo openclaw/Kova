@@ -27,7 +27,8 @@
       "evidence": [
         "baseline status",
         "gateway PID"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "diagnostics",
@@ -41,7 +42,8 @@
         "error classification",
         "gateway survival",
         "recovery guidance"
-      ]
+      ],
+      "healthScope": "post-ready"
     }
   ],
   "proves": [

@@ -42,7 +42,8 @@
         "stable channel start output",
         "pre-upgrade gateway status",
         "pre-upgrade OpenClaw status"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "upgrade",
@@ -56,7 +57,8 @@
         "snapshot id",
         "doctor/update output",
         "rollback status"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "post-upgrade",
@@ -75,7 +77,8 @@
         "plugins install index",
         "doctor output",
         "gateway logs without missing dependency/plugin load failures"
-      ]
+      ],
+      "healthScope": "post-ready"
     }
   ],
   "proves": [

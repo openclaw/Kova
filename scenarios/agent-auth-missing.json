@@ -42,7 +42,8 @@
         "runtime binding",
         "startup readiness",
         "no Kova auth setup phase"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "missing-auth-agent-turn",
@@ -57,7 +58,8 @@
         "no provider request",
         "process leak snapshot",
         "role resource samples"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "post-auth-failure-health",
@@ -72,7 +74,8 @@
         "auth failure logs",
         "plugin errors",
         "memory after auth failure"
-      ]
+      ],
+      "healthScope": "post-ready"
     }
   ],
   "proves": [

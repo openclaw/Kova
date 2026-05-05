@@ -41,7 +41,8 @@
         "gateway port",
         "runtime binding",
         "startup readiness"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "streaming-stall-provider-turn",
@@ -57,7 +58,8 @@
         "process leak snapshot",
         "gateway remains supervised",
         "role resource samples"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "post-failure-health",
@@ -72,7 +74,8 @@
         "provider logs",
         "plugin errors",
         "memory after streaming stall"
-      ]
+      ],
+      "healthScope": "post-ready"
     }
   ],
   "proves": [

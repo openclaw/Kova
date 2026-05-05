@@ -36,7 +36,8 @@
         "time to listening",
         "time to health ready",
         "readiness classification"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "post-start",
@@ -52,7 +53,8 @@
         "status command latency",
         "plugin list",
         "plugin startup health"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "startup-logs",
@@ -66,7 +68,8 @@
         "missing dependency errors",
         "plugin service failures",
         "startup phase logs"
-      ]
+      ],
+      "healthScope": "post-ready"
     }
   ],
   "proves": [

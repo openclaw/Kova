@@ -37,7 +37,8 @@
         "Node version",
         "runtime version",
         "gateway port"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "core-smoke",
@@ -53,7 +54,8 @@
         "plugin list",
         "filesystem stall logs",
         "health latency"
-      ]
+      ],
+      "healthScope": "post-ready"
     }
   ],
   "proves": [

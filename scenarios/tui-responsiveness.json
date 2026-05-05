@@ -30,7 +30,8 @@
       "evidence": [
         "gateway status",
         "readiness classification"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "tui-smoke",
@@ -43,7 +44,8 @@
         "TUI render time",
         "connected screen",
         "clean interrupt"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "post-tui-health",
@@ -57,7 +59,8 @@
         "status after TUI",
         "TUI disconnect logs",
         "gateway errors"
-      ]
+      ],
+      "healthScope": "post-ready"
     }
   ],
   "proves": [

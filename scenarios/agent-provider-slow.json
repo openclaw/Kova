@@ -44,7 +44,8 @@
         "gateway port",
         "runtime binding",
         "startup readiness"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "slow-provider-turn",
@@ -58,7 +59,8 @@
         "provider delay timing",
         "pre-provider timing",
         "role resource samples"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "post-failure-health",
@@ -73,7 +75,8 @@
         "provider logs",
         "plugin errors",
         "memory after provider delay"
-      ]
+      ],
+      "healthScope": "post-ready"
     }
   ],
   "proves": [

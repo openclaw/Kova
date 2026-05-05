@@ -18,8 +18,8 @@
     "preProviderMs": 10000,
     "providerFinalMs": 3000,
     "agentCleanupMs": 5000,
-    "healthP95Ms": 1000,
-    "peakRssMb": 900
+    "peakRssMb": 900,
+    "postReadyHealthP95Ms": 1000
   },
   "roleThresholds": {
     "gateway": {
@@ -81,7 +81,7 @@
         "warmPreProviderMs",
         "agentPreProviderP95Ms",
         "agentCleanupMaxMs",
-        "healthP95Ms",
+        "postReadyHealthP95Ms",
         "peakRssMb",
         "providerTimeoutMentions",
         "pluginLoadFailures"

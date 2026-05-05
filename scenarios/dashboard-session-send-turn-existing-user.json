@@ -41,7 +41,8 @@
         "source env",
         "clone root",
         "cloned OpenClaw config"
-      ]
+      ],
+      "healthScope": "none"
     },
     {
       "id": "upgrade",
@@ -55,7 +56,8 @@
         "upgrade JSON",
         "runtime binding",
         "post-upgrade service state"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "gateway-start",
@@ -69,7 +71,8 @@
         "gateway service installed",
         "gateway service started",
         "startup readiness"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "dashboard-session-turn",
@@ -85,7 +88,8 @@
         "provider timing",
         "gateway health after turn",
         "role resource samples"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "post-dashboard-health",
@@ -101,7 +105,8 @@
         "liveness warnings",
         "plugin errors",
         "memory after dashboard turn"
-      ]
+      ],
+      "healthScope": "post-ready"
     }
   ],
   "proves": [

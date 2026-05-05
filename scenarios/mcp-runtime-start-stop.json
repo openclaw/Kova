@@ -37,7 +37,8 @@
         "gateway status",
         "gateway port",
         "readiness classification"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "mcp-bridge",
@@ -51,7 +52,8 @@
         "tools/list timing",
         "tool count",
         "bridge process exit"
-      ]
+      ],
+      "healthScope": "post-ready"
     },
     {
       "id": "post-mcp-health",
@@ -65,7 +67,8 @@
         "status after MCP bridge",
         "MCP bridge errors",
         "gateway errors"
-      ]
+      ],
+      "healthScope": "post-ready"
     }
   ],
   "proves": [

@@ -18,9 +18,9 @@
     "modelsListMs": 20000,
     "soakCommandP95Ms": 12000,
     "soakHealthP95Ms": 1000,
-    "healthP95Ms": 1000,
     "peakRssMb": 1000,
-    "eventLoopMaxMs": 500
+    "eventLoopMaxMs": 500,
+    "postReadyHealthP95Ms": 1000
   },
   "roleThresholds": {
     "gateway": {
@@ -74,7 +74,7 @@
         "soakCommandP95Ms",
         "soakHealthP95Ms",
         "peakRssMb",
-        "healthP95Ms",
+        "postReadyHealthP95Ms",
         "eventLoopMaxMs"
       ]
     }

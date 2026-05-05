@@ -28,7 +28,8 @@
         "models list duration",
         "provider timeout warnings",
         "gateway status after model discovery"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "logs",
@@ -41,7 +42,8 @@
         "timeout logs",
         "auth skip logs",
         "gateway stall logs"
-      ]
+      ],
+      "healthScope": "post-ready"
     }
   ],
   "proves": [

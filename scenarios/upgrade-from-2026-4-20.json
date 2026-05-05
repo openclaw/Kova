@@ -32,7 +32,8 @@
         "clone result",
         "source env",
         "clone root"
-      ]
+      ],
+      "healthScope": "none"
     },
     {
       "id": "source-runtime",
@@ -47,7 +48,8 @@
         "2026.4.20 upgrade output",
         "pre-upgrade service status",
         "pre-upgrade OpenClaw status"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "upgrade",
@@ -61,7 +63,8 @@
         "snapshot id",
         "doctor/update output",
         "rollback status"
-      ]
+      ],
+      "healthScope": "readiness"
     },
     {
       "id": "post-upgrade",
@@ -78,7 +81,8 @@
         "plugins folder/index presence",
         "doctor output",
         "gateway logs"
-      ]
+      ],
+      "healthScope": "post-ready"
     }
   ],
   "proves": [

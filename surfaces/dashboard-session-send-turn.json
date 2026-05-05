@@ -14,8 +14,8 @@
     "agentTurnMs": 45000,
     "preProviderMs": 10000,
     "providerFinalMs": 3000,
-    "healthP95Ms": 1000,
-    "peakRssMb": 900
+    "peakRssMb": 900,
+    "postReadyHealthP95Ms": 1000
   },
   "roleThresholds": {
     "gateway": {
@@ -61,7 +61,7 @@
         "agentTurnMs",
         "agentTurnP95Ms",
         "coldPreProviderMs",
-        "healthP95Ms",
+        "postReadyHealthP95Ms",
         "peakRssMb",
         "pluginLoadFailures"
       ]

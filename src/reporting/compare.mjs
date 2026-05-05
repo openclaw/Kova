@@ -21,6 +21,11 @@ const defaultThresholds = {
   timeToHealthReadyMs: 5000,
   readinessFailures: 0,
   healthP95Ms: 1000,
+  startupHealthFailures: 0,
+  postReadyHealthFailures: 0,
+  finalHealthFailures: 0,
+  startupHealthP95Ms: 1000,
+  postReadyHealthP95Ms: 1000,
   gatewayRestartCount: 0,
   providerTimeoutMentions: 0,
   eventLoopDelayMentions: 0,
@@ -317,6 +322,8 @@ function diagnosticRecordSummary(record) {
     providerFinalMs: measurements.agentProviderFinalMs ?? measurements.coldProviderFinalMs ?? null,
     runtimeDepsStagingMs: measurements.runtimeDepsStagingMs ?? null,
     timeToHealthReadyMs: measurements.timeToHealthReadyMs ?? null,
+    startupHealthP95Ms: measurements.startupHealthP95Ms ?? null,
+    postReadyHealthP95Ms: measurements.postReadyHealthP95Ms ?? null,
     peakRssMb: measurements.peakRssMb ?? null
   };
 }
@@ -406,6 +413,11 @@ function metricDeltas(baseline, current) {
     "timeToHealthReadyMs",
     "healthP95Ms",
     "healthFailures",
+    "startupHealthP95Ms",
+    "postReadyHealthP95Ms",
+    "startupHealthFailures",
+    "postReadyHealthFailures",
+    "finalHealthFailures",
     "readinessFailures",
     "missingDependencyErrors",
     "pluginLoadFailures",

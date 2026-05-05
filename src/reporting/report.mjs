@@ -114,8 +114,7 @@ export function renderMarkdownReport(report) {
       lines.push(`- TCP connect max: ${record.measurements.tcpConnectMaxMs ?? "unknown"} ms`);
       lines.push(`- Missing dependency errors: ${record.measurements.missingDependencyErrors ?? "unknown"}`);
       lines.push(`- Final gateway state: ${record.measurements.finalGatewayState ?? "unknown"}`);
-      lines.push(`- Health failures: ${record.measurements.healthFailures ?? "unknown"}`);
-      lines.push(`- Health p95: ${record.measurements.healthP95Ms ?? "unknown"} ms`);
+      lines.push(...formatHealthMeasurementLines(record.measurements));
       if (record.measurements.soakEvidence?.available) {
         lines.push(`- Soak trend: duration ${record.measurements.soakDurationMs ?? "unknown"} ms; iterations ${record.measurements.soakIterations ?? "unknown"}; command p95 ${record.measurements.soakCommandP95Ms ?? "unknown"} ms; health p95 ${record.measurements.soakHealthP95Ms ?? "unknown"} ms; RSS growth ${record.measurements.rssGrowthMb ?? "unknown"} MB; gateway RSS growth ${record.measurements.gatewayRssGrowthMb ?? "unknown"} MB`);
       }
@@ -499,6 +498,26 @@ function formatMetrics(metrics) {
   return lines.length > 0 ? lines : ["- unavailable"];
 }
 
+function formatHealthMeasurementLines(measurements) {
+  const health = measurements.health;
+  const lines = [
+    `- Health failures: ${measurements.healthFailures ?? "unknown"}`,
+    `- Startup health p95: ${measurements.startupHealthP95Ms ?? health?.startupSamples?.p95Ms ?? "unknown"} ms`,
+    `- Post-ready liveness p95: ${measurements.postReadyHealthP95Ms ?? health?.postReadySamples?.p95Ms ?? "unknown"} ms`,
+    `- Final health failures: ${measurements.finalHealthFailures ?? health?.final?.failureCount ?? "unknown"}`
+  ];
+  if (health?.final) {
+    const healthState = health.final.healthOk === null ? "unknown" : health.final.healthOk ? "ok" : "not-ok";
+    lines.push(`- Final health state: gateway ${health.final.gatewayState ?? "unknown"}; health ${healthState}`);
+  }
+  if (health?.slowestSample) {
+    lines.push(`- Slowest health sample: ${health.slowestSample.scope} ${health.slowestSample.phaseId ?? "unknown"} ${health.slowestSample.durationMs} ms`);
+  } else if (measurements.healthP95Ms !== null && measurements.healthP95Ms !== undefined) {
+    lines.push(`- Compatibility health p95: ${measurements.healthP95Ms} ms`);
+  }
+  return lines;
+}
+
 function formatRecordFailureCards(records = []) {
   const cards = records
     .filter((record) => !["PASS", "DRY-RUN"].includes(record.status))
@@ -670,7 +689,14 @@ function summarizeMeasurements(measurements) {
     timeToHealthReadyMs: measurements.timeToHealthReadyMs ?? null,
     readinessClassification: measurements.readinessClassification ?? null,
     readinessClassificationReason: measurements.readinessClassificationReason ?? null,
+    health: measurements.health ?? null,
     healthFailures: measurements.healthFailures ?? null,
+    healthP95Ms: measurements.healthP95Ms ?? null,
+    startupHealthP95Ms: measurements.startupHealthP95Ms ?? null,
+    postReadyHealthP95Ms: measurements.postReadyHealthP95Ms ?? null,
+    startupHealthFailures: measurements.startupHealthFailures ?? null,
+    postReadyHealthFailures: measurements.postReadyHealthFailures ?? null,
+    finalHealthFailures: measurements.finalHealthFailures ?? null,
     missingDependencyErrors: measurements.missingDependencyErrors ?? null,
     pluginLoadFailures: measurements.pluginLoadFailures ?? null,
     officialPluginEvidence: measurements.officialPluginEvidence ?? null,
@@ -1150,6 +1176,7 @@ function compactRolePeaks(measurements) {
 function pushMeasurementBrief(lines, measurements, { compact }) {
   lines.push("Measurements:");
   lines.push(`- startup: listening ${valueMs(measurements.timeToListeningMs)}; health ${valueMs(measurements.timeToHealthReadyMs)}; readiness ${measurements.readinessClassification ?? "unknown"}; gateway ${measurements.finalGatewayState ?? "unknown"}; restarts ${measurements.gatewayRestartCount ?? "unknown"}`);
+  lines.push(`- health: startup p95 ${valueMs(measurements.startupHealthP95Ms)}; post-ready p95 ${valueMs(measurements.postReadyHealthP95Ms)}; failures ${measurements.healthFailures ?? "unknown"}; final failures ${measurements.finalHealthFailures ?? "unknown"}${healthSlowestText(measurements)}`);
   lines.push(`- resources: peak RSS ${valueMb(measurements.peakRssMb)}; max CPU ${valuePercent(measurements.cpuPercentMax)}; samples ${measurements.resourceSampleCount ?? "unknown"}; roles ${rolePeakText(measurements)}`);
   lines.push(`- agent: turn ${valueMs(measurements.agentTurnMs, "not-run")}; cold/warm ${valueMs(measurements.coldAgentTurnMs)}/${valueMs(measurements.warmAgentTurnMs)}; cold-warm delta ${valueMs(measurements.agentColdWarmDeltaMs)}; pre-provider ${valueMs(measurements.agentPreProviderMs)}; provider ${valueMs(measurements.agentProviderFinalMs)}; cleanup ${valueMs(measurements.agentCleanupMaxMs)}; diagnosis ${measurements.agentLatencyDiagnosis?.kind ?? "unknown"}; leaks ${measurements.agentProcessLeakCount ?? "unknown"}`);
   lines.push(`- plugins/runtime: missing deps ${measurements.missingDependencyErrors ?? "unknown"}; plugin failures ${measurements.pluginLoadFailures ?? "unknown"}; runtime deps ${valueMs(measurements.runtimeDepsStagingMs)}${runtimeDepsPluginText(measurements)}; warm restages ${measurements.warmRuntimeDepsRestageCount ?? "unknown"}; warm reuse ${measurements.runtimeDepsWarmReuseOk ?? "unknown"}`);
@@ -1221,6 +1248,14 @@ function valueMb(value) {
 
 function valuePercent(value) {
   return value === null || value === undefined ? "unknown" : `${value}%`;
+}
+
+function healthSlowestText(measurements) {
+  const slowest = measurements.health?.slowestSample;
+  if (!slowest) {
+    return "";
+  }
+  return `; slowest ${slowest.scope}/${slowest.phaseId ?? "unknown"} ${valueMs(slowest.durationMs)}`;
 }
 
 function buildFixerPrompt({ report, primaryBlocker, why, measurements, evidence, likelyOwner }) {
