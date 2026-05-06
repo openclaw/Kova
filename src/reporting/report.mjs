@@ -1,4 +1,5 @@
 import { summarizeAgentTurnBreakdownForMarkdown } from "../collectors/agent-turns.mjs";
+import { agentCliPreProviderMarkdownRows } from "../collectors/agent-cli-attribution.mjs";
 import { dashboardPreProviderMarkdownRows } from "../collectors/dashboard-turn-attribution.mjs";
 import { healthTotalFailures } from "../health.mjs";
 
@@ -186,6 +187,9 @@ export function renderMarkdownReport(report) {
         if (record.measurements.dashboardPreProviderAttribution?.count > 0) {
           lines.push(`- Dashboard pre-provider known: cold ${record.measurements.coldPreProviderAttributedMs ?? "unknown"} ms; warm ${record.measurements.warmPreProviderAttributedMs ?? "unknown"} ms; unattributed cold ${record.measurements.coldPreProviderUnattributedMs ?? "unknown"} ms; warm ${record.measurements.warmPreProviderUnattributedMs ?? "unknown"} ms`);
         }
+        if (record.measurements.agentCliPreProviderAttribution?.count > 0) {
+          lines.push(`- Agent CLI pre-provider known: cold ${record.measurements.coldPreProviderAttributedMs ?? "unknown"} ms; warm ${record.measurements.warmPreProviderAttributedMs ?? "unknown"} ms; unattributed cold ${record.measurements.coldPreProviderUnattributedMs ?? "unknown"} ms; warm ${record.measurements.warmPreProviderUnattributedMs ?? "unknown"} ms`);
+        }
         lines.push(`- Agent provider final: cold ${record.measurements.coldProviderFinalMs ?? "unknown"} ms; warm ${record.measurements.warmProviderFinalMs ?? "unknown"} ms`);
         lines.push(`- Agent turn stats: count ${record.measurements.agentTurnCount}; p95 ${record.measurements.agentTurnP95Ms ?? "unknown"} ms; max ${record.measurements.agentTurnMaxMs ?? "unknown"} ms; pre-provider p95 ${record.measurements.agentPreProviderP95Ms ?? "unknown"} ms`);
         lines.push(`- Agent active-turn diagnostics: metadata scans ${record.measurements.agentMetadataScanCount ?? "unknown"} (${record.measurements.agentMetadataScanTotalMs ?? "unknown"} ms total); event-loop max ${record.measurements.agentEventLoopMaxMs ?? "unknown"} ms; session polls ${record.measurements.agentSessionPollCount ?? "unknown"} (${record.measurements.agentSessionPollErrorCount ?? "unknown"} errors)`);
@@ -244,6 +248,7 @@ export function renderMarkdownReport(report) {
           }
         }
         lines.push(...dashboardPreProviderMarkdownRows(record.measurements.agentTurns));
+        lines.push(...agentCliPreProviderMarkdownRows(record.measurements.agentTurns));
       }
       lines.push(`- Profiling: ${record.profiling?.enabled ? "enabled" : "off"} (${record.profiling?.interpretation ?? "unknown"})`);
       lines.push(`- V8 reports / heap snapshots: ${record.measurements.v8ReportCount ?? "unknown"} / ${record.measurements.heapSnapshotCount ?? "unknown"}`);
@@ -736,6 +741,7 @@ function summarizeMeasurements(measurements) {
     agentSessionPollCount: measurements.agentSessionPollCount ?? null,
     agentSessionPollErrorCount: measurements.agentSessionPollErrorCount ?? null,
     dashboardPreProviderAttribution: measurements.dashboardPreProviderAttribution ?? null,
+    agentCliPreProviderAttribution: measurements.agentCliPreProviderAttribution ?? null,
     coldPreProviderAttributedMs: measurements.coldPreProviderAttributedMs ?? null,
     warmPreProviderAttributedMs: measurements.warmPreProviderAttributedMs ?? null,
     coldPreProviderUnattributedMs: measurements.coldPreProviderUnattributedMs ?? null,
@@ -1202,6 +1208,9 @@ function pushMeasurementBrief(lines, measurements, { compact }) {
   lines.push(`- agent: turn ${valueMs(measurements.agentTurnMs, "not-run")}; cold/warm ${valueMs(measurements.coldAgentTurnMs)}/${valueMs(measurements.warmAgentTurnMs)}; cold-warm delta ${valueMs(measurements.agentColdWarmDeltaMs)}; pre-provider ${valueMs(measurements.agentPreProviderMs)}; provider ${valueMs(measurements.agentProviderFinalMs)}; metadata scans ${measurements.agentMetadataScanCount ?? "unknown"} (${valueMs(measurements.agentMetadataScanTotalMs)}); event-loop ${valueMs(measurements.agentEventLoopMaxMs)}; polls ${measurements.agentSessionPollCount ?? "unknown"}; cleanup ${valueMs(measurements.agentCleanupMaxMs)}; diagnosis ${measurements.agentLatencyDiagnosis?.kind ?? "unknown"}; leaks ${measurements.agentProcessLeakCount ?? "unknown"}`);
   if (measurements.dashboardPreProviderAttribution?.count > 0) {
     lines.push(`- dashboard attribution: cold known ${valueMs(measurements.coldPreProviderAttributedMs)} / unattributed ${valueMs(measurements.coldPreProviderUnattributedMs)}; warm known ${valueMs(measurements.warmPreProviderAttributedMs)} / unattributed ${valueMs(measurements.warmPreProviderUnattributedMs)}`);
+  }
+  if (measurements.agentCliPreProviderAttribution?.count > 0) {
+    lines.push(`- agent CLI attribution: cold known ${valueMs(measurements.coldPreProviderAttributedMs)} / unattributed ${valueMs(measurements.coldPreProviderUnattributedMs)}; warm known ${valueMs(measurements.warmPreProviderAttributedMs)} / unattributed ${valueMs(measurements.warmPreProviderUnattributedMs)}`);
   }
   lines.push(`- plugins/runtime: missing deps ${measurements.missingDependencyErrors ?? "unknown"}; plugin failures ${measurements.pluginLoadFailures ?? "unknown"}; runtime deps ${valueMs(measurements.runtimeDepsStagingMs)}${runtimeDepsPluginText(measurements)}; warm restages ${measurements.warmRuntimeDepsRestageCount ?? "unknown"}; warm reuse ${measurements.runtimeDepsWarmReuseOk ?? "unknown"}`);
 

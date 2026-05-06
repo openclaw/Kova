@@ -31,6 +31,7 @@ import {
   buildAgentTurnBreakdown,
   summarizeAgentTurnBreakdownForMarkdown
 } from "./collectors/agent-turns.mjs";
+import { buildAgentCliPreProviderAttribution } from "./collectors/agent-cli-attribution.mjs";
 import {
   attributedSpanIntervals,
   buildDashboardPreProviderAttribution
@@ -378,6 +379,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(agentTurnBreakdownCheck());
     checks.push(gatewaySessionTurnEvaluationCheck());
     checks.push(dashboardPreProviderAttributionCheck());
+    checks.push(agentCliPreProviderAttributionCheck());
     checks.push(await mockProviderBehaviorCheck(tmp));
     checks.push(providerFailureEvaluationCheck());
     checks.push(agentColdWarmEvaluationCheck());
@@ -2413,6 +2415,105 @@ function dashboardPreProviderAttributionCheck() {
   }
 }
 
+function agentCliPreProviderAttributionCheck() {
+  try {
+    const base = 1777536000000;
+    const timelineText = [
+      timelineEvent({ type: "span.start", name: "agent.turn", timestamp: base + 1000, spanId: "cold-turn" }),
+      timelineEvent({ type: "span.start", name: "agent.prepare", timestamp: base + 1020, spanId: "cold-prepare" }),
+      timelineEvent({ type: "span.end", name: "agent.prepare", timestamp: base + 1120, spanId: "cold-prepare", durationMs: 100 }),
+      timelineEvent({ type: "span.start", name: "models.catalog.gateway", timestamp: base + 1080, spanId: "cold-models" }),
+      timelineEvent({ type: "span.end", name: "models.catalog.gateway", timestamp: base + 1180, spanId: "cold-models", durationMs: 100 }),
+      timelineEvent({ type: "span.start", name: "channel.plugin.load", timestamp: base + 1150, spanId: "cold-channel" }),
+      timelineEvent({ type: "span.error", name: "channel.plugin.load", timestamp: base + 1170, spanId: "cold-channel", durationMs: 20, errorName: "SyntheticError" }),
+      timelineEvent({ type: "span.end", name: "plugins.metadata.scan", timestamp: base + 1190, spanId: "cold-scan", durationMs: 30 }),
+      timelineEvent({ type: "provider.request", name: "provider.request", timestamp: base + 1200, receivedAtEpochMs: base + 1200, respondedAtEpochMs: base + 1700, durationMs: 500 }),
+      timelineEvent({ type: "span.end", name: "agent.turn", timestamp: base + 1900, spanId: "cold-turn", durationMs: 900 }),
+      timelineEvent({ type: "span.start", name: "runtimeDeps.stage", timestamp: base + 11020, spanId: "warm-runtime" }),
+      timelineEvent({ type: "span.end", name: "runtimeDeps.stage", timestamp: base + 11070, spanId: "warm-runtime", durationMs: 50 }),
+      timelineEvent({ type: "span.start", name: "channel.capabilities", timestamp: base + 11080, spanId: "warm-channel" }),
+      timelineEvent({ type: "span.end", name: "channel.capabilities", timestamp: base + 11110, spanId: "warm-channel", durationMs: 30 }),
+      timelineEvent({ type: "provider.request", name: "provider.request", timestamp: base + 11200, receivedAtEpochMs: base + 11200, respondedAtEpochMs: base + 11500, durationMs: 300 }),
+      timelineEvent({ type: "eventLoop.sample", name: "eventLoop.sample", timestamp: base + 11250, maxMs: 6 })
+    ].join("\n");
+    const parsed = parseTimelineText(timelineText);
+    assertEqual(parsed.turnAttributionEvents.length, 16, "agent CLI turn attribution events retained");
+
+    const coldAttribution = buildAgentCliPreProviderAttribution({
+      label: "cold",
+      phaseId: "cold-agent-turn",
+      activeStartedAtEpochMs: base + 1000,
+      activeFinishedAtEpochMs: base + 1900,
+      attribution: {
+        firstProviderRequestAtEpochMs: base + 1200,
+        preProviderMs: 200,
+        providerFinalMs: 500
+      },
+      timelineSummary: {
+        available: true,
+        turnAttributionEvents: parsed.turnAttributionEvents,
+        artifacts: ["/tmp/kova/openclaw/timeline.jsonl"]
+      }
+    });
+    assertEqual(coldAttribution.available, true, "agent CLI cold attribution available");
+    assertEqual(coldAttribution.knownAttributedMs, 170, "agent CLI overlap-safe cold known attribution");
+    assertEqual(coldAttribution.unattributedMs, 30, "agent CLI cold unattributed remainder");
+    assertEqual(coldAttribution.spanSummaries.some((span) => span.name === "agent.turn"), false, "agent.turn parent span is not counted as pre-provider work");
+    assertEqual(coldAttribution.spanSummaries.find((span) => span.name === "channel.plugin.load")?.errorCount, 1, "agent CLI error span summary");
+
+    const missingAttribution = buildAgentCliPreProviderAttribution({
+      label: "cold",
+      phaseId: "cold-agent-turn",
+      activeStartedAtEpochMs: base + 1000,
+      activeFinishedAtEpochMs: base + 1900,
+      attribution: { firstProviderRequestAtEpochMs: base + 1200, preProviderMs: 200 },
+      timelineSummary: { available: false, artifacts: [] }
+    });
+    assertEqual(missingAttribution.available, false, "agent CLI missing timeline unavailable");
+    assertEqual(missingAttribution.unattributedMs, 200, "agent CLI missing timeline preserves full remainder");
+
+    const record = syntheticAgentCliRecord({ base, timeline: parsed });
+    evaluateRecord(record, {
+      id: "agent-cold-warm-message",
+      agent: { expectedText: "KOVA_AGENT_OK" },
+      thresholds: { agentTurnMs: 2000, coldAgentTurnMs: 2000, warmAgentTurnMs: 1000 }
+    }, { surface: { thresholds: {} }, targetPlan: { kind: "runtime" } });
+    assertEqual(record.measurements.agentCliPreProviderAttribution.count, 2, "record agent CLI attribution count");
+    assertEqual(record.measurements.dashboardPreProviderAttribution.count, 0, "record dashboard attribution stays empty for CLI turns");
+    assertEqual(record.measurements.coldPreProviderAttributedMs, 170, "record agent CLI cold attributed metric");
+    assertEqual(record.measurements.warmPreProviderAttributedMs, 80, "record agent CLI warm attributed metric");
+    assertEqual(record.measurements.warmPreProviderUnattributedMs, 120, "record agent CLI warm unattributed metric");
+    assertEqual(record.measurements.agentTurns[0].agentCliPreProviderAttribution.timelineArtifacts[0], "/tmp/kova/openclaw/timeline.jsonl", "record agent CLI timeline artifact");
+
+    const rendered = renderMarkdownReport({
+      generatedAt: "2026-05-01T00:00:00.000Z",
+      runId: "self-check-agent-cli-pre-provider",
+      mode: "self-check",
+      target: "runtime:stable",
+      platform: { os: "test", release: "test", arch: "test", node: "test" },
+      records: [record],
+      summary: { statuses: { PASS: 1 } }
+    });
+    assertEqual(rendered.includes("Agent CLI pre-provider attribution:"), true, "markdown includes agent CLI attribution table");
+    assertEqual(rendered.includes("`channel.plugin.load`"), true, "markdown includes agent CLI span table");
+
+    return {
+      id: "agent-cli-pre-provider-attribution",
+      status: "PASS",
+      command: "evaluate synthetic agent CLI pre-provider timeline attribution",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "agent-cli-pre-provider-attribution",
+      status: "FAIL",
+      command: "evaluate synthetic agent CLI pre-provider timeline attribution",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
 function timelineEvent(event) {
   const timestamp = typeof event.timestamp === "number" ? new Date(event.timestamp).toISOString() : event.timestamp;
   return JSON.stringify({
@@ -2526,6 +2627,91 @@ function syntheticDashboardSessionRecord({ base, timeline }) {
         artifacts: ["/tmp/kova/openclaw/timeline.jsonl"]
       }
     }
+  };
+}
+
+function syntheticAgentCliRecord({ base, timeline }) {
+  return {
+    scenario: "agent-cold-warm-message",
+    surface: "agent-cold-warm-message",
+    title: "Agent CLI cold/warm",
+    status: "PASS",
+    cleanup: "done",
+    auth: { mode: "mock" },
+    phases: [
+      syntheticAgentCliTurnPhase({
+        id: "cold-agent-turn",
+        startedAtEpochMs: base + 1000,
+        finishedAtEpochMs: base + 1900
+      }),
+      syntheticAgentCliTurnPhase({
+        id: "warm-agent-turn",
+        startedAtEpochMs: base + 11000,
+        finishedAtEpochMs: base + 11600
+      })
+    ],
+    providerEvidence: {
+      available: true,
+      requestCount: 2,
+      requests: [
+        {
+          requestId: "cold-provider",
+          receivedAt: new Date(base + 1200).toISOString(),
+          receivedAtEpochMs: base + 1200,
+          respondedAt: new Date(base + 1700).toISOString(),
+          respondedAtEpochMs: base + 1700,
+          firstByteLatencyMs: 20,
+          firstChunkLatencyMs: 25,
+          route: "/v1/responses",
+          model: "gpt-5.5",
+          status: 200
+        },
+        {
+          requestId: "warm-provider",
+          receivedAt: new Date(base + 11200).toISOString(),
+          receivedAtEpochMs: base + 11200,
+          respondedAt: new Date(base + 11500).toISOString(),
+          respondedAtEpochMs: base + 11500,
+          firstByteLatencyMs: 18,
+          firstChunkLatencyMs: 20,
+          route: "/v1/responses",
+          model: "gpt-5.5",
+          status: 200
+        }
+      ]
+    },
+    finalMetrics: {
+      service: { gatewayState: "running" },
+      logs: zeroLogMetrics(),
+      timeline: {
+        ...timeline,
+        artifacts: ["/tmp/kova/openclaw/timeline.jsonl"]
+      }
+    }
+  };
+}
+
+function syntheticAgentCliTurnPhase({ id, startedAtEpochMs, finishedAtEpochMs }) {
+  const command = "ocm @kova -- agent --local --agent main --session-id kova-agent-cold-warm --message hi --json";
+  return {
+    id,
+    title: id,
+    intent: "Synthetic agent CLI turn",
+    commands: [command],
+    evidence: [],
+    results: [{
+      command,
+      status: 0,
+      timedOut: false,
+      startedAt: new Date(startedAtEpochMs).toISOString(),
+      startedAtEpochMs,
+      finishedAt: new Date(finishedAtEpochMs).toISOString(),
+      finishedAtEpochMs,
+      durationMs: finishedAtEpochMs - startedAtEpochMs,
+      stdout: "{\"finalAssistantVisibleText\":\"KOVA_AGENT_OK\"}",
+      stderr: ""
+    }],
+    metrics: { logs: zeroLogMetrics(), health: { ok: true } }
   };
 }
 

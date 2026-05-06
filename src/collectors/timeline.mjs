@@ -447,9 +447,18 @@ function isTurnAttributionEvent(event) {
   }
   return event.name === "plugins.metadata.scan" ||
     event.name === "provider.request" ||
+    event.name === "agent.prepare" ||
+    event.name === "agent.turn" ||
+    event.name === "agent.cleanup" ||
+    event.name === "runtimeDeps.stage" ||
+    event.name === "channel.capabilities" ||
+    event.name === "models.catalog" ||
     event.name === "auto_reply" ||
     event.name.startsWith("auto_reply.") ||
     event.name.startsWith("gateway.chat_send") ||
+    event.name.startsWith("models.catalog.") ||
+    event.name.startsWith("models.discovery") ||
+    event.name.startsWith("channel.plugin.") ||
     event.name.startsWith("reply.");
 }
 

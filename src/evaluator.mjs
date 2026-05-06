@@ -1,5 +1,9 @@
 import { buildAgentTurnBreakdown } from "./collectors/agent-turns.mjs";
 import {
+  buildAgentCliPreProviderAttribution,
+  summarizeAgentCliPreProviderAttributions
+} from "./collectors/agent-cli-attribution.mjs";
+import {
   buildDashboardPreProviderAttribution,
   summarizeDashboardPreProviderAttributions
 } from "./collectors/dashboard-turn-attribution.mjs";
@@ -82,6 +86,11 @@ export function evaluateRecord(record, scenario, options = {}) {
   const agentTurnStats = summarizeAgentTurnStats(agentTurns);
   const agentTurnDiagnostics = summarizeAgentTurnDiagnostics(agentTurns);
   const dashboardPreProviderAttribution = summarizeDashboardPreProviderAttributions(agentTurns);
+  const agentCliPreProviderAttribution = summarizeAgentCliPreProviderAttributions(agentTurns);
+  const turnPreProviderAttribution = preferredPreProviderAttributionSummary(
+    dashboardPreProviderAttribution,
+    agentCliPreProviderAttribution
+  );
   const agentTurnMs = maxTurnDuration(agentTurns);
   const agentResponseOk = agentTurns.length === 0 ? null : agentTurns.every((turn) => turn.responseOk === true);
   const agentProviderSimulation = evaluateProviderSimulation({ turns: agentTurns, scenario, record, thresholds });
@@ -760,12 +769,13 @@ export function evaluateRecord(record, scenario, options = {}) {
     agentSessionPollCount: agentTurnDiagnostics.sessionPollCount,
     agentSessionPollErrorCount: agentTurnDiagnostics.sessionPollErrorCount,
     dashboardPreProviderAttribution,
-    coldPreProviderAttributedMs: dashboardPreProviderAttribution.cold.knownAttributedMs.median,
-    warmPreProviderAttributedMs: dashboardPreProviderAttribution.warm.knownAttributedMs.median,
-    coldPreProviderUnattributedMs: dashboardPreProviderAttribution.cold.unattributedMs.median,
-    warmPreProviderUnattributedMs: dashboardPreProviderAttribution.warm.unattributedMs.median,
-    coldPreProviderAttributionCoverage: dashboardPreProviderAttribution.cold.coverageRatio.median,
-    warmPreProviderAttributionCoverage: dashboardPreProviderAttribution.warm.coverageRatio.median,
+    agentCliPreProviderAttribution,
+    coldPreProviderAttributedMs: turnPreProviderAttribution.cold.knownAttributedMs.median,
+    warmPreProviderAttributedMs: turnPreProviderAttribution.warm.knownAttributedMs.median,
+    coldPreProviderUnattributedMs: turnPreProviderAttribution.cold.unattributedMs.median,
+    warmPreProviderUnattributedMs: turnPreProviderAttribution.warm.unattributedMs.median,
+    coldPreProviderAttributionCoverage: turnPreProviderAttribution.cold.coverageRatio.median,
+    warmPreProviderAttributionCoverage: turnPreProviderAttribution.warm.coverageRatio.median,
     coldAgentTurnMs: coldAgentTurn?.totalTurnMs ?? null,
     warmAgentTurnMs: warmAgentTurn?.totalTurnMs ?? null,
     agentColdWarmDeltaMs: delta(coldAgentTurn?.totalTurnMs, warmAgentTurn?.totalTurnMs),
@@ -981,6 +991,7 @@ function collectAgentTurns(record, providerEvidence, scenario, timelineSummary, 
         : null;
       const expectedFailureObserved = expectedFailure === true && result.status === 0 && result.timedOut !== true;
       const normalResponseOk = result.status === 0 && result.timedOut !== true && response.usable === true && (expectedTextPresent !== false);
+      const isAgentCliTurn = isAgentCliMessageCommand(result.command);
       const phaseBreakdown = buildAgentTurnBreakdown({ result: timingResult, attribution, timelineSummary, logSummary });
       const turnDiagnostics = summarizeActiveTurnDiagnostics({
         timelineSummary,
@@ -990,6 +1001,16 @@ function collectAgentTurns(record, providerEvidence, scenario, timelineSummary, 
       });
       const dashboardPreProviderAttribution = gatewaySession
         ? buildDashboardPreProviderAttribution({
+            label: agentTurnLabel(phase.id, index),
+            phaseId: phase.id,
+            activeStartedAtEpochMs: timingResult.startedAtEpochMs,
+            activeFinishedAtEpochMs: timingResult.finishedAtEpochMs,
+            attribution,
+            timelineSummary
+          })
+        : null;
+      const agentCliPreProviderAttribution = isAgentCliTurn
+        ? buildAgentCliPreProviderAttribution({
             label: agentTurnLabel(phase.id, index),
             phaseId: phase.id,
             activeStartedAtEpochMs: timingResult.startedAtEpochMs,
@@ -1045,6 +1066,7 @@ function collectAgentTurns(record, providerEvidence, scenario, timelineSummary, 
         phaseBreakdown,
         turnDiagnostics,
         dashboardPreProviderAttribution,
+        agentCliPreProviderAttribution,
         metadataScanCount: turnDiagnostics.metadataScan.count,
         metadataScanTotalMs: turnDiagnostics.metadataScan.totalDurationMs,
         metadataScanMaxMs: turnDiagnostics.metadataScan.maxDurationMs,
@@ -1061,6 +1083,10 @@ function collectAgentTurns(record, providerEvidence, scenario, timelineSummary, 
     }
   }
   return turns;
+}
+
+function preferredPreProviderAttributionSummary(...summaries) {
+  return summaries.find((summary) => summary?.count > 0) ?? summaries[0];
 }
 
 function extractGatewaySessionTurn(result) {
@@ -3253,6 +3279,10 @@ function isAgentMessageCommand(command) {
     command.includes("run-dashboard-session-send-turn.mjs") ||
     command.includes("run-tui-message-turn.mjs") ||
     command.includes("run-openai-compatible-turn.mjs");
+}
+
+function isAgentCliMessageCommand(command) {
+  return command.includes(" -- agent ") && command.includes("--message");
 }
 
 function extractAgentResponse(result) {
