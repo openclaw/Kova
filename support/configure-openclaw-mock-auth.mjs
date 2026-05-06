@@ -26,6 +26,7 @@ try {
 }
 
 const modelRef = "openai/gpt-5.5";
+const gatewayToken = "kova-mock-gateway-token";
 const cost = {
   input: 0,
   output: 0,
@@ -86,6 +87,19 @@ config.agents = {
         }
       }
     }
+  }
+};
+
+config.gateway = {
+  ...(config.gateway || {}),
+  auth: {
+    ...(config.gateway?.auth || {}),
+    mode: "token",
+    token: gatewayToken
+  },
+  remote: {
+    ...(config.gateway?.remote || {}),
+    token: gatewayToken
   }
 };
 

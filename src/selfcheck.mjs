@@ -97,6 +97,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(await externalCliSetupCheck(tmp));
     checks.push(await externalCliOpenClawConfigCheck(tmp));
     checks.push(await anthropicApiKeyOpenClawConfigCheck(tmp));
+    checks.push(await mockAuthOpenClawConfigCheck(tmp));
     checks.push(await claudeCliOpenClawConfigCheck(tmp));
     checks.push(await liveApiKeyExecutionCheck(tmp));
     checks.push(await liveExternalCliDryRunCheck(tmp));
@@ -5938,6 +5939,42 @@ async function anthropicApiKeyOpenClawConfigCheck(tmp) {
   } catch (error) {
     return {
       id: "anthropic-api-key-openclaw-config",
+      status: "FAIL",
+      command,
+      durationMs: result.durationMs,
+      message: error.message
+    };
+  }
+}
+
+async function mockAuthOpenClawConfigCheck(tmp) {
+  const home = join(tmp, "mock-auth-config-home");
+  const portFile = join(tmp, "mock-auth-port");
+  await writeFile(portFile, "12345\n", "utf8");
+  const command = [
+    `OPENCLAW_HOME=${quoteShell(home)}`,
+    `node support/configure-openclaw-mock-auth.mjs --port-file ${quoteShell(portFile)}`
+  ].join(" ");
+  const result = await runCommand(command, { timeoutMs: 30000, maxOutputChars: 1000000 });
+  try {
+    if (result.status !== 0) {
+      throw new Error(result.stderr.trim() || result.stdout.trim() || `exit ${result.status}`);
+    }
+    const config = JSON.parse(await readFile(join(home, ".openclaw", "openclaw.json"), "utf8"));
+    assertEqual(config.models?.providers?.openai?.baseUrl, "http://127.0.0.1:12345/v1", "mock provider base URL");
+    assertEqual(config.agents?.defaults?.model?.primary, "openai/gpt-5.5", "mock default model");
+    assertEqual(config.gateway?.auth?.mode, "token", "mock gateway token mode");
+    assertEqual(config.gateway?.auth?.token, "kova-mock-gateway-token", "mock gateway auth token");
+    assertEqual(config.gateway?.remote?.token, "kova-mock-gateway-token", "mock gateway remote token");
+    return {
+      id: "mock-auth-openclaw-config",
+      status: "PASS",
+      command,
+      durationMs: result.durationMs
+    };
+  } catch (error) {
+    return {
+      id: "mock-auth-openclaw-config",
       status: "FAIL",
       command,
       durationMs: result.durationMs,
