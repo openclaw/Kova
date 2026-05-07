@@ -40,11 +40,9 @@
   "diagnostics": {
     "timelineRequiredForSourceBuild": true,
     "expectedSpans": [
-      "agent.turn",
-      "agent.prepare",
-      "models.catalog",
-      "provider.request",
-      "agent.cleanup"
+      "gateway.chat_send",
+      "auto_reply",
+      "reply"
     ]
   },
   "purposes": [

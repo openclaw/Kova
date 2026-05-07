@@ -103,12 +103,8 @@ export function summarizeResourceSamples(samples) {
   for (const sample of samples) {
     const totalRssMb = roundNumber(sample.processes.reduce((total, process) => total + process.rssMb, 0));
     const totalCpuPercent = roundNumber(sample.processes.reduce((total, process) => total + process.cpuPercent, 0));
-    const commandTreeRssMb = roundNumber(sample.processes
-      .filter((process) => process.roles?.includes("command-tree") || process.role.includes("command-tree"))
-      .reduce((total, process) => total + process.rssMb, 0));
-    const gatewayRssMb = roundNumber(sample.processes
-      .filter((process) => process.roles?.includes("gateway") || process.role.includes("gateway"))
-      .reduce((total, process) => total + process.rssMb, 0));
+    const commandTreeRssMb = roleRss(sample.processes, "command-tree");
+    const gatewayRssMb = roleRss(sample.processes, "gateway");
     updateRolePeaks(byRole, sample);
 
     peakTotalRssMb = maxNullable(peakTotalRssMb, totalRssMb);

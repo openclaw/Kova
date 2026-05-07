@@ -41,7 +41,7 @@ import {
   parseProviderRequestLog,
   parseTimelineProviderRequestLog
 } from "./collectors/provider.mjs";
-import { captureProcessSnapshot, classifyRegistryRolesForProcess, classifySnapshotRolesForProcess, diffProcessSnapshots } from "./collectors/resources.mjs";
+import { captureProcessSnapshot, classifyRegistryRolesForProcess, classifySnapshotRolesForProcess, diffProcessSnapshots, summarizeResourceSamples } from "./collectors/resources.mjs";
 import { renderMarkdownReport, renderPasteSummary, renderReportSummary } from "./reporting/report.mjs";
 import { compareReports, renderCompareSummary } from "./reporting/compare.mjs";
 import {
@@ -367,6 +367,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(await resourceRoleAttributionCheck(tmp));
     checks.push(await resourceRootCommandRoleBoundaryCheck());
     checks.push(await resourceRolePollutionCheck());
+    checks.push(await gatewaySessionSurfaceContractCheck());
     checks.push(await processSnapshotCheck(tmp));
     checks.push(roleThresholdEvaluationCheck());
     checks.push(thresholdPolicyCalibrationCheck());
@@ -5175,6 +5176,28 @@ async function resourceRolePollutionCheck() {
         existingRoles: ["command-tree"]
       }
     );
+    const resourceSummary = summarizeResourceSamples([{
+      timestamp: "2026-05-07T00:00:00.000Z",
+      elapsedMs: 1000,
+      processes: [
+        {
+          pid: 100,
+          rssMb: 700,
+          cpuPercent: 100,
+          roles: ["gateway", "gateway-tree"],
+          role: "gateway,gateway-tree",
+          command: "openclaw"
+        },
+        {
+          pid: 101,
+          rssMb: 60,
+          cpuPercent: 1,
+          roles: ["command-tree", "gateway-session-client"],
+          role: "command-tree,gateway-session-client",
+          command: "node support/run-gateway-session-send-turn.mjs"
+        }
+      ]
+    }]);
 
     assertEqual(mockProviderRoles.includes("mock-provider"), true, "mock provider helper remains classified");
     assertEqual(mockProviderRoles.includes("agent-cli"), false, "KOVA_AGENT_OK marker must not imply agent-cli");
@@ -5184,6 +5207,8 @@ async function resourceRolePollutionCheck() {
     assertEqual(envNameRoles.includes("model-cli"), false, "configure-openclaw fixture helper must not imply model-cli");
     assertEqual(openclawAgentRoles.includes("agent-cli"), true, "openclaw-agent process must imply agent-cli");
     assertEqual(openclawAgentRoles.includes("agent-process"), true, "openclaw-agent process must imply agent-process");
+    assertEqual(resourceSummary.peakGatewayRssMb, 700, "gateway-session-client role must not inflate gateway RSS");
+    assertEqual(resourceSummary.peakCommandTreeRssMb, 60, "gateway-session-client remains command-tree RSS");
     return {
       id: "resource-role-pollution-boundary",
       status: "PASS",
@@ -5195,6 +5220,34 @@ async function resourceRolePollutionCheck() {
       id: "resource-role-pollution-boundary",
       status: "FAIL",
       command: "classify synthetic helper commands for role pollution",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+async function gatewaySessionSurfaceContractCheck() {
+  try {
+    const surface = JSON.parse(await readFile("surfaces/gateway-session-send-turn.json", "utf8"));
+    const expectedSpans = surface.diagnostics?.expectedSpans ?? [];
+    const staleSpans = ["agent.turn", "agent.prepare", "models.catalog", "provider.request", "agent.cleanup"];
+    for (const span of staleSpans) {
+      assertEqual(expectedSpans.includes(span), false, `gateway session surface must not require stale ${span} span`);
+    }
+    assertEqual(expectedSpans.includes("gateway.chat_send"), true, "gateway session surface requires gateway chat send spans");
+    assertEqual(expectedSpans.includes("auto_reply"), true, "gateway session surface requires auto reply spans");
+    assertEqual(expectedSpans.includes("reply"), true, "gateway session surface requires reply spans");
+    return {
+      id: "gateway-session-surface-contract",
+      status: "PASS",
+      command: "validate gateway session surface diagnostics contract",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "gateway-session-surface-contract",
+      status: "FAIL",
+      command: "validate gateway session surface diagnostics contract",
       durationMs: 0,
       message: error.message
     };
