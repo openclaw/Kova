@@ -5,6 +5,7 @@ import {
   extractText,
   failJson,
   finishJson,
+  openDirectGatewayRpcClient,
   parseSupportArgs,
   prepareOpenClawRuntimeFromOcmEnv,
   readTimeoutMs,
@@ -23,81 +24,91 @@ try {
   const sessionKey = args["session-key"] ?? `kova-dashboard-${randomUUID()}`;
   const createSession = readBoolean(args["create-session"], true);
   const minAssistantCount = readPositiveInteger(args["min-assistant-count"], 1);
+  const gatewayTransport = await openDirectGatewayRpcClient(runtimeContext);
 
-  let created = null;
-  let sessionCreateStartedAtEpochMs = null;
-  let sessionCreateFinishedAtEpochMs = null;
-  if (createSession) {
-    sessionCreateStartedAtEpochMs = Date.now();
-    created = gatewayCall(runtimeContext.envName, "sessions.create", {
-      agentId: "main",
-      key: sessionKey,
-      label: "Kova Dashboard Session Send"
-    }, Math.min(timeoutMs, 60000));
-    sessionCreateFinishedAtEpochMs = Date.now();
-  }
-  const canonicalKey = created?.key ?? sessionKey;
-  const sendStartedAtEpochMs = Date.now();
-  const sent = gatewayCall(runtimeContext.envName, "sessions.send", {
-      key: canonicalKey,
-      message,
-      thinking: "off",
+  try {
+    let created = null;
+    let sessionCreateStartedAtEpochMs = null;
+    let sessionCreateFinishedAtEpochMs = null;
+    if (createSession) {
+      sessionCreateStartedAtEpochMs = Date.now();
+      created = await gatewayCall(runtimeContext, gatewayTransport, "sessions.create", {
+        agentId: "main",
+        key: sessionKey,
+        label: "Kova Dashboard Session Send"
+      }, Math.min(timeoutMs, 60000));
+      sessionCreateFinishedAtEpochMs = Date.now();
+    }
+    const canonicalKey = created?.key ?? sessionKey;
+    const sendStartedAtEpochMs = Date.now();
+    const sent = await gatewayCall(runtimeContext, gatewayTransport, "sessions.send", {
+        key: canonicalKey,
+        message,
+        thinking: "off",
+        timeoutMs,
+        idempotencyKey: `kova-dashboard-${randomUUID()}`
+      }, Math.min(timeoutMs, 60000));
+    const sendFinishedAtEpochMs = Date.now();
+    const runId = typeof sent?.runId === "string" ? sent.runId : null;
+
+    const history = await waitForAssistantText({
+      runtimeContext,
+      gatewayTransport,
+      sessionKey: canonicalKey,
+      expectedText,
       timeoutMs,
-      idempotencyKey: `kova-dashboard-${randomUUID()}`
-    }, Math.min(timeoutMs, 60000));
-  const sendFinishedAtEpochMs = Date.now();
-  const runId = typeof sent?.runId === "string" ? sent.runId : null;
+      minAssistantCount
+    });
+    const finishedAtEpochMs = Date.now();
+    const activeFinishedAtEpochMs = history.assistantMatchedAtEpochMs ?? finishedAtEpochMs;
 
-  const history = await waitForAssistantText({
-    envName: runtimeContext.envName,
-    sessionKey: canonicalKey,
-    expectedText,
-    timeoutMs,
-    minAssistantCount
-  });
-  const finishedAtEpochMs = Date.now();
-  const activeFinishedAtEpochMs = history.assistantMatchedAtEpochMs ?? finishedAtEpochMs;
-
-  finishJson({
-    ok: true,
-    surface: "dashboard-session-send-turn",
-    method: "sessions.send",
-    createSession,
-    minAssistantCount,
-    envName: runtimeContext.envName,
-    runtime: runtimeContext.runtime,
-    sessionKey: canonicalKey,
-    runId,
-    startedAtEpochMs,
-    sessionCreateStartedAtEpochMs,
-    sessionCreateFinishedAtEpochMs,
-    sessionCreateDurationMs: sessionCreateStartedAtEpochMs === null || sessionCreateFinishedAtEpochMs === null
-      ? null
-      : sessionCreateFinishedAtEpochMs - sessionCreateStartedAtEpochMs,
-    sendStartedAtEpochMs,
-    sendFinishedAtEpochMs,
-    sendDurationMs: sendFinishedAtEpochMs - sendStartedAtEpochMs,
-    activeStartedAtEpochMs: sendStartedAtEpochMs,
-    activeFinishedAtEpochMs,
-    activeTurnMs: activeFinishedAtEpochMs - sendStartedAtEpochMs,
-    finishedAtEpochMs,
-    assistantFirstSeenAtEpochMs: history.assistantFirstSeenAtEpochMs,
-    assistantMatchedAtEpochMs: history.assistantMatchedAtEpochMs,
-    timeToFirstAssistantMs: history.assistantFirstSeenAtEpochMs === null ? null : history.assistantFirstSeenAtEpochMs - sendStartedAtEpochMs,
-    timeToMatchedAssistantMs: history.assistantMatchedAtEpochMs === null ? null : history.assistantMatchedAtEpochMs - sendStartedAtEpochMs,
-    historyPollCount: history.pollCount,
-    historyErrorCount: history.errorCount,
-    lastHistoryError: history.lastHistoryErrorMessage,
-    finalAssistantVisibleText: history.matchedAssistantText,
-    finalAssistantRawText: history.lastAssistantText,
-    assistantMessageCount: history.assistantTexts.length,
-    expectedTextPresent: history.matchedAssistantText.includes(expectedText)
-  });
+    finishJson({
+      ok: true,
+      surface: "dashboard-session-send-turn",
+      method: "sessions.send",
+      createSession,
+      minAssistantCount,
+      envName: runtimeContext.envName,
+      runtime: runtimeContext.runtime,
+      gatewayTransport: {
+        kind: gatewayTransport.transport,
+        fallbackReason: gatewayTransport.fallbackReason
+      },
+      sessionKey: canonicalKey,
+      runId,
+      startedAtEpochMs,
+      sessionCreateStartedAtEpochMs,
+      sessionCreateFinishedAtEpochMs,
+      sessionCreateDurationMs: sessionCreateStartedAtEpochMs === null || sessionCreateFinishedAtEpochMs === null
+        ? null
+        : sessionCreateFinishedAtEpochMs - sessionCreateStartedAtEpochMs,
+      sendStartedAtEpochMs,
+      sendFinishedAtEpochMs,
+      sendDurationMs: sendFinishedAtEpochMs - sendStartedAtEpochMs,
+      activeStartedAtEpochMs: sendStartedAtEpochMs,
+      activeFinishedAtEpochMs,
+      activeTurnMs: activeFinishedAtEpochMs - sendStartedAtEpochMs,
+      finishedAtEpochMs,
+      assistantFirstSeenAtEpochMs: history.assistantFirstSeenAtEpochMs,
+      assistantMatchedAtEpochMs: history.assistantMatchedAtEpochMs,
+      timeToFirstAssistantMs: history.assistantFirstSeenAtEpochMs === null ? null : history.assistantFirstSeenAtEpochMs - sendStartedAtEpochMs,
+      timeToMatchedAssistantMs: history.assistantMatchedAtEpochMs === null ? null : history.assistantMatchedAtEpochMs - sendStartedAtEpochMs,
+      historyPollCount: history.pollCount,
+      historyErrorCount: history.errorCount,
+      lastHistoryError: history.lastHistoryErrorMessage,
+      finalAssistantVisibleText: history.matchedAssistantText,
+      finalAssistantRawText: history.lastAssistantText,
+      assistantMessageCount: history.assistantTexts.length,
+      expectedTextPresent: history.matchedAssistantText.includes(expectedText)
+    });
+  } finally {
+    gatewayTransport.client?.close();
+  }
 } catch (error) {
   failJson(error, { surface: "dashboard-session-send-turn", finishedAtEpochMs: Date.now() });
 }
 
-async function waitForAssistantText({ envName, sessionKey, expectedText, timeoutMs, minAssistantCount }) {
+async function waitForAssistantText({ runtimeContext, gatewayTransport, sessionKey, expectedText, timeoutMs, minAssistantCount }) {
   const deadline = Date.now() + timeoutMs;
   let lastAssistantText = "";
   let lastHistoryError = null;
@@ -108,7 +119,7 @@ async function waitForAssistantText({ envName, sessionKey, expectedText, timeout
   while (Date.now() < deadline) {
     try {
       pollCount += 1;
-      const history = gatewayCall(envName, "chat.history", { sessionKey, limit: 16 }, Math.min(15000, Math.max(1000, deadline - Date.now())));
+      const history = await gatewayCall(runtimeContext, gatewayTransport, "chat.history", { sessionKey, limit: 16 }, Math.min(15000, Math.max(1000, deadline - Date.now())));
       lastHistoryError = null;
       assistantTexts = extractAssistantTexts(history?.messages ?? []);
       lastAssistantText = assistantTexts.at(-1) ?? "";
@@ -140,9 +151,12 @@ async function waitForAssistantText({ envName, sessionKey, expectedText, timeout
   );
 }
 
-function gatewayCall(envName, method, params, timeoutMs) {
+async function gatewayCall(runtimeContext, gatewayTransport, method, params, timeoutMs) {
+  if (gatewayTransport.client) {
+    return await gatewayTransport.client.request(method, params, { timeoutMs });
+  }
   return runOcmJson([
-    `@${envName}`,
+    `@${runtimeContext.envName}`,
     "--",
     "gateway",
     "call",
