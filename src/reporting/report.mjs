@@ -480,6 +480,25 @@ function buildFindings(report) {
         evidence: briefEvidence(record.measurements ?? {}, [violation.message].filter(Boolean))
       });
     }
+    const missingSpanCount = record.measurements?.openclawMissingRequiredSpanCount ?? 0;
+    const missingSpanSeverity = record.measurements?.openclawMissingRequiredSpanSeverity ?? null;
+    if (missingSpanCount > 0 && ["diagnostic-gap", "warning"].includes(missingSpanSeverity)) {
+      const missing = record.measurements?.openclawMissingRequiredSpans ?? [];
+      findings.push({
+        id: `${record.scenario}:${state ?? "none"}:diagnostic-gap:${index + 1}`,
+        severity: missingSpanSeverity,
+        kind: "diagnostics",
+        scenario: record.scenario ?? null,
+        state,
+        sampleIndex: record.repeat?.index ?? index + 1,
+        ownerArea: record.likelyOwner ?? null,
+        metric: "openclawMissingRequiredSpanCount",
+        summary: `${missingSpanCount} expected OpenClaw diagnostics span(s) were not observed; user-path verdict is based on functional and performance checks`,
+        expected: "diagnostic spans available when emitted by OpenClaw",
+        actual: missing.slice(0, 5).join(", "),
+        evidence: missing.length > 0 ? [`missing spans: ${missing.slice(0, 5).join(", ")}`] : ["missing expected diagnostic spans"]
+      });
+    }
     const failed = firstFailedCommand(record);
     if ((record.status === "FAIL" || record.status === "BLOCKED") && failed && (record.violations ?? []).length === 0) {
       findings.push({

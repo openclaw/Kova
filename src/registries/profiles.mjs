@@ -91,8 +91,18 @@ function validateDiagnostics(diagnostics, prefix, errors) {
   if (diagnostics.timelineRequired !== undefined && typeof diagnostics.timelineRequired !== "boolean") {
     errors.push(`${prefix}.timelineRequired must be boolean when set`);
   }
+  validateMissingExpectedSpanSeverity(diagnostics.missingExpectedSpanSeverity, `${prefix}.missingExpectedSpanSeverity`, errors);
   validateStringArray(diagnostics.timelineRequiredForTargetKinds, `${prefix}.timelineRequiredForTargetKinds`, errors, { optional: true });
   validateStringArray(diagnostics.requiredKeySpans, `${prefix}.requiredKeySpans`, errors, { optional: true });
+}
+
+function validateMissingExpectedSpanSeverity(value, prefix, errors) {
+  if (value === undefined) {
+    return;
+  }
+  if (!["diagnostic-gap", "warn", "fail"].includes(value)) {
+    errors.push(`${prefix} must be one of diagnostic-gap, warn, fail`);
+  }
 }
 
 function validateEntries(entries, errors) {

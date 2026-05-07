@@ -5,7 +5,8 @@ flows run. The raw data belongs in artifacts; reports should only summarize the
 signals that explain startup, plugin, provider, resource, and agent latency.
 
 This contract is optional at runtime. If OpenClaw does not emit the file, Kova
-must keep running and report diagnostics as unavailable.
+must keep running and report diagnostics as unavailable unless the selected
+profile explicitly requires timeline diagnostics.
 
 ## Environment
 
@@ -157,3 +158,10 @@ Kova stores the complete timeline as an artifact. Human reports should show:
 - runtime dependency staging grouped by plugin id when available
 
 Raw event dumps belong in JSON artifacts, not Markdown summaries.
+
+`expectedSpans` in a surface is an attribution expectation, not automatically a
+user-path failure. If a run succeeds functionally but one of those spans is not
+emitted, Kova records a diagnostic attribution gap so the report is honest about
+what it cannot explain. A surface or profile can promote missing expected spans
+to a hard failure with `missingExpectedSpanSeverity: "fail"` when the scenario's
+purpose is to validate diagnostics instrumentation itself.

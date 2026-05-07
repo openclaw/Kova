@@ -53,11 +53,21 @@ export function validateSurfaceShape(surface, sourceName = "surface") {
     if (surface.diagnostics.expectedSpans !== undefined && !Array.isArray(surface.diagnostics.expectedSpans)) {
       errors.push("diagnostics.expectedSpans must be an array when set");
     }
+    validateMissingExpectedSpanSeverity(surface.diagnostics.missingExpectedSpanSeverity, "diagnostics.missingExpectedSpanSeverity", errors);
   }
   validateRoleThresholds(surface.roleThresholds, "roleThresholds", errors);
   validateRequirements(surface.requirements, errors);
 
   assertNoShapeErrors(errors, sourceName);
+}
+
+function validateMissingExpectedSpanSeverity(value, prefix, errors) {
+  if (value === undefined) {
+    return;
+  }
+  if (!["diagnostic-gap", "warn", "fail"].includes(value)) {
+    errors.push(`${prefix} must be one of diagnostic-gap, warn, fail`);
+  }
 }
 
 function validateRequirements(requirements, errors) {

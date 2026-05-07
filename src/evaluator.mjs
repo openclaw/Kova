@@ -74,6 +74,7 @@ export function evaluateRecord(record, scenario, options = {}) {
   const requiredOpenSpans = requiredTimelineSpans(options);
   const openRequiredSpans = timelineSummary.openSpans.filter((span) => requiredOpenSpans.has(span.name));
   const missingRequiredSpans = missingTimelineSpans(timelineSummary, requiredOpenSpans);
+  const diagnosticContract = diagnosticSpanContractFor(options);
   const runtimeDepsStagingMs = maxNullable(
     openclawDiagnostics.runtimeDepsStagingMs,
     timelineSummary.runtimeDepsStageMaxMs,
@@ -726,7 +727,7 @@ export function evaluateRecord(record, scenario, options = {}) {
     });
   }
 
-  if (timelineSummary.available && missingRequiredSpans.length > 0) {
+  if (timelineSummary.available && missingRequiredSpans.length > 0 && diagnosticContract.enforceMissingSpans) {
     violations.push({
       kind: "diagnostics",
       metric: "openclawMissingRequiredSpanCount",
@@ -943,6 +944,8 @@ export function evaluateRecord(record, scenario, options = {}) {
     openclawOpenRequiredSpanCount: openRequiredSpans.length,
     openclawMissingRequiredSpanCount: missingRequiredSpans.length,
     openclawMissingRequiredSpans: missingRequiredSpans,
+    openclawMissingRequiredSpanSeverity: diagnosticContract.missingSpanSeverity,
+    openclawDiagnosticsContract: diagnosticContract,
     openclawOpenSpans: timelineSummary.openSpans,
     openclawKeySpans: timelineSummary.keySpans,
     openclawEventLoopMaxMs: timelineSummary.eventLoopMaxMs,
@@ -2067,6 +2070,27 @@ function requiredTimelineSpans(options) {
     ...(options.surface?.diagnostics?.expectedSpans ?? []),
     ...(options.profile?.diagnostics?.requiredKeySpans ?? [])
   ]);
+}
+
+function diagnosticSpanContractFor(options) {
+  const targetKind = options.targetPlan?.kind ?? null;
+  const profileDiagnostics = options.profile?.diagnostics ?? {};
+  const spanMode = options.surface?.diagnostics?.missingExpectedSpanSeverity ??
+    profileDiagnostics.missingExpectedSpanSeverity ??
+    "diagnostic-gap";
+  const hardRequiredSpans = Array.isArray(profileDiagnostics.requiredKeySpans) && profileDiagnostics.requiredKeySpans.length > 0;
+  const enforceMissingSpans = spanMode === "fail" || hardRequiredSpans;
+  const missingSpanSeverity = enforceMissingSpans ? "fail" : spanMode === "warn" ? "warning" : "diagnostic-gap";
+  return {
+    schemaVersion: "kova.diagnosticsContract.v1",
+    targetKind,
+    expectedSpanCount: requiredTimelineSpans(options).size,
+    missingSpanSeverity,
+    enforceMissingSpans,
+    reason: enforceMissingSpans
+      ? "diagnostics span contract is explicitly enforced"
+      : "missing expected spans reduce diagnostic attribution but do not by themselves fail the user path"
+  };
 }
 
 function missingTimelineSpans(timelineSummary, requiredSpans) {

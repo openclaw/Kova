@@ -4326,12 +4326,37 @@ function diagnosticsTimelineEvaluationCheck() {
         thresholds: {}
       }
     });
-    assertEqual(missingSpanRecord.status, "FAIL", "missing required span status");
+    assertEqual(missingSpanRecord.status, "PASS", "missing expected span alone does not fail user path");
     assertEqual(missingSpanRecord.measurements.openclawMissingRequiredSpanCount, 1, "missing required span measurement");
+    assertEqual(missingSpanRecord.measurements.openclawMissingRequiredSpanSeverity, "diagnostic-gap", "missing expected span severity");
     assertEqual(
-      missingSpanRecord.violations.some((violation) => violation.metric === "openclawMissingRequiredSpanCount"),
+      (missingSpanRecord.violations ?? []).some((violation) => violation.metric === "openclawMissingRequiredSpanCount"),
+      false,
+      "missing expected span does not become violation by default"
+    );
+
+    const strictMissingSpanRecord = structuredClone(missingSpanRecord);
+    strictMissingSpanRecord.status = "PASS";
+    strictMissingSpanRecord.violations = [];
+    strictMissingSpanRecord.measurements = undefined;
+    evaluateRecord(strictMissingSpanRecord, { thresholds: {} }, {
+      targetPlan: { kind: "local-build" },
+      profile: { id: "diagnostic", diagnostics: { timelineRequired: true } },
+      surface: {
+        id: "bundled-runtime-deps",
+        diagnostics: {
+          expectedSpans: ["runtimeDeps.stage"],
+          missingExpectedSpanSeverity: "fail"
+        },
+        thresholds: {}
+      }
+    });
+    assertEqual(strictMissingSpanRecord.status, "FAIL", "strict missing span status");
+    assertEqual(strictMissingSpanRecord.measurements.openclawMissingRequiredSpanSeverity, "fail", "strict missing span severity");
+    assertEqual(
+      strictMissingSpanRecord.violations.some((violation) => violation.metric === "openclawMissingRequiredSpanCount"),
       true,
-      "missing required span violation"
+      "strict missing span violation"
     );
 
     const openSpanRecord = {
