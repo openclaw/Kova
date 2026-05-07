@@ -14,6 +14,7 @@ import { collectEnvMetrics, collectNodeProfileMetrics } from "./metrics.mjs";
 import { collectorArtifactDirs, prepareCollectorArtifactDirs } from "./collectors/artifacts.mjs";
 import { collectProviderEvidence } from "./collectors/provider.mjs";
 import { evaluateRecord } from "./evaluator.mjs";
+import { driverKindForCommand, measurementScopeForPhase, normalizeMeasurementScope, phaseDriverKind } from "./measurement-contract.mjs";
 import { artifactsDir } from "./paths.mjs";
 import { repoRoot } from "./paths.mjs";
 import { assertKovaEnvName, assertSafeScenarioCommand } from "./safety.mjs";
@@ -82,6 +83,8 @@ export async function executeScenario(scenario, context) {
         id: "target-setup",
         title: "Target Runtime Setup",
         intent: "Prepare the target OpenClaw runtime selector for the scenario.",
+        measurementScope: "harness",
+        driverKind: "ocm",
         commands: setupResults.map((result) => result.command),
         evidence: [],
         results: setupResults
@@ -143,6 +146,8 @@ export async function executeScenario(scenario, context) {
           title: phase.title,
           intent: phase.intent,
           healthScope: phase.healthScope,
+          measurementScope: phaseMeasurementScope(phase),
+          driverKind: phaseDriverKind(phase, commands),
           expectedAgentFailure: phase.expectedAgentFailure === true,
           commands,
           evidence: phase.evidence ?? [],
@@ -332,7 +337,7 @@ function buildPlannedPhases(scenario, context, envName, artifactDir, authPolicy)
 
   const authPreparePhase = buildAuthPreparePhase(authPolicy, artifactDir);
   if (authPreparePhase) {
-    phases.push(authPreparePhase);
+    phases.push(withPhaseContract(authPreparePhase, "harness"));
   }
 
   const preparePhase = buildStateLifecyclePhase(context, envName, scenario, "prepare", context.state?.prepare ?? [], artifactDir);
@@ -344,20 +349,23 @@ function buildPlannedPhases(scenario, context, envName, artifactDir, authPolicy)
     if (phase.id === "cleanup") {
       continue;
     }
+    const commands = materializeScenarioPhaseCommands(phase, context, envName, artifactDir);
     phases.push({
       id: phase.id,
       title: phase.title,
       intent: phase.intent,
       healthScope: phase.healthScope,
+      measurementScope: phaseMeasurementScope(phase),
+      driverKind: phaseDriverKind(phase, commands),
       expectedAgentFailure: phase.expectedAgentFailure === true,
-      commands: materializeScenarioPhaseCommands(phase, context, envName, artifactDir),
+      commands,
       evidence: phase.evidence ?? []
     });
 
     if (phaseSupportsAuthSetup(phase, authPolicy) && !phases.some((planned) => planned.id === "auth-setup")) {
       const authSetupPhase = buildAuthSetupPhase(authPolicy, envName, artifactDir);
       if (authSetupPhase) {
-        phases.push(authSetupPhase);
+        phases.push(withPhaseContract(authSetupPhase, "harness"));
       }
     }
 
@@ -378,7 +386,7 @@ function buildPlannedPhases(scenario, context, envName, artifactDir, authPolicy)
   if (!context.keepEnv) {
     const authCleanupPhase = buildAuthCleanupPhase(authPolicy, artifactDir);
     if (authCleanupPhase) {
-      phases.push(authCleanupPhase);
+      phases.push(withPhaseContract(authCleanupPhase, "cleanup"));
     }
     const cleanupPhase = buildStateLifecyclePhase(context, envName, scenario, "cleanup", context.state?.cleanup ?? [], artifactDir);
     if (cleanupPhase) {
@@ -388,6 +396,8 @@ function buildPlannedPhases(scenario, context, envName, artifactDir, authPolicy)
       id: "env-cleanup",
       title: "Environment Cleanup",
       intent: "Destroy the disposable Kova env after the scenario finishes.",
+      measurementScope: "cleanup",
+      driverKind: "ocm",
       commands: [ocmEnvDestroy(envName)],
       evidence: ["temporary env destroyed"]
     });
@@ -405,6 +415,8 @@ function buildTargetSetupPhase(context, envName) {
     id: "target-setup",
     title: "Target Runtime Setup",
     intent: "Prepare the target OpenClaw runtime selector for the scenario.",
+    measurementScope: "harness",
+    driverKind: "ocm",
     commands: [targetSetupCommand(context.targetPlan)],
     evidence: [`local-build runtime ${context.targetPlan.runtimeName}`, `kova env ${envName}`]
   };
@@ -426,6 +438,8 @@ function buildStateLifecyclePhase(context, envName, scenario, kind, steps, artif
     id: kind,
     title: stateLifecycleTitle(context.state?.id, kind, phaseId),
     intent: stateLifecycleIntent(context.state?.id, kind, phaseId),
+    measurementScope: normalizeMeasurementScope(null, kind),
+    driverKind: phaseDriverKind(null, commands),
     commands,
     evidence,
     scenario: scenario.id
@@ -459,6 +473,8 @@ async function executeStateLifecycleSteps(context, envName, scenario, kind, step
     id: kind,
     title: stateLifecycleTitle(context.state?.id, kind, phaseId),
     intent: stateLifecycleIntent(context.state?.id, kind, phaseId),
+    measurementScope: normalizeMeasurementScope(null, kind),
+    driverKind: phaseDriverKind(null, commands),
     commands,
     evidence,
     results,
@@ -476,6 +492,8 @@ async function executeAuthPhase(phase, context, envName, artifactDir, authPolicy
   }
   return {
     ...phase,
+    measurementScope: normalizeMeasurementScope(phase.measurementScope, phase.id),
+    driverKind: phaseDriverKind(phase),
     results,
     metrics: await collectEnvMetrics(envName, metricOptions(context, null, { id: phase.id }, artifactDir))
   };
@@ -569,7 +587,7 @@ async function executeTargetSetup(context, envName, artifactDir) {
   }
 
   const results = [
-    await runCommand(targetSetupCommand(context.targetPlan), {
+    tagCommandResult(await runCommand(targetSetupCommand(context.targetPlan), {
       timeoutMs: context.timeoutMs,
       env: { KOVA_ENV_NAME: envName },
       resourceSample: context.resourceSampling === false ? null : {
@@ -578,7 +596,7 @@ async function executeTargetSetup(context, envName, artifactDir) {
         processRoles: context.processRoles ?? [],
         artifactPath: join(collectorArtifactDirs(artifactDir).resourceSamples, "target-setup-1.jsonl")
       }
-    })
+    }), "target-setup")
   ];
   if (results.every((result) => result.status === 0) && context.targetSetup) {
     context.targetSetup.completed = true;
@@ -617,6 +635,7 @@ async function runScenarioCommand(command, context, envName, artifactDir, phaseI
       artifactPath: join(collectorArtifactDirs(artifactDir).resourceSamples, `${safeSegment(phaseId)}-${commandIndex + 1}.jsonl`)
     }
   });
+  tagCommandResult(result, phaseId);
   if (agentCommand) {
     await sleep(1000);
     const afterSnapshot = captureProcessSnapshot(snapshotOptions);
@@ -635,6 +654,28 @@ async function runScenarioCommand(command, context, envName, artifactDir, phaseI
       leaks: processLeaks
     };
   }
+  return result;
+}
+
+function phaseMeasurementScope(phase) {
+  return measurementScopeForPhase(phase);
+}
+
+function withPhaseContract(phase, scope = null) {
+  return {
+    ...phase,
+    measurementScope: normalizeMeasurementScope(scope ?? phase.measurementScope, phase.id),
+    driverKind: phaseDriverKind(phase)
+  };
+}
+
+function tagCommandResult(result, phaseId) {
+  result.measurementScope = measurementScopeForPhase({
+    id: phaseId,
+    measurementScope: result.measurementScope,
+    commands: [result.command]
+  });
+  result.driverKind = driverKindForCommand(result.command);
   return result;
 }
 

@@ -608,6 +608,7 @@ function localBuildTargetSetupResourceExclusionCheck() {
       phases: [
         {
           id: "target-setup",
+          measurementScope: "harness",
           results: [{
             command: "ocm runtime build-local kova-local-test --repo /tmp/openclaw --force",
             status: 0,
@@ -620,7 +621,22 @@ function localBuildTargetSetupResourceExclusionCheck() {
           }]
         },
         {
+          id: "auth-prepare",
+          measurementScope: "harness",
+          results: [{
+            command: "node support/mock-openai-server.mjs",
+            status: 0,
+            durationMs: 500,
+            resourceSamples: syntheticResourceSamples({
+              peakRssMb: 1900,
+              maxCpuPercent: 320,
+              role: "mock-provider"
+            })
+          }]
+        },
+        {
           id: "scenario-command",
+          measurementScope: "product",
           results: [{
             command: "ocm @kova-self-check -- status",
             status: 0,
@@ -630,6 +646,29 @@ function localBuildTargetSetupResourceExclusionCheck() {
               maxCpuPercent: 20,
               role: "gateway"
             })
+          }, {
+            command: "node support/kova-helper.mjs",
+            status: 0,
+            durationMs: 100,
+            resourceSamples: syntheticResourceSamples({
+              peakRssMb: 600,
+              maxCpuPercent: 30,
+              role: "command-tree"
+            })
+          }]
+        },
+        {
+          id: "auth-cleanup",
+          measurementScope: "cleanup",
+          results: [{
+            command: "kill $(cat mock/pid)",
+            status: 0,
+            durationMs: 50,
+            resourceSamples: syntheticResourceSamples({
+              peakRssMb: 1800,
+              maxCpuPercent: 300,
+              role: "mock-provider"
+            })
           }]
         }
       ],
@@ -638,14 +677,19 @@ function localBuildTargetSetupResourceExclusionCheck() {
         logs: zeroLogMetrics()
       }
     };
-    evaluateRecord(record, { thresholds: { peakRssMb: 900 } }, {
-      surface: { thresholds: {} },
+    evaluateRecord(record, { thresholds: { peakRssMb: 200 } }, {
+      surface: { thresholds: {}, resourcePrimaryRole: "gateway" },
       targetPlan: { kind: "local-build" }
     });
     assertEqual(record.status, "PASS", "local-build target setup resources ignored status");
     assertEqual(record.measurements.peakRssMb, 100, "local-build target setup resources ignored RSS");
+    assertEqual(record.measurements.resourcePeakTrackedRssMb, 600, "tracked product helper RSS retained separately");
+    assertEqual(record.measurements.resourcePrimaryRole, "gateway", "primary resource role retained");
     assertEqual(record.measurements.resourceByRole.gateway.peakRssMb, 100, "scenario role RSS retained");
     assertEqual(record.measurements.resourceByRole["build-tooling"], undefined, "target setup role excluded");
+    assertEqual(record.measurements.resourceByRole["mock-provider"], undefined, "harness auth resources excluded");
+    assertEqual(record.measurements.measurementScopeSummary.harnessCommandCount, 2, "harness command count");
+    assertEqual(record.measurements.measurementScopeSummary.cleanupCommandCount, 1, "cleanup command count");
     assertEqual(record.violations, undefined, "no-service local-build record has no gateway violation");
     return {
       id: "local-build-target-setup-resource-exclusion",
@@ -2125,6 +2169,7 @@ function gatewaySessionTurnEvaluationCheck() {
       minAssistantCount: 1,
       sessionKey: "kova-dashboard-session-send",
       runId: "cold-run",
+      gatewayTransport: { kind: "direct-gateway-rpc", fallbackReason: null },
       activeStartedAtEpochMs: base + 1000,
       activeFinishedAtEpochMs: base + 2500,
       activeTurnMs: 1500,
@@ -2150,6 +2195,7 @@ function gatewaySessionTurnEvaluationCheck() {
       minAssistantCount: 2,
       sessionKey: "kova-dashboard-session-send",
       runId: "warm-run",
+      gatewayTransport: { kind: "direct-gateway-rpc", fallbackReason: null },
       activeStartedAtEpochMs: base + 11000,
       activeFinishedAtEpochMs: base + 11800,
       activeTurnMs: 800,
@@ -2284,6 +2330,7 @@ function gatewaySessionTurnEvaluationCheck() {
     assertEqual(record.measurements.agentEventLoopMaxMs, 9, "active-window event-loop max");
     assertEqual(record.measurements.agentSessionPollCount, 5, "session polling total");
     assertEqual(record.measurements.agentTurns[1].gatewaySession.createSession, false, "warm turn reuses session");
+    assertEqual(record.measurements.agentTurns[0].gatewaySession.gatewayTransportKind, "direct-gateway-rpc", "dashboard turn direct Gateway transport");
 
     const rendered = renderMarkdownReport({
       generatedAt: "2026-05-01T00:00:00.000Z",
@@ -2295,7 +2342,56 @@ function gatewaySessionTurnEvaluationCheck() {
       summary: { statuses: { PASS: 1 } }
     });
     assertEqual(rendered.includes("gateway session:"), true, "markdown includes gateway session detail");
+    assertEqual(rendered.includes("transport direct-gateway-rpc"), true, "markdown includes direct Gateway transport");
     assertEqual(rendered.includes("active window:"), true, "markdown includes active turn diagnostics");
+
+    const fallbackPayload = {
+      ...coldPayload,
+      gatewayTransport: { kind: "shell", fallbackReason: "gateway-token-unavailable" }
+    };
+    const fallbackRecord = {
+      scenario: "dashboard-session-send-turn",
+      surface: "dashboard-session-send-turn",
+      title: "Gateway session shell fallback",
+      status: "PASS",
+      phases: [{
+        id: "cold-dashboard-session-turn",
+        title: "Cold Gateway Session Turn",
+        intent: "Synthetic shell fallback",
+        commands: ["node support/run-dashboard-session-send-turn.mjs --create-session true"],
+        evidence: [],
+        results: [{
+          command: "node support/run-dashboard-session-send-turn.mjs --create-session true",
+          status: 0,
+          timedOut: false,
+          startedAt: new Date(base).toISOString(),
+          startedAtEpochMs: base,
+          finishedAt: new Date(base + 5000).toISOString(),
+          finishedAtEpochMs: base + 5000,
+          durationMs: 5000,
+          stdout: JSON.stringify(fallbackPayload),
+          stderr: ""
+        }],
+        metrics: { logs: zeroLogMetrics(), health: { ok: true } }
+      }],
+      providerEvidence: {
+        available: true,
+        requestCount: 1,
+        requests: [record.providerEvidence.requests[0]]
+      },
+      finalMetrics: { service: { gatewayState: "running" }, logs: zeroLogMetrics() }
+    };
+    evaluateRecord(fallbackRecord, {
+      id: "dashboard-session-send-turn",
+      agent: { expectedText: "KOVA_AGENT_OK" },
+      thresholds: {}
+    }, { surface: { thresholds: {} }, targetPlan: { kind: "runtime" } });
+    assertEqual(fallbackRecord.status, "FAIL", "dashboard session shell fallback rejected");
+    assertEqual(
+      fallbackRecord.violations.some((violation) => violation.metric === "gatewayTransport.kind"),
+      true,
+      "dashboard session shell fallback violation"
+    );
 
     return {
       id: "gateway-session-turn-evaluation",
@@ -4142,6 +4238,47 @@ function diagnosticsTimelineEvaluationCheck() {
       missingTimelineRecord.violations.some((violation) => violation.metric === "openclawTimelineAvailable"),
       true,
       "missing diagnostic timeline violation"
+    );
+
+    const missingSpanRecord = {
+      scenario: "diagnostic-missing-span",
+      status: "PASS",
+      phases: [],
+      finalMetrics: {
+        service: { gatewayState: "running" },
+        logs: zeroLogMetrics(),
+        timeline: {
+          available: true,
+          eventCount: 1,
+          parseErrorCount: 0,
+          openSpanCount: 0,
+          openSpans: [],
+          keySpans: {},
+          spanTotals: {
+            "gateway.startup": { count: 1, totalDurationMs: 100, maxDurationMs: 100 }
+          },
+          runtimeDeps: {},
+          eventLoop: {},
+          providers: {},
+          childProcesses: {}
+        }
+      }
+    };
+    evaluateRecord(missingSpanRecord, { thresholds: {} }, {
+      targetPlan: { kind: "local-build" },
+      profile: { id: "diagnostic", diagnostics: { timelineRequired: true } },
+      surface: {
+        id: "bundled-runtime-deps",
+        diagnostics: { expectedSpans: ["runtimeDeps.stage"] },
+        thresholds: {}
+      }
+    });
+    assertEqual(missingSpanRecord.status, "FAIL", "missing required span status");
+    assertEqual(missingSpanRecord.measurements.openclawMissingRequiredSpanCount, 1, "missing required span measurement");
+    assertEqual(
+      missingSpanRecord.violations.some((violation) => violation.metric === "openclawMissingRequiredSpanCount"),
+      true,
+      "missing required span violation"
     );
 
     const openSpanRecord = {

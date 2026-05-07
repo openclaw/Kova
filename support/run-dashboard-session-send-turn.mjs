@@ -24,7 +24,11 @@ try {
   const sessionKey = args["session-key"] ?? `kova-dashboard-${randomUUID()}`;
   const createSession = readBoolean(args["create-session"], true);
   const minAssistantCount = readPositiveInteger(args["min-assistant-count"], 1);
+  const allowShellFallback = readBoolean(args["allow-shell-fallback"], false);
   const gatewayTransport = await openDirectGatewayRpcClient(runtimeContext);
+  if (!gatewayTransport.client && !allowShellFallback) {
+    throw new Error(`direct Gateway RPC is required for dashboard-session-send-turn; fallback=${gatewayTransport.transport}; reason=${gatewayTransport.fallbackReason ?? "unknown"}`);
+  }
 
   try {
     let created = null;

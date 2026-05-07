@@ -11,6 +11,7 @@ import { computeProviderTurnAttribution } from "./collectors/provider.mjs";
 import { summarizeRuntimeDepsLogs } from "./collectors/logs.mjs";
 import { buildHealthMeasurement, healthReadinessClassification } from "./health.mjs";
 import { resolveThresholdPolicy } from "./evaluation/thresholds.mjs";
+import { measuredProductPhase, measurementScopeForPhase, normalizeMeasurementScope } from "./measurement-contract.mjs";
 import {
   checkAggregateThreshold,
   checkDuration,
@@ -30,13 +31,18 @@ export function evaluateRecord(record, scenario, options = {}) {
   const roleThresholds = thresholdPolicy.roleThresholds;
   const violations = [];
   const allResults = collectResults(record);
-  const measuredResults = collectResults(record, { excludePhaseIds: ["target-setup"] });
+  const measurementScopeSummary = summarizeMeasurementScopes(record);
+  const measuredResults = collectResults(record, { productOnly: true });
   const resourceSummary = collectResourceSummary(measuredResults);
-  const peakRssMb = maxNullable(
-    collectPeakRss(record, { excludePhaseIds: ["target-setup"] }),
+  const primaryResourceRole = options.surface?.resourcePrimaryRole ?? null;
+  const primaryRoleResources = primaryResourceRole ? resourceSummary.byRole[primaryResourceRole] : null;
+  const peakTrackedRssMb = maxNullable(
+    collectPeakRss(record, { productOnly: true }),
     resourceSummary.peakTotalRssMb
   );
-  const cpuPercentMax = maxNullable(collectCpuPercentMax(record), resourceSummary.maxTotalCpuPercent);
+  const cpuPercentMaxTracked = maxNullable(collectCpuPercentMax(record, { productOnly: true }), resourceSummary.maxTotalCpuPercent);
+  const peakRssMb = typeof primaryRoleResources?.peakRssMb === "number" ? primaryRoleResources.peakRssMb : peakTrackedRssMb;
+  const cpuPercentMax = typeof primaryRoleResources?.maxCpuPercent === "number" ? primaryRoleResources.maxCpuPercent : cpuPercentMaxTracked;
   const missingDependencyErrors = countMissingDependencyErrors(allResults) + countLogMetric(record, "missingDependencyErrors");
   const pluginLoadFailures = countLogMetric(record, "pluginLoadFailures");
   const metadataScanMentions = countLogMetric(record, "metadataScanMentions");
@@ -67,6 +73,7 @@ export function evaluateRecord(record, scenario, options = {}) {
   const timelineRequirement = timelineRequirementFor(options);
   const requiredOpenSpans = requiredTimelineSpans(options);
   const openRequiredSpans = timelineSummary.openSpans.filter((span) => requiredOpenSpans.has(span.name));
+  const missingRequiredSpans = missingTimelineSpans(timelineSummary, requiredOpenSpans);
   const runtimeDepsStagingMs = maxNullable(
     openclawDiagnostics.runtimeDepsStagingMs,
     timelineSummary.runtimeDepsStageMaxMs,
@@ -719,6 +726,18 @@ export function evaluateRecord(record, scenario, options = {}) {
     });
   }
 
+  if (timelineSummary.available && missingRequiredSpans.length > 0) {
+    violations.push({
+      kind: "diagnostics",
+      metric: "openclawMissingRequiredSpanCount",
+      expected: "0",
+      actual: missingRequiredSpans.length,
+      message: `${missingRequiredSpans.length} required OpenClaw diagnostics span(s) were not observed: ${missingRequiredSpans.slice(0, 5).join(", ")}`
+    });
+  }
+
+  checkGatewaySessionTransport(violations, agentTurns, scenario);
+
   if (agentResponseOk === false) {
     violations.push({
       kind: "agent",
@@ -737,6 +756,11 @@ export function evaluateRecord(record, scenario, options = {}) {
   record.measurements = {
     peakRssMb,
     cpuPercentMax,
+    measurementScopeSummary,
+    resourceMeasurementScope: "product",
+    resourcePrimaryRole: primaryResourceRole,
+    resourcePeakTrackedRssMb: peakTrackedRssMb,
+    resourceCpuPercentMaxTracked: cpuPercentMaxTracked,
     coldReadyMs,
     warmReadyMs,
     upgradeMs,
@@ -917,6 +941,8 @@ export function evaluateRecord(record, scenario, options = {}) {
     openclawRepeatedSpanCount: timelineSummary.repeatedSpanCount,
     openclawOpenSpanCount: timelineSummary.openSpanCount,
     openclawOpenRequiredSpanCount: openRequiredSpans.length,
+    openclawMissingRequiredSpanCount: missingRequiredSpans.length,
+    openclawMissingRequiredSpans: missingRequiredSpans,
     openclawOpenSpans: timelineSummary.openSpans,
     openclawKeySpans: timelineSummary.keySpans,
     openclawEventLoopMaxMs: timelineSummary.eventLoopMaxMs,
@@ -1089,6 +1115,29 @@ function preferredPreProviderAttributionSummary(...summaries) {
   return summaries.find((summary) => summary?.count > 0) ?? summaries[0];
 }
 
+function checkGatewaySessionTransport(violations, agentTurns, scenario) {
+  if (scenario.id !== "dashboard-session-send-turn") {
+    return;
+  }
+  for (const turn of agentTurns) {
+    if (!turn.gatewaySession) {
+      continue;
+    }
+    const transport = turn.gatewaySession.gatewayTransportKind;
+    if (transport === "direct-gateway-rpc") {
+      continue;
+    }
+    violations.push({
+      kind: "harness",
+      metric: "gatewayTransport.kind",
+      expected: "direct-gateway-rpc",
+      actual: transport ?? "unknown",
+      phaseId: turn.phaseId,
+      message: `dashboard session benchmark used ${transport ?? "unknown"} transport; direct Gateway RPC is required for Gateway product measurement${turn.gatewaySession.gatewayTransportFallbackReason ? ` (${turn.gatewaySession.gatewayTransportFallbackReason})` : ""}`
+    });
+  }
+}
+
 function extractGatewaySessionTurn(result) {
   if (!result?.command?.includes("run-dashboard-session-send-turn.mjs")) {
     return null;
@@ -1115,6 +1164,9 @@ function extractGatewaySessionTurn(result) {
     minAssistantCount: numberOrNull(payload.minAssistantCount),
     sessionKey: payload.sessionKey ?? null,
     runId: payload.runId ?? null,
+    gatewayTransportKind: payload.gatewayTransport?.kind ?? null,
+    gatewayTransportFallbackReason: payload.gatewayTransport?.fallbackReason ?? null,
+    gatewayTransportFallbackUsed: typeof payload.gatewayTransport?.kind === "string" && payload.gatewayTransport.kind !== "direct-gateway-rpc",
     activeStartedAtEpochMs,
     activeFinishedAtEpochMs,
     activeTurnMs,
@@ -2017,6 +2069,26 @@ function requiredTimelineSpans(options) {
   ]);
 }
 
+function missingTimelineSpans(timelineSummary, requiredSpans) {
+  return [...requiredSpans].filter((name) => !timelineSpanObserved(timelineSummary, name));
+}
+
+function timelineSpanObserved(timelineSummary, name) {
+  const exact = timelineSummary.keySpans?.[name] ?? timelineSummary.spanTotals?.[name];
+  if ((exact?.count ?? 0) > 0 || (exact?.openCount ?? 0) > 0) {
+    return true;
+  }
+  if ((timelineSummary.openSpans ?? []).some((span) => span.name === name)) {
+    return true;
+  }
+  if (name === "gateway.chat_send" || name === "auto_reply" || name === "reply" || name === "models.catalog") {
+    return Object.entries(timelineSummary.spanTotals ?? {}).some(([spanName, summary]) =>
+      spanName === name || (spanName.startsWith(`${name}.`) && (summary.count ?? 0) > 0)
+    );
+  }
+  return false;
+}
+
 function maxDurationWhere(results, predicate) {
   const durations = results
     .filter((result) => predicate(result.command))
@@ -2515,11 +2587,36 @@ function healthFailureCount(samples) {
   return samples.filter((sample) => sample && !sample.ok).length;
 }
 
+function summarizeMeasurementScopes(record) {
+  const phases = { product: 0, harness: 0, cleanup: 0 };
+  const results = { product: 0, harness: 0, cleanup: 0 };
+  for (const phase of record.phases ?? []) {
+    const phaseScope = measurementScopeForPhase(phase);
+    phases[phaseScope] += 1;
+    for (const result of phase.results ?? []) {
+      const resultScope = result.measurementScope ? normalizeMeasurementScope(result.measurementScope, phase.id) : phaseScope;
+      results[resultScope] += 1;
+    }
+  }
+  return {
+    schemaVersion: "kova.measurementScopeSummary.v1",
+    productPhaseCount: phases.product,
+    harnessPhaseCount: phases.harness,
+    cleanupPhaseCount: phases.cleanup,
+    productCommandCount: results.product,
+    harnessCommandCount: results.harness,
+    cleanupCommandCount: results.cleanup
+  };
+}
+
 function collectResults(record, options = {}) {
   const excludePhaseIds = new Set(options.excludePhaseIds ?? []);
   const results = [];
   for (const phase of record.phases ?? []) {
     if (excludePhaseIds.has(phase.id)) {
+      continue;
+    }
+    if (options.productOnly === true && !measuredProductPhase(phase)) {
       continue;
     }
     for (const result of phase.results ?? []) {
@@ -2544,6 +2641,9 @@ function collectPeakRss(record, options = {}) {
   let peak = null;
   for (const phase of record.phases ?? []) {
     if (excludePhaseIds.has(phase.id)) {
+      continue;
+    }
+    if (options.productOnly === true && !measuredProductPhase(phase)) {
       continue;
     }
     const rss = phase.metrics?.process?.rssMb;
@@ -2720,8 +2820,8 @@ function collectTimelineSummary(record) {
   let repeatedSpanCount = 0;
   let runtimeDepsStageMaxMs = null;
   let slowestRuntimeDepsPlugin = null;
-  let openSpanCount = 0;
-  let openSpans = [];
+  let latestOpenSpanCount = 0;
+  let latestOpenSpans = [];
   let latestEventCount = -1;
   let events = [];
   let turnAttributionEvents = [];
@@ -2734,6 +2834,10 @@ function collectTimelineSummary(record) {
       latestEventCount = timeline.eventCount ?? 0;
       events = timeline.events;
       turnAttributionEvents = Array.isArray(timeline.turnAttributionEvents) ? timeline.turnAttributionEvents : [];
+      latestOpenSpanCount = timeline.openSpanCount ?? timeline.openSpans?.length ?? 0;
+      latestOpenSpans = [...(timeline.openSpans ?? [])]
+        .toSorted((left, right) => (right.ageMs ?? -1) - (left.ageMs ?? -1))
+        .slice(0, 25);
     }
     for (const artifact of timeline.artifacts ?? []) {
       artifacts.add(artifact);
@@ -2742,8 +2846,6 @@ function collectTimelineSummary(record) {
     parseErrorCount = Math.max(parseErrorCount, timeline.parseErrorCount ?? 0);
     childProcessFailedCount = Math.max(childProcessFailedCount, timeline.childProcesses?.failedCount ?? 0);
     repeatedSpanCount = Math.max(repeatedSpanCount, timeline.repeatedSpans?.length ?? 0);
-    openSpanCount = Math.max(openSpanCount, timeline.openSpanCount ?? timeline.openSpans?.length ?? 0);
-    openSpans = mergeOpenSpans(openSpans, timeline.openSpans ?? []);
     mergeKeySpans(keySpans, timeline.keySpans ?? {});
     mergeSpanTotals(spanTotals, timeline.spanTotals ?? {});
     eventLoopMaxMs = maxNullable(eventLoopMaxMs, timeline.eventLoop?.maxMs);
@@ -2775,8 +2877,8 @@ function collectTimelineSummary(record) {
     slowestSpanName: slowestSpan?.name ?? null,
     slowestSpanMs: slowestSpan?.durationMs ?? null,
     repeatedSpanCount,
-    openSpanCount,
-    openSpans,
+    openSpanCount: latestOpenSpanCount,
+    openSpans: latestOpenSpans,
     artifacts: [...artifacts],
     timelineArtifacts: [...artifacts],
     events,
@@ -2847,9 +2949,12 @@ function mergeKeySpans(target, source) {
   }
 }
 
-function collectCpuPercentMax(record) {
+function collectCpuPercentMax(record, options = {}) {
   const values = [];
   for (const phase of record.phases ?? []) {
+    if (options.productOnly === true && !measuredProductPhase(phase)) {
+      continue;
+    }
     const cpu = phase.metrics?.process?.cpuPercent;
     if (typeof cpu === "number") {
       values.push(cpu);

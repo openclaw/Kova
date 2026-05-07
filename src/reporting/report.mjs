@@ -237,7 +237,9 @@ export function renderMarkdownReport(report) {
           const expectedFailure = turn.expectedFailure ? "; expected failure observed " + turn.expectedFailureObserved : "";
           lines.push(`  - ${turn.label}: total ${turn.totalTurnMs ?? "unknown"} ms; pre-provider ${turn.preProviderMs ?? "unknown"} ms; provider ${turn.providerFinalMs ?? "unknown"} ms; post-provider ${turn.postProviderMs ?? "unknown"} ms; route ${route}; status ${status}; issue ${issue}; response ${turn.responseOk}; leaks ${turn.processLeakCount ?? "unknown"}${providerTiming}${expectedFailure}`);
           if (turn.gatewaySession) {
-            lines.push(`    - gateway session: create ${turn.gatewaySession.createSession}; session create ${turn.gatewaySession.sessionCreateDurationMs ?? "n/a"} ms; send ${turn.gatewaySession.sendDurationMs ?? "unknown"} ms; first assistant ${turn.gatewaySession.timeToFirstAssistantMs ?? "unknown"} ms; matched assistant ${turn.gatewaySession.timeToMatchedAssistantMs ?? "unknown"} ms; polls ${turn.gatewaySession.historyPollCount ?? "unknown"} (${turn.gatewaySession.historyErrorCount ?? "unknown"} errors)`);
+            const transport = turn.gatewaySession.gatewayTransportKind ?? "unknown";
+            const fallback = turn.gatewaySession.gatewayTransportFallbackReason ? `; fallback ${turn.gatewaySession.gatewayTransportFallbackReason}` : "";
+            lines.push(`    - gateway session: transport ${transport}${fallback}; create ${turn.gatewaySession.createSession}; session create ${turn.gatewaySession.sessionCreateDurationMs ?? "n/a"} ms; send ${turn.gatewaySession.sendDurationMs ?? "unknown"} ms; first assistant ${turn.gatewaySession.timeToFirstAssistantMs ?? "unknown"} ms; matched assistant ${turn.gatewaySession.timeToMatchedAssistantMs ?? "unknown"} ms; polls ${turn.gatewaySession.historyPollCount ?? "unknown"} (${turn.gatewaySession.historyErrorCount ?? "unknown"} errors)`);
           }
           if (turn.turnDiagnostics) {
             lines.push(`    - active window: metadata scans ${turn.metadataScanCount ?? "unknown"} (${turn.metadataScanTotalMs ?? "unknown"} ms total, max ${turn.metadataScanMaxMs ?? "unknown"} ms); event-loop samples ${turn.turnDiagnostics.eventLoop?.sampleCount ?? "unknown"} max ${turn.eventLoopMaxMs ?? "unknown"} ms`);
@@ -703,6 +705,11 @@ function summarizeMeasurements(measurements) {
   return {
     peakRssMb: measurements.peakRssMb ?? null,
     cpuPercentMax: measurements.cpuPercentMax ?? null,
+    measurementScopeSummary: measurements.measurementScopeSummary ?? null,
+    resourceMeasurementScope: measurements.resourceMeasurementScope ?? null,
+    resourcePrimaryRole: measurements.resourcePrimaryRole ?? null,
+    resourcePeakTrackedRssMb: measurements.resourcePeakTrackedRssMb ?? null,
+    resourceCpuPercentMaxTracked: measurements.resourceCpuPercentMaxTracked ?? null,
     health: measurements.health ?? null,
     missingDependencyErrors: measurements.missingDependencyErrors ?? null,
     pluginLoadFailures: measurements.pluginLoadFailures ?? null,
@@ -719,6 +726,8 @@ function summarizeMeasurements(measurements) {
     openclawSlowestSpanMs: measurements.openclawSlowestSpanMs ?? null,
     openclawOpenSpanCount: measurements.openclawOpenSpanCount ?? null,
     openclawOpenRequiredSpanCount: measurements.openclawOpenRequiredSpanCount ?? null,
+    openclawMissingRequiredSpanCount: measurements.openclawMissingRequiredSpanCount ?? null,
+    openclawMissingRequiredSpans: measurements.openclawMissingRequiredSpans ?? null,
     openclawOpenSpans: measurements.openclawOpenSpans ?? null,
     openclawKeySpans: measurements.openclawKeySpans ?? null,
     providerRequestCount: measurements.providerRequestCount ?? null,
