@@ -4,9 +4,9 @@ import {
   summarizeAgentCliPreProviderAttributions
 } from "./collectors/agent-cli-attribution.mjs";
 import {
-  buildDashboardPreProviderAttribution,
-  summarizeDashboardPreProviderAttributions
-} from "./collectors/dashboard-turn-attribution.mjs";
+  buildGatewaySessionPreProviderAttribution,
+  summarizeGatewaySessionPreProviderAttributions
+} from "./collectors/gateway-session-turn-attribution.mjs";
 import { computeProviderTurnAttribution } from "./collectors/provider.mjs";
 import { summarizeRuntimeDepsLogs } from "./collectors/logs.mjs";
 import { buildHealthMeasurement, healthReadinessClassification } from "./health.mjs";
@@ -92,10 +92,10 @@ export function evaluateRecord(record, scenario, options = {}) {
   const providerTurn = collectSlowestProviderTurn(agentTurns);
   const agentTurnStats = summarizeAgentTurnStats(agentTurns);
   const agentTurnDiagnostics = summarizeAgentTurnDiagnostics(agentTurns);
-  const dashboardPreProviderAttribution = summarizeDashboardPreProviderAttributions(agentTurns);
+  const gatewaySessionPreProviderAttribution = summarizeGatewaySessionPreProviderAttributions(agentTurns);
   const agentCliPreProviderAttribution = summarizeAgentCliPreProviderAttributions(agentTurns);
   const turnPreProviderAttribution = preferredPreProviderAttributionSummary(
-    dashboardPreProviderAttribution,
+    gatewaySessionPreProviderAttribution,
     agentCliPreProviderAttribution
   );
   const agentTurnMs = maxTurnDuration(agentTurns);
@@ -792,7 +792,7 @@ export function evaluateRecord(record, scenario, options = {}) {
     agentEventLoopSampleCount: agentTurnDiagnostics.eventLoopSampleCount,
     agentSessionPollCount: agentTurnDiagnostics.sessionPollCount,
     agentSessionPollErrorCount: agentTurnDiagnostics.sessionPollErrorCount,
-    dashboardPreProviderAttribution,
+    gatewaySessionPreProviderAttribution,
     agentCliPreProviderAttribution,
     coldPreProviderAttributedMs: turnPreProviderAttribution.cold.knownAttributedMs.median,
     warmPreProviderAttributedMs: turnPreProviderAttribution.warm.knownAttributedMs.median,
@@ -1025,8 +1025,8 @@ function collectAgentTurns(record, providerEvidence, scenario, timelineSummary, 
         activeFinishedAtEpochMs: timingResult.finishedAtEpochMs,
         gatewaySession
       });
-      const dashboardPreProviderAttribution = gatewaySession
-        ? buildDashboardPreProviderAttribution({
+      const gatewaySessionPreProviderAttribution = gatewaySession
+        ? buildGatewaySessionPreProviderAttribution({
             label: agentTurnLabel(phase.id, index),
             phaseId: phase.id,
             activeStartedAtEpochMs: timingResult.startedAtEpochMs,
@@ -1091,7 +1091,7 @@ function collectAgentTurns(record, providerEvidence, scenario, timelineSummary, 
         providerLateByMs: attribution?.providerLateByMs ?? null,
         phaseBreakdown,
         turnDiagnostics,
-        dashboardPreProviderAttribution,
+        gatewaySessionPreProviderAttribution,
         agentCliPreProviderAttribution,
         metadataScanCount: turnDiagnostics.metadataScan.count,
         metadataScanTotalMs: turnDiagnostics.metadataScan.totalDurationMs,
@@ -1116,7 +1116,7 @@ function preferredPreProviderAttributionSummary(...summaries) {
 }
 
 function checkGatewaySessionTransport(violations, agentTurns, scenario) {
-  if (scenario.id !== "dashboard-session-send-turn") {
+  if (scenario.id !== "gateway-session-send-turn" && scenario.surface !== "gateway-session-send-turn") {
     return;
   }
   for (const turn of agentTurns) {
@@ -1133,17 +1133,17 @@ function checkGatewaySessionTransport(violations, agentTurns, scenario) {
       expected: "direct-gateway-rpc",
       actual: transport ?? "unknown",
       phaseId: turn.phaseId,
-      message: `dashboard session benchmark used ${transport ?? "unknown"} transport; direct Gateway RPC is required for Gateway product measurement${turn.gatewaySession.gatewayTransportFallbackReason ? ` (${turn.gatewaySession.gatewayTransportFallbackReason})` : ""}`
+      message: `Gateway session benchmark used ${transport ?? "unknown"} transport; direct Gateway RPC is required for Gateway product measurement${turn.gatewaySession.gatewayTransportFallbackReason ? ` (${turn.gatewaySession.gatewayTransportFallbackReason})` : ""}`
     });
   }
 }
 
 function extractGatewaySessionTurn(result) {
-  if (!result?.command?.includes("run-dashboard-session-send-turn.mjs")) {
+  if (!result?.command?.includes("run-gateway-session-send-turn.mjs")) {
     return null;
   }
   const payload = parseJsonObject(result.stdout);
-  if (!payload || payload.surface !== "dashboard-session-send-turn") {
+  if (!payload || payload.surface !== "gateway-session-send-turn") {
     return null;
   }
   const activeStartedAtEpochMs = numberOrNull(payload.activeStartedAtEpochMs ?? payload.sendStartedAtEpochMs);
@@ -2015,11 +2015,11 @@ function agentTurnLabel(phaseId, index) {
   if (phaseId?.includes("warm")) {
     return "warm";
   }
+  if (phaseId?.includes("gateway-session")) {
+    return "gateway-session";
+  }
   if (phaseId?.includes("gateway")) {
     return "gateway-rpc";
-  }
-  if (phaseId?.includes("dashboard")) {
-    return "dashboard-session";
   }
   if (phaseId?.includes("tui")) {
     return "tui";
@@ -3417,7 +3417,7 @@ function countDiagnosticMetric(record, key) {
 function isAgentMessageCommand(command) {
   return (command.includes(" -- agent ") && command.includes("--message")) ||
     command.includes("run-concurrent-agent-turns.mjs") ||
-    command.includes("run-dashboard-session-send-turn.mjs") ||
+    command.includes("run-gateway-session-send-turn.mjs") ||
     command.includes("run-tui-message-turn.mjs") ||
     command.includes("run-openai-compatible-turn.mjs");
 }

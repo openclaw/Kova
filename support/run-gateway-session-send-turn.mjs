@@ -21,13 +21,13 @@ try {
   const message = args.message ?? "Reply with exact ASCII text KOVA_AGENT_OK only.";
   const expectedText = args["expected-text"] ?? "KOVA_AGENT_OK";
   const timeoutMs = readTimeoutMs(args.timeout, 120000);
-  const sessionKey = args["session-key"] ?? `kova-dashboard-${randomUUID()}`;
+  const sessionKey = args["session-key"] ?? `kova-gateway-session-${randomUUID()}`;
   const createSession = readBoolean(args["create-session"], true);
   const minAssistantCount = readPositiveInteger(args["min-assistant-count"], 1);
   const allowShellFallback = readBoolean(args["allow-shell-fallback"], false);
   const gatewayTransport = await openDirectGatewayRpcClient(runtimeContext);
   if (!gatewayTransport.client && !allowShellFallback) {
-    throw new Error(`direct Gateway RPC is required for dashboard-session-send-turn; fallback=${gatewayTransport.transport}; reason=${gatewayTransport.fallbackReason ?? "unknown"}`);
+    throw new Error(`direct Gateway RPC is required for gateway-session-send-turn; fallback=${gatewayTransport.transport}; reason=${gatewayTransport.fallbackReason ?? "unknown"}`);
   }
 
   try {
@@ -39,7 +39,7 @@ try {
       created = await gatewayCall(runtimeContext, gatewayTransport, "sessions.create", {
         agentId: "main",
         key: sessionKey,
-        label: "Kova Dashboard Session Send"
+        label: "Kova Gateway Session Send"
       }, Math.min(timeoutMs, 60000));
       sessionCreateFinishedAtEpochMs = Date.now();
     }
@@ -50,7 +50,7 @@ try {
         message,
         thinking: "off",
         timeoutMs,
-        idempotencyKey: `kova-dashboard-${randomUUID()}`
+        idempotencyKey: `kova-gateway-session-${randomUUID()}`
       }, Math.min(timeoutMs, 60000));
     const sendFinishedAtEpochMs = Date.now();
     const runId = typeof sent?.runId === "string" ? sent.runId : null;
@@ -68,7 +68,7 @@ try {
 
     finishJson({
       ok: true,
-      surface: "dashboard-session-send-turn",
+      surface: "gateway-session-send-turn",
       method: "sessions.send",
       createSession,
       minAssistantCount,
@@ -109,7 +109,7 @@ try {
     gatewayTransport.client?.close();
   }
 } catch (error) {
-  failJson(error, { surface: "dashboard-session-send-turn", finishedAtEpochMs: Date.now() });
+  failJson(error, { surface: "gateway-session-send-turn", finishedAtEpochMs: Date.now() });
 }
 
 async function waitForAssistantText({ runtimeContext, gatewayTransport, sessionKey, expectedText, timeoutMs, minAssistantCount }) {
@@ -151,7 +151,7 @@ async function waitForAssistantText({ runtimeContext, gatewayTransport, sessionK
     await sleep(500);
   }
   throw new Error(
-    `timed out waiting for dashboard assistant text ${JSON.stringify(expectedText)}; last=${JSON.stringify(lastAssistantText)}; lastHistoryError=${JSON.stringify(lastHistoryError?.message ?? null)}`
+    `timed out waiting for Gateway session assistant text ${JSON.stringify(expectedText)}; last=${JSON.stringify(lastAssistantText)}; lastHistoryError=${JSON.stringify(lastHistoryError?.message ?? null)}`
   );
 }
 

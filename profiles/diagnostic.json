@@ -78,7 +78,7 @@
           "openclawSlowestSpanMs": 45000
         }
       },
-      "dashboard-session-send-turn": {
+      "gateway-session-send-turn": {
         "thresholds": {
           "agentTurnMs": 60000,
           "preProviderMs": 15000,
@@ -132,7 +132,7 @@
           "bundled-runtime-deps:baseline",
           "agent-cli-local-turn:baseline",
           "agent-gateway-rpc-turn:baseline",
-          "dashboard-session-send-turn:baseline",
+          "gateway-session-send-turn:baseline",
           "tui-message-turn:baseline",
           "openai-compatible-turn:baseline"
         ]
@@ -160,7 +160,7 @@
         "state": "mock-openai-provider"
       },
       {
-        "scenario": "dashboard-session-send-turn",
+        "scenario": "gateway-session-send-turn",
         "state": "mock-openai-provider"
       },
       {
@@ -200,7 +200,7 @@
       "timeoutMs": 180000
     },
     {
-      "scenario": "dashboard-session-send-turn",
+      "scenario": "gateway-session-send-turn",
       "state": "mock-openai-provider",
       "timeoutMs": 180000
     },

@@ -1,12 +1,12 @@
 {
-  "id": "dashboard-session-send-turn",
+  "id": "gateway-session-send-turn",
   "title": "Gateway Session Cold/Warm Turns",
   "ownerArea": "gateway-chat-session-runtime",
   "description": "Create or reuse a real Gateway session, call Gateway `sessions.send` for cold and warm turns, and validate the same session API path dashboard and channel users exercise.",
   "processRoles": [
     "gateway",
     "command-tree",
-    "dashboard-cli",
+    "gateway-session-client",
     "agent-process",
     "mock-provider"
   ],
@@ -28,8 +28,8 @@
       "peakRssMb": 700,
       "maxCpuPercent": 250
     },
-    "dashboard-cli": {
-      "peakRssMb": 700,
+    "gateway-session-client": {
+      "peakRssMb": 650,
       "maxCpuPercent": 250
     },
     "mock-provider": {

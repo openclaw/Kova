@@ -1,14 +1,15 @@
 {
-  "id": "dashboard-session-send-turn-existing-user",
-  "surface": "dashboard-session-send-turn",
-  "title": "Dashboard Session Send Existing User Turn",
-  "objective": "Clone an existing OpenClaw env, move the clone to the target runtime, send a dashboard-style user message through Gateway sessions.send, and measure response latency without mutating the durable source env.",
+  "id": "gateway-session-send-turn-existing-user",
+  "surface": "gateway-session-send-turn",
+  "title": "Gateway Session Send Existing User Turn",
+  "objective": "Clone an existing OpenClaw env, move the clone to the target runtime, send a user message through Gateway sessions.send, and measure response latency without mutating the durable source env.",
   "tags": [
     "agent",
     "message",
-    "dashboard",
     "sessions",
     "gateway",
+    "control-ui",
+    "channels",
     "providers",
     "existing-user",
     "live"
@@ -62,7 +63,7 @@
     {
       "id": "gateway-start",
       "title": "Start Gateway",
-      "intent": "Start the cloned gateway after upgrade and wait for readiness before sending a dashboard-style message.",
+      "intent": "Start the cloned gateway after upgrade and wait for readiness before sending a Gateway session message.",
       "commands": [
         "ocm service install {env} --json",
         "ocm service start {env} --json"
@@ -75,11 +76,11 @@
       "healthScope": "readiness"
     },
     {
-      "id": "dashboard-session-turn",
-      "title": "Dashboard Session Message",
+      "id": "gateway-session-turn",
+      "title": "Gateway Session Message",
       "intent": "Exercise Gateway sessions.send on cloned user state and verify final assistant text appears in chat history.",
       "commands": [
-        "node {kovaRoot}/support/run-dashboard-session-send-turn.mjs --env {env} --session-key kova-dashboard-existing-user --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --expected-text KOVA_AGENT_OK --timeout 120000"
+        "node {kovaRoot}/support/run-gateway-session-send-turn.mjs --env {env} --session-key kova-gateway-existing-user --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --expected-text KOVA_AGENT_OK --timeout 120000"
       ],
       "evidence": [
         "sessions.create timing",
@@ -92,9 +93,9 @@
       "healthScope": "post-ready"
     },
     {
-      "id": "post-dashboard-health",
-      "title": "Post-Dashboard Gateway Health",
-      "intent": "Verify the cloned gateway remains responsive after the dashboard-style turn and collect logs for embedded-run/liveness evidence.",
+      "id": "post-gateway-session-health",
+      "title": "Post-Gateway-Session Health",
+      "intent": "Verify the cloned gateway remains responsive after the Gateway session turn and collect logs for embedded-run/liveness evidence.",
       "commands": [
         "ocm @{env} -- gateway status --json --require-rpc",
         "ocm logs {env} --tail 300 --raw"
@@ -104,7 +105,7 @@
         "embedded-run traces",
         "liveness warnings",
         "plugin errors",
-        "memory after dashboard turn"
+        "memory after Gateway session turn"
       ],
       "healthScope": "post-ready"
     }

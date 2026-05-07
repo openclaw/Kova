@@ -1,0 +1,7 @@
+{
+  "id": "gateway-session-client",
+  "title": "Gateway Session Client",
+  "description": "Kova helper process that drives the shared Gateway sessions.create, sessions.send, and chat.history path directly over Gateway RPC.",
+  "commandPatterns": ["run-gateway-session-send-turn.mjs", "sessions.create", "sessions.send", "chat.history"],
+  "processPatterns": ["node\\s+.*run-gateway-session-send-turn\\.mjs"]
+}

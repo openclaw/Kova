@@ -34,8 +34,8 @@ import {
 import { buildAgentCliPreProviderAttribution } from "./collectors/agent-cli-attribution.mjs";
 import {
   attributedSpanIntervals,
-  buildDashboardPreProviderAttribution
-} from "./collectors/dashboard-turn-attribution.mjs";
+  buildGatewaySessionPreProviderAttribution
+} from "./collectors/gateway-session-turn-attribution.mjs";
 import {
   computeProviderTurnAttribution,
   parseProviderRequestLog,
@@ -211,7 +211,7 @@ export async function runSelfCheck(flags = {}) {
         throw new Error(`missing auth override should not inject auth phases: ${phaseIds.join(", ")}`);
       }
     }));
-    checks.push(await jsonCommandCheck("run-auth-live-source-env-json", `node bin/kova.mjs run --auth live --target runtime:stable --scenario dashboard-session-send-turn-existing-user --source-env 'Team Env' --report-dir ${quoteShell(tmp)} --json`, async (data) => {
+    checks.push(await jsonCommandCheck("run-auth-live-source-env-json", `node bin/kova.mjs run --auth live --target runtime:stable --scenario gateway-session-send-turn-existing-user --source-env 'Team Env' --report-dir ${quoteShell(tmp)} --json`, async (data) => {
       const report = JSON.parse(await readFile(data.jsonPath, "utf8"));
       const record = report.records?.[0];
       assertEqual(record?.auth?.mode, "live", "source-env live auth mode");
@@ -223,11 +223,11 @@ export async function runSelfCheck(flags = {}) {
       }
       const commands = record?.phases?.flatMap((phase) => phase.commands ?? []) ?? [];
       assertEqual(commands.some((command) => command.includes("ocm env clone 'Team Env'")), true, "source env clone command present");
-      assertEqual(commands.some((command) => command.includes("run-dashboard-session-send-turn.mjs")), true, "dashboard session helper command present");
+      assertEqual(commands.some((command) => command.includes("run-gateway-session-send-turn.mjs")), true, "gateway session helper command present");
     }));
     for (const item of [
       ["agent-gateway-rpc-turn", "agent-gateway-rpc-turn", "ocm @"],
-      ["dashboard-session-send-turn", "dashboard-session-send-turn", "run-dashboard-session-send-turn.mjs"],
+      ["gateway-session-send-turn", "gateway-session-send-turn", "run-gateway-session-send-turn.mjs"],
       ["tui-message-turn", "tui-message-turn", "run-tui-message-turn.mjs"],
       ["openai-compatible-turn", "openai-compatible-turn", "run-openai-compatible-turn.mjs"]
     ]) {
@@ -380,7 +380,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(await providerEvidenceParserCheck());
     checks.push(agentTurnBreakdownCheck());
     checks.push(gatewaySessionTurnEvaluationCheck());
-    checks.push(dashboardPreProviderAttributionCheck());
+    checks.push(gatewaySessionPreProviderAttributionCheck());
     checks.push(agentCliPreProviderAttributionCheck());
     checks.push(await mockProviderBehaviorCheck(tmp));
     checks.push(providerFailureEvaluationCheck());
@@ -2185,11 +2185,11 @@ function gatewaySessionTurnEvaluationCheck() {
     const base = 1777536000000;
     const coldPayload = {
       ok: true,
-      surface: "dashboard-session-send-turn",
+      surface: "gateway-session-send-turn",
       method: "sessions.send",
       createSession: true,
       minAssistantCount: 1,
-      sessionKey: "kova-dashboard-session-send",
+      sessionKey: "kova-gateway-session-send",
       runId: "cold-run",
       gatewayTransport: { kind: "direct-gateway-rpc", fallbackReason: null },
       activeStartedAtEpochMs: base + 1000,
@@ -2211,11 +2211,11 @@ function gatewaySessionTurnEvaluationCheck() {
     };
     const warmPayload = {
       ok: true,
-      surface: "dashboard-session-send-turn",
+      surface: "gateway-session-send-turn",
       method: "sessions.send",
       createSession: false,
       minAssistantCount: 2,
-      sessionKey: "kova-dashboard-session-send",
+      sessionKey: "kova-gateway-session-send",
       runId: "warm-run",
       gatewayTransport: { kind: "direct-gateway-rpc", fallbackReason: null },
       activeStartedAtEpochMs: base + 11000,
@@ -2236,21 +2236,21 @@ function gatewaySessionTurnEvaluationCheck() {
       expectedTextPresent: true
     };
     const record = {
-      scenario: "dashboard-session-send-turn",
-      surface: "dashboard-session-send-turn",
+      scenario: "gateway-session-send-turn",
+      surface: "gateway-session-send-turn",
       title: "Gateway session cold/warm",
       status: "PASS",
       cleanup: "done",
       auth: { mode: "mock" },
       phases: [
         {
-          id: "cold-dashboard-session-turn",
+          id: "cold-gateway-session-turn",
           title: "Cold Gateway Session Turn",
           intent: "Synthetic cold Gateway session turn",
-          commands: ["node support/run-dashboard-session-send-turn.mjs --create-session true"],
+          commands: ["node support/run-gateway-session-send-turn.mjs --create-session true"],
           evidence: [],
           results: [{
-            command: "node support/run-dashboard-session-send-turn.mjs --create-session true",
+            command: "node support/run-gateway-session-send-turn.mjs --create-session true",
             status: 0,
             timedOut: false,
             startedAt: new Date(base).toISOString(),
@@ -2264,13 +2264,13 @@ function gatewaySessionTurnEvaluationCheck() {
           metrics: { logs: zeroLogMetrics(), health: { ok: true } }
         },
         {
-          id: "warm-dashboard-session-turn",
+          id: "warm-gateway-session-turn",
           title: "Warm Gateway Session Turn",
           intent: "Synthetic warm Gateway session turn",
-          commands: ["node support/run-dashboard-session-send-turn.mjs --create-session false"],
+          commands: ["node support/run-gateway-session-send-turn.mjs --create-session false"],
           evidence: [],
           results: [{
-            command: "node support/run-dashboard-session-send-turn.mjs --create-session false",
+            command: "node support/run-gateway-session-send-turn.mjs --create-session false",
             status: 0,
             timedOut: false,
             startedAt: new Date(base + 10000).toISOString(),
@@ -2335,7 +2335,7 @@ function gatewaySessionTurnEvaluationCheck() {
     };
 
     evaluateRecord(record, {
-      id: "dashboard-session-send-turn",
+      id: "gateway-session-send-turn",
       agent: { expectedText: "KOVA_AGENT_OK" },
       thresholds: { agentTurnMs: 2000, coldAgentTurnMs: 2000, warmAgentTurnMs: 1000 }
     }, { surface: { thresholds: {} }, targetPlan: { kind: "runtime" } });
@@ -2352,7 +2352,7 @@ function gatewaySessionTurnEvaluationCheck() {
     assertEqual(record.measurements.agentEventLoopMaxMs, 9, "active-window event-loop max");
     assertEqual(record.measurements.agentSessionPollCount, 5, "session polling total");
     assertEqual(record.measurements.agentTurns[1].gatewaySession.createSession, false, "warm turn reuses session");
-    assertEqual(record.measurements.agentTurns[0].gatewaySession.gatewayTransportKind, "direct-gateway-rpc", "dashboard turn direct Gateway transport");
+    assertEqual(record.measurements.agentTurns[0].gatewaySession.gatewayTransportKind, "direct-gateway-rpc", "Gateway session direct Gateway transport");
 
     const rendered = renderMarkdownReport({
       generatedAt: "2026-05-01T00:00:00.000Z",
@@ -2372,18 +2372,18 @@ function gatewaySessionTurnEvaluationCheck() {
       gatewayTransport: { kind: "shell", fallbackReason: "gateway-token-unavailable" }
     };
     const fallbackRecord = {
-      scenario: "dashboard-session-send-turn",
-      surface: "dashboard-session-send-turn",
+      scenario: "gateway-session-send-turn",
+      surface: "gateway-session-send-turn",
       title: "Gateway session shell fallback",
       status: "PASS",
       phases: [{
-        id: "cold-dashboard-session-turn",
+        id: "cold-gateway-session-turn",
         title: "Cold Gateway Session Turn",
         intent: "Synthetic shell fallback",
-        commands: ["node support/run-dashboard-session-send-turn.mjs --create-session true"],
+        commands: ["node support/run-gateway-session-send-turn.mjs --create-session true"],
         evidence: [],
         results: [{
-          command: "node support/run-dashboard-session-send-turn.mjs --create-session true",
+          command: "node support/run-gateway-session-send-turn.mjs --create-session true",
           status: 0,
           timedOut: false,
           startedAt: new Date(base).toISOString(),
@@ -2404,15 +2404,15 @@ function gatewaySessionTurnEvaluationCheck() {
       finalMetrics: { service: { gatewayState: "running" }, logs: zeroLogMetrics() }
     };
     evaluateRecord(fallbackRecord, {
-      id: "dashboard-session-send-turn",
+      id: "gateway-session-send-turn",
       agent: { expectedText: "KOVA_AGENT_OK" },
       thresholds: {}
     }, { surface: { thresholds: {} }, targetPlan: { kind: "runtime" } });
-    assertEqual(fallbackRecord.status, "FAIL", "dashboard session shell fallback rejected");
+    assertEqual(fallbackRecord.status, "FAIL", "gateway session shell fallback rejected");
     assertEqual(
       fallbackRecord.violations.some((violation) => violation.metric === "gatewayTransport.kind"),
       true,
-      "dashboard session shell fallback violation"
+      "gateway session shell fallback violation"
     );
 
     return {
@@ -2432,7 +2432,7 @@ function gatewaySessionTurnEvaluationCheck() {
   }
 }
 
-function dashboardPreProviderAttributionCheck() {
+function gatewaySessionPreProviderAttributionCheck() {
   try {
     const base = 1777536000000;
     const timelineText = [
@@ -2460,9 +2460,9 @@ function dashboardPreProviderAttributionCheck() {
     assertEqual(parsedIntervals.length, 8, "span parser includes error terminal and metadata scans");
     assertEqual(parsedIntervals.some((span) => span.type === "span.error" && span.name === "reply.ensure_workspace"), true, "span error included");
 
-    const coldAttribution = buildDashboardPreProviderAttribution({
+    const coldAttribution = buildGatewaySessionPreProviderAttribution({
       label: "cold",
-      phaseId: "cold-dashboard-session-turn",
+      phaseId: "cold-gateway-session-turn",
       activeStartedAtEpochMs: base + 1000,
       activeFinishedAtEpochMs: base + 2500,
       attribution: {
@@ -2482,16 +2482,16 @@ function dashboardPreProviderAttributionCheck() {
     assertEqual(coldAttribution.knownAttributedMs, 180, "overlap-safe cold known attribution includes active-turn metadata scan");
     assertEqual(coldAttribution.unattributedMs, 20, "cold unattributed remainder");
     const coldScanSummary = coldAttribution.spanSummaries.find((span) => span.name === "plugins.metadata.scan");
-    assertEqual(coldScanSummary?.count, 2, "dashboard attribution includes active-turn metadata scans");
+    assertEqual(coldScanSummary?.count, 2, "gateway session attribution includes active-turn metadata scans");
     assertEqual(coldScanSummary?.phases?.some((phase) => phase.phase === "startup"), true, "startup phase scan inside active window is counted");
     assertEqual(coldScanSummary?.phases?.some((phase) => phase.phase === "agent-turn"), true, "agent-turn phase scan inside active window is counted");
     assertEqual(coldAttribution.spanSummaries.find((span) => span.name === "reply.ensure_workspace")?.errorCount, 1, "error span summary");
     assertEqual(coldAttribution.provider.totalDurationMs, 600, "provider duration stays separate");
     assertEqual(coldAttribution.timelineArtifacts[0], "/tmp/kova/openclaw/timeline.jsonl", "timeline artifact path");
 
-    const missingAttribution = buildDashboardPreProviderAttribution({
+    const missingAttribution = buildGatewaySessionPreProviderAttribution({
       label: "cold",
-      phaseId: "cold-dashboard-session-turn",
+      phaseId: "cold-gateway-session-turn",
       activeStartedAtEpochMs: base + 1000,
       activeFinishedAtEpochMs: base + 2500,
       attribution: { firstProviderRequestAtEpochMs: base + 1200, preProviderMs: 200 },
@@ -2500,42 +2500,42 @@ function dashboardPreProviderAttributionCheck() {
     assertEqual(missingAttribution.available, false, "missing timeline unavailable");
     assertEqual(missingAttribution.unattributedMs, 200, "missing timeline preserves full remainder");
 
-    const record = syntheticDashboardSessionRecord({ base, timeline: parsed });
+    const record = syntheticGatewaySessionRecord({ base, timeline: parsed });
     evaluateRecord(record, {
-      id: "dashboard-session-send-turn",
+      id: "gateway-session-send-turn",
       agent: { expectedText: "KOVA_AGENT_OK" },
       thresholds: { agentTurnMs: 2000, coldAgentTurnMs: 2000, warmAgentTurnMs: 1000 }
     }, { surface: { thresholds: {} }, targetPlan: { kind: "runtime" } });
     assertEqual(record.measurements.coldPreProviderAttributedMs, 180, "record cold attributed metric");
     assertEqual(record.measurements.warmPreProviderAttributedMs, 195, "record warm attributed metric");
     assertEqual(record.measurements.warmPreProviderUnattributedMs, 55, "record warm unattributed metric");
-    assertEqual(record.measurements.dashboardPreProviderAttribution.timelineArtifacts[0], "/tmp/kova/openclaw/timeline.jsonl", "record timeline artifact");
+    assertEqual(record.measurements.gatewaySessionPreProviderAttribution.timelineArtifacts[0], "/tmp/kova/openclaw/timeline.jsonl", "record timeline artifact");
 
     const rendered = renderMarkdownReport({
       generatedAt: "2026-05-01T00:00:00.000Z",
-      runId: "self-check-dashboard-pre-provider",
+      runId: "self-check-gateway-session-pre-provider",
       mode: "self-check",
       target: "runtime:stable",
       platform: { os: "test", release: "test", arch: "test", node: "test" },
       records: [record],
       summary: { statuses: { PASS: 1 } }
     });
-    assertEqual(rendered.includes("Dashboard pre-provider attribution:"), true, "markdown includes dashboard attribution table");
+    assertEqual(rendered.includes("Gateway session pre-provider attribution:"), true, "markdown includes gateway session attribution table");
     assertEqual(rendered.includes("Spans are selected by active turn timestamp window"), true, "markdown describes timestamp-window attribution");
     assertEqual(rendered.includes("`agent-turn`"), true, "markdown includes metadata scan phase as descriptive context");
     assertEqual(rendered.includes("`reply.ensure_workspace`"), true, "markdown includes span table");
 
     return {
-      id: "dashboard-pre-provider-attribution",
+      id: "gateway-session-pre-provider-attribution",
       status: "PASS",
-      command: "evaluate synthetic dashboard pre-provider timeline attribution",
+      command: "evaluate synthetic Gateway session pre-provider timeline attribution",
       durationMs: 0
     };
   } catch (error) {
     return {
-      id: "dashboard-pre-provider-attribution",
+      id: "gateway-session-pre-provider-attribution",
       status: "FAIL",
-      command: "evaluate synthetic dashboard pre-provider timeline attribution",
+      command: "evaluate synthetic Gateway session pre-provider timeline attribution",
       durationMs: 0,
       message: error.message
     };
@@ -2606,7 +2606,7 @@ function agentCliPreProviderAttributionCheck() {
       thresholds: { agentTurnMs: 2000, coldAgentTurnMs: 2000, warmAgentTurnMs: 1000 }
     }, { surface: { thresholds: {} }, targetPlan: { kind: "runtime" } });
     assertEqual(record.measurements.agentCliPreProviderAttribution.count, 2, "record agent CLI attribution count");
-    assertEqual(record.measurements.dashboardPreProviderAttribution.count, 0, "record dashboard attribution stays empty for CLI turns");
+    assertEqual(record.measurements.gatewaySessionPreProviderAttribution.count, 0, "record gateway session attribution stays empty for CLI turns");
     assertEqual(record.measurements.coldPreProviderAttributedMs, 170, "record agent CLI cold attributed metric");
     assertEqual(record.measurements.warmPreProviderAttributedMs, 80, "record agent CLI warm attributed metric");
     assertEqual(record.measurements.warmPreProviderUnattributedMs, 120, "record agent CLI warm unattributed metric");
@@ -2650,14 +2650,14 @@ function timelineEvent(event) {
   });
 }
 
-function syntheticDashboardSessionRecord({ base, timeline }) {
+function syntheticGatewaySessionRecord({ base, timeline }) {
   const coldPayload = {
     ok: true,
-    surface: "dashboard-session-send-turn",
+    surface: "gateway-session-send-turn",
     method: "sessions.send",
     createSession: true,
     minAssistantCount: 1,
-    sessionKey: "kova-dashboard-session-send",
+    sessionKey: "kova-gateway-session-send",
     runId: "cold-run",
     activeStartedAtEpochMs: base + 1000,
     activeFinishedAtEpochMs: base + 2500,
@@ -2694,23 +2694,23 @@ function syntheticDashboardSessionRecord({ base, timeline }) {
     assistantMessageCount: 2
   };
   return {
-    scenario: "dashboard-session-send-turn",
-    surface: "dashboard-session-send-turn",
+    scenario: "gateway-session-send-turn",
+    surface: "gateway-session-send-turn",
     title: "Gateway session cold/warm",
     status: "PASS",
     cleanup: "done",
     auth: { mode: "mock" },
     phases: [
-      syntheticDashboardTurnPhase({
-        id: "cold-dashboard-session-turn",
-        command: "node support/run-dashboard-session-send-turn.mjs --create-session true",
+      syntheticGatewayTurnPhase({
+        id: "cold-gateway-session-turn",
+        command: "node support/run-gateway-session-send-turn.mjs --create-session true",
         startedAtEpochMs: base,
         finishedAtEpochMs: base + 5000,
         payload: coldPayload
       }),
-      syntheticDashboardTurnPhase({
-        id: "warm-dashboard-session-turn",
-        command: "node support/run-dashboard-session-send-turn.mjs --create-session false",
+      syntheticGatewayTurnPhase({
+        id: "warm-gateway-session-turn",
+        command: "node support/run-gateway-session-send-turn.mjs --create-session false",
         startedAtEpochMs: base + 10000,
         finishedAtEpochMs: base + 14000,
         payload: warmPayload
@@ -2842,11 +2842,11 @@ function syntheticAgentCliTurnPhase({ id, startedAtEpochMs, finishedAtEpochMs })
   };
 }
 
-function syntheticDashboardTurnPhase({ id, command, startedAtEpochMs, finishedAtEpochMs, payload }) {
+function syntheticGatewayTurnPhase({ id, command, startedAtEpochMs, finishedAtEpochMs, payload }) {
   return {
     id,
     title: id,
-    intent: "Synthetic dashboard session turn",
+    intent: "Synthetic Gateway session turn",
     commands: [command],
     evidence: [],
     results: [{
@@ -4432,7 +4432,7 @@ function embeddedRunLogParserCheck() {
 
     const breakdown = buildAgentTurnBreakdown({
       result: {
-        command: "node support/run-dashboard-session-send-turn.mjs",
+        command: "node support/run-gateway-session-send-turn.mjs",
         startedAtEpochMs: 1000,
         finishedAtEpochMs: 63000,
         durationMs: 62000
@@ -4922,7 +4922,7 @@ function healthReadinessModelCheck() {
 function agentContainmentHealthScopeCheck() {
   try {
     const record = {
-      scenario: "dashboard-session-send-turn",
+      scenario: "gateway-session-send-turn",
       status: "PASS",
       auth: { mode: "mock", source: "mock", providerId: "openai" },
       phases: [
@@ -4960,7 +4960,7 @@ function agentContainmentHealthScopeCheck() {
           }
         },
         {
-          id: "cold-dashboard-session-turn",
+          id: "cold-gateway-session-turn",
           results: [{
             command: "ocm @kova -- agent --local --agent main --session-id kova --message hi --json",
             status: 0,
@@ -5030,10 +5030,10 @@ function agentContainmentHealthScopeCheck() {
     };
 
     evaluateRecord(record, {
-      id: "dashboard-session-send-turn",
+      id: "gateway-session-send-turn",
       phases: [
         { id: "gateway-start", healthScope: "readiness" },
-        { id: "cold-dashboard-session-turn", healthScope: "post-ready" }
+        { id: "cold-gateway-session-turn", healthScope: "post-ready" }
       ],
       agent: { expectedText: "KOVA_AGENT_OK" },
       thresholds: {

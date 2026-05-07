@@ -682,7 +682,7 @@ function tagCommandResult(result, phaseId) {
 function isAgentMessageCommand(command) {
   return (command.includes(" -- agent ") && command.includes("--message")) ||
     command.includes("run-concurrent-agent-turns.mjs") ||
-    command.includes("run-dashboard-session-send-turn.mjs") ||
+    command.includes("run-gateway-session-send-turn.mjs") ||
     command.includes("run-tui-message-turn.mjs") ||
     command.includes("run-openai-compatible-turn.mjs");
 }

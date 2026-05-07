@@ -29,7 +29,7 @@ export function measurementScopeForPhase(phase) {
 
 export function driverKindForCommand(command) {
   const text = String(command ?? "");
-  if (text.includes("run-dashboard-session-send-turn.mjs")) {
+  if (text.includes("run-gateway-session-send-turn.mjs")) {
     return "gateway-rpc";
   }
   if (text.includes("run-openai-compatible-turn.mjs")) {

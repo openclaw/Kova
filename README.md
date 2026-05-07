@@ -51,7 +51,7 @@ release-runtime-startup/fresh
   build-tooling peak RSS: 2409 MB
   missing dependency: @homebridge/ciao from bundled bonjour
 
-dashboard-session-send-turn/mock-openai-provider
+gateway-session-send-turn/mock-openai-provider
   agent turn: 9.2s
   pre-provider OpenClaw time: 8.9s
   provider time: 1ms
@@ -60,7 +60,7 @@ dashboard-session-send-turn/mock-openai-provider
   health: gateway had post-command health failures
 
 Fixer brief:
-  Area: plugins/runtime deps, dashboard session agent path
+  Area: plugins/runtime deps, Gateway session agent path
   Why it matters: users can start successfully but hit plugin dependency errors
   and slow first replies unrelated to provider latency.
 ```
@@ -122,7 +122,7 @@ durable artifact bundle for failed gates.
 ```sh
 node bin/kova.mjs run \
   --target local-build:/path/to/openclaw \
-  --scenario dashboard-session-send-turn \
+  --scenario gateway-session-send-turn \
   --execute \
   --json
 ```

@@ -245,7 +245,7 @@ Gateway/session turn entries include:
     "schemaVersion": "kova.gatewaySessionTurn.v1",
     "method": "sessions.send",
     "createSession": true,
-    "sessionKey": "kova-dashboard-session-send",
+    "sessionKey": "kova-gateway-session-send",
     "activeStartedAtEpochMs": 1777536000000,
     "activeFinishedAtEpochMs": 1777536001260,
     "activeTurnMs": 1260,
@@ -275,7 +275,7 @@ Gateway/session turn entries include:
 }
 ```
 
-Dashboard session turns also include pre-provider attribution when an OpenClaw
+Gateway session turns also include pre-provider attribution when an OpenClaw
 diagnostics timeline is available. Kova clips `gateway.chat_send*`,
 `auto_reply*`, and `reply.*` spans to the active `sessions.send` pre-provider
 window and reports the unioned known time so overlapping spans are not counted
@@ -283,8 +283,8 @@ twice. Provider work remains separate.
 
 ```json
 {
-  "dashboardPreProviderAttribution": {
-    "schemaVersion": "kova.dashboardPreProviderAttribution.v1",
+  "gatewaySessionPreProviderAttribution": {
+    "schemaVersion": "kova.gatewaySessionPreProviderAttribution.v1",
     "available": true,
     "label": "cold",
     "timelineArtifacts": ["/tmp/kova/openclaw/timeline.jsonl"],
@@ -315,7 +315,7 @@ twice. Provider work remains separate.
 ```
 
 Repeat summaries expose machine-readable medians at
-`records[*].measurements.dashboardPreProviderAttribution` plus flat comparison
+`records[*].measurements.gatewaySessionPreProviderAttribution` plus flat comparison
 metrics such as `coldPreProviderAttributedMs`,
 `coldPreProviderUnattributedMs`, `warmPreProviderAttributedMs`, and
 `warmPreProviderUnattributedMs`.

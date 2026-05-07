@@ -48,6 +48,10 @@
         "peakRssMb": 650,
         "maxCpuPercent": 250
       },
+      "gateway-session-client": {
+        "peakRssMb": 650,
+        "maxCpuPercent": 250
+      },
       "openai-compatible-client": {
         "peakRssMb": 650,
         "maxCpuPercent": 250
@@ -104,7 +108,7 @@
           "agentProcessLeaks": 0
         }
       },
-      "dashboard-session-send-turn": {
+      "gateway-session-send-turn": {
         "thresholds": {
           "agentTurnMs": 45000,
           "preProviderMs": 10000,
@@ -243,7 +247,7 @@
           "provider-models:baseline",
           "agent-cli-local-turn:baseline",
           "agent-gateway-rpc-turn:baseline",
-          "dashboard-session-send-turn:baseline",
+          "gateway-session-send-turn:baseline",
           "tui-message-turn:baseline",
           "openai-compatible-turn:baseline",
           "dashboard:baseline",
@@ -340,7 +344,7 @@
         "state": "mock-openai-provider"
       },
       {
-        "scenario": "dashboard-session-send-turn",
+        "scenario": "gateway-session-send-turn",
         "state": "mock-openai-provider"
       },
       {
@@ -518,7 +522,7 @@
       "timeoutMs": 180000
     },
     {
-      "scenario": "dashboard-session-send-turn",
+      "scenario": "gateway-session-send-turn",
       "state": "mock-openai-provider",
       "timeoutMs": 180000
     },

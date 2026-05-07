@@ -1,6 +1,6 @@
 import { summarizeAgentTurnBreakdownForMarkdown } from "../collectors/agent-turns.mjs";
 import { agentCliPreProviderMarkdownRows } from "../collectors/agent-cli-attribution.mjs";
-import { dashboardPreProviderMarkdownRows } from "../collectors/dashboard-turn-attribution.mjs";
+import { gatewaySessionPreProviderMarkdownRows } from "../collectors/gateway-session-turn-attribution.mjs";
 import { healthTotalFailures } from "../health.mjs";
 
 export function summarizeRecords(records) {
@@ -184,8 +184,8 @@ export function renderMarkdownReport(report) {
       if (record.measurements.agentTurnCount > 0) {
         lines.push(`- Agent cold/warm: cold ${record.measurements.coldAgentTurnMs ?? "unknown"} ms; warm ${record.measurements.warmAgentTurnMs ?? "unknown"} ms; delta ${record.measurements.agentColdWarmDeltaMs ?? "unknown"} ms`);
         lines.push(`- Agent pre-provider: cold ${record.measurements.coldPreProviderMs ?? "unknown"} ms; warm ${record.measurements.warmPreProviderMs ?? "unknown"} ms; delta ${record.measurements.agentColdWarmPreProviderDeltaMs ?? "unknown"} ms`);
-        if (record.measurements.dashboardPreProviderAttribution?.count > 0) {
-          lines.push(`- Dashboard pre-provider known: cold ${record.measurements.coldPreProviderAttributedMs ?? "unknown"} ms; warm ${record.measurements.warmPreProviderAttributedMs ?? "unknown"} ms; unattributed cold ${record.measurements.coldPreProviderUnattributedMs ?? "unknown"} ms; warm ${record.measurements.warmPreProviderUnattributedMs ?? "unknown"} ms`);
+        if (record.measurements.gatewaySessionPreProviderAttribution?.count > 0) {
+          lines.push(`- Gateway session pre-provider known: cold ${record.measurements.coldPreProviderAttributedMs ?? "unknown"} ms; warm ${record.measurements.warmPreProviderAttributedMs ?? "unknown"} ms; unattributed cold ${record.measurements.coldPreProviderUnattributedMs ?? "unknown"} ms; warm ${record.measurements.warmPreProviderUnattributedMs ?? "unknown"} ms`);
         }
         if (record.measurements.agentCliPreProviderAttribution?.count > 0) {
           lines.push(`- Agent CLI pre-provider known: cold ${record.measurements.coldPreProviderAttributedMs ?? "unknown"} ms; warm ${record.measurements.warmPreProviderAttributedMs ?? "unknown"} ms; unattributed cold ${record.measurements.coldPreProviderUnattributedMs ?? "unknown"} ms; warm ${record.measurements.warmPreProviderUnattributedMs ?? "unknown"} ms`);
@@ -249,7 +249,7 @@ export function renderMarkdownReport(report) {
             lines.push(`    - breakdown: ${breakdown}`);
           }
         }
-        lines.push(...dashboardPreProviderMarkdownRows(record.measurements.agentTurns));
+        lines.push(...gatewaySessionPreProviderMarkdownRows(record.measurements.agentTurns));
         lines.push(...agentCliPreProviderMarkdownRows(record.measurements.agentTurns));
       }
       lines.push(`- Profiling: ${record.profiling?.enabled ? "enabled" : "off"} (${record.profiling?.interpretation ?? "unknown"})`);
@@ -749,7 +749,7 @@ function summarizeMeasurements(measurements) {
     agentEventLoopSampleCount: measurements.agentEventLoopSampleCount ?? null,
     agentSessionPollCount: measurements.agentSessionPollCount ?? null,
     agentSessionPollErrorCount: measurements.agentSessionPollErrorCount ?? null,
-    dashboardPreProviderAttribution: measurements.dashboardPreProviderAttribution ?? null,
+    gatewaySessionPreProviderAttribution: measurements.gatewaySessionPreProviderAttribution ?? null,
     agentCliPreProviderAttribution: measurements.agentCliPreProviderAttribution ?? null,
     coldPreProviderAttributedMs: measurements.coldPreProviderAttributedMs ?? null,
     warmPreProviderAttributedMs: measurements.warmPreProviderAttributedMs ?? null,
@@ -1216,8 +1216,8 @@ function pushMeasurementBrief(lines, measurements, { compact }) {
   lines.push(`- health: startup p95 ${valueMs(measurements.health?.startupSamples?.p95Ms)}; post-ready p95 ${valueMs(measurements.health?.postReadySamples?.p95Ms)}; failures ${totalHealthFailures ?? "unknown"}; final failures ${measurements.health?.final?.failureCount ?? "unknown"}${healthSlowestText(measurements)}`);
   lines.push(`- resources: peak RSS ${valueMb(measurements.peakRssMb)}; max CPU ${valuePercent(measurements.cpuPercentMax)}; samples ${measurements.resourceSampleCount ?? "unknown"}; roles ${rolePeakText(measurements)}`);
   lines.push(`- agent: turn ${valueMs(measurements.agentTurnMs, "not-run")}; cold/warm ${valueMs(measurements.coldAgentTurnMs)}/${valueMs(measurements.warmAgentTurnMs)}; cold-warm delta ${valueMs(measurements.agentColdWarmDeltaMs)}; pre-provider ${valueMs(measurements.agentPreProviderMs)}; provider ${valueMs(measurements.agentProviderFinalMs)}; metadata scans ${measurements.agentMetadataScanCount ?? "unknown"} (${valueMs(measurements.agentMetadataScanTotalMs)}); event-loop ${valueMs(measurements.agentEventLoopMaxMs)}; polls ${measurements.agentSessionPollCount ?? "unknown"}; cleanup ${valueMs(measurements.agentCleanupMaxMs)}; diagnosis ${measurements.agentLatencyDiagnosis?.kind ?? "unknown"}; leaks ${measurements.agentProcessLeakCount ?? "unknown"}`);
-  if (measurements.dashboardPreProviderAttribution?.count > 0) {
-    lines.push(`- dashboard attribution: cold known ${valueMs(measurements.coldPreProviderAttributedMs)} / unattributed ${valueMs(measurements.coldPreProviderUnattributedMs)}; warm known ${valueMs(measurements.warmPreProviderAttributedMs)} / unattributed ${valueMs(measurements.warmPreProviderUnattributedMs)}`);
+  if (measurements.gatewaySessionPreProviderAttribution?.count > 0) {
+    lines.push(`- gateway session attribution: cold known ${valueMs(measurements.coldPreProviderAttributedMs)} / unattributed ${valueMs(measurements.coldPreProviderUnattributedMs)}; warm known ${valueMs(measurements.warmPreProviderAttributedMs)} / unattributed ${valueMs(measurements.warmPreProviderUnattributedMs)}`);
   }
   if (measurements.agentCliPreProviderAttribution?.count > 0) {
     lines.push(`- agent CLI attribution: cold known ${valueMs(measurements.coldPreProviderAttributedMs)} / unattributed ${valueMs(measurements.coldPreProviderUnattributedMs)}; warm known ${valueMs(measurements.warmPreProviderAttributedMs)} / unattributed ${valueMs(measurements.warmPreProviderUnattributedMs)}`);

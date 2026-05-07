@@ -26,12 +26,12 @@ const commandSurfaceMap = new Map([
   ["agents", ["agent-cli-local-turn", "agent-gateway-rpc-turn", "workspace-scan"]],
   ["browser", ["browser-automation"]],
   ["capability", ["openai-compatible-turn", "provider-models"]],
-  ["chat", ["tui", "tui-message-turn"]],
+  ["chat", ["gateway-session-send-turn", "tui", "tui-message-turn"]],
   ["configure", ["fresh-install", "provider-models"]],
   ["daemon", ["release-runtime-startup", "gateway-performance"]],
-  ["dashboard", ["dashboard", "dashboard-session-send-turn"]],
+  ["dashboard", ["dashboard", "gateway-session-send-turn"]],
   ["doctor", ["failure-containment", "release-runtime-startup"]],
-  ["gateway", ["release-runtime-startup", "gateway-performance"]],
+  ["gateway", ["release-runtime-startup", "gateway-performance", "gateway-session-send-turn"]],
   ["health", ["release-runtime-startup", "gateway-performance"]],
   ["infer", ["openai-compatible-turn", "provider-models"]],
   ["logs", ["release-runtime-startup", "gateway-performance"]],
@@ -559,8 +559,11 @@ function matchPackageScriptSurfaceIds(capability) {
   if (/tui|chat|terminal/.test(searchableName)) {
     add("tui", "tui-message-turn");
   }
+  if (/chat|session|channel/.test(searchableName)) {
+    add("gateway-session-send-turn");
+  }
   if (/dashboard|(^|[: -])ui[: -]/.test(searchableName)) {
-    add("dashboard", "dashboard-session-send-turn");
+    add("dashboard", "gateway-session-send-turn");
   }
   if (/plugin-sdk|plugins?|plugin-update/.test(searchableName)) {
     add("plugin-lifecycle", "official-plugin-install");

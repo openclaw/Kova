@@ -2,7 +2,7 @@
   "id": "agent-gateway-rpc-turn",
   "title": "Agent CLI Gateway RPC Turn",
   "ownerArea": "agent-cli-gateway-client",
-  "description": "Send messages through `openclaw agent` without `--local`, measuring the CLI client surface that crosses the Gateway agent RPC boundary. Direct Gateway/session user-path turns are measured by `dashboard-session-send-turn`.",
+  "description": "Send messages through `openclaw agent` without `--local`, measuring the CLI client surface that crosses the Gateway agent RPC boundary. Direct Gateway/session user-path turns are measured by `gateway-session-send-turn`.",
   "processRoles": [
     "gateway",
     "command-tree",

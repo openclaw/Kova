@@ -38,7 +38,7 @@
       "timeoutMs": 180000
     },
     {
-      "scenario": "dashboard-session-send-turn",
+      "scenario": "gateway-session-send-turn",
       "state": "mock-openai-provider",
       "timeoutMs": 180000
     },

@@ -1,14 +1,15 @@
 {
-  "id": "dashboard-session-send-turn",
-  "surface": "dashboard-session-send-turn",
+  "id": "gateway-session-send-turn",
+  "surface": "gateway-session-send-turn",
   "title": "Gateway Session Cold/Warm Turns",
   "objective": "Start a normal gateway, send cold and warm user messages through the Gateway session API, and wait for final assistant text in chat history.",
   "tags": [
     "agent",
     "message",
-    "dashboard",
     "sessions",
     "gateway",
+    "control-ui",
+    "channels",
     "providers",
     "cold-warm"
   ],
@@ -34,7 +35,7 @@
   "phases": [
     {
       "id": "provision",
-      "title": "Provision Dashboard Env",
+      "title": "Provision Gateway Session Env",
       "intent": "Create a disposable OpenClaw env without starting the gateway yet so Kova auth is applied before the gateway process boots.",
       "commands": [
         "ocm start {env} {startSelector} --no-service --json"
@@ -62,11 +63,11 @@
       "healthScope": "readiness"
     },
     {
-      "id": "cold-dashboard-session-turn",
+      "id": "cold-gateway-session-turn",
       "title": "Cold Gateway Session Turn",
       "intent": "Create the Gateway session, send the first message through `sessions.send`, and verify the final assistant response is present in chat history.",
       "commands": [
-        "node {kovaRoot}/support/run-dashboard-session-send-turn.mjs --env {env} --session-key kova-dashboard-session-send --create-session true --min-assistant-count 1 --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --expected-text KOVA_AGENT_OK --timeout 120000"
+        "node {kovaRoot}/support/run-gateway-session-send-turn.mjs --env {env} --session-key kova-gateway-session-send --create-session true --min-assistant-count 1 --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --expected-text KOVA_AGENT_OK --timeout 120000"
       ],
       "evidence": [
         "cold sessions.send active turn duration",
@@ -81,11 +82,11 @@
       "healthScope": "post-ready"
     },
     {
-      "id": "warm-dashboard-session-turn",
+      "id": "warm-gateway-session-turn",
       "title": "Warm Gateway Session Turn",
       "intent": "Reuse the same Gateway session, send a second message through `sessions.send`, and prove whether cold discovery/cache work disappears.",
       "commands": [
-        "node {kovaRoot}/support/run-dashboard-session-send-turn.mjs --env {env} --session-key kova-dashboard-session-send --create-session false --min-assistant-count 2 --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --expected-text KOVA_AGENT_OK --timeout 120000"
+        "node {kovaRoot}/support/run-gateway-session-send-turn.mjs --env {env} --session-key kova-gateway-session-send --create-session false --min-assistant-count 2 --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --expected-text KOVA_AGENT_OK --timeout 120000"
       ],
       "evidence": [
         "warm sessions.send active turn duration",
@@ -100,9 +101,9 @@
       "healthScope": "post-ready"
     },
     {
-      "id": "post-dashboard-health",
-      "title": "Post-Dashboard Gateway Health",
-      "intent": "Verify the gateway remains responsive after dashboard-style cold and warm message turns.",
+      "id": "post-gateway-session-health",
+      "title": "Post-Gateway-Session Health",
+      "intent": "Verify the gateway remains responsive after cold and warm Gateway session message turns.",
       "commands": [
         "ocm @{env} -- gateway status --json --require-rpc",
         "ocm logs {env} --tail 300 --raw"
@@ -111,7 +112,7 @@
         "gateway status probe",
         "provider logs",
         "plugin errors",
-        "memory after dashboard turn"
+        "memory after Gateway session turn"
       ],
       "healthScope": "post-ready"
     }
