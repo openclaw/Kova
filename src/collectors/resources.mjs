@@ -233,6 +233,7 @@ export function captureProcessSnapshot(options = {}) {
   const gatewayPid = envName ? resolveGatewayPid(envName) : null;
   const allProcesses = listProcesses();
   const gatewayTreePids = gatewayPid === null ? new Set() : collectProcessTreePids(allProcesses, gatewayPid);
+  const scopeTokens = snapshotScopeTokens(options);
   const included = [];
 
   for (const process of allProcesses) {
@@ -243,7 +244,11 @@ export function captureProcessSnapshot(options = {}) {
     if (gatewayTreePids.has(process.pid)) {
       roles.add("gateway-tree");
     }
-    for (const role of matchingRegistryProcessRoles(process, roleMatchers)) {
+    for (const role of matchingSnapshotRegistryRoles(process, roleMatchers, {
+      allowGlobalProcessRoleMatches: options.allowGlobalProcessRoleMatches === true,
+      existingRoles: roles,
+      scopeTokens
+    })) {
       roles.add(role);
     }
     if (roles.size === 0) {
@@ -297,6 +302,20 @@ export function classifyRegistryRolesForProcess(process, options = {}) {
   return matchingRegistryRoles(process, options.rootCommand, roleMatchers, existingRoles);
 }
 
+export function classifySnapshotRolesForProcess(process, options = {}) {
+  const roleMatchers = compileRoleMatchers(options.processRoles ?? []);
+  const existingRoles = new Set(options.existingRoles ?? []);
+  const roles = new Set(existingRoles);
+  for (const role of matchingSnapshotRegistryRoles(process, roleMatchers, {
+    allowGlobalProcessRoleMatches: options.allowGlobalProcessRoleMatches === true,
+    existingRoles,
+    scopeTokens: snapshotScopeTokens(options)
+  })) {
+    roles.add(role);
+  }
+  return [...roles].sort();
+}
+
 function compileRoleMatchers(roles) {
   return roles.map((role) => ({
     id: role.id,
@@ -343,6 +362,30 @@ function matchingRegistryProcessRoles(process, roleMatchers) {
     }
   }
   return roles;
+}
+
+function matchingSnapshotRegistryRoles(process, roleMatchers, options = {}) {
+  const existingRoles = options.existingRoles ?? new Set();
+  if (existingRoles.size === 0 && options.allowGlobalProcessRoleMatches !== true && !processMatchesSnapshotScope(process, options.scopeTokens ?? [])) {
+    return [];
+  }
+  return matchingRegistryProcessRoles(process, roleMatchers);
+}
+
+function processMatchesSnapshotScope(process, scopeTokens) {
+  const command = String(process?.command ?? "");
+  return scopeTokens.some((token) => token.length > 0 && command.includes(token));
+}
+
+function snapshotScopeTokens(options = {}) {
+  const tokens = new Set();
+  if (typeof options.envName === "string" && options.envName.trim().length > 0) {
+    tokens.add(options.envName.trim());
+  }
+  for (const token of String(options.rootCommand ?? "").match(/\bkova-[A-Za-z0-9_.-]+\b/g) ?? []) {
+    tokens.add(token);
+  }
+  return [...tokens].filter((token) => token.length >= 4);
 }
 
 function summarizeRoleCounts(processes) {

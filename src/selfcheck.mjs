@@ -41,7 +41,7 @@ import {
   parseProviderRequestLog,
   parseTimelineProviderRequestLog
 } from "./collectors/provider.mjs";
-import { captureProcessSnapshot, classifyRegistryRolesForProcess, diffProcessSnapshots } from "./collectors/resources.mjs";
+import { captureProcessSnapshot, classifyRegistryRolesForProcess, classifySnapshotRolesForProcess, diffProcessSnapshots } from "./collectors/resources.mjs";
 import { renderMarkdownReport, renderPasteSummary, renderReportSummary } from "./reporting/report.mjs";
 import { compareReports, renderCompareSummary } from "./reporting/compare.mjs";
 import {
@@ -5202,19 +5202,22 @@ async function resourceRolePollutionCheck() {
 }
 
 async function processSnapshotCheck(tmp) {
+  const processRoles = await loadProcessRoles();
   const child = runCommand("node -e 'setTimeout(() => {}, 1200)'", {
     timeoutMs: 5000,
     resourceSample: null
   });
   await sleep(250);
   const before = captureProcessSnapshot({
-    processRoles: await loadProcessRoles(),
-    rootCommand: "ocm @kova -- agent --local --message hi"
+    processRoles,
+    envName: "kova-self-check",
+    rootCommand: "ocm @kova-self-check -- agent --local --session-id kova-agent-self-check --message hi"
   });
   const result = await child;
   const after = captureProcessSnapshot({
-    processRoles: await loadProcessRoles(),
-    rootCommand: "ocm @kova -- agent --local --message hi"
+    processRoles,
+    envName: "kova-self-check",
+    rootCommand: "ocm @kova-self-check -- agent --local --session-id kova-agent-self-check --message hi"
   });
   const leaks = diffProcessSnapshots(before, after, {
     roles: ["agent-cli", "agent-process", "mcp-runtime", "plugin-cli", "mock-provider", "browser-sidecar"]
@@ -5223,10 +5226,42 @@ async function processSnapshotCheck(tmp) {
   await writeFile(artifactPath, `${JSON.stringify(leaks, null, 2)}\n`, "utf8");
 
   try {
+    const unrelatedBrowserRoles = classifySnapshotRolesForProcess({
+      command: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --type=renderer"
+    }, {
+      processRoles,
+      envName: "kova-self-check",
+      rootCommand: "ocm @kova-self-check -- agent --local --session-id kova-agent-self-check --message hi"
+    });
+    const scopedBrowserRoles = classifySnapshotRolesForProcess({
+      command: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --user-data-dir=/tmp/kova-self-check/browser"
+    }, {
+      processRoles,
+      envName: "kova-self-check",
+      rootCommand: "ocm @kova-self-check -- agent --local --session-id kova-agent-self-check --message hi"
+    });
+    const gatewayBrowserRoles = classifySnapshotRolesForProcess({
+      command: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --type=renderer"
+    }, {
+      processRoles,
+      existingRoles: ["gateway-tree"],
+      envName: "kova-self-check"
+    });
+    const scopedAgentRoles = classifySnapshotRolesForProcess({
+      command: "openclaw-agent --session-id kova-agent-self-check"
+    }, {
+      processRoles,
+      envName: "kova-self-check",
+      rootCommand: "ocm @kova-self-check -- agent --local --session-id kova-agent-self-check --message hi"
+    });
     assertEqual(result.status, 0, "snapshot command status");
     assertEqual(before.schemaVersion, "kova.processSnapshot.v1", "snapshot schema");
     assertEqual(leaks.schemaVersion, "kova.processLeakSummary.v1", "leak summary schema");
     assertEqual(typeof leaks.leakCount, "number", "leak count type");
+    assertEqual(unrelatedBrowserRoles.includes("browser-sidecar"), false, "unrelated browser process excluded from snapshot role");
+    assertEqual(scopedBrowserRoles.includes("browser-sidecar"), true, "scoped browser process retained");
+    assertEqual(gatewayBrowserRoles.includes("browser-sidecar"), true, "gateway child browser process retained");
+    assertEqual(scopedAgentRoles.includes("agent-cli"), true, "scoped agent process retained");
     return {
       id: "process-snapshot-leak-contract",
       status: "PASS",
