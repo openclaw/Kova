@@ -43,6 +43,7 @@ import {
   parseTimelineProviderRequestLog
 } from "./collectors/provider.mjs";
 import { captureProcessSnapshot, classifyRegistryRolesForProcess, classifySnapshotRolesForProcess, diffProcessSnapshots, summarizeResourceSamples } from "./collectors/resources.mjs";
+import { captureOpenClawStateSnapshot } from "./collectors/openclaw-state.mjs";
 import { buildReportSummary, renderMarkdownReport, renderPasteSummary, renderReportSummary, summarizeRecords } from "./reporting/report.mjs";
 import { compareReports, renderCompareSummary } from "./reporting/compare.mjs";
 import {
@@ -120,6 +121,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(evaluationViolationHelpersCheck());
     checks.push(statusFoundationCheck());
     checks.push(evidenceLedgerGatingCheck());
+    checks.push(await openClawStateSnapshotCheck(tmp));
     checks.push(localBuildTargetSetupResourceExclusionCheck());
     checks.push(await jsonCommandCheck("plan-json", "node bin/kova.mjs plan --json", (data) => {
       assertEqual(data.schemaVersion, "kova.plan.v1", "plan schema");
@@ -841,6 +843,66 @@ function evidenceLedgerGatingCheck() {
       id: "evidence-ledger-gating",
       status: "FAIL",
       command: "evaluate evidence ledger status gating",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+async function openClawStateSnapshotCheck(tmp) {
+  const home = join(tmp, "snapshot-openclaw-home");
+  try {
+    await mkdir(join(home, "config"), { recursive: true });
+    await mkdir(join(home, "plugins", "browser", "node_modules", "large-package"), { recursive: true });
+    await writeFile(join(home, "config", "settings.json"), JSON.stringify({
+      schemaVersion: "kova.fixture.settings.v1",
+      provider: "openai",
+      model: "gpt-5.5",
+      apiKey: "sk-kova-secret-value",
+      nested: {
+        refreshToken: "refresh-secret-value"
+      }
+    }, null, 2));
+    await writeFile(join(home, "plugins", "installs.json"), JSON.stringify({
+      schemaVersion: "kova.fixture.plugins.v1",
+      plugins: [{ id: "browser", source: "bundled", enabled: true }]
+    }, null, 2));
+    await writeFile(join(home, "plugins", "browser", "package.json"), JSON.stringify({
+      name: "browser",
+      version: "1.0.0"
+    }, null, 2));
+    await writeFile(join(home, "plugins", "browser", "node_modules", "large-package", "index.js"), "secret dependency content");
+    await writeFile(join(home, "config", "models.json"), `${"x".repeat(1024)}\n`);
+
+    const snapshot = await captureOpenClawStateSnapshot({
+      home,
+      label: "self-check",
+      limits: {
+        maxFileBytes: 512
+      }
+    });
+    const serialized = JSON.stringify(snapshot);
+    assertEqual(snapshot.schemaVersion, "kova.openclawStateSnapshot.v1", "OpenClaw state snapshot schema");
+    assertEqual(snapshot.home.present, true, "OpenClaw state snapshot home present");
+    assertEqual(snapshot.budget.truncatedCount > 0, true, "OpenClaw state snapshot truncates large files");
+    assertEqual(snapshot.redaction.secretKeyCount, 2, "OpenClaw state snapshot redacts secret keys");
+    assertEqual(serialized.includes("sk-kova-secret-value"), false, "OpenClaw state snapshot does not include API key value");
+    assertEqual(serialized.includes("refresh-secret-value"), false, "OpenClaw state snapshot does not include refresh token value");
+    assertEqual(snapshot.plugins.installIndexes.length, 1, "OpenClaw state snapshot includes plugin install index");
+    assertEqual(snapshot.plugins.pluginDirs.some((plugin) => plugin.nodeModulesPresent), true, "OpenClaw state snapshot records node_modules presence");
+    assertEqual(snapshot.files.some((file) => file.path.includes("node_modules")), false, "OpenClaw state snapshot excludes dependency trees");
+
+    return {
+      id: "openclaw-state-snapshot",
+      status: "PASS",
+      command: "capture bounded redacted OpenClaw state snapshot",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "openclaw-state-snapshot",
+      status: "FAIL",
+      command: "capture bounded redacted OpenClaw state snapshot",
       durationMs: 0,
       message: error.message
     };

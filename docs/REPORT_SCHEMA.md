@@ -130,6 +130,12 @@ Important fields:
 `complete` when required ledger entries are present, and `incomplete` when one
 or more required ledger entries are missing. A passing execution record with
 missing required ledger evidence is downgraded to `INCOMPLETE`.
+
+OpenClaw state snapshots use `kova.openclawStateSnapshot.v1`. They summarize
+known config, auth/model shape, plugin indexes, and plugin manifests with
+bounded reads, redacted secret-looking keys, byte counts, hashes, and truncation
+markers. They must not copy OpenClaw homes, workspaces, runtimes,
+`node_modules`, or package stores into Kova artifacts.
 - `finalMetrics`: service/process snapshot before cleanup
 - `cleanup`: cleanup result
 - `retainedReason`: why a retained env was kept, such as `keep-env` or
