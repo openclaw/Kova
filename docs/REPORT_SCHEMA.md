@@ -136,6 +136,10 @@ known config, auth/model shape, plugin indexes, and plugin manifests with
 bounded reads, redacted secret-looking keys, byte counts, hashes, and truncation
 markers. They must not copy OpenClaw homes, workspaces, runtimes,
 `node_modules`, or package stores into Kova artifacts.
+Scenarios can declare required snapshot obligations in
+`evidenceContract.snapshots`; executed snapshot phases appear as `snapshot`
+ledger entries and missing or unreadable required snapshots make the run
+`INCOMPLETE`.
 - `finalMetrics`: service/process snapshot before cleanup
 - `cleanup`: cleanup result
 - `retainedReason`: why a retained env was kept, such as `keep-env` or

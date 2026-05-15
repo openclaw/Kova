@@ -37,6 +37,9 @@ export function validateScenarioShape(scenario, sourceName = "scenario") {
   if (scenario.mockProvider !== undefined) {
     validateMockProvider(scenario.mockProvider, "mockProvider", errors);
   }
+  if (scenario.evidenceContract !== undefined) {
+    validateEvidenceContract(scenario.evidenceContract, "evidenceContract", errors);
+  }
 
   validateStringArray(scenario.tags, "tags", errors);
   validateStringArray(scenario.states, "states", errors, { optional: true });
@@ -50,6 +53,7 @@ export function validateScenarioShape(scenario, sourceName = "scenario") {
   }
   validatePhases(scenario.phases, errors);
   validateCloneFirstContract(scenario, errors);
+  validateEvidenceContractPhases(scenario, errors);
 
   assertNoShapeErrors(errors, sourceName);
 }
@@ -128,6 +132,52 @@ function validatePhases(phases, errors) {
     }
     if (phase.expectedAgentFailure !== undefined && typeof phase.expectedAgentFailure !== "boolean") {
       errors.push(`${prefix}.expectedAgentFailure must be a boolean when set`);
+    }
+  }
+}
+
+function validateEvidenceContract(contract, prefix, errors) {
+  if (!contract || typeof contract !== "object" || Array.isArray(contract)) {
+    errors.push(`${prefix} must be an object`);
+    return;
+  }
+  if (contract.snapshots !== undefined) {
+    if (!Array.isArray(contract.snapshots)) {
+      errors.push(`${prefix}.snapshots must be an array when set`);
+      return;
+    }
+    const ids = new Set();
+    for (const [index, snapshot] of contract.snapshots.entries()) {
+      const snapshotPrefix = `${prefix}.snapshots[${index}]`;
+      requireKebabId(snapshot, "id", errors, snapshotPrefix);
+      requireKebabId(snapshot, "afterPhase", errors, snapshotPrefix);
+      if (typeof snapshot.id === "string") {
+        if (ids.has(snapshot.id)) {
+          errors.push(`duplicate evidence snapshot id '${snapshot.id}'`);
+        }
+        ids.add(snapshot.id);
+      }
+      if (snapshot.label !== undefined && (typeof snapshot.label !== "string" || snapshot.label.length === 0)) {
+        errors.push(`${snapshotPrefix}.label must be a non-empty string when set`);
+      }
+      if (snapshot.summary !== undefined && (typeof snapshot.summary !== "string" || snapshot.summary.length === 0)) {
+        errors.push(`${snapshotPrefix}.summary must be a non-empty string when set`);
+      }
+      if (snapshot.required !== undefined && typeof snapshot.required !== "boolean") {
+        errors.push(`${snapshotPrefix}.required must be a boolean when set`);
+      }
+      if (snapshot.maxFileBytes !== undefined && (!Number.isInteger(snapshot.maxFileBytes) || snapshot.maxFileBytes <= 0)) {
+        errors.push(`${snapshotPrefix}.maxFileBytes must be a positive integer when set`);
+      }
+    }
+  }
+}
+
+function validateEvidenceContractPhases(scenario, errors) {
+  const phaseIds = new Set((scenario.phases ?? []).map((phase) => phase.id).filter(Boolean));
+  for (const snapshot of scenario.evidenceContract?.snapshots ?? []) {
+    if (typeof snapshot.afterPhase === "string" && !phaseIds.has(snapshot.afterPhase)) {
+      errors.push(`evidence snapshot '${snapshot.id}' references unknown afterPhase '${snapshot.afterPhase}'`);
     }
   }
 }

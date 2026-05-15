@@ -17,17 +17,21 @@ export function applyEvidenceLedgerGating(record) {
 
   const missing = ledger.entries.filter((entry) => entry.required && entry.status === "missing");
   const failed = ledger.entries.filter((entry) => entry.required && entry.status === "failed");
-  ledger.completeness = missing.length > 0 ? "incomplete" : "complete";
+  const failedCommands = failed.filter((entry) => entry.category === "command");
+  const failedEvidence = failed.filter((entry) => entry.category !== "command" && entry.category !== "invariant");
+  const failedInvariants = failed.filter((entry) => entry.category === "invariant");
+  ledger.completeness = missing.length > 0 || failedEvidence.length > 0 ? "incomplete" : "complete";
   ledger.summary.requiredMissing = missing.length;
   ledger.summary.requiredFailed = failed.length;
 
-  if (record.status === RECORD_STATUS.PASS && failed.length > 0) {
+  if (record.status === RECORD_STATUS.PASS && (failedCommands.length > 0 || failedInvariants.length > 0)) {
     record.status = RECORD_STATUS.FAIL;
   }
-  if (record.status === RECORD_STATUS.PASS && missing.length > 0) {
+  if (record.status === RECORD_STATUS.PASS && (missing.length > 0 || failedEvidence.length > 0)) {
     record.status = RECORD_STATUS.INCOMPLETE;
-    record.incompleteReason = `${missing.length} required evidence ledger entr${missing.length === 1 ? "y was" : "ies were"} missing`;
-    record.incompleteEvidence = missing.slice(0, 5).map((entry) => entry.id);
+    const incomplete = [...missing, ...failedEvidence];
+    record.incompleteReason = `${incomplete.length} required evidence ledger entr${incomplete.length === 1 ? "y was" : "ies were"} incomplete`;
+    record.incompleteEvidence = incomplete.slice(0, 5).map((entry) => entry.id);
   }
 
   return record;
@@ -60,17 +64,19 @@ function completenessForEntries(entries) {
 
 function commandEntry({ record, phase, index, command, result }) {
   const executed = record.status !== RECORD_STATUS.DRY_RUN;
+  const category = result?.evidenceKind ?? phase.evidenceKind ?? "command";
+  const evidenceId = result?.evidenceId ?? phase.evidenceIds?.[index] ?? `command:${phase.id}:${index + 1}`;
   const status = commandStatus({ executed, result });
   return {
-    id: `command:${phase.id}:${index + 1}`,
-    category: "command",
-    required: true,
+    id: evidenceId,
+    category,
+    required: result?.evidenceRequired ?? phase.evidenceRequired?.[index] ?? true,
     status,
     phaseId: phase.id,
     commandIndex: index,
-    summary: summarizeCommand(command),
-    artifactPath: null,
-    reason: commandReason({ executed, result, status })
+    summary: result?.evidenceSummary ?? phase.evidenceSummaries?.[index] ?? summarizeCommand(command),
+    artifactPath: result?.evidenceArtifactPath ?? phase.evidenceArtifactPaths?.[index] ?? null,
+    reason: result?.evidenceReason ?? commandReason({ executed, result, status })
   };
 }
 
@@ -80,6 +86,9 @@ function commandStatus({ executed, result }) {
   }
   if (!result) {
     return "missing";
+  }
+  if (result.evidenceStatus) {
+    return result.evidenceStatus;
   }
   return result.status === 0 ? "passed" : "failed";
 }

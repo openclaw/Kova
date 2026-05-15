@@ -16,6 +16,24 @@
     "gatewayReadyMs": 45000,
     "statusMs": 10000
   },
+  "evidenceContract": {
+    "snapshots": [
+      {
+        "id": "pre-upgrade-state",
+        "afterPhase": "source-runtime",
+        "label": "pre-upgrade",
+        "required": true,
+        "summary": "Bounded redacted OpenClaw state before target upgrade"
+      },
+      {
+        "id": "post-upgrade-state",
+        "afterPhase": "post-upgrade",
+        "label": "post-upgrade",
+        "required": true,
+        "summary": "Bounded redacted OpenClaw state after target upgrade"
+      }
+    ]
+  },
   "phases": [
     {
       "id": "clone",

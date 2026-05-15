@@ -184,6 +184,19 @@ export async function executeScenario(scenario, context) {
         if (scenarioFailed) {
           break;
         }
+
+        const snapshotPhase = await executeEvidenceSnapshotPhase(context, envName, scenario, phase.id, artifactDir, authPolicy);
+        if (snapshotPhase) {
+          record.phases.push(snapshotPhase);
+          if (snapshotPhase.results.some((result) => result.status !== 0)) {
+            scenarioFailed = true;
+            record.status = "INCOMPLETE";
+          }
+        }
+
+        if (scenarioFailed) {
+          break;
+        }
       }
     }
   } finally {
@@ -384,6 +397,11 @@ function buildPlannedPhases(scenario, context, envName, artifactDir, authPolicy)
     if (statePhase) {
       phases.push(statePhase);
     }
+
+    const snapshotPhase = buildEvidenceSnapshotPhase(context, envName, scenario, phase.id, artifactDir);
+    if (snapshotPhase) {
+      phases.push(snapshotPhase);
+    }
   }
 
   if (!context.keepEnv) {
@@ -453,6 +471,92 @@ function materializeScenarioPhaseCommands(phase, context, envName, artifactDir) 
   return materializeCommands(phase.commands ?? [], commandValues(context, envName, artifactDir));
 }
 
+function buildEvidenceSnapshotPhase(context, envName, scenario, afterPhaseId, artifactDir) {
+  const snapshots = evidenceSnapshotsAfterPhase(scenario, afterPhaseId);
+  if (snapshots.length === 0) {
+    return null;
+  }
+
+  const commands = [];
+  const evidenceIds = [];
+  const evidenceRequired = [];
+  const evidenceArtifactPaths = [];
+  const evidenceSummaries = [];
+
+  for (const snapshot of snapshots) {
+    const artifactPath = join(collectorArtifactDirs(artifactDir).collectors, "state-snapshots", `${safeSegment(snapshot.id)}.json`);
+    commands.push(openClawStateSnapshotCommand({
+      envName,
+      label: snapshot.label ?? snapshot.id,
+      artifactPath,
+      maxFileBytes: snapshot.maxFileBytes
+    }));
+    evidenceIds.push(`snapshot:${snapshot.id}`);
+    evidenceRequired.push(snapshot.required !== false);
+    evidenceArtifactPaths.push(artifactPath);
+    evidenceSummaries.push(snapshot.summary ?? `OpenClaw state snapshot after ${afterPhaseId}`);
+  }
+
+  return {
+    id: `evidence-${afterPhaseId}-snapshots`,
+    title: `Evidence Snapshots After ${afterPhaseId}`,
+    intent: `Capture bounded OpenClaw state evidence after scenario phase '${afterPhaseId}'.`,
+    healthScope: "none",
+    measurementScope: "harness",
+    driverKind: "ocm",
+    evidenceKind: "snapshot",
+    commands,
+    evidence: evidenceIds,
+    evidenceIds,
+    evidenceRequired,
+    evidenceArtifactPaths,
+    evidenceSummaries
+  };
+}
+
+function evidenceSnapshotsAfterPhase(scenario, afterPhaseId) {
+  return (scenario.evidenceContract?.snapshots ?? []).filter((snapshot) => snapshot.afterPhase === afterPhaseId);
+}
+
+function openClawStateSnapshotCommand({ envName, label, artifactPath, maxFileBytes }) {
+  const args = [
+    "node",
+    quoteShell(join(repoRoot, "support", "capture-openclaw-state.mjs")),
+    "--label",
+    quoteShell(label),
+    "--output",
+    quoteShell(artifactPath)
+  ];
+  if (maxFileBytes) {
+    args.push("--max-file-bytes", String(maxFileBytes));
+  }
+  return `ocm env exec ${quoteShell(envName)} -- ${args.join(" ")}`;
+}
+
+function compactOpenClawStateSnapshot(stdout, artifactPath) {
+  try {
+    const snapshot = JSON.parse(stdout);
+    return {
+      schemaVersion: snapshot.schemaVersion,
+      label: snapshot.label,
+      artifactPath,
+      homePresent: snapshot.home?.present === true,
+      fileCount: snapshot.budget?.fileCount ?? 0,
+      totalBytes: snapshot.budget?.totalBytes ?? 0,
+      truncatedCount: snapshot.budget?.truncatedCount ?? 0,
+      omittedCount: snapshot.budget?.omittedCount ?? 0,
+      redactedSecretKeyCount: snapshot.redaction?.secretKeyCount ?? 0,
+      pluginInstallIndexCount: snapshot.plugins?.installIndexes?.length ?? 0,
+      pluginDirCount: snapshot.plugins?.pluginDirs?.length ?? 0
+    };
+  } catch (error) {
+    return {
+      artifactPath,
+      parseError: error.message
+    };
+  }
+}
+
 async function executeStateLifecycleSteps(context, envName, scenario, kind, steps, artifactDir, phaseId = null, authPolicy = null) {
   if (!Array.isArray(steps) || steps.length === 0) {
     return null;
@@ -499,6 +603,44 @@ async function executeAuthPhase(phase, context, envName, artifactDir, authPolicy
     driverKind: phaseDriverKind(phase),
     results,
     metrics: await collectEnvMetrics(envName, metricOptions(context, null, { id: phase.id }, artifactDir))
+  };
+}
+
+async function executeEvidenceSnapshotPhase(context, envName, scenario, afterPhaseId, artifactDir, authPolicy) {
+  const phase = buildEvidenceSnapshotPhase(context, envName, scenario, afterPhaseId, artifactDir);
+  if (!phase) {
+    return null;
+  }
+
+  const results = [];
+  for (const [commandIndex, command] of phase.commands.entries()) {
+    const result = await runScenarioCommand(command, context, envName, artifactDir, phase.id, commandIndex, authPolicy);
+    const artifactPath = phase.evidenceArtifactPaths[commandIndex];
+    result.evidenceKind = "snapshot";
+    result.evidenceId = phase.evidenceIds[commandIndex];
+    result.evidenceRequired = phase.evidenceRequired[commandIndex];
+    result.evidenceSummary = phase.evidenceSummaries[commandIndex];
+    result.evidenceArtifactPath = artifactPath;
+    if (result.status === 0) {
+      const snapshot = compactOpenClawStateSnapshot(result.stdout, artifactPath);
+      result.snapshot = snapshot;
+      if (snapshot.parseError) {
+        result.evidenceStatus = "failed";
+        result.evidenceReason = `OpenClaw state snapshot JSON could not be parsed: ${snapshot.parseError}`;
+      } else if (snapshot.homePresent !== true) {
+        result.evidenceStatus = "failed";
+        result.evidenceReason = "OpenClaw state snapshot did not find OPENCLAW_HOME";
+      }
+    } else {
+      result.evidenceReason = "OpenClaw state snapshot command failed";
+    }
+    results.push(result);
+  }
+
+  return {
+    ...phase,
+    results,
+    metrics: await collectEnvMetrics(envName, metricOptions(context, scenario, { id: afterPhaseId }, artifactDir))
   };
 }
 

@@ -451,6 +451,12 @@ export async function runSelfCheck(flags = {}) {
         if (!command.includes("ocm env clone 'Team Env'")) {
           throw new Error(`source env was not shell-quoted: ${command}`);
         }
+        const record = report.records?.[0];
+        const snapshotPhases = record?.phases?.filter((phase) => phase.evidenceKind === "snapshot") ?? [];
+        assertEqual(snapshotPhases.length, 2, "upgrade dry-run includes required snapshot phases");
+        const snapshotLedgerEntries = record?.evidenceLedger?.entries?.filter((entry) => entry.category === "snapshot") ?? [];
+        assertEqual(snapshotLedgerEntries.length, 2, "upgrade dry-run includes snapshot ledger entries");
+        assertEqual(snapshotLedgerEntries.every((entry) => entry.required === true && entry.status === "skipped"), true, "dry-run snapshot ledger entries are required skipped evidence");
       }
     ));
     checks.push(await localBuildRuntimeCleanupCheck(tmp));
@@ -831,6 +837,33 @@ function evidenceLedgerGatingCheck() {
     attachEvidenceLedger(failedRecord);
     applyEvidenceLedgerGating(failedRecord);
     assertEqual(failedRecord.status, "FAIL", "failed required ledger entry gates pass");
+
+    const failedSnapshotRecord = {
+      ...record,
+      status: "PASS",
+      incompleteReason: undefined,
+      incompleteEvidence: undefined,
+      phases: [{
+        id: "evidence-post-upgrade-snapshots",
+        evidenceKind: "snapshot",
+        evidenceIds: ["snapshot:post-upgrade-state"],
+        evidenceRequired: [true],
+        commands: ["ocm env exec kova-self-check -- node support/capture-openclaw-state.mjs"],
+        results: [{
+          command: "ocm env exec kova-self-check -- node support/capture-openclaw-state.mjs",
+          status: 0,
+          durationMs: 20,
+          evidenceKind: "snapshot",
+          evidenceId: "snapshot:post-upgrade-state",
+          evidenceStatus: "failed",
+          evidenceReason: "OpenClaw state snapshot did not find OPENCLAW_HOME"
+        }]
+      }]
+    };
+    attachEvidenceLedger(failedSnapshotRecord);
+    applyEvidenceLedgerGating(failedSnapshotRecord);
+    assertEqual(failedSnapshotRecord.status, "INCOMPLETE", "failed required snapshot evidence gates pass as incomplete");
+    assertEqual(failedSnapshotRecord.evidenceLedger.completeness, "incomplete", "failed snapshot evidence marks ledger incomplete");
 
     return {
       id: "evidence-ledger-gating",
