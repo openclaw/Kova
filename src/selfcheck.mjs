@@ -46,7 +46,7 @@ import {
 import { captureProcessSnapshot, classifyRegistryRolesForProcess, classifySnapshotRolesForProcess, diffProcessSnapshots, summarizeResourceSamples } from "./collectors/resources.mjs";
 import { captureOpenClawStateSnapshot } from "./collectors/openclaw-state.mjs";
 import { buildReportSummary, renderMarkdownReport, renderPasteSummary, renderReportSummary, summarizeRecords } from "./reporting/report.mjs";
-import { buildUpgradeLogDerivedInvariants, buildUpgradeStateSnapshotInvariants } from "./runner.mjs";
+import { buildUpgradeLogDerivedInvariants, buildUpgradeStateSnapshotInvariants, normalizeOptionalCommandResult } from "./runner.mjs";
 import { compareReports, renderCompareSummary } from "./reporting/compare.mjs";
 import {
   ocmAt,
@@ -121,6 +121,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(await commandTimeoutContractCheck());
     checks.push(await commandOutputBudgetCheck());
     checks.push(logSnippetBudgetCheck());
+    checks.push(optionalNoLogsCommandCheck());
     checks.push(ocmCommandBuildersCheck());
     checks.push(evaluationViolationHelpersCheck());
     checks.push(statusFoundationCheck());
@@ -7208,6 +7209,34 @@ function logSnippetBudgetCheck() {
       id: "log-snippet-budget",
       status: "FAIL",
       command: "evaluate log snippet truncation metadata",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function optionalNoLogsCommandCheck() {
+  try {
+    const result = normalizeOptionalCommandResult({
+      command: "ocm logs 'kova-empty-logs' --tail 250 --raw",
+      status: 1,
+      stdout: "",
+      stderr: "ocm: no logs exist for env \"kova-empty-logs\" across stdout or stderr"
+    });
+    assertEqual(result.status, 0, "missing logs are normalized to optional success");
+    assertEqual(result.originalStatus, 1, "original log command status retained");
+    assertEqual(result.optional, true, "optional marker set");
+    return {
+      id: "optional-no-logs-command",
+      status: "PASS",
+      command: "evaluate optional empty log collection",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "optional-no-logs-command",
+      status: "FAIL",
+      command: "evaluate optional empty log collection",
       durationMs: 0,
       message: error.message
     };
