@@ -46,7 +46,12 @@ import {
 import { captureProcessSnapshot, classifyRegistryRolesForProcess, classifySnapshotRolesForProcess, diffProcessSnapshots, summarizeResourceSamples } from "./collectors/resources.mjs";
 import { captureOpenClawStateSnapshot } from "./collectors/openclaw-state.mjs";
 import { buildReportSummary, renderMarkdownReport, renderPasteSummary, renderReportSummary, summarizeRecords } from "./reporting/report.mjs";
-import { buildUpgradeLogDerivedInvariants, buildUpgradeStateSnapshotInvariants, normalizeOptionalCommandResult } from "./runner.mjs";
+import {
+  buildGatewaySessionEvidenceInvariants,
+  buildUpgradeLogDerivedInvariants,
+  buildUpgradeStateSnapshotInvariants,
+  normalizeOptionalCommandResult
+} from "./runner.mjs";
 import { compareReports, renderCompareSummary } from "./reporting/compare.mjs";
 import {
   ocmAt,
@@ -405,6 +410,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(await providerEvidenceParserCheck());
     checks.push(agentTurnBreakdownCheck());
     checks.push(gatewaySessionTurnEvaluationCheck());
+    checks.push(gatewaySessionEvidenceInvariantCheck());
     checks.push(gatewaySessionPreProviderAttributionCheck());
     checks.push(agentCliPreProviderAttributionCheck());
     checks.push(await mockProviderBehaviorCheck(tmp));
@@ -3054,6 +3060,125 @@ function gatewaySessionTurnEvaluationCheck() {
   }
 }
 
+function gatewaySessionEvidenceInvariantCheck() {
+  try {
+    const base = 1777536000000;
+    const record = syntheticGatewaySessionRecord({
+      base,
+      timeline: {
+        available: true,
+        eventCount: 0,
+        parseErrorCount: 0,
+        events: [],
+        spanTotals: {},
+        keySpans: {}
+      }
+    });
+    for (const phase of record.phases) {
+      phase.healthScope = "post-ready";
+      phase.metrics.healthSummary = {
+        count: 1,
+        okCount: 1,
+        failureCount: 0,
+        minMs: 2,
+        p50Ms: 2,
+        p95Ms: 2,
+        maxMs: 2
+      };
+    }
+    record.phases.unshift({
+      id: "gateway-start",
+      title: "Gateway start",
+      intent: "Synthetic gateway readiness",
+      healthScope: "readiness",
+      commands: ["ocm service start kova --json"],
+      results: [{
+        command: "ocm service start kova --json",
+        status: 0,
+        durationMs: 300
+      }],
+      metrics: {
+        logs: zeroLogMetrics(),
+        readiness: {
+          listeningReadyAtMs: 100,
+          healthReadyAtMs: 300,
+          thresholdMs: 30000,
+          deadlineMs: 90000,
+          attempts: 1,
+          classification: {
+            state: "ready",
+            severity: "pass",
+            reason: "synthetic ready"
+          },
+          healthAttempts: [{ ok: true, durationMs: 2 }]
+        },
+        healthSummary: {
+          count: 1,
+          okCount: 1,
+          failureCount: 0,
+          minMs: 2,
+          p50Ms: 2,
+          p95Ms: 2,
+          maxMs: 2
+        }
+      }
+    });
+    record.providerEvidence.summaryPath = "/tmp/kova/provider/provider-evidence.json";
+    record.providerEvidence.artifacts = [
+      "/tmp/kova/mock-openai/requests.jsonl",
+      "/tmp/kova/provider/provider-evidence.json"
+    ];
+    record.finalMetrics.health = { ok: true, durationMs: 1 };
+    record.finalMetrics.healthSummary = {
+      count: 1,
+      okCount: 1,
+      failureCount: 0,
+      minMs: 1,
+      p50Ms: 1,
+      p95Ms: 1,
+      maxMs: 1
+    };
+
+    const scenario = {
+      id: "gateway-session-send-turn",
+      surface: "gateway-session-send-turn",
+      agent: { expectedText: "KOVA_AGENT_OK" },
+      thresholds: {},
+      phases: [
+        { id: "gateway-start", healthScope: "readiness" },
+        { id: "cold-gateway-session-turn", healthScope: "post-ready" },
+        { id: "warm-gateway-session-turn", healthScope: "post-ready" }
+      ]
+    };
+    evaluateRecord(record, scenario, { surface: { thresholds: {} }, targetPlan: { kind: "runtime" } });
+    const invariants = buildGatewaySessionEvidenceInvariants(record, scenario);
+    assertEqual(invariants.length, 8, "gateway session invariant count");
+    assertEqual(invariants.every((invariant) => invariant.status === "passed"), true, "complete gateway session evidence passes invariants");
+
+    const missingProviderRecord = JSON.parse(JSON.stringify(record));
+    missingProviderRecord.providerEvidence = { available: false, requestCount: 0, error: "provider request log not found" };
+    evaluateRecord(missingProviderRecord, scenario, { surface: { thresholds: {} }, targetPlan: { kind: "runtime" } });
+    const missingProviderInvariants = buildGatewaySessionEvidenceInvariants(missingProviderRecord, scenario);
+    const providerProof = missingProviderInvariants.find((invariant) => invariant.id === "gateway-session-provider-proof");
+    assertEqual(providerProof?.status, "missing", "missing provider proof is an incomplete evidence obligation");
+
+    return {
+      id: "gateway-session-evidence-invariants",
+      status: "PASS",
+      command: "evaluate Gateway session evidence completeness invariants",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "gateway-session-evidence-invariants",
+      status: "FAIL",
+      command: "evaluate Gateway session evidence completeness invariants",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
 function gatewaySessionPreProviderAttributionCheck() {
   try {
     const base = 1777536000000;
@@ -3281,6 +3406,7 @@ function syntheticGatewaySessionRecord({ base, timeline }) {
     minAssistantCount: 1,
     sessionKey: "kova-gateway-session-send",
     runId: "cold-run",
+    gatewayTransport: { kind: "direct-gateway-rpc", fallbackReason: null },
     activeStartedAtEpochMs: base + 1000,
     activeFinishedAtEpochMs: base + 2500,
     activeTurnMs: 1500,
@@ -5906,13 +6032,12 @@ async function gatewaySessionSurfaceContractCheck() {
   try {
     const surface = JSON.parse(await readFile("surfaces/gateway-session-send-turn.json", "utf8"));
     const expectedSpans = surface.diagnostics?.expectedSpans ?? [];
-    const staleSpans = ["agent.turn", "agent.prepare", "models.catalog", "provider.request", "agent.cleanup"];
+    const staleSpans = ["agent.turn", "agent.prepare", "models.catalog", "provider.request", "agent.cleanup", "gateway.chat_send", "auto_reply", "reply"];
     for (const span of staleSpans) {
       assertEqual(expectedSpans.includes(span), false, `gateway session surface must not require stale ${span} span`);
     }
-    assertEqual(expectedSpans.includes("gateway.chat_send"), true, "gateway session surface requires gateway chat send spans");
-    assertEqual(expectedSpans.includes("auto_reply"), true, "gateway session surface requires auto reply spans");
-    assertEqual(expectedSpans.includes("reply"), true, "gateway session surface requires reply spans");
+    assertEqual(expectedSpans.includes("gateway.ready"), true, "gateway session surface requires readiness spans observed by release runtimes");
+    assertEqual(expectedSpans.includes("plugins.metadata.scan"), true, "gateway session surface requires metadata scan spans used for active-turn attribution");
     return {
       id: "gateway-session-surface-contract",
       status: "PASS",
