@@ -2,6 +2,7 @@ import { profileSummary } from "../matrix/profile.mjs";
 import { buildCoverage } from "../matrix/coverage.mjs";
 import { platformInfo } from "../platform.mjs";
 import { loadRegistryContext } from "../registries/context.mjs";
+import { renderPlan } from "../reporting/render-plan.mjs";
 
 export async function runPlanCommand(flags) {
   const registry = await loadRegistryContext();
@@ -11,19 +12,26 @@ export async function runPlanCommand(flags) {
   const platform = platformInfo();
   const coverage = buildCoverage({ ...registry, platform });
 
+  const planJson = {
+    schemaVersion: "kova.plan.v1",
+    generatedAt: new Date().toISOString(),
+    platform,
+    surfaces: registry.surfaces,
+    processRoles: registry.processRoles,
+    metrics: registry.metrics,
+    scenarios,
+    states,
+    profiles: profiles.map(profileSummary),
+    coverage,
+  };
+
   if (flags.json) {
-    console.log(JSON.stringify({
-      schemaVersion: "kova.plan.v1",
-      generatedAt: new Date().toISOString(),
-      platform,
-      surfaces: registry.surfaces,
-      processRoles: registry.processRoles,
-      metrics: registry.metrics,
-      scenarios,
-      states,
-      profiles: profiles.map(profileSummary),
-      coverage
-    }, null, 2));
+    console.log(JSON.stringify(planJson, null, 2));
+    return;
+  }
+
+  if (!flags.plain) {
+    console.log(renderPlan(planJson, flags));
     return;
   }
 

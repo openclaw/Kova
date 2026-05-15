@@ -8,6 +8,7 @@ import { loadRegistryContext } from "../registries/context.mjs";
 import { loadProfile } from "../registries/profiles.mjs";
 import { validateScenarioRun } from "../registries/scenarios.mjs";
 import { resolveTarget } from "../targets.mjs";
+import { renderMatrixPlan } from "../reporting/render-matrix-plan.mjs";
 
 export async function runMatrixPlan(flags) {
   const registry = await loadRegistryContext();
@@ -42,6 +43,11 @@ export async function runMatrixPlan(flags) {
 
   if (flags.json) {
     console.log(JSON.stringify(response, null, 2));
+    return;
+  }
+
+  if (!flags.plain) {
+    console.log(renderMatrixPlan(response, flags));
     return;
   }
 

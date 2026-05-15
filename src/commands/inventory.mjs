@@ -1,4 +1,5 @@
 import { buildOpenClawInventoryPlan } from "../inventory/openclaw.mjs";
+import { renderInventoryPlan } from "../reporting/render-inventory.mjs";
 
 export async function runInventoryCommand(flags) {
   const [subcommand = "plan"] = flags._;
@@ -9,6 +10,11 @@ export async function runInventoryCommand(flags) {
   const plan = await buildOpenClawInventoryPlan(flags);
   if (flags.json) {
     console.log(JSON.stringify(plan, null, 2));
+    return;
+  }
+
+  if (!flags.plain) {
+    console.log(renderInventoryPlan(plan, flags));
     return;
   }
 
