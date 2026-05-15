@@ -125,6 +125,11 @@ Important fields:
   logs or OpenClaw timeline events
 - `violations`: threshold or behavior violations
 - `phases`: commands, results, and metrics by phase
+
+`evidenceLedger.completeness` is `not-evaluated` for dry-run records,
+`complete` when required ledger entries are present, and `incomplete` when one
+or more required ledger entries are missing. A passing execution record with
+missing required ledger evidence is downgraded to `INCOMPLETE`.
 - `finalMetrics`: service/process snapshot before cleanup
 - `cleanup`: cleanup result
 - `retainedReason`: why a retained env was kept, such as `keep-env` or

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { quoteShell, runCommand } from "./commands.mjs";
 import { runCleanupCommand } from "./cleanup.mjs";
+import { applyEvidenceLedgerGating, attachEvidenceLedger } from "./evidence-ledger.mjs";
 import { summarizeCpuProfiles } from "./collectors/node-profiles.mjs";
 import { summarizeHeapProfiles } from "./collectors/heap.mjs";
 import { evaluateRecord } from "./evaluator.mjs";
@@ -118,6 +119,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(ocmCommandBuildersCheck());
     checks.push(evaluationViolationHelpersCheck());
     checks.push(statusFoundationCheck());
+    checks.push(evidenceLedgerGatingCheck());
     checks.push(localBuildTargetSetupResourceExclusionCheck());
     checks.push(await jsonCommandCheck("plan-json", "node bin/kova.mjs plan --json", (data) => {
       assertEqual(data.schemaVersion, "kova.plan.v1", "plan schema");
@@ -776,6 +778,69 @@ function statusFoundationCheck() {
       id: "status-foundation",
       status: "FAIL",
       command: "evaluate INCOMPLETE status handling",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function evidenceLedgerGatingCheck() {
+  try {
+    const record = {
+      scenario: "upgrade-existing-user",
+      surface: "upgrade-existing-user",
+      title: "Existing OpenClaw User Upgrade",
+      status: "PASS",
+      state: { id: "old-release-user" },
+      likelyOwner: "Kova",
+      phases: [{
+        id: "post-upgrade",
+        commands: ["ocm @kova-self-check -- status", "ocm @kova-self-check -- plugins list"],
+        results: [{
+          command: "ocm @kova-self-check -- status",
+          status: 0,
+          durationMs: 20
+        }]
+      }],
+      measurements: {}
+    };
+    attachEvidenceLedger(record);
+    applyEvidenceLedgerGating(record);
+    assertEqual(record.status, "INCOMPLETE", "missing required ledger entry gates pass");
+    assertEqual(record.evidenceLedger.completeness, "incomplete", "ledger completeness is incomplete");
+    assertEqual(record.evidenceLedger.summary.requiredMissing, 1, "ledger missing count");
+    assertEqual(record.incompleteEvidence?.[0], "command:post-upgrade:2", "incomplete evidence id");
+
+    const failedRecord = {
+      ...record,
+      status: "PASS",
+      incompleteReason: undefined,
+      incompleteEvidence: undefined,
+      phases: [{
+        id: "post-upgrade",
+        commands: ["ocm @kova-self-check -- status"],
+        results: [{
+          command: "ocm @kova-self-check -- status",
+          status: 1,
+          durationMs: 20
+        }]
+      }]
+    };
+    attachEvidenceLedger(failedRecord);
+    applyEvidenceLedgerGating(failedRecord);
+    assertEqual(failedRecord.status, "FAIL", "failed required ledger entry gates pass");
+
+    return {
+      id: "evidence-ledger-gating",
+      status: "PASS",
+      command: "evaluate evidence ledger status gating",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "evidence-ledger-gating",
+      status: "FAIL",
+      command: "evaluate evidence ledger status gating",
       durationMs: 0,
       message: error.message
     };

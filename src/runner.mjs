@@ -6,7 +6,7 @@ import {
   scenarioAuthPolicy
 } from "./auth.mjs";
 import { runCleanupCommand } from "./cleanup.mjs";
-import { attachEvidenceLedger } from "./evidence-ledger.mjs";
+import { applyEvidenceLedgerGating, attachEvidenceLedger } from "./evidence-ledger.mjs";
 import { materializeCommands } from "./registries/scenarios.mjs";
 import { quoteShell } from "./commands.mjs";
 import { ocmEnvDestroy, ocmRuntimeBuildLocal } from "./ocm/commands.mjs";
@@ -245,6 +245,7 @@ export async function executeScenario(scenario, context) {
 
     evaluateRecord(record, scenario, evaluatorContext(context, scenario));
     attachEvidenceLedger(record);
+    applyEvidenceLedgerGating(record);
   }
 
   return record;
