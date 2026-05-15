@@ -13,6 +13,7 @@
     "runtime-staging",
     "plugin-cli"
   ],
+  "resourcePrimaryRole": "gateway",
   "thresholds": {
     "gatewayReadyMs": 30000,
     "gatewayReadyHardTimeoutMs": 120000,
@@ -52,10 +53,9 @@
   "diagnostics": {
     "timelineRequiredForSourceBuild": true,
     "expectedSpans": [
-      "gateway.startup",
-      "plugins.runtimeDeps",
-      "plugins.load",
-      "health.ready"
+      "gateway.ready",
+      "plugins.metadata.scan",
+      "plugins.load"
     ]
   },
   "purposes": [

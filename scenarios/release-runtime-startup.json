@@ -12,6 +12,9 @@
     "startup"
   ],
   "timeoutMs": 180000,
+  "auth": {
+    "mode": "skip"
+  },
   "thresholds": {
     "gatewayReadyMs": 30000,
     "gatewayReadyHardTimeoutMs": 120000,
