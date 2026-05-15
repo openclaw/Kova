@@ -401,6 +401,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(await resourceRolePollutionCheck());
     checks.push(await gatewaySessionSurfaceContractCheck());
     checks.push(await releaseRuntimeStartupSurfaceContractCheck());
+    checks.push(await officialPluginInstallSurfaceContractCheck());
     checks.push(releaseRuntimeStartupEvidenceInvariantCheck());
     checks.push(officialPluginInstallEvidenceInvariantCheck());
     checks.push(await processSnapshotCheck(tmp));
@@ -6580,6 +6581,34 @@ async function releaseRuntimeStartupSurfaceContractCheck() {
       id: "release-runtime-startup-surface-contract",
       status: "FAIL",
       command: "validate release runtime startup surface diagnostics contract",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+async function officialPluginInstallSurfaceContractCheck() {
+  try {
+    const surface = JSON.parse(await readFile("surfaces/official-plugin-install.json", "utf8"));
+    const expectedSpans = surface.diagnostics?.expectedSpans ?? [];
+    const staleSpans = ["plugins.install", "plugins.registry.refresh", "plugins.security.scan"];
+    for (const span of staleSpans) {
+      assertEqual(expectedSpans.includes(span), false, `official plugin surface must not require stale ${span} span`);
+    }
+    assertEqual(surface.roleThresholds?.["plugin-cli"]?.peakRssMb >= 900, true, "official plugin cli RSS budget covers real release install path");
+    assertEqual(expectedSpans.includes("gateway.ready"), true, "official plugin surface requires gateway.ready timeline span");
+    assertEqual(expectedSpans.includes("plugins.metadata.scan"), true, "official plugin surface requires plugin metadata scan timeline span");
+    return {
+      id: "official-plugin-install-surface-contract",
+      status: "PASS",
+      command: "validate official plugin install surface diagnostics contract",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "official-plugin-install-surface-contract",
+      status: "FAIL",
+      command: "validate official plugin install surface diagnostics contract",
       durationMs: 0,
       message: error.message
     };

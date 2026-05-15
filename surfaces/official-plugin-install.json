@@ -24,7 +24,7 @@
       "maxCpuPercent": 300
     },
     "plugin-cli": {
-      "peakRssMb": 700,
+      "peakRssMb": 900,
       "maxCpuPercent": 300
     },
     "package-manager": {
@@ -39,9 +39,8 @@
   "diagnostics": {
     "timelineRequiredForSourceBuild": true,
     "expectedSpans": [
-      "plugins.install",
-      "plugins.registry.refresh",
-      "plugins.security.scan"
+      "gateway.ready",
+      "plugins.metadata.scan"
     ]
   },
   "purposes": [

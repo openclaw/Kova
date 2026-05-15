@@ -810,40 +810,48 @@ function officialPluginSecurityReason(evidence) {
   return null;
 }
 
-function officialPluginHealthOk(record, health) {
-  return health?.readiness?.classification === "ready" &&
-    Number.isFinite(health.readiness.healthReadyAtMs) &&
-    (health.postReadySamples?.count ?? 0) > 0 &&
-    (health.postReadySamples?.failureCount ?? 0) === 0 &&
-    (health.final?.failureCount ?? 0) === 0 &&
+function officialPluginHealthOk(record) {
+  const restartReadiness = phaseMetrics(record, "restart")?.readiness;
+  const postVerifyHealth = phaseMetrics(record, "post-restart-verify")?.healthSummary;
+  const finalHealth = record.measurements?.health?.final;
+  return restartReadiness?.classification?.state === "ready" &&
+    Number.isFinite(restartReadiness.healthReadyAtMs) &&
+    (postVerifyHealth?.count ?? 0) > 0 &&
+    (postVerifyHealth?.failureCount ?? 0) === 0 &&
+    (finalHealth?.failureCount ?? 0) === 0 &&
     record.measurements?.finalGatewayState === "running";
 }
 
-function officialPluginHealthMissing(record, health) {
-  return !health?.readiness ||
-    !Number.isFinite(health.readiness.healthReadyAtMs) ||
-    (health.postReadySamples?.count ?? 0) <= 0 ||
+function officialPluginHealthMissing(record) {
+  const restartReadiness = phaseMetrics(record, "restart")?.readiness;
+  const postVerifyHealth = phaseMetrics(record, "post-restart-verify")?.healthSummary;
+  return !restartReadiness ||
+    !Number.isFinite(restartReadiness.healthReadyAtMs) ||
+    (postVerifyHealth?.count ?? 0) <= 0 ||
     record.measurements?.finalGatewayState === undefined;
 }
 
-function officialPluginHealthReason(record, health) {
-  if (!health?.readiness) {
-    return "readiness measurement was not collected";
+function officialPluginHealthReason(record) {
+  const restartReadiness = phaseMetrics(record, "restart")?.readiness;
+  const postVerifyHealth = phaseMetrics(record, "post-restart-verify")?.healthSummary;
+  const finalHealth = record.measurements?.health?.final;
+  if (!restartReadiness) {
+    return "restart readiness measurement was not collected";
   }
-  if (health.readiness.classification !== "ready") {
-    return `readiness classification was ${health.readiness.classification ?? "missing"}`;
+  if (restartReadiness.classification?.state !== "ready") {
+    return `restart readiness classification was ${restartReadiness.classification?.state ?? "missing"}`;
   }
-  if (!Number.isFinite(health.readiness.healthReadyAtMs)) {
-    return "readiness health-ready timing was not collected";
+  if (!Number.isFinite(restartReadiness.healthReadyAtMs)) {
+    return "restart health-ready timing was not collected";
   }
-  if ((health.postReadySamples?.count ?? 0) <= 0) {
-    return "post-ready health samples were not collected";
+  if ((postVerifyHealth?.count ?? 0) <= 0) {
+    return "post-restart verification health samples were not collected";
   }
-  if ((health.postReadySamples?.failureCount ?? 0) !== 0) {
-    return `post-ready health failures were ${health.postReadySamples.failureCount}`;
+  if ((postVerifyHealth?.failureCount ?? 0) !== 0) {
+    return `post-restart verification health failures were ${postVerifyHealth.failureCount}`;
   }
-  if ((health.final?.failureCount ?? 0) !== 0) {
-    return `final health failures were ${health.final.failureCount}`;
+  if ((finalHealth?.failureCount ?? 0) !== 0) {
+    return `final health failures were ${finalHealth.failureCount}`;
   }
   if (record.measurements?.finalGatewayState !== "running") {
     return `final gateway state was ${record.measurements?.finalGatewayState ?? "missing"}`;
@@ -893,6 +901,10 @@ function commonTimelineProofReason(measurements) {
     return "OpenClaw diagnostic timeline artifact path was not recorded";
   }
   return null;
+}
+
+function phaseMetrics(record, phaseId) {
+  return (record.phases ?? []).find((phase) => phase.id === phaseId)?.metrics ?? null;
 }
 
 export function buildReleaseRuntimeStartupEvidenceInvariants(record, scenario = {}) {
