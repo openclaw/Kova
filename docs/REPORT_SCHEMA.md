@@ -150,7 +150,9 @@ Cleanup evidence appears as `cleanup` ledger entries. Missing required cleanup
 proof makes an otherwise passing record `INCOMPLETE`; explicit `keep-env`
 retention is recorded as optional skipped cleanup evidence.
 Command results include `outputBudget` metadata with retained, omitted, limit,
-and truncation counts for stdout/stderr. Executed records include
+and truncation counts for stdout/stderr. Log collectors include
+`snippetBudget` metadata with retained/omitted byte counts and truncation
+markers for stdout/stderr snippets. Executed records include
 `evidenceArtifactBudget`; an over-budget retained evidence set appears as a
 required `artifact` ledger failure and makes the run `INCOMPLETE`.
 Summary JSON includes `proof`: record completeness counts, required obligation

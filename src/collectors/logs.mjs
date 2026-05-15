@@ -9,6 +9,8 @@ export async function collectLogMetrics(envName, timeoutMs, artifactDir) {
   const result = await runCommand(ocmLogs(envName, { tail: 200 }), { timeoutMs });
   const text = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
   const timestamps = collectTimestamps(text);
+  const stdoutSnippet = boundedLogSnippet(result.stdout, 4000);
+  const stderrSnippet = boundedLogSnippet(result.stderr, 4000);
   const artifacts = [];
   if (artifactDir) {
     await mkdir(join(artifactDir, "collectors"), { recursive: true });
@@ -42,8 +44,31 @@ export async function collectLogMetrics(envName, timeoutMs, artifactDir) {
     livenessWarnings: summarizeLivenessWarnings(text),
     structuredEvents: extractStructuredDiagnosticEvents(text),
     artifacts,
-    stdoutSnippet: result.stdout.slice(-4000),
-    stderrSnippet: result.stderr.slice(-4000)
+    snippetBudget: {
+      schemaVersion: "kova.logSnippetBudget.v1",
+      stdout: stdoutSnippet.budget,
+      stderr: stderrSnippet.budget,
+      truncated: stdoutSnippet.budget.truncated || stderrSnippet.budget.truncated,
+      omittedBytes: stdoutSnippet.budget.omittedBytes + stderrSnippet.budget.omittedBytes
+    },
+    stdoutSnippet: stdoutSnippet.text,
+    stderrSnippet: stderrSnippet.text
+  };
+}
+
+export function boundedLogSnippet(value, maxChars) {
+  const text = String(value ?? "");
+  const truncated = text.length > maxChars;
+  const retained = truncated ? text.slice(-maxChars) : text;
+  return {
+    text: truncated ? `[truncated ${text.length - maxChars} chars]\n${retained}` : retained,
+    budget: {
+      originalBytes: Buffer.byteLength(text),
+      retainedBytes: Buffer.byteLength(retained),
+      omittedBytes: truncated ? Buffer.byteLength(text.slice(0, -maxChars)) : 0,
+      truncated,
+      limitChars: maxChars
+    }
   };
 }
 

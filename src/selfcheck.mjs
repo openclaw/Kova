@@ -24,6 +24,7 @@ import { validateRegistryReferences } from "./registries/validate.mjs";
 import { assertSafeScenarioCommand } from "./safety.mjs";
 import { parseTimelineText } from "./collectors/timeline.mjs";
 import {
+  boundedLogSnippet,
   summarizeEmbeddedRunTraces,
   summarizeLivenessWarnings,
   summarizeRuntimeDepsLogs
@@ -119,6 +120,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(await externalCliRunAuthVerificationCheck(tmp));
     checks.push(await commandTimeoutContractCheck());
     checks.push(await commandOutputBudgetCheck());
+    checks.push(logSnippetBudgetCheck());
     checks.push(ocmCommandBuildersCheck());
     checks.push(evaluationViolationHelpersCheck());
     checks.push(statusFoundationCheck());
@@ -7174,6 +7176,31 @@ async function commandOutputBudgetCheck() {
       id: "command-output-budget",
       status: "FAIL",
       command: "evaluate command output truncation metadata",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function logSnippetBudgetCheck() {
+  try {
+    const snippet = boundedLogSnippet(`${"a".repeat(40)}tail`, 10);
+    assertEqual(snippet.text.startsWith("[truncated 34 chars]"), true, "log snippet truncation marker");
+    assertEqual(snippet.text.endsWith("aaaaaatail"), true, "log snippet retains tail");
+    assertEqual(snippet.budget.truncated, true, "log snippet budget truncated");
+    assertEqual(snippet.budget.retainedBytes, 10, "log snippet retained bytes");
+    assertEqual(snippet.budget.omittedBytes, 34, "log snippet omitted bytes");
+    return {
+      id: "log-snippet-budget",
+      status: "PASS",
+      command: "evaluate log snippet truncation metadata",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "log-snippet-budget",
+      status: "FAIL",
+      command: "evaluate log snippet truncation metadata",
       durationMs: 0,
       message: error.message
     };
