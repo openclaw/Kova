@@ -118,6 +118,7 @@ export async function runSelfCheck(flags = {}) {
     ));
     checks.push(await externalCliRunAuthVerificationCheck(tmp));
     checks.push(await commandTimeoutContractCheck());
+    checks.push(await commandOutputBudgetCheck());
     checks.push(ocmCommandBuildersCheck());
     checks.push(evaluationViolationHelpersCheck());
     checks.push(statusFoundationCheck());
@@ -867,6 +868,24 @@ function evidenceLedgerGatingCheck() {
     applyEvidenceLedgerGating(failedSnapshotRecord);
     assertEqual(failedSnapshotRecord.status, "INCOMPLETE", "failed required snapshot evidence gates pass as incomplete");
     assertEqual(failedSnapshotRecord.evidenceLedger.completeness, "incomplete", "failed snapshot evidence marks ledger incomplete");
+
+    const overBudgetArtifactRecord = {
+      ...record,
+      status: "PASS",
+      incompleteReason: undefined,
+      incompleteEvidence: undefined,
+      phases: [],
+      evidenceArtifacts: [{
+        id: "record-budget",
+        required: true,
+        status: "failed",
+        summary: "total retained evidence artifact bytes stay within the per-record cap",
+        reason: "evidence artifacts used 9000000 bytes over cap 5242880"
+      }]
+    };
+    attachEvidenceLedger(overBudgetArtifactRecord);
+    applyEvidenceLedgerGating(overBudgetArtifactRecord);
+    assertEqual(overBudgetArtifactRecord.status, "INCOMPLETE", "failed required artifact budget gates pass as incomplete");
 
     const failedInvariantRecord = {
       ...record,
@@ -6971,6 +6990,35 @@ async function commandTimeoutContractCheck() {
       id: "command-timeout-contract",
       status: "FAIL",
       command,
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+async function commandOutputBudgetCheck() {
+  try {
+    const result = await runCommand("node -e 'process.stdout.write(\"x\".repeat(80)); process.stderr.write(\"y\".repeat(30));'", {
+      timeoutMs: 10000,
+      maxOutputChars: 20
+    });
+    assertEqual(result.status, 0, "command output budget command status");
+    assertEqual(result.outputBudget?.schemaVersion, "kova.commandOutputBudget.v1", "command output budget schema");
+    assertEqual(result.outputBudget?.stdout?.truncated, true, "stdout budget truncates");
+    assertEqual(result.outputBudget?.stderr?.truncated, true, "stderr budget truncates");
+    assertEqual(result.outputBudget?.stdout?.omittedChars, 60, "stdout omitted chars");
+    assertEqual(result.outputBudget?.stderr?.omittedChars, 10, "stderr omitted chars");
+    return {
+      id: "command-output-budget",
+      status: "PASS",
+      command: "evaluate command output truncation metadata",
+      durationMs: result.durationMs
+    };
+  } catch (error) {
+    return {
+      id: "command-output-budget",
+      status: "FAIL",
+      command: "evaluate command output truncation metadata",
       durationMs: 0,
       message: error.message
     };

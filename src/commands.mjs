@@ -55,6 +55,8 @@ export function runCommand(command, options = {}) {
     child.on("error", (error) => {
       clearTimeout(timer);
       const finishedAtEpochMs = Date.now();
+      const stdoutResult = truncateText(redact(stdout, options.redactValues), options.maxOutputChars ?? 20000);
+      const stderrResult = truncateText(redact(error.message, options.redactValues), options.maxOutputChars ?? 20000);
       settle({
         command: redact(command, options.redactValues),
         status: 127,
@@ -65,13 +67,16 @@ export function runCommand(command, options = {}) {
         finishedAt: new Date(finishedAtEpochMs).toISOString(),
         finishedAtEpochMs,
         durationMs: finishedAtEpochMs - startedAtEpochMs,
-        stdout: redact(stdout, options.redactValues),
-        stderr: redact(error.message, options.redactValues)
+        stdout: stdoutResult.text,
+        stderr: stderrResult.text,
+        outputBudget: outputBudgetSummary(stdoutResult, stderrResult)
       });
     });
     child.on("close", (status, signal) => {
       clearTimeout(timer);
       const finishedAtEpochMs = Date.now();
+      const stdoutResult = truncateText(redact(stdout, options.redactValues), options.maxOutputChars ?? 20000);
+      const stderrResult = truncateText(redact(stderr, options.redactValues), options.maxOutputChars ?? 20000);
       settle({
         command: redact(command, options.redactValues),
         status: timedOut ? 124 : (status ?? 1),
@@ -82,8 +87,9 @@ export function runCommand(command, options = {}) {
         finishedAt: new Date(finishedAtEpochMs).toISOString(),
         finishedAtEpochMs,
         durationMs: finishedAtEpochMs - startedAtEpochMs,
-        stdout: truncate(redact(stdout, options.redactValues), options.maxOutputChars ?? 20000),
-        stderr: truncate(redact(stderr, options.redactValues), options.maxOutputChars ?? 20000)
+        stdout: stdoutResult.text,
+        stderr: stderrResult.text,
+        outputBudget: outputBudgetSummary(stdoutResult, stderrResult)
       });
     });
 
@@ -112,11 +118,46 @@ function normalizeTimeoutMs(value) {
   return timeoutMs;
 }
 
-function truncate(value, limit = 20000) {
+function truncateText(value, limit = 20000) {
   if (value.length <= limit) {
-    return value;
+    return {
+      text: value,
+      originalChars: value.length,
+      retainedChars: value.length,
+      omittedChars: 0,
+      truncated: false,
+      limitChars: limit
+    };
   }
-  return `${value.slice(0, limit)}\n[truncated ${value.length - limit} chars]`;
+  const marker = `\n[truncated ${value.length - limit} chars]`;
+  return {
+    text: `${value.slice(0, limit)}${marker}`,
+    originalChars: value.length,
+    retainedChars: limit,
+    omittedChars: value.length - limit,
+    truncated: true,
+    limitChars: limit
+  };
+}
+
+function outputBudgetSummary(stdout, stderr) {
+  return {
+    schemaVersion: "kova.commandOutputBudget.v1",
+    stdout: budgetStreamSummary(stdout),
+    stderr: budgetStreamSummary(stderr),
+    truncated: stdout.truncated || stderr.truncated,
+    omittedChars: stdout.omittedChars + stderr.omittedChars
+  };
+}
+
+function budgetStreamSummary(stream) {
+  return {
+    originalChars: stream.originalChars,
+    retainedChars: stream.retainedChars,
+    omittedChars: stream.omittedChars,
+    truncated: stream.truncated,
+    limitChars: stream.limitChars
+  };
 }
 
 function redact(value, secrets = []) {

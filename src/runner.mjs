@@ -20,7 +20,7 @@ import { artifactsDir } from "./paths.mjs";
 import { repoRoot } from "./paths.mjs";
 import { assertKovaEnvName, assertSafeScenarioCommand } from "./safety.mjs";
 import { dirname, join } from "node:path";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, stat, writeFile } from "node:fs/promises";
 
 export function createRunId() {
   const stamp = new Date().toISOString().replaceAll(":", "").replace(/\.\d+Z$/, "Z");
@@ -258,6 +258,7 @@ export async function executeScenario(scenario, context) {
 
     evaluateRecord(record, scenario, evaluatorContext(context, scenario));
     attachEvidenceInvariants(record, scenario);
+    await attachEvidenceArtifactBudget(record);
     attachEvidenceLedger(record);
     applyEvidenceLedgerGating(record);
   }
@@ -682,6 +683,59 @@ function doctorOutputReason(result) {
   }
   const output = `${result.stdout ?? ""}${result.stderr ?? ""}`.trim();
   return output.length > 0 ? null : "doctor command produced no captured output";
+}
+
+async function attachEvidenceArtifactBudget(record) {
+  if (record.status === "DRY-RUN" || record.status === "SKIPPED") {
+    return record;
+  }
+  const maxBytes = 5 * 1024 * 1024;
+  const paths = [...new Set((record.phases ?? [])
+    .flatMap((phase) => phase.results ?? [])
+    .map((result) => result.evidenceArtifactPath)
+    .filter(Boolean))];
+  let totalBytes = 0;
+  let missingCount = 0;
+  const artifacts = [];
+  for (const path of paths) {
+    try {
+      const stats = await stat(path);
+      totalBytes += stats.size;
+      artifacts.push({ path, bytes: stats.size });
+    } catch {
+      missingCount += 1;
+      artifacts.push({ path, bytes: null });
+    }
+  }
+
+  record.evidenceArtifactBudget = {
+    schemaVersion: "kova.evidenceArtifactBudget.v1",
+    maxBytes,
+    totalBytes,
+    artifactCount: paths.length,
+    missingCount,
+    exceeded: totalBytes > maxBytes,
+    artifacts: artifacts.slice(0, 20)
+  };
+  record.evidenceArtifacts = [{
+    id: "record-budget",
+    required: true,
+    status: totalBytes <= maxBytes && missingCount === 0 ? "passed" : "failed",
+    summary: "total retained evidence artifact bytes stay within the per-record cap",
+    artifactPath: null,
+    reason: artifactBudgetReason({ totalBytes, maxBytes, missingCount })
+  }];
+  return record;
+}
+
+function artifactBudgetReason({ totalBytes, maxBytes, missingCount }) {
+  if (missingCount > 0) {
+    return `${missingCount} evidence artifact path(s) could not be statted`;
+  }
+  if (totalBytes > maxBytes) {
+    return `evidence artifacts used ${totalBytes} bytes over cap ${maxBytes}`;
+  }
+  return null;
 }
 
 export function buildUpgradeStateSnapshotInvariants(record) {
