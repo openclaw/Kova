@@ -865,6 +865,24 @@ function evidenceLedgerGatingCheck() {
     assertEqual(failedSnapshotRecord.status, "INCOMPLETE", "failed required snapshot evidence gates pass as incomplete");
     assertEqual(failedSnapshotRecord.evidenceLedger.completeness, "incomplete", "failed snapshot evidence marks ledger incomplete");
 
+    const failedInvariantRecord = {
+      ...record,
+      status: "PASS",
+      incompleteReason: undefined,
+      incompleteEvidence: undefined,
+      phases: [],
+      evidenceInvariants: [{
+        id: "plugin-install-index-preserved",
+        required: true,
+        status: "failed",
+        summary: "plugin install index evidence is preserved across upgrade",
+        reason: "count decreased from 1 to 0"
+      }]
+    };
+    attachEvidenceLedger(failedInvariantRecord);
+    applyEvidenceLedgerGating(failedInvariantRecord);
+    assertEqual(failedInvariantRecord.status, "FAIL", "failed required invariant gates pass as fail");
+
     return {
       id: "evidence-ledger-gating",
       status: "PASS",

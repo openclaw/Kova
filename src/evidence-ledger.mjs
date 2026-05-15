@@ -47,12 +47,29 @@ export function buildEvidenceLedger(record) {
       entries.push(commandEntry({ record, phase, index, command, result }));
     }
   }
+  for (const invariant of record.evidenceInvariants ?? []) {
+    entries.push(invariantEntry(invariant));
+  }
 
   return {
     schemaVersion: EVIDENCE_LEDGER_SCHEMA,
     completeness: record.status === RECORD_STATUS.DRY_RUN ? "not-evaluated" : completenessForEntries(entries),
     summary: summarizeEntries(entries),
     entries
+  };
+}
+
+function invariantEntry(invariant) {
+  return {
+    id: `invariant:${invariant.id}`,
+    category: "invariant",
+    required: invariant.required !== false,
+    status: invariant.status,
+    phaseId: invariant.phaseId ?? null,
+    commandIndex: null,
+    summary: invariant.summary,
+    artifactPath: invariant.artifactPath ?? null,
+    reason: invariant.reason ?? null
   };
 }
 

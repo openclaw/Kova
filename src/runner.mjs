@@ -257,6 +257,7 @@ export async function executeScenario(scenario, context) {
     }
 
     evaluateRecord(record, scenario, evaluatorContext(context, scenario));
+    attachEvidenceInvariants(record, scenario);
     attachEvidenceLedger(record);
     applyEvidenceLedgerGating(record);
   }
@@ -555,6 +556,86 @@ function compactOpenClawStateSnapshot(stdout, artifactPath) {
       parseError: error.message
     };
   }
+}
+
+function attachEvidenceInvariants(record, scenario) {
+  const invariants = [];
+  if (scenario.surface === "upgrade-existing-user") {
+    invariants.push(...upgradeStateSnapshotInvariants(record));
+  }
+  if (invariants.length > 0) {
+    record.evidenceInvariants = invariants;
+  }
+  return record;
+}
+
+function upgradeStateSnapshotInvariants(record) {
+  if (record.status === "DRY-RUN" || record.status === "SKIPPED") {
+    return [];
+  }
+
+  const pre = findSnapshotResult(record, "snapshot:pre-upgrade-state");
+  const post = findSnapshotResult(record, "snapshot:post-upgrade-state");
+  const invariants = [];
+
+  invariants.push({
+    id: "upgrade-state-snapshots-present",
+    phaseId: "evidence-post-upgrade-snapshots",
+    required: true,
+    status: pre?.snapshot && post?.snapshot ? "passed" : "missing",
+    summary: "pre-upgrade and post-upgrade OpenClaw state snapshots were collected",
+    artifactPath: post?.evidenceArtifactPath ?? pre?.evidenceArtifactPath ?? null,
+    reason: pre?.snapshot && post?.snapshot ? null : "required upgrade state snapshot result was not recorded"
+  });
+
+  if (!pre?.snapshot || !post?.snapshot) {
+    return invariants;
+  }
+
+  invariants.push(compareSnapshotCountInvariant({
+    id: "plugin-install-index-preserved",
+    phaseId: "evidence-post-upgrade-snapshots",
+    summary: "plugin install index evidence is preserved across upgrade",
+    before: pre.snapshot.pluginInstallIndexCount,
+    after: post.snapshot.pluginInstallIndexCount,
+    artifactPath: post.evidenceArtifactPath
+  }));
+  invariants.push(compareSnapshotCountInvariant({
+    id: "plugin-directory-count-not-decreased",
+    phaseId: "evidence-post-upgrade-snapshots",
+    summary: "plugin directory evidence does not disappear across upgrade",
+    before: pre.snapshot.pluginDirCount,
+    after: post.snapshot.pluginDirCount,
+    artifactPath: post.evidenceArtifactPath
+  }));
+
+  return invariants;
+}
+
+function compareSnapshotCountInvariant({ id, phaseId, summary, before, after, artifactPath }) {
+  const beforeCount = Number.isFinite(before) ? before : 0;
+  const afterCount = Number.isFinite(after) ? after : 0;
+  const status = beforeCount <= afterCount ? "passed" : "failed";
+  return {
+    id,
+    phaseId,
+    required: true,
+    status,
+    summary,
+    artifactPath,
+    reason: status === "passed" ? null : `count decreased from ${beforeCount} to ${afterCount}`
+  };
+}
+
+function findSnapshotResult(record, evidenceId) {
+  for (const phase of record.phases ?? []) {
+    for (const result of phase.results ?? []) {
+      if (result.evidenceId === evidenceId) {
+        return result;
+      }
+    }
+  }
+  return null;
 }
 
 async function executeStateLifecycleSteps(context, envName, scenario, kind, steps, artifactDir, phaseId = null, authPolicy = null) {

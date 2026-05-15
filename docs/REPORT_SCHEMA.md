@@ -140,6 +140,9 @@ Scenarios can declare required snapshot obligations in
 `evidenceContract.snapshots`; executed snapshot phases appear as `snapshot`
 ledger entries and missing or unreadable required snapshots make the run
 `INCOMPLETE`.
+Invariant checks appear as `invariant` ledger entries. A failed required
+invariant means Kova collected the proof and it showed bad OpenClaw behavior, so
+an otherwise passing record becomes `FAIL`.
 - `finalMetrics`: service/process snapshot before cleanup
 - `cleanup`: cleanup result
 - `retainedReason`: why a retained env was kept, such as `keep-env` or
