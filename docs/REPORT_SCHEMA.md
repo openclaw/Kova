@@ -143,6 +143,10 @@ ledger entries and missing or unreadable required snapshots make the run
 Invariant checks appear as `invariant` ledger entries. A failed required
 invariant means Kova collected the proof and it showed bad OpenClaw behavior, so
 an otherwise passing record becomes `FAIL`.
+Summary JSON includes `proof`: record completeness counts, required obligation
+totals, category counts, and compact lists of missing or failed required
+obligations. Markdown reports render this as the Proof Completeness section
+before performance details.
 - `finalMetrics`: service/process snapshot before cleanup
 - `cleanup`: cleanup result
 - `retainedReason`: why a retained env was kept, such as `keep-env` or

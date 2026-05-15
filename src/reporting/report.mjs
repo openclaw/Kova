@@ -30,6 +30,7 @@ export function renderMarkdownReport(report) {
     `- Blocking findings: ${summary.decision.blockingFindingCount}`,
     `- Warnings: ${summary.decision.warningFindingCount}`,
     "",
+    ...formatProofCompletenessSection(summary.proof),
     "## Run",
     "",
     `- Run ID: \`${summary.runId}\``,
@@ -81,6 +82,40 @@ function formatFindingsSection(findings = []) {
   if (findings.length > 12) {
     lines.push(`| info | Kova | report | ${findings.length - 12} additional finding(s) omitted from Markdown | see summary JSON |`);
   }
+  lines.push("");
+  return lines;
+}
+
+function formatProofCompletenessSection(proof) {
+  const lines = ["## Proof Completeness", ""];
+  if (!proof || proof.recordCount === 0) {
+    lines.push("- No records.");
+    lines.push("");
+    return lines;
+  }
+
+  const completeness = Object.entries(proof.completeness ?? {})
+    .map(([status, count]) => `${status}: ${count}`)
+    .join(", ") || "none";
+  lines.push(`- Completeness: ${completeness}`);
+  lines.push(`- Required obligations: ${proof.requiredTotal} total, ${proof.requiredMissing} missing, ${proof.requiredFailed} failed`);
+  if (Object.keys(proof.byCategory ?? {}).length > 0) {
+    const categories = Object.entries(proof.byCategory)
+      .map(([category, count]) => `${category}: ${count}`)
+      .join(", ");
+    lines.push(`- Categories: ${categories}`);
+  }
+
+  const gaps = [...(proof.missingRequired ?? []), ...(proof.failedRequired ?? [])].slice(0, 8);
+  if (gaps.length > 0) {
+    lines.push("");
+    lines.push("| Scenario | Obligation | Status | Reason |");
+    lines.push("|---|---|---|---|");
+    for (const gap of gaps) {
+      lines.push(`| ${tableCell(gap.scenario)} | ${tableCell(gap.id)} | ${tableCell(gap.status)} | ${tableCell(gap.reason ?? gap.summary ?? "see JSON")} |`);
+    }
+  }
+
   lines.push("");
   return lines;
 }
@@ -343,6 +378,7 @@ export function buildReportSummary(report) {
       targetCleanup: summarizeTargetCleanup(report.targetCleanup)
     },
     coverage: summarizeCoverage(records),
+    proof: summarizeProofCompleteness(records),
     gate: report.gate ?? null,
     performance: summarizePerformance(report.performance, report.baseline),
     failureBrief: buildFailureBrief(report),
@@ -371,6 +407,7 @@ export function renderReportSummary(report, options = {}) {
     ...(summary.gate ? [
       `Gate: ${summary.gate.verdict} (${summary.gate.blockingCount} blocking, ${summary.gate.warningCount} warning)`
     ] : []),
+    `Proof: ${Object.entries(summary.proof?.completeness ?? {}).map(([status, count]) => `${status}=${count}`).join(", ") || "none"}; required ${summary.proof?.requiredTotal ?? 0}, missing ${summary.proof?.requiredMissing ?? 0}, failed ${summary.proof?.requiredFailed ?? 0}`,
     "Statuses:",
     ...Object.entries(summary.statuses).map(([status, count]) => `- ${status}: ${count}`),
     "",
@@ -515,8 +552,10 @@ function buildFindings(report) {
         evidence: missing.length > 0 ? [`missing spans: ${missing.slice(0, 5).join(", ")}`] : ["missing expected diagnostic spans"]
       });
     }
+    const proofFindings = ledgerFindings(record, index, state);
+    findings.push(...proofFindings);
     const failed = firstFailedCommand(record);
-    if (record.status === RECORD_STATUS.INCOMPLETE && (record.violations ?? []).length === 0) {
+    if (record.status === RECORD_STATUS.INCOMPLETE && (record.violations ?? []).length === 0 && proofFindings.length === 0) {
       findings.push({
         id: `${record.scenario}:${state ?? "none"}:incomplete:${index + 1}`,
         severity: "incomplete",
@@ -552,6 +591,52 @@ function buildFindings(report) {
   return findings;
 }
 
+function ledgerFindings(record, index, state) {
+  const findings = [];
+  for (const entry of record.evidenceLedger?.entries ?? []) {
+    if (!entry.required) {
+      continue;
+    }
+    if (entry.status === "missing") {
+      findings.push(ledgerFinding(record, index, state, entry, {
+        severity: "incomplete",
+        kind: "evidence",
+        actual: "missing proof"
+      }));
+    } else if (entry.status === "failed" && entry.category === "invariant") {
+      findings.push(ledgerFinding(record, index, state, entry, {
+        severity: "fail",
+        kind: "invariant",
+        actual: "invariant failed"
+      }));
+    } else if (entry.status === "failed" && entry.category !== "command") {
+      findings.push(ledgerFinding(record, index, state, entry, {
+        severity: "incomplete",
+        kind: "evidence",
+        actual: "proof collection failed"
+      }));
+    }
+  }
+  return findings;
+}
+
+function ledgerFinding(record, index, state, entry, { severity, kind, actual }) {
+  return {
+    id: `${record.scenario}:${state ?? "none"}:${entry.id}:${index + 1}`,
+    severity,
+    kind,
+    scenario: record.scenario ?? null,
+    state,
+    sampleIndex: record.repeat?.index ?? index + 1,
+    ownerArea: record.likelyOwner ?? null,
+    metric: null,
+    summary: `${entry.category} proof ${entry.status}: ${entry.summary ?? entry.id}`,
+    expected: "required proof obligation passes",
+    actual,
+    evidence: [entry.reason, entry.artifactPath].filter(Boolean).slice(0, 2)
+  };
+}
+
 function summarizeCoverage(records) {
   const scenarios = new Set();
   const states = new Set();
@@ -576,6 +661,56 @@ function summarizeCoverage(records) {
     surfaceCount: surfaces.size,
     surfaces: [...surfaces].sort()
   };
+}
+
+function summarizeProofCompleteness(records) {
+  const proof = {
+    recordCount: records.length,
+    completeness: {},
+    requiredTotal: 0,
+    requiredMissing: 0,
+    requiredFailed: 0,
+    byCategory: {},
+    missingRequired: [],
+    failedRequired: []
+  };
+
+  for (const [index, record] of records.entries()) {
+    const ledger = record.evidenceLedger;
+    if (!ledger) {
+      continue;
+    }
+    proof.completeness[ledger.completeness ?? "unknown"] = (proof.completeness[ledger.completeness ?? "unknown"] ?? 0) + 1;
+    proof.requiredTotal += ledger.summary?.required ?? 0;
+    proof.requiredMissing += ledger.summary?.requiredMissing ?? 0;
+    proof.requiredFailed += ledger.summary?.requiredFailed ?? 0;
+    for (const [category, count] of Object.entries(ledger.summary?.byCategory ?? {})) {
+      proof.byCategory[category] = (proof.byCategory[category] ?? 0) + count;
+    }
+    for (const entry of ledger.entries ?? []) {
+      if (!entry.required) {
+        continue;
+      }
+      const item = {
+        scenario: record.scenario ?? "unknown",
+        state: record.state?.id ?? null,
+        sampleIndex: record.repeat?.index ?? index + 1,
+        id: entry.id,
+        category: entry.category,
+        status: entry.status,
+        summary: entry.summary ?? null,
+        reason: entry.reason ?? null,
+        artifactPath: entry.artifactPath ?? null
+      };
+      if (entry.status === "missing") {
+        proof.missingRequired.push(item);
+      } else if (entry.status === "failed") {
+        proof.failedRequired.push(item);
+      }
+    }
+  }
+
+  return proof;
 }
 
 function summarizeReportGroups(report, samples) {

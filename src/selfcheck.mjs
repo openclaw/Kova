@@ -6863,6 +6863,9 @@ function validateReport(report) {
     assertEqual((ledger?.summary?.required ?? 0) > 0, true, "evidence ledger required command entries");
     assertEqual(ledger?.summary?.byStatus?.skipped > 0, true, "dry-run command ledger entries are skipped");
     assertArrayNotEmpty(ledger?.entries, "evidence ledger entries");
+    const summary = buildReportSummary(report);
+    assertEqual(summary.proof?.requiredTotal > 0, true, "summary proof required total");
+    assertEqual(summary.proof?.completeness?.["not-evaluated"] > 0, true, "summary proof dry-run completeness");
     const dirs = report.records[0]?.collectorArtifactDirs;
     assertEqual(dirs?.schemaVersion, "kova.collectorArtifactDirs.v1", "collector artifact dirs schema");
     assertString(dirs?.resourceSamples, "collector resource samples dir");
