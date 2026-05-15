@@ -49,6 +49,7 @@ import { captureOpenClawStateSnapshot } from "./collectors/openclaw-state.mjs";
 import { buildReportSummary, renderMarkdownReport, renderPasteSummary, renderReportSummary, summarizeRecords } from "./reporting/report.mjs";
 import {
   buildGatewaySessionEvidenceInvariants,
+  buildOfficialPluginInstallEvidenceInvariants,
   buildReleaseRuntimeStartupEvidenceInvariants,
   buildUpgradeLogDerivedInvariants,
   buildUpgradeStateSnapshotInvariants,
@@ -401,6 +402,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(await gatewaySessionSurfaceContractCheck());
     checks.push(await releaseRuntimeStartupSurfaceContractCheck());
     checks.push(releaseRuntimeStartupEvidenceInvariantCheck());
+    checks.push(officialPluginInstallEvidenceInvariantCheck());
     checks.push(await processSnapshotCheck(tmp));
     checks.push(roleThresholdEvaluationCheck());
     checks.push(thresholdPolicyCalibrationCheck());
@@ -3398,6 +3400,235 @@ function releaseRuntimeStartupEvidenceInvariantCheck() {
       message: error.message
     };
   }
+}
+
+function officialPluginInstallEvidenceInvariantCheck() {
+  try {
+    const record = syntheticOfficialPluginInstallRecord();
+    const scenario = {
+      id: "official-plugin-install",
+      surface: "official-plugin-install",
+      thresholds: {},
+      phases: [
+        { id: "provision", healthScope: "readiness" },
+        { id: "install", healthScope: "post-ready" },
+        { id: "restart", healthScope: "readiness" },
+        { id: "post-restart-verify", healthScope: "post-ready" }
+      ]
+    };
+    evaluateRecord(record, scenario, {
+      surface: {
+        thresholds: {},
+        diagnostics: { expectedSpans: ["plugins.metadata.scan"] }
+      },
+      targetPlan: { kind: "runtime" }
+    });
+    const invariants = buildOfficialPluginInstallEvidenceInvariants(record, scenario);
+    assertEqual(invariants.length, 10, "official plugin invariant count");
+    assertEqual(invariants.every((invariant) => invariant.status === "passed"), true, "complete official plugin evidence passes invariants");
+
+    const blockedRecord = syntheticOfficialPluginInstallRecord({
+      helperPayload: { securityBlocked: true, securityBlockCount: 1, securityEvidence: "@openclaw/discord blocked" }
+    });
+    evaluateRecord(blockedRecord, scenario, {
+      surface: { thresholds: {}, diagnostics: { expectedSpans: [] } },
+      targetPlan: { kind: "runtime" }
+    });
+    const blockedInvariants = buildOfficialPluginInstallEvidenceInvariants(blockedRecord, scenario);
+    const securityProof = blockedInvariants.find((invariant) => invariant.id === "official-plugin-security-proof");
+    assertEqual(securityProof?.status, "failed", "security block is failed official plugin evidence");
+
+    const missingHelperRecord = syntheticOfficialPluginInstallRecord({ includeInstallHelper: false });
+    evaluateRecord(missingHelperRecord, scenario, {
+      surface: { thresholds: {}, diagnostics: { expectedSpans: [] } },
+      targetPlan: { kind: "runtime" }
+    });
+    const missingHelperInvariants = buildOfficialPluginInstallEvidenceInvariants(missingHelperRecord, scenario);
+    const installProof = missingHelperInvariants.find((invariant) => invariant.id === "official-plugin-install-proof");
+    assertEqual(installProof?.status, "missing", "missing official plugin helper JSON is incomplete proof");
+
+    return {
+      id: "official-plugin-install-evidence-invariants",
+      status: "PASS",
+      command: "evaluate official plugin install evidence completeness invariants",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "official-plugin-install-evidence-invariants",
+      status: "FAIL",
+      command: "evaluate official plugin install evidence completeness invariants",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function syntheticOfficialPluginInstallRecord({ helperPayload = {}, includeInstallHelper = true } = {}) {
+  const officialPayload = {
+    schemaVersion: "kova.officialPluginInstall.v1",
+    ok: true,
+    pluginCount: 1,
+    requiredPluginCount: 1,
+    failedRequiredCount: 0,
+    durationMs: 1200,
+    installed: true,
+    listed: true,
+    registryRefreshed: true,
+    securityBlocked: false,
+    securityBlockCount: 0,
+    securityEvidence: null,
+    failureEvidence: [],
+    artifactPath: "/tmp/kova/official-plugins.json",
+    pluginResults: [{
+      id: "discord",
+      package: "@openclaw/discord",
+      ok: true,
+      required: true,
+      installed: true,
+      listed: true,
+      registryRefreshed: true,
+      securityBlocked: false
+    }],
+    commands: [
+      { id: "install:discord", status: 0, durationMs: 500 },
+      { id: "list:discord", status: 0, durationMs: 100 },
+      { id: "registry-refresh:discord", status: 0, durationMs: 100 }
+    ],
+    ...helperPayload
+  };
+  officialPayload.ok = officialPayload.securityBlocked === true ? false : officialPayload.ok;
+  officialPayload.securityBlockCount = officialPayload.securityBlocked === true
+    ? Math.max(1, officialPayload.securityBlockCount ?? 1)
+    : officialPayload.securityBlockCount;
+  officialPayload.failedRequiredCount = officialPayload.securityBlocked === true
+    ? Math.max(1, officialPayload.failedRequiredCount ?? 1)
+    : officialPayload.failedRequiredCount;
+
+  const installResults = includeInstallHelper
+    ? [{
+        command: "node support/run-official-plugin-install.mjs --env kova --state states/official-plugins.json --artifact-dir /tmp/kova --timeout-ms 120000",
+        status: officialPayload.ok ? 0 : 1,
+        durationMs: 1200,
+        stdout: JSON.stringify(officialPayload),
+        resourceSamples: syntheticReleaseStartupResourceSamples("/tmp/kova/resources/install-1.jsonl")
+      }]
+    : [];
+
+  return {
+    scenario: "official-plugin-install",
+    surface: "official-plugin-install",
+    status: "PASS",
+    phases: [
+      {
+        id: "provision",
+        results: [
+          { command: "ocm start kova --runtime stable --json", status: 0, durationMs: 100, stdout: "{\"gatewayPort\":43111}" },
+          { command: "ocm @kova -- plugins list", status: 0, durationMs: 100, stdout: "Plugins\n" }
+        ],
+        metrics: {
+          readiness: syntheticReadyReadiness(),
+          service: { gatewayState: "running", gatewayPort: 43111, runtimeReleaseVersion: "2026.5.7", runtimeReleaseChannel: "stable" }
+        }
+      },
+      {
+        id: "install",
+        results: installResults,
+        metrics: {
+          healthSummary: syntheticHealthSummary(),
+          logs: zeroLogMetrics()
+        }
+      },
+      {
+        id: "restart",
+        results: [{
+          command: "node support/ensure-gateway-running.mjs --env kova --artifact-dir /tmp/kova --timeout-ms 120000",
+          status: 0,
+          durationMs: 300,
+          stdout: "{\"ok\":true,\"gatewayState\":\"running\"}"
+        }],
+        metrics: {
+          readiness: syntheticReadyReadiness(),
+          service: { gatewayState: "running", gatewayPort: 43111, runtimeReleaseVersion: "2026.5.7", runtimeReleaseChannel: "stable" }
+        }
+      },
+      {
+        id: "post-restart-verify",
+        results: [
+          { command: "ocm service status kova --json", status: 0, durationMs: 50, stdout: "{\"gatewayState\":\"running\"}" },
+          { command: "ocm @kova -- plugins list", status: 0, durationMs: 100, stdout: "@openclaw/discord\n" },
+          { command: "ocm logs kova --tail 400 --raw", status: 0, durationMs: 40, stdout: "plugins loaded\n" }
+        ],
+        metrics: {
+          healthSummary: syntheticHealthSummary(),
+          logs: {
+            ...zeroLogMetrics(),
+            artifacts: ["/tmp/kova/logs/gateway-tail.log"]
+          },
+          timeline: syntheticTimelineMetrics()
+        }
+      }
+    ],
+    finalMetrics: {
+      service: { gatewayState: "running", gatewayPort: 43111, runtimeReleaseVersion: "2026.5.7", runtimeReleaseChannel: "stable" },
+      health: { ok: true, durationMs: 1 },
+      healthSummary: syntheticHealthSummary(),
+      logs: zeroLogMetrics(),
+      timeline: syntheticTimelineMetrics()
+    }
+  };
+}
+
+function syntheticReadyReadiness() {
+  return {
+    classification: {
+      state: "ready",
+      severity: "pass",
+      reason: "gateway became healthy within the readiness threshold"
+    },
+    listeningReadyAtMs: 100,
+    healthReadyAtMs: 200,
+    thresholdMs: 30000,
+    deadlineMs: 120000,
+    attempts: 2,
+    healthAttempts: [
+      { ok: false, durationMs: 5 },
+      { ok: true, durationMs: 4 }
+    ]
+  };
+}
+
+function syntheticHealthSummary() {
+  return {
+    count: 1,
+    okCount: 1,
+    failureCount: 0,
+    minMs: 1,
+    p50Ms: 1,
+    p95Ms: 1,
+    maxMs: 1
+  };
+}
+
+function syntheticTimelineMetrics() {
+  return {
+    available: true,
+    eventCount: 4,
+    parseErrorCount: 0,
+    artifacts: ["/tmp/kova/openclaw/timeline.jsonl"],
+    keySpans: {
+      "plugins.metadata.scan": { count: 1, totalDurationMs: 30, maxDurationMs: 30 }
+    },
+    spanTotals: {
+      "plugins.metadata.scan": { count: 1, totalDurationMs: 30, maxDurationMs: 30 }
+    },
+    openSpanCount: 0,
+    openSpans: [],
+    runtimeDeps: {},
+    eventLoop: {},
+    providers: {},
+    childProcesses: {}
+  };
 }
 
 function syntheticReleaseStartupResourceSamples(artifactPath) {
