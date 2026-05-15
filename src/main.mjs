@@ -1,4 +1,5 @@
 import { parseFlags, printHelp } from "./cli.mjs";
+import { renderHelp } from "./reporting/render-help.mjs";
 import { runCleanupCliCommand } from "./commands/cleanup.mjs";
 import { runInventoryCommand } from "./commands/inventory.mjs";
 import { runMatrixCommand } from "./commands/matrix.mjs";
@@ -14,7 +15,12 @@ export async function main(argv) {
   const flags = parseFlags(rest);
 
   if (command === "help" || flags.help) {
-    printHelp();
+    const target = command === "help" ? (rest[0] ?? null) : command;
+    if (flags.plain === true || flags.json === true) {
+      printHelp();
+    } else {
+      console.log(renderHelp(target, flags));
+    }
     return;
   }
 
