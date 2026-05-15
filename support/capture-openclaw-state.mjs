@@ -9,6 +9,24 @@ try {
     home: flags.home ?? process.env.OPENCLAW_HOME,
     label: flags.label ?? "openclaw-state",
     outputPath: flags.output,
+    runtime: {
+      targetKind: flags.targetKind,
+      targetValue: flags.targetValue,
+      runtimeName: flags.runtimeName
+    },
+    service: {
+      desired: flags.serviceDesired,
+      state: flags.serviceState,
+      pid: flags.servicePid,
+      port: flags.servicePort,
+      restartCount: flags.serviceRestartCount,
+      readiness: flags.serviceReadiness
+    },
+    cleanup: {
+      expected: flags.cleanupExpected,
+      state: flags.cleanupState,
+      reason: flags.cleanupReason
+    },
     limits: {
       maxFileBytes: flags.maxFileBytes
     }
@@ -35,6 +53,41 @@ function parseArgs(args) {
     } else if (arg === "--max-file-bytes") {
       flags.maxFileBytes = parsePositiveInteger(requireValue(args, index), "max-file-bytes");
       index += 1;
+    } else if (arg === "--target-kind") {
+      flags.targetKind = requireValue(args, index);
+      index += 1;
+    } else if (arg === "--target-value") {
+      flags.targetValue = requireValue(args, index);
+      index += 1;
+    } else if (arg === "--runtime-name") {
+      flags.runtimeName = requireValue(args, index);
+      index += 1;
+    } else if (arg === "--service-desired") {
+      flags.serviceDesired = requireValue(args, index);
+      index += 1;
+    } else if (arg === "--service-state") {
+      flags.serviceState = requireValue(args, index);
+      index += 1;
+    } else if (arg === "--service-pid") {
+      flags.servicePid = parseNonNegativeInteger(requireValue(args, index), "service-pid");
+      index += 1;
+    } else if (arg === "--service-port") {
+      flags.servicePort = parseNonNegativeInteger(requireValue(args, index), "service-port");
+      index += 1;
+    } else if (arg === "--service-restart-count") {
+      flags.serviceRestartCount = parseNonNegativeInteger(requireValue(args, index), "service-restart-count");
+      index += 1;
+    } else if (arg === "--service-readiness") {
+      flags.serviceReadiness = requireValue(args, index);
+      index += 1;
+    } else if (arg === "--cleanup-expected") {
+      flags.cleanupExpected = true;
+    } else if (arg === "--cleanup-state") {
+      flags.cleanupState = requireValue(args, index);
+      index += 1;
+    } else if (arg === "--cleanup-reason") {
+      flags.cleanupReason = requireValue(args, index);
+      index += 1;
     } else {
       throw new Error(`unknown argument ${arg}`);
     }
@@ -54,6 +107,14 @@ function parsePositiveInteger(value, label) {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) {
     throw new Error(`${label} must be a positive integer`);
+  }
+  return parsed;
+}
+
+function parseNonNegativeInteger(value, label) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new Error(`${label} must be a non-negative integer`);
   }
   return parsed;
 }

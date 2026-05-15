@@ -487,6 +487,7 @@ function buildEvidenceSnapshotPhase(context, envName, scenario, afterPhaseId, ar
   for (const snapshot of snapshots) {
     const artifactPath = join(collectorArtifactDirs(artifactDir).collectors, "state-snapshots", `${safeSegment(snapshot.id)}.json`);
     commands.push(openClawStateSnapshotCommand({
+      context,
       envName,
       label: snapshot.label ?? snapshot.id,
       artifactPath,
@@ -519,15 +520,25 @@ function evidenceSnapshotsAfterPhase(scenario, afterPhaseId) {
   return (scenario.evidenceContract?.snapshots ?? []).filter((snapshot) => snapshot.afterPhase === afterPhaseId);
 }
 
-function openClawStateSnapshotCommand({ envName, label, artifactPath, maxFileBytes }) {
+function openClawStateSnapshotCommand({ context, envName, label, artifactPath, maxFileBytes }) {
   const args = [
     "node",
     quoteShell(join(repoRoot, "support", "capture-openclaw-state.mjs")),
     "--label",
     quoteShell(label),
     "--output",
-    quoteShell(artifactPath)
+    quoteShell(artifactPath),
+    "--target-kind",
+    quoteShell(context.targetPlan.kind),
+    "--target-value",
+    quoteShell(context.targetPlan.value)
   ];
+  if (context.targetPlan.runtimeName) {
+    args.push("--runtime-name", quoteShell(context.targetPlan.runtimeName));
+  }
+  if (!context.keepEnv) {
+    args.push("--cleanup-expected");
+  }
   if (maxFileBytes) {
     args.push("--max-file-bytes", String(maxFileBytes));
   }
@@ -548,7 +559,31 @@ function compactOpenClawStateSnapshot(stdout, artifactPath) {
       omittedCount: snapshot.budget?.omittedCount ?? 0,
       redactedSecretKeyCount: snapshot.redaction?.secretKeyCount ?? 0,
       pluginInstallIndexCount: snapshot.plugins?.installIndexes?.length ?? 0,
-      pluginDirCount: snapshot.plugins?.pluginDirs?.length ?? 0
+      pluginDirCount: snapshot.plugins?.pluginDirs?.length ?? 0,
+      installedPluginIds: (snapshot.plugins?.installed ?? []).map((plugin) => plugin.id).filter(Boolean).sort(),
+      runtime: snapshot.runtime ?? null,
+      service: snapshot.service ?? null,
+      config: {
+        fileCount: snapshot.config?.files?.length ?? 0,
+        keys: snapshot.config?.keys ?? [],
+        schemaVersions: snapshot.config?.schemaVersions ?? []
+      },
+      auth: {
+        providerIds: snapshot.auth?.providerIds ?? [],
+        authMethodShapes: snapshot.auth?.authMethodShapes ?? [],
+        secretReferenceKeys: snapshot.auth?.secretReferenceKeys ?? []
+      },
+      models: {
+        providerIds: snapshot.models?.providerIds ?? [],
+        modelIds: snapshot.models?.modelIds ?? [],
+        modelCount: snapshot.models?.modelCount ?? 0
+      },
+      workspace: {
+        rootHashes: snapshot.workspace?.rootHashes ?? [],
+        allowedRootCount: snapshot.workspace?.allowedRootCount ?? 0,
+        durableBoundary: snapshot.workspace?.durableBoundary ?? null
+      },
+      cleanup: snapshot.cleanup ?? null
     };
   } catch (error) {
     return {

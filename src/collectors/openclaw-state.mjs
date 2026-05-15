@@ -13,7 +13,7 @@ const DEFAULT_LIMITS = {
 };
 
 const SECRET_KEY_PATTERN = /(?:api[_-]?key|access[_-]?token|auth[_-]?token|refresh[_-]?token|secret|password|cookie|credential|private[_-]?key)/i;
-const SAFE_VALUE_KEY_PATTERN = /^(?:id|name|title|kind|source|provider|model|version|channel|release|schemaVersion|enabled|disabled|path|root)$/i;
+const SAFE_VALUE_KEY_PATTERN = /^(?:id|name|title|kind|source|provider|providerId|model|modelId|authMethod|method|version|channel|release|schemaVersion|enabled|disabled)$/i;
 const EXCLUDED_DIRS = new Set([
   ".git",
   "dist",
@@ -52,6 +52,13 @@ export async function captureOpenClawStateSnapshot(options = {}) {
     capturedAt: new Date().toISOString(),
     limits,
     home: await homeSummary(home),
+    runtime: runtimeSummary(options.runtime),
+    service: serviceSummary(options.service),
+    config: configSummary(),
+    auth: authSummary(),
+    models: modelSummary(),
+    workspace: workspaceSummary(),
+    cleanup: cleanupSummary(options.cleanup),
     files: [],
     plugins: {
       roots: [],
@@ -79,6 +86,7 @@ export async function captureOpenClawStateSnapshot(options = {}) {
     const summary = await summarizeFile(home, relPath, limits, snapshot);
     if (summary) {
       snapshot.files.push(summary);
+      applyKnownFileSemantics(snapshot, relPath, summary);
     }
   }
 
@@ -94,6 +102,74 @@ export async function captureOpenClawStateSnapshot(options = {}) {
   snapshot.budget.truncatedCount = snapshot.files.filter((file) => file.truncated).length;
 
   return snapshot;
+}
+
+function runtimeSummary(runtime = {}) {
+  const targetKind = stringOrNull(runtime.targetKind);
+  const targetValue = stringOrNull(runtime.targetValue);
+  const runtimeName = stringOrNull(runtime.runtimeName);
+  return {
+    targetKind,
+    targetValue: targetKind === "local-build" ? null : targetValue,
+    targetValueHash: targetValue && targetKind === "local-build" ? sha256(targetValue).slice(0, 16) : null,
+    runtimeName,
+    channel: targetKind === "channel" ? targetValue : null,
+    version: targetKind === "version" ? targetValue : null
+  };
+}
+
+function serviceSummary(service = {}) {
+  return {
+    desired: stringOrNull(service.desired),
+    state: stringOrNull(service.state),
+    pid: integerOrNull(service.pid),
+    port: integerOrNull(service.port),
+    restartCount: integerOrNull(service.restartCount),
+    readiness: stringOrNull(service.readiness),
+    source: service.source ?? "snapshot-context"
+  };
+}
+
+function configSummary() {
+  return {
+    files: [],
+    keys: [],
+    schemaVersions: []
+  };
+}
+
+function authSummary() {
+  return {
+    providerIds: [],
+    authMethodShapes: [],
+    secretReferenceKeys: [],
+    secretValueCount: 0
+  };
+}
+
+function modelSummary() {
+  return {
+    providerIds: [],
+    modelIds: [],
+    modelCount: 0
+  };
+}
+
+function workspaceSummary() {
+  return {
+    roots: [],
+    rootHashes: [],
+    allowedRootCount: 0,
+    durableBoundary: "redacted-paths"
+  };
+}
+
+function cleanupSummary(cleanup = {}) {
+  return {
+    expected: cleanup.expected === true,
+    state: stringOrNull(cleanup.state) ?? "not-evaluated",
+    reason: stringOrNull(cleanup.reason)
+  };
 }
 
 export async function writeOpenClawStateSnapshot(options = {}) {
@@ -138,13 +214,14 @@ async function summarizePluginRoot(home, rootRelPath, limits, snapshot) {
   });
 
   const installIndex = snapshot.files.find((file) => file.path === `${rootRelPath}/installs.json`);
-  if (installIndex) {
+    if (installIndex) {
     snapshot.plugins.installIndexes.push({
       path: installIndex.path,
       bytes: installIndex.bytes,
       sha256: installIndex.sha256,
       truncated: installIndex.truncated
     });
+    applyPluginInstallIndexSemantics(snapshot, installIndex);
   }
 
   const entries = await readdir(rootPath, { withFileTypes: true }).catch(() => []);
@@ -187,6 +264,200 @@ async function summarizePluginRoot(home, rootRelPath, limits, snapshot) {
     }
     snapshot.plugins.pluginDirs.push(plugin);
   }
+}
+
+function applyKnownFileSemantics(snapshot, relPath, summary) {
+  const json = summary.json;
+  if (!json || json.parseError || json.type !== "object") {
+    return;
+  }
+  if (isConfigPath(relPath)) {
+    mergeUnique(snapshot.config.files, relPath);
+    mergeUniqueArray(snapshot.config.keys, json.keys ?? []);
+    const schemaVersion = fieldStringValue(json, "schemaVersion");
+    if (schemaVersion) {
+      mergeUnique(snapshot.config.schemaVersions, schemaVersion);
+    }
+    collectProviderModelWorkspaceShape(snapshot, json);
+    collectAuthShape(snapshot, json);
+  }
+  if (/auth\.json$/i.test(relPath)) {
+    collectAuthShape(snapshot, json);
+  }
+  if (/providers\.json$/i.test(relPath) || /models\.json$/i.test(relPath)) {
+    collectProviderModelWorkspaceShape(snapshot, json);
+  }
+  if (/plugins\/installs\.json$/i.test(relPath)) {
+    applyPluginInstallIndexSemantics(snapshot, summary);
+  }
+}
+
+function applyPluginInstallIndexSemantics(snapshot, summary) {
+  const plugins = collectObjectsByKey(summary.json, "plugins").flatMap((entry) => entry.items ?? []);
+  for (const plugin of plugins) {
+    if (plugin.type !== "object") {
+      continue;
+    }
+    const id = fieldStringValue(plugin, "id") ?? fieldStringValue(plugin, "name");
+    if (!id) {
+      continue;
+    }
+    const existing = snapshot.plugins.installed ?? [];
+    if (!snapshot.plugins.installed) {
+      snapshot.plugins.installed = existing;
+    }
+    if (!existing.some((item) => item.id === id)) {
+      existing.push({
+        id,
+        source: fieldStringValue(plugin, "source"),
+        enabled: fieldPrimitiveValue(plugin, "enabled"),
+        version: fieldStringValue(plugin, "version")
+      });
+    }
+  }
+}
+
+function collectProviderModelWorkspaceShape(snapshot, json) {
+  for (const provider of collectValuesByKey(json, ["provider", "providerId", "providerID"])) {
+    mergeUnique(snapshot.models.providerIds, provider);
+    mergeUnique(snapshot.auth.providerIds, provider);
+  }
+  for (const model of collectValuesByKey(json, ["model", "modelId", "modelID"])) {
+    mergeUnique(snapshot.models.modelIds, model);
+  }
+  for (const rootHash of collectFingerprintsByKey(json, ["workspace", "workspaceRoot", "workspacePath", "root", "allowedRoot"])) {
+    mergeUnique(snapshot.workspace.rootHashes, rootHash);
+  }
+  const allowedRoots = collectObjectsByKey(json, "allowedRoots").flatMap((entry) => stringItemFingerprints(entry));
+  for (const rootHash of allowedRoots) {
+    mergeUnique(snapshot.workspace.rootHashes, rootHash);
+  }
+  snapshot.workspace.allowedRootCount = snapshot.workspace.rootHashes.length;
+  snapshot.models.modelCount = snapshot.models.modelIds.length;
+}
+
+function collectAuthShape(snapshot, json) {
+  for (const authMethod of collectValuesByKey(json, ["authMethod", "auth", "method"])) {
+    mergeUnique(snapshot.auth.authMethodShapes, authMethod);
+  }
+  for (const key of collectSecretKeys(json)) {
+    mergeUnique(snapshot.auth.secretReferenceKeys, key);
+  }
+  snapshot.auth.secretValueCount = snapshot.redaction.secretKeyCount;
+}
+
+function isConfigPath(relPath) {
+  return /(?:^|\/)(?:config|settings|kova-source-release)\.json$/i.test(relPath) ||
+    /(?:^|\/)config\/.*\.json$/i.test(relPath);
+}
+
+function collectValuesByKey(summary, keys) {
+  const wanted = new Set(keys.map((key) => key.toLowerCase()));
+  const values = [];
+  visitSummary(summary, (node, key) => {
+    if (key && wanted.has(key.toLowerCase())) {
+      const value = summaryStringValue(node);
+      if (value) {
+        values.push(value);
+      }
+    }
+  });
+  return values;
+}
+
+function collectFingerprintsByKey(summary, keys) {
+  const wanted = new Set(keys.map((key) => key.toLowerCase()));
+  const values = [];
+  visitSummary(summary, (node, key) => {
+    if (key && wanted.has(key.toLowerCase())) {
+      const value = summaryStringFingerprint(node);
+      if (value) {
+        values.push(value);
+      }
+    }
+  });
+  return values;
+}
+
+function collectObjectsByKey(summary, key) {
+  const values = [];
+  visitSummary(summary, (node, nodeKey) => {
+    if (nodeKey === key && node) {
+      values.push(node);
+    }
+  });
+  return values;
+}
+
+function collectSecretKeys(summary) {
+  const keys = [];
+  visitSummary(summary, (node, key) => {
+    if (key && node?.redacted === true) {
+      keys.push(key);
+    }
+  });
+  return keys;
+}
+
+function visitSummary(node, visitor, key = null) {
+  if (!node || typeof node !== "object") {
+    return;
+  }
+  visitor(node, key);
+  if (node.type === "object") {
+    for (const [fieldKey, field] of Object.entries(node.fields ?? {})) {
+      visitSummary(field, visitor, fieldKey);
+    }
+  } else if (node.type === "array") {
+    for (const item of node.items ?? []) {
+      visitSummary(item, visitor, null);
+    }
+  }
+}
+
+function fieldStringValue(objectSummary, key) {
+  return summaryStringValue(objectSummary?.fields?.[key]);
+}
+
+function fieldPrimitiveValue(objectSummary, key) {
+  const field = objectSummary?.fields?.[key];
+  return field?.value ?? null;
+}
+
+function summaryStringValue(summary) {
+  if (summary?.type === "string" && typeof summary.value === "string") {
+    return summary.value;
+  }
+  return null;
+}
+
+function stringItemFingerprints(summary) {
+  if (summary?.type !== "array") {
+    return [];
+  }
+  return (summary.items ?? []).map(summaryStringFingerprint).filter(Boolean);
+}
+
+function mergeUnique(values, value) {
+  if (value !== null && value !== undefined && !values.includes(value)) {
+    values.push(value);
+  }
+}
+
+function mergeUniqueArray(values, additions) {
+  for (const value of additions ?? []) {
+    mergeUnique(values, value);
+  }
+}
+
+function summaryStringFingerprint(summary) {
+  if (summary?.type !== "string") {
+    return null;
+  }
+  if (typeof summary.value === "string") {
+    return sha256(summary.value).slice(0, 16);
+  }
+  return typeof summary.sha256 === "string" ? summary.sha256.slice(0, 16) : null;
 }
 
 async function summarizeFile(home, relPath, limits, snapshot) {
@@ -336,4 +607,12 @@ function normalizeLimits(overrides = {}) {
     }
   }
   return limits;
+}
+
+function stringOrNull(value) {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function integerOrNull(value) {
+  return Number.isInteger(value) ? value : null;
 }

@@ -909,6 +909,8 @@ async function openClawStateSnapshotCheck(tmp) {
       schemaVersion: "kova.fixture.settings.v1",
       provider: "openai",
       model: "gpt-5.5",
+      authMethod: "env-var",
+      workspaceRoot: "/Users/self-check/project",
       apiKey: "sk-kova-secret-value",
       nested: {
         refreshToken: "refresh-secret-value"
@@ -928,6 +930,24 @@ async function openClawStateSnapshotCheck(tmp) {
     const snapshot = await captureOpenClawStateSnapshot({
       home,
       label: "self-check",
+      runtime: {
+        targetKind: "local-build",
+        targetValue: "/tmp/openclaw checkout",
+        runtimeName: "kova-local-self-check"
+      },
+      service: {
+        desired: "running",
+        state: "running",
+        pid: 1234,
+        port: 4321,
+        restartCount: 2,
+        readiness: "ready"
+      },
+      cleanup: {
+        expected: true,
+        state: "planned",
+        reason: "self-check"
+      },
       limits: {
         maxFileBytes: 512
       }
@@ -940,8 +960,18 @@ async function openClawStateSnapshotCheck(tmp) {
     assertEqual(serialized.includes("sk-kova-secret-value"), false, "OpenClaw state snapshot does not include API key value");
     assertEqual(serialized.includes("refresh-secret-value"), false, "OpenClaw state snapshot does not include refresh token value");
     assertEqual(snapshot.plugins.installIndexes.length, 1, "OpenClaw state snapshot includes plugin install index");
+    assertEqual(snapshot.plugins.installed?.[0]?.id, "browser", "OpenClaw state snapshot summarizes installed plugin ids");
     assertEqual(snapshot.plugins.pluginDirs.some((plugin) => plugin.nodeModulesPresent), true, "OpenClaw state snapshot records node_modules presence");
     assertEqual(snapshot.files.some((file) => file.path.includes("node_modules")), false, "OpenClaw state snapshot excludes dependency trees");
+    assertEqual(snapshot.runtime.targetKind, "local-build", "OpenClaw state snapshot runtime target kind");
+    assertEqual(snapshot.runtime.targetValue, null, "OpenClaw state snapshot redacts local-build target path");
+    assertEqual(typeof snapshot.runtime.targetValueHash, "string", "OpenClaw state snapshot hashes local-build target path");
+    assertEqual(snapshot.service.state, "running", "OpenClaw state snapshot service state");
+    assertEqual(snapshot.auth.providerIds.includes("openai"), true, "OpenClaw state snapshot auth provider shape");
+    assertEqual(snapshot.auth.authMethodShapes.includes("env-var"), true, "OpenClaw state snapshot auth method shape");
+    assertEqual(snapshot.models.modelIds.includes("gpt-5.5"), true, "OpenClaw state snapshot model shape");
+    assertEqual(snapshot.workspace.allowedRootCount, 1, "OpenClaw state snapshot workspace boundary count");
+    assertEqual(snapshot.cleanup.expected, true, "OpenClaw state snapshot cleanup expectation");
 
     return {
       id: "openclaw-state-snapshot",
