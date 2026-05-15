@@ -607,6 +607,9 @@ function attachEvidenceInvariants(record, scenario) {
   if (scenario.surface === "agent-cli-local-turn") {
     invariants.push(...buildAgentCliLocalTurnEvidenceInvariants(record, scenario));
   }
+  if (scenario.surface === "agent-gateway-rpc-turn") {
+    invariants.push(...buildAgentGatewayRpcTurnEvidenceInvariants(record, scenario));
+  }
   if (scenario.surface === "release-runtime-startup") {
     invariants.push(...buildReleaseRuntimeStartupEvidenceInvariants(record, scenario));
   }
@@ -617,6 +620,231 @@ function attachEvidenceInvariants(record, scenario) {
     record.evidenceInvariants = invariants;
   }
   return record;
+}
+
+export function buildAgentGatewayRpcTurnEvidenceInvariants(record, scenario = {}) {
+  if (record.status === "DRY-RUN" || record.status === "SKIPPED") {
+    return [];
+  }
+
+  const turns = record.measurements?.agentTurns ?? [];
+  const expectedTurnCount = agentTurnExpectedCount(scenario, turns);
+  const health = record.measurements?.health ?? {};
+  const providerEvidence = record.providerEvidence ?? {};
+  const providerArtifacts = Array.isArray(providerEvidence.artifacts) ? providerEvidence.artifacts : [];
+  const missingDependencyErrors = record.measurements?.missingDependencyErrors;
+  const pluginLoadFailures = record.measurements?.pluginLoadFailures;
+  const providerTimeoutMentions = record.measurements?.providerTimeoutMentions;
+  const logArtifactPath = releaseStartupLogArtifactPath(record);
+
+  return [
+    {
+      id: "agent-gateway-command-receipts",
+      phaseId: "post-agent-health",
+      required: true,
+      status: phaseCommandReceiptsOk(record) ? "passed" : "missing",
+      summary: "gateway RPC agent provision, service, turn, status, log, and collector command receipts were captured",
+      artifactPath: null,
+      reason: phaseCommandReceiptsReason(record)
+    },
+    {
+      id: "agent-gateway-runtime-binding-proof",
+      phaseId: "gateway-start",
+      required: true,
+      status: agentGatewayRuntimeBindingOk(record) ? "passed" : "missing",
+      summary: "Gateway-backed agent run captured runtime release binding and gateway port metadata",
+      artifactPath: null,
+      reason: agentGatewayRuntimeBindingReason(record)
+    },
+    {
+      id: "agent-gateway-readiness-health-proof",
+      phaseId: "gateway-start",
+      required: true,
+      status: gatewaySessionHealthOk(record, health) ? "passed" : "missing",
+      summary: "Gateway readiness, post-ready health, and final service state were measured",
+      artifactPath: null,
+      reason: gatewaySessionHealthReason(record, health)
+    },
+    {
+      id: "agent-gateway-rpc-transport-proof",
+      phaseId: "gateway-agent-turn",
+      required: true,
+      status: agentGatewayRpcTransportOk(turns, expectedTurnCount) ? "passed" : "failed",
+      summary: "agent turn used the Gateway-backed CLI path without the local embedded-agent flag",
+      artifactPath: null,
+      reason: agentGatewayRpcTransportReason(turns, expectedTurnCount)
+    },
+    {
+      id: "agent-gateway-response-proof",
+      phaseId: "gateway-agent-turn",
+      required: true,
+      status: agentTurnBehaviorOk(turns, scenario, expectedTurnCount) ? "passed" : "failed",
+      summary: "Gateway-backed agent turn produced the expected assistant marker",
+      artifactPath: null,
+      reason: agentTurnBehaviorReason(turns, scenario, expectedTurnCount)
+    },
+    {
+      id: "agent-gateway-provider-proof",
+      phaseId: "gateway-agent-turn",
+      required: true,
+      status: agentProviderProofOk(providerEvidence, turns, scenario, expectedTurnCount) ? "passed" : "missing",
+      summary: "mock provider request/response evidence was captured and attributed to the Gateway-backed agent turn",
+      artifactPath: providerEvidence.summaryPath ?? providerArtifacts[0] ?? null,
+      reason: agentProviderProofReason(providerEvidence, turns, scenario, expectedTurnCount)
+    },
+    {
+      id: "agent-gateway-latency-windows",
+      phaseId: "gateway-agent-turn",
+      required: true,
+      status: agentTurnLatencyOk(turns, scenario, expectedTurnCount) ? "passed" : "missing",
+      summary: "Gateway-backed agent total, pre-provider, provider, and post-provider latency windows were measured",
+      artifactPath: null,
+      reason: agentTurnLatencyReason(turns, scenario, expectedTurnCount)
+    },
+    {
+      id: "agent-gateway-resource-proof",
+      phaseId: "gateway-agent-turn",
+      required: true,
+      status: agentGatewayResourceProofOk(record.measurements) ? "passed" : "missing",
+      summary: "Gateway and agent CLI resource samples with retained sample artifacts were captured",
+      artifactPath: record.measurements?.resourceSampleArtifacts?.[0] ?? null,
+      reason: agentGatewayResourceProofReason(record.measurements)
+    },
+    {
+      id: "agent-gateway-diagnostic-timeline-proof",
+      phaseId: "gateway-agent-turn",
+      required: true,
+      status: commonTimelineProofOk(record.measurements) ? "passed" : "missing",
+      summary: "OpenClaw diagnostic timeline was captured and parsed without errors",
+      artifactPath: record.measurements?.openclawTimelineArtifacts?.[0] ?? null,
+      reason: commonTimelineProofReason(record.measurements)
+    },
+    {
+      id: "agent-gateway-logs-captured",
+      phaseId: "post-agent-health",
+      required: true,
+      status: logArtifactPath ? "passed" : "missing",
+      summary: "bounded gateway logs were captured for dependency and plugin-load checks",
+      artifactPath: logArtifactPath,
+      reason: logArtifactPath ? null : "log artifact path was not recorded"
+    },
+    zeroCountInvariant({
+      id: "agent-gateway-no-missing-runtime-dependency-errors",
+      summary: "Gateway-backed agent logs and command output contain no missing runtime dependency errors",
+      actual: missingDependencyErrors,
+      metric: "missingDependencyErrors",
+      phaseId: "post-agent-health"
+    }),
+    zeroCountInvariant({
+      id: "agent-gateway-no-plugin-load-failures",
+      summary: "Gateway-backed agent logs contain no plugin load failures",
+      actual: pluginLoadFailures,
+      metric: "pluginLoadFailures",
+      phaseId: "post-agent-health"
+    }),
+    zeroCountInvariant({
+      id: "agent-gateway-no-provider-timeout-mentions",
+      summary: "Gateway-backed agent logs and command output contain no provider timeout mentions",
+      actual: providerTimeoutMentions,
+      metric: "providerTimeoutMentions",
+      phaseId: "post-agent-health"
+    })
+  ];
+}
+
+function agentGatewayRuntimeBindingOk(record) {
+  const service = agentGatewayBestServiceMetrics(record);
+  return typeof service?.runtimeReleaseVersion === "string" &&
+    service.runtimeReleaseVersion.length > 0 &&
+    typeof service.runtimeReleaseChannel === "string" &&
+    nonNegativeNumber(service.gatewayPort);
+}
+
+function agentGatewayRuntimeBindingReason(record) {
+  const service = agentGatewayBestServiceMetrics(record);
+  if (!service) {
+    return "service metrics were not captured";
+  }
+  if (typeof service.runtimeReleaseVersion !== "string" || service.runtimeReleaseVersion.length === 0) {
+    return "runtime release version was not captured";
+  }
+  if (typeof service.runtimeReleaseChannel !== "string") {
+    return "runtime release channel was not captured";
+  }
+  if (!nonNegativeNumber(service.gatewayPort)) {
+    return "gateway port was not captured";
+  }
+  return null;
+}
+
+function agentGatewayBestServiceMetrics(record) {
+  const services = [];
+  for (const phase of record.phases ?? []) {
+    if (phase.metrics?.service) {
+      services.push(phase.metrics.service);
+    }
+  }
+  if (record.finalMetrics?.service) {
+    services.push(record.finalMetrics.service);
+  }
+  return services.find((service) => service.gatewayState === "running" && typeof service.runtimeReleaseVersion === "string") ??
+    services.find((service) => typeof service.runtimeReleaseVersion === "string") ??
+    null;
+}
+
+function agentGatewayRpcTransportOk(turns, expectedTurnCount) {
+  const scopedTurns = turns.slice(0, expectedTurnCount);
+  return scopedTurns.length >= expectedTurnCount &&
+    scopedTurns.every((turn) =>
+      !commandUsesFlag(turn.command, "--local") &&
+      commandUsesToken(turn.command, "agent") &&
+      !turn.gatewaySession
+    );
+}
+
+function agentGatewayRpcTransportReason(turns, expectedTurnCount) {
+  if (turns.length < expectedTurnCount) {
+    return `expected at least ${expectedTurnCount} agent turn(s), found ${turns.length}`;
+  }
+  const bad = turns.slice(0, expectedTurnCount).find((turn) =>
+    commandUsesFlag(turn.command, "--local") ||
+    !commandUsesToken(turn.command, "agent") ||
+    turn.gatewaySession
+  );
+  if (!bad) {
+    return null;
+  }
+  if (commandUsesFlag(bad.command, "--local")) {
+    return `${bad.phaseId} command used --local`;
+  }
+  if (!commandUsesToken(bad.command, "agent")) {
+    return `${bad.phaseId} command did not invoke the agent CLI`;
+  }
+  return `${bad.phaseId} had Gateway session helper transport evidence`;
+}
+
+function commandUsesToken(command, token) {
+  return new RegExp(`(^|\\s)${escapeRegex(token)}(\\s|$)`).test(command ?? "");
+}
+
+function agentGatewayResourceProofOk(measurements) {
+  return commonResourceProofOk(measurements) &&
+    nonNegativeNumber(measurements?.resourceByRole?.gateway?.peakRssMb) &&
+    nonNegativeNumber(measurements?.resourceByRole?.["agent-cli"]?.peakRssMb);
+}
+
+function agentGatewayResourceProofReason(measurements) {
+  const commonReason = commonResourceProofReason(measurements);
+  if (commonReason) {
+    return commonReason;
+  }
+  if (!nonNegativeNumber(measurements?.resourceByRole?.gateway?.peakRssMb)) {
+    return "gateway role resource measurements were not captured";
+  }
+  if (!nonNegativeNumber(measurements?.resourceByRole?.["agent-cli"]?.peakRssMb)) {
+    return "agent CLI role resource measurements were not captured";
+  }
+  return null;
 }
 
 export function buildAgentCliLocalTurnEvidenceInvariants(record, scenario = {}) {

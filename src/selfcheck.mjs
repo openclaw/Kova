@@ -49,6 +49,7 @@ import { captureOpenClawStateSnapshot } from "./collectors/openclaw-state.mjs";
 import { buildReportSummary, renderMarkdownReport, renderPasteSummary, renderReportSummary, summarizeRecords } from "./reporting/report.mjs";
 import {
   buildAgentCliLocalTurnEvidenceInvariants,
+  buildAgentGatewayRpcTurnEvidenceInvariants,
   buildGatewaySessionEvidenceInvariants,
   buildOfficialPluginInstallEvidenceInvariants,
   buildReleaseRuntimeStartupEvidenceInvariants,
@@ -404,9 +405,11 @@ export async function runSelfCheck(flags = {}) {
     checks.push(await releaseRuntimeStartupSurfaceContractCheck());
     checks.push(await officialPluginInstallSurfaceContractCheck());
     checks.push(await agentCliLocalTurnSurfaceContractCheck());
+    checks.push(await agentGatewayRpcTurnSurfaceContractCheck());
     checks.push(releaseRuntimeStartupEvidenceInvariantCheck());
     checks.push(officialPluginInstallEvidenceInvariantCheck());
     checks.push(agentCliLocalTurnEvidenceInvariantCheck());
+    checks.push(agentGatewayRpcTurnEvidenceInvariantCheck());
     checks.push(await processSnapshotCheck(tmp));
     checks.push(roleThresholdEvaluationCheck());
     checks.push(thresholdPolicyCalibrationCheck());
@@ -3699,6 +3702,266 @@ function syntheticAgentCliResourceSamples(artifactPath) {
   };
 }
 
+function agentGatewayRpcTurnEvidenceInvariantCheck() {
+  try {
+    const scenario = {
+      id: "agent-gateway-rpc-turn",
+      surface: "agent-gateway-rpc-turn",
+      agent: { expectedText: "KOVA_AGENT_OK" },
+      thresholds: {},
+      phases: [
+        { id: "provision", healthScope: "none" },
+        { id: "gateway-start", healthScope: "readiness" },
+        { id: "gateway-agent-turn", healthScope: "post-ready" },
+        { id: "post-agent-health", healthScope: "post-ready" }
+      ]
+    };
+    const record = syntheticAgentGatewayRpcTurnRecord();
+    evaluateRecord(record, scenario, {
+      surface: {
+        resourcePrimaryRole: "agent-cli",
+        thresholds: {},
+        diagnostics: { expectedSpans: ["gateway.ready", "plugins.metadata.scan"] }
+      },
+      targetPlan: { kind: "runtime" }
+    });
+    const invariants = buildAgentGatewayRpcTurnEvidenceInvariants(record, scenario);
+    assertEqual(invariants.length, 13, "agent Gateway RPC invariant count");
+    assertEqual(invariants.every((invariant) => invariant.status === "passed"), true, "complete agent Gateway RPC evidence passes invariants");
+
+    const localRecord = syntheticAgentGatewayRpcTurnRecord({
+      turnCommand: "ocm @kova -- agent --local --agent main --session-id kova-agent-gateway-rpc --message hi --json"
+    });
+    evaluateRecord(localRecord, scenario, {
+      surface: { resourcePrimaryRole: "agent-cli", thresholds: {}, diagnostics: { expectedSpans: [] } },
+      targetPlan: { kind: "runtime" }
+    });
+    const localInvariants = buildAgentGatewayRpcTurnEvidenceInvariants(localRecord, scenario);
+    const transportProof = localInvariants.find((invariant) => invariant.id === "agent-gateway-rpc-transport-proof");
+    assertEqual(transportProof?.status, "failed", "local agent command fails Gateway RPC transport proof");
+
+    const missingHealthRecord = syntheticAgentGatewayRpcTurnRecord();
+    for (const phase of missingHealthRecord.phases) {
+      if (phase.metrics) {
+        delete phase.metrics.readiness;
+      }
+    }
+    evaluateRecord(missingHealthRecord, scenario, {
+      surface: { resourcePrimaryRole: "agent-cli", thresholds: {}, diagnostics: { expectedSpans: [] } },
+      targetPlan: { kind: "runtime" }
+    });
+    const missingHealthInvariants = buildAgentGatewayRpcTurnEvidenceInvariants(missingHealthRecord, scenario);
+    const healthProof = missingHealthInvariants.find((invariant) => invariant.id === "agent-gateway-readiness-health-proof");
+    assertEqual(healthProof?.status, "missing", "missing Gateway readiness is incomplete Gateway RPC proof");
+
+    return {
+      id: "agent-gateway-rpc-turn-evidence-invariants",
+      status: "PASS",
+      command: "evaluate agent Gateway RPC evidence completeness invariants",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "agent-gateway-rpc-turn-evidence-invariants",
+      status: "FAIL",
+      command: "evaluate agent Gateway RPC evidence completeness invariants",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function syntheticAgentGatewayRpcTurnRecord({
+  turnCommand = "ocm @kova -- agent --agent main --session-id kova-agent-gateway-rpc --message hi --json"
+} = {}) {
+  return {
+    scenario: "agent-gateway-rpc-turn",
+    surface: "agent-gateway-rpc-turn",
+    status: "PASS",
+    auth: { mode: "mock", source: "mock", providerId: "openai" },
+    phases: [
+      {
+        id: "provision",
+        commands: ["ocm start kova --runtime stable --no-service --json"],
+        results: [{
+          command: "ocm start kova --runtime stable --no-service --json",
+          status: 0,
+          durationMs: 100,
+          stdout: "{\"gatewayPort\":43111,\"serviceRequested\":false}"
+        }],
+        metrics: {
+          service: { gatewayState: "disabled", gatewayPort: 43111, runtimeReleaseVersion: "2026.5.7", runtimeReleaseChannel: "stable" }
+        }
+      },
+      {
+        id: "gateway-start",
+        commands: [
+          "ocm service install kova --json",
+          "ocm service start kova --json"
+        ],
+        results: [
+          {
+            command: "ocm service install kova --json",
+            status: 0,
+            durationMs: 100,
+            stdout: "{\"ok\":true}",
+            resourceSamples: syntheticAgentGatewayResourceSamples("/tmp/kova/resources/gateway-start-1.jsonl")
+          },
+          {
+            command: "ocm service start kova --json",
+            status: 0,
+            durationMs: 100,
+            stdout: "{\"ok\":true}",
+            resourceSamples: syntheticAgentGatewayResourceSamples("/tmp/kova/resources/gateway-start-2.jsonl")
+          }
+        ],
+        metrics: {
+          readiness: syntheticReadyReadiness(),
+          healthSummary: syntheticHealthSummary(),
+          service: { gatewayState: "running", gatewayPort: 43111, runtimeReleaseVersion: "2026.5.7", runtimeReleaseChannel: "stable" },
+          logs: zeroLogMetrics(),
+          timeline: {
+            ...syntheticTimelineMetrics(),
+            keySpans: {
+              "gateway.ready": { count: 1, totalDurationMs: 120, maxDurationMs: 120 },
+              "plugins.metadata.scan": { count: 1, totalDurationMs: 30, maxDurationMs: 30 }
+            },
+            spanTotals: {
+              "gateway.ready": { count: 1, totalDurationMs: 120, maxDurationMs: 120 },
+              "plugins.metadata.scan": { count: 1, totalDurationMs: 30, maxDurationMs: 30 }
+            }
+          }
+        }
+      },
+      {
+        id: "gateway-agent-turn",
+        commands: [turnCommand],
+        results: [{
+          command: turnCommand,
+          status: 0,
+          timedOut: false,
+          startedAt: "2026-05-15T10:00:10.000Z",
+          startedAtEpochMs: 1778839210000,
+          finishedAt: "2026-05-15T10:00:13.000Z",
+          finishedAtEpochMs: 1778839213000,
+          durationMs: 3000,
+          stdout: "{\"finalAssistantVisibleText\":\"KOVA_AGENT_OK\"}",
+          stderr: "",
+          resourceSamples: syntheticAgentGatewayResourceSamples("/tmp/kova/resources/gateway-agent-turn-1.jsonl")
+        }],
+        metrics: {
+          health: { ok: true, durationMs: 2 },
+          healthSummary: syntheticHealthSummary(),
+          logs: zeroLogMetrics(),
+          timeline: syntheticTimelineMetrics()
+        }
+      },
+      {
+        id: "post-agent-health",
+        commands: [
+          "ocm @kova -- status",
+          "ocm logs kova --tail 300 --raw"
+        ],
+        results: [
+          {
+            command: "ocm @kova -- status",
+            status: 0,
+            durationMs: 100,
+            stdout: "OpenClaw env ok\n",
+            resourceSamples: syntheticAgentGatewayResourceSamples("/tmp/kova/resources/post-agent-health-1.jsonl")
+          },
+          {
+            command: "ocm logs kova --tail 300 --raw",
+            status: 0,
+            durationMs: 50,
+            stdout: "gateway ready\nKOVA_AGENT_OK\n",
+            resourceSamples: syntheticAgentGatewayResourceSamples("/tmp/kova/resources/post-agent-health-2.jsonl")
+          }
+        ],
+        metrics: {
+          readiness: syntheticReadyReadiness(),
+          healthSummary: syntheticHealthSummary(),
+          service: { gatewayState: "running", gatewayPort: 43111, runtimeReleaseVersion: "2026.5.7", runtimeReleaseChannel: "stable" },
+          logs: {
+            ...zeroLogMetrics(),
+            artifacts: ["/tmp/kova/logs/gateway-tail.log"]
+          },
+          timeline: syntheticTimelineMetrics()
+        }
+      }
+    ],
+    providerEvidence: {
+      available: true,
+      requestCount: 1,
+      summaryPath: "/tmp/kova/provider/provider-evidence.json",
+      artifacts: ["/tmp/kova/mock-openai/requests.jsonl", "/tmp/kova/provider/provider-evidence.json"],
+      requests: [{
+        requestId: "gateway-provider",
+        receivedAt: "2026-05-15T10:00:12.000Z",
+        receivedAtEpochMs: 1778839212000,
+        respondedAt: "2026-05-15T10:00:12.050Z",
+        respondedAtEpochMs: 1778839212050,
+        firstByteLatencyMs: 5,
+        firstChunkLatencyMs: 5,
+        route: "/v1/responses",
+        model: "gpt-5.5",
+        status: 200,
+        statusClass: "2xx"
+      }]
+    },
+    finalMetrics: {
+      service: { gatewayState: "running", gatewayPort: 43111, runtimeReleaseVersion: "2026.5.7", runtimeReleaseChannel: "stable" },
+      health: { ok: true, durationMs: 1 },
+      healthSummary: syntheticHealthSummary(),
+      logs: zeroLogMetrics(),
+      timeline: syntheticTimelineMetrics()
+    }
+  };
+}
+
+function syntheticAgentGatewayResourceSamples(artifactPath) {
+  return {
+    schemaVersion: "kova.resourceSamples.v1",
+    sampleCount: 1,
+    artifactPath,
+    peakTotalRssMb: 1000,
+    maxTotalCpuPercent: 120,
+    peakCommandTreeRssMb: 500,
+    peakGatewayRssMb: 600,
+    byRole: {
+      gateway: {
+        peakRssMb: 600,
+        maxCpuPercent: 80,
+        peakProcessCount: 1
+      },
+      "gateway-tree": {
+        peakRssMb: 600,
+        maxCpuPercent: 80,
+        peakProcessCount: 1
+      },
+      "agent-cli": {
+        peakRssMb: 500,
+        maxCpuPercent: 120,
+        peakProcessCount: 1
+      },
+      "agent-process": {
+        peakRssMb: 500,
+        maxCpuPercent: 120,
+        peakProcessCount: 1
+      },
+      "command-tree": {
+        peakRssMb: 500,
+        maxCpuPercent: 120,
+        peakProcessCount: 1
+      }
+    },
+    topRolesByRss: [{ role: "gateway", peakRssMb: 600, maxCpuPercent: 80 }],
+    topRolesByCpu: [{ role: "agent-cli", peakRssMb: 500, maxCpuPercent: 120 }],
+    topByRss: [],
+    topByCpu: []
+  };
+}
+
 function syntheticOfficialPluginInstallRecord({ helperPayload = {}, includeInstallHelper = true } = {}) {
   const officialPayload = {
     schemaVersion: "kova.officialPluginInstall.v1",
@@ -6878,6 +7141,39 @@ async function agentCliLocalTurnSurfaceContractCheck() {
       id: "agent-cli-local-turn-surface-contract",
       status: "FAIL",
       command: "validate agent CLI local turn surface diagnostics contract",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+async function agentGatewayRpcTurnSurfaceContractCheck() {
+  try {
+    const surface = JSON.parse(await readFile("surfaces/agent-gateway-rpc-turn.json", "utf8"));
+    const expectedSpans = surface.diagnostics?.expectedSpans ?? [];
+    const staleSpans = [
+      "agent.turn",
+      "agent.prepare",
+      "models.catalog",
+      "provider.request",
+      "agent.cleanup"
+    ];
+    for (const span of staleSpans) {
+      assertEqual(expectedSpans.includes(span), false, `agent Gateway RPC surface must not require stale ${span} span`);
+    }
+    assertEqual(expectedSpans.includes("gateway.ready"), true, "agent Gateway RPC surface requires gateway.ready timeline span");
+    assertEqual(expectedSpans.includes("plugins.metadata.scan"), true, "agent Gateway RPC surface requires plugin metadata scan timeline span");
+    return {
+      id: "agent-gateway-rpc-turn-surface-contract",
+      status: "PASS",
+      command: "validate agent Gateway RPC surface diagnostics contract",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "agent-gateway-rpc-turn-surface-contract",
+      status: "FAIL",
+      command: "validate agent Gateway RPC surface diagnostics contract",
       durationMs: 0,
       message: error.message
     };
