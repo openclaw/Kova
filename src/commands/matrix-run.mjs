@@ -35,6 +35,8 @@ import { buildReportSummary, renderMarkdownReport, summarizeRecords } from "../r
 import { bundleReport, retainGateArtifacts } from "../reporting/artifacts.mjs";
 import { buildDryRunRecord, buildSkippedRecord, createRunId, executeScenario } from "../runner.mjs";
 import { resolveTarget } from "../targets.mjs";
+import { createRunProgress } from "../reporting/render-run-progress.mjs";
+import { renderMatrixRunReceipt } from "../reporting/render-run-receipt.mjs";
 
 const reportSchemaVersion = "kova.report.v1";
 
@@ -71,6 +73,13 @@ export async function runMatrixRun(flags) {
   const jsonPath = join(reportRoot, `${runId}-${profile.id}.json`);
   const summaryPath = join(reportRoot, `${runId}-${profile.id}.summary.json`);
   const targetSetup = { completed: false };
+  const progress = createRunProgress({ flags, mode: flags.execute === true ? "execution" : "dry-run" });
+  progress.runStart({
+    scenarioCount: entries.length * (controls.repeat ?? 1),
+    mode: flags.execute === true ? "execution" : "dry-run",
+    target,
+    profile: profile.id,
+  });
   const runEntry = async (entry) => {
     const context = {
       target,
@@ -102,14 +111,38 @@ export async function runMatrixRun(flags) {
     };
 
     if (entry.skipReason) {
-      return buildRepeatRecords(entry, context, (iterationContext) => buildSkippedRecord(entry.scenario, iterationContext, entry.skipReason));
+      return buildRepeatRecords(entry, context, (iterationContext) => {
+        const rec = buildSkippedRecord(entry.scenario, iterationContext, entry.skipReason);
+        progress.scenarioEnd({
+          scenarioId: entry.scenario.id,
+          stateId: entry.state?.id,
+          iteration: iterationContext.repeat,
+          status: rec.status,
+          skipReason: entry.skipReason,
+        });
+        return rec;
+      });
     }
 
-    return buildRepeatRecords(entry, context, async (iterationContext) =>
-      iterationContext.execute
-        ? executeScenario(entry.scenario, iterationContext)
-        : buildDryRunRecord(entry.scenario, iterationContext)
-    );
+    return buildRepeatRecords(entry, context, async (iterationContext) => {
+      progress.scenarioStart({
+        scenarioId: entry.scenario.id,
+        stateId: entry.state?.id,
+        iteration: iterationContext.repeat,
+      });
+      iterationContext.onPhase = (title) => progress.phase({ title });
+      const rec = iterationContext.execute
+        ? await executeScenario(entry.scenario, iterationContext)
+        : buildDryRunRecord(entry.scenario, iterationContext);
+      progress.scenarioEnd({
+        scenarioId: entry.scenario.id,
+        stateId: entry.state?.id,
+        iteration: iterationContext.repeat,
+        status: rec.status,
+        skipReason: rec.skipReason,
+      });
+      return rec;
+    });
   };
 
   const records = flags.execute === true
@@ -207,6 +240,21 @@ export async function runMatrixRun(flags) {
       performance: summarizePerformanceReceipt(report.performance, report.baseline),
       summary: report.summary
     }, null, 2));
+    failGateIfNeeded(gate);
+    return;
+  }
+
+  progress.runFinish({ total: report.summary?.total ?? 0, statuses: report.summary?.statuses ?? {} });
+
+  if (!flags.plain) {
+    console.log(renderMatrixRunReceipt({
+      report,
+      reportPath,
+      jsonPath,
+      summaryPath,
+      bundlePath: bundle.outputPath,
+      retainedGateArtifacts,
+    }, flags));
     failGateIfNeeded(gate);
     return;
   }
