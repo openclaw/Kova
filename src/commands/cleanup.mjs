@@ -5,6 +5,7 @@ import { runCommand } from "../commands.mjs";
 import { artifactsDir } from "../paths.mjs";
 import { ocmEnvDestroy, ocmEnvListJson } from "../ocm/commands.mjs";
 import { positiveIntegerFlag } from "./run-support.mjs";
+import { renderCleanupEnvs, renderCleanupArtifacts } from "../reporting/render-cleanup.mjs";
 
 export async function runCleanupCliCommand(flags) {
   const [subcommand] = flags._;
@@ -59,23 +60,26 @@ async function cleanupEnvs(flags) {
     return;
   }
 
-  if (envs.length === 0) {
-    console.log("No stale Kova envs found.");
-    return;
-  }
-
-  if (!flags.execute) {
-    console.log("Stale Kova envs:");
-    for (const env of envs) {
-      console.log(`- ${env}`);
+  if (flags.plain === true) {
+    if (envs.length === 0) {
+      console.log("No stale Kova envs found.");
+      return;
     }
-    console.log("Run with --execute to destroy them.");
+    if (!flags.execute) {
+      console.log("Stale Kova envs:");
+      for (const env of envs) {
+        console.log(`- ${env}`);
+      }
+      console.log("Run with --execute to destroy them.");
+      return;
+    }
+    for (const result of results) {
+      console.log(`${result.status === 0 ? "PASS" : "FAIL"} ${result.command}`);
+    }
     return;
   }
 
-  for (const result of results) {
-    console.log(`${result.status === 0 ? "PASS" : "FAIL"} ${result.command}`);
-  }
+  console.log(renderCleanupEnvs({ envs, results, execute: flags.execute === true }, flags));
 }
 
 async function cleanupArtifacts(flags) {
@@ -145,21 +149,26 @@ async function cleanupArtifacts(flags) {
     return;
   }
 
-  if (candidates.length === 0) {
-    console.log(`No Kova run artifact dirs older than ${olderThanDays} day(s) found.`);
-    return;
-  }
-
-  if (flags.execute !== true) {
-    console.log(`Kova run artifact dirs older than ${olderThanDays} day(s):`);
-    for (const candidate of candidates) {
-      console.log(`- ${candidate.path}`);
+  if (flags.plain === true) {
+    if (candidates.length === 0) {
+      console.log(`No Kova run artifact dirs older than ${olderThanDays} day(s) found.`);
+      return;
     }
-    console.log("Run with --execute to remove them.");
+    if (flags.execute !== true) {
+      console.log(`Kova run artifact dirs older than ${olderThanDays} day(s):`);
+      for (const candidate of candidates) {
+        console.log(`- ${candidate.path}`);
+      }
+      console.log("Run with --execute to remove them.");
+      return;
+    }
+    for (const result of results) {
+      console.log(`${result.status === 0 ? "PASS" : "FAIL"} ${result.path}`);
+    }
     return;
   }
 
-  for (const result of results) {
-    console.log(`${result.status === 0 ? "PASS" : "FAIL"} ${result.path}`);
-  }
+  console.log(renderCleanupArtifacts({
+    candidates, results, execute: flags.execute === true, artifactsDir, olderThanDays,
+  }, flags));
 }
