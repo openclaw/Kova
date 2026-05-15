@@ -258,6 +258,7 @@ export async function executeScenario(scenario, context) {
 
     evaluateRecord(record, scenario, evaluatorContext(context, scenario));
     attachEvidenceInvariants(record, scenario);
+    attachCleanupEvidence(record);
     await attachEvidenceArtifactBudget(record);
     attachEvidenceLedger(record);
     applyEvidenceLedgerGating(record);
@@ -683,6 +684,55 @@ function doctorOutputReason(result) {
   }
   const output = `${result.stdout ?? ""}${result.stderr ?? ""}`.trim();
   return output.length > 0 ? null : "doctor command produced no captured output";
+}
+
+function attachCleanupEvidence(record) {
+  if (record.status === "DRY-RUN" || record.status === "SKIPPED") {
+    return record;
+  }
+  const retainedByRequest = record.cleanup === "retained" && record.retainedReason === "keep-env";
+  if (retainedByRequest) {
+    record.cleanupEvidence = [{
+      id: "env-cleanup",
+      required: false,
+      status: "skipped",
+      phaseId: "env-cleanup",
+      summary: "disposable Kova env cleanup was explicitly skipped by keep-env",
+      reason: "keep-env requested"
+    }];
+    return record;
+  }
+
+  const cleanupStatus = cleanupEvidenceStatus(record.cleanup);
+  record.cleanupEvidence = [{
+    id: "env-cleanup",
+    required: true,
+    status: cleanupStatus,
+    phaseId: "env-cleanup",
+    summary: "disposable Kova env cleanup completed or was explicitly accounted for",
+    reason: cleanupEvidenceReason(record.cleanup)
+  }];
+  return record;
+}
+
+function cleanupEvidenceStatus(cleanup) {
+  if (["destroyed", "already-absent", "not-needed"].includes(cleanup)) {
+    return "passed";
+  }
+  if (cleanup === "destroy-failed") {
+    return "failed";
+  }
+  return "missing";
+}
+
+function cleanupEvidenceReason(cleanup) {
+  if (["destroyed", "already-absent", "not-needed"].includes(cleanup)) {
+    return null;
+  }
+  if (cleanup === "destroy-failed") {
+    return "env destroy command failed";
+  }
+  return "cleanup result was not recorded";
 }
 
 async function attachEvidenceArtifactBudget(record) {

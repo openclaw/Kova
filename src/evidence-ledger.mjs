@@ -53,12 +53,29 @@ export function buildEvidenceLedger(record) {
   for (const artifact of record.evidenceArtifacts ?? []) {
     entries.push(artifactEntry(artifact));
   }
+  for (const cleanup of record.cleanupEvidence ?? []) {
+    entries.push(cleanupEntry(cleanup));
+  }
 
   return {
     schemaVersion: EVIDENCE_LEDGER_SCHEMA,
     completeness: record.status === RECORD_STATUS.DRY_RUN ? "not-evaluated" : completenessForEntries(entries),
     summary: summarizeEntries(entries),
     entries
+  };
+}
+
+function cleanupEntry(cleanup) {
+  return {
+    id: `cleanup:${cleanup.id}`,
+    category: "cleanup",
+    required: cleanup.required !== false,
+    status: cleanup.status,
+    phaseId: cleanup.phaseId ?? null,
+    commandIndex: null,
+    summary: cleanup.summary,
+    artifactPath: cleanup.artifactPath ?? null,
+    reason: cleanup.reason ?? null
   };
 }
 

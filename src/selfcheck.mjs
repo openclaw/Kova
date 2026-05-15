@@ -123,6 +123,9 @@ export async function runSelfCheck(flags = {}) {
     checks.push(evaluationViolationHelpersCheck());
     checks.push(statusFoundationCheck());
     checks.push(evidenceLedgerGatingCheck());
+    checks.push(optionalDiagnosticGapCheck());
+    checks.push(provisioningBlockedStatusCheck());
+    checks.push(cleanupProofRequiredCheck());
     checks.push(await openClawStateSnapshotCheck(tmp));
     checks.push(upgradeStateSnapshotInvariantsCheck());
     checks.push(upgradeLogDerivedInvariantsCheck());
@@ -887,6 +890,24 @@ function evidenceLedgerGatingCheck() {
     applyEvidenceLedgerGating(overBudgetArtifactRecord);
     assertEqual(overBudgetArtifactRecord.status, "INCOMPLETE", "failed required artifact budget gates pass as incomplete");
 
+    const missingCleanupRecord = {
+      ...record,
+      status: "PASS",
+      incompleteReason: undefined,
+      incompleteEvidence: undefined,
+      phases: [],
+      cleanupEvidence: [{
+        id: "env-cleanup",
+        required: true,
+        status: "missing",
+        summary: "disposable Kova env cleanup completed or was explicitly accounted for",
+        reason: "cleanup result was not recorded"
+      }]
+    };
+    attachEvidenceLedger(missingCleanupRecord);
+    applyEvidenceLedgerGating(missingCleanupRecord);
+    assertEqual(missingCleanupRecord.status, "INCOMPLETE", "missing required cleanup proof gates pass as incomplete");
+
     const failedInvariantRecord = {
       ...record,
       status: "PASS",
@@ -916,6 +937,140 @@ function evidenceLedgerGatingCheck() {
       id: "evidence-ledger-gating",
       status: "FAIL",
       command: "evaluate evidence ledger status gating",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function optionalDiagnosticGapCheck() {
+  try {
+    const record = {
+      scenario: "diagnostic-gap",
+      status: "PASS",
+      phases: [],
+      finalMetrics: {
+        service: { gatewayState: "running" },
+        logs: zeroLogMetrics(),
+        timeline: {
+          available: true,
+          eventCount: 1,
+          parseErrorCount: 0,
+          openSpanCount: 0,
+          openSpans: [],
+          keySpans: {},
+          spanTotals: {
+            "gateway.startup": { count: 1, totalDurationMs: 100, maxDurationMs: 100 }
+          },
+          runtimeDeps: {},
+          eventLoop: {},
+          providers: {},
+          childProcesses: {}
+        }
+      }
+    };
+    evaluateRecord(record, { thresholds: {} }, {
+      targetPlan: { kind: "local-build" },
+      profile: { id: "diagnostic", diagnostics: { timelineRequired: true } },
+      surface: {
+        id: "bundled-runtime-deps",
+        diagnostics: { expectedSpans: ["runtimeDeps.stage"] },
+        thresholds: {}
+      }
+    });
+    assertEqual(record.status, "PASS", "optional diagnostic gap does not fail user path");
+    assertEqual(record.measurements.openclawMissingRequiredSpanSeverity, "diagnostic-gap", "optional diagnostic gap severity");
+    assertEqual((record.violations ?? []).length, 0, "optional diagnostic gap does not create violation");
+    return {
+      id: "optional-diagnostic-gap",
+      status: "PASS",
+      command: "evaluate optional diagnostic gap behavior",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "optional-diagnostic-gap",
+      status: "FAIL",
+      command: "evaluate optional diagnostic gap behavior",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function provisioningBlockedStatusCheck() {
+  try {
+    const record = {
+      scenario: "fresh-install",
+      surface: "fresh-install",
+      status: "BLOCKED",
+      likelyOwner: "Kova",
+      phases: [{
+        id: "target-setup",
+        commands: ["ocm runtime build-local kova-self-check --repo /tmp/openclaw --force"],
+        results: [{
+          command: "ocm runtime build-local kova-self-check --repo /tmp/openclaw --force",
+          status: 1,
+          stderr: "dependency install failed"
+        }]
+      }],
+      cleanup: "already-absent"
+    };
+    const summary = buildReportSummary({
+      mode: "execution",
+      target: "local-build:/tmp/openclaw",
+      records: [record],
+      summary: summarizeRecords([record])
+    });
+    assertEqual(summary.decision.verdict, "BLOCKED", "provisioning failure remains blocked");
+    assertEqual(summary.findings.some((finding) => finding.severity === "blocked"), true, "blocked finding is emitted");
+    return {
+      id: "provisioning-blocked-status",
+      status: "PASS",
+      command: "evaluate provisioning failure classification",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "provisioning-blocked-status",
+      status: "FAIL",
+      command: "evaluate provisioning failure classification",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function cleanupProofRequiredCheck() {
+  try {
+    const record = {
+      scenario: "upgrade-existing-user",
+      surface: "upgrade-existing-user",
+      status: "PASS",
+      phases: [],
+      cleanupEvidence: [{
+        id: "env-cleanup",
+        required: true,
+        status: "missing",
+        summary: "disposable Kova env cleanup completed or was explicitly accounted for",
+        reason: "cleanup result was not recorded"
+      }]
+    };
+    attachEvidenceLedger(record);
+    applyEvidenceLedgerGating(record);
+    assertEqual(record.status, "INCOMPLETE", "missing cleanup proof prevents pass");
+    assertEqual(record.incompleteEvidence?.includes("cleanup:env-cleanup"), true, "missing cleanup evidence id");
+    return {
+      id: "cleanup-proof-required",
+      status: "PASS",
+      command: "evaluate required cleanup proof gating",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "cleanup-proof-required",
+      status: "FAIL",
+      command: "evaluate required cleanup proof gating",
       durationMs: 0,
       message: error.message
     };
