@@ -1102,6 +1102,14 @@ async function openClawStateSnapshotCheck(tmp) {
       schemaVersion: "kova.fixture.plugins.v1",
       plugins: [{ id: "browser", source: "bundled", enabled: true }]
     }, null, 2));
+    await writeFile(join(home, "config", "version.json"), JSON.stringify({
+      schemaVersion: "kova.fixture.old-release.v1",
+      release: "2026.4.20",
+      channel: "stable"
+    }, null, 2));
+    await writeFile(join(home, "plugins", "legacy-index.json"), JSON.stringify({
+      plugins: ["browser"]
+    }, null, 2));
     await writeFile(join(home, "plugins", "browser", "package.json"), JSON.stringify({
       name: "browser",
       version: "1.0.0"
@@ -1142,6 +1150,8 @@ async function openClawStateSnapshotCheck(tmp) {
     assertEqual(serialized.includes("sk-kova-secret-value"), false, "OpenClaw state snapshot does not include API key value");
     assertEqual(serialized.includes("refresh-secret-value"), false, "OpenClaw state snapshot does not include refresh token value");
     assertEqual(snapshot.plugins.installIndexes.length, 1, "OpenClaw state snapshot includes plugin install index");
+    assertEqual(snapshot.files.some((file) => file.path === "config/version.json"), true, "OpenClaw state snapshot includes legacy version marker");
+    assertEqual(snapshot.files.some((file) => file.path === "plugins/legacy-index.json"), true, "OpenClaw state snapshot includes legacy plugin index marker");
     assertEqual(snapshot.plugins.installed?.[0]?.id, "browser", "OpenClaw state snapshot summarizes installed plugin ids");
     assertEqual(snapshot.plugins.pluginDirs.some((plugin) => plugin.nodeModulesPresent), true, "OpenClaw state snapshot records node_modules presence");
     assertEqual(snapshot.files.some((file) => file.path.includes("node_modules")), false, "OpenClaw state snapshot excludes dependency trees");

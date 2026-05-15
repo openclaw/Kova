@@ -37,7 +37,9 @@ const KNOWN_FILES = [
   "config/providers.json",
   "config/models.json",
   "config/auth.json",
+  "config/version.json",
   "config/kova-source-release.json",
+  "plugins/legacy-index.json",
   "plugins/installs.json",
   ".openclaw/plugins/installs.json"
 ];
@@ -214,7 +216,7 @@ async function summarizePluginRoot(home, rootRelPath, limits, snapshot) {
   });
 
   const installIndex = snapshot.files.find((file) => file.path === `${rootRelPath}/installs.json`);
-    if (installIndex) {
+  if (installIndex) {
     snapshot.plugins.installIndexes.push({
       path: installIndex.path,
       bytes: installIndex.bytes,
