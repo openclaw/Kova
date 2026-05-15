@@ -10,6 +10,7 @@ const UNICODE = {
   play: "▶",
   arrow: "→",
   bullet: "•",
+  sep: "·",
   diamond: "◆",
   // Trend
   up: "↑",
@@ -48,6 +49,7 @@ const ASCII = {
   play: ">",
   arrow: "->",
   bullet: "*",
+  sep: "-",
   diamond: "*",
   up: "^",
   down: "v",

@@ -25,8 +25,17 @@ export function heavyBand({ badgeText = "", status = "", title = "", meta = "", 
   const metaColored = c.dim(meta);
 
   const parts = [badgeText, statusColored, titleColored, metaColored].filter(Boolean);
-  const joined = parts.join("  ");
-  const padded = padEnd("  " + joined, inner);
+  let content = "  " + parts.join("  ");
+  if (visualWidth(content) > inner) {
+    // Drop the meta first - it's the lowest-priority part. If still too long,
+    // truncate what remains with an ellipsis.
+    content = "  " + [badgeText, statusColored, titleColored].filter(Boolean).join("  ");
+    if (visualWidth(content) > inner) {
+      const plain = "  " + [badgeText, status, title].filter(Boolean).join("  ");
+      content = plain.length > inner ? plain.slice(0, Math.max(0, inner - 1)) + "…" : plain;
+    }
+  }
+  const padded = padEnd(content, inner);
 
   const middle = c.head(g.vHeavy) + padded + c.head(g.vHeavy);
 

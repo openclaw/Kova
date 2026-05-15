@@ -4,9 +4,24 @@ import { required, resolveFromCwd } from "../cli.mjs";
 import { bundleReport } from "../reporting/artifacts.mjs";
 import { compareReports, renderCompareFixerSummary, renderCompareSummary } from "../reporting/compare.mjs";
 import { buildReportSummary, renderPasteSummary, renderReportSummary } from "../reporting/report.mjs";
+import { renderAssessment } from "../reporting/render-assessment.mjs";
+
+const REPORT_SUBCOMMANDS = new Set(["summarize", "paste", "compare", "bundle"]);
 
 export async function runReportCommand(flags) {
   const [subcommand, firstPath, secondPath] = flags._;
+
+  // Default branch: `kova report <path>` (no subcommand) renders the
+  // dashboard-rich assessment to stdout.
+  if (subcommand && !REPORT_SUBCOMMANDS.has(subcommand)) {
+    const report = await readReport(subcommand);
+    if (flags.json) {
+      console.log(JSON.stringify(buildReportSummary(report), null, 2));
+      return;
+    }
+    console.log(renderAssessment(report, flags));
+    return;
+  }
 
   if (subcommand === "summarize") {
     const report = await readReport(required(firstPath, "report path"));
