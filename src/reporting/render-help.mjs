@@ -1,7 +1,7 @@
 // TTY help renderer for `kova help` / `kova <cmd> --help`.
 
 import {
-  makeUi, heavyBand, ruleSection, badge, repeat,
+  makeUi, heavyBand, ruleSection, badge, repeat, withMargin,
 } from "../ui/index.mjs";
 
 const COMMANDS = [
@@ -188,7 +188,7 @@ const NOTES = [
 export function renderHelp(commandId, flags = {}, env = process.env, stream = process.stdout) {
   const ui = makeUi(flags, env, stream);
   const cmd = commandId ? COMMANDS.find((c) => c.id === commandId) : null;
-  return cmd ? renderCommandHelp(cmd, ui) : renderTopLevelHelp(ui);
+  return withMargin(cmd ? renderCommandHelp(cmd, ui) : renderTopLevelHelp(ui), ui.leftPad);
 }
 
 function renderTopLevelHelp(ui) {

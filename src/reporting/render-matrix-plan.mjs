@@ -2,7 +2,7 @@
 
 import {
   makeUi, heavyBand, ruleSection, card, sideBySide,
-  badge, renderTable, visualWidth, repeat,
+  badge, renderTable, visualWidth, repeat, withMargin,
 } from "../ui/index.mjs";
 
 const TARGET_WIDTH_FOR_DASHBOARD = 120;
@@ -20,7 +20,7 @@ export function renderMatrixPlan(planJson, flags = {}, env = process.env, stream
 
   sections.push("");
   sections.push(renderFooter(planJson, ui));
-  return sections.join("\n");
+  return withMargin(sections.join("\n"), ui.leftPad);
 }
 
 function renderBand(planJson, ui) {

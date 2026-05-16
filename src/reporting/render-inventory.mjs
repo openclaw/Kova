@@ -2,7 +2,7 @@
 
 import {
   makeUi, heavyBand, ruleSection, card, sideBySide,
-  badge, statusGlyph, visualWidth, repeat, wrap,
+  badge, statusGlyph, visualWidth, repeat, wrap, withMargin,
 } from "../ui/index.mjs";
 
 const TARGET_WIDTH_FOR_DASHBOARD = 120;
@@ -23,7 +23,7 @@ export function renderInventoryPlan(plan, flags = {}, env = process.env, stream 
 
   sections.push("");
   sections.push(renderFooter(plan, ui));
-  return sections.join("\n");
+  return withMargin(sections.join("\n"), ui.leftPad);
 }
 
 function renderBand(plan, ui) {
