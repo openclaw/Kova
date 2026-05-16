@@ -90,14 +90,33 @@ function deriveShipLabel(verdict, summary) {
 
 function formatBandMeta(summary, ui) {
   const sep = ` ${ui.g.sep} `;
-  const parts = [];
-  if (summary.run?.profile) parts.push(`profile: ${summary.run.profile}`);
+  const profile = normalizeProfile(summary.run?.profile);
   const primaryScenario = summary.samples?.[0]?.scenario;
-  if (primaryScenario && summary.coverage?.scenarioCount === 1) parts.push(primaryScenario);
-  if (summary.target) parts.push(summary.target);
-  if (summary.runId) parts.push(summary.runId);
-  if (summary.reportGeneratedAt) parts.push(formatTimestamp(summary.reportGeneratedAt));
-  return parts.join(sep);
+  const showScenario = primaryScenario && summary.coverage?.scenarioCount === 1;
+  const timestamp = summary.reportGeneratedAt ? formatTimestamp(summary.reportGeneratedAt) : null;
+
+  const variants = [
+    [profile && `profile: ${profile}`, showScenario && primaryScenario, summary.target, summary.runId, timestamp],
+    [profile && `profile: ${profile}`, summary.target, summary.runId, timestamp],
+    [profile && `profile: ${profile}`, summary.target, timestamp],
+    [summary.target, timestamp],
+    [summary.runId],
+  ];
+
+  const budget = Math.max(20, ui.width - 6);
+  for (const v of variants) {
+    const line = v.filter(Boolean).join(sep);
+    if (visualWidth(line) <= budget) return line;
+  }
+  const fallback = (summary.runId || summary.target || "").toString();
+  return truncatePlain(fallback, budget);
+}
+
+function normalizeProfile(profile) {
+  if (!profile) return null;
+  if (typeof profile === "string") return profile;
+  if (typeof profile === "object") return profile.id ?? profile.name ?? profile.title ?? null;
+  return String(profile);
 }
 
 function formatTimestamp(iso) {
