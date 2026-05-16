@@ -1,23 +1,20 @@
 // TTY receipt for `kova setup`.
 
 import {
-  makeUi, heavyBand, ruleSection, card, sideBySide,
-  badge, renderTable, repeat, withMargin,
+  makeUi, ruleSection, renderKovaHeader, kpiStrip,
+  renderTable, repeat, withMargin,
 } from "../ui/index.mjs";
-
-const TARGET_WIDTH_FOR_DASHBOARD = 100;
 
 export function renderSetup(result, flags = {}, env = process.env, stream = process.stdout) {
   const ui = makeUi(flags, env, stream);
   const sections = [];
   const verdict = deriveVerdict(result);
 
-  sections.push(heavyBand({
-    badgeText: badge(verdict.label, verdict.tone, ui),
-    status: verdict.status,
-    title: "KOVA SETUP",
+  sections.push(renderKovaHeader({
+    surface: "setup",
+    verdict: verdict.label,
+    headline: buildSetupHeadline(result),
     meta: formatBandMeta(result, ui),
-    width: ui.width,
     ui,
   }));
   sections.push("");
@@ -43,6 +40,14 @@ function deriveVerdict(result) {
   return { label: "BLOCKED", tone: "FAIL", status: "FAIL" };
 }
 
+function buildSetupHeadline(result) {
+  const checks = result.checks ?? [];
+  const pass = checks.filter((c) => c.status === "PASS").length;
+  const fail = checks.filter((c) => c.status === "FAIL").length;
+  if (fail > 0) return `${fail} failed of ${checks.length}`;
+  return `${pass}/${checks.length} passed`;
+}
+
 function formatBandMeta(result, ui) {
   const sep = `  ${ui.g.sep}  `;
   const parts = [];
@@ -54,19 +59,16 @@ function formatBandMeta(result, ui) {
 }
 
 function renderKpi(result, ui) {
-  const { c } = ui;
   const checks = result.checks ?? [];
   const pass = checks.filter((c) => c.status === "PASS").length;
   const fail = checks.filter((c) => c.status === "FAIL").length;
   const info = checks.filter((c) => c.status === "INFO" || c.status === "WARN").length;
-  const cardWidth = computeCardWidth(ui, 4);
-
-  return sideBySide([
-    card({ title: "Total",  width: cardWidth, ui, lines: [c.bold(String(checks.length)), c.dim("checks")] }),
-    card({ title: "Passed", width: cardWidth, ui, lines: [pass > 0 ? c.ok(c.bold(String(pass))) : c.dim("0"), c.dim("required")] }),
-    card({ title: "Failed", width: cardWidth, ui, lines: [fail > 0 ? c.err(c.bold(String(fail))) : c.dim("0"), c.dim(fail === 0 ? "—" : "see below")] }),
-    card({ title: "Info",   width: cardWidth, ui, lines: [c.bold(String(info)), c.dim("advisory")] }),
-  ], { width: ui.width, gap: 2, minWidth: TARGET_WIDTH_FOR_DASHBOARD });
+  return kpiStrip([
+    { label: "Total",  value: String(checks.length), hint: "checks",   tone: "neutral" },
+    { label: "Passed", value: String(pass), hint: "required", tone: pass > 0 ? "ok" : "dim", bar: { filled: pass, total: checks.length } },
+    { label: "Failed", value: String(fail), hint: fail > 0 ? "see below" : null, tone: fail > 0 ? "err" : "dim", bar: { filled: fail, total: checks.length } },
+    { label: "Info",   value: String(info), hint: "advisory", tone: "neutral" },
+  ], ui);
 }
 
 function renderChecks(result, ui) {
@@ -117,11 +119,6 @@ function renderNext(nextCommands, ui) {
     lines.push(`  ${c.head(g.arrow)} ${cmd}`);
   }
   return lines.join("\n");
-}
-
-function computeCardWidth(ui, n) {
-  const stack = ui.width < TARGET_WIDTH_FOR_DASHBOARD;
-  return stack ? Math.max(20, ui.width) : Math.max(20, Math.floor((ui.width - (n - 1) * 2) / n));
 }
 
 function indentBlock(text, n) {

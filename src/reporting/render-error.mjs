@@ -1,7 +1,7 @@
 // Pretty error formatter for the top-level CLI catch.
 
 import {
-  makeUi, heavyBand, ruleSection, badge, repeat, withMargin,
+  makeUi, ruleSection, renderKovaHeader, repeat, withMargin,
 } from "../ui/index.mjs";
 import { listCommandIds } from "./render-help.mjs";
 
@@ -70,12 +70,12 @@ export function renderError(error, flags = {}, env = process.env, stream = proce
   const rule = HINT_RULES.find((r) => message.includes(r.match));
   const sections = [];
 
-  sections.push(heavyBand({
-    badgeText: badge("ERROR", "FAIL", ui),
-    status: "FAIL",
-    title: "KOVA",
+  sections.push(renderKovaHeader({
+    surface: "error",
+    verdict: "FAIL",
+    headline: truncateMessage(message),
     meta: "",
-    width: ui.width, ui,
+    ui,
   }));
   sections.push("");
   sections.push(ruleSection("message", ui.width, ui));
@@ -116,6 +116,11 @@ function nearestCommand(input) {
     if (d < bestDist) { best = cmd; bestDist = d; }
   }
   return bestDist <= Math.max(1, Math.floor(input.length / 2)) ? best : null;
+}
+
+function truncateMessage(msg) {
+  const oneLine = String(msg).split("\n")[0];
+  return oneLine.length > 90 ? oneLine.slice(0, 89) + "…" : oneLine;
 }
 
 function lev(a, b) {
