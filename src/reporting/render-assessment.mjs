@@ -360,13 +360,29 @@ function renderFooter(summary, ui) {
   const { c, g } = ui;
   const recordCount = summary.coverage?.recordCount ?? 0;
   const scenarioCount = summary.coverage?.scenarioCount ?? 0;
-  const parts = [
-    `run ${summary.runId ?? "?"}`,
-    `${recordCount} record${recordCount === 1 ? "" : "s"}`,
-    `${scenarioCount} scenario${scenarioCount === 1 ? "" : "s"}`,
+  const variants = [
+    [
+      `run ${summary.runId ?? "?"}`,
+      `${recordCount} record${recordCount === 1 ? "" : "s"}`,
+      `${scenarioCount} scenario${scenarioCount === 1 ? "" : "s"}`,
+      summary.runId && `kova report bundle ${summary.runId}`,
+    ],
+    [
+      `run ${summary.runId ?? "?"}`,
+      `${recordCount} record${recordCount === 1 ? "" : "s"}`,
+      `${scenarioCount} scenario${scenarioCount === 1 ? "" : "s"}`,
+    ],
+    [`run ${summary.runId ?? "?"}`, `${recordCount}r`, `${scenarioCount}s`],
+    [`run ${summary.runId ?? "?"}`],
   ];
-  if (summary.runId) parts.push(`kova report bundle ${summary.runId}`);
-  return c.dim(`Kova ${g.sep} report ${g.sep} ${parts.join(` ${g.sep} `)}`);
+  const prefix = `Kova ${g.sep} report ${g.sep} `;
+  const budget = ui.width;
+  for (const v of variants) {
+    const tail = v.filter(Boolean).join(` ${g.sep} `);
+    const line = prefix + tail;
+    if (visualWidth(line) <= budget) return c.dim(line);
+  }
+  return c.dim(truncatePlain(prefix + (summary.runId ?? "?"), budget));
 }
 
 function truncatePlain(text, max) {
