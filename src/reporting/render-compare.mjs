@@ -1,16 +1,32 @@
 // kova report compare <baseline> <current> - dashboard view.
 // Consumes the comparison object from compareReports() unchanged.
+//
+// Layout (approved mock):
+//   ╔══════════════════════════════════════════════════════════════════════╗
+//   ║ [FAIL]  57 regressions · 5 scenarios   npm:2026.5.7 → 2026.5.16-beta ║
+//   ╚══════════════════════════════════════════════════════════════════════╝
+//     baseline   <target>    <runId>
+//     current    <target>    <runId>
+//     delta      −N regressions · +M improvements · K scenarios affected
+//
+//   ─── findings ───────────────── <scope> · N new ──
+//       ✗  <message>                                threshold <tol>
+//       ▲  <message>
+//
+//   ─── metric regressions ──────── <scope> · K scn ──
+//     ▒ <state> · sample <n>                            PASS → FAIL
+//       metric              from      to        Δ      over tol   bar
+//       coldReadyMs          779   16946  +16 167      21.7×      ▇▇▇▇▇▇▇
 
 import {
-  makeUi, heavyBand, ruleSection, card, sideBySide,
-  badge, renderTable, formatPercent,
-  visualWidth, repeat, wrap, withMargin,
+  makeUi, ruleSection, renderTable, renderKovaHeader,
+  visualWidth, repeat, wrap, withMargin, formatNumber, severityGlyph,
 } from "../ui/index.mjs";
 
-const TARGET_WIDTH_FOR_DASHBOARD = 120;
-const TOP_FINDINGS = 6;
-const TOP_REGRESSIONS = 10;
-const TOP_STATUS_CHANGES = 10;
+const TOP_FINDINGS_PER_SCOPE = 6;
+const TOP_REGRESSION_SCENARIOS = 8;
+const TOP_METRICS_PER_SCENARIO = 6;
+const BAR_WIDTH = 7;
 
 export function renderCompareAssessment(comparison, flags = {}, env = process.env, stream = process.stdout) {
   const ui = makeUi(flags, env, stream);
@@ -20,12 +36,9 @@ export function renderCompareAssessment(comparison, flags = {}, env = process.en
 export function renderCompareFromComparison(comparison, ui) {
   const sections = [];
 
-  sections.push(renderBand(comparison, ui));
+  sections.push(renderHeader(comparison, ui));
   sections.push("");
-  sections.push(renderKpiStrip(comparison, ui));
-
-  const statusChanges = renderStatusChanges(comparison, ui);
-  if (statusChanges) { sections.push(""); sections.push(statusChanges); }
+  sections.push(renderMetaStrip(comparison, ui));
 
   const findings = renderFindingChanges(comparison, ui);
   if (findings) { sections.push(""); sections.push(findings); }
@@ -41,125 +54,94 @@ export function renderCompareFromComparison(comparison, ui) {
   return sections.join("\n");
 }
 
-function renderBand(comparison, ui) {
-  const verdict = comparison.ok ? "OK" : "REGRESSED";
-  const label = comparison.ok ? "NO_REGRESSIONS" : "REGRESSIONS_FOUND";
-  const meta = formatBandMeta(comparison, ui);
-  return heavyBand({
-    badgeText: badge(label, verdict, ui),
-    status: verdict,
-    title: "KOVA COMPARE",
-    meta,
-    width: ui.width,
+// ─────────────────────────────────────────────────────────────────────────────
+// Band: verdict + headline count + selector arrow
+
+function renderHeader(comparison, ui) {
+  const regressions = comparison.regressionCount ?? 0;
+  const scenarioCount = countAffectedScenarios(comparison);
+  const verdict = comparison.ok ? "OK" : "FAIL";
+
+  let headline;
+  if (comparison.ok) {
+    headline = "no regressions";
+  } else {
+    const parts = [`${regressions} regression${regressions === 1 ? "" : "s"}`];
+    if (scenarioCount > 0) parts.push(`${scenarioCount} scenario${scenarioCount === 1 ? "" : "s"}`);
+    headline = parts.join(` ${ui.g.sep} `);
+  }
+
+  return renderKovaHeader({
+    surface: "report compare",
+    verdict,
+    headline,
+    meta: formatTargetArrow(comparison, ui),
     ui,
   });
 }
 
-function formatBandMeta(comparison, ui) {
-  const sep = ` ${ui.g.sep} `;
-  const parts = [];
-  if (comparison.baseline?.runId) parts.push(`baseline: ${comparison.baseline.runId}`);
-  if (comparison.current?.runId) parts.push(`current: ${comparison.current.runId}`);
-  return parts.join(sep);
+function formatTargetArrow(comparison, ui) {
+  const b = truncateTarget(comparison.baseline?.target ?? "—", ui);
+  const c = truncateTarget(comparison.current?.target ?? "—", ui);
+  return `${b} ${ui.g.arrow} ${c}`;
 }
 
-function renderKpiStrip(comparison, ui) {
-  const stack = ui.width < TARGET_WIDTH_FOR_DASHBOARD;
-  const cardWidth = stack ? Math.max(28, ui.width) : Math.max(28, Math.floor((ui.width - 4) / 3));
-
-  return sideBySide(
-    [buildBaselineCard(comparison, ui, cardWidth),
-     buildCurrentCard(comparison, ui, cardWidth),
-     buildDeltaCard(comparison, ui, cardWidth)],
-    { width: ui.width, gap: 2, minWidth: TARGET_WIDTH_FOR_DASHBOARD },
-  );
+function truncateTarget(target, ui) {
+  const t = String(target ?? "");
+  if (t.length <= 40) return t;
+  const ell = ui && ui.ascii ? "..." : "…";
+  const colonIdx = t.indexOf(":");
+  if (colonIdx >= 0 && colonIdx < 20) {
+    const prefix = t.slice(0, colonIdx + 1);
+    const tail = t.slice(-(40 - prefix.length - ell.length));
+    return `${prefix}${ell}${tail}`;
+  }
+  return t.slice(0, 40 - ell.length) + ell;
 }
 
-function buildBaselineCard(comparison, ui, width) {
+function countAffectedScenarios(comparison) {
+  return (comparison.scenarios ?? []).filter((s) => (s.regressions?.length ?? 0) > 0).length;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Meta strip: 3 left-aligned key/value rows
+
+function renderMetaStrip(comparison, ui) {
   const { c } = ui;
-  const b = comparison.baseline ?? {};
-  return card({
-    title: "Baseline",
-    width,
-    lines: [
-      c.bold(truncate(b.runId ?? "—", width - 4)),
-      c.dim(truncate(b.target ?? "", width - 4)),
-    ],
-    ui,
-  });
-}
-
-function buildCurrentCard(comparison, ui, width) {
-  const { c } = ui;
-  const cur = comparison.current ?? {};
-  return card({
-    title: "Current",
-    width,
-    lines: [
-      c.bold(truncate(cur.runId ?? "—", width - 4)),
-      c.dim(truncate(cur.target ?? "", width - 4)),
-    ],
-    ui,
-  });
-}
-
-function buildDeltaCard(comparison, ui, width) {
-  const { c } = ui;
+  const baseline = comparison.baseline ?? {};
+  const current = comparison.current ?? {};
   const regressions = comparison.regressionCount ?? 0;
   const improvements = comparison.improvementCount ?? 0;
-  let stateText, stateColor;
-  if (regressions > 0) { stateText = `${regressions} regression${regressions === 1 ? "" : "s"}`; stateColor = c.err; }
-  else if (improvements > 0) { stateText = `${improvements} improvement${improvements === 1 ? "" : "s"}`; stateColor = c.ok; }
-  else { stateText = "no changes"; stateColor = c.dim; }
+  const scnAffected = countAffectedScenarios(comparison);
 
-  return card({
-    title: "Delta",
-    width,
-    lines: [
-      `${stateColor(c.bold(stateText))}`,
-      c.dim(`+${improvements} better ${ui.g.sep} -${regressions} worse`),
-    ],
-    ui,
-  });
-}
+  const rows = [
+    ["baseline", truncateTarget(baseline.target ?? "—", ui), baseline.runId ?? ""],
+    ["current",  truncateTarget(current.target ?? "—", ui),  current.runId ?? ""],
+  ];
 
-function renderStatusChanges(comparison, ui) {
-  const { c } = ui;
-  const changes = comparison.statusChanges?.changes ?? [];
-  if (changes.length === 0) return null;
-
-  const top = changes.slice(0, TOP_STATUS_CHANGES);
-  const lines = [ruleSection("status changes", ui.width, ui)];
-
-  const rows = top.map((ch) => {
-    const dir = String(ch.direction ?? "").toLowerCase();
-    const arrow = dir === "regression" ? c.neg(ui.g.arrow) : dir === "improvement" ? c.pos(ui.g.arrow) : c.dim(ui.g.arrow);
-    return {
-      direction: dir === "regression" ? c.neg("worse") : dir === "improvement" ? c.pos("better") : c.dim("changed"),
-      key: c.bold(ch.key ?? ""),
-      from: c.dim(ch.baselineLabel ?? "—"),
-      arrow,
-      to: ch.currentLabel ?? "—",
-    };
+  const labelW = 10;
+  const targetW = Math.max(8, rows.reduce((m, r) => Math.max(m, visualWidth(r[1])), 0));
+  const lines = rows.map(([label, target, runId]) => {
+    const pad1 = repeat(" ", Math.max(1, labelW - visualWidth(label)));
+    const pad2 = repeat(" ", Math.max(2, targetW + 4 - visualWidth(target)));
+    return `  ${c.dim(label)}${pad1}${target}${pad2}${c.dim(runId)}`;
   });
 
-  const table = renderTable({
-    columns: [
-      { key: "direction", header: c.dim("change"), align: "left", minWidth: 8 },
-      { key: "key",       header: c.dim("scope"),  align: "left", minWidth: 24 },
-      { key: "from",      header: c.dim("from"),   align: "right", minWidth: 10 },
-      { key: "arrow",     header: "",              align: "center", minWidth: 2 },
-      { key: "to",        header: c.dim("to"),     align: "left", minWidth: 10 },
-    ],
-    rows,
-    gap: 2,
-  });
-  lines.push(indentBlock(table, 2));
+  const deltaParts = [];
+  if (regressions > 0) deltaParts.push(c.err(`${regressions} regression${regressions === 1 ? "" : "s"}`));
+  if (improvements > 0) deltaParts.push(c.ok(`+${improvements} improvement${improvements === 1 ? "" : "s"}`));
+  if (regressions === 0 && improvements === 0) deltaParts.push(c.dim("no changes"));
+  if (scnAffected > 0) deltaParts.push(c.dim(`${scnAffected} scenario${scnAffected === 1 ? "" : "s"} affected`));
 
-  const more = changes.length - top.length;
-  if (more > 0) lines.push(`  ${c.dim(`+ ${more} more change${more === 1 ? "" : "s"} in JSON report`)}`);
+  const sep = `  ${c.dim(ui.g.sep)}  `;
+  const deltaLabelPad = repeat(" ", Math.max(1, labelW - "delta".length));
+  lines.push(`  ${c.dim("delta")}${deltaLabelPad}${deltaParts.join(sep)}`);
+
   return lines.join("\n");
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Finding changes: grouped by scope (scenario/state), severity-tiered glyphs
 
 function renderFindingChanges(comparison, ui) {
   const { c, g } = ui;
@@ -168,23 +150,53 @@ function renderFindingChanges(comparison, ui) {
   const resolved = fc.resolved ?? [];
   if (newOnes.length === 0 && resolved.length === 0) return null;
 
-  const lines = [ruleSection("finding changes", ui.width, ui)];
+  const lines = [];
 
-  for (const f of newOnes.slice(0, TOP_FINDINGS)) {
-    const scope = formatScope(f);
-    const head = `  ${c.neg(g.cross)} ${c.bold("NEW")} ${c.dim(scope)}`;
-    lines.push(head);
-    const wrapped = wrap(String(f.summary ?? ""), Math.max(20, ui.width - 6));
-    for (const w of wrapped) lines.push("    " + c.dim(w));
+  // New findings (grouped)
+  const groups = groupByScope(newOnes);
+  for (const [scope, items] of groups) {
+    const top = items.slice(0, TOP_FINDINGS_PER_SCOPE);
+    const more = items.length - top.length;
+    const header = `${scope} ${g.sep} ${items.length} new`;
+    lines.push(ruleSection(`findings ${g.sep} ${header}`, ui.width, ui));
+    lines.push("");
+    for (const f of top) {
+      const level = findingSeverityLevel(f.severity);
+      const glyph = colorBySeverity(c, severityGlyph(g, level), level);
+      const threshold = formatFindingThreshold(f);
+      lines.push(...renderIndentedItem(glyph, f.summary, threshold, ui));
+    }
+    if (more > 0) lines.push(`    ${c.dim(`+ ${more} more in JSON report`)}`);
+    lines.push("");
   }
-  for (const f of resolved.slice(0, TOP_FINDINGS)) {
-    const scope = formatScope(f);
-    const head = `  ${c.pos(g.check)} ${c.bold("RESOLVED")} ${c.dim(scope)}`;
-    lines.push(head);
-    const wrapped = wrap(String(f.summary ?? ""), Math.max(20, ui.width - 6));
-    for (const w of wrapped) lines.push("    " + c.dim(w));
+
+  // Resolved (terse)
+  if (resolved.length > 0) {
+    lines.push(ruleSection(`findings ${g.sep} resolved ${g.sep} ${resolved.length}`, ui.width, ui));
+    lines.push("");
+    for (const f of resolved.slice(0, TOP_FINDINGS_PER_SCOPE)) {
+      const head = `    ${c.pos(g.check)}  ${c.dim(formatScope(f))}`;
+      lines.push(head);
+      for (const w of wrap(String(f.summary ?? ""), Math.max(20, ui.width - 8))) {
+        lines.push("       " + c.dim(w));
+      }
+    }
+    const more = resolved.length - TOP_FINDINGS_PER_SCOPE;
+    if (more > 0) lines.push(`    ${c.dim(`+ ${more} more resolved in JSON report`)}`);
   }
+
+  while (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
   return lines.join("\n");
+}
+
+function groupByScope(items) {
+  const map = new Map();
+  for (const it of items) {
+    const key = formatScope(it);
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(it);
+  }
+  return map;
 }
 
 function formatScope(f) {
@@ -194,34 +206,218 @@ function formatScope(f) {
   return parts.join("/") || "run";
 }
 
-function renderScenarioRegressions(comparison, ui) {
-  const { c } = ui;
-  const regressedScenarios = (comparison.scenarios ?? []).filter((s) => s.regressions?.length > 0);
-  if (regressedScenarios.length === 0) return null;
+function findingSeverityLevel(severity) {
+  const s = String(severity ?? "").toLowerCase();
+  if (s === "blocking") return "fail";
+  if (s === "warning") return "warn";
+  return "info";
+}
 
-  const lines = [ruleSection("scenario regressions", ui.width, ui)];
-
-  let total = 0;
-  for (const sc of regressedScenarios) {
-    if (total >= TOP_REGRESSIONS) {
-      const remaining = regressedScenarios.slice(regressedScenarios.indexOf(sc)).reduce((n, s) => n + s.regressions.length, 0);
-      lines.push(`  ${c.dim(`+ ${remaining} more regression${remaining === 1 ? "" : "s"} in JSON report`)}`);
-      break;
-    }
-    const fromTo = `${sc.baselineStatus ?? "missing"} ${ui.g.arrow} ${sc.currentStatus ?? "missing"}`;
-    lines.push(`  ${c.neg(ui.g.cross)} ${c.bold(sc.key)}  ${c.dim(fromTo)}`);
-    for (const reg of sc.regressions) {
-      if (total >= TOP_REGRESSIONS) break;
-      const wrapped = wrap(String(reg.message ?? ""), Math.max(20, ui.width - 8));
-      for (let i = 0; i < wrapped.length; i += 1) {
-        const prefix = i === 0 ? `    ${c.dim(ui.g.bullet)} ` : "      ";
-        lines.push(prefix + c.dim(wrapped[i]));
-      }
-      total += 1;
-    }
+function colorBySeverity(c, glyph, level) {
+  switch (level) {
+    case "fail": return c.err(glyph);
+    case "warn": return c.warn(glyph);
+    default: return c.dim(glyph);
   }
+}
+
+function formatFindingThreshold(f) {
+  if (f.threshold != null && f.threshold !== "") return `threshold ${f.threshold}`;
+  if (f.tolerance != null) return `tolerance ${f.tolerance}`;
+  return "";
+}
+
+// "    ✗  summary text............    threshold 10000ms"
+function renderIndentedItem(glyph, summary, suffix, ui) {
+  const { c } = ui;
+  const indent = "    ";
+  const glyphCol = `${indent}${glyph}  `;
+  const glyphColW = visualWidth(glyphCol);
+  const suffixText = suffix ? c.dim(suffix) : "";
+  const suffixW = suffix ? visualWidth(suffixText) : 0;
+  const budget = Math.max(20, ui.width - glyphColW - (suffixW > 0 ? suffixW + 2 : 0));
+  const wrapped = wrap(String(summary ?? ""), budget);
+  if (wrapped.length === 0) return [glyphCol];
+
+  const out = [];
+  const first = wrapped[0];
+  if (suffix) {
+    const padN = Math.max(2, ui.width - glyphColW - visualWidth(first) - suffixW);
+    out.push(glyphCol + first + repeat(" ", padN) + suffixText);
+  } else {
+    out.push(glyphCol + first);
+  }
+  for (let i = 1; i < wrapped.length; i += 1) {
+    out.push(repeat(" ", glyphColW) + c.dim(wrapped[i]));
+  }
+  return out;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scenario regressions: grouped by scenario name, with per-state sample rows
+// and a metric table sorted by tolerance multiplier.
+
+function renderScenarioRegressions(comparison, ui) {
+  const { c, g } = ui;
+  const regressed = (comparison.scenarios ?? []).filter((s) => (s.regressions?.length ?? 0) > 0);
+  if (regressed.length === 0) return null;
+
+  // Group by scenario name; each entry becomes a "sample" sub-row.
+  const byScenario = new Map();
+  for (const sc of regressed) {
+    const name = sc.scenario || sc.key || "scenario";
+    if (!byScenario.has(name)) byScenario.set(name, []);
+    byScenario.get(name).push(sc);
+  }
+
+  const lines = [];
+  let shownScenarios = 0;
+  let truncatedFurther = 0;
+
+  for (const [scenario, samples] of byScenario) {
+    if (shownScenarios >= TOP_REGRESSION_SCENARIOS) {
+      truncatedFurther += samples.length;
+      continue;
+    }
+    const header = `${scenario} ${g.sep} ${samples.length} scn`;
+    lines.push(ruleSection(`metric regressions ${g.sep} ${header}`, ui.width, ui));
+    lines.push("");
+
+    samples.forEach((sc, idx) => {
+      const sampleLabel = sc.state ? `${sc.state} ${g.sep} sample ${idx + 1}` : `sample ${idx + 1}`;
+      const status = `${sc.baselineStatus ?? "—"} ${g.arrow} ${sc.currentStatus ?? "—"}`;
+      const statusColored = colorStatusArrow(c, sc.baselineStatus, sc.currentStatus, ui);
+      const headerLine = renderSampleHeader(sampleLabel, statusColored, ui);
+      lines.push(headerLine);
+
+      const metricRows = sc.regressions
+        .filter((r) => r.kind === "metric")
+        .map((r) => ({
+          metric: r.metric,
+          from: r.baseline,
+          to: r.current,
+          delta: r.delta,
+          tolerance: r.tolerance,
+          // Tolerance of 0 means "any increase is a regression"; treat that as
+          // max severity rather than null so it sorts to the top and shows a bar.
+          overTol: r.tolerance > 0
+            ? r.delta / r.tolerance
+            : (r.delta > 0 ? Number.POSITIVE_INFINITY : null),
+        }))
+        .sort((a, b) => (Number.isFinite(b.overTol) ? b.overTol : 1e9) - (Number.isFinite(a.overTol) ? a.overTol : 1e9));
+
+      const nonMetric = sc.regressions.filter((r) => r.kind !== "metric");
+      for (const r of nonMetric) {
+        const glyph = c.err(g.cross);
+        for (const ln of renderIndentedItem(glyph, r.message, "", ui)) lines.push(ln);
+      }
+
+      if (metricRows.length > 0) {
+        const top = metricRows.slice(0, TOP_METRICS_PER_SCENARIO);
+        const finiteRatios = top.map((m) => m.overTol).filter((r) => Number.isFinite(r));
+        const maxRatio = finiteRatios.length > 0 ? Math.max(1, ...finiteRatios) : 1;
+        const table = renderMetricTable(top, maxRatio, ui);
+        lines.push(indentBlock(table, 6));
+        const moreM = metricRows.length - top.length;
+        if (moreM > 0) lines.push(`      ${c.dim(`+ ${moreM} more metric regression${moreM === 1 ? "" : "s"} in JSON report`)}`);
+      }
+      lines.push("");
+    });
+
+    shownScenarios += 1;
+  }
+
+  if (truncatedFurther > 0) {
+    lines.push(`  ${c.dim(`+ ${truncatedFurther} more sample${truncatedFurther === 1 ? "" : "s"} in JSON report`)}`);
+  }
+
+  while (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
   return lines.join("\n");
 }
+
+function renderSampleHeader(label, statusColored, ui) {
+  const { c, g } = ui;
+  const left = `    ${c.dim(g.shadeMed)} ${c.bold(label)}`;
+  const leftW = visualWidth(left);
+  const rightW = visualWidth(statusColored);
+  const pad = Math.max(2, ui.width - leftW - rightW);
+  return left + repeat(" ", pad) + statusColored;
+}
+
+function colorStatusArrow(c, baseline, current, ui) {
+  const b = baseline ?? "—";
+  const cur = current ?? "—";
+  const cb = String(b).toUpperCase();
+  const cc = String(cur).toUpperCase();
+  const baseColor = cb === "PASS" ? c.pos : cb === "FAIL" ? c.err : c.dim;
+  const curColor = cc === "PASS" ? c.pos : cc === "FAIL" ? c.err : c.warn;
+  return `${baseColor(cb)} ${c.dim(ui.g.arrow)} ${curColor(cc)}`;
+}
+
+function renderMetricTable(rows, maxRatio, ui) {
+  const { c } = ui;
+  const renderable = rows.map((r) => {
+    const ratio = r.overTol;
+    let overTol;
+    let bar;
+    if (ratio == null) {
+      overTol = "—";
+      bar = "";
+    } else if (!Number.isFinite(ratio)) {
+      overTol = ui.ascii ? "max" : "∞×";
+      bar = repeat(ui.g.block, BAR_WIDTH);
+    } else {
+      const times = ui.ascii ? "x" : "×";
+      overTol = `${formatNumber(ratio, { fractionDigits: 1 })}${times}`;
+      bar = magnitudeBar(ratio, maxRatio, ui);
+    }
+    return {
+      metric: r.metric,
+      from: formatNumber(r.from),
+      to: formatNumber(r.to),
+      delta: formatDeltaSigned(r.delta),
+      overTol: severityColorRatio(c, ratio)(overTol),
+      bar: c.err(bar),
+    };
+  });
+
+  return renderTable({
+    columns: [
+      { key: "metric",  header: c.dim("metric"),   align: "left",  minWidth: 20 },
+      { key: "from",    header: c.dim("from"),     align: "right", minWidth: 8 },
+      { key: "to",      header: c.dim("to"),       align: "right", minWidth: 8 },
+      { key: "delta",   header: c.dim(ui.ascii ? "delta" : "Δ"), align: "right", minWidth: 9 },
+      { key: "overTol", header: c.dim("over tol"), align: "right", minWidth: 7 },
+      { key: "bar",     header: "",                align: "left",  minWidth: BAR_WIDTH },
+    ],
+    rows: renderable,
+    gap: 2,
+  });
+}
+
+function severityColorRatio(c, ratio) {
+  if (ratio == null) return (x) => c.dim(x);
+  if (!Number.isFinite(ratio)) return (x) => c.err(x);
+  if (ratio >= 2) return (x) => c.err(x);
+  if (ratio >= 1.2) return (x) => c.warn(x);
+  return (x) => c.dim(x);
+}
+
+function magnitudeBar(ratio, maxRatio, ui) {
+  if (!Number.isFinite(ratio) || ratio <= 0 || !Number.isFinite(maxRatio) || maxRatio <= 0) return "";
+  const n = Math.max(1, Math.min(BAR_WIDTH, Math.round((ratio / maxRatio) * BAR_WIDTH)));
+  return repeat(ui.g.block, n);
+}
+
+function formatDeltaSigned(delta) {
+  if (delta == null || !Number.isFinite(Number(delta))) return "—";
+  const n = Number(delta);
+  const sign = n > 0 ? "+" : n < 0 ? "-" : "";
+  return sign + formatNumber(Math.abs(n));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Source/release diagnostics (preserved unchanged in spirit)
 
 function renderSourceRelease(comparison, ui) {
   const { c } = ui;
@@ -241,18 +437,13 @@ function renderSourceRelease(comparison, ui) {
   return lines.join("\n");
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Footer: one line. Headline counts already live in the band + delta strip.
+
 function renderFooter(comparison, ui) {
   const { c, g } = ui;
-  const lines = [];
-  lines.push(c.dim(`Compare   ${g.sep}  ${comparison.regressionCount ?? 0} regression${(comparison.regressionCount ?? 0) === 1 ? "" : "s"} ${g.sep} ${comparison.improvementCount ?? 0} improvement${(comparison.improvementCount ?? 0) === 1 ? "" : "s"} ${g.sep} ${comparison.scenarios?.length ?? 0} scenario${(comparison.scenarios?.length ?? 0) === 1 ? "" : "s"}`));
-  if (comparison.generatedAt) lines.push(c.dim(`Generated ${g.sep}  ${comparison.generatedAt}`));
-  return lines.join("\n");
-}
-
-function truncate(text, max) {
-  if (max <= 4) return text;
-  if (visualWidth(text) <= max) return text;
-  return text.slice(0, max - 1) + "…";
+  if (!comparison.generatedAt) return "";
+  return c.dim(`Kova ${g.sep} report compare ${g.sep} generated ${comparison.generatedAt}`);
 }
 
 function indentBlock(text, n) {
