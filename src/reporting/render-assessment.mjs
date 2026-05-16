@@ -6,7 +6,7 @@ import {
   makeUi, heavyBand, ruleSection, card, sideBySide,
   badge, gauge, statusGlyph, renderTable,
   formatPercent, computeDelta, classifyDelta,
-  visualWidth, repeat, wrap,
+  visualWidth, repeat, wrap, withMargin,
 } from "../ui/index.mjs";
 import { buildReportSummary } from "./report.mjs";
 
@@ -17,7 +17,7 @@ const TOP_REGRESSIONS = 8;
 export function renderAssessment(report, flags = {}, env = process.env, stream = process.stdout) {
   const ui = makeUi(flags, env, stream);
   const summary = buildReportSummary(report);
-  return renderFromSummary(summary, ui);
+  return withMargin(renderFromSummary(summary, ui), ui.leftPad);
 }
 
 // Exposed for tests and snapshot coverage.

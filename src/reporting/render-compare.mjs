@@ -4,7 +4,7 @@
 import {
   makeUi, heavyBand, ruleSection, card, sideBySide,
   badge, renderTable, formatPercent,
-  visualWidth, repeat, wrap,
+  visualWidth, repeat, wrap, withMargin,
 } from "../ui/index.mjs";
 
 const TARGET_WIDTH_FOR_DASHBOARD = 120;
@@ -14,7 +14,7 @@ const TOP_STATUS_CHANGES = 10;
 
 export function renderCompareAssessment(comparison, flags = {}, env = process.env, stream = process.stdout) {
   const ui = makeUi(flags, env, stream);
-  return renderCompareFromComparison(comparison, ui);
+  return withMargin(renderCompareFromComparison(comparison, ui), ui.leftPad);
 }
 
 export function renderCompareFromComparison(comparison, ui) {

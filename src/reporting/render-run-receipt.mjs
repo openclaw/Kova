@@ -2,7 +2,7 @@
 
 import {
   makeUi, heavyBand, ruleSection, card, sideBySide,
-  badge, renderTable, visualWidth, repeat,
+  badge, renderTable, visualWidth, repeat, withMargin,
 } from "../ui/index.mjs";
 import { relative } from "node:path";
 
@@ -21,7 +21,7 @@ export function renderRunReceipt({ report, reportPath, jsonPath, summaryPath }, 
 
   sections.push("");
   sections.push(renderArtifacts({ reportPath, jsonPath, summaryPath }, ui));
-  return sections.join("\n");
+  return withMargin(sections.join("\n"), ui.leftPad);
 }
 
 export function renderMatrixRunReceipt({ report, reportPath, jsonPath, summaryPath, bundlePath, retainedGateArtifacts }, flags = {}, env = process.env, stream = process.stdout) {
@@ -39,7 +39,7 @@ export function renderMatrixRunReceipt({ report, reportPath, jsonPath, summaryPa
 
   sections.push("");
   sections.push(renderArtifacts({ reportPath, jsonPath, summaryPath, bundlePath, retainedGateArtifacts }, ui));
-  return sections.join("\n");
+  return withMargin(sections.join("\n"), ui.leftPad);
 }
 
 function renderBand(report, ui, { kind }) {

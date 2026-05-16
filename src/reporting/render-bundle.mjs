@@ -1,6 +1,6 @@
 // kova report bundle <report.json> - confirmation panel.
 
-import { makeUi, heavyBand, ruleSection, badge, visualWidth, repeat, wrap } from "../ui/index.mjs";
+import { makeUi, heavyBand, ruleSection, badge, visualWidth, repeat, wrap, withMargin } from "../ui/index.mjs";
 import { relative } from "node:path";
 
 export function renderBundleReceipt(receipt, flags = {}, env = process.env, stream = process.stdout) {
@@ -43,7 +43,7 @@ export function renderBundleReceipt(receipt, flags = {}, env = process.env, stre
   sections.push("");
   sections.push(c.dim(`Generated ${g.sep}  ${receipt.generatedAt ?? new Date().toISOString()}`));
 
-  return sections.join("\n");
+  return withMargin(sections.join("\n"), ui.leftPad);
 }
 
 function formatBytes(n) {
