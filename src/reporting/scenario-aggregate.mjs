@@ -70,7 +70,16 @@ export function aggregateScenarios(report, findings = []) {
     const passed = samples.filter((s) => s.status === "PASS").length;
     const failed = samples.filter((s) => s.status === "FAIL").length;
     const blocked = samples.filter((s) => s.status === "BLOCKED").length;
-    const verdict = blocked > 0 ? "BLOCKED" : failed > 0 ? "FAIL" : passed === samples.length ? "PASS" : "INCOMPLETE";
+    const dryRun = samples.filter((s) => s.status === "DRY-RUN").length;
+    const verdict = blocked > 0
+      ? "BLOCKED"
+      : failed > 0
+        ? "FAIL"
+        : dryRun === samples.length
+          ? "DRY-RUN"
+          : passed === samples.length
+            ? "PASS"
+            : "INCOMPLETE";
     const first = samples[0];
 
     out.push({
