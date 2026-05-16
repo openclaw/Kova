@@ -1,7 +1,8 @@
-# Codex Handoff Examples
+# Handoff Examples
 
-Use these when pasting Kova findings into a fixer agent. Keep the prompt tied to
-the Kova report evidence. Do not paste raw logs unless the fixer asks for them.
+Use these when pasting Kova findings into a fixer agent. Keep the prompt tied
+to the Kova report evidence. Do not paste raw logs unless the fixer asks for
+them.
 
 ## OpenClaw Pre-Provider Stall
 
@@ -88,9 +89,9 @@ Kova evidence:
 - Gateway after turn: <state>
 - Cleanup duration: <ms>
 
-Find which OpenClaw component owns the leaked process, make cleanup deterministic
-on success, failure, timeout, and interrupt, and add coverage for the process
-role that leaked.
+Find which OpenClaw component owns the leaked process, make cleanup
+deterministic on success, failure, timeout, and interrupt, and add coverage
+for the process role that leaked.
 ```
 
 ## Startup Or Runtime Dependency Regression

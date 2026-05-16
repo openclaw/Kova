@@ -1,8 +1,9 @@
 # Kova OpenClaw Diagnostics Contract
 
-Kova needs OpenClaw to expose low-noise runtime diagnostics while real user
-flows run. The raw data belongs in artifacts; reports should only summarize the
-signals that explain startup, plugin, provider, resource, and agent latency.
+Kova needs OpenClaw runtime diagnostics that are low-noise while real user
+flows run. The raw data belongs in artifacts; reports should only summarize
+the signals that explain startup, plugin, provider, resource, and agent
+latency.
 
 This contract is optional at runtime. If OpenClaw does not emit the file, Kova
 must keep running and report diagnostics as unavailable unless the selected
