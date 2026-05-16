@@ -20,6 +20,16 @@ export { heavyBand, ruleSection, card, sideBySide, SIDE_BY_SIDE_MIN_WIDTH } from
 export { renderKovaHeader } from "./header.mjs";
 export { kpiStrip } from "./kpi-strip.mjs";
 
+// Scenario-spine primitives (Phases · Metrics · Findings · Proves)
+export { scenarioRule } from "./scenario-rule.mjs";
+export { metricsTable, MANY_SAMPLES } from "./metrics-table.mjs";
+export { phasesBlock } from "./phases-block.mjs";
+export { findingsBlock } from "./findings-block.mjs";
+export { provesBlock } from "./proves-block.mjs";
+export { scenariosRollup } from "./scenarios-rollup.mjs";
+export { summarizeSamples, classifyConfidence, headroomPercent, CONFIDENCE_BUCKETS } from "./confidence.mjs";
+export { buildVerdictHeadline } from "./verdict-line.mjs";
+
 // Convenience: bundle resolved options plus color/glyph helpers.
 import { resolveUiOptions as _resolve } from "./terminal.mjs";
 import { makeColor as _color } from "./color.mjs";
