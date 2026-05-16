@@ -5,7 +5,7 @@
 export { resolveUiOptions, detectCapabilities } from "./terminal.mjs";
 export { resolveWidth, withMargin, WIDTH_DEFAULT, WIDTH_MIN } from "./width.mjs";
 export { makeColor, stripAnsi } from "./color.mjs";
-export { makeGlyphs, statusGlyph } from "./glyphs.mjs";
+export { makeGlyphs, statusGlyph, severityGlyph } from "./glyphs.mjs";
 export {
   visualWidth, padEnd, padStart, truncate, repeat, wrap, indent,
 } from "./text.mjs";
@@ -17,6 +17,8 @@ export { renderTable } from "./tables.mjs";
 export { gauge, sparkline, progressBar } from "./bars.mjs";
 export { badge } from "./badges.mjs";
 export { heavyBand, ruleSection, card, sideBySide, SIDE_BY_SIDE_MIN_WIDTH } from "./layout.mjs";
+export { renderKovaHeader } from "./header.mjs";
+export { kpiStrip } from "./kpi-strip.mjs";
 
 // Convenience: bundle resolved options plus color/glyph helpers.
 import { resolveUiOptions as _resolve } from "./terminal.mjs";

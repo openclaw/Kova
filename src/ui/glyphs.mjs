@@ -35,6 +35,9 @@ const UNICODE = {
   // Bars
   bar: "█",
   barEmpty: "░",
+  shadeMed: "▒",
+  // Magnitude bar (single block, used in metric regression tables)
+  block: "▇",
   // Sparkline (low to high)
   spark: ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"],
   // Spinner frames (Braille)
@@ -70,12 +73,32 @@ const ASCII = {
   brHeavy: "+",
   bar: "#",
   barEmpty: "-",
+  shadeMed: "#",
+  block: "#",
   spark: [".", ".", "-", "-", "=", "=", "#", "#"],
   spinner: ["|", "/", "-", "\\"],
 };
 
 export function makeGlyphs(ui) {
   return ui && ui.ascii ? ASCII : UNICODE;
+}
+
+// Severity-tiered glyph for compare findings / metric regressions.
+//   "fail"    -> red cross  (status fail, tolerance blown wide)
+//   "warn"    -> amber up-triangle / warn glyph (structural anomaly, over-tolerance)
+//   "info"    -> dim up-arrow (over-baseline but under-tolerance)
+export function severityGlyph(glyphs, level) {
+  switch (String(level).toLowerCase()) {
+    case "fail":
+    case "blocking":
+      return glyphs.cross;
+    case "warn":
+    case "warning":
+      return glyphs.warn;
+    case "info":
+    default:
+      return glyphs.up;
+  }
 }
 
 // Map an internal status to its glyph slot.
