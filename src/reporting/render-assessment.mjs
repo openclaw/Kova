@@ -3,14 +3,13 @@
 // dashboard-rich ANSI assessment for stdout. Honors --color and --ascii.
 
 import {
-  makeUi, heavyBand, ruleSection, card, sideBySide,
-  badge, gauge, statusGlyph, renderTable,
+  makeUi, ruleSection, renderKovaHeader, kpiStrip,
+  gauge, statusGlyph, renderTable,
   formatPercent, computeDelta, classifyDelta,
   visualWidth, repeat, wrap, withMargin,
 } from "../ui/index.mjs";
 import { buildReportSummary } from "./report.mjs";
 
-const TARGET_WIDTH_FOR_DASHBOARD = 120;
 const TOP_FINDINGS = 6;
 const TOP_REGRESSIONS = 8;
 
@@ -47,16 +46,32 @@ export function renderFromSummary(summary, ui) {
 function renderBand(summary, ui) {
   const verdict = String(summary.decision?.verdict ?? "UNKNOWN").toUpperCase();
   const shipLabel = deriveShipLabel(verdict, summary);
+  const headline = buildHeadline(summary, ui);
   const meta = formatBandMeta(summary, ui);
 
-  return heavyBand({
-    badgeText: badge(shipLabel, shipLabel, ui),
-    status: verdict,
-    title: "KOVA ASSESSMENT",
+  return renderKovaHeader({
+    surface: "report",
+    verdict: shipLabel,
+    headline,
     meta,
-    width: ui.width,
     ui,
   });
+}
+
+function buildHeadline(summary, ui) {
+  const sep = ` ${ui.g.sep} `;
+  const blocking = summary.decision?.blockingFindingCount ?? 0;
+  const warning = summary.decision?.warningFindingCount ?? 0;
+  const regressions = summary.performance?.baselineRegressionCount ?? 0;
+  const parts = [];
+  if (blocking > 0) parts.push(`${blocking} blocking`);
+  if (warning > 0) parts.push(`${warning} warning`);
+  if (regressions > 0) parts.push(`${regressions} perf regression${regressions === 1 ? "" : "s"}`);
+  if (parts.length === 0) {
+    const proofTotal = summary.proof?.requiredTotal ?? 0;
+    return proofTotal > 0 ? "all checks passed" : "ready";
+  }
+  return parts.join(sep);
 }
 
 function deriveShipLabel(verdict, summary) {
@@ -94,97 +109,88 @@ function formatTimestamp(iso) {
 }
 
 function renderKpiStrip(summary, ui) {
-  const stack = ui.width < TARGET_WIDTH_FOR_DASHBOARD;
-  // When stacking, each card uses the full terminal width.
-  // Side-by-side splits the row into 3 columns with a 2-col gap between each.
-  const cardWidth = stack
-    ? Math.max(28, ui.width)
-    : Math.max(28, Math.floor((ui.width - 4) / 3));
-
-  const proof = buildProofKpi(summary, ui, cardWidth);
-  const health = buildHealthKpi(summary, ui, cardWidth);
-  const perf = buildPerformanceKpi(summary, ui, cardWidth);
-
-  return sideBySide([proof, health, perf], { width: ui.width, gap: 2, minWidth: TARGET_WIDTH_FOR_DASHBOARD });
+  return kpiStrip([
+    buildProofKpi(summary),
+    buildHealthKpi(summary),
+    buildPerformanceKpi(summary),
+  ], ui);
 }
 
-// Compute a gauge width that fits inside the card alongside `label`.
-// Card inner content area is cardWidth - 4 (borders + " " padding each side).
-function gaugeWidthFor(cardWidth, label) {
-  const inner = Math.max(0, cardWidth - 4);
-  const labelLen = visualWidth(label);
-  return Math.max(4, Math.min(20, inner - labelLen - 1));
-}
-
-function buildProofKpi(summary, ui, width) {
-  const { c } = ui;
+function buildProofKpi(summary) {
   const total = summary.proof?.requiredTotal ?? 0;
   const missing = summary.proof?.requiredMissing ?? 0;
   const failed = summary.proof?.requiredFailed ?? 0;
   const satisfied = Math.max(0, total - missing - failed);
-  const pct = total > 0 ? Math.round((satisfied / total) * 100) : null;
-  const barColor = pct == null ? c.dim : pct >= 80 ? c.ok : pct >= 50 ? c.warn : c.err;
-
-  const label = total > 0 ? `${pct}%` : "";
-  const barW = gaugeWidthFor(width, label);
-  const line1 = total > 0
-    ? `${barColor(gauge(satisfied, total, barW, ui))} ${c.bold(label)}`
-    : c.dim("no required proof tracked");
-  const line2 = total > 0
-    ? c.dim(`${satisfied} of ${total} requirements`)
-    : c.dim("—");
-
-  return card({ title: "Proof", width, lines: [line1, line2], ui });
+  if (total === 0) {
+    return { label: "Proof", value: "n/a", hint: "no required proof tracked", tone: "dim" };
+  }
+  const pct = Math.round((satisfied / total) * 100);
+  const tone = pct >= 80 ? "ok" : pct >= 50 ? "warn" : "err";
+  return {
+    label: "Proof",
+    value: `${pct}%`,
+    hint: `${satisfied}/${total}`,
+    tone,
+    bar: { filled: satisfied, total },
+  };
 }
 
-function buildHealthKpi(summary, ui, width) {
-  const { c, g } = ui;
+function buildHealthKpi(summary) {
   const blocking = summary.decision?.blockingFindingCount ?? 0;
   const warning = summary.decision?.warningFindingCount ?? 0;
-  const label = stateLabel(blocking, warning);
-  const line2Text = blocking > 0
-    ? `${blocking} blocking ${g.sep} ${warning} warning`
-    : warning > 0
-      ? `${warning} warning`
-      : "no blocking findings";
-
-  const total = 20;
-  const filled = blocking > 0 ? 6 : warning > 0 ? 14 : 20;
-  const barColor = blocking > 0 ? c.err : warning > 0 ? c.warn : c.ok;
-  const barW = gaugeWidthFor(width, label);
-  const line1 = `${barColor(gauge(filled, total, barW, ui))} ${c.bold(label)}`;
-  const line2 = c.dim(line2Text);
-
-  return card({ title: "Health", width, lines: [line1, line2], ui });
+  if (blocking > 0) {
+    return {
+      label: "Health", value: "unhealthy",
+      hint: `${blocking} blocking · ${warning} warning`,
+      tone: "err",
+      bar: { filled: 3, total: 10 },
+    };
+  }
+  if (warning > 0) {
+    return {
+      label: "Health", value: "watch", hint: `${warning} warning`,
+      tone: "warn",
+      bar: { filled: 7, total: 10 },
+    };
+  }
+  return {
+    label: "Health", value: "stable", hint: "no blocking findings",
+    tone: "ok",
+    bar: { filled: 10, total: 10 },
+  };
 }
 
-function stateLabel(blocking, warning) {
-  if (blocking > 0) return "unhealthy";
-  if (warning > 0) return "watch";
-  return "stable";
-}
-
-function buildPerformanceKpi(summary, ui, width) {
-  const { c } = ui;
+function buildPerformanceKpi(summary) {
   const perf = summary.performance;
   if (!perf) {
-    return card({ title: "Performance", width, lines: [c.dim("no performance data"), c.dim("—")], ui });
+    return { label: "Performance", value: "n/a", hint: "no performance data", tone: "dim" };
   }
   const groups = perf.groupCount ?? 0;
   const unstable = perf.unstableGroupCount ?? 0;
   const regressions = perf.baselineRegressionCount ?? 0;
-
-  let state, filled, barColor;
-  if (regressions > 0) { state = `${regressions} regression${regressions === 1 ? "" : "s"}`; filled = 6; barColor = c.err; }
-  else if (unstable > 0) { state = `${unstable} unstable`; filled = 12; barColor = c.warn; }
-  else if (groups > 0) { state = "on target"; filled = 20; barColor = c.ok; }
-  else { state = "no samples"; filled = 0; barColor = c.dim; }
-
-  const barW = gaugeWidthFor(width, state);
-  const line1 = `${barColor(gauge(filled, 20, barW, ui))} ${c.bold(state)}`;
-  const line2 = c.dim(`${groups} group${groups === 1 ? "" : "s"} ${ui.g.sep} ${summary.coverage?.recordCount ?? 0} record${(summary.coverage?.recordCount ?? 0) === 1 ? "" : "s"}`);
-
-  return card({ title: "Performance", width, lines: [line1, line2], ui });
+  const recordCount = summary.coverage?.recordCount ?? 0;
+  const hint = `${groups}g · ${recordCount}r`;
+  if (regressions > 0) {
+    return {
+      label: "Performance",
+      value: `${regressions} regression${regressions === 1 ? "" : "s"}`,
+      hint, tone: "err",
+      bar: { filled: 3, total: 10 },
+    };
+  }
+  if (unstable > 0) {
+    return {
+      label: "Performance", value: `${unstable} unstable`, hint, tone: "warn",
+      bar: { filled: 6, total: 10 },
+    };
+  }
+  if (groups > 0) {
+    return {
+      label: "Performance", value: "on target", hint, tone: "ok",
+      bar: { filled: 10, total: 10 },
+    };
+  }
+  return { label: "Performance", value: "no samples", hint, tone: "dim" };
 }
 
 function renderFindings(summary, ui) {
@@ -333,12 +339,15 @@ function renderRecommendedNext(summary, ui) {
 
 function renderFooter(summary, ui) {
   const { c, g } = ui;
-  const lines = [];
   const recordCount = summary.coverage?.recordCount ?? 0;
   const scenarioCount = summary.coverage?.scenarioCount ?? 0;
-  lines.push(c.dim(`Evidence  ${g.sep}  run ${summary.runId ?? "?"} ${g.sep} ${recordCount} record${recordCount === 1 ? "" : "s"} ${g.sep} ${scenarioCount} scenario${scenarioCount === 1 ? "" : "s"}`));
-  if (summary.runId) lines.push(c.dim(`Bundle    ${g.sep}  kova report bundle ${summary.runId}`));
-  return lines.join("\n");
+  const parts = [
+    `run ${summary.runId ?? "?"}`,
+    `${recordCount} record${recordCount === 1 ? "" : "s"}`,
+    `${scenarioCount} scenario${scenarioCount === 1 ? "" : "s"}`,
+  ];
+  if (summary.runId) parts.push(`kova report bundle ${summary.runId}`);
+  return c.dim(`Kova ${g.sep} report ${g.sep} ${parts.join(` ${g.sep} `)}`);
 }
 
 function truncatePlain(text, max) {
