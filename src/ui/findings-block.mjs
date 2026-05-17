@@ -21,11 +21,11 @@ import { visualWidth, repeat, wrap } from "./text.mjs";
 //   findings:
 //     [{ severity, summary, scope?, evidence?, ownerArea?, sign? }]
 //   sign: "+" (new) | "-" (resolved) — only honored when compare === true
-export function findingsBlock({ findings, compare = false, ui, limit = null } = {}) {
+export function findingsBlock({ findings, compare = false, ui, limit = null, indent = 0 } = {}) {
   if (!findings || findings.length === 0) return "";
   const c = ui.c;
   const g = ui.g;
-  const width = ui.width;
+  const width = Math.max(20, (ui.width ?? 80) - indent);
   const top = limit ? findings.slice(0, limit) : findings;
 
   const lines = [];

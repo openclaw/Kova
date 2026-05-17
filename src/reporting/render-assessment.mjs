@@ -212,13 +212,13 @@ function renderScenarioBlock(sc, ui, isFull) {
     lines.push("");
     lines.push("  " + ui.c.dim("Findings"));
     const findingsLimit = isFull ? null : 5;
-    lines.push(indentBlock(findingsBlock({ findings: sc.findings, ui, limit: findingsLimit }), 2));
+    lines.push(indentBlock(findingsBlock({ findings: sc.findings, ui, limit: findingsLimit, indent: 2 }), 2));
   }
 
   if (sc.proves && sc.proves.length > 0) {
     lines.push("");
     lines.push("  " + ui.c.dim("Proves"));
-    lines.push(indentBlock(provesBlock({ claims: sc.proves, ui }), 2));
+    lines.push(indentBlock(provesBlock({ claims: sc.proves, ui, indent: 2 }), 2));
   }
 
   return lines.join("\n");
