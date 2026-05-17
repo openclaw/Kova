@@ -22,7 +22,7 @@ export function renderPlan(planJson, flags = {}, env = process.env, stream = pro
   if (scenarios) { sections.push(""); sections.push(scenarios); }
 
   sections.push("");
-  sections.push(renderFooter(planJson, ui));
+  sections.push(renderNext(planJson, ui));
   return withMargin(sections.join("\n"), ui.leftPad);
 }
 
@@ -118,11 +118,14 @@ function renderScenarioList(planJson, ui) {
   return lines.join("\n");
 }
 
-function renderFooter(planJson, ui) {
+function renderNext(planJson, ui) {
   const { c, g } = ui;
-  const lines = [];
-  if (planJson.generatedAt) lines.push(c.dim(`Generated ${g.sep}  ${planJson.generatedAt}`));
-  if (planJson.schemaVersion) lines.push(c.dim(`Schema    ${g.sep}  ${planJson.schemaVersion}`));
+  const scenarios = planJson.scenarios ?? [];
+  const lines = [ruleSection("next", ui.width, ui), ""];
+  const sample = scenarios[0]?.id;
+  if (sample) lines.push(`  ${c.dim(g.arrow)} kova run --scenario ${sample}`);
+  lines.push(`  ${c.dim(g.arrow)} kova matrix plan --profile smoke --target runtime:stable`);
+  lines.push(`  ${c.dim(g.arrow)} kova plan --json`);
   return lines.join("\n");
 }
 

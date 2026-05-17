@@ -18,7 +18,7 @@ export function renderMatrixPlan(planJson, flags = {}, env = process.env, stream
   if (entries) { sections.push(""); sections.push(entries); }
 
   sections.push("");
-  sections.push(renderFooter(planJson, ui));
+  sections.push(renderNext(planJson, ui));
   return withMargin(sections.join("\n"), ui.leftPad);
 }
 
@@ -98,15 +98,16 @@ function renderEntries(planJson, ui) {
   return lines.join("\n");
 }
 
-function renderFooter(planJson, ui) {
+function renderNext(planJson, ui) {
   const { c, g } = ui;
-  const lines = [];
-  const controls = planJson.controls ?? {};
-  const flags = Object.entries(controls).filter(([k, v]) => v !== null && v !== undefined && v !== false && k !== "schemaVersion");
-  if (flags.length > 0) {
-    lines.push(c.dim(`Controls  ${g.sep}  ${flags.map(([k, v]) => `${k}=${v}`).join(`  ${g.sep}  `)}`));
+  const profile = planJson.profile?.id ?? "smoke";
+  const target = planJson.target ?? "runtime:stable";
+  const runnable = (planJson.entries ?? []).filter((e) => !e.skipReason).length;
+  const lines = [ruleSection("next", ui.width, ui), ""];
+  if (runnable > 0) {
+    lines.push(`  ${c.dim(g.arrow)} kova matrix run --profile ${profile} --target ${target} --execute`);
   }
-  if (planJson.generatedAt) lines.push(c.dim(`Generated ${g.sep}  ${planJson.generatedAt}`));
+  lines.push(`  ${c.dim(g.arrow)} kova matrix plan --profile ${profile} --target ${target} --json`);
   return lines.join("\n");
 }
 

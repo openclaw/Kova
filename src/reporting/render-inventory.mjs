@@ -101,10 +101,12 @@ function renderWarnings(plan, ui, flags) {
 }
 
 function renderFooter(plan, ui) {
+  // Kova surfaces end with a "next" hint instead of a generated/schema
+  // footer; the JSON form carries timestamps when callers need them.
   const { c, g } = ui;
-  const lines = [];
-  if (plan.generatedAt) lines.push(c.dim(`Generated ${g.sep}  ${plan.generatedAt}`));
-  if (plan.schemaVersion) lines.push(c.dim(`Schema    ${g.sep}  ${plan.schemaVersion}`));
+  const lines = [ruleSection("next", ui.width, ui), ""];
+  lines.push(`  ${c.dim(g.arrow)} kova inventory --json`);
+  lines.push(`  ${c.dim(g.arrow)} kova plan`);
   return lines.join("\n");
 }
 
