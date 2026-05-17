@@ -11,6 +11,7 @@
     "kova": "node bin/kova.mjs",
     "plan": "node bin/kova.mjs plan",
     "check": "node bin/kova.mjs self-check",
+    "test:snapshots": "node tests/render-snapshots.mjs",
     "pack:release": "scripts/package-release.sh"
   },
   "engines": {
