@@ -40,7 +40,10 @@ export function renderBundleReceipt(receipt, flags = {}, env = process.env, stre
   }
 
   sections.push("");
-  sections.push(c.dim(`Generated ${g.sep}  ${receipt.generatedAt ?? new Date().toISOString()}`));
+  sections.push(ruleSection("next", ui.width, ui));
+  sections.push("");
+  sections.push(`  ${c.dim(g.arrow)} kova report ${relative(cwd, receipt.outputPath ?? "")}`);
+  if (receipt.runId) sections.push(`  ${c.dim(g.arrow)} kova report ${receipt.runId}`);
 
   return withMargin(sections.join("\n"), ui.leftPad);
 }

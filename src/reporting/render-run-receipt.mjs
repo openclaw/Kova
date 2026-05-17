@@ -1,12 +1,16 @@
 // Final receipt panel for kova run and kova matrix run TTY output.
+//
+// Receipt is the quick "what just ran" printout. It does NOT replace
+// `kova report` — its job is to confirm the run, surface artifacts, and
+// point the user at the full report. No --full variant; receipts are
+// always compact.
 
 import {
   makeUi, ruleSection, renderKovaHeader, kpiStrip,
-  renderTable, repeat, withMargin,
+  scenariosRollup, withMargin,
 } from "../ui/index.mjs";
+import { aggregateScenarios } from "./scenario-aggregate.mjs";
 import { relative } from "node:path";
-
-const TOP_RECORDS = 12;
 
 export function renderRunReceipt({ report, reportPath, jsonPath, summaryPath }, flags = {}, env = process.env, stream = process.stdout) {
   const ui = makeUi(flags, env, stream);
@@ -15,11 +19,14 @@ export function renderRunReceipt({ report, reportPath, jsonPath, summaryPath }, 
   sections.push("");
   sections.push(renderKpiStrip(report, ui));
 
-  const records = renderRecords(report, ui);
-  if (records) { sections.push(""); sections.push(records); }
-
   sections.push("");
   sections.push(renderArtifacts({ reportPath, jsonPath, summaryPath }, ui));
+
+  const scenarios = renderScenarios(report, ui);
+  if (scenarios) { sections.push(""); sections.push(scenarios); }
+
+  sections.push("");
+  sections.push(renderNext({ reportPath, jsonPath }, ui));
   return withMargin(sections.join("\n"), ui.leftPad);
 }
 
@@ -33,11 +40,14 @@ export function renderMatrixRunReceipt({ report, reportPath, jsonPath, summaryPa
   const gate = renderGate(report.gate, ui);
   if (gate) { sections.push(""); sections.push(gate); }
 
-  const records = renderRecords(report, ui);
-  if (records) { sections.push(""); sections.push(records); }
-
   sections.push("");
   sections.push(renderArtifacts({ reportPath, jsonPath, summaryPath, bundlePath, retainedGateArtifacts }, ui));
+
+  const scenarios = renderScenarios(report, ui, { matrix: true });
+  if (scenarios) { sections.push(""); sections.push(scenarios); }
+
+  sections.push("");
+  sections.push(renderNext({ reportPath, jsonPath, bundlePath }, ui));
   return withMargin(sections.join("\n"), ui.leftPad);
 }
 
@@ -143,44 +153,25 @@ function renderGate(gate, ui) {
   return lines.join("\n");
 }
 
-function renderRecords(report, ui) {
-  const { c, g } = ui;
-  const records = report.records ?? [];
-  if (records.length === 0) return null;
-  const top = records.slice(0, TOP_RECORDS);
+function renderScenarios(report, ui, opts = {}) {
+  if (!report?.records || report.records.length === 0) return null;
+  const scenarios = aggregateScenarios(report);
+  if (scenarios.length === 0) return null;
 
-  const rows = top.map((rec) => {
-    const status = String(rec.status ?? "?").toUpperCase();
-    let statusCol;
-    if (status === "PASS")        statusCol = c.ok(status);
-    else if (status === "FAIL")   statusCol = c.err(status);
-    else if (status === "BLOCKED")statusCol = c.warn(status);
-    else if (status === "SKIP")   statusCol = c.dim(status);
-    else                          statusCol = c.dim(status);
+  const rows = scenarios.map((s) => ({
+    id: s.id,
+    target: opts.matrix ? (s.target ?? report.target ?? null) : null,
+    passed: s.passed,
+    total: s.total,
+    verdict: s.verdict,
+    worst: s.worst ? { label: s.worst.message ?? s.worst.metric ?? "violation", tone: "err" } : null,
+  }));
 
-    return {
-      status:   statusCol,
-      scenario: c.bold(typeof rec.scenario === "string" ? rec.scenario : (rec.scenario?.id ?? rec.scenarioId ?? "?")),
-      state:    c.dim(typeof rec.state === "string" ? rec.state : (rec.state?.id ?? rec.stateId ?? "—")),
-      note:     c.dim(rec.skipReason ?? rec.title ?? rec.scenario?.title ?? ""),
-    };
-  });
-
-  const lines = [ruleSection("entries", ui.width, ui)];
-  lines.push(indentBlock(renderTable({
-    columns: [
-      { key: "status",   header: c.dim("status"),   align: "left", minWidth: 7 },
-      { key: "scenario", header: c.dim("scenario"), align: "left", minWidth: 24 },
-      { key: "state",    header: c.dim("state"),    align: "left", minWidth: 16 },
-      { key: "note",     header: c.dim("note"),     align: "left", minWidth: 16 },
-    ],
-    rows,
-    gap: 2,
-  }), 2));
-
-  const more = records.length - top.length;
-  if (more > 0) lines.push(`  ${c.dim(`+ ${more} more (use --json for full record list)`)}`);
-  return lines.join("\n");
+  return [
+    ruleSection("scenarios", ui.width, ui),
+    "",
+    scenariosRollup({ rows, matrix: !!opts.matrix, ui }),
+  ].join("\n");
 }
 
 function renderArtifacts({ reportPath, jsonPath, summaryPath, bundlePath, retainedGateArtifacts }, ui) {
@@ -198,9 +189,19 @@ function renderArtifacts({ reportPath, jsonPath, summaryPath, bundlePath, retain
   return lines.join("\n");
 }
 
+function renderNext({ reportPath, jsonPath, bundlePath }, ui) {
+  const { c, g } = ui;
+  const cwd = process.cwd();
+  const rel = (p) => p ? (relative(cwd, p) || p) : null;
+  const hints = [];
+  const reportTarget = rel(jsonPath ?? reportPath);
+  if (reportTarget) hints.push(`kova report ${reportTarget}`);
+  if (bundlePath)   hints.push(`kova report bundle ${rel(bundlePath)}`);
+  if (hints.length === 0) return "";
+  const lines = [ruleSection("next", ui.width, ui), ""];
+  for (const h of hints) lines.push(`  ${c.dim(g.arrow)} ${h}`);
+  return lines.join("\n");
+}
+
 function pluralize(noun, n) { return n === 1 ? noun : `${noun}s`; }
 
-function indentBlock(text, n) {
-  const pad = repeat(" ", n);
-  return String(text).split("\n").map((line) => pad + line).join("\n");
-}
