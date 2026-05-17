@@ -102,14 +102,15 @@ function renderScenarioList(planJson, ui) {
   }));
   const table = renderTable({
     columns: [
-      { key: "id",      header: c.dim("id"),      align: "left",  minWidth: 18 },
-      { key: "surface", header: c.dim("surface"), align: "left",  minWidth: 18 },
+      { key: "id",      header: c.dim("id"),      align: "left",  minWidth: 16 },
+      { key: "surface", header: c.dim("surface"), align: "left",  minWidth: 16 },
       { key: "states",  header: c.dim("states"),  align: "right", minWidth: 6 },
       { key: "phases",  header: c.dim("phases"),  align: "right", minWidth: 6 },
-      { key: "title",   header: c.dim("title"),   align: "left",  minWidth: 24 },
+      { key: "title",   header: c.dim("title"),   align: "left",  minWidth: 20 },
     ],
     rows,
     gap: 2,
+    maxWidth: ui.width ? Math.max(40, ui.width - 2) : null,
   });
   lines.push(indentBlock(table, 2));
 

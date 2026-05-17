@@ -90,6 +90,7 @@ function renderEntries(planJson, ui) {
     ],
     rows,
     gap: 2,
+    maxWidth: ui.width ? Math.max(40, ui.width - 2) : null,
   });
   lines.push(indentBlock(table, 2));
 

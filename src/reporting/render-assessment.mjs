@@ -203,7 +203,7 @@ function renderScenarioBlock(sc, ui, isFull) {
   if (metricsToShow.length > 0) {
     lines.push("");
     lines.push("  " + ui.c.dim("Metrics"));
-    lines.push(indentBlock(metricsTable({ rows: metricsToShow, sampleCount: sc.total, ui }), 4));
+    lines.push(indentBlock(metricsTable({ rows: metricsToShow, sampleCount: sc.total, ui, indent: 4 }), 4));
     const hidden = sc.metrics.length - metricsToShow.length;
     if (hidden > 0) lines.push("    " + ui.c.dim(`+ ${hidden} more metric${hidden === 1 ? "" : "s"} (--full)`));
   }

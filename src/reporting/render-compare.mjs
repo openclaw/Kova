@@ -101,15 +101,15 @@ function formatTargetArrow(comparison, ui) {
 
 function truncateTarget(target, ui) {
   const t = String(target ?? "");
-  if (t.length <= 40) return t;
+  if (t.length <= 30) return t;
   const ell = ui && ui.ascii ? "..." : "…";
   const colonIdx = t.indexOf(":");
   if (colonIdx >= 0 && colonIdx < 20) {
     const prefix = t.slice(0, colonIdx + 1);
-    const tail = t.slice(-(40 - prefix.length - ell.length));
+    const tail = t.slice(-(30 - prefix.length - ell.length));
     return `${prefix}${ell}${tail}`;
   }
-  return t.slice(0, 40 - ell.length) + ell;
+  return t.slice(0, 30 - ell.length) + ell;
 }
 
 // ─── meta strip ──────────────────────────────────────────────────────────────
