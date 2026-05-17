@@ -27,6 +27,7 @@ import {
   rollupScenarios, pickAffectedScenarios, scenarioMetricRows,
   shapeFindingsForCompare, runVerdict,
 } from "./compare-aggregate.mjs";
+import { METRIC_LABELS } from "./scenario-aggregate.mjs";
 
 const TOP_AFFECTED_SCENARIOS = 8;
 const TOP_METRICS_PER_SCENARIO = 6;
@@ -34,10 +35,11 @@ const TOP_FINDINGS = 12;
 
 export function renderCompareAssessment(comparison, flags = {}, env = process.env, stream = process.stdout) {
   const ui = makeUi(flags, env, stream);
-  return withMargin(renderCompareFromComparison(comparison, ui), ui.leftPad);
+  return withMargin(renderCompareFromComparison(comparison, ui, { full: !!flags.full }), ui.leftPad);
 }
 
-export function renderCompareFromComparison(comparison, ui) {
+export function renderCompareFromComparison(comparison, ui, opts = {}) {
+  const isFull = !!opts.full;
   const sections = [];
 
   sections.push(renderHeader(comparison, ui));
@@ -47,10 +49,10 @@ export function renderCompareFromComparison(comparison, ui) {
   const rollup = renderRollup(comparison, ui);
   if (rollup) { sections.push(""); sections.push(rollup); }
 
-  const findings = renderFindings(comparison, ui);
+  const findings = renderFindings(comparison, ui, isFull);
   if (findings) { sections.push(""); sections.push(findings); }
 
-  const scenarios = renderAffectedScenarios(comparison, ui);
+  const scenarios = renderAffectedScenarios(comparison, ui, isFull);
   if (scenarios) { sections.push(""); sections.push(scenarios); }
 
   sections.push("");
@@ -168,33 +170,42 @@ function formatScenarioDelta(r) {
 function formatWorstRegression(reg) {
   if (!reg) return null;
   if (reg.kind === "status") {
-    return { label: reg.message ?? `${reg.baseline} → ${reg.current}`, tone: "err" };
+    const label = reg.message && reg.message.length <= 60
+      ? reg.message
+      : `${reg.baseline ?? "?"} → ${reg.current ?? "?"}`;
+    return { label, tone: "err" };
   }
   if (reg.kind === "metric") {
+    const label = METRIC_LABELS[reg.metric] ?? reg.metric ?? "metric";
     const ratio = reg.tolerance ? (reg.delta / reg.tolerance) : null;
-    const note = ratio ? `(${ratio.toFixed(1)}× tol)` : "";
-    return { label: reg.message ?? `${reg.metric} regressed`, note, tone: "err" };
+    const note = ratio != null && Number.isFinite(ratio)
+      ? `${ratio.toFixed(1)}× tol`
+      : "regressed";
+    return { label, note, tone: "err" };
   }
   if (reg.kind === "coverage") {
-    return { label: reg.message ?? "coverage gap", tone: "warn" };
+    const label = reg.message && reg.message.length <= 60 ? reg.message : "coverage gap";
+    return { label, tone: "warn" };
   }
-  return { label: reg.message ?? "", tone: "err" };
+  const msg = reg.message ?? "";
+  return { label: msg.length > 60 ? `${msg.slice(0, 57)}…` : msg, tone: "err" };
 }
 
 // ─── findings ────────────────────────────────────────────────────────────────
 
-function renderFindings(comparison, ui) {
+function renderFindings(comparison, ui, isFull) {
   const findings = shapeFindingsForCompare(comparison);
   if (findings.length === 0) return null;
-  const block = findingsBlock({ findings, compare: true, ui, limit: TOP_FINDINGS });
+  const block = findingsBlock({ findings, compare: true, ui, limit: isFull ? null : TOP_FINDINGS });
   if (!block) return null;
   return [ruleSection("findings", ui.width, ui), "", block].join("\n");
 }
 
 // ─── per-scenario regression blocks ──────────────────────────────────────────
 
-function renderAffectedScenarios(comparison, ui) {
-  const affected = pickAffectedScenarios(comparison).slice(0, TOP_AFFECTED_SCENARIOS);
+function renderAffectedScenarios(comparison, ui, isFull) {
+  const all = pickAffectedScenarios(comparison);
+  const affected = isFull ? all : all.slice(0, TOP_AFFECTED_SCENARIOS);
   if (affected.length === 0) return null;
   const out = [];
   for (const r of affected) {
@@ -205,7 +216,7 @@ function renderAffectedScenarios(comparison, ui) {
       ui,
     }));
     const scenarioStates = (comparison.scenarios ?? []).filter((s) => (s.scenario ?? s.key) === r.id);
-    const rows = mergeMetricRows(scenarioStates, TOP_METRICS_PER_SCENARIO);
+    const rows = mergeMetricRows(scenarioStates, isFull ? Infinity : TOP_METRICS_PER_SCENARIO);
     if (rows.length > 0) {
       out.push("");
       out.push(metricsTable({ rows, compare: true, ui }));
@@ -213,6 +224,11 @@ function renderAffectedScenarios(comparison, ui) {
     out.push("");
   }
   while (out.length > 0 && out[out.length - 1] === "") out.pop();
+  const hidden = all.length - affected.length;
+  if (hidden > 0) {
+    out.push("");
+    out.push(`  ${ui.c.dim(`+ ${hidden} more affected scenario${hidden === 1 ? "" : "s"} (--full)`)}`);
+  }
   return out.join("\n");
 }
 

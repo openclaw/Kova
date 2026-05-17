@@ -49,7 +49,7 @@ export function findingsBlock({ findings, compare = false, ui, limit = null } = 
 
   const more = findings.length - top.length;
   if (more > 0) {
-    lines.push(`  ${c.dim(`+ ${more} more finding${more === 1 ? "" : "s"}`)}`);
+    lines.push(`  ${c.dim(`+ ${more} more finding${more === 1 ? "" : "s"} (--full)`)}`);
   }
   return lines.join("\n");
 }
