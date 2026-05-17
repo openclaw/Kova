@@ -61,7 +61,7 @@ export function findingsBlock({ findings, compare = false, ui, limit = null, ind
     });
 
     const scope = formatScope(f);
-    const evidence = (f.evidence ?? []).slice(0, 2).join("; ");
+    const evidence = (f.evidence ?? []).slice(0, 2).map(tightenSummary).join("; ");
     const detail = [scope, evidence].filter(Boolean).join("  ");
     if (detail) {
       const indent = 6;
@@ -99,17 +99,64 @@ function normalizeOwner(owner) {
 // the JSON report and in `summary` fields used by tests.
 function tightenSummary(text) {
   let s = String(text ?? "");
-  // ", over threshold 4000ms" -> " (cap 4,000ms)"
+
+  // Massive leaked-process messages: keep the headline ("…leaked N
+  // process(es); first leak <kind> pid <pid>") and drop the trailing
+  // command line / library paths that can run hundreds of chars.
+  s = s.replace(/^(.*?leaked\s+\d+\s+process\(es\))\s*(?:after completion)?;\s*first leak\s+(\S+)\s+pid\s+(\d+)[\s\S]*$/i,
+    (_m, head, kind, pid) => `${head}; first leak ${kind} pid ${pid}`);
+
+  // Long command-line "<command line> took Xms, over threshold Yms" — drop
+  // the command portion when it's a giant shell invocation. Keep the
+  // subject word (agent/gateway/plugin/etc.) for context.
+  s = s.replace(/^[\s\S]*?\b(agent|gateway|tui|dashboard|provider|plugin|browser|mcp|matrix)\b[\s\S]*?took\s+(\d[\d,]*)\s*ms,\s*over threshold\s+(\d[\d,]*)\s*ms\s*$/i,
+    (_m, subject, actual, cap) => `${subject} command took ${commaNum(actual)} ms (cap ${commaNum(cap)} ms)`);
+
+  // ", over threshold 4000ms" -> " (cap 4,000 ms)"
   s = s.replace(/,\s*over threshold\s+(\d[\d,]*)\s*(ms|MB|mb)\b/gi, (_m, n, u) => ` (cap ${commaNum(n)} ${u.toLowerCase() === "mb" ? "MB" : "ms"})`);
   // "exceeded threshold 900 MB" -> "(cap 900 MB)"
   s = s.replace(/\s*exceeded threshold\s+(\d[\d,]*)\s*(ms|MB|mb)\b/gi, (_m, n, u) => ` (cap ${commaNum(n)} ${u.toLowerCase() === "mb" ? "MB" : "ms"})`);
-  // "spent 11792ms before provider work" -> "took 11,792ms pre-provider"
-  s = s.replace(/\bspent\s+(\d[\d,]*)\s*ms\s+before provider work\b/gi, (_m, n) => `took ${commaNum(n)}ms pre-provider`);
-  // "pre-provider latency was 11792ms" -> "pre-provider 11,792ms"
-  s = s.replace(/\bpre-provider latency was\s+(\d[\d,]*)\s*ms\b/gi, (_m, n) => `pre-provider ${commaNum(n)}ms`);
-  // Comma-format any remaining bare 4+ digit ms/MB numbers.
+  // "beyond the 30000ms threshold" -> "(cap 30,000 ms)"
+  s = s.replace(/,?\s*beyond the\s+(\d[\d,]*)\s*ms\s+threshold\b/gi, (_m, n) => ` (cap ${commaNum(n)} ms)`);
+  // "spent 11792ms before provider work" -> "took 11,792 ms pre-provider"
+  s = s.replace(/\bspent\s+(\d[\d,]*)\s*ms\s+before provider work\b/gi, (_m, n) => `took ${commaNum(n)} ms pre-provider`);
+  // "pre-provider latency was 11792ms" -> "pre-provider 11,792 ms"
+  s = s.replace(/\bpre-provider latency was\s+(\d[\d,]*)\s*ms\b/gi, (_m, n) => `pre-provider ${commaNum(n)} ms`);
+
+  // Phrase tightening — agent-turn family.
+  s = s.replace(/\bagent message command finished without a usable assistant response\b/gi,
+    "agent turn produced no usable assistant response");
+  s = s.replace(/\bcold agent turn did not produce the expected assistant response\b/gi,
+    "cold turn missing expected assistant response");
+  s = s.replace(/\bcold agent turn response did not include expected marker\b/gi,
+    "cold turn missing marker");
+  s = s.replace(/\bcold agent turn ran with mock auth but no mock provider request was captured\b/gi,
+    "cold turn (mock auth): no provider request captured");
+  s = s.replace(/\bNo provider request happened during the agent turn\.?/gi,
+    "no provider request during agent turn");
+
+  // Diagnostics-span and pattern-count phrasing.
+  s = s.replace(/\b(\d+)\s+missing dependency\/plugin load error patterns found\b/gi,
+    (_m, n) => `${n} dependency/plugin load error pattern${n === "1" ? "" : "s"}`);
+  s = s.replace(/\b(\d+)\s+plugin load failure patterns found\b/gi,
+    (_m, n) => `${n} plugin load failure${n === "1" ? "" : "s"}`);
+  s = s.replace(/\b(\d+)\s+required OpenClaw diagnostics span\(s\) were not observed:/gi,
+    (_m, n) => `${n} OpenClaw diagnostics span${n === "1" ? "" : "s"} missing:`);
+  s = s.replace(/\b(\d+)\s+gateway readiness windows expired before health was ready\b/gi,
+    (_m, n) => `${n} gateway readiness window${n === "1" ? "" : "s"} expired`);
+
+  // Gateway-hard-failure / slow-startup / health-failures phrasing.
+  s = s.replace(/\bgateway hard failure:\s*gateway\s+/gi, "gateway hard failure: ");
+  s = s.replace(/\s+before the hard deadline\b/gi, "");
+  s = s.replace(/\bgateway slow startup:\s*gateway became healthy after\s+(\d[\d,]*)\s*ms\b/gi,
+    (_m, n) => `gateway slow startup: healthy at ${commaNum(n)} ms`);
+  s = s.replace(/\bgateway was not healthy after agent command;\s*gateway=running,\s*health failures=(\d+)\b/gi,
+    (_m, n) => `gateway unhealthy after agent command (${n} health failure${n === "1" ? "" : "s"})`);
+
+  // Comma-format any remaining bare 4+ digit ms/MB numbers. Use a space
+  // separator to match the (cap N ms) style we emit above.
   s = s.replace(/(\d{4,})\s*(ms|MB)\b/g, (_m, n, u) => `${commaNum(n)} ${u}`);
-  return s.replace(/\s{2,}/g, " ").trim();
+  return s.replace(/\s{2,}/g, " ").trim().replace(/\.+$/, "");
 }
 
 function commaNum(n) {
