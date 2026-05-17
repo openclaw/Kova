@@ -1,0 +1,34 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  KOVA  ·  report compare                                                     ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+   [FAIL]   4 regressions · 1 affected
+            local-build:…Claw/shakker-claw → local-build:…Claw/shakker-claw
+
+  baseline  local-build:…Claw/shakker-claw    kova-2026-04-30T031128Z
+  current   local-build:…Claw/shakker-claw    kova-2026-04-30T040505Z
+  delta     4 regressions  ·  1 scenario affected
+
+─── scenarios ──────────────────────────────────────────────────────────────────
+
+scenario                 samples  verdict            Δ  worst metric
+release-runtime-startup        —  [REGRESSED]       +3  nodeProfileTopFunctionM…
+
+─── findings ───────────────────────────────────────────────────────────────────
+
+  + ✗ peak RSS 904.5 MB (cap 900 MB)
+      release-runtime-startup/fresh peakRssMb: 904.5; cpuPercentMax: 150.1
+
+─── release-runtime-startup ────────────────────── [REGRESSED] · FAIL → FAIL ───
+
+metric                    baseline       current         Δ    threshold   status
+nodeProfileTopFunctio…     145,175       309,157   +113.0%        5,000   OVER
+diagnosticArtifactByt…           0   128,880,485         —   26,214,400   OVER
+heapSnapshotBytes                0   128,809,325         —   52,428,800   OVER
+cold.ready.ms               158 ms        703 ms   +344.9%            —   —
+pluginsListMs                1,145         1,438    +25.6%            —   —
+resourcePeakGatewayRs…         287           349    +21.6%            —   —
+
+─── next ───────────────────────────────────────────────────────────────────────
+
+  → kova report kova-2026-04-30T040505Z
+  → kova report bundle kova-2026-04-30T040505Z

@@ -1,0 +1,36 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  KOVA  ·  help                                                               ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+   OpenClaw runtime validation lab              kova help <command>  for details
+
+─── commands ───────────────────────────────────────────────────────────────────
+  ◆ kova version          Print Kova version and runtime info.
+  ◆ kova setup            Verify prerequisites, configure auth, and prepare directories.
+  ◆ kova self-check       Run the full Kova suite (dry-runs, parsers, gates, evaluators).
+  ◆ kova plan             Show OpenClaw surfaces, scenarios, states, and metrics.
+  ◆ kova inventory plan   Discover OpenClaw capabilities not yet mapped to Kova surfaces.
+  ◆ kova run              Run one OpenClaw scenario. Dry-run unless --execute.
+  ◆ kova matrix           Profile-driven multi-scenario plan / run with optional gate.
+  ◆ kova report           Render a Kova report dashboard, summary, paste, compare, or bundle.
+  ◆ kova cleanup          Remove stale Kova-owned envs and run artifact dirs.
+
+─── selectors ──────────────────────────────────────────────────────────────────
+  → npm:<version>             Published OpenClaw release
+  → channel:<name>            Published channel such as stable or beta
+  → runtime:<name>            Existing OCM runtime name
+  → local-build:<repo-path>   Build a release-shaped runtime from a checkout
+
+─── notes ──────────────────────────────────────────────────────────────────────
+  • Kova uses OCM to create isolated OpenClaw envs and runtimes.
+  • Reports describe OpenClaw behavior, not OCM behavior.
+  • run/matrix run are dry-run unless --execute is passed.
+  • --repeat records independent samples and computes aggregate performance stats.
+  • --auth defaults to mock so every disposable env has deliberate model auth.
+  • --deep-profile enables Node CPU/heap/trace + diagnostic report + denser sampling.
+  • Human-facing commands render dashboards by default; --plain falls back to legacy text.
+
+─── next ───────────────────────────────────────────────────────────────────────
+  → kova setup --ci
+  → kova self-check
+  → kova plan
+  → kova matrix run --profile smoke --target runtime:stable --execute

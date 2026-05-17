@@ -1,0 +1,41 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  KOVA  ·  report                                                             ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+   [FAIL]   1 scenario failed · 1/1 sample failed · single-sample
+
+  run kova-2026-04-30T040505Z · target local-build:<home>/WorkSpace/ShakkerNerd/OpenSource/OpenClaw/shakker-claw · <ts>
+
+─── scenarios ──────────────────────────────────────────────────────────────────
+  scenario                 samples  verdict    worst metric
+  release-runtime-startup      0/1  [FAIL]     peak.rss.mb 904.5MB > 900MB
+
+─── release-runtime-startup ────────────────────────────── [FAIL] · 1 sample ───
+
+  Phases
+       phase                 elapsed  note
+    ✓  target-setup           56.3 s
+    ✓  provision              703 ms
+    ✓  post-start             4.09 s
+    ✓  startup-logs           385 ms
+
+  Metrics
+    metric                 value   threshold   status
+    peak.rss.mb           905 MB      900 MB   FAIL
+    cold.ready.ms         703 ms           —   PASS
+    health.p95.ms           1 ms           —   PASS
+    cpu.max.%              150 %           —   PASS
+    event-loop.max.ms       0 ms           —   PASS
+
+  Findings
+    ✗ peak RSS 904.5 MB (cap 900 MB)
+        release-runtime-startup/fresh peakRssMb: 904.5; cpuPercentMax: 150.1
+    ✗ gateway hard failure: TCP socket never accepted connections
+        release-runtime-startup/fresh peakRssMb: 904.5; cpuPercentMax: 150.1
+
+  Proves
+    ✗ Start a release-shaped OpenClaw runtime, measure cold readiness and
+      bundled runtime dependency staging, and fail on degraded plugin startup.
+
+─── next ───────────────────────────────────────────────────────────────────────
+  → node bin/kova.mjs run --target local-build:<home>/WorkSpace/ShakkerNerd/OpenSource/OpenClaw/shakker-claw --scenario release-runtime-startup --state fresh --execute --profile-on-failure --retain-on-failure --json
+  → kova report bundle kova-2026-04-30T040505Z

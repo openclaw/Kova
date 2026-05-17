@@ -1,0 +1,38 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  KOVA  ·  report                                                             ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+   [FAIL]   1 scenario failed · 1/1 sample failed · single-sample
+
+  run kova-2026-04-30T031128Z · target local-build:<home>/WorkSpace/ShakkerNerd/OpenSource/OpenClaw/shakker-claw · <ts>
+
+─── scenarios ──────────────────────────────────────────────────────────────────
+  scenario                 samples  verdict    worst metric
+  release-runtime-startup      0/1  [FAIL]     readinessClassification gateway ha…
+
+─── release-runtime-startup ────────────────────────────── [FAIL] · 1 sample ───
+
+  Phases
+       phase                 elapsed  note
+    ✓  target-setup           56.0 s
+    ✓  provision              158 ms
+    ✓  post-start             3.29 s
+    ✓  startup-logs            57 ms
+
+  Metrics
+    metric                value   threshold   status
+    cold.ready.ms        158 ms           —   PASS
+    health.p95.ms          1 ms           —   PASS
+    peak.rss.mb          826 MB           —   PASS
+    cpu.max.%             143 %           —   PASS
+
+  Findings
+    ✗ gateway hard failure: TCP socket never accepted connections
+        release-runtime-startup/fresh peakRssMb: 826.3; cpuPercentMax: 143.1
+
+  Proves
+    ✗ Start a release-shaped OpenClaw runtime, measure cold readiness and
+      bundled runtime dependency staging, and fail on degraded plugin startup.
+
+─── next ───────────────────────────────────────────────────────────────────────
+  → node bin/kova.mjs run --target local-build:<home>/WorkSpace/ShakkerNerd/OpenSource/OpenClaw/shakker-claw --scenario release-runtime-startup --state fresh --execute --profile-on-failure --retain-on-failure --json
+  → kova report bundle kova-2026-04-30T031128Z

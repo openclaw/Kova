@@ -1,0 +1,65 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  KOVA  ·  report compare                                                     ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+   [FAIL]   4 regressions · 1 affected
+            local-build:…Claw/shakker-claw → local-build:…Claw/shakker-claw
+
+  baseline  local-build:…Claw/shakker-claw    kova-2026-04-30T031128Z
+  current   local-build:…Claw/shakker-claw    kova-2026-04-30T040505Z
+  delta     4 regressions  ·  1 scenario affected
+
+─── scenarios ──────────────────────────────────────────────────────────────────
+
+scenario                 samples  verdict            Δ  worst metric
+release-runtime-startup        —  [REGRESSED]       +3  nodeProfileTopFunctionM…
+
+─── findings ───────────────────────────────────────────────────────────────────
+
+  + ✗ peak RSS 904.5 MB (cap 900 MB)
+      release-runtime-startup/fresh peakRssMb: 904.5; cpuPercentMax: 150.1
+
+─── release-runtime-startup ────────────────────── [REGRESSED] · FAIL → FAIL ───
+
+metric                    baseline       current         Δ    threshold   status
+nodeProfileTopFunct…       145,175       309,157   +113.0%        5,000   OVER
+diagnosticArtifactB…             0   128,880,485         —   26,214,400   OVER
+heapSnapshotBytes                0   128,809,325         —   52,428,800   OVER
+cold.ready.ms               158 ms        703 ms   +344.9%            —   —
+pluginsListMs                1,145         1,438    +25.6%            —   —
+resourcePeakGateway…           287           349    +21.6%            —   —
+nodeCpuProfileCount              5             6    +20.0%            —   —
+nodeHeapProfileCount             5             6    +20.0%            —   —
+peak.rss.mb                 826 MB        905 MB     +9.5%            —   —
+statusMs                     2,092         2,237     +6.9%            —   —
+cpu.max.%                    143 %         150 %     +4.9%            —   —
+resourcePeakCommand…           540           556     +3.0%            —   —
+readinessFailures                1             1      0.0%            —   —
+resourceSampleCount             22            20     -9.1%            —   PASS
+nodeTraceEventCount              7             6    -14.3%            —   PASS
+nodeProfileArtifact…   172,827,123   123,137,894    -28.8%            —   PASS
+event-loop.max.ms                —          0 ms         —            —   —
+configNormalization…             0             0         —            —   —
+configNormalization…             0             0         —            —   —
+eventLoopDelayMenti…             0             0         —            —   —
+gatewayRestartCount              0             0         —            —   —
+heapSnapshotCount                0             1         —            —   —
+metadataScanMentions             0             0         —            —   —
+missingDependencyEr…             0             0         —            —   —
+modelCatalogMentions             0             0         —            —   —
+openclawChildProces…             0             0         —            —   —
+openclawEventLoopMa…             —             0         —            —   —
+openclawRepeatedSpa…             0             1         —            —   —
+openclawSlowestSpan…             —          43.0         —            —   —
+openclawTimelineEve…             0            55         —            —   —
+openclawTimelinePar…             0             0         —            —   —
+pluginLoadFailures               0             0         —            —   —
+pluginMetadataScanC…             0             0         —            —   —
+providerLoadMentions             0             0         —            —   —
+providerTimeoutMent…             0             0         —            —   —
+tcpConnectMaxMs                  0             1         —            —   —
+v8ReportCount                    0             1         —            —   —
+
+─── next ───────────────────────────────────────────────────────────────────────
+
+  → kova report kova-2026-04-30T040505Z
+  → kova report bundle kova-2026-04-30T040505Z
