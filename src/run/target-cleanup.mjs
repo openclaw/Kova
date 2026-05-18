@@ -1,13 +1,5 @@
 import { runCleanupCommand } from "../cleanup.mjs";
 import { ocmRuntimeRemoveJson } from "../ocm/commands.mjs";
-export {
-  loadRegressionThresholds,
-  positiveIntegerFlag,
-  positiveIntegerValue,
-  profileIntegerFlag,
-  summarizePerformanceReceipt,
-  validateBaselineExecutionFlags
-} from "../run/options.mjs";
 
 export async function cleanupTargetRuntimeIfNeeded(targetPlan, records, options) {
   if (targetPlan.kind !== "local-build") {

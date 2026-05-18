@@ -2,14 +2,14 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { authReportSummary, resolveRunAuthContext } from "../auth.mjs";
 import { required, resolveFromCwd } from "../cli.mjs";
+import { buildRunContext } from "../run/context.mjs";
 import {
-  cleanupTargetRuntimeIfNeeded,
   loadRegressionThresholds,
   positiveIntegerFlag,
   summarizePerformanceReceipt,
   validateBaselineExecutionFlags
-} from "./run-support.mjs";
-import { buildRunContext } from "../run/context.mjs";
+} from "../run/options.mjs";
+import { cleanupTargetRuntimeIfNeeded } from "../run/target-cleanup.mjs";
 import {
   comparePerformanceToBaseline,
   loadBaselineStore,

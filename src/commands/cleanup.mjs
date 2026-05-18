@@ -4,7 +4,7 @@ import { runCleanupCommand } from "../cleanup.mjs";
 import { runCommand } from "../commands.mjs";
 import { artifactsDir } from "../paths.mjs";
 import { ocmEnvDestroy, ocmEnvListJson } from "../ocm/commands.mjs";
-import { positiveIntegerFlag } from "./run-support.mjs";
+import { positiveIntegerFlag } from "../run/options.mjs";
 import { renderCleanupEnvs, renderCleanupArtifacts } from "../reporting/render-cleanup.mjs";
 
 export async function runCleanupCliCommand(flags) {

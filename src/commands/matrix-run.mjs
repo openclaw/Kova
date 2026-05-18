@@ -2,15 +2,15 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { authReportSummary, resolveRunAuthContext } from "../auth.mjs";
 import { required, resolveFromCwd } from "../cli.mjs";
+import { buildRunContext } from "../run/context.mjs";
 import {
-  cleanupTargetRuntimeIfNeeded,
   loadRegressionThresholds,
   positiveIntegerFlag,
   positiveIntegerValue,
   summarizePerformanceReceipt,
   validateBaselineExecutionFlags
-} from "./run-support.mjs";
-import { buildRunContext } from "../run/context.mjs";
+} from "../run/options.mjs";
+import { cleanupTargetRuntimeIfNeeded } from "../run/target-cleanup.mjs";
 import { applyMatrixControls, expandProfile } from "../matrix/expand.mjs";
 import { evaluateGate, preflightGateRun } from "../matrix/gate.mjs";
 import { matrixControlSummary } from "../matrix/controls.mjs";

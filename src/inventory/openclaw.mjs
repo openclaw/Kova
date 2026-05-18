@@ -1,7 +1,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import { basename, join, relative } from "node:path";
 import { quoteShell, runCommand } from "../commands.mjs";
-import { positiveIntegerFlag } from "../commands/run-support.mjs";
+import { positiveIntegerFlag } from "../run/options.mjs";
 import { resolveFromCwd } from "../cli.mjs";
 import { loadRegistryContext } from "../registries/context.mjs";
 
