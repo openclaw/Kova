@@ -1,7 +1,7 @@
 // Lightweight columnar table renderer. Right-aligns numeric columns,
 // left-aligns text. No borders; uses whitespace alignment.
 
-import { padEnd, padStart, visualWidth, truncate } from "./text.mjs";
+import { padEnd, padStart, visualWidth, truncate, wrap } from "./text.mjs";
 
 // renderTable({
 //   columns: [
@@ -14,11 +14,21 @@ import { padEnd, padStart, visualWidth, truncate } from "./text.mjs";
 //                   // the widest shrinkable left-aligned column down to its
 //                   // minWidth. Cells beyond their column width are truncated.
 // })
+//
+// Per-column `wrap: true` opts a left-aligned column into hanging-indent
+// wrapping: cells that exceed the column width emit multiple visual lines
+// (continuation rows pad the other columns with spaces). Use this for the
+// most variable-length column when you'd rather grow vertically than lose
+// information to an ellipsis.
+//
+// Per-row `__after` (string) is emitted as a stand-alone line directly
+// below the row, untouched by column alignment. Use it for a full-width
+// dim continuation line (e.g. a long reason that won't fit in any cell).
 export function renderTable({ columns, rows, gap = 2, maxWidth = null }) {
   const widths = columns.map((col) => {
     const header = col.header ?? "";
     const max = rows.reduce(
-      (acc, row) => Math.max(acc, visualWidth(String(row[col.key] ?? ""))),
+      (acc, row) => Math.max(acc, visualWidth(cellText(row[col.key]))),
       visualWidth(String(header)),
     );
     return Math.max(max, col.minWidth ?? 0);
@@ -36,7 +46,28 @@ export function renderTable({ columns, rows, gap = 2, maxWidth = null }) {
   }
 
   for (const row of rows) {
-    lines.push(columns.map((col, i) => alignCell(String(row[col.key] ?? ""), widths[i], col.align)).join(gapStr).replace(/\s+$/, ""));
+    const cells = columns.map((col, i) => {
+      const raw = row[col.key];
+      const isObj = raw != null && typeof raw === "object" && "text" in raw;
+      const text = String(isObj ? raw.text : (raw ?? ""));
+      const color = isObj && typeof raw.color === "function" ? raw.color : (s) => s;
+      if (col.wrap && visualWidth(text) > widths[i]) {
+        return wrap(text, widths[i]).map(color);
+      }
+      return [color(text)];
+    });
+    const rowHeight = cells.reduce((acc, c) => Math.max(acc, c.length), 1);
+    for (let line = 0; line < rowHeight; line += 1) {
+      const parts = columns.map((col, i) => {
+        const cellLines = cells[i];
+        const txt = line < cellLines.length ? cellLines[line] : "";
+        return alignCell(txt, widths[i], col.align);
+      });
+      lines.push(parts.join(gapStr).replace(/\s+$/, ""));
+    }
+    if (typeof row.__after === "string" && row.__after.length > 0) {
+      lines.push(row.__after);
+    }
   }
 
   return lines.join("\n");
@@ -64,4 +95,10 @@ function alignCell(text, width, align) {
   const truncated = visualWidth(text) > width ? truncate(text, width) : text;
   if (align === "right") return padStart(truncated, width);
   return padEnd(truncated, width);
+}
+
+function cellText(raw) {
+  if (raw == null) return "";
+  if (typeof raw === "object" && "text" in raw) return String(raw.text ?? "");
+  return String(raw);
 }
