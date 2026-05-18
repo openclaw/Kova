@@ -61,9 +61,7 @@
       "id": "source-runtime",
       "title": "Prepare Source Runtime",
       "intent": "Inspect the cloned source state before any target upgrade action.",
-      "commands": [
-        "ocm service status {env} --json"
-      ],
+      "commands": [],
       "evidence": [
         "pre-upgrade gateway status"
       ],
