@@ -346,3 +346,37 @@ export function collectorReceiptReason(record, phaseId, collectorId) {
   }
   return null;
 }
+
+export function gatewaySessionHealthOk(record, health) {
+  return health?.readiness?.classification === "ready" &&
+    Number.isFinite(health.readiness.healthReadyAtMs) &&
+    (health.postReadySamples?.count ?? 0) > 0 &&
+    (health.postReadySamples?.failureCount ?? 0) === 0 &&
+    (health.final?.failureCount ?? 0) === 0 &&
+    record.measurements?.finalGatewayState === "running";
+}
+
+export function gatewaySessionHealthReason(record, health) {
+  if (!health?.readiness) {
+    return "readiness measurement was not collected";
+  }
+  if (health.readiness.classification !== "ready") {
+    return `readiness classification was ${health.readiness.classification ?? "missing"}`;
+  }
+  if (!Number.isFinite(health.readiness.healthReadyAtMs)) {
+    return "readiness health-ready timing was not collected";
+  }
+  if ((health.postReadySamples?.count ?? 0) <= 0) {
+    return "post-ready health samples were not collected";
+  }
+  if ((health.postReadySamples?.failureCount ?? 0) !== 0) {
+    return `post-ready health failures were ${health.postReadySamples.failureCount}`;
+  }
+  if ((health.final?.failureCount ?? 0) !== 0) {
+    return `final health failures were ${health.final.failureCount}`;
+  }
+  if (record.measurements?.finalGatewayState !== "running") {
+    return `final gateway state was ${record.measurements?.finalGatewayState ?? "missing"}`;
+  }
+  return null;
+}
