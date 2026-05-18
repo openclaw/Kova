@@ -1,5 +1,5 @@
 import { authReportSummary, resolveRunAuthContext } from "../auth.mjs";
-import { required, resolveFromCwd } from "../cli.mjs";
+import { resolveFromCwd } from "../cli.mjs";
 import { buildRunContext } from "../run/context.mjs";
 import {
   loadRegressionThresholds,
@@ -9,11 +9,9 @@ import {
   validateBaselineExecutionFlags
 } from "../run/options.mjs";
 import { cleanupTargetRuntimeIfNeeded } from "../run/target-cleanup.mjs";
-import { applyMatrixControls, expandProfile } from "../matrix/expand.mjs";
 import { evaluateGate, preflightGateRun } from "../matrix/gate.mjs";
-import { matrixControlSummary } from "../matrix/controls.mjs";
-import { profileSummary, validateProfileTarget } from "../matrix/profile.mjs";
-import { assertResolvedCoverageIsRunnable, resolveCoverageObligations } from "../matrix/resolver.mjs";
+import { resolveMatrixPlan } from "../matrix/plan-resolution.mjs";
+import { profileSummary } from "../matrix/profile.mjs";
 import {
   comparePerformanceToBaseline,
   loadBaselineStore,
@@ -23,11 +21,7 @@ import {
   updateBaselineStore
 } from "../performance/baselines.mjs";
 import { buildPerformanceSummary } from "../performance/stats.mjs";
-import { platformInfo } from "../platform.mjs";
 import { reportsDir, displayPath } from "../paths.mjs";
-import { loadRegistryContext } from "../registries/context.mjs";
-import { loadProfile } from "../registries/profiles.mjs";
-import { validateScenarioRun } from "../registries/scenarios.mjs";
 import { summarizeRecords } from "../reporting/report.mjs";
 import { bundleReport, retainGateArtifacts } from "../reporting/artifacts.mjs";
 import { createRunId } from "../runner.mjs";
@@ -40,23 +34,18 @@ import { renderMatrixRunReceipt } from "../reporting/render-run-receipt.mjs";
 const reportSchemaVersion = "kova.report.v1";
 
 export async function runMatrixRun(flags) {
-  const registry = await loadRegistryContext();
-  const profile = await loadProfile(required(flags.profile, "--profile"));
-  validateProfileExecutionFlags(profile, flags);
-  const target = required(flags.target, "--target");
   validateBaselineExecutionFlags(flags);
-  const targetPlan = resolveTarget(target, "target");
-  validateProfileTarget(profile, targetPlan);
-  const fromPlan = flags.from ? resolveTarget(flags.from, "from") : null;
-  const entries = applyMatrixControls(await expandProfile(profile), flags, platformInfo());
-  const resolvedCoverage = resolveCoverageObligations({
+  const {
+    registry,
     profile,
+    target,
+    targetPlan,
+    fromPlan,
+    platform,
     entries,
-    surfaces: registry.surfaces,
-    targetPlan
-  });
-  assertResolvedCoverageIsRunnable(resolvedCoverage);
-  const controls = matrixControlSummary(flags, targetPlan);
+    resolvedCoverage,
+    controls
+  } = await resolveMatrixPlan(flags, { validateProfile: validateProfileExecutionFlags });
   const auth = await resolveRunAuthContext(flags);
   const regressionThresholds = await loadRegressionThresholds(flags);
   const baselinePath = resolveBaselinePath(flags.baseline);
@@ -117,7 +106,6 @@ export async function runMatrixRun(flags) {
     parallel: controls.parallel,
     regressionThresholds
   });
-  const platform = platformInfo();
   const reportBase = {
     schemaVersion: reportSchemaVersion,
     generatedAt: new Date().toISOString(),
