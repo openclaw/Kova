@@ -15,9 +15,14 @@ import {
   attachCleanupEvidence,
   attachEvidenceArtifactBudget
 } from "./evidence/record.mjs";
-import { materializeCommands } from "./registries/scenarios.mjs";
 import { quoteShell } from "./commands.mjs";
 import { ocmEnvDestroy, ocmRuntimeBuildLocal } from "./ocm/commands.mjs";
+import {
+  materializeLifecycleCommands,
+  materializeLifecycleStepCommands,
+  materializeScenarioPhaseCommands,
+  safeSegment
+} from "./run/phase-commands.mjs";
 import { captureProcessSnapshot, diffProcessSnapshots } from "./collectors/resources.mjs";
 import { collectEnvMetrics, collectNodeProfileMetrics } from "./metrics.mjs";
 import { collectorArtifactDirs, prepareCollectorArtifactDirs } from "./collectors/artifacts.mjs";
@@ -484,12 +489,7 @@ function buildStateLifecyclePhase(context, envName, scenario, kind, steps, artif
     return null;
   }
 
-  const commands = [];
-  const evidence = [];
-  for (const step of steps) {
-    commands.push(...materializeCommands(step.commands ?? [], commandValues(context, envName, artifactDir)));
-    evidence.push(...(step.evidence ?? []));
-  }
+  const { commands, evidence } = materializeLifecycleCommands(steps, context, envName, artifactDir);
 
   return {
     id: kind,
@@ -502,10 +502,6 @@ function buildStateLifecyclePhase(context, envName, scenario, kind, steps, artif
     evidence,
     scenario: scenario.id
   };
-}
-
-function materializeScenarioPhaseCommands(phase, context, envName, artifactDir) {
-  return materializeCommands(phase.commands ?? [], commandValues(context, envName, artifactDir));
 }
 
 function buildEvidenceSnapshotPhase(context, envName, scenario, afterPhaseId, artifactDir) {
@@ -635,14 +631,10 @@ async function executeStateLifecycleSteps(context, envName, scenario, kind, step
   }
 
   const results = [];
-  const commands = [];
-  const evidence = [];
+  const { commands, evidence } = materializeLifecycleCommands(steps, context, envName, artifactDir);
 
   for (const step of steps) {
-    const stepCommands = materializeCommands(step.commands ?? [], commandValues(context, envName, artifactDir));
-    commands.push(...stepCommands);
-    evidence.push(...(step.evidence ?? []));
-
+    const stepCommands = materializeLifecycleStepCommands(step, context, envName, artifactDir);
     for (const [commandIndex, command] of stepCommands.entries()) {
       results.push(await runScenarioCommand(command, context, envName, artifactDir, kind, commandIndex, authPolicy));
     }
@@ -965,24 +957,6 @@ function quoteNodeOptionValue(value) {
     return string;
   }
   return `"${string.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
-}
-
-function commandValues(context, envName, artifactDir = "") {
-  return {
-    env: quoteShell(envName),
-    target: context.target,
-    from: context.from ?? "",
-    sourceEnv: quoteShell(context.sourceEnv ?? ""),
-    artifactDir: artifactDir ? quoteShell(artifactDir) : "",
-    kovaRoot: quoteShell(repoRoot),
-    startSelector: context.targetPlan.startSelector,
-    upgradeSelector: context.targetPlan.upgradeSelector,
-    fromUpgradeSelector: context.fromPlan?.upgradeSelector ?? ""
-  };
-}
-
-function safeSegment(value) {
-  return String(value ?? "phase").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "phase";
 }
 
 function envNameFor(scenarioId, stateId, runId, repeat = null) {
