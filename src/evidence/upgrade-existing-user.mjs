@@ -1,4 +1,8 @@
 import {
+  collectedLogArtifactPath,
+  collectedLogsOk,
+  collectedLogsProof,
+  collectedLogsReason,
   compareSnapshotCountInvariant,
   compareSnapshotEqualityInvariant,
   compareSnapshotSetInvariant,
@@ -16,8 +20,18 @@ export function buildUpgradeLogDerivedInvariants(record) {
   const missingDependencyErrors = record.measurements?.missingDependencyErrors;
   const pluginLoadFailures = record.measurements?.pluginLoadFailures;
   const doctor = findCommandResult(record, (result) => result.command?.includes(" -- doctor"));
+  const logsProof = collectedLogsProof(record, "post-upgrade");
 
   return [
+    {
+      id: "upgrade-logs-captured",
+      phaseId: "post-upgrade",
+      required: true,
+      status: collectedLogsOk(logsProof) ? "passed" : "missing",
+      summary: "post-upgrade gateway logs were captured for dependency and plugin-load checks",
+      artifactPath: collectedLogArtifactPath(record),
+      reason: collectedLogsReason(logsProof)
+    },
     zeroCountInvariant({
       id: "no-missing-runtime-dependency-errors",
       summary: "gateway logs and command output contain no missing runtime dependency errors",

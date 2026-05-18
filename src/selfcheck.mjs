@@ -1076,6 +1076,11 @@ function missingCollectorProofCheck() {
       buildUpgradeLogDerivedInvariants(missingRecord).map((invariant) => [invariant.id, invariant])
     );
     assertEqual(
+      missingInvariants["upgrade-logs-captured"].status,
+      "missing",
+      "missing logs are incomplete upgrade proof"
+    );
+    assertEqual(
       missingInvariants["no-missing-runtime-dependency-errors"].status,
       "missing",
       "missing dependency proof is incomplete without logs"
@@ -1409,6 +1414,16 @@ function upgradeLogDerivedInvariantsCheck() {
       },
       phases: [{
         id: "post-upgrade",
+        metrics: {
+          collectors: [
+            syntheticCollectorReceipt("logs", { artifacts: ["/tmp/kova/logs/gateway-tail.log"] })
+          ],
+          logs: {
+            ...zeroLogMetrics(),
+            commandStatus: 0,
+            artifacts: ["/tmp/kova/logs/gateway-tail.log"]
+          }
+        },
         results: [{
           command: "ocm @kova-self-check -- doctor --fix",
           status: 0,
