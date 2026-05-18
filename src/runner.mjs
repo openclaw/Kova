@@ -1510,7 +1510,7 @@ export function buildReleaseRuntimeStartupEvidenceInvariants(record, scenario = 
   const provision = releaseStartupProvisionProof(record);
   const statusResult = findCommandResult(record, (result) => result.command === "ocm @{env} -- status" || result.command?.includes(" -- status"));
   const pluginsListResult = findCommandResult(record, (result) => result.command === "ocm @{env} -- plugins list" || result.command?.includes(" -- plugins list"));
-  const logsResult = findCommandResult(record, (result) => result.command?.startsWith("ocm logs "));
+  const logsProof = releaseStartupLogsProof(record, "startup-logs");
   const missingDependencyErrors = record.measurements?.missingDependencyErrors;
   const pluginLoadFailures = record.measurements?.pluginLoadFailures;
 
@@ -1573,10 +1573,10 @@ export function buildReleaseRuntimeStartupEvidenceInvariants(record, scenario = 
       id: "release-runtime-startup-logs-captured",
       phaseId: "startup-logs",
       required: true,
-      status: releaseStartupLogsOk(logsResult) ? "passed" : "missing",
-      summary: "startup log command captured bounded gateway startup output",
+      status: releaseStartupLogsOk(logsProof) ? "passed" : "missing",
+      summary: "startup logs were captured through command or collector evidence",
       artifactPath: releaseStartupLogArtifactPath(record),
-      reason: releaseStartupLogsReason(logsResult)
+      reason: releaseStartupLogsReason(logsProof)
     },
     zeroCountInvariant({
       id: "release-runtime-no-missing-runtime-dependency-errors",
@@ -1597,36 +1597,27 @@ export function buildReleaseRuntimeStartupEvidenceInvariants(record, scenario = 
 
 function releaseStartupCommandReceiptsOk(record) {
   const required = [
-    (result) => result.command?.startsWith("ocm start "),
-    (result) => result.command?.startsWith("ocm service status "),
-    (result) => result.command === "ocm @{env} -- status" || result.command?.includes(" -- status"),
-    (result) => result.command === "ocm @{env} -- plugins list" || result.command?.includes(" -- plugins list"),
-    (result) => result.command?.startsWith("ocm logs ")
+    ["ocm start", () => commandReceiptOk(record, (result) => result.command?.startsWith("ocm start "))],
+    ["service collector", () => collectorReceiptOk(record, "post-start", "service")],
+    ["ocm status", () => commandReceiptOk(record, (result) => result.command === "ocm @{env} -- status" || result.command?.includes(" -- status"))],
+    ["ocm plugins list", () => commandReceiptOk(record, (result) => result.command === "ocm @{env} -- plugins list" || result.command?.includes(" -- plugins list"))],
+    ["logs collector", () => collectorReceiptOk(record, "startup-logs", "logs")]
   ];
-  return required.every((predicate) => {
-    const result = findCommandResult(record, predicate);
-    return result?.status === 0 && result.durationMs !== undefined;
-  });
+  return required.every(([_, ok]) => ok());
 }
 
 function releaseStartupCommandReceiptsReason(record) {
   const required = [
-    ["ocm start", (result) => result.command?.startsWith("ocm start ")],
-    ["ocm service status", (result) => result.command?.startsWith("ocm service status ")],
-    ["ocm status", (result) => result.command === "ocm @{env} -- status" || result.command?.includes(" -- status")],
-    ["ocm plugins list", (result) => result.command === "ocm @{env} -- plugins list" || result.command?.includes(" -- plugins list")],
-    ["ocm logs", (result) => result.command?.startsWith("ocm logs ")]
+    ["ocm start", () => commandReceiptReason(record, (result) => result.command?.startsWith("ocm start "))],
+    ["service collector", () => collectorReceiptReason(record, "post-start", "service")],
+    ["ocm status", () => commandReceiptReason(record, (result) => result.command === "ocm @{env} -- status" || result.command?.includes(" -- status"))],
+    ["ocm plugins list", () => commandReceiptReason(record, (result) => result.command === "ocm @{env} -- plugins list" || result.command?.includes(" -- plugins list"))],
+    ["logs collector", () => collectorReceiptReason(record, "startup-logs", "logs")]
   ];
-  for (const [label, predicate] of required) {
-    const result = findCommandResult(record, predicate);
-    if (!result) {
-      return `${label} receipt was not captured`;
-    }
-    if (result.status !== 0) {
-      return `${label} exited ${result.status}`;
-    }
-    if (result.durationMs === undefined) {
-      return `${label} duration was not captured`;
+  for (const [label, reason] of required) {
+    const missing = reason();
+    if (missing) {
+      return `${label}: ${missing}`;
     }
   }
   return null;
@@ -1793,19 +1784,65 @@ function releaseStartupTimelineReason(measurements) {
   return null;
 }
 
-function releaseStartupLogsOk(result) {
-  return result?.status === 0 && `${result.stdout ?? ""}${result.stderr ?? ""}`.trim().length > 0;
+function releaseStartupLogsProof(record, phaseId) {
+  const command = findCommandResultInPhase(record, phaseId, (result) => result.command?.startsWith("ocm logs "));
+  if (command) {
+    return { kind: "command", command };
+  }
+  const phase = findPhase(record, phaseId);
+  return {
+    kind: "collector",
+    receipt: collectorReceiptInPhase(record, phaseId, "logs"),
+    metrics: phase?.metrics?.logs ?? null
+  };
 }
 
-function releaseStartupLogsReason(result) {
-  if (!result) {
-    return "startup logs command receipt was not captured";
+function releaseStartupLogsOk(proof) {
+  if (proof && !proof.kind && proof.status !== undefined) {
+    return proof.status === 0 && `${proof.stdout ?? ""}${proof.stderr ?? ""}`.trim().length > 0;
   }
-  if (result.status !== 0) {
-    return `startup logs command exited ${result.status}`;
+  if (proof?.kind === "command") {
+    return proof.command?.status === 0 && `${proof.command.stdout ?? ""}${proof.command.stderr ?? ""}`.trim().length > 0;
   }
-  if (`${result.stdout ?? ""}${result.stderr ?? ""}`.trim().length === 0) {
-    return "startup logs command emitted no output";
+  return proof?.receipt?.status === "PASS" &&
+    proof.metrics?.commandStatus === 0 &&
+    Array.isArray(proof.metrics?.artifacts) &&
+    proof.metrics.artifacts.length > 0;
+}
+
+function releaseStartupLogsReason(proof) {
+  if (!proof) {
+    return "startup logs evidence was not captured";
+  }
+  if (!proof.kind && proof.status !== undefined) {
+    if (proof.status !== 0) {
+      return `startup logs command exited ${proof.status}`;
+    }
+    if (`${proof.stdout ?? ""}${proof.stderr ?? ""}`.trim().length === 0) {
+      return "startup logs command emitted no output";
+    }
+    return null;
+  }
+  if (proof.kind === "command") {
+    if (proof.command.status !== 0) {
+      return `startup logs command exited ${proof.command.status}`;
+    }
+    if (`${proof.command.stdout ?? ""}${proof.command.stderr ?? ""}`.trim().length === 0) {
+      return "startup logs command emitted no output";
+    }
+    return null;
+  }
+  if (!proof.receipt) {
+    return "startup logs collector receipt was not captured";
+  }
+  if (proof.receipt.status !== "PASS") {
+    return `startup logs collector status was ${proof.receipt.status}`;
+  }
+  if (proof.metrics?.commandStatus !== 0) {
+    return `startup logs collector command status was ${proof.metrics?.commandStatus ?? "missing"}`;
+  }
+  if (!Array.isArray(proof.metrics?.artifacts) || proof.metrics.artifacts.length === 0) {
+    return "startup logs collector artifact path was not recorded";
   }
   return null;
 }
@@ -2545,7 +2582,7 @@ function findCommandResult(record, predicate) {
 }
 
 function findCommandResultInPhase(record, phaseId, predicate) {
-  const phase = (record.phases ?? []).find((candidate) => candidate.id === phaseId);
+  const phase = findPhase(record, phaseId);
   if (!phase) {
     return null;
   }
@@ -2556,6 +2593,53 @@ function findCommandResultInPhase(record, phaseId, predicate) {
         phaseId: phase.id
       };
     }
+  }
+  return null;
+}
+
+function findPhase(record, phaseId) {
+  return (record.phases ?? []).find((candidate) => candidate.id === phaseId) ?? null;
+}
+
+function commandReceiptOk(record, predicate) {
+  const result = findCommandResult(record, predicate);
+  return result?.status === 0 && result.durationMs !== undefined;
+}
+
+function commandReceiptReason(record, predicate) {
+  const result = findCommandResult(record, predicate);
+  if (!result) {
+    return "command receipt was not captured";
+  }
+  if (result.status !== 0) {
+    return `command exited ${result.status}`;
+  }
+  if (result.durationMs === undefined) {
+    return "command duration was not captured";
+  }
+  return null;
+}
+
+function collectorReceiptInPhase(record, phaseId, collectorId) {
+  const phase = findPhase(record, phaseId);
+  return (phase?.metrics?.collectors ?? []).find((collector) => collector.id === collectorId) ?? null;
+}
+
+function collectorReceiptOk(record, phaseId, collectorId) {
+  const receipt = collectorReceiptInPhase(record, phaseId, collectorId);
+  return receipt?.status === "PASS" && receipt.durationMs !== undefined;
+}
+
+function collectorReceiptReason(record, phaseId, collectorId) {
+  const receipt = collectorReceiptInPhase(record, phaseId, collectorId);
+  if (!receipt) {
+    return "collector receipt was not captured";
+  }
+  if (receipt.status !== "PASS") {
+    return `collector status was ${receipt.status}`;
+  }
+  if (receipt.durationMs === undefined) {
+    return "collector duration was not captured";
   }
   return null;
 }

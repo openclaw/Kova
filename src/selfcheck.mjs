@@ -3361,6 +3361,10 @@ function releaseRuntimeStartupEvidenceInvariantCheck() {
               p95Ms: 1,
               maxMs: 1
             },
+            collectors: [
+              { id: "service", status: "PASS", durationMs: 5 },
+              { id: "logs", status: "PASS", durationMs: 5, artifactCount: 1 }
+            ],
             logs: zeroLogMetrics()
           }
         },
@@ -3382,8 +3386,13 @@ function releaseRuntimeStartupEvidenceInvariantCheck() {
               p95Ms: 1,
               maxMs: 1
             },
+            collectors: [
+              { id: "service", status: "PASS", durationMs: 5 },
+              { id: "logs", status: "PASS", durationMs: 5, artifactCount: 1 }
+            ],
             logs: {
               ...zeroLogMetrics(),
+              commandStatus: 0,
               artifacts: ["/tmp/kova/logs/gateway-tail.log"]
             },
             timeline: {
@@ -3474,6 +3483,23 @@ function releaseRuntimeStartupEvidenceInvariantCheck() {
     const invariants = buildReleaseRuntimeStartupEvidenceInvariants(record, scenario);
     assertEqual(invariants.length, 9, "release runtime startup invariant count");
     assertEqual(invariants.every((invariant) => invariant.status === "passed"), true, "complete release startup evidence passes invariants");
+
+    const collectorOnlyRecord = JSON.parse(JSON.stringify(record));
+    collectorOnlyRecord.phases[1].results = collectorOnlyRecord.phases[1].results.filter((result) => !result.command.startsWith("ocm service status "));
+    collectorOnlyRecord.phases[2].results = [];
+    evaluateRecord(collectorOnlyRecord, scenario, {
+      surface: {
+        resourcePrimaryRole: "gateway",
+        thresholds: {},
+        diagnostics: { expectedSpans: ["gateway.ready", "plugins.metadata.scan", "plugins.load"] }
+      },
+      targetPlan: { kind: "runtime" }
+    });
+    const collectorOnlyInvariants = buildReleaseRuntimeStartupEvidenceInvariants(collectorOnlyRecord, scenario);
+    const receiptsProof = collectorOnlyInvariants.find((invariant) => invariant.id === "release-runtime-command-receipts");
+    const logsProof = collectorOnlyInvariants.find((invariant) => invariant.id === "release-runtime-startup-logs-captured");
+    assertEqual(receiptsProof?.status, "passed", "release startup collector receipts can replace service/log commands");
+    assertEqual(logsProof?.status, "passed", "release startup collector log artifact can replace log command");
 
     const missingTimelineRecord = JSON.parse(JSON.stringify(record));
     missingTimelineRecord.finalMetrics.timeline.available = false;
