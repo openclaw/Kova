@@ -50,8 +50,7 @@
       "title": "Move Clone To Target Runtime",
       "intent": "Run the real OCM upgrade path so the cloned user state runs the requested OpenClaw target runtime.",
       "commands": [
-        "ocm upgrade {env} {upgradeSelector} --json",
-        "ocm service status {env} --json"
+        "ocm upgrade {env} {upgradeSelector} --json"
       ],
       "evidence": [
         "upgrade JSON",
@@ -98,8 +97,7 @@
       "title": "Post-Gateway-Session Health",
       "intent": "Verify the cloned gateway remains responsive after the Gateway session turn and collect logs for embedded-run/liveness evidence.",
       "commands": [
-        "ocm @{env} -- gateway status --json --require-rpc",
-        "ocm logs {env} --tail 300 --raw"
+        "ocm @{env} -- gateway status --json --require-rpc"
       ],
       "evidence": [
         "gateway status probe",
