@@ -27,13 +27,13 @@ import {
 import { buildPerformanceSummary } from "../performance/stats.mjs";
 import { platformInfo } from "../platform.mjs";
 import { reportsDir, displayPath } from "../paths.mjs";
-import { isNonPassingExecutionStatus } from "../statuses.mjs";
 import { loadRegistryContext } from "../registries/context.mjs";
 import { loadProfile } from "../registries/profiles.mjs";
 import { validateScenarioRun } from "../registries/scenarios.mjs";
 import { buildReportSummary, renderMarkdownReport, summarizeRecords } from "../reporting/report.mjs";
 import { bundleReport, retainGateArtifacts } from "../reporting/artifacts.mjs";
-import { buildDryRunRecord, buildSkippedRecord, createRunId, executeScenario } from "../runner.mjs";
+import { createRunId } from "../runner.mjs";
+import { runEntries, runScenarioRepeats } from "../run/engine.mjs";
 import { resolveTarget } from "../targets.mjs";
 import { createRunProgress } from "../reporting/render-run-progress.mjs";
 import { renderMatrixRunReceipt } from "../reporting/render-run-receipt.mjs";
@@ -96,44 +96,21 @@ export async function runMatrixRun(flags) {
       timeoutMs: resolveEntryTimeout(entry, flags)
     });
 
-    if (entry.skipReason) {
-      return buildRepeatRecords(entry, context, (iterationContext) => {
-        const rec = buildSkippedRecord(entry.scenario, iterationContext, entry.skipReason);
-        progress.scenarioEnd({
-          scenarioId: entry.scenario.id,
-          stateId: entry.state?.id,
-          iteration: iterationContext.repeat,
-          status: rec.status,
-          skipReason: entry.skipReason,
-        });
-        return rec;
-      });
-    }
-
-    return buildRepeatRecords(entry, context, async (iterationContext) => {
-      progress.scenarioStart({
-        scenarioId: entry.scenario.id,
-        stateId: entry.state?.id,
-        iteration: iterationContext.repeat,
-      });
-      iterationContext.onPhase = (title) => progress.phase({ title });
-      const rec = iterationContext.execute
-        ? await executeScenario(entry.scenario, iterationContext)
-        : buildDryRunRecord(entry.scenario, iterationContext);
-      progress.scenarioEnd({
-        scenarioId: entry.scenario.id,
-        stateId: entry.state?.id,
-        iteration: iterationContext.repeat,
-        status: rec.status,
-        skipReason: rec.skipReason,
-      });
-      return rec;
+    return runScenarioRepeats({
+      scenario: entry.scenario,
+      context,
+      repeat: controls.repeat,
+      progress,
+      skipReason: entry.skipReason
     });
   };
 
-  const records = flags.execute === true
-    ? await runMatrixEntries(entries, runEntry, controls)
-    : (await Promise.all(entries.map((entry) => runEntry(entry)))).flat();
+  const records = await runEntries({
+    entries,
+    runEntry,
+    execute: flags.execute === true,
+    controls
+  });
   const targetCleanup = await cleanupTargetRuntimeIfNeeded(targetPlan, records, {
     execute: flags.execute === true,
     timeoutMs: positiveIntegerFlag(flags, "timeout_ms", 120000)
@@ -284,21 +261,6 @@ function resolveEntryTimeout(entry, flags) {
   return positiveIntegerValue(flags.timeout_ms ?? entry.timeoutMs ?? entry.scenario.timeoutMs ?? 120000, "--timeout-ms");
 }
 
-async function buildRepeatRecords(entry, context, callback) {
-  const total = positiveIntegerValue(context.controls?.repeat ?? 1, "repeat");
-  const records = [];
-  for (let index = 1; index <= total; index += 1) {
-    records.push(await callback({
-      ...context,
-      repeat: {
-        index,
-        total
-      }
-    }));
-  }
-  return records;
-}
-
 function failGateIfNeeded(gate) {
   if (gate && gate.verdict !== "SHIP") {
     process.exitCode = 1;
@@ -329,31 +291,4 @@ function summarizeGateReceipt(gate) {
     baselineRegressionCount: gate.baseline?.regressionCount ?? null,
     missingBaselineCount: gate.baseline?.missingBaselineCount ?? null
   };
-}
-
-async function runMatrixEntries(entries, runEntry, controls) {
-  if (controls.parallel <= 1) {
-    const records = [];
-    for (const entry of entries) {
-      const entryRecords = await runEntry(entry);
-      records.push(...entryRecords);
-      if (controls.failFast && entryRecords.some((record) => isNonPassingExecutionStatus(record.status))) {
-        break;
-      }
-    }
-    return records;
-  }
-
-  const records = new Array(entries.length);
-  let nextIndex = 0;
-  async function worker() {
-    while (nextIndex < entries.length) {
-      const index = nextIndex;
-      nextIndex += 1;
-      records[index] = await runEntry(entries[index]);
-    }
-  }
-
-  await Promise.all(Array.from({ length: controls.parallel }, () => worker()));
-  return records.filter(Boolean).flat();
 }

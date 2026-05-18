@@ -25,7 +25,8 @@ import { loadRegistryContext } from "../registries/context.mjs";
 import { loadScenarios, validateScenarioRun } from "../registries/scenarios.mjs";
 import { loadState } from "../registries/states.mjs";
 import { buildReportSummary, renderMarkdownReport, summarizeRecords } from "../reporting/report.mjs";
-import { buildDryRunRecord, createRunId, executeScenario } from "../runner.mjs";
+import { createRunId } from "../runner.mjs";
+import { runScenarioRepeats } from "../run/engine.mjs";
 import { resolveTarget } from "../targets.mjs";
 import { createRunProgress } from "../reporting/render-run-progress.mjs";
 import { renderRunReceipt } from "../reporting/render-run-receipt.mjs";
@@ -80,23 +81,7 @@ export async function runScenarioCommand(flags) {
   });
 
   for (const scenario of scenarios) {
-    for (let index = 1; index <= repeat; index += 1) {
-      const iterationContext = {
-        ...context,
-        repeat: {
-          index,
-          total: repeat
-        }
-      };
-      const iteration = { index, total: repeat };
-      progress.scenarioStart({ scenarioId: scenario.id, stateId: state.id, iteration });
-      iterationContext.onPhase = (title) => progress.phase({ title });
-      const record = iterationContext.execute
-        ? await executeScenario(scenario, iterationContext)
-        : buildDryRunRecord(scenario, iterationContext);
-      records.push(record);
-      progress.scenarioEnd({ scenarioId: scenario.id, stateId: state.id, iteration, status: record.status, skipReason: record.skipReason });
-    }
+    records.push(...await runScenarioRepeats({ scenario, context, repeat, progress }));
   }
   const targetCleanup = await cleanupTargetRuntimeIfNeeded(targetPlan, records, {
     execute: context.execute,
