@@ -86,8 +86,9 @@ export function renderFromSummary(input, ui) {
     sections.push(indentBlock(rollup, 2));
   }
 
+  const showSingleCompactPass = !isFull && scenarios.length === 1 && scenarios[0]?.verdict === "PASS";
   for (const sc of scenarios) {
-    if (!isFull && sc.verdict === "PASS") continue;
+    if (!isFull && sc.verdict === "PASS" && !showSingleCompactPass) continue;
     sections.push("");
     sections.push(renderScenarioBlock(sc, ui, isFull));
   }
