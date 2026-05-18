@@ -9,28 +9,21 @@ import {
 } from "../run/options.mjs";
 import { cleanupTargetRuntimeIfNeeded } from "../run/target-cleanup.mjs";
 import {
-  comparePerformanceToBaseline,
   loadBaselineStore,
   resolveBaselinePath,
-  reviewBaselineUpdate,
-  saveBaselineStore,
-  updateBaselineStore
 } from "../performance/baselines.mjs";
 import { buildPerformanceSummary } from "../performance/stats.mjs";
-import { platformInfo } from "../platform.mjs";
 import { reportsDir, displayPath } from "../paths.mjs";
 import { loadRegistryContext } from "../registries/context.mjs";
 import { loadScenarios, validateScenarioRun } from "../registries/scenarios.mjs";
 import { loadState } from "../registries/states.mjs";
-import { summarizeRecords } from "../reporting/report.mjs";
 import { createRunId } from "../runner.mjs";
 import { runScenarioRepeats } from "../run/engine.mjs";
 import { buildReportOutputPaths, writeReportOutputs } from "../run/report-output.mjs";
+import { attachBaselineComparison, buildRunReport, saveBaselineUpdate } from "../run/report-finalization.mjs";
 import { resolveTarget } from "../targets.mjs";
 import { createRunProgress } from "../reporting/render-run-progress.mjs";
 import { renderRunReceipt } from "../reporting/render-run-receipt.mjs";
-
-const reportSchemaVersion = "kova.report.v1";
 
 export async function runScenarioCommand(flags) {
   const registry = await loadRegistryContext();
@@ -86,9 +79,7 @@ export async function runScenarioCommand(flags) {
   });
   const performance = buildPerformanceSummary(records, { repeat, regressionThresholds });
 
-  const report = {
-    schemaVersion: reportSchemaVersion,
-    generatedAt: new Date().toISOString(),
+  const report = buildRunReport({
     runId,
     outputPaths,
     mode: context.execute ? "execution" : "dry-run",
@@ -99,7 +90,6 @@ export async function runScenarioCommand(flags) {
       title: state.title,
       objective: state.objective
     },
-    platform: platformInfo(),
     targetCleanup,
     auth: authReportSummary(auth),
     controls: {
@@ -109,27 +99,14 @@ export async function runScenarioCommand(flags) {
       auth: auth.requestedMode
     },
     performance,
-    baseline: null,
-    summary: summarizeRecords(records),
     records
-  };
-  const baselineComparison = comparePerformanceToBaseline(report, baselineStore, { targetPlan, regressionThresholds });
-  if (baselineComparison) {
-    report.baseline = {
-      path: baselinePath,
-      comparison: baselineComparison
-    };
-  }
-  if (saveBaselinePath) {
-    const existingStore = await loadBaselineStore(saveBaselinePath);
-    const review = reviewBaselineUpdate(report, { reviewedGood: flags.reviewed_good === true });
-    const updatedStore = updateBaselineStore(existingStore, report, { targetPlan, reviewedGood: flags.reviewed_good === true });
-    report.baseline = {
-      ...(report.baseline ?? {}),
-      review,
-      saved: await saveBaselineStore(saveBaselinePath, updatedStore)
-    };
-  }
+  });
+  attachBaselineComparison(report, baselineStore, { baselinePath, targetPlan, regressionThresholds });
+  await saveBaselineUpdate(report, {
+    saveBaselinePath,
+    targetPlan,
+    reviewedGood: flags.reviewed_good === true
+  });
   await writeReportOutputs(reportRoot, report);
 
   progress.runFinish({ total: report.summary?.total ?? records.length, statuses: report.summary?.statuses ?? {} });

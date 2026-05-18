@@ -13,25 +13,18 @@ import { evaluateGate, preflightGateRun } from "../matrix/gate.mjs";
 import { resolveMatrixPlan } from "../matrix/plan-resolution.mjs";
 import { profileSummary } from "../matrix/profile.mjs";
 import {
-  comparePerformanceToBaseline,
   loadBaselineStore,
   resolveBaselinePath,
-  reviewBaselineUpdate,
-  saveBaselineStore,
-  updateBaselineStore
 } from "../performance/baselines.mjs";
 import { buildPerformanceSummary } from "../performance/stats.mjs";
 import { reportsDir, displayPath } from "../paths.mjs";
-import { summarizeRecords } from "../reporting/report.mjs";
 import { bundleReport, retainGateArtifacts } from "../reporting/artifacts.mjs";
 import { createRunId } from "../runner.mjs";
 import { runEntries, runScenarioRepeats } from "../run/engine.mjs";
 import { buildReportOutputPaths, writeReportOutputs } from "../run/report-output.mjs";
-import { resolveTarget } from "../targets.mjs";
+import { attachBaselineComparison, buildRunReport, saveBaselineUpdate } from "../run/report-finalization.mjs";
 import { createRunProgress } from "../reporting/render-run-progress.mjs";
 import { renderMatrixRunReceipt } from "../reporting/render-run-receipt.mjs";
-
-const reportSchemaVersion = "kova.report.v1";
 
 export async function runMatrixRun(flags) {
   validateBaselineExecutionFlags(flags);
@@ -52,9 +45,6 @@ export async function runMatrixRun(flags) {
   const saveBaselinePath = resolveBaselinePath(flags.save_baseline);
   const baselineStore = baselinePath ? await loadBaselineStore(baselinePath) : null;
   preflightGateRun({ entries, flags });
-  for (const entry of entries.filter((item) => !item.skipReason)) {
-    validateScenarioRun(entry.scenario, flags, { targetPlan, fromPlan });
-  }
   const reportRoot = flags.report_dir ? resolveFromCwd(flags.report_dir) : reportsDir;
   const runId = createRunId();
   const outputPaths = buildReportOutputPaths(reportRoot, runId, profile.id);
@@ -106,9 +96,7 @@ export async function runMatrixRun(flags) {
     parallel: controls.parallel,
     regressionThresholds
   });
-  const reportBase = {
-    schemaVersion: reportSchemaVersion,
-    generatedAt: new Date().toISOString(),
+  const reportBase = buildRunReport({
     runId,
     outputPaths,
     mode: flags.execute === true ? "execution" : "dry-run",
@@ -121,18 +109,10 @@ export async function runMatrixRun(flags) {
     platform,
     targetCleanup,
     performance,
-    baseline: null,
     gate: null,
-    summary: summarizeRecords(records),
     records
-  };
-  const baselineComparison = comparePerformanceToBaseline(reportBase, baselineStore, { targetPlan, regressionThresholds });
-  if (baselineComparison) {
-    reportBase.baseline = {
-      path: baselinePath,
-      comparison: baselineComparison
-    };
-  }
+  });
+  attachBaselineComparison(reportBase, baselineStore, { baselinePath, targetPlan, regressionThresholds });
   const gate = flags.gate === true
     ? evaluateGate({
       mode: flags.execute === true ? "execution" : "dry-run",
@@ -148,16 +128,11 @@ export async function runMatrixRun(flags) {
     ...reportBase,
     gate
   };
-  if (saveBaselinePath) {
-    const existingStore = await loadBaselineStore(saveBaselinePath);
-    const review = reviewBaselineUpdate(report, { reviewedGood: flags.reviewed_good === true });
-    const updatedStore = updateBaselineStore(existingStore, report, { targetPlan, reviewedGood: flags.reviewed_good === true });
-    report.baseline = {
-      ...(report.baseline ?? {}),
-      review,
-      saved: await saveBaselineStore(saveBaselinePath, updatedStore)
-    };
-  }
+  await saveBaselineUpdate(report, {
+    saveBaselinePath,
+    targetPlan,
+    reviewedGood: flags.reviewed_good === true
+  });
   await writeReportOutputs(reportRoot, report);
   const bundle = await bundleReport(outputPaths.json, { outputDir: reportRoot });
   const retainedGateArtifacts = gate && gate.verdict !== "SHIP"
