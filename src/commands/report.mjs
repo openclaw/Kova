@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
-import { relative } from "node:path";
 import { required, resolveFromCwd } from "../cli.mjs";
+import { displayPath } from "../paths.mjs";
 import { bundleReport } from "../reporting/artifacts.mjs";
 import { compareReports, renderCompareFixerSummary, renderCompareSummary } from "../reporting/compare.mjs";
 import { buildReportSummary, renderPasteSummary, renderReportSummary } from "../reporting/report.mjs";
@@ -64,8 +64,8 @@ export async function runReportCommand(flags) {
     }
 
     if (flags.plain) {
-      console.log(`Bundle: ${relative(process.cwd(), receipt.outputPath)}`);
-      console.log(`SHA256: ${relative(process.cwd(), receipt.checksumPath)}`);
+      console.log(`Bundle: ${displayPath(receipt.outputPath)}`);
+      console.log(`SHA256: ${displayPath(receipt.checksumPath)}`);
       return;
     }
     console.log(renderBundleReceipt(receipt, flags));

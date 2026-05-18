@@ -1,12 +1,11 @@
 // kova report bundle <report.json> - confirmation panel.
 
 import { makeUi, ruleSection, renderKovaHeader, visualWidth, repeat, wrap, withMargin } from "../ui/index.mjs";
-import { relative } from "node:path";
+import { displayPath } from "../paths.mjs";
 
 export function renderBundleReceipt(receipt, flags = {}, env = process.env, stream = process.stdout) {
   const ui = makeUi(flags, env, stream);
   const { c, g } = ui;
-  const cwd = process.cwd();
 
   const sections = [];
   sections.push(renderKovaHeader({
@@ -21,8 +20,8 @@ export function renderBundleReceipt(receipt, flags = {}, env = process.env, stre
 
   const labelCol = 10;
   const rows = [
-    ["archive", relative(cwd, receipt.outputPath ?? "")],
-    ["sha256",  relative(cwd, receipt.checksumPath ?? "")],
+    ["archive", displayPath(receipt.outputPath)],
+    ["sha256",  displayPath(receipt.checksumPath)],
     ["digest",  receipt.sha256 ? receipt.sha256.slice(0, 16) + "…" : "—"],
     ["size",    formatBytes(receipt.bytes)],
     ["files",   String(receipt.artifactIndex?.fileCount ?? receipt.included?.length ?? 0)],
@@ -42,7 +41,7 @@ export function renderBundleReceipt(receipt, flags = {}, env = process.env, stre
   sections.push("");
   sections.push(ruleSection("next", ui.width, ui));
   sections.push("");
-  sections.push(`  ${c.dim(g.arrow)} kova report ${relative(cwd, receipt.outputPath ?? "")}`);
+  sections.push(`  ${c.dim(g.arrow)} kova report ${displayPath(receipt.outputPath) ?? ""}`);
   if (receipt.runId) sections.push(`  ${c.dim(g.arrow)} kova report ${receipt.runId}`);
 
   return withMargin(sections.join("\n"), ui.leftPad);
