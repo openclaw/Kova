@@ -5,7 +5,7 @@ export const PERFORMANCE_SCHEMA = "kova.performance.v1";
 export const PERFORMANCE_METRICS = [
   { id: "readinessHealthReadyMs", title: "Health Ready", unit: "ms", regressionKey: "startupRegressionPercent" },
   { id: "readinessListeningMs", title: "TCP Listening", unit: "ms", regressionKey: "startupRegressionPercent" },
-  { id: "peakRssMb", title: "Peak RSS", unit: "MB", regressionKey: "rssRegressionPercent" },
+  { id: "peakRssMb", title: "Primary RSS", unit: "MB", regressionKey: "rssRegressionPercent" },
   { id: "resourcePeakGatewayRssMb", title: "Gateway RSS", unit: "MB", regressionKey: "rssRegressionPercent" },
   { id: "cpuPercentMax", title: "Max CPU", unit: "%", regressionKey: "cpuRegressionPercent" },
   { id: "openclawEventLoopMaxMs", title: "Event Loop Max", unit: "ms", regressionKey: "eventLoopRegressionPercent" },

@@ -40,15 +40,20 @@ export function evaluateRecord(record, scenario, options = {}) {
   const measurementScopeSummary = summarizeMeasurementScopes(record);
   const measuredResults = collectResults(record, { productOnly: true });
   const resourceSummary = collectResourceSummary(measuredResults);
-  const primaryResourceRole = options.surface?.resourcePrimaryRole ?? null;
+  const primaryResourceRole = resolvePrimaryResourceRole(resourceSummary, options.surface);
   const primaryRoleResources = primaryResourceRole ? resourceSummary.byRole[primaryResourceRole] : null;
   const peakTrackedRssMb = maxNullable(
     collectPeakRss(record, { productOnly: true }),
     resourceSummary.peakTotalRssMb
   );
   const cpuPercentMaxTracked = maxNullable(collectCpuPercentMax(record, { productOnly: true }), resourceSummary.maxTotalCpuPercent);
-  const peakRssMb = typeof primaryRoleResources?.peakRssMb === "number" ? primaryRoleResources.peakRssMb : peakTrackedRssMb;
-  const cpuPercentMax = typeof primaryRoleResources?.maxCpuPercent === "number" ? primaryRoleResources.maxCpuPercent : cpuPercentMaxTracked;
+  const resourceGateKind = primaryResourceRole && primaryRoleResources ? "role" : "tracked-total";
+  const peakRssMb = resourceGateKind === "role" && typeof primaryRoleResources?.peakRssMb === "number"
+    ? primaryRoleResources.peakRssMb
+    : peakTrackedRssMb;
+  const cpuPercentMax = resourceGateKind === "role" && typeof primaryRoleResources?.maxCpuPercent === "number"
+    ? primaryRoleResources.maxCpuPercent
+    : cpuPercentMaxTracked;
   const commandMissingDependencyErrors = countMissingDependencyErrors(allResults);
   const missingDependencyErrors = combineCommandAndLogCount(
     commandMissingDependencyErrors,
@@ -173,7 +178,7 @@ export function evaluateRecord(record, scenario, options = {}) {
       metric: "peakRssMb",
       expected: `<= ${thresholds.peakRssMb}`,
       actual: peakRssMb,
-      message: `peak RSS ${peakRssMb} MB exceeded threshold ${thresholds.peakRssMb} MB`
+      message: `${resourceRssLabel(primaryResourceRole, resourceGateKind)} ${peakRssMb} MB exceeded threshold ${thresholds.peakRssMb} MB`
     });
   }
 
@@ -771,6 +776,7 @@ export function evaluateRecord(record, scenario, options = {}) {
     measurementScopeSummary,
     resourceMeasurementScope: "product",
     resourcePrimaryRole: primaryResourceRole,
+    resourceGateKind,
     resourcePeakTrackedRssMb: peakTrackedRssMb,
     resourceCpuPercentMaxTracked: cpuPercentMaxTracked,
     coldReadyMs,
@@ -3528,6 +3534,28 @@ function allMetricObjects(record) {
     record.finalMetrics,
     record.failureDiagnostics
   ].filter(Boolean);
+}
+
+function resolvePrimaryResourceRole(resourceSummary, surface) {
+  const configured = surface?.resourcePrimaryRole ?? null;
+  if (typeof configured === "string" && configured.length > 0) {
+    return configured;
+  }
+  const gateway = resourceSummary?.byRole?.gateway;
+  if (typeof gateway?.peakRssMb === "number" || typeof gateway?.maxCpuPercent === "number") {
+    return "gateway";
+  }
+  return null;
+}
+
+function resourceRssLabel(primaryResourceRole, resourceGateKind) {
+  if (resourceGateKind !== "role") {
+    return "tracked total peak RSS";
+  }
+  if (primaryResourceRole === "gateway") {
+    return "gateway peak RSS";
+  }
+  return `${primaryResourceRole} peak RSS`;
 }
 
 function countDiagnosticMetric(record, key) {

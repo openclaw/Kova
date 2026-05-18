@@ -1,7 +1,7 @@
 import { summarizeAgentTurnBreakdownForMarkdown } from "../collectors/agent-turns.mjs";
 import { agentCliPreProviderMarkdownRows } from "../collectors/agent-cli-attribution.mjs";
 import { gatewaySessionPreProviderMarkdownRows } from "../collectors/gateway-session-turn-attribution.mjs";
-import { healthTotalFailures } from "../health.mjs";
+import { healthTotalFailures, measurementMetricValue } from "../health.mjs";
 import { RECORD_STATUS, findingSeverityForStatus } from "../statuses.mjs";
 import { firstFailedCommand, summarizeFailureReason } from "./failures.mjs";
 import { summarizeRecords } from "./records.mjs";
@@ -146,7 +146,7 @@ function formatPerformanceSummaryTable(groups = []) {
     lines.push("");
     return lines;
   }
-  lines.push("| Scenario | Samples | Status | Health Ready | Gateway RSS | Peak RSS | CPU | Cold Turn | Warm Turn | Cold Pre-Provider |");
+  lines.push("| Scenario | Samples | Status | Health Ready | Gateway RSS | Tracked RSS | CPU | Cold Turn | Warm Turn | Cold Pre-Provider |");
   lines.push("|---|---:|---|---:|---:|---:|---:|---:|---:|---:|");
   for (const group of groups.slice(0, 12)) {
     lines.push([
@@ -155,7 +155,7 @@ function formatPerformanceSummaryTable(groups = []) {
       tableCell(statusCountsText(group.statuses)),
       tableCell(metricMedian(group, "readinessHealthReadyMs")),
       tableCell(metricMedian(group, "resourcePeakGatewayRssMb")),
-      tableCell(metricMedian(group, "peakRssMb")),
+      tableCell(metricMedian(group, "resourcePeakTrackedRssMb")),
       tableCell(metricMedian(group, "cpuPercentMax")),
       tableCell(metricMedian(group, "coldAgentTurnMs")),
       tableCell(metricMedian(group, "warmAgentTurnMs")),
@@ -176,7 +176,7 @@ function formatSampleSummaryTable(samples = []) {
     lines.push("");
     return lines;
   }
-  lines.push("| Sample | Status | Scenario | Health Ready | Gateway RSS | Peak RSS | Cold Turn | Warm Turn | Blocker |");
+  lines.push("| Sample | Status | Scenario | Health Ready | Gateway RSS | Tracked RSS | Cold Turn | Warm Turn | Blocker |");
   lines.push("|---:|---|---|---:|---:|---:|---:|---:|---|");
   for (const sample of samples.slice(0, 20)) {
     const measurements = sample.measurements ?? {};
@@ -187,7 +187,7 @@ function formatSampleSummaryTable(samples = []) {
       tableCell([sample.scenario, sample.state?.id].filter(Boolean).join("/") || "unknown"),
       tableCell(valueMs(measurements.readiness?.healthReadyAtMs)),
       tableCell(valueMb(measurements.resources?.gatewayPeakRssMb)),
-      tableCell(valueMb(measurements.resources?.peakRssMb)),
+      tableCell(valueMb(measurements.resources?.trackedPeakRssMb)),
       tableCell(valueMs(measurements.agent?.coldTurnMs)),
       tableCell(valueMs(measurements.agent?.warmTurnMs)),
       tableCell(blocker)
@@ -823,8 +823,10 @@ function summarizeSampleMetrics(measurements) {
       slowestSample: measurements.health?.slowestSample ?? null
     },
     resources: {
-      peakRssMb: measurements.peakRssMb ?? null,
+      peakRssMb: resourceHeadlineValue(measurements),
       cpuPercentMax: measurements.cpuPercentMax ?? null,
+      primaryRole: measurements.resourcePrimaryRole ?? null,
+      gateKind: measurements.resourceGateKind ?? null,
       sampleCount: measurements.resourceSampleCount ?? null,
       commandTreePeakRssMb: measurements.resourcePeakCommandTreeRssMb ?? null,
       gatewayPeakRssMb: measurements.resourcePeakGatewayRssMb ?? null,
@@ -1189,8 +1191,9 @@ function briefEvidence(measurements, violations) {
   if (readiness?.listeningReadyAtMs !== null && readiness?.listeningReadyAtMs !== undefined) {
     items.push(`readinessListeningMs: ${readiness.listeningReadyAtMs}`);
   }
-  if (measurements.peakRssMb !== null && measurements.peakRssMb !== undefined) {
-    items.push(`peakRssMb: ${measurements.peakRssMb}`);
+  const headlineRss = resourceHeadlineValue(measurements);
+  if (headlineRss !== null && headlineRss !== undefined) {
+    items.push(`${resourceHeadlineEvidenceLabel(measurements)}: ${headlineRss}`);
   }
   if (measurements.cpuPercentMax !== null && measurements.cpuPercentMax !== undefined) {
     items.push(`cpuPercentMax: ${measurements.cpuPercentMax}`);
@@ -1325,7 +1328,7 @@ function pushMeasurementBrief(lines, measurements, { compact }) {
   lines.push("Measurements:");
   lines.push(`- startup: listening ${valueMs(readiness?.listeningReadyAtMs)}; health ${valueMs(readiness?.healthReadyAtMs)}; readiness ${readiness?.classification ?? "unknown"}; gateway ${measurements.finalGatewayState ?? "unknown"}; restarts ${measurements.gatewayRestartCount ?? "unknown"}`);
   lines.push(`- health: startup p95 ${valueMs(measurements.health?.startupSamples?.p95Ms)}; post-ready p95 ${valueMs(measurements.health?.postReadySamples?.p95Ms)}; failures ${totalHealthFailures ?? "unknown"}; final failures ${measurements.health?.final?.failureCount ?? "unknown"}${healthSlowestText(measurements)}`);
-  lines.push(`- resources: peak RSS ${valueMb(measurements.peakRssMb)}; max CPU ${valuePercent(measurements.cpuPercentMax)}; samples ${measurements.resourceSampleCount ?? "unknown"}; roles ${rolePeakText(measurements)}`);
+  lines.push(`- resources: ${resourceHeadlineText(measurements)} ${valueMb(resourceHeadlineValue(measurements))}; tracked total ${valueMb(measurements.resourcePeakTrackedRssMb)}; max CPU ${valuePercent(measurements.cpuPercentMax)}; samples ${measurements.resourceSampleCount ?? "unknown"}; roles ${rolePeakText(measurements)}`);
   lines.push(`- agent: turn ${valueMs(measurements.agentTurnMs, "not-run")}; cold/warm ${valueMs(measurements.coldAgentTurnMs)}/${valueMs(measurements.warmAgentTurnMs)}; cold-warm delta ${valueMs(measurements.agentColdWarmDeltaMs)}; pre-provider ${valueMs(measurements.agentPreProviderMs)}; provider ${valueMs(measurements.agentProviderFinalMs)}; metadata scans ${measurements.agentMetadataScanCount ?? "unknown"} (${valueMs(measurements.agentMetadataScanTotalMs)}); event-loop ${valueMs(measurements.agentEventLoopMaxMs)}; polls ${measurements.agentSessionPollCount ?? "unknown"}; cleanup ${valueMs(measurements.agentCleanupMaxMs)}; diagnosis ${measurements.agentLatencyDiagnosis?.kind ?? "unknown"}; leaks ${measurements.agentProcessLeakCount ?? "unknown"}`);
   if (measurements.agentTurnStats) {
     lines.push(`- Agent turn stats: count ${measurements.agentTurnStats.count ?? measurements.agentTurnCount ?? "unknown"}; p95 ${valueMs(measurements.agentTurnP95Ms)}; max ${valueMs(measurements.agentTurnMaxMs)}; pre-provider p95 ${valueMs(measurements.agentPreProviderP95Ms)}`);
@@ -1399,6 +1402,32 @@ function valueMb(value) {
 
 function valuePercent(value) {
   return value === null || value === undefined ? "unknown" : `${value}%`;
+}
+
+function resourceHeadlineValue(measurements) {
+  return measurementMetricValue(measurements, "peakRssMb");
+}
+
+function resourceHeadlineEvidenceLabel(measurements) {
+  const role = measurements.resourcePrimaryRole ?? null;
+  if (measurements.resourceGateKind === "tracked-total") {
+    return "trackedTotalRssMb";
+  }
+  if (role === "gateway" || !role) {
+    return "gatewayRssMb";
+  }
+  return `${role}RssMb`;
+}
+
+function resourceHeadlineText(measurements) {
+  const role = measurements.resourcePrimaryRole ?? null;
+  if (measurements.resourceGateKind === "tracked-total") {
+    return "tracked total RSS";
+  }
+  if (role === "gateway" || !role) {
+    return "gateway RSS";
+  }
+  return `${role} RSS`;
 }
 
 function healthSlowestText(measurements) {

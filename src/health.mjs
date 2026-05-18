@@ -95,9 +95,26 @@ export function measurementMetricValue(measurements, metric) {
       return measurements.health?.postReadySamples?.failureCount ?? null;
     case "finalHealthFailures":
       return measurements.health?.final?.failureCount ?? null;
+    case "peakRssMb":
+      return primaryRssValue(measurements);
     default:
       return measurements[metric] ?? null;
   }
+}
+
+function primaryRssValue(measurements) {
+  if (measurements.resourceGateKind === "role" || measurements.resourceGateKind === "tracked-total") {
+    return measurements.peakRssMb ?? null;
+  }
+
+  // Compatibility for reports written before Kova recorded resourceGateKind.
+  // Those reports stored tracked total RSS in peakRssMb even when gateway role
+  // RSS was already available separately. Default old report reads to gateway
+  // so report/compare output matches the current headline RSS contract.
+  return measurements.resourceByRole?.gateway?.peakRssMb ??
+    measurements.resourcePeakGatewayRssMb ??
+    measurements.peakRssMb ??
+    null;
 }
 
 function normalizeHealthScope(scope) {

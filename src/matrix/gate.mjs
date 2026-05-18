@@ -1,4 +1,5 @@
 import { platformCoverageKeys } from "../platform.mjs";
+import { measurementMetricValue } from "../health.mjs";
 import { firstFailedCommand, summarizeFailedCommand } from "../reporting/failures.mjs";
 import { RECORD_STATUS } from "../statuses.mjs";
 import { deriveCoveragePolicy } from "./coverage-policy.mjs";
@@ -378,7 +379,7 @@ function summarizeGateMeasurements(measurements) {
       classification: readiness.classification ?? null,
       healthReadyAtMs: readiness.healthReadyAtMs ?? null
     } : null,
-    peakRssMb: measurements.peakRssMb ?? null,
+    peakRssMb: measurementMetricValue(measurements, "peakRssMb"),
     cpuPercentMax: measurements.cpuPercentMax ?? null,
     missingDependencyErrors: measurements.missingDependencyErrors ?? null,
     pluginLoadFailures: measurements.pluginLoadFailures ?? null,

@@ -12,6 +12,7 @@
 //
 // Output is what the UI primitives expect, so the renderer is just glue.
 
+import { measurementMetricValue } from "../health.mjs";
 import { summarizeSamples, classifyConfidence } from "../ui/confidence.mjs";
 
 // Metrics we always surface (when present) as scenario headline metrics,
@@ -35,9 +36,12 @@ export const METRIC_LABELS = {
   timeToListeningMs: "listening.ms",
   timeToHealthReadyMs: "health.ready.ms",
   healthP95Ms: "health.p95.ms",
-  peakRssMb: "peak.rss.mb",
+  peakRssMb: "gateway.rss.mb",
   cpuPercentMax: "cpu.max.%",
   eventLoopDelayMs: "event-loop.max.ms",
+  resourcePeakTrackedRssMb: "tracked.total.rss.mb",
+  resourcePeakCommandTreeRssMb: "command.tree.rss.mb",
+  resourcePeakGatewayRssMb: "gateway.rss.mb",
 };
 
 export const METRIC_UNITS = {
@@ -50,6 +54,9 @@ export const METRIC_UNITS = {
   peakRssMb: "MB",
   cpuPercentMax: "%",
   eventLoopDelayMs: "ms",
+  resourcePeakTrackedRssMb: "MB",
+  resourcePeakCommandTreeRssMb: "MB",
+  resourcePeakGatewayRssMb: "MB",
 };
 
 // Direction lookup: for everything we track, lower is better.
@@ -167,7 +174,7 @@ function aggregateMetrics(samples) {
         // have a row to nest under, even if its sample-level status PASSed.
         if (!metrics.has(parentKey)) {
           metrics.set(parentKey, {
-            label: METRIC_LABELS[parentKey] ?? parentKey,
+            label: metricLabel(parentKey, samples),
             unit: METRIC_UNITS[parentKey] ?? null,
             direction: "lower-better",
             threshold: null,
@@ -190,7 +197,7 @@ function aggregateMetrics(samples) {
       const key = v.metric;
       if (!metrics.has(key)) {
         metrics.set(key, {
-          label: METRIC_LABELS[key] ?? key,
+          label: metricLabel(key, samples),
           unit: METRIC_UNITS[key] ?? null,
           direction: "lower-better",
           threshold: parseThreshold(v.expected),
@@ -203,10 +210,10 @@ function aggregateMetrics(samples) {
   // Headline metrics — append when present, default status PASS
   for (const key of HEADLINE_METRICS) {
     if (metrics.has(key)) continue;
-    const values = samples.map((s) => s.measurements?.[key]).filter((v) => v != null);
+    const values = samples.map((s) => measurementMetricValue(s.measurements ?? {}, key)).filter((v) => v != null);
     if (values.length === 0) continue;
     metrics.set(key, {
-      label: METRIC_LABELS[key] ?? key,
+      label: metricLabel(key, samples),
       unit: METRIC_UNITS[key] ?? null,
       direction: "lower-better",
       threshold: null,
@@ -216,9 +223,12 @@ function aggregateMetrics(samples) {
 
   const rows = [];
   for (const [key, meta] of metrics) {
-    const values = samples.map((s) => s.measurements?.[key]).filter((v) => v != null && Number.isFinite(Number(v)));
+    const values = samples.map((s) => measurementMetricValue(s.measurements ?? {}, key)).filter((v) => v != null && Number.isFinite(Number(v)));
     if (values.length === 0 && !roleChildren.has(key)) continue;
     const stats = values.length > 0 ? summarizeSamples(values) : null;
+    const thresholdStatus = meta.threshold !== null && stats?.max !== null && stats?.max !== undefined
+      ? stats.max > meta.threshold ? "FAIL" : "PASS"
+      : meta.status;
     rows.push({
       key,
       label: meta.label,
@@ -227,7 +237,7 @@ function aggregateMetrics(samples) {
       value: stats && stats.n === 1 ? stats.median : null,
       stats: stats && stats.n > 1 ? { median: stats.median, stdev: stats.stdev, p95: stats.p95, max: stats.max } : null,
       threshold: meta.threshold,
-      status: meta.status,
+      status: thresholdStatus,
     });
     // Emit per-role child rows directly after their parent. Each child
     // carries its own threshold + FAIL status so the row tells the full
@@ -253,6 +263,26 @@ function aggregateMetrics(samples) {
   return rows;
 }
 
+function metricLabel(key, samples) {
+  if (key !== "peakRssMb") {
+    return METRIC_LABELS[key] ?? key;
+  }
+  const gateKinds = new Set((samples ?? [])
+    .map((sample) => sample.measurements?.resourceGateKind)
+    .filter((kind) => typeof kind === "string" && kind.length > 0));
+  if (gateKinds.size === 1 && gateKinds.has("tracked-total")) {
+    return "tracked.total.rss.mb";
+  }
+  const roles = new Set((samples ?? [])
+    .map((sample) => sample.measurements?.resourcePrimaryRole)
+    .filter((role) => typeof role === "string" && role.length > 0));
+  if (roles.size === 1) {
+    const role = [...roles][0];
+    return role === "tracked-total" ? "tracked.total.rss.mb" : `${role}.rss.mb`;
+  }
+  return METRIC_LABELS.peakRssMb;
+}
+
 function parseThreshold(expected) {
   if (expected == null) return null;
   if (typeof expected === "number") return expected;
@@ -263,7 +293,13 @@ function parseThreshold(expected) {
 function findWorstViolation(samples) {
   for (const s of samples) {
     const v = (s.violations ?? [])[0];
-    if (v) return summarizeViolation(v);
+    if (!v) {
+      continue;
+    }
+    const summary = summarizeViolation(v, s.measurements ?? {});
+    if (summary) {
+      return summary;
+    }
   }
   return null;
 }
@@ -287,16 +323,21 @@ function deriveProves(record, verdict) {
 // violation message (which can be 100+ chars of prose) for a tight
 // "<metric.label> · <actual>${unit} > <threshold>${unit}" form when
 // kind=threshold, falling back to a truncated message otherwise.
-function summarizeViolation(v) {
+function summarizeViolation(v, measurements = {}) {
   const metricKey = v.metric ?? null;
   const label = (metricKey && METRIC_LABELS[metricKey]) || metricKey || "violation";
   const unit = (metricKey && METRIC_UNITS[metricKey]) || "";
   const tone = "err";
 
   if (v.kind === "threshold") {
-    const actual = formatMetricNumber(v.actual);
-    const threshold = formatThreshold(v.expected);
-    if (actual != null && threshold != null) {
+    const actualValue = metricKey ? measurementMetricValue(measurements, metricKey) ?? v.actual : v.actual;
+    const thresholdValue = parseThreshold(v.expected);
+    if (typeof actualValue === "number" && thresholdValue !== null && actualValue <= thresholdValue) {
+      return null;
+    }
+    const actual = formatMetricNumber(actualValue);
+    const threshold = thresholdValue === null ? null : formatMetricNumber(thresholdValue);
+    if (actual !== null && threshold !== null) {
       return { label, note: `${actual}${unit} > ${threshold}${unit}`, tone };
     }
   }
