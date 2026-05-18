@@ -23,7 +23,13 @@ import { collectorArtifactDirs, prepareCollectorArtifactDirs } from "./collector
 import { collectProviderEvidence } from "./collectors/provider.mjs";
 import { resolveCollectionPolicy } from "./collection-policy.mjs";
 import { evaluateRecord } from "./evaluator.mjs";
-import { driverKindForCommand, measurementScopeForPhase, normalizeMeasurementScope, phaseDriverKind } from "./measurement-contract.mjs";
+import {
+  driverKindForCommand,
+  isAgentMessageCommand,
+  measurementScopeForPhase,
+  normalizeMeasurementScope,
+  phaseDriverKind
+} from "./measurement-contract.mjs";
 import { artifactsDir } from "./paths.mjs";
 import { repoRoot } from "./paths.mjs";
 import { assertKovaEnvName, assertSafeScenarioCommand } from "./safety.mjs";
@@ -949,14 +955,6 @@ function tagCommandResult(result, phaseId) {
   });
   result.driverKind = driverKindForCommand(result.command);
   return result;
-}
-
-function isAgentMessageCommand(command) {
-  return (command.includes(" -- agent ") && command.includes("--message")) ||
-    command.includes("run-concurrent-agent-turns.mjs") ||
-    command.includes("run-gateway-session-send-turn.mjs") ||
-    command.includes("run-tui-message-turn.mjs") ||
-    command.includes("run-openai-compatible-turn.mjs");
 }
 
 function agentLeakRoles() {

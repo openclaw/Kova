@@ -53,6 +53,20 @@ export function driverKindForCommand(command) {
   return "unknown";
 }
 
+export function isAgentMessageCommand(command) {
+  const text = String(command ?? "");
+  return isAgentCliMessageCommand(text) ||
+    text.includes("run-concurrent-agent-turns.mjs") ||
+    text.includes("run-gateway-session-send-turn.mjs") ||
+    text.includes("run-tui-message-turn.mjs") ||
+    text.includes("run-openai-compatible-turn.mjs");
+}
+
+export function isAgentCliMessageCommand(command) {
+  const text = String(command ?? "");
+  return text.includes(" -- agent ") && text.includes("--message");
+}
+
 export function phaseDriverKind(phase, commands = phase?.commands ?? []) {
   if (phase?.driverKind) {
     return phase.driverKind;

@@ -11,7 +11,13 @@ import { computeProviderTurnAttribution } from "./collectors/provider.mjs";
 import { summarizeRuntimeDepsLogs } from "./collectors/logs.mjs";
 import { buildHealthMeasurement, healthReadinessClassification } from "./health.mjs";
 import { resolveThresholdPolicy } from "./evaluation/thresholds.mjs";
-import { measuredProductPhase, measurementScopeForPhase, normalizeMeasurementScope } from "./measurement-contract.mjs";
+import {
+  isAgentCliMessageCommand,
+  isAgentMessageCommand,
+  measuredProductPhase,
+  measurementScopeForPhase,
+  normalizeMeasurementScope
+} from "./measurement-contract.mjs";
 import {
   checkAggregateThreshold,
   checkDuration,
@@ -3537,18 +3543,6 @@ function countDiagnosticMetric(record, key) {
     }
   }
   return observed ? count : null;
-}
-
-function isAgentMessageCommand(command) {
-  return (command.includes(" -- agent ") && command.includes("--message")) ||
-    command.includes("run-concurrent-agent-turns.mjs") ||
-    command.includes("run-gateway-session-send-turn.mjs") ||
-    command.includes("run-tui-message-turn.mjs") ||
-    command.includes("run-openai-compatible-turn.mjs");
-}
-
-function isAgentCliMessageCommand(command) {
-  return command.includes(" -- agent ") && command.includes("--message");
 }
 
 function extractAgentResponse(result) {
