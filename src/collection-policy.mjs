@@ -17,77 +17,47 @@ export const ENV_COLLECTOR_IDS = [
 ];
 
 export function fullCollectionPolicy(reason = "full collection preserves existing evidence behavior", context = {}) {
-  return {
-    schemaVersion: COLLECTION_POLICY_SCHEMA,
+  return buildCollectionPolicy({
     mode: "full",
     reason,
-    context: normalizePolicyContext(context),
+    context,
     readiness: "wait",
     healthSamples: true,
-    collectors: Object.fromEntries(ENV_COLLECTOR_IDS.map((id) => [id, true])),
     skipped: []
-  };
+  });
 }
 
 export function postReadyHealthCollectionPolicy(reason, context = {}) {
-  return {
-    schemaVersion: COLLECTION_POLICY_SCHEMA,
+  return buildCollectionPolicy({
     mode: "post-ready-health",
     reason,
-    context: normalizePolicyContext(context),
+    context,
     readiness: "none",
     healthSamples: true,
-    collectors: Object.fromEntries(ENV_COLLECTOR_IDS.map((id) => [id, true])),
     skipped: ["readiness-wait"]
-  };
+  });
 }
 
 export function serviceOnlyCollectionPolicy(reason, context = {}) {
-  return {
-    schemaVersion: COLLECTION_POLICY_SCHEMA,
+  return buildCollectionPolicy({
     mode: "service-only",
     reason,
-    context: normalizePolicyContext(context),
+    context,
     readiness: "none",
     healthSamples: false,
-    collectors: {
-      service: true,
-      process: true,
-      readiness: false,
-      health: false,
-      logs: false,
-      "openclaw-diagnostics": false,
-      timeline: false,
-      diagnostics: false,
-      "node-profiles": false,
-      "heap-snapshot": false,
-      "diagnostic-report": false
-    },
-    skipped: [
-      "readiness",
-      "health",
-      "logs",
-      "openclaw-diagnostics",
-      "timeline",
-      "diagnostics",
-      "node-profiles",
-      "heap-snapshot",
-      "diagnostic-report"
-    ]
-  };
+    enabledCollectors: ["service", "process"]
+  });
 }
 
 export function skippedEnvCollectionPolicy(reason, context = {}) {
-  return {
-    schemaVersion: COLLECTION_POLICY_SCHEMA,
+  return buildCollectionPolicy({
     mode: "skip-env",
     reason,
-    context: normalizePolicyContext(context),
+    context,
     readiness: "none",
     healthSamples: false,
-    collectors: Object.fromEntries(ENV_COLLECTOR_IDS.map((id) => [id, false])),
-    skipped: [...ENV_COLLECTOR_IDS]
-  };
+    enabledCollectors: []
+  });
 }
 
 export function resolveCollectionPolicy(context = {}) {
@@ -136,6 +106,28 @@ function policyReason(context) {
     return "evidence snapshot phases currently keep full collection for behavior parity";
   }
   return "full collection preserves existing evidence behavior";
+}
+
+function buildCollectionPolicy({
+  mode,
+  reason,
+  context,
+  readiness,
+  healthSamples,
+  enabledCollectors = ENV_COLLECTOR_IDS,
+  skipped = null
+}) {
+  const enabled = new Set(enabledCollectors);
+  return {
+    schemaVersion: COLLECTION_POLICY_SCHEMA,
+    mode,
+    reason,
+    context: normalizePolicyContext(context),
+    readiness,
+    healthSamples,
+    collectors: Object.fromEntries(ENV_COLLECTOR_IDS.map((id) => [id, enabled.has(id)])),
+    skipped: skipped ?? ENV_COLLECTOR_IDS.filter((id) => !enabled.has(id))
+  };
 }
 
 function normalizePolicyContext(context) {
