@@ -1,5 +1,3 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import { authReportSummary, resolveRunAuthContext } from "../auth.mjs";
 import { required, resolveFromCwd } from "../cli.mjs";
 import { buildRunContext } from "../run/context.mjs";
@@ -24,9 +22,10 @@ import { reportsDir, displayPath } from "../paths.mjs";
 import { loadRegistryContext } from "../registries/context.mjs";
 import { loadScenarios, validateScenarioRun } from "../registries/scenarios.mjs";
 import { loadState } from "../registries/states.mjs";
-import { buildReportSummary, renderMarkdownReport, summarizeRecords } from "../reporting/report.mjs";
+import { summarizeRecords } from "../reporting/report.mjs";
 import { createRunId } from "../runner.mjs";
 import { runScenarioRepeats } from "../run/engine.mjs";
+import { buildReportOutputPaths, writeReportOutputs } from "../run/report-output.mjs";
 import { resolveTarget } from "../targets.mjs";
 import { createRunProgress } from "../reporting/render-run-progress.mjs";
 import { renderRunReceipt } from "../reporting/render-run-receipt.mjs";
@@ -52,9 +51,7 @@ export async function runScenarioCommand(flags) {
 
   const reportRoot = flags.report_dir ? resolveFromCwd(flags.report_dir) : reportsDir;
   const runId = createRunId();
-  const reportPath = join(reportRoot, `${runId}.md`);
-  const jsonPath = join(reportRoot, `${runId}.json`);
-  const summaryPath = join(reportRoot, `${runId}.summary.json`);
+  const outputPaths = buildReportOutputPaths(reportRoot, runId);
   const repeat = positiveIntegerFlag(flags, "repeat", 1);
   const auth = await resolveRunAuthContext(flags);
   const regressionThresholds = await loadRegressionThresholds(flags);
@@ -89,16 +86,11 @@ export async function runScenarioCommand(flags) {
   });
   const performance = buildPerformanceSummary(records, { repeat, regressionThresholds });
 
-  await mkdir(reportRoot, { recursive: true });
   const report = {
     schemaVersion: reportSchemaVersion,
     generatedAt: new Date().toISOString(),
     runId,
-    outputPaths: {
-      markdown: reportPath,
-      json: jsonPath,
-      summary: summaryPath
-    },
+    outputPaths,
     mode: context.execute ? "execution" : "dry-run",
     target,
     from: flags.from ?? null,
@@ -138,9 +130,7 @@ export async function runScenarioCommand(flags) {
       saved: await saveBaselineStore(saveBaselinePath, updatedStore)
     };
   }
-  await writeFile(reportPath, renderMarkdownReport(report), "utf8");
-  await writeFile(jsonPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
-  await writeFile(summaryPath, `${JSON.stringify(buildReportSummary(report), null, 2)}\n`, "utf8");
+  await writeReportOutputs(reportRoot, report);
 
   progress.runFinish({ total: report.summary?.total ?? records.length, statuses: report.summary?.statuses ?? {} });
 
@@ -151,9 +141,9 @@ export async function runScenarioCommand(flags) {
       generatedAt: new Date().toISOString(),
       mode,
       runId,
-      reportPath,
-      jsonPath,
-      summaryPath,
+      reportPath: outputPaths.markdown,
+      jsonPath: outputPaths.json,
+      summaryPath: outputPaths.summary,
       performance: summarizePerformanceReceipt(report.performance, report.baseline),
       summary: report.summary
     }, null, 2));
@@ -161,12 +151,17 @@ export async function runScenarioCommand(flags) {
   }
 
   if (!flags.plain) {
-    console.log(renderRunReceipt({ report, reportPath, jsonPath, summaryPath }, flags));
+    console.log(renderRunReceipt({
+      report,
+      reportPath: outputPaths.markdown,
+      jsonPath: outputPaths.json,
+      summaryPath: outputPaths.summary
+    }, flags));
     return;
   }
 
-  console.log(`Kova ${mode} report written: ${displayPath(reportPath)}`);
-  console.log(`Kova ${mode} data written: ${displayPath(jsonPath)}`);
+  console.log(`Kova ${mode} report written: ${displayPath(outputPaths.markdown)}`);
+  console.log(`Kova ${mode} data written: ${displayPath(outputPaths.json)}`);
 }
 
 function validateExplicitScenarioState(scenario, state, flags) {
