@@ -6,10 +6,10 @@ import {
   cleanupTargetRuntimeIfNeeded,
   loadRegressionThresholds,
   positiveIntegerFlag,
-  profileIntegerFlag,
   summarizePerformanceReceipt,
   validateBaselineExecutionFlags
 } from "./run-support.mjs";
+import { buildRunContext } from "../run/context.mjs";
 import {
   comparePerformanceToBaseline,
   loadBaselineStore,
@@ -60,32 +60,17 @@ export async function runScenarioCommand(flags) {
   const baselinePath = resolveBaselinePath(flags.baseline);
   const saveBaselinePath = resolveBaselinePath(flags.save_baseline);
   const baselineStore = baselinePath ? await loadBaselineStore(baselinePath) : null;
-  const context = {
+  const context = buildRunContext({
+    flags,
+    registry,
     target,
     targetPlan,
-    from: flags.from,
     fromPlan,
     state,
-    sourceEnv: flags.source_env,
     runId,
-    execute: flags.execute === true,
-    keepEnv: flags.keep_env === true,
-    retainOnFailure: flags.retain_on_failure === true,
-    timeoutMs: resolveRunTimeout(scenarios, flags),
-    healthSamples: profileIntegerFlag(flags, "health_samples", flags.deep_profile === true ? 10 : 3),
-    healthIntervalMs: positiveIntegerFlag(flags, "health_interval_ms", 250),
-    readinessIntervalMs: profileIntegerFlag(flags, "readiness_interval_ms", flags.deep_profile === true ? 100 : 250),
-    heapSnapshot: flags.heap_snapshot === true || flags.deep_profile === true,
-    diagnosticReport: flags.deep_profile === true,
-    nodeProfile: flags.node_profile === true || flags.deep_profile === true,
-    deepProfile: flags.deep_profile === true,
-    profileOnFailure: flags.profile_on_failure === true,
-    resourceSampleIntervalMs: profileIntegerFlag(flags, "resource_sample_interval_ms", flags.deep_profile === true ? 250 : 1000),
-    processRoles: registry.processRoles,
-    surfacesById: Object.fromEntries(registry.surfaces.map((surface) => [surface.id, surface])),
-    targetSetup: { completed: false },
-    auth
-  };
+    auth,
+    timeoutMs: resolveRunTimeout(scenarios, flags)
+  });
   const records = [];
   const progress = createRunProgress({ flags, mode: context.execute ? "execution" : "dry-run" });
   progress.runStart({
