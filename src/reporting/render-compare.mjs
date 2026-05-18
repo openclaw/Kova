@@ -269,8 +269,9 @@ function mergeMetricRows(scenarioStates, limit) {
 }
 
 function worse(row) {
-  if (row.delta == null) return -Infinity;
-  return row.direction === "lower-better" ? row.delta : -row.delta;
+  const delta = row.delta ?? row.absoluteDelta;
+  if (delta == null) return -Infinity;
+  return row.direction === "lower-better" ? delta : -delta;
 }
 
 // ─── next hint ───────────────────────────────────────────────────────────────

@@ -258,8 +258,7 @@ function countTopLevelMetrics(metrics) {
 function renderNext(summary, scenarios, isFull, ui) {
   const { c, g } = ui;
   const lines = [];
-  const failed = scenarios.filter((s) => s.verdict === "FAIL" || s.verdict === "BLOCKED");
-  if (!isFull && failed.length > 0 && summary.runId) {
+  if (!isFull && summary.runId) {
     lines.push(`  ${c.head(g.arrow)} ${c.dim("kova report --full")} ${c.met(reportPath(summary))}`);
   }
   const rec = summary.recommendedNextScenario;

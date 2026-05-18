@@ -140,17 +140,20 @@ function shapeCompareRow(r, ui) {
     label:     c.bold(r.label),
     baseline:  fmt(r.baseline),
     current:   fmt(r.current),
-    delta:     formatDelta(r.delta, r.direction, c),
+    delta:     formatDelta(r.delta, r.direction, c, r.absoluteDelta, unit),
     threshold: fmt(r.threshold),
     status:    colorStatus(c, r.status),
   };
 }
 
-function formatDelta(delta, direction = "lower-better", c) {
-  if (delta == null) return c.dim("—");
-  const text = formatPercent(delta, { withSign: true });
-  const better = direction === "lower-better" ? delta < 0 : delta > 0;
-  const worse  = direction === "lower-better" ? delta > 0 : delta < 0;
+function formatDelta(delta, direction = "lower-better", c, absoluteDelta = null, unit = "") {
+  const displayDelta = delta ?? absoluteDelta;
+  if (displayDelta == null) return c.dim("—");
+  const text = delta == null
+    ? `${displayDelta > 0 ? "+" : ""}${formatNumber(displayDelta)}${unit}`
+    : formatPercent(delta, { withSign: true });
+  const better = direction === "lower-better" ? displayDelta < 0 : displayDelta > 0;
+  const worse  = direction === "lower-better" ? displayDelta > 0 : displayDelta < 0;
   if (better) return c.pos(text);
   if (worse) return c.neg(text);
   return c.dim(text);

@@ -83,6 +83,7 @@ export function scenarioMetricRows(scenario, { limit = 6 } = {}) {
     const deltaPct = (typeof b === "number" && b !== 0 && typeof cur === "number")
       ? ((cur - b) / Math.abs(b)) * 100
       : null;
+    const absoluteDelta = typeof b === "number" && typeof cur === "number" ? cur - b : null;
     const reg = regressionByMetric.get(id);
     rows.push({
       id,
@@ -92,6 +93,7 @@ export function scenarioMetricRows(scenario, { limit = 6 } = {}) {
       baseline: b,
       current: cur,
       delta: deltaPct,
+      absoluteDelta,
       threshold: reg?.tolerance ?? null,
       status: reg ? "OVER" : (deltaPct != null && deltaPct < -1 ? "PASS" : "—"),
       headline: HEADLINE_METRICS.includes(parsed.base),
@@ -135,9 +137,64 @@ function compareMetricLabel(id) {
 export function shapeFindingsForCompare(comparison) {
   const fc = comparison?.findingChanges ?? {};
   const out = [];
+  for (const f of regressionFindings(comparison)) out.push(f);
   for (const f of fc.new ?? []) out.push(toFindingRow(f, "+"));
   for (const f of fc.resolved ?? []) out.push(toFindingRow(f, "-"));
   return out;
+}
+
+function regressionFindings(comparison) {
+  const out = [];
+  for (const scenario of comparison?.scenarios ?? []) {
+    for (const regression of scenario.regressions ?? []) {
+      out.push({
+        sign: "+",
+        severity: regression.kind === "coverage" ? "warning" : "fail",
+        summary: regressionSummary(regression),
+        scope: [scenario.scenario ?? scenario.key, scenario.state].filter(Boolean).join("/") || null,
+        scenario: scenario.scenario ?? null,
+        state: scenario.state ?? null,
+        ownerArea: null,
+        evidence: regressionEvidence(regression),
+      });
+    }
+  }
+  return out;
+}
+
+function regressionSummary(regression) {
+  if (regression.kind === "metric") {
+    const label = compareMetricLabel(regression.metric);
+    const delta = typeof regression.delta === "number" ? signedNumber(regression.delta) : null;
+    const values = `${formatPlainValue(regression.baseline)} -> ${formatPlainValue(regression.current)}`;
+    return `${label}${delta ? ` ${delta}` : ""} (${values})`;
+  }
+  return regression.message ?? `${regression.kind ?? "compare"} regression`;
+}
+
+function regressionEvidence(regression) {
+  const evidence = [];
+  if (regression.kind === "metric" && regression.tolerance !== null && regression.tolerance !== undefined) {
+    evidence.push(`tolerance ${regression.tolerance}`);
+  }
+  if (regression.message) {
+    evidence.push(regression.message);
+  }
+  return evidence;
+}
+
+function signedNumber(value) {
+  if (!Number.isFinite(value)) {
+    return null;
+  }
+  return `${value > 0 ? "+" : ""}${formatPlainValue(value)}`;
+}
+
+function formatPlainValue(value) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return value == null ? "unknown" : String(value);
+  }
+  return value.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
 function toFindingRow(f, sign) {
@@ -189,6 +246,7 @@ function worstSeverity(reg) {
 }
 
 function worseness(row) {
-  if (row.delta == null) return -Infinity;
-  return row.direction === "lower-better" ? row.delta : -row.delta;
+  const delta = row.delta ?? row.absoluteDelta;
+  if (delta == null) return -Infinity;
+  return row.direction === "lower-better" ? delta : -delta;
 }
