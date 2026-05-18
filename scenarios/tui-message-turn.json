@@ -78,8 +78,7 @@
       "title": "Post-TUI Gateway Health",
       "intent": "Verify the gateway remains responsive after the TUI message turn.",
       "commands": [
-        "ocm @{env} -- status",
-        "ocm logs {env} --tail 300 --raw"
+        "ocm @{env} -- status"
       ],
       "evidence": [
         "gateway status",

@@ -150,8 +150,7 @@
       "title": "Post-Session Gateway Health",
       "intent": "Verify the gateway remains responsive after repeated agent turns and capture provider/plugin diagnostics.",
       "commands": [
-        "ocm @{env} -- status",
-        "ocm logs {env} --tail 500 --raw"
+        "ocm @{env} -- status"
       ],
       "evidence": [
         "gateway status",

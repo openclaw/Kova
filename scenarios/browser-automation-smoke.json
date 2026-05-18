@@ -64,8 +64,7 @@
       "title": "Post-Browser Gateway Health",
       "intent": "Verify browser automation did not leave the gateway degraded.",
       "commands": [
-        "ocm @{env} -- status",
-        "ocm logs {env} --tail 300 --raw"
+        "ocm @{env} -- status"
       ],
       "evidence": [
         "status after browser automation",

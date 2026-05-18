@@ -64,8 +64,7 @@
       "title": "Post-Failure Gateway Health",
       "intent": "Verify the gateway remains responsive after the timeout failure.",
       "commands": [
-        "ocm @{env} -- status",
-        "ocm logs {env} --tail 300 --raw"
+        "ocm @{env} -- status"
       ],
       "evidence": [
         "gateway status",

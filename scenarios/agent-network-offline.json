@@ -59,8 +59,7 @@
       "title": "Post-Network Gateway Health",
       "intent": "Verify the gateway remains responsive and collect logs after the network failure path.",
       "commands": [
-        "ocm @{env} -- status",
-        "ocm logs {env} --tail 300 --raw"
+        "ocm @{env} -- status"
       ],
       "evidence": [
         "gateway status",

@@ -2735,8 +2735,7 @@
           "title": "Post-Auth-Failure Gateway Health",
           "intent": "Verify the gateway remains responsive after the missing-auth agent failure.",
           "commands": [
-            "ocm @{env} -- status",
-            "ocm logs {env} --tail 300 --raw"
+            "ocm @{env} -- status"
           ],
           "evidence": [
             "gateway status",
@@ -2936,8 +2935,7 @@
           "title": "Post-Agent Gateway Health",
           "intent": "Verify the gateway remains responsive after the Gateway RPC agent turn.",
           "commands": [
-            "ocm @{env} -- status",
-            "ocm logs {env} --tail 300 --raw"
+            "ocm @{env} -- status"
           ],
           "evidence": [
             "gateway status",
@@ -3105,8 +3103,7 @@
           "title": "Post-Session Gateway Health",
           "intent": "Verify the gateway remains responsive after repeated agent turns and capture provider/plugin diagnostics.",
           "commands": [
-            "ocm @{env} -- status",
-            "ocm logs {env} --tail 500 --raw"
+            "ocm @{env} -- status"
           ],
           "evidence": [
             "gateway status",
@@ -3184,8 +3181,7 @@
           "title": "Post-Network Gateway Health",
           "intent": "Verify the gateway remains responsive and collect logs after the network failure path.",
           "commands": [
-            "ocm @{env} -- status",
-            "ocm logs {env} --tail 300 --raw"
+            "ocm @{env} -- status"
           ],
           "evidence": [
             "gateway status",
@@ -3276,8 +3272,7 @@
           "title": "Post-Concurrency Gateway Health",
           "intent": "Verify the gateway remains responsive after concurrent agent/provider work.",
           "commands": [
-            "ocm @{env} -- status",
-            "ocm logs {env} --tail 300 --raw"
+            "ocm @{env} -- status"
           ],
           "evidence": [
             "gateway status",
@@ -3358,8 +3353,7 @@
           "title": "Post-Failure Gateway Health",
           "intent": "Verify the gateway remains responsive after the malformed provider response.",
           "commands": [
-            "ocm @{env} -- status",
-            "ocm logs {env} --tail 300 --raw"
+            "ocm @{env} -- status"
           ],
           "evidence": [
             "gateway status",
@@ -3460,8 +3454,7 @@
           "title": "Post-Failure Gateway Health",
           "intent": "Verify the gateway remains responsive after provider failure and recovery.",
           "commands": [
-            "ocm @{env} -- status",
-            "ocm logs {env} --tail 300 --raw"
+            "ocm @{env} -- status"
           ],
           "evidence": [
             "gateway status",
@@ -3547,8 +3540,7 @@
           "title": "Post-Failure Gateway Health",
           "intent": "Verify the gateway remains responsive after the slow provider turn.",
           "commands": [
-            "ocm @{env} -- status",
-            "ocm logs {env} --tail 300 --raw"
+            "ocm @{env} -- status"
           ],
           "evidence": [
             "gateway status",
@@ -3633,8 +3625,7 @@
           "title": "Post-Failure Gateway Health",
           "intent": "Verify the gateway remains responsive after the stalled provider stream.",
           "commands": [
-            "ocm @{env} -- status",
-            "ocm logs {env} --tail 300 --raw"
+            "ocm @{env} -- status"
           ],
           "evidence": [
             "gateway status",
@@ -3716,8 +3707,7 @@
           "title": "Post-Failure Gateway Health",
           "intent": "Verify the gateway remains responsive after the timeout failure.",
           "commands": [
-            "ocm @{env} -- status",
-            "ocm logs {env} --tail 300 --raw"
+            "ocm @{env} -- status"
           ],
           "evidence": [
             "gateway status",
@@ -3799,8 +3789,7 @@
           "title": "Post-Browser Gateway Health",
           "intent": "Verify browser automation did not leave the gateway degraded.",
           "commands": [
-            "ocm @{env} -- status",
-            "ocm logs {env} --tail 300 --raw"
+            "ocm @{env} -- status"
           ],
           "evidence": [
             "status after browser automation",
@@ -3992,8 +3981,7 @@
           "intent": "Run the minimum user-facing checks used for every platform.",
           "commands": [
             "ocm @{env} -- status",
-            "ocm @{env} -- plugins list",
-            "ocm logs {env} --tail 250 --raw"
+            "ocm @{env} -- plugins list"
           ],
           "evidence": [
             "status",
@@ -4065,8 +4053,7 @@
           "title": "Post-Dashboard Health",
           "intent": "Verify dashboard entry did not make the gateway or websocket layer unstable.",
           "commands": [
-            "ocm @{env} -- status",
-            "ocm logs {env} --tail 300 --raw"
+            "ocm @{env} -- status"
           ],
           "evidence": [
             "status after dashboard command",
@@ -4118,7 +4105,6 @@
           "title": "Diagnostic Capture",
           "intent": "Capture logs and status after injected failures. Scenario-specific injectors will be added as Kova grows.",
           "commands": [
-            "ocm logs {env} --tail 300 --raw",
             "ocm @{env} -- status"
           ],
           "evidence": [
@@ -4628,8 +4614,7 @@
           "title": "Post-MCP Gateway Health",
           "intent": "Verify the gateway remains responsive after the MCP bridge starts and exits.",
           "commands": [
-            "ocm @{env} -- status",
-            "ocm logs {env} --tail 300 --raw"
+            "ocm @{env} -- status"
           ],
           "evidence": [
             "status after MCP bridge",
@@ -4709,8 +4694,7 @@
           "title": "Post-Media Gateway Health",
           "intent": "Verify the gateway remains responsive and collect logs after the media timeout path.",
           "commands": [
-            "ocm @{env} -- status",
-            "ocm logs {env} --tail 300 --raw"
+            "ocm @{env} -- status"
           ],
           "evidence": [
             "gateway status",
@@ -4901,8 +4885,7 @@
           "title": "Post-HTTP Gateway Health",
           "intent": "Verify the gateway remains responsive after the OpenAI-compatible request.",
           "commands": [
-            "ocm @{env} -- status",
-            "ocm logs {env} --tail 300 --raw"
+            "ocm @{env} -- status"
           ],
           "evidence": [
             "gateway status",
@@ -4972,8 +4955,7 @@
           "intent": "Verify OpenClaw still answers status and plugin list after rejecting the bad manifest.",
           "commands": [
             "ocm @{env} -- status",
-            "ocm @{env} -- plugins list",
-            "ocm logs {env} --tail 300 --raw"
+            "ocm @{env} -- plugins list"
           ],
           "evidence": [
             "gateway status",
@@ -5319,8 +5301,7 @@
           "title": "Post-Update Health",
           "intent": "Verify the gateway is still usable after update planning.",
           "commands": [
-            "ocm @{env} -- status",
-            "ocm logs {env} --tail 300 --raw"
+            "ocm @{env} -- status"
           ],
           "evidence": [
             "status after update",
@@ -5607,8 +5588,7 @@
           "title": "Post-TUI Gateway Health",
           "intent": "Verify the gateway remains responsive after the TUI message turn.",
           "commands": [
-            "ocm @{env} -- status",
-            "ocm logs {env} --tail 300 --raw"
+            "ocm @{env} -- status"
           ],
           "evidence": [
             "gateway status",
@@ -5679,8 +5659,7 @@
           "title": "Post-TUI Health",
           "intent": "Verify the gateway remains responsive after a terminal UI session starts and exits.",
           "commands": [
-            "ocm @{env} -- status",
-            "ocm logs {env} --tail 300 --raw"
+            "ocm @{env} -- status"
           ],
           "evidence": [
             "status after TUI",

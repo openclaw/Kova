@@ -56,8 +56,7 @@
       "title": "Post-Update Health",
       "intent": "Verify the gateway is still usable after update planning.",
       "commands": [
-        "ocm @{env} -- status",
-        "ocm logs {env} --tail 300 --raw"
+        "ocm @{env} -- status"
       ],
       "evidence": [
         "status after update",

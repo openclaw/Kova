@@ -46,8 +46,7 @@
       "intent": "Run the minimum user-facing checks used for every platform.",
       "commands": [
         "ocm @{env} -- status",
-        "ocm @{env} -- plugins list",
-        "ocm logs {env} --tail 250 --raw"
+        "ocm @{env} -- plugins list"
       ],
       "evidence": [
         "status",

@@ -52,8 +52,7 @@
       "intent": "Verify OpenClaw still answers status and plugin list after rejecting the bad manifest.",
       "commands": [
         "ocm @{env} -- status",
-        "ocm @{env} -- plugins list",
-        "ocm logs {env} --tail 300 --raw"
+        "ocm @{env} -- plugins list"
       ],
       "evidence": [
         "gateway status",

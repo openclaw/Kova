@@ -79,8 +79,7 @@
       "title": "Post-Agent Gateway Health",
       "intent": "Verify the gateway remains responsive after the Gateway RPC agent turn.",
       "commands": [
-        "ocm @{env} -- status",
-        "ocm logs {env} --tail 300 --raw"
+        "ocm @{env} -- status"
       ],
       "evidence": [
         "gateway status",

@@ -73,8 +73,7 @@
       "title": "Post-Concurrency Gateway Health",
       "intent": "Verify the gateway remains responsive after concurrent agent/provider work.",
       "commands": [
-        "ocm @{env} -- status",
-        "ocm logs {env} --tail 300 --raw"
+        "ocm @{env} -- status"
       ],
       "evidence": [
         "gateway status",

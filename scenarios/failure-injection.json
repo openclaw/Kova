@@ -35,7 +35,6 @@
       "title": "Diagnostic Capture",
       "intent": "Capture logs and status after injected failures. Scenario-specific injectors will be added as Kova grows.",
       "commands": [
-        "ocm logs {env} --tail 300 --raw",
         "ocm @{env} -- status"
       ],
       "evidence": [

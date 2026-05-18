@@ -67,8 +67,7 @@
       "title": "Post-Failure Gateway Health",
       "intent": "Verify the gateway remains responsive after the stalled provider stream.",
       "commands": [
-        "ocm @{env} -- status",
-        "ocm logs {env} --tail 300 --raw"
+        "ocm @{env} -- status"
       ],
       "evidence": [
         "gateway status",
