@@ -29,8 +29,8 @@ export async function resolveMatrixPlan(flags, options = {}) {
   });
   assertResolvedCoverageIsRunnable(resolvedCoverage);
 
-  for (const entry of entries.filter((item) => !item.skipReason)) {
-    validateScenarioRun(entry.scenario, flags, { targetPlan, fromPlan });
+  if (options.validateEntries !== false) {
+    validateMatrixScenarioRuns(entries, flags, { targetPlan, fromPlan });
   }
 
   return {
@@ -44,4 +44,10 @@ export async function resolveMatrixPlan(flags, options = {}) {
     resolvedCoverage,
     controls: matrixControlSummary(flags, targetPlan)
   };
+}
+
+export function validateMatrixScenarioRuns(entries, flags, context) {
+  for (const entry of entries.filter((item) => !item.skipReason)) {
+    validateScenarioRun(entry.scenario, flags, context);
+  }
 }

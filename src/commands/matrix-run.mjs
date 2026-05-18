@@ -10,7 +10,7 @@ import {
 } from "../run/options.mjs";
 import { cleanupTargetRuntimeIfNeeded } from "../run/target-cleanup.mjs";
 import { evaluateGate, preflightGateRun } from "../matrix/gate.mjs";
-import { resolveMatrixPlan } from "../matrix/plan-resolution.mjs";
+import { resolveMatrixPlan, validateMatrixScenarioRuns } from "../matrix/plan-resolution.mjs";
 import { profileSummary } from "../matrix/profile.mjs";
 import {
   loadBaselineStore,
@@ -38,13 +38,17 @@ export async function runMatrixRun(flags) {
     entries,
     resolvedCoverage,
     controls
-  } = await resolveMatrixPlan(flags, { validateProfile: validateProfileExecutionFlags });
+  } = await resolveMatrixPlan(flags, {
+    validateProfile: validateProfileExecutionFlags,
+    validateEntries: false
+  });
   const auth = await resolveRunAuthContext(flags);
   const regressionThresholds = await loadRegressionThresholds(flags);
   const baselinePath = resolveBaselinePath(flags.baseline);
   const saveBaselinePath = resolveBaselinePath(flags.save_baseline);
   const baselineStore = baselinePath ? await loadBaselineStore(baselinePath) : null;
   preflightGateRun({ entries, flags });
+  validateMatrixScenarioRuns(entries, flags, { targetPlan, fromPlan });
   const reportRoot = flags.report_dir ? resolveFromCwd(flags.report_dir) : reportsDir;
   const runId = createRunId();
   const outputPaths = buildReportOutputPaths(reportRoot, runId, profile.id);
