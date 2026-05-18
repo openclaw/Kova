@@ -82,7 +82,7 @@ export function phaseMetrics(record, phaseId) {
   return (record.phases ?? []).find((phase) => phase.id === phaseId)?.metrics ?? null;
 }
 
-export function releaseStartupLogsProof(record, phaseId) {
+export function collectedLogsProof(record, phaseId) {
   const command = findCommandResultInPhase(record, phaseId, (result) => result.command?.startsWith("ocm logs "));
   if (command) {
     return { kind: "command", command };
@@ -95,7 +95,7 @@ export function releaseStartupLogsProof(record, phaseId) {
   };
 }
 
-export function releaseStartupLogsOk(proof) {
+export function collectedLogsOk(proof) {
   if (proof && !proof.kind && proof.status !== undefined) {
     return proof.status === 0 && `${proof.stdout ?? ""}${proof.stderr ?? ""}`.trim().length > 0;
   }
@@ -108,44 +108,44 @@ export function releaseStartupLogsOk(proof) {
     proof.metrics.artifacts.length > 0;
 }
 
-export function releaseStartupLogsReason(proof) {
+export function collectedLogsReason(proof) {
   if (!proof) {
-    return "startup logs evidence was not captured";
+    return "logs evidence was not captured";
   }
   if (!proof.kind && proof.status !== undefined) {
     if (proof.status !== 0) {
-      return `startup logs command exited ${proof.status}`;
+      return `logs command exited ${proof.status}`;
     }
     if (`${proof.stdout ?? ""}${proof.stderr ?? ""}`.trim().length === 0) {
-      return "startup logs command emitted no output";
+      return "logs command emitted no output";
     }
     return null;
   }
   if (proof.kind === "command") {
     if (proof.command.status !== 0) {
-      return `startup logs command exited ${proof.command.status}`;
+      return `logs command exited ${proof.command.status}`;
     }
     if (`${proof.command.stdout ?? ""}${proof.command.stderr ?? ""}`.trim().length === 0) {
-      return "startup logs command emitted no output";
+      return "logs command emitted no output";
     }
     return null;
   }
   if (!proof.receipt) {
-    return "startup logs collector receipt was not captured";
+    return "logs collector receipt was not captured";
   }
   if (proof.receipt.status !== "PASS") {
-    return `startup logs collector status was ${proof.receipt.status}`;
+    return `logs collector status was ${proof.receipt.status}`;
   }
   if (proof.metrics?.commandStatus !== 0) {
-    return `startup logs collector command status was ${proof.metrics?.commandStatus ?? "missing"}`;
+    return `logs collector command status was ${proof.metrics?.commandStatus ?? "missing"}`;
   }
   if (!Array.isArray(proof.metrics?.artifacts) || proof.metrics.artifacts.length === 0) {
-    return "startup logs collector artifact path was not recorded";
+    return "logs collector artifact path was not recorded";
   }
   return null;
 }
 
-export function releaseStartupLogArtifactPath(record) {
+export function collectedLogArtifactPath(record) {
   for (const metrics of collectRecordMetricObjects(record)) {
     const artifact = metrics.logs?.artifacts?.[0];
     if (artifact) {
@@ -153,6 +153,22 @@ export function releaseStartupLogArtifactPath(record) {
     }
   }
   return null;
+}
+
+export function releaseStartupLogsProof(record, phaseId) {
+  return collectedLogsProof(record, phaseId);
+}
+
+export function releaseStartupLogsOk(proof) {
+  return collectedLogsOk(proof);
+}
+
+export function releaseStartupLogsReason(proof) {
+  return collectedLogsReason(proof);
+}
+
+export function releaseStartupLogArtifactPath(record) {
+  return collectedLogArtifactPath(record);
 }
 
 export function zeroCountInvariant({ id, summary, actual, metric, phaseId = "post-upgrade" }) {

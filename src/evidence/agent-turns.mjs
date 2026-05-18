@@ -3,13 +3,13 @@ import {
   commonResourceProofReason,
   commonTimelineProofOk,
   commonTimelineProofReason,
+  collectedLogArtifactPath,
   findCommandResult,
   gatewaySessionHealthOk,
   gatewaySessionHealthReason,
   nonNegativeNumber,
   phaseCommandReceiptsOk,
   phaseCommandReceiptsReason,
-  releaseStartupLogArtifactPath,
   zeroCountInvariant
 } from "./shared.mjs";
 
@@ -26,7 +26,7 @@ export function buildAgentGatewayRpcTurnEvidenceInvariants(record, scenario = {}
   const missingDependencyErrors = record.measurements?.missingDependencyErrors;
   const pluginLoadFailures = record.measurements?.pluginLoadFailures;
   const providerTimeoutMentions = record.measurements?.providerTimeoutMentions;
-  const logArtifactPath = releaseStartupLogArtifactPath(record);
+  const logArtifactPath = collectedLogArtifactPath(record);
 
   return [
     {
@@ -250,7 +250,7 @@ export function buildAgentCliLocalTurnEvidenceInvariants(record, scenario = {}) 
   const missingDependencyErrors = record.measurements?.missingDependencyErrors;
   const pluginLoadFailures = record.measurements?.pluginLoadFailures;
   const providerTimeoutMentions = record.measurements?.providerTimeoutMentions;
-  const logArtifactPath = releaseStartupLogArtifactPath(record);
+  const logArtifactPath = collectedLogArtifactPath(record);
 
   return [
     {

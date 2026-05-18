@@ -3,13 +3,13 @@ import {
   commandReceiptReason,
   collectorReceiptOk,
   collectorReceiptReason,
+  collectedLogArtifactPath,
+  collectedLogsOk,
+  collectedLogsProof,
+  collectedLogsReason,
   findCommandResult,
   nonNegativeNumber,
   parseJsonObject,
-  releaseStartupLogArtifactPath,
-  releaseStartupLogsOk,
-  releaseStartupLogsProof,
-  releaseStartupLogsReason,
   zeroCountInvariant
 } from "./shared.mjs";
 
@@ -23,7 +23,7 @@ export function buildReleaseRuntimeStartupEvidenceInvariants(record, scenario = 
   const provision = releaseStartupProvisionProof(record);
   const statusResult = findCommandResult(record, (result) => result.command === "ocm @{env} -- status" || result.command?.includes(" -- status"));
   const pluginsListResult = findCommandResult(record, (result) => result.command === "ocm @{env} -- plugins list" || result.command?.includes(" -- plugins list"));
-  const logsProof = releaseStartupLogsProof(record, "startup-logs");
+  const logsProof = collectedLogsProof(record, "startup-logs");
   const missingDependencyErrors = record.measurements?.missingDependencyErrors;
   const pluginLoadFailures = record.measurements?.pluginLoadFailures;
 
@@ -86,10 +86,10 @@ export function buildReleaseRuntimeStartupEvidenceInvariants(record, scenario = 
       id: "release-runtime-startup-logs-captured",
       phaseId: "startup-logs",
       required: true,
-      status: releaseStartupLogsOk(logsProof) ? "passed" : "missing",
+      status: collectedLogsOk(logsProof) ? "passed" : "missing",
       summary: "startup logs were captured through command or collector evidence",
-      artifactPath: releaseStartupLogArtifactPath(record),
-      reason: releaseStartupLogsReason(logsProof)
+      artifactPath: collectedLogArtifactPath(record),
+      reason: collectedLogsReason(logsProof)
     },
     zeroCountInvariant({
       id: "release-runtime-no-missing-runtime-dependency-errors",
