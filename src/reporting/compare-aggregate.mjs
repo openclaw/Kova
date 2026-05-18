@@ -41,6 +41,8 @@ export function rollupScenarios(comparison) {
     acc.states.push(s);
     acc.regressionCount += s.regressions?.length ?? 0;
     acc.verdict = pickWorseVerdict(acc.verdict, s.status);
+    acc.totalSamples += s.currentSampleCount ?? 0;
+    acc.failedSamples += s.currentStatuses?.FAIL ?? 0;
     // Surface worst regression as the "worst metric" headline.
     const worst = pickWorstRegression(s.regressions);
     if (worst && (!acc.worst || worstSeverity(worst) > worstSeverity(acc.worst))) {
@@ -74,6 +76,7 @@ export function scenarioMetricRows(scenario, { limit = 6 } = {}) {
 
   const rows = [];
   for (const [id, m] of Object.entries(metrics)) {
+    const parsed = parseStatMetricId(id);
     const b = m.baseline;
     const cur = m.current;
     if (b == null && cur == null) continue;
@@ -83,15 +86,15 @@ export function scenarioMetricRows(scenario, { limit = 6 } = {}) {
     const reg = regressionByMetric.get(id);
     rows.push({
       id,
-      label: METRIC_LABELS[id] ?? id,
-      unit: METRIC_UNITS[id] ?? null,
-      direction: metricDirection(id),
+      label: compareMetricLabel(id),
+      unit: METRIC_UNITS[parsed.base] ?? null,
+      direction: metricDirection(parsed.base),
       baseline: b,
       current: cur,
       delta: deltaPct,
       threshold: reg?.tolerance ?? null,
       status: reg ? "OVER" : (deltaPct != null && deltaPct < -1 ? "PASS" : "—"),
-      headline: HEADLINE_METRICS.includes(id),
+      headline: HEADLINE_METRICS.includes(parsed.base),
       regressed: !!reg,
     });
   }
@@ -109,6 +112,23 @@ export function scenarioMetricRows(scenario, { limit = 6 } = {}) {
   });
 
   return rows.slice(0, limit);
+}
+
+function parseStatMetricId(id) {
+  const suffix = id.match(/^(.*)\.(median|max|p95)$/);
+  if (!suffix) {
+    return { base: id, stat: "median" };
+  }
+  return { base: suffix[1], stat: suffix[2] };
+}
+
+function compareMetricLabel(id) {
+  const { base, stat } = parseStatMetricId(id);
+  const baseLabel = METRIC_LABELS[base] ?? base;
+  if (stat === "median") {
+    return baseLabel;
+  }
+  return `${baseLabel}.${stat}`;
 }
 
 // shapeFindingsForCompare(comparison) -> [{ severity, summary, scope, ownerArea, sign }]

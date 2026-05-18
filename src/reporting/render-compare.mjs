@@ -176,7 +176,7 @@ function formatWorstRegression(reg) {
     return { label, tone: "err" };
   }
   if (reg.kind === "metric") {
-    const label = METRIC_LABELS[reg.metric] ?? reg.metric ?? "metric";
+    const label = compareMetricLabel(reg.metric);
     const ratio = reg.tolerance ? (reg.delta / reg.tolerance) : null;
     const note = ratio != null && Number.isFinite(ratio)
       ? `${ratio.toFixed(1)}× tol`
@@ -189,6 +189,16 @@ function formatWorstRegression(reg) {
   }
   const msg = reg.message ?? "";
   return { label: msg.length > 60 ? `${msg.slice(0, 57)}…` : msg, tone: "err" };
+}
+
+function compareMetricLabel(metric) {
+  const value = metric ?? "metric";
+  const suffix = String(value).match(/^(.*)\.(median|max|p95)$/);
+  if (!suffix) {
+    return METRIC_LABELS[value] ?? value;
+  }
+  const base = METRIC_LABELS[suffix[1]] ?? suffix[1];
+  return `${base}.${suffix[2]}`;
 }
 
 // ─── findings ────────────────────────────────────────────────────────────────

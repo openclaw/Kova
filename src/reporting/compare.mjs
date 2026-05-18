@@ -60,63 +60,78 @@ export function compareReports(baseline, current, options = {}) {
   const thresholds = resolveThresholds(options.thresholds);
   const baselineSummary = buildReportSummary(baseline);
   const currentSummary = buildReportSummary(current);
-  const baselineRecords = indexRecords(baseline.records ?? []);
-  const currentRecords = current.records ?? [];
+  const baselineRecords = groupRecords(baseline.records ?? []);
+  const currentRecords = groupRecords(current.records ?? []);
   const scenarios = [];
 
-  for (const currentRecord of currentRecords) {
-    const key = recordKey(currentRecord);
-    const baselineRecord = baselineRecords.get(key);
-    if (!baselineRecord) {
+  for (const [key, currentGroup] of currentRecords.entries()) {
+    const baselineGroup = baselineRecords.get(key);
+    const currentFirst = currentGroup[0] ?? {};
+    if (!baselineGroup) {
       scenarios.push({
         key,
-        scenario: currentRecord.scenario,
-        state: currentRecord.state?.id ?? null,
+        scenario: currentFirst.scenario,
+        state: currentFirst.state?.id ?? null,
         status: "NEW",
-        currentStatus: currentRecord.status,
+        currentStatus: groupWorstStatus(currentGroup),
         baselineStatus: null,
+        baselineStatuses: {},
+        currentStatuses: statusCounts(currentGroup),
+        baselineSampleCount: 0,
+        currentSampleCount: currentGroup.length,
         regressions: [],
-        metrics: metricDeltas(null, currentRecord.measurements ?? {})
+        metrics: metricDeltas([], currentGroup)
       });
       continue;
     }
 
     const regressions = [];
-    if (statusRank(currentRecord.status) > statusRank(baselineRecord.status)) {
+    const baselineStatus = groupWorstStatus(baselineGroup);
+    const currentStatus = groupWorstStatus(currentGroup);
+    if (statusRank(currentStatus) > statusRank(baselineStatus)) {
       regressions.push({
         kind: "status",
         metric: "status",
-        baseline: baselineRecord.status,
-        current: currentRecord.status,
-        message: `status regressed from ${baselineRecord.status} to ${currentRecord.status}`
+        baseline: baselineStatus,
+        current: currentStatus,
+        message: `status regressed from ${baselineStatus} to ${currentStatus}`
       });
     }
 
-    regressions.push(...metricRegressions(baselineRecord.measurements ?? {}, currentRecord.measurements ?? {}, thresholds));
+    regressions.push(...metricRegressions(baselineGroup, currentGroup, thresholds));
 
     scenarios.push({
       key,
-      scenario: currentRecord.scenario,
-      state: currentRecord.state?.id ?? null,
+      scenario: currentFirst.scenario,
+      state: currentFirst.state?.id ?? null,
       status: regressions.length > 0 ? "REGRESSED" : "OK",
-      currentStatus: currentRecord.status,
-      baselineStatus: baselineRecord.status,
+      currentStatus,
+      baselineStatus,
+      baselineStatuses: statusCounts(baselineGroup),
+      currentStatuses: statusCounts(currentGroup),
+      baselineSampleCount: baselineGroup.length,
+      currentSampleCount: currentGroup.length,
       regressions,
-      metrics: metricDeltas(baselineRecord.measurements ?? {}, currentRecord.measurements ?? {})
+      metrics: metricDeltas(baselineGroup, currentGroup)
     });
   }
 
-  for (const [key, baselineRecord] of baselineRecords.entries()) {
-    if (currentRecords.some((record) => recordKey(record) === key)) {
+  for (const [key, baselineGroup] of baselineRecords.entries()) {
+    if (currentRecords.has(key)) {
       continue;
     }
+    const baselineFirst = baselineGroup[0] ?? {};
     scenarios.push({
       key,
-      scenario: baselineRecord.scenario,
-      state: baselineRecord.state?.id ?? null,
+      scenario: baselineFirst.scenario,
+      state: baselineFirst.state?.id ?? null,
       status: "MISSING",
       currentStatus: null,
-      baselineStatus: baselineRecord.status,
+      baselineStatus: groupWorstStatus(baselineGroup),
+      baselineStatuses: statusCounts(baselineGroup),
+      currentStatuses: {},
+      baselineSampleCount: baselineGroup.length,
+      currentSampleCount: 0,
       regressions: [{
         kind: "coverage",
         metric: "scenario",
@@ -271,8 +286,38 @@ function indexRecords(records) {
   return index;
 }
 
+function groupRecords(records) {
+  const groups = new Map();
+  for (const record of records) {
+    const key = recordKey(record);
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    groups.get(key).push(record);
+  }
+  return groups;
+}
+
 function recordKey(record) {
   return `${record.scenario}:${record.state?.id ?? "none"}`;
+}
+
+function groupWorstStatus(records = []) {
+  let worst = "PASS";
+  for (const record of records) {
+    if (statusRank(record.status) > statusRank(worst)) {
+      worst = record.status;
+    }
+  }
+  return worst;
+}
+
+function statusCounts(records = []) {
+  const counts = {};
+  for (const record of records) {
+    counts[record.status] = (counts[record.status] ?? 0) + 1;
+  }
+  return counts;
 }
 
 function reportSummary(report, summary) {
@@ -367,7 +412,7 @@ function findingKey(finding) {
     finding.scenario ?? "run",
     finding.state ?? "none",
     finding.metric ?? "none",
-    finding.summary ?? ""
+    finding.command ?? (finding.metric ? "metric" : finding.id ?? "none")
   ].join("|");
 }
 
@@ -477,7 +522,7 @@ function diagnosticRecordSummary(record) {
     readinessHealthReadyMs: measurementMetricValue(measurements, "readinessHealthReadyMs"),
     startupHealthP95Ms: measurementMetricValue(measurements, "startupHealthP95Ms"),
     postReadyHealthP95Ms: measurementMetricValue(measurements, "postReadyHealthP95Ms"),
-    peakRssMb: measurements.peakRssMb ?? null
+    peakRssMb: measurementMetricValue(measurements, "peakRssMb")
   };
 }
 
@@ -511,17 +556,33 @@ function statusRank(status) {
   return ranks[status] ?? 3;
 }
 
-function metricRegressions(baseline, current, thresholds) {
+function metricRegressions(baselineRecords, currentRecords, thresholds) {
   const regressions = [];
   for (const [metric, tolerance] of Object.entries(thresholds)) {
-    addIncreaseRegression(regressions, baseline, current, metric, tolerance);
+    const baseline = summarizeMetricRecords(baselineRecords, metric);
+    const current = summarizeMetricRecords(currentRecords, metric);
+    if (usesRepeatedMaxOnly(baseline, current, tolerance)) {
+      addIncreaseRegression(regressions, baseline, current, `${metric}.max`, tolerance, "max");
+    } else {
+      addIncreaseRegression(regressions, baseline, current, metric, tolerance, "median");
+    }
+    if (!usesRepeatedMaxOnly(baseline, current, tolerance) && (baseline.count > 1 || current.count > 1)) {
+      addIncreaseRegression(regressions, baseline, current, `${metric}.max`, tolerance, "max");
+      if (baseline.p95 !== null || current.p95 !== null) {
+        addIncreaseRegression(regressions, baseline, current, `${metric}.p95`, tolerance, "p95");
+      }
+    }
   }
   return regressions;
 }
 
-function addIncreaseRegression(regressions, baseline, current, metric, tolerance) {
-  const baselineValue = measurementMetricValue(baseline, metric);
-  const currentValue = measurementMetricValue(current, metric);
+function usesRepeatedMaxOnly(baseline, current, tolerance) {
+  return tolerance === 0 && ((baseline?.count ?? 0) > 1 || (current?.count ?? 0) > 1);
+}
+
+function addIncreaseRegression(regressions, baseline, current, metric, tolerance, stat) {
+  const baselineValue = baseline?.[stat] ?? null;
+  const currentValue = current?.[stat] ?? null;
   if (typeof baselineValue !== "number" || typeof currentValue !== "number") {
     return;
   }
@@ -534,15 +595,16 @@ function addIncreaseRegression(regressions, baseline, current, metric, tolerance
   regressions.push({
     kind: "metric",
     metric,
+    stat,
     baseline: baselineValue,
     current: currentValue,
     delta,
     tolerance,
-    message: `${metric} increased by ${delta} (${baselineValue} -> ${currentValue}), over tolerance ${tolerance}`
+    message: `${metric} increased by ${roundDelta(delta)} (${baselineValue} -> ${currentValue}), over tolerance ${tolerance}`
   });
 }
 
-function metricDeltas(baseline, current) {
+function metricDeltas(baselineRecords, currentRecords) {
   const metrics = {};
   for (const metric of [
     "peakRssMb",
@@ -620,15 +682,79 @@ function metricDeltas(baseline, current) {
     "eventLoopDelayMs",
     "providerModelTimingMs"
   ]) {
-    const currentValue = measurementMetricValue(current, metric);
-    const baselineValue = measurementMetricValue(baseline, metric);
-    metrics[metric] = {
-      baseline: baselineValue,
-      current: currentValue,
-      delta: typeof baselineValue === "number" && typeof currentValue === "number" ? currentValue - baselineValue : null
-    };
+    const baseline = summarizeMetricRecords(baselineRecords, metric);
+    const current = summarizeMetricRecords(currentRecords, metric);
+    addMetricDelta(metrics, metric, baseline, current, "median");
+    if (baseline.count > 1 || current.count > 1) {
+      addMetricDelta(metrics, `${metric}.max`, baseline, current, "max");
+      if (baseline.p95 !== null || current.p95 !== null) {
+        addMetricDelta(metrics, `${metric}.p95`, baseline, current, "p95");
+      }
+    }
   }
   return metrics;
+}
+
+function addMetricDelta(metrics, id, baseline, current, stat) {
+  const baselineValue = baseline?.[stat] ?? null;
+  const currentValue = current?.[stat] ?? null;
+  metrics[id] = {
+    stat,
+    baseline: baselineValue,
+    current: currentValue,
+    delta: typeof baselineValue === "number" && typeof currentValue === "number" ? currentValue - baselineValue : null,
+    baselineStats: compactMetricStats(baseline),
+    currentStats: compactMetricStats(current)
+  };
+}
+
+function summarizeMetricRecords(records = [], metric) {
+  const values = records
+    .map((record) => measurementMetricValue(record.measurements ?? {}, metric))
+    .filter((value) => typeof value === "number" && Number.isFinite(value))
+    .sort((left, right) => left - right);
+  if (values.length === 0) {
+    return { count: 0, median: null, p95: null, max: null, min: null };
+  }
+  return {
+    count: values.length,
+    min: values[0],
+    median: quantile(values, 0.5),
+    p95: values.length > 1 ? quantile(values, 0.95) : null,
+    max: values[values.length - 1]
+  };
+}
+
+function compactMetricStats(stats) {
+  return {
+    count: stats?.count ?? 0,
+    min: stats?.min ?? null,
+    median: stats?.median ?? null,
+    p95: stats?.p95 ?? null,
+    max: stats?.max ?? null
+  };
+}
+
+function quantile(sorted, q) {
+  if (sorted.length === 0) {
+    return null;
+  }
+  const pos = (sorted.length - 1) * q;
+  const base = Math.floor(pos);
+  const rest = pos - base;
+  const next = sorted[base + 1];
+  if (next === undefined) {
+    return sorted[base];
+  }
+  return roundMetric(sorted[base] + rest * (next - sorted[base]));
+}
+
+function roundMetric(value) {
+  return Math.round(value * 100) / 100;
+}
+
+function roundDelta(value) {
+  return Math.round(value * 100) / 100;
 }
 
 function resolveThresholds(raw) {
