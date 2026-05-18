@@ -5397,7 +5397,6 @@
           "title": "Post-Start Runtime Checks",
           "intent": "Verify the gateway is usable after cold startup and capture plugin registry behavior.",
           "commands": [
-            "ocm service status {env} --json",
             "ocm @{env} -- status",
             "ocm @{env} -- plugins list"
           ],
@@ -5414,9 +5413,7 @@
           "id": "startup-logs",
           "title": "Startup Logs And Runtime Deps",
           "intent": "Capture dependency staging, missing package/module errors, plugin service failures, and startup timing logs.",
-          "commands": [
-            "ocm logs {env} --tail 400 --raw"
-          ],
+          "commands": [],
           "evidence": [
             "runtime dependency staging duration",
             "missing dependency errors",

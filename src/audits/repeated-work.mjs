@@ -4,19 +4,6 @@ export const REPEATED_WORK_AUDIT_SCHEMA = "kova.repeatedWorkAudit.v1";
 
 const commandReceiptLocks = [
   {
-    id: "release-runtime-startup-command-receipts",
-    scenario: "release-runtime-startup",
-    invariant: "releaseStartupCommandReceiptsOk",
-    reason: "release runtime startup invariant currently requires exact command receipts",
-    commands: [
-      "ocm start",
-      "ocm service status",
-      "ocm @{env} -- status",
-      "ocm @{env} -- plugins list",
-      "ocm logs"
-    ]
-  },
-  {
     id: "official-plugin-install-command-receipts",
     scenario: "official-plugin-install",
     invariant: "officialPluginRequiredCommands",
