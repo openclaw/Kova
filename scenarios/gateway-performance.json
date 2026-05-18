@@ -23,8 +23,7 @@
       "title": "Cold Start",
       "intent": "Start a fresh gateway and capture readiness timing, process state, and logs.",
       "commands": [
-        "ocm start {env} {startSelector} --json",
-        "ocm service status {env} --json"
+        "ocm start {env} {startSelector} --json"
       ],
       "evidence": [
         "ready time",
@@ -57,8 +56,7 @@
       "title": "Warm Restart",
       "intent": "Restart the gateway after runtime deps and registries are warm, then compare readiness and memory.",
       "commands": [
-        "ocm service restart {env}",
-        "ocm service status {env} --json"
+        "ocm service restart {env}"
       ],
       "evidence": [
         "warm ready time",
