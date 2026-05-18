@@ -62,7 +62,7 @@ import {
 } from "./evidence/invariants.mjs";
 import {
   normalizeOptionalCommandResult
-} from "./runner.mjs";
+} from "./command-results.mjs";
 import { compareReports, renderCompareSummary } from "./reporting/compare.mjs";
 import {
   ocmAt,
