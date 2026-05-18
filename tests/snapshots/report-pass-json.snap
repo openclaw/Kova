@@ -1,7 +1,7 @@
 {
   "schemaVersion": "kova.report.summary.v1",
   "generatedAt": "<iso>",
-  "runId": "kova-2026-04-30T031128Z",
+  "runId": "kova-<runId>",
   "reportGeneratedAt": "<iso>",
   "mode": "execution",
   "target": "local-build:<home>/WorkSpace/ShakkerNerd/OpenSource/OpenClaw/shakker-claw",

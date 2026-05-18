@@ -1,0 +1,705 @@
+{
+  "schemaVersion": "kova.matrix.plan.v1",
+  "generatedAt": "<iso>",
+  "platform": {
+    "os": "darwin",
+    "arch": "arm64",
+    "release": "25.3.0",
+    "node": "v24.13.0"
+  },
+  "profile": {
+    "id": "smoke",
+    "title": "Smoke Matrix",
+    "objective": "Fast OpenClaw coverage across fresh install, plugin dependency, plugin lifecycle, and gateway performance states.",
+    "purpose": "regression",
+    "entryCount": 10,
+    "targetKinds": null,
+    "diagnostics": null,
+    "calibration": null,
+    "gate": null
+  },
+  "target": "runtime:stable",
+  "from": null,
+  "controls": {
+    "include": [],
+    "exclude": [],
+    "failFast": false,
+    "continueOnFailure": true,
+    "requestedParallel": 1,
+    "parallel": 1,
+    "parallelAdjusted": false,
+    "repeat": 1,
+    "baseline": null,
+    "saveBaseline": null,
+    "gate": false,
+    "reviewedGood": false,
+    "bundle": true
+  },
+  "resolvedCoverage": {
+    "schemaVersion": "kova.resolvedCoverage.v1",
+    "purpose": "regression",
+    "targetKind": "runtime",
+    "total": 10,
+    "statuses": {
+      "planned": 10
+    },
+    "obligations": [
+      {
+        "surface": "release-runtime-startup",
+        "requirement": "baseline",
+        "scenario": "release-runtime-startup",
+        "state": "fresh",
+        "stateTraits": [
+          "fresh-user",
+          "baseline"
+        ],
+        "targetKind": "runtime",
+        "status": "planned",
+        "reason": null,
+        "requiredStates": [
+          "fresh"
+        ],
+        "requiredStateTraits": [],
+        "requiredTargetKinds": [
+          "local-build",
+          "npm",
+          "channel",
+          "runtime"
+        ],
+        "requiredMetrics": [
+          "gatewayReadyMs",
+          "gatewayReadyHardTimeoutMs",
+          "statusMs",
+          "pluginsListMs",
+          "peakRssMb",
+          "runtimeDepsStagingMs",
+          "pluginLoadFailures"
+        ]
+      },
+      {
+        "surface": "fresh-install",
+        "requirement": "baseline",
+        "scenario": "fresh-install",
+        "state": "fresh",
+        "stateTraits": [
+          "fresh-user",
+          "baseline"
+        ],
+        "targetKind": "runtime",
+        "status": "planned",
+        "reason": null,
+        "requiredStates": [
+          "corrupted-config",
+          "fresh",
+          "large-memory-session",
+          "missing-plugin-index",
+          "old-config-keys",
+          "onboarded-user",
+          "plugin-index"
+        ],
+        "requiredStateTraits": [],
+        "requiredTargetKinds": [
+          "npm",
+          "channel",
+          "runtime",
+          "local-build"
+        ],
+        "requiredMetrics": [
+          "gatewayReadyMs",
+          "statusMs",
+          "pluginsListMs",
+          "modelsListMs",
+          "peakRssMb"
+        ]
+      },
+      {
+        "surface": "bundled-runtime-deps",
+        "requirement": "baseline",
+        "scenario": "bundled-runtime-deps",
+        "state": "missing-plugin-index",
+        "stateTraits": [
+          "plugin-pressure",
+          "migration-state"
+        ],
+        "targetKind": "runtime",
+        "status": "planned",
+        "reason": null,
+        "requiredStates": [
+          "missing-plugin-index",
+          "stale-runtime-deps"
+        ],
+        "requiredStateTraits": [],
+        "requiredTargetKinds": [
+          "npm",
+          "channel",
+          "runtime",
+          "local-build"
+        ],
+        "requiredMetrics": [
+          "coldReadyMs",
+          "warmReadyMs",
+          "runtimeDepsStagingMs",
+          "coldRuntimeDepsStagingMs",
+          "warmRuntimeDepsStagingMs",
+          "warmRuntimeDepsRestageCount",
+          "runtimeDepsWarmReuseOk",
+          "missingDependencyErrors"
+        ]
+      },
+      {
+        "surface": "plugin-lifecycle",
+        "requirement": "baseline",
+        "scenario": "plugin-lifecycle",
+        "state": "stale-runtime-deps",
+        "stateTraits": [
+          "plugin-pressure",
+          "runtime-deps",
+          "migration-state"
+        ],
+        "targetKind": "runtime",
+        "status": "planned",
+        "reason": null,
+        "requiredStates": [
+          "broken-plugin-deps",
+          "external-plugin",
+          "plugin-index",
+          "stale-runtime-deps"
+        ],
+        "requiredStateTraits": [],
+        "requiredTargetKinds": [
+          "npm",
+          "channel",
+          "runtime",
+          "local-build"
+        ],
+        "requiredMetrics": [
+          "pluginsListMs",
+          "pluginUpdateDryRunMs",
+          "restartReadyMs",
+          "pluginLoadFailures"
+        ]
+      },
+      {
+        "surface": "bundled-plugin-startup",
+        "requirement": "baseline",
+        "scenario": "bundled-plugin-startup",
+        "state": "fresh",
+        "stateTraits": [
+          "fresh-user",
+          "baseline"
+        ],
+        "targetKind": "runtime",
+        "status": "planned",
+        "reason": null,
+        "requiredStates": [
+          "fresh",
+          "many-bundled-plugins"
+        ],
+        "requiredStateTraits": [],
+        "requiredTargetKinds": [
+          "npm",
+          "channel",
+          "runtime",
+          "local-build"
+        ],
+        "requiredMetrics": [
+          "gatewayReadyMs",
+          "pluginLoadFailures",
+          "missingDependencyErrors",
+          "runtimeDepsStagingMs"
+        ]
+      },
+      {
+        "surface": "gateway-performance",
+        "requirement": "baseline",
+        "scenario": "gateway-performance",
+        "state": "many-bundled-plugins",
+        "stateTraits": [
+          "plugin-pressure",
+          "provider-pressure",
+          "performance-pressure"
+        ],
+        "targetKind": "runtime",
+        "status": "planned",
+        "reason": null,
+        "requiredStates": [
+          "gateway-already-running",
+          "many-bundled-plugins",
+          "slow-filesystem",
+          "stale-service-state"
+        ],
+        "requiredStateTraits": [],
+        "requiredTargetKinds": [
+          "npm",
+          "channel",
+          "runtime",
+          "local-build"
+        ],
+        "requiredMetrics": [
+          "coldReadyMs",
+          "warmReadyMs",
+          "postReadyHealthP95Ms",
+          "peakRssMb",
+          "eventLoopMaxMs"
+        ]
+      },
+      {
+        "surface": "agent-cli-local-turn",
+        "requirement": "baseline",
+        "scenario": "agent-cold-warm-message",
+        "state": "mock-openai-provider",
+        "stateTraits": [
+          "mock-provider",
+          "provider-pressure",
+          "agent-state"
+        ],
+        "targetKind": "runtime",
+        "status": "planned",
+        "reason": null,
+        "requiredStates": [
+          "agent-auth-missing",
+          "mock-openai-provider"
+        ],
+        "requiredStateTraits": [],
+        "requiredTargetKinds": [
+          "npm",
+          "channel",
+          "runtime",
+          "local-build"
+        ],
+        "requiredMetrics": [
+          "agentTurnMs",
+          "agentTurnP95Ms",
+          "agentTurnMaxMs",
+          "coldAgentTurnMs",
+          "warmAgentTurnMs",
+          "agentColdWarmDeltaMs",
+          "coldPreProviderMs",
+          "warmPreProviderMs",
+          "agentPreProviderP95Ms",
+          "agentCleanupMaxMs",
+          "postReadyHealthP95Ms",
+          "peakRssMb",
+          "providerTimeoutMentions",
+          "pluginLoadFailures"
+        ]
+      },
+      {
+        "surface": "agent-gateway-rpc-turn",
+        "requirement": "baseline",
+        "scenario": "agent-gateway-rpc-turn",
+        "state": "mock-openai-provider",
+        "stateTraits": [
+          "mock-provider",
+          "provider-pressure",
+          "agent-state"
+        ],
+        "targetKind": "runtime",
+        "status": "planned",
+        "reason": null,
+        "requiredStates": [
+          "mock-openai-provider"
+        ],
+        "requiredStateTraits": [],
+        "requiredTargetKinds": [
+          "npm",
+          "channel",
+          "runtime",
+          "local-build"
+        ],
+        "requiredMetrics": [
+          "agentTurnMs",
+          "agentTurnP95Ms",
+          "agentTurnMaxMs",
+          "coldPreProviderMs",
+          "postReadyHealthP95Ms",
+          "peakRssMb",
+          "pluginLoadFailures"
+        ]
+      },
+      {
+        "surface": "gateway-session-send-turn",
+        "requirement": "baseline",
+        "scenario": "gateway-session-send-turn",
+        "state": "mock-openai-provider",
+        "stateTraits": [
+          "mock-provider",
+          "provider-pressure",
+          "agent-state"
+        ],
+        "targetKind": "runtime",
+        "status": "planned",
+        "reason": null,
+        "requiredStates": [
+          "mock-openai-provider"
+        ],
+        "requiredStateTraits": [],
+        "requiredTargetKinds": [
+          "npm",
+          "channel",
+          "runtime",
+          "local-build"
+        ],
+        "requiredMetrics": [
+          "agentTurnMs",
+          "agentTurnP95Ms",
+          "coldAgentTurnMs",
+          "warmAgentTurnMs",
+          "agentColdWarmDeltaMs",
+          "coldPreProviderMs",
+          "warmPreProviderMs",
+          "agentMetadataScanCount",
+          "agentMetadataScanTotalMs",
+          "agentEventLoopMaxMs",
+          "agentSessionPollCount",
+          "postReadyHealthP95Ms",
+          "peakRssMb",
+          "pluginLoadFailures"
+        ]
+      },
+      {
+        "surface": "openai-compatible-turn",
+        "requirement": "baseline",
+        "scenario": "openai-compatible-turn",
+        "state": "mock-openai-provider",
+        "stateTraits": [
+          "mock-provider",
+          "provider-pressure",
+          "agent-state"
+        ],
+        "targetKind": "runtime",
+        "status": "planned",
+        "reason": null,
+        "requiredStates": [
+          "mock-openai-provider"
+        ],
+        "requiredStateTraits": [],
+        "requiredTargetKinds": [
+          "npm",
+          "channel",
+          "runtime",
+          "local-build"
+        ],
+        "requiredMetrics": [
+          "agentTurnMs",
+          "agentTurnP95Ms",
+          "coldPreProviderMs",
+          "postReadyHealthP95Ms",
+          "peakRssMb",
+          "pluginLoadFailures"
+        ]
+      }
+    ],
+    "gaps": [],
+    "warnings": []
+  },
+  "entries": [
+    {
+      "scenario": {
+        "id": "release-runtime-startup",
+        "surface": "release-runtime-startup",
+        "title": "Release Runtime Startup",
+        "objective": "Start a release-shaped OpenClaw runtime, measure cold readiness and bundled runtime dependency staging, and fail on degraded plugin startup.",
+        "tags": [
+          "release-runtime",
+          "local-build",
+          "gateway",
+          "plugins",
+          "runtime-deps",
+          "startup"
+        ]
+      },
+      "state": {
+        "id": "fresh",
+        "title": "Fresh OpenClaw User",
+        "objective": "A new isolated OpenClaw home with no intentional state mutations beyond normal scenario provisioning.",
+        "tags": [
+          "fresh",
+          "baseline"
+        ]
+      },
+      "surface": "release-runtime-startup",
+      "timeoutMs": 180000,
+      "platforms": null,
+      "status": "SELECTED",
+      "skipReason": null
+    },
+    {
+      "scenario": {
+        "id": "fresh-install",
+        "surface": "fresh-install",
+        "title": "Fresh OpenClaw Install Baseline",
+        "objective": "Create a disposable fresh OpenClaw home from the target runtime, start the gateway, and verify basic user-facing commands without onboarding or manual setup.",
+        "tags": [
+          "fresh-user",
+          "gateway",
+          "plugins",
+          "models",
+          "performance"
+        ]
+      },
+      "state": {
+        "id": "fresh",
+        "title": "Fresh OpenClaw User",
+        "objective": "A new isolated OpenClaw home with no intentional state mutations beyond normal scenario provisioning.",
+        "tags": [
+          "fresh",
+          "baseline"
+        ]
+      },
+      "surface": "fresh-install",
+      "timeoutMs": null,
+      "platforms": null,
+      "status": "SELECTED",
+      "skipReason": null
+    },
+    {
+      "scenario": {
+        "id": "bundled-runtime-deps",
+        "surface": "bundled-runtime-deps",
+        "title": "Bundled Runtime Dependency Integrity",
+        "objective": "Verify bundled plugin runtime dependencies stage correctly, remain reusable on warm starts, and do not produce missing dependency errors.",
+        "tags": [
+          "plugins",
+          "runtime-deps",
+          "cold-start",
+          "warm-start"
+        ]
+      },
+      "state": {
+        "id": "missing-plugin-index",
+        "title": "Missing Plugin Install Index",
+        "objective": "A user state where plugin install index files are absent after provisioning, used to verify OpenClaw rebuilds or handles plugin metadata without expensive repeated scans.",
+        "tags": [
+          "plugins",
+          "migration",
+          "registry"
+        ]
+      },
+      "surface": "bundled-runtime-deps",
+      "timeoutMs": null,
+      "platforms": null,
+      "status": "SELECTED",
+      "skipReason": null
+    },
+    {
+      "scenario": {
+        "id": "plugin-lifecycle",
+        "surface": "plugin-lifecycle",
+        "title": "OpenClaw Plugin Lifecycle",
+        "objective": "Exercise plugin list, update, install/remove-ready paths, runtime dependency diagnostics, restart behavior, and registry consistency.",
+        "tags": [
+          "plugins",
+          "runtime-deps",
+          "gateway",
+          "restart"
+        ]
+      },
+      "state": {
+        "id": "stale-runtime-deps",
+        "title": "Stale Plugin Runtime Dependencies",
+        "objective": "A user state where staged bundled plugin runtime dependencies are removed after provisioning, used to verify OpenClaw can restage dependencies without missing dependency errors or gateway stalls.",
+        "tags": [
+          "plugins",
+          "runtime-deps",
+          "migration"
+        ]
+      },
+      "surface": "plugin-lifecycle",
+      "timeoutMs": null,
+      "platforms": null,
+      "status": "SELECTED",
+      "skipReason": null
+    },
+    {
+      "scenario": {
+        "id": "bundled-plugin-startup",
+        "surface": "bundled-plugin-startup",
+        "title": "Bundled Plugin Startup",
+        "objective": "Validate that OpenClaw's bundled plugins load during gateway startup without missing package/module errors or degraded plugin services.",
+        "tags": [
+          "plugins",
+          "bundled",
+          "runtime-deps",
+          "startup"
+        ]
+      },
+      "state": {
+        "id": "fresh",
+        "title": "Fresh OpenClaw User",
+        "objective": "A new isolated OpenClaw home with no intentional state mutations beyond normal scenario provisioning.",
+        "tags": [
+          "fresh",
+          "baseline"
+        ]
+      },
+      "surface": "bundled-plugin-startup",
+      "timeoutMs": 180000,
+      "platforms": null,
+      "status": "SELECTED",
+      "skipReason": null
+    },
+    {
+      "scenario": {
+        "id": "gateway-performance",
+        "surface": "gateway-performance",
+        "title": "Gateway Startup And Runtime Performance",
+        "objective": "Measure cold start, warm start, health latency, memory, CPU, and user-facing command latency for a target OpenClaw runtime.",
+        "tags": [
+          "performance",
+          "gateway",
+          "memory",
+          "cpu",
+          "event-loop"
+        ]
+      },
+      "state": {
+        "id": "many-bundled-plugins",
+        "title": "Many Bundled Plugins Enabled",
+        "objective": "A pressure state for bundled plugin and provider metadata paths. It creates a plugin install index with many bundled-like entries so OpenClaw startup and metadata paths run under heavier registry pressure.",
+        "tags": [
+          "plugins",
+          "providers",
+          "pressure"
+        ]
+      },
+      "surface": "gateway-performance",
+      "timeoutMs": null,
+      "platforms": null,
+      "status": "SELECTED",
+      "skipReason": null
+    },
+    {
+      "scenario": {
+        "id": "agent-cold-warm-message",
+        "surface": "agent-cli-local-turn",
+        "title": "Agent CLI Local Cold/Warm Message",
+        "objective": "Send cold and warm simple messages through short-lived `openclaw agent --local` CLI processes, verify mock-provider responses, and attribute latency before, during, and after provider work.",
+        "tags": [
+          "agent",
+          "message",
+          "latency",
+          "providers",
+          "cold-warm"
+        ]
+      },
+      "state": {
+        "id": "mock-openai-provider",
+        "title": "Mock OpenAI Provider",
+        "objective": "A local OpenAI-compatible provider endpoint wired into OpenClaw config so agent turns exercise the real OpenClaw agent path without external model dependencies.",
+        "tags": [
+          "agent",
+          "models",
+          "providers",
+          "mock",
+          "latency"
+        ]
+      },
+      "surface": "agent-cli-local-turn",
+      "timeoutMs": 180000,
+      "platforms": null,
+      "status": "SELECTED",
+      "skipReason": null
+    },
+    {
+      "scenario": {
+        "id": "agent-gateway-rpc-turn",
+        "surface": "agent-gateway-rpc-turn",
+        "title": "Agent CLI Gateway RPC Turn",
+        "objective": "Send a simple user message through `openclaw agent` without `--local`, measuring the CLI client path that crosses the Gateway agent RPC boundary. This is CLI surface coverage, not the primary direct Gateway/session benchmark.",
+        "tags": [
+          "agent",
+          "cli",
+          "message",
+          "gateway",
+          "rpc",
+          "providers"
+        ]
+      },
+      "state": {
+        "id": "mock-openai-provider",
+        "title": "Mock OpenAI Provider",
+        "objective": "A local OpenAI-compatible provider endpoint wired into OpenClaw config so agent turns exercise the real OpenClaw agent path without external model dependencies.",
+        "tags": [
+          "agent",
+          "models",
+          "providers",
+          "mock",
+          "latency"
+        ]
+      },
+      "surface": "agent-gateway-rpc-turn",
+      "timeoutMs": 180000,
+      "platforms": null,
+      "status": "SELECTED",
+      "skipReason": null
+    },
+    {
+      "scenario": {
+        "id": "gateway-session-send-turn",
+        "surface": "gateway-session-send-turn",
+        "title": "Gateway Session Cold/Warm Turns",
+        "objective": "Start a normal gateway, send cold and warm user messages through the Gateway session API, and wait for final assistant text in chat history.",
+        "tags": [
+          "agent",
+          "message",
+          "sessions",
+          "gateway",
+          "control-ui",
+          "channels",
+          "providers",
+          "cold-warm"
+        ]
+      },
+      "state": {
+        "id": "mock-openai-provider",
+        "title": "Mock OpenAI Provider",
+        "objective": "A local OpenAI-compatible provider endpoint wired into OpenClaw config so agent turns exercise the real OpenClaw agent path without external model dependencies.",
+        "tags": [
+          "agent",
+          "models",
+          "providers",
+          "mock",
+          "latency"
+        ]
+      },
+      "surface": "gateway-session-send-turn",
+      "timeoutMs": 180000,
+      "platforms": null,
+      "status": "SELECTED",
+      "skipReason": null
+    },
+    {
+      "scenario": {
+        "id": "openai-compatible-turn",
+        "surface": "openai-compatible-turn",
+        "title": "OpenAI-Compatible Turn",
+        "objective": "Send a chat-completions request to OpenClaw's OpenAI-compatible HTTP endpoint and verify the final assistant response, provider timing, auth handling, and gateway health.",
+        "tags": [
+          "agent",
+          "message",
+          "openai-compatible",
+          "http",
+          "providers"
+        ]
+      },
+      "state": {
+        "id": "mock-openai-provider",
+        "title": "Mock OpenAI Provider",
+        "objective": "A local OpenAI-compatible provider endpoint wired into OpenClaw config so agent turns exercise the real OpenClaw agent path without external model dependencies.",
+        "tags": [
+          "agent",
+          "models",
+          "providers",
+          "mock",
+          "latency"
+        ]
+      },
+      "surface": "openai-compatible-turn",
+      "timeoutMs": 180000,
+      "platforms": null,
+      "status": "SELECTED",
+      "skipReason": null
+    }
+  ]
+}

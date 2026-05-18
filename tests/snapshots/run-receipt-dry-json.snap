@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "kova.run.receipt.v1",
+  "generatedAt": "<iso>",
+  "mode": "dry-run",
+  "runId": "kova-<runId>",
+  "reportPath": "<home>/.kova/reports/kova-<runId>.md",
+  "jsonPath": "<home>/.kova/reports/kova-<runId>.json",
+  "summaryPath": "<home>/.kova/reports/kova-<runId>.summary.json",
+  "performance": {
+    "schemaVersion": "kova.performance.v1",
+    "repeat": 1,
+    "parallel": null,
+    "parallelContaminated": false,
+    "groupCount": 1,
+    "unstableGroupCount": 0,
+    "profiledRunCount": 0,
+    "baselineRegressionCount": null,
+    "missingBaselineCount": null,
+    "baselineReviewOk": null,
+    "baselineReviewBlockerCount": null,
+    "savedBaselinePath": null
+  },
+  "summary": {
+    "total": 1,
+    "statuses": {
+      "DRY-RUN": 1
+    }
+  }
+}

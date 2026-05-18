@@ -1,0 +1,21 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  KOVA  ·  run                                                                ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+   [DRY-RUN]   1 planned
+               mode: dry-run · target: runtime:stable · runId: kova-<runId>
+
+  Total 1   ·   Dry-run █████ 1   ·   Failed ░░░░░ 0   ·   Performance 1 group
+
+─── artifacts ──────────────────────────────────────────────────────────────────
+  ◆ markdown    ../../../../../.kova/reports/kova-<runId>.md
+  ◆ json        ../../../../../.kova/reports/kova-<runId>.json
+  ◆ summary     ../../../../../.kova/reports/kova-<runId>.summary.json
+
+─── scenarios ──────────────────────────────────────────────────────────────────
+
+scenario              samples  verdict    worst metric
+fresh-install             0/1  [DRY-RUN]  —
+
+─── next ───────────────────────────────────────────────────────────────────────
+
+  → kova report ../../../../../.kova/reports/kova-<runId>.json

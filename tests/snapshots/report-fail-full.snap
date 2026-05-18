@@ -3,7 +3,7 @@
 ╚══════════════════════════════════════════════════════════════════════════════╝
    [FAIL]   1 scenario failed · 1/1 sample failed · single-sample
 
-  run kova-2026-04-30T040505Z · target local-build:<home>/WorkSpace/ShakkerNerd/OpenSource/OpenClaw/shakker-claw · <ts>
+  run kova-<runId> · target local-build:<home>/WorkSpace/ShakkerNerd/OpenSource/OpenClaw/shakker-claw · <ts>
 
 ─── scenarios ──────────────────────────────────────────────────────────────────
   scenario                 samples  verdict    worst metric
@@ -38,4 +38,4 @@
 
 ─── next ───────────────────────────────────────────────────────────────────────
   → node bin/kova.mjs run --target local-build:<home>/WorkSpace/ShakkerNerd/OpenSource/OpenClaw/shakker-claw --scenario release-runtime-startup --state fresh --execute --profile-on-failure --retain-on-failure --json
-  → kova report bundle kova-2026-04-30T040505Z
+  → kova report bundle kova-<runId>

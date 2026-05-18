@@ -42,6 +42,15 @@ const cases = [
   { name: "report-pass-json", args: ["report", "--json", PASS_REPORT] },
   { name: "compare-json", args: ["report", "compare", "--json", PASS_REPORT, FAIL_REPORT] },
   { name: "plan-json", args: ["plan", "--json"] },
+  // Dry-run receipts (run + matrix) and matrix plan. These exercise the
+  // KPI strip, scenarios rollup, and artifact-pointer renderers — none of
+  // which were previously pinned by snapshots.
+  { name: "run-receipt-dry", args: ["run", "--target", "runtime:stable", "--scenario", "fresh-install"] },
+  { name: "run-receipt-dry-json", args: ["run", "--target", "runtime:stable", "--scenario", "fresh-install", "--json"] },
+  { name: "matrix-run-receipt-dry", args: ["matrix", "run", "--profile", "smoke", "--target", "runtime:stable"] },
+  { name: "matrix-run-receipt-dry-json", args: ["matrix", "run", "--profile", "smoke", "--target", "runtime:stable", "--json"] },
+  { name: "matrix-plan", args: ["matrix", "plan", "--profile", "smoke", "--target", "runtime:stable"] },
+  { name: "matrix-plan-json", args: ["matrix", "plan", "--profile", "smoke", "--target", "runtime:stable", "--json"] },
 ];
 
 function normalize(out) {
@@ -54,6 +63,10 @@ function normalize(out) {
     .replace(/\b\d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC\b/g, "<ts>")
     // generatedAt-style ISO timestamps in plan output.
     .replace(/\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\b/g, "<iso>")
+    // Run IDs: kova-<compact-iso>Z and lowercase bundle variant. Each run
+    // mints a fresh runId, so pin it to a stable token.
+    .replace(/kova-\d{4}-\d{2}-\d{2}T\d{6}Z/g, "kova-<runId>")
+    .replace(/kova-\d{4}-\d{2}-\d{2}t\d{6}z/g, "kova-<runid>")
     // Strip trailing whitespace per line (renderer already does, defensive).
     .split("\n").map((l) => l.replace(/\s+$/, "")).join("\n");
 }

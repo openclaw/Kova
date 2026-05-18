@@ -1,0 +1,32 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  KOVA  ·  matrix run                                                         ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+   [DRY-RUN]   10 planned
+               mode: dry-run · target: runtime:stable · runId: kova-<runId>
+
+  Entries 10   ·   Dry-run 10   ·   Failed 0   ·   Performance 10 groups
+
+─── artifacts ──────────────────────────────────────────────────────────────────
+  ◆ markdown    ../../../../../.kova/reports/kova-<runId>-smoke.md
+  ◆ json        ../../../../../.kova/reports/kova-<runId>-smoke.json
+  ◆ summary     ../../../../../.kova/reports/kova-<runId>-smoke.summary.json
+  ◆ bundle      ../../../../../.kova/reports/kova-<runid>-bundle.tar.gz
+
+─── scenarios ──────────────────────────────────────────────────────────────────
+
+scenario                   target          samples  verdict    worst metric
+release-runtime-startup    runtime:stable      0/1  [DRY-RUN]  —
+fresh-install              runtime:stable      0/1  [DRY-RUN]  —
+bundled-runtime-deps       runtime:stable      0/1  [DRY-RUN]  —
+plugin-lifecycle           runtime:stable      0/1  [DRY-RUN]  —
+bundled-plugin-startup     runtime:stable      0/1  [DRY-RUN]  —
+gateway-performance        runtime:stable      0/1  [DRY-RUN]  —
+agent-cold-warm-message    runtime:stable      0/1  [DRY-RUN]  —
+agent-gateway-rpc-turn     runtime:stable      0/1  [DRY-RUN]  —
+gateway-session-send-turn  runtime:stable      0/1  [DRY-RUN]  —
+openai-compatible-turn     runtime:stable      0/1  [DRY-RUN]  —
+
+─── next ───────────────────────────────────────────────────────────────────────
+
+  → kova report ../../../../../.kova/reports/kova-<runId>-smoke.json
+  → kova report bundle ../../../../../.kova/reports/kova-<runid>-bundle.tar.gz

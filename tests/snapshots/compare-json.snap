@@ -2,7 +2,7 @@
   "schemaVersion": "kova.compare.v1",
   "generatedAt": "<iso>",
   "baseline": {
-    "runId": "kova-2026-04-30T031128Z",
+    "runId": "kova-<runId>",
     "mode": "execution",
     "profile": null,
     "target": "local-build:<home>/WorkSpace/ShakkerNerd/OpenSource/OpenClaw/shakker-claw",
@@ -23,7 +23,7 @@
     "sampleCount": 1
   },
   "current": {
-    "runId": "kova-2026-04-30T040505Z",
+    "runId": "kova-<runId>",
     "mode": "execution",
     "profile": null,
     "target": "local-build:<home>/WorkSpace/ShakkerNerd/OpenSource/OpenClaw/shakker-claw",
