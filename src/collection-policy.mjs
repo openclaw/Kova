@@ -25,7 +25,26 @@ export function fullCollectionPolicy(reason = "full collection preserves existin
   };
 }
 
+export function skippedEnvCollectionPolicy(reason, context = {}) {
+  return {
+    schemaVersion: COLLECTION_POLICY_SCHEMA,
+    mode: "skip-env",
+    reason,
+    context: normalizePolicyContext(context),
+    collectors: Object.fromEntries(ENV_COLLECTOR_IDS.map((id) => [id, false])),
+    skipped: [...ENV_COLLECTOR_IDS]
+  };
+}
+
 export function resolveCollectionPolicy(context = {}) {
+  if (context.kind === "auth-phase" &&
+      context.resultStatus === "success" &&
+      (context.phaseId === "auth-prepare" || context.phaseId === "auth-cleanup")) {
+    return skippedEnvCollectionPolicy(
+      "successful auth setup boundary phase does not need env metrics; final and product phase metrics remain full",
+      context
+    );
+  }
   return fullCollectionPolicy(policyReason(context), context);
 }
 

@@ -214,8 +214,9 @@ collector receipts:
 Metrics also include `collectionPolicy` with schema
 `kova.collectionPolicy.v1`. It records the scenario/phase context and which
 collectors were intended to run for that metrics capture. A `full` policy means
-all env collectors remain enabled; future skipped collectors must appear in the
-policy and in collector receipts instead of silently disappearing.
+all env collectors remain enabled. A `skip-env` policy is currently limited to
+successful auth prepare/cleanup boundary phases; each disabled collector must
+appear in `collectionPolicy.skipped` and as a `SKIPPED` collector receipt.
 
 Records expose `collectorArtifactDirs` with schema
 `kova.collectorArtifactDirs.v1`. This makes artifact ownership explicit for

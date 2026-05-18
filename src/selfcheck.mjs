@@ -6,6 +6,7 @@ import { runCleanupCommand } from "./cleanup.mjs";
 import { applyEvidenceLedgerGating, attachEvidenceLedger } from "./evidence-ledger.mjs";
 import { summarizeCpuProfiles } from "./collectors/node-profiles.mjs";
 import { summarizeHeapProfiles } from "./collectors/heap.mjs";
+import { collectEnvMetrics } from "./metrics.mjs";
 import { evaluateRecord } from "./evaluator.mjs";
 import { evaluateGate } from "./matrix/gate.mjs";
 import {
@@ -190,7 +191,7 @@ export async function runSelfCheck(flags = {}) {
     }));
     checks.push(await inventoryPlanCheck(tmp));
     checks.push(await repeatedWorkAuditCheck());
-    checks.push(collectionPolicyResolverCheck());
+    checks.push(await collectionPolicyResolverCheck());
     checks.push(await jsonCommandCheck("matrix-plan-json", "node bin/kova.mjs matrix plan --profile smoke --target runtime:stable --include scenario:fresh-install --parallel 2 --json", (data) => {
       assertEqual(data.schemaVersion, "kova.matrix.plan.v1", "matrix plan schema");
       assertEqual(data.profile?.id, "smoke", "matrix profile id");
@@ -6648,7 +6649,7 @@ async function repeatedWorkAuditCheck() {
   };
 }
 
-function collectionPolicyResolverCheck() {
+async function collectionPolicyResolverCheck() {
   const policy = resolveCollectionPolicy({
     kind: "scenario-phase",
     scenario: "fresh-install",
@@ -6665,7 +6666,35 @@ function collectionPolicyResolverCheck() {
   for (const collector of ENV_COLLECTOR_IDS) {
     assertEqual(policy.collectors[collector], true, `collection policy keeps ${collector}`);
   }
-  assertEqual(policy.skipped.length, 0, "collection policy skips nothing before behavior slice");
+  assertEqual(policy.skipped.length, 0, "scenario phase collection policy skips nothing");
+  const authPreparePolicy = resolveCollectionPolicy({
+    kind: "auth-phase",
+    phaseId: "auth-prepare",
+    measurementScope: "harness",
+    resultStatus: "success"
+  });
+  assertEqual(authPreparePolicy.mode, "skip-env", "successful auth prepare skips env metrics");
+  assertEqual(authPreparePolicy.collectors.service, false, "successful auth prepare skips service collector");
+  assertEqual(authPreparePolicy.skipped.length, ENV_COLLECTOR_IDS.length, "auth prepare skipped collector list");
+
+  const failedAuthCleanupPolicy = resolveCollectionPolicy({
+    kind: "auth-phase",
+    phaseId: "auth-cleanup",
+    measurementScope: "cleanup",
+    resultStatus: "failure"
+  });
+  assertEqual(failedAuthCleanupPolicy.mode, "full", "failed auth cleanup keeps full collection");
+
+  const skippedMetrics = await collectEnvMetrics("kova-self-check-skip-env", {
+    collectionPolicy: authPreparePolicy
+  });
+  assertEqual(skippedMetrics.service, null, "skipped env metrics avoid service collection");
+  assertEqual(
+    skippedMetrics.collectors.every((collector) => collector.status === "SKIPPED"),
+    true,
+    "skipped env metrics records skipped collectors"
+  );
+  assertEqual(skippedMetrics.collectors.length, ENV_COLLECTOR_IDS.length, "skipped env metrics receipt count");
   return {
     id: "collection-policy-resolver",
     status: "PASS"

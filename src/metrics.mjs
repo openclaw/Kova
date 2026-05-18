@@ -5,7 +5,7 @@ import { collectHealthSamples, collectReadinessMetrics, summarizeHealthSamples }
 import { collectLogMetrics } from "./collectors/logs.mjs";
 import { collectNodeProfileMetrics } from "./collectors/node-profiles.mjs";
 import { collectTimelineMetrics } from "./collectors/timeline.mjs";
-import { fullCollectionPolicy } from "./collection-policy.mjs";
+import { ENV_COLLECTOR_IDS, fullCollectionPolicy } from "./collection-policy.mjs";
 
 export { collectNodeProfileMetrics };
 
@@ -23,7 +23,6 @@ export async function collectEnvMetrics(envName, options = {}) {
   const readinessIntervalMs = Math.max(50, Number(options.readinessIntervalMs ?? 250));
   const collectors = [];
   const collectionPolicy = options.collectionPolicy ?? fullCollectionPolicy();
-  const service = await runCommand(ocmServiceStatusJson(envName), { timeoutMs });
   const metrics = {
     schemaVersion: ENV_METRICS_SCHEMA,
     collectedAt: new Date().toISOString(),
@@ -31,11 +30,7 @@ export async function collectEnvMetrics(envName, options = {}) {
     collectorArtifactDirs: options.collectorArtifactDirs ?? null,
     collectionPolicy,
     collectors,
-    serviceCommand: {
-      status: service.status,
-      durationMs: service.durationMs,
-      timedOut: service.timedOut
-    },
+    serviceCommand: null,
     service: null,
     process: null,
     readiness: null,
@@ -51,6 +46,20 @@ export async function collectEnvMetrics(envName, options = {}) {
     openclawDiagnostics: null,
     timeline: null,
     error: null
+  };
+
+  if (collectionPolicy.collectors?.service === false) {
+    for (const collector of ENV_COLLECTOR_IDS) {
+      recordSkippedCollector(collectors, collector, collectionPolicy.reason);
+    }
+    return metrics;
+  }
+
+  const service = await runCommand(ocmServiceStatusJson(envName), { timeoutMs });
+  metrics.serviceCommand = {
+    status: service.status,
+    durationMs: service.durationMs,
+    timedOut: service.timedOut
   };
   recordCollector(collectors, "service", service);
 
@@ -232,6 +241,22 @@ function recordCollector(collectors, id, result, artifacts = []) {
     artifactCount: artifacts?.length ?? 0,
     artifacts: artifacts ?? [],
     error: result.error ?? null
+  });
+}
+
+function recordSkippedCollector(collectors, id, reason) {
+  collectors.push({
+    schemaVersion: "kova.collectorReceipt.v1",
+    id,
+    status: "SKIPPED",
+    durationMs: 0,
+    commandStatus: null,
+    timedOut: false,
+    artifactCount: 0,
+    artifacts: [],
+    error: null,
+    reason,
+    required: false
   });
 }
 
