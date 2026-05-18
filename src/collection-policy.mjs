@@ -40,6 +40,41 @@ export function postReadyHealthCollectionPolicy(reason, context = {}) {
   };
 }
 
+export function serviceOnlyCollectionPolicy(reason, context = {}) {
+  return {
+    schemaVersion: COLLECTION_POLICY_SCHEMA,
+    mode: "service-only",
+    reason,
+    context: normalizePolicyContext(context),
+    readiness: "none",
+    healthSamples: false,
+    collectors: {
+      service: true,
+      process: true,
+      readiness: false,
+      health: false,
+      logs: false,
+      "openclaw-diagnostics": false,
+      timeline: false,
+      diagnostics: false,
+      "node-profiles": false,
+      "heap-snapshot": false,
+      "diagnostic-report": false
+    },
+    skipped: [
+      "readiness",
+      "health",
+      "logs",
+      "openclaw-diagnostics",
+      "timeline",
+      "diagnostics",
+      "node-profiles",
+      "heap-snapshot",
+      "diagnostic-report"
+    ]
+  };
+}
+
 export function skippedEnvCollectionPolicy(reason, context = {}) {
   return {
     schemaVersion: COLLECTION_POLICY_SCHEMA,
