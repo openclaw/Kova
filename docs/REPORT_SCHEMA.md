@@ -220,7 +220,8 @@ appear in `collectionPolicy.skipped` and as a `SKIPPED` collector receipt.
 `service-only` means Kova keeps the OCM service summary, and process metrics
 when a child process exists, but skips readiness, health, logs, timeline,
 diagnostics, node-profile scans, heap snapshots, and diagnostic reports for a
-helper or no-service phase whose command result is the proof.
+helper, no-service phase, or successful state fixture setup whose command
+result is the proof.
 `post-ready-health` means the phase keeps service, process, health samples,
 logs, timeline, diagnostics, and node-profile scans, but intentionally skips the
 startup readiness wait. Those phases still contribute to

@@ -6728,6 +6728,30 @@ async function collectionPolicyResolverCheck(tmp) {
   assertEqual(noServicePolicy.collectors.readiness, false, "no-service phase skips readiness collector");
   assertEqual(noServicePolicy.collectors.logs, false, "no-service phase skips logs collector");
 
+  const stateSetupPolicy = resolveCollectionPolicy({
+    kind: "state-lifecycle",
+    scenario: "gateway-session-send-turn",
+    surface: "gateway-session-send-turn",
+    phaseId: "provision",
+    measurementScope: "harness",
+    lifecycleKind: "state-provision",
+    resultStatus: "success"
+  });
+  assertEqual(stateSetupPolicy.mode, "service-only", "successful state setup uses service-only collection");
+  assertEqual(stateSetupPolicy.context.lifecycleKind, "state-provision", "state setup policy records lifecycle kind");
+  assertEqual(stateSetupPolicy.collectors.service, true, "state setup keeps service collector");
+  assertEqual(stateSetupPolicy.collectors.readiness, false, "state setup skips readiness collector");
+  assertEqual(stateSetupPolicy.collectors.logs, false, "state setup skips logs collector");
+
+  const failedStateSetupPolicy = resolveCollectionPolicy({
+    kind: "state-lifecycle",
+    phaseId: "provision",
+    measurementScope: "harness",
+    lifecycleKind: "state-provision",
+    resultStatus: "failure"
+  });
+  assertEqual(failedStateSetupPolicy.mode, "full", "failed state setup keeps full collection");
+
   const skippedMetrics = await collectEnvMetrics("kova-self-check-skip-env", {
     collectionPolicy: authPreparePolicy
   });
@@ -6754,6 +6778,18 @@ async function collectionPolicyResolverCheck(tmp) {
     authSetupMetrics.collectors.some((collector) => collector.id === "timeline" && collector.status === "SKIPPED"),
     true,
     "auth setup service-only records skipped timeline"
+  );
+
+  const stateSetupMetrics = await collectPostReadySelfCheckMetrics(tmp, stateSetupPolicy);
+  assertEqual(stateSetupMetrics.service?.gatewayState, "running", "state setup service-only keeps service state");
+  assertEqual(Boolean(stateSetupMetrics.process), true, "state setup service-only keeps process metrics");
+  assertEqual(stateSetupMetrics.logs, null, "state setup service-only skips logs payload");
+  assertEqual(stateSetupMetrics.timeline, null, "state setup service-only skips timeline payload");
+  assertEqual(stateSetupMetrics.diagnostics, null, "state setup service-only skips diagnostics payload");
+  assertEqual(
+    stateSetupMetrics.collectors.some((collector) => collector.id === "logs" && collector.status === "SKIPPED"),
+    true,
+    "state setup service-only records skipped logs"
   );
 
   const postReadyMetrics = await collectPostReadySelfCheckMetrics(tmp, postReadyPolicy);

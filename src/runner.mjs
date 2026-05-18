@@ -2588,6 +2588,7 @@ async function executeStateLifecycleSteps(context, envName, scenario, kind, step
     metrics: await collectEnvMetrics(envName, metricOptions(context, scenario, { id: phaseId }, artifactDir, {
       kind: "state-lifecycle",
       measurementScope: normalizeMeasurementScope(null, kind),
+      lifecycleKind: kind,
       resultStatus: phaseStatus(results)
     }))
   };
@@ -2705,6 +2706,7 @@ function metricOptions(context, scenario, phase, artifactDir, policyContext = {}
       phaseHealthScope: phase?.healthScope ?? null,
       measurementScope,
       resultStatus: policyContext.resultStatus ?? null,
+      lifecycleKind: policyContext.lifecycleKind ?? null,
       hasNoServiceCommand: phaseHasNoServiceCommand(phase)
     })
   };

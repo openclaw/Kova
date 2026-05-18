@@ -113,6 +113,15 @@ export function resolveCollectionPolicy(context = {}) {
       context
     );
   }
+  if (context.kind === "state-lifecycle" &&
+      context.resultStatus === "success" &&
+      typeof context.lifecycleKind === "string" &&
+      context.lifecycleKind.startsWith("state-")) {
+    return serviceOnlyCollectionPolicy(
+      "successful state fixture setup is proven by its command receipt; only service summary is collected after it",
+      context
+    );
+  }
   if (context.kind === "scenario-phase" && context.phaseHealthScope === "post-ready") {
     return postReadyHealthCollectionPolicy(
       "post-ready phase samples health without repeating startup readiness wait",
@@ -153,6 +162,7 @@ function normalizePolicyContext(context) {
     phaseHealthScope: context.phaseHealthScope ?? null,
     measurementScope: context.measurementScope ?? null,
     resultStatus: context.resultStatus ?? null,
+    lifecycleKind: context.lifecycleKind ?? null,
     hasNoServiceCommand: context.hasNoServiceCommand === true
   };
 }
