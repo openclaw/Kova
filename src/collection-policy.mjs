@@ -122,6 +122,15 @@ export function resolveCollectionPolicy(context = {}) {
       context
     );
   }
+  if (context.kind === "state-lifecycle" &&
+      context.resultStatus === "success" &&
+      context.lifecycleCommandScope === "host" &&
+      (context.lifecycleKind === "prepare" || context.lifecycleKind === "cleanup")) {
+    return skippedEnvCollectionPolicy(
+      "successful host-only state lifecycle step is proven by its command receipt and does not need env metrics",
+      context
+    );
+  }
   if (context.kind === "scenario-phase" && context.phaseHealthScope === "post-ready") {
     return postReadyHealthCollectionPolicy(
       "post-ready phase samples health without repeating startup readiness wait",
@@ -163,6 +172,7 @@ function normalizePolicyContext(context) {
     measurementScope: context.measurementScope ?? null,
     resultStatus: context.resultStatus ?? null,
     lifecycleKind: context.lifecycleKind ?? null,
+    lifecycleCommandScope: context.lifecycleCommandScope ?? null,
     hasNoServiceCommand: context.hasNoServiceCommand === true
   };
 }

@@ -2589,6 +2589,7 @@ async function executeStateLifecycleSteps(context, envName, scenario, kind, step
       kind: "state-lifecycle",
       measurementScope: normalizeMeasurementScope(null, kind),
       lifecycleKind: kind,
+      lifecycleCommandScope: stateLifecycleCommandScope(commands),
       resultStatus: phaseStatus(results)
     }))
   };
@@ -2707,9 +2708,14 @@ function metricOptions(context, scenario, phase, artifactDir, policyContext = {}
       measurementScope,
       resultStatus: policyContext.resultStatus ?? null,
       lifecycleKind: policyContext.lifecycleKind ?? null,
+      lifecycleCommandScope: policyContext.lifecycleCommandScope ?? null,
       hasNoServiceCommand: phaseHasNoServiceCommand(phase)
     })
   };
+}
+
+function stateLifecycleCommandScope(commands) {
+  return commands.some((command) => /(?:^|\s)ocm(?:\s|$)/.test(command)) ? "env" : "host";
 }
 
 function phaseHasNoServiceCommand(phase) {

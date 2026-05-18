@@ -6752,6 +6752,28 @@ async function collectionPolicyResolverCheck(tmp) {
   });
   assertEqual(failedStateSetupPolicy.mode, "full", "failed state setup keeps full collection");
 
+  const hostStatePreparePolicy = resolveCollectionPolicy({
+    kind: "state-lifecycle",
+    phaseId: null,
+    measurementScope: "harness",
+    lifecycleKind: "prepare",
+    lifecycleCommandScope: "host",
+    resultStatus: "success"
+  });
+  assertEqual(hostStatePreparePolicy.mode, "skip-env", "successful host-only state prepare skips env metrics");
+  assertEqual(hostStatePreparePolicy.context.lifecycleCommandScope, "host", "host state prepare records command scope");
+  assertEqual(hostStatePreparePolicy.collectors.service, false, "host state prepare skips service collector");
+
+  const envStatePreparePolicy = resolveCollectionPolicy({
+    kind: "state-lifecycle",
+    phaseId: null,
+    measurementScope: "harness",
+    lifecycleKind: "prepare",
+    lifecycleCommandScope: "env",
+    resultStatus: "success"
+  });
+  assertEqual(envStatePreparePolicy.mode, "full", "env state prepare keeps full collection");
+
   const skippedMetrics = await collectEnvMetrics("kova-self-check-skip-env", {
     collectionPolicy: authPreparePolicy
   });
@@ -6762,6 +6784,16 @@ async function collectionPolicyResolverCheck(tmp) {
     "skipped env metrics records skipped collectors"
   );
   assertEqual(skippedMetrics.collectors.length, ENV_COLLECTOR_IDS.length, "skipped env metrics receipt count");
+
+  const hostStatePrepareMetrics = await collectEnvMetrics("kova-self-check-host-state-prepare", {
+    collectionPolicy: hostStatePreparePolicy
+  });
+  assertEqual(hostStatePrepareMetrics.service, null, "host state prepare metrics avoid service collection");
+  assertEqual(
+    hostStatePrepareMetrics.collectors.every((collector) => collector.status === "SKIPPED"),
+    true,
+    "host state prepare metrics records skipped collectors"
+  );
 
   const authSetupMetrics = await collectPostReadySelfCheckMetrics(tmp, authSetupPolicy);
   assertEqual(authSetupMetrics.service?.gatewayState, "running", "auth setup service-only keeps service state");
