@@ -159,7 +159,8 @@ export async function executeScenario(scenario, context) {
           evidence: phase.evidence ?? [],
           results,
           metrics: await collectEnvMetrics(envName, metricOptions(context, scenario, phase, artifactDir, {
-            kind: "scenario-phase"
+            kind: "scenario-phase",
+            resultStatus: phaseStatus(results)
           }))
         });
 
@@ -2703,9 +2704,14 @@ function metricOptions(context, scenario, phase, artifactDir, policyContext = {}
       phaseId: phase?.id ?? null,
       phaseHealthScope: phase?.healthScope ?? null,
       measurementScope,
-      resultStatus: policyContext.resultStatus ?? null
+      resultStatus: policyContext.resultStatus ?? null,
+      hasNoServiceCommand: phaseHasNoServiceCommand(phase)
     })
   };
+}
+
+function phaseHasNoServiceCommand(phase) {
+  return (phase?.commands ?? []).some((command) => /(?:^|\s)--no-service(?:\s|$)/.test(command));
 }
 
 function phaseStatus(results) {

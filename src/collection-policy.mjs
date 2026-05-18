@@ -105,6 +105,14 @@ export function resolveCollectionPolicy(context = {}) {
       context
     );
   }
+  if (context.kind === "scenario-phase" &&
+      context.resultStatus === "success" &&
+      context.hasNoServiceCommand === true) {
+    return serviceOnlyCollectionPolicy(
+      "successful no-service phase deliberately leaves Gateway stopped; only service summary is collected after it",
+      context
+    );
+  }
   if (context.kind === "scenario-phase" && context.phaseHealthScope === "post-ready") {
     return postReadyHealthCollectionPolicy(
       "post-ready phase samples health without repeating startup readiness wait",
@@ -144,6 +152,7 @@ function normalizePolicyContext(context) {
     phaseId: context.phaseId ?? null,
     phaseHealthScope: context.phaseHealthScope ?? null,
     measurementScope: context.measurementScope ?? null,
-    resultStatus: context.resultStatus ?? null
+    resultStatus: context.resultStatus ?? null,
+    hasNoServiceCommand: context.hasNoServiceCommand === true
   };
 }

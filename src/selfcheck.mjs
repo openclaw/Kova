@@ -6713,6 +6713,21 @@ async function collectionPolicyResolverCheck(tmp) {
   assertEqual(authSetupPolicy.collectors.logs, false, "auth setup skips logs collector");
   assertEqual(authSetupPolicy.collectors.timeline, false, "auth setup skips timeline collector");
 
+  const noServicePolicy = resolveCollectionPolicy({
+    kind: "scenario-phase",
+    scenario: "gateway-session-send-turn",
+    surface: "gateway-session-send-turn",
+    phaseId: "provision",
+    phaseHealthScope: "none",
+    measurementScope: "product",
+    resultStatus: "success",
+    hasNoServiceCommand: true
+  });
+  assertEqual(noServicePolicy.mode, "service-only", "successful no-service phase uses service-only collection");
+  assertEqual(noServicePolicy.collectors.service, true, "no-service phase keeps service collector");
+  assertEqual(noServicePolicy.collectors.readiness, false, "no-service phase skips readiness collector");
+  assertEqual(noServicePolicy.collectors.logs, false, "no-service phase skips logs collector");
+
   const skippedMetrics = await collectEnvMetrics("kova-self-check-skip-env", {
     collectionPolicy: authPreparePolicy
   });
