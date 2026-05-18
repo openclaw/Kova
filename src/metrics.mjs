@@ -87,13 +87,19 @@ export async function collectEnvMetrics(envName, options = {}) {
     issue: serviceJson.issue ?? null
   };
 
-  if (serviceJson.childPid) {
-    metrics.process = await collectProcessMetrics(serviceJson.childPid, timeoutMs);
-    recordCollector(collectors, "process", metrics.process);
+  if (collectorEnabled(collectionPolicy, "process")) {
+    if (serviceJson.childPid) {
+      metrics.process = await collectProcessMetrics(serviceJson.childPid, timeoutMs);
+      recordCollector(collectors, "process", metrics.process);
+    }
+  } else {
+    recordSkippedCollector(collectors, "process", collectionPolicy.reason);
   }
 
   const readinessMode = collectionPolicy.readiness ?? "wait";
-  if (serviceJson.gatewayPort && readinessMode !== "none" && shouldProbeReadiness(serviceJson, readinessTimeoutMs)) {
+  const readinessEnabled = collectorEnabled(collectionPolicy, "readiness");
+  const healthEnabled = collectionPolicy.healthSamples !== false && collectorEnabled(collectionPolicy, "health");
+  if (serviceJson.gatewayPort && readinessEnabled && readinessMode !== "none" && shouldProbeReadiness(serviceJson, readinessTimeoutMs)) {
     await collectReadinessAndHealth(metrics, collectors, serviceJson.gatewayPort, {
       readinessTimeoutMs,
       readinessThresholdMs: options.readinessThresholdMs,
@@ -104,7 +110,7 @@ export async function collectEnvMetrics(envName, options = {}) {
       timeoutMs,
       sampleHealthAfterReady: Boolean(serviceJson.childPid)
     });
-  } else if (serviceJson.gatewayPort) {
+  } else if (serviceJson.gatewayPort && readinessEnabled) {
     metrics.readiness = skippedReadinessMetrics(serviceJson.gatewayPort, {
       thresholdMs: options.readinessThresholdMs,
       deadlineMs: readinessTimeoutMs,
@@ -120,28 +126,47 @@ export async function collectEnvMetrics(envName, options = {}) {
       statusLabel: "INFO",
       error: null
     });
-    if (collectionPolicy.healthSamples !== false && serviceJson.childPid) {
+    if (healthEnabled && serviceJson.childPid) {
       await collectPostReadyHealth(metrics, collectors, serviceJson.gatewayPort, {
         healthSampleCount,
         healthIntervalMs,
         timeoutMs
       });
+    } else if (!collectorEnabled(collectionPolicy, "health")) {
+      recordSkippedCollector(collectors, "health", collectionPolicy.reason);
+    }
+  } else {
+    if (!readinessEnabled) {
+      recordSkippedCollector(collectors, "readiness", collectionPolicy.reason);
+    }
+    if (healthEnabled && serviceJson.gatewayPort && serviceJson.childPid) {
+      await collectPostReadyHealth(metrics, collectors, serviceJson.gatewayPort, {
+        healthSampleCount,
+        healthIntervalMs,
+        timeoutMs
+      });
+    } else if (!collectorEnabled(collectionPolicy, "health")) {
+      recordSkippedCollector(collectors, "health", collectionPolicy.reason);
     }
   }
 
-  await collectLogAndTimelineMetrics(metrics, collectors, envName, timeoutMs, options);
+  await collectLogAndTimelineMetrics(metrics, collectors, envName, timeoutMs, options, collectionPolicy);
 
-  if (options.heapSnapshot === true && serviceJson.childPid) {
+  if (!collectorEnabled(collectionPolicy, "heap-snapshot")) {
+    recordSkippedCollector(collectors, "heap-snapshot", collectionPolicy.reason);
+  } else if (options.heapSnapshot === true && serviceJson.childPid) {
     metrics.heapSnapshot = await triggerHeapSnapshot(envName, serviceJson.childPid, timeoutMs, options.artifactDir);
     recordCollector(collectors, "heap-snapshot", metrics.heapSnapshot, metrics.heapSnapshot.artifacts);
   }
-  if (options.diagnosticReport === true && serviceJson.childPid) {
+  if (!collectorEnabled(collectionPolicy, "diagnostic-report")) {
+    recordSkippedCollector(collectors, "diagnostic-report", collectionPolicy.reason);
+  } else if (options.diagnosticReport === true && serviceJson.childPid) {
     metrics.diagnosticReport = await triggerDiagnosticReport(envName, serviceJson.childPid, timeoutMs, options.artifactDir, {
       signalAlreadySent: options.heapSnapshot === true
     });
     recordCollector(collectors, "diagnostic-report", metrics.diagnosticReport, metrics.diagnosticReport.artifacts);
   }
-  await collectDiagnosticArtifactMetrics(metrics, collectors, envName, timeoutMs, options);
+  await collectDiagnosticArtifactMetrics(metrics, collectors, envName, timeoutMs, options, collectionPolicy);
 
   return metrics;
 }
@@ -233,28 +258,56 @@ async function collectPostReadyHealth(metrics, collectors, port, options) {
   });
 }
 
-async function collectLogAndTimelineMetrics(metrics, collectors, envName, timeoutMs, options) {
-  metrics.logs = await collectLogMetrics(envName, timeoutMs, options.artifactDir);
-  recordCollector(collectors, "logs", metrics.logs, metrics.logs.artifacts);
+async function collectLogAndTimelineMetrics(metrics, collectors, envName, timeoutMs, options, collectionPolicy) {
+  if (collectorEnabled(collectionPolicy, "logs")) {
+    metrics.logs = await collectLogMetrics(envName, timeoutMs, options.artifactDir);
+    recordCollector(collectors, "logs", metrics.logs, metrics.logs.artifacts);
+  } else {
+    recordSkippedCollector(collectors, "logs", collectionPolicy.reason);
+  }
 
-  metrics.openclawDiagnostics = collectOpenClawDiagnostics(metrics.logs);
-  recordCollector(collectors, "openclaw-diagnostics", {
-    commandStatus: 0,
-    durationMs: 0,
-    statusLabel: metrics.openclawDiagnostics.available ? "PASS" : "INFO",
-    error: metrics.openclawDiagnostics.available ? null : "structured diagnostics unavailable; using log-pattern fallback"
-  });
+  if (collectorEnabled(collectionPolicy, "openclaw-diagnostics")) {
+    if (metrics.logs) {
+      metrics.openclawDiagnostics = collectOpenClawDiagnostics(metrics.logs);
+      recordCollector(collectors, "openclaw-diagnostics", {
+        commandStatus: 0,
+        durationMs: 0,
+        statusLabel: metrics.openclawDiagnostics.available ? "PASS" : "INFO",
+        error: metrics.openclawDiagnostics.available ? null : "structured diagnostics unavailable; using log-pattern fallback"
+      });
+    } else {
+      recordSkippedCollector(collectors, "openclaw-diagnostics", "OpenClaw diagnostics require collected logs");
+    }
+  } else {
+    recordSkippedCollector(collectors, "openclaw-diagnostics", collectionPolicy.reason);
+  }
 
-  metrics.timeline = await collectTimelineMetrics(options.artifactDir);
-  recordCollector(collectors, "timeline", metrics.timeline, metrics.timeline.artifacts);
+  if (collectorEnabled(collectionPolicy, "timeline")) {
+    metrics.timeline = await collectTimelineMetrics(options.artifactDir);
+    recordCollector(collectors, "timeline", metrics.timeline, metrics.timeline.artifacts);
+  } else {
+    recordSkippedCollector(collectors, "timeline", collectionPolicy.reason);
+  }
 }
 
-async function collectDiagnosticArtifactMetrics(metrics, collectors, envName, timeoutMs, options) {
-  metrics.diagnostics = await collectDiagnosticMetrics(envName, timeoutMs, options.artifactDir);
-  recordCollector(collectors, "diagnostics", metrics.diagnostics, metrics.diagnostics.artifacts);
+async function collectDiagnosticArtifactMetrics(metrics, collectors, envName, timeoutMs, options, collectionPolicy) {
+  if (collectorEnabled(collectionPolicy, "diagnostics")) {
+    metrics.diagnostics = await collectDiagnosticMetrics(envName, timeoutMs, options.artifactDir);
+    recordCollector(collectors, "diagnostics", metrics.diagnostics, metrics.diagnostics.artifacts);
+  } else {
+    recordSkippedCollector(collectors, "diagnostics", collectionPolicy.reason);
+  }
 
-  metrics.nodeProfiles = await collectNodeProfileMetrics(options.artifactDir);
-  recordCollector(collectors, "node-profiles", metrics.nodeProfiles, metrics.nodeProfiles.artifacts);
+  if (collectorEnabled(collectionPolicy, "node-profiles")) {
+    metrics.nodeProfiles = await collectNodeProfileMetrics(options.artifactDir);
+    recordCollector(collectors, "node-profiles", metrics.nodeProfiles, metrics.nodeProfiles.artifacts);
+  } else {
+    recordSkippedCollector(collectors, "node-profiles", collectionPolicy.reason);
+  }
+}
+
+function collectorEnabled(collectionPolicy, id) {
+  return collectionPolicy.collectors?.[id] !== false;
 }
 
 function recordCollector(collectors, id, result, artifacts = []) {
