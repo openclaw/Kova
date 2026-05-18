@@ -60,6 +60,12 @@ inside disposable Kova envs and make the evidence explicit. Existing user state
 must be represented through clone/import metadata, not direct mutation of a
 durable env.
 
+Scenario phases and state lifecycle steps may set `collectionIntent` to one of
+`full`, `post-ready-health`, `service-only`, or `skip-env`. Omit it unless the
+phase has a narrower proof contract than full env collection. Kova defaults to
+`full`, and failed phases use full collection even when they requested a narrower
+intent.
+
 Put positive state compatibility on surface requirements through `states` or
 `stateTraits`. Add `incompatibleSurfaces` only for hard safety blocks where a
 fixture must never run against a surface; do not store empty compatibility

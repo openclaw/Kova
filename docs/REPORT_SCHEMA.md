@@ -213,16 +213,17 @@ collector receipts:
 
 Metrics also include `collectionPolicy` with schema
 `kova.collectionPolicy.v1`. It records the scenario/phase context and which
-collectors were intended to run for that metrics capture. A `full` policy means
-all env collectors remain enabled. A `skip-env` policy is currently limited to
-successful auth prepare/cleanup boundary phases and successful host-only state
-prepare/cleanup steps; each disabled collector must appear in
-`collectionPolicy.skipped` and as a `SKIPPED` collector receipt.
+collectors were intended to run for that metrics capture. Scenario phases,
+auth phases, and state lifecycle steps can declare `collectionIntent`; missing
+or invalid intent falls back to `full`, and failed phases always use `full`.
+A `full` policy means all env collectors remain enabled. A `skip-env` policy
+means a successful command receipt is the proof and no env collectors are
+needed; each disabled collector must appear in `collectionPolicy.skipped` and
+as a `SKIPPED` collector receipt.
 `service-only` means Kova keeps the OCM service summary, and process metrics
 when a child process exists, but skips readiness, health, logs, timeline,
 diagnostics, node-profile scans, heap snapshots, and diagnostic reports for a
-helper, no-service phase, or successful state fixture setup whose command
-result is the proof.
+phase whose command result is the proof.
 `post-ready-health` means the phase keeps service, process, health samples,
 logs, timeline, diagnostics, and node-profile scans, but intentionally skips the
 startup readiness wait. Those phases still contribute to
@@ -453,6 +454,11 @@ Scenario phases declare `healthScope` so the evaluator does not infer meaning
 from phase ids. Allowed values are `readiness`, `startup-sample`, `post-ready`,
 `final`, and `none`. Reports do not emit old top-level readiness or health p95
 fields; readers should use the scoped health object directly.
+
+Scenario phases can also declare `collectionIntent` with one of `full`,
+`post-ready-health`, `service-only`, or `skip-env`. The default is `full`.
+Intent controls collector policy only after phase commands succeed; failure
+diagnostics stay full collection.
 
 Role-specific thresholds can fail a scenario separately from total process-tree
 thresholds. For example, a report can show that `gateway` exceeded memory while
