@@ -1,6 +1,15 @@
 import { statesDir } from "../paths.mjs";
 import { validateCollectionIntent } from "../collection-contract.mjs";
-import { assertNoShapeErrors, loadJsonRegistry, requireArray, requireKebabId, requireObject, requireString } from "./validate.mjs";
+import {
+  assertNoShapeErrors,
+  loadJsonRegistry,
+  requireArray,
+  requireKebabId,
+  requireObject,
+  requireString,
+  validateAuthContract,
+  validateStringArray
+} from "./validate.mjs";
 
 export const knownStateTraits = [
   "agent-state",
@@ -80,7 +89,7 @@ export function validateStateShape(state, sourceName = "state") {
     validateSource(state.source, errors);
   }
   if (state.auth !== undefined) {
-    validateAuth(state.auth, errors);
+    validateAuthContract(state.auth, "auth", errors, { reason: true });
   }
   if (state.officialPlugins !== undefined) {
     validateOfficialPlugins(state.officialPlugins, errors);
@@ -122,19 +131,6 @@ function validateOfficialPlugins(plugins, errors) {
     if (plugin.riskArea !== undefined && (typeof plugin.riskArea !== "string" || plugin.riskArea.length === 0)) {
       errors.push(`${prefix}.riskArea must be a non-empty string when set`);
     }
-  }
-}
-
-function validateAuth(auth, errors) {
-  requireObject({ auth }, "auth", errors);
-  if (!auth || typeof auth !== "object" || Array.isArray(auth)) {
-    return;
-  }
-  if (auth.mode !== undefined && !["default", "mock", "live", "skip", "missing", "broken", "none"].includes(auth.mode)) {
-    errors.push("auth.mode must be one of default, mock, live, skip, missing, broken, none");
-  }
-  if (auth.reason !== undefined && (typeof auth.reason !== "string" || auth.reason.length === 0)) {
-    errors.push("auth.reason must be a non-empty string when set");
   }
 }
 
@@ -194,23 +190,5 @@ function validateSteps(steps, key, errors, options) {
     validateStringArray(step.commands, `${prefix}.commands`, errors);
     validateStringArray(step.evidence, `${prefix}.evidence`, errors);
     validateCollectionIntent(step.collectionIntent, prefix, errors);
-  }
-}
-
-function validateStringArray(values, key, errors, options = {}) {
-  if (values === undefined && options.optional) {
-    return;
-  }
-  if (!Array.isArray(values)) {
-    errors.push(`${key} must be an array`);
-    return;
-  }
-  if (options.nonEmpty && values.length === 0) {
-    errors.push(`${key} must not be empty`);
-  }
-  for (const [index, value] of values.entries()) {
-    if (typeof value !== "string" || value.length === 0) {
-      errors.push(`${key}[${index}] must be a non-empty string`);
-    }
   }
 }

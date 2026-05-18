@@ -1,6 +1,16 @@
 import { scenariosDir } from "../paths.mjs";
 import { validateCollectionIntent } from "../collection-contract.mjs";
-import { assertNoShapeErrors, loadJsonRegistry, requireArray, requireKebabId, requireObject, requireString } from "./validate.mjs";
+import {
+  assertNoShapeErrors,
+  loadJsonRegistry,
+  requireArray,
+  requireKebabId,
+  requireObject,
+  requireString,
+  validateAuthContract,
+  validatePlatforms,
+  validateStringArray
+} from "./validate.mjs";
 
 export const HEALTH_SCOPES = ["readiness", "startup-sample", "post-ready", "final", "none"];
 
@@ -30,7 +40,7 @@ export function validateScenarioShape(scenario, sourceName = "scenario") {
     validatePlatforms(scenario.platforms, "platforms", errors);
   }
   if (scenario.auth !== undefined) {
-    validateAuth(scenario.auth, "auth", errors);
+    validateAuthContract(scenario.auth, "auth", errors);
   }
   if (scenario.agent !== undefined) {
     validateAgent(scenario.agent, "agent", errors);
@@ -57,16 +67,6 @@ export function validateScenarioShape(scenario, sourceName = "scenario") {
   validateEvidenceContractPhases(scenario, errors);
 
   assertNoShapeErrors(errors, sourceName);
-}
-
-function validateAuth(auth, prefix, errors) {
-  if (!auth || typeof auth !== "object" || Array.isArray(auth)) {
-    errors.push(`${prefix} must be an object`);
-    return;
-  }
-  if (auth.mode !== undefined && !["default", "mock", "live", "skip", "missing", "broken", "none"].includes(auth.mode)) {
-    errors.push(`${prefix}.mode must be one of default, mock, live, skip, missing, broken, none`);
-  }
 }
 
 function validateAgent(agent, prefix, errors) {
@@ -199,31 +199,6 @@ function validateCloneFirstContract(scenario, errors) {
   const sourceCommands = commands.filter((command) => command.includes("{sourceEnv}"));
   if (sourceCommands.length !== 1) {
     errors.push("scenarios that use {sourceEnv} may reference it only in the first clone command");
-  }
-}
-
-function validatePlatforms(platforms, prefix, errors) {
-  if (!platforms || typeof platforms !== "object" || Array.isArray(platforms)) {
-    errors.push(`${prefix} must be an object`);
-    return;
-  }
-  for (const key of ["include", "exclude"]) {
-    validateStringArray(platforms[key], `${prefix}.${key}`, errors, { optional: true });
-  }
-}
-
-function validateStringArray(values, key, errors, options = {}) {
-  if (values === undefined && options.optional) {
-    return;
-  }
-  if (!Array.isArray(values)) {
-    errors.push(`${key} must be an array`);
-    return;
-  }
-  for (const [index, value] of values.entries()) {
-    if (typeof value !== "string" || value.length === 0) {
-      errors.push(`${key}[${index}] must be a non-empty string`);
-    }
   }
 }
 

@@ -1,6 +1,15 @@
 import { surfacesDir } from "../paths.mjs";
 import { validatePurposes } from "./purposes.mjs";
-import { assertNoShapeErrors, loadJsonRegistry, requireArray, requireKebabId, requireObject, requireString } from "./validate.mjs";
+import {
+  assertNoShapeErrors,
+  loadJsonRegistry,
+  requireArray,
+  requireKebabId,
+  requireObject,
+  requireString,
+  validateMissingExpectedSpanSeverity,
+  validateStringArray
+} from "./validate.mjs";
 import { knownTargetKinds } from "./surface-requirements.mjs";
 
 export async function loadSurfaces(selectedId) {
@@ -59,15 +68,6 @@ export function validateSurfaceShape(surface, sourceName = "surface") {
   validateRequirements(surface.requirements, errors);
 
   assertNoShapeErrors(errors, sourceName);
-}
-
-function validateMissingExpectedSpanSeverity(value, prefix, errors) {
-  if (value === undefined) {
-    return;
-  }
-  if (!["diagnostic-gap", "warn", "fail"].includes(value)) {
-    errors.push(`${prefix} must be one of diagnostic-gap, warn, fail`);
-  }
 }
 
 function validateRequirements(requirements, errors) {
@@ -131,21 +131,6 @@ function validateRoleThresholds(value, prefix, errors) {
       if (thresholds[key] !== undefined && (typeof thresholds[key] !== "number" || thresholds[key] < 0)) {
         errors.push(`${prefix}.${role}.${key} must be a non-negative number when set`);
       }
-    }
-  }
-}
-
-function validateStringArray(values, key, errors, options = {}) {
-  if (values === undefined && options.optional) {
-    return;
-  }
-  if (!Array.isArray(values)) {
-    errors.push(`${key} must be an array`);
-    return;
-  }
-  for (const [index, value] of values.entries()) {
-    if (typeof value !== "string" || value.length === 0) {
-      errors.push(`${key}[${index}] must be a non-empty string`);
     }
   }
 }

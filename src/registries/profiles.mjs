@@ -1,6 +1,15 @@
 import { profilesDir } from "../paths.mjs";
 import { validatePurpose } from "./purposes.mjs";
-import { assertNoShapeErrors, loadJsonRegistry, requireArray, requireKebabId, requireString } from "./validate.mjs";
+import {
+  assertNoShapeErrors,
+  loadJsonRegistry,
+  requireArray,
+  requireKebabId,
+  requireString,
+  validateMissingExpectedSpanSeverity,
+  validatePlatforms,
+  validateStringArray
+} from "./validate.mjs";
 
 export async function loadProfiles(selectedId) {
   return loadJsonRegistry({
@@ -96,15 +105,6 @@ function validateDiagnostics(diagnostics, prefix, errors) {
   validateStringArray(diagnostics.requiredKeySpans, `${prefix}.requiredKeySpans`, errors, { optional: true });
 }
 
-function validateMissingExpectedSpanSeverity(value, prefix, errors) {
-  if (value === undefined) {
-    return;
-  }
-  if (!["diagnostic-gap", "warn", "fail"].includes(value)) {
-    errors.push(`${prefix} must be one of diagnostic-gap, warn, fail`);
-  }
-}
-
 function validateEntries(entries, errors) {
   if (!Array.isArray(entries)) {
     return;
@@ -179,29 +179,5 @@ function validateCoverage(coverage, prefix, errors) {
     }
     validateStringArray(value.blocking, `${prefix}.${key}.blocking`, errors, { optional: true });
     validateStringArray(value.warning, `${prefix}.${key}.warning`, errors, { optional: true });
-  }
-}
-
-function validatePlatforms(platforms, prefix, errors) {
-  if (!platforms || typeof platforms !== "object" || Array.isArray(platforms)) {
-    errors.push(`${prefix} must be an object`);
-    return;
-  }
-  validateStringArray(platforms.include, `${prefix}.include`, errors, { optional: true });
-  validateStringArray(platforms.exclude, `${prefix}.exclude`, errors, { optional: true });
-}
-
-function validateStringArray(values, key, errors, options = {}) {
-  if (values === undefined && options.optional) {
-    return;
-  }
-  if (!Array.isArray(values)) {
-    errors.push(`${key} must be an array`);
-    return;
-  }
-  for (const [index, value] of values.entries()) {
-    if (typeof value !== "string" || value.length === 0) {
-      errors.push(`${key}[${index}] must be a non-empty string`);
-    }
   }
 }

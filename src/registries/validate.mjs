@@ -320,6 +320,56 @@ export function requireKebabId(value, key, errors, prefix = "") {
   }
 }
 
+export function validateStringArray(values, key, errors, options = {}) {
+  if (values === undefined && options.optional) {
+    return;
+  }
+  if (!Array.isArray(values)) {
+    errors.push(`${key} must be an array`);
+    return;
+  }
+  if (options.nonEmpty && values.length === 0) {
+    errors.push(`${key} must not be empty`);
+  }
+  for (const [index, value] of values.entries()) {
+    if (typeof value !== "string" || value.length === 0) {
+      errors.push(`${key}[${index}] must be a non-empty string`);
+    }
+  }
+}
+
+export function validatePlatforms(platforms, prefix, errors) {
+  if (!platforms || typeof platforms !== "object" || Array.isArray(platforms)) {
+    errors.push(`${prefix} must be an object`);
+    return;
+  }
+  for (const key of ["include", "exclude"]) {
+    validateStringArray(platforms[key], `${prefix}.${key}`, errors, { optional: true });
+  }
+}
+
+export function validateAuthContract(auth, prefix, errors, options = {}) {
+  if (!auth || typeof auth !== "object" || Array.isArray(auth)) {
+    errors.push(`${prefix} must be an object`);
+    return;
+  }
+  if (auth.mode !== undefined && !["default", "mock", "live", "skip", "missing", "broken", "none"].includes(auth.mode)) {
+    errors.push(`${prefix}.mode must be one of default, mock, live, skip, missing, broken, none`);
+  }
+  if (options.reason && auth.reason !== undefined && (typeof auth.reason !== "string" || auth.reason.length === 0)) {
+    errors.push(`${prefix}.reason must be a non-empty string when set`);
+  }
+}
+
+export function validateMissingExpectedSpanSeverity(value, prefix, errors) {
+  if (value === undefined) {
+    return;
+  }
+  if (!["diagnostic-gap", "warn", "fail"].includes(value)) {
+    errors.push(`${prefix} must be one of diagnostic-gap, warn, fail`);
+  }
+}
+
 export function assertNoShapeErrors(errors, sourceName) {
   if (errors.length > 0) {
     throw new Error(`${sourceName} is invalid:\n- ${errors.join("\n- ")}`);
