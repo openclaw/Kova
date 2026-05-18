@@ -2,23 +2,7 @@ import { loadRegistryContext } from "../registries/context.mjs";
 
 export const REPEATED_WORK_AUDIT_SCHEMA = "kova.repeatedWorkAudit.v1";
 
-const commandReceiptLocks = [
-  {
-    id: "official-plugin-install-command-receipts",
-    scenario: "official-plugin-install",
-    invariant: "officialPluginRequiredCommands",
-    reason: "official plugin invariant currently requires exact command receipts",
-    commands: [
-      "ocm start",
-      "baseline plugins list",
-      "official plugin install helper",
-      "gateway restart helper",
-      "ocm service status",
-      "post-install plugins list",
-      "post-install logs"
-    ]
-  }
-];
+const commandReceiptLocks = [];
 
 export async function buildRepeatedWorkAudit(options = {}) {
   const registry = options.registry ?? await loadRegistryContext();

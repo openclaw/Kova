@@ -6695,8 +6695,13 @@ async function repeatedWorkAuditCheck() {
   );
   assertEqual(
     audit.commandReceiptLocks.some((lock) => lock.scenario === "official-plugin-install"),
-    true,
-    "repeated work audit official plugin receipt lock remains"
+    false,
+    "repeated work audit official plugin receipt lock removed"
+  );
+  assertEqual(
+    audit.commandReceiptLocks.length,
+    0,
+    "repeated work audit command receipt locks empty"
   );
   return {
     id: "repeated-work-audit",

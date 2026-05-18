@@ -76,9 +76,7 @@
       "title": "Verify Official Plugin After Restart",
       "intent": "Verify the official plugin remains persisted after the gateway is ready.",
       "commands": [
-        "ocm service status {env} --json",
-        "ocm @{env} -- plugins list",
-        "ocm logs {env} --tail 400 --raw"
+        "ocm @{env} -- plugins list"
       ],
       "evidence": [
         "official plugin remains installed",
