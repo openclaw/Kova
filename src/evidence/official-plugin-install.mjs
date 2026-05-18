@@ -3,13 +3,17 @@ import {
   commonResourceProofReason,
   commonTimelineProofOk,
   commonTimelineProofReason,
+  collectedLogArtifactPath,
+  collectedLogsOk,
+  collectedLogsProof,
+  collectedLogsReason,
+  commandReceiptOk,
+  commandReceiptReason,
+  collectorReceiptOk,
+  collectorReceiptReason,
   findCommandResult,
-  findCommandResultInPhase,
   nonNegativeNumber,
   phaseMetrics,
-  releaseStartupLogArtifactPath,
-  releaseStartupLogsOk,
-  releaseStartupLogsReason,
   zeroCountInvariant
 } from "./shared.mjs";
 
@@ -22,7 +26,7 @@ export function buildOfficialPluginInstallEvidenceInvariants(record, scenario = 
   const evidence = record.measurements?.officialPluginEvidence ?? {};
   const missingDependencyErrors = record.measurements?.missingDependencyErrors;
   const pluginLoadFailures = record.measurements?.pluginLoadFailures;
-  const logsResult = findCommandResult(record, (result) => result.command?.startsWith("ocm logs "));
+  const logsProof = collectedLogsProof(record, "post-restart-verify");
 
   return [
     {
@@ -92,10 +96,10 @@ export function buildOfficialPluginInstallEvidenceInvariants(record, scenario = 
       id: "official-plugin-logs-captured",
       phaseId: "post-restart-verify",
       required: true,
-      status: releaseStartupLogsOk(logsResult) ? "passed" : "missing",
+      status: collectedLogsOk(logsProof) ? "passed" : "missing",
       summary: "post-install gateway logs were captured for dependency and plugin-load checks",
-      artifactPath: releaseStartupLogArtifactPath(record),
-      reason: releaseStartupLogsReason(logsResult)
+      artifactPath: collectedLogArtifactPath(record),
+      reason: collectedLogsReason(logsProof)
     },
     zeroCountInvariant({
       id: "official-plugin-no-missing-runtime-dependency-errors",
@@ -115,37 +119,36 @@ export function buildOfficialPluginInstallEvidenceInvariants(record, scenario = 
 }
 
 function officialPluginCommandReceiptsOk(record) {
-  return officialPluginRequiredCommands().every(([_, phaseId, predicate]) => {
-    const result = findCommandResultInPhase(record, phaseId, predicate);
-    return result?.status === 0 && result.durationMs !== undefined;
-  });
+  return officialPluginRequiredProofs().every(([_, ok]) => ok(record));
 }
 
 function officialPluginCommandReceiptsReason(record) {
-  for (const [label, phaseId, predicate] of officialPluginRequiredCommands()) {
-    const result = findCommandResultInPhase(record, phaseId, predicate);
-    if (!result) {
-      return `${label} receipt was not captured`;
-    }
-    if (result.status !== 0) {
-      return `${label} exited ${result.status}`;
-    }
-    if (result.durationMs === undefined) {
-      return `${label} duration was not captured`;
+  for (const [label, _, reason] of officialPluginRequiredProofs()) {
+    const missing = reason(record);
+    if (missing) {
+      return `${label}: ${missing}`;
     }
   }
   return null;
 }
 
-function officialPluginRequiredCommands() {
+function officialPluginRequiredProofs() {
   return [
-    ["ocm start", "provision", (result) => result.command?.startsWith("ocm start ")],
-    ["baseline plugins list", "provision", (result) => result.command?.includes(" -- plugins list")],
-    ["official plugin install helper", "install", (result) => result.command?.includes("run-official-plugin-install.mjs")],
-    ["gateway restart helper", "restart", (result) => result.command?.includes("ensure-gateway-running.mjs")],
-    ["service status", "post-restart-verify", (result) => result.command?.startsWith("ocm service status ")],
-    ["post-install plugins list", "post-restart-verify", (result) => result.command?.includes(" -- plugins list")],
-    ["post-install logs", "post-restart-verify", (result) => result.command?.startsWith("ocm logs ")]
+    commandProof("ocm start", (result) => result.command?.startsWith("ocm start ")),
+    commandProof("baseline plugins list", (result) => result.command?.includes(" -- plugins list")),
+    commandProof("official plugin install helper", (result) => result.command?.includes("run-official-plugin-install.mjs")),
+    commandProof("gateway restart helper", (result) => result.command?.includes("ensure-gateway-running.mjs")),
+    ["service collector", (record) => collectorReceiptOk(record, "post-restart-verify", "service"), (record) => collectorReceiptReason(record, "post-restart-verify", "service")],
+    commandProof("post-install plugins list", (result) => result.command?.includes(" -- plugins list")),
+    ["logs collector", (record) => collectorReceiptOk(record, "post-restart-verify", "logs"), (record) => collectorReceiptReason(record, "post-restart-verify", "logs")]
+  ];
+}
+
+function commandProof(label, predicate) {
+  return [
+    label,
+    (record) => commandReceiptOk(record, predicate),
+    (record) => commandReceiptReason(record, predicate)
   ];
 }
 

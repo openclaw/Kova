@@ -4192,6 +4192,12 @@ function syntheticOfficialPluginInstallRecord({ helperPayload = {}, includeInsta
           { command: "ocm logs kova --tail 400 --raw", status: 0, durationMs: 40, stdout: "plugins loaded\n" }
         ],
         metrics: {
+          collectors: [
+            syntheticCollectorReceipt("service"),
+            syntheticCollectorReceipt("logs", { artifacts: ["/tmp/kova/logs/gateway-tail.log"] }),
+            syntheticCollectorReceipt("timeline", { artifacts: ["/tmp/kova/openclaw/timeline.jsonl"] })
+          ],
+          service: { gatewayState: "running", gatewayPort: 43111, runtimeReleaseVersion: "2026.5.7", runtimeReleaseChannel: "stable" },
           healthSummary: syntheticHealthSummary(),
           logs: {
             ...zeroLogMetrics(),
@@ -4208,6 +4214,21 @@ function syntheticOfficialPluginInstallRecord({ helperPayload = {}, includeInsta
       logs: zeroLogMetrics(),
       timeline: syntheticTimelineMetrics()
     }
+  };
+}
+
+function syntheticCollectorReceipt(id, overrides = {}) {
+  return {
+    schemaVersion: "kova.collectorReceipt.v1",
+    id,
+    status: "PASS",
+    durationMs: 1,
+    commandStatus: 0,
+    timedOut: false,
+    artifactCount: overrides.artifacts?.length ?? 0,
+    artifacts: overrides.artifacts ?? [],
+    error: null,
+    ...overrides
   };
 }
 
