@@ -5687,8 +5687,7 @@
           "title": "Clone Existing Env",
           "intent": "Clone a durable existing env into a disposable Kova env before any local-build upgrade action.",
           "commands": [
-            "ocm env clone {sourceEnv} {env} --json",
-            "ocm service status {env} --json"
+            "ocm env clone {sourceEnv} {env} --json"
           ],
           "evidence": [
             "clone result",
@@ -5718,11 +5717,9 @@
           "title": "Post-Upgrade Clone Checks",
           "intent": "Verify cloned user state survives local-build upgrade, including plugin index migration and gateway readiness.",
           "commands": [
-            "ocm service status {env} --json",
             "ocm @{env} -- status",
             "ocm @{env} -- plugins list",
-            "ocm @{env} -- doctor --fix",
-            "ocm logs {env} --tail 400 --raw"
+            "ocm @{env} -- doctor --fix"
           ],
           "evidence": [
             "gateway state",
