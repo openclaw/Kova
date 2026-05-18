@@ -17,6 +17,7 @@
 // This file owns event formatting only; the run command owns the data.
 
 import { makeUi } from "../ui/index.mjs";
+import { createPulseFooter } from "../ui/pulse-footer.mjs";
 
 export function createRunProgress({ flags = {}, env = process.env, stream = process.stderr, mode = "run" } = {}) {
   const silent = flags.json === true || flags.plain === true || flags.no_progress === true;
@@ -24,6 +25,7 @@ export function createRunProgress({ flags = {}, env = process.env, stream = proc
 
   const ui = makeUi(flags, env, stream);
   const { c, g } = ui;
+  const footer = createPulseFooter({ stream, env, flags, silent });
   const start = process.hrtime.bigint();
   const t0 = new Map();
 
@@ -42,6 +44,16 @@ export function createRunProgress({ flags = {}, env = process.env, stream = proc
     return tone(`[${label}]`);
   }
 
+  // Each event line: clear the transient pulse footer first, then write the
+  // permanent event line. The footer is repainted with the new context so
+  // the cursor sits on a live "still working" line between events.
+  function emit(line, contextAfter) {
+    footer.clear();
+    stream.write(line);
+    if (contextAfter !== undefined) footer.setContext(contextAfter);
+    footer.paint();
+  }
+
   return {
     runStart({ scenarioCount, mode: m, target, profile }) {
       const tag1 = tag((m ?? mode).toUpperCase());
@@ -49,21 +61,24 @@ export function createRunProgress({ flags = {}, env = process.env, stream = proc
       if (profile) parts.push(`profile ${c.bold(profile)}`);
       parts.push(`${c.bold(scenarioCount)} ${scenarioCount === 1 ? "entry" : "entries"}`);
       if (target) parts.push(`target ${c.bold(target)}`);
-      stream.write(`${tag1} ${parts.join(`  ${g.sep}  `)}\n`);
+      footer.start("queued");
+      emit(`${tag1} ${parts.join(`  ${g.sep}  `)}\n`, "queued");
     },
 
     scenarioStart({ scenarioId, stateId, iteration }) {
       const key = entryKey(scenarioId, stateId, iteration);
       t0.set(key, process.hrtime.bigint());
       const iter = iteration && iteration.total > 1 ? c.dim(` [${iteration.index}/${iteration.total}]`) : "";
-      stream.write(`${tag("START", c.head)}  ${c.bold(scenarioId)}${c.dim(` ${g.sep} ${stateId}`)}${iter}\n`);
+      const ctx = `${scenarioId} ${g.sep} ${stateId}${iteration && iteration.total > 1 ? ` [${iteration.index}/${iteration.total}]` : ""}`;
+      emit(`${tag("START", c.head)}  ${c.bold(scenarioId)}${c.dim(` ${g.sep} ${stateId}`)}${iter}\n`, ctx);
     },
 
     phase({ title, scenarioId, stateId }) {
       if (!title) return;
       const scope = [scenarioId, stateId].filter(Boolean).join("/");
       const where = scope ? c.dim(`  ${g.sep} ${scope}`) : "";
-      stream.write(`${tag("PHASE", c.dim)}  ${c.dim(title)}${where}\n`);
+      const ctx = scope ? `${scope} ${g.sep} ${title}` : title;
+      emit(`${tag("PHASE", c.dim)}  ${c.dim(title)}${where}\n`, ctx);
     },
 
     scenarioEnd({ scenarioId, stateId, iteration, status, skipReason }) {
@@ -73,7 +88,7 @@ export function createRunProgress({ flags = {}, env = process.env, stream = proc
       const iter = iteration && iteration.total > 1 ? c.dim(` [${iteration.index}/${iteration.total}]`) : "";
       const { label, tone } = classify(status, skipReason, c);
       const tail = skipReason ? c.dim(`  ${g.sep} ${skipReason}`) : c.dim(`  ${g.sep} ${dur}`);
-      stream.write(`${tag("DONE", tone)}   ${c.bold(scenarioId)}${c.dim(` ${g.sep} ${stateId}`)}${iter}  ${label}${tail}\n`);
+      emit(`${tag("DONE", tone)}   ${c.bold(scenarioId)}${c.dim(` ${g.sep} ${stateId}`)}${iter}  ${label}${tail}\n`, "waiting for next entry");
     },
 
     runFinish({ total, statuses }) {
@@ -81,6 +96,7 @@ export function createRunProgress({ flags = {}, env = process.env, stream = proc
       const fail = (statuses?.FAIL ?? 0) > 0;
       const tone = fail ? c.err : c.ok;
       const counts = formatCounts(statuses, c);
+      footer.stop();
       stream.write(`${tag("FINISH", tone)} ${c.dim(`${total} ${total === 1 ? "entry" : "entries"} in ${dur}`)}${counts ? c.dim(`  ${g.sep}  `) + counts : ""}\n`);
     },
   };
