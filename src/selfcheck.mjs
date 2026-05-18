@@ -527,6 +527,8 @@ export async function runSelfCheck(flags = {}) {
     ));
     checks.push(await localBuildRuntimeCleanupCheck(tmp));
     checks.push(await localBuildRuntimeAlreadyAbsentCleanupCheck(tmp));
+    checks.push(defaultGatewayResourceRoleCheck());
+    checks.push(compareRepeatAggregationCheck());
 
     const receiptCheck = await jsonCommandCheck(
       "dry-run-report-json",
@@ -800,6 +802,141 @@ function localBuildTargetSetupResourceExclusionCheck() {
       id: "local-build-target-setup-resource-exclusion",
       status: "FAIL",
       command: "evaluate local-build target setup resource exclusion",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function defaultGatewayResourceRoleCheck() {
+  try {
+    const record = {
+      scenario: "gateway-default-rss",
+      status: "PASS",
+      phases: [{
+        id: "scenario-command",
+        measurementScope: "product",
+        results: [{
+          command: "ocm @kova-self-check -- status",
+          status: 0,
+          durationMs: 100,
+          resourceSamples: {
+            schemaVersion: "kova.resourceSamples.v1",
+            sampleCount: 1,
+            peakTotalRssMb: 650,
+            maxTotalCpuPercent: 80,
+            peakCommandTreeRssMb: 650,
+            peakGatewayRssMb: 100,
+            byRole: {
+              gateway: { peakRssMb: 100, maxCpuPercent: 20, peakProcessCount: 1 },
+              "command-tree": { peakRssMb: 650, maxCpuPercent: 80, peakProcessCount: 1 }
+            },
+            topRolesByRss: [
+              { role: "command-tree", peakRssMb: 650, maxCpuPercent: 80 },
+              { role: "gateway", peakRssMb: 100, maxCpuPercent: 20 }
+            ],
+            topRolesByCpu: [
+              { role: "command-tree", peakRssMb: 650, maxCpuPercent: 80 },
+              { role: "gateway", peakRssMb: 100, maxCpuPercent: 20 }
+            ],
+            topByRss: [],
+            topByCpu: []
+          }
+        }]
+      }],
+      finalMetrics: {
+        service: { gatewayState: "disabled" },
+        logs: zeroLogMetrics()
+      }
+    };
+    evaluateRecord(record, { thresholds: { peakRssMb: 200 } }, {
+      surface: { thresholds: {}, diagnostics: { expectedSpans: [] } },
+      targetPlan: { kind: "runtime" }
+    });
+    assertEqual(record.status, "PASS", "gateway RSS is default headline gate");
+    assertEqual(record.measurements.peakRssMb, 100, "headline RSS defaults to gateway role");
+    assertEqual(record.measurements.resourcePeakTrackedRssMb, 650, "tracked total RSS retained separately");
+    assertEqual(record.measurements.resourcePrimaryRole, "gateway", "default resource primary role recorded");
+    assertEqual(record.measurements.resourceGateKind, "role", "resource gate kind recorded");
+    return {
+      id: "default-gateway-resource-role",
+      status: "PASS",
+      command: "evaluate default gateway RSS resource contract",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "default-gateway-resource-role",
+      status: "FAIL",
+      command: "evaluate default gateway RSS resource contract",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function compareRepeatAggregationCheck() {
+  try {
+    const baseline = syntheticPerformanceReport({
+      runId: "baseline-repeat",
+      platform: { os: "darwin", arch: "arm64", release: "test", node: "v24.0.0" },
+      target: "npm:2026.5.12",
+      records: [
+        syntheticPerformanceRecord(1, { peakRssMb: 1000 }),
+        syntheticPerformanceRecord(2, { peakRssMb: 1100 }),
+        syntheticPerformanceRecord(3, { peakRssMb: 1200 })
+      ]
+    });
+    const current = syntheticPerformanceReport({
+      runId: "current-repeat",
+      platform: baseline.platform,
+      target: "npm:2026.5.18",
+      records: [
+        syntheticPerformanceRecord(1, { peakRssMb: 900 }),
+        syntheticPerformanceRecord(2, { peakRssMb: 1000 }),
+        syntheticPerformanceRecord(3, {
+          peakRssMb: 1350,
+          resourcePeakTrackedRssMb: 1350
+        })
+      ]
+    });
+    baseline.records[0].status = "FAIL";
+    baseline.records[0].violations = [{
+      kind: "threshold",
+      metric: "peakRssMb",
+      expected: "<= 900",
+      actual: 1000,
+      message: "gateway peak RSS 1000 MB exceeded threshold 900 MB"
+    }];
+    current.records[2].status = "FAIL";
+    current.records[2].violations = [{
+      kind: "threshold",
+      metric: "peakRssMb",
+      expected: "<= 900",
+      actual: 1350,
+      message: "gateway peak RSS 1350 MB exceeded threshold 900 MB"
+    }];
+    const comparison = compareReports(baseline, current, { thresholds: { peakRssMb: 100 } });
+    const scenario = comparison.scenarios.find((item) => item.key === "fresh-install:fresh");
+    assertEqual(scenario.metrics.peakRssMb.baseline, 1100, "repeat compare uses baseline median");
+    assertEqual(scenario.metrics.peakRssMb.current, 1000, "repeat compare uses current median");
+    assertEqual(scenario.metrics["peakRssMb.max"].baseline, 1200, "repeat compare tracks baseline max");
+    assertEqual(scenario.metrics["peakRssMb.max"].current, 1350, "repeat compare tracks current max");
+    assertEqual(scenario.regressions.some((regression) => regression.metric === "peakRssMb"), false, "improved median is not a regression");
+    assertEqual(scenario.regressions.some((regression) => regression.metric === "peakRssMb.max"), true, "worse max is explicit max regression");
+    assertEqual(comparison.findingChanges.new.length, 0, "same metric finding is not new just because value changed");
+    assertEqual(comparison.findingChanges.resolved.length, 0, "same metric finding is not resolved just because value changed");
+    return {
+      id: "compare-repeat-aggregation",
+      status: "PASS",
+      command: "evaluate repeated-run compare aggregation",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "compare-repeat-aggregation",
+      status: "FAIL",
+      command: "evaluate repeated-run compare aggregation",
       durationMs: 0,
       message: error.message
     };
