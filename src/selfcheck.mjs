@@ -84,6 +84,7 @@ import {
   checkRoleThresholds,
   checkTurnThreshold
 } from "./evaluation/violations.mjs";
+import { resolveThresholdPolicy } from "./evaluation/thresholds.mjs";
 import { createSelfCheckProgress, renderSelfCheckReceipt } from "./reporting/render-selfcheck.mjs";
 
 export async function runSelfCheck(flags = {}) {
@@ -419,6 +420,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(reportRecommendedNextScenarioCheck());
     checks.push(readinessClassificationCheck());
     checks.push(healthReadinessModelCheck());
+    checks.push(healthFailureThresholdPolicyCheck());
     checks.push(agentContainmentHealthScopeCheck());
     checks.push(await resourceRoleAttributionCheck(tmp));
     checks.push(await resourceRootCommandRoleBoundaryCheck());
@@ -7378,6 +7380,106 @@ function healthReadinessModelCheck() {
       id: "health-readiness-model",
       status: "FAIL",
       command: "evaluate synthetic scoped health record",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function healthFailureThresholdPolicyCheck() {
+  try {
+    const policy = resolveThresholdPolicy({
+      scenario: {
+        id: "synthetic-health-policy",
+        thresholds: {
+          postReadyHealthP95Ms: 1000
+        }
+      }
+    });
+    assertEqual(policy.thresholds.postReadyHealthFailures, 0, "post-ready health latency derives failed-sample gate");
+    assertEqual(policy.thresholds.finalHealthFailures, 0, "post-ready health latency derives final failed-sample gate");
+    assertEqual(
+      policy.report.sources.some((source) =>
+        source.kind === "derived" && source.thresholds.includes("postReadyHealthFailures")
+      ),
+      true,
+      "derived health thresholds are reported"
+    );
+
+    const explicitPolicy = resolveThresholdPolicy({
+      scenario: {
+        id: "synthetic-explicit-health-policy",
+        thresholds: {
+          postReadyHealthP95Ms: 1000,
+          postReadyHealthFailures: 2,
+          finalHealthFailures: 1
+        }
+      }
+    });
+    assertEqual(explicitPolicy.thresholds.postReadyHealthFailures, 2, "explicit post-ready failure budget is preserved");
+    assertEqual(explicitPolicy.thresholds.finalHealthFailures, 1, "explicit final failure budget is preserved");
+
+    const record = {
+      status: "PASS",
+      phases: [
+        {
+          id: "api-latency",
+          healthScope: "post-ready",
+          results: [],
+          metrics: {
+            healthSamples: [
+              { ok: false, durationMs: 2, error: "fetch failed" },
+              { ok: true, durationMs: 20 }
+            ],
+            healthSummary: {
+              count: 2,
+              okCount: 1,
+              failureCount: 1,
+              minMs: 20,
+              p50Ms: 20,
+              p95Ms: 20,
+              maxMs: 20
+            }
+          }
+        }
+      ],
+      finalMetrics: {
+        service: { gatewayState: "running" },
+        healthSamples: [{ ok: false, durationMs: 1, error: "fetch failed" }],
+        healthSummary: {
+          count: 1,
+          okCount: 0,
+          failureCount: 1,
+          minMs: null,
+          p50Ms: null,
+          p95Ms: null,
+          maxMs: null
+        }
+      }
+    };
+    evaluateRecord(record, { id: "synthetic-health-policy", thresholds: { postReadyHealthP95Ms: 1000 } });
+    assertEqual(record.status, "FAIL", "failed health samples fail even when p95 latency is under threshold");
+    assertEqual(
+      record.violations.some((violation) => violation.metric === "postReadyHealthFailures"),
+      true,
+      "post-ready failed samples are violations"
+    );
+    assertEqual(
+      record.violations.some((violation) => violation.metric === "finalHealthFailures"),
+      true,
+      "final failed samples are violations"
+    );
+    return {
+      id: "health-failure-threshold-policy",
+      status: "PASS",
+      command: "evaluate derived health failure thresholds",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "health-failure-threshold-policy",
+      status: "FAIL",
+      command: "evaluate derived health failure thresholds",
       durationMs: 0,
       message: error.message
     };

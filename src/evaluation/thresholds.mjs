@@ -1,10 +1,11 @@
 export function resolveThresholdPolicy({ profile = null, surface = null, scenario = null } = {}) {
   const surfaceCalibration = profile?.calibration?.surfaces?.[surface?.id] ?? {};
-  const thresholds = mergeObjects(
+  const configuredThresholds = mergeObjects(
     surface?.thresholds,
     surfaceCalibration.thresholds,
     scenario?.thresholds
   );
+  const { thresholds, derived } = applyDerivedThresholds(configuredThresholds);
   const roleThresholds = mergeRoleThresholds(
     profile?.calibration?.roles,
     surface?.roleThresholds,
@@ -20,14 +21,14 @@ export function resolveThresholdPolicy({ profile = null, surface = null, scenari
       profileId: profile?.id ?? null,
       surfaceId: surface?.id ?? null,
       scenarioId: scenario?.id ?? null,
-      sources: thresholdSources({ profile, surface, surfaceCalibration, scenario }),
+      sources: thresholdSources({ profile, surface, surfaceCalibration, scenario, derived }),
       thresholds,
       roleThresholds
     }
   };
 }
 
-function thresholdSources({ profile, surface, surfaceCalibration, scenario }) {
+function thresholdSources({ profile, surface, surfaceCalibration, scenario, derived = [] }) {
   const sources = [];
   if (surface?.thresholds && Object.keys(surface.thresholds).length > 0) {
     sources.push({ kind: "surface", id: surface.id, thresholds: Object.keys(surface.thresholds).sort() });
@@ -47,7 +48,26 @@ function thresholdSources({ profile, surface, surfaceCalibration, scenario }) {
   if (scenario?.thresholds && Object.keys(scenario.thresholds).length > 0) {
     sources.push({ kind: "scenario", id: scenario.id, thresholds: Object.keys(scenario.thresholds).sort() });
   }
+  if (derived.length > 0) {
+    sources.push({ kind: "derived", id: "health-sample-failures", thresholds: derived });
+  }
   return sources;
+}
+
+function applyDerivedThresholds(thresholds) {
+  const derived = [];
+  const resolved = { ...thresholds };
+  if (typeof resolved.postReadyHealthP95Ms === "number") {
+    if (typeof resolved.postReadyHealthFailures !== "number") {
+      resolved.postReadyHealthFailures = 0;
+      derived.push("postReadyHealthFailures");
+    }
+    if (typeof resolved.finalHealthFailures !== "number") {
+      resolved.finalHealthFailures = 0;
+      derived.push("finalHealthFailures");
+    }
+  }
+  return { thresholds: resolved, derived };
 }
 
 function mergeObjects(...objects) {

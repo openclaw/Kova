@@ -24,6 +24,11 @@ Required fields:
   the states or state traits, target kinds, and metrics that prove that part of
   the surface contract.
 
+If a surface or scenario sets `postReadyHealthP95Ms`, Kova also derives zero
+budgets for `postReadyHealthFailures` and `finalHealthFailures` unless those
+failure thresholds are explicitly configured. This keeps health-latency
+contracts from passing when the probes are fast only because they failed.
+
 Then:
 
 1. Add or update one scenario in `scenarios/*.json` with `"surface": "<id>"`

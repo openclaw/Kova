@@ -455,6 +455,12 @@ from phase ids. Allowed values are `readiness`, `startup-sample`, `post-ready`,
 `final`, and `none`. Reports do not emit old top-level readiness or health p95
 fields; readers should use the scoped health object directly.
 
+When a threshold policy includes `postReadyHealthP95Ms`, Kova derives zero
+budgets for `postReadyHealthFailures` and `finalHealthFailures` unless the
+scenario or surface overrides them. The derived thresholds appear in
+`thresholdPolicy.sources` with `kind: "derived"` so reports can explain why
+failed health samples became violations.
+
 Scenario phases can also declare `collectionIntent` with one of `full`,
 `post-ready-health`, `service-only`, or `skip-env`. The default is `full`.
 Intent controls collector policy only after phase commands succeed; failure
