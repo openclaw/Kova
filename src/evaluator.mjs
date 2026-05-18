@@ -43,16 +43,21 @@ export function evaluateRecord(record, scenario, options = {}) {
   const cpuPercentMaxTracked = maxNullable(collectCpuPercentMax(record, { productOnly: true }), resourceSummary.maxTotalCpuPercent);
   const peakRssMb = typeof primaryRoleResources?.peakRssMb === "number" ? primaryRoleResources.peakRssMb : peakTrackedRssMb;
   const cpuPercentMax = typeof primaryRoleResources?.maxCpuPercent === "number" ? primaryRoleResources.maxCpuPercent : cpuPercentMaxTracked;
-  const missingDependencyErrors = countMissingDependencyErrors(allResults) + countLogMetric(record, "missingDependencyErrors");
-  const pluginLoadFailures = countLogMetric(record, "pluginLoadFailures");
-  const metadataScanMentions = countLogMetric(record, "metadataScanMentions");
-  const configNormalizationMentions = countLogMetric(record, "configNormalizationMentions");
-  const gatewayRestartCount = countGatewayRestarts(record);
-  const providerLoadMentions = countLogMetric(record, "providerLoadMentions");
-  const modelCatalogMentions = countLogMetric(record, "modelCatalogMentions");
-  const providerTimeoutMentions = countLogMetric(record, "providerTimeoutMentions");
-  const eventLoopDelayMentions = countLogMetric(record, "eventLoopDelayMentions");
-  const v8DiagnosticMentions = countLogMetric(record, "v8DiagnosticMentions");
+  const commandMissingDependencyErrors = countMissingDependencyErrors(allResults);
+  const missingDependencyErrors = combineCommandAndLogCount(
+    commandMissingDependencyErrors,
+    countLogMetric(record, "missingDependencyErrors", allResults),
+    hasSuccessfulLogCommandResult(allResults)
+  );
+  const pluginLoadFailures = countLogMetric(record, "pluginLoadFailures", allResults);
+  const metadataScanMentions = countLogMetric(record, "metadataScanMentions", allResults);
+  const configNormalizationMentions = countLogMetric(record, "configNormalizationMentions", allResults);
+  const gatewayRestartCount = countGatewayRestarts(record, allResults);
+  const providerLoadMentions = countLogMetric(record, "providerLoadMentions", allResults);
+  const modelCatalogMentions = countLogMetric(record, "modelCatalogMentions", allResults);
+  const providerTimeoutMentions = countLogMetric(record, "providerTimeoutMentions", allResults);
+  const eventLoopDelayMentions = countLogMetric(record, "eventLoopDelayMentions", allResults);
+  const v8DiagnosticMentions = countLogMetric(record, "v8DiagnosticMentions", allResults);
   const v8ReportCount = countDiagnosticMetric(record, "v8ReportCount");
   const heapSnapshotCount = countDiagnosticMetric(record, "heapSnapshotCount");
   const diagnosticArtifactBytes = countDiagnosticMetric(record, "artifactBytes");
@@ -2190,10 +2195,13 @@ function collectTcpConnectMax(record) {
   return durations.length === 0 ? null : Math.max(...durations);
 }
 
-function countGatewayRestarts(record) {
-  const results = collectResults(record);
+function countGatewayRestarts(record, results = collectResults(record)) {
   const commandRestarts = results.filter((result) => result.command.startsWith("ocm service restart ")).length;
-  return commandRestarts + countLogMetric(record, "gatewayRestartMentions");
+  const logRestarts = countLogMetric(record, "gatewayRestartMentions", results);
+  if (typeof logRestarts === "number") {
+    return commandRestarts + logRestarts;
+  }
+  return commandRestarts > 0 ? commandRestarts : null;
 }
 
 function collectSoakEvidence(results) {
@@ -3024,36 +3032,117 @@ function mergeRoles(left, right) {
   return [...roles].join(",");
 }
 
-function countLogMetric(record, key) {
+const LOG_METRIC_PATTERNS = {
+  missingDependencyErrors: /cannot find (module|package)|missing dependenc|missing runtime dep/i,
+  pluginLoadFailures: /\[plugins\].*failed to load|plugin.*failed to load|\[plugins\].*plugin service failed|plugin service failed/i,
+  metadataScanMentions: /collectBundledPluginMetadata|bundled plugin metadata|manifest read|readdirSync/i,
+  configNormalizationMentions: /config normal/i,
+  gatewayRestartMentions: /gateway.*restart|restart.*gateway|service restart|restarting/i,
+  providerLoadMentions: /provider.*load|load.*provider|provider registry|auth provider/i,
+  modelCatalogMentions: /model catalog|models list|loading models|available models/i,
+  providerTimeoutMentions: /provider.*timeout|model.*timeout|timeout.*provider|timeout.*model/i,
+  eventLoopDelayMentions: /event loop|event-loop|blocked loop|loop delay/i,
+  v8DiagnosticMentions: /v8|diagnostic report|heapsnapshot|heap snapshot/i
+};
+
+function countLogMetric(record, key, results = []) {
+  let observed = false;
   let count = 0;
   for (const phase of record.phases ?? []) {
     const value = phase.metrics?.logs?.[key];
     if (typeof value === "number") {
+      observed = true;
       count = Math.max(count, value);
     }
   }
 
   const finalValue = record.finalMetrics?.logs?.[key];
   if (typeof finalValue === "number") {
+    observed = true;
     count = Math.max(count, finalValue);
   }
-  return count;
+
+  const commandLogMetric = countExplicitLogCommandMetric(results, key);
+  if (commandLogMetric.observed || commandLogMetric.count > 0) {
+    observed = true;
+    count = Math.max(count, commandLogMetric.count);
+  }
+  return observed ? count : null;
 }
 
-function countHeapSnapshotBytes(record) {
+function combineCommandAndLogCount(commandCount, logCount, logCommandObserved) {
+  if (typeof logCount === "number") {
+    return commandCount + logCount;
+  }
+  if (commandCount > 0) {
+    return commandCount;
+  }
+  return logCommandObserved ? 0 : null;
+}
+
+function countExplicitLogCommandMetric(results, key) {
+  const pattern = LOG_METRIC_PATTERNS[key];
+  if (!pattern) {
+    return { observed: false, count: 0 };
+  }
+  let observed = false;
   let count = 0;
-  for (const metrics of allMetricObjects(record)) {
-    const value = metrics?.heapSnapshot?.artifactBytes;
-    if (typeof value === "number") {
-      count = Math.max(count, value);
+  for (const result of results) {
+    if (!isLogCommandResult(result)) {
+      continue;
+    }
+    if (result.status === 0) {
+      observed = true;
+    }
+    const matchCount = countPattern(`${result.stdout ?? ""}\n${result.stderr ?? ""}`, pattern);
+    if (matchCount > 0) {
+      observed = true;
+      count += matchCount;
+    }
+  }
+  return { observed, count };
+}
+
+function hasSuccessfulLogCommandResult(results) {
+  return results.some((result) => isLogCommandResult(result) && result.status === 0);
+}
+
+function isLogCommandResult(result) {
+  return /^ocm\s+logs\s+/.test(result?.command ?? "");
+}
+
+function countPattern(text, pattern) {
+  let count = 0;
+  for (const line of String(text ?? "").split("\n")) {
+    if (pattern.test(line)) {
+      count += 1;
     }
   }
   return count;
 }
 
+function countHeapSnapshotBytes(record) {
+  let observed = false;
+  let count = 0;
+  for (const metrics of allMetricObjects(record)) {
+    if (metrics?.heapSnapshot) {
+      observed = true;
+    }
+    const value = metrics?.heapSnapshot?.artifactBytes;
+    if (typeof value === "number") {
+      count = Math.max(count, value);
+    }
+  }
+  return observed ? count : null;
+}
+
 function countNodeProfileMetric(record, key) {
+  let observed = false;
   let count = 0;
   for (const phase of record.phases ?? []) {
+    if (phase.metrics?.nodeProfiles) {
+      observed = true;
+    }
     const value = phase.metrics?.nodeProfiles?.[key];
     if (typeof value === "number") {
       count = Math.max(count, value);
@@ -3061,10 +3150,13 @@ function countNodeProfileMetric(record, key) {
   }
 
   const finalValue = record.finalMetrics?.nodeProfiles?.[key];
+  if (record.finalMetrics?.nodeProfiles) {
+    observed = true;
+  }
   if (typeof finalValue === "number") {
     count = Math.max(count, finalValue);
   }
-  return count;
+  return observed ? count : null;
 }
 
 function collectNodeProfileTopFunction(record) {
@@ -3096,14 +3188,18 @@ function collectNodeHeapTopFunction(record) {
 }
 
 function countDiagnosticReportMetric(record, key) {
+  let observed = false;
   let count = 0;
   for (const metrics of allMetricObjects(record)) {
+    if (metrics?.diagnosticReport) {
+      observed = true;
+    }
     const value = metrics?.diagnosticReport?.[key];
     if (typeof value === "number") {
       count = Math.max(count, value);
     }
   }
-  return count;
+  return observed ? count : null;
 }
 
 function buildDiagnosticCorrelation({
@@ -3429,14 +3525,18 @@ function allMetricObjects(record) {
 }
 
 function countDiagnosticMetric(record, key) {
+  let observed = false;
   let count = 0;
   for (const metrics of allMetricObjects(record)) {
+    if (metrics?.diagnostics) {
+      observed = true;
+    }
     const value = metrics?.diagnostics?.[key];
     if (typeof value === "number") {
       count = Math.max(count, value);
     }
   }
-  return count;
+  return observed ? count : null;
 }
 
 function isAgentMessageCommand(command) {

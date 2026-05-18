@@ -145,6 +145,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(await commandOutputBudgetCheck());
     checks.push(logSnippetBudgetCheck());
     checks.push(optionalNoLogsCommandCheck());
+    checks.push(missingCollectorProofCheck());
     checks.push(ocmCommandBuildersCheck());
     checks.push(evaluationViolationHelpersCheck());
     checks.push(statusFoundationCheck());
@@ -1052,6 +1053,77 @@ function optionalDiagnosticGapCheck() {
       message: error.message
     };
   }
+}
+
+function missingCollectorProofCheck() {
+  try {
+    const missingRecord = syntheticUpgradeLogRecord({
+      results: [{
+        command: "ocm @kova-self-check -- doctor --fix",
+        status: 0,
+        stdout: "doctor ok\n",
+        stderr: ""
+      }]
+    });
+    evaluateRecord(missingRecord, { id: "upgrade-existing-user", thresholds: {} });
+    assertEqual(missingRecord.measurements.missingDependencyErrors, null, "missing logs do not prove missing dependency zero");
+    assertEqual(missingRecord.measurements.pluginLoadFailures, null, "missing logs do not prove plugin failure zero");
+    const missingInvariants = Object.fromEntries(
+      buildUpgradeLogDerivedInvariants(missingRecord).map((invariant) => [invariant.id, invariant])
+    );
+    assertEqual(
+      missingInvariants["no-missing-runtime-dependency-errors"].status,
+      "missing",
+      "missing dependency proof is incomplete without logs"
+    );
+    assertEqual(
+      missingInvariants["no-plugin-load-failures"].status,
+      "missing",
+      "plugin load proof is incomplete without logs"
+    );
+
+    const explicitLogRecord = syntheticUpgradeLogRecord({
+      results: [{
+        command: "ocm logs kova-self-check --tail 300 --raw",
+        status: 0,
+        stdout: "gateway ready\n",
+        stderr: ""
+      }]
+    });
+    evaluateRecord(explicitLogRecord, { id: "upgrade-existing-user", thresholds: {} });
+    assertEqual(explicitLogRecord.measurements.missingDependencyErrors, 0, "explicit log command proves missing dependency zero");
+    assertEqual(explicitLogRecord.measurements.pluginLoadFailures, 0, "explicit log command proves plugin failure zero");
+    return {
+      id: "missing-collector-proof",
+      status: "PASS",
+      command: "evaluate missing collector proof semantics",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "missing-collector-proof",
+      status: "FAIL",
+      command: "evaluate missing collector proof semantics",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function syntheticUpgradeLogRecord({ results }) {
+  return {
+    scenario: "upgrade-existing-user",
+    surface: "upgrade-existing-user",
+    status: "PASS",
+    phases: [{
+      id: "post-upgrade",
+      commands: results.map((result) => result.command),
+      results
+    }],
+    finalMetrics: {
+      service: { gatewayState: "running" }
+    }
+  };
 }
 
 function provisioningBlockedStatusCheck() {
