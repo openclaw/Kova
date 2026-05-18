@@ -1,15 +1,17 @@
 import {
-  commandReceiptOk,
-  commandReceiptReason,
-  collectorReceiptOk,
-  collectorReceiptReason,
+  commandProof,
+  collectorProof,
   collectedLogArtifactPath,
   collectedLogsOk,
   collectedLogsProof,
   collectedLogsReason,
   findCommandResult,
+  gatewaySessionHealthOk,
+  gatewaySessionHealthReason,
   nonNegativeNumber,
   parseJsonObject,
+  requiredProofsOk,
+  requiredProofsReason,
   zeroCountInvariant
 } from "./shared.mjs";
 
@@ -32,10 +34,10 @@ export function buildReleaseRuntimeStartupEvidenceInvariants(record, scenario = 
       id: "release-runtime-command-receipts",
       phaseId: "post-start",
       required: true,
-      status: releaseStartupCommandReceiptsOk(record) ? "passed" : "missing",
+      status: requiredProofsOk(record, releaseStartupRequiredProofs()) ? "passed" : "missing",
       summary: "startup, service status, OpenClaw status, plugin list, and log command receipts were captured",
       artifactPath: null,
-      reason: releaseStartupCommandReceiptsReason(record)
+      reason: requiredProofsReason(record, releaseStartupRequiredProofs())
     },
     {
       id: "release-runtime-binding-version-proof",
@@ -50,10 +52,10 @@ export function buildReleaseRuntimeStartupEvidenceInvariants(record, scenario = 
       id: "release-runtime-readiness-health-proof",
       phaseId: "provision",
       required: true,
-      status: releaseStartupHealthMissing(record, health) ? "missing" : releaseStartupHealthOk(record, health) ? "passed" : "failed",
+      status: releaseStartupHealthMissing(record, health) ? "missing" : gatewaySessionHealthOk(record, health) ? "passed" : "failed",
       summary: "gateway readiness, post-ready health, and final service state were measured",
       artifactPath: null,
-      reason: releaseStartupHealthReason(record, health)
+      reason: gatewaySessionHealthReason(record, health)
     },
     {
       id: "release-runtime-command-usability-proof",
@@ -108,32 +110,14 @@ export function buildReleaseRuntimeStartupEvidenceInvariants(record, scenario = 
   ];
 }
 
-function releaseStartupCommandReceiptsOk(record) {
-  const required = [
-    ["ocm start", () => commandReceiptOk(record, (result) => result.command?.startsWith("ocm start "))],
-    ["service collector", () => collectorReceiptOk(record, "post-start", "service")],
-    ["ocm status", () => commandReceiptOk(record, (result) => result.command === "ocm @{env} -- status" || result.command?.includes(" -- status"))],
-    ["ocm plugins list", () => commandReceiptOk(record, (result) => result.command === "ocm @{env} -- plugins list" || result.command?.includes(" -- plugins list"))],
-    ["logs collector", () => collectorReceiptOk(record, "startup-logs", "logs")]
+function releaseStartupRequiredProofs() {
+  return [
+    commandProof("ocm start", (result) => result.command?.startsWith("ocm start ")),
+    collectorProof("service collector", "post-start", "service"),
+    commandProof("ocm status", (result) => result.command === "ocm @{env} -- status" || result.command?.includes(" -- status")),
+    commandProof("ocm plugins list", (result) => result.command === "ocm @{env} -- plugins list" || result.command?.includes(" -- plugins list")),
+    collectorProof("logs collector", "startup-logs", "logs")
   ];
-  return required.every(([_, ok]) => ok());
-}
-
-function releaseStartupCommandReceiptsReason(record) {
-  const required = [
-    ["ocm start", () => commandReceiptReason(record, (result) => result.command?.startsWith("ocm start "))],
-    ["service collector", () => collectorReceiptReason(record, "post-start", "service")],
-    ["ocm status", () => commandReceiptReason(record, (result) => result.command === "ocm @{env} -- status" || result.command?.includes(" -- status"))],
-    ["ocm plugins list", () => commandReceiptReason(record, (result) => result.command === "ocm @{env} -- plugins list" || result.command?.includes(" -- plugins list"))],
-    ["logs collector", () => collectorReceiptReason(record, "startup-logs", "logs")]
-  ];
-  for (const [label, reason] of required) {
-    const missing = reason();
-    if (missing) {
-      return `${label}: ${missing}`;
-    }
-  }
-  return null;
 }
 
 function releaseStartupProvisionProof(record) {
@@ -182,45 +166,11 @@ function releaseStartupBindingReason(service, provision) {
   return null;
 }
 
-function releaseStartupHealthOk(record, health) {
-  return health?.readiness?.classification === "ready" &&
-    Number.isFinite(health.readiness.healthReadyAtMs) &&
-    (health.postReadySamples?.count ?? 0) > 0 &&
-    (health.postReadySamples?.failureCount ?? 0) === 0 &&
-    (health.final?.failureCount ?? 0) === 0 &&
-    record.measurements?.finalGatewayState === "running";
-}
-
 function releaseStartupHealthMissing(record, health) {
   return !health?.readiness ||
     !Number.isFinite(health.readiness.healthReadyAtMs) ||
     (health.postReadySamples?.count ?? 0) <= 0 ||
     record.measurements?.finalGatewayState === undefined;
-}
-
-function releaseStartupHealthReason(record, health) {
-  if (!health?.readiness) {
-    return "readiness measurement was not collected";
-  }
-  if (health.readiness.classification !== "ready") {
-    return `readiness classification was ${health.readiness.classification ?? "missing"}`;
-  }
-  if (!Number.isFinite(health.readiness.healthReadyAtMs)) {
-    return "readiness health-ready timing was not collected";
-  }
-  if ((health.postReadySamples?.count ?? 0) <= 0) {
-    return "post-ready health samples were not collected";
-  }
-  if ((health.postReadySamples?.failureCount ?? 0) !== 0) {
-    return `post-ready health failures were ${health.postReadySamples.failureCount}`;
-  }
-  if ((health.final?.failureCount ?? 0) !== 0) {
-    return `final health failures were ${health.final.failureCount}`;
-  }
-  if (record.measurements?.finalGatewayState !== "running") {
-    return `final gateway state was ${record.measurements?.finalGatewayState ?? "missing"}`;
-  }
-  return null;
 }
 
 function releaseStartupCommandUsabilityOk(statusResult, pluginsListResult, measurements) {

@@ -7,13 +7,13 @@ import {
   collectedLogsOk,
   collectedLogsProof,
   collectedLogsReason,
-  commandReceiptOk,
-  commandReceiptReason,
-  collectorReceiptOk,
-  collectorReceiptReason,
+  commandProof,
+  collectorProof,
   findCommandResult,
   nonNegativeNumber,
   phaseMetrics,
+  requiredProofsOk,
+  requiredProofsReason,
   zeroCountInvariant
 } from "./shared.mjs";
 
@@ -119,17 +119,11 @@ export function buildOfficialPluginInstallEvidenceInvariants(record, scenario = 
 }
 
 function officialPluginCommandReceiptsOk(record) {
-  return officialPluginRequiredProofs().every(([_, ok]) => ok(record));
+  return requiredProofsOk(record, officialPluginRequiredProofs());
 }
 
 function officialPluginCommandReceiptsReason(record) {
-  for (const [label, _, reason] of officialPluginRequiredProofs()) {
-    const missing = reason(record);
-    if (missing) {
-      return `${label}: ${missing}`;
-    }
-  }
-  return null;
+  return requiredProofsReason(record, officialPluginRequiredProofs());
 }
 
 function officialPluginRequiredProofs() {
@@ -138,17 +132,9 @@ function officialPluginRequiredProofs() {
     commandProof("baseline plugins list", (result) => result.command?.includes(" -- plugins list")),
     commandProof("official plugin install helper", (result) => result.command?.includes("run-official-plugin-install.mjs")),
     commandProof("gateway restart helper", (result) => result.command?.includes("ensure-gateway-running.mjs")),
-    ["service collector", (record) => collectorReceiptOk(record, "post-restart-verify", "service"), (record) => collectorReceiptReason(record, "post-restart-verify", "service")],
+    collectorProof("service collector", "post-restart-verify", "service"),
     commandProof("post-install plugins list", (result) => result.command?.includes(" -- plugins list")),
-    ["logs collector", (record) => collectorReceiptOk(record, "post-restart-verify", "logs"), (record) => collectorReceiptReason(record, "post-restart-verify", "logs")]
-  ];
-}
-
-function commandProof(label, predicate) {
-  return [
-    label,
-    (record) => commandReceiptOk(record, predicate),
-    (record) => commandReceiptReason(record, predicate)
+    collectorProof("logs collector", "post-restart-verify", "logs")
   ];
 }
 

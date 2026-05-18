@@ -363,6 +363,36 @@ export function collectorReceiptReason(record, phaseId, collectorId) {
   return null;
 }
 
+export function commandProof(label, predicate) {
+  return [
+    label,
+    (record) => commandReceiptOk(record, predicate),
+    (record) => commandReceiptReason(record, predicate)
+  ];
+}
+
+export function collectorProof(label, phaseId, collectorId) {
+  return [
+    label,
+    (record) => collectorReceiptOk(record, phaseId, collectorId),
+    (record) => collectorReceiptReason(record, phaseId, collectorId)
+  ];
+}
+
+export function requiredProofsOk(record, proofs) {
+  return proofs.every(([_, ok]) => ok(record));
+}
+
+export function requiredProofsReason(record, proofs) {
+  for (const [label, _, reason] of proofs) {
+    const missing = reason(record);
+    if (missing) {
+      return `${label}: ${missing}`;
+    }
+  }
+  return null;
+}
+
 export function gatewaySessionHealthOk(record, health) {
   return health?.readiness?.classification === "ready" &&
     Number.isFinite(health.readiness.healthReadyAtMs) &&
