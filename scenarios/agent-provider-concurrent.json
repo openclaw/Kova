@@ -65,7 +65,8 @@
         "role resource samples",
         "process leak snapshot"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     },
     {
       "id": "post-concurrency-health",
@@ -81,7 +82,8 @@
         "plugin errors",
         "memory after concurrent turns"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     }
   ],
   "proves": [

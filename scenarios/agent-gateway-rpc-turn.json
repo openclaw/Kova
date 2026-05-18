@@ -39,7 +39,8 @@
         "runtime binding",
         "env created without service"
       ],
-      "healthScope": "none"
+      "healthScope": "none",
+      "collectionIntent": "service-only"
     },
     {
       "id": "gateway-start",
@@ -70,7 +71,8 @@
         "gateway health after turn",
         "role resource samples"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     },
     {
       "id": "post-agent-health",
@@ -86,7 +88,8 @@
         "plugin errors",
         "memory after agent turn"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     }
   ],
   "proves": [

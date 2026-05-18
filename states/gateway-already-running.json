@@ -26,7 +26,8 @@
       "evidence": [
         "gateway restart completed",
         "service status after restart"
-      ]
+      ],
+      "collectionIntent": "service-only"
     }
   ],
   "traits": [

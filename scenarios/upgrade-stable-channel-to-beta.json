@@ -78,7 +78,8 @@
         "doctor output",
         "gateway logs without missing dependency/plugin load failures"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     }
   ],
   "proves": [

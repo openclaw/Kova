@@ -56,7 +56,8 @@
         "snapshot timing",
         "browser stop timing"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     },
     {
       "id": "post-browser-health",
@@ -71,7 +72,8 @@
         "browser plugin errors",
         "gateway errors"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     }
   ],
   "proves": [

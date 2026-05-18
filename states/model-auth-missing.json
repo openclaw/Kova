@@ -26,7 +26,8 @@
       ],
       "evidence": [
         "provider config references missing auth"
-      ]
+      ],
+      "collectionIntent": "service-only"
     }
   ],
   "traits": [

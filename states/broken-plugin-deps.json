@@ -26,7 +26,8 @@
       "evidence": [
         "broken plugin manifest exists",
         "missing dependency is intentional"
-      ]
+      ],
+      "collectionIntent": "service-only"
     }
   ],
   "traits": [

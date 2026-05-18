@@ -25,7 +25,8 @@
       ],
       "evidence": [
         "large plugin install index written"
-      ]
+      ],
+      "collectionIntent": "service-only"
     }
   ],
   "traits": [

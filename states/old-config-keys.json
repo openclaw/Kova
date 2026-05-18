@@ -25,7 +25,8 @@
       ],
       "evidence": [
         "legacy config file exists"
-      ]
+      ],
+      "collectionIntent": "service-only"
     }
   ],
   "traits": [

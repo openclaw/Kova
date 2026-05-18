@@ -1,3 +1,5 @@
+import { normalizeCollectionIntent } from "./collection-contract.mjs";
+
 export const COLLECTION_POLICY_SCHEMA = "kova.collectionPolicy.v1";
 
 export const ENV_COLLECTOR_IDS = [
@@ -89,51 +91,25 @@ export function skippedEnvCollectionPolicy(reason, context = {}) {
 }
 
 export function resolveCollectionPolicy(context = {}) {
-  if (context.kind === "auth-phase" &&
-      context.resultStatus === "success" &&
-      (context.phaseId === "auth-prepare" || context.phaseId === "auth-cleanup")) {
+  const intent = normalizeCollectionIntent(context.collectionIntent);
+  if (context.resultStatus !== "success") {
+    return fullCollectionPolicy(policyReason(context), context);
+  }
+  if (intent === "skip-env") {
     return skippedEnvCollectionPolicy(
-      "successful auth setup boundary phase does not need env metrics; final and product phase metrics remain full",
+      "collection contract marks this successful phase as command-receipt-only; env metrics are skipped",
       context
     );
   }
-  if (context.kind === "auth-phase" &&
-      context.resultStatus === "success" &&
-      context.phaseId === "auth-setup") {
+  if (intent === "service-only") {
     return serviceOnlyCollectionPolicy(
-      "successful auth setup is proven by the auth command; only service summary is collected after it",
+      "collection contract marks this successful phase as service-summary proof; only service summary is collected",
       context
     );
   }
-  if (context.kind === "scenario-phase" &&
-      context.resultStatus === "success" &&
-      context.hasNoServiceCommand === true) {
-    return serviceOnlyCollectionPolicy(
-      "successful no-service phase deliberately leaves Gateway stopped; only service summary is collected after it",
-      context
-    );
-  }
-  if (context.kind === "state-lifecycle" &&
-      context.resultStatus === "success" &&
-      typeof context.lifecycleKind === "string" &&
-      context.lifecycleKind.startsWith("state-")) {
-    return serviceOnlyCollectionPolicy(
-      "successful state fixture setup is proven by its command receipt; only service summary is collected after it",
-      context
-    );
-  }
-  if (context.kind === "state-lifecycle" &&
-      context.resultStatus === "success" &&
-      context.lifecycleCommandScope === "host" &&
-      (context.lifecycleKind === "prepare" || context.lifecycleKind === "cleanup")) {
-    return skippedEnvCollectionPolicy(
-      "successful host-only state lifecycle step is proven by its command receipt and does not need env metrics",
-      context
-    );
-  }
-  if (context.kind === "scenario-phase" && context.phaseHealthScope === "post-ready") {
+  if (intent === "post-ready-health") {
     return postReadyHealthCollectionPolicy(
-      "post-ready phase samples health without repeating startup readiness wait",
+      "collection contract marks this phase as post-ready health sampling without repeating startup readiness wait",
       context
     );
   }
@@ -171,8 +147,8 @@ function normalizePolicyContext(context) {
     phaseHealthScope: context.phaseHealthScope ?? null,
     measurementScope: context.measurementScope ?? null,
     resultStatus: context.resultStatus ?? null,
+    collectionIntent: context.collectionIntent ?? null,
     lifecycleKind: context.lifecycleKind ?? null,
-    lifecycleCommandScope: context.lifecycleCommandScope ?? null,
-    hasNoServiceCommand: context.hasNoServiceCommand === true
+    lifecycleCommandScope: context.lifecycleCommandScope ?? null
   };
 }

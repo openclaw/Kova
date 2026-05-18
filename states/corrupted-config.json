@@ -25,7 +25,8 @@
       ],
       "evidence": [
         "malformed config files exist"
-      ]
+      ],
+      "collectionIntent": "service-only"
     }
   ],
   "traits": [

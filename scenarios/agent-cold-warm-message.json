@@ -44,7 +44,8 @@
         "runtime binding",
         "env created without service"
       ],
-      "healthScope": "none"
+      "healthScope": "none",
+      "collectionIntent": "service-only"
     },
     {
       "id": "cold-agent-turn",
@@ -60,7 +61,8 @@
         "gateway health after cold turn",
         "role resource samples"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     },
     {
       "id": "warm-agent-turn",
@@ -76,7 +78,8 @@
         "cold/warm delta",
         "role resource samples"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     },
     {
       "id": "post-agent-health",
@@ -90,7 +93,8 @@
         "plugin errors",
         "memory after agent turns"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     }
   ],
   "proves": [

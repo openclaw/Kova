@@ -55,7 +55,8 @@
         "gateway remains supervised",
         "role resource samples"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     },
     {
       "id": "post-failure-health",
@@ -71,7 +72,8 @@
         "plugin errors",
         "memory after malformed response"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     }
   ],
   "proves": [

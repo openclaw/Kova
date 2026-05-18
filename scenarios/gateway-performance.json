@@ -49,7 +49,8 @@
         "health after each command",
         "logs"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     },
     {
       "id": "warm-restart",

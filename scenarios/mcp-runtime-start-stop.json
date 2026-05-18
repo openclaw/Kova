@@ -53,7 +53,8 @@
         "tool count",
         "bridge process exit"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     },
     {
       "id": "post-mcp-health",
@@ -68,7 +69,8 @@
         "MCP bridge errors",
         "gateway errors"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     }
   ],
   "proves": [

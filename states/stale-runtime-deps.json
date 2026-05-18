@@ -25,7 +25,8 @@
       ],
       "evidence": [
         "removed staged plugin runtime dependency folders"
-      ]
+      ],
+      "collectionIntent": "service-only"
     }
   ],
   "traits": [

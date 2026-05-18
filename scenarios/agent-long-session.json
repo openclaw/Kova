@@ -62,7 +62,8 @@
         "provider request timing",
         "role resource samples"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     },
     {
       "id": "warm-session-turn",
@@ -77,7 +78,8 @@
         "provider request timing",
         "cold/warm delta"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     },
     {
       "id": "session-turn-3",
@@ -92,7 +94,8 @@
         "provider request timing",
         "role resource samples"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     },
     {
       "id": "session-turn-4",
@@ -107,7 +110,8 @@
         "provider request timing",
         "role resource samples"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     },
     {
       "id": "session-turn-5",
@@ -122,7 +126,8 @@
         "provider request timing",
         "role resource samples"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     },
     {
       "id": "session-turn-6",
@@ -137,7 +142,8 @@
         "provider request timing",
         "role resource samples"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     },
     {
       "id": "post-session-health",
@@ -154,7 +160,8 @@
         "memory after repeated turns",
         "process leak summary"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     }
   ],
   "proves": [

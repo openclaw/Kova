@@ -25,7 +25,8 @@
       ],
       "evidence": [
         "channel config exists"
-      ]
+      ],
+      "collectionIntent": "service-only"
     }
   ],
   "traits": [

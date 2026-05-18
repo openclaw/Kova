@@ -22,7 +22,8 @@
       ],
       "evidence": [
         "stable channel marker exists"
-      ]
+      ],
+      "collectionIntent": "service-only"
     }
   ],
   "traits": [

@@ -23,7 +23,8 @@
       "evidence": [
         "2026.4.24 source marker exists",
         "plugin install index marker exists when installs.json is missing"
-      ]
+      ],
+      "collectionIntent": "service-only"
     }
   ],
   "traits": [

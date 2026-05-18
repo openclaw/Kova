@@ -27,7 +27,8 @@
       "evidence": [
         "legacy version marker exists",
         "legacy plugin index exists"
-      ]
+      ],
+      "collectionIntent": "service-only"
     }
   ],
   "traits": [

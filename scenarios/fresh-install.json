@@ -47,7 +47,8 @@
         "gateway PID",
         "health/status result"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     },
     {
       "id": "plugins",
@@ -62,7 +63,8 @@
         "plugin update dry-run output",
         "missing dependency log scan"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     },
     {
       "id": "models",
@@ -76,7 +78,8 @@
         "timeout behavior",
         "gateway health after model list"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     },
     {
       "id": "logs",
@@ -90,7 +93,8 @@
         "missing dependency errors",
         "plugin metadata scan warnings"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     },
     {
       "id": "cleanup",

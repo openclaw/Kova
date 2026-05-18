@@ -48,7 +48,8 @@
         "install index cleanup",
         "registry after removal"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     },
     {
       "id": "restart",

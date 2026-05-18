@@ -26,7 +26,8 @@
       "evidence": [
         "gateway stopped",
         "service state captured"
-      ]
+      ],
+      "collectionIntent": "service-only"
     }
   ],
   "traits": [

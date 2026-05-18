@@ -25,7 +25,8 @@
       ],
       "evidence": [
         "removed plugin install index files"
-      ]
+      ],
+      "collectionIntent": "service-only"
     }
   ],
   "traits": [

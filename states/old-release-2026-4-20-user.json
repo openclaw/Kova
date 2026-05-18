@@ -21,7 +21,8 @@
       ],
       "evidence": [
         "2026.4.20 source marker exists"
-      ]
+      ],
+      "collectionIntent": "service-only"
     }
   ],
   "traits": [

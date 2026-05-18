@@ -25,7 +25,8 @@
       ],
       "evidence": [
         "plugin install index exists in common locations"
-      ]
+      ],
+      "collectionIntent": "service-only"
     }
   ],
   "traits": [

@@ -26,7 +26,8 @@
       "evidence": [
         "onboarding marker files exist",
         "baseline user folders exist"
-      ]
+      ],
+      "collectionIntent": "service-only"
     }
   ],
   "traits": [

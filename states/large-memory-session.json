@@ -18,7 +18,8 @@
       ],
       "evidence": [
         "host import fixture exists under the Kova artifact directory"
-      ]
+      ],
+      "collectionIntent": "skip-env"
     }
   ],
   "setup": [
@@ -40,7 +41,8 @@
       "evidence": [
         "large session file imported",
         "large memory file imported"
-      ]
+      ],
+      "collectionIntent": "service-only"
     }
   ],
   "cleanup": [
@@ -53,7 +55,8 @@
       ],
       "evidence": [
         "host import fixture removed"
-      ]
+      ],
+      "collectionIntent": "skip-env"
     }
   ],
   "traits": [

@@ -45,7 +45,8 @@
         "connected screen",
         "clean interrupt"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     },
     {
       "id": "post-tui-health",
@@ -60,7 +61,8 @@
         "TUI disconnect logs",
         "gateway errors"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     }
   ],
   "proves": [

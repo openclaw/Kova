@@ -215,6 +215,7 @@ export function buildAuthPreparePhase(authPolicy, artifactDir) {
     id: "auth-prepare",
     title: "Auth Prepare",
     intent: "Start Kova's deterministic mock provider for the disposable OpenClaw env.",
+    collectionIntent: "skip-env",
     commands: [startMockProviderCommand(dir, authPolicy.mockProvider)],
     evidence: ["mock provider port", "mock provider request log", "mock provider behavior mode", "mock provider health"]
   };
@@ -230,6 +231,7 @@ export function buildAuthSetupPhase(authPolicy, envName, artifactDir) {
       id: "auth-setup",
       title: "Auth Setup",
       intent: "Configure the disposable OpenClaw env with Kova's mock provider auth.",
+      collectionIntent: "service-only",
       commands: [configureMockAuthCommand(envName, dir)],
       evidence: ["OpenClaw config points to mock provider", "default agent model is openai/gpt-5.5"]
     };
@@ -238,6 +240,7 @@ export function buildAuthSetupPhase(authPolicy, envName, artifactDir) {
     id: "auth-setup",
     title: "Auth Setup",
     intent: liveAuthSetupIntent(authPolicy),
+    collectionIntent: "service-only",
     commands: [configureLiveAuthCommand(authPolicy, envName)],
     evidence: liveAuthSetupEvidence(authPolicy)
   };
@@ -252,6 +255,7 @@ export function buildAuthCleanupPhase(authPolicy, artifactDir) {
     id: "auth-cleanup",
     title: "Auth Cleanup",
     intent: "Stop Kova's deterministic mock provider.",
+    collectionIntent: "skip-env",
     commands: [`if test -f ${quoteShell(join(dir, "pid"))}; then kill "$(cat ${quoteShell(join(dir, "pid"))})" 2>/dev/null || true; fi`],
     evidence: ["mock provider stopped"]
   };

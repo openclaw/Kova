@@ -152,6 +152,7 @@ export async function executeScenario(scenario, context) {
           title: phase.title,
           intent: phase.intent,
           healthScope: phase.healthScope,
+          collectionIntent: phase.collectionIntent ?? null,
           measurementScope: phaseMeasurementScope(phase),
           driverKind: phaseDriverKind(phase, commands),
           expectedAgentFailure: phase.expectedAgentFailure === true,
@@ -387,6 +388,7 @@ function buildPlannedPhases(scenario, context, envName, artifactDir, authPolicy)
       title: phase.title,
       intent: phase.intent,
       healthScope: phase.healthScope,
+      collectionIntent: phase.collectionIntent ?? null,
       measurementScope: phaseMeasurementScope(phase),
       driverKind: phaseDriverKind(phase, commands),
       expectedAgentFailure: phase.expectedAgentFailure === true,
@@ -477,6 +479,7 @@ function buildStateLifecyclePhase(context, envName, scenario, kind, steps, artif
     intent: stateLifecycleIntent(context.state?.id, kind, phaseId),
     measurementScope: normalizeMeasurementScope(null, kind),
     driverKind: phaseDriverKind(null, commands),
+    collectionIntent: stateLifecycleCollectionIntent(steps),
     commands,
     evidence,
     scenario: scenario.id
@@ -2590,6 +2593,7 @@ async function executeStateLifecycleSteps(context, envName, scenario, kind, step
       measurementScope: normalizeMeasurementScope(null, kind),
       lifecycleKind: kind,
       lifecycleCommandScope: stateLifecycleCommandScope(commands),
+      collectionIntent: stateLifecycleCollectionIntent(steps),
       resultStatus: phaseStatus(results)
     }))
   };
@@ -2611,6 +2615,7 @@ async function executeAuthPhase(phase, context, envName, artifactDir, authPolicy
     metrics: await collectEnvMetrics(envName, metricOptions(context, null, { id: phase.id }, artifactDir, {
       kind: "auth-phase",
       measurementScope: normalizeMeasurementScope(phase.measurementScope, phase.id),
+      collectionIntent: phase.collectionIntent ?? null,
       resultStatus: phaseStatus(results)
     }))
   };
@@ -2707,15 +2712,20 @@ function metricOptions(context, scenario, phase, artifactDir, policyContext = {}
       phaseHealthScope: phase?.healthScope ?? null,
       measurementScope,
       resultStatus: policyContext.resultStatus ?? null,
+      collectionIntent: policyContext.collectionIntent ?? phase?.collectionIntent ?? null,
       lifecycleKind: policyContext.lifecycleKind ?? null,
-      lifecycleCommandScope: policyContext.lifecycleCommandScope ?? null,
-      hasNoServiceCommand: phaseHasNoServiceCommand(phase)
+      lifecycleCommandScope: policyContext.lifecycleCommandScope ?? null
     })
   };
 }
 
 function stateLifecycleCommandScope(commands) {
   return commands.some((command) => /(?:^|\s)ocm(?:\s|$)/.test(command)) ? "env" : "host";
+}
+
+function stateLifecycleCollectionIntent(steps) {
+  const intents = new Set((steps ?? []).map((step) => step.collectionIntent).filter(Boolean));
+  return intents.size === 1 ? [...intents][0] : null;
 }
 
 function phaseHasNoServiceCommand(phase) {

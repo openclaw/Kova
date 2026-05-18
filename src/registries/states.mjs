@@ -1,4 +1,5 @@
 import { statesDir } from "../paths.mjs";
+import { validateCollectionIntent } from "../collection-contract.mjs";
 import { assertNoShapeErrors, loadJsonRegistry, requireArray, requireKebabId, requireObject, requireString } from "./validate.mjs";
 
 export const knownStateTraits = [
@@ -192,6 +193,7 @@ function validateSteps(steps, key, errors, options) {
     validateStringArray(step.afterPhases, `${prefix}.afterPhases`, errors, { optional: true });
     validateStringArray(step.commands, `${prefix}.commands`, errors);
     validateStringArray(step.evidence, `${prefix}.evidence`, errors);
+    validateCollectionIntent(step.collectionIntent, prefix, errors);
   }
 }
 

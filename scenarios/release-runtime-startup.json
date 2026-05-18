@@ -57,7 +57,8 @@
         "plugin list",
         "plugin startup health"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     },
     {
       "id": "startup-logs",
@@ -72,7 +73,8 @@
         "plugin service failures",
         "startup phase logs"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     }
   ],
   "proves": [

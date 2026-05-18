@@ -26,7 +26,8 @@
       ],
       "evidence": [
         "many plugin manifest files exist"
-      ]
+      ],
+      "collectionIntent": "service-only"
     }
   ],
   "traits": [

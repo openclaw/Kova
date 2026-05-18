@@ -1,4 +1,5 @@
 import { scenariosDir } from "../paths.mjs";
+import { validateCollectionIntent } from "../collection-contract.mjs";
 import { assertNoShapeErrors, loadJsonRegistry, requireArray, requireKebabId, requireObject, requireString } from "./validate.mjs";
 
 export const HEALTH_SCOPES = ["readiness", "startup-sample", "post-ready", "final", "none"];
@@ -133,6 +134,7 @@ function validatePhases(phases, errors) {
     if (phase.expectedAgentFailure !== undefined && typeof phase.expectedAgentFailure !== "boolean") {
       errors.push(`${prefix}.expectedAgentFailure must be a boolean when set`);
     }
+    validateCollectionIntent(phase.collectionIntent, prefix, errors);
   }
 }
 

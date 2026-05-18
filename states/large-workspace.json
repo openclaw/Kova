@@ -25,7 +25,8 @@
       ],
       "evidence": [
         "large workspace tree exists"
-      ]
+      ],
+      "collectionIntent": "service-only"
     }
   ],
   "traits": [

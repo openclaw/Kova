@@ -59,7 +59,8 @@
         "process leak snapshot",
         "role resource samples"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     },
     {
       "id": "post-auth-failure-health",
@@ -75,7 +76,8 @@
         "plugin errors",
         "memory after auth failure"
       ],
-      "healthScope": "post-ready"
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     }
   ],
   "proves": [

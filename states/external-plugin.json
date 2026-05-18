@@ -25,7 +25,8 @@
       ],
       "evidence": [
         "external plugin fixture exists"
-      ]
+      ],
+      "collectionIntent": "service-only"
     }
   ],
   "traits": [
