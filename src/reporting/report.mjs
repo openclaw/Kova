@@ -3,6 +3,7 @@ import { agentCliPreProviderMarkdownRows } from "../collectors/agent-cli-attribu
 import { gatewaySessionPreProviderMarkdownRows } from "../collectors/gateway-session-turn-attribution.mjs";
 import { healthTotalFailures } from "../health.mjs";
 import { RECORD_STATUS, findingSeverityForStatus } from "../statuses.mjs";
+import { firstFailedCommand, summarizeFailureReason } from "./failures.mjs";
 
 const SUMMARY_SCHEMA = "kova.report.summary.v1";
 
@@ -240,7 +241,7 @@ function formatSelectedSampleDetails(records = []) {
         lines.push(`  - ${violation.message}`);
       }
     }
-    const failed = firstFailedCommand(record);
+    const failed = firstFailedCommand(record, { includeCleanup: true });
     if (failed) {
       lines.push(`- Failed command: \`${shortCommand(failed.command)}\``);
       lines.push(`- Failure: ${summarizeFailureReason(failed)}`);
@@ -581,7 +582,7 @@ function buildFindings(report) {
     }
     const proofFindings = ledgerFindings(record, index, state);
     findings.push(...proofFindings);
-    const failed = firstFailedCommand(record);
+    const failed = firstFailedCommand(record, { includeCleanup: true });
     if (record.status === RECORD_STATUS.INCOMPLETE && (record.violations ?? []).length === 0 && proofFindings.length === 0) {
       findings.push({
         id: `${record.scenario}:${state ?? "none"}:incomplete:${index + 1}`,
@@ -791,7 +792,7 @@ function compactGroupMetrics(metrics = {}) {
 }
 
 function summarizeSample(record, index) {
-  const failed = firstFailedCommand(record);
+  const failed = firstFailedCommand(record, { includeCleanup: true });
   return {
     sampleIndex: record.repeat?.index ?? index + 1,
     repeatTotal: record.repeat?.total ?? null,
@@ -1037,7 +1038,7 @@ export function renderPasteSummary(report) {
   }
 
   for (const record of recordsForPaste) {
-    const failed = firstFailedCommand(record);
+    const failed = firstFailedCommand(record, { includeCleanup: true });
     lines.push(`Scenario: ${record.scenario}`);
     lines.push(`Result: ${record.status}`);
     lines.push(`Cleanup: ${record.cleanup ?? "not-run"}`);
@@ -1124,7 +1125,7 @@ function buildFailureBrief(report) {
     primaryCard?.scenario ?? failedRecord?.scenario ?? "unknown",
     primaryCard?.state ?? failedRecord?.state?.id ?? null
   ].filter(Boolean).join("/");
-  const why = primaryCard?.summary ?? violations[0] ?? summarizeFailureReason(firstFailedCommand(failedRecord ?? {})) ?? "scenario failed";
+  const why = primaryCard?.summary ?? violations[0] ?? summarizeFailureReason(firstFailedCommand(failedRecord ?? {}, { includeCleanup: true })) ?? "scenario failed";
   const evidence = briefEvidence(measurements, violations);
   const likelyOwner = primaryCard?.likelyOwner ?? failedRecord?.likelyOwner ?? "OpenClaw";
 
@@ -1169,7 +1170,7 @@ function buildRecommendedNextScenario(report) {
   ].filter(Boolean).join(" ");
   const reason = card?.summary ??
     record?.violations?.[0]?.message ??
-    summarizeFailureReason(firstFailedCommand(record ?? {})) ??
+    summarizeFailureReason(firstFailedCommand(record ?? {}, { includeCleanup: true })) ??
     "rerun the primary failing scenario with retained artifacts";
   return {
     scenario,
@@ -1498,47 +1499,6 @@ function formatGateSection(gate) {
     lines.push("");
   }
   return lines;
-}
-
-function firstFailedCommand(record) {
-  for (const phase of record.phases ?? []) {
-    for (const result of phase.results ?? []) {
-      if (result.status !== 0 || result.timedOut) {
-        return result;
-      }
-    }
-  }
-  if (record.cleanup === "destroy-failed" && record.cleanupResult && record.cleanupResult.status !== 0) {
-    return record.cleanupResult;
-  }
-  return null;
-}
-
-function summarizeFailureReason(result) {
-  if (!result) {
-    return null;
-  }
-  const output = (result.stderr?.trim() || result.stdout?.trim() || "").trim();
-  if (!output) {
-    return result.timedOut ? "command timed out" : `command exited with status ${result.status}`;
-  }
-
-  const lines = output
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .filter((line) => !/^Run "ocm help"/.test(line));
-  const priorityPatterns = [
-    /Cannot find module/i,
-    /Error \[/i,
-    /ECONNREFUSED/i,
-    /timed out|timeout/i,
-    /missing/i,
-    /failed/i
-  ];
-  const important = priorityPatterns.map((pattern) => lines.find((line) => pattern.test(line))).find(Boolean);
-  const line = important ?? lines[0] ?? output;
-  return line.length <= 260 ? line : `${line.slice(0, 257)}...`;
 }
 
 function fencedSnippet(value) {

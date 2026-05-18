@@ -1,4 +1,5 @@
 import { platformCoverageKeys } from "../platform.mjs";
+import { firstFailedCommand, summarizeFailedCommand } from "../reporting/failures.mjs";
 import { RECORD_STATUS } from "../statuses.mjs";
 import { deriveCoveragePolicy } from "./coverage-policy.mjs";
 
@@ -496,29 +497,6 @@ function cardRank(card) {
   const severity = card.severity === "blocking" ? 100 : card.severity === "warning" ? 50 : 0;
   const kind = card.kind === "openclaw-failure" ? 10 : card.kind === "performance-regression" ? 8 : 0;
   return severity + kind;
-}
-
-function firstFailedCommand(record) {
-  for (const phase of record.phases ?? []) {
-    for (const result of phase.results ?? []) {
-      if (result.status !== 0 || result.timedOut) {
-        return result;
-      }
-    }
-  }
-  return null;
-}
-
-function summarizeFailedCommand(result) {
-  if (!result) {
-    return null;
-  }
-  const output = (result.stderr?.trim() || result.stdout?.trim() || "").split("\n").map((line) => line.trim()).filter(Boolean);
-  const line = output.find((item) => /cannot find|missing|failed|error|timeout|econnrefused/i.test(item)) ?? output[0];
-  if (line) {
-    return line.length <= 220 ? line : `${line.slice(0, 217)}...`;
-  }
-  return result.timedOut ? `command timed out: ${result.command}` : `command exited ${result.status}: ${result.command}`;
 }
 
 function recordKey(record) {
