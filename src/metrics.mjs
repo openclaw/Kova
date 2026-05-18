@@ -92,7 +92,8 @@ export async function collectEnvMetrics(envName, options = {}) {
     recordCollector(collectors, "process", metrics.process);
   }
 
-  if (serviceJson.gatewayPort && shouldProbeReadiness(serviceJson, readinessTimeoutMs)) {
+  const readinessMode = collectionPolicy.readiness ?? "wait";
+  if (serviceJson.gatewayPort && readinessMode !== "none" && shouldProbeReadiness(serviceJson, readinessTimeoutMs)) {
     await collectReadinessAndHealth(metrics, collectors, serviceJson.gatewayPort, {
       readinessTimeoutMs,
       readinessThresholdMs: options.readinessThresholdMs,
@@ -107,7 +108,9 @@ export async function collectEnvMetrics(envName, options = {}) {
     metrics.readiness = skippedReadinessMetrics(serviceJson.gatewayPort, {
       thresholdMs: options.readinessThresholdMs,
       deadlineMs: readinessTimeoutMs,
-      reason: serviceJson.childPid
+      reason: readinessMode === "none"
+        ? "readiness wait disabled for this phase; collecting post-ready health samples"
+        : serviceJson.childPid
         ? "readiness probe disabled for this phase"
         : "gateway process is not expected to be running for this phase"
     });
@@ -117,6 +120,13 @@ export async function collectEnvMetrics(envName, options = {}) {
       statusLabel: "INFO",
       error: null
     });
+    if (collectionPolicy.healthSamples !== false && serviceJson.childPid) {
+      await collectPostReadyHealth(metrics, collectors, serviceJson.gatewayPort, {
+        healthSampleCount,
+        healthIntervalMs,
+        timeoutMs
+      });
+    }
   }
 
   await collectLogAndTimelineMetrics(metrics, collectors, envName, timeoutMs, options);
@@ -203,6 +213,24 @@ async function collectReadinessAndHealth(metrics, collectors, port, options) {
     metrics.healthSamples = metrics.readiness.healthAttempts;
   }
   metrics.healthSummary = summarizeHealthSamples(metrics.healthSamples);
+}
+
+async function collectPostReadyHealth(metrics, collectors, port, options) {
+  const healthStarted = Date.now();
+  metrics.healthSamples = await collectHealthSamples(port, {
+    count: options.healthSampleCount,
+    intervalMs: options.healthIntervalMs,
+    timeoutMs: options.timeoutMs
+  });
+  metrics.health = metrics.healthSamples.at(-1) ?? null;
+  metrics.healthSummary = summarizeHealthSamples(metrics.healthSamples);
+  const failureCount = metrics.healthSummary?.failureCount ?? 0;
+  recordCollector(collectors, "health", {
+    commandStatus: failureCount === 0 ? 0 : 1,
+    durationMs: Date.now() - healthStarted,
+    timedOut: false,
+    error: failureCount === 0 ? null : `${failureCount} post-ready health sample(s) failed`
+  });
 }
 
 async function collectLogAndTimelineMetrics(metrics, collectors, envName, timeoutMs, options) {

@@ -1,4 +1,5 @@
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { quoteShell, runCommand } from "./commands.mjs";
@@ -191,7 +192,7 @@ export async function runSelfCheck(flags = {}) {
     }));
     checks.push(await inventoryPlanCheck(tmp));
     checks.push(await repeatedWorkAuditCheck());
-    checks.push(await collectionPolicyResolverCheck());
+    checks.push(await collectionPolicyResolverCheck(tmp));
     checks.push(await jsonCommandCheck("matrix-plan-json", "node bin/kova.mjs matrix plan --profile smoke --target runtime:stable --include scenario:fresh-install --parallel 2 --json", (data) => {
       assertEqual(data.schemaVersion, "kova.matrix.plan.v1", "matrix plan schema");
       assertEqual(data.profile?.id, "smoke", "matrix profile id");
@@ -6649,7 +6650,7 @@ async function repeatedWorkAuditCheck() {
   };
 }
 
-async function collectionPolicyResolverCheck() {
+async function collectionPolicyResolverCheck(tmp) {
   const policy = resolveCollectionPolicy({
     kind: "scenario-phase",
     scenario: "fresh-install",
@@ -6667,6 +6668,21 @@ async function collectionPolicyResolverCheck() {
     assertEqual(policy.collectors[collector], true, `collection policy keeps ${collector}`);
   }
   assertEqual(policy.skipped.length, 0, "scenario phase collection policy skips nothing");
+  const postReadyPolicy = resolveCollectionPolicy({
+    kind: "scenario-phase",
+    scenario: "agent-cold-warm-message",
+    surface: "agent-cli-local-turn",
+    phaseId: "post-agent-health",
+    phaseHealthScope: "post-ready",
+    measurementScope: "product",
+    resultStatus: "success"
+  });
+  assertEqual(postReadyPolicy.mode, "post-ready-health", "post-ready phase policy mode");
+  assertEqual(postReadyPolicy.readiness, "none", "post-ready phase skips readiness wait");
+  assertEqual(postReadyPolicy.healthSamples, true, "post-ready phase keeps health samples");
+  assertEqual(postReadyPolicy.collectors.logs, true, "post-ready phase keeps logs");
+  assertEqual(postReadyPolicy.collectors.timeline, true, "post-ready phase keeps timeline");
+
   const authPreparePolicy = resolveCollectionPolicy({
     kind: "auth-phase",
     phaseId: "auth-prepare",
@@ -6695,10 +6711,80 @@ async function collectionPolicyResolverCheck() {
     "skipped env metrics records skipped collectors"
   );
   assertEqual(skippedMetrics.collectors.length, ENV_COLLECTOR_IDS.length, "skipped env metrics receipt count");
+
+  const postReadyMetrics = await collectPostReadySelfCheckMetrics(tmp, postReadyPolicy);
+  assertEqual(postReadyMetrics.readiness?.attempts, 0, "post-ready metrics do not run readiness attempts");
+  assertEqual(postReadyMetrics.healthSummary?.count, 2, "post-ready metrics keep health samples");
+  assertEqual(postReadyMetrics.healthSummary?.failureCount, 0, "post-ready metrics health samples pass");
+  assertEqual(
+    postReadyMetrics.collectors.some((collector) => collector.id === "readiness" && collector.status === "INFO"),
+    true,
+    "post-ready metrics records readiness as not applicable"
+  );
+  assertEqual(
+    postReadyMetrics.collectors.some((collector) => collector.id === "health" && collector.status === "PASS"),
+    true,
+    "post-ready metrics records health collector"
+  );
   return {
     id: "collection-policy-resolver",
     status: "PASS"
   };
+}
+
+async function collectPostReadySelfCheckMetrics(tmp, collectionPolicy) {
+  const fakeBin = join(tmp, "post-ready-policy-bin");
+  const fakeOcm = join(fakeBin, "ocm");
+  await mkdir(fakeBin, { recursive: true });
+  await writeFile(fakeOcm, [
+    "#!/usr/bin/env node",
+    "const args = process.argv.slice(2);",
+    "if (args[0] === 'service' && args[1] === 'status') {",
+    "  process.stdout.write(JSON.stringify({ gatewayState: 'running', running: true, desiredRunning: true, childPid: Number(process.env.KOVA_FAKE_CHILD_PID), gatewayPort: Number(process.env.KOVA_FAKE_PORT), runtimeReleaseVersion: 'self-check', runtimeReleaseChannel: 'test' }) + '\\n');",
+    "  process.exit(0);",
+    "}",
+    "if (args[0] === 'logs') {",
+    "  process.stdout.write('gateway ready\\n');",
+    "  process.exit(0);",
+    "}",
+    "process.stdout.write('\\n');"
+  ].join("\n"), "utf8");
+  await chmod(fakeOcm, 0o755);
+
+  const server = createServer((request, response) => {
+    response.writeHead(200, { "content-type": "text/plain" });
+    response.end("ok");
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = server.address().port;
+  const previousPath = process.env.PATH;
+  const previousPort = process.env.KOVA_FAKE_PORT;
+  const previousChildPid = process.env.KOVA_FAKE_CHILD_PID;
+  process.env.PATH = `${fakeBin}:${previousPath}`;
+  process.env.KOVA_FAKE_PORT = String(port);
+  process.env.KOVA_FAKE_CHILD_PID = String(process.pid);
+  try {
+    return await collectEnvMetrics("kova-self-check-post-ready", {
+      collectionPolicy,
+      timeoutMs: 1000,
+      healthSamples: 2,
+      healthIntervalMs: 0,
+      readinessTimeoutMs: 0
+    });
+  } finally {
+    process.env.PATH = previousPath;
+    restoreOptionalEnv("KOVA_FAKE_PORT", previousPort);
+    restoreOptionalEnv("KOVA_FAKE_CHILD_PID", previousChildPid);
+    await new Promise((resolve) => server.close(resolve));
+  }
+}
+
+function restoreOptionalEnv(key, value) {
+  if (value === undefined) {
+    delete process.env[key];
+  } else {
+    process.env[key] = value;
+  }
 }
 
 function readinessClassificationCheck() {
