@@ -7,9 +7,9 @@
   Total 1   ·   Dry-run █████ 1   ·   Failed ░░░░░ 0   ·   Performance 1 group
 
 ─── artifacts ──────────────────────────────────────────────────────────────────
-  ◆ markdown    ../../../../../.kova/reports/kova-<runId>.md
-  ◆ json        ../../../../../.kova/reports/kova-<runId>.json
-  ◆ summary     ../../../../../.kova/reports/kova-<runId>.summary.json
+  ◆ markdown    ~/.kova/reports/kova-<runId>.md
+  ◆ json        ~/.kova/reports/kova-<runId>.json
+  ◆ summary     ~/.kova/reports/kova-<runId>.summary.json
 
 ─── scenarios ──────────────────────────────────────────────────────────────────
 
@@ -18,4 +18,4 @@ fresh-install             0/1  [DRY-RUN]  —
 
 ─── next ───────────────────────────────────────────────────────────────────────
 
-  → kova report ../../../../../.kova/reports/kova-<runId>.json
+  → kova report ~/.kova/reports/kova-<runId>.json

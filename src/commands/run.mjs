@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { join } from "node:path";
 import { authReportSummary, resolveRunAuthContext } from "../auth.mjs";
 import { required, resolveFromCwd } from "../cli.mjs";
 import {
@@ -20,7 +20,7 @@ import {
 } from "../performance/baselines.mjs";
 import { buildPerformanceSummary } from "../performance/stats.mjs";
 import { platformInfo } from "../platform.mjs";
-import { reportsDir } from "../paths.mjs";
+import { reportsDir, displayPath } from "../paths.mjs";
 import { loadRegistryContext } from "../registries/context.mjs";
 import { loadScenarios, validateScenarioRun } from "../registries/scenarios.mjs";
 import { loadState } from "../registries/states.mjs";
@@ -195,8 +195,8 @@ export async function runScenarioCommand(flags) {
     return;
   }
 
-  console.log(`Kova ${mode} report written: ${relative(process.cwd(), reportPath)}`);
-  console.log(`Kova ${mode} data written: ${relative(process.cwd(), jsonPath)}`);
+  console.log(`Kova ${mode} report written: ${displayPath(reportPath)}`);
+  console.log(`Kova ${mode} data written: ${displayPath(jsonPath)}`);
 }
 
 function validateExplicitScenarioState(scenario, state, flags) {

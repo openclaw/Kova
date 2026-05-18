@@ -10,7 +10,7 @@ import {
   scenariosRollup, withMargin,
 } from "../ui/index.mjs";
 import { aggregateScenarios } from "./scenario-aggregate.mjs";
-import { relative } from "node:path";
+import { displayPath } from "../paths.mjs";
 
 export function renderRunReceipt({ report, reportPath, jsonPath, summaryPath }, flags = {}, env = process.env, stream = process.stdout) {
   const ui = makeUi(flags, env, stream);
@@ -176,8 +176,7 @@ function renderScenarios(report, ui, opts = {}) {
 
 function renderArtifacts({ reportPath, jsonPath, summaryPath, bundlePath, retainedGateArtifacts }, ui) {
   const { c, g } = ui;
-  const cwd = process.cwd();
-  const rel = (p) => p ? relative(cwd, p) || p : null;
+  const rel = (p) => displayPath(p);
   const lines = [ruleSection("artifacts", ui.width, ui)];
   if (reportPath)   lines.push(`  ${c.head(g.diamond)} ${c.dim("markdown   ")} ${rel(reportPath)}`);
   if (jsonPath)     lines.push(`  ${c.head(g.diamond)} ${c.dim("json       ")} ${rel(jsonPath)}`);
@@ -191,8 +190,7 @@ function renderArtifacts({ reportPath, jsonPath, summaryPath, bundlePath, retain
 
 function renderNext({ reportPath, jsonPath, bundlePath }, ui) {
   const { c, g } = ui;
-  const cwd = process.cwd();
-  const rel = (p) => p ? (relative(cwd, p) || p) : null;
+  const rel = (p) => displayPath(p);
   const hints = [];
   const reportTarget = rel(jsonPath ?? reportPath);
   if (reportTarget) hints.push(`kova report ${reportTarget}`);

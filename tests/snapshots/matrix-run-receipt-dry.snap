@@ -7,10 +7,10 @@
   Entries 10   ·   Dry-run 10   ·   Failed 0   ·   Performance 10 groups
 
 ─── artifacts ──────────────────────────────────────────────────────────────────
-  ◆ markdown    ../../../../../.kova/reports/kova-<runId>-smoke.md
-  ◆ json        ../../../../../.kova/reports/kova-<runId>-smoke.json
-  ◆ summary     ../../../../../.kova/reports/kova-<runId>-smoke.summary.json
-  ◆ bundle      ../../../../../.kova/reports/kova-<runid>-bundle.tar.gz
+  ◆ markdown    ~/.kova/reports/kova-<runId>-smoke.md
+  ◆ json        ~/.kova/reports/kova-<runId>-smoke.json
+  ◆ summary     ~/.kova/reports/kova-<runId>-smoke.summary.json
+  ◆ bundle      ~/.kova/reports/kova-<runid>-bundle.tar.gz
 
 ─── scenarios ──────────────────────────────────────────────────────────────────
 
@@ -28,5 +28,5 @@ openai-compatible-turn     runtime:stable      0/1  [DRY-RUN]  —
 
 ─── next ───────────────────────────────────────────────────────────────────────
 
-  → kova report ../../../../../.kova/reports/kova-<runId>-smoke.json
-  → kova report bundle ../../../../../.kova/reports/kova-<runid>-bundle.tar.gz
+  → kova report ~/.kova/reports/kova-<runId>-smoke.json
+  → kova report bundle ~/.kova/reports/kova-<runid>-bundle.tar.gz

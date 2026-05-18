@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { join } from "node:path";
 import { authReportSummary, resolveRunAuthContext } from "../auth.mjs";
 import { required, resolveFromCwd } from "../cli.mjs";
 import {
@@ -26,7 +26,7 @@ import {
 } from "../performance/baselines.mjs";
 import { buildPerformanceSummary } from "../performance/stats.mjs";
 import { platformInfo } from "../platform.mjs";
-import { reportsDir } from "../paths.mjs";
+import { reportsDir, displayPath } from "../paths.mjs";
 import { isNonPassingExecutionStatus } from "../statuses.mjs";
 import { loadRegistryContext } from "../registries/context.mjs";
 import { loadProfile } from "../registries/profiles.mjs";
@@ -259,11 +259,11 @@ export async function runMatrixRun(flags) {
     return;
   }
 
-  console.log(`Kova matrix ${report.mode} report written: ${relative(process.cwd(), reportPath)}`);
-  console.log(`Kova matrix ${report.mode} data written: ${relative(process.cwd(), jsonPath)}`);
-  console.log(`Kova matrix bundle written: ${relative(process.cwd(), bundle.outputPath)}`);
+  console.log(`Kova matrix ${report.mode} report written: ${displayPath(reportPath)}`);
+  console.log(`Kova matrix ${report.mode} data written: ${displayPath(jsonPath)}`);
+  console.log(`Kova matrix bundle written: ${displayPath(bundle.outputPath)}`);
   if (retainedGateArtifacts) {
-    console.log(`Kova failed gate artifacts retained: ${relative(process.cwd(), retainedGateArtifacts.outputDir)}`);
+    console.log(`Kova failed gate artifacts retained: ${displayPath(retainedGateArtifacts.outputDir)}`);
   }
   if (gate) {
     console.log(`Kova gate outcome: ${gate.outcome ?? gate.verdict}`);
