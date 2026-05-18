@@ -61,10 +61,13 @@ Usage:
   kova run --target <selector> [--from <selector>] [--source-env <env>] [--scenario <id>] [--state <id>] [--auth <mock|live|skip>] [--repeat <n>] [--baseline [path]] [--save-baseline [path] --reviewed-good] [--regression-thresholds <json>] [--report-dir <path>] [--health-samples <n>] [--readiness-interval-ms <n>] [--resource-sample-interval-ms <n>] [--deep-profile] [--node-profile] [--heap-snapshot] [--profile-on-failure] [--execute] [--keep-env] [--retain-on-failure] [--json]
   kova matrix plan --profile <id> --target <selector> [--from <selector>] [--include <filter>] [--exclude <filter>] [--parallel <n>] [--json|--plain]
   kova matrix run --profile <id> --target <selector> [--from <selector>] [--source-env <env>] [--include <filter>] [--exclude <filter>] [--auth <mock|live|skip>] [--parallel <n>] [--repeat <n>] [--baseline [path]] [--save-baseline [path] --reviewed-good] [--regression-thresholds <json>] [--fail-fast] [--gate] [--report-dir <path>] [--health-samples <n>] [--readiness-interval-ms <n>] [--resource-sample-interval-ms <n>] [--deep-profile] [--node-profile] [--heap-snapshot] [--profile-on-failure] [--execute] [--allow-exhaustive] [--keep-env] [--retain-on-failure] [--json]
-  kova report summarize <report.json> [--json|--plain]
-  kova report paste <report.json>
-  kova report compare <baseline.json> <current.json> [--thresholds <json>] [--fixer] [--json|--plain]
-  kova report bundle <report.json> [--output-dir <path>] [--json|--plain]
+  kova reports [--limit <n>] [--json|--plain]
+  kova report <runId|report.json> [--json|--plain]
+  kova report list [--limit <n>] [--json|--plain]
+  kova report summarize <runId|report.json> [--json|--plain]
+  kova report paste <runId|report.json>
+  kova report compare <baseline-runId|baseline.json> <current-runId|current.json> [--thresholds <json>] [--fixer] [--json|--plain]
+  kova report bundle <runId|report.json> [--output-dir <path>] [--json|--plain]
   kova cleanup envs [--execute] [--json]
   kova cleanup artifacts [--older-than-days <n>] [--execute] [--json]
 
@@ -87,6 +90,7 @@ Notes:
   Executed exhaustive matrix runs require --allow-exhaustive.
   cleanup artifacts is dry-run by default and only targets Kova-owned run artifact dirs.
   Human-facing plan and report commands render dashboards by default; use --plain for the legacy compact text.
+  Report commands accept either full JSON paths or run IDs from kova reports.
   --repeat records independent samples and computes aggregate performance stats.
   --auth defaults to mock so every disposable env has deliberate model auth unless a scenario opts out.
   setup provider/auth choices accept either numbers from the prompt or names such as openai, anthropic, env-only, api-key.

@@ -17,9 +17,8 @@ import { reportsDir, displayPath } from "../paths.mjs";
 import { loadRegistryContext } from "../registries/context.mjs";
 import { loadScenarios, validateScenarioRun } from "../registries/scenarios.mjs";
 import { loadState } from "../registries/states.mjs";
-import { createRunId } from "../runner.mjs";
 import { runScenarioRepeats } from "../run/engine.mjs";
-import { buildReportOutputPaths, writeReportOutputs } from "../run/report-output.mjs";
+import { allocateReportOutputPaths, releaseReportOutputLock, writeReportOutputs } from "../run/report-output.mjs";
 import { attachBaselineComparison, buildRunReport, saveBaselineUpdate } from "../run/report-finalization.mjs";
 import { resolveTarget } from "../targets.mjs";
 import { createRunProgress } from "../reporting/render-run-progress.mjs";
@@ -43,8 +42,8 @@ export async function runScenarioCommand(flags) {
   }
 
   const reportRoot = flags.report_dir ? resolveFromCwd(flags.report_dir) : reportsDir;
-  const runId = createRunId();
-  const outputPaths = buildReportOutputPaths(reportRoot, runId);
+  const { runId, outputPaths, lockPath } = await allocateReportOutputPaths(reportRoot);
+  try {
   const repeat = positiveIntegerFlag(flags, "repeat", 1);
   const auth = await resolveRunAuthContext(flags);
   const regressionThresholds = await loadRegressionThresholds(flags);
@@ -139,6 +138,9 @@ export async function runScenarioCommand(flags) {
 
   console.log(`Kova ${mode} report written: ${displayPath(outputPaths.markdown)}`);
   console.log(`Kova ${mode} data written: ${displayPath(outputPaths.json)}`);
+  } finally {
+    await releaseReportOutputLock(lockPath);
+  }
 }
 
 function validateExplicitScenarioState(scenario, state, flags) {

@@ -133,26 +133,43 @@ const COMMANDS = [
     ],
   },
   {
+    id: "reports", title: "kova reports",
+    blurb: "List recent stored reports and their run IDs.",
+    usage: ["kova reports [--limit <n>] [--json|--plain]"],
+    flags: [
+      ["--limit <n>", "number of reports to show (default 20)"],
+      ["--json|--plain", "machine output / text"],
+    ],
+    examples: [
+      "kova reports",
+      "kova reports --limit 5",
+      "kova reports --json",
+    ],
+  },
+  {
     id: "report", title: "kova report",
     blurb: "Render a Kova report dashboard, summary, paste, compare, or bundle.",
     usage: [
-      "kova report [report.json] [--json|--plain]",
-      "kova report summarize <report.json> [--json|--plain]",
-      "kova report paste <report.json>",
-      "kova report compare <baseline.json> <current.json> [--thresholds <json>] [--fixer] [--json|--plain]",
-      "kova report bundle <report.json> [--output-dir <path>] [--json|--plain]",
+      "kova report <runId|report.json> [--json|--plain]",
+      "kova report list [--limit <n>] [--json|--plain]",
+      "kova report summarize <runId|report.json> [--json|--plain]",
+      "kova report paste <runId|report.json>",
+      "kova report compare <baseline-runId|baseline.json> <current-runId|current.json> [--thresholds <json>] [--fixer] [--json|--plain]",
+      "kova report bundle <runId|report.json> [--output-dir <path>] [--json|--plain]",
     ],
     flags: [
+      ["--limit <n>", "report list length"],
       ["--thresholds <json>", "regression thresholds for compare"],
       ["--fixer", "compare emits fixer-friendly notes"],
       ["--output-dir <path>", "destination for `bundle`"],
       ["--json|--plain", "machine output / legacy text"],
     ],
     examples: [
-      "kova report",
-      "kova report summarize ~/.kova/reports/kova-2026-05-15T223026Z.json",
-      "kova report compare baseline.json current.json --json",
-      "kova report bundle ~/.kova/reports/kova-2026-05-15T223026Z.json",
+      "kova reports",
+      "kova report kova-260518-205259-a7f3c2",
+      "kova report summarize kova-260518-205259-a7f3c2",
+      "kova report compare kova-260518-200157-b91d0a kova-260518-205259-a7f3c2 --json",
+      "kova report bundle kova-260518-205259-a7f3c2",
     ],
   },
   {
@@ -190,6 +207,7 @@ const NOTES = [
   "--auth defaults to mock so every disposable env has deliberate model auth.",
   "--deep-profile enables Node CPU/heap/trace + diagnostic report + denser sampling.",
   "Human-facing commands render dashboards by default; --plain falls back to legacy text.",
+  "Report commands accept either full JSON paths or run IDs from kova reports.",
 ];
 
 export function renderHelp(commandId, flags = {}, env = process.env, stream = process.stdout) {

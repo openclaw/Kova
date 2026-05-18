@@ -546,6 +546,7 @@ export async function runSelfCheck(flags = {}) {
       }
     );
     checks.push(receiptCheck);
+    checks.push(await reportRunIdReferenceCheck(tmp));
 
     checks.push(await jsonCommandCheck(
       "matrix-dry-run-json",
@@ -8902,6 +8903,72 @@ function zeroLogMetrics() {
     eventLoopDelayMentions: 0,
     v8DiagnosticMentions: 0
   };
+}
+
+async function reportRunIdReferenceCheck(tmp) {
+  const home = join(tmp, "report-run-id-home");
+  const prefix = `KOVA_HOME=${quoteShell(home)}`;
+  try {
+    const run = await jsonCommandCheck(
+      "report-run-id-source",
+      `${prefix} node bin/kova.mjs run --target runtime:stable --scenario fresh-install --json`,
+      (data) => {
+        assertEqual(data.schemaVersion, "kova.run.receipt.v1", "run receipt schema");
+        assertString(data.runId, "run id");
+      }
+    );
+    if (run.status !== "PASS") {
+      return {
+        ...run,
+        id: "report-run-id-reference"
+      };
+    }
+    const runId = run.data.runId;
+    const report = await jsonCommandCheck(
+      "report-run-id-render",
+      `${prefix} node bin/kova.mjs report ${quoteShell(runId)} --json`,
+      (data) => {
+        assertEqual(data.runId, runId, "report run id");
+      }
+    );
+    if (report.status !== "PASS") {
+      return { ...report, id: "report-run-id-reference" };
+    }
+    const compare = await jsonCommandCheck(
+      "report-run-id-compare",
+      `${prefix} node bin/kova.mjs report compare ${quoteShell(runId)} ${quoteShell(runId)} --json`,
+      (data) => {
+        assertEqual(data.schemaVersion, "kova.compare.v1", "compare schema");
+        assertEqual(data.ok, true, "same run id compare ok");
+      }
+    );
+    if (compare.status !== "PASS") {
+      return { ...compare, id: "report-run-id-reference" };
+    }
+    const list = await jsonCommandCheck(
+      "reports-list-json",
+      `${prefix} node bin/kova.mjs reports --json`,
+      (data) => {
+        assertEqual(data.schemaVersion, "kova.reports.v1", "reports schema");
+        assertEqual(data.reports.some((item) => item.runId === runId), true, "run id listed");
+      }
+    );
+    return {
+      id: "report-run-id-reference",
+      status: list.status,
+      command: "run, list, render, and compare by runId",
+      durationMs: run.durationMs + report.durationMs + compare.durationMs + list.durationMs,
+      message: list.message
+    };
+  } catch (error) {
+    return {
+      id: "report-run-id-reference",
+      status: "FAIL",
+      command: "run, list, render, and compare by runId",
+      durationMs: 0,
+      message: error.message
+    };
+  }
 }
 
 async function commandCheck(id, command) {

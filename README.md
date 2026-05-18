@@ -59,7 +59,8 @@ kova inventory plan             # find OpenClaw capabilities Kova doesn't cover 
 kova inventory repeated-work    # find duplicated scenario commands and collector pressure
 kova run --scenario <id>        # one scenario, one target
 kova matrix run --profile <p>   # the release matrix (multi-target, --repeat N)
-kova report <run.json>          # the dashboard above
+kova reports                    # recent reports and short run IDs
+kova report <runId|run.json>    # the dashboard above
 kova report compare <a> <b>     # baseline vs current with regression deltas
 kova report bundle <run.json>   # portable evidence pack for handoff
 kova report paste <run.json>    # fixer-ready prompt

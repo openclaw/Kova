@@ -19,9 +19,8 @@ import {
 import { buildPerformanceSummary } from "../performance/stats.mjs";
 import { reportsDir, displayPath } from "../paths.mjs";
 import { bundleReport, retainGateArtifacts } from "../reporting/artifacts.mjs";
-import { createRunId } from "../runner.mjs";
 import { runEntries, runScenarioRepeats } from "../run/engine.mjs";
-import { buildReportOutputPaths, writeReportOutputs } from "../run/report-output.mjs";
+import { allocateReportOutputPaths, releaseReportOutputLock, writeReportOutputs } from "../run/report-output.mjs";
 import { attachBaselineComparison, buildRunReport, saveBaselineUpdate } from "../run/report-finalization.mjs";
 import { createRunProgress } from "../reporting/render-run-progress.mjs";
 import { renderMatrixRunReceipt } from "../reporting/render-run-receipt.mjs";
@@ -50,8 +49,8 @@ export async function runMatrixRun(flags) {
   preflightGateRun({ entries, flags });
   validateMatrixScenarioRuns(entries, flags, { targetPlan, fromPlan });
   const reportRoot = flags.report_dir ? resolveFromCwd(flags.report_dir) : reportsDir;
-  const runId = createRunId();
-  const outputPaths = buildReportOutputPaths(reportRoot, runId, profile.id);
+  const { runId, outputPaths, lockPath } = await allocateReportOutputPaths(reportRoot, profile.id);
+  try {
   const targetSetup = { completed: false };
   const progress = createRunProgress({ flags, mode: flags.execute === true ? "execution" : "dry-run" });
   progress.runStart({
@@ -189,6 +188,9 @@ export async function runMatrixRun(flags) {
     console.log(`Kova gate outcome: ${gate.outcome ?? gate.verdict}`);
   }
   failGateIfNeeded(gate);
+  } finally {
+    await releaseReportOutputLock(lockPath);
+  }
 }
 
 function validateProfileExecutionFlags(profile, flags) {

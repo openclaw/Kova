@@ -26,7 +26,7 @@ export function renderRunReceipt({ report, reportPath, jsonPath, summaryPath }, 
   if (scenarios) { sections.push(""); sections.push(scenarios); }
 
   sections.push("");
-  sections.push(renderNext({ reportPath, jsonPath }, ui));
+  sections.push(renderNext({ report, reportPath, jsonPath }, ui));
   return withMargin(sections.join("\n"), ui.leftPad);
 }
 
@@ -47,7 +47,7 @@ export function renderMatrixRunReceipt({ report, reportPath, jsonPath, summaryPa
   if (scenarios) { sections.push(""); sections.push(scenarios); }
 
   sections.push("");
-  sections.push(renderNext({ reportPath, jsonPath, bundlePath }, ui));
+  sections.push(renderNext({ report, reportPath, jsonPath, bundlePath }, ui));
   return withMargin(sections.join("\n"), ui.leftPad);
 }
 
@@ -188,13 +188,13 @@ function renderArtifacts({ reportPath, jsonPath, summaryPath, bundlePath, retain
   return lines.join("\n");
 }
 
-function renderNext({ reportPath, jsonPath, bundlePath }, ui) {
+function renderNext({ report, reportPath, jsonPath, bundlePath }, ui) {
   const { c, g } = ui;
   const rel = (p) => displayPath(p);
   const hints = [];
-  const reportTarget = rel(jsonPath ?? reportPath);
+  const reportTarget = report?.runId ?? rel(jsonPath ?? reportPath);
   if (reportTarget) hints.push(`kova report ${reportTarget}`);
-  if (bundlePath)   hints.push(`kova report bundle ${rel(bundlePath)}`);
+  if (bundlePath)   hints.push(`kova report bundle ${report?.runId ?? rel(bundlePath)}`);
   if (hints.length === 0) return "";
   const lines = [ruleSection("next", ui.width, ui), ""];
   for (const h of hints) lines.push(`  ${c.dim(g.arrow)} ${h}`);
@@ -202,4 +202,3 @@ function renderNext({ reportPath, jsonPath, bundlePath }, ui) {
 }
 
 function pluralize(noun, n) { return n === 1 ? noun : `${noun}s`; }
-

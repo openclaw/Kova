@@ -273,7 +273,7 @@ function renderNext(summary, scenarios, isFull, ui) {
 }
 
 function reportPath(summary) {
-  return summary.runId ? `<path-to-${summary.runId}.json>` : "<report.json>";
+  return summary.runId ?? "<report.json>";
 }
 
 // ----- helpers -----

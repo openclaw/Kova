@@ -63,10 +63,12 @@ function normalize(out) {
     .replace(/\b\d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC\b/g, "<ts>")
     // generatedAt-style ISO timestamps in plan output.
     .replace(/\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\b/g, "<iso>")
-    // Run IDs: kova-<compact-iso>Z and lowercase bundle variant. Each run
-    // mints a fresh runId, so pin it to a stable token.
+    // Run IDs: historical compact ISO ids and current short timestamp+entropy
+    // ids. Each run mints a fresh runId, so pin it to a stable token.
     .replace(/kova-\d{4}-\d{2}-\d{2}T\d{6}Z/g, "kova-<runId>")
     .replace(/kova-\d{4}-\d{2}-\d{2}t\d{6}z/g, "kova-<runid>")
+    .replace(/kova-\d{6}-\d{6}-[a-f0-9]{6}/g, "kova-<runId>")
+    .replace(/kova-\d{6}-\d{6}-[a-f0-9]{6}/gi, (match) => match === match.toLowerCase() ? "kova-<runid>" : "kova-<runId>")
     // Strip trailing whitespace per line (renderer already does, defensive).
     .split("\n").map((l) => l.replace(/\s+$/, "")).join("\n");
 }

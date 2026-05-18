@@ -34,11 +34,7 @@ import { metricOptions } from "./run/metric-options.mjs";
 import { artifactsDir } from "./paths.mjs";
 import { assertKovaEnvName } from "./safety.mjs";
 import { join } from "node:path";
-
-export function createRunId() {
-  const stamp = new Date().toISOString().replaceAll(":", "").replace(/\.\d+Z$/, "Z");
-  return `kova-${stamp}`;
-}
+export { createRunId } from "./run/run-id.mjs";
 
 export function buildDryRunRecord(scenario, context) {
   const envName = envNameFor(scenario.id, context.state?.id, context.runId, context.repeat);
