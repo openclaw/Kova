@@ -77,14 +77,74 @@
       "collectionIntent": "post-ready-health"
     },
     {
-      "id": "channel-model-turn-baseline",
-      "title": "Run Channel Model Turn",
-      "intent": "Call the Kova channel plugin over Gateway RPC so OpenClaw proves all shared channel capabilities, then handles multiple real inbound channel events, calls the mock provider for each model-turn case, sends final assistant responses through the channel adapter, and records capability lineage invariants.",
+      "id": "channel-capability-durable-final",
+      "title": "Run Durable Final Capability Baseline",
+      "intent": "Call the Kova channel plugin over Gateway RPC so OpenClaw proves durable final channel capabilities before model-turn testing.",
       "commands": [
-        "node {kovaRoot}/support/run-channel-model-turn-baseline.mjs --env {env} --artifact-dir {artifactDir} --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --expected-text KOVA_AGENT_OK --timeout-ms 120000"
+        "node {kovaRoot}/support/run-channel-capability-baseline.mjs --env {env} --artifact-dir {artifactDir} --group durable-final --continue-on-failed-capabilities true --timeout-ms 120000"
       ],
       "evidence": [
-        "shared channel capability rows",
+        "OpenClaw gateway RPC",
+        "channel runtime turn dispatch",
+        "durable final channel send records",
+        "durable final capability proof rows"
+      ],
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
+    },
+    {
+      "id": "channel-capability-live-preview",
+      "title": "Run Live Preview Capability Baseline",
+      "intent": "Call the Kova channel plugin over Gateway RPC so OpenClaw proves live preview capability behavior before model-turn testing.",
+      "commands": [
+        "node {kovaRoot}/support/run-channel-capability-baseline.mjs --env {env} --artifact-dir {artifactDir} --group live-preview --continue-on-failed-capabilities true --timeout-ms 120000"
+      ],
+      "evidence": [
+        "OpenClaw gateway RPC",
+        "live preview state transitions",
+        "live preview capability proof rows"
+      ],
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
+    },
+    {
+      "id": "channel-capability-live-finalizer",
+      "title": "Run Live Finalizer Capability Baseline",
+      "intent": "Call the Kova channel plugin over Gateway RPC so OpenClaw proves live finalizer capability behavior before model-turn testing.",
+      "commands": [
+        "node {kovaRoot}/support/run-channel-capability-baseline.mjs --env {env} --artifact-dir {artifactDir} --group live-finalizer --continue-on-failed-capabilities true --timeout-ms 120000"
+      ],
+      "evidence": [
+        "OpenClaw gateway RPC",
+        "live finalizer state transitions",
+        "live finalizer capability proof rows"
+      ],
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
+    },
+    {
+      "id": "channel-capability-ack",
+      "title": "Run Ack Capability Baseline",
+      "intent": "Call the Kova channel plugin over Gateway RPC so OpenClaw proves receive acknowledgement policy behavior before model-turn testing.",
+      "commands": [
+        "node {kovaRoot}/support/run-channel-capability-baseline.mjs --env {env} --artifact-dir {artifactDir} --group ack --continue-on-failed-capabilities true --timeout-ms 120000"
+      ],
+      "evidence": [
+        "OpenClaw gateway RPC",
+        "receive ack state transitions",
+        "ack capability proof rows"
+      ],
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
+    },
+    {
+      "id": "channel-model-turn-matrix",
+      "title": "Run Channel Model Turn Matrix",
+      "intent": "Call the Kova channel plugin over Gateway RPC so OpenClaw handles multiple real inbound channel events, calls the mock provider for each model-turn case, sends final assistant responses through the channel adapter, and records capability lineage invariants.",
+      "commands": [
+        "node {kovaRoot}/support/run-channel-model-turn-baseline.mjs --env {env} --artifact-dir {artifactDir} --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --expected-text KOVA_AGENT_OK --skip-shared-baseline true --timeout-ms 120000"
+      ],
+      "evidence": [
         "model-turn capability rows",
         "inbound channel event ids",
         "mock provider request count",

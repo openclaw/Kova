@@ -74,17 +74,62 @@
       "collectionIntent": "post-ready-health"
     },
     {
-      "id": "channel-capability-baseline",
-      "title": "Run OpenClaw Channel Capability Baseline",
-      "intent": "Call the baseline plugin over Gateway RPC so OpenClaw injects channel turns, dispatches replies, routes durable final sends through the channel message adapter, and records capability evidence.",
+      "id": "channel-capability-durable-final",
+      "title": "Run Durable Final Capability Baseline",
+      "intent": "Call the baseline plugin over Gateway RPC so OpenClaw injects channel turns, dispatches replies, routes durable final sends through the channel message adapter, and records durable final capability evidence.",
       "commands": [
-        "node {kovaRoot}/support/run-channel-capability-baseline.mjs --env {env} --artifact-dir {artifactDir} --timeout-ms 120000"
+        "node {kovaRoot}/support/run-channel-capability-baseline.mjs --env {env} --artifact-dir {artifactDir} --group durable-final --continue-on-failed-capabilities true --timeout-ms 120000"
       ],
       "evidence": [
         "OpenClaw gateway RPC",
         "channel runtime turn dispatch",
         "durable final channel send records",
-        "baseline capability proof rows"
+        "durable final capability proof rows"
+      ],
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
+    },
+    {
+      "id": "channel-capability-live-preview",
+      "title": "Run Live Preview Capability Baseline",
+      "intent": "Call the baseline plugin over Gateway RPC so OpenClaw exercises live preview state, update, streaming, and quiet finalization behavior through the shared channel runtime.",
+      "commands": [
+        "node {kovaRoot}/support/run-channel-capability-baseline.mjs --env {env} --artifact-dir {artifactDir} --group live-preview --continue-on-failed-capabilities true --timeout-ms 120000"
+      ],
+      "evidence": [
+        "OpenClaw gateway RPC",
+        "live preview state transitions",
+        "live preview capability proof rows"
+      ],
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
+    },
+    {
+      "id": "channel-capability-live-finalizer",
+      "title": "Run Live Finalizer Capability Baseline",
+      "intent": "Call the baseline plugin over Gateway RPC so OpenClaw exercises final edit, fallback, discard, receipt, and ambiguous failure handling through the shared live finalizer path.",
+      "commands": [
+        "node {kovaRoot}/support/run-channel-capability-baseline.mjs --env {env} --artifact-dir {artifactDir} --group live-finalizer --continue-on-failed-capabilities true --timeout-ms 120000"
+      ],
+      "evidence": [
+        "OpenClaw gateway RPC",
+        "live finalizer state transitions",
+        "live finalizer capability proof rows"
+      ],
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
+    },
+    {
+      "id": "channel-capability-ack",
+      "title": "Run Ack Capability Baseline",
+      "intent": "Call the baseline plugin over Gateway RPC so OpenClaw exercises receive acknowledgement policy timing and idempotency through the shared channel receive context.",
+      "commands": [
+        "node {kovaRoot}/support/run-channel-capability-baseline.mjs --env {env} --artifact-dir {artifactDir} --group ack --continue-on-failed-capabilities true --timeout-ms 120000"
+      ],
+      "evidence": [
+        "OpenClaw gateway RPC",
+        "receive ack state transitions",
+        "ack capability proof rows"
       ],
       "healthScope": "post-ready",
       "collectionIntent": "post-ready-health"
