@@ -1,0 +1,246 @@
+{
+  "schemaVersion": "kova.channelCapabilityCatalog.v1",
+  "id": "openclaw-message",
+  "title": "OpenClaw Message Channel Capabilities",
+  "declarationSources": [
+    "src/channels/message/types.ts",
+    "src/channels/message/contracts.ts",
+    "src/channels/message/contracts.test.ts"
+  ],
+  "capabilities": [
+    {
+      "id": "text",
+      "group": "durable-final",
+      "title": "Durable Final Text",
+      "sourceSymbol": "durableFinalDeliveryCapabilities.text",
+      "baselineExpectation": "final assistant text can be rendered, sent, receipted, and committed through the shared message-channel path",
+      "proofModes": ["baseline", "deterministic-shim", "live-smoke"],
+      "declarationSource": "src/channels/message/types.ts"
+    },
+    {
+      "id": "media",
+      "group": "durable-final",
+      "title": "Durable Final Media",
+      "sourceSymbol": "durableFinalDeliveryCapabilities.media",
+      "baselineExpectation": "generated media can be rendered, sent, receipted, and committed through the shared message-channel path",
+      "proofModes": ["baseline", "deterministic-shim", "live-smoke"],
+      "declarationSource": "src/channels/message/types.ts"
+    },
+    {
+      "id": "payload",
+      "group": "durable-final",
+      "title": "Durable Final Payload",
+      "sourceSymbol": "durableFinalDeliveryCapabilities.payload",
+      "baselineExpectation": "reply payloads can be rendered into channel sends without losing text, media, or presentation data",
+      "proofModes": ["baseline", "deterministic-shim"],
+      "declarationSource": "src/channels/message/types.ts"
+    },
+    {
+      "id": "silent",
+      "group": "durable-final",
+      "title": "Durable Final Silent Delivery",
+      "sourceSymbol": "durableFinalDeliveryCapabilities.silent",
+      "baselineExpectation": "silent delivery intent is carried through durable final send requirements and adapter context",
+      "proofModes": ["baseline", "deterministic-shim"],
+      "declarationSource": "src/channels/message/types.ts"
+    },
+    {
+      "id": "reply-to",
+      "group": "durable-final",
+      "title": "Durable Final Reply Target",
+      "sourceSymbol": "durableFinalDeliveryCapabilities.replyTo",
+      "baselineExpectation": "reply target intent is carried through durable final send requirements and adapter context",
+      "proofModes": ["baseline", "deterministic-shim"],
+      "declarationSource": "src/channels/message/types.ts"
+    },
+    {
+      "id": "thread",
+      "group": "durable-final",
+      "title": "Durable Final Thread Target",
+      "sourceSymbol": "durableFinalDeliveryCapabilities.thread",
+      "baselineExpectation": "thread target intent is carried through durable final send requirements and adapter context",
+      "proofModes": ["baseline", "deterministic-shim"],
+      "declarationSource": "src/channels/message/types.ts"
+    },
+    {
+      "id": "native-quote",
+      "group": "durable-final",
+      "title": "Durable Final Native Quote",
+      "sourceSymbol": "durableFinalDeliveryCapabilities.nativeQuote",
+      "baselineExpectation": "native quote intent can be represented as a declared durable final capability and proven by adapters that support it",
+      "proofModes": ["baseline", "deterministic-shim"],
+      "declarationSource": "src/channels/message/types.ts"
+    },
+    {
+      "id": "message-sending-hooks",
+      "group": "durable-final",
+      "title": "Durable Final Message Sending Hooks",
+      "sourceSymbol": "durableFinalDeliveryCapabilities.messageSendingHooks",
+      "baselineExpectation": "message sending hooks run around durable final sends without losing attempt context",
+      "proofModes": ["baseline", "deterministic-shim"],
+      "declarationSource": "src/channels/message/types.ts"
+    },
+    {
+      "id": "batch",
+      "group": "durable-final",
+      "title": "Durable Final Batch",
+      "sourceSymbol": "durableFinalDeliveryCapabilities.batch",
+      "baselineExpectation": "multi-part durable final payloads preserve ordering and receipts",
+      "proofModes": ["baseline", "deterministic-shim"],
+      "declarationSource": "src/channels/message/types.ts"
+    },
+    {
+      "id": "reconcile-unknown-send",
+      "group": "durable-final",
+      "title": "Durable Final Unknown Send Reconciliation",
+      "sourceSymbol": "durableFinalDeliveryCapabilities.reconcileUnknownSend",
+      "baselineExpectation": "ambiguous durable send outcomes can be reconciled without duplicate or lost final delivery",
+      "proofModes": ["baseline", "deterministic-shim"],
+      "declarationSource": "src/channels/message/types.ts"
+    },
+    {
+      "id": "after-send-success",
+      "group": "durable-final",
+      "title": "Durable Final After Send Success Hook",
+      "sourceSymbol": "durableFinalDeliveryCapabilities.afterSendSuccess",
+      "baselineExpectation": "after-send-success lifecycle hooks run after successful platform send attempts",
+      "proofModes": ["baseline", "deterministic-shim"],
+      "declarationSource": "src/channels/message/types.ts"
+    },
+    {
+      "id": "after-commit",
+      "group": "durable-final",
+      "title": "Durable Final After Commit Hook",
+      "sourceSymbol": "durableFinalDeliveryCapabilities.afterCommit",
+      "baselineExpectation": "after-commit lifecycle hooks run after durable final receipts are committed",
+      "proofModes": ["baseline", "deterministic-shim"],
+      "declarationSource": "src/channels/message/types.ts"
+    },
+    {
+      "id": "draft-preview",
+      "group": "live-preview",
+      "title": "Live Draft Preview",
+      "sourceSymbol": "channelMessageLiveCapabilities.draftPreview",
+      "baselineExpectation": "draft preview state can be declared and proven through the shared live message adapter contract",
+      "proofModes": ["baseline", "deterministic-shim", "live-smoke"],
+      "declarationSource": "src/channels/message/types.ts"
+    },
+    {
+      "id": "preview-finalization",
+      "group": "live-preview",
+      "title": "Live Preview Finalization",
+      "sourceSymbol": "channelMessageLiveCapabilities.previewFinalization",
+      "baselineExpectation": "preview state can transition to final delivery through the shared live message adapter contract",
+      "proofModes": ["baseline", "deterministic-shim", "live-smoke"],
+      "declarationSource": "src/channels/message/types.ts"
+    },
+    {
+      "id": "progress-updates",
+      "group": "live-preview",
+      "title": "Live Progress Updates",
+      "sourceSymbol": "channelMessageLiveCapabilities.progressUpdates",
+      "baselineExpectation": "progress updates can be represented and proven through the shared live message adapter contract",
+      "proofModes": ["baseline", "deterministic-shim", "live-smoke"],
+      "declarationSource": "src/channels/message/types.ts"
+    },
+    {
+      "id": "native-streaming",
+      "group": "live-preview",
+      "title": "Live Native Streaming",
+      "sourceSymbol": "channelMessageLiveCapabilities.nativeStreaming",
+      "baselineExpectation": "native streaming can be declared and proven by adapters that support streaming updates",
+      "proofModes": ["baseline", "deterministic-shim", "live-smoke"],
+      "declarationSource": "src/channels/message/types.ts"
+    },
+    {
+      "id": "quiet-finalization",
+      "group": "live-preview",
+      "title": "Live Quiet Finalization",
+      "sourceSymbol": "channelMessageLiveCapabilities.quietFinalization",
+      "baselineExpectation": "quiet finalization can be declared and proven by adapters that suppress noisy final updates",
+      "proofModes": ["baseline", "deterministic-shim", "live-smoke"],
+      "declarationSource": "src/channels/message/types.ts"
+    },
+    {
+      "id": "final-edit",
+      "group": "live-finalizer",
+      "title": "Live Final Edit",
+      "sourceSymbol": "livePreviewFinalizerCapabilities.finalEdit",
+      "baselineExpectation": "live preview finalizers can edit an existing preview into the final message",
+      "proofModes": ["baseline", "deterministic-shim", "live-smoke"],
+      "declarationSource": "src/channels/message/types.ts"
+    },
+    {
+      "id": "normal-fallback",
+      "group": "live-finalizer",
+      "title": "Live Normal Fallback",
+      "sourceSymbol": "livePreviewFinalizerCapabilities.normalFallback",
+      "baselineExpectation": "live preview finalizers can fall back to a normal final send when edit finalization is unavailable",
+      "proofModes": ["baseline", "deterministic-shim", "live-smoke"],
+      "declarationSource": "src/channels/message/types.ts"
+    },
+    {
+      "id": "discard-pending",
+      "group": "live-finalizer",
+      "title": "Live Discard Pending",
+      "sourceSymbol": "livePreviewFinalizerCapabilities.discardPending",
+      "baselineExpectation": "live preview finalizers can discard pending preview state when final delivery should not reuse it",
+      "proofModes": ["baseline", "deterministic-shim", "live-smoke"],
+      "declarationSource": "src/channels/message/types.ts"
+    },
+    {
+      "id": "preview-receipt",
+      "group": "live-finalizer",
+      "title": "Live Preview Receipt",
+      "sourceSymbol": "livePreviewFinalizerCapabilities.previewReceipt",
+      "baselineExpectation": "live preview finalizers can carry preview receipts into finalization",
+      "proofModes": ["baseline", "deterministic-shim", "live-smoke"],
+      "declarationSource": "src/channels/message/types.ts"
+    },
+    {
+      "id": "retain-on-ambiguous-failure",
+      "group": "live-finalizer",
+      "title": "Live Retain On Ambiguous Failure",
+      "sourceSymbol": "livePreviewFinalizerCapabilities.retainOnAmbiguousFailure",
+      "baselineExpectation": "live preview finalizers can retain preview state when finalization fails ambiguously",
+      "proofModes": ["baseline", "deterministic-shim", "live-smoke"],
+      "declarationSource": "src/channels/message/types.ts"
+    },
+    {
+      "id": "after-receive-record",
+      "group": "ack",
+      "title": "Ack After Receive Record",
+      "sourceSymbol": "channelMessageReceiveAckPolicies.after_receive_record",
+      "baselineExpectation": "receive acknowledgement can run after the inbound message is recorded",
+      "proofModes": ["baseline", "deterministic-shim", "live-smoke"],
+      "declarationSource": "src/channels/message/types.ts"
+    },
+    {
+      "id": "after-agent-dispatch",
+      "group": "ack",
+      "title": "Ack After Agent Dispatch",
+      "sourceSymbol": "channelMessageReceiveAckPolicies.after_agent_dispatch",
+      "baselineExpectation": "receive acknowledgement can run after the inbound message is dispatched to the agent path",
+      "proofModes": ["baseline", "deterministic-shim", "live-smoke"],
+      "declarationSource": "src/channels/message/types.ts"
+    },
+    {
+      "id": "after-durable-send",
+      "group": "ack",
+      "title": "Ack After Durable Send",
+      "sourceSymbol": "channelMessageReceiveAckPolicies.after_durable_send",
+      "baselineExpectation": "receive acknowledgement can run after durable outbound response send",
+      "proofModes": ["baseline", "deterministic-shim", "live-smoke"],
+      "declarationSource": "src/channels/message/types.ts"
+    },
+    {
+      "id": "manual",
+      "group": "ack",
+      "title": "Manual Ack",
+      "sourceSymbol": "channelMessageReceiveAckPolicies.manual",
+      "baselineExpectation": "manual receive acknowledgement can be declared as plugin-owned behavior and proven by the adapter",
+      "proofModes": ["baseline", "deterministic-shim", "live-smoke"],
+      "declarationSource": "src/channels/message/types.ts"
+    }
+  ]
+}

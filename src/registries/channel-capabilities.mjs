@@ -1,5 +1,10 @@
 import { channelCapabilitiesDir } from "../paths.mjs";
 import {
+  channelCapabilityCatalogMap,
+  channelCapabilityGroups,
+  channelCapabilityProofModes
+} from "./channel-capability-catalog.mjs";
+import {
   assertNoShapeErrors,
   loadJsonRegistry,
   requireArray,
@@ -8,29 +13,11 @@ import {
   validateStringArray
 } from "./validate.mjs";
 
-export const channelCapabilityGroups = [
-  "receive",
-  "routing",
-  "ack",
-  "durable-final",
-  "receipt",
-  "live-preview",
-  "native-platform",
-  "failure-recovery"
-];
-
 export const channelCapabilityRequiredLevels = [
   "blocking",
   "warning",
   "optional",
   "experimental"
-];
-
-export const channelCapabilityProofModes = [
-  "baseline",
-  "deterministic-shim",
-  "live-smoke",
-  "unsupported-fallback"
 ];
 
 export const channelSupportStatuses = [
@@ -65,6 +52,23 @@ export function validateChannelCapabilityShape(channel, sourceName = "channel ca
   assertNoShapeErrors(errors, sourceName);
 }
 
+export function validateChannelCapabilityCatalogReferences(channels, catalogs) {
+  const catalogMap = channelCapabilityCatalogMap(catalogs);
+  const errors = [];
+  for (const channel of channels ?? []) {
+    for (const capability of channel.capabilities ?? []) {
+      const expectedCatalogId = `${capability.group}:${capability.id}`;
+      if (capability.catalogId !== expectedCatalogId) {
+        errors.push(`${channel.id}.${capability.group}:${capability.id} catalogId must be ${expectedCatalogId}`);
+      }
+      if (!catalogMap.has(expectedCatalogId)) {
+        errors.push(`${channel.id}.${expectedCatalogId} is not defined in the OpenClaw channel capability catalog`);
+      }
+    }
+  }
+  assertNoShapeErrors(errors, "channel capability catalog references");
+}
+
 function validateCapabilities(channel, errors) {
   if (!Array.isArray(channel?.capabilities)) {
     return;
@@ -81,6 +85,7 @@ function validateCapabilities(channel, errors) {
     requireKebabId(capability, "id", errors, prefix);
     requireString(capability, "group", errors, prefix);
     validateKnownValue(capability?.group, channelCapabilityGroups, `${prefix}.group`, errors);
+    requireString(capability, "catalogId", errors, prefix);
     requireString(capability, "title", errors, prefix);
     requireString(capability, "requiredLevel", errors, prefix);
     validateKnownValue(capability?.requiredLevel, channelCapabilityRequiredLevels, `${prefix}.requiredLevel`, errors);

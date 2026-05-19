@@ -19,7 +19,12 @@ import {
   updateBaselineStore
 } from "./performance/baselines.mjs";
 import { buildPerformanceSummary } from "./performance/stats.mjs";
-import { loadChannelCapabilities, validateChannelCapabilityShape } from "./registries/channel-capabilities.mjs";
+import {
+  loadChannelCapabilities,
+  validateChannelCapabilityCatalogReferences,
+  validateChannelCapabilityShape
+} from "./registries/channel-capabilities.mjs";
+import { loadChannelCapabilityCatalog, validateChannelCapabilityCatalogShape } from "./registries/channel-capability-catalog.mjs";
 import { loadProcessRoles } from "./registries/process-roles.mjs";
 import { validateProfileShape } from "./registries/profiles.mjs";
 import { validateScenarioShape } from "./registries/scenarios.mjs";
@@ -175,7 +180,11 @@ export async function runSelfCheck(flags = {}) {
       assertArrayNotEmpty(data.surfaces, "plan surfaces");
       assertArrayNotEmpty(data.processRoles, "plan process roles");
       assertArrayNotEmpty(data.metrics, "plan metrics");
+      assertArrayNotEmpty(data.channelCapabilityCatalog, "plan channel capability catalog");
       assertArrayNotEmpty(data.channelCapabilities, "plan channel capabilities");
+      const openClawCatalog = data.channelCapabilityCatalog.find((catalog) => catalog.id === "openclaw-message");
+      assertEqual(Boolean(openClawCatalog), true, "OpenClaw message capability catalog present");
+      assertEqual(openClawCatalog?.capabilities?.some((capability) => capability.group === "durable-final" && capability.id === "native-quote"), true, "OpenClaw native quote baseline capability present");
       const telegramChannel = data.channelCapabilities.find((channel) => channel.id === "telegram");
       assertEqual(Boolean(telegramChannel), true, "telegram channel capability registry present");
       assertEqual(telegramChannel?.capabilities?.some((capability) => capability.group === "durable-final" && capability.id === "media"), true, "telegram media durable-final capability present");
@@ -9118,6 +9127,12 @@ function scenarioCloneFirstValidationCheck() {
 
 async function channelCapabilityRegistryCheck() {
   try {
+    const catalogs = await loadChannelCapabilityCatalog();
+    const openClawCatalog = catalogs.find((catalog) => catalog.id === "openclaw-message");
+    assertEqual(Boolean(openClawCatalog), true, "OpenClaw message capability catalog present");
+    assertOpenClawChannelCapabilityCatalog(openClawCatalog);
+    validateChannelCapabilityCatalogReferences(await loadChannelCapabilities(), catalogs);
+
     const channels = await loadChannelCapabilities();
     const telegram = channels.find((channel) => channel.id === "telegram");
     assertEqual(Boolean(telegram), true, "telegram channel capability registry present");
@@ -9130,6 +9145,9 @@ async function channelCapabilityRegistryCheck() {
     assertEqual(telegram.capabilities.every((capability) =>
       telegram.declarationSources.includes(capability.declarationSource)
     ), true, "telegram capability declaration sources reference registry sources");
+    assertEqual(telegram.capabilities.every((capability) =>
+      capability.catalogId === `${capability.group}:${capability.id}`
+    ), true, "telegram capabilities reference OpenClaw catalog ids");
 
     let rejectedGroup = false;
     try {
@@ -9143,6 +9161,7 @@ async function channelCapabilityRegistryCheck() {
         capabilities: [{
           id: "text",
           group: "made-up-group",
+          catalogId: "made-up-group:text",
           title: "Text",
           requiredLevel: "blocking",
           proofModes: ["deterministic-shim"],
@@ -9166,6 +9185,7 @@ async function channelCapabilityRegistryCheck() {
         capabilities: [{
           id: "text",
           group: "durable-final",
+          catalogId: "durable-final:text",
           title: "Text",
           requiredLevel: "blocking",
           proofModes: ["eventually"],
@@ -9189,6 +9209,7 @@ async function channelCapabilityRegistryCheck() {
         capabilities: [{
           id: "text",
           group: "durable-final",
+          catalogId: "durable-final:text",
           title: "Text",
           requiredLevel: "blocking",
           proofModes: ["deterministic-shim"],
@@ -9212,6 +9233,7 @@ async function channelCapabilityRegistryCheck() {
         capabilities: [{
           id: "text",
           group: "durable-final",
+          catalogId: "durable-final:text",
           title: "Text",
           requiredLevel: "blocking",
           proofModes: ["deterministic-shim"],
@@ -9219,6 +9241,7 @@ async function channelCapabilityRegistryCheck() {
         }, {
           id: "text",
           group: "durable-final",
+          catalogId: "durable-final:text",
           title: "Text Again",
           requiredLevel: "warning",
           proofModes: ["deterministic-shim"],
@@ -9229,6 +9252,21 @@ async function channelCapabilityRegistryCheck() {
       rejectedDuplicate = /duplicate capability/.test(error.message);
     }
     assertEqual(rejectedDuplicate, true, "duplicate channel capability rejected");
+
+    let rejectedCatalogReference = false;
+    try {
+      validateChannelCapabilityCatalogReferences([{
+        ...telegram,
+        capabilities: [{
+          id: "imaginary",
+          group: "durable-final",
+          catalogId: "durable-final:imaginary"
+        }]
+      }], catalogs);
+    } catch (error) {
+      rejectedCatalogReference = /not defined in the OpenClaw channel capability catalog/.test(error.message);
+    }
+    assertEqual(rejectedCatalogReference, true, "channel capability must reference OpenClaw catalog");
 
     return {
       id: "channel-capability-registry",
@@ -9245,6 +9283,67 @@ async function channelCapabilityRegistryCheck() {
       message: error.message
     };
   }
+}
+
+function assertOpenClawChannelCapabilityCatalog(catalog) {
+  validateChannelCapabilityCatalogShape(catalog, "openclaw-message.json");
+  const byGroup = new Map();
+  for (const capability of catalog.capabilities ?? []) {
+    const values = byGroup.get(capability.group) ?? [];
+    values.push(capability.id);
+    byGroup.set(capability.group, values);
+  }
+
+  assertEqual(
+    JSON.stringify(byGroup.get("durable-final") ?? []),
+    JSON.stringify([
+      "text",
+      "media",
+      "payload",
+      "silent",
+      "reply-to",
+      "thread",
+      "native-quote",
+      "message-sending-hooks",
+      "batch",
+      "reconcile-unknown-send",
+      "after-send-success",
+      "after-commit"
+    ]),
+    "OpenClaw durable-final capability catalog matches src/channels/message/types.ts"
+  );
+  assertEqual(
+    JSON.stringify(byGroup.get("live-preview") ?? []),
+    JSON.stringify([
+      "draft-preview",
+      "preview-finalization",
+      "progress-updates",
+      "native-streaming",
+      "quiet-finalization"
+    ]),
+    "OpenClaw live-preview capability catalog matches src/channels/message/types.ts"
+  );
+  assertEqual(
+    JSON.stringify(byGroup.get("live-finalizer") ?? []),
+    JSON.stringify([
+      "final-edit",
+      "normal-fallback",
+      "discard-pending",
+      "preview-receipt",
+      "retain-on-ambiguous-failure"
+    ]),
+    "OpenClaw live-finalizer capability catalog matches src/channels/message/types.ts"
+  );
+  assertEqual(
+    JSON.stringify(byGroup.get("ack") ?? []),
+    JSON.stringify([
+      "after-receive-record",
+      "after-agent-dispatch",
+      "after-durable-send",
+      "manual"
+    ]),
+    "OpenClaw ack policy catalog matches src/channels/message/types.ts"
+  );
 }
 
 function scenarioHealthScopeValidationCheck() {

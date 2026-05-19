@@ -13,143 +13,154 @@
     {
       "id": "text",
       "group": "durable-final",
+      "catalogId": "durable-final:text",
       "title": "Final Text Delivery",
       "requiredLevel": "blocking",
-      "proofModes": [
-        "deterministic-shim",
-        "live-smoke"
-      ],
+      "proofModes": ["deterministic-shim", "live-smoke"],
       "declarationSource": "extensions/telegram/src/outbound-adapter.ts"
     },
     {
       "id": "media",
       "group": "durable-final",
+      "catalogId": "durable-final:media",
       "title": "Final Media Delivery",
       "requiredLevel": "blocking",
-      "proofModes": [
-        "deterministic-shim",
-        "live-smoke"
-      ],
+      "proofModes": ["deterministic-shim", "live-smoke"],
       "declarationSource": "extensions/telegram/src/outbound-adapter.ts"
     },
     {
       "id": "payload",
       "group": "durable-final",
+      "catalogId": "durable-final:payload",
       "title": "Final Payload Delivery",
       "requiredLevel": "blocking",
-      "proofModes": [
-        "deterministic-shim"
-      ],
+      "proofModes": ["deterministic-shim"],
       "declarationSource": "extensions/telegram/src/outbound-adapter.ts"
     },
     {
       "id": "silent",
-      "group": "native-platform",
-      "title": "Silent Send Mapping",
+      "group": "durable-final",
+      "catalogId": "durable-final:silent",
+      "title": "Silent Final Delivery",
       "requiredLevel": "warning",
-      "proofModes": [
-        "deterministic-shim"
-      ],
+      "proofModes": ["deterministic-shim"],
       "declarationSource": "extensions/telegram/src/outbound-adapter.ts"
     },
     {
       "id": "reply-to",
-      "group": "native-platform",
+      "group": "durable-final",
+      "catalogId": "durable-final:reply-to",
       "title": "Reply Target Mapping",
       "requiredLevel": "blocking",
-      "proofModes": [
-        "deterministic-shim"
-      ],
+      "proofModes": ["deterministic-shim"],
       "declarationSource": "extensions/telegram/src/outbound-adapter.ts"
     },
     {
       "id": "thread",
-      "group": "native-platform",
+      "group": "durable-final",
+      "catalogId": "durable-final:thread",
       "title": "Thread Target Mapping",
       "requiredLevel": "blocking",
-      "proofModes": [
-        "deterministic-shim"
-      ],
+      "proofModes": ["deterministic-shim"],
       "declarationSource": "extensions/telegram/src/outbound-adapter.ts"
     },
     {
       "id": "message-sending-hooks",
-      "group": "failure-recovery",
+      "group": "durable-final",
+      "catalogId": "durable-final:message-sending-hooks",
       "title": "Message Sending Hooks",
       "requiredLevel": "warning",
-      "proofModes": [
-        "deterministic-shim"
-      ],
+      "proofModes": ["deterministic-shim"],
       "declarationSource": "extensions/telegram/src/outbound-adapter.ts"
     },
     {
       "id": "batch",
       "group": "durable-final",
+      "catalogId": "durable-final:batch",
       "title": "Batch Final Delivery",
       "requiredLevel": "warning",
-      "proofModes": [
-        "deterministic-shim"
-      ],
+      "proofModes": ["deterministic-shim"],
       "declarationSource": "extensions/telegram/src/outbound-adapter.ts"
     },
     {
       "id": "after-receive-record",
       "group": "ack",
+      "catalogId": "ack:after-receive-record",
       "title": "Ack After Receive Record",
       "requiredLevel": "warning",
-      "proofModes": [
-        "deterministic-shim"
-      ],
+      "proofModes": ["deterministic-shim"],
       "declarationSource": "extensions/telegram/src/channel.ts"
     },
     {
       "id": "after-agent-dispatch",
       "group": "ack",
+      "catalogId": "ack:after-agent-dispatch",
       "title": "Ack After Agent Dispatch",
       "requiredLevel": "blocking",
-      "proofModes": [
-        "deterministic-shim"
-      ],
+      "proofModes": ["deterministic-shim"],
       "declarationSource": "extensions/telegram/src/channel.ts"
     },
     {
       "id": "draft-preview",
       "group": "live-preview",
+      "catalogId": "live-preview:draft-preview",
       "title": "Draft Preview",
       "requiredLevel": "warning",
-      "proofModes": [
-        "deterministic-shim"
-      ],
+      "proofModes": ["deterministic-shim"],
       "declarationSource": "extensions/telegram/src/channel.ts"
     },
     {
       "id": "preview-finalization",
       "group": "live-preview",
+      "catalogId": "live-preview:preview-finalization",
       "title": "Preview Finalization",
       "requiredLevel": "warning",
-      "proofModes": [
-        "deterministic-shim"
-      ],
+      "proofModes": ["deterministic-shim"],
       "declarationSource": "extensions/telegram/src/channel.ts"
     },
     {
       "id": "progress-updates",
       "group": "live-preview",
+      "catalogId": "live-preview:progress-updates",
       "title": "Progress Updates",
       "requiredLevel": "warning",
-      "proofModes": [
-        "deterministic-shim"
-      ],
+      "proofModes": ["deterministic-shim"],
+      "declarationSource": "extensions/telegram/src/channel.ts"
+    },
+    {
+      "id": "final-edit",
+      "group": "live-finalizer",
+      "catalogId": "live-finalizer:final-edit",
+      "title": "Final Edit",
+      "requiredLevel": "warning",
+      "proofModes": ["deterministic-shim"],
+      "declarationSource": "extensions/telegram/src/channel.ts"
+    },
+    {
+      "id": "normal-fallback",
+      "group": "live-finalizer",
+      "catalogId": "live-finalizer:normal-fallback",
+      "title": "Normal Finalization Fallback",
+      "requiredLevel": "warning",
+      "proofModes": ["deterministic-shim"],
+      "declarationSource": "extensions/telegram/src/channel.ts"
+    },
+    {
+      "id": "preview-receipt",
+      "group": "live-finalizer",
+      "catalogId": "live-finalizer:preview-receipt",
+      "title": "Preview Receipt",
+      "requiredLevel": "warning",
+      "proofModes": ["deterministic-shim"],
       "declarationSource": "extensions/telegram/src/channel.ts"
     },
     {
       "id": "retain-on-ambiguous-failure",
-      "group": "failure-recovery",
+      "group": "live-finalizer",
+      "catalogId": "live-finalizer:retain-on-ambiguous-failure",
       "title": "Retain Preview On Ambiguous Failure",
       "requiredLevel": "warning",
-      "proofModes": [
-        "deterministic-shim"
-      ],
+      "proofModes": ["deterministic-shim"],
       "declarationSource": "extensions/telegram/src/channel.ts"
     }
   ]
