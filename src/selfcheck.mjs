@@ -18,6 +18,7 @@ import {
   updateBaselineStore
 } from "./performance/baselines.mjs";
 import { buildPerformanceSummary } from "./performance/stats.mjs";
+import { loadChannelCapabilities, validateChannelCapabilityShape } from "./registries/channel-capabilities.mjs";
 import { loadProcessRoles } from "./registries/process-roles.mjs";
 import { validateProfileShape } from "./registries/profiles.mjs";
 import { validateScenarioShape } from "./registries/scenarios.mjs";
@@ -171,6 +172,10 @@ export async function runSelfCheck(flags = {}) {
       assertArrayNotEmpty(data.surfaces, "plan surfaces");
       assertArrayNotEmpty(data.processRoles, "plan process roles");
       assertArrayNotEmpty(data.metrics, "plan metrics");
+      assertArrayNotEmpty(data.channelCapabilities, "plan channel capabilities");
+      const telegramChannel = data.channelCapabilities.find((channel) => channel.id === "telegram");
+      assertEqual(Boolean(telegramChannel), true, "telegram channel capability registry present");
+      assertEqual(telegramChannel?.capabilities?.some((capability) => capability.group === "durable-final" && capability.id === "media"), true, "telegram media durable-final capability present");
       assertArrayNotEmpty(data.scenarios, "plan scenarios");
       assertArrayNotEmpty(data.states, "plan states");
       assertArrayNotEmpty(data.profiles, "profiles");
@@ -197,6 +202,7 @@ export async function runSelfCheck(flags = {}) {
         throw new Error("every scenario must declare the surface requirement ids it proves");
       }
     }));
+    checks.push(await channelCapabilityRegistryCheck());
     checks.push(await inventoryPlanCheck(tmp));
     checks.push(await repeatedWorkAuditCheck());
     checks.push(await collectionPolicyResolverCheck(tmp));
@@ -8893,6 +8899,137 @@ function scenarioCloneFirstValidationCheck() {
       id: "scenario-clone-first-validation",
       status: "FAIL",
       command: "validate source-env scenario contracts",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+async function channelCapabilityRegistryCheck() {
+  try {
+    const channels = await loadChannelCapabilities();
+    const telegram = channels.find((channel) => channel.id === "telegram");
+    assertEqual(Boolean(telegram), true, "telegram channel capability registry present");
+    assertEqual(telegram.adapterId, "telegram", "telegram adapter id");
+    assertEqual(telegram.supportStatus, "supported", "telegram support status");
+    assertArrayNotEmpty(telegram.declarationSources, "telegram declaration sources");
+    assertEqual(telegram.capabilities.some((capability) =>
+      capability.group === "durable-final" && capability.id === "media" && capability.requiredLevel === "blocking"
+    ), true, "telegram media capability is blocking");
+    assertEqual(telegram.capabilities.every((capability) =>
+      telegram.declarationSources.includes(capability.declarationSource)
+    ), true, "telegram capability declaration sources reference registry sources");
+
+    let rejectedGroup = false;
+    try {
+      validateChannelCapabilityShape({
+        schemaVersion: "kova.channelCapability.v1",
+        id: "bad-channel",
+        title: "Bad Channel",
+        adapterId: "bad",
+        supportStatus: "supported",
+        declarationSources: ["extensions/bad/src/channel.ts"],
+        capabilities: [{
+          id: "text",
+          group: "made-up-group",
+          title: "Text",
+          requiredLevel: "blocking",
+          proofModes: ["deterministic-shim"],
+          declarationSource: "extensions/bad/src/channel.ts"
+        }]
+      }, "bad-channel.json");
+    } catch (error) {
+      rejectedGroup = /group must be one of/.test(error.message);
+    }
+    assertEqual(rejectedGroup, true, "unknown channel capability group rejected");
+
+    let rejectedProofMode = false;
+    try {
+      validateChannelCapabilityShape({
+        schemaVersion: "kova.channelCapability.v1",
+        id: "bad-proof-mode",
+        title: "Bad Proof Mode",
+        adapterId: "bad",
+        supportStatus: "supported",
+        declarationSources: ["extensions/bad/src/channel.ts"],
+        capabilities: [{
+          id: "text",
+          group: "durable-final",
+          title: "Text",
+          requiredLevel: "blocking",
+          proofModes: ["eventually"],
+          declarationSource: "extensions/bad/src/channel.ts"
+        }]
+      }, "bad-proof-mode.json");
+    } catch (error) {
+      rejectedProofMode = /proofModes\[0\] must be one of/.test(error.message);
+    }
+    assertEqual(rejectedProofMode, true, "unknown channel capability proof mode rejected");
+
+    let rejectedSource = false;
+    try {
+      validateChannelCapabilityShape({
+        schemaVersion: "kova.channelCapability.v1",
+        id: "bad-source",
+        title: "Bad Source",
+        adapterId: "bad",
+        supportStatus: "supported",
+        declarationSources: ["extensions/bad/src/channel.ts"],
+        capabilities: [{
+          id: "text",
+          group: "durable-final",
+          title: "Text",
+          requiredLevel: "blocking",
+          proofModes: ["deterministic-shim"],
+          declarationSource: "extensions/other/src/channel.ts"
+        }]
+      }, "bad-source.json");
+    } catch (error) {
+      rejectedSource = /declarationSource must reference declarationSources/.test(error.message);
+    }
+    assertEqual(rejectedSource, true, "unknown capability declaration source rejected");
+
+    let rejectedDuplicate = false;
+    try {
+      validateChannelCapabilityShape({
+        schemaVersion: "kova.channelCapability.v1",
+        id: "bad-duplicate",
+        title: "Bad Duplicate",
+        adapterId: "bad",
+        supportStatus: "supported",
+        declarationSources: ["extensions/bad/src/channel.ts"],
+        capabilities: [{
+          id: "text",
+          group: "durable-final",
+          title: "Text",
+          requiredLevel: "blocking",
+          proofModes: ["deterministic-shim"],
+          declarationSource: "extensions/bad/src/channel.ts"
+        }, {
+          id: "text",
+          group: "durable-final",
+          title: "Text Again",
+          requiredLevel: "warning",
+          proofModes: ["deterministic-shim"],
+          declarationSource: "extensions/bad/src/channel.ts"
+        }]
+      }, "bad-duplicate.json");
+    } catch (error) {
+      rejectedDuplicate = /duplicate capability/.test(error.message);
+    }
+    assertEqual(rejectedDuplicate, true, "duplicate channel capability rejected");
+
+    return {
+      id: "channel-capability-registry",
+      status: "PASS",
+      command: "validate channel capability registry contracts",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "channel-capability-registry",
+      status: "FAIL",
+      command: "validate channel capability registry contracts",
       durationMs: 0,
       message: error.message
     };

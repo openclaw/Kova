@@ -2666,6 +2666,164 @@
       "id": "websocketDisconnects"
     }
   ],
+  "channelCapabilities": [
+    {
+      "schemaVersion": "kova.channelCapability.v1",
+      "id": "telegram",
+      "title": "Telegram Channel",
+      "adapterId": "telegram",
+      "supportStatus": "supported",
+      "declarationSources": [
+        "src/channels/message/types.ts",
+        "extensions/telegram/src/channel.ts",
+        "extensions/telegram/src/outbound-adapter.ts"
+      ],
+      "capabilities": [
+        {
+          "id": "text",
+          "group": "durable-final",
+          "title": "Final Text Delivery",
+          "requiredLevel": "blocking",
+          "proofModes": [
+            "deterministic-shim",
+            "live-smoke"
+          ],
+          "declarationSource": "extensions/telegram/src/outbound-adapter.ts"
+        },
+        {
+          "id": "media",
+          "group": "durable-final",
+          "title": "Final Media Delivery",
+          "requiredLevel": "blocking",
+          "proofModes": [
+            "deterministic-shim",
+            "live-smoke"
+          ],
+          "declarationSource": "extensions/telegram/src/outbound-adapter.ts"
+        },
+        {
+          "id": "payload",
+          "group": "durable-final",
+          "title": "Final Payload Delivery",
+          "requiredLevel": "blocking",
+          "proofModes": [
+            "deterministic-shim"
+          ],
+          "declarationSource": "extensions/telegram/src/outbound-adapter.ts"
+        },
+        {
+          "id": "silent",
+          "group": "native-platform",
+          "title": "Silent Send Mapping",
+          "requiredLevel": "warning",
+          "proofModes": [
+            "deterministic-shim"
+          ],
+          "declarationSource": "extensions/telegram/src/outbound-adapter.ts"
+        },
+        {
+          "id": "reply-to",
+          "group": "native-platform",
+          "title": "Reply Target Mapping",
+          "requiredLevel": "blocking",
+          "proofModes": [
+            "deterministic-shim"
+          ],
+          "declarationSource": "extensions/telegram/src/outbound-adapter.ts"
+        },
+        {
+          "id": "thread",
+          "group": "native-platform",
+          "title": "Thread Target Mapping",
+          "requiredLevel": "blocking",
+          "proofModes": [
+            "deterministic-shim"
+          ],
+          "declarationSource": "extensions/telegram/src/outbound-adapter.ts"
+        },
+        {
+          "id": "message-sending-hooks",
+          "group": "failure-recovery",
+          "title": "Message Sending Hooks",
+          "requiredLevel": "warning",
+          "proofModes": [
+            "deterministic-shim"
+          ],
+          "declarationSource": "extensions/telegram/src/outbound-adapter.ts"
+        },
+        {
+          "id": "batch",
+          "group": "durable-final",
+          "title": "Batch Final Delivery",
+          "requiredLevel": "warning",
+          "proofModes": [
+            "deterministic-shim"
+          ],
+          "declarationSource": "extensions/telegram/src/outbound-adapter.ts"
+        },
+        {
+          "id": "after-receive-record",
+          "group": "ack",
+          "title": "Ack After Receive Record",
+          "requiredLevel": "warning",
+          "proofModes": [
+            "deterministic-shim"
+          ],
+          "declarationSource": "extensions/telegram/src/channel.ts"
+        },
+        {
+          "id": "after-agent-dispatch",
+          "group": "ack",
+          "title": "Ack After Agent Dispatch",
+          "requiredLevel": "blocking",
+          "proofModes": [
+            "deterministic-shim"
+          ],
+          "declarationSource": "extensions/telegram/src/channel.ts"
+        },
+        {
+          "id": "draft-preview",
+          "group": "live-preview",
+          "title": "Draft Preview",
+          "requiredLevel": "warning",
+          "proofModes": [
+            "deterministic-shim"
+          ],
+          "declarationSource": "extensions/telegram/src/channel.ts"
+        },
+        {
+          "id": "preview-finalization",
+          "group": "live-preview",
+          "title": "Preview Finalization",
+          "requiredLevel": "warning",
+          "proofModes": [
+            "deterministic-shim"
+          ],
+          "declarationSource": "extensions/telegram/src/channel.ts"
+        },
+        {
+          "id": "progress-updates",
+          "group": "live-preview",
+          "title": "Progress Updates",
+          "requiredLevel": "warning",
+          "proofModes": [
+            "deterministic-shim"
+          ],
+          "declarationSource": "extensions/telegram/src/channel.ts"
+        },
+        {
+          "id": "retain-on-ambiguous-failure",
+          "group": "failure-recovery",
+          "title": "Retain Preview On Ambiguous Failure",
+          "requiredLevel": "warning",
+          "proofModes": [
+            "deterministic-shim"
+          ],
+          "declarationSource": "extensions/telegram/src/channel.ts"
+        }
+      ]
+    }
+  ],
   "scenarios": [
     {
       "id": "agent-auth-missing",

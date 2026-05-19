@@ -19,6 +19,7 @@ export async function runPlanCommand(flags) {
     surfaces: registry.surfaces,
     processRoles: registry.processRoles,
     metrics: registry.metrics,
+    channelCapabilities: registry.channelCapabilities,
     scenarios,
     states,
     profiles: profiles.map(profileSummary),

@@ -9,6 +9,7 @@ export const profilesDir = join(repoRoot, "profiles");
 export const surfacesDir = join(repoRoot, "surfaces");
 export const processRolesDir = join(repoRoot, "process-roles");
 export const metricsDir = join(repoRoot, "metrics");
+export const channelCapabilitiesDir = join(repoRoot, "channel-capabilities");
 export const kovaHome = resolveKovaHome();
 export const credentialsDir = join(kovaHome, "credentials");
 export const providersPath = join(credentialsDir, "providers.json");
