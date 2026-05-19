@@ -538,7 +538,7 @@
         "id": "channel-model-turn-baseline",
         "surface": "channel-model-turn-baseline",
         "title": "Channel Model Turn Baseline",
-        "objective": "Install the deterministic Kova channel, prove every shared OpenClaw channel capability, then run an aggregate real agent/model turn matrix through the mock provider and verify channel sends, receipts, timing, and duplicate/terminal invariants.",
+        "objective": "Install the deterministic Kova channel, run real inbound channel events through the OpenClaw agent/model path with a mock provider, and verify channel sends, receipts, timing, duplicate-send behavior, and terminal returns per model-turn case.",
         "tags": [
           "channel",
           "model",
