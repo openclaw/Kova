@@ -378,20 +378,23 @@ async function runModelTurnCase(testCase) {
   const caseDeliveryRecords = deliveryRecords.slice(beforeDelivery);
   const caseModelTurnRecords = modelTurnRecords.slice(beforeRecords);
   const finalOutboundRecords = caseOutboundRecords.filter((record) => isFinalOutboundRecord(record));
-  const finalTexts = finalOutboundRecords
+  const finalDeliveryRecords = finalOutboundRecords.length > 0
+    ? finalOutboundRecords
+    : normalizeFinalDeliveryRecords(caseDeliveryRecords);
+  const finalTexts = finalDeliveryRecords
     .map((record) => record.text)
     .filter((text) => typeof text === "string" && text.length > 0);
   const matchedText = typeof testCase.expectedText === "string"
     ? (finalTexts.find((text) => textEquals(text, testCase.expectedText)) ?? null)
     : null;
-  const firstFinal = finalOutboundRecords[0] ?? null;
+  const firstFinal = finalDeliveryRecords[0] ?? null;
   const invariants = [
     invariant(`${testCase.id}:turn-dispatched`, !error && turn?.dispatched === true, `${testCase.id} dispatched through OpenClaw runtime`),
-    invariant(`${testCase.id}:expected-final-count`, finalOutboundRecords.length === testCase.expectedFinalSendCount, `${testCase.id} produced expected final send count`),
+    invariant(`${testCase.id}:expected-final-count`, finalDeliveryRecords.length === testCase.expectedFinalSendCount, `${testCase.id} produced expected final send count`),
     invariant(`${testCase.id}:expected-final-kind`, !testCase.expectedKind || firstFinal?.kind === testCase.expectedKind, `${testCase.id} used expected channel send kind`),
     invariant(`${testCase.id}:expected-final-text`, !testCase.expectedText || Boolean(matchedText), `${testCase.id} final channel send equals expected text`),
     invariant(`${testCase.id}:delivery-receipt`, testCase.expectedFinalSendCount === 0 || caseDeliveryRecords.some((record) => record.fallback === false), `${testCase.id} durable delivery recorded a channel receipt`),
-    invariant(`${testCase.id}:single-final-send`, finalOutboundRecords.length <= 1 || testCase.allowMultipleFinalSends === true, `${testCase.id} did not duplicate final channel sends`),
+    invariant(`${testCase.id}:single-final-send`, finalDeliveryRecords.length <= 1 || testCase.allowMultipleFinalSends === true, `${testCase.id} did not duplicate final channel sends`),
     invariant(`${testCase.id}:reply-to`, !testCase.expectReplyToId || firstFinal?.replyToId === inboundEventId, `${testCase.id} preserved reply target`),
     invariant(`${testCase.id}:thread`, !testCase.threadId || firstFinal?.threadId === testCase.threadId, `${testCase.id} preserved thread target`),
     invariant(`${testCase.id}:silent`, testCase.silent !== true || firstFinal?.silent === true, `${testCase.id} preserved silent delivery intent`),
@@ -890,6 +893,11 @@ async function runSyntheticTurn({
           fallback: false,
           kind: info?.kind ?? null,
           text: delivered?.text ?? null,
+          mediaUrl: delivered?.mediaUrl ?? delivered?.mediaUrls?.[0] ?? null,
+          mediaUrls: Array.isArray(delivered?.mediaUrls) ? delivered.mediaUrls : [],
+          replyToId,
+          threadId,
+          silent: silent === true,
           visibleReplySent: result?.visibleReplySent ?? null,
           messageIds: result?.messageIds ?? null
         });
@@ -972,6 +980,11 @@ async function runOpenClawModelTurn({
           fallback: false,
           kind: info?.kind ?? null,
           text: delivered?.text ?? null,
+          mediaUrl: delivered?.mediaUrl ?? delivered?.mediaUrls?.[0] ?? null,
+          mediaUrls: Array.isArray(delivered?.mediaUrls) ? delivered.mediaUrls : [],
+          replyToId,
+          threadId,
+          silent: silent === true,
           visibleReplySent: result?.visibleReplySent ?? null,
           messageIds: result?.messageIds ?? null
         });
@@ -1003,6 +1016,36 @@ function modelTurnPrompt(testCase) {
 
 function isFinalOutboundRecord(record) {
   return ["text", "media", "payload"].includes(record?.kind);
+}
+
+function normalizeFinalDeliveryRecords(records) {
+  if (!Array.isArray(records)) {
+    return [];
+  }
+  return records
+    .filter((record) => record?.fallback === false)
+    .map((record) => ({
+      kind: deliveryRecordKind(record),
+      text: record.text ?? null,
+      mediaUrl: record.mediaUrl ?? record.mediaUrls?.[0] ?? null,
+      mediaUrls: Array.isArray(record.mediaUrls) ? record.mediaUrls : [],
+      silent: record.silent === true,
+      threadId: record.threadId ?? null,
+      replyToId: record.replyToId ?? null,
+      messageIds: record.messageIds ?? null,
+      visibleReplySent: record.visibleReplySent ?? null
+    }))
+    .filter((record) => isFinalOutboundRecord(record));
+}
+
+function deliveryRecordKind(record) {
+  if (typeof record?.mediaUrl === "string" && record.mediaUrl.length > 0) {
+    return "media";
+  }
+  if (Array.isArray(record?.mediaUrls) && record.mediaUrls.some((url) => typeof url === "string" && url.length > 0)) {
+    return "media";
+  }
+  return record?.kind === "payload" ? "payload" : "text";
 }
 
 function isManagedOutboundMedia(mediaUrl, sourcePath) {
