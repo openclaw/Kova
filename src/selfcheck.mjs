@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { quoteShell, runCommand } from "./commands.mjs";
 import { runCleanupCommand } from "./cleanup.mjs";
 import { applyEvidenceLedgerGating, attachEvidenceLedger } from "./evidence-ledger.mjs";
+import { appendChannelCapabilityEvidence, channelCapabilityEvidenceFromResult } from "./run/channel-capability-results.mjs";
 import { summarizeCpuProfiles } from "./collectors/node-profiles.mjs";
 import { summarizeHeapProfiles } from "./collectors/heap.mjs";
 import { collectEnvMetrics } from "./metrics.mjs";
@@ -161,6 +162,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(statusFoundationCheck());
     checks.push(evidenceLedgerGatingCheck());
     checks.push(channelCapabilityReportSummaryCheck());
+    checks.push(channelCapabilityResultIngestionCheck());
     checks.push(optionalDiagnosticGapCheck());
     checks.push(provisioningBlockedStatusCheck());
     checks.push(cleanupProofRequiredCheck());
@@ -1438,6 +1440,85 @@ function channelCapabilityReportSummaryCheck() {
       id: "channel-capability-report-summary",
       status: "FAIL",
       command: "evaluate channel capability report aggregation",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function channelCapabilityResultIngestionCheck() {
+  try {
+    const result = {
+      status: 0,
+      stdout: JSON.stringify({
+        schemaVersion: "kova.channelCapabilityRun.v1",
+        proofMode: "deterministic-shim",
+        artifactPath: "/tmp/kova/channel-capability-result.json",
+        ownerArea: "telegram adapter",
+        capabilities: [{
+          channelId: "telegram",
+          group: "durable-final",
+          capabilityId: "media",
+          required: true,
+          status: "failed",
+          summary: "Telegram durable-final media delivery preserves generated media",
+          reason: "sendMedia was not called"
+        }]
+      })
+    };
+    const evidence = channelCapabilityEvidenceFromResult(result, "channel-conformance", 0);
+    assertEqual(evidence.length, 1, "channel capability result row parsed");
+    assertEqual(evidence[0].phaseId, "channel-conformance", "channel capability phase id attached");
+    assertEqual(evidence[0].commandIndex, 0, "channel capability command index attached");
+    assertEqual(evidence[0].proofMode, "deterministic-shim", "channel capability proof mode attached");
+    assertEqual(evidence[0].ownerArea, "telegram adapter", "channel capability owner attached");
+
+    const record = {
+      scenario: "channel-telegram-capability-conformance",
+      surface: "channel-telegram-capability-conformance",
+      status: "PASS",
+      phases: []
+    };
+    appendChannelCapabilityEvidence(record, result, "channel-conformance", 0);
+    attachEvidenceLedger(record);
+    applyEvidenceLedgerGating(record);
+    assertEqual(record.channelCapabilityEvidence.length, 1, "channel capability evidence appended to record");
+    assertEqual(record.status, "FAIL", "ingested failed channel capability gates the record");
+
+    let rejectedBadStatus = false;
+    try {
+      channelCapabilityEvidenceFromResult({
+        status: 0,
+        stdout: JSON.stringify({
+          schemaVersion: "kova.channelCapabilityRun.v1",
+          capabilities: [{
+            channelId: "telegram",
+            group: "durable-final",
+            capabilityId: "media",
+            status: "unknown",
+            summary: "bad status"
+          }]
+        })
+      }, "channel-conformance", 0);
+    } catch (error) {
+      rejectedBadStatus = /status must be one of/.test(error.message);
+    }
+    assertEqual(rejectedBadStatus, true, "invalid channel capability status rejected");
+
+    const ignored = channelCapabilityEvidenceFromResult({ status: 0, stdout: "{\"ok\":true}" }, "phase", 0);
+    assertEqual(ignored.length, 0, "unrelated JSON command output ignored");
+
+    return {
+      id: "channel-capability-result-ingestion",
+      status: "PASS",
+      command: "evaluate channel capability helper result ingestion",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "channel-capability-result-ingestion",
+      status: "FAIL",
+      command: "evaluate channel capability helper result ingestion",
       durationMs: 0,
       message: error.message
     };

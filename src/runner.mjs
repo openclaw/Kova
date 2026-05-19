@@ -18,6 +18,7 @@ import {
   attachPostCleanupEvidence,
   collectPreCleanupEvidence
 } from "./run/finalize-record.mjs";
+import { appendChannelCapabilityEvidence } from "./run/channel-capability-results.mjs";
 import {
   buildScenarioPhase,
   buildTargetSetupPhase,
@@ -143,6 +144,7 @@ export async function executeScenario(scenario, context) {
         for (const [commandIndex, command] of plannedPhase.commands.entries()) {
           const result = await runScenarioCommand(command, context, envName, artifactDir, phase.id, commandIndex, authPolicy);
           results.push(result);
+          appendChannelCapabilityEvidence(record, result, phase.id, commandIndex);
           if (result.status !== 0) {
             scenarioFailed = true;
             record.status = classifyCommandFailure(result);
