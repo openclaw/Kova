@@ -59,6 +59,18 @@
     "missingRequired": [],
     "failedRequired": []
   },
+  "channelCapabilities": {
+    "total": 0,
+    "required": 0,
+    "passed": 0,
+    "failed": 0,
+    "missing": 0,
+    "skipped": 0,
+    "byStatus": {},
+    "byChannel": [],
+    "failedRequired": [],
+    "missingRequired": []
+  },
   "gate": null,
   "performance": null,
   "failureBrief": {

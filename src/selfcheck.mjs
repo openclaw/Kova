@@ -160,6 +160,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(evaluationViolationHelpersCheck());
     checks.push(statusFoundationCheck());
     checks.push(evidenceLedgerGatingCheck());
+    checks.push(channelCapabilityReportSummaryCheck());
     checks.push(optionalDiagnosticGapCheck());
     checks.push(provisioningBlockedStatusCheck());
     checks.push(cleanupProofRequiredCheck());
@@ -1359,6 +1360,84 @@ function evidenceLedgerGatingCheck() {
       id: "evidence-ledger-gating",
       status: "FAIL",
       command: "evaluate evidence ledger status gating",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function channelCapabilityReportSummaryCheck() {
+  try {
+    const record = {
+      scenario: "channel-telegram-capability-conformance",
+      surface: "channel-telegram-capability-conformance",
+      title: "Telegram Channel Capability Conformance",
+      status: "PASS",
+      state: { id: "fresh" },
+      likelyOwner: "telegram adapter",
+      phases: [],
+      channelCapabilityEvidence: [{
+        channelId: "telegram",
+        group: "durable-final",
+        capabilityId: "text",
+        required: true,
+        status: "passed",
+        proofMode: "deterministic-shim",
+        summary: "Telegram durable-final text delivery preserves assistant text"
+      }, {
+        channelId: "telegram",
+        group: "durable-final",
+        capabilityId: "media",
+        required: true,
+        status: "failed",
+        proofMode: "deterministic-shim",
+        summary: "Telegram durable-final media delivery preserves generated media",
+        reason: "Telegram media adapter did not emit a sendMedia request",
+        ownerArea: "telegram adapter"
+      }, {
+        channelId: "telegram",
+        group: "ack",
+        capabilityId: "after-agent-dispatch",
+        required: true,
+        status: "missing",
+        proofMode: "deterministic-shim",
+        summary: "Telegram ack is sent after agent dispatch",
+        reason: "scenario helper did not emit the ack proof row",
+        ownerArea: "Kova"
+      }]
+    };
+    attachEvidenceLedger(record);
+    applyEvidenceLedgerGating(record);
+    const summary = buildReportSummary({
+      mode: "execution",
+      target: "local-build:/tmp/openclaw",
+      records: [record],
+      summary: summarizeRecords([record])
+    });
+    assertEqual(summary.channelCapabilities.total, 3, "channel capability row count");
+    assertEqual(summary.channelCapabilities.required, 3, "channel capability required count");
+    assertEqual(summary.channelCapabilities.passed, 1, "channel capability passed count");
+    assertEqual(summary.channelCapabilities.failed, 1, "channel capability failed count");
+    assertEqual(summary.channelCapabilities.missing, 1, "channel capability missing count");
+    assertEqual(summary.channelCapabilities.byChannel[0]?.channelId, "telegram", "telegram channel capability summary");
+    assertEqual(summary.channelCapabilities.failedRequired[0]?.capabilityId, "media", "failed capability summary row");
+    assertEqual(summary.channelCapabilities.missingRequired[0]?.capabilityId, "after-agent-dispatch", "missing capability summary row");
+    assertEqual(summary.findings.some((finding) =>
+      finding.kind === "channel-capability" &&
+      finding.severity === "fail" &&
+      finding.ownerArea === "telegram adapter"
+    ), true, "failed channel capability finding is emitted");
+    return {
+      id: "channel-capability-report-summary",
+      status: "PASS",
+      command: "evaluate channel capability report aggregation",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "channel-capability-report-summary",
+      status: "FAIL",
+      command: "evaluate channel capability report aggregation",
       durationMs: 0,
       message: error.message
     };

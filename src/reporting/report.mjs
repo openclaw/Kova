@@ -32,6 +32,7 @@ export function renderMarkdownReport(report) {
     `| Records | ${summary.coverage.recordCount} (${tableCell(statusBreakdown)}) |`,
     "",
     ...formatProofCompletenessSection(summary.proof),
+    ...formatChannelCapabilityProofSection(summary.channelCapabilities),
     "## Run",
     "",
     "| Field | Value |",
@@ -135,6 +136,36 @@ function formatProofCompletenessSection(proof) {
     }
   }
 
+  lines.push("");
+  return lines;
+}
+
+function formatChannelCapabilityProofSection(proof) {
+  if (!proof || proof.total === 0) {
+    return [];
+  }
+
+  const lines = [
+    "## Channel Capability Proof",
+    "",
+    `- Capability rows: ${proof.total} total, ${proof.required} required, ${proof.passed} passed, ${proof.failed} failed, ${proof.missing} missing`,
+    "",
+    "| Channel | Rows | Required | Passed | Failed | Missing |",
+    "|---|---:|---:|---:|---:|---:|"
+  ];
+  for (const channel of proof.byChannel.slice(0, 12)) {
+    lines.push(`| ${tableCell(channel.channelId)} | ${channel.total} | ${channel.required} | ${channel.passed} | ${channel.failed} | ${channel.missing} |`);
+  }
+  const gaps = [...proof.failedRequired, ...proof.missingRequired].slice(0, 8);
+  if (gaps.length > 0) {
+    lines.push("");
+    lines.push("| Channel | Capability | Status | Reason |");
+    lines.push("|---|---|---|---|");
+    for (const gap of gaps) {
+      const capability = [gap.group, gap.capabilityId].filter(Boolean).join("/") || gap.id;
+      lines.push(`| ${tableCell(gap.channelId)} | ${tableCell(capability)} | ${tableCell(gap.status)} | ${tableCell(gap.reason ?? gap.summary ?? "see JSON")} |`);
+    }
+  }
   lines.push("");
   return lines;
 }
@@ -398,6 +429,7 @@ export function buildReportSummary(report) {
     },
     coverage: summarizeCoverage(records),
     proof: summarizeProofCompleteness(records),
+    channelCapabilities: summarizeChannelCapabilityProof(records),
     gate: report.gate ?? null,
     performance: summarizePerformance(report.performance, report.baseline),
     failureBrief: buildFailureBrief(report),
@@ -427,6 +459,7 @@ export function renderReportSummary(report, options = {}) {
       `Gate: ${summary.gate.verdict} (${summary.gate.blockingCount} blocking, ${summary.gate.warningCount} warning)`
     ] : []),
     `Proof: ${Object.entries(summary.proof?.completeness ?? {}).map(([status, count]) => `${status}=${count}`).join(", ") || "none"}; required ${summary.proof?.requiredTotal ?? 0}, missing ${summary.proof?.requiredMissing ?? 0}, failed ${summary.proof?.requiredFailed ?? 0}`,
+    `Channel capabilities: ${summary.channelCapabilities?.total ?? 0} total, ${summary.channelCapabilities?.failed ?? 0} failed, ${summary.channelCapabilities?.missing ?? 0} missing`,
     "Statuses:",
     ...Object.entries(summary.statuses).map(([status, count]) => `- ${status}: ${count}`),
     "",
@@ -736,6 +769,92 @@ function summarizeProofCompleteness(records) {
   }
 
   return proof;
+}
+
+function summarizeChannelCapabilityProof(records) {
+  const summary = {
+    total: 0,
+    required: 0,
+    passed: 0,
+    failed: 0,
+    missing: 0,
+    skipped: 0,
+    byStatus: {},
+    byChannel: [],
+    failedRequired: [],
+    missingRequired: []
+  };
+  const byChannel = new Map();
+
+  for (const [index, record] of records.entries()) {
+    for (const entry of record.evidenceLedger?.entries ?? []) {
+      if (entry.category !== "channel-capability") {
+        continue;
+      }
+      const channelId = entry.channelId ?? "unknown";
+      const channel = byChannel.get(channelId) ?? {
+        channelId,
+        total: 0,
+        required: 0,
+        passed: 0,
+        failed: 0,
+        missing: 0,
+        skipped: 0,
+        byStatus: {}
+      };
+      applyChannelCapabilityCounts(summary, entry);
+      applyChannelCapabilityCounts(channel, entry);
+      byChannel.set(channelId, channel);
+
+      if (entry.required && (entry.status === "failed" || entry.status === "missing")) {
+        const item = {
+          scenario: record.scenario ?? "unknown",
+          state: record.state?.id ?? null,
+          sampleIndex: record.repeat?.index ?? index + 1,
+          id: entry.id,
+          channelId,
+          group: entry.group ?? null,
+          capabilityId: entry.capabilityId ?? null,
+          proofMode: entry.proofMode ?? null,
+          status: entry.status,
+          summary: entry.summary ?? null,
+          reason: entry.reason ?? null,
+          artifactPath: entry.artifactPath ?? null,
+          ownerArea: entry.ownerArea ?? record.likelyOwner ?? null
+        };
+        if (entry.status === "failed") {
+          summary.failedRequired.push(item);
+        } else {
+          summary.missingRequired.push(item);
+        }
+      }
+    }
+  }
+
+  summary.byChannel = [...byChannel.values()].toSorted((left, right) =>
+    right.failed - left.failed ||
+    right.missing - left.missing ||
+    left.channelId.localeCompare(right.channelId)
+  );
+  return summary;
+}
+
+function applyChannelCapabilityCounts(target, entry) {
+  target.total += 1;
+  if (entry.required) {
+    target.required += 1;
+  }
+  const status = entry.status ?? "unknown";
+  target.byStatus[status] = (target.byStatus[status] ?? 0) + 1;
+  if (status === "passed") {
+    target.passed += 1;
+  } else if (status === "failed") {
+    target.failed += 1;
+  } else if (status === "missing") {
+    target.missing += 1;
+  } else if (status === "skipped") {
+    target.skipped += 1;
+  }
 }
 
 function summarizeReportGroups(report, samples) {
