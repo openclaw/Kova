@@ -14,19 +14,19 @@
 
 ─── scenarios ──────────────────────────────────────────────────────────────────
 
-scenario                      target          samples  verdict    worst metric
-channel-capability-preflight  runtime:stable      0/1  [DRY-RUN]  —
-channel-capability-baseline   runtime:stable      0/1  [DRY-RUN]  —
-release-runtime-startup       runtime:stable      0/1  [DRY-RUN]  —
-fresh-install                 runtime:stable      0/1  [DRY-RUN]  —
-bundled-runtime-deps          runtime:stable      0/1  [DRY-RUN]  —
-plugin-lifecycle              runtime:stable      0/1  [DRY-RUN]  —
-bundled-plugin-startup        runtime:stable      0/1  [DRY-RUN]  —
-gateway-performance           runtime:stable      0/1  [DRY-RUN]  —
-agent-cold-warm-message       runtime:stable      0/1  [DRY-RUN]  —
-agent-gateway-rpc-turn        runtime:stable      0/1  [DRY-RUN]  —
-gateway-session-send-turn     runtime:stable      0/1  [DRY-RUN]  —
-openai-compatible-turn        runtime:stable      0/1  [DRY-RUN]  —
+scenario                         target          samples  verdict    worst metr…
+channel-capability-preflight     runtime:stable      0/1  [DRY-RUN]  —
+channel-capability-shared-runt…  runtime:stable      0/1  [DRY-RUN]  —
+release-runtime-startup          runtime:stable      0/1  [DRY-RUN]  —
+fresh-install                    runtime:stable      0/1  [DRY-RUN]  —
+bundled-runtime-deps             runtime:stable      0/1  [DRY-RUN]  —
+plugin-lifecycle                 runtime:stable      0/1  [DRY-RUN]  —
+bundled-plugin-startup           runtime:stable      0/1  [DRY-RUN]  —
+gateway-performance              runtime:stable      0/1  [DRY-RUN]  —
+agent-cold-warm-message          runtime:stable      0/1  [DRY-RUN]  —
+agent-gateway-rpc-turn           runtime:stable      0/1  [DRY-RUN]  —
+gateway-session-send-turn        runtime:stable      0/1  [DRY-RUN]  —
+openai-compatible-turn           runtime:stable      0/1  [DRY-RUN]  —
 
 ─── next ───────────────────────────────────────────────────────────────────────
 

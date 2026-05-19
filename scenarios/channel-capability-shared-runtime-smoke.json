@@ -1,12 +1,12 @@
 {
-  "id": "channel-capability-baseline",
-  "surface": "channel-capability-baseline",
-  "title": "Channel Capability Baseline",
-  "objective": "Prove the target OpenClaw runtime executes the shared message-channel capability behavior expected by Kova before adapter-specific conformance runs.",
+  "id": "channel-capability-shared-runtime-smoke",
+  "surface": "channel-capability-shared-runtime-smoke",
+  "title": "Channel Capability Shared Runtime Smoke",
+  "objective": "Prove the target OpenClaw runtime package can execute shared message-channel helper behavior before the full runtime baseline and adapter-specific conformance runs.",
   "tags": [
     "channel",
     "capability",
-    "baseline",
+    "shared-runtime-smoke",
     "runtime"
   ],
   "targetKinds": [
@@ -37,22 +37,22 @@
       "collectionIntent": "service-only"
     },
     {
-      "id": "channel-capability-baseline",
-      "title": "OpenClaw Channel Capability Baseline",
-      "intent": "Import the selected OpenClaw runtime's packaged channel-message helpers, exercise shared message-channel behavior with deterministic in-memory adapters, and emit one baseline proof row per OpenClaw channel capability catalog entry.",
+      "id": "channel-capability-shared-runtime-smoke",
+      "title": "OpenClaw Channel Capability Shared Runtime Smoke",
+      "intent": "Import the selected OpenClaw runtime's packaged channel-message helpers, exercise shared helper behavior with deterministic in-memory adapters, and emit one shared-runtime-smoke proof row per OpenClaw channel capability catalog entry.",
       "commands": [
-        "node {kovaRoot}/support/run-channel-capability-baseline.mjs --env {env} --artifact-dir {artifactDir} --timeout-ms 120000"
+        "node {kovaRoot}/support/run-channel-capability-shared-runtime-smoke.mjs --env {env} --artifact-dir {artifactDir} --timeout-ms 120000"
       ],
       "evidence": [
         "OpenClaw runtime channel-message package export",
         "OpenClaw shared channel runtime behavior",
-        "baseline capability proof rows"
+        "shared runtime smoke capability proof rows"
       ],
       "healthScope": "none",
       "collectionIntent": "skip-env"
     }
   ],
   "proves": [
-    "baseline"
+    "shared-runtime-smoke"
   ]
 }

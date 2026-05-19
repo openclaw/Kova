@@ -8,7 +8,7 @@
       "state": "fresh"
     },
     {
-      "scenario": "channel-capability-baseline",
+      "scenario": "channel-capability-shared-runtime-smoke",
       "state": "fresh"
     },
     {

@@ -1,8 +1,8 @@
 {
-  "id": "channel-capability-baseline",
-  "title": "Channel Capability Baseline",
+  "id": "channel-capability-shared-runtime-smoke",
+  "title": "Channel Capability Shared Runtime Smoke",
   "ownerArea": "OpenClaw",
-  "description": "Validate shared OpenClaw message-channel capability behavior through the target runtime package export.",
+  "description": "Validate shared OpenClaw message-channel helper behavior through the target runtime package export.",
   "processRoles": [
     "command-tree"
   ],
@@ -17,7 +17,7 @@
   ],
   "requirements": [
     {
-      "id": "baseline",
+      "id": "shared-runtime-smoke",
       "states": [
         "fresh"
       ],

@@ -12,21 +12,21 @@ const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const args = parseSupportArgs(process.argv.slice(2));
 const artifactDir = requiredArg(args, "artifact-dir");
 const timeoutMs = readTimeoutMs(args["timeout-ms"], 120000);
-const artifactPath = join(artifactDir, "channel-capability-baseline.json");
+const artifactPath = join(artifactDir, "channel-capability-shared-runtime-smoke.json");
 const catalog = JSON.parse(await readFile(join(repoRoot, "channel-capabilities", "openclaw-message.json"), "utf8"));
 
 async function main() {
   let result;
   try {
     const runtimeContext = await resolveRuntimeContext(args);
-    const baseline = await runOpenClawChannelCapabilityBaseline({
+    const smoke = await runOpenClawChannelCapabilitySharedRuntimeSmoke({
       catalog,
       packageRoot: runtimeContext.packageRoot
     });
     result = buildResult({
       catalog,
       runtimeContext,
-      baseline,
+      smoke,
       error: null,
       timeoutMs
     });
@@ -34,7 +34,7 @@ async function main() {
     result = buildResult({
       catalog,
       runtimeContext: null,
-      baseline: null,
+      smoke: null,
       error,
       timeoutMs
     });
@@ -45,7 +45,7 @@ async function main() {
 
   process.stdout.write(`${JSON.stringify({
     schemaVersion: "kova.channelCapabilityRun.v1",
-    proofMode: "baseline",
+    proofMode: "shared-runtime-smoke",
     artifactPath,
     ownerArea: "OpenClaw",
     capabilities: result.rows.map((row) => ({
@@ -78,7 +78,7 @@ async function resolveRuntimeContext(parsed) {
   };
 }
 
-async function runOpenClawChannelCapabilityBaseline({ catalog: catalogValue, packageRoot }) {
+async function runOpenClawChannelCapabilitySharedRuntimeSmoke({ catalog: catalogValue, packageRoot }) {
   const channelMessage = await importOpenClawChannelMessage(packageRoot);
   const exportPath = await resolvePackageExportPath(packageRoot, "./plugin-sdk/channel-message");
   const proofs = [];
@@ -92,7 +92,7 @@ async function runOpenClawChannelCapabilityBaseline({ catalog: catalogValue, pac
         group: capability.group,
         capabilityId: capability.id,
         status: "missing",
-        reason: `no OpenClaw behavioral baseline proof implemented for ${key}`,
+        reason: `no OpenClaw shared runtime smoke proof implemented for ${key}`,
         durationMs: elapsedMs(startedAt)
       });
       continue;
@@ -611,15 +611,15 @@ async function proveAckPolicy(mod, policy, expectedStage) {
   return { policy, expectedStage, ackCalls, nackMessage };
 }
 
-function buildResult({ catalog: catalogValue, runtimeContext, baseline, error, timeoutMs: commandTimeoutMs }) {
-  const baselineError = error ? error.message : null;
-  const proofByCapability = new Map((baseline?.proofs ?? []).map((proof) => [`${proof.group}:${proof.capabilityId}`, proof]));
+function buildResult({ catalog: catalogValue, runtimeContext, smoke, error, timeoutMs: commandTimeoutMs }) {
+  const smokeError = error ? error.message : null;
+  const proofByCapability = new Map((smoke?.proofs ?? []).map((proof) => [`${proof.group}:${proof.capabilityId}`, proof]));
   const rows = [];
-  let ok = !baselineError;
+  let ok = !smokeError;
 
   for (const capability of catalogValue.capabilities ?? []) {
     const proof = proofByCapability.get(`${capability.group}:${capability.id}`) ?? null;
-    const status = baselineError ? "failed" : proof?.status ?? "missing";
+    const status = smokeError ? "failed" : proof?.status ?? "missing";
     if (status !== "passed") {
       ok = false;
     }
@@ -629,9 +629,9 @@ function buildResult({ catalog: catalogValue, runtimeContext, baseline, error, t
       capabilityId: capability.id,
       required: true,
       status,
-      proofMode: "baseline",
-      summary: `OpenClaw behavioral baseline ${capability.group}/${capability.id}`,
-      reason: status === "passed" ? null : (baselineError ?? proof?.reason ?? `OpenClaw baseline did not emit proof for ${capability.group}/${capability.id}`),
+      proofMode: "shared-runtime-smoke",
+      summary: `OpenClaw shared runtime smoke ${capability.group}/${capability.id}`,
+      reason: status === "passed" ? null : (smokeError ?? proof?.reason ?? `OpenClaw shared runtime smoke did not emit proof for ${capability.group}/${capability.id}`),
       ownerArea: "OpenClaw"
     });
   }
@@ -640,21 +640,21 @@ function buildResult({ catalog: catalogValue, runtimeContext, baseline, error, t
     ok,
     rows,
     artifact: {
-      schemaVersion: "kova.channelCapabilityBaselineArtifact.v1",
+      schemaVersion: "kova.channelCapabilitySharedRuntimeSmokeArtifact.v1",
       catalogId: catalogValue.id,
       catalogCapabilityCount: catalogValue.capabilities.length,
       runtimeContext: compactRuntimeContext(runtimeContext),
       timeoutMs: commandTimeoutMs,
-      baseline: baseline ? {
-        packageRoot: baseline.packageRoot,
-        exportPath: baseline.exportPath,
-        proofCount: baseline.proofs.length,
-        passed: baseline.proofs.filter((proof) => proof.status === "passed").length,
-        failed: baseline.proofs.filter((proof) => proof.status === "failed").length,
-        missing: baseline.proofs.filter((proof) => proof.status === "missing").length
+      smoke: smoke ? {
+        packageRoot: smoke.packageRoot,
+        exportPath: smoke.exportPath,
+        proofCount: smoke.proofs.length,
+        passed: smoke.proofs.filter((proof) => proof.status === "passed").length,
+        failed: smoke.proofs.filter((proof) => proof.status === "failed").length,
+        missing: smoke.proofs.filter((proof) => proof.status === "missing").length
       } : null,
-      error: baselineError,
-      proofs: baseline?.proofs ?? [],
+      error: smokeError,
+      proofs: smoke?.proofs ?? [],
       capabilities: rows
     }
   };

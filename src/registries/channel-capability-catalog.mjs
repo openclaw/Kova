@@ -17,6 +17,7 @@ export const channelCapabilityGroups = [
 
 export const channelCapabilityProofModes = [
   "preflight",
+  "shared-runtime-smoke",
   "baseline",
   "deterministic-shim",
   "live-smoke",

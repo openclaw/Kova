@@ -382,39 +382,6 @@
       ]
     },
     {
-      "id": "channel-capability-baseline",
-      "title": "Channel Capability Baseline",
-      "ownerArea": "OpenClaw",
-      "description": "Validate shared OpenClaw message-channel capability behavior through the target runtime package export.",
-      "processRoles": [
-        "command-tree"
-      ],
-      "thresholds": {},
-      "diagnostics": {
-        "timelineRequiredForSourceBuild": false,
-        "expectedSpans": []
-      },
-      "purposes": [
-        "regression",
-        "release"
-      ],
-      "requirements": [
-        {
-          "id": "baseline",
-          "states": [
-            "fresh"
-          ],
-          "targetKinds": [
-            "npm",
-            "release",
-            "runtime",
-            "local-build"
-          ],
-          "metrics": []
-        }
-      ]
-    },
-    {
       "id": "channel-capability-preflight",
       "title": "Channel Capability Preflight",
       "ownerArea": "OpenClaw",
@@ -434,6 +401,39 @@
       "requirements": [
         {
           "id": "preflight",
+          "states": [
+            "fresh"
+          ],
+          "targetKinds": [
+            "npm",
+            "release",
+            "runtime",
+            "local-build"
+          ],
+          "metrics": []
+        }
+      ]
+    },
+    {
+      "id": "channel-capability-shared-runtime-smoke",
+      "title": "Channel Capability Shared Runtime Smoke",
+      "ownerArea": "OpenClaw",
+      "description": "Validate shared OpenClaw message-channel helper behavior through the target runtime package export.",
+      "processRoles": [
+        "command-tree"
+      ],
+      "thresholds": {},
+      "diagnostics": {
+        "timelineRequiredForSourceBuild": false,
+        "expectedSpans": []
+      },
+      "purposes": [
+        "regression",
+        "release"
+      ],
+      "requirements": [
+        {
+          "id": "shared-runtime-smoke",
           "states": [
             "fresh"
           ],
@@ -2751,6 +2751,7 @@
           "baselineExpectation": "final assistant text can be rendered, sent, receipted, and committed through the shared message-channel path",
           "proofModes": [
             "preflight",
+            "shared-runtime-smoke",
             "baseline",
             "deterministic-shim",
             "live-smoke"
@@ -2765,6 +2766,7 @@
           "baselineExpectation": "generated media can be rendered, sent, receipted, and committed through the shared message-channel path",
           "proofModes": [
             "preflight",
+            "shared-runtime-smoke",
             "baseline",
             "deterministic-shim",
             "live-smoke"
@@ -2779,6 +2781,7 @@
           "baselineExpectation": "reply payloads can be rendered into channel sends without losing text, media, or presentation data",
           "proofModes": [
             "preflight",
+            "shared-runtime-smoke",
             "baseline",
             "deterministic-shim"
           ],
@@ -2792,6 +2795,7 @@
           "baselineExpectation": "silent delivery intent is carried through durable final send requirements and adapter context",
           "proofModes": [
             "preflight",
+            "shared-runtime-smoke",
             "baseline",
             "deterministic-shim"
           ],
@@ -2805,6 +2809,7 @@
           "baselineExpectation": "reply target intent is carried through durable final send requirements and adapter context",
           "proofModes": [
             "preflight",
+            "shared-runtime-smoke",
             "baseline",
             "deterministic-shim"
           ],
@@ -2818,6 +2823,7 @@
           "baselineExpectation": "thread target intent is carried through durable final send requirements and adapter context",
           "proofModes": [
             "preflight",
+            "shared-runtime-smoke",
             "baseline",
             "deterministic-shim"
           ],
@@ -2831,6 +2837,7 @@
           "baselineExpectation": "native quote intent can be represented as a declared durable final capability and proven by adapters that support it",
           "proofModes": [
             "preflight",
+            "shared-runtime-smoke",
             "baseline",
             "deterministic-shim"
           ],
@@ -2844,6 +2851,7 @@
           "baselineExpectation": "message sending hooks run around durable final sends without losing attempt context",
           "proofModes": [
             "preflight",
+            "shared-runtime-smoke",
             "baseline",
             "deterministic-shim"
           ],
@@ -2857,6 +2865,7 @@
           "baselineExpectation": "multi-part durable final payloads preserve ordering and receipts",
           "proofModes": [
             "preflight",
+            "shared-runtime-smoke",
             "baseline",
             "deterministic-shim"
           ],
@@ -2870,6 +2879,7 @@
           "baselineExpectation": "ambiguous durable send outcomes can be reconciled without duplicate or lost final delivery",
           "proofModes": [
             "preflight",
+            "shared-runtime-smoke",
             "baseline",
             "deterministic-shim"
           ],
@@ -2883,6 +2893,7 @@
           "baselineExpectation": "after-send-success lifecycle hooks run after successful platform send attempts",
           "proofModes": [
             "preflight",
+            "shared-runtime-smoke",
             "baseline",
             "deterministic-shim"
           ],
@@ -2896,6 +2907,7 @@
           "baselineExpectation": "after-commit lifecycle hooks run after durable final receipts are committed",
           "proofModes": [
             "preflight",
+            "shared-runtime-smoke",
             "baseline",
             "deterministic-shim"
           ],
@@ -2909,6 +2921,7 @@
           "baselineExpectation": "draft preview state can be declared and proven through the shared live message adapter contract",
           "proofModes": [
             "preflight",
+            "shared-runtime-smoke",
             "baseline",
             "deterministic-shim",
             "live-smoke"
@@ -2923,6 +2936,7 @@
           "baselineExpectation": "preview state can transition to final delivery through the shared live message adapter contract",
           "proofModes": [
             "preflight",
+            "shared-runtime-smoke",
             "baseline",
             "deterministic-shim",
             "live-smoke"
@@ -2937,6 +2951,7 @@
           "baselineExpectation": "progress updates can be represented and proven through the shared live message adapter contract",
           "proofModes": [
             "preflight",
+            "shared-runtime-smoke",
             "baseline",
             "deterministic-shim",
             "live-smoke"
@@ -2951,6 +2966,7 @@
           "baselineExpectation": "native streaming can be declared and proven by adapters that support streaming updates",
           "proofModes": [
             "preflight",
+            "shared-runtime-smoke",
             "baseline",
             "deterministic-shim",
             "live-smoke"
@@ -2965,6 +2981,7 @@
           "baselineExpectation": "quiet finalization can be declared and proven by adapters that suppress noisy final updates",
           "proofModes": [
             "preflight",
+            "shared-runtime-smoke",
             "baseline",
             "deterministic-shim",
             "live-smoke"
@@ -2979,6 +2996,7 @@
           "baselineExpectation": "live preview finalizers can edit an existing preview into the final message",
           "proofModes": [
             "preflight",
+            "shared-runtime-smoke",
             "baseline",
             "deterministic-shim",
             "live-smoke"
@@ -2993,6 +3011,7 @@
           "baselineExpectation": "live preview finalizers can fall back to a normal final send when edit finalization is unavailable",
           "proofModes": [
             "preflight",
+            "shared-runtime-smoke",
             "baseline",
             "deterministic-shim",
             "live-smoke"
@@ -3007,6 +3026,7 @@
           "baselineExpectation": "live preview finalizers can discard pending preview state when final delivery should not reuse it",
           "proofModes": [
             "preflight",
+            "shared-runtime-smoke",
             "baseline",
             "deterministic-shim",
             "live-smoke"
@@ -3021,6 +3041,7 @@
           "baselineExpectation": "live preview finalizers can carry preview receipts into finalization",
           "proofModes": [
             "preflight",
+            "shared-runtime-smoke",
             "baseline",
             "deterministic-shim",
             "live-smoke"
@@ -3035,6 +3056,7 @@
           "baselineExpectation": "live preview finalizers can retain preview state when finalization fails ambiguously",
           "proofModes": [
             "preflight",
+            "shared-runtime-smoke",
             "baseline",
             "deterministic-shim",
             "live-smoke"
@@ -3049,6 +3071,7 @@
           "baselineExpectation": "receive acknowledgement can run after the inbound message is recorded",
           "proofModes": [
             "preflight",
+            "shared-runtime-smoke",
             "baseline",
             "deterministic-shim",
             "live-smoke"
@@ -3063,6 +3086,7 @@
           "baselineExpectation": "receive acknowledgement can run after the inbound message is dispatched to the agent path",
           "proofModes": [
             "preflight",
+            "shared-runtime-smoke",
             "baseline",
             "deterministic-shim",
             "live-smoke"
@@ -3077,6 +3101,7 @@
           "baselineExpectation": "receive acknowledgement can run after durable outbound response send",
           "proofModes": [
             "preflight",
+            "shared-runtime-smoke",
             "baseline",
             "deterministic-shim",
             "live-smoke"
@@ -3091,6 +3116,7 @@
           "baselineExpectation": "manual receive acknowledgement can be declared as plugin-owned behavior and proven by the adapter",
           "proofModes": [
             "preflight",
+            "shared-runtime-smoke",
             "baseline",
             "deterministic-shim",
             "live-smoke"
@@ -4568,64 +4594,6 @@
       ]
     },
     {
-      "id": "channel-capability-baseline",
-      "surface": "channel-capability-baseline",
-      "title": "Channel Capability Baseline",
-      "objective": "Prove the target OpenClaw runtime executes the shared message-channel capability behavior expected by Kova before adapter-specific conformance runs.",
-      "tags": [
-        "channel",
-        "capability",
-        "baseline",
-        "runtime"
-      ],
-      "targetKinds": [
-        "npm",
-        "release",
-        "runtime",
-        "local-build"
-      ],
-      "timeoutMs": 180000,
-      "auth": {
-        "mode": "skip"
-      },
-      "thresholds": {},
-      "phases": [
-        {
-          "id": "provision",
-          "title": "Provision Runtime Env",
-          "intent": "Create a disposable OpenClaw environment with the selected target runtime so Kova can execute the release-shaped shared channel-message runtime path.",
-          "commands": [
-            "ocm start {env} {startSelector} --json"
-          ],
-          "evidence": [
-            "OCM start JSON",
-            "env name",
-            "runtime binding"
-          ],
-          "healthScope": "readiness",
-          "collectionIntent": "service-only"
-        },
-        {
-          "id": "channel-capability-baseline",
-          "title": "OpenClaw Channel Capability Baseline",
-          "intent": "Import the selected OpenClaw runtime's packaged channel-message helpers, exercise shared message-channel behavior with deterministic in-memory adapters, and emit one baseline proof row per OpenClaw channel capability catalog entry.",
-          "commands": [
-            "node {kovaRoot}/support/run-channel-capability-baseline.mjs --env {env} --artifact-dir {artifactDir} --timeout-ms 120000"
-          ],
-          "evidence": [
-            "OpenClaw runtime channel-message package export",
-            "OpenClaw shared channel runtime behavior",
-            "baseline capability proof rows"
-          ],
-          "healthScope": "none",
-          "collectionIntent": "skip-env"
-        }
-      ],
-      "proves": [
-        "baseline"
-      ]
-    },
-    {
       "id": "channel-capability-preflight",
       "surface": "channel-capability-preflight",
       "title": "Channel Capability Preflight",
@@ -4681,6 +4649,64 @@
       ],
       "proves": [
         "preflight"
+      ]
+    },
+    {
+      "id": "channel-capability-shared-runtime-smoke",
+      "surface": "channel-capability-shared-runtime-smoke",
+      "title": "Channel Capability Shared Runtime Smoke",
+      "objective": "Prove the target OpenClaw runtime package can execute shared message-channel helper behavior before the full runtime baseline and adapter-specific conformance runs.",
+      "tags": [
+        "channel",
+        "capability",
+        "shared-runtime-smoke",
+        "runtime"
+      ],
+      "targetKinds": [
+        "npm",
+        "release",
+        "runtime",
+        "local-build"
+      ],
+      "timeoutMs": 180000,
+      "auth": {
+        "mode": "skip"
+      },
+      "thresholds": {},
+      "phases": [
+        {
+          "id": "provision",
+          "title": "Provision Runtime Env",
+          "intent": "Create a disposable OpenClaw environment with the selected target runtime so Kova can execute the release-shaped shared channel-message runtime path.",
+          "commands": [
+            "ocm start {env} {startSelector} --json"
+          ],
+          "evidence": [
+            "OCM start JSON",
+            "env name",
+            "runtime binding"
+          ],
+          "healthScope": "readiness",
+          "collectionIntent": "service-only"
+        },
+        {
+          "id": "channel-capability-shared-runtime-smoke",
+          "title": "OpenClaw Channel Capability Shared Runtime Smoke",
+          "intent": "Import the selected OpenClaw runtime's packaged channel-message helpers, exercise shared helper behavior with deterministic in-memory adapters, and emit one shared-runtime-smoke proof row per OpenClaw channel capability catalog entry.",
+          "commands": [
+            "node {kovaRoot}/support/run-channel-capability-shared-runtime-smoke.mjs --env {env} --artifact-dir {artifactDir} --timeout-ms 120000"
+          ],
+          "evidence": [
+            "OpenClaw runtime channel-message package export",
+            "OpenClaw shared channel runtime behavior",
+            "shared runtime smoke capability proof rows"
+          ],
+          "healthScope": "none",
+          "collectionIntent": "skip-env"
+        }
+      ],
+      "proves": [
+        "shared-runtime-smoke"
       ]
     },
     {
@@ -8590,21 +8616,21 @@
         ]
       },
       {
-        "id": "channel-capability-baseline",
-        "title": "Channel Capability Baseline",
-        "ownerArea": "OpenClaw",
-        "scenarioCount": 1,
-        "scenarios": [
-          "channel-capability-baseline"
-        ]
-      },
-      {
         "id": "channel-capability-preflight",
         "title": "Channel Capability Preflight",
         "ownerArea": "OpenClaw",
         "scenarioCount": 1,
         "scenarios": [
           "channel-capability-preflight"
+        ]
+      },
+      {
+        "id": "channel-capability-shared-runtime-smoke",
+        "title": "Channel Capability Shared Runtime Smoke",
+        "ownerArea": "OpenClaw",
+        "scenarioCount": 1,
+        "scenarios": [
+          "channel-capability-shared-runtime-smoke"
         ]
       },
       {
@@ -8888,12 +8914,12 @@
         "surface": "bundled-runtime-deps"
       },
       {
-        "scenario": "channel-capability-baseline",
-        "surface": "channel-capability-baseline"
-      },
-      {
         "scenario": "channel-capability-preflight",
         "surface": "channel-capability-preflight"
+      },
+      {
+        "scenario": "channel-capability-shared-runtime-smoke",
+        "surface": "channel-capability-shared-runtime-smoke"
       },
       {
         "scenario": "cross-platform-smoke",
@@ -10075,8 +10101,8 @@
           "browser-automation",
           "bundled-plugin-startup",
           "bundled-runtime-deps",
-          "channel-capability-baseline",
           "channel-capability-preflight",
+          "channel-capability-shared-runtime-smoke",
           "cross-platform-smoke",
           "dashboard",
           "failure-containment",
@@ -10135,8 +10161,8 @@
           "browser-automation-smoke",
           "bundled-plugin-startup",
           "bundled-runtime-deps",
-          "channel-capability-baseline",
           "channel-capability-preflight",
+          "channel-capability-shared-runtime-smoke",
           "cross-platform-smoke",
           "dashboard-readiness",
           "failure-injection",
@@ -10169,8 +10195,8 @@
           "browser-automation:baseline",
           "bundled-plugin-startup:baseline",
           "bundled-runtime-deps:baseline",
-          "channel-capability-baseline:baseline",
           "channel-capability-preflight:preflight",
+          "channel-capability-shared-runtime-smoke:shared-runtime-smoke",
           "cross-platform-smoke:baseline",
           "dashboard:baseline",
           "failure-containment:baseline",
@@ -10203,8 +10229,8 @@
           "browser-automation:fresh",
           "bundled-plugin-startup:fresh",
           "bundled-runtime-deps:missing-plugin-index",
-          "channel-capability-baseline:fresh",
           "channel-capability-preflight:fresh",
+          "channel-capability-shared-runtime-smoke:fresh",
           "cross-platform-smoke:slow-filesystem",
           "dashboard:fresh",
           "failure-containment:broken-plugin-deps",
@@ -10241,8 +10267,8 @@
             "browser-automation",
             "bundled-plugin-startup",
             "bundled-runtime-deps",
-            "channel-capability-baseline",
             "channel-capability-preflight",
+            "channel-capability-shared-runtime-smoke",
             "cross-platform-smoke",
             "dashboard",
             "failure-containment",
@@ -10283,8 +10309,8 @@
             "browser-automation-smoke",
             "bundled-plugin-startup",
             "bundled-runtime-deps",
-            "channel-capability-baseline",
             "channel-capability-preflight",
+            "channel-capability-shared-runtime-smoke",
             "cross-platform-smoke",
             "dashboard-readiness",
             "failure-injection",
@@ -10363,8 +10389,8 @@
             "browser-automation:baseline",
             "bundled-plugin-startup:baseline",
             "bundled-runtime-deps:baseline",
-            "channel-capability-baseline:baseline",
             "channel-capability-preflight:preflight",
+            "channel-capability-shared-runtime-smoke:shared-runtime-smoke",
             "cross-platform-smoke:baseline",
             "dashboard:baseline",
             "failure-containment:baseline",
@@ -10397,8 +10423,8 @@
             "browser-automation:fresh",
             "bundled-plugin-startup:fresh",
             "bundled-runtime-deps:missing-plugin-index",
-            "channel-capability-baseline:fresh",
             "channel-capability-preflight:fresh",
+            "channel-capability-shared-runtime-smoke:fresh",
             "cross-platform-smoke:slow-filesystem",
             "dashboard:fresh",
             "failure-containment:broken-plugin-deps",
@@ -10557,10 +10583,10 @@
           "bundled-runtime-deps": [
             "missing-plugin-index"
           ],
-          "channel-capability-baseline": [
+          "channel-capability-preflight": [
             "fresh"
           ],
-          "channel-capability-preflight": [
+          "channel-capability-shared-runtime-smoke": [
             "fresh"
           ],
           "cross-platform-smoke": [
@@ -10651,8 +10677,8 @@
           "baseline": [
             "browser-automation",
             "bundled-plugin-startup",
-            "channel-capability-baseline",
             "channel-capability-preflight",
+            "channel-capability-shared-runtime-smoke",
             "dashboard",
             "fresh-install",
             "mcp-runtime",
@@ -10691,8 +10717,8 @@
           "fresh-user": [
             "browser-automation",
             "bundled-plugin-startup",
-            "channel-capability-baseline",
             "channel-capability-preflight",
+            "channel-capability-shared-runtime-smoke",
             "dashboard",
             "fresh-install",
             "mcp-runtime",
@@ -10777,8 +10803,8 @@
           "agent-gateway-rpc-turn",
           "bundled-plugin-startup",
           "bundled-runtime-deps",
-          "channel-capability-baseline",
           "channel-capability-preflight",
+          "channel-capability-shared-runtime-smoke",
           "fresh-install",
           "gateway-performance",
           "gateway-session-send-turn",
@@ -10798,8 +10824,8 @@
           "agent-gateway-rpc-turn",
           "bundled-plugin-startup",
           "bundled-runtime-deps",
-          "channel-capability-baseline",
           "channel-capability-preflight",
+          "channel-capability-shared-runtime-smoke",
           "fresh-install",
           "gateway-performance",
           "gateway-session-send-turn",
@@ -10812,8 +10838,8 @@
           "agent-gateway-rpc-turn:baseline",
           "bundled-plugin-startup:baseline",
           "bundled-runtime-deps:baseline",
-          "channel-capability-baseline:baseline",
           "channel-capability-preflight:preflight",
+          "channel-capability-shared-runtime-smoke:shared-runtime-smoke",
           "fresh-install:baseline",
           "gateway-performance:baseline",
           "gateway-session-send-turn:baseline",
@@ -10826,8 +10852,8 @@
           "agent-gateway-rpc-turn:mock-openai-provider",
           "bundled-plugin-startup:fresh",
           "bundled-runtime-deps:missing-plugin-index",
-          "channel-capability-baseline:fresh",
           "channel-capability-preflight:fresh",
+          "channel-capability-shared-runtime-smoke:fresh",
           "fresh-install:fresh",
           "gateway-performance:many-bundled-plugins",
           "gateway-session-send-turn:mock-openai-provider",
@@ -10904,10 +10930,10 @@
           "bundled-runtime-deps": [
             "missing-plugin-index"
           ],
-          "channel-capability-baseline": [
+          "channel-capability-preflight": [
             "fresh"
           ],
-          "channel-capability-preflight": [
+          "channel-capability-shared-runtime-smoke": [
             "fresh"
           ],
           "fresh-install": [
@@ -10938,15 +10964,15 @@
           ],
           "baseline": [
             "bundled-plugin-startup",
-            "channel-capability-baseline",
             "channel-capability-preflight",
+            "channel-capability-shared-runtime-smoke",
             "fresh-install",
             "release-runtime-startup"
           ],
           "fresh-user": [
             "bundled-plugin-startup",
-            "channel-capability-baseline",
             "channel-capability-preflight",
+            "channel-capability-shared-runtime-smoke",
             "fresh-install",
             "release-runtime-startup"
           ],

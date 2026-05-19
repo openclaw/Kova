@@ -69,9 +69,9 @@
         "requiredMetrics": []
       },
       {
-        "surface": "channel-capability-baseline",
-        "requirement": "baseline",
-        "scenario": "channel-capability-baseline",
+        "surface": "channel-capability-shared-runtime-smoke",
+        "requirement": "shared-runtime-smoke",
+        "scenario": "channel-capability-shared-runtime-smoke",
         "state": "fresh",
         "stateTraits": [
           "fresh-user",
@@ -473,14 +473,14 @@
     },
     {
       "scenario": {
-        "id": "channel-capability-baseline",
-        "surface": "channel-capability-baseline",
-        "title": "Channel Capability Baseline",
-        "objective": "Prove the target OpenClaw runtime executes the shared message-channel capability behavior expected by Kova before adapter-specific conformance runs.",
+        "id": "channel-capability-shared-runtime-smoke",
+        "surface": "channel-capability-shared-runtime-smoke",
+        "title": "Channel Capability Shared Runtime Smoke",
+        "objective": "Prove the target OpenClaw runtime package can execute shared message-channel helper behavior before the full runtime baseline and adapter-specific conformance runs.",
         "tags": [
           "channel",
           "capability",
-          "baseline",
+          "shared-runtime-smoke",
           "runtime"
         ]
       },
@@ -493,7 +493,7 @@
           "baseline"
         ]
       },
-      "surface": "channel-capability-baseline",
+      "surface": "channel-capability-shared-runtime-smoke",
       "timeoutMs": 180000,
       "platforms": null,
       "status": "SELECTED",
