@@ -7,6 +7,7 @@ import {
 import { evaluateRecord } from "../evaluator.mjs";
 import { collectEnvMetrics, collectNodeProfileMetrics } from "../metrics.mjs";
 import { collectProviderEvidence } from "../collectors/provider.mjs";
+import { collectStateFixtureAccounting } from "../collectors/state-fixtures.mjs";
 import { metricOptions } from "./metric-options.mjs";
 
 export async function collectPreCleanupEvidence(record, scenario, context, envName, artifactDir, authPolicy) {
@@ -14,6 +15,7 @@ export async function collectPreCleanupEvidence(record, scenario, context, envNa
   record.finalMetrics = await collectEnvMetrics(envName, metricOptions(context, scenario, null, artifactDir, {
     kind: "final"
   }));
+  record.stateFixtureAccounting = await collectStateFixtureAccounting(context.state, envName, artifactDir);
   record.providerEvidence = await collectProviderEvidence(artifactDir, { authPolicy });
   evaluateRecord(record, scenario, evaluatorContext(context, scenario));
 

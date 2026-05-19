@@ -144,6 +144,7 @@ export function aggregateScenarios(report, findings = []) {
       passed,
       phases: aggregatePhases(samples),
       metrics: aggregateMetrics(samples),
+      fixtureAccounting: aggregateFixtureAccounting(samples),
       findings: findingsByScenario.get(id) ?? [],
       proves: deriveProves(first, verdict),
       worst: findWorstViolation(samples),
@@ -153,6 +154,26 @@ export function aggregateScenarios(report, findings = []) {
   // Failure-first: failed/blocked first, then incomplete, then pass
   out.sort((a, b) => verdictRank(a.verdict) - verdictRank(b.verdict));
   return out;
+}
+
+function aggregateFixtureAccounting(samples) {
+  const accountings = samples
+    .map((sample) => sample.stateFixtureAccounting)
+    .filter((accounting) => accounting && typeof accounting === "object");
+  if (accountings.length === 0) {
+    return null;
+  }
+
+  const latest = accountings[accountings.length - 1];
+  return {
+    schemaVersion: "kova.fixtureAccountingScenarioSummary.v1",
+    sampleCount: accountings.length,
+    stateId: latest.stateId ?? null,
+    kind: latest.kind ?? null,
+    files: latest.files ?? [],
+    findings: latest.findings ?? [],
+    artifactPath: latest.artifactPath ?? null,
+  };
 }
 
 function verdictRank(v) {

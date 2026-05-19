@@ -232,6 +232,13 @@ function renderScenarioBlock(sc, ui, isFull) {
     if (hidden > 0) lines.push("    " + ui.c.dim(`+ ${hidden} more metric${hidden === 1 ? "" : "s"} (--full)`));
   }
 
+  const fixtureBlock = fixtureAccountingBlock(sc.fixtureAccounting, ui, { full: isFull });
+  if (fixtureBlock) {
+    lines.push("");
+    lines.push("  " + ui.c.dim("Fixture Accounting"));
+    lines.push(indentBlock(fixtureBlock, 4));
+  }
+
   if (isFull && sc.findings && sc.findings.length > 0) {
     lines.push("");
     lines.push("  " + ui.c.dim("Findings"));
@@ -245,6 +252,82 @@ function renderScenarioBlock(sc, ui, isFull) {
   }
 
   return lines.join("\n");
+}
+
+function fixtureAccountingBlock(accounting, ui, { full = false } = {}) {
+  if (!accounting || !Array.isArray(accounting.files) || accounting.files.length === 0) {
+    return "";
+  }
+  const lines = [];
+  const sessionFiles = accounting.files.filter((file) => String(file.id ?? "").includes("session"));
+  const memoryFiles = accounting.files.filter((file) => String(file.id ?? "").includes("memory"));
+  const sourceSession = sessionFiles.find((file) => file.id === "source-session-store");
+  const canonicalSession = sessionFiles.find((file) => file.id === "canonical-session-store");
+  const legacySession = sessionFiles.find((file) => file.id === "legacy-session-store");
+  if (sourceSession || canonicalSession || legacySession) {
+    lines.push(`sessions: ${fixtureFileText(sourceSession)} source; ${fixtureFileText(canonicalSession)} canonical; ${fixtureFileText(legacySession)} legacy`);
+  }
+  const sourceMemory = memoryFiles.find((file) => file.id === "source-memory");
+  const canonicalMemory = memoryFiles.find((file) => file.id === "canonical-memory");
+  const legacyMemory = memoryFiles.find((file) => file.id === "legacy-memory");
+  if (sourceMemory || canonicalMemory || legacyMemory) {
+    lines.push(`memory: ${fixtureFileText(sourceMemory)} source; ${fixtureFileText(canonicalMemory)} canonical; ${fixtureFileText(legacyMemory)} legacy`);
+  }
+  const findings = accounting.findings ?? [];
+  for (const finding of findings.slice(0, full ? 6 : 3)) {
+    lines.push(`${fixtureFindingGlyph(finding, ui)} ${finding.message}`);
+  }
+  const hidden = findings.length - Math.min(findings.length, full ? 6 : 3);
+  if (hidden > 0) {
+    lines.push(ui.c.dim(`+ ${hidden} more fixture note${hidden === 1 ? "" : "s"} (--full)`));
+  }
+  return lines.join("\n");
+}
+
+function fixtureFileText(file) {
+  if (!file) {
+    return "missing";
+  }
+  const size = file.exists ? formatBytes(file.sizeBytes) : "missing";
+  const shape = fixtureShapeText(file.shape);
+  return `${size} ${shape}`.trim();
+}
+
+function fixtureShapeText(shape) {
+  switch (shape?.kind) {
+    case "openclaw-session-store":
+      return `store[${shape.entryCount ?? "?"}]`;
+    case "malformed-session-wrapper":
+      return `wrapper[${shape.sessionArrayLength ?? "?"}]`;
+    case "kova-memory-fixture":
+      return `items[${shape.itemCount ?? "?"}]`;
+    case "missing":
+      return "missing";
+    default:
+      return shape?.kind ?? "unknown";
+  }
+}
+
+function fixtureFindingGlyph(finding, ui) {
+  if (finding?.severity === "warning") {
+    return ui.c.warn(ui.g.warn);
+  }
+  return ui.c.dim(ui.g.bullet);
+}
+
+function formatBytes(bytes) {
+  const n = Number(bytes);
+  if (!Number.isFinite(n)) {
+    return "unknown";
+  }
+  if (n < 1024) {
+    return `${n}B`;
+  }
+  const mb = n / 1024 / 1024;
+  if (mb >= 1) {
+    return `${mb.toLocaleString("en-US", { maximumFractionDigits: 1 })}MB`;
+  }
+  return `${(n / 1024).toLocaleString("en-US", { maximumFractionDigits: 1 })}KB`;
 }
 
 function countTopLevelMetrics(metrics) {
