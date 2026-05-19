@@ -1,12 +1,7 @@
-import { channelCapabilityCatalogDir } from "../paths.mjs";
-import {
-  assertNoShapeErrors,
-  loadJsonRegistry,
-  requireArray,
-  requireKebabId,
-  requireString,
-  validateStringArray
-} from "./validate.mjs";
+import { readFile, readdir } from "node:fs/promises";
+import { join } from "node:path";
+import { channelCapabilitiesDir } from "../paths.mjs";
+import { assertNoShapeErrors, requireArray, requireKebabId, requireString, validateStringArray } from "./validate.mjs";
 
 export const channelCapabilityGroups = [
   "receive",
@@ -28,12 +23,39 @@ export const channelCapabilityProofModes = [
 ];
 
 export async function loadChannelCapabilityCatalog(selectedId) {
-  return loadJsonRegistry({
-    dir: channelCapabilityCatalogDir,
+  return loadChannelCapabilityDocuments({
+    schemaVersion: "kova.channelCapabilityCatalog.v1",
     kind: "channel capability catalog",
     selectedId,
     validate: validateChannelCapabilityCatalogShape
   });
+}
+
+export async function loadChannelCapabilityDocuments({ schemaVersion, kind, selectedId, validate }) {
+  const names = await readdir(channelCapabilitiesDir);
+  const paths = names.filter((name) => name.endsWith(".json")).sort();
+  const items = [];
+  const ids = new Set();
+
+  for (const name of paths) {
+    const raw = await readFile(join(channelCapabilitiesDir, name), "utf8");
+    const item = JSON.parse(raw);
+    if (item.schemaVersion !== schemaVersion) {
+      continue;
+    }
+    validate(item, name);
+    if (ids.has(item.id)) {
+      throw new Error(`duplicate ${kind} id '${item.id}' in ${name}`);
+    }
+    ids.add(item.id);
+    items.push(item);
+  }
+
+  const filtered = selectedId ? items.filter((item) => item.id === selectedId) : items;
+  if (filtered.length === 0) {
+    throw new Error(`no ${kind} found for ${selectedId}`);
+  }
+  return filtered;
 }
 
 export function validateChannelCapabilityCatalogShape(catalog, sourceName = "channel capability catalog") {

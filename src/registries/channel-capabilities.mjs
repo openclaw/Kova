@@ -1,12 +1,11 @@
-import { channelCapabilitiesDir } from "../paths.mjs";
 import {
   channelCapabilityCatalogMap,
   channelCapabilityGroups,
-  channelCapabilityProofModes
+  channelCapabilityProofModes,
+  loadChannelCapabilityDocuments
 } from "./channel-capability-catalog.mjs";
 import {
   assertNoShapeErrors,
-  loadJsonRegistry,
   requireArray,
   requireKebabId,
   requireString,
@@ -27,8 +26,8 @@ export const channelSupportStatuses = [
 ];
 
 export async function loadChannelCapabilities(selectedId) {
-  return loadJsonRegistry({
-    dir: channelCapabilitiesDir,
+  return loadChannelCapabilityDocuments({
+    schemaVersion: "kova.channelCapability.v1",
     kind: "channel capability",
     selectedId,
     validate: validateChannelCapabilityShape
