@@ -94,8 +94,55 @@ export function validateStateShape(state, sourceName = "state") {
   if (state.officialPlugins !== undefined) {
     validateOfficialPlugins(state.officialPlugins, errors);
   }
+  if (state.fixtureAccounting !== undefined) {
+    validateFixtureAccounting(state.fixtureAccounting, errors);
+  }
 
   assertNoShapeErrors(errors, sourceName);
+}
+
+function validateFixtureAccounting(spec, errors) {
+  requireObject({ spec }, "spec", errors, "fixtureAccounting");
+  if (!spec || typeof spec !== "object" || Array.isArray(spec)) {
+    return;
+  }
+  if (spec.schemaVersion !== "kova.fixtureAccountingSpec.v1") {
+    errors.push("fixtureAccounting.schemaVersion must be kova.fixtureAccountingSpec.v1");
+  }
+  requireKebabId(spec, "kind", errors, "fixtureAccounting");
+  if (!Array.isArray(spec.files) || spec.files.length === 0) {
+    errors.push("fixtureAccounting.files must be a non-empty array");
+    return;
+  }
+  const ids = new Set();
+  for (const [index, file] of spec.files.entries()) {
+    const prefix = `fixtureAccounting.files[${index}]`;
+    requireObject({ file }, "file", errors, prefix);
+    if (!file || typeof file !== "object" || Array.isArray(file)) {
+      continue;
+    }
+    requireKebabId(file, "id", errors, prefix);
+    requireString(file, "path", errors, prefix);
+    requireString(file, "scope", errors, prefix);
+    requireString(file, "expectedShape", errors, prefix);
+    if (typeof file.id === "string") {
+      if (ids.has(file.id)) {
+        errors.push(`${prefix}.id duplicates fixtureAccounting file id '${file.id}'`);
+      }
+      ids.add(file.id);
+    }
+    if (file.scope !== "host" && file.scope !== "env") {
+      errors.push(`${prefix}.scope must be host or env`);
+    }
+    if (file.sourceId !== undefined && (typeof file.sourceId !== "string" || file.sourceId.length === 0)) {
+      errors.push(`${prefix}.sourceId must be a non-empty string when set`);
+    }
+  }
+  for (const [index, file] of spec.files.entries()) {
+    if (file?.sourceId && !ids.has(file.sourceId)) {
+      errors.push(`fixtureAccounting.files[${index}].sourceId references unknown file '${file.sourceId}'`);
+    }
+  }
 }
 
 function validateOfficialPlugins(plugins, errors) {

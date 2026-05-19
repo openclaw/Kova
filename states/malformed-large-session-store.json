@@ -1,32 +1,33 @@
 {
-  "id": "large-memory-session",
-  "title": "Valid Large Memory And Session State",
-  "objective": "A user state with valid large OpenClaw session-store and memory files, used to detect expensive startup/session parsing and memory growth without malformed fixture noise.",
+  "id": "malformed-large-session-store",
+  "title": "Malformed Large Session Store",
+  "objective": "A deliberately malformed large session-store wrapper, used to detect expensive startup parsing, repair, and rejection behavior without confusing it with valid user session state.",
   "tags": [
     "memory",
     "sessions",
     "performance",
-    "large-state"
+    "large-state",
+    "malformed-state"
   ],
   "prepare": [
     {
       "id": "prepare-host-import",
       "title": "Prepare Host Import Fixture",
-      "intent": "Create a host-side import fixture under the run artifact directory so state import behavior is exercised without touching durable user envs.",
+      "intent": "Create a host-side malformed import fixture under the run artifact directory so state import behavior is exercised without touching durable user envs.",
       "commands": [
-        "node '{kovaRoot}/scripts/large-session-fixture.mjs' prepare --root '{artifactDir}/import/session-pack' --shape valid"
+        "node '{kovaRoot}/scripts/large-session-fixture.mjs' prepare --root '{artifactDir}/import/session-pack' --shape malformed"
       ],
       "evidence": [
-        "host import fixture exists under the Kova artifact directory"
+        "host malformed import fixture exists under the Kova artifact directory"
       ],
       "collectionIntent": "skip-env"
     }
   ],
   "setup": [
     {
-      "id": "import-large-session-state",
-      "title": "Import Large Session State",
-      "intent": "Import valid large session and memory files into common OpenClaw state locations.",
+      "id": "import-malformed-large-session-store",
+      "title": "Import Malformed Large Session Store",
+      "intent": "Import malformed large session and memory files into common OpenClaw state locations.",
       "afterPhases": [
         "provision",
         "cold-start",
@@ -39,7 +40,7 @@
         "ocm env exec {env} -- sh -lc 'mkdir -p \"$OPENCLAW_HOME/.openclaw/agents/main/sessions\" \"$OPENCLAW_HOME/.openclaw/memory\" \"$OPENCLAW_HOME/sessions\" \"$OPENCLAW_HOME/memory\"; cp \"{artifactDir}/import/session-pack/sessions.json\" \"$OPENCLAW_HOME/.openclaw/agents/main/sessions/sessions.json\"; cp \"{artifactDir}/import/session-pack/sessions.json\" \"$OPENCLAW_HOME/sessions/sessions.json\"; cp \"{artifactDir}/import/session-pack/memory.json\" \"$OPENCLAW_HOME/.openclaw/memory/memory.json\"; cp \"{artifactDir}/import/session-pack/memory.json\" \"$OPENCLAW_HOME/memory/memory.json\"'"
       ],
       "evidence": [
-        "valid large session store imported",
+        "malformed large session wrapper imported",
         "large memory file imported"
       ],
       "collectionIntent": "service-only"
@@ -62,13 +63,14 @@
   "traits": [
     "memory-pressure",
     "session-state",
-    "performance-pressure"
+    "performance-pressure",
+    "failure-state"
   ],
   "riskArea": "memory-session-load",
   "ownerArea": "agent-runtime",
   "setupEvidence": [
-    "host import fixture exists under the Kova artifact directory",
-    "valid large session store imported",
+    "host malformed import fixture exists under the Kova artifact directory",
+    "malformed large session wrapper imported",
     "large memory file imported"
   ],
   "cleanupGuarantees": [
@@ -86,20 +88,20 @@
         "id": "source-session-store",
         "path": "{artifactDir}/import/session-pack/sessions.json",
         "scope": "host",
-        "expectedShape": "openclaw-session-store"
+        "expectedShape": "malformed-session-wrapper"
       },
       {
         "id": "canonical-session-store",
         "path": "{openclawHome}/.openclaw/agents/main/sessions/sessions.json",
         "scope": "env",
-        "expectedShape": "openclaw-session-store",
+        "expectedShape": "malformed-session-wrapper",
         "sourceId": "source-session-store"
       },
       {
         "id": "legacy-session-store",
         "path": "{openclawHome}/sessions/sessions.json",
         "scope": "env",
-        "expectedShape": "openclaw-session-store",
+        "expectedShape": "malformed-session-wrapper",
         "sourceId": "source-session-store"
       },
       {

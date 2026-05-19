@@ -52,6 +52,7 @@
         "corrupted-config",
         "fresh",
         "large-memory-session",
+        "malformed-large-session-store",
         "missing-plugin-index",
         "old-config-keys",
         "onboarded-user",

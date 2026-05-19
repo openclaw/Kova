@@ -25,6 +25,10 @@
     },
     {
       "scenario": "fresh-install",
+      "state": "malformed-large-session-store"
+    },
+    {
+      "scenario": "fresh-install",
       "state": "corrupted-config"
     },
     {

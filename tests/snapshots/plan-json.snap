@@ -613,6 +613,7 @@
             "corrupted-config",
             "fresh",
             "large-memory-session",
+            "malformed-large-session-store",
             "missing-plugin-index",
             "old-config-keys",
             "onboarded-user",
@@ -6618,8 +6619,8 @@
     },
     {
       "id": "large-memory-session",
-      "title": "Large Memory And Session State",
-      "objective": "A user state with large memory and session files, used to detect expensive startup/session parsing and memory growth.",
+      "title": "Valid Large Memory And Session State",
+      "objective": "A user state with valid large OpenClaw session-store and memory files, used to detect expensive startup/session parsing and memory growth without malformed fixture noise.",
       "tags": [
         "memory",
         "sessions",
@@ -6632,7 +6633,7 @@
           "title": "Prepare Host Import Fixture",
           "intent": "Create a host-side import fixture under the run artifact directory so state import behavior is exercised without touching durable user envs.",
           "commands": [
-            "mkdir -p '{artifactDir}/import/session-pack' && node -e 'const fs=require(\"fs\"), path=require(\"path\"); const root=\"{artifactDir}/import/session-pack\"; const sessions=Array.from({length:80},(_,i)=>({id:`kova-session-${i}`,createdAt:new Date().toISOString(),messages:Array.from({length:30},(_,j)=>({role:j%2?\"assistant\":\"user\",content:`kova fixture message ${i}/${j} `.repeat(200)}))})); fs.writeFileSync(path.join(root,\"sessions.json\"),JSON.stringify({schemaVersion:\"kova.fixture.sessions.v1\",sessions},null,2)); fs.writeFileSync(path.join(root,\"memory.json\"),JSON.stringify({schemaVersion:\"kova.fixture.memory.v1\",items:Array.from({length:1200},(_,i)=>({id:`memory-${i}`,text:`memory payload ${i} `.repeat(120)}))},null,2));'"
+            "node '{kovaRoot}/scripts/large-session-fixture.mjs' prepare --root '{artifactDir}/import/session-pack' --shape valid"
           ],
           "evidence": [
             "host import fixture exists under the Kova artifact directory"
@@ -6644,7 +6645,7 @@
         {
           "id": "import-large-session-state",
           "title": "Import Large Session State",
-          "intent": "Import large session and memory files into common OpenClaw state locations.",
+          "intent": "Import valid large session and memory files into common OpenClaw state locations.",
           "afterPhases": [
             "provision",
             "cold-start",
@@ -6657,7 +6658,7 @@
             "ocm env exec {env} -- sh -lc 'mkdir -p \"$OPENCLAW_HOME/.openclaw/agents/main/sessions\" \"$OPENCLAW_HOME/.openclaw/memory\" \"$OPENCLAW_HOME/sessions\" \"$OPENCLAW_HOME/memory\"; cp \"{artifactDir}/import/session-pack/sessions.json\" \"$OPENCLAW_HOME/.openclaw/agents/main/sessions/sessions.json\"; cp \"{artifactDir}/import/session-pack/sessions.json\" \"$OPENCLAW_HOME/sessions/sessions.json\"; cp \"{artifactDir}/import/session-pack/memory.json\" \"$OPENCLAW_HOME/.openclaw/memory/memory.json\"; cp \"{artifactDir}/import/session-pack/memory.json\" \"$OPENCLAW_HOME/memory/memory.json\"'"
           ],
           "evidence": [
-            "large session file imported",
+            "valid large session store imported",
             "large memory file imported"
           ],
           "collectionIntent": "service-only"
@@ -6686,7 +6687,7 @@
       "ownerArea": "agent-runtime",
       "setupEvidence": [
         "host import fixture exists under the Kova artifact directory",
-        "large session file imported",
+        "valid large session store imported",
         "large memory file imported"
       ],
       "cleanupGuarantees": [
@@ -6695,6 +6696,52 @@
       "source": {
         "kind": "host-import-fixture",
         "path": "{artifactDir}/import/session-pack"
+      },
+      "fixtureAccounting": {
+        "schemaVersion": "kova.fixtureAccountingSpec.v1",
+        "kind": "openclaw-session-state",
+        "files": [
+          {
+            "id": "source-session-store",
+            "path": "{artifactDir}/import/session-pack/sessions.json",
+            "scope": "host",
+            "expectedShape": "openclaw-session-store"
+          },
+          {
+            "id": "canonical-session-store",
+            "path": "{openclawHome}/.openclaw/agents/main/sessions/sessions.json",
+            "scope": "env",
+            "expectedShape": "openclaw-session-store",
+            "sourceId": "source-session-store"
+          },
+          {
+            "id": "legacy-session-store",
+            "path": "{openclawHome}/sessions/sessions.json",
+            "scope": "env",
+            "expectedShape": "openclaw-session-store",
+            "sourceId": "source-session-store"
+          },
+          {
+            "id": "source-memory",
+            "path": "{artifactDir}/import/session-pack/memory.json",
+            "scope": "host",
+            "expectedShape": "kova-memory-fixture"
+          },
+          {
+            "id": "canonical-memory",
+            "path": "{openclawHome}/.openclaw/memory/memory.json",
+            "scope": "env",
+            "expectedShape": "kova-memory-fixture",
+            "sourceId": "source-memory"
+          },
+          {
+            "id": "legacy-memory",
+            "path": "{openclawHome}/memory/memory.json",
+            "scope": "env",
+            "expectedShape": "kova-memory-fixture",
+            "sourceId": "source-memory"
+          }
+        ]
       }
     },
     {
@@ -6741,6 +6788,135 @@
       "cleanupGuarantees": [
         "disposable env cleanup removes state fixture files"
       ]
+    },
+    {
+      "id": "malformed-large-session-store",
+      "title": "Malformed Large Session Store",
+      "objective": "A deliberately malformed large session-store wrapper, used to detect expensive startup parsing, repair, and rejection behavior without confusing it with valid user session state.",
+      "tags": [
+        "memory",
+        "sessions",
+        "performance",
+        "large-state",
+        "malformed-state"
+      ],
+      "prepare": [
+        {
+          "id": "prepare-host-import",
+          "title": "Prepare Host Import Fixture",
+          "intent": "Create a host-side malformed import fixture under the run artifact directory so state import behavior is exercised without touching durable user envs.",
+          "commands": [
+            "node '{kovaRoot}/scripts/large-session-fixture.mjs' prepare --root '{artifactDir}/import/session-pack' --shape malformed"
+          ],
+          "evidence": [
+            "host malformed import fixture exists under the Kova artifact directory"
+          ],
+          "collectionIntent": "skip-env"
+        }
+      ],
+      "setup": [
+        {
+          "id": "import-malformed-large-session-store",
+          "title": "Import Malformed Large Session Store",
+          "intent": "Import malformed large session and memory files into common OpenClaw state locations.",
+          "afterPhases": [
+            "provision",
+            "cold-start",
+            "baseline",
+            "gateway",
+            "start",
+            "clone"
+          ],
+          "commands": [
+            "ocm env exec {env} -- sh -lc 'mkdir -p \"$OPENCLAW_HOME/.openclaw/agents/main/sessions\" \"$OPENCLAW_HOME/.openclaw/memory\" \"$OPENCLAW_HOME/sessions\" \"$OPENCLAW_HOME/memory\"; cp \"{artifactDir}/import/session-pack/sessions.json\" \"$OPENCLAW_HOME/.openclaw/agents/main/sessions/sessions.json\"; cp \"{artifactDir}/import/session-pack/sessions.json\" \"$OPENCLAW_HOME/sessions/sessions.json\"; cp \"{artifactDir}/import/session-pack/memory.json\" \"$OPENCLAW_HOME/.openclaw/memory/memory.json\"; cp \"{artifactDir}/import/session-pack/memory.json\" \"$OPENCLAW_HOME/memory/memory.json\"'"
+          ],
+          "evidence": [
+            "malformed large session wrapper imported",
+            "large memory file imported"
+          ],
+          "collectionIntent": "service-only"
+        }
+      ],
+      "cleanup": [
+        {
+          "id": "cleanup-host-import",
+          "title": "Cleanup Host Import Fixture",
+          "intent": "Remove host-side import fixture files after the env is no longer being retained.",
+          "commands": [
+            "rm -rf '{artifactDir}/import'"
+          ],
+          "evidence": [
+            "host import fixture removed"
+          ],
+          "collectionIntent": "skip-env"
+        }
+      ],
+      "traits": [
+        "memory-pressure",
+        "session-state",
+        "performance-pressure",
+        "failure-state"
+      ],
+      "riskArea": "memory-session-load",
+      "ownerArea": "agent-runtime",
+      "setupEvidence": [
+        "host malformed import fixture exists under the Kova artifact directory",
+        "malformed large session wrapper imported",
+        "large memory file imported"
+      ],
+      "cleanupGuarantees": [
+        "host import fixture removed"
+      ],
+      "source": {
+        "kind": "host-import-fixture",
+        "path": "{artifactDir}/import/session-pack"
+      },
+      "fixtureAccounting": {
+        "schemaVersion": "kova.fixtureAccountingSpec.v1",
+        "kind": "openclaw-session-state",
+        "files": [
+          {
+            "id": "source-session-store",
+            "path": "{artifactDir}/import/session-pack/sessions.json",
+            "scope": "host",
+            "expectedShape": "malformed-session-wrapper"
+          },
+          {
+            "id": "canonical-session-store",
+            "path": "{openclawHome}/.openclaw/agents/main/sessions/sessions.json",
+            "scope": "env",
+            "expectedShape": "malformed-session-wrapper",
+            "sourceId": "source-session-store"
+          },
+          {
+            "id": "legacy-session-store",
+            "path": "{openclawHome}/sessions/sessions.json",
+            "scope": "env",
+            "expectedShape": "malformed-session-wrapper",
+            "sourceId": "source-session-store"
+          },
+          {
+            "id": "source-memory",
+            "path": "{artifactDir}/import/session-pack/memory.json",
+            "scope": "host",
+            "expectedShape": "kova-memory-fixture"
+          },
+          {
+            "id": "canonical-memory",
+            "path": "{openclawHome}/.openclaw/memory/memory.json",
+            "scope": "env",
+            "expectedShape": "kova-memory-fixture",
+            "sourceId": "source-memory"
+          },
+          {
+            "id": "legacy-memory",
+            "path": "{openclawHome}/memory/memory.json",
+            "scope": "env",
+            "expectedShape": "kova-memory-fixture",
+            "sourceId": "source-memory"
+          }
+        ]
+      }
     },
     {
       "id": "many-bundled-plugins",
@@ -7527,7 +7703,7 @@
       "title": "Exhaustive Matrix",
       "objective": "Maximum local OpenClaw coverage across install, upgrade, plugins, providers, config corruption, filesystem pressure, service recovery, and performance scenarios.",
       "purpose": "regression",
-      "entryCount": 52,
+      "entryCount": 53,
       "targetKinds": null,
       "diagnostics": null,
       "calibration": null,
@@ -8339,7 +8515,7 @@
       },
       {
         "id": "exhaustive",
-        "entryCount": 52,
+        "entryCount": 53,
         "surfaces": [
           "agent-cli-local-turn",
           "agent-gateway-rpc-turn",
@@ -8382,6 +8558,7 @@
           "gateway-already-running",
           "large-memory-session",
           "large-workspace",
+          "malformed-large-session-store",
           "many-bundled-plugins",
           "missing-plugin-index",
           "mock-openai-provider",
@@ -8482,6 +8659,7 @@
           "fresh-install:corrupted-config",
           "fresh-install:fresh",
           "fresh-install:large-memory-session",
+          "fresh-install:malformed-large-session-store",
           "fresh-install:old-config-keys",
           "fresh-install:onboarded-user",
           "fresh-install:plugin-index",
@@ -8574,6 +8752,7 @@
             "broken-plugin-deps",
             "corrupted-config",
             "failed-upgrade",
+            "malformed-large-session-store",
             "model-auth-missing",
             "stale-service-state"
           ],
@@ -8586,7 +8765,8 @@
             "official-plugins"
           ],
           "memory-pressure": [
-            "large-memory-session"
+            "large-memory-session",
+            "malformed-large-session-store"
           ],
           "migration-state": [
             "missing-plugin-index",
@@ -8615,6 +8795,7 @@
           "performance-pressure": [
             "large-memory-session",
             "large-workspace",
+            "malformed-large-session-store",
             "many-bundled-plugins",
             "slow-filesystem"
           ],
@@ -8647,7 +8828,8 @@
             "stale-service-state"
           ],
           "session-state": [
-            "large-memory-session"
+            "large-memory-session",
+            "malformed-large-session-store"
           ],
           "upgraded-user": [
             "failed-upgrade"
@@ -8689,6 +8871,7 @@
             "corrupted-config",
             "fresh",
             "large-memory-session",
+            "malformed-large-session-store",
             "old-config-keys",
             "onboarded-user",
             "plugin-index"

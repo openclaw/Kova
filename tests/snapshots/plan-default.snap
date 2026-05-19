@@ -3,7 +3,7 @@
 ╚══════════════════════════════════════════════════════════════════════════════╝
    43 scenarios · 29 surfaces                   darwin 25.3.0 · arm64 · v24.13.0
 
-  Scenarios 43   ·   States 26   ·   Profiles 8   ·   Surfaces 29
+  Scenarios 43   ·   States 27   ·   Profiles 8   ·   Surfaces 29
 
 ─── surfaces by owner ──────────────────────────────────────────────────────────
   ◆ agent-cli-gateway-client  1 surface · 1 scenario
