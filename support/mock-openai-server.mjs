@@ -330,12 +330,13 @@ function behaviorForProviderCall() {
 }
 
 function resolveResponseText(requestBodyText) {
-  const match = String(requestBodyText ?? "").match(/KOVA_MOCK_RESPONSE_B64:([A-Za-z0-9+/_=-]+)/);
-  if (!match) {
+  const matches = [...String(requestBodyText ?? "").matchAll(/KOVA_MOCK_RESPONSE_B64:([A-Za-z0-9+/_=-]+)/g)];
+  const latest = matches.at(-1);
+  if (!latest) {
     return marker;
   }
   try {
-    return Buffer.from(match[1].replaceAll("-", "+").replaceAll("_", "/"), "base64").toString("utf8");
+    return Buffer.from(latest[1].replaceAll("-", "+").replaceAll("_", "/"), "base64").toString("utf8");
   } catch {
     return marker;
   }
