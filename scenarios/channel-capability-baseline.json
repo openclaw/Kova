@@ -1,0 +1,58 @@
+{
+  "id": "channel-capability-baseline",
+  "surface": "channel-capability-baseline",
+  "title": "Channel Capability Baseline",
+  "objective": "Prove the target OpenClaw runtime executes the shared message-channel capability behavior expected by Kova before adapter-specific conformance runs.",
+  "tags": [
+    "channel",
+    "capability",
+    "baseline",
+    "runtime"
+  ],
+  "targetKinds": [
+    "npm",
+    "release",
+    "runtime",
+    "local-build"
+  ],
+  "timeoutMs": 180000,
+  "auth": {
+    "mode": "skip"
+  },
+  "thresholds": {},
+  "phases": [
+    {
+      "id": "provision",
+      "title": "Provision Runtime Env",
+      "intent": "Create a disposable OpenClaw environment with the selected target runtime so Kova can execute the release-shaped shared channel-message runtime path.",
+      "commands": [
+        "ocm start {env} {startSelector} --json"
+      ],
+      "evidence": [
+        "OCM start JSON",
+        "env name",
+        "runtime binding"
+      ],
+      "healthScope": "readiness",
+      "collectionIntent": "service-only"
+    },
+    {
+      "id": "channel-capability-baseline",
+      "title": "OpenClaw Channel Capability Baseline",
+      "intent": "Import the selected OpenClaw runtime's packaged channel-message helpers, exercise shared message-channel behavior with deterministic in-memory adapters, and emit one baseline proof row per OpenClaw channel capability catalog entry.",
+      "commands": [
+        "node {kovaRoot}/support/run-channel-capability-baseline.mjs --env {env} --artifact-dir {artifactDir} --timeout-ms 120000"
+      ],
+      "evidence": [
+        "OpenClaw runtime channel-message package export",
+        "OpenClaw shared channel runtime behavior",
+        "baseline capability proof rows"
+      ],
+      "healthScope": "none",
+      "collectionIntent": "skip-env"
+    }
+  ],
+  "proves": [
+    "baseline"
+  ]
+}

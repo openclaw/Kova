@@ -232,6 +232,8 @@
       },
       "requirements": {
         "blocking": [
+          "channel-capability-preflight:preflight",
+          "channel-capability-baseline:baseline",
           "release-runtime-startup:baseline",
           "fresh-install:baseline",
           "upgrade-existing-user:baseline",
@@ -267,6 +269,14 @@
       }
     },
     "blocking": [
+      {
+        "scenario": "channel-capability-preflight",
+        "state": "fresh"
+      },
+      {
+        "scenario": "channel-capability-baseline",
+        "state": "fresh"
+      },
       {
         "scenario": "release-runtime-startup",
         "state": "fresh"
@@ -439,6 +449,14 @@
     ]
   },
   "entries": [
+    {
+      "scenario": "channel-capability-preflight",
+      "state": "fresh"
+    },
+    {
+      "scenario": "channel-capability-baseline",
+      "state": "fresh"
+    },
     {
       "scenario": "release-runtime-startup",
       "state": "fresh"

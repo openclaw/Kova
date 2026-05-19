@@ -1,0 +1,33 @@
+{
+  "id": "channel-capability-baseline",
+  "title": "Channel Capability Baseline",
+  "ownerArea": "OpenClaw",
+  "description": "Validate shared OpenClaw message-channel capability behavior through the target runtime package export.",
+  "processRoles": [
+    "command-tree"
+  ],
+  "thresholds": {},
+  "diagnostics": {
+    "timelineRequiredForSourceBuild": false,
+    "expectedSpans": []
+  },
+  "purposes": [
+    "regression",
+    "release"
+  ],
+  "requirements": [
+    {
+      "id": "baseline",
+      "states": [
+        "fresh"
+      ],
+      "targetKinds": [
+        "npm",
+        "release",
+        "runtime",
+        "local-build"
+      ],
+      "metrics": []
+    }
+  ]
+}

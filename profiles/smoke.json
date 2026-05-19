@@ -4,6 +4,14 @@
   "objective": "Fast OpenClaw coverage across fresh install, plugin dependency, plugin lifecycle, and gateway performance states.",
   "entries": [
     {
+      "scenario": "channel-capability-preflight",
+      "state": "fresh"
+    },
+    {
+      "scenario": "channel-capability-baseline",
+      "state": "fresh"
+    },
+    {
       "scenario": "release-runtime-startup",
       "state": "fresh"
     },

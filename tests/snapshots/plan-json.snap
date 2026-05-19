@@ -382,6 +382,39 @@
       ]
     },
     {
+      "id": "channel-capability-baseline",
+      "title": "Channel Capability Baseline",
+      "ownerArea": "OpenClaw",
+      "description": "Validate shared OpenClaw message-channel capability behavior through the target runtime package export.",
+      "processRoles": [
+        "command-tree"
+      ],
+      "thresholds": {},
+      "diagnostics": {
+        "timelineRequiredForSourceBuild": false,
+        "expectedSpans": []
+      },
+      "purposes": [
+        "regression",
+        "release"
+      ],
+      "requirements": [
+        {
+          "id": "baseline",
+          "states": [
+            "fresh"
+          ],
+          "targetKinds": [
+            "npm",
+            "release",
+            "runtime",
+            "local-build"
+          ],
+          "metrics": []
+        }
+      ]
+    },
+    {
       "id": "channel-capability-preflight",
       "title": "Channel Capability Preflight",
       "ownerArea": "OpenClaw",
@@ -4535,6 +4568,64 @@
       ]
     },
     {
+      "id": "channel-capability-baseline",
+      "surface": "channel-capability-baseline",
+      "title": "Channel Capability Baseline",
+      "objective": "Prove the target OpenClaw runtime executes the shared message-channel capability behavior expected by Kova before adapter-specific conformance runs.",
+      "tags": [
+        "channel",
+        "capability",
+        "baseline",
+        "runtime"
+      ],
+      "targetKinds": [
+        "npm",
+        "release",
+        "runtime",
+        "local-build"
+      ],
+      "timeoutMs": 180000,
+      "auth": {
+        "mode": "skip"
+      },
+      "thresholds": {},
+      "phases": [
+        {
+          "id": "provision",
+          "title": "Provision Runtime Env",
+          "intent": "Create a disposable OpenClaw environment with the selected target runtime so Kova can execute the release-shaped shared channel-message runtime path.",
+          "commands": [
+            "ocm start {env} {startSelector} --json"
+          ],
+          "evidence": [
+            "OCM start JSON",
+            "env name",
+            "runtime binding"
+          ],
+          "healthScope": "readiness",
+          "collectionIntent": "service-only"
+        },
+        {
+          "id": "channel-capability-baseline",
+          "title": "OpenClaw Channel Capability Baseline",
+          "intent": "Import the selected OpenClaw runtime's packaged channel-message helpers, exercise shared message-channel behavior with deterministic in-memory adapters, and emit one baseline proof row per OpenClaw channel capability catalog entry.",
+          "commands": [
+            "node {kovaRoot}/support/run-channel-capability-baseline.mjs --env {env} --artifact-dir {artifactDir} --timeout-ms 120000"
+          ],
+          "evidence": [
+            "OpenClaw runtime channel-message package export",
+            "OpenClaw shared channel runtime behavior",
+            "baseline capability proof rows"
+          ],
+          "healthScope": "none",
+          "collectionIntent": "skip-env"
+        }
+      ],
+      "proves": [
+        "baseline"
+      ]
+    },
+    {
       "id": "channel-capability-preflight",
       "surface": "channel-capability-preflight",
       "title": "Channel Capability Preflight",
@@ -8406,7 +8497,7 @@
       "title": "Release Matrix",
       "objective": "Broad OpenClaw release confidence across install, upgrade, bundled plugins, model/provider, UI, failure, soak, and platform smoke scenarios.",
       "purpose": "release",
-      "entryCount": 41,
+      "entryCount": 43,
       "targetKinds": null,
       "diagnostics": null,
       "calibration": {
@@ -8415,7 +8506,7 @@
       },
       "gate": {
         "id": "openclaw-release",
-        "blockingCount": 25,
+        "blockingCount": 27,
         "warningCount": 16
       }
     },
@@ -8424,7 +8515,7 @@
       "title": "Smoke Matrix",
       "objective": "Fast OpenClaw coverage across fresh install, plugin dependency, plugin lifecycle, and gateway performance states.",
       "purpose": "regression",
-      "entryCount": 10,
+      "entryCount": 12,
       "targetKinds": null,
       "diagnostics": null,
       "calibration": null,
@@ -8496,6 +8587,15 @@
         "scenarioCount": 1,
         "scenarios": [
           "bundled-runtime-deps"
+        ]
+      },
+      {
+        "id": "channel-capability-baseline",
+        "title": "Channel Capability Baseline",
+        "ownerArea": "OpenClaw",
+        "scenarioCount": 1,
+        "scenarios": [
+          "channel-capability-baseline"
         ]
       },
       {
@@ -8786,6 +8886,10 @@
       {
         "scenario": "bundled-runtime-deps",
         "surface": "bundled-runtime-deps"
+      },
+      {
+        "scenario": "channel-capability-baseline",
+        "surface": "channel-capability-baseline"
       },
       {
         "scenario": "channel-capability-preflight",
@@ -9964,13 +10068,15 @@
       },
       {
         "id": "release",
-        "entryCount": 41,
+        "entryCount": 43,
         "surfaces": [
           "agent-cli-local-turn",
           "agent-gateway-rpc-turn",
           "browser-automation",
           "bundled-plugin-startup",
           "bundled-runtime-deps",
+          "channel-capability-baseline",
+          "channel-capability-preflight",
           "cross-platform-smoke",
           "dashboard",
           "failure-containment",
@@ -10029,6 +10135,8 @@
           "browser-automation-smoke",
           "bundled-plugin-startup",
           "bundled-runtime-deps",
+          "channel-capability-baseline",
+          "channel-capability-preflight",
           "cross-platform-smoke",
           "dashboard-readiness",
           "failure-injection",
@@ -10061,6 +10169,8 @@
           "browser-automation:baseline",
           "bundled-plugin-startup:baseline",
           "bundled-runtime-deps:baseline",
+          "channel-capability-baseline:baseline",
+          "channel-capability-preflight:preflight",
           "cross-platform-smoke:baseline",
           "dashboard:baseline",
           "failure-containment:baseline",
@@ -10093,6 +10203,8 @@
           "browser-automation:fresh",
           "bundled-plugin-startup:fresh",
           "bundled-runtime-deps:missing-plugin-index",
+          "channel-capability-baseline:fresh",
+          "channel-capability-preflight:fresh",
           "cross-platform-smoke:slow-filesystem",
           "dashboard:fresh",
           "failure-containment:broken-plugin-deps",
@@ -10129,6 +10241,8 @@
             "browser-automation",
             "bundled-plugin-startup",
             "bundled-runtime-deps",
+            "channel-capability-baseline",
+            "channel-capability-preflight",
             "cross-platform-smoke",
             "dashboard",
             "failure-containment",
@@ -10169,6 +10283,8 @@
             "browser-automation-smoke",
             "bundled-plugin-startup",
             "bundled-runtime-deps",
+            "channel-capability-baseline",
+            "channel-capability-preflight",
             "cross-platform-smoke",
             "dashboard-readiness",
             "failure-injection",
@@ -10247,6 +10363,8 @@
             "browser-automation:baseline",
             "bundled-plugin-startup:baseline",
             "bundled-runtime-deps:baseline",
+            "channel-capability-baseline:baseline",
+            "channel-capability-preflight:preflight",
             "cross-platform-smoke:baseline",
             "dashboard:baseline",
             "failure-containment:baseline",
@@ -10279,6 +10397,8 @@
             "browser-automation:fresh",
             "bundled-plugin-startup:fresh",
             "bundled-runtime-deps:missing-plugin-index",
+            "channel-capability-baseline:fresh",
+            "channel-capability-preflight:fresh",
             "cross-platform-smoke:slow-filesystem",
             "dashboard:fresh",
             "failure-containment:broken-plugin-deps",
@@ -10437,6 +10557,12 @@
           "bundled-runtime-deps": [
             "missing-plugin-index"
           ],
+          "channel-capability-baseline": [
+            "fresh"
+          ],
+          "channel-capability-preflight": [
+            "fresh"
+          ],
           "cross-platform-smoke": [
             "slow-filesystem"
           ],
@@ -10525,6 +10651,8 @@
           "baseline": [
             "browser-automation",
             "bundled-plugin-startup",
+            "channel-capability-baseline",
+            "channel-capability-preflight",
             "dashboard",
             "fresh-install",
             "mcp-runtime",
@@ -10563,6 +10691,8 @@
           "fresh-user": [
             "browser-automation",
             "bundled-plugin-startup",
+            "channel-capability-baseline",
+            "channel-capability-preflight",
             "dashboard",
             "fresh-install",
             "mcp-runtime",
@@ -10641,12 +10771,14 @@
       },
       {
         "id": "smoke",
-        "entryCount": 10,
+        "entryCount": 12,
         "surfaces": [
           "agent-cli-local-turn",
           "agent-gateway-rpc-turn",
           "bundled-plugin-startup",
           "bundled-runtime-deps",
+          "channel-capability-baseline",
+          "channel-capability-preflight",
           "fresh-install",
           "gateway-performance",
           "gateway-session-send-turn",
@@ -10666,6 +10798,8 @@
           "agent-gateway-rpc-turn",
           "bundled-plugin-startup",
           "bundled-runtime-deps",
+          "channel-capability-baseline",
+          "channel-capability-preflight",
           "fresh-install",
           "gateway-performance",
           "gateway-session-send-turn",
@@ -10678,6 +10812,8 @@
           "agent-gateway-rpc-turn:baseline",
           "bundled-plugin-startup:baseline",
           "bundled-runtime-deps:baseline",
+          "channel-capability-baseline:baseline",
+          "channel-capability-preflight:preflight",
           "fresh-install:baseline",
           "gateway-performance:baseline",
           "gateway-session-send-turn:baseline",
@@ -10690,6 +10826,8 @@
           "agent-gateway-rpc-turn:mock-openai-provider",
           "bundled-plugin-startup:fresh",
           "bundled-runtime-deps:missing-plugin-index",
+          "channel-capability-baseline:fresh",
+          "channel-capability-preflight:fresh",
           "fresh-install:fresh",
           "gateway-performance:many-bundled-plugins",
           "gateway-session-send-turn:mock-openai-provider",
@@ -10766,6 +10904,12 @@
           "bundled-runtime-deps": [
             "missing-plugin-index"
           ],
+          "channel-capability-baseline": [
+            "fresh"
+          ],
+          "channel-capability-preflight": [
+            "fresh"
+          ],
           "fresh-install": [
             "fresh"
           ],
@@ -10794,11 +10938,15 @@
           ],
           "baseline": [
             "bundled-plugin-startup",
+            "channel-capability-baseline",
+            "channel-capability-preflight",
             "fresh-install",
             "release-runtime-startup"
           ],
           "fresh-user": [
             "bundled-plugin-startup",
+            "channel-capability-baseline",
+            "channel-capability-preflight",
             "fresh-install",
             "release-runtime-startup"
           ],

@@ -12,7 +12,7 @@
     "title": "Smoke Matrix",
     "objective": "Fast OpenClaw coverage across fresh install, plugin dependency, plugin lifecycle, and gateway performance states.",
     "purpose": "regression",
-    "entryCount": 10,
+    "entryCount": 12,
     "targetKinds": null,
     "diagnostics": null,
     "calibration": null,
@@ -39,11 +39,59 @@
     "schemaVersion": "kova.resolvedCoverage.v1",
     "purpose": "regression",
     "targetKind": "runtime",
-    "total": 10,
+    "total": 12,
     "statuses": {
-      "planned": 10
+      "planned": 12
     },
     "obligations": [
+      {
+        "surface": "channel-capability-preflight",
+        "requirement": "preflight",
+        "scenario": "channel-capability-preflight",
+        "state": "fresh",
+        "stateTraits": [
+          "fresh-user",
+          "baseline"
+        ],
+        "targetKind": "runtime",
+        "status": "planned",
+        "reason": null,
+        "requiredStates": [
+          "fresh"
+        ],
+        "requiredStateTraits": [],
+        "requiredTargetKinds": [
+          "npm",
+          "release",
+          "runtime",
+          "local-build"
+        ],
+        "requiredMetrics": []
+      },
+      {
+        "surface": "channel-capability-baseline",
+        "requirement": "baseline",
+        "scenario": "channel-capability-baseline",
+        "state": "fresh",
+        "stateTraits": [
+          "fresh-user",
+          "baseline"
+        ],
+        "targetKind": "runtime",
+        "status": "planned",
+        "reason": null,
+        "requiredStates": [
+          "fresh"
+        ],
+        "requiredStateTraits": [],
+        "requiredTargetKinds": [
+          "npm",
+          "release",
+          "runtime",
+          "local-build"
+        ],
+        "requiredMetrics": []
+      },
       {
         "surface": "release-runtime-startup",
         "requirement": "baseline",
@@ -395,6 +443,62 @@
     "warnings": []
   },
   "entries": [
+    {
+      "scenario": {
+        "id": "channel-capability-preflight",
+        "surface": "channel-capability-preflight",
+        "title": "Channel Capability Preflight",
+        "objective": "Prove the target OpenClaw runtime exposes the shared message-channel capability contract expected by Kova before adapter-specific conformance runs.",
+        "tags": [
+          "channel",
+          "capability",
+          "preflight",
+          "contracts"
+        ]
+      },
+      "state": {
+        "id": "fresh",
+        "title": "Fresh OpenClaw User",
+        "objective": "A new isolated OpenClaw home with no intentional state mutations beyond normal scenario provisioning.",
+        "tags": [
+          "fresh",
+          "baseline"
+        ]
+      },
+      "surface": "channel-capability-preflight",
+      "timeoutMs": 180000,
+      "platforms": null,
+      "status": "SELECTED",
+      "skipReason": null
+    },
+    {
+      "scenario": {
+        "id": "channel-capability-baseline",
+        "surface": "channel-capability-baseline",
+        "title": "Channel Capability Baseline",
+        "objective": "Prove the target OpenClaw runtime executes the shared message-channel capability behavior expected by Kova before adapter-specific conformance runs.",
+        "tags": [
+          "channel",
+          "capability",
+          "baseline",
+          "runtime"
+        ]
+      },
+      "state": {
+        "id": "fresh",
+        "title": "Fresh OpenClaw User",
+        "objective": "A new isolated OpenClaw home with no intentional state mutations beyond normal scenario provisioning.",
+        "tags": [
+          "fresh",
+          "baseline"
+        ]
+      },
+      "surface": "channel-capability-baseline",
+      "timeoutMs": 180000,
+      "platforms": null,
+      "status": "SELECTED",
+      "skipReason": null
+    },
     {
       "scenario": {
         "id": "release-runtime-startup",

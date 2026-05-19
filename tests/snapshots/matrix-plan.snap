@@ -1,12 +1,14 @@
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  KOVA  ·  matrix plan                                                        ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
-   [PLAN]   10 runnable · 10 entries     profile: smoke · target: runtime:stable
+   [PLAN]   12 runnable · 12 entries     profile: smoke · target: runtime:stable
 
-  Total 10   ·   Runnable ██████████ 10   ·   Skipped ░░░░░░░░░░ 0
+  Total 12   ·   Runnable ██████████ 12   ·   Skipped ░░░░░░░░░░ 0
 
 ─── entries ────────────────────────────────────────────────────────────────────
   verdict  scenario                   state               note
+  RUN      channel-capability-prefl…  fresh               Channel Capability Pr…
+  RUN      channel-capability-basel…  fresh               Channel Capability Ba…
   RUN      release-runtime-startup    fresh               Release Runtime Start…
   RUN      fresh-install              fresh               Fresh OpenClaw Instal…
   RUN      bundled-runtime-deps       missing-plugin-in…  Bundled Runtime Depen…
