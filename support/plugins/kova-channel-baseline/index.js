@@ -254,9 +254,10 @@ async function runModelTurn(params = {}) {
   if (!activeRuntime?.channelRuntime) {
     throw new Error("kova channel baseline runtime is not started");
   }
+  const selectedCases = selectModelTurnCases(params.case ?? params.caseId);
   const expectedText = typeof params.expectedText === "string" && params.expectedText.length > 0
     ? params.expectedText
-    : "KOVA_AGENT_OK";
+    : (selectedCases.length === 1 ? selectedCases[0].expectedText : "KOVA_AGENT_OK");
   const includeSharedBaseline = params.includeSharedBaseline !== false;
 
   const capabilityBaseline = includeSharedBaseline
@@ -272,7 +273,7 @@ async function runModelTurn(params = {}) {
 
   const startedAt = performance.now();
   const modelTurnCases = [];
-  for (const testCase of modelTurnCaseDefinitions) {
+  for (const testCase of selectedCases) {
     modelTurnCases.push(await runModelTurnCase(testCase));
   }
 
@@ -304,7 +305,7 @@ async function runModelTurn(params = {}) {
     ...(includeSharedBaseline
       ? [invariant("shared-capability-baseline", capabilityBaseline.ok === true, "all shared OpenClaw channel capabilities passed before model-turn proof")]
       : []),
-    invariant("model-turn-case-count", modelTurnCases.length === modelTurnCaseDefinitions.length, "all configured channel model-turn cases ran"),
+    invariant("model-turn-case-count", modelTurnCases.length === selectedCases.length, "all requested channel model-turn cases ran"),
     invariant("model-turn-cases-passed", failedCases.length === 0, "all channel model-turn cases passed"),
     invariant("expected-final-text", Boolean(matchedText), `at least one model-turn final channel send contains ${expectedText}`),
     invariant("terminal-return", modelTurnCases.every((testCase) => testCase.dispatched === true), "all channel model turns returned from OpenClaw dispatch")
@@ -316,6 +317,7 @@ async function runModelTurn(params = {}) {
     schemaVersion: "kova.channelModelTurnBaselinePluginRun.v1",
     channelId: CHANNEL_ID,
     accountId: activeRuntime.accountId,
+    requestedCase: params.case ?? params.caseId ?? null,
     expectedText,
     sharedBaselineIncluded: includeSharedBaseline,
     finalText: finalTexts.join("\n"),
@@ -328,6 +330,20 @@ async function runModelTurn(params = {}) {
     deliveryRecords,
     modelTurnRecords
   };
+}
+
+function selectModelTurnCases(requestedCase) {
+  if (requestedCase == null || requestedCase === "" || requestedCase === "all") {
+    return modelTurnCaseDefinitions;
+  }
+  const cases = new Set(String(requestedCase).split(",").map((item) => item.trim()).filter(Boolean));
+  const selected = modelTurnCaseDefinitions.filter((testCase) => cases.has(testCase.id));
+  if (selected.length !== cases.size) {
+    const known = new Set(modelTurnCaseDefinitions.map((testCase) => testCase.id));
+    const unknown = [...cases].filter((id) => !known.has(id));
+    throw new Error(`unknown channel model-turn case${unknown.length === 1 ? "" : "s"}: ${unknown.join(", ")}`);
+  }
+  return selected;
 }
 
 async function runModelTurnCase(testCase) {

@@ -13,10 +13,11 @@ const envName = requiredArg(args, "env");
 const artifactDir = requiredArg(args, "artifact-dir");
 const timeoutMs = readTimeoutMs(args["timeout-ms"], 120000);
 const message = args.message ?? "Reply with exact ASCII text KOVA_AGENT_OK only.";
-const expectedText = args["expected-text"] ?? "KOVA_AGENT_OK";
+const expectedText = args["expected-text"] ?? null;
+const modelTurnCase = args.case ?? "all";
 const includeSharedBaseline = args["skip-shared-baseline"] !== "true";
 const continueOnModelTurnFailure = args["continue-on-model-turn-failure"] === "true";
-const artifactPath = join(artifactDir, "channel-model-turn-baseline.json");
+const artifactPath = join(artifactDir, `channel-model-turn-baseline-${safeArtifactSegment(modelTurnCase)}.json`);
 const providerRequestLogPath = join(artifactDir, "mock-openai", "requests.jsonl");
 
 async function main() {
@@ -31,9 +32,13 @@ async function main() {
     }
     await waitForBaselineChannel(clientHandle.client, timeoutMs);
     const activeStartedAtEpochMs = Date.now();
+    const params = { message, case: modelTurnCase, includeSharedBaseline };
+    if (expectedText) {
+      params.expectedText = expectedText;
+    }
     const turn = await clientHandle.client.request(
       "kova.channelBaseline.runModelTurn",
-      { message, expectedText, includeSharedBaseline },
+      params,
       { timeoutMs }
     );
     const activeFinishedAtEpochMs = Date.now();
@@ -70,7 +75,8 @@ async function main() {
     artifactPath,
     ownerArea: "OpenClaw",
     envName,
-    expectedText,
+    case: modelTurnCase,
+    expectedText: result.artifact.turn?.expectedText ?? expectedText,
     sharedBaselineIncluded: result.artifact.turn?.sharedBaselineIncluded ?? null,
     finalText: result.artifact.turn?.finalText ?? null,
     inboundEventId: result.artifact.turn?.modelTurnCases?.[0]?.inboundEvent?.id ?? result.artifact.turn?.inboundEvent?.id ?? null,
@@ -135,7 +141,8 @@ function buildResult({
       runtimeContext: compactRuntimeContext(runtimeContext),
       timeoutMs: commandTimeoutMs,
       message,
-      expectedText,
+      case: modelTurnCase,
+      expectedText: turn?.expectedText ?? expectedText,
       error: runError,
       providerRequestLogPath,
       providerRequestCountBefore,
@@ -149,6 +156,10 @@ function buildResult({
       invariants
     }
   };
+}
+
+function safeArtifactSegment(value) {
+  return String(value ?? "all").replace(/[^a-zA-Z0-9._-]+/g, "-");
 }
 
 function compactRuntimeContext(context) {
