@@ -123,13 +123,14 @@ function chatUsage() {
   return { prompt_tokens: 9, completion_tokens: 3, total_tokens: 12 };
 }
 
-function writeChatCompletion(res, stream) {
+function writeChatCompletion(res, stream, requestBodyText) {
+  const responseText = resolveResponseText(requestBodyText);
   if (stream) {
     writeSse(res, [
       {
         id: "chatcmpl_kova",
         object: "chat.completion.chunk",
-        choices: [{ index: 0, delta: { role: "assistant", content: marker } }]
+        choices: [{ index: 0, delta: { role: "assistant", content: responseText } }]
       },
       {
         id: "chatcmpl_kova",
@@ -143,7 +144,7 @@ function writeChatCompletion(res, stream) {
   writeJson(res, 200, {
     id: "chatcmpl_kova",
     object: "chat.completion",
-    choices: [{ index: 0, message: { role: "assistant", content: marker }, finish_reason: "stop" }],
+    choices: [{ index: 0, message: { role: "assistant", content: responseText }, finish_reason: "stop" }],
     usage: chatUsage()
   });
 }
@@ -269,6 +270,7 @@ const server = http.createServer(async (req, res) => {
     if (await maybeWriteFailureBehavior(res, behavior, stream)) {
       return;
     }
+    const responseText = resolveResponseText(bodyText);
     if (body.stream === false) {
       usage = mockUsage();
       writeJson(res, 200, {
@@ -281,7 +283,7 @@ const server = http.createServer(async (req, res) => {
             id: "msg_kova_1",
             role: "assistant",
             status: "completed",
-            content: [{ type: "output_text", text: marker, annotations: [] }]
+            content: [{ type: "output_text", text: responseText, annotations: [] }]
           }
         ],
         usage
@@ -289,7 +291,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     usage = mockUsage();
-    writeSse(res, responseEvents(marker));
+    writeSse(res, responseEvents(responseText));
     return;
   }
 
@@ -302,7 +304,7 @@ const server = http.createServer(async (req, res) => {
     if (body.stream === false) {
       usage = chatUsage();
     }
-    writeChatCompletion(res, body.stream !== false);
+    writeChatCompletion(res, body.stream !== false, bodyText);
     return;
   }
 
@@ -325,6 +327,18 @@ function behaviorForProviderCall() {
     errorClass: null,
     providerCallIndex: providerPostCount
   };
+}
+
+function resolveResponseText(requestBodyText) {
+  const match = String(requestBodyText ?? "").match(/KOVA_MOCK_RESPONSE_B64:([A-Za-z0-9+/_=-]+)/);
+  if (!match) {
+    return marker;
+  }
+  try {
+    return Buffer.from(match[1].replaceAll("-", "+").replaceAll("_", "/"), "base64").toString("utf8");
+  } catch {
+    return marker;
+  }
 }
 
 async function applyDelayForBehavior(behavior) {
