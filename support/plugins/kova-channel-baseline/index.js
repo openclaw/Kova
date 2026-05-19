@@ -21,6 +21,7 @@ const TARGET_ID = "dm:kova-baseline-user";
 let activeRuntime = null;
 let outboundRecords = [];
 let deliveryRecords = [];
+let modelTurnRecords = [];
 
 const messageAdapter = defineChannelMessageAdapter({
   id: CHANNEL_ID,
@@ -165,6 +166,21 @@ export default definePluginEntry({
       },
       { scope: "operator.write" }
     );
+    api.registerGatewayMethod(
+      "kova.channelBaseline.runModelTurn",
+      async ({ params, respond }) => {
+        try {
+          const result = await runModelTurn(params);
+          respond(true, result);
+        } catch (error) {
+          respond(true, {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+      },
+      { scope: "operator.write" }
+    );
   }
 });
 
@@ -208,6 +224,68 @@ async function runBaseline() {
     proofs,
     outboundRecords,
     deliveryRecords
+  };
+}
+
+async function runModelTurn(params = {}) {
+  if (!activeRuntime?.channelRuntime) {
+    throw new Error("kova channel baseline runtime is not started");
+  }
+  const message = typeof params.message === "string" && params.message.length > 0
+    ? params.message
+    : "Reply with exact ASCII text KOVA_AGENT_OK only.";
+  const expectedText = typeof params.expectedText === "string" && params.expectedText.length > 0
+    ? params.expectedText
+    : "KOVA_AGENT_OK";
+
+  outboundRecords = [];
+  deliveryRecords = [];
+  modelTurnRecords = [];
+
+  const startedAt = performance.now();
+  const inboundEventId = `kova-model-turn-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const turn = await runOpenClawModelTurn({
+    message,
+    inboundEventId,
+    replyToId: inboundEventId
+  });
+  const finalOutboundRecords = outboundRecords.filter((record) =>
+    ["text", "media", "payload"].includes(record.kind)
+  );
+  const finalTexts = finalOutboundRecords
+    .map((record) => record.text)
+    .filter((text) => typeof text === "string" && text.length > 0);
+  const matchedText = finalTexts.find((text) => text.includes(expectedText)) ?? null;
+  const invariants = [
+    invariant("turn-dispatched", turn?.dispatched === true, "channel model turn dispatched through OpenClaw runtime"),
+    invariant("expected-final-text", Boolean(matchedText), `final channel send contains ${expectedText}`),
+    invariant("single-final-send", finalOutboundRecords.length === 1, "one inbound event produced exactly one final channel send"),
+    invariant("delivery-receipt", deliveryRecords.some((record) => record.fallback === false), "durable delivery recorded a channel receipt"),
+    invariant("terminal-return", true, "channel model turn returned from OpenClaw dispatch")
+  ];
+  const ok = invariants.every((item) => item.status === "passed");
+
+  return {
+    ok,
+    schemaVersion: "kova.channelModelTurnBaselinePluginRun.v1",
+    channelId: CHANNEL_ID,
+    accountId: activeRuntime.accountId,
+    inboundEvent: {
+      id: inboundEventId,
+      authorId: "kova-baseline-user",
+      sourceKind: "external-user",
+      targetId: TARGET_ID,
+      message
+    },
+    routeSessionKey: turn?.routeSessionKey ?? null,
+    dispatched: turn?.dispatched === true,
+    finalText: matchedText,
+    expectedText,
+    durationMs: elapsedMs(startedAt),
+    invariants,
+    outboundRecords,
+    deliveryRecords,
+    modelTurnRecords
   };
 }
 
@@ -632,6 +710,87 @@ async function runSyntheticTurn({
   });
 }
 
+async function runOpenClawModelTurn({
+  message,
+  inboundEventId,
+  replyToId
+}) {
+  const runtime = activeRuntime.channelRuntime;
+  const cfg = activeRuntime.cfg;
+  const route = runtime.routing.resolveAgentRoute({
+    cfg,
+    channel: CHANNEL_ID,
+    accountId: ACCOUNT_ID,
+    peer: { kind: "direct", id: TARGET_ID }
+  });
+  const storePath = runtime.session.resolveStorePath(cfg.session?.store, { agentId: route.agentId });
+  const ctxPayload = runtime.reply.finalizeInboundContext({
+    Body: message,
+    BodyForAgent: message,
+    RawBody: message,
+    CommandBody: message,
+    From: TARGET_ID,
+    To: TARGET_ID,
+    OriginatingTo: TARGET_ID,
+    SessionKey: route.sessionKey,
+    AccountId: ACCOUNT_ID,
+    ChatType: "direct",
+    SenderName: "Kova Baseline User",
+    SenderId: "kova-baseline-user",
+    Provider: CHANNEL_ID,
+    Surface: CHANNEL_ID,
+    MessageSid: inboundEventId,
+    MessageSidFull: inboundEventId,
+    ReplyToId: replyToId,
+    Timestamp: new Date().toISOString(),
+    OriginatingChannel: CHANNEL_ID,
+    CommandAuthorized: true
+  });
+
+  return await runtime.turn.runAssembled({
+    cfg,
+    channel: CHANNEL_ID,
+    accountId: ACCOUNT_ID,
+    agentId: route.agentId,
+    routeSessionKey: route.sessionKey,
+    storePath,
+    ctxPayload,
+    recordInboundSession: runtime.session.recordInboundSession,
+    dispatchReplyWithBufferedBlockDispatcher: runtime.reply.dispatchReplyWithBufferedBlockDispatcher,
+    delivery: {
+      durable: {
+        replyToMode: "first",
+        replyToId
+      },
+      deliver: async (delivered) => {
+        deliveryRecords.push({ fallback: true, payload: delivered });
+      },
+      onDelivered: async (delivered, info, result) => {
+        deliveryRecords.push({
+          fallback: false,
+          kind: info?.kind ?? null,
+          text: delivered?.text ?? null,
+          visibleReplySent: result?.visibleReplySent ?? null,
+          messageIds: result?.messageIds ?? null
+        });
+      },
+      onError: (error) => {
+        throw error instanceof Error ? error : new Error(String(error));
+      }
+    },
+    replyPipeline: {},
+    record: {
+      onRecordError: (error) => {
+        throw error instanceof Error ? error : new Error(String(error));
+      }
+    },
+    log: (event) => {
+      modelTurnRecords.push(compactTurnLogEvent(event));
+    },
+    messageId: inboundEventId
+  });
+}
+
 async function renderPayloads(payloads) {
   return await withDurableMessageSendContext(
     {
@@ -745,6 +904,27 @@ function createReceipt(id, kind = "text", options = {}) {
 
 function elapsedMs(startedAt) {
   return Math.round((performance.now() - startedAt) * 1000) / 1000;
+}
+
+function invariant(id, condition, summary) {
+  return {
+    id,
+    status: condition ? "passed" : "failed",
+    summary,
+    reason: condition ? null : summary
+  };
+}
+
+function compactTurnLogEvent(event) {
+  return {
+    stage: event?.stage ?? null,
+    event: event?.event ?? null,
+    messageId: event?.messageId ?? null,
+    sessionKey: event?.sessionKey ?? null,
+    admission: event?.admission ?? null,
+    reason: event?.reason ?? null,
+    error: event?.error instanceof Error ? event.error.message : event?.error ? String(event.error) : null
+  };
 }
 
 function assert(condition, message) {
