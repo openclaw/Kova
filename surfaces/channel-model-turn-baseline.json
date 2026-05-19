@@ -2,7 +2,7 @@
   "id": "channel-model-turn-baseline",
   "title": "Channel Model Turn Baseline",
   "ownerArea": "OpenClaw",
-  "description": "Validate that every shared OpenClaw channel capability is proven and that real inbound channel events run through the agent/model loop for model-reachable channel delivery paths.",
+  "description": "Validate that real inbound channel events run through the OpenClaw agent/model loop and produce expected channel responses for model-reachable delivery paths.",
   "processRoles": [
     "gateway",
     "command-tree",
