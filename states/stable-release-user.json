@@ -11,17 +11,17 @@
   "setup": [
     {
       "id": "write-stable-release-marker",
-      "title": "Write Stable Release Marker",
-      "intent": "Persist stable release metadata after the env is first started so reports can prove the upgrade source shape.",
+      "title": "Write Kova Stable Release-Track Fixture",
+      "intent": "Persist Kova-owned stable release-track metadata after the env is first started so reports can prove the upgrade source shape.",
       "afterPhases": [
         "start",
         "clone"
       ],
       "commands": [
-        "ocm env exec {env} -- node -e 'const fs=require(\"fs\"), path=require(\"path\"); const home=process.env.OPENCLAW_HOME; fs.mkdirSync(path.join(home,\"config\"),{recursive:true}); fs.writeFileSync(path.join(home,\"config\",\"channel.json\"),JSON.stringify({schemaVersion:\"kova.fixture.channel.v1\",channel:\"stable\"},null,2)); fs.writeFileSync(path.join(home,\".openclaw-channel\"),\"stable\\n\");'"
+        "ocm env exec {env} -- node -e 'const fs=require(\"fs\"), path=require(\"path\"); const home=process.env.OPENCLAW_HOME; const dir=path.join(home,\".kova\"); fs.mkdirSync(dir,{recursive:true}); fs.writeFileSync(path.join(dir,\"release-track.json\"),JSON.stringify({schemaVersion:\"kova.fixture.release-track.v1\",releaseTrack:\"stable\"},null,2));'"
       ],
       "evidence": [
-        "stable release marker exists"
+        "Kova stable release-track marker exists"
       ],
       "collectionIntent": "service-only"
     }
@@ -33,10 +33,10 @@
   "riskArea": "release-track-upgrade",
   "ownerArea": "upgrade",
   "setupEvidence": [
-    "stable release marker exists"
+    "Kova stable release-track marker exists"
   ],
   "cleanupGuarantees": [
-    "disposable env cleanup removes stable release fixture files"
+    "disposable env cleanup removes Kova release-track fixture files"
   ],
   "source": {
     "kind": "generated",

@@ -10,8 +10,8 @@
   "setup": [
     {
       "id": "write-release-config",
-      "title": "Write Release Config",
-      "intent": "Create release-track config in common config locations.",
+      "title": "Write Kova Release-Track Fixture",
+      "intent": "Create Kova-owned release-track fixture metadata without writing product-shaped OpenClaw config.",
       "afterPhases": [
         "provision",
         "cold-start",
@@ -21,10 +21,10 @@
         "clone"
       ],
       "commands": [
-        "ocm env exec {env} -- node -e 'const fs=require(\"fs\"), path=require(\"path\"); const home=process.env.OPENCLAW_HOME; fs.mkdirSync(path.join(home,\"config\"),{recursive:true}); fs.writeFileSync(path.join(home,\"config\",\"channel.json\"),JSON.stringify({schemaVersion:\"kova.fixture.channel.v1\",channel:\"beta\"},null,2)); fs.writeFileSync(path.join(home,\".openclaw-channel\"),\"beta\\n\");'"
+        "ocm env exec {env} -- node -e 'const fs=require(\"fs\"), path=require(\"path\"); const home=process.env.OPENCLAW_HOME; const dir=path.join(home,\".kova\"); fs.mkdirSync(dir,{recursive:true}); fs.writeFileSync(path.join(dir,\"release-track.json\"),JSON.stringify({schemaVersion:\"kova.fixture.release-track.v1\",releaseTrack:\"beta\"},null,2));'"
       ],
       "evidence": [
-        "release config exists"
+        "Kova release-track fixture exists"
       ],
       "collectionIntent": "service-only"
     }
@@ -36,7 +36,7 @@
   "riskArea": "release-track",
   "ownerArea": "runtime-startup",
   "setupEvidence": [
-    "release config exists"
+    "Kova release-track fixture exists"
   ],
   "cleanupGuarantees": [
     "disposable env cleanup removes state fixture files"
