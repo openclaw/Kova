@@ -3,11 +3,18 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-const GATEWAY_PROTOCOL_MIN_VERSION = 3;
+const GATEWAY_PROTOCOL_MIN_VERSION = 4;
 const GATEWAY_PROTOCOL_MAX_VERSION = 4;
 const GATEWAY_RPC_CLIENT_ID = "gateway-client";
 const GATEWAY_RPC_CLIENT_MODE = "backend";
-const GATEWAY_OPERATOR_SCOPES = ["operator.read", "operator.write", "operator.admin"];
+const GATEWAY_OPERATOR_SCOPES = [
+  "operator.admin",
+  "operator.read",
+  "operator.write",
+  "operator.approvals",
+  "operator.pairing",
+  "operator.talk-secrets"
+];
 
 export function prepareOpenClawRuntimeFromOcmEnv(envName) {
   if (!envName) {
@@ -298,19 +305,27 @@ function formatGatewayRpcError(method, error) {
 }
 
 function readGatewayAuthToken(root) {
+  const envToken = trimToNonEmptyString(process.env.OPENCLAW_GATEWAY_TOKEN);
   const configPath = process.env.OPENCLAW_CONFIG_PATH || join(root, ".openclaw", "openclaw.json");
   let config;
   try {
     config = JSON.parse(readFileSync(configPath, "utf8"));
   } catch {
-    return null;
+    return envToken;
   }
-  const authToken = config?.gateway?.auth?.token;
-  if (typeof authToken === "string" && authToken.length > 0) {
+
+  const authToken = trimToNonEmptyString(config?.gateway?.auth?.token);
+  if (authToken) {
     return authToken;
   }
-  const remoteToken = config?.gateway?.remote?.token;
-  return typeof remoteToken === "string" && remoteToken.length > 0 ? remoteToken : null;
+  if (envToken) {
+    return envToken;
+  }
+  return trimToNonEmptyString(config?.gateway?.remote?.token);
+}
+
+function trimToNonEmptyString(value) {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
 function readRequiredString(value, label) {
