@@ -1042,7 +1042,9 @@ function collectAgentTurns(record, providerEvidence, scenario, timelineSummary, 
         ? responseMatchesExpectedText(response, expectedText)
         : null;
       const expectedFailureObserved = expectedFailure === true && result.status === 0 && result.timedOut !== true;
-      const normalResponseOk = result.status === 0 && result.timedOut !== true && response.usable === true && (expectedTextPresent !== false);
+      const normalResponseOk = channelModelTurn
+        ? result.status === 0 && result.timedOut !== true
+        : result.status === 0 && result.timedOut !== true && response.usable === true && (expectedTextPresent !== false);
       const isAgentCliTurn = isAgentCliMessageCommand(result.command);
       const phaseBreakdown = buildAgentTurnBreakdown({ result: timingResult, attribution, timelineSummary, logSummary });
       const turnDiagnostics = summarizeActiveTurnDiagnostics({
@@ -1629,7 +1631,7 @@ function checkAgentTurnCorrectness(violations, turns, expectedText) {
         message: `${turn.label} agent turn did not produce the expected assistant response`
       });
     }
-    const turnExpectedText = turn.channelModelTurn ? turn.expectedText : (turn.expectedText ?? expectedText);
+    const turnExpectedText = turn.channelModelTurn ? null : (turn.expectedText ?? expectedText);
     if (typeof turnExpectedText === "string" && turnExpectedText.length > 0 && turn.expectedTextPresent !== true) {
       violations.push({
         kind: "agent",

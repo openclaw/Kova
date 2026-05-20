@@ -137,6 +137,26 @@
       "collectionIntent": "post-ready-health"
     },
     {
+      "id": "channel-model-turn-background-completion",
+      "title": "Run Background Artifact Completion Model Turn",
+      "intent": "Call the Kova channel plugin over Gateway RPC so OpenClaw handles one normal media-generation completion shape, follows its supported message-tool source delivery contract, and records artifact, receipt, duplicate-send, and terminal invariants.",
+      "commands": [
+        "node {kovaRoot}/support/run-channel-model-turn-baseline.mjs --env {env} --artifact-dir {artifactDir} --case background-artifact-completion.video.message-tool-only --skip-shared-baseline true --continue-on-model-turn-failure true --timeout-ms 120000"
+      ],
+      "evidence": [
+        "background artifact completion workflow rows",
+        "user action and inbound channel event ids",
+        "provider request policy and observed count",
+        "message-tool source delivery",
+        "outbound channel send records",
+        "channel receipts",
+        "duplicate-send invariants",
+        "terminal dispatch returns"
+      ],
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
+    },
+    {
       "id": "channel-model-turn-thread-final",
       "title": "Run Thread Final Model Turn",
       "intent": "Call the Kova channel plugin over Gateway RPC so OpenClaw handles one inbound threaded channel event, calls the mock provider, sends a final response through the channel adapter, and records thread preservation and terminal invariants.",

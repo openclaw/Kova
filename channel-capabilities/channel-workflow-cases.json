@@ -182,6 +182,52 @@
       ]
     },
     {
+      "id": "background-artifact-completion.video.message-tool-only",
+      "workflow": "background-artifact-completion",
+      "userAction": "user asks OpenClaw to create a video and receives the completed video in the same chat",
+      "openclawSurface": "channel inbound direct message with background media-generation completion",
+      "ownerArea": "OpenClaw completion delivery runtime",
+      "prompt": "Create a short launch teaser video with the app logo at the end.",
+      "providerScript": {
+        "toolCalls": [
+          {
+            "name": "message",
+            "arguments": {
+              "action": "send",
+              "message": "KOVA_BACKGROUND_VIDEO_READY",
+              "media": "/tmp/kova-background-video.mp4"
+            }
+          }
+        ],
+        "finalText": "KOVA_BACKGROUND_COMPLETION_PRIVATE_DONE"
+      },
+      "sourceReplyDeliveryMode": "message_tool_only",
+      "expects": {
+        "visibleDeliveries": 1,
+        "kind": "media",
+        "text": "KOVA_BACKGROUND_VIDEO_READY",
+        "mediaSource": "/tmp/kova-background-video.mp4",
+        "mediaSourcePolicy": "sendable-local-or-managed",
+        "hooks": true,
+        "terminal": true,
+        "noDuplicateFinal": true
+      },
+      "fixtures": {
+        "mediaPath": "/tmp/kova-background-video.mp4"
+      },
+      "providerRequests": {
+        "mode": "exact",
+        "expected": 2
+      },
+      "atoms": [
+        { "group": "workflow", "id": "background-artifact-completion" },
+        { "group": "workflow", "id": "source-visible-delivery" },
+        { "group": "workflow", "id": "message-tool-only-source-delivery" },
+        { "group": "durable-final", "id": "media" },
+        { "group": "durable-final", "id": "message-sending-hooks" }
+      ]
+    },
+    {
       "id": "source-visible-delivery.media.message-tool-only",
       "workflow": "source-visible-delivery",
       "userAction": "user asks OpenClaw to produce a media result and receives that result in the same chat",

@@ -2797,7 +2797,8 @@
         "src/channels/message/contracts.ts",
         "src/channels/message/contracts.test.ts",
         "src/channels/message/runtime-workflows",
-        "src/infra/outbound/source-delivery-plan.ts"
+        "src/infra/outbound/source-delivery-plan.ts",
+        "src/agents/subagent-announce-delivery.ts"
       ],
       "capabilities": [
         {
@@ -3244,6 +3245,19 @@
             "live-smoke"
           ],
           "declarationSource": "src/infra/outbound/source-delivery-plan.ts"
+        },
+        {
+          "id": "background-artifact-completion",
+          "group": "workflow",
+          "title": "Background Artifact Completion",
+          "sourceSymbol": "SourceDeliveryPlanReason.media_completion",
+          "baselineExpectation": "a completed background media-generation request must deliver its user-visible artifact through the supported source conversation path exactly once and leave the run terminal",
+          "proofModes": [
+            "model-turn",
+            "deterministic-shim",
+            "live-smoke"
+          ],
+          "declarationSource": "src/agents/subagent-announce-delivery.ts"
         }
       ]
     }
@@ -5059,6 +5073,26 @@
           ],
           "evidence": [
             "source delivery model-turn capability rows",
+            "user action and inbound channel event ids",
+            "provider request policy and observed count",
+            "message-tool source delivery",
+            "outbound channel send records",
+            "channel receipts",
+            "duplicate-send invariants",
+            "terminal dispatch returns"
+          ],
+          "healthScope": "post-ready",
+          "collectionIntent": "post-ready-health"
+        },
+        {
+          "id": "channel-model-turn-background-completion",
+          "title": "Run Background Artifact Completion Model Turn",
+          "intent": "Call the Kova channel plugin over Gateway RPC so OpenClaw handles one normal media-generation completion shape, follows its supported message-tool source delivery contract, and records artifact, receipt, duplicate-send, and terminal invariants.",
+          "commands": [
+            "node {kovaRoot}/support/run-channel-model-turn-baseline.mjs --env {env} --artifact-dir {artifactDir} --case background-artifact-completion.video.message-tool-only --skip-shared-baseline true --continue-on-model-turn-failure true --timeout-ms 120000"
+          ],
+          "evidence": [
+            "background artifact completion workflow rows",
             "user action and inbound channel event ids",
             "provider request policy and observed count",
             "message-tool source delivery",

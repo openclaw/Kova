@@ -7,7 +7,8 @@
     "src/channels/message/contracts.ts",
     "src/channels/message/contracts.test.ts",
     "src/channels/message/runtime-workflows",
-    "src/infra/outbound/source-delivery-plan.ts"
+    "src/infra/outbound/source-delivery-plan.ts",
+    "src/agents/subagent-announce-delivery.ts"
   ],
   "capabilities": [
     {
@@ -306,6 +307,15 @@
       "baselineExpectation": "when OpenClaw requires message-tool-only source delivery, visible source output must be sent through the message tool while normal final text remains private",
       "proofModes": ["model-turn", "deterministic-shim", "live-smoke"],
       "declarationSource": "src/infra/outbound/source-delivery-plan.ts"
+    },
+    {
+      "id": "background-artifact-completion",
+      "group": "workflow",
+      "title": "Background Artifact Completion",
+      "sourceSymbol": "SourceDeliveryPlanReason.media_completion",
+      "baselineExpectation": "a completed background media-generation request must deliver its user-visible artifact through the supported source conversation path exactly once and leave the run terminal",
+      "proofModes": ["model-turn", "deterministic-shim", "live-smoke"],
+      "declarationSource": "src/agents/subagent-announce-delivery.ts"
     }
   ]
 }
