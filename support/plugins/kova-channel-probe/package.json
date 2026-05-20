@@ -1,5 +1,5 @@
 {
-  "name": "kova-channel-probe-plugin",
+  "name": "kova-channel-probe",
   "version": "1.0.0",
   "description": "Kova channel probe fixture",
   "type": "module",

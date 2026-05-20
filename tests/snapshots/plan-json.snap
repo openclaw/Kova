@@ -7077,7 +7077,7 @@
             "gateway service installed",
             "gateway service started",
             "gateway readiness",
-            "baseline channel startup"
+            "probe channel startup"
           ],
           "healthScope": "readiness",
           "collectionIntent": "post-ready-health"
