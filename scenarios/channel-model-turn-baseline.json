@@ -117,6 +117,46 @@
       "collectionIntent": "post-ready-health"
     },
     {
+      "id": "channel-model-turn-media-thread-final",
+      "title": "Run Media Thread Final Model Turn",
+      "intent": "Call the Kova channel plugin over Gateway RPC so OpenClaw handles one inbound threaded media request, calls the mock provider, sends media through the channel adapter in that thread, and records media/thread/receipt/terminal invariants.",
+      "commands": [
+        "node {kovaRoot}/support/run-channel-model-turn-baseline.mjs --env {env} --artifact-dir {artifactDir} --case media-thread-final --skip-shared-baseline true --continue-on-model-turn-failure true --timeout-ms 120000"
+      ],
+      "evidence": [
+        "media thread final model-turn capability rows",
+        "inbound channel event ids",
+        "provider request policy and observed count",
+        "final assistant media records",
+        "outbound channel send records",
+        "channel receipts",
+        "thread target invariants",
+        "terminal dispatch returns"
+      ],
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
+    },
+    {
+      "id": "channel-model-turn-media-reply-thread-final",
+      "title": "Run Media Reply Thread Final Model Turn",
+      "intent": "Call the Kova channel plugin over Gateway RPC so OpenClaw handles one inbound threaded reply media request, calls the mock provider, sends media through the channel adapter against the right reply and thread targets, and records media/reply/thread/receipt/terminal invariants.",
+      "commands": [
+        "node {kovaRoot}/support/run-channel-model-turn-baseline.mjs --env {env} --artifact-dir {artifactDir} --case media-reply-thread-final --skip-shared-baseline true --continue-on-model-turn-failure true --timeout-ms 120000"
+      ],
+      "evidence": [
+        "media reply thread final model-turn capability rows",
+        "inbound channel event ids",
+        "provider request policy and observed count",
+        "final assistant media records",
+        "outbound channel send records",
+        "channel receipts",
+        "reply and thread target invariants",
+        "terminal dispatch returns"
+      ],
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
+    },
+    {
       "id": "channel-model-turn-source-delivery",
       "title": "Run Source Delivery Model Turn",
       "intent": "Call the Kova channel plugin over Gateway RPC so OpenClaw handles one normal inbound user event, follows its supported source-delivery contract, sends visible source output through the message tool when required, and records payload, receipt, duplicate-send, and terminal invariants.",

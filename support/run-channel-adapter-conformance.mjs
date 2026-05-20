@@ -323,6 +323,7 @@ function workflowInvariants(testCase, proof) {
     invariant(`${testCase.id}:text`, !expected.text || textCall?.text === expected.text, `${testCase.id} preserved expected text/caption`),
     invariant(`${testCase.id}:media`, expected.kind !== "media" || mediaCall?.options?.mediaUrl === expected.mediaSource, `${testCase.id} preserved expected media source`),
     invariant(`${testCase.id}:reply-to`, expected.replyTo !== "inbound-message" || platformReplyTargetMatches(targetCall), `${testCase.id} preserved reply target`),
+    invariant(`${testCase.id}:no-reply-to`, expected.replyTo !== "none" || platformReplyTargetIsEmpty(targetCall), `${testCase.id} did not attach a reply target`),
     invariant(`${testCase.id}:thread`, !expected.threadId || platformThreadTargetMatches(targetCall), `${testCase.id} preserved thread target`),
     invariant(`${testCase.id}:silent`, expected.silent !== true || targetCall?.options?.silent === true, `${testCase.id} preserved silent delivery intent`),
     invariant(`${testCase.id}:terminal`, expected.terminal !== true || proof.result.platformMessageIds.length > 0, `${testCase.id} returned terminal adapter receipt`)
@@ -478,6 +479,14 @@ function platformReplyTargetMatches(call) {
     return true;
   }
   return valuesEqual(call?.options?.[platform.replyOptionField], platform.replyOptionValue);
+}
+
+function platformReplyTargetIsEmpty(call) {
+  const platform = channelRegistry.deterministicShim?.platform ?? {};
+  if (platform.replyOptionField) {
+    return call?.options?.[platform.replyOptionField] == null;
+  }
+  return call?.options?.replyToMessageId == null && call?.options?.replyTo == null;
 }
 
 function platformThreadTargetMatches(call) {

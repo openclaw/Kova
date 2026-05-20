@@ -19,6 +19,8 @@
   ],
   "workflowCaseIds": [
     "media-final",
+    "media-thread-final",
+    "media-reply-thread-final",
     "thread-final",
     "silent-final",
     "source-visible-delivery.text.automatic-final",

@@ -32,6 +32,9 @@
         { "group": "durable-final", "id": "message-sending-hooks" },
         { "group": "durable-final", "id": "after-send-success" },
         { "group": "durable-final", "id": "after-commit" },
+        { "group": "workflow", "id": "single-inbound-single-final" },
+        { "group": "workflow", "id": "final-delivery-receipt-required" },
+        { "group": "workflow", "id": "terminal-after-final" },
         { "group": "ack", "id": "after-agent-dispatch" },
         { "group": "ack", "id": "after-durable-send" }
       ]
@@ -63,7 +66,85 @@
         "expected": 1
       },
       "atoms": [
-        { "group": "durable-final", "id": "media" }
+        { "group": "durable-final", "id": "media" },
+        { "group": "workflow", "id": "single-inbound-single-final" },
+        { "group": "workflow", "id": "final-delivery-receipt-required" },
+        { "group": "workflow", "id": "terminal-after-final" }
+      ]
+    },
+    {
+      "id": "media-thread-final",
+      "workflow": "final-media-thread",
+      "userAction": "user asks for a media result from inside a thread and receives the media in that thread",
+      "openclawSurface": "channel inbound threaded message",
+      "ownerArea": "OpenClaw channel runtime",
+      "prompt": "Create a launch image for this thread.",
+      "providerScript": {
+        "finalText": "MEDIA:/tmp/kova-channel-model-turn-media-thread.png\nKOVA_AGENT_MEDIA_THREAD_OK"
+      },
+      "expects": {
+        "visibleDeliveries": 1,
+        "kind": "media",
+        "text": "KOVA_AGENT_MEDIA_THREAD_OK",
+        "replyTo": "none",
+        "threadId": "kova-model-turn-thread",
+        "mediaSource": "/tmp/kova-channel-model-turn-media-thread.png",
+        "mediaSourcePolicy": "exact",
+        "terminal": true,
+        "noDuplicateFinal": true
+      },
+      "fixtures": {
+        "mediaPath": "/tmp/kova-channel-model-turn-media-thread.png"
+      },
+      "providerRequests": {
+        "mode": "exact",
+        "expected": 1
+      },
+      "atoms": [
+        { "group": "durable-final", "id": "media" },
+        { "group": "durable-final", "id": "thread" },
+        { "group": "workflow", "id": "media-thread-final" },
+        { "group": "workflow", "id": "single-inbound-single-final" },
+        { "group": "workflow", "id": "final-delivery-receipt-required" },
+        { "group": "workflow", "id": "terminal-after-final" }
+      ]
+    },
+    {
+      "id": "media-reply-thread-final",
+      "workflow": "final-media-reply-thread",
+      "userAction": "user replies in a thread and receives OpenClaw's media answer against the right message in that thread",
+      "openclawSurface": "channel inbound threaded reply message",
+      "ownerArea": "OpenClaw channel runtime",
+      "prompt": "Create a launch image as a reply in this thread.",
+      "providerScript": {
+        "finalText": "MEDIA:/tmp/kova-channel-model-turn-media-reply-thread.png\nKOVA_AGENT_MEDIA_REPLY_THREAD_OK"
+      },
+      "expects": {
+        "visibleDeliveries": 1,
+        "kind": "media",
+        "text": "KOVA_AGENT_MEDIA_REPLY_THREAD_OK",
+        "replyTo": "inbound-message",
+        "threadId": "kova-model-turn-thread",
+        "mediaSource": "/tmp/kova-channel-model-turn-media-reply-thread.png",
+        "mediaSourcePolicy": "exact",
+        "terminal": true,
+        "noDuplicateFinal": true
+      },
+      "fixtures": {
+        "mediaPath": "/tmp/kova-channel-model-turn-media-reply-thread.png"
+      },
+      "providerRequests": {
+        "mode": "exact",
+        "expected": 1
+      },
+      "atoms": [
+        { "group": "durable-final", "id": "media" },
+        { "group": "durable-final", "id": "reply-to" },
+        { "group": "durable-final", "id": "thread" },
+        { "group": "workflow", "id": "media-reply-thread-final" },
+        { "group": "workflow", "id": "single-inbound-single-final" },
+        { "group": "workflow", "id": "final-delivery-receipt-required" },
+        { "group": "workflow", "id": "terminal-after-final" }
       ]
     },
     {

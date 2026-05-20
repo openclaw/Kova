@@ -429,9 +429,7 @@ async function runModelTurnCase(testCase) {
   const modelDispatchStarts = caseModelTurnRecords.filter((record) => record.stage === "dispatch" && record.event === "start");
   const modelDispatchDones = caseModelTurnRecords.filter((record) => record.stage === "dispatch" && record.event === "done");
   const finalOutboundRecords = caseOutboundRecords.filter((record) => isFinalOutboundRecord(record));
-  const finalDeliveryRecords = finalOutboundRecords.length > 0
-    ? finalOutboundRecords
-    : normalizeFinalDeliveryRecords(caseDeliveryRecords);
+  const finalDeliveryRecords = finalOutboundRecords;
   const finalTexts = finalDeliveryRecords
     .map((record) => record.text)
     .filter((text) => typeof text === "string" && text.length > 0);
@@ -446,9 +444,10 @@ async function runModelTurnCase(testCase) {
     finalDeliveryInvariant(testCase.id, finalDeliveryPolicy, finalDeliveryRecords.length),
     invariant(`${testCase.id}:expected-final-kind`, !testCase.expectedKind || firstFinal?.kind === testCase.expectedKind, `${testCase.id} used expected channel send kind`),
     invariant(`${testCase.id}:expected-final-text`, !testCase.expectedText || Boolean(matchedText), `${testCase.id} final channel send equals expected text`),
-    invariant(`${testCase.id}:delivery-receipt`, finalDeliveryPolicy.expected === 0 || finalDeliveryPolicy.mode === "observe" || caseDeliveryRecords.some((record) => record.fallback === false), `${testCase.id} durable delivery recorded a channel receipt`),
+    invariant(`${testCase.id}:delivery-receipt`, finalDeliveryPolicy.expected === 0 || finalDeliveryPolicy.mode === "observe" || finalDeliveryRecords.some((record) => typeof record.messageId === "string" && record.messageId.length > 0), `${testCase.id} durable delivery recorded a channel receipt`),
     invariant(`${testCase.id}:single-final-send`, finalDeliveryRecords.length <= 1 || testCase.allowMultipleFinalSends === true, `${testCase.id} did not duplicate final channel sends`),
     invariant(`${testCase.id}:reply-to`, !testCase.expectReplyToId || firstFinal?.replyToId === inboundEventId, `${testCase.id} preserved reply target`),
+    invariant(`${testCase.id}:no-reply-to`, testCase.expectNoReplyToId !== true || firstFinal?.replyToId == null, `${testCase.id} did not attach a reply target`),
     invariant(`${testCase.id}:thread`, !testCase.threadId || firstFinal?.threadId === testCase.threadId, `${testCase.id} preserved thread target`),
     invariant(`${testCase.id}:silent`, testCase.silent !== true || firstFinal?.silent === true, `${testCase.id} preserved silent delivery intent`),
     invariant(`${testCase.id}:media-url`, !testCase.expectedLocalMediaSource || mediaExpectation.check(firstFinal), mediaExpectation.summary),
@@ -1166,36 +1165,6 @@ function finalDeliveryInvariant(caseId, policy, observed) {
 
 function isFinalOutboundRecord(record) {
   return ["text", "media", "payload"].includes(record?.kind);
-}
-
-function normalizeFinalDeliveryRecords(records) {
-  if (!Array.isArray(records)) {
-    return [];
-  }
-  return records
-    .filter((record) => record?.fallback === false)
-    .map((record) => ({
-      kind: deliveryRecordKind(record),
-      text: record.text ?? null,
-      mediaUrl: record.mediaUrl ?? record.mediaUrls?.[0] ?? null,
-      mediaUrls: Array.isArray(record.mediaUrls) ? record.mediaUrls : [],
-      silent: record.silent === true,
-      threadId: record.threadId ?? null,
-      replyToId: record.replyToId ?? null,
-      messageIds: record.messageIds ?? null,
-      visibleReplySent: record.visibleReplySent ?? null
-    }))
-    .filter((record) => isFinalOutboundRecord(record));
-}
-
-function deliveryRecordKind(record) {
-  if (typeof record?.mediaUrl === "string" && record.mediaUrl.length > 0) {
-    return "media";
-  }
-  if (Array.isArray(record?.mediaUrls) && record.mediaUrls.some((url) => typeof url === "string" && url.length > 0)) {
-    return "media";
-  }
-  return record?.kind === "payload" ? "payload" : "text";
 }
 
 function isManagedOutboundMedia(mediaUrl, sourcePath) {
