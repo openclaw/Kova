@@ -1178,7 +1178,12 @@ function statusFoundationCheck() {
       }, {
         kind: "channel",
         metric: "channelModelTurn.case.source-visible-delivery.media.message-tool-only",
-        message: "channel model turn case source-visible-delivery.media.message-tool-only failed: observed duplicate final delivery"
+        workflow: "source-visible-delivery",
+        failedInvariant: "source-visible-delivery.media.message-tool-only:no-success-plus-extra-visible",
+        atomCoverage: "workflow/source-visible-delivery, durable-final/media",
+        userAction: "user asks OpenClaw to produce a media result and receives that result in the same chat",
+        ownerArea: "OpenClaw",
+        message: "channel model turn case source-visible-delivery.media.message-tool-only failed: observed duplicate final delivery (workflow source-visible-delivery; invariant source-visible-delivery.media.message-tool-only:no-success-plus-extra-visible; atoms workflow/source-visible-delivery, durable-final/media)"
       }]
     };
     const behaviorFailSummary = buildReportSummary({
@@ -1190,8 +1195,18 @@ function statusFoundationCheck() {
     });
     assertEqual(
       behaviorFailSummary.decision.reason,
-      "channel model turn case source-visible-delivery.media.message-tool-only failed: observed duplicate final delivery",
+      "channel model turn case source-visible-delivery.media.message-tool-only failed: observed duplicate final delivery (workflow source-visible-delivery; invariant source-visible-delivery.media.message-tool-only:no-success-plus-extra-visible; atoms workflow/source-visible-delivery, durable-final/media)",
       "behavior failure is report headline before resource finding"
+    );
+    assertEqual(
+      behaviorFailSummary.findings?.some((finding) =>
+        finding.metric === "channelModelTurn.case.source-visible-delivery.media.message-tool-only" &&
+        finding.ownerArea === "OpenClaw" &&
+        finding.summary.includes("workflow source-visible-delivery") &&
+        finding.summary.includes("durable-final/media")
+      ),
+      true,
+      "channel model turn finding includes workflow and atom context"
     );
 
     const gate = evaluateGate(report, {
