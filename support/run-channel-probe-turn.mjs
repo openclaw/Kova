@@ -10,6 +10,7 @@ import {
   readTimeoutMs,
   waitForGatewayMethodOk
 } from "./openclaw-runtime.mjs";
+import { channelWorkflowScript } from "./channel-workflow-provider-script.mjs";
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const args = parseSupportArgs(process.argv.slice(2));
@@ -20,6 +21,7 @@ const requestedCase = args.case ?? "text-final";
 const continueOnFailure = args["continue-on-failure"] === "true";
 const artifactPath = join(artifactDir, `channel-probe-turn-${safeArtifactSegment(requestedCase)}.json`);
 const providerRequestLogPath = join(artifactDir, "mock-openai", "requests.jsonl");
+const providerPortPath = join(artifactDir, "mock-openai", "port");
 const workflowCaseCatalog = JSON.parse(await readFile(join(repoRoot, "channel-capabilities", "channel-workflow-cases.json"), "utf8"));
 const selectedCases = selectWorkflowCases(workflowCaseCatalog, requestedCase);
 
@@ -145,6 +147,7 @@ async function runProbeCase(client, testCase) {
   let ok = false;
   const fixturePaths = mediaFixturePaths(testCase);
   try {
+    await replaceMockProviderScriptForCase(testCase);
     for (const fixturePath of fixturePaths) {
       writeMediaFixture(fixturePath);
     }
@@ -188,6 +191,42 @@ async function runProbeCase(client, testCase) {
     invariants,
     observation
   };
+}
+
+async function replaceMockProviderScriptForCase(testCase) {
+  const port = await readProviderPort();
+  if (!port) {
+    return;
+  }
+  const script = channelWorkflowScript([testCase.id], repoRoot);
+  const response = await fetch(`http://127.0.0.1:${port}/admin/script`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      ...script,
+      id: `kova-channel-workflow:${testCase.id}`
+    })
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`mock provider script reset failed for ${testCase.id}: ${response.status} ${text}`);
+  }
+}
+
+async function readProviderPort() {
+  try {
+    const raw = (await readFile(providerPortPath, "utf8")).trim();
+    const port = Number(raw);
+    if (Number.isInteger(port) && port > 0 && port <= 65535) {
+      return port;
+    }
+    throw new Error(`invalid mock provider port file ${providerPortPath}: ${raw}`);
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
 }
 
 async function runBotEchoProbe(client, testCase, botEcho, firstObservation) {
