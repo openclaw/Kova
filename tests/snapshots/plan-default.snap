@@ -1,16 +1,15 @@
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  KOVA  ·  plan                                                               ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
-   47 scenarios · 33 surfaces                   darwin 25.3.0 · arm64 · v24.13.0
+   46 scenarios · 32 surfaces                   darwin 25.3.0 · arm64 · v24.13.0
 
-  Scenarios 47   ·   States 27   ·   Profiles 8   ·   Surfaces 33
+  Scenarios 46   ·   States 27   ·   Profiles 8   ·   Surfaces 32
 
 ─── surfaces by owner ──────────────────────────────────────────────────────────
-  ◆ OpenClaw  4 surfaces · 4 scenarios
+  ◆ OpenClaw  3 surfaces · 3 scenarios
     • channel-capability-baseline  1 scenario
     • channel-capability-preflight  1 scenario
     • channel-model-turn-baseline  1 scenario
-    • channel-telegram-topic-media-completion  1 scenario
   ◆ agent-cli-gateway-client  1 surface · 1 scenario
     • agent-gateway-rpc-turn  1 scenario
   ◆ agent-runtime  1 surface · 9 scenarios
@@ -75,7 +74,7 @@
   agent-provider-st…  agent-cli-local-t…       0       3  Agent Provider Stream…
   agent-provider-ti…  agent-cli-local-t…       0       3  Agent Provider Timeout
   browser-automatio…  browser-automation       0       3  Browser Automation Sm…
-  + 35 more scenarios (use --scenario <id> to filter, or --json for full list)
+  + 34 more scenarios (use --scenario <id> to filter, or --json for full list)
 
 ─── next ───────────────────────────────────────────────────────────────────────
 

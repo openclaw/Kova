@@ -245,7 +245,6 @@ export function materializeCommands(commands, values) {
       .replaceAll("{sourceEnv}", values.sourceEnv)
       .replaceAll("{artifactDir}", values.artifactDir ?? "")
       .replaceAll("{kovaRoot}", values.kovaRoot ?? "")
-      .replaceAll("{targetRepo}", values.targetRepo ?? "")
       .replaceAll("{startSelector}", values.startSelector)
       .replaceAll("{upgradeSelector}", values.upgradeSelector)
       .replaceAll("{fromUpgradeSelector}", values.fromUpgradeSelector)

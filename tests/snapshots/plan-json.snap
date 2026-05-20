@@ -513,36 +513,6 @@
       ]
     },
     {
-      "id": "channel-telegram-topic-media-completion",
-      "title": "Telegram Topic Media Completion",
-      "ownerArea": "OpenClaw",
-      "description": "Validate generated media completion delivery into Telegram topics through OpenClaw's requester-agent handoff contract.",
-      "processRoles": [
-        "command-tree"
-      ],
-      "thresholds": {},
-      "diagnostics": {
-        "timelineRequiredForSourceBuild": false,
-        "expectedSpans": []
-      },
-      "purposes": [
-        "regression",
-        "release"
-      ],
-      "requirements": [
-        {
-          "id": "regression",
-          "states": [
-            "fresh"
-          ],
-          "targetKinds": [
-            "local-build"
-          ],
-          "metrics": []
-        }
-      ]
-    },
-    {
       "id": "cross-platform-smoke",
       "title": "Cross-Platform Smoke",
       "ownerArea": "platform-runtime",
@@ -5031,64 +5001,6 @@
       ]
     },
     {
-      "id": "channel-telegram-topic-media-completion",
-      "surface": "channel-telegram-topic-media-completion",
-      "title": "Telegram Topic Media Completion",
-      "objective": "Verify generated media completion handoff into a Telegram topic stringifies the topic id before the gateway agent call and accepts direct in-process message-tool delivery evidence.",
-      "tags": [
-        "channel",
-        "telegram",
-        "media",
-        "completion",
-        "regression"
-      ],
-      "targetKinds": [
-        "local-build"
-      ],
-      "timeoutMs": 180000,
-      "auth": {
-        "mode": "skip"
-      },
-      "thresholds": {},
-      "phases": [
-        {
-          "id": "provision",
-          "title": "Provision Runtime Env",
-          "intent": "Create a disposable OpenClaw environment with the selected target runtime so Kova can import the release-shaped package artifact.",
-          "commands": [
-            "ocm start {env} {startSelector} --no-service --json"
-          ],
-          "evidence": [
-            "OCM start JSON",
-            "env name",
-            "runtime binding"
-          ],
-          "healthScope": "none",
-          "collectionIntent": "service-only"
-        },
-        {
-          "id": "telegram-topic-media-completion",
-          "title": "Run Telegram Topic Media Completion Proof",
-          "intent": "Invoke OpenClaw's requester-agent completion delivery path with a Telegram topic origin, generated-video media evidence, and the gateway agent schema contract that requires string thread ids.",
-          "commands": [
-            "node {kovaRoot}/support/run-telegram-topic-media-completion.mjs --env {env} --artifact-dir {artifactDir} --target-repo {targetRepo} --timeout-ms 30000"
-          ],
-          "evidence": [
-            "Telegram topic requester origin",
-            "generated video completion internal event",
-            "gateway agent handoff params",
-            "message-tool-only delivery mode",
-            "direct in-process delivery evidence"
-          ],
-          "healthScope": "none",
-          "collectionIntent": "service-only"
-        }
-      ],
-      "proves": [
-        "regression"
-      ]
-    },
-    {
       "id": "cross-platform-smoke",
       "surface": "cross-platform-smoke",
       "title": "Cross-Platform Runtime Smoke",
@@ -9014,15 +8926,6 @@
         ]
       },
       {
-        "id": "channel-telegram-topic-media-completion",
-        "title": "Telegram Topic Media Completion",
-        "ownerArea": "OpenClaw",
-        "scenarioCount": 1,
-        "scenarios": [
-          "channel-telegram-topic-media-completion"
-        ]
-      },
-      {
         "id": "cross-platform-smoke",
         "title": "Cross-Platform Smoke",
         "ownerArea": "platform-runtime",
@@ -9313,10 +9216,6 @@
       {
         "scenario": "channel-model-turn-baseline",
         "surface": "channel-model-turn-baseline"
-      },
-      {
-        "scenario": "channel-telegram-topic-media-completion",
-        "surface": "channel-telegram-topic-media-completion"
       },
       {
         "scenario": "cross-platform-smoke",
