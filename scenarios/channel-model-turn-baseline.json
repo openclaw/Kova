@@ -17,7 +17,8 @@
     "expectedText": "KOVA_AGENT_OK"
   },
   "mockProvider": {
-    "kovaMediaGeneration": true
+    "kovaMediaGeneration": true,
+    "channelWorkflowCases": true
   },
   "thresholds": {
     "gatewayReadyMs": 45000,
@@ -89,9 +90,11 @@
       "title": "Run Final Delivery Model Turns",
       "intent": "Call the Kova channel plugin over Gateway RPC so OpenClaw handles normal final text, media, reply, thread, and silent user-facing model turns through the shared channel adapter path.",
       "commands": [
+        "node {kovaRoot}/support/run-channel-probe-turn.mjs --env {env} --artifact-dir {artifactDir} --case text-final --timeout-ms 120000",
         "node {kovaRoot}/support/run-channel-model-turn-baseline.mjs --env {env} --artifact-dir {artifactDir} --case text-final,media-final,media-thread-final,media-reply-thread-final,media-batch-final,thread-final,silent-final --skip-shared-baseline true --continue-on-model-turn-failure true --timeout-ms 120000"
       ],
       "evidence": [
+        "thin probe text turn artifact",
         "final delivery model-turn capability rows",
         "inbound channel event ids",
         "provider request policy and observed count",

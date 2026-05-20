@@ -32,6 +32,7 @@ let activeRuntime = null;
 let outboundRecords = [];
 let deliveryRecords = [];
 let modelTurnRecords = [];
+let probeObservations = [];
 
 const messageAdapter = defineChannelMessageAdapter({
   id: CHANNEL_ID,
@@ -267,8 +268,147 @@ export default definePluginEntry({
       },
       { scope: "operator.write" }
     );
+    api.registerGatewayMethod(
+      "kova.channelProbe.reset",
+      ({ respond }) => {
+        resetProbeState();
+        respond(true, {
+          ok: true,
+          schemaVersion: "kova.channelProbe.reset.v1",
+          channelId: CHANNEL_ID,
+          accountId: activeRuntime?.accountId ?? null
+        });
+      },
+      { scope: "operator.write" }
+    );
+    api.registerGatewayMethod(
+      "kova.channelProbe.inject",
+      async ({ params, respond }) => {
+        try {
+          const result = await injectProbeInbound(params);
+          respond(true, result);
+        } catch (error) {
+          respond(true, {
+            ok: false,
+            schemaVersion: "kova.channelProbe.injectResult.v1",
+            channelId: CHANNEL_ID,
+            accountId: activeRuntime?.accountId ?? null,
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+      },
+      { scope: "operator.write" }
+    );
+    api.registerGatewayMethod(
+      "kova.channelProbe.observations",
+      ({ respond }) => {
+        respond(true, {
+          ok: true,
+          schemaVersion: "kova.channelProbe.observations.v1",
+          channelId: CHANNEL_ID,
+          accountId: activeRuntime?.accountId ?? null,
+          observations: probeObservations
+        });
+      },
+      { scope: "operator.read" }
+    );
   }
 });
+
+function resetProbeState() {
+  outboundRecords = [];
+  deliveryRecords = [];
+  modelTurnRecords = [];
+  probeObservations = [];
+}
+
+async function injectProbeInbound(params = {}) {
+  if (!activeRuntime?.channelRuntime) {
+    throw new Error("kova channel baseline runtime is not started");
+  }
+  const message = requiredProbeString(params.message, "message");
+  const inboundEventId = optionalProbeString(params.inboundEventId) ??
+    `kova-probe-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const targetId = optionalProbeString(params.targetId) ?? TARGET_ID;
+  const replyToId = params.replyToId === null ? null : optionalProbeString(params.replyToId);
+  const threadId = optionalProbeString(params.threadId);
+  const silent = params.silent === true;
+  const sourceReplyDeliveryMode = optionalProbeString(params.sourceReplyDeliveryMode);
+  const senderId = optionalProbeString(params.senderId) ?? TARGET_USER_ID;
+  const senderName = optionalProbeString(params.senderName) ?? TARGET_DISPLAY;
+  const from = optionalProbeString(params.from) ?? targetId;
+  const beforeOutbound = outboundRecords.length;
+  const beforeDelivery = deliveryRecords.length;
+  const beforeRecords = modelTurnRecords.length;
+  const startedAtEpochMs = Date.now();
+  let turn = null;
+  let error = null;
+
+  try {
+    turn = await runOpenClawModelTurn({
+      message,
+      inboundEventId,
+      targetId,
+      replyToId,
+      threadId,
+      silent,
+      sourceReplyDeliveryMode,
+      from,
+      senderId,
+      senderName
+    });
+  } catch (caught) {
+    error = caught instanceof Error ? caught : new Error(String(caught));
+  }
+
+  const finishedAtEpochMs = Date.now();
+  const observation = {
+    schemaVersion: "kova.channelProbe.observation.v1",
+    channelId: CHANNEL_ID,
+    accountId: activeRuntime.accountId,
+    inboundEvent: {
+      id: inboundEventId,
+      message,
+      targetId,
+      replyToId,
+      threadId,
+      silent,
+      senderId,
+      senderName,
+      from
+    },
+    routeSessionKey: turn?.routeSessionKey ?? null,
+    dispatched: turn?.dispatched === true,
+    admission: turn?.admission ?? null,
+    error: error?.message ?? null,
+    startedAtEpochMs,
+    finishedAtEpochMs,
+    durationMs: Math.max(0, finishedAtEpochMs - startedAtEpochMs),
+    outboundRecords: outboundRecords.slice(beforeOutbound),
+    deliveryRecords: deliveryRecords.slice(beforeDelivery),
+    modelTurnRecords: modelTurnRecords.slice(beforeRecords)
+  };
+  probeObservations.push(observation);
+  return {
+    ok: error === null,
+    schemaVersion: "kova.channelProbe.injectResult.v1",
+    channelId: CHANNEL_ID,
+    accountId: activeRuntime.accountId,
+    observation
+  };
+}
+
+function requiredProbeString(value, key) {
+  const normalized = optionalProbeString(value);
+  if (!normalized) {
+    throw new Error(`kova channel probe ${key} must be a non-empty string`);
+  }
+  return normalized;
+}
+
+function optionalProbeString(value) {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
 
 function buildKovaImageGenerationProvider() {
   return {

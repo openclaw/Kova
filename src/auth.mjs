@@ -575,6 +575,9 @@ function startMockProviderCommand(dir, mockProvider = {}) {
     "--marker", "KOVA_AGENT_OK",
     "--mode", mode
   ];
+  if (Array.isArray(mockProvider.channelWorkflowCases) && mockProvider.channelWorkflowCases.length > 0) {
+    scriptArgs.push("--channel-workflow-cases", mockProvider.channelWorkflowCases.join(","));
+  }
   for (const [key, flag] of [
     ["delayMs", "--delay-ms"],
     ["stallMs", "--stall-ms"],
@@ -634,7 +637,29 @@ function mockProviderPolicy(scenario, state) {
   if (raw.kovaMediaGeneration !== undefined) {
     policy.kovaMediaGeneration = raw.kovaMediaGeneration === true;
   }
+  if (raw.channelWorkflowCases !== undefined) {
+    policy.channelWorkflowCases = raw.channelWorkflowCases === true
+      ? collectChannelWorkflowCaseOrder(scenario)
+      : [];
+  }
   return policy;
+}
+
+function collectChannelWorkflowCaseOrder(scenario) {
+  const cases = [];
+  for (const phase of scenario?.phases ?? []) {
+    for (const command of phase.commands ?? []) {
+      if (typeof command !== "string" || !command.includes("run-channel-")) {
+        continue;
+      }
+      const match = command.match(/\s--case\s+([^\s]+)/);
+      if (!match) {
+        continue;
+      }
+      cases.push(...match[1].split(",").map((item) => item.trim()).filter(Boolean));
+    }
+  }
+  return cases;
 }
 
 function mockProviderDisplay(policy) {

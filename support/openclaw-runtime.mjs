@@ -124,6 +124,30 @@ export async function openDirectGatewayRpcClient(runtimeContext) {
   };
 }
 
+export async function waitForGatewayMethodOk(client, method, {
+  params = {},
+  timeoutMs = 120000,
+  requestTimeoutMs = 5000,
+  notReadyMessage = `${method} did not report ready`,
+  timeoutMessage = `timed out waiting for ${method}`
+} = {}) {
+  const startedAt = Date.now();
+  let lastError = null;
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      const status = await client.request(method, params, { timeoutMs: requestTimeoutMs });
+      if (status?.ok === true) {
+        return status;
+      }
+      lastError = new Error(notReadyMessage);
+    } catch (error) {
+      lastError = error;
+    }
+    await sleep(1000);
+  }
+  throw lastError ?? new Error(timeoutMessage);
+}
+
 class DirectGatewayRpcClient {
   constructor({ url, token }) {
     this.url = url;

@@ -6,7 +6,8 @@ import {
   openDirectGatewayRpcClient,
   parseSupportArgs,
   prepareOpenClawRuntimeFromOcmEnv,
-  readTimeoutMs
+  readTimeoutMs,
+  waitForGatewayMethodOk
 } from "./openclaw-runtime.mjs";
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -71,21 +72,11 @@ async function main() {
 }
 
 async function waitForBaselineChannel(client, commandTimeoutMs) {
-  const startedAt = Date.now();
-  let lastError = null;
-  while (Date.now() - startedAt < commandTimeoutMs) {
-    try {
-      const status = await client.request("kova.channelBaseline.status", {}, { timeoutMs: 5000 });
-      if (status?.ok === true) {
-        return status;
-      }
-      lastError = new Error("kova channel baseline plugin registered but channel runtime is not started");
-    } catch (error) {
-      lastError = error;
-    }
-    await sleep(1000);
-  }
-  throw lastError ?? new Error("timed out waiting for kova channel baseline runtime");
+  return await waitForGatewayMethodOk(client, "kova.channelBaseline.status", {
+    timeoutMs: commandTimeoutMs,
+    notReadyMessage: "kova channel baseline plugin registered but channel runtime is not started",
+    timeoutMessage: "timed out waiting for kova channel baseline runtime"
+  });
 }
 
 function buildResult({ catalog: catalogValue, runtimeContext, baseline, error, timeoutMs: commandTimeoutMs }) {
@@ -170,10 +161,6 @@ function compactRuntimeContext(context) {
     packageRoot: context.packageRoot,
     runtime: context.runtime ?? null
   };
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function requiredArg(parsed, key) {
