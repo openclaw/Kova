@@ -256,8 +256,8 @@ async function runBotEchoProbe(client, testCase, botEcho, firstObservation) {
 }
 
 function createBotEchoProtection(testCase, inboundEventId, targetId) {
-  const senderId = "kova-baseline-echo-bot";
-  const receiverId = "kova-baseline-user";
+  const senderId = "kova-probe-echo-bot";
+  const receiverId = "kova-probe-user";
   const scopeId = `kova-self-trigger:${testCase.id}:${inboundEventId}`;
   const config = {
     maxEventsPerWindow: 1,
@@ -767,7 +767,7 @@ function targetIdForCase(caseId) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 72) || "case";
-  return `dm:kova-baseline-user-${safe}`;
+  return `dm:kova-probe-user-${safe}`;
 }
 
 function objectOrEmpty(value) {

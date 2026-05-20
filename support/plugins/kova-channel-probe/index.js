@@ -5,9 +5,9 @@ import { defineChannelMessageAdapter } from "openclaw/plugin-sdk/channel-message
 
 const CHANNEL_ID = "kova-channel-probe";
 const ACCOUNT_ID = "default";
-const TARGET_ID = "dm:kova-baseline-user";
-const TARGET_USER_ID = "kova-baseline-user";
-const TARGET_DISPLAY = "Kova Baseline User";
+const TARGET_ID = "dm:kova-probe-user";
+const TARGET_USER_ID = "kova-probe-user";
+const TARGET_DISPLAY = "Kova Probe User";
 const KOVA_IMAGE_PROVIDER_ID = "kova-channel-probe";
 const KOVA_IMAGE_MODEL_ID = "kova-image";
 const KOVA_PNG_1X1 = Buffer.from(
@@ -118,7 +118,7 @@ const plugin = {
     targetResolver: {
       looksLikeId: (raw, normalized) =>
         isKovaTarget(normalizeKovaTarget(normalized ?? raw)),
-      hint: "dm:kova-baseline-user",
+      hint: "dm:kova-probe-user",
       resolveTarget: async ({ input, normalized }) => {
         const target = normalizeKovaTarget(normalized) ?? normalizeKovaTarget(input);
         return isKovaTarget(target)
