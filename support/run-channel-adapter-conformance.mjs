@@ -309,17 +309,22 @@ async function runAdapterSend(adapter, input) {
 }
 
 function workflowInvariants(testCase, proof) {
-  const expected = testCase.expects ?? {};
+  const expected = {
+    ...(testCase.expects ?? {}),
+    ...(channelRegistry.workflowOverrides?.[testCase.id] ?? {})
+  };
   const expectedDeliveries = expected.visibleDeliveries ?? 1;
-  const firstCall = proof.platformCalls[0] ?? null;
+  const textCall = proof.platformCalls[expected.textDeliveryIndex ?? 0] ?? null;
+  const mediaCall = proof.platformCalls[expected.mediaDeliveryIndex ?? 0] ?? null;
+  const targetCall = proof.platformCalls[0] ?? null;
   return [
     invariant(`${testCase.id}:visible-delivery-count`, proof.platformCalls.length === expectedDeliveries, `${testCase.id} produced ${expectedDeliveries} visible adapter delivery; observed ${proof.platformCalls.length}`),
     invariant(`${testCase.id}:delivery-kind`, !expected.kind || proof.send.kind === expected.kind, `${testCase.id} used expected adapter send kind`),
-    invariant(`${testCase.id}:text`, !expected.text || firstCall?.text === expected.text, `${testCase.id} preserved expected text/caption`),
-    invariant(`${testCase.id}:media`, expected.kind !== "media" || firstCall?.options?.mediaUrl === expected.mediaSource, `${testCase.id} preserved expected media source`),
-    invariant(`${testCase.id}:reply-to`, expected.replyTo !== "inbound-message" || platformReplyTargetMatches(firstCall), `${testCase.id} preserved reply target`),
-    invariant(`${testCase.id}:thread`, !expected.threadId || platformThreadTargetMatches(firstCall), `${testCase.id} preserved thread target`),
-    invariant(`${testCase.id}:silent`, expected.silent !== true || firstCall?.options?.silent === true, `${testCase.id} preserved silent delivery intent`),
+    invariant(`${testCase.id}:text`, !expected.text || textCall?.text === expected.text, `${testCase.id} preserved expected text/caption`),
+    invariant(`${testCase.id}:media`, expected.kind !== "media" || mediaCall?.options?.mediaUrl === expected.mediaSource, `${testCase.id} preserved expected media source`),
+    invariant(`${testCase.id}:reply-to`, expected.replyTo !== "inbound-message" || platformReplyTargetMatches(targetCall), `${testCase.id} preserved reply target`),
+    invariant(`${testCase.id}:thread`, !expected.threadId || platformThreadTargetMatches(targetCall), `${testCase.id} preserved thread target`),
+    invariant(`${testCase.id}:silent`, expected.silent !== true || targetCall?.options?.silent === true, `${testCase.id} preserved silent delivery intent`),
     invariant(`${testCase.id}:terminal`, expected.terminal !== true || proof.result.platformMessageIds.length > 0, `${testCase.id} returned terminal adapter receipt`)
   ];
 }

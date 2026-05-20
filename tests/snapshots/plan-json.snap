@@ -3710,6 +3710,18 @@
         "source-visible-delivery.media.message-tool-only",
         "background-artifact-completion.video.message-tool-only"
       ],
+      "workflowOverrides": {
+        "source-visible-delivery.media.message-tool-only": {
+          "visibleDeliveries": 2,
+          "textDeliveryIndex": 0,
+          "mediaDeliveryIndex": 1
+        },
+        "background-artifact-completion.video.message-tool-only": {
+          "visibleDeliveries": 2,
+          "textDeliveryIndex": 0,
+          "mediaDeliveryIndex": 1
+        }
+      },
       "deterministicShim": {
         "conversationId": "channel:123456",
         "threadId": "thread-1",

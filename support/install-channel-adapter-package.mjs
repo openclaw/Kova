@@ -2,9 +2,9 @@
 
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseSupportArgs, readTimeoutMs } from "./openclaw-runtime.mjs";
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -25,7 +25,9 @@ try {
     throw new Error(`channel ${channelId} does not use an external adapter package`);
   }
 
-  const installSpec = resolveInstallSpec({ distribution, targetRepo });
+  const localPackage = await resolveInstallSpec({ distribution, targetRepo, artifactDir, channelId });
+  const installSpec = localPackage.installSpec;
+  const preparationCommands = localPackage.preparationCommands ?? [];
   const install = await runStep(`install:${channelId}`, "ocm", [`@${envName}`, "--", "plugins", "install", installSpec, "--force"], { timeoutMs });
   const list = install.status === 0
     ? await runStep(`list:${channelId}`, "ocm", [`@${envName}`, "--", "plugins", "list"], { timeoutMs: 30000 })
@@ -46,7 +48,7 @@ try {
     startedAtEpochMs,
     finishedAtEpochMs: Date.now(),
     durationMs: Date.now() - startedAtEpochMs,
-    commands: [install, list, registryRefresh].map(compactStep)
+    commands: [...preparationCommands, install, list, registryRefresh].map(compactStep)
   };
 
   await mkdir(artifactDir, { recursive: true });
@@ -77,19 +79,80 @@ try {
   process.exit(2);
 }
 
-function resolveInstallSpec({ distribution, targetRepo }) {
+async function resolveInstallSpec({ distribution, targetRepo, artifactDir, channelId }) {
   const trimmedRepo = String(targetRepo ?? "").trim();
   if (trimmedRepo) {
     const repoPath = resolve(trimmedRepo);
-    const localPath = resolve(repoPath, distribution.localBuildPath);
-    if (!isInsideOrSame(repoPath, localPath)) {
+    const packageSource = resolve(repoPath, "extensions", channelId);
+    if (!isInsideOrSame(repoPath, packageSource)) {
       throw new Error(`channel ${distribution.pluginId} localBuildPath escapes target repo`);
     }
-    if (existsSync(join(localPath, "package.json"))) {
-      return localPath;
+    if (existsSync(join(packageSource, "package.json"))) {
+      return await stageLocalBuildPackage({ repoPath, packageSource, artifactDir, channelId });
     }
   }
-  return distribution.packageName;
+  return { installSpec: distribution.packageName, preparationCommands: [] };
+}
+
+async function stageLocalBuildPackage({ repoPath, packageSource, artifactDir, channelId }) {
+  const stagingRoot = resolve(artifactDir, "channel-adapter-packages");
+  const stagedPackage = join(stagingRoot, channelId);
+  await rm(stagedPackage, { recursive: true, force: true });
+  await mkdir(stagingRoot, { recursive: true });
+  await cp(packageSource, stagedPackage, {
+    recursive: true,
+    filter: (source) => {
+      const relative = source.slice(packageSource.length).replaceAll("\\", "/");
+      return !relative.startsWith("/node_modules") && !relative.startsWith("/dist");
+    }
+  });
+  await writeFile(join(stagedPackage, "tsconfig.json"), `${JSON.stringify({
+    extends: join(repoPath, "tsconfig.json")
+  }, null, 2)}\n`, "utf8");
+
+  const runtimeBuildModule = await import(pathToFileURL(join(repoPath, "scripts", "lib", "plugin-npm-runtime-build.mjs")).href);
+  const packageManifestModule = await import(pathToFileURL(join(repoPath, "scripts", "lib", "plugin-npm-package-manifest.mjs")).href);
+  const buildResult = await runtimeBuildModule.buildPluginNpmRuntime({
+    repoRoot: repoPath,
+    packageDir: stagedPackage,
+    logLevel: "warn"
+  });
+  if (!buildResult) {
+    throw new Error(`channel ${channelId} did not produce a package-local runtime build`);
+  }
+
+  const packageJsonOverlay = packageManifestModule.resolveAugmentedPluginNpmPackageJson({
+    repoRoot: repoPath,
+    packageDir: stagedPackage
+  });
+  if (packageJsonOverlay.packageJson) {
+    await writeFile(packageJsonOverlay.packageJsonPath, `${JSON.stringify(packageJsonOverlay.packageJson, null, 2)}\n`, "utf8");
+  }
+  const manifestOverlay = packageManifestModule.resolveAugmentedPluginNpmManifest({
+    repoRoot: repoPath,
+    packageDir: stagedPackage
+  });
+  if (manifestOverlay.manifest) {
+    await writeFile(manifestOverlay.manifestPath, `${JSON.stringify(manifestOverlay.manifest, null, 2)}\n`, "utf8");
+  }
+  const pack = await runStep(`pack:${channelId}`, "npm", ["pack", "--silent", "--pack-destination", stagingRoot], {
+    timeoutMs: 60000,
+    cwd: stagedPackage
+  });
+  if (pack.status !== 0) {
+    throw new Error(`failed to pack staged channel package ${channelId}: ${pack.stderrTail || pack.stdoutTail}`);
+  }
+  const packedFilename = pack.stdoutTail.trim().split(/\r?\n/u).filter(Boolean).at(-1);
+  const tarballPath = packedFilename && resolve(packedFilename) === packedFilename
+    ? packedFilename
+    : join(stagingRoot, packedFilename ?? "");
+  if (!packedFilename || !existsSync(tarballPath)) {
+    throw new Error(`npm pack did not produce a tarball for staged channel package ${channelId}`);
+  }
+  return {
+    installSpec: tarballPath,
+    preparationCommands: [pack]
+  };
 }
 
 function runStep(id, command, args, options) {
@@ -97,7 +160,8 @@ function runStep(id, command, args, options) {
   return new Promise((resolveStep) => {
     const child = spawn(command, args, {
       stdio: ["ignore", "pipe", "pipe"],
-      env: process.env
+      env: process.env,
+      cwd: options.cwd
     });
     let stdout = "";
     let stderr = "";
