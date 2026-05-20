@@ -306,10 +306,10 @@ async function waitForProbeObservation(client, testCase, inboundEventId, initial
   return await readLatestProbeObservation(client, inboundEventId, latest);
 }
 
-async function readLatestProbeObservation(client, inboundEventId, fallback) {
+async function readLatestProbeObservation(client, inboundEventId, priorObservation) {
   const result = await client.request("kova.channelProbe.observations", {}, { timeoutMs: 5000 });
   const observations = Array.isArray(result?.observations) ? result.observations : [];
-  return observations.find((observation) => observation?.inboundEvent?.id === inboundEventId) ?? fallback;
+  return observations.find((observation) => observation?.inboundEvent?.id === inboundEventId) ?? priorObservation;
 }
 
 function requiresObservationWait(testCase) {

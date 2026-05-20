@@ -644,11 +644,11 @@ async function runOpenClawModelTurn({
         ...(requiredCapabilities ? { requiredCapabilities } : {})
       },
       deliver: async (delivered) => {
-        return await deliverFallbackPayload(delivered, { targetId, replyToId, threadId, silent });
+        return rejectUnhandledDeliveryPayload(delivered, { targetId, replyToId, threadId, silent });
       },
       onDelivered: async (delivered, info, result) => {
         deliveryRecords.push({
-          fallback: false,
+          path: "durable-message-send-context",
           kind: info?.kind ?? null,
           text: delivered?.text ?? null,
           mediaUrl: delivered?.mediaUrl ?? delivered?.mediaUrls?.[0] ?? null,
@@ -731,39 +731,25 @@ async function recordOutbound(kind, ctx) {
   return { messageId, receipt };
 }
 
-async function deliverFallbackPayload(payload, options = {}) {
+function rejectUnhandledDeliveryPayload(payload, options = {}) {
   const mediaUrl = firstMediaUrl(payload);
-  const ctx = {
-    to: options.targetId ?? TARGET_ID,
-    text: payload?.text ?? "",
-    isError: payload?.isError === true,
-    replyToId: options.replyToId ?? undefined,
-    threadId: options.threadId ?? undefined,
-    silent: options.silent === true
-  };
-  const result = mediaUrl
-    ? await messageAdapter.send.media({ ...ctx, mediaUrl })
-    : payload?.channelData
-      ? await messageAdapter.send.payload({ ...ctx, payload })
-      : await messageAdapter.send.text(ctx);
-  const messageIds = result?.receipt?.platformMessageIds ?? [];
   deliveryRecords.push({
-    fallback: true,
+    path: "unhandled-channel-delivery",
     kind: mediaUrl ? "media" : payload?.channelData ? "payload" : "text",
     text: payload?.text ?? null,
     mediaUrl: mediaUrl ?? null,
     mediaUrls: Array.isArray(payload?.mediaUrls) ? payload.mediaUrls : mediaUrl ? [mediaUrl] : [],
     isError: payload?.isError === true,
+    targetId: options.targetId ?? TARGET_ID,
     replyToId: options.replyToId ?? null,
     threadId: options.threadId ?? null,
     silent: options.silent === true,
-    visibleReplySent: messageIds.length > 0,
-    messageIds
+    visibleReplySent: false,
+    messageIds: []
   });
-  return {
-    messageIds,
-    visibleReplySent: messageIds.length > 0
-  };
+  throw new Error(
+    `OpenClaw channel durable delivery did not handle final ${mediaUrl ? "media" : payload?.channelData ? "payload" : "text"} payload`
+  );
 }
 
 function firstMediaUrl(payload) {
