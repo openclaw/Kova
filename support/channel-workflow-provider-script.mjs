@@ -122,16 +122,14 @@ function primaryScriptStepsForWorkflowCase(testCase) {
     }];
   }
   if (Array.isArray(script.toolCalls) && script.toolCalls.length > 0) {
-    return [
+    const steps = [
       {
         id: `${testCase.id}:tool-calls`,
         respond: {
           type: "tool-calls",
-          toolCalls: script.toolCalls.map((toolCall, index) => ({
-            id: toolCall.id ?? `call_${safeToolCallId(testCase.id)}_${index + 1}`,
-            name: requiredNonEmptyString(toolCall.name, `${testCase.id} providerScript.toolCalls[${index}].name`),
-            arguments: stringifyToolArguments(toolCall.arguments)
-          }))
+          toolCalls: script.toolCalls.map((toolCall, index) =>
+            scriptToolCall(testCase.id, "providerScript.toolCalls", toolCall, index)
+          )
         }
       },
       {
@@ -142,6 +140,27 @@ function primaryScriptStepsForWorkflowCase(testCase) {
         }
       }
     ];
+    if (Array.isArray(script.completionToolCalls) && script.completionToolCalls.length > 0) {
+      steps.push(
+        {
+          id: `${testCase.id}:completion-tool-calls`,
+          respond: {
+            type: "tool-calls",
+            toolCalls: script.completionToolCalls.map((toolCall, index) =>
+              scriptToolCall(testCase.id, "providerScript.completionToolCalls", toolCall, index)
+            )
+          }
+        },
+        {
+          id: `${testCase.id}:completion-final`,
+          respond: {
+            type: "final-text",
+            text: typeof script.completionFinalText === "string" ? script.completionFinalText : "NO_REPLY"
+          }
+        }
+      );
+    }
+    return steps;
   }
   return [{
     id: `${testCase.id}:final`,
@@ -150,6 +169,15 @@ function primaryScriptStepsForWorkflowCase(testCase) {
       text: typeof script.finalText === "string" ? script.finalText : "Hello from mock AI provider"
     }
   }];
+}
+
+function scriptToolCall(testCaseId, label, toolCall, index) {
+  const defaultId = `call_${safeToolCallId(`${testCaseId}_${label}`)}_${index + 1}`;
+  return {
+    id: toolCall.id ?? defaultId,
+    name: requiredNonEmptyString(toolCall.name, `${testCaseId} ${label}[${index}].name`),
+    arguments: stringifyToolArguments(toolCall.arguments)
+  };
 }
 
 function stringifyToolArguments(value) {

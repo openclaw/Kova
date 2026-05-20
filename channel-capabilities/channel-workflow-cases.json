@@ -534,11 +534,23 @@
             }
           }
         ],
-        "finalText": "NO_REPLY"
+        "finalText": "NO_REPLY",
+        "completionToolCalls": [
+          {
+            "name": "message",
+            "arguments": {
+              "action": "send",
+              "message": "KOVA_COMPLETION_MEDIA_READY",
+              "media": "{{request.text.match:path=\"([^\"]+)\"}}"
+            }
+          }
+        ],
+        "completionFinalText": "NO_REPLY"
       },
       "expects": {
         "visibleDeliveries": 1,
         "kind": "media",
+        "text": "KOVA_COMPLETION_MEDIA_READY",
         "replyTo": "none",
         "mediaSourcePolicy": "present-existing",
         "hooks": true,
@@ -548,7 +560,7 @@
       },
       "providerRequests": {
         "mode": "minimum",
-        "min": 2
+        "min": 4
       },
       "atoms": [
         { "group": "workflow", "id": "background-artifact-completion" },
@@ -585,11 +597,23 @@
             }
           }
         ],
-        "finalText": "NO_REPLY"
+        "finalText": "NO_REPLY",
+        "completionToolCalls": [
+          {
+            "name": "message",
+            "arguments": {
+              "action": "send",
+              "message": "KOVA_COMPLETION_MEDIA_READY",
+              "media": "{{request.text.match:path=\"([^\"]+)\"}}"
+            }
+          }
+        ],
+        "completionFinalText": "NO_REPLY"
       },
       "expects": {
         "visibleDeliveries": 1,
         "kind": "media",
+        "text": "KOVA_COMPLETION_MEDIA_READY",
         "replyTo": "none",
         "threadId": "kova-model-turn-thread",
         "mediaSourcePolicy": "present-existing",
@@ -600,7 +624,7 @@
       },
       "providerRequests": {
         "mode": "minimum",
-        "min": 2
+        "min": 4
       },
       "atoms": [
         { "group": "workflow", "id": "background-artifact-completion" },
