@@ -609,7 +609,7 @@ export function mockAiProviderServeCommand({ scriptPath, requestLog, serverLog, 
   const bin = `\${KOVA_MOCK_AI_PROVIDER_BIN:-${quoteShell(join(repoRoot, "node_modules/.bin/mock-ai-provider"))}}`;
   const args = `serve --providers openai --script ${quoteShell(scriptPath)} --port 0 --request-log ${quoteShell(requestLog)}`;
   const output = `>${quoteShell(serverLog)} 2>&1 & echo $! >${quoteShell(pidFile)}`;
-  return `mock_provider_bin=${bin}; if [ -x "$mock_provider_bin" ]; then "$mock_provider_bin" ${args} ${output}; else node "$mock_provider_bin" ${args} ${output}; fi`;
+  return `mock_provider_bin=${bin}; test -x "$mock_provider_bin"; "$mock_provider_bin" ${args} ${output}`;
 }
 
 function mockProviderPolicy(scenario, state) {
