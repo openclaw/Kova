@@ -94,7 +94,7 @@ function buildResult({ catalog: catalogValue, runtimeContext, baseline, error, t
   const rows = [];
   let ok = !runError && baseline?.ok === true;
 
-  for (const capability of catalogValue.capabilities ?? []) {
+  for (const capability of baselineCapabilities(catalogValue)) {
     if (capabilityGroup !== "all" && capability.group !== capabilityGroup) {
       continue;
     }
@@ -125,6 +125,7 @@ function buildResult({ catalog: catalogValue, runtimeContext, baseline, error, t
       schemaVersion: "kova.channelCapabilityBaselineArtifact.v1",
       catalogId: catalogValue.id,
       catalogCapabilityCount: catalogValue.capabilities.length,
+      baselineCapabilityCount: baselineCapabilities(catalogValue).length,
       group: capabilityGroup,
       runtimeContext: compactRuntimeContext(runtimeContext),
       timeoutMs: commandTimeoutMs,
@@ -147,6 +148,12 @@ function buildResult({ catalog: catalogValue, runtimeContext, baseline, error, t
       capabilities: rows
     }
   };
+}
+
+function baselineCapabilities(catalogValue) {
+  return (catalogValue.capabilities ?? []).filter((capability) =>
+    (capability.proofModes ?? []).includes("baseline")
+  );
 }
 
 function safeArtifactSegment(value) {
