@@ -239,7 +239,8 @@ function normalizeWorkflowCase(entry) {
   const expectedText = typeof expects.text === "string"
     ? expects.text
     : (typeof providerScript.finalText === "string" ? providerScript.finalText : null);
-  if (!expectedText) {
+  const expectErrorFinal = expects.errorFinal === true;
+  if (!expectedText && !expectErrorFinal) {
     throw new Error(`channel workflow case ${id} must declare expects.text or providerScript.finalText`);
   }
   return {
@@ -249,9 +250,13 @@ function normalizeWorkflowCase(entry) {
     openclawSurface: typeof entry.openclawSurface === "string" ? entry.openclawSurface : null,
     ownerArea: typeof entry.ownerArea === "string" ? entry.ownerArea : null,
     prompt: requiredString(entry, "prompt"),
-    responseText: typeof providerScript.finalText === "string" ? providerScript.finalText : expectedText,
+    responseText: typeof providerScript.finalText === "string"
+      ? providerScript.finalText
+      : (expectedText ?? "KOVA_UNUSED_ERROR_RESPONSE"),
     toolCall: toolCalls[0] ?? null,
+    providerErrorStatus: Number.isInteger(providerScript.errorStatus) ? providerScript.errorStatus : null,
     expectedText,
+    expectErrorFinal,
     expectedKind: typeof expects.kind === "string" ? expects.kind : null,
     expectedLocalMediaSource: typeof expects.mediaSource === "string" ? expects.mediaSource : null,
     expectedMediaSourcePolicy: typeof expects.mediaSourcePolicy === "string" ? expects.mediaSourcePolicy : null,

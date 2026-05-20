@@ -309,6 +309,34 @@
       ]
     },
     {
+      "id": "failure-visible-once.provider-error",
+      "workflow": "failure-visible-once",
+      "userAction": "user sends a normal channel message while the configured model provider is failing and receives one clear error response",
+      "openclawSurface": "channel inbound direct message with provider failure",
+      "ownerArea": "OpenClaw channel runtime",
+      "prompt": "Check the launch status for this chat.",
+      "providerScript": {
+        "errorStatus": 503
+      },
+      "expects": {
+        "visibleDeliveries": 1,
+        "kind": "text",
+        "errorFinal": true,
+        "terminal": true,
+        "noDuplicateFinal": true
+      },
+      "providerRequests": {
+        "mode": "minimum",
+        "min": 1
+      },
+      "atoms": [
+        { "group": "workflow", "id": "failure-visible-once" },
+        { "group": "workflow", "id": "single-inbound-single-final" },
+        { "group": "workflow", "id": "terminal-after-final" },
+        { "group": "durable-final", "id": "text" }
+      ]
+    },
+    {
       "id": "source-visible-delivery.media.message-tool-only",
       "workflow": "source-visible-delivery",
       "userAction": "user asks OpenClaw to produce a media result and receives that result in the same chat",

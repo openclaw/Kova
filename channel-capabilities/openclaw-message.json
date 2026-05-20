@@ -8,6 +8,7 @@
     "src/channels/message/contracts.test.ts",
     "src/channels/message/runtime-workflows",
     "src/infra/outbound/source-delivery-plan.ts",
+    "src/agents/pi-embedded-runner/run/payloads.ts",
     "src/agents/subagent-announce-delivery.ts"
   ],
   "capabilities": [
@@ -316,6 +317,15 @@
       "baselineExpectation": "a completed background media-generation request must deliver its user-visible artifact through the supported source conversation path exactly once and leave the run terminal",
       "proofModes": ["model-turn", "deterministic-shim", "live-smoke"],
       "declarationSource": "src/agents/subagent-announce-delivery.ts"
+    },
+    {
+      "id": "failure-visible-once",
+      "group": "workflow",
+      "title": "Failure Visible Once",
+      "sourceSymbol": "channelRuntimeWorkflows.failureVisibleOnce",
+      "baselineExpectation": "a failed channel model turn should deliver one user-visible error response, avoid duplicate success/error output, and leave the run terminal",
+      "proofModes": ["model-turn", "live-smoke"],
+      "declarationSource": "src/agents/pi-embedded-runner/run/payloads.ts"
     }
   ]
 }

@@ -307,6 +307,10 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "POST" && url.pathname === "/v1/responses") {
     behavior = behaviorForProviderCall();
     await applyDelayForBehavior(behavior);
+    const scriptedFailure = scriptedFailureBehavior(bodyText, behavior.providerCallIndex);
+    if (scriptedFailure) {
+      behavior = scriptedFailure;
+    }
     if (await maybeWriteFailureBehavior(res, behavior, stream)) {
       return;
     }
@@ -366,6 +370,10 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "POST" && url.pathname === "/v1/chat/completions") {
     behavior = behaviorForProviderCall();
     await applyDelayForBehavior(behavior);
+    const scriptedFailure = scriptedFailureBehavior(bodyText, behavior.providerCallIndex);
+    if (scriptedFailure) {
+      behavior = scriptedFailure;
+    }
     if (await maybeWriteFailureBehavior(res, behavior, body.stream !== false)) {
       return;
     }
@@ -394,6 +402,20 @@ function behaviorForProviderCall() {
     outcome: null,
     errorClass: null,
     providerCallIndex: providerPostCount
+  };
+}
+
+function scriptedFailureBehavior(requestBodyText, providerCallIndex) {
+  const status = latestMatch(String(requestBodyText ?? ""), /KOVA_MOCK_PROVIDER_ERROR_STATUS:(\d{3})/g);
+  if (!status) {
+    return null;
+  }
+  return {
+    mode: "scripted-error",
+    outcome: null,
+    errorClass: "scripted-provider-error",
+    providerCallIndex,
+    status: Number(status)
   };
 }
 
@@ -513,6 +535,15 @@ async function applyDelayForBehavior(behavior) {
 }
 
 async function maybeWriteFailureBehavior(res, behavior, stream) {
+  if (behavior.mode === "scripted-error") {
+    writeJson(res, behavior.status, {
+      error: {
+        message: "mock provider scripted failure",
+        type: "kova_mock_provider_scripted_error"
+      }
+    });
+    return true;
+  }
   if (behavior.mode === "timeout") {
     behavior.errorClass = "provider-timeout";
     await sleep(stallMs);

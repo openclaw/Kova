@@ -237,6 +237,26 @@
       "collectionIntent": "post-ready-health"
     },
     {
+      "id": "channel-model-turn-negative-paths",
+      "title": "Run Negative Path Model Turns",
+      "intent": "Call the Kova channel plugin over Gateway RPC so OpenClaw handles a normal inbound channel event while the model provider fails, sends one visible error response through the channel adapter, and records duplicate-send and terminal invariants.",
+      "commands": [
+        "node {kovaRoot}/support/run-channel-model-turn-baseline.mjs --env {env} --artifact-dir {artifactDir} --case failure-visible-once.provider-error --skip-shared-baseline true --continue-on-model-turn-failure true --timeout-ms 120000"
+      ],
+      "evidence": [
+        "negative path model-turn workflow rows",
+        "inbound channel event ids",
+        "provider failure request evidence",
+        "user-visible error delivery records",
+        "outbound channel send records",
+        "channel receipts",
+        "duplicate-send invariants",
+        "terminal dispatch returns"
+      ],
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
+    },
+    {
       "id": "post-channel-model-turn-health",
       "title": "Post-Channel-Model-Turn Health",
       "intent": "Verify the gateway remains responsive after the channel model turn.",

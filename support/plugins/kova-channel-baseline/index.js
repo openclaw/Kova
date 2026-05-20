@@ -436,6 +436,9 @@ async function runModelTurnCase(testCase) {
   const matchedText = typeof testCase.expectedText === "string"
     ? (finalTexts.find((text) => textEquals(text, testCase.expectedText)) ?? null)
     : null;
+  const visibleErrorText = testCase.expectErrorFinal === true
+    ? (finalTexts.find((text) => text.trim().length > 0) ?? null)
+    : null;
   const firstFinal = finalDeliveryRecords[0] ?? null;
   const finalDeliveryPolicy = normalizeFinalDeliveries(testCase.finalDeliveries);
   const mediaExpectation = mediaSourceExpectation(testCase);
@@ -445,6 +448,7 @@ async function runModelTurnCase(testCase) {
     finalDeliveryInvariant(testCase.id, finalDeliveryPolicy, finalDeliveryRecords.length),
     invariant(`${testCase.id}:expected-final-kind`, !testCase.expectedKind || firstFinal?.kind === testCase.expectedKind, `${testCase.id} used expected channel send kind`),
     invariant(`${testCase.id}:expected-final-text`, !testCase.expectedText || Boolean(matchedText), `${testCase.id} final channel send equals expected text`),
+    invariant(`${testCase.id}:visible-error-final`, testCase.expectErrorFinal !== true || Boolean(visibleErrorText), `${testCase.id} delivered one non-empty user-visible error response`),
     invariant(`${testCase.id}:delivery-receipt`, finalDeliveryPolicy.expected === 0 || finalDeliveryPolicy.mode === "observe" || finalDeliveryRecords.some((record) => typeof record.messageId === "string" && record.messageId.length > 0), `${testCase.id} durable delivery recorded a channel receipt`),
     invariant(`${testCase.id}:single-final-send`, finalDeliveryRecords.length <= 1 || testCase.allowMultipleFinalSends === true, `${testCase.id} did not duplicate final channel sends`),
     invariant(`${testCase.id}:reply-to`, !testCase.expectReplyToId || firstFinal?.replyToId === inboundEventId, `${testCase.id} preserved reply target`),
@@ -1116,6 +1120,9 @@ function modelTurnPrompt(testCase, inboundEventId) {
     "The Kova mock provider must return the scripted fixture below.",
     `KOVA_MOCK_RESPONSE_B64:${Buffer.from(testCase.responseText, "utf8").toString("base64")}`
   ];
+  if (Number.isInteger(testCase.providerErrorStatus)) {
+    lines.push(`KOVA_MOCK_PROVIDER_ERROR_STATUS:${testCase.providerErrorStatus}`);
+  }
   if (testCase.toolCall) {
     lines.push(
       `KOVA_MOCK_TOOL_CALL_B64:${Buffer.from(JSON.stringify(testCase.toolCall), "utf8").toString("base64")}`
