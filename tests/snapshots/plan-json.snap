@@ -5009,6 +5009,75 @@
               "id": "message-sending-hooks"
             }
           ]
+        },
+        {
+          "id": "source-visible-delivery.media-thread.message-tool-only",
+          "workflow": "source-visible-delivery",
+          "inventoryWorkflow": "source-visible-delivery",
+          "matrix": {
+            "content": "media",
+            "route": "thread",
+            "delivery": "message-tool-only-source-delivery",
+            "lifecycle": "success"
+          },
+          "userAction": "user asks OpenClaw from inside a thread to produce a media result and receives that result in the same thread",
+          "openclawSurface": "channel inbound threaded message with source conversation delivery",
+          "ownerArea": "OpenClaw source delivery runtime",
+          "prompt": "Create a short product launch video for this thread and send it here.",
+          "providerScript": {
+            "toolCalls": [
+              {
+                "name": "message",
+                "arguments": {
+                  "action": "send",
+                  "message": "KOVA_SOURCE_DELIVERY_MEDIA_THREAD_OK",
+                  "media": "/tmp/kova-source-delivery-media-thread.mp4"
+                }
+              }
+            ],
+            "finalText": "KOVA_SOURCE_DELIVERY_PRIVATE_DONE"
+          },
+          "sourceReplyDeliveryMode": "message_tool_only",
+          "expects": {
+            "visibleDeliveries": 1,
+            "kind": "media",
+            "text": "KOVA_SOURCE_DELIVERY_MEDIA_THREAD_OK",
+            "threadId": "kova-model-turn-thread",
+            "mediaSource": "/tmp/kova-source-delivery-media-thread.mp4",
+            "mediaSourcePolicy": "sendable-local-or-managed",
+            "hooks": true,
+            "terminal": true,
+            "noDuplicateFinal": true
+          },
+          "fixtures": {
+            "mediaPath": "/tmp/kova-source-delivery-media-thread.mp4"
+          },
+          "providerRequests": {
+            "mode": "minimum",
+            "min": 1
+          },
+          "atoms": [
+            {
+              "group": "workflow",
+              "id": "source-visible-delivery"
+            },
+            {
+              "group": "workflow",
+              "id": "message-tool-only-source-delivery"
+            },
+            {
+              "group": "durable-final",
+              "id": "media"
+            },
+            {
+              "group": "durable-final",
+              "id": "thread"
+            },
+            {
+              "group": "durable-final",
+              "id": "message-sending-hooks"
+            }
+          ]
         }
       ]
     }
@@ -5042,6 +5111,7 @@
         "source-visible-delivery.text.automatic-final",
         "source-visible-delivery.text.message-tool-only",
         "source-visible-delivery.media.message-tool-only",
+        "source-visible-delivery.media-thread.message-tool-only",
         "source-visible-delivery.attachment.message-tool-only",
         "background-artifact-completion.image.message-tool-only",
         "background-artifact-completion.video.message-tool-only",
@@ -5051,6 +5121,11 @@
       ],
       "workflowOverrides": {
         "source-visible-delivery.media.message-tool-only": {
+          "visibleDeliveries": 2,
+          "textDeliveryIndex": 0,
+          "mediaDeliveryIndex": 1
+        },
+        "source-visible-delivery.media-thread.message-tool-only": {
           "visibleDeliveries": 2,
           "textDeliveryIndex": 0,
           "mediaDeliveryIndex": 1
@@ -5256,6 +5331,7 @@
         "source-visible-delivery.text.automatic-final",
         "source-visible-delivery.text.message-tool-only",
         "source-visible-delivery.media.message-tool-only",
+        "source-visible-delivery.media-thread.message-tool-only",
         "source-visible-delivery.attachment.message-tool-only",
         "background-artifact-completion.image.message-tool-only",
         "background-artifact-completion.video.message-tool-only",
@@ -7134,7 +7210,7 @@
           "title": "Run Source Delivery Model Turn",
           "intent": "Call the Kova channel plugin over Gateway RPC so OpenClaw handles one normal inbound user event, follows its supported source-delivery contract, sends visible source output through the message tool when required, and records payload, receipt, duplicate-send, and terminal invariants.",
           "commands": [
-            "node {kovaRoot}/support/run-channel-model-turn-baseline.mjs --env {env} --artifact-dir {artifactDir} --case source-visible-delivery.text.automatic-final,source-visible-delivery.text.message-tool-only,source-visible-delivery.media.message-tool-only,source-visible-delivery.attachment.message-tool-only --skip-shared-baseline true --continue-on-model-turn-failure true --timeout-ms 120000"
+            "node {kovaRoot}/support/run-channel-model-turn-baseline.mjs --env {env} --artifact-dir {artifactDir} --case source-visible-delivery.text.automatic-final,source-visible-delivery.text.message-tool-only,source-visible-delivery.media.message-tool-only,source-visible-delivery.media-thread.message-tool-only,source-visible-delivery.attachment.message-tool-only --skip-shared-baseline true --continue-on-model-turn-failure true --timeout-ms 120000"
           ],
           "evidence": [
             "source delivery model-turn capability rows",

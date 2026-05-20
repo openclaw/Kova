@@ -813,6 +813,60 @@
         { "group": "durable-final", "id": "media" },
         { "group": "durable-final", "id": "message-sending-hooks" }
       ]
+    },
+    {
+      "id": "source-visible-delivery.media-thread.message-tool-only",
+      "workflow": "source-visible-delivery",
+      "inventoryWorkflow": "source-visible-delivery",
+      "matrix": {
+        "content": "media",
+        "route": "thread",
+        "delivery": "message-tool-only-source-delivery",
+        "lifecycle": "success"
+      },
+      "userAction": "user asks OpenClaw from inside a thread to produce a media result and receives that result in the same thread",
+      "openclawSurface": "channel inbound threaded message with source conversation delivery",
+      "ownerArea": "OpenClaw source delivery runtime",
+      "prompt": "Create a short product launch video for this thread and send it here.",
+      "providerScript": {
+        "toolCalls": [
+          {
+            "name": "message",
+            "arguments": {
+              "action": "send",
+              "message": "KOVA_SOURCE_DELIVERY_MEDIA_THREAD_OK",
+              "media": "/tmp/kova-source-delivery-media-thread.mp4"
+            }
+          }
+        ],
+        "finalText": "KOVA_SOURCE_DELIVERY_PRIVATE_DONE"
+      },
+      "sourceReplyDeliveryMode": "message_tool_only",
+      "expects": {
+        "visibleDeliveries": 1,
+        "kind": "media",
+        "text": "KOVA_SOURCE_DELIVERY_MEDIA_THREAD_OK",
+        "threadId": "kova-model-turn-thread",
+        "mediaSource": "/tmp/kova-source-delivery-media-thread.mp4",
+        "mediaSourcePolicy": "sendable-local-or-managed",
+        "hooks": true,
+        "terminal": true,
+        "noDuplicateFinal": true
+      },
+      "fixtures": {
+        "mediaPath": "/tmp/kova-source-delivery-media-thread.mp4"
+      },
+      "providerRequests": {
+        "mode": "minimum",
+        "min": 1
+      },
+      "atoms": [
+        { "group": "workflow", "id": "source-visible-delivery" },
+        { "group": "workflow", "id": "message-tool-only-source-delivery" },
+        { "group": "durable-final", "id": "media" },
+        { "group": "durable-final", "id": "thread" },
+        { "group": "durable-final", "id": "message-sending-hooks" }
+      ]
     }
   ]
 }

@@ -109,7 +109,7 @@
       "title": "Run Source Delivery Model Turn",
       "intent": "Call the Kova channel plugin over Gateway RPC so OpenClaw handles one normal inbound user event, follows its supported source-delivery contract, sends visible source output through the message tool when required, and records payload, receipt, duplicate-send, and terminal invariants.",
       "commands": [
-        "node {kovaRoot}/support/run-channel-model-turn-baseline.mjs --env {env} --artifact-dir {artifactDir} --case source-visible-delivery.text.automatic-final,source-visible-delivery.text.message-tool-only,source-visible-delivery.media.message-tool-only,source-visible-delivery.attachment.message-tool-only --skip-shared-baseline true --continue-on-model-turn-failure true --timeout-ms 120000"
+        "node {kovaRoot}/support/run-channel-model-turn-baseline.mjs --env {env} --artifact-dir {artifactDir} --case source-visible-delivery.text.automatic-final,source-visible-delivery.text.message-tool-only,source-visible-delivery.media.message-tool-only,source-visible-delivery.media-thread.message-tool-only,source-visible-delivery.attachment.message-tool-only --skip-shared-baseline true --continue-on-model-turn-failure true --timeout-ms 120000"
       ],
       "evidence": [
         "source delivery model-turn capability rows",
