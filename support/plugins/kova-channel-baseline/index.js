@@ -242,6 +242,19 @@ export default definePluginEntry({
       { scope: "operator.read" }
     );
     api.registerGatewayMethod(
+      "kova.channelProbe.status",
+      ({ respond }) => {
+        respond(true, {
+          ok: Boolean(activeRuntime?.channelRuntime),
+          schemaVersion: "kova.channelProbe.status.v1",
+          channelId: CHANNEL_ID,
+          accountId: activeRuntime?.accountId ?? null,
+          startedAt: activeRuntime?.startedAt ?? null
+        });
+      },
+      { scope: "operator.read" }
+    );
+    api.registerGatewayMethod(
       "kova.channelBaseline.run",
       async ({ params, respond }) => {
         try {

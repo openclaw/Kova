@@ -35,7 +35,7 @@ async function main() {
     if (!clientHandle.client) {
       throw new Error(`gateway direct RPC unavailable: ${clientHandle.fallbackReason ?? "unknown"}`);
     }
-    await waitForGatewayMethodOk(clientHandle.client, "kova.channelBaseline.status", {
+    await waitForGatewayMethodOk(clientHandle.client, "kova.channelProbe.status", {
       timeoutMs,
       notReadyMessage: "kova channel probe plugin registered but channel runtime is not started",
       timeoutMessage: "timed out waiting for kova channel probe runtime"
