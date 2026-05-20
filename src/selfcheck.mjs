@@ -175,6 +175,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(evidenceLedgerGatingCheck());
     checks.push(channelCapabilityReportSummaryCheck());
     checks.push(channelCapabilityResultIngestionCheck());
+    checks.push(channelModelTurnMultiInvariantEvaluationCheck());
     checks.push(optionalDiagnosticGapCheck());
     checks.push(provisioningBlockedStatusCheck());
     checks.push(cleanupProofRequiredCheck());
@@ -1598,6 +1599,98 @@ function channelCapabilityResultIngestionCheck() {
       id: "channel-capability-result-ingestion",
       status: "FAIL",
       command: "evaluate channel capability helper result ingestion",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function channelModelTurnMultiInvariantEvaluationCheck() {
+  try {
+    const failedCaseId = "media-batch-final";
+    const record = {
+      scenario: "channel-model-turn-baseline",
+      status: "PASS",
+      phases: [{
+        id: "channel-model-turn-final-delivery",
+        results: [{
+          command: "node support/run-channel-model-turn-baseline.mjs --case media-batch-final",
+          status: 0,
+          stdout: JSON.stringify({
+            schemaVersion: "kova.channelModelTurnRun.v1",
+            ok: false,
+            envName: "kova-self-check",
+            case: failedCaseId,
+            workflowCaseCatalogId: "openclaw-channel-workflow-cases",
+            workflowCaseIds: [failedCaseId],
+            workflows: ["final-media-batch"],
+            expectedText: "KOVA_AGENT_MEDIA_BATCH_OK",
+            finalText: "KOVA_AGENT_MEDIA_BATCH_OK",
+            inboundEventId: "kova-inbound-1",
+            routeSessionKey: "agent:main:kova-channel-baseline:dm",
+            modelTurnCaseCount: 1,
+            failedModelTurnCases: [{
+              id: failedCaseId,
+              workflow: "final-media-batch",
+              inventoryWorkflow: "final-delivery",
+              matrix: {
+                content: "batch",
+                route: "reply",
+                delivery: "final",
+                lifecycle: "success"
+              },
+              userAction: "user asks OpenClaw for multiple media results and receives every media item in the same conversation",
+              ownerArea: "OpenClaw channel runtime",
+              capabilities: [
+                { group: "durable-final", id: "media" },
+                { group: "durable-final", id: "batch" }
+              ],
+              reason: "media-batch-final produced exactly 2 final channel deliveries; observed 3",
+              failedInvariants: [{
+                id: "media-batch-final:final-delivery-count",
+                reason: "media-batch-final produced exactly 2 final channel deliveries; observed 3"
+              }, {
+                id: "media-batch-final:unique-final-media",
+                reason: "media-batch-final did not deliver the same media item more than once"
+              }]
+            }],
+            capabilityRowCount: 6,
+            activeStartedAtEpochMs: 1000,
+            activeFinishedAtEpochMs: 2000,
+            activeTurnMs: 1000,
+            providerRequestDelta: 1,
+            providerRequestScopedCount: 1
+          }),
+          stderr: "",
+          durationMs: 1000
+        }]
+      }]
+    };
+    evaluateRecord(record, {
+      id: "channel-model-turn-baseline",
+      surface: "channel-model-turn-baseline",
+      thresholds: {}
+    }, {
+      surface: { id: "channel-model-turn-baseline", thresholds: {} },
+      targetPlan: { kind: "runtime" }
+    });
+    const violation = record.violations?.find((item) => item.metric === `channelModelTurn.case.${failedCaseId}`);
+    assertEqual(record.status, "FAIL", "failed channel model turn case fails record");
+    assertEqual(violation?.failedInvariantCount, 2, "all failed channel model turn invariants are preserved");
+    assertEqual(violation?.failedInvariantSummary?.includes("media-batch-final:final-delivery-count"), true, "first failed invariant appears in summary");
+    assertEqual(violation?.failedInvariantSummary?.includes("media-batch-final:unique-final-media"), true, "second failed invariant appears in summary");
+    assertEqual(violation?.message.includes("invariants media-batch-final:final-delivery-count, media-batch-final:unique-final-media"), true, "violation message lists multiple failed invariants");
+    return {
+      id: "channel-model-turn-multi-invariant-evaluation",
+      status: "PASS",
+      command: "evaluate channel model turn multi-invariant reporting",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "channel-model-turn-multi-invariant-evaluation",
+      status: "FAIL",
+      command: "evaluate channel model turn multi-invariant reporting",
       durationMs: 0,
       message: error.message
     };

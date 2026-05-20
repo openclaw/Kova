@@ -1177,7 +1177,11 @@ function checkChannelModelTurnCases(violations, agentTurns) {
       const caseId = typeof failedCase?.id === "string" && failedCase.id.length > 0
         ? failedCase.id
         : "unknown";
-      const failedInvariant = failedCase.failedInvariants?.[0]?.id ?? null;
+      const failedInvariants = Array.isArray(failedCase.failedInvariants)
+        ? failedCase.failedInvariants.filter((invariant) => invariant?.id || invariant?.reason)
+        : [];
+      const failedInvariant = failedInvariants[0]?.id ?? null;
+      const failedInvariantSummary = formatChannelInvariantFailures(failedInvariants);
       const atomCoverage = formatChannelAtomCoverage(failedCase.capabilities);
       const workflow = typeof failedCase.workflow === "string" && failedCase.workflow.length > 0
         ? failedCase.workflow
@@ -1194,7 +1198,7 @@ function checkChannelModelTurnCases(violations, agentTurns) {
         workflow ? `workflow ${workflow}` : null,
         inventoryWorkflow ? `inventory ${inventoryWorkflow}` : null,
         matrixDetail ? `matrix ${matrixDetail}` : null,
-        failedInvariant ? `invariant ${failedInvariant}` : null,
+        failedInvariantSummary,
         atomCoverage ? `atoms ${atomCoverage}` : null
       ].filter(Boolean).join("; ");
       violations.push({
@@ -1205,6 +1209,9 @@ function checkChannelModelTurnCases(violations, agentTurns) {
         inventoryWorkflow,
         matrix,
         failedInvariant,
+        failedInvariants,
+        failedInvariantCount: failedInvariants.length,
+        failedInvariantSummary,
         atomCoverage,
         userAction: typeof failedCase.userAction === "string" ? failedCase.userAction : null,
         ownerArea,
@@ -1224,6 +1231,21 @@ function formatChannelAtomCoverage(capabilities) {
     .map((capability) => [capability?.group, capability?.id].filter(Boolean).join("/"))
     .filter(Boolean);
   return atoms.length > 0 ? atoms.join(", ") : null;
+}
+
+function formatChannelInvariantFailures(invariants) {
+  if (!Array.isArray(invariants) || invariants.length === 0) {
+    return null;
+  }
+  const ids = invariants
+    .map((invariant) => invariant?.id)
+    .filter((id) => typeof id === "string" && id.length > 0);
+  if (ids.length === 0) {
+    return null;
+  }
+  const shown = ids.slice(0, 4);
+  const suffix = ids.length > shown.length ? `, +${ids.length - shown.length} more` : "";
+  return `${ids.length === 1 ? "invariant" : "invariants"} ${shown.join(", ")}${suffix}`;
 }
 
 function extractGatewaySessionTurn(result) {

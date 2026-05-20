@@ -301,14 +301,20 @@ function pushAgentTurnDetails(lines, record) {
           .map((capability) => [capability.group, capability.id].filter(Boolean).join("/"))
           .filter(Boolean)
           .join(", ") || "unknown";
-        const invariant = failedCase.failedInvariants?.[0]?.id ?? "unknown";
+        const invariantSummary = formatChannelInvariantFailures(failedCase.failedInvariants) ?? "invariant unknown";
         const matrix = formatChannelWorkflowMatrix(failedCase.matrix);
         const workflowLabel = [
           failedCase.workflow,
           failedCase.inventoryWorkflow ? `inventory ${failedCase.inventoryWorkflow}` : null,
           matrix ? `matrix ${matrix}` : null
         ].filter(Boolean).join("; ");
-        lines.push(`      - ${failedCase.id ?? "unknown"}${workflowLabel ? ` (${workflowLabel})` : ""}: ${failedCase.reason ?? "failed"}; invariant ${invariant}; atoms ${atomCoverage}`);
+        lines.push(`      - ${failedCase.id ?? "unknown"}${workflowLabel ? ` (${workflowLabel})` : ""}: ${failedCase.reason ?? "failed"}; ${invariantSummary}; atoms ${atomCoverage}`);
+        for (const invariant of (failedCase.failedInvariants ?? []).slice(0, 4)) {
+          if (!invariant?.id && !invariant?.reason) {
+            continue;
+          }
+          lines.push(`        - ${invariant.id ?? "unknown"}: ${invariant.reason ?? "failed"}`);
+        }
         if (failedCase.userAction) {
           lines.push(`        - user action: ${failedCase.userAction}`);
         }
@@ -337,6 +343,21 @@ function formatChannelWorkflowMatrix(matrix) {
     matrix.delivery,
     matrix.lifecycle
   ].filter((item) => typeof item === "string" && item.length > 0).join("/");
+}
+
+function formatChannelInvariantFailures(invariants) {
+  if (!Array.isArray(invariants) || invariants.length === 0) {
+    return null;
+  }
+  const ids = invariants
+    .map((invariant) => invariant?.id)
+    .filter((id) => typeof id === "string" && id.length > 0);
+  if (ids.length === 0) {
+    return null;
+  }
+  const shown = ids.slice(0, 4);
+  const suffix = ids.length > shown.length ? `, +${ids.length - shown.length} more` : "";
+  return `${ids.length === 1 ? "invariant" : "invariants"} ${shown.join(", ")}${suffix}`;
 }
 
 function formatArtifactSection(artifacts = []) {
