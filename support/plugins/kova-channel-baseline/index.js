@@ -33,6 +33,8 @@ let outboundRecords = [];
 let deliveryRecords = [];
 let modelTurnRecords = [];
 let probeObservations = [];
+let recoveryRecords = [];
+let activePlatformScript = null;
 
 const messageAdapter = defineChannelMessageAdapter({
   id: CHANNEL_ID,
@@ -50,7 +52,8 @@ const messageAdapter = defineChannelMessageAdapter({
       reconcileUnknownSend: true,
       afterSendSuccess: true,
       afterCommit: true
-    }
+    },
+    reconcileUnknownSend: async (ctx) => reconcileProbeUnknownSend(ctx)
   },
   live: {
     capabilities: {
@@ -305,6 +308,7 @@ function resetProbeState() {
   deliveryRecords = [];
   modelTurnRecords = [];
   probeObservations = [];
+  recoveryRecords = [];
 }
 
 async function injectProbeInbound(params = {}) {
@@ -319,6 +323,8 @@ async function injectProbeInbound(params = {}) {
   const threadId = optionalProbeString(params.threadId);
   const silent = params.silent === true;
   const sourceReplyDeliveryMode = optionalProbeString(params.sourceReplyDeliveryMode);
+  const requiredCapabilities = objectOrNull(params.requiredCapabilities);
+  const platformScript = objectOrNull(params.platformScript);
   const senderId = optionalProbeString(params.senderId) ?? TARGET_USER_ID;
   const senderName = optionalProbeString(params.senderName) ?? TARGET_DISPLAY;
   const from = optionalProbeString(params.from) ?? targetId;
@@ -329,26 +335,46 @@ async function injectProbeInbound(params = {}) {
   const startedAtEpochMs = Date.now();
   let turn = null;
   let error = null;
+  let recovery = null;
+  const previousPlatformScript = activePlatformScript;
+  activePlatformScript = createPlatformScript(platformScript, { inboundEventId });
 
   try {
-    turn = await runOpenClawModelTurn({
-      message,
-      inboundEventId,
-      targetId,
-      replyToId,
-      threadId,
-      silent,
-      sourceReplyDeliveryMode,
-      from,
-      senderId,
-      senderName,
-      botLoopProtection
-    });
-  } catch (caught) {
-    error = caught instanceof Error ? caught : new Error(String(caught));
+    try {
+      turn = await runOpenClawModelTurn({
+        message,
+        inboundEventId,
+        targetId,
+        replyToId,
+        threadId,
+        silent,
+        sourceReplyDeliveryMode,
+        from,
+        senderId,
+        senderName,
+        botLoopProtection,
+        requiredCapabilities
+      });
+    } catch (caught) {
+      error = caught instanceof Error ? caught : new Error(String(caught));
+    }
+    if (shouldDrainPendingDeliveries(platformScript)) {
+      recovery = await drainProbePendingDeliveries({
+        targetId,
+        inboundEventId,
+        startedAtEpochMs,
+        initialError: error?.message ?? null
+      });
+      if (recovery?.recovered === true) {
+        error = null;
+      }
+    }
+  } finally {
+    activePlatformScript = previousPlatformScript;
   }
 
   const finishedAtEpochMs = Date.now();
+  const terminalError = error?.message ?? null;
   const observation = {
     schemaVersion: "kova.channelProbe.observation.v1",
     channelId: CHANNEL_ID,
@@ -372,17 +398,20 @@ async function injectProbeInbound(params = {}) {
     routeSessionKey: turn?.routeSessionKey ?? null,
     dispatched: turn?.dispatched === true,
     admission: turn?.admission ?? null,
-    error: error?.message ?? null,
+    error: terminalError,
+    initialError: recovery?.initialError ?? terminalError,
+    recovery,
     startedAtEpochMs,
     finishedAtEpochMs,
     durationMs: Math.max(0, finishedAtEpochMs - startedAtEpochMs),
     outboundRecords: outboundRecords.slice(beforeOutbound),
     deliveryRecords: deliveryRecords.slice(beforeDelivery),
-    modelTurnRecords: modelTurnRecords.slice(beforeRecords)
+    modelTurnRecords: modelTurnRecords.slice(beforeRecords),
+    recoveryRecords: recoveryRecords.filter((record) => record.inboundEventId === inboundEventId)
   };
   probeObservations.push(observation);
   return {
-    ok: error === null,
+    ok: terminalError === null,
     schemaVersion: "kova.channelProbe.injectResult.v1",
     channelId: CHANNEL_ID,
     accountId: activeRuntime.accountId,
@@ -424,6 +453,106 @@ function optionalProbeString(value) {
 
 function objectOrNull(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+
+function createPlatformScript(script, { inboundEventId }) {
+  if (!script) {
+    return null;
+  }
+  return {
+    inboundEventId,
+    failFirstSendAfterStart: script.firstSend === "error-after-platform-start",
+    reconcileUnknownSend: optionalProbeString(script.reconcileUnknownSend),
+    failedFirstSend: false
+  };
+}
+
+function shouldDrainPendingDeliveries(script) {
+  return objectOrNull(script)?.recoveryTrigger === "drain-pending-deliveries";
+}
+
+async function reconcileProbeUnknownSend(ctx) {
+  const policy = activePlatformScript?.reconcileUnknownSend ?? "unresolved";
+  const record = {
+    kind: "reconcile-unknown-send",
+    queueId: ctx.queueId,
+    channel: ctx.channel,
+    to: ctx.to,
+    accountId: ctx.accountId ?? null,
+    threadId: ctx.threadId ?? null,
+    replyToId: ctx.replyToId ?? null,
+    payloadCount: Array.isArray(ctx.payloads) ? ctx.payloads.length : 0,
+    policy,
+    inboundEventId: activePlatformScript?.inboundEventId ?? null,
+    atEpochMs: Date.now()
+  };
+  recoveryRecords.push(record);
+  if (policy === "not_sent") {
+    return { status: "not_sent" };
+  }
+  if (policy === "sent") {
+    const receipt = createReceipt(`kova-reconciled-${ctx.queueId}`, "text", {
+      threadId: ctx.threadId == null ? undefined : String(ctx.threadId),
+      replyToId: ctx.replyToId ?? undefined
+    });
+    return {
+      status: "sent",
+      receipt,
+      messageId: receipt.primaryPlatformMessageId
+    };
+  }
+  return {
+    status: "unresolved",
+    error: "kova probe unknown-send reconciliation unresolved",
+    retryable: true
+  };
+}
+
+async function drainProbePendingDeliveries({ targetId, inboundEventId, startedAtEpochMs, initialError }) {
+  const beforeOutbound = outboundRecords.length;
+  const beforeRecovery = recoveryRecords.length;
+  const result = {
+    trigger: "drain-pending-deliveries",
+    triggered: true,
+    recovered: false,
+    error: null,
+    initialError,
+    outboundRecordOffset: beforeOutbound,
+    recoveryRecordOffset: beforeRecovery,
+    startedAtEpochMs: Date.now(),
+    finishedAtEpochMs: null,
+    durationMs: null
+  };
+  try {
+    const { drainPendingDeliveries } = await import("openclaw/plugin-sdk/delivery-queue-runtime");
+    await drainPendingDeliveries({
+      drainKey: `${CHANNEL_ID}:${ACCOUNT_ID}:${inboundEventId}`,
+      logLabel: "Kova channel probe delivery drain",
+      cfg: activeRuntime.cfg,
+      log: {
+        info: (message) => recoveryRecords.push({ kind: "delivery-drain-log", level: "info", inboundEventId, message, atEpochMs: Date.now() }),
+        warn: (message) => recoveryRecords.push({ kind: "delivery-drain-log", level: "warn", inboundEventId, message, atEpochMs: Date.now() }),
+        error: (message) => recoveryRecords.push({ kind: "delivery-drain-log", level: "error", inboundEventId, message, atEpochMs: Date.now() })
+      },
+      selectEntry: (entry) => ({
+        match:
+          entry.channel === CHANNEL_ID &&
+          entry.accountId === ACCOUNT_ID &&
+          entry.to === targetId &&
+          entry.enqueuedAt >= startedAtEpochMs - 1_000,
+        bypassBackoff: true
+      })
+    });
+    result.recovered = outboundRecords.slice(beforeOutbound).some((record) =>
+      record.kind === "text" || record.kind === "media" || record.kind === "payload"
+    );
+  } catch (error) {
+    result.error = error instanceof Error ? error.message : String(error);
+  } finally {
+    result.finishedAtEpochMs = Date.now();
+    result.durationMs = Math.max(0, result.finishedAtEpochMs - result.startedAtEpochMs);
+  }
+  return result;
 }
 
 function buildKovaImageGenerationProvider() {
@@ -1075,7 +1204,8 @@ async function runOpenClawModelTurn({
   from = targetId,
   senderId = TARGET_USER_ID,
   senderName = TARGET_DISPLAY,
-  botLoopProtection
+  botLoopProtection,
+  requiredCapabilities
 }) {
   const runtime = activeRuntime.channelRuntime;
   const cfg = activeRuntime.cfg;
@@ -1127,7 +1257,8 @@ async function runOpenClawModelTurn({
         replyToMode: "first",
         replyToId,
         threadId,
-        silent
+        silent,
+        ...(requiredCapabilities ? { requiredCapabilities } : {})
       },
       deliver: async (delivered) => {
         return await deliverFallbackPayload(delivered, { targetId, replyToId, threadId, silent });
@@ -1260,6 +1391,22 @@ function ackScenario(capabilityId, policy, expectedStage) {
 }
 
 async function recordOutbound(kind, ctx) {
+  if (activePlatformScript?.failFirstSendAfterStart === true && activePlatformScript.failedFirstSend !== true) {
+    activePlatformScript.failedFirstSend = true;
+    outboundRecords.push({
+      kind: "platform-send-failure",
+      attemptedKind: kind,
+      to: ctx.to ?? null,
+      text: ctx.text ?? null,
+      mediaUrl: ctx.mediaUrl ?? null,
+      silent: ctx.silent ?? false,
+      threadId: ctx.threadId ?? null,
+      replyToId: ctx.replyToId ?? null,
+      error: "kova probe platform send failed after the send attempt started",
+      atEpochMs: Date.now()
+    });
+    throw new Error("kova probe platform send failed after the send attempt started");
+  }
   const messageId = `kova-${kind}-${outboundRecords.length + 1}`;
   const receipt = createReceipt(messageId, kind, {
     threadId: ctx.threadId == null ? undefined : String(ctx.threadId),

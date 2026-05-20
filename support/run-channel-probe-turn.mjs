@@ -128,6 +128,8 @@ async function runProbeCase(client, testCase) {
     replyToId: expects.replyTo === "inbound-message" ? inboundEventId : null,
     threadId: typeof expects.threadId === "string" ? expects.threadId : undefined,
     silent: expects.silent === true,
+    requiredCapabilities: objectOrEmpty(testCase.requiredCapabilities),
+    platformScript: objectOrEmpty(testCase.platformScript),
     sourceReplyDeliveryMode: typeof testCase.sourceReplyDeliveryMode === "string" ? testCase.sourceReplyDeliveryMode : undefined,
     botLoopProtection: expects.noSelfTrigger === true
       ? createBotEchoProtection(testCase, inboundEventId, targetIdForCase(testCase.id)).firstTurnProtection
@@ -311,17 +313,23 @@ function evaluateCase(testCase, observation, injectResult) {
   const mediaExpectation = mediaSourceExpectation(testCase);
   const modelDispatchStarts = modelTurnRecords(observation).filter((record) => record.stage === "dispatch" && record.event === "start");
   const modelDispatchDones = modelTurnRecords(observation).filter((record) => record.stage === "dispatch" && record.event === "done");
+  const modelDispatchTerminals = modelTurnRecords(observation).filter((record) => record.stage === "dispatch" && (record.event === "done" || record.event === "error"));
   const modelRecordStarts = modelTurnRecords(observation).filter((record) => record.stage === "record" && record.event === "start");
   const modelRecordDones = modelTurnRecords(observation).filter((record) => record.stage === "record" && record.event === "done");
+  const modelRecordTerminals = modelTurnRecords(observation).filter((record) => record.stage === "record" && (record.event === "done" || record.event === "error"));
   const selfTriggerDispatchStarts = modelTurnRecords(selfTriggerObservation).filter((record) => record.stage === "dispatch" && record.event === "start");
   const selfTriggerVisibleDeliveries = finalOutboundRecords(selfTriggerObservation);
   const selfTriggerDropped = selfTriggerObservation?.admission?.kind === "drop" &&
     selfTriggerObservation?.admission?.reason === "bot-loop-protection";
+  const recoveryExpectation = normalizeRecoveryExpectation(testCase);
+  const recovery = objectOrEmpty(observation?.recovery);
+  const platformFailures = platformFailureRecords(observation);
+  const recoveryRecords = channelRecoveryRecords(observation);
 
   return [
     invariant(`${testCase.id}:probe-injected`, injectResult?.ok === true && Boolean(observation), `${testCase.id} injected one inbound user event through the channel probe`),
     invariant(`${testCase.id}:no-probe-error`, !observation?.error, `${testCase.id} completed without probe or OpenClaw transport error`),
-    invariant(`${testCase.id}:turn-dispatched`, observation?.dispatched === true, `${testCase.id} dispatched through the OpenClaw runtime`),
+    invariant(`${testCase.id}:turn-dispatched`, observation?.dispatched === true || (recoveryExpectation.required && modelDispatchStarts.length > 0), `${testCase.id} dispatched through the OpenClaw runtime`),
     finalDeliveryInvariant(testCase.id, visibleDeliveryPolicy, finalRecords.length),
     invariant(`${testCase.id}:expected-kind`, !expects.kind || firstFinal?.kind === expects.kind, `${testCase.id} produced the expected visible delivery kind`),
     invariant(`${testCase.id}:expected-text`, !expectedText || finalTexts.some((text) => textEquals(text, expectedText)), `${testCase.id} produced the expected visible text`),
@@ -335,9 +343,13 @@ function evaluateCase(testCase, observation, injectResult) {
     invariant(`${testCase.id}:unique-media`, !hasMediaExpectation(testCase) || hasUniqueFinalMedia(finalRecords), `${testCase.id} did not deliver the same media item more than once`),
     invariant(`${testCase.id}:single-final`, expects.allowMultipleFinalSends === true || finalRecords.length <= 1, `${testCase.id} did not duplicate final visible delivery`),
     invariant(`${testCase.id}:single-inbound-turn`, modelDispatchStarts.length === 1, `${testCase.id} processed exactly one OpenClaw model turn for one user input; observed ${modelDispatchStarts.length}`),
-    invariant(`${testCase.id}:record-terminal`, modelRecordStarts.length === modelRecordDones.length, `${testCase.id} closed every recorded OpenClaw model turn; starts ${modelRecordStarts.length}, done ${modelRecordDones.length}`),
-    invariant(`${testCase.id}:dispatch-terminal`, modelDispatchStarts.length === modelDispatchDones.length, `${testCase.id} closed every dispatched OpenClaw model turn; starts ${modelDispatchStarts.length}, done ${modelDispatchDones.length}`),
-    invariant(`${testCase.id}:no-self-trigger`, expects.noSelfTrigger !== true || (selfTriggerDropped && selfTriggerDispatchStarts.length === 0 && selfTriggerVisibleDeliveries.length === 0), `${testCase.id} suppressed bot-authored echo before a second model turn or visible delivery`)
+    invariant(`${testCase.id}:record-terminal`, modelRecordStarts.length === modelRecordTerminals.length, `${testCase.id} closed every recorded OpenClaw model turn; starts ${modelRecordStarts.length}, terminal ${modelRecordTerminals.length}`),
+    invariant(`${testCase.id}:dispatch-terminal`, modelDispatchStarts.length === modelDispatchTerminals.length, `${testCase.id} closed every dispatched OpenClaw model turn; starts ${modelDispatchStarts.length}, terminal ${modelDispatchTerminals.length}`),
+    invariant(`${testCase.id}:no-self-trigger`, expects.noSelfTrigger !== true || (selfTriggerDropped && selfTriggerDispatchStarts.length === 0 && selfTriggerVisibleDeliveries.length === 0), `${testCase.id} suppressed bot-authored echo before a second model turn or visible delivery`),
+    invariant(`${testCase.id}:recovery-triggered`, !recoveryExpectation.required || recovery.triggered === true, `${testCase.id} triggered OpenClaw delivery recovery`),
+    invariant(`${testCase.id}:platform-ambiguous-send`, !recoveryExpectation.required || platformFailures.length > 0, `${testCase.id} observed a platform send failure after the send attempt started`),
+    invariant(`${testCase.id}:unknown-send-reconciled`, !recoveryExpectation.required || recoveryRecords.some((record) => record.kind === "reconcile-unknown-send"), `${testCase.id} reconciled the unknown send through the channel adapter`),
+    invariant(`${testCase.id}:recovery-delivered`, !recoveryExpectation.required || recovery.recovered === true, `${testCase.id} recovered pending delivery through OpenClaw retry/drain`)
   ];
 }
 
@@ -369,6 +381,8 @@ function normalizeWorkflowCase(entry) {
     ownerArea: typeof entry.ownerArea === "string" ? entry.ownerArea : null,
     prompt,
     sourceReplyDeliveryMode: typeof entry.sourceReplyDeliveryMode === "string" ? entry.sourceReplyDeliveryMode : null,
+    requiredCapabilities: objectOrEmpty(entry.requiredCapabilities),
+    platformScript: objectOrEmpty(entry.platformScript),
     expects,
     fixtures: objectOrEmpty(entry.fixtures),
     providerRequests: objectOrEmpty(entry.providerRequests),
@@ -395,6 +409,22 @@ function finalOutboundRecords(observation) {
 
 function modelTurnRecords(observation) {
   return Array.isArray(observation?.modelTurnRecords) ? observation.modelTurnRecords : [];
+}
+
+function platformFailureRecords(observation) {
+  return Array.isArray(observation?.outboundRecords)
+    ? observation.outboundRecords.filter((record) => record?.kind === "platform-send-failure")
+    : [];
+}
+
+function channelRecoveryRecords(observation) {
+  return Array.isArray(observation?.recoveryRecords) ? observation.recoveryRecords : [];
+}
+
+function normalizeRecoveryExpectation(testCase) {
+  return objectOrEmpty(testCase.platformScript).recoveryTrigger === "drain-pending-deliveries"
+    ? { required: true }
+    : { required: false };
 }
 
 function normalizeVisibleDeliveries(value) {

@@ -815,6 +815,57 @@
       ]
     },
     {
+      "id": "retry-ambiguous-send.text.reconnect-drain",
+      "workflow": "retry-ambiguous-send",
+      "inventoryWorkflow": "retry-ambiguous-send",
+      "matrix": {
+        "content": "text",
+        "route": "direct",
+        "delivery": "final",
+        "lifecycle": "ambiguous-send"
+      },
+      "userAction": "user sends a normal message and receives one final answer after the channel reconnects from an uncertain send attempt",
+      "openclawSurface": "channel inbound direct message with durable final delivery recovery",
+      "ownerArea": "OpenClaw channel runtime and adapter recovery",
+      "prompt": "Send a quick status update for the release check.",
+      "providerScript": {
+        "finalText": "KOVA_RETRY_RECOVERY_OK"
+      },
+      "requiredCapabilities": {
+        "text": true,
+        "reconcileUnknownSend": true,
+        "messageSendingHooks": true,
+        "afterCommit": true
+      },
+      "platformScript": {
+        "firstSend": "error-after-platform-start",
+        "reconcileUnknownSend": "not_sent",
+        "recoveryTrigger": "drain-pending-deliveries"
+      },
+      "expects": {
+        "visibleDeliveries": 1,
+        "kind": "text",
+        "text": "KOVA_RETRY_RECOVERY_OK",
+        "replyTo": "inbound-message",
+        "hooks": true,
+        "terminal": true,
+        "noDuplicateFinal": true
+      },
+      "providerRequests": {
+        "mode": "minimum",
+        "min": 1
+      },
+      "atoms": [
+        { "group": "durable-final", "id": "text" },
+        { "group": "durable-final", "id": "reconcile-unknown-send" },
+        { "group": "durable-final", "id": "message-sending-hooks" },
+        { "group": "durable-final", "id": "after-commit" },
+        { "group": "workflow", "id": "single-inbound-single-final" },
+        { "group": "workflow", "id": "final-delivery-receipt-required" },
+        { "group": "workflow", "id": "terminal-after-final" }
+      ]
+    },
+    {
       "id": "source-visible-delivery.media-thread.message-tool-only",
       "workflow": "source-visible-delivery",
       "inventoryWorkflow": "source-visible-delivery",

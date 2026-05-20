@@ -188,6 +188,28 @@
       "collectionIntent": "post-ready-health"
     },
     {
+      "id": "channel-model-turn-retry-ambiguous-send",
+      "title": "Run Retry And Ambiguous Send Model Turn",
+      "intent": "Call the Kova channel plugin over Gateway RPC so OpenClaw handles a normal inbound channel event, records a durable final send whose platform outcome becomes uncertain, drains pending delivery through the channel recovery path, and proves the user sees one final response.",
+      "commands": [
+        "node {kovaRoot}/support/run-channel-probe-turn.mjs --env {env} --artifact-dir {artifactDir} --case retry-ambiguous-send.text.reconnect-drain --continue-on-failure true --timeout-ms 120000"
+      ],
+      "evidence": [
+        "retry and ambiguous send workflow row",
+        "inbound channel event id",
+        "required durable final delivery capabilities",
+        "platform send-start failure record",
+        "unknown-send reconciliation record",
+        "delivery recovery drain record",
+        "outbound channel send records",
+        "channel receipts",
+        "duplicate-send invariants",
+        "terminal dispatch returns"
+      ],
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
+    },
+    {
       "id": "channel-model-turn-negative-paths",
       "title": "Run Negative Path Model Turns",
       "intent": "Call the Kova channel plugin over Gateway RPC so OpenClaw handles a normal inbound channel event while the model provider fails, sends one visible error response through the channel adapter, and records duplicate-send and terminal invariants.",
