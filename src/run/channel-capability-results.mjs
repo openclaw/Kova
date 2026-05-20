@@ -1,4 +1,5 @@
 export const CHANNEL_CAPABILITY_RUN_SCHEMA = "kova.channelCapabilityRun.v1";
+export const CHANNEL_PROBE_TURN_RUN_SCHEMA = "kova.channelProbeTurnRun.v1";
 
 export function appendChannelCapabilityEvidence(record, result, phaseId, commandIndex) {
   const evidence = channelCapabilityEvidenceFromResult(result, phaseId, commandIndex);
@@ -45,7 +46,19 @@ function parseChannelCapabilityPayload(stdout) {
   } catch {
     return null;
   }
-  return payload?.schemaVersion === CHANNEL_CAPABILITY_RUN_SCHEMA ? payload : null;
+  if (payload?.schemaVersion === CHANNEL_CAPABILITY_RUN_SCHEMA) {
+    return payload;
+  }
+  if (payload?.schemaVersion === CHANNEL_PROBE_TURN_RUN_SCHEMA && Array.isArray(payload.capabilities)) {
+    return {
+      schemaVersion: CHANNEL_CAPABILITY_RUN_SCHEMA,
+      proofMode: payload.proofMode ?? "workflow-baseline",
+      ownerArea: payload.ownerArea ?? null,
+      artifactPath: payload.artifactPath ?? null,
+      capabilities: payload.capabilities
+    };
+  }
+  return null;
 }
 
 function validateChannelCapabilityPayload(payload) {

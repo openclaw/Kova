@@ -82,11 +82,16 @@ async function main() {
     ok: result.ok,
     artifactPath,
     ownerArea: "OpenClaw",
+    proofMode: "workflow-baseline",
     envName,
     case: requestedCase,
     workflowCaseCatalogId: workflowCaseCatalog.id,
     workflowCaseIds: selectedCases.map((testCase) => testCase.id),
     modelTurnCaseCount: result.rows.length,
+    capabilities: result.capabilities.map((capability) => ({
+      ...capability,
+      artifactPath
+    })),
     activeStartedAtEpochMs: result.artifact.activeStartedAtEpochMs,
     activeFinishedAtEpochMs: result.artifact.activeFinishedAtEpochMs,
     failedModelTurnCases: result.rows
@@ -646,9 +651,15 @@ function buildResult({
     providerRequestInvariant(selectedCases, providerRequestDelta, runError),
     invariant("no-global-error", !runError, "channel probe turn completed without runner or Gateway error")
   ];
+  const capabilities = channelCapabilityRows({
+    rows,
+    runError,
+    artifactPath
+  });
   return {
     ok: !runError && rows.length === selectedCases.length && rows.every((row) => row.status === "passed") && invariants.every((item) => item.status === "passed"),
     rows,
+    capabilities,
     artifact: {
       schemaVersion: "kova.channelProbeTurnArtifact.v1",
       workflowCaseCatalogId: workflowCaseCatalog.id,
@@ -664,10 +675,52 @@ function buildResult({
       activeFinishedAtEpochMs,
       activeTurnMs,
       rows,
+      capabilities,
       observations,
       invariants
     }
   };
+}
+
+function channelCapabilityRows({ rows, runError, artifactPath }) {
+  const byCapability = new Map();
+  for (const row of rows) {
+    for (const atom of row.capabilities ?? []) {
+      if (!atom || typeof atom.group !== "string" || typeof atom.id !== "string") {
+        continue;
+      }
+      const key = `${atom.group}:${atom.id}`;
+      const existing = byCapability.get(key);
+      const status = runError ? "failed" : row.status === "passed" ? "passed" : "failed";
+      const reasons = [
+        ...(existing?.reasons ?? []),
+        ...(status === "passed" ? [] : [`${row.id}: ${row.reason ?? "workflow case failed"}`])
+      ];
+      byCapability.set(key, {
+        channelId: "openclaw",
+        group: atom.group,
+        capabilityId: atom.id,
+        required: true,
+        status: existing?.status === "failed" || status === "failed" ? "failed" : "passed",
+        proofMode: "workflow-baseline",
+        summary: `OpenClaw channel workflow baseline ${atom.group}/${atom.id}`,
+        reason: reasons.length > 0 ? reasons.join("; ") : null,
+        ownerArea: row.ownerArea ?? "OpenClaw",
+        artifactPath,
+        workflowCaseIds: [
+          ...(existing?.workflowCaseIds ?? []),
+          row.id
+        ],
+        reasons
+      });
+    }
+  }
+  return [...byCapability.values()]
+    .sort((left, right) =>
+      left.group.localeCompare(right.group) ||
+      left.capabilityId.localeCompare(right.capabilityId)
+    )
+    .map(({ reasons, ...capability }) => capability);
 }
 
 function providerRequestInvariant(cases, observed, runError) {

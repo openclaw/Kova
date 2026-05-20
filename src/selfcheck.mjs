@@ -1570,6 +1570,28 @@ function channelCapabilityResultIngestionCheck() {
     assertEqual(evidence[0].proofMode, "deterministic-shim", "channel capability proof mode attached");
     assertEqual(evidence[0].ownerArea, "telegram adapter", "channel capability owner attached");
 
+    const workflowEvidence = channelCapabilityEvidenceFromResult({
+      status: 0,
+      stdout: JSON.stringify({
+        schemaVersion: "kova.channelProbeTurnRun.v1",
+        proofMode: "workflow-baseline",
+        artifactPath: "/tmp/kova/channel-probe-turn.json",
+        ownerArea: "OpenClaw",
+        capabilities: [{
+          channelId: "openclaw",
+          group: "workflow",
+          capabilityId: "terminal-after-final",
+          required: true,
+          status: "passed",
+          summary: "OpenClaw channel workflow baseline workflow/terminal-after-final",
+          reason: null
+        }]
+      })
+    }, "channel-model-turn-final-delivery", 0);
+    assertEqual(workflowEvidence.length, 1, "channel probe turn capability row parsed");
+    assertEqual(workflowEvidence[0].proofMode, "workflow-baseline", "channel probe turn proof mode attached");
+    assertEqual(workflowEvidence[0].artifactPath, "/tmp/kova/channel-probe-turn.json", "channel probe turn artifact path attached");
+
     const record = {
       scenario: "channel-telegram-capability-conformance",
       surface: "channel-telegram-capability-conformance",
