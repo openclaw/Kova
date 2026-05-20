@@ -539,7 +539,6 @@
       "expects": {
         "visibleDeliveries": 1,
         "kind": "media",
-        "text": "KOVA_COMPLETION_MEDIA_READY",
         "replyTo": "none",
         "mediaSourcePolicy": "present-existing",
         "hooks": true,
@@ -591,7 +590,6 @@
       "expects": {
         "visibleDeliveries": 1,
         "kind": "media",
-        "text": "KOVA_COMPLETION_MEDIA_READY",
         "replyTo": "none",
         "threadId": "kova-model-turn-thread",
         "mediaSourcePolicy": "present-existing",
