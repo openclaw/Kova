@@ -1,0 +1,165 @@
+{
+  "schemaVersion": "kova.channelWorkflowCaseCatalog.v1",
+  "id": "openclaw-channel-workflow-cases",
+  "title": "OpenClaw Channel Workflow Cases",
+  "description": "User-shaped OpenClaw channel workflow cases executed through the Kova fixture channel and deterministic provider scripts.",
+  "cases": [
+    {
+      "id": "text-final",
+      "workflow": "final-text-reply",
+      "userAction": "user sends a normal text message and receives a text answer in the same conversation",
+      "openclawSurface": "channel inbound direct message",
+      "ownerArea": "OpenClaw channel runtime",
+      "prompt": "Give me a short launch status update for the team.",
+      "providerScript": {
+        "finalText": "KOVA_AGENT_OK"
+      },
+      "expects": {
+        "visibleDeliveries": 1,
+        "kind": "text",
+        "text": "KOVA_AGENT_OK",
+        "replyTo": "inbound-message",
+        "hooks": true,
+        "terminal": true
+      },
+      "providerRequests": {
+        "mode": "exact",
+        "expected": 1
+      },
+      "atoms": [
+        { "group": "durable-final", "id": "text" },
+        { "group": "durable-final", "id": "reply-to" },
+        { "group": "durable-final", "id": "message-sending-hooks" },
+        { "group": "durable-final", "id": "after-send-success" },
+        { "group": "durable-final", "id": "after-commit" },
+        { "group": "ack", "id": "after-agent-dispatch" },
+        { "group": "ack", "id": "after-durable-send" }
+      ]
+    },
+    {
+      "id": "media-final",
+      "workflow": "final-media-reply",
+      "userAction": "user asks OpenClaw for a media result and receives the media in the same conversation",
+      "openclawSurface": "channel inbound direct message",
+      "ownerArea": "OpenClaw channel runtime",
+      "prompt": "Create a simple launch image with a short caption.",
+      "providerScript": {
+        "finalText": "MEDIA:/tmp/kova-channel-model-turn-media.png\nKOVA_AGENT_MEDIA_OK"
+      },
+      "expects": {
+        "visibleDeliveries": 1,
+        "kind": "media",
+        "text": "KOVA_AGENT_MEDIA_OK",
+        "replyTo": "inbound-message",
+        "mediaSource": "/tmp/kova-channel-model-turn-media.png",
+        "mediaSourcePolicy": "exact",
+        "terminal": true
+      },
+      "fixtures": {
+        "mediaPath": "/tmp/kova-channel-model-turn-media.png"
+      },
+      "providerRequests": {
+        "mode": "exact",
+        "expected": 1
+      },
+      "atoms": [
+        { "group": "durable-final", "id": "media" }
+      ]
+    },
+    {
+      "id": "thread-final",
+      "workflow": "final-text-thread",
+      "userAction": "user replies in a thread and receives OpenClaw's answer in that thread",
+      "openclawSurface": "channel inbound threaded message",
+      "ownerArea": "OpenClaw channel runtime",
+      "prompt": "Reply in this thread with the deployment status.",
+      "providerScript": {
+        "finalText": "KOVA_AGENT_THREAD_OK"
+      },
+      "expects": {
+        "visibleDeliveries": 1,
+        "kind": "text",
+        "text": "KOVA_AGENT_THREAD_OK",
+        "threadId": "kova-model-turn-thread",
+        "terminal": true
+      },
+      "providerRequests": {
+        "mode": "exact",
+        "expected": 1
+      },
+      "atoms": [
+        { "group": "durable-final", "id": "thread" }
+      ]
+    },
+    {
+      "id": "silent-final",
+      "workflow": "final-text-silent",
+      "userAction": "user triggers a quiet channel response and OpenClaw sends it without noisy notification intent",
+      "openclawSurface": "channel inbound direct message",
+      "ownerArea": "OpenClaw channel runtime",
+      "prompt": "Send a quiet deployment reminder.",
+      "providerScript": {
+        "finalText": "KOVA_AGENT_SILENT_OK"
+      },
+      "expects": {
+        "visibleDeliveries": 1,
+        "kind": "text",
+        "text": "KOVA_AGENT_SILENT_OK",
+        "silent": true,
+        "terminal": true
+      },
+      "providerRequests": {
+        "mode": "exact",
+        "expected": 1
+      },
+      "atoms": [
+        { "group": "durable-final", "id": "silent" }
+      ]
+    },
+    {
+      "id": "source-visible-delivery.media.message-tool-only",
+      "workflow": "source-visible-delivery",
+      "userAction": "user asks OpenClaw to produce a media result and receives that result in the same chat",
+      "openclawSurface": "channel inbound direct message with source conversation delivery",
+      "ownerArea": "OpenClaw source delivery runtime",
+      "prompt": "Create a short product launch video showing our new desktop app turning a messy inbox into a clean task list, with upbeat music and a clear final frame.",
+      "providerScript": {
+        "toolCalls": [
+          {
+            "name": "message",
+            "arguments": {
+              "action": "send",
+              "message": "KOVA_SOURCE_DELIVERY_MEDIA_OK",
+              "media": "/tmp/kova-source-delivery-media.mp4"
+            }
+          }
+        ],
+        "finalText": "KOVA_SOURCE_DELIVERY_PRIVATE_DONE"
+      },
+      "sourceReplyDeliveryMode": "message_tool_only",
+      "expects": {
+        "visibleDeliveries": 1,
+        "kind": "media",
+        "text": "KOVA_SOURCE_DELIVERY_MEDIA_OK",
+        "mediaSource": "/tmp/kova-source-delivery-media.mp4",
+        "mediaSourcePolicy": "sendable-local-or-managed",
+        "hooks": true,
+        "terminal": true,
+        "noDuplicateFinal": true
+      },
+      "fixtures": {
+        "mediaPath": "/tmp/kova-source-delivery-media.mp4"
+      },
+      "providerRequests": {
+        "mode": "exact",
+        "expected": 2
+      },
+      "atoms": [
+        { "group": "workflow", "id": "source-visible-delivery" },
+        { "group": "workflow", "id": "message-tool-only-source-delivery" },
+        { "group": "durable-final", "id": "media" },
+        { "group": "durable-final", "id": "message-sending-hooks" }
+      ]
+    }
+  ]
+}

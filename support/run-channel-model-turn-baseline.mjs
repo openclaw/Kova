@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   openDirectGatewayRpcClient,
   parseSupportArgs,
@@ -8,11 +9,11 @@ import {
   readTimeoutMs
 } from "./openclaw-runtime.mjs";
 
+const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const args = parseSupportArgs(process.argv.slice(2));
 const envName = requiredArg(args, "env");
 const artifactDir = requiredArg(args, "artifact-dir");
 const timeoutMs = readTimeoutMs(args["timeout-ms"], 120000);
-const message = args.message ?? "Reply with exact ASCII text KOVA_AGENT_OK only.";
 const expectedText = args["expected-text"] ?? null;
 const modelTurnCase = args.case ?? "all";
 const includeSharedBaseline = args["skip-shared-baseline"] !== "true";
@@ -20,6 +21,8 @@ const continueOnModelTurnFailure = args["continue-on-model-turn-failure"] === "t
 const providerRequestPolicyOverride = parseProviderRequestPolicyArg(args["provider-request-policy"]);
 const artifactPath = join(artifactDir, `channel-model-turn-baseline-${safeArtifactSegment(modelTurnCase)}.json`);
 const providerRequestLogPath = join(artifactDir, "mock-openai", "requests.jsonl");
+const workflowCaseCatalog = JSON.parse(await readFile(join(repoRoot, "channel-capabilities", "channel-workflow-cases.json"), "utf8"));
+const selectedWorkflowCases = selectWorkflowCases(workflowCaseCatalog, modelTurnCase);
 
 async function main() {
   let result;
@@ -33,7 +36,13 @@ async function main() {
     }
     await waitForBaselineChannel(clientHandle.client, timeoutMs);
     const activeStartedAtEpochMs = Date.now();
-    const params = { message, case: modelTurnCase, includeSharedBaseline };
+    const params = {
+      message: selectedWorkflowCases.length === 1 ? selectedWorkflowCases[0].prompt : null,
+      case: modelTurnCase,
+      cases: selectedWorkflowCases,
+      workflowCaseCatalogId: workflowCaseCatalog.id,
+      includeSharedBaseline
+    };
     if (expectedText) {
       params.expectedText = expectedText;
     }
@@ -79,6 +88,9 @@ async function main() {
     ownerArea: "OpenClaw",
     envName,
     case: modelTurnCase,
+    workflowCaseCatalogId: workflowCaseCatalog.id,
+    workflowCaseIds: selectedWorkflowCases.map((testCase) => testCase.id),
+    workflows: [...new Set(selectedWorkflowCases.map((testCase) => testCase.workflow).filter(Boolean))],
     expectedText: result.artifact.turn?.expectedText ?? expectedText,
     sharedBaselineIncluded: result.artifact.turn?.sharedBaselineIncluded ?? null,
     finalText: result.artifact.turn?.finalText ?? null,
@@ -147,9 +159,16 @@ function buildResult({
     ok,
     artifact: {
       schemaVersion: "kova.channelModelTurnBaselineArtifact.v1",
+      workflowCaseCatalogId: workflowCaseCatalog.id,
+      workflowCaseIds: selectedWorkflowCases.map((testCase) => testCase.id),
+      workflowCaseMessages: selectedWorkflowCases.map((testCase) => ({
+        id: testCase.id,
+        prompt: testCase.prompt,
+        userAction: testCase.userAction
+      })),
       runtimeContext: compactRuntimeContext(runtimeContext),
       timeoutMs: commandTimeoutMs,
-      message,
+      message: selectedWorkflowCases.length === 1 ? selectedWorkflowCases[0].prompt : null,
       case: modelTurnCase,
       expectedText: turn?.expectedText ?? expectedText,
       error: runError,
@@ -168,6 +187,129 @@ function buildResult({
       invariants
     }
   };
+}
+
+function selectWorkflowCases(catalog, requestedCase) {
+  const cases = Array.isArray(catalog?.cases)
+    ? catalog.cases.map(normalizeWorkflowCase)
+    : [];
+  if (cases.length === 0) {
+    throw new Error(`channel workflow case catalog ${catalog?.id ?? "<unknown>"} does not contain cases`);
+  }
+  const ids = new Set();
+  for (const testCase of cases) {
+    if (ids.has(testCase.id)) {
+      throw new Error(`channel workflow case catalog ${catalog?.id ?? "<unknown>"} duplicates case id ${testCase.id}`);
+    }
+    ids.add(testCase.id);
+  }
+  if (requestedCase == null || requestedCase === "" || requestedCase === "all") {
+    return cases;
+  }
+  const requestedIds = new Set(String(requestedCase).split(",").map((item) => item.trim()).filter(Boolean));
+  const selected = cases.filter((testCase) => requestedIds.has(testCase.id));
+  if (selected.length !== requestedIds.size) {
+    const known = new Set(cases.map((testCase) => testCase.id));
+    const unknown = [...requestedIds].filter((id) => !known.has(id));
+    throw new Error(`unknown channel workflow case${unknown.length === 1 ? "" : "s"}: ${unknown.join(", ")}`);
+  }
+  return selected;
+}
+
+function normalizeWorkflowCase(entry) {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+    throw new Error("channel workflow case must be an object");
+  }
+  const id = requiredString(entry, "id");
+  const expects = objectOrEmpty(entry.expects);
+  const providerScript = objectOrEmpty(entry.providerScript);
+  const fixtures = objectOrEmpty(entry.fixtures);
+  const toolCalls = Array.isArray(providerScript.toolCalls) ? providerScript.toolCalls : [];
+  if (toolCalls.length > 1) {
+    throw new Error(`channel workflow case ${id} declares ${toolCalls.length} tool calls; the current model-turn runner supports at most one scripted tool call`);
+  }
+  const expectedText = typeof expects.text === "string"
+    ? expects.text
+    : (typeof providerScript.finalText === "string" ? providerScript.finalText : null);
+  if (!expectedText) {
+    throw new Error(`channel workflow case ${id} must declare expects.text or providerScript.finalText`);
+  }
+  return {
+    id,
+    workflow: requiredString(entry, "workflow"),
+    userAction: requiredString(entry, "userAction"),
+    openclawSurface: typeof entry.openclawSurface === "string" ? entry.openclawSurface : null,
+    ownerArea: typeof entry.ownerArea === "string" ? entry.ownerArea : null,
+    prompt: requiredString(entry, "prompt"),
+    responseText: typeof providerScript.finalText === "string" ? providerScript.finalText : expectedText,
+    toolCall: toolCalls[0] ?? null,
+    expectedText,
+    expectedKind: typeof expects.kind === "string" ? expects.kind : null,
+    expectedLocalMediaSource: typeof expects.mediaSource === "string" ? expects.mediaSource : null,
+    expectedMediaSourcePolicy: typeof expects.mediaSourcePolicy === "string" ? expects.mediaSourcePolicy : null,
+    mediaFixturePath: typeof fixtures.mediaPath === "string" ? fixtures.mediaPath : null,
+    sourceReplyDeliveryMode: typeof entry.sourceReplyDeliveryMode === "string" ? entry.sourceReplyDeliveryMode : null,
+    finalDeliveries: normalizeVisibleDeliveries(id, expects.visibleDeliveries),
+    providerRequests: normalizeCaseProviderRequests(id, entry.providerRequests),
+    expectReplyToId: expects.replyTo === "inbound-message",
+    expectHooks: expects.hooks === true,
+    threadId: typeof expects.threadId === "string" ? expects.threadId : null,
+    silent: expects.silent === true,
+    capabilities: normalizeAtoms(id, entry.atoms)
+  };
+}
+
+function normalizeVisibleDeliveries(caseId, value) {
+  if (Number.isInteger(value) && value >= 0) {
+    return { mode: "exact", expected: value };
+  }
+  if (value == null || value === "observe") {
+    return { mode: "observe" };
+  }
+  throw new Error(`channel workflow case ${caseId} expects.visibleDeliveries must be a non-negative integer or observe`);
+}
+
+function normalizeCaseProviderRequests(caseId, value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { mode: "observe" };
+  }
+  if (value.mode === "exact" && Number.isInteger(value.expected) && value.expected >= 0) {
+    return { mode: "exact", expected: value.expected };
+  }
+  if ((value.mode === "minimum" || value.mode === "min") && Number.isInteger(value.min) && value.min >= 0) {
+    return { mode: "minimum", min: value.min };
+  }
+  if (value.mode === "observe") {
+    return { mode: "observe" };
+  }
+  throw new Error(`channel workflow case ${caseId} has unsupported providerRequests policy`);
+}
+
+function normalizeAtoms(caseId, atoms) {
+  if (!Array.isArray(atoms) || atoms.length === 0) {
+    throw new Error(`channel workflow case ${caseId} must declare atom coverage`);
+  }
+  return atoms.map((atom, index) => {
+    if (!atom || typeof atom !== "object" || Array.isArray(atom)) {
+      throw new Error(`channel workflow case ${caseId} atom ${index} must be an object`);
+    }
+    return {
+      group: requiredString(atom, "group"),
+      id: requiredString(atom, "id")
+    };
+  });
+}
+
+function objectOrEmpty(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function requiredString(object, key) {
+  const value = object?.[key];
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`channel workflow field ${key} must be a non-empty string`);
+  }
+  return value;
 }
 
 function resolveProviderRequestPolicy(cases) {

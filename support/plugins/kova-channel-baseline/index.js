@@ -290,7 +290,7 @@ async function runModelTurn(params = {}) {
   if (!activeRuntime?.channelRuntime) {
     throw new Error("kova channel baseline runtime is not started");
   }
-  const selectedCases = selectModelTurnCases(params.case ?? params.caseId);
+  const selectedCases = selectModelTurnCases(params.cases);
   const expectedText = typeof params.expectedText === "string" && params.expectedText.length > 0
     ? params.expectedText
     : (selectedCases.length === 1 ? selectedCases[0].expectedText : "KOVA_AGENT_OK");
@@ -354,6 +354,7 @@ async function runModelTurn(params = {}) {
     channelId: CHANNEL_ID,
     accountId: activeRuntime.accountId,
     requestedCase: params.case ?? params.caseId ?? null,
+    workflowCaseCatalogId: typeof params.workflowCaseCatalogId === "string" ? params.workflowCaseCatalogId : null,
     expectedText,
     sharedBaselineIncluded: includeSharedBaseline,
     finalText: finalTexts.join("\n"),
@@ -368,18 +369,25 @@ async function runModelTurn(params = {}) {
   };
 }
 
-function selectModelTurnCases(requestedCase) {
-  if (requestedCase == null || requestedCase === "" || requestedCase === "all") {
-    return modelTurnCaseDefinitions;
+function selectModelTurnCases(cases) {
+  if (!Array.isArray(cases) || cases.length === 0) {
+    throw new Error("kova channel model-turn cases were not provided");
   }
-  const cases = new Set(String(requestedCase).split(",").map((item) => item.trim()).filter(Boolean));
-  const selected = modelTurnCaseDefinitions.filter((testCase) => cases.has(testCase.id));
-  if (selected.length !== cases.size) {
-    const known = new Set(modelTurnCaseDefinitions.map((testCase) => testCase.id));
-    const unknown = [...cases].filter((id) => !known.has(id));
-    throw new Error(`unknown channel model-turn case${unknown.length === 1 ? "" : "s"}: ${unknown.join(", ")}`);
-  }
-  return selected;
+  return cases.map((testCase, index) => {
+    if (!testCase || typeof testCase !== "object" || Array.isArray(testCase)) {
+      throw new Error(`kova channel model-turn case ${index} must be an object`);
+    }
+    if (typeof testCase.id !== "string" || testCase.id.length === 0) {
+      throw new Error(`kova channel model-turn case ${index} must have an id`);
+    }
+    if (typeof testCase.prompt !== "string" || testCase.prompt.length === 0) {
+      throw new Error(`kova channel model-turn case ${testCase.id} must have a prompt`);
+    }
+    if (!Array.isArray(testCase.capabilities) || testCase.capabilities.length === 0) {
+      throw new Error(`kova channel model-turn case ${testCase.id} must declare capabilities`);
+    }
+    return testCase;
+  });
 }
 
 async function runModelTurnCase(testCase) {
@@ -471,99 +479,6 @@ async function runModelTurnCase(testCase) {
     modelTurnRecords: caseModelTurnRecords
   };
 }
-
-const modelTurnCaseDefinitions = [
-  {
-    id: "text-final",
-    prompt: "Return the exact text response for the text final channel capability.",
-    responseText: "KOVA_AGENT_OK",
-    expectedText: "KOVA_AGENT_OK",
-    expectedKind: "text",
-    finalDeliveries: { mode: "exact", expected: 1 },
-    providerRequests: { mode: "exact", expected: 1 },
-    expectReplyToId: true,
-    expectHooks: true,
-    capabilities: [
-      { group: "durable-final", id: "text" },
-      { group: "durable-final", id: "reply-to" },
-      { group: "durable-final", id: "message-sending-hooks" },
-      { group: "durable-final", id: "after-send-success" },
-      { group: "durable-final", id: "after-commit" },
-      { group: "ack", id: "after-agent-dispatch" },
-      { group: "ack", id: "after-durable-send" }
-    ]
-  },
-  {
-    id: "media-final",
-    prompt: "Return a final answer with a media directive and caption.",
-    responseText: "MEDIA:/tmp/kova-channel-model-turn-media.png\nKOVA_AGENT_MEDIA_OK",
-    expectedText: "KOVA_AGENT_MEDIA_OK",
-    expectedKind: "media",
-    expectedLocalMediaSource: "/tmp/kova-channel-model-turn-media.png",
-    mediaFixturePath: "/tmp/kova-channel-model-turn-media.png",
-    finalDeliveries: { mode: "exact", expected: 1 },
-    providerRequests: { mode: "exact", expected: 1 },
-    expectReplyToId: true,
-    capabilities: [
-      { group: "durable-final", id: "media" }
-    ]
-  },
-  {
-    id: "thread-final",
-    prompt: "Return text that must stay in the inbound thread.",
-    responseText: "KOVA_AGENT_THREAD_OK",
-    expectedText: "KOVA_AGENT_THREAD_OK",
-    expectedKind: "text",
-    finalDeliveries: { mode: "exact", expected: 1 },
-    providerRequests: { mode: "exact", expected: 1 },
-    threadId: "kova-model-turn-thread",
-    capabilities: [
-      { group: "durable-final", id: "thread" }
-    ]
-  },
-  {
-    id: "silent-final",
-    prompt: "Return text while the channel runtime marks the durable send as silent.",
-    responseText: "KOVA_AGENT_SILENT_OK",
-    expectedText: "KOVA_AGENT_SILENT_OK",
-    expectedKind: "text",
-    finalDeliveries: { mode: "exact", expected: 1 },
-    providerRequests: { mode: "exact", expected: 1 },
-    silent: true,
-    capabilities: [
-      { group: "durable-final", id: "silent" }
-    ]
-  },
-  {
-    id: "source-visible-delivery.media.message-tool-only",
-    workflow: "source-visible-delivery",
-    userAction: "user asks OpenClaw to produce a media result and send it back to the same chat",
-    prompt: "Create a short product launch video showing our new desktop app turning a messy inbox into a clean task list, with upbeat music and a clear final frame.",
-    responseText: "KOVA_SOURCE_DELIVERY_PRIVATE_DONE",
-    toolCall: {
-      name: "message",
-      arguments: {
-        action: "send",
-        message: "KOVA_SOURCE_DELIVERY_MEDIA_OK",
-        media: "/tmp/kova-source-delivery-media.mp4"
-      }
-    },
-    expectedText: "KOVA_SOURCE_DELIVERY_MEDIA_OK",
-    expectedKind: "media",
-    expectedLocalMediaSource: "/tmp/kova-source-delivery-media.mp4",
-    expectedMediaSourcePolicy: "sendable-local-or-managed",
-    mediaFixturePath: "/tmp/kova-source-delivery-media.mp4",
-    sourceReplyDeliveryMode: "message_tool_only",
-    finalDeliveries: { mode: "exact", expected: 1 },
-    providerRequests: { mode: "exact", expected: 2 },
-    capabilities: [
-      { group: "workflow", id: "source-visible-delivery" },
-      { group: "workflow", id: "message-tool-only-source-delivery" },
-      { group: "durable-final", id: "media" },
-      { group: "durable-final", id: "message-sending-hooks" }
-    ]
-  }
-];
 
 const baselineScenarios = [
   durableTurnScenario("text", { text: "KOVA_CHANNEL_TEXT_OK" }, {
