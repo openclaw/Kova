@@ -14,10 +14,10 @@
     "test:snapshots": "node tests/render-snapshots.mjs",
     "pack:release": "scripts/package-release.sh"
   },
-  "dependencies": {
-    "mock-ai-provider": "0.1.0"
-  },
   "engines": {
     "node": ">=22"
+  },
+  "dependencies": {
+    "mock-ai-provider": "0.1.1"
   }
 }
