@@ -358,11 +358,11 @@ function selectWorkflowCases(catalog, requestedCase) {
   if (requestedCase === "all") {
     return cases;
   }
-  const requestedIds = new Set(String(requestedCase).split(",").map((item) => item.trim()).filter(Boolean));
-  const selected = cases.filter((testCase) => requestedIds.has(testCase.id));
-  if (selected.length !== requestedIds.size) {
-    const known = new Set(cases.map((testCase) => testCase.id));
-    const unknown = [...requestedIds].filter((id) => !known.has(id));
+  const requestedIds = String(requestedCase).split(",").map((item) => item.trim()).filter(Boolean);
+  const casesById = new Map(cases.map((testCase) => [testCase.id, testCase]));
+  const selected = requestedIds.map((id) => casesById.get(id)).filter(Boolean);
+  if (selected.length !== requestedIds.length) {
+    const unknown = requestedIds.filter((id) => !casesById.has(id));
     throw new Error(`unknown channel workflow case${unknown.length === 1 ? "" : "s"}: ${unknown.join(", ")}`);
   }
   return selected;
@@ -675,7 +675,7 @@ function targetIdForCase(caseId) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 72) || "case";
-  return `dm:kova-probe-user-${safe}`;
+  return `dm:kova-baseline-user-${safe}`;
 }
 
 function objectOrEmpty(value) {

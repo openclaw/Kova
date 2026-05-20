@@ -477,14 +477,7 @@
             "arguments": {
               "action": "send",
               "message": "KOVA_SOURCE_DELIVERY_ATTACHMENT_OK",
-              "attachments": [
-                {
-                  "type": "file",
-                  "path": "/tmp/kova-source-delivery-attachment.txt",
-                  "name": "launch-notes.txt",
-                  "mimeType": "text/plain"
-                }
-              ]
+              "media": "/tmp/kova-source-delivery-attachment.txt"
             }
           }
         ],
