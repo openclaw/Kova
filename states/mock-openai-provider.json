@@ -32,7 +32,7 @@
     "run-level mock provider cleanup stops fixture process"
   ],
   "source": {
-    "kind": "host-process-fixture",
-    "command": "support/mock-openai-server.mjs"
+    "kind": "provider-compatible-mock-server",
+    "command": "mock-ai-provider serve --providers openai"
   }
 }
