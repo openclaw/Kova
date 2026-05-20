@@ -112,6 +112,11 @@ config.gateway = {
   }
 };
 
+config.session = {
+  ...(config.session || {}),
+  dmScope: config.session?.dmScope || "per-channel-peer"
+};
+
 fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 console.log(configPath);
 
