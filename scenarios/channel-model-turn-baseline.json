@@ -172,7 +172,7 @@
       "title": "Run Channel Lifecycle Model Turns",
       "intent": "Call the Kova channel plugin over Gateway RPC so OpenClaw handles a normal inbound channel event, then suppresses a bot-authored platform echo before it can start another model turn or send another visible response.",
       "commands": [
-        "node {kovaRoot}/support/run-channel-model-turn-baseline.mjs --env {env} --artifact-dir {artifactDir} --case no-self-trigger.bot-authored-echo --skip-shared-baseline true --continue-on-model-turn-failure true --timeout-ms 120000"
+        "node {kovaRoot}/support/run-channel-probe-turn.mjs --env {env} --artifact-dir {artifactDir} --case no-self-trigger.bot-authored-echo --continue-on-failure true --timeout-ms 120000"
       ],
       "evidence": [
         "lifecycle workflow rows",
@@ -193,7 +193,7 @@
       "intent": "Call the Kova channel plugin over Gateway RPC so OpenClaw handles a normal inbound channel event while the model provider fails, sends one visible error response through the channel adapter, and records duplicate-send and terminal invariants.",
       "expectedAgentFailure": true,
       "commands": [
-        "node {kovaRoot}/support/run-channel-model-turn-baseline.mjs --env {env} --artifact-dir {artifactDir} --case failure-visible-once.provider-error --skip-shared-baseline true --continue-on-model-turn-failure true --timeout-ms 120000"
+        "node {kovaRoot}/support/run-channel-probe-turn.mjs --env {env} --artifact-dir {artifactDir} --case failure-visible-once.provider-error --continue-on-failure true --timeout-ms 120000"
       ],
       "evidence": [
         "negative path model-turn workflow rows",

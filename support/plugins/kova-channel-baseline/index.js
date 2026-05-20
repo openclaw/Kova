@@ -337,6 +337,7 @@ async function injectProbeInbound(params = {}) {
   const senderId = optionalProbeString(params.senderId) ?? TARGET_USER_ID;
   const senderName = optionalProbeString(params.senderName) ?? TARGET_DISPLAY;
   const from = optionalProbeString(params.from) ?? targetId;
+  const botLoopProtection = objectOrNull(params.botLoopProtection);
   const beforeOutbound = outboundRecords.length;
   const beforeDelivery = deliveryRecords.length;
   const beforeRecords = modelTurnRecords.length;
@@ -355,7 +356,8 @@ async function injectProbeInbound(params = {}) {
       sourceReplyDeliveryMode,
       from,
       senderId,
-      senderName
+      senderName,
+      botLoopProtection
     });
   } catch (caught) {
     error = caught instanceof Error ? caught : new Error(String(caught));
@@ -433,6 +435,10 @@ function requiredProbeString(value, key) {
 
 function optionalProbeString(value) {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function objectOrNull(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
 }
 
 function buildKovaImageGenerationProvider() {

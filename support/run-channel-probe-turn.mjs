@@ -128,8 +128,14 @@ async function runProbeCase(client, testCase) {
     replyToId: expects.replyTo === "inbound-message" ? inboundEventId : null,
     threadId: typeof expects.threadId === "string" ? expects.threadId : undefined,
     silent: expects.silent === true,
-    sourceReplyDeliveryMode: typeof testCase.sourceReplyDeliveryMode === "string" ? testCase.sourceReplyDeliveryMode : undefined
+    sourceReplyDeliveryMode: typeof testCase.sourceReplyDeliveryMode === "string" ? testCase.sourceReplyDeliveryMode : undefined,
+    botLoopProtection: expects.noSelfTrigger === true
+      ? createBotEchoProtection(testCase, inboundEventId, targetIdForCase(testCase.id)).firstTurnProtection
+      : undefined
   };
+  const botEcho = expects.noSelfTrigger === true
+    ? createBotEchoProtection(testCase, inboundEventId, params.targetId)
+    : null;
   const startedAtEpochMs = Date.now();
   let injectResult = null;
   let observation = null;
@@ -143,6 +149,14 @@ async function runProbeCase(client, testCase) {
     injectResult = await client.request("kova.channelProbe.inject", params, { timeoutMs });
     observation = injectResult?.observation ?? null;
     observation = await waitForProbeObservation(client, testCase, inboundEventId, observation);
+    if (botEcho) {
+      const selfTriggerObservation = await runBotEchoProbe(client, testCase, botEcho, observation);
+      observation = await readLatestProbeObservation(client, inboundEventId, observation);
+      observation = {
+        ...observation,
+        selfTriggerObservation
+      };
+    }
     invariants = evaluateCase(testCase, observation, injectResult);
     ok = injectResult?.ok === true && invariants.every((item) => item.status === "passed");
   } catch (error) {
@@ -171,6 +185,61 @@ async function runProbeCase(client, testCase) {
     durationMs: Math.max(0, finishedAtEpochMs - startedAtEpochMs),
     invariants,
     observation
+  };
+}
+
+async function runBotEchoProbe(client, testCase, botEcho, firstObservation) {
+  const firstText = finalOutboundRecords(firstObservation)
+    .map((record) => record.text)
+    .find((text) => typeof text === "string" && text.trim().length > 0);
+  const expects = objectOrEmpty(testCase.expects);
+  const echoResult = await client.request("kova.channelProbe.inject", {
+    inboundEventId: botEcho.inboundEventId,
+    message: firstText ?? expects.text ?? "KOVA_SELF_TRIGGER_ECHO",
+    targetId: botEcho.targetId,
+    replyToId: botEcho.inboundEventId,
+    threadId: typeof expects.threadId === "string" ? expects.threadId : undefined,
+    silent: false,
+    sourceReplyDeliveryMode: typeof testCase.sourceReplyDeliveryMode === "string" ? testCase.sourceReplyDeliveryMode : undefined,
+    from: botEcho.senderId,
+    senderId: botEcho.senderId,
+    senderName: "Kova Echo Bot",
+    botLoopProtection: botEcho.echoProtection
+  }, { timeoutMs });
+  return echoResult?.observation ?? null;
+}
+
+function createBotEchoProtection(testCase, inboundEventId, targetId) {
+  const senderId = "kova-baseline-echo-bot";
+  const receiverId = "kova-baseline-user";
+  const scopeId = `kova-self-trigger:${testCase.id}:${inboundEventId}`;
+  const config = {
+    maxEventsPerWindow: 1,
+    windowSeconds: 60,
+    cooldownSeconds: 60
+  };
+  return {
+    inboundEventId: `${inboundEventId}:bot-echo`,
+    targetId,
+    senderId,
+    firstTurnProtection: {
+      scopeId,
+      conversationId: targetId,
+      senderId: receiverId,
+      receiverId: senderId,
+      config,
+      defaultEnabled: true,
+      nowMs: 1_000
+    },
+    echoProtection: {
+      scopeId,
+      conversationId: targetId,
+      senderId,
+      receiverId,
+      config,
+      defaultEnabled: true,
+      nowMs: 1_001
+    }
   };
 }
 
@@ -236,6 +305,7 @@ function evaluateCase(testCase, observation, injectResult) {
     .map((record) => record.text)
     .filter((text) => typeof text === "string" && text.length > 0);
   const firstFinal = finalRecords[0] ?? null;
+  const selfTriggerObservation = observation?.selfTriggerObservation ?? null;
   const visibleDeliveryPolicy = normalizeVisibleDeliveries(expects.visibleDeliveries);
   const expectedText = typeof expects.text === "string" ? expects.text : null;
   const mediaExpectation = mediaSourceExpectation(testCase);
@@ -243,6 +313,10 @@ function evaluateCase(testCase, observation, injectResult) {
   const modelDispatchDones = modelTurnRecords(observation).filter((record) => record.stage === "dispatch" && record.event === "done");
   const modelRecordStarts = modelTurnRecords(observation).filter((record) => record.stage === "record" && record.event === "start");
   const modelRecordDones = modelTurnRecords(observation).filter((record) => record.stage === "record" && record.event === "done");
+  const selfTriggerDispatchStarts = modelTurnRecords(selfTriggerObservation).filter((record) => record.stage === "dispatch" && record.event === "start");
+  const selfTriggerVisibleDeliveries = finalOutboundRecords(selfTriggerObservation);
+  const selfTriggerDropped = selfTriggerObservation?.admission?.kind === "drop" &&
+    selfTriggerObservation?.admission?.reason === "bot-loop-protection";
 
   return [
     invariant(`${testCase.id}:probe-injected`, injectResult?.ok === true && Boolean(observation), `${testCase.id} injected one inbound user event through the channel probe`),
@@ -251,6 +325,7 @@ function evaluateCase(testCase, observation, injectResult) {
     finalDeliveryInvariant(testCase.id, visibleDeliveryPolicy, finalRecords.length),
     invariant(`${testCase.id}:expected-kind`, !expects.kind || firstFinal?.kind === expects.kind, `${testCase.id} produced the expected visible delivery kind`),
     invariant(`${testCase.id}:expected-text`, !expectedText || finalTexts.some((text) => textEquals(text, expectedText)), `${testCase.id} produced the expected visible text`),
+    invariant(`${testCase.id}:error-final`, expects.errorFinal !== true || (firstFinal?.isError === true || finalTexts.some((text) => text.trim().length > 0)), `${testCase.id} delivered one user-visible error response`),
     invariant(`${testCase.id}:receipt`, visibleDeliveryPolicy.expected === 0 || visibleDeliveryPolicy.mode === "observe" || hasReceipt(finalRecords, observation), `${testCase.id} recorded a receipt for required visible delivery`),
     invariant(`${testCase.id}:reply-target`, expects.replyTo !== "inbound-message" || firstFinal?.replyToId === observation?.inboundEvent?.id, `${testCase.id} preserved the inbound reply target`),
     invariant(`${testCase.id}:no-reply-target`, expects.replyTo !== "none" || firstFinal?.replyToId == null, `${testCase.id} did not attach a reply target`),
@@ -261,7 +336,8 @@ function evaluateCase(testCase, observation, injectResult) {
     invariant(`${testCase.id}:single-final`, expects.allowMultipleFinalSends === true || finalRecords.length <= 1, `${testCase.id} did not duplicate final visible delivery`),
     invariant(`${testCase.id}:single-inbound-turn`, modelDispatchStarts.length === 1, `${testCase.id} processed exactly one OpenClaw model turn for one user input; observed ${modelDispatchStarts.length}`),
     invariant(`${testCase.id}:record-terminal`, modelRecordStarts.length === modelRecordDones.length, `${testCase.id} closed every recorded OpenClaw model turn; starts ${modelRecordStarts.length}, done ${modelRecordDones.length}`),
-    invariant(`${testCase.id}:dispatch-terminal`, modelDispatchStarts.length === modelDispatchDones.length, `${testCase.id} closed every dispatched OpenClaw model turn; starts ${modelDispatchStarts.length}, done ${modelDispatchDones.length}`)
+    invariant(`${testCase.id}:dispatch-terminal`, modelDispatchStarts.length === modelDispatchDones.length, `${testCase.id} closed every dispatched OpenClaw model turn; starts ${modelDispatchStarts.length}, done ${modelDispatchDones.length}`),
+    invariant(`${testCase.id}:no-self-trigger`, expects.noSelfTrigger !== true || (selfTriggerDropped && selfTriggerDispatchStarts.length === 0 && selfTriggerVisibleDeliveries.length === 0), `${testCase.id} suppressed bot-authored echo before a second model turn or visible delivery`)
   ];
 }
 
