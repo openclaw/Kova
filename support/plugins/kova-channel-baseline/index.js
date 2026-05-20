@@ -388,12 +388,13 @@ async function runModelTurnCase(testCase) {
     ? (finalTexts.find((text) => textEquals(text, testCase.expectedText)) ?? null)
     : null;
   const firstFinal = finalDeliveryRecords[0] ?? null;
+  const finalDeliveryPolicy = normalizeFinalDeliveries(testCase.finalDeliveries);
   const invariants = [
     invariant(`${testCase.id}:turn-dispatched`, !error && turn?.dispatched === true, `${testCase.id} dispatched through OpenClaw runtime`),
-    invariant(`${testCase.id}:expected-final-count`, finalDeliveryRecords.length === testCase.expectedFinalSendCount, `${testCase.id} produced expected final send count`),
+    finalDeliveryInvariant(testCase.id, finalDeliveryPolicy, finalDeliveryRecords.length),
     invariant(`${testCase.id}:expected-final-kind`, !testCase.expectedKind || firstFinal?.kind === testCase.expectedKind, `${testCase.id} used expected channel send kind`),
     invariant(`${testCase.id}:expected-final-text`, !testCase.expectedText || Boolean(matchedText), `${testCase.id} final channel send equals expected text`),
-    invariant(`${testCase.id}:delivery-receipt`, testCase.expectedFinalSendCount === 0 || caseDeliveryRecords.some((record) => record.fallback === false), `${testCase.id} durable delivery recorded a channel receipt`),
+    invariant(`${testCase.id}:delivery-receipt`, finalDeliveryPolicy.expected === 0 || finalDeliveryPolicy.mode === "observe" || caseDeliveryRecords.some((record) => record.fallback === false), `${testCase.id} durable delivery recorded a channel receipt`),
     invariant(`${testCase.id}:single-final-send`, finalDeliveryRecords.length <= 1 || testCase.allowMultipleFinalSends === true, `${testCase.id} did not duplicate final channel sends`),
     invariant(`${testCase.id}:reply-to`, !testCase.expectReplyToId || firstFinal?.replyToId === inboundEventId, `${testCase.id} preserved reply target`),
     invariant(`${testCase.id}:thread`, !testCase.threadId || firstFinal?.threadId === testCase.threadId, `${testCase.id} preserved thread target`),
@@ -419,6 +420,7 @@ async function runModelTurnCase(testCase) {
     },
     routeSessionKey: turn?.routeSessionKey ?? null,
     dispatched: turn?.dispatched === true,
+    finalDeliveries: finalDeliveryPolicy,
     providerRequests: normalizeProviderRequests(testCase.providerRequests),
     finalText: matchedText,
     expectedText: testCase.expectedText,
@@ -437,7 +439,7 @@ const modelTurnCaseDefinitions = [
     responseText: "KOVA_AGENT_OK",
     expectedText: "KOVA_AGENT_OK",
     expectedKind: "text",
-    expectedFinalSendCount: 1,
+    finalDeliveries: { mode: "exact", expected: 1 },
     providerRequests: { mode: "exact", expected: 1 },
     expectReplyToId: true,
     expectHooks: true,
@@ -459,7 +461,7 @@ const modelTurnCaseDefinitions = [
     expectedKind: "media",
     expectedLocalMediaSource: "/tmp/kova-channel-model-turn-media.png",
     mediaFixturePath: "/tmp/kova-channel-model-turn-media.png",
-    expectedFinalSendCount: 1,
+    finalDeliveries: { mode: "exact", expected: 1 },
     providerRequests: { mode: "exact", expected: 1 },
     expectReplyToId: true,
     capabilities: [
@@ -472,7 +474,7 @@ const modelTurnCaseDefinitions = [
     responseText: "KOVA_AGENT_THREAD_OK",
     expectedText: "KOVA_AGENT_THREAD_OK",
     expectedKind: "text",
-    expectedFinalSendCount: 1,
+    finalDeliveries: { mode: "exact", expected: 1 },
     providerRequests: { mode: "exact", expected: 1 },
     threadId: "kova-model-turn-thread",
     capabilities: [
@@ -485,7 +487,7 @@ const modelTurnCaseDefinitions = [
     responseText: "KOVA_AGENT_SILENT_OK",
     expectedText: "KOVA_AGENT_SILENT_OK",
     expectedKind: "text",
-    expectedFinalSendCount: 1,
+    finalDeliveries: { mode: "exact", expected: 1 },
     providerRequests: { mode: "exact", expected: 1 },
     silent: true,
     capabilities: [
@@ -1029,6 +1031,38 @@ function normalizeProviderRequests(value) {
     return { mode: "minimum", min: value.min };
   }
   return { mode: "observe" };
+}
+
+function normalizeFinalDeliveries(value) {
+  if (value?.mode === "exact" && Number.isInteger(value.expected) && value.expected >= 0) {
+    return { mode: "exact", expected: value.expected };
+  }
+  if ((value?.mode === "minimum" || value?.mode === "min") && Number.isInteger(value.min) && value.min >= 0) {
+    return { mode: "minimum", min: value.min };
+  }
+  return { mode: "observe" };
+}
+
+function finalDeliveryInvariant(caseId, policy, observed) {
+  if (policy.mode === "exact") {
+    return invariant(
+      `${caseId}:final-delivery-count`,
+      observed === policy.expected,
+      `${caseId} produced exactly ${policy.expected} final channel deliver${policy.expected === 1 ? "y" : "ies"}; observed ${observed}`
+    );
+  }
+  if (policy.mode === "minimum") {
+    return invariant(
+      `${caseId}:final-delivery-count`,
+      observed >= policy.min,
+      `${caseId} produced at least ${policy.min} final channel deliver${policy.min === 1 ? "y" : "ies"}; observed ${observed}`
+    );
+  }
+  return invariant(
+    `${caseId}:final-delivery-count-observed`,
+    true,
+    `${caseId} final channel delivery count observed without gating; observed ${observed}`
+  );
 }
 
 function isFinalOutboundRecord(record) {
