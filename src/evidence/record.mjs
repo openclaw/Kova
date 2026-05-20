@@ -50,11 +50,11 @@ function cleanupEvidenceReason(cleanup) {
   return "cleanup result was not recorded";
 }
 
-export async function attachEvidenceArtifactBudget(record) {
+export async function attachEvidenceArtifactBudget(record, scenario = null) {
   if (record.status === "DRY-RUN" || record.status === "SKIPPED") {
     return record;
   }
-  const maxBytes = 5 * 1024 * 1024;
+  const maxBytes = evidenceArtifactMaxBytes(scenario);
   const phaseArtifactPaths = (record.phases ?? [])
     .flatMap((phase) => phase.results ?? [])
     .map((result) => result.evidenceArtifactPath)
@@ -96,6 +96,14 @@ export async function attachEvidenceArtifactBudget(record) {
     reason: artifactBudgetReason({ totalBytes, maxBytes, missingCount })
   }];
   return record;
+}
+
+function evidenceArtifactMaxBytes(scenario) {
+  const value = scenario?.evidenceArtifactMaxBytes;
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return value;
+  }
+  return 5 * 1024 * 1024;
 }
 
 function collectEvidenceMetricArtifactPaths(record) {

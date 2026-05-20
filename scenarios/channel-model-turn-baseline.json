@@ -26,6 +26,7 @@
     "preProviderMs": 10000,
     "providerFinalMs": 3000,
     "peakRssMb": 900,
+    "providerTimeoutMentions": 8,
     "roleThresholds": {
       "gateway": {
         "peakRssMb": 900
@@ -34,6 +35,7 @@
     "missingDependencyErrors": 0,
     "pluginLoadFailures": 0
   },
+  "evidenceArtifactMaxBytes": 8388608,
   "phases": [
     {
       "id": "provision",

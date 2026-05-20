@@ -36,6 +36,9 @@ export function validateScenarioShape(scenario, sourceName = "scenario") {
   if (scenario.timeoutMs !== undefined && (!Number.isInteger(scenario.timeoutMs) || scenario.timeoutMs <= 0)) {
     errors.push("timeoutMs must be a positive integer when set");
   }
+  if (scenario.evidenceArtifactMaxBytes !== undefined && (!Number.isInteger(scenario.evidenceArtifactMaxBytes) || scenario.evidenceArtifactMaxBytes <= 0)) {
+    errors.push("evidenceArtifactMaxBytes must be a positive integer when set");
+  }
   if (scenario.platforms !== undefined) {
     validatePlatforms(scenario.platforms, "platforms", errors);
   }

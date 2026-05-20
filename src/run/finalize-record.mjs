@@ -42,7 +42,7 @@ export async function attachPostCleanupEvidence(record, scenario, context, artif
   evaluateRecord(record, scenario, evaluatorContext(context, scenario));
   attachEvidenceInvariants(record, scenario);
   attachCleanupEvidence(record);
-  await attachEvidenceArtifactBudget(record);
+  await attachEvidenceArtifactBudget(record, scenario);
   attachEvidenceLedger(record);
   applyEvidenceLedgerGating(record);
 }

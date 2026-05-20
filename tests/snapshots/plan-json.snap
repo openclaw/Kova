@@ -4568,14 +4568,7 @@
                 "arguments": {
                   "action": "send",
                   "message": "KOVA_SOURCE_DELIVERY_ATTACHMENT_OK",
-                  "attachments": [
-                    {
-                      "type": "file",
-                      "path": "/tmp/kova-source-delivery-attachment.txt",
-                      "name": "launch-notes.txt",
-                      "mimeType": "text/plain"
-                    }
-                  ]
+                  "media": "/tmp/kova-source-delivery-attachment.txt"
                 }
               }
             ],
@@ -4649,7 +4642,6 @@
           "expects": {
             "visibleDeliveries": 1,
             "kind": "media",
-            "text": "KOVA_COMPLETION_MEDIA_READY",
             "replyTo": "none",
             "mediaSourcePolicy": "present-existing",
             "hooks": true,
@@ -4719,7 +4711,6 @@
           "expects": {
             "visibleDeliveries": 1,
             "kind": "media",
-            "text": "KOVA_COMPLETION_MEDIA_READY",
             "replyTo": "none",
             "threadId": "kova-model-turn-thread",
             "mediaSourcePolicy": "present-existing",
@@ -7199,6 +7190,7 @@
         "preProviderMs": 10000,
         "providerFinalMs": 3000,
         "peakRssMb": 900,
+        "providerTimeoutMentions": 8,
         "roleThresholds": {
           "gateway": {
             "peakRssMb": 900
@@ -7207,6 +7199,7 @@
         "missingDependencyErrors": 0,
         "pluginLoadFailures": 0
       },
+      "evidenceArtifactMaxBytes": 8388608,
       "phases": [
         {
           "id": "provision",
