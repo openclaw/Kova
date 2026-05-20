@@ -85,6 +85,8 @@ async function main() {
     workflowCaseCatalogId: workflowCaseCatalog.id,
     workflowCaseIds: selectedCases.map((testCase) => testCase.id),
     modelTurnCaseCount: result.rows.length,
+    activeStartedAtEpochMs: result.artifact.activeStartedAtEpochMs,
+    activeFinishedAtEpochMs: result.artifact.activeFinishedAtEpochMs,
     failedModelTurnCases: result.rows
       .filter((row) => row.status !== "passed")
       .map(formatFailedCase),
@@ -106,7 +108,13 @@ function formatFailedCase(row) {
     userAction: row.userAction,
     ownerArea: row.ownerArea,
     reason: row.reason,
-    failedInvariants: row.invariants.filter((item) => item.status !== "passed")
+    capabilities: row.capabilities,
+    failedInvariants: row.invariants
+      .filter((item) => item.status !== "passed")
+      .map((item) => ({
+        id: item.id,
+        reason: item.reason
+      }))
   };
 }
 
@@ -147,6 +155,7 @@ async function runProbeCase(client, testCase) {
     matrix: testCase.matrix,
     userAction: testCase.userAction,
     ownerArea: testCase.ownerArea ?? "OpenClaw",
+    capabilities: testCase.atoms,
     inboundEventId,
     startedAtEpochMs,
     finishedAtEpochMs,
@@ -222,8 +231,20 @@ function normalizeWorkflowCase(entry) {
     sourceReplyDeliveryMode: typeof entry.sourceReplyDeliveryMode === "string" ? entry.sourceReplyDeliveryMode : null,
     expects,
     fixtures: objectOrEmpty(entry.fixtures),
-    providerRequests: objectOrEmpty(entry.providerRequests)
+    providerRequests: objectOrEmpty(entry.providerRequests),
+    atoms: Array.isArray(entry.atoms)
+      ? entry.atoms.map(normalizeAtom).filter(Boolean)
+      : []
   };
+}
+
+function normalizeAtom(value) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const group = typeof value.group === "string" && value.group.length > 0 ? value.group : null;
+  const id = typeof value.id === "string" && value.id.length > 0 ? value.id : null;
+  return group || id ? { group, id } : null;
 }
 
 function finalOutboundRecords(observation) {
