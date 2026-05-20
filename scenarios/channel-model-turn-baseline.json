@@ -149,6 +149,26 @@
       "collectionIntent": "post-ready-health"
     },
     {
+      "id": "channel-model-turn-live-preview",
+      "title": "Run Live Preview Finalizer Workflows",
+      "intent": "Call the Kova channel plugin over Gateway RPC so OpenClaw runs its live preview/finalizer helpers for draft progress, final edit, normal fallback, and ambiguous edit retention.",
+      "commands": [
+        "node {kovaRoot}/support/run-channel-probe-live.mjs --env {env} --artifact-dir {artifactDir} --case live-preview.text.final-edit,live-preview.text.normal-fallback,live-preview.text.retain-ambiguous-failure --continue-on-failure true --timeout-ms 120000"
+      ],
+      "evidence": [
+        "live preview capability rows",
+        "draft preview records",
+        "progress update records",
+        "finalizer edit records",
+        "preview receipt records",
+        "normal fallback records",
+        "ambiguous edit retention records",
+        "terminal live state"
+      ],
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
+    },
+    {
       "id": "channel-model-turn-background-completion",
       "title": "Run Background Artifact Completion Model Turn",
       "intent": "Call the Kova channel plugin over Gateway RPC so OpenClaw handles one normal media-generation completion shape, follows its supported message-tool source delivery contract, and records artifact, receipt, duplicate-send, and terminal invariants.",

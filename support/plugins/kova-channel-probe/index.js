@@ -1,7 +1,15 @@
 import { existsSync } from "node:fs";
 import { definePluginEntry } from "openclaw/plugin-sdk/core";
 import { resolveThreadSessionKeys } from "openclaw/plugin-sdk/routing";
-import { createMessageReceiveContext, defineChannelMessageAdapter } from "openclaw/plugin-sdk/channel-message";
+import {
+  createLiveMessageState,
+  createMessageReceiveContext,
+  createPreviewMessageReceipt,
+  defineChannelMessageAdapter,
+  defineFinalizableLivePreviewAdapter,
+  deliverWithFinalizableLivePreviewAdapter,
+  markLiveMessagePreviewUpdated
+} from "openclaw/plugin-sdk/channel-message";
 
 const CHANNEL_ID = "kova-channel-probe";
 const ACCOUNT_ID = "default";
@@ -19,6 +27,7 @@ let activeRuntime = null;
 let outboundRecords = [];
 let deliveryRecords = [];
 let ackRecords = [];
+let liveRecords = [];
 let modelTurnRecords = [];
 let probeObservations = [];
 let recoveryRecords = [];
@@ -262,6 +271,24 @@ export default definePluginEntry({
       { scope: "operator.write" }
     );
     api.registerGatewayMethod(
+      "kova.channelProbe.livePreview",
+      async ({ params, respond }) => {
+        try {
+          const result = await runProbeLivePreview(params);
+          respond(true, result);
+        } catch (error) {
+          respond(true, {
+            ok: false,
+            schemaVersion: "kova.channelProbe.livePreviewResult.v1",
+            channelId: CHANNEL_ID,
+            accountId: activeRuntime?.accountId ?? null,
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+      },
+      { scope: "operator.write" }
+    );
+    api.registerGatewayMethod(
       "kova.channelProbe.observations",
       ({ respond }) => {
         respond(true, {
@@ -281,9 +308,203 @@ function resetProbeState() {
   outboundRecords = [];
   deliveryRecords = [];
   ackRecords = [];
+  liveRecords = [];
   modelTurnRecords = [];
   probeObservations = [];
   recoveryRecords = [];
+}
+
+async function runProbeLivePreview(params = {}) {
+  if (!activeRuntime?.channelRuntime) {
+    throw new Error("kova channel probe runtime is not started");
+  }
+  const caseId = requiredProbeString(params.caseId, "caseId");
+  const mode = requiredProbeString(params.mode, "mode");
+  if (!["final-edit", "normal-fallback", "retain-ambiguous-failure"].includes(mode)) {
+    throw new Error(`kova channel probe live mode is unsupported: ${mode}`);
+  }
+  const targetId = optionalProbeString(params.targetId) ?? TARGET_ID;
+  const text = optionalProbeString(params.text) ?? "KOVA_LIVE_PREVIEW_FINAL_OK";
+  const previewId = `kova-live-preview-${caseId}-${Date.now()}`;
+  const beforeLive = liveRecords.length;
+  const startedAtEpochMs = Date.now();
+  let result = null;
+  let error = null;
+
+  try {
+    const previewReceipt = createPreviewMessageReceipt({ id: previewId });
+    const firstRendered = createProbeRenderedTextBatch("KOVA_LIVE_PREVIEW_DRAFT");
+    const liveState = markLiveMessagePreviewUpdated(
+      createLiveMessageState({ receipt: previewReceipt, canFinalizeInPlace: true }),
+      firstRendered
+    );
+    liveRecords.push({
+      kind: "draft-preview",
+      caseId,
+      targetId,
+      previewId,
+      phase: liveState.phase,
+      canFinalizeInPlace: liveState.canFinalizeInPlace,
+      text: firstRendered.payloads[0]?.text ?? null,
+      atEpochMs: Date.now()
+    });
+    const progressRendered = createProbeRenderedTextBatch("KOVA_LIVE_PREVIEW_PROGRESS");
+    const progressState = markLiveMessagePreviewUpdated(liveState, progressRendered);
+    liveRecords.push({
+      kind: "progress-update",
+      caseId,
+      targetId,
+      previewId,
+      phase: progressState.phase,
+      canFinalizeInPlace: progressState.canFinalizeInPlace,
+      text: progressRendered.payloads[0]?.text ?? null,
+      transport: "native",
+      atEpochMs: Date.now()
+    });
+
+    result = await deliverWithFinalizableLivePreviewAdapter({
+      kind: "final",
+      payload: { text },
+      liveState: progressState,
+      adapter: defineFinalizableLivePreviewAdapter({
+        draft: createProbeLivePreviewDraft({ caseId, previewId }),
+        buildFinalEdit: (payload) => mode === "normal-fallback" ? undefined : { text: payload.text },
+        editFinal: async (id, edit) => {
+          liveRecords.push({
+            kind: "final-edit",
+            caseId,
+            previewId: id,
+            edit,
+            atEpochMs: Date.now()
+          });
+          if (mode === "retain-ambiguous-failure") {
+            throw new Error("kova live preview edit failed after platform attempt started");
+          }
+        },
+        createPreviewReceipt: (id, edit) => {
+          const receipt = createPreviewMessageReceipt({ id, raw: { edit } });
+          liveRecords.push({
+            kind: "preview-receipt",
+            caseId,
+            previewId: id,
+            messageId: receipt.primaryPlatformMessageId,
+            atEpochMs: Date.now()
+          });
+          return receipt;
+        },
+        onPreviewFinalized: (id, receipt, state) => {
+          liveRecords.push({
+            kind: "preview-finalized",
+            caseId,
+            previewId: id,
+            messageId: receipt.primaryPlatformMessageId,
+            phase: state.phase,
+            canFinalizeInPlace: state.canFinalizeInPlace,
+            atEpochMs: Date.now()
+          });
+        },
+        handlePreviewEditError: () => mode === "retain-ambiguous-failure" ? "retain" : "fallback",
+        logPreviewEditFailure: (caught) => {
+          liveRecords.push({
+            kind: "preview-edit-failure",
+            caseId,
+            previewId,
+            error: caught instanceof Error ? caught.message : String(caught),
+            atEpochMs: Date.now()
+          });
+        }
+      }),
+      deliverNormally: async (payload) => {
+        liveRecords.push({
+          kind: "normal-delivery",
+          caseId,
+          targetId,
+          text: payload?.text ?? null,
+          atEpochMs: Date.now()
+        });
+        return true;
+      },
+      onNormalDelivered: () => {
+        liveRecords.push({
+          kind: "normal-delivered",
+          caseId,
+          targetId,
+          atEpochMs: Date.now()
+        });
+      }
+    });
+  } catch (caught) {
+    error = caught instanceof Error ? caught : new Error(String(caught));
+  }
+
+  const finishedAtEpochMs = Date.now();
+  return {
+    ok: error === null,
+    schemaVersion: "kova.channelProbe.livePreviewResult.v1",
+    channelId: CHANNEL_ID,
+    accountId: activeRuntime.accountId,
+    observation: {
+      schemaVersion: "kova.channelProbe.livePreviewObservation.v1",
+      channelId: CHANNEL_ID,
+      accountId: activeRuntime.accountId,
+      caseId,
+      mode,
+      targetId,
+      resultKind: result?.kind ?? null,
+      liveState: compactLiveState(result?.liveState),
+      error: error?.message ?? null,
+      startedAtEpochMs,
+      finishedAtEpochMs,
+      durationMs: Math.max(0, finishedAtEpochMs - startedAtEpochMs),
+      liveRecords: liveRecords.slice(beforeLive)
+    }
+  };
+}
+
+function createProbeLivePreviewDraft({ caseId, previewId }) {
+  return {
+    flush: async () => {
+      liveRecords.push({ kind: "draft-flush", caseId, previewId, atEpochMs: Date.now() });
+    },
+    id: () => previewId,
+    seal: async () => {
+      liveRecords.push({ kind: "draft-seal", caseId, previewId, atEpochMs: Date.now() });
+    },
+    discardPending: async () => {
+      liveRecords.push({ kind: "discard-pending", caseId, previewId, atEpochMs: Date.now() });
+    },
+    clear: async () => {
+      liveRecords.push({ kind: "draft-clear", caseId, previewId, atEpochMs: Date.now() });
+    }
+  };
+}
+
+function createProbeRenderedTextBatch(text) {
+  return {
+    payloads: [{ text }],
+    plan: {
+      payloadCount: 1,
+      textCount: 1,
+      mediaCount: 0,
+      voiceCount: 0,
+      presentationCount: 0,
+      interactiveCount: 0,
+      channelDataCount: 0,
+      items: [{ index: 0, kinds: ["text"], text, mediaUrls: [] }]
+    }
+  };
+}
+
+function compactLiveState(state) {
+  if (!state || typeof state !== "object") {
+    return null;
+  }
+  return {
+    phase: state.phase ?? null,
+    canFinalizeInPlace: state.canFinalizeInPlace === true,
+    receiptMessageId: state.receipt?.primaryPlatformMessageId ?? null,
+    lastRenderedText: state.lastRendered?.payloads?.[0]?.text ?? null
+  };
 }
 
 async function injectProbeInbound(params = {}) {
