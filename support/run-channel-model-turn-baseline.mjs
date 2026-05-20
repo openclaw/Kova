@@ -423,6 +423,14 @@ function summarizeFailedModelTurnCases(cases) {
     .filter((testCase) => testCase?.status !== "passed")
     .map((testCase) => ({
       id: testCase.id ?? null,
+      workflow: testCase.workflow ?? null,
+      userAction: testCase.userAction ?? null,
+      capabilities: Array.isArray(testCase.capabilities)
+        ? testCase.capabilities.map((capability) => ({
+            group: capability.group ?? null,
+            id: capability.id ?? null
+          }))
+        : [],
       reason: testCase.reason ?? null,
       failedInvariants: Array.isArray(testCase.invariants)
         ? testCase.invariants

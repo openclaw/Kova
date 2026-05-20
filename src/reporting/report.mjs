@@ -294,6 +294,20 @@ function pushAgentTurnDetails(lines, record) {
       const fallback = turn.gatewaySession.gatewayTransportFallbackReason ? `; fallback ${turn.gatewaySession.gatewayTransportFallbackReason}` : "";
       lines.push(`    - gateway session: transport ${transport}${fallback}; create ${turn.gatewaySession.createSession}; session create ${valueMs(turn.gatewaySession.sessionCreateDurationMs, "n/a")}; send ${valueMs(turn.gatewaySession.sendDurationMs)}; first assistant ${valueMs(turn.gatewaySession.timeToFirstAssistantMs)}; matched assistant ${valueMs(turn.gatewaySession.timeToMatchedAssistantMs)}; polls ${turn.gatewaySession.historyPollCount ?? "unknown"} (${turn.gatewaySession.historyErrorCount ?? "unknown"} errors)`);
     }
+    if (turn.channelModelTurn?.failedModelTurnCases?.length > 0) {
+      lines.push("    - channel workflow failures:");
+      for (const failedCase of turn.channelModelTurn.failedModelTurnCases.slice(0, 4)) {
+        const atomCoverage = (failedCase.capabilities ?? [])
+          .map((capability) => [capability.group, capability.id].filter(Boolean).join("/"))
+          .filter(Boolean)
+          .join(", ") || "unknown";
+        const invariant = failedCase.failedInvariants?.[0]?.id ?? "unknown";
+        lines.push(`      - ${failedCase.id ?? "unknown"}${failedCase.workflow ? ` (${failedCase.workflow})` : ""}: ${failedCase.reason ?? "failed"}; invariant ${invariant}; atoms ${atomCoverage}`);
+        if (failedCase.userAction) {
+          lines.push(`        - user action: ${failedCase.userAction}`);
+        }
+      }
+    }
     if (turn.turnDiagnostics) {
       lines.push(`    - active window: metadata scans ${turn.metadataScanCount ?? "unknown"} (${valueMs(turn.metadataScanTotalMs)} total, max ${valueMs(turn.metadataScanMaxMs)}); event-loop samples ${turn.turnDiagnostics.eventLoop?.sampleCount ?? "unknown"} max ${valueMs(turn.eventLoopMaxMs)}`);
     }

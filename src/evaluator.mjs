@@ -1272,6 +1272,14 @@ function compactFailedModelTurnCase(value) {
   }
   return {
     id: typeof value.id === "string" ? value.id : null,
+    workflow: typeof value.workflow === "string" ? value.workflow : null,
+    userAction: typeof value.userAction === "string" ? value.userAction : null,
+    capabilities: Array.isArray(value.capabilities)
+      ? value.capabilities.map((capability) => ({
+          group: typeof capability?.group === "string" ? capability.group : null,
+          id: typeof capability?.id === "string" ? capability.id : null
+        })).filter((capability) => capability.group || capability.id)
+      : [],
     reason: typeof value.reason === "string" ? value.reason : null,
     failedInvariants: Array.isArray(value.failedInvariants)
       ? value.failedInvariants.map((invariant) => ({
