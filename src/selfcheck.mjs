@@ -1156,6 +1156,38 @@ function statusFoundationCheck() {
     assertEqual(summary.decision.blockingFindingCount, 1, "incomplete finding blocks summary");
     assertEqual(summary.findings?.[0]?.severity, "incomplete", "incomplete finding severity");
 
+    const behaviorFailRecord = {
+      scenario: "channel-model-turn-baseline",
+      surface: "channel",
+      title: "Channel Model Turn Baseline",
+      status: "FAIL",
+      state: { id: "fresh" },
+      likelyOwner: "OpenClaw",
+      phases: [],
+      measurements: {},
+      violations: [{
+        kind: "resource",
+        metric: "resourceByRole.gateway.peakRssMb",
+        message: "gateway peak RSS 881 MB exceeded threshold 700 MB"
+      }, {
+        kind: "channel",
+        metric: "channelModelTurn.case.generated-media-message-tool",
+        message: "channel model turn case generated-media-message-tool failed: observed duplicate final delivery"
+      }]
+    };
+    const behaviorFailSummary = buildReportSummary({
+      schemaVersion: "kova.report.v1",
+      mode: "execution",
+      target: "local-build:/tmp/openclaw",
+      records: [behaviorFailRecord],
+      summary: summarizeRecords([behaviorFailRecord])
+    });
+    assertEqual(
+      behaviorFailSummary.decision.reason,
+      "channel model turn case generated-media-message-tool failed: observed duplicate final delivery",
+      "behavior failure is report headline before resource finding"
+    );
+
     const gate = evaluateGate(report, {
       id: "release",
       purpose: "release",

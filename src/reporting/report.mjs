@@ -524,7 +524,7 @@ function buildDecision(report, statuses, findings, blockingFindingCount, warning
     };
   }
   if ((statuses[RECORD_STATUS.FAIL] ?? 0) > 0) {
-    const primary = findings.find((finding) => finding.severity === "fail") ?? findings[0] ?? null;
+    const primary = primaryFailFinding(findings) ?? findings[0] ?? null;
     return {
       verdict: RECORD_STATUS.FAIL,
       ok: false,
@@ -549,6 +549,24 @@ function buildDecision(report, statuses, findings, blockingFindingCount, warning
     blockingFindingCount,
     warningFindingCount
   };
+}
+
+function primaryFailFinding(findings) {
+  const failFindings = findings.filter((finding) => finding.severity === "fail");
+  return failFindings.find((finding) => finding.metric?.startsWith("channelModelTurn."))
+    ?? failFindings.find((finding) => finding.metric?.startsWith("gatewayTransport."))
+    ?? failFindings.find((finding) => finding.metric?.startsWith("agentFailureContainment."))
+    ?? failFindings.find((finding) => !isResourceFinding(finding))
+    ?? failFindings[0]
+    ?? null;
+}
+
+function isResourceFinding(finding) {
+  return typeof finding?.metric === "string" && (
+    finding.metric.startsWith("resourceByRole.") ||
+    finding.metric === "rssGrowthMb" ||
+    finding.metric === "gatewayRssMb"
+  );
 }
 
 function buildFindings(report) {
