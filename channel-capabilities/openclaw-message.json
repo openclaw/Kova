@@ -9,6 +9,7 @@
     "src/channels/message/runtime-workflows",
     "src/infra/outbound/source-delivery-plan.ts",
     "src/agents/pi-embedded-runner/run/payloads.ts",
+    "src/channels/turn/bot-loop-protection.ts",
     "src/agents/subagent-announce-delivery.ts"
   ],
   "capabilities": [
@@ -326,6 +327,15 @@
       "baselineExpectation": "a failed channel model turn should deliver one user-visible error response, avoid duplicate success/error output, and leave the run terminal",
       "proofModes": ["model-turn", "live-smoke"],
       "declarationSource": "src/agents/pi-embedded-runner/run/payloads.ts"
+    },
+    {
+      "id": "no-self-trigger",
+      "group": "workflow",
+      "title": "No Self Trigger",
+      "sourceSymbol": "channelRuntimeWorkflows.botLoopProtection",
+      "baselineExpectation": "a bot-authored channel echo in the same conversation should be suppressed before it starts another model turn or sends another visible reply",
+      "proofModes": ["model-turn", "deterministic-shim", "live-smoke"],
+      "declarationSource": "src/channels/turn/bot-loop-protection.ts"
     }
   ]
 }

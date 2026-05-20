@@ -40,6 +40,35 @@
       ]
     },
     {
+      "id": "no-self-trigger.bot-authored-echo",
+      "workflow": "no-self-trigger",
+      "userAction": "user receives a bot-authored channel response and the platform echoes that bot message back as an inbound event",
+      "openclawSurface": "channel inbound direct message with bot-loop protection",
+      "ownerArea": "OpenClaw channel runtime",
+      "prompt": "Confirm the latest channel update.",
+      "providerScript": {
+        "finalText": "KOVA_NO_SELF_TRIGGER_OK"
+      },
+      "expects": {
+        "visibleDeliveries": 1,
+        "kind": "text",
+        "text": "KOVA_NO_SELF_TRIGGER_OK",
+        "terminal": true,
+        "noDuplicateFinal": true,
+        "noSelfTrigger": true
+      },
+      "providerRequests": {
+        "mode": "exact",
+        "expected": 1
+      },
+      "atoms": [
+        { "group": "workflow", "id": "no-self-trigger" },
+        { "group": "workflow", "id": "single-inbound-single-final" },
+        { "group": "workflow", "id": "terminal-after-final" },
+        { "group": "durable-final", "id": "text" }
+      ]
+    },
+    {
       "id": "media-final",
       "workflow": "final-media-reply",
       "userAction": "user asks OpenClaw for a media result and receives the media in the same conversation",

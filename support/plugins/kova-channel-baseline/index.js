@@ -398,7 +398,12 @@ async function runModelTurnCase(testCase) {
   const beforeDelivery = deliveryRecords.length;
   const beforeRecords = modelTurnRecords.length;
   const inboundEventId = `kova-model-turn-${testCase.id}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const botLoopProbe = testCase.expectNoSelfTrigger === true
+    ? createSelfTriggerProbe(testCase.id, inboundEventId)
+    : null;
   let turn = null;
+  let selfTriggerTurn = null;
+  let selfTriggerError = null;
   let error = null;
 
   try {
@@ -411,8 +416,33 @@ async function runModelTurnCase(testCase) {
       replyToId: testCase.replyToId === null ? null : inboundEventId,
       threadId: testCase.threadId,
       silent: testCase.silent === true,
-      sourceReplyDeliveryMode: testCase.sourceReplyDeliveryMode
+      sourceReplyDeliveryMode: testCase.sourceReplyDeliveryMode,
+      botLoopProtection: botLoopProbe?.firstTurnProtection
     });
+    if (botLoopProbe) {
+      const beforeSelfTriggerOutbound = outboundRecords.length;
+      const beforeSelfTriggerDelivery = deliveryRecords.length;
+      const beforeSelfTriggerRecords = modelTurnRecords.length;
+      try {
+        selfTriggerTurn = await runOpenClawModelTurn({
+          message: selfTriggerProbeMessage(testCase, botLoopProbe),
+          inboundEventId: botLoopProbe.inboundEventId,
+          replyToId: botLoopProbe.inboundEventId,
+          threadId: testCase.threadId,
+          silent: false,
+          sourceReplyDeliveryMode: testCase.sourceReplyDeliveryMode,
+          from: botLoopProbe.senderId,
+          senderId: botLoopProbe.senderId,
+          senderName: "Kova Echo Bot",
+          botLoopProtection: botLoopProbe.echoProtection
+        });
+      } catch (caught) {
+        selfTriggerError = caught instanceof Error ? caught : new Error(String(caught));
+      }
+      botLoopProbe.outboundRecords = outboundRecords.slice(beforeSelfTriggerOutbound);
+      botLoopProbe.deliveryRecords = deliveryRecords.slice(beforeSelfTriggerDelivery);
+      botLoopProbe.modelTurnRecords = modelTurnRecords.slice(beforeSelfTriggerRecords);
+    }
   } catch (caught) {
     error = caught instanceof Error ? caught : new Error(String(caught));
   } finally {
@@ -442,6 +472,9 @@ async function runModelTurnCase(testCase) {
   const firstFinal = finalDeliveryRecords[0] ?? null;
   const finalDeliveryPolicy = normalizeFinalDeliveries(testCase.finalDeliveries);
   const mediaExpectation = mediaSourceExpectation(testCase);
+  const selfTriggerDispatchStarts = botLoopProbe?.modelTurnRecords?.filter((record) => record.stage === "dispatch" && record.event === "start") ?? [];
+  const selfTriggerDropped = selfTriggerTurn?.admission?.kind === "drop" &&
+    selfTriggerTurn?.admission?.reason === "bot-loop-protection";
   const invariants = [
     invariant(`${testCase.id}:turn-dispatched`, !error && turn?.dispatched === true, `${testCase.id} dispatched through OpenClaw runtime`),
     successPlusExtraVisibleInvariant(testCase, finalDeliveryPolicy, finalOutboundRecords),
@@ -461,6 +494,7 @@ async function runModelTurnCase(testCase) {
     invariant(`${testCase.id}:single-inbound-turn`, modelDispatchStarts.length === 1, `${testCase.id} processed exactly one OpenClaw model turn for one inbound user event; observed ${modelDispatchStarts.length}`),
     invariant(`${testCase.id}:model-turn-record-terminal`, modelRecordStarts.length === modelRecordDones.length, `${testCase.id} closed every recorded OpenClaw model turn; starts ${modelRecordStarts.length}, done ${modelRecordDones.length}`),
     invariant(`${testCase.id}:model-turn-dispatch-terminal`, modelDispatchStarts.length === modelDispatchDones.length, `${testCase.id} closed every dispatched OpenClaw model turn; starts ${modelDispatchStarts.length}, done ${modelDispatchDones.length}`),
+    invariant(`${testCase.id}:no-self-trigger`, testCase.expectNoSelfTrigger !== true || (!selfTriggerError && selfTriggerDropped && selfTriggerDispatchStarts.length === 0 && botLoopProbe.outboundRecords.length === 0 && botLoopProbe.deliveryRecords.length === 0), `${testCase.id} suppressed bot-authored echo without dispatch or visible delivery`),
     invariant(`${testCase.id}:terminal-return`, !error, `${testCase.id} returned from OpenClaw dispatch`)
   ];
   const ok = invariants.every((item) => item.status === "passed");
@@ -479,6 +513,21 @@ async function runModelTurnCase(testCase) {
       targetId: TARGET_ID,
       message: testCase.prompt
     },
+    selfTriggerProbe: botLoopProbe ? {
+      inboundEvent: {
+        id: botLoopProbe.inboundEventId,
+        authorId: botLoopProbe.senderId,
+        sourceKind: "bot-authored-echo",
+        targetId: TARGET_ID,
+        message: botLoopProbe.message
+      },
+      admission: selfTriggerTurn?.admission ?? null,
+      dispatched: selfTriggerTurn?.dispatched === true,
+      error: selfTriggerError?.message ?? null,
+      outboundRecords: botLoopProbe.outboundRecords,
+      deliveryRecords: botLoopProbe.deliveryRecords,
+      modelTurnRecords: botLoopProbe.modelTurnRecords
+    } : null,
     routeSessionKey: turn?.routeSessionKey ?? null,
     dispatched: turn?.dispatched === true,
     finalDeliveries: finalDeliveryPolicy,
@@ -1024,7 +1073,11 @@ async function runOpenClawModelTurn({
   replyToId,
   threadId,
   silent,
-  sourceReplyDeliveryMode
+  sourceReplyDeliveryMode,
+  from = TARGET_ID,
+  senderId = TARGET_USER_ID,
+  senderName = TARGET_DISPLAY,
+  botLoopProtection
 }) {
   const runtime = activeRuntime.channelRuntime;
   const cfg = activeRuntime.cfg;
@@ -1040,14 +1093,14 @@ async function runOpenClawModelTurn({
     BodyForAgent: message,
     RawBody: message,
     CommandBody: message,
-    From: TARGET_ID,
+    From: from,
     To: TARGET_ID,
     OriginatingTo: TARGET_ID,
     SessionKey: route.sessionKey,
     AccountId: ACCOUNT_ID,
     ChatType: "direct",
-    SenderName: "Kova Baseline User",
-    SenderId: "kova-baseline-user",
+    SenderName: senderName,
+    SenderId: senderId,
     Provider: CHANNEL_ID,
     Surface: CHANNEL_ID,
     MessageSid: inboundEventId,
@@ -1067,6 +1120,7 @@ async function runOpenClawModelTurn({
     routeSessionKey: route.sessionKey,
     storePath,
     ctxPayload,
+    botLoopProtection,
     recordInboundSession: runtime.session.recordInboundSession,
     dispatchReplyWithBufferedBlockDispatcher: runtime.reply.dispatchReplyWithBufferedBlockDispatcher,
     delivery: {
@@ -1110,6 +1164,55 @@ async function runOpenClawModelTurn({
     },
     messageId: inboundEventId
   });
+}
+
+function createSelfTriggerProbe(caseId, inboundEventId) {
+  const senderId = "kova-baseline-echo-bot";
+  const receiverId = TARGET_USER_ID;
+  const scopeId = `kova-self-trigger:${caseId}:${inboundEventId}`;
+  const conversationId = TARGET_ID;
+  const config = {
+    maxEventsPerWindow: 1,
+    windowSeconds: 60,
+    cooldownSeconds: 60
+  };
+  return {
+    inboundEventId: `${inboundEventId}:bot-echo`,
+    message: "KOVA_SELF_TRIGGER_ECHO",
+    senderId,
+    receiverId,
+    firstTurnProtection: {
+      scopeId,
+      conversationId,
+      senderId: receiverId,
+      receiverId: senderId,
+      config,
+      defaultEnabled: true,
+      nowMs: 1_000
+    },
+    echoProtection: {
+      scopeId,
+      conversationId,
+      senderId,
+      receiverId,
+      config,
+      defaultEnabled: true,
+      nowMs: 1_001
+    },
+    outboundRecords: [],
+    deliveryRecords: [],
+    modelTurnRecords: []
+  };
+}
+
+function selfTriggerProbeMessage(testCase, probe) {
+  return [
+    probe.message,
+    `KOVA_MODEL_TURN_CASE:${testCase.id}.self-trigger-probe`,
+    `KOVA_INBOUND_EVENT_ID:${probe.inboundEventId}`,
+    "This bot-authored echo should be dropped by OpenClaw channel loop protection before any model call.",
+    `KOVA_MOCK_RESPONSE_B64:${Buffer.from("KOVA_SELF_TRIGGER_UNEXPECTED", "utf8").toString("base64")}`
+  ].join("\n");
 }
 
 function modelTurnPrompt(testCase, inboundEventId) {

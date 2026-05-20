@@ -269,6 +269,7 @@ function normalizeWorkflowCase(entry) {
     expectNoReplyToId: expects.replyTo === "none",
     expectHooks: expects.hooks === true,
     expectNoExtraVisibleFinal: expects.noExtraVisibleFinal === true || expects.noDuplicateFinal === true,
+    expectNoSelfTrigger: expects.noSelfTrigger === true,
     threadId: typeof expects.threadId === "string" ? expects.threadId : null,
     silent: expects.silent === true,
     capabilities: normalizeAtoms(id, entry.atoms)
@@ -467,7 +468,10 @@ async function countScopedProviderRequests(path, cases) {
   const inboundEventIds = new Set(
     Array.isArray(cases)
       ? cases
-          .map((testCase) => testCase?.inboundEvent?.id)
+          .flatMap((testCase) => [
+            testCase?.inboundEvent?.id,
+            testCase?.selfTriggerProbe?.inboundEvent?.id
+          ])
           .filter((id) => typeof id === "string" && id.length > 0)
       : []
   );

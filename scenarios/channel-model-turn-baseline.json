@@ -197,6 +197,26 @@
       "collectionIntent": "post-ready-health"
     },
     {
+      "id": "channel-model-turn-no-self-trigger",
+      "title": "Run No-Self-Trigger Model Turn",
+      "intent": "Call the Kova channel plugin over Gateway RPC so OpenClaw handles a normal inbound channel event, then suppresses a bot-authored platform echo before it can start another model turn or send another visible response.",
+      "commands": [
+        "node {kovaRoot}/support/run-channel-model-turn-baseline.mjs --env {env} --artifact-dir {artifactDir} --case no-self-trigger.bot-authored-echo --skip-shared-baseline true --continue-on-model-turn-failure true --timeout-ms 120000"
+      ],
+      "evidence": [
+        "no-self-trigger workflow rows",
+        "first inbound user event id",
+        "bot-authored echo inbound event id",
+        "bot-loop suppression admission",
+        "provider request count",
+        "outbound channel send records",
+        "duplicate-send invariants",
+        "terminal dispatch returns"
+      ],
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
+    },
+    {
       "id": "channel-model-turn-thread-final",
       "title": "Run Thread Final Model Turn",
       "intent": "Call the Kova channel plugin over Gateway RPC so OpenClaw handles one inbound threaded channel event, calls the mock provider, sends a final response through the channel adapter, and records thread preservation and terminal invariants.",
