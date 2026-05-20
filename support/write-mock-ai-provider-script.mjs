@@ -99,6 +99,23 @@ function channelWorkflowScript(caseIds) {
 }
 
 function scriptStepsForWorkflowCase(testCase) {
+  const steps = primaryScriptStepsForWorkflowCase(testCase);
+  const expects = testCase.expects && typeof testCase.expects === "object" && !Array.isArray(testCase.expects)
+    ? testCase.expects
+    : {};
+  if (expects.noSelfTrigger === true) {
+    steps.push({
+      id: `${testCase.id}:unexpected-bot-echo-final`,
+      respond: {
+        type: "final-text",
+        text: "KOVA_UNEXPECTED_BOT_ECHO_RESPONSE"
+      }
+    });
+  }
+  return steps;
+}
+
+function primaryScriptStepsForWorkflowCase(testCase) {
   const script = testCase.providerScript ?? {};
   if (Number.isInteger(script.errorStatus)) {
     return [{
