@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { definePluginEntry } from "openclaw/plugin-sdk/core";
 import { resolveThreadSessionKeys } from "openclaw/plugin-sdk/routing";
-import { defineChannelMessageAdapter } from "openclaw/plugin-sdk/channel-message";
+import { createMessageReceiveContext, defineChannelMessageAdapter } from "openclaw/plugin-sdk/channel-message";
 
 const CHANNEL_ID = "kova-channel-probe";
 const ACCOUNT_ID = "default";
@@ -18,6 +18,7 @@ const KOVA_PNG_1X1 = Buffer.from(
 let activeRuntime = null;
 let outboundRecords = [];
 let deliveryRecords = [];
+let ackRecords = [];
 let modelTurnRecords = [];
 let probeObservations = [];
 let recoveryRecords = [];
@@ -279,6 +280,7 @@ export default definePluginEntry({
 function resetProbeState() {
   outboundRecords = [];
   deliveryRecords = [];
+  ackRecords = [];
   modelTurnRecords = [];
   probeObservations = [];
   recoveryRecords = [];
@@ -304,6 +306,7 @@ async function injectProbeInbound(params = {}) {
   const botLoopProtection = objectOrNull(params.botLoopProtection);
   const beforeOutbound = outboundRecords.length;
   const beforeDelivery = deliveryRecords.length;
+  const beforeAck = ackRecords.length;
   const beforeRecords = modelTurnRecords.length;
   const startedAtEpochMs = Date.now();
   let turn = null;
@@ -311,8 +314,14 @@ async function injectProbeInbound(params = {}) {
   let recovery = null;
   const previousPlatformScript = activePlatformScript;
   activePlatformScript = createPlatformScript(platformScript, { inboundEventId });
+  const receiveContext = createProbeReceiveContext({
+    id: inboundEventId,
+    message,
+    ackPolicy: optionalProbeString(params.ackPolicy)
+  });
 
   try {
+    await maybeAckProbeReceiveContext(receiveContext, "receive_record");
     try {
       turn = await runOpenClawModelTurn({
         message,
@@ -328,6 +337,11 @@ async function injectProbeInbound(params = {}) {
         botLoopProtection,
         requiredCapabilities
       });
+      await maybeAckProbeReceiveContext(receiveContext, "agent_dispatch");
+      await maybeAckProbeReceiveContext(receiveContext, "durable_send");
+      if (params.manualAck === true) {
+        await ackProbeReceiveContext(receiveContext, "manual");
+      }
     } catch (caught) {
       error = caught instanceof Error ? caught : new Error(String(caught));
     }
@@ -355,6 +369,7 @@ async function injectProbeInbound(params = {}) {
     recordOffsets: {
       outbound: beforeOutbound,
       delivery: beforeDelivery,
+      ack: beforeAck,
       modelTurn: beforeRecords
     },
     inboundEvent: {
@@ -379,6 +394,7 @@ async function injectProbeInbound(params = {}) {
     durationMs: Math.max(0, finishedAtEpochMs - startedAtEpochMs),
     outboundRecords: outboundRecords.slice(beforeOutbound),
     deliveryRecords: deliveryRecords.slice(beforeDelivery),
+    ackRecords: ackRecords.slice(beforeAck),
     modelTurnRecords: modelTurnRecords.slice(beforeRecords),
     recoveryRecords: recoveryRecords.filter((record) => record.inboundEventId === inboundEventId)
   };
@@ -400,6 +416,7 @@ function snapshotProbeObservation(observation) {
   const offsets = observation?.recordOffsets ?? {};
   const outboundStart = Number.isInteger(offsets.outbound) ? offsets.outbound : 0;
   const deliveryStart = Number.isInteger(offsets.delivery) ? offsets.delivery : 0;
+  const ackStart = Number.isInteger(offsets.ack) ? offsets.ack : 0;
   const modelTurnStart = Number.isInteger(offsets.modelTurn) ? offsets.modelTurn : 0;
   const observedAtEpochMs = Date.now();
   return {
@@ -408,8 +425,74 @@ function snapshotProbeObservation(observation) {
     durationMs: Math.max(0, observedAtEpochMs - observation.startedAtEpochMs),
     outboundRecords: outboundRecords.slice(outboundStart),
     deliveryRecords: deliveryRecords.slice(deliveryStart),
+    ackRecords: ackRecords.slice(ackStart),
     modelTurnRecords: modelTurnRecords.slice(modelTurnStart)
   };
+}
+
+function createProbeReceiveContext({ id, message, ackPolicy }) {
+  const ctx = createMessageReceiveContext({
+    id,
+    channel: CHANNEL_ID,
+    accountId: ACCOUNT_ID,
+    message: { text: message },
+    ...(ackPolicy ? { ackPolicy } : {}),
+    onAck: () => {
+      ackRecords.push({
+        kind: "ack-hook",
+        inboundEventId: id,
+        policy: ctx.ackPolicy,
+        state: ctx.ackState,
+        atEpochMs: Date.now()
+      });
+    },
+    onNack: (error) => {
+      ackRecords.push({
+        kind: "nack-hook",
+        inboundEventId: id,
+        policy: ctx.ackPolicy,
+        state: ctx.ackState,
+        error: error instanceof Error ? error.message : String(error),
+        atEpochMs: Date.now()
+      });
+    }
+  });
+  ackRecords.push({
+    kind: "receive-context",
+    inboundEventId: id,
+    policy: ctx.ackPolicy,
+    state: ctx.ackState,
+    atEpochMs: Date.now()
+  });
+  return ctx;
+}
+
+async function maybeAckProbeReceiveContext(ctx, stage) {
+  if (!ctx.shouldAckAfter(stage)) {
+    ackRecords.push({
+      kind: "ack-stage-skip",
+      inboundEventId: ctx.id,
+      policy: ctx.ackPolicy,
+      stage,
+      state: ctx.ackState,
+      atEpochMs: Date.now()
+    });
+    return;
+  }
+  await ackProbeReceiveContext(ctx, stage);
+}
+
+async function ackProbeReceiveContext(ctx, stage) {
+  await ctx.ack();
+  ackRecords.push({
+    kind: "ack-stage",
+    inboundEventId: ctx.id,
+    policy: ctx.ackPolicy,
+    stage,
+    state: ctx.ackState,
+    ackedAt: ctx.ackedAt ?? null,
+    atEpochMs: Date.now()
+  });
 }
 
 function requiredProbeString(value, key) {
@@ -643,8 +726,11 @@ async function runOpenClawModelTurn({
         silent,
         ...(requiredCapabilities ? { requiredCapabilities } : {})
       },
-      deliver: async (delivered) => {
-        return recordUnhandledDeliveryPayload(delivered, { targetId, replyToId, threadId, silent });
+      deliver: async (delivered, info) => {
+        if (info?.kind !== "final") {
+          return deliverAdapterPayload(delivered, { targetId, replyToId, threadId, silent });
+        }
+        return recordUnhandledDeliveryPayload(delivered, { targetId, replyToId, threadId, silent, info });
       },
       onDelivered: async (delivered, info, result) => {
         deliveryRecords.push({
@@ -731,10 +817,25 @@ async function recordOutbound(kind, ctx) {
   return { messageId, receipt };
 }
 
+async function deliverAdapterPayload(payload, options = {}) {
+  const mediaUrl = firstMediaUrl(payload);
+  return await recordOutbound(mediaUrl ? "media" : payload?.channelData ? "payload" : "text", {
+    to: options.targetId ?? TARGET_ID,
+    text: payload?.text ?? null,
+    mediaUrl,
+    payload,
+    isError: payload?.isError === true,
+    silent: options.silent === true,
+    threadId: options.threadId ?? null,
+    replyToId: options.replyToId ?? null
+  });
+}
+
 function recordUnhandledDeliveryPayload(payload, options = {}) {
   const mediaUrl = firstMediaUrl(payload);
   deliveryRecords.push({
     path: "unhandled-channel-delivery",
+    dispatchKind: options.info?.kind ?? null,
     kind: mediaUrl ? "media" : payload?.channelData ? "payload" : "text",
     text: payload?.text ?? null,
     mediaUrl: mediaUrl ?? null,

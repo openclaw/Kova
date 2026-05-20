@@ -135,6 +135,8 @@ async function runProbeCase(client, testCase) {
     replyToId: expects.replyTo === "inbound-message" ? inboundEventId : null,
     threadId: typeof expects.threadId === "string" ? expects.threadId : undefined,
     silent: expects.silent === true,
+    ackPolicy: typeof testCase.receiveAckPolicy === "string" ? testCase.receiveAckPolicy : undefined,
+    manualAck: expects.ackStage === "manual",
     requiredCapabilities: objectOrEmpty(testCase.requiredCapabilities),
     platformScript: objectOrEmpty(testCase.platformScript),
     sourceReplyDeliveryMode: typeof testCase.sourceReplyDeliveryMode === "string" ? testCase.sourceReplyDeliveryMode : undefined,
@@ -200,9 +202,6 @@ async function runProbeCase(client, testCase) {
 
 async function replaceMockProviderScriptForCase(testCase) {
   const port = await readProviderPort();
-  if (!port) {
-    return;
-  }
   const script = channelWorkflowScript([testCase.id], repoRoot);
   const response = await fetch(`http://127.0.0.1:${port}/admin/script`, {
     method: "POST",
@@ -228,7 +227,7 @@ async function readProviderPort() {
     throw new Error(`invalid mock provider port file ${providerPortPath}: ${raw}`);
   } catch (error) {
     if (error?.code === "ENOENT") {
-      return null;
+      throw new Error(`mock provider port file is missing: ${providerPortPath}`);
     }
     throw error;
   }
@@ -370,6 +369,9 @@ function evaluateCase(testCase, observation, injectResult) {
   const platformFailures = platformFailureRecords(observation);
   const recoveryRecords = channelRecoveryRecords(observation);
   const unhandledDeliveries = unhandledDeliveryRecords(observation);
+  const ackRecords = receiveAckRecords(observation);
+  const expectedAckPolicy = typeof testCase.receiveAckPolicy === "string" ? testCase.receiveAckPolicy : null;
+  const expectedAckStage = typeof expects.ackStage === "string" ? expects.ackStage : null;
 
   return [
     invariant(`${testCase.id}:probe-injected`, injectResult?.ok === true && Boolean(observation), `${testCase.id} injected one inbound user event through the channel probe`),
@@ -392,6 +394,8 @@ function evaluateCase(testCase, observation, injectResult) {
     invariant(`${testCase.id}:single-inbound-turn`, modelDispatchStarts.length === 1, `${testCase.id} processed exactly one OpenClaw model turn for one user input; observed ${modelDispatchStarts.length}`),
     invariant(`${testCase.id}:record-terminal`, modelRecordStarts.length === modelRecordTerminals.length, `${testCase.id} closed every recorded OpenClaw model turn; starts ${modelRecordStarts.length}, terminal ${modelRecordTerminals.length}`),
     invariant(`${testCase.id}:dispatch-terminal`, modelDispatchStarts.length === modelDispatchTerminals.length, `${testCase.id} closed every dispatched OpenClaw model turn; starts ${modelDispatchStarts.length}, terminal ${modelDispatchTerminals.length}`),
+    invariant(`${testCase.id}:ack-policy`, !expectedAckPolicy || ackRecords.some((record) => record.kind === "receive-context" && record.policy === expectedAckPolicy), `${testCase.id} created a receive context with ack policy ${expectedAckPolicy ?? "unspecified"}`),
+    invariant(`${testCase.id}:ack-stage`, !expectedAckStage || ackRecords.some((record) => record.kind === "ack-stage" && record.stage === expectedAckStage && record.state === "acked"), `${testCase.id} acknowledged the inbound event at ${expectedAckStage ?? "unspecified"} stage`),
     invariant(`${testCase.id}:no-self-trigger`, expects.noSelfTrigger !== true || (selfTriggerDropped && selfTriggerDispatchStarts.length === 0 && selfTriggerVisibleDeliveries.length === 0), `${testCase.id} suppressed bot-authored echo before a second model turn or visible delivery`),
     invariant(`${testCase.id}:recovery-triggered`, !recoveryExpectation.required || recovery.triggered === true, `${testCase.id} triggered OpenClaw delivery recovery`),
     invariant(`${testCase.id}:platform-ambiguous-send`, !recoveryExpectation.required || platformFailures.length > 0, `${testCase.id} observed a platform send failure after the send attempt started`),
@@ -428,6 +432,7 @@ function normalizeWorkflowCase(entry) {
     ownerArea: typeof entry.ownerArea === "string" ? entry.ownerArea : null,
     prompt,
     sourceReplyDeliveryMode: typeof entry.sourceReplyDeliveryMode === "string" ? entry.sourceReplyDeliveryMode : null,
+    receiveAckPolicy: typeof entry.receiveAckPolicy === "string" ? entry.receiveAckPolicy : null,
     requiredCapabilities: objectOrEmpty(entry.requiredCapabilities),
     platformScript: objectOrEmpty(entry.platformScript),
     expects,
@@ -472,6 +477,10 @@ function unhandledDeliveryRecords(observation) {
   return Array.isArray(observation?.deliveryRecords)
     ? observation.deliveryRecords.filter((record) => record?.path === "unhandled-channel-delivery")
     : [];
+}
+
+function receiveAckRecords(observation) {
+  return Array.isArray(observation?.ackRecords) ? observation.ackRecords : [];
 }
 
 function normalizeRecoveryExpectation(testCase) {

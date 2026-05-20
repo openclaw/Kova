@@ -130,6 +130,25 @@
       "collectionIntent": "post-ready-health"
     },
     {
+      "id": "channel-model-turn-receive-ack",
+      "title": "Run Receive Ack Model Turns",
+      "intent": "Call the Kova channel plugin over Gateway RPC so OpenClaw creates receive contexts for normal inbound user messages and the adapter acknowledges the platform event at each declared receive ack policy stage.",
+      "commands": [
+        "node {kovaRoot}/support/run-channel-probe-turn.mjs --env {env} --artifact-dir {artifactDir} --case receive-ack.after-receive-record,receive-ack.after-agent-dispatch,receive-ack.after-durable-send,receive-ack.manual --continue-on-failure true --timeout-ms 120000"
+      ],
+      "evidence": [
+        "receive ack model-turn capability rows",
+        "receive context policy records",
+        "ack stage records",
+        "inbound channel event ids",
+        "provider request policy and observed count",
+        "outbound channel send records",
+        "terminal invariants"
+      ],
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
+    },
+    {
       "id": "channel-model-turn-background-completion",
       "title": "Run Background Artifact Completion Model Turn",
       "intent": "Call the Kova channel plugin over Gateway RPC so OpenClaw handles one normal media-generation completion shape, follows its supported message-tool source delivery contract, and records artifact, receipt, duplicate-send, and terminal invariants.",
