@@ -132,20 +132,29 @@ async function runProbeCase(client, testCase) {
   };
   const startedAtEpochMs = Date.now();
   let injectResult = null;
+  let observation = null;
+  let invariants = [];
+  let ok = false;
+  const fixturePaths = mediaFixturePaths(testCase);
   try {
-    for (const fixturePath of mediaFixturePaths(testCase)) {
+    for (const fixturePath of fixturePaths) {
       writeMediaFixture(fixturePath);
     }
     injectResult = await client.request("kova.channelProbe.inject", params, { timeoutMs });
+    observation = injectResult?.observation ?? null;
+    observation = await waitForProbeObservation(client, testCase, inboundEventId, observation);
+    invariants = evaluateCase(testCase, observation, injectResult);
+    ok = injectResult?.ok === true && invariants.every((item) => item.status === "passed");
+  } catch (error) {
+    invariants = [
+      invariant(`${testCase.id}:runner-error`, false, `${testCase.id} runner failed: ${error instanceof Error ? error.message : String(error)}`)
+    ];
   } finally {
-    for (const fixturePath of mediaFixturePaths(testCase)) {
+    for (const fixturePath of fixturePaths) {
       removeMediaFixture(fixturePath);
     }
   }
   const finishedAtEpochMs = Date.now();
-  const observation = injectResult?.observation ?? null;
-  const invariants = evaluateCase(testCase, observation, injectResult);
-  const ok = injectResult?.ok === true && invariants.every((item) => item.status === "passed");
   return {
     id: testCase.id,
     status: ok ? "passed" : "failed",
@@ -163,6 +172,61 @@ async function runProbeCase(client, testCase) {
     invariants,
     observation
   };
+}
+
+async function waitForProbeObservation(client, testCase, inboundEventId, initialObservation) {
+  if (!requiresObservationWait(testCase)) {
+    return initialObservation;
+  }
+  const timeoutMs = asyncObservationTimeoutMs(testCase);
+  const startedAt = Date.now();
+  let latest = initialObservation;
+  while (Date.now() - startedAt < timeoutMs) {
+    latest = await readLatestProbeObservation(client, inboundEventId, latest);
+    if (observationSatisfiesWait(testCase, latest)) {
+      return latest;
+    }
+    await sleep(100);
+  }
+  return await readLatestProbeObservation(client, inboundEventId, latest);
+}
+
+async function readLatestProbeObservation(client, inboundEventId, fallback) {
+  const result = await client.request("kova.channelProbe.observations", {}, { timeoutMs: 5000 });
+  const observations = Array.isArray(result?.observations) ? result.observations : [];
+  return observations.find((observation) => observation?.inboundEvent?.id === inboundEventId) ?? fallback;
+}
+
+function requiresObservationWait(testCase) {
+  const matrix = objectOrEmpty(testCase.matrix);
+  return matrix.lifecycle === "async-completion" ||
+    matrix.delivery === "background-completion" ||
+    matrix.delivery === "completion-handoff";
+}
+
+function asyncObservationTimeoutMs(testCase) {
+  const value = objectOrEmpty(testCase.expects).asyncCompletionTimeoutMs;
+  return Number.isInteger(value) && value > 0 ? value : 15000;
+}
+
+function observationSatisfiesWait(testCase, observation) {
+  const expects = objectOrEmpty(testCase.expects);
+  const policy = normalizeVisibleDeliveries(expects.visibleDeliveries);
+  const records = finalOutboundRecords(observation);
+  const countSatisfied = policy.mode === "exact"
+    ? records.length >= policy.expected
+    : records.length > 0;
+  if (!countSatisfied) {
+    return false;
+  }
+  if (expects.kind && !records.some((record) => record.kind === expects.kind)) {
+    return false;
+  }
+  return mediaSourceExpectation(testCase).check(records);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function evaluateCase(testCase, observation, injectResult) {

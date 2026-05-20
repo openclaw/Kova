@@ -131,7 +131,7 @@
       "title": "Run Background Artifact Completion Model Turn",
       "intent": "Call the Kova channel plugin over Gateway RPC so OpenClaw handles one normal media-generation completion shape, follows its supported message-tool source delivery contract, and records artifact, receipt, duplicate-send, and terminal invariants.",
       "commands": [
-        "node {kovaRoot}/support/run-channel-model-turn-baseline.mjs --env {env} --artifact-dir {artifactDir} --case background-artifact-completion.image.message-tool-only,background-artifact-completion.video.message-tool-only,background-artifact-completion.music.message-tool-only --skip-shared-baseline true --continue-on-model-turn-failure true --timeout-ms 120000"
+        "node {kovaRoot}/support/run-channel-probe-turn.mjs --env {env} --artifact-dir {artifactDir} --case background-artifact-completion.image.message-tool-only,background-artifact-completion.video.message-tool-only,background-artifact-completion.music.message-tool-only --continue-on-failure true --timeout-ms 120000"
       ],
       "evidence": [
         "background artifact completion workflow rows",
@@ -151,7 +151,7 @@
       "title": "Run Completion Handoff Model Turns",
       "intent": "Call the Kova channel plugin over Gateway RPC so OpenClaw starts a real generated-image background task, wakes the requester completion handoff, delivers generated media through the supported message-tool path, and records delivery, route, duplicate-send, and terminal invariants.",
       "commands": [
-        "node {kovaRoot}/support/run-channel-model-turn-baseline.mjs --env {env} --artifact-dir {artifactDir} --case completion-handoff.image.generated-direct,completion-handoff.image.generated-thread --skip-shared-baseline true --continue-on-model-turn-failure true --timeout-ms 120000"
+        "node {kovaRoot}/support/run-channel-probe-turn.mjs --env {env} --artifact-dir {artifactDir} --case completion-handoff.image.generated-direct,completion-handoff.image.generated-thread --continue-on-failure true --timeout-ms 120000"
       ],
       "evidence": [
         "completion handoff workflow rows",

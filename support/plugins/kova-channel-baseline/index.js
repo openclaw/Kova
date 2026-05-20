@@ -307,7 +307,7 @@ export default definePluginEntry({
           schemaVersion: "kova.channelProbe.observations.v1",
           channelId: CHANNEL_ID,
           accountId: activeRuntime?.accountId ?? null,
-          observations: probeObservations
+          observations: snapshotProbeObservations()
         });
       },
       { scope: "operator.read" }
@@ -366,6 +366,11 @@ async function injectProbeInbound(params = {}) {
     schemaVersion: "kova.channelProbe.observation.v1",
     channelId: CHANNEL_ID,
     accountId: activeRuntime.accountId,
+    recordOffsets: {
+      outbound: beforeOutbound,
+      delivery: beforeDelivery,
+      modelTurn: beforeRecords
+    },
     inboundEvent: {
       id: inboundEventId,
       message,
@@ -394,7 +399,27 @@ async function injectProbeInbound(params = {}) {
     schemaVersion: "kova.channelProbe.injectResult.v1",
     channelId: CHANNEL_ID,
     accountId: activeRuntime.accountId,
-    observation
+    observation: snapshotProbeObservation(observation)
+  };
+}
+
+function snapshotProbeObservations() {
+  return probeObservations.map((observation) => snapshotProbeObservation(observation));
+}
+
+function snapshotProbeObservation(observation) {
+  const offsets = observation?.recordOffsets ?? {};
+  const outboundStart = Number.isInteger(offsets.outbound) ? offsets.outbound : 0;
+  const deliveryStart = Number.isInteger(offsets.delivery) ? offsets.delivery : 0;
+  const modelTurnStart = Number.isInteger(offsets.modelTurn) ? offsets.modelTurn : 0;
+  const observedAtEpochMs = Date.now();
+  return {
+    ...observation,
+    observedAtEpochMs,
+    durationMs: Math.max(0, observedAtEpochMs - observation.startedAtEpochMs),
+    outboundRecords: outboundRecords.slice(outboundStart),
+    deliveryRecords: deliveryRecords.slice(deliveryStart),
+    modelTurnRecords: modelTurnRecords.slice(modelTurnStart)
   };
 }
 
