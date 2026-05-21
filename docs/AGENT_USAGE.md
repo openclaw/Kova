@@ -63,7 +63,7 @@ entries are planning warnings until they are intentionally promoted to gate
 policy.
 
 Omit `--json` for the dashboard view. Use `--plain` only when a downstream tool
-still expects legacy compact text.
+still expects compact text.
 
 ### 3. Dry-run
 

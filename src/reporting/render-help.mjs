@@ -26,7 +26,7 @@ const COMMANDS = [
       ["--provider <id>", "openai|anthropic|custom-openai"],
       ["--env-var <name>", "env var holding the API key"],
       ["--value <secret>", "secret to write into the credential store"],
-      ["--json|--plain", "machine output / legacy text"],
+      ["--json|--plain", "machine output / plain text"],
     ],
     examples: [
       "kova setup --ci",
@@ -38,7 +38,7 @@ const COMMANDS = [
     id: "self-check", title: "kova self-check",
     blurb: "Run the full Kova suite (dry-runs, parsers, gates, evaluators).",
     usage: ["kova self-check [--json|--plain]"],
-    flags: [["--json|--plain", "machine output / legacy text"]],
+    flags: [["--json|--plain", "machine output / plain text"]],
     examples: ["kova self-check", "kova self-check --json | jq '.checks[] | select(.status==\"FAIL\")'"],
   },
   {
@@ -47,7 +47,7 @@ const COMMANDS = [
     usage: ["kova plan [--scenario <id>] [--json|--plain]"],
     flags: [
       ["--scenario <id>", "narrow to a single scenario"],
-      ["--json|--plain", "machine output / legacy text"],
+      ["--json|--plain", "machine output / plain text"],
     ],
     examples: ["kova plan", "kova plan --scenario fresh-install", "kova plan --json"],
   },
@@ -97,7 +97,7 @@ const COMMANDS = [
       ["--profile-on-failure", "profile only on failed records"],
       ["--keep-env", "do not destroy env after run"],
       ["--retain-on-failure", "keep env when status != PASS"],
-      ["--json|--plain", "machine output / legacy text"],
+      ["--json|--plain", "machine output / plain text"],
     ],
     examples: [
       "kova run --target runtime:stable --scenario fresh-install",
@@ -123,7 +123,7 @@ const COMMANDS = [
       ["--allow-exhaustive", "required for executed exhaustive matrices"],
       ["--execute", "actually run; otherwise dry-run"],
       ["--baseline / --save-baseline", "see kova run"],
-      ["--json|--plain", "machine output / legacy text"],
+      ["--json|--plain", "machine output / plain text"],
     ],
     examples: [
       "kova matrix plan --profile smoke --target runtime:stable",
@@ -161,7 +161,7 @@ const COMMANDS = [
       ["--thresholds <json>", "regression thresholds for compare"],
       ["--fixer", "compare emits fixer-friendly notes"],
       ["--output-dir <path>", "destination for `bundle`"],
-      ["--json|--plain", "machine output / legacy text"],
+      ["--json|--plain", "machine output / plain text"],
     ],
     examples: [
       "kova reports",
@@ -181,7 +181,7 @@ const COMMANDS = [
     flags: [
       ["--execute", "actually destroy/remove (default dry-run)"],
       ["--older-than-days <n>", "artifacts only (default 7)"],
-      ["--json|--plain", "machine output / legacy text"],
+      ["--json|--plain", "machine output / plain text"],
     ],
     examples: [
       "kova cleanup envs",
@@ -205,7 +205,7 @@ const NOTES = [
   "--repeat records independent samples and computes aggregate performance stats.",
   "--auth defaults to mock so every disposable env has deliberate model auth.",
   "--deep-profile enables Node CPU/heap/trace + diagnostic report + denser sampling.",
-  "Human-facing commands render dashboards by default; --plain falls back to legacy text.",
+  "Human-facing commands render dashboards by default; --plain renders compact text.",
   "Report commands accept either full JSON paths or run IDs from kova reports.",
 ];
 

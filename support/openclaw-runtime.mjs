@@ -66,9 +66,9 @@ export function parseSupportArgs(argv) {
   return parsed;
 }
 
-export function readTimeoutMs(value, fallbackMs) {
+export function readTimeoutMs(value, defaultMs) {
   if (value === undefined) {
-    return fallbackMs;
+    return defaultMs;
   }
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) {

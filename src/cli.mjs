@@ -90,7 +90,7 @@ Notes:
   inventory package-script discovery defaults to --script-scope product; use all or none to widen or disable it.
   Executed exhaustive matrix runs require --allow-exhaustive.
   cleanup artifacts is dry-run by default and only targets Kova-owned run artifact dirs.
-  Human-facing plan and report commands render dashboards by default; use --plain for the legacy compact text.
+  Human-facing plan and report commands render dashboards by default; use --plain for compact text.
   Report commands accept either full JSON paths or run IDs from kova reports.
   --repeat records independent samples and computes aggregate performance stats.
   --auth defaults to mock so every disposable env has deliberate model auth unless a scenario opts out.

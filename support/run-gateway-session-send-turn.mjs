@@ -161,9 +161,9 @@ function rejectUnsupportedArgs(args, allowed) {
   }
 }
 
-function readBoolean(value, fallback) {
+function readBoolean(value, defaultValue) {
   if (value === undefined) {
-    return fallback;
+    return defaultValue;
   }
   if (value === "true") {
     return true;
@@ -174,9 +174,9 @@ function readBoolean(value, fallback) {
   throw new Error(`invalid boolean value: ${value}`);
 }
 
-function readPositiveInteger(value, fallback) {
+function readPositiveInteger(value, defaultValue) {
   if (value === undefined) {
-    return fallback;
+    return defaultValue;
   }
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) {

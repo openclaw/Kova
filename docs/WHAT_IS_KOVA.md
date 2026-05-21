@@ -168,7 +168,7 @@ Markdown is the human report: summary, coverage gaps, failures, exact
 evidence, owner area, fixer prompt, artifact paths.
 
 The console renders verdict-led dashboards by default for every command.
-Escape hatches: `--json` (machine), `--plain` (legacy text), `--ascii`
+Escape hatches: `--json` (machine), `--plain` (plain text), `--ascii`
 (no Unicode), `--no-progress` (silent streaming), `--color` (force on/off).
 CI, `NO_COLOR`, and non-TTY pipes are auto-detected.
 

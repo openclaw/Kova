@@ -28,7 +28,7 @@
   • --repeat records independent samples and computes aggregate performance stats.
   • --auth defaults to mock so every disposable env has deliberate model auth.
   • --deep-profile enables Node CPU/heap/trace + diagnostic report + denser sampling.
-  • Human-facing commands render dashboards by default; --plain falls back to legacy text.
+  • Human-facing commands render dashboards by default; --plain renders compact text.
   • Report commands accept either full JSON paths or run IDs from kova reports.
 
 ─── next ───────────────────────────────────────────────────────────────────────

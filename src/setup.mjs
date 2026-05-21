@@ -167,8 +167,8 @@ async function configureAuthFromFlags(flags, options = {}) {
   };
 }
 
-function setupAuthMethod(flags, fallback) {
-  const raw = flags.auth ?? flags.method ?? fallback;
+function setupAuthMethod(flags, defaultMethod) {
+  const raw = flags.auth ?? flags.method ?? defaultMethod;
   const method = normalizeAuthMethod(String(raw));
   if (method === "live") {
     throw new Error("--auth live is for runs; setup needs --auth api-key, env-only, external-cli, oauth, mock, or skip");
