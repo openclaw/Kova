@@ -111,8 +111,7 @@ function resolveAdapterModulePath({ distribution, packageRoot }) {
   }
   if (distribution.kind === "external") {
     const plugin = readInstalledPluginRecord(distribution.pluginId);
-    const moduleBase = plugin.source ? dirname(plugin.source) : plugin.rootDir;
-    return join(moduleBase, distribution.modulePath);
+    return join(plugin.rootDir, distribution.modulePath);
   }
   throw new Error(`unsupported adapter distribution kind '${distribution.kind}'`);
 }
@@ -174,33 +173,35 @@ async function proveCapability(adapter, capability) {
 
 async function proveDurableFinalCapability(adapter, capabilityId) {
   if (capabilityId === "text") {
-    return await runAdapterSend(adapter, { kind: "text", text: "KOVA_TELEGRAM_TEXT_OK" });
+    return await runAdapterSend(adapter, { kind: "text", text: `KOVA_${channelId.toUpperCase()}_TEXT_OK` });
   }
   if (capabilityId === "media") {
-    return await runAdapterSend(adapter, { kind: "media", text: "KOVA_TELEGRAM_MEDIA_OK", mediaUrl: "https://example.com/kova.png" });
+    return await runAdapterSend(adapter, { kind: "media", text: `KOVA_${channelId.toUpperCase()}_MEDIA_OK`, mediaUrl: "https://example.com/kova.png" });
   }
   if (capabilityId === "payload") {
-    return await runAdapterSend(adapter, { kind: "payload", text: "KOVA_TELEGRAM_PAYLOAD_OK", payload: { text: "KOVA_TELEGRAM_PAYLOAD_OK" } });
+    const text = `KOVA_${channelId.toUpperCase()}_PAYLOAD_OK`;
+    return await runAdapterSend(adapter, { kind: "payload", text, payload: { text } });
   }
   if (capabilityId === "silent") {
-    return await runAdapterSend(adapter, { kind: "text", text: "KOVA_TELEGRAM_SILENT_OK", silent: true });
+    return await runAdapterSend(adapter, { kind: "text", text: `KOVA_${channelId.toUpperCase()}_SILENT_OK`, silent: true });
   }
   if (capabilityId === "reply-to") {
-    return await runAdapterSend(adapter, { kind: "text", text: "KOVA_TELEGRAM_REPLY_OK", replyToId: shimReplyToId() });
+    return await runAdapterSend(adapter, { kind: "text", text: `KOVA_${channelId.toUpperCase()}_REPLY_OK`, replyToId: shimReplyToId() });
   }
   if (capabilityId === "thread") {
-    return await runAdapterSend(adapter, { kind: "text", text: "KOVA_TELEGRAM_THREAD_OK", threadId: shimThreadId() });
+    return await runAdapterSend(adapter, { kind: "text", text: `KOVA_${channelId.toUpperCase()}_THREAD_OK`, threadId: shimThreadId() });
   }
   if (capabilityId === "message-sending-hooks") {
     assert(typeof adapter.send?.text === "function", "adapter text send hook path is missing");
     return { observed: { sendText: true } };
   }
   if (capabilityId === "batch") {
+    const text = `KOVA_${channelId.toUpperCase()}_BATCH_OK`;
     return await runAdapterSend(adapter, {
       kind: "payload",
-      text: "KOVA_TELEGRAM_BATCH_OK",
+      text,
       payload: {
-        text: "KOVA_TELEGRAM_BATCH_OK",
+        text,
         mediaUrls: ["https://example.com/a.png", "https://example.com/b.png"]
       },
       expectedPlatformSends: 2
@@ -254,19 +255,14 @@ async function runAdapterSend(adapter, input) {
   const sendPlatform = async (...call) => {
     platformCalls.push(call);
     sendIndex += 1;
-    return {
-      messageId: `tg-${sendIndex}`,
-      chatId: shimConversationId()
-    };
+    return platformSendResult(sendIndex);
   };
   const context = {
     cfg: {},
     to: shimConversationId(),
     text: input.text ?? "",
     deps: {
-      sendTelegram: sendPlatform,
-      telegram: sendPlatform,
-      discord: sendPlatform
+      [channelId]: sendPlatform
     },
     ...(shimAccountId() ? { accountId: shimAccountId() } : {}),
     ...(input.replyToId ? { replyToId: input.replyToId } : {}),
@@ -484,25 +480,49 @@ function runtimeCapabilityKey(capability) {
 }
 
 function shimConversationId() {
-  return channelRegistry.deterministicShim?.conversationId ?? "12345";
+  return requiredShimValue("conversationId");
 }
 
 function shimThreadId() {
-  return channelRegistry.deterministicShim?.threadId ?? "12";
+  return requiredShimValue("threadId");
 }
 
 function shimReplyToId() {
-  return channelRegistry.deterministicShim?.replyToId ?? "900";
+  return requiredShimValue("replyToId");
 }
 
 function shimAccountId() {
   return channelRegistry.deterministicShim?.accountId ?? null;
 }
 
+function requiredShimValue(key) {
+  const value = channelRegistry.deterministicShim?.[key];
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`${channelId} deterministicShim.${key} must be declared`);
+  }
+  return value;
+}
+
+function platformSendResult(sendIndex) {
+  const platform = channelRegistry.deterministicShim?.platform ?? {};
+  const resultMessageIdPrefix = platform.resultMessageIdPrefix;
+  const resultTargetField = platform.resultTargetField;
+  if (typeof resultMessageIdPrefix !== "string" || resultMessageIdPrefix.length === 0) {
+    throw new Error(`${channelId} deterministicShim.platform.resultMessageIdPrefix must be declared`);
+  }
+  if (typeof resultTargetField !== "string" || resultTargetField.length === 0) {
+    throw new Error(`${channelId} deterministicShim.platform.resultTargetField must be declared`);
+  }
+  return {
+    messageId: `${resultMessageIdPrefix}-${sendIndex}`,
+    [resultTargetField]: shimConversationId()
+  };
+}
+
 function platformReplyTargetMatches(call) {
   const platform = channelRegistry.deterministicShim?.platform ?? {};
-  if (!platform.replyOptionField) {
-    return true;
+  if (typeof platform.replyOptionField !== "string" || platform.replyOptionField.length === 0) {
+    return false;
   }
   return valuesEqual(call?.options?.[platform.replyOptionField], platform.replyOptionValue);
 }
@@ -523,7 +543,7 @@ function platformThreadTargetMatches(call) {
   if (platform.threadOptionField) {
     return valuesEqual(call?.options?.[platform.threadOptionField], platform.threadOptionValue);
   }
-  return true;
+  return false;
 }
 
 function valuesEqual(actual, expected) {

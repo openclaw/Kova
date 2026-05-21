@@ -36,6 +36,8 @@
     "threadId": "12",
     "replyToId": "900",
     "platform": {
+      "resultMessageIdPrefix": "tg",
+      "resultTargetField": "chatId",
       "replyOptionField": "replyToMessageId",
       "replyOptionValue": 900,
       "threadOptionField": "messageThreadId",

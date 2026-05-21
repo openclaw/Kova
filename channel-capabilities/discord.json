@@ -9,7 +9,7 @@
     "packageName": "@openclaw/discord",
     "pluginId": "discord",
     "localBuildPath": "dist/extensions/discord",
-    "modulePath": "channel-plugin-api.js",
+    "modulePath": "dist/channel-plugin-api.js",
     "exportName": "discordPlugin"
   },
   "declarationSources": [
@@ -57,6 +57,8 @@
     "replyToId": "reply-1",
     "accountId": "default",
     "platform": {
+      "resultMessageIdPrefix": "discord",
+      "resultTargetField": "channelId",
       "replyOptionField": "replyTo",
       "replyOptionValue": "reply-1",
       "threadTarget": "channel:thread-1"

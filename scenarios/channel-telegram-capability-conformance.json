@@ -25,16 +25,16 @@
     {
       "id": "provision",
       "title": "Provision Runtime Env",
-      "intent": "Create a disposable OpenClaw environment with the selected target runtime so Kova can import the packaged Telegram adapter from the release-shaped artifact.",
+      "intent": "Create a disposable OpenClaw environment without starting the gateway so Kova can import the packaged Telegram adapter from the release-shaped artifact.",
       "commands": [
-        "ocm start {env} {startSelector} --json"
+        "ocm start {env} {startSelector} --no-service --json"
       ],
       "evidence": [
         "OCM start JSON",
         "env name",
         "runtime binding"
       ],
-      "healthScope": "readiness",
+      "healthScope": "none",
       "collectionIntent": "service-only"
     },
     {

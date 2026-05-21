@@ -25,16 +25,16 @@
     {
       "id": "provision",
       "title": "Provision Runtime Env",
-      "intent": "Create a disposable OpenClaw environment with the selected target runtime so Kova can install Discord the way users install an external channel package.",
+      "intent": "Create a disposable OpenClaw environment without starting the gateway so Kova can install Discord the way users install an external channel package.",
       "commands": [
-        "ocm start {env} {startSelector} --json"
+        "ocm start {env} {startSelector} --no-service --json"
       ],
       "evidence": [
         "OCM start JSON",
         "env name",
         "runtime binding"
       ],
-      "healthScope": "readiness",
+      "healthScope": "none",
       "collectionIntent": "service-only"
     },
     {
@@ -49,7 +49,7 @@
         "installed Discord plugin record",
         "plugin registry refresh"
       ],
-      "healthScope": "readiness",
+      "healthScope": "none",
       "collectionIntent": "service-only"
     },
     {
