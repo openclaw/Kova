@@ -147,7 +147,7 @@ export async function runSelfCheck(flags = {}) {
       `KOVA_HOME=${quoteShell(join(tmp, "empty-auth-home"))} node bin/kova.mjs run --target runtime:stable --scenario fresh-install --auth live --json`,
       "--auth live requires configured live credentials"
     ));
-    checks.push(await interactiveSetupChoiceCheck(tmp));
+    checks.push(await setupNumericFlagsRejectedCheck(tmp));
     checks.push(await externalCliSetupCheck(tmp));
     checks.push(await externalCliOpenClawConfigCheck(tmp));
     checks.push(await anthropicApiKeyOpenClawConfigCheck(tmp));
@@ -9831,28 +9831,27 @@ async function credentialStoreSelfCheck(tmp) {
   }
 }
 
-async function interactiveSetupChoiceCheck(tmp) {
+async function setupNumericFlagsRejectedCheck(tmp) {
   const home = join(tmp, "numeric-auth-home");
   const command = `KOVA_HOME=${quoteShell(home)} node bin/kova.mjs setup --non-interactive --provider 2 --auth 3 --value kova-selfcheck-key --json`;
   const result = await runCommand(command, { timeoutMs: 30000, maxOutputChars: 1000000 });
   try {
-    if (result.status !== 0) {
-      throw new Error(result.stderr.trim() || result.stdout.trim() || `exit ${result.status}`);
+    if (result.status === 0) {
+      throw new Error("numeric setup provider/auth flags were accepted");
     }
-    const data = JSON.parse(result.stdout);
-    assertEqual(data.schemaVersion, "kova.setup.v1", "numeric setup schema");
-    assertEqual(data.auth?.provider, "anthropic", "provider selected by number");
-    assertEqual(data.auth?.method, "api-key", "auth method selected by number");
-    assertEqual(data.auth?.envVar, "ANTHROPIC_API_KEY", "provider env var default");
+    const output = `${result.stderr}\n${result.stdout}`;
+    if (!output.includes("unknown auth method: 3")) {
+      throw new Error(output.trim() || `unexpected exit ${result.status}`);
+    }
     return {
-      id: "setup-provider-auth-numeric",
+      id: "setup-numeric-flags-rejected",
       status: "PASS",
       command,
       durationMs: result.durationMs
     };
   } catch (error) {
     return {
-      id: "setup-provider-auth-numeric",
+      id: "setup-numeric-flags-rejected",
       status: "FAIL",
       command,
       durationMs: result.durationMs,

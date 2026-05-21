@@ -253,31 +253,9 @@ function methodFromChoice(choice) {
 
 function normalizeAuthMethod(value) {
   const normalized = String(value ?? "").trim().toLowerCase().replaceAll("_", "-");
-  const aliases = {
-    1: "mock",
-    mock: "mock",
-    local: "mock",
-    2: "env-only",
-    "env-only": "env-only",
-    env: "env-only",
-    environment: "env-only",
-    3: "api-key",
-    "api-key": "api-key",
-    apikey: "api-key",
-    key: "api-key",
-    4: "external-cli",
-    "external-cli": "external-cli",
-    external: "external-cli",
-    cli: "external-cli",
-    5: "oauth",
-    oauth: "oauth",
-    "oauth-browser": "oauth",
-    6: "skip",
-    skip: "skip",
-    none: "skip"
-  };
-  if (aliases[normalized]) {
-    return aliases[normalized];
+  const methods = new Set(["mock", "env-only", "api-key", "external-cli", "oauth", "skip"]);
+  if (methods.has(normalized)) {
+    return normalized;
   }
   throw new Error(`unknown auth method: ${value}`);
 }
@@ -301,21 +279,9 @@ function providerFromChoice(choice) {
 
 function normalizeProvider(value) {
   const normalized = String(value ?? "").trim().toLowerCase().replaceAll("_", "-");
-  const aliases = {
-    1: "openai",
-    openai: "openai",
-    2: "anthropic",
-    anthropic: "anthropic",
-    claude: "anthropic",
-    3: "custom-openai",
-    "custom-openai": "custom-openai",
-    custom: "custom-openai",
-    "openai-compatible": "custom-openai",
-    4: "skip",
-    skip: "skip"
-  };
-  if (aliases[normalized]) {
-    return aliases[normalized];
+  const providers = new Set(["openai", "anthropic", "custom-openai", "skip"]);
+  if (providers.has(normalized)) {
+    return normalized;
   }
   throw new Error(`unknown provider: ${value}`);
 }

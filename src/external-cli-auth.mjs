@@ -27,17 +27,9 @@ export function impliedExternalCliForProvider(provider) {
 
 export function externalCliFromChoice(choice) {
   const normalized = String(choice ?? "").trim().toLowerCase().replaceAll("_", "-");
-  const aliases = {
-    1: "codex",
-    codex: "codex",
-    "codex-cli": "codex",
-    2: "claude",
-    claude: "claude",
-    "claude-cli": "claude",
-    anthropic: "claude"
-  };
-  if (aliases[normalized]) {
-    return aliases[normalized];
+  const supported = new Set(["codex", "claude"]);
+  if (supported.has(normalized)) {
+    return normalized;
   }
   throw new Error(`unknown external CLI: ${choice}`);
 }
@@ -124,18 +116,14 @@ async function codexAuthEvidence() {
 
 async function claudeAuthEvidence() {
   const credentialsJson = join(homedir(), ".claude", ".credentials.json");
-  const legacyJson = join(homedir(), ".claude.json");
   const token = process.env.CLAUDE_CODE_OAUTH_TOKEN;
   const credentials = await readableJsonObject(credentialsJson);
-  const legacy = await readableJsonObject(legacyJson);
   const credentialsLooksUsable = credentials.ok && jsonContainsAnyKey(credentials.data, ["claudeAiOauth", "oauthAccount", "accessToken", "refreshToken"]);
-  const legacyLooksUsable = legacy.ok && Object.keys(legacy.data ?? {}).length > 0;
   const tokenLooksUsable = typeof token === "string" && token.length > 0;
   return {
-    ok: credentialsLooksUsable || legacyLooksUsable || tokenLooksUsable,
+    ok: credentialsLooksUsable || tokenLooksUsable,
     files: [
-      credentialsLooksUsable ? credentialsJson : null,
-      legacyLooksUsable ? legacyJson : null
+      credentialsLooksUsable ? credentialsJson : null
     ].filter(Boolean),
     checks: [
       {
@@ -143,13 +131,6 @@ async function claudeAuthEvidence() {
         ok: credentialsLooksUsable,
         path: credentialsJson,
         message: credentialsLooksUsable ? "readable Claude credentials" : credentials.message
-      },
-      {
-        id: "claude-legacy-json",
-        ok: legacyLooksUsable,
-        path: legacyJson,
-        required: false,
-        message: legacyLooksUsable ? "readable Claude legacy auth file" : legacy.message
       },
       {
         id: "claude-oauth-token-env",
