@@ -180,6 +180,7 @@ async function runWorkflowCase({ driver, workflowCase, platform }) {
     row = {
       id: workflowCase.id,
       status: failed ? "failed" : "passed",
+      summary: `${channelId} ${workflowCase.id} channel workflow ${failed ? "failed" : "passed"}`,
       reason: failed?.reason ?? null,
       workflow: workflowCase.workflow,
       inventoryWorkflow: workflowCase.inventoryWorkflow,
