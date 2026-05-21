@@ -25,9 +25,6 @@
     "source-visible-delivery.media.message-tool-only",
     "source-visible-delivery.media-thread.message-tool-only",
     "source-visible-delivery.attachment.message-tool-only",
-    "background-artifact-completion.image.message-tool-only",
-    "background-artifact-completion.video.message-tool-only",
-    "background-artifact-completion.music.message-tool-only",
     "completion-handoff.image.generated-direct",
     "completion-handoff.image.generated-thread"
   ],

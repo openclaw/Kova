@@ -16,7 +16,14 @@ const stateDir = process.env.OPENCLAW_STATE_DIR || path.join(requiredEnv("OPENCL
 const configPath = process.env.OPENCLAW_CONFIG_PATH || path.join(stateDir, "openclaw.json");
 fs.mkdirSync(path.dirname(configPath), { recursive: true });
 fs.mkdirSync(stateDir, { recursive: true });
-fs.writeFileSync(path.join(stateDir, ".env"), "OPENAI_API_KEY=kova-mock-key\n", "utf8");
+fs.writeFileSync(
+  path.join(stateDir, ".env"),
+  [
+    "OPENAI_API_KEY=kova-mock-key",
+    "OPENCLAW_QA_ALLOW_LOCAL_IMAGE_PROVIDER=1"
+  ].join("\n") + "\n",
+  "utf8"
+);
 
 let config = {};
 try {
@@ -26,6 +33,8 @@ try {
 }
 
 const modelRef = "openai/gpt-5.5";
+const imageModelRef = "openai/gpt-image-1";
+const videoModelRef = "openai/sora-2";
 const gatewayToken = "kova-mock-gateway-token";
 const cost = {
   input: 0,
@@ -63,6 +72,28 @@ config.models = {
           contextWindow: 128000,
           contextTokens: 96000,
           maxTokens: 4096
+        },
+        {
+          id: "gpt-image-1",
+          name: "gpt-image-1",
+          api: "openai-responses",
+          reasoning: false,
+          input: ["text"],
+          cost,
+          contextWindow: 128000,
+          contextTokens: 96000,
+          maxTokens: 4096
+        },
+        {
+          id: "sora-2",
+          name: "sora-2",
+          api: "openai-responses",
+          reasoning: false,
+          input: ["text", "image", "video"],
+          cost,
+          contextWindow: 128000,
+          contextTokens: 96000,
+          maxTokens: 4096
         }
       ]
     }
@@ -86,6 +117,14 @@ config.agents = {
           openaiWsWarmup: false
         }
       }
+    },
+    imageGenerationModel: {
+      ...(config.agents?.defaults?.imageGenerationModel || {}),
+      primary: imageModelRef
+    },
+    videoGenerationModel: {
+      ...(config.agents?.defaults?.videoGenerationModel || {}),
+      primary: videoModelRef
     }
   }
 };
