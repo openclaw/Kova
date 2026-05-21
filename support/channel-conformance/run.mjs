@@ -7,6 +7,7 @@ import { parseSupportArgs, readTimeoutMs } from "../openclaw-runtime.mjs";
 import { countProviderRequests, resetProviderScriptForCase } from "./provider-script.mjs";
 import { waitForCaseObservations } from "./observations.mjs";
 import { evaluateWorkflowCase } from "./evaluator.mjs";
+import { prepareWorkflowFixtures } from "./fixtures.mjs";
 
 const repoRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const args = parseSupportArgs(process.argv.slice(2));
@@ -146,6 +147,7 @@ function selectWorkflowCases({ channelRegistry, workflowCatalog, caseSet: reques
 
 async function runWorkflowCase({ driver, workflowCase, platform }) {
   const startedAtEpochMs = Date.now();
+  const fixtures = await prepareWorkflowFixtures(workflowCase);
   let row;
   try {
     const providerRequestCountBefore = await countProviderRequests({ artifactDir });
@@ -196,6 +198,8 @@ async function runWorkflowCase({ driver, workflowCase, platform }) {
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     row = failedRow(workflowCase, reason);
+  } finally {
+    await fixtures.cleanup();
   }
   const finishedAtEpochMs = Date.now();
   return {
