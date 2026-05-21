@@ -118,6 +118,8 @@ export async function runSelfCheck(flags = {}) {
   });
   progress.runStart();
   const tmp = await mkdtemp(join(tmpdir(), "kova-self-check-"));
+  const previousKovaHome = process.env.KOVA_HOME;
+  process.env.KOVA_HOME = join(tmp, "kova-home");
 
   try {
     checks.push(await commandCheck(
@@ -154,7 +156,6 @@ export async function runSelfCheck(flags = {}) {
     checks.push(await liveApiKeyExecutionCheck(tmp));
     checks.push(await liveExternalCliDryRunCheck(tmp));
     checks.push(await liveAnthropicExternalCliDryRunCheck(tmp));
-    checks.push(await liveExternalCliFallbackCheck(tmp));
     checks.push(await failingCommandCheck(
       "setup-custom-provider-rejects-external-cli",
       `KOVA_HOME=${quoteShell(join(tmp, "custom-external-cli-home"))} node bin/kova.mjs setup --non-interactive --provider custom-openai --auth external-cli --json`,
@@ -654,6 +655,11 @@ export async function runSelfCheck(flags = {}) {
       ));
     }
   } finally {
+    if (previousKovaHome === undefined) {
+      delete process.env.KOVA_HOME;
+    } else {
+      process.env.KOVA_HOME = previousKovaHome;
+    }
     await rm(tmp, { recursive: true, force: true });
   }
 
@@ -3136,7 +3142,6 @@ async function liveApiKeyExecutionCheck(tmp) {
         method: "api-key",
         envVars: ["OPENAI_API_KEY"],
         externalCli: null,
-        fallbackPolicy: "mock",
         configuredAt: new Date().toISOString()
       }
     }
@@ -3222,7 +3227,6 @@ async function liveExternalCliDryRunCheck(tmp) {
         method: "external-cli",
         envVars: [],
         externalCli: "codex",
-        fallbackPolicy: "mock",
         configuredAt: new Date().toISOString()
       }
     }
@@ -3274,71 +3278,6 @@ async function liveExternalCliDryRunCheck(tmp) {
   }
 }
 
-async function liveExternalCliFallbackCheck(tmp) {
-  const home = join(tmp, "live-external-cli-fallback-home");
-  const kovaHome = join(tmp, "live-external-cli-fallback-kova-home");
-  const fakeBin = join(tmp, "live-external-cli-fallback-bin");
-  const reportDir = join(tmp, "live-external-cli-fallback-report");
-  await mkdir(join(home, ".codex"), { recursive: true });
-  await mkdir(join(kovaHome, "credentials"), { recursive: true });
-  await mkdir(fakeBin, { recursive: true });
-  await writeFile(join(home, ".codex", "auth.json"), "{\"tokens\":{\"access_token\":\"redacted\"}}\n", "utf8");
-  await writeFile(join(fakeBin, "codex"), "#!/bin/sh\necho codex-selfcheck\n", "utf8");
-  await chmod(join(fakeBin, "codex"), 0o755);
-  await writeFile(join(kovaHome, "credentials", "providers.json"), `${JSON.stringify({
-    schemaVersion: "kova.credentials.providers.v1",
-    defaultProvider: "openai",
-    providers: {
-      openai: {
-        id: "openai",
-        method: "env-only",
-        envVars: ["OPENAI_API_KEY"],
-        externalCli: null,
-        fallbackPolicy: "external-cli",
-        configuredAt: new Date().toISOString()
-      }
-    }
-  }, null, 2)}\n`, "utf8");
-  await writeFile(join(kovaHome, "credentials", "live.env"), "", { encoding: "utf8", mode: 0o600 });
-
-  const command = [
-    `HOME=${quoteShell(home)}`,
-    `PATH=${quoteShell(`${fakeBin}:${process.env.PATH}`)}`,
-    `KOVA_HOME=${quoteShell(kovaHome)}`,
-    `node bin/kova.mjs run --target runtime:stable --scenario fresh-install --auth live --report-dir ${quoteShell(reportDir)} --json`
-  ].join(" ");
-  const result = await runCommand(command, { timeoutMs: 30000, maxOutputChars: 1000000 });
-
-  try {
-    if (result.status !== 0) {
-      throw new Error(result.stderr.trim() || result.stdout.trim() || `exit ${result.status}`);
-    }
-    const receipt = JSON.parse(result.stdout);
-    const report = JSON.parse(await readFile(receipt.jsonPath, "utf8"));
-    const record = report.records?.[0];
-    assertEqual(report.auth?.live?.method, "external-cli", "fallback live method");
-    assertEqual(report.auth?.live?.fallbackFrom, "env-only", "fallback source method");
-    assertEqual(report.auth?.live?.fallbackPolicy, "external-cli", "fallback policy");
-    assertEqual(record?.auth?.source, "external-cli", "record fallback source");
-    assertEqual(record?.auth?.fallbackFrom, "env-only", "record fallback from");
-    assertEqual(record?.auth?.externalCli, "codex", "record fallback CLI");
-    return {
-      id: "live-external-cli-fallback",
-      status: "PASS",
-      command,
-      durationMs: result.durationMs
-    };
-  } catch (error) {
-    return {
-      id: "live-external-cli-fallback",
-      status: "FAIL",
-      command,
-      durationMs: result.durationMs,
-      message: error.message
-    };
-  }
-}
-
 async function liveAnthropicExternalCliDryRunCheck(tmp) {
   const home = join(tmp, "live-anthropic-cli-home");
   const kovaHome = join(tmp, "live-anthropic-cli-kova-home");
@@ -3359,7 +3298,6 @@ async function liveAnthropicExternalCliDryRunCheck(tmp) {
         method: "external-cli",
         envVars: [],
         externalCli: "claude",
-        fallbackPolicy: "mock",
         configuredAt: new Date().toISOString()
       }
     }
@@ -10128,7 +10066,6 @@ async function externalCliRunAuthVerificationCheck(tmp) {
         method: "external-cli",
         envVars: [],
         externalCli: "codex",
-        fallbackPolicy: "mock",
         configuredAt: new Date().toISOString()
       }
     }

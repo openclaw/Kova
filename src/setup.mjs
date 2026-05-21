@@ -15,6 +15,7 @@ import { renderSetup } from "./reporting/render-setup.mjs";
 const requiredNodeMajor = 22;
 
 export async function runSetup(flags = {}) {
+  rejectRemovedSetupFlags(flags);
   if (flags._?.[0] === "auth") {
     await runAuthSetup(flags);
     return;
@@ -72,6 +73,12 @@ export async function runSetup(flags = {}) {
 
   if (!ok) {
     throw new Error("setup found missing required prerequisites");
+  }
+}
+
+function rejectRemovedSetupFlags(flags) {
+  if (flags.fallback_policy !== undefined) {
+    throw new Error("--fallback-policy is not supported");
   }
 }
 
@@ -146,8 +153,7 @@ async function configureAuthFromFlags(flags, options = {}) {
     method,
     envVar,
     value: flags.value ? String(flags.value) : undefined,
-    externalCli,
-    fallbackPolicy: flags.fallback_policy ? String(flags.fallback_policy) : "mock"
+    externalCli
   });
   return {
     schemaVersion: "kova.setup.auth.result.v1",

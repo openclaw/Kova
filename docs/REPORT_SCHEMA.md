@@ -48,8 +48,6 @@ kova.report.v1
       "available": false,
       "providerId": "openai",
       "method": "mock",
-      "fallbackFrom": null,
-      "fallbackPolicy": "mock",
       "envVars": ["OPENAI_API_KEY"],
       "reason": "no live provider configured",
       "environmentDependent": false

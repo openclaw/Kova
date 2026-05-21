@@ -26,7 +26,6 @@ const COMMANDS = [
       ["--provider <id>", "openai|anthropic|custom-openai"],
       ["--env-var <name>", "env var holding the API key"],
       ["--value <secret>", "secret to write into the credential store"],
-      ["--fallback-policy <p>", "mock|external-cli|none"],
       ["--json|--plain", "machine output / legacy text"],
     ],
     examples: [

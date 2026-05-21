@@ -13,7 +13,6 @@ import {
 export const authModes = ["mock", "live", "skip"];
 export const credentialMethods = ["mock", "api-key", "env-only", "external-cli", "oauth", "skip"];
 export const authOverrideModes = ["default", "mock", "live", "skip", "missing", "broken", "none"];
-export const fallbackPolicies = ["mock", "external-cli", "none"];
 
 const defaultProviderId = "openai";
 const mockApiKey = "kova-mock-key";
@@ -41,7 +40,6 @@ export async function configureCredentialProvider(options = {}) {
 
   const metadata = await readProvidersMetadata();
   const envVar = options.envVar ?? defaultEnvVarForProvider(providerId);
-  const fallbackPolicy = normalizeFallbackPolicy(options.fallbackPolicy ?? "mock");
   metadata.defaultProvider = providerId;
   metadata.providers = {
     ...(metadata.providers ?? {}),
@@ -50,7 +48,6 @@ export async function configureCredentialProvider(options = {}) {
       method,
       envVars: method === "api-key" || method === "env-only" ? [envVar] : [],
       externalCli: method === "external-cli" ? (options.externalCli ?? providerId) : null,
-      fallbackPolicy,
       configuredAt: new Date().toISOString()
     }
   };
@@ -83,8 +80,6 @@ export async function resolveRunAuthContext(flags = {}) {
       providerId: null,
       method: "source-env",
       externalCli: null,
-      fallbackFrom: null,
-      fallbackPolicy: null,
       envVars: [],
       reason: `inherited from cloned source env ${flags.source_env}`,
       verification: {
@@ -164,8 +159,6 @@ export function scenarioAuthPolicy(context, scenario, state) {
       providerId,
       source: live.method,
       externalCli: live.externalCli ?? null,
-      fallbackFrom: live.fallbackFrom ?? null,
-      fallbackPolicy: live.fallbackPolicy ?? null,
       setup: live.method !== "source-env",
       setupKind: live.method === "source-env" ? "source-env-inherited" : liveAuthSetupKind(live),
       commandEnv: env,
@@ -175,8 +168,6 @@ export function scenarioAuthPolicy(context, scenario, state) {
         providerId,
         source: live.method,
         externalCli: live.externalCli ?? null,
-        fallbackFrom: live.fallbackFrom ?? null,
-        fallbackPolicy: live.fallbackPolicy ?? null,
         setup: live.method !== "source-env",
         setupKind: live.method === "source-env" ? "source-env-inherited" : liveAuthSetupKind(live),
         envVars: live.envVars
@@ -268,8 +259,6 @@ export function authDisplay(policy) {
     providerId: policy.providerId ?? null,
     source: policy.source,
     externalCli: policy.externalCli ?? null,
-    fallbackFrom: policy.fallbackFrom ?? null,
-    fallbackPolicy: policy.fallbackPolicy ?? null,
     setup: policy.setup === true,
     setupKind: policy.setupKind ?? null,
     deterministic: policy.mode === "mock",
@@ -290,8 +279,6 @@ export function authReportSummary(authContext) {
       providerId: authContext.live.providerId,
       method: authContext.live.method,
       externalCli: authContext.live.externalCli ?? null,
-      fallbackFrom: authContext.live.fallbackFrom ?? null,
-      fallbackPolicy: authContext.live.fallbackPolicy ?? null,
       verification: authContext.live.verification ?? null,
       envVars: authContext.live.envVars,
       reason: authContext.live.reason,
@@ -319,7 +306,6 @@ function defaultProvidersMetadata() {
         id: defaultProviderId,
         method: "mock",
         envVars: ["OPENAI_API_KEY"],
-        fallbackPolicy: "mock",
         configuredAt: null
       }
     }
@@ -360,8 +346,8 @@ function validateProvidersMetadata(metadata) {
     if (!credentialMethods.includes(provider.method)) {
       throw new Error(`providers.${id}.method must be one of ${credentialMethods.join(", ")}`);
     }
-    if (provider.fallbackPolicy !== undefined && !fallbackPolicies.includes(provider.fallbackPolicy)) {
-      throw new Error(`providers.${id}.fallbackPolicy must be one of ${fallbackPolicies.join(", ")}`);
+    if (provider.fallbackPolicy !== undefined) {
+      throw new Error(`providers.${id}.fallbackPolicy is not supported`);
     }
     if (provider.envVars !== undefined && !Array.isArray(provider.envVars)) {
       throw new Error(`providers.${id}.envVars must be an array`);
@@ -441,7 +427,6 @@ function liveCredentialStatus(store) {
           available: false,
           providerId: provider.id,
           method: provider.method,
-          fallbackPolicy: provider.fallbackPolicy ?? "mock",
           envVars,
           reason: `missing env var(s): ${missing.join(", ")}`
         };
@@ -452,7 +437,6 @@ function liveCredentialStatus(store) {
       providerId: provider.id,
       method: provider.method,
       externalCli: provider.externalCli ?? null,
-      fallbackPolicy: provider.fallbackPolicy ?? "mock",
       envVars,
       reason: "configured"
     };
@@ -462,35 +446,12 @@ function liveCredentialStatus(store) {
     providerId: defaultId,
     method: providers[defaultId]?.method ?? "mock",
     externalCli: providers[defaultId]?.externalCli ?? null,
-    fallbackPolicy: providers[defaultId]?.fallbackPolicy ?? "mock",
     envVars: providers[defaultId]?.envVars ?? [],
     reason: "no live provider configured"
   };
 }
 
 async function verifyLiveCredentialStatus(status) {
-  if (status.available === false && status.fallbackPolicy === "external-cli") {
-    try {
-      const externalCli = resolveExternalCliName(status.providerId);
-      const verification = await verifyExternalCliAuth(externalCli);
-      return {
-        ...status,
-        available: verification.verified,
-        method: "external-cli",
-        externalCli,
-        fallbackFrom: status.method,
-        envVars: [],
-        reason: verification.verified ? "configured via external-cli fallback" : `external-cli ${externalCli} is not usable: ${verification.reason}`,
-        verification: externalCliVerificationSummary(verification)
-      };
-    } catch (error) {
-      return {
-        ...status,
-        available: false,
-        reason: `${status.reason}; external-cli fallback unavailable: ${error.message}`
-      };
-    }
-  }
   if (status.method !== "external-cli") {
     return status;
   }
@@ -522,7 +483,6 @@ function credentialStoreSummary(store) {
       id,
       method: provider.method,
       envVars: provider.envVars ?? [],
-      fallbackPolicy: provider.fallbackPolicy ?? "mock",
       externalCli: provider.externalCli ?? null,
       configured: provider.method !== "mock" && provider.method !== "skip"
     }]))
@@ -539,24 +499,6 @@ function normalizeAuthOverride(value) {
     throw new Error(`auth.mode must be one of ${authOverrideModes.join(", ")}`);
   }
   return mode;
-}
-
-function normalizeFallbackPolicy(value) {
-  const normalized = String(value ?? "mock").trim().toLowerCase().replaceAll("_", "-");
-  const aliases = {
-    mock: "mock",
-    default: "mock",
-    "external-cli": "external-cli",
-    external: "external-cli",
-    cli: "external-cli",
-    none: "none",
-    skip: "none",
-    disabled: "none"
-  };
-  if (aliases[normalized]) {
-    return aliases[normalized];
-  }
-  throw new Error(`fallbackPolicy must be one of ${fallbackPolicies.join(", ")}`);
 }
 
 function mockDir(artifactDir) {
