@@ -4,6 +4,9 @@ import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
 import { parseSupportArgs, readTimeoutMs } from "../openclaw-runtime.mjs";
+import { countProviderRequests, resetProviderScriptForCase } from "./provider-script.mjs";
+import { waitForCaseObservations } from "./observations.mjs";
+import { evaluateWorkflowCase } from "./evaluator.mjs";
 
 const repoRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const args = parseSupportArgs(process.argv.slice(2));
@@ -17,14 +20,27 @@ const timeoutMs = readTimeoutMs(args["timeout-ms"], 180000);
 const artifactPath = join(artifactDir, `channel-conformance-${safeArtifactSegment(channelId)}.json`);
 
 let result;
+let driver = null;
+let platform = null;
 try {
-  const driver = await loadChannelDriver(channelId);
+  driver = await loadChannelDriver(channelId);
   const channelRegistry = await readJson(join(repoRoot, "channel-capabilities", `${channelId}.json`));
   const workflowCatalog = await readJson(join(repoRoot, "channel-capabilities", "channel-workflow-cases.json"));
   const selectedCases = selectWorkflowCases({ channelRegistry, workflowCatalog, caseSet });
+  platform = await driver.startPlatform({ repoRoot, artifactDir, timeoutMs });
+  platform.driver = driver;
+  const configureResult = await driver.configureOpenClaw({ repoRoot, envName, artifactDir, platform, timeoutMs });
+  if (configureResult.status !== 0) {
+    throw new Error(`channel ${channelId} OpenClaw configuration failed: ${configureResult.command}`);
+  }
+  const startupResult = await driver.startOpenClaw({ repoRoot, envName, artifactDir, platform, timeoutMs });
+  const rows = [];
+  for (const workflowCase of selectedCases) {
+    rows.push(await runWorkflowCase({ driver, workflowCase, platform }));
+  }
   result = {
-    ok: false,
-    rows: selectedCases.map((workflowCase) => blockedRow(workflowCase, `${channelId} channel conformance runner is not implemented yet`)),
+    ok: rows.every((row) => row.status === "passed"),
+    rows,
     artifact: {
       schemaVersion: "kova.channelConformanceArtifact.v1",
       channelId,
@@ -33,7 +49,12 @@ try {
       workflowCaseCatalogId: workflowCatalog.id,
       selectedCaseIds: selectedCases.map((workflowCase) => workflowCase.id),
       driverContract: Object.keys(driver).sort(),
-      error: `${channelId} channel conformance runner is not implemented yet`
+      platform: platformSummary(platform),
+      setup: {
+        configureOpenClaw: configureResult,
+        startOpenClaw: startupResult
+      },
+      rows
     }
   };
 } catch (error) {
@@ -49,6 +70,10 @@ try {
       error: message
     }
   };
+} finally {
+  if (platform && driver) {
+    await driver.stopPlatform({ platform }).catch(() => {});
+  }
 }
 
 await mkdir(artifactDir, { recursive: true });
@@ -119,13 +144,90 @@ function selectWorkflowCases({ channelRegistry, workflowCatalog, caseSet: reques
   return selected;
 }
 
-function blockedRow(workflowCase, reason) {
+async function runWorkflowCase({ driver, workflowCase, platform }) {
+  const startedAtEpochMs = Date.now();
+  let row;
+  try {
+    const providerRequestCountBefore = await countProviderRequests({ artifactDir });
+    const callCursor = (await driver.readPlatformCalls({ platform })).length;
+    await resetProviderScriptForCase({ repoRoot, artifactDir, workflowCase });
+    const inbound = await driver.enqueueUserEvent({ workflowCase, platform });
+    let observations = await waitForCaseObservations({
+      workflowCase,
+      platform,
+      callCursor,
+      readPlatformCalls: (params) => driver.readPlatformCalls(params),
+      normalizeObservations: (params) => driver.normalizeObservations(params),
+      timeoutMs
+    });
+    const providerRequestsBeforeEcho = await countProviderRequests({ artifactDir });
+    if (workflowCase.expects?.noSelfTrigger === true) {
+      await driver.enqueueBotEcho({ workflowCase, platform, inbound, observations });
+      await sleep(1500);
+      const calls = await driver.readPlatformCalls({ platform });
+      observations = await driver.normalizeObservations({ workflowCase, platform, inbound, calls: calls.slice(callCursor) });
+    }
+    const providerRequestCountAfter = await countProviderRequests({ artifactDir });
+    const providerRequestsDelta = providerRequestCountAfter - providerRequestCountBefore;
+    const providerRequestsAfterEcho = providerRequestCountAfter - providerRequestsBeforeEcho;
+    const invariants = evaluateWorkflowCase({
+      workflowCase,
+      observations,
+      providerRequestsDelta,
+      providerRequestsAfterEcho
+    });
+    const failed = invariants.find((invariant) => invariant.status !== "passed") ?? null;
+    row = {
+      id: workflowCase.id,
+      status: failed ? "failed" : "passed",
+      reason: failed?.reason ?? null,
+      workflow: workflowCase.workflow,
+      inventoryWorkflow: workflowCase.inventoryWorkflow,
+      matrix: workflowCase.matrix,
+      userAction: workflowCase.userAction,
+      ownerArea: workflowCase.ownerArea ?? `${channelId} adapter/runtime`,
+      capabilities: workflowCase.atoms ?? [],
+      providerRequestsDelta,
+      providerRequestsAfterEcho,
+      observations,
+      invariants
+    };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    row = failedRow(workflowCase, reason);
+  }
+  const finishedAtEpochMs = Date.now();
+  return {
+    ...row,
+    startedAtEpochMs,
+    finishedAtEpochMs,
+    durationMs: Math.max(0, finishedAtEpochMs - startedAtEpochMs)
+  };
+}
+
+function failedRow(workflowCase, reason) {
   return {
     id: workflowCase.id,
-    status: "blocked",
-    summary: `${workflowCase.id} channel workflow is blocked`,
+    status: "failed",
+    summary: `${workflowCase.id} channel workflow failed`,
     reason,
-    ownerArea: workflowCase.ownerArea ?? "OpenClaw channel adapter/runtime"
+    ownerArea: workflowCase.ownerArea ?? "OpenClaw channel adapter/runtime",
+    invariants: [
+      {
+        id: `${workflowCase.id}:runner`,
+        status: "failed",
+        summary: reason,
+        reason
+      }
+    ]
+  };
+}
+
+function platformSummary(value) {
+  return {
+    apiRoot: value?.apiRoot ?? null,
+    artifactDir: value?.artifactDir ?? null,
+    callsPath: value?.callsPath ?? null
   };
 }
 
@@ -143,4 +245,8 @@ function requiredArg(parsed, key) {
 
 function safeArtifactSegment(value) {
   return String(value ?? "all").replace(/[^a-zA-Z0-9._-]+/g, "-");
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

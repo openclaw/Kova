@@ -7,7 +7,7 @@ const args = parseArgs(process.argv.slice(2));
 const dir = requiredArg(args, "dir");
 const requestedPort = Number(args.port ?? 0);
 const host = args.host ?? "127.0.0.1";
-const token = args.token ?? "kova-telegram-token";
+const token = args.token ?? "999001:kova-telegram-token";
 const portFile = join(dir, "port");
 const callsPath = join(dir, "calls.jsonl");
 const startupPath = join(dir, "startup.json");
@@ -117,9 +117,12 @@ async function handleRequest(request, response) {
     path: url.pathname,
     body
   };
+  const result = telegramResult(method, body);
+  call.responseOk = result.ok === true;
+  call.result = result.result ?? null;
   calls.push(call);
   await appendJsonLine(callsPath, call);
-  writeJson(response, 200, telegramResult(method, body));
+  writeJson(response, 200, result);
 }
 
 function telegramResult(method, body) {

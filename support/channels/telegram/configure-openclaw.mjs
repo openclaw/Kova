@@ -4,7 +4,7 @@ import path from "node:path";
 
 const args = parseArgs(process.argv.slice(2));
 const portFile = requiredArg(args, "port-file");
-const token = args.token ?? "kova-telegram-token";
+const token = args.token ?? "999001:kova-telegram-token";
 const port = fs.readFileSync(portFile, "utf8").trim();
 if (!/^\d+$/u.test(port)) {
   throw new Error(`invalid Telegram shim port in ${portFile}`);
@@ -34,7 +34,7 @@ config.channels = {
     groupPolicy: "open",
     groupAllowFrom: ["*"],
     mediaGroupFlushMs: 50,
-    pollingStallThresholdMs: 5000,
+    pollingStallThresholdMs: 30000,
     timeoutSeconds: 2,
     network: {
       ...(existingTelegram.network ?? {}),
