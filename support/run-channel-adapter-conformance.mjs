@@ -60,7 +60,7 @@ async function buildResult({ runtimeContext, adapterContext, timeoutMs: commandT
   const runError = error ? error.message : null;
   const capabilityResults = runError || !adapterContext
     ? []
-    : await runCapabilityProofs(adapterContext.adapter, channelRegistry);
+    : await runCapabilityProofs(adapterContext, channelRegistry);
   const rows = [
     ...capabilityRows(capabilityResults, runError)
   ];
@@ -89,11 +89,12 @@ async function loadAdapterContext({ channelId: requestedChannelId, packageRoot }
   assert(distribution, `${requestedChannelId} channel registry does not declare adapterDistribution`);
   const modulePath = resolveAdapterModulePath({ distribution, packageRoot });
   const mod = await import(pathToFileURL(modulePath).href);
-  const adapter = mod[distribution.exportName]?.message;
+  const plugin = mod[distribution.exportName];
+  const adapter = plugin?.message;
   if (!adapter) {
     throw new Error(`packaged ${requestedChannelId} plugin does not expose a message adapter`);
   }
-  return { modulePath, adapter, distribution };
+  return { modulePath, plugin, adapter, distribution };
 }
 
 function resolveAdapterModulePath({ distribution, packageRoot }) {
@@ -123,20 +124,21 @@ function readInstalledPluginRecord(pluginId) {
   return plugin;
 }
 
-async function runCapabilityProofs(adapter, channel) {
+async function runCapabilityProofs(adapterContext, channel) {
   const results = [];
   for (const capability of channel.capabilities ?? []) {
     results.push(await captureProof({
       id: `${capability.group}:${capability.id}`,
       group: capability.group,
       capabilityId: capability.id,
-      run: () => proveCapability(adapter, capability)
+      run: () => proveCapability(adapterContext, capability)
     }));
   }
   return results;
 }
 
-async function proveCapability(adapter, capability) {
+async function proveCapability(adapterContext, capability) {
+  const { adapter, plugin } = adapterContext;
   if (capability.group === "durable-final") {
     assert(adapter.durableFinal?.capabilities?.[runtimeCapabilityKey(capability)] === true, `${capability.id} is not declared by adapter durable final capabilities`);
     return await proveDurableFinalCapability(adapter, capability.id);
@@ -159,7 +161,67 @@ async function proveCapability(adapter, capability) {
     assert(adapter.live?.finalizer?.capabilities?.[key] === true, `${capability.id} is not declared by adapter live finalizer capabilities`);
     return { observed: { liveFinalizerCapabilities: adapter.live.finalizer.capabilities } };
   }
+  if (capability.group === "native-platform") {
+    return await proveNativePlatformCapability(plugin, capability.id);
+  }
   return { skipped: true, reason: `no deterministic shim proof for ${capability.group}:${capability.id}` };
+}
+
+async function proveNativePlatformCapability(plugin, capabilityId) {
+  if (capabilityId.startsWith("action-")) {
+    const expectedAction = capabilityId.slice("action-".length);
+    const discovery = await describeMessageTool(plugin);
+    assert(discovery.actions.includes(expectedAction), `${expectedAction} is not exposed by message tool discovery`);
+    return {
+      observed: {
+        actions: discovery.actions,
+        capabilities: discovery.capabilities
+      }
+    };
+  }
+
+  if (capabilityId === "delivery-pin") {
+    const discovery = await describeMessageTool(plugin);
+    assert(discovery.capabilities.includes("delivery-pin"), "delivery-pin is not exposed by message tool discovery");
+    assert(plugin.outbound?.deliveryCapabilities?.pin === true, "outbound delivery pin capability is not declared");
+    assert(typeof plugin.outbound?.pinDeliveredMessage === "function", "outbound pinDeliveredMessage handler is missing");
+    return {
+      observed: {
+        actions: discovery.actions,
+        capabilities: discovery.capabilities,
+        outboundDeliveryCapabilities: plugin.outbound.deliveryCapabilities
+      }
+    };
+  }
+
+  if (capabilityId === "presentation") {
+    const discovery = await describeMessageTool(plugin);
+    assert(discovery.capabilities.includes("presentation"), "presentation is not exposed by message tool discovery");
+    assert(plugin.outbound?.presentationCapabilities?.supported === true, "outbound presentation support is not declared");
+    assert(typeof plugin.outbound?.renderPresentation === "function", "outbound renderPresentation handler is missing");
+    return {
+      observed: {
+        actions: discovery.actions,
+        capabilities: discovery.capabilities,
+        presentationCapabilities: plugin.outbound.presentationCapabilities
+      }
+    };
+  }
+
+  return { skipped: true, reason: `native platform shim proof for ${capabilityId} is not implemented` };
+}
+
+async function describeMessageTool(plugin) {
+  const describe = plugin.actions?.describeMessageTool;
+  assert(typeof describe === "function", "plugin does not expose message tool discovery");
+  const discovery = await describe({
+    cfg: channelShimConfig(),
+    ...(shimAccountId() ? { accountId: shimAccountId() } : {})
+  });
+  return {
+    actions: Array.isArray(discovery?.actions) ? discovery.actions : [],
+    capabilities: Array.isArray(discovery?.capabilities) ? discovery.capabilities : []
+  };
 }
 
 async function proveDurableFinalCapability(adapter, capabilityId) {
@@ -370,6 +432,14 @@ function shimReplyToId() {
 
 function shimAccountId() {
   return channelRegistry.deterministicShim?.accountId ?? null;
+}
+
+function channelShimConfig() {
+  const config = channelRegistry.deterministicShim?.config;
+  if (config && typeof config === "object" && !Array.isArray(config)) {
+    return config;
+  }
+  return {};
 }
 
 function requiredShimValue(key) {

@@ -12,6 +12,8 @@
   "declarationSources": [
     "src/channels/message/types.ts",
     "extensions/telegram/src/channel.ts",
+    "extensions/telegram/src/channel-actions.ts",
+    "extensions/telegram/src/channel-actions.contract.test.ts",
     "extensions/telegram/src/outbound-adapter.ts"
   ],
   "workflowCaseIds": [
@@ -39,6 +41,13 @@
     "conversationId": "12345",
     "threadId": "12",
     "replyToId": "900",
+    "config": {
+      "channels": {
+        "telegram": {
+          "botToken": "123:kova-channel-conformance-token"
+        }
+      }
+    },
     "platform": {
       "resultMessageIdPrefix": "tg",
       "resultTargetField": "chatId",
@@ -201,6 +210,87 @@
       "requiredLevel": "warning",
       "proofModes": ["deterministic-shim"],
       "declarationSource": "extensions/telegram/src/channel.ts"
+    },
+    {
+      "id": "action-send",
+      "group": "native-platform",
+      "catalogId": "native-platform:action-send",
+      "title": "Message Tool Send Action",
+      "requiredLevel": "blocking",
+      "proofModes": ["deterministic-shim", "live-smoke"],
+      "declarationSource": "extensions/telegram/src/channel-actions.contract.test.ts"
+    },
+    {
+      "id": "action-poll",
+      "group": "native-platform",
+      "catalogId": "native-platform:action-poll",
+      "title": "Message Tool Poll Action",
+      "requiredLevel": "warning",
+      "proofModes": ["deterministic-shim", "live-smoke"],
+      "declarationSource": "extensions/telegram/src/channel-actions.contract.test.ts"
+    },
+    {
+      "id": "action-react",
+      "group": "native-platform",
+      "catalogId": "native-platform:action-react",
+      "title": "Message Tool React Action",
+      "requiredLevel": "warning",
+      "proofModes": ["deterministic-shim", "live-smoke"],
+      "declarationSource": "extensions/telegram/src/channel-actions.contract.test.ts"
+    },
+    {
+      "id": "action-delete",
+      "group": "native-platform",
+      "catalogId": "native-platform:action-delete",
+      "title": "Message Tool Delete Action",
+      "requiredLevel": "warning",
+      "proofModes": ["deterministic-shim", "live-smoke"],
+      "declarationSource": "extensions/telegram/src/channel-actions.contract.test.ts"
+    },
+    {
+      "id": "action-edit",
+      "group": "native-platform",
+      "catalogId": "native-platform:action-edit",
+      "title": "Message Tool Edit Action",
+      "requiredLevel": "warning",
+      "proofModes": ["deterministic-shim", "live-smoke"],
+      "declarationSource": "extensions/telegram/src/channel-actions.contract.test.ts"
+    },
+    {
+      "id": "action-topic-create",
+      "group": "native-platform",
+      "catalogId": "native-platform:action-topic-create",
+      "title": "Message Tool Topic Create Action",
+      "requiredLevel": "warning",
+      "proofModes": ["deterministic-shim", "live-smoke"],
+      "declarationSource": "extensions/telegram/src/channel-actions.contract.test.ts"
+    },
+    {
+      "id": "action-topic-edit",
+      "group": "native-platform",
+      "catalogId": "native-platform:action-topic-edit",
+      "title": "Message Tool Topic Edit Action",
+      "requiredLevel": "warning",
+      "proofModes": ["deterministic-shim", "live-smoke"],
+      "declarationSource": "extensions/telegram/src/channel-actions.contract.test.ts"
+    },
+    {
+      "id": "delivery-pin",
+      "group": "native-platform",
+      "catalogId": "native-platform:delivery-pin",
+      "title": "Delivery Pin",
+      "requiredLevel": "warning",
+      "proofModes": ["deterministic-shim", "live-smoke"],
+      "declarationSource": "extensions/telegram/src/channel-actions.contract.test.ts"
+    },
+    {
+      "id": "presentation",
+      "group": "native-platform",
+      "catalogId": "native-platform:presentation",
+      "title": "Presentation",
+      "requiredLevel": "warning",
+      "proofModes": ["deterministic-shim", "live-smoke"],
+      "declarationSource": "extensions/telegram/src/channel-actions.contract.test.ts"
     }
   ]
 }
