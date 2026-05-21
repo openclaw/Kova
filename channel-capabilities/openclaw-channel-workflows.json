@@ -15,6 +15,8 @@
     "src/agents/pi-embedded-runner/run/attempt.ts",
     "src/agents/pi-embedded-runner/run/message-tool-terminal.ts",
     "src/agents/subagent-announce-delivery.ts",
+    "src/channels/plugins/message-action-discovery.ts",
+    "src/channels/plugins/message-capabilities.ts",
     "extensions/telegram/src/channel.ts",
     "extensions/telegram/src/bot-message-dispatch.ts",
     "extensions/discord/src/channel.ts",
@@ -107,6 +109,33 @@
         { "group": "durable-final", "id": "media" },
         { "group": "durable-final", "id": "thread" },
         { "group": "durable-final", "id": "message-sending-hooks" }
+      ]
+    },
+    {
+      "id": "native-platform-action",
+      "title": "Native Platform Message Action",
+      "userAction": "user asks OpenClaw to use a channel-native message action from the current conversation",
+      "openclawSurface": "channel inbound message with message tool native action dispatch",
+      "ownerArea": "OpenClaw message tool and channel adapter runtime",
+      "sourceRefs": [
+        "src/channels/plugins/message-action-discovery.ts",
+        "src/channels/plugins/message-capabilities.ts",
+        "src/agents/pi-embedded-runner/run/message-tool-terminal.ts"
+      ],
+      "contentKinds": ["text", "poll", "reaction", "topic", "presentation"],
+      "routeKinds": ["direct", "thread", "reply"],
+      "deliveryModes": ["native-action", "message-tool-only-source-delivery"],
+      "lifecycles": ["success", "terminal"],
+      "atoms": [
+        { "group": "native-platform", "id": "action-send" },
+        { "group": "native-platform", "id": "action-poll" },
+        { "group": "native-platform", "id": "action-react" },
+        { "group": "native-platform", "id": "action-delete" },
+        { "group": "native-platform", "id": "action-edit" },
+        { "group": "native-platform", "id": "action-topic-create" },
+        { "group": "native-platform", "id": "action-topic-edit" },
+        { "group": "native-platform", "id": "delivery-pin" },
+        { "group": "native-platform", "id": "presentation" }
       ]
     },
     {

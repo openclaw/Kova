@@ -17,6 +17,7 @@
     "local-build"
   ],
   "timeoutMs": 180000,
+  "evidenceArtifactMaxBytes": 8388608,
   "thresholds": {},
   "phases": [
     {

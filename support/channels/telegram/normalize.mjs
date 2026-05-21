@@ -6,7 +6,8 @@ const VISIBLE_SEND_METHODS = new Set([
   "sendAudio",
   "sendVoice",
   "sendDocument",
-  "sendAnimation"
+  "sendAnimation",
+  "sendPoll"
 ]);
 
 export function normalizeTelegramObservations({ inbound, calls }) {
@@ -39,6 +40,9 @@ function normalizeDelivery(call) {
   const threadId = body.message_thread_id ?? null;
   const chatId = body.chat_id ?? body.chatId ?? call.result?.chat?.id ?? null;
   const media = normalizeMedia(call);
+  const text = call.method === "sendPoll" && typeof body.question === "string"
+    ? body.question
+    : typeof body.text === "string" ? body.text : null;
   return {
     schemaVersion: "kova.channelObservation.v1",
     channelId: "telegram",
@@ -48,9 +52,9 @@ function normalizeDelivery(call) {
       raw: call
     },
     actor: "bot",
-    visible: true,
-    kind: media.length > 0 ? "media" : "text",
-    text: typeof body.text === "string" ? body.text : null,
+    visible: !isTransientStatusText(text),
+    kind: call.method === "sendPoll" ? "poll" : media.length > 0 ? "media" : "text",
+    text,
     caption: typeof body.caption === "string" ? body.caption : null,
     media,
     route: {
@@ -72,8 +76,12 @@ function normalizeDelivery(call) {
   };
 }
 
+function isTransientStatusText(text) {
+  return typeof text === "string" && /<code>[^<]*Message:/u.test(text);
+}
+
 function normalizeMedia(call) {
-  if (call.method === "sendMessage") {
+  if (call.method === "sendMessage" || call.method === "sendPoll") {
     return [];
   }
   const field = mediaFieldForMethod(call.method);

@@ -178,7 +178,39 @@ function telegramResult(method, body) {
         },
         ...(body.message_thread_id != null ? { message_thread_id: Number(body.message_thread_id) } : {}),
         ...(typeof body.text === "string" ? { text: body.text } : {}),
-        ...(typeof body.caption === "string" ? { caption: body.caption } : {})
+        ...(typeof body.caption === "string" ? { caption: body.caption } : {}),
+        ...(method === "sendPoll" ? {
+          poll: {
+            id: `poll-${nextMessageId}`,
+            question: body.question ?? "",
+            options: normalizePollOptions(body.options)
+          }
+        } : {})
+      }
+    };
+  }
+  if (method === "editMessageText") {
+    return {
+      ok: true,
+      result: {
+        message_id: Number(body.message_id ?? body.messageId ?? nextMessageId++),
+        date: Math.floor(Date.now() / 1000),
+        chat: {
+          id: body.chat_id ?? body.chatId ?? -1003970070733,
+          type: "supergroup",
+          title: "Kova Telegram Shim"
+        },
+        ...(typeof body.text === "string" ? { text: body.text } : {})
+      }
+    };
+  }
+  if (method === "createForumTopic") {
+    return {
+      ok: true,
+      result: {
+        message_thread_id: nextMessageId++,
+        name: body.name ?? "Kova Topic",
+        icon_color: body.icon_color ?? null
       }
     };
   }
@@ -187,8 +219,7 @@ function telegramResult(method, body) {
     method === "deleteMessage" ||
     method === "pinChatMessage" ||
     method === "unpinChatMessage" ||
-    method === "editForumTopic" ||
-    method === "createForumTopic"
+    method === "editForumTopic"
   ) {
     return { ok: true, result: true };
   }
@@ -204,8 +235,24 @@ function isSendMethod(method) {
     "sendAudio",
     "sendVoice",
     "sendDocument",
-    "sendAnimation"
+    "sendAnimation",
+    "sendPoll"
   ]).has(method);
+}
+
+function normalizePollOptions(value) {
+  if (Array.isArray(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
 }
 
 function parseTelegramBody(request, rawBody) {

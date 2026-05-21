@@ -19,7 +19,11 @@ export const channelWorkflowContentKinds = [
   "video",
   "audio",
   "batch",
-  "error"
+  "error",
+  "poll",
+  "reaction",
+  "topic",
+  "presentation"
 ];
 
 export const channelWorkflowRouteKinds = [
@@ -38,7 +42,8 @@ export const channelWorkflowDeliveryModes = [
   "completion-handoff",
   "live-preview",
   "live-finalizer",
-  "ack"
+  "ack",
+  "native-action"
 ];
 
 export const channelWorkflowLifecycles = [

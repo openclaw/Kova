@@ -33,6 +33,13 @@
     "source-visible-delivery.media.message-tool-only",
     "source-visible-delivery.media-thread.message-tool-only",
     "source-visible-delivery.attachment.message-tool-only",
+    "native-action.send.presentation-pin",
+    "native-action.poll",
+    "native-action.react",
+    "native-action.delete",
+    "native-action.edit",
+    "native-action.topic-create",
+    "native-action.topic-edit",
     "completion-handoff.image.generated-direct",
     "completion-handoff.image.generated-thread",
     "failure-visible-once.provider-error"

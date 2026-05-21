@@ -60,9 +60,19 @@ config.channels = {
     },
     actions: {
       ...(existingTelegram.actions ?? {}),
+      createForumTopic: true,
+      deleteMessage: true,
+      editForumTopic: true,
+      editMessage: true,
       poll: true,
+      reactions: true,
       sendMessage: true
     },
+    capabilities: {
+      ...(existingTelegram.capabilities ?? {}),
+      inlineButtons: "all"
+    },
+    reactionLevel: "minimal",
     replyToMode: "all"
   }
 };
