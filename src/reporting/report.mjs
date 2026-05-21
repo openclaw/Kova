@@ -291,8 +291,7 @@ function pushAgentTurnDetails(lines, record) {
     lines.push(`  - ${turn.label}: total ${valueMs(turn.totalTurnMs)}; pre-provider ${valueMs(turn.preProviderMs)}; provider ${valueMs(turn.providerFinalMs)}; post-provider ${valueMs(turn.postProviderMs)}; response ${turn.responseOk}${providerTiming}`);
     if (turn.gatewaySession) {
       const transport = turn.gatewaySession.gatewayTransportKind ?? "unknown";
-      const fallback = turn.gatewaySession.gatewayTransportFallbackReason ? `; fallback ${turn.gatewaySession.gatewayTransportFallbackReason}` : "";
-      lines.push(`    - gateway session: transport ${transport}${fallback}; create ${turn.gatewaySession.createSession}; session create ${valueMs(turn.gatewaySession.sessionCreateDurationMs, "n/a")}; send ${valueMs(turn.gatewaySession.sendDurationMs)}; first assistant ${valueMs(turn.gatewaySession.timeToFirstAssistantMs)}; matched assistant ${valueMs(turn.gatewaySession.timeToMatchedAssistantMs)}; polls ${turn.gatewaySession.historyPollCount ?? "unknown"} (${turn.gatewaySession.historyErrorCount ?? "unknown"} errors)`);
+      lines.push(`    - gateway session: transport ${transport}; create ${turn.gatewaySession.createSession}; session create ${valueMs(turn.gatewaySession.sessionCreateDurationMs, "n/a")}; send ${valueMs(turn.gatewaySession.sendDurationMs)}; first assistant ${valueMs(turn.gatewaySession.timeToFirstAssistantMs)}; matched assistant ${valueMs(turn.gatewaySession.timeToMatchedAssistantMs)}; polls ${turn.gatewaySession.historyPollCount ?? "unknown"} (${turn.gatewaySession.historyErrorCount ?? "unknown"} errors)`);
     }
     if (turn.channelModelTurn?.failedModelTurnCases?.length > 0) {
       lines.push("    - channel workflow failures:");

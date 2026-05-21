@@ -9,7 +9,6 @@ import {
   parseSupportArgs,
   prepareOpenClawRuntimeFromOcmEnv,
   readTimeoutMs,
-  runOcmJson,
   sleep
 } from "./openclaw-runtime.mjs";
 
@@ -17,6 +16,7 @@ const startedAtEpochMs = Date.now();
 
 try {
   const args = parseSupportArgs(process.argv.slice(2));
+  rejectUnsupportedArgs(args, ["env", "message", "expected-text", "timeout", "session-key", "create-session", "min-assistant-count"]);
   const runtimeContext = prepareOpenClawRuntimeFromOcmEnv(args.env);
   const message = args.message ?? "Reply with exact ASCII text KOVA_AGENT_OK only.";
   const expectedText = args["expected-text"] ?? "KOVA_AGENT_OK";
@@ -24,11 +24,7 @@ try {
   const sessionKey = args["session-key"] ?? `kova-gateway-session-${randomUUID()}`;
   const createSession = readBoolean(args["create-session"], true);
   const minAssistantCount = readPositiveInteger(args["min-assistant-count"], 1);
-  const allowShellFallback = readBoolean(args["allow-shell-fallback"], false);
   const gatewayTransport = await openDirectGatewayRpcClient(runtimeContext);
-  if (!gatewayTransport.client && !allowShellFallback) {
-    throw new Error(`direct Gateway RPC is required for gateway-session-send-turn; fallback=${gatewayTransport.transport}; reason=${gatewayTransport.fallbackReason ?? "unknown"}`);
-  }
 
   try {
     let created = null;
@@ -36,7 +32,7 @@ try {
     let sessionCreateFinishedAtEpochMs = null;
     if (createSession) {
       sessionCreateStartedAtEpochMs = Date.now();
-      created = await gatewayCall(runtimeContext, gatewayTransport, "sessions.create", {
+      created = await gatewayCall(gatewayTransport, "sessions.create", {
         agentId: "main",
         key: sessionKey,
         label: "Kova Gateway Session Send"
@@ -45,7 +41,7 @@ try {
     }
     const canonicalKey = created?.key ?? sessionKey;
     const sendStartedAtEpochMs = Date.now();
-    const sent = await gatewayCall(runtimeContext, gatewayTransport, "sessions.send", {
+    const sent = await gatewayCall(gatewayTransport, "sessions.send", {
         key: canonicalKey,
         message,
         thinking: "off",
@@ -56,7 +52,6 @@ try {
     const runId = typeof sent?.runId === "string" ? sent.runId : null;
 
     const history = await waitForAssistantText({
-      runtimeContext,
       gatewayTransport,
       sessionKey: canonicalKey,
       expectedText,
@@ -75,8 +70,7 @@ try {
       envName: runtimeContext.envName,
       runtime: runtimeContext.runtime,
       gatewayTransport: {
-        kind: gatewayTransport.transport,
-        fallbackReason: gatewayTransport.fallbackReason
+        kind: gatewayTransport.transport
       },
       sessionKey: canonicalKey,
       runId,
@@ -112,7 +106,7 @@ try {
   failJson(error, { surface: "gateway-session-send-turn", finishedAtEpochMs: Date.now() });
 }
 
-async function waitForAssistantText({ runtimeContext, gatewayTransport, sessionKey, expectedText, timeoutMs, minAssistantCount }) {
+async function waitForAssistantText({ gatewayTransport, sessionKey, expectedText, timeoutMs, minAssistantCount }) {
   const deadline = Date.now() + timeoutMs;
   let lastAssistantText = "";
   let lastHistoryError = null;
@@ -123,7 +117,7 @@ async function waitForAssistantText({ runtimeContext, gatewayTransport, sessionK
   while (Date.now() < deadline) {
     try {
       pollCount += 1;
-      const history = await gatewayCall(runtimeContext, gatewayTransport, "chat.history", { sessionKey, limit: 16 }, Math.min(15000, Math.max(1000, deadline - Date.now())));
+      const history = await gatewayCall(gatewayTransport, "chat.history", { sessionKey, limit: 16 }, Math.min(15000, Math.max(1000, deadline - Date.now())));
       lastHistoryError = null;
       assistantTexts = extractAssistantTexts(history?.messages ?? []);
       lastAssistantText = assistantTexts.at(-1) ?? "";
@@ -155,22 +149,16 @@ async function waitForAssistantText({ runtimeContext, gatewayTransport, sessionK
   );
 }
 
-async function gatewayCall(runtimeContext, gatewayTransport, method, params, timeoutMs) {
-  if (gatewayTransport.client) {
-    return await gatewayTransport.client.request(method, params, { timeoutMs });
+async function gatewayCall(gatewayTransport, method, params, timeoutMs) {
+  return await gatewayTransport.client.request(method, params, { timeoutMs });
+}
+
+function rejectUnsupportedArgs(args, allowed) {
+  const allowedSet = new Set(allowed);
+  const unknown = Object.keys(args).filter((key) => !allowedSet.has(key));
+  if (unknown.length > 0) {
+    throw new Error(`unsupported argument${unknown.length === 1 ? "" : "s"}: ${unknown.map((key) => `--${key}`).join(", ")}`);
   }
-  return runOcmJson([
-    `@${runtimeContext.envName}`,
-    "--",
-    "gateway",
-    "call",
-    method,
-    "--params",
-    JSON.stringify(params),
-    "--timeout",
-    String(timeoutMs),
-    "--json"
-  ]);
 }
 
 function readBoolean(value, fallback) {

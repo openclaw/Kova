@@ -3687,7 +3687,7 @@ function gatewaySessionTurnEvaluationCheck() {
       minAssistantCount: 1,
       sessionKey: "kova-gateway-session-send",
       runId: "cold-run",
-      gatewayTransport: { kind: "direct-gateway-rpc", fallbackReason: null },
+      gatewayTransport: { kind: "direct-gateway-rpc" },
       activeStartedAtEpochMs: base + 1000,
       activeFinishedAtEpochMs: base + 2500,
       activeTurnMs: 1500,
@@ -3713,7 +3713,7 @@ function gatewaySessionTurnEvaluationCheck() {
       minAssistantCount: 2,
       sessionKey: "kova-gateway-session-send",
       runId: "warm-run",
-      gatewayTransport: { kind: "direct-gateway-rpc", fallbackReason: null },
+      gatewayTransport: { kind: "direct-gateway-rpc" },
       activeStartedAtEpochMs: base + 11000,
       activeFinishedAtEpochMs: base + 11800,
       activeTurnMs: 800,
@@ -3863,19 +3863,19 @@ function gatewaySessionTurnEvaluationCheck() {
     assertEqual(rendered.includes("transport direct-gateway-rpc"), true, "markdown includes direct Gateway transport");
     assertEqual(rendered.includes("active window:"), true, "markdown includes active turn diagnostics");
 
-    const fallbackPayload = {
+    const nonDirectPayload = {
       ...coldPayload,
-      gatewayTransport: { kind: "shell", fallbackReason: "gateway-token-unavailable" }
+      gatewayTransport: { kind: "shell" }
     };
-    const fallbackRecord = {
+    const nonDirectRecord = {
       scenario: "gateway-session-send-turn",
       surface: "gateway-session-send-turn",
-      title: "Gateway session shell fallback",
+      title: "Gateway session non-direct transport",
       status: "PASS",
       phases: [{
         id: "cold-gateway-session-turn",
         title: "Cold Gateway Session Turn",
-        intent: "Synthetic shell fallback",
+        intent: "Synthetic non-direct transport",
         commands: ["node support/run-gateway-session-send-turn.mjs --create-session true"],
         evidence: [],
         results: [{
@@ -3887,7 +3887,7 @@ function gatewaySessionTurnEvaluationCheck() {
           finishedAt: new Date(base + 5000).toISOString(),
           finishedAtEpochMs: base + 5000,
           durationMs: 5000,
-          stdout: JSON.stringify(fallbackPayload),
+            stdout: JSON.stringify(nonDirectPayload),
           stderr: ""
         }],
         metrics: { logs: zeroLogMetrics(), health: { ok: true } }
@@ -3899,16 +3899,16 @@ function gatewaySessionTurnEvaluationCheck() {
       },
       finalMetrics: { service: { gatewayState: "running" }, logs: zeroLogMetrics() }
     };
-    evaluateRecord(fallbackRecord, {
+    evaluateRecord(nonDirectRecord, {
       id: "gateway-session-send-turn",
       agent: { expectedText: "KOVA_AGENT_OK" },
       thresholds: {}
     }, { surface: { thresholds: {} }, targetPlan: { kind: "runtime" } });
-    assertEqual(fallbackRecord.status, "FAIL", "gateway session shell fallback rejected");
+    assertEqual(nonDirectRecord.status, "FAIL", "gateway session non-direct transport rejected");
     assertEqual(
-      fallbackRecord.violations.some((violation) => violation.metric === "gatewayTransport.kind"),
+      nonDirectRecord.violations.some((violation) => violation.metric === "gatewayTransport.kind"),
       true,
-      "gateway session shell fallback violation"
+      "gateway session non-direct transport violation"
     );
 
     return {
@@ -5300,7 +5300,7 @@ function syntheticGatewaySessionRecord({ base, timeline }) {
     minAssistantCount: 1,
     sessionKey: "kova-gateway-session-send",
     runId: "cold-run",
-    gatewayTransport: { kind: "direct-gateway-rpc", fallbackReason: null },
+    gatewayTransport: { kind: "direct-gateway-rpc" },
     activeStartedAtEpochMs: base + 1000,
     activeFinishedAtEpochMs: base + 2500,
     activeTurnMs: 1500,

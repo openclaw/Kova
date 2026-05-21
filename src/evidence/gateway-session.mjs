@@ -137,8 +137,7 @@ function gatewaySessionTransportReason(turns) {
     return null;
   }
   const transport = bad.payload?.gatewayTransport?.kind ?? "missing";
-  const fallbackReason = bad.payload?.gatewayTransport?.fallbackReason;
-  return `${bad.phaseId} used ${transport}${fallbackReason ? ` (${fallbackReason})` : ""}`;
+  return `${bad.phaseId} used ${transport}`;
 }
 
 function gatewaySessionResponseOk(payload) {

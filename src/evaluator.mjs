@@ -1163,7 +1163,7 @@ function checkGatewaySessionTransport(violations, agentTurns, scenario) {
       expected: "direct-gateway-rpc",
       actual: transport ?? "unknown",
       phaseId: turn.phaseId,
-      message: `Gateway session benchmark used ${transport ?? "unknown"} transport; direct Gateway RPC is required for Gateway product measurement${turn.gatewaySession.gatewayTransportFallbackReason ? ` (${turn.gatewaySession.gatewayTransportFallbackReason})` : ""}`
+      message: `Gateway session benchmark used ${transport ?? "unknown"} transport; direct Gateway RPC is required for Gateway product measurement`
     });
   }
 }
@@ -1275,8 +1275,6 @@ function extractGatewaySessionTurn(result) {
     sessionKey: payload.sessionKey ?? null,
     runId: payload.runId ?? null,
     gatewayTransportKind: payload.gatewayTransport?.kind ?? null,
-    gatewayTransportFallbackReason: payload.gatewayTransport?.fallbackReason ?? null,
-    gatewayTransportFallbackUsed: typeof payload.gatewayTransport?.kind === "string" && payload.gatewayTransport.kind !== "direct-gateway-rpc",
     activeStartedAtEpochMs,
     activeFinishedAtEpochMs,
     activeTurnMs,

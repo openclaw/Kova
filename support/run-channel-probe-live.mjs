@@ -27,9 +27,6 @@ async function main() {
   try {
     const runtimeContext = prepareOpenClawRuntimeFromOcmEnv(envName);
     clientHandle = await openDirectGatewayRpcClient(runtimeContext);
-    if (!clientHandle.client) {
-      throw new Error(`gateway direct RPC unavailable: ${clientHandle.fallbackReason ?? "unknown"}`);
-    }
     await waitForGatewayMethodOk(clientHandle.client, "kova.channelProbe.status", {
       timeoutMs,
       notReadyMessage: "kova channel probe plugin registered but channel runtime is not started",

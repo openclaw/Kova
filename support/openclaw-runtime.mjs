@@ -97,19 +97,11 @@ export function runOcmJson(args) {
 
 export async function openDirectGatewayRpcClient(runtimeContext) {
   if (typeof WebSocket !== "function") {
-    return {
-      client: null,
-      transport: "shell",
-      fallbackReason: "websocket-unavailable"
-    };
+    throw new Error("direct Gateway RPC requires WebSocket support");
   }
   const token = readGatewayAuthToken(runtimeContext.root);
   if (!token) {
-    return {
-      client: null,
-      transport: "shell",
-      fallbackReason: "gateway-token-unavailable"
-    };
+    throw new Error("direct Gateway RPC requires a gateway auth token");
   }
 
   const client = new DirectGatewayRpcClient({
@@ -119,8 +111,7 @@ export async function openDirectGatewayRpcClient(runtimeContext) {
   await client.connect();
   return {
     client,
-    transport: "direct-gateway-rpc",
-    fallbackReason: null
+    transport: "direct-gateway-rpc"
   };
 }
 
