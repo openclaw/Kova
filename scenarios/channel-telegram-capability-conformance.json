@@ -17,9 +17,6 @@
     "local-build"
   ],
   "timeoutMs": 180000,
-  "auth": {
-    "mode": "skip"
-  },
   "thresholds": {},
   "phases": [
     {
@@ -38,22 +35,40 @@
       "collectionIntent": "service-only"
     },
     {
-      "id": "channel-telegram-deterministic-shim",
-      "title": "Run Telegram Deterministic Shim Conformance",
-      "intent": "Import Telegram's real packaged message adapter, execute declared atom proofs and shared workflow cases through its adapter send methods, and record adapter/platform-mapping evidence without live Telegram credentials.",
+      "id": "channel-telegram-adapter-send-mapping",
+      "title": "Run Telegram Adapter Send Mapping Proof",
+      "intent": "Import Telegram's real packaged message adapter and prove only the adapter send mapping rows that can be exercised without a running Telegram platform receive path.",
       "commands": [
         "node {kovaRoot}/support/run-channel-adapter-conformance.mjs --env {env} --artifact-dir {artifactDir} --channel telegram --continue-on-failure true --timeout-ms 120000"
       ],
       "evidence": [
         "packaged Telegram message adapter import",
         "declared Telegram capability proof rows",
-        "shared workflow case ids",
         "deterministic platform send calls",
         "adapter receipts",
-        "generic workflow invariants"
+        "adapter-send workflow invariants"
       ],
       "healthScope": "none",
       "collectionIntent": "skip-env"
+    },
+    {
+      "id": "channel-telegram-runtime-workflows",
+      "title": "Run Telegram Runtime Workflow Conformance",
+      "intent": "Run OpenClaw with its real Telegram adapter against a local Telegram Bot API shim, inject normal Telegram user updates, and verify shared workflow rows from observed Telegram sends and provider evidence.",
+      "commands": [
+        "node {kovaRoot}/support/channel-conformance/run.mjs --env {env} --artifact-dir {artifactDir} --channel telegram --tier adapter-shim --case-set declared-workflows --continue-on-failure true --timeout-ms 180000"
+      ],
+      "evidence": [
+        "local Telegram Bot API shim",
+        "OpenClaw Telegram apiRoot config",
+        "real Telegram adapter polling",
+        "Telegram-shaped inbound user updates",
+        "mock provider request journal",
+        "Telegram sendMessage/media API calls",
+        "thread, reply, media, duplicate, and self-trigger invariants"
+      ],
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
     }
   ],
   "proves": [
