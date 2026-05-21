@@ -16,18 +16,24 @@
   ],
   "workflowCaseIds": [
     "text-reply-current-final",
+    "receive-ack.after-receive-record",
+    "receive-ack.after-agent-dispatch",
+    "no-self-trigger.bot-authored-echo",
     "media-final",
     "media-thread-final",
     "media-reply-thread-final",
+    "media-batch-final",
     "thread-final",
     "silent-final",
     "source-visible-delivery.text.automatic-final",
     "source-visible-delivery.text.message-tool-only",
+    "source-visible-delivery.payload.message-tool-only",
     "source-visible-delivery.media.message-tool-only",
     "source-visible-delivery.media-thread.message-tool-only",
     "source-visible-delivery.attachment.message-tool-only",
     "completion-handoff.image.generated-direct",
-    "completion-handoff.image.generated-thread"
+    "completion-handoff.image.generated-thread",
+    "failure-visible-once.provider-error"
   ],
   "deterministicShim": {
     "conversationId": "12345",

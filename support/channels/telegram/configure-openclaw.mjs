@@ -5,7 +5,6 @@ import path from "node:path";
 const args = parseArgs(process.argv.slice(2));
 const portFile = requiredArg(args, "port-file");
 const token = args.token ?? "999001:kova-telegram-token";
-const replyToMode = optionalReplyToMode(args["reply-to-mode"] ?? process.env.KOVA_TELEGRAM_REPLY_TO_MODE) ?? "all";
 const port = fs.readFileSync(portFile, "utf8").trim();
 if (!/^\d+$/u.test(port)) {
   throw new Error(`invalid Telegram shim port in ${portFile}`);
@@ -64,7 +63,7 @@ config.channels = {
       poll: true,
       sendMessage: true
     },
-    ...(replyToMode ? { replyToMode } : {})
+    replyToMode: "all"
   }
 };
 
@@ -102,14 +101,4 @@ function requiredEnv(name) {
     throw new Error(`${name} is required`);
   }
   return value;
-}
-
-function optionalReplyToMode(value) {
-  if (value == null || value === "") {
-    return null;
-  }
-  if (["off", "first", "all", "batched"].includes(value)) {
-    return value;
-  }
-  throw new Error(`invalid Telegram reply-to mode '${value}'`);
 }
