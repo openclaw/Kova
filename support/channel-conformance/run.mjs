@@ -147,12 +147,17 @@ function selectWorkflowCases({ channelRegistry, workflowCatalog, caseSet: reques
 
 async function runWorkflowCase({ driver, workflowCase, platform }) {
   const startedAtEpochMs = Date.now();
-  const fixtures = await prepareWorkflowFixtures(workflowCase);
+  const fixtures = await prepareWorkflowFixtures(workflowCase, { envName });
   let row;
   try {
     const providerRequestCountBefore = await countProviderRequests({ artifactDir });
     const callCursor = (await driver.readPlatformCalls({ platform })).length;
-    await resetProviderScriptForCase({ repoRoot, artifactDir, workflowCase });
+    await resetProviderScriptForCase({
+      repoRoot,
+      artifactDir,
+      workflowCase,
+      fixtureReplacements: fixtures.replacements
+    });
     const inbound = await driver.enqueueUserEvent({ workflowCase, platform });
     let observations = await waitForCaseObservations({
       workflowCase,

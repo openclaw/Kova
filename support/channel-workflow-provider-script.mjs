@@ -66,7 +66,7 @@ export function scriptForMode(options, repoRoot) {
   throw new Error(`unsupported mock provider mode '${mode}'`);
 }
 
-export function channelWorkflowScript(caseIds, repoRoot) {
+export function channelWorkflowScript(caseIds, repoRoot, options = {}) {
   const catalog = readChannelWorkflowCatalog(repoRoot);
   const casesById = new Map((catalog.cases ?? []).map((testCase) => [testCase.id, testCase]));
   const steps = [];
@@ -75,7 +75,7 @@ export function channelWorkflowScript(caseIds, repoRoot) {
     if (!testCase) {
       throw new Error(`unknown channel workflow case '${caseId}'`);
     }
-    steps.push(...scriptStepsForWorkflowCase(testCase));
+    steps.push(...scriptStepsForWorkflowCase(testCase, options));
   }
   if (steps.length === 0) {
     throw new Error("channel workflow mock script did not produce any steps");
@@ -86,8 +86,8 @@ export function channelWorkflowScript(caseIds, repoRoot) {
   };
 }
 
-export function scriptStepsForWorkflowCase(testCase) {
-  const steps = primaryScriptStepsForWorkflowCase(testCase);
+export function scriptStepsForWorkflowCase(testCase, options = {}) {
+  const steps = primaryScriptStepsForWorkflowCase(testCase, options);
   const expects = testCase.expects && typeof testCase.expects === "object" && !Array.isArray(testCase.expects)
     ? testCase.expects
     : {};
@@ -107,7 +107,7 @@ function readChannelWorkflowCatalog(repoRoot) {
   return JSON.parse(readFileSync(join(repoRoot, "channel-capabilities", "channel-workflow-cases.json"), "utf8"));
 }
 
-function primaryScriptStepsForWorkflowCase(testCase) {
+function primaryScriptStepsForWorkflowCase(testCase, options = {}) {
   const script = testCase.providerScript ?? {};
   if (Number.isInteger(script.errorStatus)) {
     return [{
@@ -128,7 +128,7 @@ function primaryScriptStepsForWorkflowCase(testCase) {
         respond: {
           type: "tool-calls",
           toolCalls: script.toolCalls.map((toolCall, index) =>
-            scriptToolCall(testCase.id, "providerScript.toolCalls", toolCall, index)
+            scriptToolCall(testCase.id, "providerScript.toolCalls", toolCall, index, options)
           )
         }
       },
@@ -136,7 +136,7 @@ function primaryScriptStepsForWorkflowCase(testCase) {
         id: `${testCase.id}:final`,
         respond: {
           type: "final-text",
-          text: typeof script.finalText === "string" ? script.finalText : "NO_REPLY"
+          text: replaceScriptString(typeof script.finalText === "string" ? script.finalText : "NO_REPLY", options.replacements)
         }
       }
     ];
@@ -147,7 +147,7 @@ function primaryScriptStepsForWorkflowCase(testCase) {
           respond: {
             type: "tool-calls",
             toolCalls: script.completionToolCalls.map((toolCall, index) =>
-              scriptToolCall(testCase.id, "providerScript.completionToolCalls", toolCall, index)
+              scriptToolCall(testCase.id, "providerScript.completionToolCalls", toolCall, index, options)
             )
           }
         },
@@ -155,7 +155,7 @@ function primaryScriptStepsForWorkflowCase(testCase) {
           id: `${testCase.id}:completion-final`,
           respond: {
             type: "final-text",
-            text: typeof script.completionFinalText === "string" ? script.completionFinalText : "NO_REPLY"
+            text: replaceScriptString(typeof script.completionFinalText === "string" ? script.completionFinalText : "NO_REPLY", options.replacements)
           }
         }
       );
@@ -166,18 +166,41 @@ function primaryScriptStepsForWorkflowCase(testCase) {
     id: `${testCase.id}:final`,
     respond: {
       type: "final-text",
-      text: typeof script.finalText === "string" ? script.finalText : "Hello from mock AI provider"
+      text: replaceScriptString(typeof script.finalText === "string" ? script.finalText : "Hello from mock AI provider", options.replacements)
     }
   }];
 }
 
-function scriptToolCall(testCaseId, label, toolCall, index) {
+function scriptToolCall(testCaseId, label, toolCall, index, options = {}) {
   const defaultId = `call_${safeToolCallId(`${testCaseId}_${label}`)}_${index + 1}`;
   return {
     id: toolCall.id ?? defaultId,
     name: requiredNonEmptyString(toolCall.name, `${testCaseId} ${label}[${index}].name`),
-    arguments: stringifyToolArguments(toolCall.arguments)
+    arguments: stringifyToolArguments(replaceScriptValue(toolCall.arguments, options.replacements))
   };
+}
+
+function replaceScriptValue(value, replacements = {}) {
+  if (typeof value === "string") {
+    return replaceScriptString(value, replacements);
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => replaceScriptValue(entry, replacements));
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [
+      key,
+      replaceScriptValue(entry, replacements)
+    ]));
+  }
+  return value;
+}
+
+function replaceScriptString(value, replacements = {}) {
+  return Object.entries(replacements).reduce(
+    (current, [from, to]) => current.split(from).join(to),
+    value
+  );
 }
 
 function stringifyToolArguments(value) {

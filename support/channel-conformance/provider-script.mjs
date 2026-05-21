@@ -2,9 +2,14 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { channelWorkflowScript } from "../channel-workflow-provider-script.mjs";
 
-export async function resetProviderScriptForCase({ repoRoot, artifactDir, workflowCase }) {
+export async function resetProviderScriptForCase({
+  repoRoot,
+  artifactDir,
+  workflowCase,
+  fixtureReplacements = {}
+}) {
   const port = await readProviderPort({ artifactDir });
-  const script = channelWorkflowScript([workflowCase.id], repoRoot);
+  const script = channelWorkflowScript([workflowCase.id], repoRoot, { replacements: fixtureReplacements });
   const response = await fetch(`http://127.0.0.1:${port}/admin/script`, {
     method: "POST",
     headers: { "content-type": "application/json" },

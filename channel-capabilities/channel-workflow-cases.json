@@ -624,7 +624,7 @@
             "arguments": {
               "action": "send",
               "message": "KOVA_SOURCE_DELIVERY_ATTACHMENT_OK",
-              "media": "/tmp/kova-source-delivery-attachment.txt"
+              "media": "kova-source-delivery-attachment.txt"
             }
           }
         ],
@@ -635,14 +635,14 @@
         "visibleDeliveries": 1,
         "kind": "media",
         "text": "KOVA_SOURCE_DELIVERY_ATTACHMENT_OK",
-        "mediaSource": "/tmp/kova-source-delivery-attachment.txt",
+        "mediaSource": "kova-source-delivery-attachment.txt",
         "mediaSourcePolicy": "sendable-local-or-managed",
         "hooks": true,
         "terminal": true,
         "noDuplicateFinal": true
       },
       "fixtures": {
-        "mediaPath": "/tmp/kova-source-delivery-attachment.txt"
+        "mediaPath": "kova-source-delivery-attachment.txt"
       },
       "providerRequests": {
         "mode": "minimum",
@@ -839,7 +839,7 @@
             "arguments": {
               "action": "send",
               "message": "KOVA_SOURCE_DELIVERY_MEDIA_OK",
-              "media": "/tmp/kova-source-delivery-media.mp4"
+              "media": "kova-source-delivery-media.mp4"
             }
           }
         ],
@@ -850,14 +850,14 @@
         "visibleDeliveries": 1,
         "kind": "media",
         "text": "KOVA_SOURCE_DELIVERY_MEDIA_OK",
-        "mediaSource": "/tmp/kova-source-delivery-media.mp4",
+        "mediaSource": "kova-source-delivery-media.mp4",
         "mediaSourcePolicy": "sendable-local-or-managed",
         "hooks": true,
         "terminal": true,
         "noDuplicateFinal": true
       },
       "fixtures": {
-        "mediaPath": "/tmp/kova-source-delivery-media.mp4"
+        "mediaPath": "kova-source-delivery-media.mp4"
       },
       "providerRequests": {
         "mode": "minimum",
@@ -891,7 +891,7 @@
             "arguments": {
               "action": "send",
               "message": "KOVA_SOURCE_DELIVERY_MEDIA_THREAD_OK",
-              "media": "/tmp/kova-source-delivery-media-thread.mp4"
+              "media": "kova-source-delivery-media-thread.mp4"
             }
           }
         ],
@@ -903,14 +903,14 @@
         "kind": "media",
         "text": "KOVA_SOURCE_DELIVERY_MEDIA_THREAD_OK",
         "threadId": "kova-model-turn-thread",
-        "mediaSource": "/tmp/kova-source-delivery-media-thread.mp4",
+        "mediaSource": "kova-source-delivery-media-thread.mp4",
         "mediaSourcePolicy": "sendable-local-or-managed",
         "hooks": true,
         "terminal": true,
         "noDuplicateFinal": true
       },
       "fixtures": {
-        "mediaPath": "/tmp/kova-source-delivery-media-thread.mp4"
+        "mediaPath": "kova-source-delivery-media-thread.mp4"
       },
       "providerRequests": {
         "mode": "minimum",
