@@ -9,9 +9,6 @@
   "channels": [
     "kova-channel-probe"
   ],
-  "contracts": {
-    "imageGenerationProviders": ["kova-channel-probe"]
-  },
   "channelConfigs": {
     "kova-channel-probe": {
       "label": "Kova Channel Probe",

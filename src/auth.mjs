@@ -576,9 +576,6 @@ function mockProviderPolicy(scenario, state) {
       policy[key] = value;
     }
   }
-  if (raw.kovaMediaGeneration !== undefined) {
-    policy.kovaMediaGeneration = raw.kovaMediaGeneration === true;
-  }
   if (raw.channelWorkflowCases !== undefined) {
     policy.channelWorkflowCases = raw.channelWorkflowCases === true
       ? collectChannelWorkflowCaseOrder(scenario)
@@ -610,8 +607,7 @@ function mockProviderDisplay(policy) {
     delayMs: policy.delayMs ?? null,
     stallMs: policy.stallMs ?? null,
     errorStatus: policy.errorStatus ?? null,
-    concurrency: policy.concurrency ?? null,
-    kovaMediaGeneration: policy.kovaMediaGeneration === true
+    concurrency: policy.concurrency ?? null
   };
 }
 
@@ -622,9 +618,6 @@ function configureMockAuthCommand(envName, dir, mockProvider = {}) {
     "--port-file",
     join(dir, "port")
   ];
-  if (mockProvider.kovaMediaGeneration === true) {
-    args.push("--enable-kova-media-generation", "true");
-  }
   return ocmEnvExec(envName, args);
 }
 

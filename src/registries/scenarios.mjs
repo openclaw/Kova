@@ -102,9 +102,6 @@ function validateMockProvider(mockProvider, prefix, errors) {
   if (mockProvider.concurrency !== undefined && (!Number.isInteger(mockProvider.concurrency) || mockProvider.concurrency <= 0)) {
     errors.push(`${prefix}.concurrency must be a positive integer when set`);
   }
-  if (mockProvider.kovaMediaGeneration !== undefined && typeof mockProvider.kovaMediaGeneration !== "boolean") {
-    errors.push(`${prefix}.kovaMediaGeneration must be a boolean when set`);
-  }
   if (mockProvider.channelWorkflowCases !== undefined && typeof mockProvider.channelWorkflowCases !== "boolean") {
     errors.push(`${prefix}.channelWorkflowCases must be a boolean when set`);
   }

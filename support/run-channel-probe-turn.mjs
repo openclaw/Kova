@@ -135,7 +135,6 @@ async function runProbeCase(client, testCase) {
     ackPolicy: typeof testCase.receiveAckPolicy === "string" ? testCase.receiveAckPolicy : undefined,
     manualAck: expects.ackStage === "manual",
     requiredCapabilities: objectOrEmpty(testCase.requiredCapabilities),
-    platformScript: objectOrEmpty(testCase.platformScript),
     sourceReplyDeliveryMode: typeof testCase.sourceReplyDeliveryMode === "string" ? testCase.sourceReplyDeliveryMode : undefined,
     botLoopProtection: expects.noSelfTrigger === true
       ? createBotEchoProtection(testCase, inboundEventId, targetIdForCase(testCase.id)).firstTurnProtection
@@ -361,10 +360,6 @@ function evaluateCase(testCase, observation, injectResult) {
   const selfTriggerVisibleDeliveries = finalOutboundRecords(selfTriggerObservation);
   const selfTriggerDropped = selfTriggerObservation?.admission?.kind === "drop" &&
     selfTriggerObservation?.admission?.reason === "bot-loop-protection";
-  const recoveryExpectation = normalizeRecoveryExpectation(testCase);
-  const recovery = objectOrEmpty(observation?.recovery);
-  const platformFailures = platformFailureRecords(observation);
-  const recoveryRecords = channelRecoveryRecords(observation);
   const unhandledDeliveries = unhandledDeliveryRecords(observation);
   const ackRecords = receiveAckRecords(observation);
   const expectedAckPolicy = typeof testCase.receiveAckPolicy === "string" ? testCase.receiveAckPolicy : null;
@@ -394,10 +389,7 @@ function evaluateCase(testCase, observation, injectResult) {
     invariant(`${testCase.id}:ack-policy`, !expectedAckPolicy || ackRecords.some((record) => record.kind === "receive-context" && record.policy === expectedAckPolicy), `${testCase.id} created a receive context with ack policy ${expectedAckPolicy ?? "unspecified"}`),
     invariant(`${testCase.id}:ack-stage`, !expectedAckStage || ackRecords.some((record) => record.kind === "ack-stage" && record.stage === expectedAckStage && record.state === "acked"), `${testCase.id} acknowledged the inbound event at ${expectedAckStage ?? "unspecified"} stage`),
     invariant(`${testCase.id}:no-self-trigger`, expects.noSelfTrigger !== true || (selfTriggerDropped && selfTriggerDispatchStarts.length === 0 && selfTriggerVisibleDeliveries.length === 0), `${testCase.id} suppressed bot-authored echo before a second model turn or visible delivery`),
-    invariant(`${testCase.id}:recovery-triggered`, !recoveryExpectation.required || recovery.triggered === true, `${testCase.id} triggered OpenClaw delivery recovery`),
-    invariant(`${testCase.id}:platform-ambiguous-send`, !recoveryExpectation.required || platformFailures.length > 0, `${testCase.id} observed a platform send failure after the send attempt started`),
-    invariant(`${testCase.id}:unknown-send-reconciled`, !recoveryExpectation.required || recoveryRecords.some((record) => record.kind === "reconcile-unknown-send"), `${testCase.id} reconciled the unknown send through the channel adapter`),
-    invariant(`${testCase.id}:recovery-delivered`, !recoveryExpectation.required || recovery.recovered === true, `${testCase.id} recovered pending delivery through OpenClaw retry/drain`)
+    invariant(`${testCase.id}:no-openclaw-error`, observation?.error == null, `${testCase.id} finished without an OpenClaw turn error`)
   ];
 }
 
@@ -431,7 +423,6 @@ function normalizeWorkflowCase(entry) {
     sourceReplyDeliveryMode: typeof entry.sourceReplyDeliveryMode === "string" ? entry.sourceReplyDeliveryMode : null,
     receiveAckPolicy: typeof entry.receiveAckPolicy === "string" ? entry.receiveAckPolicy : null,
     requiredCapabilities: objectOrEmpty(entry.requiredCapabilities),
-    platformScript: objectOrEmpty(entry.platformScript),
     expects,
     fixtures: objectOrEmpty(entry.fixtures),
     providerRequests: objectOrEmpty(entry.providerRequests),
@@ -460,16 +451,6 @@ function modelTurnRecords(observation) {
   return Array.isArray(observation?.modelTurnRecords) ? observation.modelTurnRecords : [];
 }
 
-function platformFailureRecords(observation) {
-  return Array.isArray(observation?.outboundRecords)
-    ? observation.outboundRecords.filter((record) => record?.kind === "platform-send-failure")
-    : [];
-}
-
-function channelRecoveryRecords(observation) {
-  return Array.isArray(observation?.recoveryRecords) ? observation.recoveryRecords : [];
-}
-
 function unhandledDeliveryRecords(observation) {
   return Array.isArray(observation?.deliveryRecords)
     ? observation.deliveryRecords.filter((record) => record?.path === "unhandled-channel-delivery")
@@ -478,12 +459,6 @@ function unhandledDeliveryRecords(observation) {
 
 function receiveAckRecords(observation) {
   return Array.isArray(observation?.ackRecords) ? observation.ackRecords : [];
-}
-
-function normalizeRecoveryExpectation(testCase) {
-  return objectOrEmpty(testCase.platformScript).recoveryTrigger === "drain-pending-deliveries"
-    ? { required: true }
-    : { required: false };
 }
 
 function normalizeVisibleDeliveries(value) {

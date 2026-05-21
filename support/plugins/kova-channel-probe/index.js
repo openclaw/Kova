@@ -2,13 +2,8 @@ import { existsSync } from "node:fs";
 import { definePluginEntry } from "openclaw/plugin-sdk/core";
 import { resolveThreadSessionKeys } from "openclaw/plugin-sdk/routing";
 import {
-  createLiveMessageState,
   createMessageReceiveContext,
-  createPreviewMessageReceipt,
-  defineChannelMessageAdapter,
-  defineFinalizableLivePreviewAdapter,
-  deliverWithFinalizableLivePreviewAdapter,
-  markLiveMessagePreviewUpdated
+  defineChannelMessageAdapter
 } from "openclaw/plugin-sdk/channel-message";
 
 const CHANNEL_ID = "kova-channel-probe";
@@ -16,22 +11,13 @@ const ACCOUNT_ID = "default";
 const TARGET_ID = "dm:kova-probe-user";
 const TARGET_USER_ID = "kova-probe-user";
 const TARGET_DISPLAY = "Kova Probe User";
-const KOVA_IMAGE_PROVIDER_ID = "kova-channel-probe";
-const KOVA_IMAGE_MODEL_ID = "kova-image";
-const KOVA_PNG_1X1 = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
-  "base64"
-);
 
 let activeRuntime = null;
 let outboundRecords = [];
 let deliveryRecords = [];
 let ackRecords = [];
-let liveRecords = [];
 let modelTurnRecords = [];
 let probeObservations = [];
-let recoveryRecords = [];
-let activePlatformScript = null;
 
 const messageAdapter = defineChannelMessageAdapter({
   id: CHANNEL_ID,
@@ -46,28 +32,8 @@ const messageAdapter = defineChannelMessageAdapter({
       nativeQuote: true,
       messageSendingHooks: true,
       batch: true,
-      reconcileUnknownSend: true,
       afterSendSuccess: true,
       afterCommit: true
-    },
-    reconcileUnknownSend: async (ctx) => reconcileProbeUnknownSend(ctx)
-  },
-  live: {
-    capabilities: {
-      draftPreview: true,
-      previewFinalization: true,
-      progressUpdates: true,
-      nativeStreaming: true,
-      quietFinalization: true
-    },
-    finalizer: {
-      capabilities: {
-        finalEdit: true,
-        normalFallback: true,
-        discardPending: true,
-        previewReceipt: true,
-        retainOnAmbiguousFailure: true
-      }
     }
   },
   receive: {
@@ -223,9 +189,6 @@ export default definePluginEntry({
   description: "OpenClaw channel probe fixture used by Kova.",
   register(api) {
     api.registerChannel(plugin);
-    if (typeof api.registerImageGenerationProvider === "function") {
-      api.registerImageGenerationProvider(buildKovaImageGenerationProvider());
-    }
     api.registerGatewayMethod(
       "kova.channelProbe.status",
       ({ respond }) => {
@@ -271,24 +234,6 @@ export default definePluginEntry({
       { scope: "operator.write" }
     );
     api.registerGatewayMethod(
-      "kova.channelProbe.livePreview",
-      async ({ params, respond }) => {
-        try {
-          const result = await runProbeLivePreview(params);
-          respond(true, result);
-        } catch (error) {
-          respond(true, {
-            ok: false,
-            schemaVersion: "kova.channelProbe.livePreviewResult.v1",
-            channelId: CHANNEL_ID,
-            accountId: activeRuntime?.accountId ?? null,
-            error: error instanceof Error ? error.message : String(error)
-          });
-        }
-      },
-      { scope: "operator.write" }
-    );
-    api.registerGatewayMethod(
       "kova.channelProbe.observations",
       ({ respond }) => {
         respond(true, {
@@ -308,203 +253,8 @@ function resetProbeState() {
   outboundRecords = [];
   deliveryRecords = [];
   ackRecords = [];
-  liveRecords = [];
   modelTurnRecords = [];
   probeObservations = [];
-  recoveryRecords = [];
-}
-
-async function runProbeLivePreview(params = {}) {
-  if (!activeRuntime?.channelRuntime) {
-    throw new Error("kova channel probe runtime is not started");
-  }
-  const caseId = requiredProbeString(params.caseId, "caseId");
-  const mode = requiredProbeString(params.mode, "mode");
-  if (!["final-edit", "normal-fallback", "retain-ambiguous-failure"].includes(mode)) {
-    throw new Error(`kova channel probe live mode is unsupported: ${mode}`);
-  }
-  const targetId = optionalProbeString(params.targetId) ?? TARGET_ID;
-  const text = optionalProbeString(params.text) ?? "KOVA_LIVE_PREVIEW_FINAL_OK";
-  const previewId = `kova-live-preview-${caseId}-${Date.now()}`;
-  const beforeLive = liveRecords.length;
-  const startedAtEpochMs = Date.now();
-  let result = null;
-  let error = null;
-
-  try {
-    const previewReceipt = createPreviewMessageReceipt({ id: previewId });
-    const firstRendered = createProbeRenderedTextBatch("KOVA_LIVE_PREVIEW_DRAFT");
-    const liveState = markLiveMessagePreviewUpdated(
-      createLiveMessageState({ receipt: previewReceipt, canFinalizeInPlace: true }),
-      firstRendered
-    );
-    liveRecords.push({
-      kind: "draft-preview",
-      caseId,
-      targetId,
-      previewId,
-      phase: liveState.phase,
-      canFinalizeInPlace: liveState.canFinalizeInPlace,
-      text: firstRendered.payloads[0]?.text ?? null,
-      atEpochMs: Date.now()
-    });
-    const progressRendered = createProbeRenderedTextBatch("KOVA_LIVE_PREVIEW_PROGRESS");
-    const progressState = markLiveMessagePreviewUpdated(liveState, progressRendered);
-    liveRecords.push({
-      kind: "progress-update",
-      caseId,
-      targetId,
-      previewId,
-      phase: progressState.phase,
-      canFinalizeInPlace: progressState.canFinalizeInPlace,
-      text: progressRendered.payloads[0]?.text ?? null,
-      transport: "native",
-      atEpochMs: Date.now()
-    });
-
-    result = await deliverWithFinalizableLivePreviewAdapter({
-      kind: "final",
-      payload: { text },
-      liveState: progressState,
-      adapter: defineFinalizableLivePreviewAdapter({
-        draft: createProbeLivePreviewDraft({ caseId, previewId }),
-        buildFinalEdit: (payload) => mode === "normal-fallback" ? undefined : { text: payload.text },
-        editFinal: async (id, edit) => {
-          liveRecords.push({
-            kind: "final-edit",
-            caseId,
-            previewId: id,
-            edit,
-            atEpochMs: Date.now()
-          });
-          if (mode === "retain-ambiguous-failure") {
-            throw new Error("kova live preview edit failed after platform attempt started");
-          }
-        },
-        createPreviewReceipt: (id, edit) => {
-          const receipt = createPreviewMessageReceipt({ id, raw: { edit } });
-          liveRecords.push({
-            kind: "preview-receipt",
-            caseId,
-            previewId: id,
-            messageId: receipt.primaryPlatformMessageId,
-            atEpochMs: Date.now()
-          });
-          return receipt;
-        },
-        onPreviewFinalized: (id, receipt, state) => {
-          liveRecords.push({
-            kind: "preview-finalized",
-            caseId,
-            previewId: id,
-            messageId: receipt.primaryPlatformMessageId,
-            phase: state.phase,
-            canFinalizeInPlace: state.canFinalizeInPlace,
-            atEpochMs: Date.now()
-          });
-        },
-        handlePreviewEditError: () => mode === "retain-ambiguous-failure" ? "retain" : "fallback",
-        logPreviewEditFailure: (caught) => {
-          liveRecords.push({
-            kind: "preview-edit-failure",
-            caseId,
-            previewId,
-            error: caught instanceof Error ? caught.message : String(caught),
-            atEpochMs: Date.now()
-          });
-        }
-      }),
-      deliverNormally: async (payload) => {
-        liveRecords.push({
-          kind: "normal-delivery",
-          caseId,
-          targetId,
-          text: payload?.text ?? null,
-          atEpochMs: Date.now()
-        });
-        return true;
-      },
-      onNormalDelivered: () => {
-        liveRecords.push({
-          kind: "normal-delivered",
-          caseId,
-          targetId,
-          atEpochMs: Date.now()
-        });
-      }
-    });
-  } catch (caught) {
-    error = caught instanceof Error ? caught : new Error(String(caught));
-  }
-
-  const finishedAtEpochMs = Date.now();
-  return {
-    ok: error === null,
-    schemaVersion: "kova.channelProbe.livePreviewResult.v1",
-    channelId: CHANNEL_ID,
-    accountId: activeRuntime.accountId,
-    observation: {
-      schemaVersion: "kova.channelProbe.livePreviewObservation.v1",
-      channelId: CHANNEL_ID,
-      accountId: activeRuntime.accountId,
-      caseId,
-      mode,
-      targetId,
-      resultKind: result?.kind ?? null,
-      liveState: compactLiveState(result?.liveState),
-      error: error?.message ?? null,
-      startedAtEpochMs,
-      finishedAtEpochMs,
-      durationMs: Math.max(0, finishedAtEpochMs - startedAtEpochMs),
-      liveRecords: liveRecords.slice(beforeLive)
-    }
-  };
-}
-
-function createProbeLivePreviewDraft({ caseId, previewId }) {
-  return {
-    flush: async () => {
-      liveRecords.push({ kind: "draft-flush", caseId, previewId, atEpochMs: Date.now() });
-    },
-    id: () => previewId,
-    seal: async () => {
-      liveRecords.push({ kind: "draft-seal", caseId, previewId, atEpochMs: Date.now() });
-    },
-    discardPending: async () => {
-      liveRecords.push({ kind: "discard-pending", caseId, previewId, atEpochMs: Date.now() });
-    },
-    clear: async () => {
-      liveRecords.push({ kind: "draft-clear", caseId, previewId, atEpochMs: Date.now() });
-    }
-  };
-}
-
-function createProbeRenderedTextBatch(text) {
-  return {
-    payloads: [{ text }],
-    plan: {
-      payloadCount: 1,
-      textCount: 1,
-      mediaCount: 0,
-      voiceCount: 0,
-      presentationCount: 0,
-      interactiveCount: 0,
-      channelDataCount: 0,
-      items: [{ index: 0, kinds: ["text"], text, mediaUrls: [] }]
-    }
-  };
-}
-
-function compactLiveState(state) {
-  if (!state || typeof state !== "object") {
-    return null;
-  }
-  return {
-    phase: state.phase ?? null,
-    canFinalizeInPlace: state.canFinalizeInPlace === true,
-    receiptMessageId: state.receipt?.primaryPlatformMessageId ?? null,
-    lastRenderedText: state.lastRendered?.payloads?.[0]?.text ?? null
-  };
 }
 
 async function injectProbeInbound(params = {}) {
@@ -520,7 +270,6 @@ async function injectProbeInbound(params = {}) {
   const silent = params.silent === true;
   const sourceReplyDeliveryMode = optionalProbeString(params.sourceReplyDeliveryMode);
   const requiredCapabilities = objectOrNull(params.requiredCapabilities);
-  const platformScript = objectOrNull(params.platformScript);
   const senderId = optionalProbeString(params.senderId) ?? TARGET_USER_ID;
   const senderName = optionalProbeString(params.senderName) ?? TARGET_DISPLAY;
   const from = optionalProbeString(params.from) ?? targetId;
@@ -532,53 +281,35 @@ async function injectProbeInbound(params = {}) {
   const startedAtEpochMs = Date.now();
   let turn = null;
   let error = null;
-  let recovery = null;
-  const previousPlatformScript = activePlatformScript;
-  activePlatformScript = createPlatformScript(platformScript, { inboundEventId });
   const receiveContext = createProbeReceiveContext({
     id: inboundEventId,
     message,
     ackPolicy: optionalProbeString(params.ackPolicy)
   });
 
+  await maybeAckProbeReceiveContext(receiveContext, "receive_record");
   try {
-    await maybeAckProbeReceiveContext(receiveContext, "receive_record");
-    try {
-      turn = await runOpenClawModelTurn({
-        message,
-        inboundEventId,
-        targetId,
-        replyToId,
-        threadId,
-        silent,
-        sourceReplyDeliveryMode,
-        from,
-        senderId,
-        senderName,
-        botLoopProtection,
-        requiredCapabilities
-      });
-      await maybeAckProbeReceiveContext(receiveContext, "agent_dispatch");
-      await maybeAckProbeReceiveContext(receiveContext, "durable_send");
-      if (params.manualAck === true) {
-        await ackProbeReceiveContext(receiveContext, "manual");
-      }
-    } catch (caught) {
-      error = caught instanceof Error ? caught : new Error(String(caught));
+    turn = await runOpenClawModelTurn({
+      message,
+      inboundEventId,
+      targetId,
+      replyToId,
+      threadId,
+      silent,
+      sourceReplyDeliveryMode,
+      from,
+      senderId,
+      senderName,
+      botLoopProtection,
+      requiredCapabilities
+    });
+    await maybeAckProbeReceiveContext(receiveContext, "agent_dispatch");
+    await maybeAckProbeReceiveContext(receiveContext, "durable_send");
+    if (params.manualAck === true) {
+      await ackProbeReceiveContext(receiveContext, "manual");
     }
-    if (shouldDrainPendingDeliveries(platformScript)) {
-      recovery = await drainProbePendingDeliveries({
-        targetId,
-        inboundEventId,
-        startedAtEpochMs,
-        initialError: error?.message ?? null
-      });
-      if (recovery?.recovered === true) {
-        error = null;
-      }
-    }
-  } finally {
-    activePlatformScript = previousPlatformScript;
+  } catch (caught) {
+    error = caught instanceof Error ? caught : new Error(String(caught));
   }
 
   const finishedAtEpochMs = Date.now();
@@ -608,16 +339,14 @@ async function injectProbeInbound(params = {}) {
     dispatched: turn?.dispatched === true,
     admission: turn?.admission ?? null,
     error: terminalError,
-    initialError: recovery?.initialError ?? terminalError,
-    recovery,
+    initialError: terminalError,
     startedAtEpochMs,
     finishedAtEpochMs,
     durationMs: Math.max(0, finishedAtEpochMs - startedAtEpochMs),
     outboundRecords: outboundRecords.slice(beforeOutbound),
     deliveryRecords: deliveryRecords.slice(beforeDelivery),
     ackRecords: ackRecords.slice(beforeAck),
-    modelTurnRecords: modelTurnRecords.slice(beforeRecords),
-    recoveryRecords: recoveryRecords.filter((record) => record.inboundEventId === inboundEventId)
+    modelTurnRecords: modelTurnRecords.slice(beforeRecords)
   };
   probeObservations.push(observation);
   return {
@@ -730,154 +459,6 @@ function optionalProbeString(value) {
 
 function objectOrNull(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : null;
-}
-
-function createPlatformScript(script, { inboundEventId }) {
-  if (!script) {
-    return null;
-  }
-  return {
-    inboundEventId,
-    failFirstSendAfterStart: script.firstSend === "error-after-platform-start",
-    reconcileUnknownSend: optionalProbeString(script.reconcileUnknownSend),
-    failedFirstSend: false
-  };
-}
-
-function shouldDrainPendingDeliveries(script) {
-  return objectOrNull(script)?.recoveryTrigger === "drain-pending-deliveries";
-}
-
-async function reconcileProbeUnknownSend(ctx) {
-  const policy = activePlatformScript?.reconcileUnknownSend ?? "unresolved";
-  const record = {
-    kind: "reconcile-unknown-send",
-    queueId: ctx.queueId,
-    channel: ctx.channel,
-    to: ctx.to,
-    accountId: ctx.accountId ?? null,
-    threadId: ctx.threadId ?? null,
-    replyToId: ctx.replyToId ?? null,
-    payloadCount: Array.isArray(ctx.payloads) ? ctx.payloads.length : 0,
-    policy,
-    inboundEventId: activePlatformScript?.inboundEventId ?? null,
-    atEpochMs: Date.now()
-  };
-  recoveryRecords.push(record);
-  if (policy === "not_sent") {
-    return { status: "not_sent" };
-  }
-  if (policy === "sent") {
-    const receipt = createReceipt(`kova-reconciled-${ctx.queueId}`, "text", {
-      threadId: ctx.threadId == null ? undefined : String(ctx.threadId),
-      replyToId: ctx.replyToId ?? undefined
-    });
-    return {
-      status: "sent",
-      receipt,
-      messageId: receipt.primaryPlatformMessageId
-    };
-  }
-  return {
-    status: "unresolved",
-    error: "kova probe unknown-send reconciliation unresolved",
-    retryable: true
-  };
-}
-
-async function drainProbePendingDeliveries({ targetId, inboundEventId, startedAtEpochMs, initialError }) {
-  const beforeOutbound = outboundRecords.length;
-  const beforeRecovery = recoveryRecords.length;
-  const result = {
-    trigger: "drain-pending-deliveries",
-    triggered: true,
-    recovered: false,
-    error: null,
-    initialError,
-    outboundRecordOffset: beforeOutbound,
-    recoveryRecordOffset: beforeRecovery,
-    startedAtEpochMs: Date.now(),
-    finishedAtEpochMs: null,
-    durationMs: null
-  };
-  try {
-    const { drainPendingDeliveries } = await import("openclaw/plugin-sdk/delivery-queue-runtime");
-    await drainPendingDeliveries({
-      drainKey: `${CHANNEL_ID}:${ACCOUNT_ID}:${inboundEventId}`,
-      logLabel: "Kova channel probe delivery drain",
-      cfg: activeRuntime.cfg,
-      log: {
-        info: (message) => recoveryRecords.push({ kind: "delivery-drain-log", level: "info", inboundEventId, message, atEpochMs: Date.now() }),
-        warn: (message) => recoveryRecords.push({ kind: "delivery-drain-log", level: "warn", inboundEventId, message, atEpochMs: Date.now() }),
-        error: (message) => recoveryRecords.push({ kind: "delivery-drain-log", level: "error", inboundEventId, message, atEpochMs: Date.now() })
-      },
-      selectEntry: (entry) => ({
-        match:
-          entry.channel === CHANNEL_ID &&
-          entry.accountId === ACCOUNT_ID &&
-          entry.to === targetId &&
-          entry.enqueuedAt >= startedAtEpochMs - 1_000,
-        bypassBackoff: true
-      })
-    });
-    result.recovered = outboundRecords.slice(beforeOutbound).some((record) =>
-      record.kind === "text" || record.kind === "media" || record.kind === "payload"
-    );
-  } catch (error) {
-    result.error = error instanceof Error ? error.message : String(error);
-  } finally {
-    result.finishedAtEpochMs = Date.now();
-    result.durationMs = Math.max(0, result.finishedAtEpochMs - result.startedAtEpochMs);
-  }
-  return result;
-}
-
-function buildKovaImageGenerationProvider() {
-  return {
-    id: KOVA_IMAGE_PROVIDER_ID,
-    label: "Kova Channel Probe Image Provider",
-    defaultModel: KOVA_IMAGE_MODEL_ID,
-    models: [KOVA_IMAGE_MODEL_ID],
-    capabilities: {
-      generate: {
-        maxCount: 4,
-        supportsSize: false,
-        supportsAspectRatio: false,
-        supportsResolution: false
-      },
-      edit: {
-        enabled: false,
-        maxCount: 0,
-        maxInputImages: 0,
-        supportsSize: false,
-        supportsAspectRatio: false,
-        supportsResolution: false
-      },
-      output: {
-        formats: ["png"]
-      }
-    },
-    isConfigured: () => true,
-    generateImage: async (req) => {
-      const count = Number.isInteger(req.count) && req.count > 0 ? Math.min(req.count, 4) : 1;
-      return {
-        images: Array.from({ length: count }, (_, index) => ({
-          buffer: KOVA_PNG_1X1,
-          mimeType: "image/png",
-          fileName: `kova-generated-image-${index + 1}.png`,
-          revisedPrompt: req.prompt,
-          metadata: {
-            kovaProvider: true,
-            prompt: req.prompt
-          }
-        })),
-        model: req.model || KOVA_IMAGE_MODEL_ID,
-        metadata: {
-          kovaProvider: true
-        }
-      };
-    }
-  };
 }
 
 async function runOpenClawModelTurn({
@@ -1001,22 +582,6 @@ function resolveThreadedRoute(route, threadId) {
 }
 
 async function recordOutbound(kind, ctx) {
-  if (activePlatformScript?.failFirstSendAfterStart === true && activePlatformScript.failedFirstSend !== true) {
-    activePlatformScript.failedFirstSend = true;
-    outboundRecords.push({
-      kind: "platform-send-failure",
-      attemptedKind: kind,
-      to: ctx.to ?? null,
-      text: ctx.text ?? null,
-      mediaUrl: ctx.mediaUrl ?? null,
-      silent: ctx.silent ?? false,
-      threadId: ctx.threadId ?? null,
-      replyToId: ctx.replyToId ?? null,
-      error: "kova probe platform send failed after the send attempt started",
-      atEpochMs: Date.now()
-    });
-    throw new Error("kova probe platform send failed after the send attempt started");
-  }
   const messageId = `kova-${kind}-${outboundRecords.length + 1}`;
   const receipt = createReceipt(messageId, kind, {
     threadId: ctx.threadId == null ? undefined : String(ctx.threadId),
