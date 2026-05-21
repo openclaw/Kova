@@ -215,6 +215,20 @@ async function runWorkflowProofs(adapter, channel, catalog) {
   const results = [];
   for (const caseId of channel.workflowCaseIds ?? []) {
     const testCase = cases.get(caseId);
+    if (testCase && !canProveWorkflowWithAdapterSendShim(testCase)) {
+      results.push({
+        id: caseId,
+        group: "workflow",
+        capabilityId: caseId,
+        workflow: testCase.workflow ?? null,
+        userAction: testCase.userAction ?? null,
+        atoms: testCase.atoms ?? [],
+        status: "missing",
+        reason: `${caseId} requires OpenClaw runtime workflow proof; direct adapter send shim only proves platform send mapping`,
+        result: null
+      });
+      continue;
+    }
     results.push(await captureProof({
       id: caseId,
       group: "workflow",
@@ -226,6 +240,10 @@ async function runWorkflowProofs(adapter, channel, catalog) {
     }));
   }
   return results;
+}
+
+function canProveWorkflowWithAdapterSendShim(testCase) {
+  return testCase?.inventoryWorkflow === "final-delivery";
 }
 
 async function runWorkflowCase(adapter, testCase) {
