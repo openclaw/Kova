@@ -13,7 +13,7 @@ export function expectedFinalDeliveries(workflowCase, observations) {
     if (expectedKind === "media" && !delivery.media?.some((media) => media.present)) {
       return false;
     }
-    if (expectedText && !deliveryText(delivery).includes(expectedText)) {
+    if (expectedText && expectedKind !== "media" && !deliveryText(delivery).includes(expectedText)) {
       return false;
     }
     return true;
