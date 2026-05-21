@@ -234,7 +234,7 @@
       "inventoryWorkflow": "final-delivery",
       "matrix": {
         "content": "media",
-        "route": "reply",
+        "route": "direct",
         "delivery": "final",
         "lifecycle": "success"
       },
@@ -249,7 +249,7 @@
         "visibleDeliveries": 1,
         "kind": "media",
         "text": "KOVA_AGENT_MEDIA_OK",
-        "replyTo": "inbound-message",
+        "replyTo": "none",
         "mediaSource": "/tmp/kova-channel-model-turn-media.png",
         "mediaSourcePolicy": "exact",
         "terminal": true
@@ -327,7 +327,7 @@
       "ownerArea": "OpenClaw channel runtime",
       "prompt": "Create a launch image as a reply in this thread.",
       "providerScript": {
-        "finalText": "MEDIA:/tmp/kova-channel-model-turn-media-reply-thread.png\nKOVA_AGENT_MEDIA_REPLY_THREAD_OK"
+        "finalText": "[[reply_to_current]]\nMEDIA:/tmp/kova-channel-model-turn-media-reply-thread.png\nKOVA_AGENT_MEDIA_REPLY_THREAD_OK"
       },
       "expects": {
         "visibleDeliveries": 1,
@@ -440,21 +440,32 @@
     },
     {
       "id": "silent-final",
-      "workflow": "final-text-silent",
-      "inventoryWorkflow": "final-delivery",
+      "workflow": "source-visible-delivery-silent",
+      "inventoryWorkflow": "source-visible-delivery",
       "matrix": {
         "content": "text",
         "route": "direct",
-        "delivery": "final",
+        "delivery": "message-tool-only-source-delivery",
         "lifecycle": "success"
       },
       "userAction": "user triggers a quiet channel response and OpenClaw sends it without noisy notification intent",
-      "openclawSurface": "channel inbound direct message",
-      "ownerArea": "OpenClaw channel runtime",
+      "openclawSurface": "channel inbound direct message with source conversation delivery",
+      "ownerArea": "OpenClaw source delivery runtime",
       "prompt": "Send a quiet deployment reminder.",
       "providerScript": {
-        "finalText": "KOVA_AGENT_SILENT_OK"
+        "toolCalls": [
+          {
+            "name": "message",
+            "arguments": {
+              "action": "send",
+              "message": "KOVA_AGENT_SILENT_OK",
+              "silent": true
+            }
+          }
+        ],
+        "finalText": "KOVA_SOURCE_DELIVERY_PRIVATE_DONE"
       },
+      "sourceReplyDeliveryMode": "message_tool_only",
       "expects": {
         "visibleDeliveries": 1,
         "kind": "text",
