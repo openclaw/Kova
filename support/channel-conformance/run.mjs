@@ -8,6 +8,7 @@ import { countProviderRequests, resetProviderScriptForCase } from "./provider-sc
 import { waitForCaseObservations } from "./observations.mjs";
 import { evaluateWorkflowCase } from "./evaluator.mjs";
 import { prepareWorkflowFixtures } from "./fixtures.mjs";
+import { validateChannelDriver } from "./driver-contract.mjs";
 
 const repoRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const args = parseSupportArgs(process.argv.slice(2));
@@ -113,22 +114,7 @@ async function loadChannelDriver(id) {
   } catch (error) {
     throw new Error(`channel driver '${id}' is unavailable at ${modulePath}: ${error.message}`);
   }
-  const required = [
-    "startPlatform",
-    "configureOpenClaw",
-    "startOpenClaw",
-    "enqueueUserEvent",
-    "enqueueBotEcho",
-    "readPlatformCalls",
-    "normalizeObservations",
-    "stopPlatform"
-  ];
-  for (const name of required) {
-    if (typeof mod[name] !== "function") {
-      throw new Error(`channel driver '${id}' does not export ${name}()`);
-    }
-  }
-  return mod;
+  return validateChannelDriver(mod, id);
 }
 
 function selectWorkflowCases({ channelRegistry, workflowCatalog, caseSet: requestedCaseSet }) {
