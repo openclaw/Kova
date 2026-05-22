@@ -25,14 +25,39 @@ export function normalizeTelegramObservations({ inbound, calls }) {
 
 function summarizeNativeCalls(calls, deliveryCount) {
   const byMethod = {};
+  const byAction = {};
   for (const call of calls) {
     byMethod[call.method] = (byMethod[call.method] ?? 0) + 1;
+    for (const action of nativeActionsForMethod(call.method)) {
+      byAction[action] = (byAction[action] ?? 0) + 1;
+    }
   }
   return {
     count: calls.length,
     deliveryCount,
-    byMethod
+    byMethod,
+    byAction
   };
+}
+
+function nativeActionsForMethod(method) {
+  return {
+    sendMessage: ["action-send"],
+    sendPhoto: ["action-send"],
+    sendVideo: ["action-send"],
+    sendVideoNote: ["action-send"],
+    sendAudio: ["action-send"],
+    sendVoice: ["action-send"],
+    sendDocument: ["action-send"],
+    sendAnimation: ["action-send"],
+    sendPoll: ["action-poll"],
+    setMessageReaction: ["action-react"],
+    deleteMessage: ["action-delete"],
+    editMessageText: ["action-edit"],
+    createForumTopic: ["action-topic-create"],
+    editForumTopic: ["action-topic-edit"],
+    pinChatMessage: ["delivery-pin"]
+  }[method] ?? [];
 }
 
 function normalizeDelivery(call) {

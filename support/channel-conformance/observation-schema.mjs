@@ -172,6 +172,16 @@ function nativeCallSummaryErrors(summary) {
       }
     }
   }
+  if (!isObject(summary.byAction)) {
+    errors.push("nativeCallSummary.byAction must be an object");
+  } else {
+    for (const [action, count] of Object.entries(summary.byAction)) {
+      if (!isNonEmptyString(action) || !Number.isInteger(count) || count < 0) {
+        errors.push("nativeCallSummary.byAction values must be non-negative integers keyed by action");
+        break;
+      }
+    }
+  }
   return errors;
 }
 

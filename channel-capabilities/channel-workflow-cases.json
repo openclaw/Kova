@@ -748,9 +748,9 @@
         "visibleDeliveries": 1,
         "kind": "text",
         "text": "KOVA_TELEGRAM_PRESENTATION_PIN_OK",
-        "nativeCalls": {
-          "sendMessage": 1,
-          "pinChatMessage": 1
+        "nativeActions": {
+          "action-send": 1,
+          "delivery-pin": 1
         },
         "terminal": true,
         "noDuplicateFinal": true
@@ -799,8 +799,8 @@
         "visibleDeliveries": 1,
         "kind": "poll",
         "text": "Is the launch ready?",
-        "nativeCalls": {
-          "sendPoll": 1
+        "nativeActions": {
+          "action-poll": 1
         },
         "terminal": true,
         "noDuplicateFinal": true
@@ -842,8 +842,8 @@
       "sourceReplyDeliveryMode": "message_tool_only",
       "expects": {
         "visibleDeliveries": 0,
-        "nativeCalls": {
-          "setMessageReaction": 1
+        "nativeActions": {
+          "action-react": 1
         },
         "terminal": true
       },
@@ -885,8 +885,8 @@
       "sourceReplyDeliveryMode": "message_tool_only",
       "expects": {
         "visibleDeliveries": 0,
-        "nativeCalls": {
-          "deleteMessage": 1
+        "nativeActions": {
+          "action-delete": 1
         },
         "terminal": true
       },
@@ -929,8 +929,8 @@
       "sourceReplyDeliveryMode": "message_tool_only",
       "expects": {
         "visibleDeliveries": 0,
-        "nativeCalls": {
-          "editMessageText": 1
+        "nativeActions": {
+          "action-edit": 1
         },
         "terminal": true
       },
@@ -973,8 +973,8 @@
       "expects": {
         "visibleDeliveries": 0,
         "threadId": "12",
-        "nativeCalls": {
-          "createForumTopic": 1
+        "nativeActions": {
+          "action-topic-create": 1
         },
         "terminal": true
       },
@@ -1018,8 +1018,8 @@
       "expects": {
         "visibleDeliveries": 0,
         "threadId": "12",
-        "nativeCalls": {
-          "editForumTopic": 1
+        "nativeActions": {
+          "action-topic-edit": 1
         },
         "terminal": true
       },

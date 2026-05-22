@@ -12,13 +12,13 @@ export function evaluateWorkflowCase({
   const expectsVisibleDelivery = expectedVisible > 0;
   const expectedText = typeof expects.text === "string" ? expects.text : null;
   const providerPolicy = objectOrEmpty(workflowCase.providerRequests);
-  const nativeCalls = objectOrEmpty(expects.nativeCalls);
+  const nativeActions = objectOrEmpty(expects.nativeActions);
   return [
     invariant(`${workflowCase.id}:provider-work`, providerRequestsMatch(providerPolicy, providerRequestsDelta), providerRequestReason(workflowCase.id, providerPolicy, providerRequestsDelta)),
     invariant(`${workflowCase.id}:visible-delivery-count`, finalVisible.length === expectedVisible, `${workflowCase.id} produced ${expectedVisible} final visible delivery; observed ${finalVisible.length}`),
     invariant(`${workflowCase.id}:expected-kind`, expectedVisible === 0 || expectedKindMatches(expects.kind, finalVisible), `${workflowCase.id} produced ${expects.kind ?? "visible"} output`),
     invariant(`${workflowCase.id}:expected-text`, !expectedText || finalVisible.some((delivery) => deliveryText(delivery).includes(expectedText)), `${workflowCase.id} preserved expected text or caption`),
-    invariant(`${workflowCase.id}:native-calls`, nativeCallsMatch(nativeCalls, observations), nativeCallsReason(workflowCase.id, nativeCalls, observations)),
+    invariant(`${workflowCase.id}:native-actions`, nativeActionsMatch(nativeActions, observations), nativeActionsReason(workflowCase.id, nativeActions, observations)),
     invariant(`${workflowCase.id}:route`, !expectsVisibleDelivery || !requiresRoutePreservation(workflowCase) || finalVisible.every((delivery) => delivery.route?.key === observations.inbound?.route?.key), `${workflowCase.id} preserved the inbound route`),
     invariant(`${workflowCase.id}:reply-target`, !expectsVisibleDelivery || !requiresReplyPreservation(workflowCase) || finalVisible.some((delivery) => delivery.replyTo?.key === observations.inbound?.messageKey), `${workflowCase.id} preserved the reply target`),
     invariant(`${workflowCase.id}:silent`, expects.silent !== true || finalVisible.every((delivery) => delivery.silent === true), `${workflowCase.id} preserved silent delivery intent`),
@@ -57,24 +57,24 @@ function expectedKindMatches(expectedKind, visible) {
   return visible.length > 0;
 }
 
-function nativeCallsMatch(expected, observations) {
+function nativeActionsMatch(expected, observations) {
   const entries = Object.entries(expected);
   if (entries.length === 0) {
     return true;
   }
-  const byMethod = objectOrEmpty(observations?.nativeCallSummary?.byMethod);
-  return entries.every(([method, count]) => Number(byMethod[method] ?? 0) >= count);
+  const byAction = objectOrEmpty(observations?.nativeCallSummary?.byAction);
+  return entries.every(([action, count]) => Number(byAction[action] ?? 0) >= count);
 }
 
-function nativeCallsReason(caseId, expected, observations) {
+function nativeActionsReason(caseId, expected, observations) {
   const entries = Object.entries(expected);
   if (entries.length === 0) {
-    return `${caseId} has no native call expectation`;
+    return `${caseId} has no native action expectation`;
   }
-  const byMethod = objectOrEmpty(observations?.nativeCallSummary?.byMethod);
-  const expectedText = entries.map(([method, count]) => `${method}:${count}`).join(", ");
-  const observedText = entries.map(([method]) => `${method}:${byMethod[method] ?? 0}`).join(", ");
-  return `${caseId} made at least expected native platform calls (${expectedText}); observed ${observedText}`;
+  const byAction = objectOrEmpty(observations?.nativeCallSummary?.byAction);
+  const expectedText = entries.map(([action, count]) => `${action}:${count}`).join(", ");
+  const observedText = entries.map(([action]) => `${action}:${byAction[action] ?? 0}`).join(", ");
+  return `${caseId} made at least expected native platform actions (${expectedText}); observed ${observedText}`;
 }
 
 function deliveryText(delivery) {
