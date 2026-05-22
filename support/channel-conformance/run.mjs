@@ -9,6 +9,7 @@ import { waitForCaseObservations } from "./observations.mjs";
 import { evaluateWorkflowCase } from "./evaluator.mjs";
 import { prepareWorkflowFixtures } from "./fixtures.mjs";
 import { validateChannelDriver } from "./driver-contract.mjs";
+import { assertValidObservationSet } from "./observation-schema.mjs";
 
 const repoRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const args = parseSupportArgs(process.argv.slice(2));
@@ -153,12 +154,14 @@ async function runWorkflowCase({ driver, workflowCase, platform }) {
       normalizeObservations: (params) => driver.normalizeObservations(params),
       timeoutMs
     });
+    assertValidObservationSet(observations, { caseId: workflowCase.id });
     const providerRequestsBeforeEcho = await countProviderRequests({ artifactDir });
     if (workflowCase.expects?.noSelfTrigger === true) {
       await driver.enqueueBotEcho({ workflowCase, platform, inbound, observations });
       await sleep(1500);
       const calls = await driver.readPlatformCalls({ platform });
       observations = await driver.normalizeObservations({ workflowCase, platform, inbound, calls: calls.slice(callCursor) });
+      assertValidObservationSet(observations, { caseId: workflowCase.id });
     }
     const providerRequestCountAfter = await countProviderRequests({ artifactDir });
     const providerRequestsDelta = providerRequestCountAfter - providerRequestCountBefore;
