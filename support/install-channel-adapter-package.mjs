@@ -2,10 +2,11 @@
 
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseSupportArgs, readTimeoutMs } from "./openclaw-runtime.mjs";
+import { loadChannelCapabilities } from "../src/registries/channel-capabilities.mjs";
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const startedAtEpochMs = Date.now();
@@ -17,7 +18,7 @@ try {
   const channelId = requiredArg(args, "channel");
   const targetRepo = args["target-repo"] ?? "";
   const timeoutMs = readTimeoutMs(args["timeout-ms"], 120000);
-  const registry = JSON.parse(await readFile(join(repoRoot, "channel-capabilities", `${channelId}.json`), "utf8"));
+  const registry = (await loadChannelCapabilities(channelId))[0];
   const distribution = registry.adapterDistribution;
 
   assertSafeKovaEnv(envName);

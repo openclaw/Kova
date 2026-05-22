@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
@@ -9,6 +9,8 @@ import {
   prepareOpenClawRuntimeFromOcmEnv,
   readTimeoutMs
 } from "./openclaw-runtime.mjs";
+import { loadChannelCapabilities } from "../src/registries/channel-capabilities.mjs";
+import { loadChannelCapabilityCatalog } from "../src/registries/channel-capability-catalog.mjs";
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const args = parseSupportArgs(process.argv.slice(2));
@@ -18,8 +20,8 @@ const channelId = args.channel ?? "telegram";
 const timeoutMs = readTimeoutMs(args["timeout-ms"], 120000);
 const continueOnFailure = args["continue-on-failure"] === "true";
 const artifactPath = join(artifactDir, `channel-adapter-conformance-${safeArtifactSegment(channelId)}.json`);
-const openClawCatalog = JSON.parse(await readFile(join(repoRoot, "channel-capabilities", "openclaw-message.json"), "utf8"));
-const channelRegistry = JSON.parse(await readFile(join(repoRoot, "channel-capabilities", `${channelId}.json`), "utf8"));
+const openClawCatalog = (await loadChannelCapabilityCatalog("openclaw-message"))[0];
+const channelRegistry = (await loadChannelCapabilities(channelId))[0];
 
 let result;
 try {

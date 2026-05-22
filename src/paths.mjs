@@ -11,6 +11,7 @@ export const processRolesDir = join(repoRoot, "process-roles");
 export const metricsDir = join(repoRoot, "metrics");
 export const channelCapabilitiesDir = join(repoRoot, "channel-capabilities");
 export const channelWorkflowFamiliesDir = join(channelCapabilitiesDir, "workflows");
+export const channelPlatformsDir = join(channelCapabilitiesDir, "platforms");
 export const kovaHome = resolveKovaHome();
 export const credentialsDir = join(kovaHome, "credentials");
 export const providersPath = join(credentialsDir, "providers.json");

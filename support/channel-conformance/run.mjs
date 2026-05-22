@@ -10,6 +10,7 @@ import { evaluateWorkflowCase } from "./evaluator.mjs";
 import { prepareWorkflowFixtures } from "./fixtures.mjs";
 import { validateChannelDriver } from "./driver-contract.mjs";
 import { assertValidObservationSet } from "./observation-schema.mjs";
+import { loadChannelCapabilities } from "../../src/registries/channel-capabilities.mjs";
 import { loadChannelWorkflowCaseCatalog } from "../../src/registries/channel-workflow-cases.mjs";
 
 const repoRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
@@ -28,7 +29,7 @@ let driver = null;
 let platform = null;
 try {
   driver = await loadChannelDriver(channelId);
-  const channelRegistry = await readJson(join(repoRoot, "channel-capabilities", `${channelId}.json`));
+  const [channelRegistry] = await loadChannelCapabilities(channelId);
   const [workflowCatalog] = await loadChannelWorkflowCaseCatalog();
   const selectedCases = selectWorkflowCases({ channelRegistry, workflowCatalog, caseSet });
   platform = await driver.startPlatform({ repoRoot, artifactDir, timeoutMs });

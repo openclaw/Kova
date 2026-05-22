@@ -1,8 +1,11 @@
+import { readFile, readdir } from "node:fs/promises";
+import { join } from "node:path";
+import { channelPlatformsDir } from "../paths.mjs";
 import {
   channelCapabilityCatalogMap,
   channelCapabilityGroups,
   channelCapabilityProofModes,
-  loadChannelCapabilityDocuments
+  loadChannelCapabilityCatalog
 } from "./channel-capability-catalog.mjs";
 import {
   assertNoShapeErrors,
@@ -25,12 +28,66 @@ export const channelSupportStatuses = [
 ];
 
 export async function loadChannelCapabilities(selectedId) {
-  return loadChannelCapabilityDocuments({
+  const platforms = await loadChannelPlatforms();
+  const filtered = selectedId ? platforms.filter((platform) => platform.id === selectedId) : platforms;
+  if (filtered.length === 0) {
+    throw new Error(`no channel capability found for ${selectedId}`);
+  }
+  const catalogMap = channelCapabilityCatalogMap(await loadChannelCapabilityCatalog());
+  return filtered.map((platform) => channelCapabilityFromPlatform(platform, catalogMap));
+}
+
+async function loadChannelPlatforms() {
+  const names = await readdir(channelPlatformsDir);
+  const paths = names.filter((name) => name.endsWith(".json")).sort();
+  const items = [];
+  const ids = new Set();
+
+  for (const name of paths) {
+    const raw = await readFile(join(channelPlatformsDir, name), "utf8");
+    const item = JSON.parse(raw);
+    validateChannelPlatformShape(item, name);
+    if (ids.has(item.id)) {
+      throw new Error(`duplicate channel platform id '${item.id}' in ${name}`);
+    }
+    ids.add(item.id);
+    items.push(item);
+  }
+
+  return items;
+}
+
+function channelCapabilityFromPlatform(platform, catalogMap) {
+  const { claims, schemaVersion, ...channel } = platform;
+  return {
+    ...channel,
     schemaVersion: "kova.channelCapability.v1",
-    kind: "channel capability",
-    selectedId,
-    validate: validateChannelCapabilityShape
-  });
+    capabilities: claims.flatMap((claim) => claim.ids.map((id) => {
+      const catalogId = `${claim.group}:${id}`;
+      const catalogCapability = catalogMap.get(catalogId);
+      return {
+        id,
+        group: claim.group,
+        catalogId,
+        title: catalogCapability?.title ?? catalogId,
+        requiredLevel: claim.requiredLevel,
+        proofModes: claim.proofModes,
+        declarationSource: claim.declarationSource
+      };
+    }))
+  };
+}
+
+function validateChannelPlatformShape(platform, sourceName = "channel platform") {
+  const errors = [];
+  requireString(platform, "schemaVersion", errors);
+  if (platform?.schemaVersion !== "kova.channelPlatform.v1") {
+    errors.push("schemaVersion must be kova.channelPlatform.v1");
+  }
+  validateChannelBaseShape(platform, errors);
+  requireArray(platform, "claims", errors);
+  validateClaims(platform, errors);
+  assertNoShapeErrors(errors, sourceName);
 }
 
 export function validateChannelCapabilityShape(channel, sourceName = "channel capability") {
@@ -39,6 +96,13 @@ export function validateChannelCapabilityShape(channel, sourceName = "channel ca
   if (channel?.schemaVersion !== "kova.channelCapability.v1") {
     errors.push("schemaVersion must be kova.channelCapability.v1");
   }
+  validateChannelBaseShape(channel, errors);
+  requireArray(channel, "capabilities", errors);
+  validateCapabilities(channel, errors);
+  assertNoShapeErrors(errors, sourceName);
+}
+
+function validateChannelBaseShape(channel, errors) {
   requireKebabId(channel, "id", errors);
   requireString(channel, "title", errors);
   requireString(channel, "adapterId", errors);
@@ -49,9 +113,6 @@ export function validateChannelCapabilityShape(channel, sourceName = "channel ca
   validateStringArray(channel?.workflowCaseIds, "workflowCaseIds", errors, { optional: true });
   validateWorkflowOverrides(channel?.workflowOverrides, "workflowOverrides", errors);
   validateDeterministicShim(channel?.deterministicShim, "deterministicShim", errors);
-  requireArray(channel, "capabilities", errors);
-  validateCapabilities(channel, errors);
-  assertNoShapeErrors(errors, sourceName);
 }
 
 export function validateChannelCapabilityCatalogReferences(channels, catalogs) {
@@ -234,8 +295,54 @@ function validateCapabilities(channel, errors) {
   }
 }
 
+function validateClaims(platform, errors) {
+  if (!Array.isArray(platform?.claims)) {
+    return;
+  }
+  if (platform.claims.length === 0) {
+    errors.push("claims must not be empty");
+    return;
+  }
+
+  const declarationSources = new Set(platform.declarationSources ?? []);
+  const seen = new Set();
+  for (const [index, claim] of platform.claims.entries()) {
+    const prefix = `claims[${index}]`;
+    requireString(claim, "group", errors, prefix);
+    validateKnownValue(claim?.group, channelCapabilityGroups, `${prefix}.group`, errors);
+    validateStringArray(claim?.ids, `${prefix}.ids`, errors, { nonEmpty: true });
+    requireString(claim, "requiredLevel", errors, prefix);
+    validateKnownValue(claim?.requiredLevel, channelCapabilityRequiredLevels, `${prefix}.requiredLevel`, errors);
+    validateStringArray(claim?.proofModes, `${prefix}.proofModes`, errors, { nonEmpty: true });
+    for (const [proofIndex, mode] of (claim?.proofModes ?? []).entries()) {
+      validateKnownValue(mode, channelCapabilityProofModes, `${prefix}.proofModes[${proofIndex}]`, errors);
+    }
+    requireString(claim, "declarationSource", errors, prefix);
+    if (typeof claim?.declarationSource === "string" && !declarationSources.has(claim.declarationSource)) {
+      errors.push(`${prefix}.declarationSource must reference declarationSources`);
+    }
+
+    for (const [idIndex, id] of (claim?.ids ?? []).entries()) {
+      validateKebabValue(id, `${prefix}.ids[${idIndex}]`, errors);
+      const key = `${claim?.group}:${id}`;
+      if (typeof claim?.group === "string" && typeof id === "string") {
+        if (seen.has(key)) {
+          errors.push(`duplicate claimed capability '${key}'`);
+        }
+        seen.add(key);
+      }
+    }
+  }
+}
+
 function validateKnownValue(value, allowed, label, errors) {
   if (typeof value === "string" && !allowed.includes(value)) {
     errors.push(`${label} must be one of ${allowed.join(", ")}`);
+  }
+}
+
+function validateKebabValue(value, label, errors) {
+  if (typeof value !== "string" || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)) {
+    errors.push(`${label} must be a kebab id`);
   }
 }
