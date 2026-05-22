@@ -18,7 +18,40 @@ export const startPlatform = startTelegramPlatform;
 export const configureOpenClaw = configureTelegramOpenClaw;
 export const startOpenClaw = startTelegramOpenClaw;
 
-export function canDriveWorkflowCase() {
+const SUPPORTED_ROUTES = new Set([
+  "direct",
+  "reply",
+  "thread",
+  "reply-thread"
+]);
+
+const SUPPORTED_MEDIA_INPUT_KINDS = new Set([
+  "image",
+  "video",
+  "audio",
+  "document"
+]);
+
+export function canDriveWorkflowCase({ workflowCase }) {
+  const route = workflowCase?.matrix?.route;
+  if (!SUPPORTED_ROUTES.has(route)) {
+    return {
+      supported: false,
+      reason: `telegram driver cannot enqueue route '${route ?? "unknown"}'`
+    };
+  }
+
+  const media = workflowCase?.input?.media;
+  if (media != null) {
+    const kind = typeof media.kind === "string" ? media.kind : "image";
+    if (!SUPPORTED_MEDIA_INPUT_KINDS.has(kind)) {
+      return {
+        supported: false,
+        reason: `telegram driver cannot enqueue inbound media kind '${kind}'`
+      };
+    }
+  }
+
   return { supported: true, reason: null };
 }
 
