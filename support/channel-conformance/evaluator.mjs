@@ -20,7 +20,7 @@ export function evaluateWorkflowCase({
     invariant(`${workflowCase.id}:expected-text`, !expectedText || finalVisible.some((delivery) => deliveryText(delivery).includes(expectedText)), `${workflowCase.id} preserved expected text or caption`),
     invariant(`${workflowCase.id}:native-actions`, nativeActionsMatch(nativeActions, observations), nativeActionsReason(workflowCase.id, nativeActions, observations)),
     invariant(`${workflowCase.id}:route`, !expectsVisibleDelivery || !requiresRoutePreservation(workflowCase) || finalVisible.every((delivery) => delivery.route?.key === observations.inbound?.route?.key), `${workflowCase.id} preserved the inbound route`),
-    invariant(`${workflowCase.id}:reply-target`, !expectsVisibleDelivery || !requiresReplyPreservation(workflowCase) || finalVisible.some((delivery) => delivery.replyTo?.key === observations.inbound?.messageKey), `${workflowCase.id} preserved the reply target`),
+    invariant(`${workflowCase.id}:reply-target`, !expectsVisibleDelivery || !requiresReplyPreservation(workflowCase) || finalVisible.some((delivery) => delivery.replyTo?.key === observations.inbound?.messageKey), replyTargetReason(workflowCase.id, observations, finalVisible)),
     invariant(`${workflowCase.id}:silent`, expects.silent !== true || finalVisible.every((delivery) => delivery.silent === true), `${workflowCase.id} preserved silent delivery intent`),
     invariant(`${workflowCase.id}:media-present`, expects.kind !== "media" || finalVisible.some((delivery) => delivery.kind === "media" && delivery.media?.some((media) => media.present)), `${workflowCase.id} delivered media through a native media send`),
     invariant(`${workflowCase.id}:native-message-proof`, expectedVisible === 0 || finalVisible.every((delivery) => Array.isArray(delivery.nativeMessages) && delivery.nativeMessages.length > 0), `${workflowCase.id} linked logical delivery to native platform message proof`),
@@ -38,6 +38,20 @@ function requiresRoutePreservation(workflowCase) {
 function requiresReplyPreservation(workflowCase) {
   return ["reply", "reply-thread"].includes(workflowCase.matrix?.route) ||
     objectOrEmpty(workflowCase.expects).replyTo === "inbound-message";
+}
+
+function replyTargetReason(caseId, observations, finalVisible) {
+  const expected = observations.inbound?.messageKey;
+  const observed = finalVisible
+    .map((delivery) => delivery.replyTo?.key)
+    .filter((value) => typeof value === "string" && value.length > 0);
+  if (!expected) {
+    return `${caseId} has no inbound reply target to preserve`;
+  }
+  if (observed.length === 0) {
+    return `${caseId} expected reply target ${expected}; observed no reply target on final delivery`;
+  }
+  return `${caseId} expected reply target ${expected}; observed ${observed.join(", ")}`;
 }
 
 function expectedKindMatches(expectedKind, visible) {
