@@ -7,7 +7,6 @@ export function evaluateWorkflowCase({
   providerRequestsAfterEcho
 }) {
   const expects = objectOrEmpty(workflowCase.expects);
-  const visibleDeliveries = allVisibleDeliveries(observations);
   const finalVisible = expectedFinalDeliveries(workflowCase, observations);
   const expectedVisible = Number.isInteger(expects.visibleDeliveries) ? expects.visibleDeliveries : 1;
   const expectsVisibleDelivery = expectedVisible > 0;
@@ -16,7 +15,7 @@ export function evaluateWorkflowCase({
   const nativeActions = objectOrEmpty(expects.nativeActions);
   return [
     invariant(`${workflowCase.id}:provider-work`, providerRequestsMatch(providerPolicy, providerRequestsDelta), providerRequestReason(workflowCase.id, providerPolicy, providerRequestsDelta)),
-    invariant(`${workflowCase.id}:visible-delivery-count`, visibleDeliveries.length === expectedVisible, `${workflowCase.id} produced ${expectedVisible} visible delivery; observed ${visibleDeliveries.length}`),
+    invariant(`${workflowCase.id}:visible-delivery-count`, finalVisible.length === expectedVisible, `${workflowCase.id} produced ${expectedVisible} final visible delivery; observed ${finalVisible.length}`),
     invariant(`${workflowCase.id}:expected-kind`, expectedVisible === 0 || expectedKindMatches(expects.kind, finalVisible), `${workflowCase.id} produced ${expects.kind ?? "visible"} output`),
     invariant(`${workflowCase.id}:expected-text`, !expectedText || finalVisible.some((delivery) => deliveryText(delivery).includes(expectedText)), `${workflowCase.id} preserved expected text or caption`),
     invariant(`${workflowCase.id}:native-actions`, nativeActionsMatch(nativeActions, observations), nativeActionsReason(workflowCase.id, nativeActions, observations)),
@@ -39,11 +38,6 @@ function requiresRoutePreservation(workflowCase) {
 function requiresReplyPreservation(workflowCase) {
   return ["reply", "reply-thread"].includes(workflowCase.matrix?.route) ||
     objectOrEmpty(workflowCase.expects).replyTo === "inbound-message";
-}
-
-function allVisibleDeliveries(observations) {
-  return (Array.isArray(observations?.deliveries) ? observations.deliveries : [])
-    .filter((delivery) => delivery.visible === true);
 }
 
 function replyTargetReason(caseId, observations, finalVisible) {
