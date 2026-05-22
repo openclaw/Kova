@@ -159,7 +159,7 @@ function nativeMessageForCall(call, workflowCase) {
 }
 
 function isTransientStatusText(text) {
-  return typeof text === "string" && /<code>[^<]*(?:Image Generation|Message):/u.test(text);
+  return typeof text === "string" && /<code>[^<]*(?:(?:Image|Video|Audio|Music) Generation|Message):/u.test(text);
 }
 
 function normalizeMedia(call) {
