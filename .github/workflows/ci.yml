@@ -25,6 +25,8 @@ jobs:
         run: |
           curl -fsSL https://raw.githubusercontent.com/shakkernerd/ocm/main/install.sh | bash -s -- --force
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Install dependencies
+        run: npm ci
       - name: Run check suite
         run: npm run check
       - name: Smoke package install
