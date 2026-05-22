@@ -2,187 +2,53 @@
   "schemaVersion": "kova.channelPlatform.v1",
   "id": "telegram",
   "title": "Telegram Channel",
-  "adapterId": "telegram",
-  "supportStatus": "supported",
-  "adapterDistribution": {
+  "adapter": {
     "kind": "bundled",
     "modulePath": "dist/extensions/telegram/channel-plugin-api.js",
     "exportName": "telegramPlugin"
   },
-  "declarationSources": [
-    "src/channels/message/types.ts",
+  "sources": [
     "extensions/telegram/src/channel.ts",
     "extensions/telegram/src/channel-actions.ts",
     "extensions/telegram/src/channel-actions.contract.test.ts",
     "extensions/telegram/src/outbound-adapter.ts"
   ],
-  "workflowCaseIds": [
-    "text-reply-current-final",
-    "receive-ack.after-receive-record",
-    "receive-ack.after-agent-dispatch",
-    "no-self-trigger.bot-authored-echo",
-    "media-final",
-    "media-thread-final",
-    "media-reply-thread-final",
-    "media-batch-final",
-    "thread-final",
-    "silent-final",
-    "source-visible-delivery.text.automatic-final",
-    "source-visible-delivery.text.message-tool-only",
-    "source-visible-delivery.payload.message-tool-only",
-    "source-visible-delivery.media.message-tool-only",
-    "source-visible-delivery.media-thread.message-tool-only",
-    "source-visible-delivery.attachment.message-tool-only",
-    "native-action.send.presentation-pin",
-    "native-action.poll",
-    "native-action.react",
-    "native-action.delete",
-    "native-action.edit",
-    "native-action.topic-create",
-    "native-action.topic-edit",
-    "completion-handoff.image.generated-direct",
-    "completion-handoff.image.generated-thread",
-    "failure-visible-once.provider-error"
-  ],
-  "deterministicShim": {
-    "conversationId": "12345",
-    "threadId": "12",
-    "replyToId": "900",
-    "config": {
-      "channels": {
-        "telegram": {
-          "botToken": "123:kova-channel-conformance-token"
-        }
-      }
-    },
-    "platform": {
-      "resultMessageIdPrefix": "tg",
-      "resultTargetField": "chatId",
-      "replyOptionField": "replyToMessageId",
-      "replyOptionValue": 900,
-      "threadOptionField": "messageThreadId",
-      "threadOptionValue": 12
-    }
-  },
-  "claims": [
-    {
-      "group": "durable-final",
-      "ids": [
-        "text",
-        "media"
-      ],
-      "requiredLevel": "blocking",
-      "proofModes": [
-        "deterministic-shim",
-        "live-smoke"
-      ],
-      "declarationSource": "extensions/telegram/src/outbound-adapter.ts"
-    },
-    {
-      "group": "durable-final",
-      "ids": [
-        "payload",
-        "reply-to",
-        "thread"
-      ],
-      "requiredLevel": "blocking",
-      "proofModes": [
-        "deterministic-shim"
-      ],
-      "declarationSource": "extensions/telegram/src/outbound-adapter.ts"
-    },
-    {
-      "group": "durable-final",
-      "ids": [
-        "silent",
-        "message-sending-hooks",
-        "batch"
-      ],
-      "requiredLevel": "warning",
-      "proofModes": [
-        "deterministic-shim"
-      ],
-      "declarationSource": "extensions/telegram/src/outbound-adapter.ts"
-    },
-    {
-      "group": "ack",
-      "ids": [
-        "after-receive-record"
-      ],
-      "requiredLevel": "warning",
-      "proofModes": [
-        "deterministic-shim"
-      ],
-      "declarationSource": "extensions/telegram/src/channel.ts"
-    },
-    {
-      "group": "ack",
-      "ids": [
-        "after-agent-dispatch"
-      ],
-      "requiredLevel": "blocking",
-      "proofModes": [
-        "deterministic-shim"
-      ],
-      "declarationSource": "extensions/telegram/src/channel.ts"
-    },
-    {
-      "group": "live-preview",
-      "ids": [
-        "draft-preview",
-        "preview-finalization",
-        "progress-updates"
-      ],
-      "requiredLevel": "warning",
-      "proofModes": [
-        "deterministic-shim"
-      ],
-      "declarationSource": "extensions/telegram/src/channel.ts"
-    },
-    {
-      "group": "live-finalizer",
-      "ids": [
-        "final-edit",
-        "normal-fallback",
-        "preview-receipt",
-        "retain-on-ambiguous-failure"
-      ],
-      "requiredLevel": "warning",
-      "proofModes": [
-        "deterministic-shim"
-      ],
-      "declarationSource": "extensions/telegram/src/channel.ts"
-    },
-    {
-      "group": "native-platform",
-      "ids": [
-        "action-send"
-      ],
-      "requiredLevel": "blocking",
-      "proofModes": [
-        "deterministic-shim",
-        "live-smoke"
-      ],
-      "declarationSource": "extensions/telegram/src/channel-actions.contract.test.ts"
-    },
-    {
-      "group": "native-platform",
-      "ids": [
-        "action-poll",
-        "action-react",
-        "action-delete",
-        "action-edit",
-        "action-topic-create",
-        "action-topic-edit",
-        "delivery-pin",
-        "presentation"
-      ],
-      "requiredLevel": "warning",
-      "proofModes": [
-        "deterministic-shim",
-        "live-smoke"
-      ],
-      "declarationSource": "extensions/telegram/src/channel-actions.contract.test.ts"
-    }
-  ]
+  "capabilities": {
+    "durable-final": [
+      "text",
+      "media",
+      "payload",
+      "reply-to",
+      "thread",
+      "silent",
+      "message-sending-hooks",
+      "batch"
+    ],
+    "ack": [
+      "after-receive-record",
+      "after-agent-dispatch"
+    ],
+    "live-preview": [
+      "draft-preview",
+      "preview-finalization",
+      "progress-updates"
+    ],
+    "live-finalizer": [
+      "final-edit",
+      "normal-fallback",
+      "preview-receipt",
+      "retain-on-ambiguous-failure"
+    ],
+    "native-platform": [
+      "action-send",
+      "action-poll",
+      "action-react",
+      "action-delete",
+      "action-edit",
+      "action-topic-create",
+      "action-topic-edit",
+      "delivery-pin",
+      "presentation"
+    ]
+  }
 }

@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "kova.channelProofPolicy.v1",
+  "id": "openclaw-channel-proof-policy",
+  "defaultRequiredLevel": "warning",
+  "defaultProofModes": [
+    "deterministic-shim"
+  ],
+  "blockingCapabilities": [
+    "durable-final:text",
+    "durable-final:media",
+    "durable-final:payload",
+    "durable-final:reply-to",
+    "durable-final:thread",
+    "ack:after-agent-dispatch",
+    "native-platform:action-send"
+  ],
+  "liveSmokeCapabilities": [
+    "durable-final:text",
+    "durable-final:media",
+    "native-platform:action-send",
+    "native-platform:action-poll",
+    "native-platform:action-react",
+    "native-platform:action-delete",
+    "native-platform:action-edit",
+    "native-platform:action-topic-create",
+    "native-platform:action-topic-edit",
+    "native-platform:delivery-pin",
+    "native-platform:presentation"
+  ]
+}

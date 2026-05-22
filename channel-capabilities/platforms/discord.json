@@ -2,9 +2,7 @@
   "schemaVersion": "kova.channelPlatform.v1",
   "id": "discord",
   "title": "Discord Channel",
-  "adapterId": "discord",
-  "supportStatus": "supported",
-  "adapterDistribution": {
+  "adapter": {
     "kind": "external",
     "packageName": "@openclaw/discord",
     "pluginId": "discord",
@@ -12,114 +10,32 @@
     "modulePath": "dist/channel-plugin-api.js",
     "exportName": "discordPlugin"
   },
-  "declarationSources": [
-    "src/channels/message/types.ts",
+  "sources": [
     "extensions/discord/src/channel.ts",
     "extensions/discord/src/outbound-adapter.ts"
   ],
-  "workflowCaseIds": [
-    "media-final",
-    "media-thread-final",
-    "media-reply-thread-final",
-    "thread-final",
-    "silent-final",
-    "source-visible-delivery.text.automatic-final",
-    "source-visible-delivery.text.message-tool-only",
-    "source-visible-delivery.payload.message-tool-only",
-    "source-visible-delivery.media.message-tool-only",
-    "source-visible-delivery.media-thread.message-tool-only",
-    "source-visible-delivery.attachment.message-tool-only",
-    "completion-handoff.image.generated-direct",
-    "completion-handoff.image.generated-thread"
-  ],
-  "deterministicShim": {
-    "conversationId": "channel:123456",
-    "threadId": "thread-1",
-    "replyToId": "reply-1",
-    "accountId": "default",
-    "platform": {
-      "resultMessageIdPrefix": "discord",
-      "resultTargetField": "channelId",
-      "replyOptionField": "replyTo",
-      "replyOptionValue": "reply-1",
-      "threadTarget": "channel:thread-1"
-    }
-  },
-  "claims": [
-    {
-      "group": "durable-final",
-      "ids": [
-        "text",
-        "media"
-      ],
-      "requiredLevel": "blocking",
-      "proofModes": [
-        "deterministic-shim",
-        "live-smoke"
-      ],
-      "declarationSource": "extensions/discord/src/outbound-adapter.ts"
-    },
-    {
-      "group": "durable-final",
-      "ids": [
-        "payload",
-        "reply-to",
-        "thread"
-      ],
-      "requiredLevel": "blocking",
-      "proofModes": [
-        "deterministic-shim"
-      ],
-      "declarationSource": "extensions/discord/src/outbound-adapter.ts"
-    },
-    {
-      "group": "durable-final",
-      "ids": [
-        "silent",
-        "message-sending-hooks"
-      ],
-      "requiredLevel": "warning",
-      "proofModes": [
-        "deterministic-shim"
-      ],
-      "declarationSource": "extensions/discord/src/outbound-adapter.ts"
-    },
-    {
-      "group": "ack",
-      "ids": [
-        "manual"
-      ],
-      "requiredLevel": "warning",
-      "proofModes": [
-        "deterministic-shim"
-      ],
-      "declarationSource": "extensions/discord/src/channel.ts"
-    },
-    {
-      "group": "live-preview",
-      "ids": [
-        "draft-preview",
-        "preview-finalization",
-        "progress-updates"
-      ],
-      "requiredLevel": "warning",
-      "proofModes": [
-        "deterministic-shim"
-      ],
-      "declarationSource": "extensions/discord/src/channel.ts"
-    },
-    {
-      "group": "live-finalizer",
-      "ids": [
-        "final-edit",
-        "normal-fallback",
-        "discard-pending"
-      ],
-      "requiredLevel": "warning",
-      "proofModes": [
-        "deterministic-shim"
-      ],
-      "declarationSource": "extensions/discord/src/channel.ts"
-    }
-  ]
+  "capabilities": {
+    "durable-final": [
+      "text",
+      "media",
+      "payload",
+      "reply-to",
+      "thread",
+      "silent",
+      "message-sending-hooks"
+    ],
+    "ack": [
+      "manual"
+    ],
+    "live-preview": [
+      "draft-preview",
+      "preview-finalization",
+      "progress-updates"
+    ],
+    "live-finalizer": [
+      "final-edit",
+      "normal-fallback",
+      "discard-pending"
+    ]
+  }
 }
