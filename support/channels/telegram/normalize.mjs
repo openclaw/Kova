@@ -122,7 +122,7 @@ function nativeMessageForCall(call, workflowCase) {
 }
 
 function isTransientStatusText(text) {
-  return typeof text === "string" && /<code>[^<]*Message:/u.test(text);
+  return typeof text === "string" && /<code>[^<]*(?:Image Generation|Message):/u.test(text);
 }
 
 function normalizeMedia(call) {
