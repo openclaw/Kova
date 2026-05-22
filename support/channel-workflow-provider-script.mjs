@@ -194,11 +194,12 @@ function generatedMediaPathReplacement(testCase) {
   if (!filename) {
     throw new Error(`${testCase.id} uses ${token} without a generated media filename`);
   }
+  assertSafeGeneratedMediaFilename(filename, testCase.id);
   const stem = filename.replace(/\.[^.]+$/u, "");
   const extension = filename.slice(stem.length);
   const pattern = extension
-    ? `path=\"([^\"]*${escapeRegex(stem)}[^\"]*${escapeRegex(extension)})\"`
-    : `path=\"([^\"]*${escapeRegex(filename)}[^\"]*)\"`;
+    ? `path="([^"]*${stem}[^"]*${extension})"`
+    : `path="([^"]*${filename}[^"]*)"`;
   return {
     [token]: `{{request.text.match:${pattern}}}`
   };
@@ -217,8 +218,10 @@ function generatedMediaFilename(testCase) {
   return null;
 }
 
-function escapeRegex(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function assertSafeGeneratedMediaFilename(filename, testCaseId) {
+  if (!/^[a-zA-Z0-9._-]+$/u.test(filename)) {
+    throw new Error(`${testCaseId} generated media filename contains unsupported regex characters: ${filename}`);
+  }
 }
 
 function replaceScriptValue(value, replacements = {}) {

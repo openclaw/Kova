@@ -2,6 +2,7 @@ import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, utimes, writeFile }
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { resolveScriptStep } from "mock-ai-provider/dist/providers/openai/common/scripted-response.js";
 import { quoteShell, runCommand } from "./commands.mjs";
 import { runCleanupCommand } from "./cleanup.mjs";
 import { applyEvidenceLedgerGating, attachEvidenceLedger } from "./evidence-ledger.mjs";
@@ -14,6 +15,7 @@ import { evaluateRecord } from "./evaluator.mjs";
 import { evaluateWorkflowCase } from "../support/channel-conformance/evaluator.mjs";
 import { assertValidObservationSet } from "../support/channel-conformance/observation-schema.mjs";
 import { planWorkflowCases } from "../support/channel-conformance/planner.mjs";
+import { channelWorkflowScript } from "../support/channel-workflow-provider-script.mjs";
 import { evaluateGate } from "./matrix/gate.mjs";
 import {
   comparePerformanceToBaseline,
@@ -187,6 +189,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(evidenceLedgerGatingCheck());
     checks.push(channelCapabilityReportSummaryCheck());
     checks.push(channelCapabilityResultIngestionCheck());
+    checks.push(await channelGeneratedMediaProviderScriptCheck());
     checks.push(channelModelTurnMultiInvariantEvaluationCheck());
     checks.push(optionalDiagnosticGapCheck());
     checks.push(provisioningBlockedStatusCheck());
@@ -1691,6 +1694,47 @@ function channelCapabilityResultIngestionCheck() {
       id: "channel-capability-result-ingestion",
       status: "FAIL",
       command: "evaluate channel capability helper result ingestion",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+async function channelGeneratedMediaProviderScriptCheck() {
+  try {
+    const caseId = "completion-handoff.image.generated-direct";
+    const generatedPath = "/tmp/kova-media/tool-image-generation/kova-completion-handoff-direct---self-check.png";
+    const script = channelWorkflowScript([caseId], process.cwd());
+    const completionStep = script.steps.find((step) => step.id === `${caseId}:completion-tool-calls`);
+    assertEqual(Boolean(completionStep), true, "completion handoff provider script has completion tool-call step");
+    const rendered = await resolveScriptStep(completionStep, {
+      requestBody: {
+        input: [{
+          type: "message",
+          role: "tool",
+          content: [{
+            type: "output_text",
+            text: `Generated media exists at path="${generatedPath}".`
+          }]
+        }]
+      }
+    });
+    const toolCall = rendered?.respond?.toolCalls?.[0];
+    const args = JSON.parse(toolCall?.arguments ?? "{}");
+    assertEqual(args.media, generatedPath, "generated media provider script preserves the generated media path");
+    assertEqual(args.action, "send", "completion handoff sends generated media through message tool");
+
+    return {
+      id: "channel-generated-media-provider-script",
+      status: "PASS",
+      command: "render generated media channel workflow script through mock provider templating",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "channel-generated-media-provider-script",
+      status: "FAIL",
+      command: "render generated media channel workflow script through mock provider templating",
       durationMs: 0,
       message: error.message
     };
