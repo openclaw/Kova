@@ -3,8 +3,8 @@
   "id": "native-platform-action",
   "title": "Native Platform Message Action",
   "userAction": "user asks OpenClaw to use a channel-native message action from the current conversation",
-  "openclawSurface": "channel inbound message with message tool native action dispatch",
-  "ownerArea": "OpenClaw message tool and channel adapter runtime",
+  "openclawSurface": "channel inbound message with native channel action dispatch",
+  "ownerArea": "OpenClaw native channel action runtime",
   "sourceRefs": [
     "src/channels/plugins/message-action-discovery.ts",
     "src/channels/plugins/message-capabilities.ts",
