@@ -1,11 +1,13 @@
 import { basename } from "node:path";
 import { expectedFinalDeliveries } from "./final-deliveries.mjs";
+import { hasBlockingRuntimeDiagnostics, runtimeDiagnosticFailureReason } from "./runtime-diagnostics.mjs";
 
 export function evaluateWorkflowCase({
   workflowCase,
   observations,
   providerRequestsDelta,
-  providerRequestsAfterEcho
+  providerRequestsAfterEcho,
+  runtimeDiagnostics = null
 }) {
   const expects = objectOrEmpty(workflowCase.expects);
   const visibleDeliveries = allVisibleDeliveries(observations);
@@ -17,6 +19,7 @@ export function evaluateWorkflowCase({
   const nativeActions = objectOrEmpty(expects.nativeActions);
   const unmatchedNative = unmatchedNativeVisibleSends(workflowCase, observations, finalVisible, visibleDeliveries);
   return [
+    invariant(`${workflowCase.id}:runtime-diagnostics`, !hasBlockingRuntimeDiagnostics(runtimeDiagnostics), runtimeDiagnosticFailureReason(workflowCase.id, runtimeDiagnostics)),
     invariant(`${workflowCase.id}:provider-work`, providerRequestsMatch(providerPolicy, providerRequestsDelta), providerRequestReason(workflowCase.id, providerPolicy, providerRequestsDelta)),
     invariant(`${workflowCase.id}:visible-delivery-count`, finalVisible.length === expectedVisible, `${workflowCase.id} produced ${expectedVisible} final visible delivery; observed ${finalVisible.length}`),
     invariant(`${workflowCase.id}:expected-kind`, expectedVisible === 0 || expectedKindMatches(expects.kind, finalVisible), `${workflowCase.id} produced ${expects.kind ?? "visible"} output`),

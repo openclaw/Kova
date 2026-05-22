@@ -12,6 +12,7 @@ import { prepareWorkflowFixtures } from "./fixtures.mjs";
 import { validateChannelDriver } from "./driver-contract.mjs";
 import { assertValidObservationSet } from "./observation-schema.mjs";
 import { planWorkflowCases } from "./planner.mjs";
+import { collectRuntimeDiagnostics } from "./runtime-diagnostics.mjs";
 import { loadChannelCapabilities } from "../../src/registries/channel-capabilities.mjs";
 import { loadChannelWorkflowCaseCatalog } from "../../src/registries/channel-workflow-cases.mjs";
 
@@ -166,13 +167,29 @@ async function runWorkflowCase({ driver, workflowCase, platform }) {
     const providerRequestCountAfter = await countProviderRequests({ artifactDir });
     const providerRequestsDelta = providerRequestCountAfter - providerRequestCountBefore;
     const providerRequestsAfterEcho = providerRequestCountAfter - providerRequestsBeforeEcho;
-    const invariants = evaluateWorkflowCase({
+    let runtimeDiagnostics = null;
+    let invariants = evaluateWorkflowCase({
       workflowCase: runnableWorkflowCase,
       observations,
       providerRequestsDelta,
       providerRequestsAfterEcho
     });
-    const failed = invariants.find((invariant) => invariant.status !== "passed") ?? null;
+    let failed = invariants.find((invariant) => invariant.status !== "passed") ?? null;
+    if (failed) {
+      runtimeDiagnostics = await collectRuntimeDiagnostics({
+        envName,
+        sinceEpochMs: startedAtEpochMs,
+        timeoutMs: Math.min(timeoutMs, 10000)
+      });
+      invariants = evaluateWorkflowCase({
+        workflowCase: runnableWorkflowCase,
+        observations,
+        providerRequestsDelta,
+        providerRequestsAfterEcho,
+        runtimeDiagnostics
+      });
+      failed = invariants.find((invariant) => invariant.status !== "passed") ?? null;
+    }
     row = {
       id: runnableWorkflowCase.id,
       status: failed ? "failed" : "passed",
@@ -186,6 +203,7 @@ async function runWorkflowCase({ driver, workflowCase, platform }) {
       capabilities: runnableWorkflowCase.atoms ?? [],
       providerRequestsDelta,
       providerRequestsAfterEcho,
+      runtimeDiagnostics,
       observations,
       invariants
     };
