@@ -10,6 +10,7 @@ import { evaluateWorkflowCase } from "./evaluator.mjs";
 import { prepareWorkflowFixtures } from "./fixtures.mjs";
 import { validateChannelDriver } from "./driver-contract.mjs";
 import { assertValidObservationSet } from "./observation-schema.mjs";
+import { selectWorkflowCases } from "./planner.mjs";
 import { loadChannelCapabilities } from "../../src/registries/channel-capabilities.mjs";
 import { loadChannelWorkflowCaseCatalog } from "../../src/registries/channel-workflow-cases.mjs";
 
@@ -118,20 +119,6 @@ async function loadChannelDriver(id) {
     throw new Error(`channel driver '${id}' is unavailable at ${modulePath}: ${error.message}`);
   }
   return validateChannelDriver(mod, id);
-}
-
-function selectWorkflowCases({ channelRegistry, workflowCatalog, caseSet: requestedCaseSet }) {
-  const cases = Array.isArray(workflowCatalog?.cases) ? workflowCatalog.cases : [];
-  const casesById = new Map(cases.map((workflowCase) => [workflowCase.id, workflowCase]));
-  const ids = requestedCaseSet === "declared-workflows"
-    ? channelRegistry.workflowCaseIds ?? []
-    : requestedCaseSet.split(",").map((id) => id.trim()).filter(Boolean);
-  const selected = ids.map((id) => casesById.get(id)).filter(Boolean);
-  if (selected.length !== ids.length) {
-    const unknown = ids.filter((id) => !casesById.has(id));
-    throw new Error(`unknown workflow case${unknown.length === 1 ? "" : "s"}: ${unknown.join(", ")}`);
-  }
-  return selected;
 }
 
 async function runWorkflowCase({ driver, workflowCase, platform }) {
