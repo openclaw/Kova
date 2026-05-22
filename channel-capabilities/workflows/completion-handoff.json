@@ -1,9 +1,9 @@
 {
   "schemaVersion": "kova.channelWorkflowFamily.v1",
   "id": "completion-handoff",
-  "title": "Completion Handoff To Requester",
-  "userAction": "user starts long-running generated work from a channel conversation and OpenClaw routes the later completion back to that requester conversation",
-  "openclawSurface": "background task completion routed to the requester channel session",
+  "title": "Long-Running Generated Result Delivery",
+  "userAction": "user starts generated work from a channel conversation and later receives the completed result back in the same conversation or thread",
+  "openclawSurface": "background generated result delivered back to the requester channel conversation",
   "ownerArea": "OpenClaw completion delivery runtime",
   "sourceRefs": [
     "src/agents/subagent-announce-delivery.ts#deliverSubagentAnnouncement",
@@ -69,7 +69,7 @@
         "lifecycle": "async-completion"
       },
       "userAction": "user asks OpenClaw to make an image for this chat and receives the completed image in the same chat",
-      "openclawSurface": "channel inbound direct message with image_generate background completion handoff",
+      "openclawSurface": "channel inbound direct message with background generated image delivery",
       "prompt": "Create a simple launch announcement image for this chat.",
       "providerScript": {
         "toolCalls": [
@@ -148,7 +148,7 @@
         "lifecycle": "async-completion"
       },
       "userAction": "user asks OpenClaw from inside a thread to make an image and receives the completed image in that same thread",
-      "openclawSurface": "channel inbound threaded message with image_generate background completion handoff",
+      "openclawSurface": "channel inbound threaded message with background generated image delivery",
       "prompt": "Create a simple launch announcement image for this thread.",
       "providerScript": {
         "toolCalls": [

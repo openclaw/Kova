@@ -152,7 +152,7 @@
         "lifecycle": "success"
       },
       "userAction": "user replies to a message and receives OpenClaw's text answer against that message",
-      "openclawSurface": "channel inbound reply message with explicit current-message reply final",
+      "openclawSurface": "channel inbound reply message with reply-targeted final answer",
       "prompt": "Reply with a short deployment acknowledgement.",
       "providerScript": {
         "finalText": "[[reply_to_current]]\nKOVA_AGENT_TEXT_REPLY_CURRENT_OK"
@@ -376,7 +376,7 @@
         "lifecycle": "success"
       },
       "userAction": "user asks OpenClaw for multiple media results and receives every media item in the same conversation",
-      "openclawSurface": "channel inbound direct message with durable batched media final reply",
+      "openclawSurface": "channel inbound direct message with batched media reply",
       "prompt": "Create two simple launch images with a short caption.",
       "providerScript": {
         "finalText": "MEDIA:/tmp/kova-channel-model-turn-batch-a.png\nMEDIA:/tmp/kova-channel-model-turn-batch-b.png\nKOVA_AGENT_MEDIA_BATCH_OK"

@@ -1,9 +1,9 @@
 {
   "schemaVersion": "kova.channelWorkflowFamily.v1",
   "id": "source-visible-delivery",
-  "title": "Source Visible Delivery",
-  "userAction": "user asks OpenClaw for output that must be delivered to the source chat instead of only becoming a private final answer",
-  "openclawSurface": "channel inbound message with source delivery plan",
+  "title": "Send Result Back To Source Chat",
+  "userAction": "user asks OpenClaw for output and receives the answer, file, or media back in the chat where they asked",
+  "openclawSurface": "channel inbound message with source chat delivery",
   "ownerArea": "OpenClaw source delivery runtime",
   "sourceRefs": [
     "src/infra/outbound/source-delivery-plan.ts#createSourceDeliveryPlan",
@@ -156,7 +156,7 @@
         "delivery": "message-tool-only-source-delivery",
         "lifecycle": "success"
       },
-      "userAction": "user asks OpenClaw for an update that must be delivered through the source chat message path",
+      "userAction": "user asks OpenClaw to post an update directly back to the same chat",
       "openclawSurface": "channel inbound direct message with source conversation delivery",
       "prompt": "Post a short product launch update for this chat.",
       "providerScript": {
@@ -213,7 +213,7 @@
         "lifecycle": "success"
       },
       "userAction": "user asks OpenClaw to send a structured channel response to the same chat",
-      "openclawSurface": "channel inbound direct message with message tool channelData payload delivery",
+      "openclawSurface": "channel inbound direct message with structured channel payload delivery",
       "prompt": "Send a compact status card to this chat.",
       "providerScript": {
         "toolCalls": [
