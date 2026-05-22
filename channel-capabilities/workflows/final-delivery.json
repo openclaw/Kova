@@ -392,6 +392,7 @@
         ],
         "mediaSourcePolicy": "exact",
         "terminal": true,
+        "replyTargetPolicy": "response-group-anchor",
         "allowMultipleFinalSends": true
       },
       "fixtures": {

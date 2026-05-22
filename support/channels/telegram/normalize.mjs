@@ -131,11 +131,55 @@ function normalizeMedia(call) {
   }
   const field = mediaFieldForMethod(call.method);
   const body = objectOrEmpty(call.body);
+  const source = mediaSourceForBodyField(body, field);
   return [{
     kind: mediaKindForMethod(call.method),
     present: field ? body[field] != null : true,
-    source: typeof body[field] === "string" && body[field].startsWith("http") ? "url" : "upload"
+    source: source.kind,
+    ...(source.ref ? { sourceRef: source.ref } : {}),
+    ...(source.name ? { sourceName: source.name } : {}),
+    ...(source.url ? { sourceUrl: source.url } : {})
   }];
+}
+
+function mediaSourceForBodyField(body, field) {
+  const value = field ? body[field] : null;
+  if (typeof value === "string" && /^https?:\/\//iu.test(value)) {
+    return {
+      kind: "url",
+      ref: value,
+      url: value,
+      name: fileNameFromUrl(value)
+    };
+  }
+  if (typeof value === "string" && value.startsWith("attach://")) {
+    const attachName = value.slice("attach://".length);
+    const attachment = typeof body[attachName] === "string" ? body[attachName] : "";
+    return {
+      kind: "upload",
+      ref: attachment || value,
+      name: fileNameFromUploadPlaceholder(attachment)
+    };
+  }
+  return {
+    kind: value == null ? "unknown" : "upload",
+    ref: typeof value === "string" ? value : null
+  };
+}
+
+function fileNameFromUploadPlaceholder(value) {
+  const match = value.match(/^\[file:([^\]]+)\]$/u);
+  return match?.[1] ?? null;
+}
+
+function fileNameFromUrl(value) {
+  try {
+    const url = new URL(value);
+    const segment = url.pathname.split("/").filter(Boolean).pop();
+    return segment || null;
+  } catch {
+    return null;
+  }
 }
 
 function mediaFieldForMethod(method) {

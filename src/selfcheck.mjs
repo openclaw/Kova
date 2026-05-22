@@ -9765,7 +9765,9 @@ function assertChannelObservationLogicalNativeBoundary() {
     expects: {
       visibleDeliveries: 1,
       kind: "media",
-      text: "KOVA_AGENT_MEDIA_OK"
+      text: "KOVA_AGENT_MEDIA_OK",
+      mediaSource: "/tmp/kova-selfcheck-media.png",
+      mediaSourcePolicy: "exact"
     },
     providerRequests: {
       mode: "minimum",
@@ -9806,7 +9808,9 @@ function assertChannelObservationLogicalNativeBoundary() {
       media: [{
         kind: "image",
         present: true,
-        source: "upload"
+        source: "upload",
+        sourceName: "kova-selfcheck-media.png",
+        sourceRef: "[file:kova-selfcheck-media.png]"
       }],
       silent: false,
       timestampMs: 1,
@@ -9862,6 +9866,76 @@ function assertChannelObservationLogicalNativeBoundary() {
     providerRequestsAfterEcho: 0
   }).find((invariant) => invariant.id.endsWith(":unmatched-native-visible-sends"));
   assertEqual(unmatchedInvariant?.status, "failed", "unmatched native visible sends fail generic channel evaluation");
+
+  const withUnexpectedCompanion = {
+    ...observations,
+    deliveries: [
+      ...observations.deliveries,
+      {
+        schemaVersion: "kova.channelObservation.v1",
+        channelId: "selfcheck",
+        actor: "bot",
+        visible: true,
+        kind: "text",
+        text: "unexpected extra text",
+        caption: null,
+        route: {
+          kind: "direct",
+          key: "room-1",
+          parentKey: null
+        },
+        replyTo: {
+          present: false,
+          key: null
+        },
+        delivery: {
+          id: "native-extra-visible",
+          receiptPresent: true,
+          status: "sent"
+        },
+        media: [],
+        silent: false,
+        timestampMs: 3,
+        nativeMessages: [{
+          channelId: "selfcheck",
+          method: "sendMessage",
+          path: "/messages",
+          deliveryId: "native-extra-visible",
+          status: "sent",
+          visible: true,
+          timestampMs: 3,
+          raw: {}
+        }]
+      }
+    ]
+  };
+  assertValidObservationSet(withUnexpectedCompanion, { caseId: workflowCase.id });
+  const unexpectedVisibleInvariant = evaluateWorkflowCase({
+    workflowCase,
+    observations: withUnexpectedCompanion,
+    providerRequestsDelta: 1,
+    providerRequestsAfterEcho: 0
+  }).find((invariant) => invariant.id.endsWith(":unmatched-native-visible-sends"));
+  assertEqual(unexpectedVisibleInvariant?.status, "failed", "unexpected visible companion sends fail generic channel evaluation");
+
+  const withWrongMediaSource = {
+    ...observations,
+    deliveries: observations.deliveries.map((delivery) => ({
+      ...delivery,
+      media: delivery.media.map((media) => ({
+        ...media,
+        sourceName: "wrong-media.png",
+        sourceRef: "[file:wrong-media.png]"
+      }))
+    }))
+  };
+  const mediaSourceInvariant = evaluateWorkflowCase({
+    workflowCase,
+    observations: withWrongMediaSource,
+    providerRequestsDelta: 1,
+    providerRequestsAfterEcho: 0
+  }).find((invariant) => invariant.id.endsWith(":media-source"));
+  assertEqual(mediaSourceInvariant?.status, "failed", "wrong exact media source fails generic channel evaluation");
 }
 
 function scenarioHealthScopeValidationCheck() {
