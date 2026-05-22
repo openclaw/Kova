@@ -10,11 +10,15 @@ const host = args.host ?? "127.0.0.1";
 const token = args.token ?? "999001:kova-telegram-token";
 const portFile = join(dir, "port");
 const callsPath = join(dir, "calls.jsonl");
+const pollsPath = join(dir, "polls.jsonl");
 const startupPath = join(dir, "startup.json");
+const MAX_RETAINED_POLLS = 2000;
+const MAX_EMPTY_POLL_DELAY_MS = 100;
 
 let nextMessageId = 10_000;
 let updates = [];
 let calls = [];
+let polls = [];
 
 await mkdir(dir, { recursive: true });
 
@@ -45,7 +49,8 @@ const startup = {
   port: address.port,
   apiRoot: `http://${host}:${address.port}`,
   token,
-  callsPath
+  callsPath,
+  pollsPath
 };
 await writeFile(portFile, `${address.port}\n`, "utf8");
 await writeFile(startupPath, `${JSON.stringify(startup, null, 2)}\n`, "utf8");
@@ -85,7 +90,9 @@ async function handleRequest(request, response) {
   if (request.method === "POST" && url.pathname === "/__kova/reset") {
     updates = [];
     calls = [];
+    polls = [];
     await writeFile(callsPath, "", "utf8");
+    await writeFile(pollsPath, "", "utf8");
     writeJson(response, 200, { ok: true });
     return;
   }
@@ -93,6 +100,13 @@ async function handleRequest(request, response) {
     writeJson(response, 200, {
       ok: true,
       result: calls
+    });
+    return;
+  }
+  if (request.method === "GET" && url.pathname === "/__kova/polls") {
+    writeJson(response, 200, {
+      ok: true,
+      result: polls
     });
     return;
   }
@@ -120,11 +134,58 @@ async function handleRequest(request, response) {
   const result = telegramResult(method, body);
   call.responseOk = result.ok === true;
   call.result = result.result ?? null;
-  if (method !== "getUpdates") {
+  if (method === "getUpdates") {
+    const returnedUpdates = Array.isArray(result.result) ? result.result : [];
+    if (returnedUpdates.length === 0) {
+      await delay(emptyPollDelayMs(body));
+    }
+    const poll = {
+      schemaVersion: "kova.telegramPlatformShim.poll.v1",
+      receivedAt: call.receivedAt,
+      tokenMatches: call.tokenMatches,
+      method,
+      path: call.path,
+      body: compactGetUpdatesBody(body),
+      responseOk: call.responseOk,
+      returnedCount: returnedUpdates.length,
+      returnedUpdateIds: returnedUpdates.map((update) => update?.update_id).filter(Number.isInteger)
+    };
+    if (poll.returnedCount > 0) {
+      polls.push(poll);
+      if (polls.length > MAX_RETAINED_POLLS) {
+        polls = polls.slice(-MAX_RETAINED_POLLS);
+      }
+      await appendJsonLine(pollsPath, poll);
+    }
+  } else {
     calls.push(call);
     await appendJsonLine(callsPath, call);
   }
   writeJson(response, 200, result);
+}
+
+function compactGetUpdatesBody(body) {
+  return {
+    ...(body.offset != null ? { offset: body.offset } : {}),
+    ...(body.timeout != null ? { timeout: body.timeout } : {}),
+    ...(body.limit != null ? { limit: body.limit } : {}),
+    ...(body.allowed_updates != null ? { allowed_updates: body.allowed_updates } : {})
+  };
+}
+
+function emptyPollDelayMs(body) {
+  const timeoutSeconds = Number(body.timeout);
+  if (!Number.isFinite(timeoutSeconds) || timeoutSeconds <= 0) {
+    return 0;
+  }
+  return Math.min(Math.ceil(timeoutSeconds * 1000), MAX_EMPTY_POLL_DELAY_MS);
+}
+
+function delay(ms) {
+  if (!Number.isFinite(ms) || ms <= 0) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function telegramResult(method, body) {
