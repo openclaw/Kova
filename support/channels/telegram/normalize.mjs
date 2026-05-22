@@ -18,9 +18,46 @@ export function normalizeTelegramObservations({ workflowCase, inbound, calls }) 
     schemaVersion: "kova.channelObservationSet.v1",
     channelId: "telegram",
     inbound,
+    inboundMedia: normalizeInboundMedia({ inbound, calls }),
     deliveries,
     unmatchedNativeMessages: [],
     nativeCallSummary: summarizeNativeCalls(calls, visibleCalls.length, deliveries.length)
+  };
+}
+
+function normalizeInboundMedia({ inbound, calls }) {
+  const expected = Array.isArray(inbound?.media) ? inbound.media : [];
+  if (expected.length === 0) {
+    return {
+      expectedCount: 0,
+      metadataResolvedCount: 0,
+      contentFetchedCount: 0,
+      files: []
+    };
+  }
+  const metadataCalls = calls.filter((call) => call.method === "getFile");
+  const downloadCalls = calls.filter((call) => call.method === "downloadFile");
+  return {
+    expectedCount: expected.length,
+    metadataResolvedCount: metadataCalls.filter((call) => call.responseOk === true).length,
+    contentFetchedCount: downloadCalls.filter((call) => call.responseOk === true).length,
+    files: expected.map((media) => {
+      const metadata = metadataCalls.find((call) => call.body?.file_id === media.fileId) ?? null;
+      const filePath = metadata?.result?.file_path ?? null;
+      const download = filePath
+        ? downloadCalls.find((call) => call.body?.file_path === filePath) ?? null
+        : null;
+      return {
+        kind: media.kind ?? "media",
+        fileId: media.fileId ?? null,
+        contentType: media.contentType ?? null,
+        metadataResolved: metadata?.responseOk === true,
+        contentFetched: download?.responseOk === true,
+        ...(filePath ? { filePath } : {}),
+        ...(download?.result?.sha256 ? { sha256: download.result.sha256 } : {}),
+        ...(download?.result?.fingerprint ? { fingerprint: download.result.fingerprint } : {})
+      };
+    })
   };
 }
 

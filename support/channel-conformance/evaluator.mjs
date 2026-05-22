@@ -22,6 +22,7 @@ export function evaluateWorkflowCase({
     invariant(`${workflowCase.id}:expected-kind`, expectedVisible === 0 || expectedKindMatches(expects.kind, finalVisible), `${workflowCase.id} produced ${expects.kind ?? "visible"} output`),
     invariant(`${workflowCase.id}:expected-text`, !expectedText || visibleDeliveries.some((delivery) => deliveryText(delivery).includes(expectedText)), `${workflowCase.id} preserved expected text or caption`),
     invariant(`${workflowCase.id}:native-actions`, nativeActionsMatch(nativeActions, observations), nativeActionsReason(workflowCase.id, nativeActions, observations)),
+    invariant(`${workflowCase.id}:inbound-media`, inboundMediaMatches(workflowCase, observations), inboundMediaReason(workflowCase.id, workflowCase, observations)),
     invariant(`${workflowCase.id}:route`, !expectsVisibleDelivery || !requiresRoutePreservation(workflowCase) || finalVisible.every((delivery) => delivery.route?.key === observations.inbound?.route?.key), `${workflowCase.id} preserved the inbound route`),
     invariant(`${workflowCase.id}:reply-target`, !expectsVisibleDelivery || !requiresReplyPreservation(workflowCase) || replyTargetMatches(workflowCase, observations, finalVisible, visibleDeliveries), replyTargetReason(workflowCase.id, workflowCase, observations, finalVisible, visibleDeliveries)),
     invariant(`${workflowCase.id}:silent`, expects.silent !== true || finalVisible.every((delivery) => delivery.silent === true), `${workflowCase.id} preserved silent delivery intent`),
@@ -32,6 +33,34 @@ export function evaluateWorkflowCase({
     invariant(`${workflowCase.id}:no-duplicate-final`, expects.allowMultipleFinalSends === true || finalVisible.length <= expectedVisible, `${workflowCase.id} did not duplicate visible final delivery`),
     invariant(`${workflowCase.id}:no-self-trigger`, expects.noSelfTrigger !== true || providerRequestsAfterEcho === 0, `${workflowCase.id} did not start provider work from bot-authored channel echo`)
   ];
+}
+
+function inboundMediaMatches(workflowCase, observations) {
+  const expectedCount = expectedInboundMediaCount(workflowCase);
+  if (expectedCount === 0) {
+    return true;
+  }
+  const proof = objectOrEmpty(observations?.inboundMedia);
+  const inboundMedia = Array.isArray(observations?.inbound?.media) ? observations.inbound.media : [];
+  return inboundMedia.length >= expectedCount &&
+    Number(proof.metadataResolvedCount ?? 0) >= expectedCount &&
+    Number(proof.contentFetchedCount ?? 0) >= expectedCount;
+}
+
+function inboundMediaReason(caseId, workflowCase, observations) {
+  const expectedCount = expectedInboundMediaCount(workflowCase);
+  if (expectedCount === 0) {
+    return `${caseId} has no inbound media expectation`;
+  }
+  const proof = objectOrEmpty(observations?.inboundMedia);
+  const inboundMedia = Array.isArray(observations?.inbound?.media) ? observations.inbound.media : [];
+  return `${caseId} resolved inbound media through the channel adapter; expected ${expectedCount}, observed inbound ${inboundMedia.length}, metadata ${Number(proof.metadataResolvedCount ?? 0)}, fetched ${Number(proof.contentFetchedCount ?? 0)}`;
+}
+
+function expectedInboundMediaCount(workflowCase) {
+  return workflowCase?.input?.media && typeof workflowCase.input.media === "object" && !Array.isArray(workflowCase.input.media)
+    ? 1
+    : 0;
 }
 
 function requiresRoutePreservation(workflowCase) {

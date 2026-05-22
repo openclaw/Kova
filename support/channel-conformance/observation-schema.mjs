@@ -25,6 +25,9 @@ function observationSetErrors(observations) {
   if (!isObject(observations.inbound)) {
     errors.push("inbound must be an object");
   }
+  if (observations.inboundMedia !== undefined) {
+    errors.push(...inboundMediaErrors(observations.inboundMedia));
+  }
   if (!Array.isArray(observations.deliveries)) {
     errors.push("deliveries must be an array");
   } else {
@@ -40,6 +43,22 @@ function observationSetErrors(observations) {
     });
   }
   errors.push(...nativeCallSummaryErrors(observations.nativeCallSummary));
+  return errors;
+}
+
+function inboundMediaErrors(value) {
+  const errors = [];
+  if (!isObject(value)) {
+    return ["inboundMedia must be an object when set"];
+  }
+  for (const key of ["expectedCount", "metadataResolvedCount", "contentFetchedCount"]) {
+    if (!Number.isInteger(value[key]) || value[key] < 0) {
+      errors.push(`inboundMedia.${key} must be a non-negative integer`);
+    }
+  }
+  if (!Array.isArray(value.files)) {
+    errors.push("inboundMedia.files must be an array");
+  }
   return errors;
 }
 
