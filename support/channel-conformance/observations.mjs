@@ -19,7 +19,7 @@ export async function waitForCaseObservations({
       inbound: platform.currentInbound,
       calls: calls.slice(callCursor)
     });
-    if (expectedFinalDeliveries(workflowCase, latest).length >= expectedVisibleDeliveryCount(workflowCase)) {
+    if (hasExpectedFinalDeliveries(workflowCase, latest) && hasExpectedNativeActions(workflowCase, latest)) {
       const finalCalls = await waitForQuietPlatformCalls({
         platform,
         readPlatformCalls,
@@ -65,6 +65,22 @@ async function waitForQuietPlatformCalls({ platform, readPlatformCalls, callCurs
 function expectedVisibleDeliveryCount(workflowCase) {
   const value = workflowCase.expects?.visibleDeliveries;
   return Number.isInteger(value) ? value : 1;
+}
+
+function hasExpectedFinalDeliveries(workflowCase, observations) {
+  return expectedFinalDeliveries(workflowCase, observations).length >= expectedVisibleDeliveryCount(workflowCase);
+}
+
+function hasExpectedNativeActions(workflowCase, observations) {
+  const expected = workflowCase.expects?.nativeActions;
+  if (!expected || typeof expected !== "object" || Array.isArray(expected)) {
+    return true;
+  }
+  const byAction = observations?.nativeCallSummary?.byAction && typeof observations.nativeCallSummary.byAction === "object"
+    ? observations.nativeCallSummary.byAction
+    : {};
+  return Object.entries(expected)
+    .every(([action, count]) => Number(byAction[action] ?? 0) >= Number(count));
 }
 
 function caseTimeoutMs(workflowCase, timeoutMs) {
