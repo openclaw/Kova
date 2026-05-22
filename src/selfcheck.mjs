@@ -9416,6 +9416,23 @@ async function channelCapabilityRegistryCheck() {
     }
     assertEqual(rejectedNativeCalls, true, "workflow cases reject platform method expectations");
 
+    let rejectedPlatformNamedUserFlow = false;
+    try {
+      validateChannelWorkflowCaseCatalogShape({
+        schemaVersion: "kova.channelWorkflowCaseCatalog.v1",
+        id: "bad-platform-named-user-flow",
+        title: "Bad Platform Named User Flow",
+        description: "Bad platform named user flow shape.",
+        cases: [{
+          ...nativePollCase,
+          userAction: "user asks OpenClaw to create a Telegram poll in the current chat"
+        }]
+      }, "bad-platform-named-user-flow.json");
+    } catch (error) {
+      rejectedPlatformNamedUserFlow = /must be platform-neutral/.test(error.message);
+    }
+    assertEqual(rejectedPlatformNamedUserFlow, true, "workflow user-facing text rejects platform-specific names");
+
     let rejectedUnknownNativeAction = false;
     try {
       validateChannelWorkflowCaseCatalogShape({

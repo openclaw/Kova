@@ -56,6 +56,31 @@ export const channelWorkflowLifecycles = [
   "terminal"
 ];
 
+const forbiddenGenericUserFlowTerms = [
+  "telegram",
+  "discord",
+  "slack",
+  "mattermost",
+  "whatsapp",
+  "imessage",
+  "zalo",
+  "message_thread_id",
+  "messageThreadId",
+  "thread_ts",
+  "root_id",
+  "reply_parameters",
+  "replyToMessageId",
+  "sendMessage",
+  "sendPhoto",
+  "sendVideo",
+  "sendPoll",
+  "sendDocument",
+  "getUpdates",
+  "createForumTopic",
+  "editForumTopic",
+  "Bot API"
+];
+
 export async function loadChannelWorkflowFamilies(selectedId) {
   const names = await readdir(channelWorkflowFamiliesDir);
   const paths = names.filter((name) => name.endsWith(".json")).sort();
@@ -158,6 +183,9 @@ export function validateChannelWorkflowFamilyShape(family, sourceName = "channel
   requireString(family, "userAction", errors);
   requireString(family, "openclawSurface", errors);
   requireString(family, "ownerArea", errors);
+  validateGenericUserFlowText(family, "title", "title", errors);
+  validateGenericUserFlowText(family, "userAction", "userAction", errors);
+  validateGenericUserFlowText(family, "openclawSurface", "openclawSurface", errors);
   validateStringArray(family?.sourceRefs, "sourceRefs", errors, { nonEmpty: true });
   validateStringArray(family?.contentKinds, "contentKinds", errors, { nonEmpty: true });
   validateKnownValues(family?.contentKinds, channelWorkflowContentKinds, "contentKinds", errors);
@@ -211,6 +239,9 @@ function validateWorkflowShape(workflow, prefix, errors) {
   requireString(workflow, "userAction", errors, prefix);
   requireString(workflow, "openclawSurface", errors, prefix);
   requireString(workflow, "ownerArea", errors, prefix);
+  validateGenericUserFlowText(workflow, "title", `${prefix}.title`, errors);
+  validateGenericUserFlowText(workflow, "userAction", `${prefix}.userAction`, errors);
+  validateGenericUserFlowText(workflow, "openclawSurface", `${prefix}.openclawSurface`, errors);
   validateStringArray(workflow?.sourceRefs, `${prefix}.sourceRefs`, errors, { nonEmpty: true });
   validateStringArray(workflow?.contentKinds, `${prefix}.contentKinds`, errors, { nonEmpty: true });
   validateKnownValues(workflow?.contentKinds, channelWorkflowContentKinds, `${prefix}.contentKinds`, errors);
@@ -275,6 +306,9 @@ function validateCaseShape(testCase, prefix, errors, { requireInventoryWorkflow,
     requireString(testCase, "ownerArea", errors, prefix);
   }
   requireString(testCase, "prompt", errors, prefix);
+  validateGenericUserFlowText(testCase, "userAction", `${prefix}.userAction`, errors);
+  validateGenericUserFlowText(testCase, "openclawSurface", `${prefix}.openclawSurface`, errors);
+  validateGenericUserFlowText(testCase, "prompt", `${prefix}.prompt`, errors);
   requireObject(testCase, "providerScript", errors, prefix);
   requireObject(testCase, "expects", errors, prefix);
   requireObject(testCase, "matrix", errors, prefix);
@@ -312,6 +346,19 @@ function validateExpects(testCase, prefix, errors) {
     }
     if (!nativeAtoms.has(action)) {
       errors.push(`${prefix}.nativeActions.${action} must match a native-platform atom on the same workflow case`);
+    }
+  }
+}
+
+function validateGenericUserFlowText(source, key, label, errors) {
+  const value = source?.[key];
+  if (typeof value !== "string") {
+    return;
+  }
+  const lower = value.toLowerCase();
+  for (const term of forbiddenGenericUserFlowTerms) {
+    if (lower.includes(term.toLowerCase())) {
+      errors.push(`${label} must be platform-neutral and must not mention '${term}'`);
     }
   }
 }
