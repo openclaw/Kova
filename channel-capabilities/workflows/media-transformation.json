@@ -100,7 +100,7 @@
             "arguments": {
               "action": "send",
               "message": "KOVA_MEDIA_TRANSFORMATION_VIDEO_READY",
-              "media": "{{request.text.match:path=\"([^\"]+)\"}}"
+              "media": "{{kova.generatedMediaPath}}"
             }
           }
         ],

@@ -128,7 +128,7 @@ function primaryScriptStepsForWorkflowCase(testCase, options = {}) {
         respond: {
           type: "tool-calls",
           toolCalls: script.toolCalls.map((toolCall, index) =>
-            scriptToolCall(testCase.id, "providerScript.toolCalls", toolCall, index, options)
+            scriptToolCall(testCase, "providerScript.toolCalls", toolCall, index, options)
           )
         }
       },
@@ -149,7 +149,7 @@ function primaryScriptStepsForWorkflowCase(testCase, options = {}) {
           respond: {
             type: "tool-calls",
             toolCalls: script.completionToolCalls.map((toolCall, index) =>
-              scriptToolCall(testCase.id, "providerScript.completionToolCalls", toolCall, index, options)
+              scriptToolCall(testCase, "providerScript.completionToolCalls", toolCall, index, options)
             )
           }
         },
@@ -173,13 +173,52 @@ function primaryScriptStepsForWorkflowCase(testCase, options = {}) {
   }];
 }
 
-function scriptToolCall(testCaseId, label, toolCall, index, options = {}) {
+function scriptToolCall(testCase, label, toolCall, index, options = {}) {
+  const testCaseId = testCase.id;
   const defaultId = `call_${safeToolCallId(`${testCaseId}_${label}`)}_${index + 1}`;
+  const needsGeneratedMediaPath = JSON.stringify(toolCall.arguments ?? "").includes("{{kova.generatedMediaPath}}");
+  const replacements = {
+    ...(needsGeneratedMediaPath ? generatedMediaPathReplacement(testCase) : {}),
+    ...(options.replacements ?? {})
+  };
   return {
     id: toolCall.id ?? defaultId,
     name: requiredNonEmptyString(toolCall.name, `${testCaseId} ${label}[${index}].name`),
-    arguments: stringifyToolArguments(replaceScriptValue(toolCall.arguments, options.replacements))
+    arguments: stringifyToolArguments(replaceScriptValue(toolCall.arguments, replacements))
   };
+}
+
+function generatedMediaPathReplacement(testCase) {
+  const token = "{{kova.generatedMediaPath}}";
+  const filename = generatedMediaFilename(testCase);
+  if (!filename) {
+    throw new Error(`${testCase.id} uses ${token} without a generated media filename`);
+  }
+  const stem = filename.replace(/\.[^.]+$/u, "");
+  const extension = filename.slice(stem.length);
+  const pattern = extension
+    ? `path=\"([^\"]*${escapeRegex(stem)}[^\"]*${escapeRegex(extension)})\"`
+    : `path=\"([^\"]*${escapeRegex(filename)}[^\"]*)\"`;
+  return {
+    [token]: `{{request.text.match:${pattern}}}`
+  };
+}
+
+function generatedMediaFilename(testCase) {
+  const calls = Array.isArray(testCase.providerScript?.toolCalls)
+    ? testCase.providerScript.toolCalls
+    : [];
+  for (const call of calls) {
+    const args = call?.arguments;
+    if (args && typeof args === "object" && !Array.isArray(args) && typeof args.filename === "string" && args.filename.length > 0) {
+      return args.filename;
+    }
+  }
+  return null;
+}
+
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function replaceScriptValue(value, replacements = {}) {
