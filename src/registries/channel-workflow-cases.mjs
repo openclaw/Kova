@@ -158,6 +158,7 @@ function validateCases(cases, errors) {
     validateMatrix(testCase?.matrix, `${prefix}.matrix`, errors);
     requireArray(testCase, "atoms", errors, prefix);
     validateAtoms(testCase?.atoms, `${prefix}.atoms`, errors);
+    validateExpects(testCase, `${prefix}.expects`, errors);
     validateStringArray(testCase?.adapterSupport, `${prefix}.adapterSupport`, errors, { optional: true });
 
     if (typeof testCase?.id === "string") {
@@ -165,6 +166,37 @@ function validateCases(cases, errors) {
         errors.push(`duplicate channel workflow case '${testCase.id}'`);
       }
       ids.add(testCase.id);
+    }
+  }
+}
+
+function validateExpects(testCase, prefix, errors) {
+  const expects = testCase?.expects;
+  if (!expects || typeof expects !== "object" || Array.isArray(expects)) {
+    return;
+  }
+  if (expects.nativeCalls !== undefined) {
+    errors.push(`${prefix}.nativeCalls must not be used; use generic nativeActions instead`);
+  }
+  if (expects.nativeActions === undefined) {
+    return;
+  }
+  if (!expects.nativeActions || typeof expects.nativeActions !== "object" || Array.isArray(expects.nativeActions)) {
+    errors.push(`${prefix}.nativeActions must be an object when set`);
+    return;
+  }
+  const nativeAtoms = new Set((testCase.atoms ?? [])
+    .filter((atom) => atom.group === "native-platform")
+    .map((atom) => atom.id));
+  for (const [action, count] of Object.entries(expects.nativeActions)) {
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(action)) {
+      errors.push(`${prefix}.nativeActions key '${action}' must be a kebab id`);
+    }
+    if (!Number.isInteger(count) || count < 1) {
+      errors.push(`${prefix}.nativeActions.${action} must be a positive integer`);
+    }
+    if (!nativeAtoms.has(action)) {
+      errors.push(`${prefix}.nativeActions.${action} must match a native-platform atom on the same workflow case`);
     }
   }
 }

@@ -31,6 +31,7 @@ import { loadChannelWorkflowInventory, validateChannelWorkflowInventoryReference
 import {
   loadChannelWorkflowCaseCatalog,
   validateChannelWorkflowCaseCatalogReferences,
+  validateChannelWorkflowCaseCatalogShape,
   validateChannelWorkflowCaseInventoryReferences
 } from "./registries/channel-workflow-cases.mjs";
 import { loadProcessRoles } from "./registries/process-roles.mjs";
@@ -9388,6 +9389,48 @@ async function channelCapabilityRegistryCheck() {
     assertEqual(sourceMediaCase?.inventoryWorkflow, "source-visible-delivery", "source media workflow case maps to inventory workflow");
     assertEqual(sourceMediaCase?.matrix?.delivery, "message-tool-only-source-delivery", "source media workflow case declares matrix delivery mode");
     assertEqual(sourceMediaCase?.atoms?.some((atom) => atom.group === "workflow" && atom.id === "source-visible-delivery"), true, "source media workflow declares source delivery atom");
+    const nativePollCase = workflowCatalog?.cases?.find((testCase) => testCase.id === "native-action.poll");
+    assertEqual(Boolean(nativePollCase), true, "native poll workflow case present");
+    let rejectedNativeCalls = false;
+    try {
+      validateChannelWorkflowCaseCatalogShape({
+        schemaVersion: "kova.channelWorkflowCaseCatalog.v1",
+        id: "bad-native-calls",
+        title: "Bad Native Calls",
+        description: "Bad native call shape.",
+        cases: [{
+          ...nativePollCase,
+          expects: {
+            ...nativePollCase.expects,
+            nativeActions: undefined,
+            nativeCalls: { sendPoll: 1 }
+          }
+        }]
+      }, "bad-native-calls.json");
+    } catch (error) {
+      rejectedNativeCalls = /nativeCalls must not be used/.test(error.message);
+    }
+    assertEqual(rejectedNativeCalls, true, "workflow cases reject platform method expectations");
+
+    let rejectedUnknownNativeAction = false;
+    try {
+      validateChannelWorkflowCaseCatalogShape({
+        schemaVersion: "kova.channelWorkflowCaseCatalog.v1",
+        id: "bad-native-action",
+        title: "Bad Native Action",
+        description: "Bad native action shape.",
+        cases: [{
+          ...nativePollCase,
+          expects: {
+            ...nativePollCase.expects,
+            nativeActions: { "action-delete": 1 }
+          }
+        }]
+      }, "bad-native-action.json");
+    } catch (error) {
+      rejectedUnknownNativeAction = /must match a native-platform atom/.test(error.message);
+    }
+    assertEqual(rejectedUnknownNativeAction, true, "workflow native action expectations must match declared atoms");
     const telegram = channels.find((channel) => channel.id === "telegram");
     assertEqual(Boolean(telegram), true, "telegram channel capability registry present");
     assertEqual(telegram.adapterId, "telegram", "telegram adapter id");
