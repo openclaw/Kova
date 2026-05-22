@@ -5556,10 +5556,11 @@ async function mockProviderBehaviorCheck(tmp) {
   const command = [
     `node support/write-mock-ai-provider-script.mjs --output ${quoteShell(scriptPath)} --mode error-then-recover --error-status 503`,
     mockAiProviderServeCommand({ scriptPath, requestLog: requestLogPath, serverLog: serverLogPath, pidFile: pidPath }),
-    `for i in $(seq 1 50); do ${writePort} >/dev/null 2>&1 && test -s ${quoteShell(portPath)} && break; sleep 0.1; done`,
+    `trap 'test -s ${quoteShell(pidPath)} && kill "$(cat ${quoteShell(pidPath)})" 2>/dev/null || true' EXIT`,
+    `for i in $(seq 1 100); do ${writePort} >/dev/null 2>&1 && test -s ${quoteShell(portPath)} && node -e 'fetch("http://127.0.0.1:"+process.argv[1]+"/health").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))' "$(cat ${quoteShell(portPath)})" && break; sleep 0.1; done`,
+    `test -s ${quoteShell(portPath)} || { cat ${quoteShell(serverLogPath)} >&2; exit 1; }`,
     `port=$(cat ${quoteShell(portPath)})`,
-    "node -e 'const port=process.argv[1]; const body=JSON.stringify({model:\"gpt-5.5\",stream:false}); const send=()=>fetch(`http://127.0.0.1:${port}/v1/responses`,{method:\"POST\",headers:{\"content-type\":\"application/json\"},body}).then(async r=>({status:r.status,text:await r.text()})); const first=await send(); const second=await send(); console.log(JSON.stringify({first:first.status,second:second.status}));' \"$port\"",
-    `kill "$(cat ${quoteShell(pidPath)})" 2>/dev/null || true`
+    "node -e 'const port=process.argv[1]; const body=JSON.stringify({model:\"gpt-5.5\",stream:false}); const send=()=>fetch(`http://127.0.0.1:${port}/v1/responses`,{method:\"POST\",headers:{\"content-type\":\"application/json\"},body}).then(async r=>({status:r.status,text:await r.text()})); const first=await send(); const second=await send(); console.log(JSON.stringify({first:first.status,second:second.status}));' \"$port\""
   ].join("; ");
   const result = await runCommand(command, { timeoutMs: 10000 });
   try {
