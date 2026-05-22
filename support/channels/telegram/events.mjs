@@ -14,6 +14,7 @@ export function telegramInboundForCase(workflowCase) {
   const threaded = caseUsesThread(workflowCase);
   const reply = caseUsesReply(workflowCase);
   const roomEvent = caseUsesRoomEvent(workflowCase);
+  const media = inboundMediaForCase(workflowCase);
   const messageId = nextMessageId();
   const grouped = threaded || roomEvent;
   const chat = grouped
@@ -33,7 +34,7 @@ export function telegramInboundForCase(workflowCase) {
       first_name: "Kova User",
       username: "kova_user"
     },
-    text,
+    ...(media ? { caption: text, ...media.telegramFields } : { text }),
     ...(threaded ? { message_thread_id: THREAD_ID, is_topic_message: true } : {}),
     ...(reply ? {
       reply_to_message: {
@@ -58,6 +59,7 @@ export function telegramInboundForCase(workflowCase) {
       key: routeKey,
       parentKey: threaded ? String(GROUP_CHAT_ID) : null
     },
+    media: media?.facts ?? [],
     native: {
       update: {
         update_id: nextUpdateId(),
@@ -65,6 +67,87 @@ export function telegramInboundForCase(workflowCase) {
       }
     }
   };
+}
+
+function inboundMediaForCase(workflowCase) {
+  const media = workflowCase.input?.media;
+  if (!media || typeof media !== "object" || Array.isArray(media)) {
+    return null;
+  }
+  const kind = typeof media.kind === "string" ? media.kind : "image";
+  const fileId = typeof media.fileId === "string" ? media.fileId : `kova-${kind}-input`;
+  const fileUniqueId = `${fileId}-unique`;
+  const contentType = mediaContentType(kind);
+  return {
+    facts: [{
+      kind,
+      fileId,
+      contentType,
+      messageId: null
+    }],
+    telegramFields: telegramMediaFields({
+      kind,
+      fileId,
+      fileUniqueId,
+      fileName: typeof media.fileName === "string" ? media.fileName : undefined,
+      contentType
+    })
+  };
+}
+
+function telegramMediaFields({ kind, fileId, fileUniqueId, fileName, contentType }) {
+  if (kind === "video") {
+    return {
+      video: {
+        file_id: fileId,
+        file_unique_id: fileUniqueId,
+        file_name: fileName ?? "kova-input-video.mp4",
+        mime_type: contentType,
+        width: 640,
+        height: 360,
+        duration: 2
+      }
+    };
+  }
+  if (kind === "audio") {
+    return {
+      audio: {
+        file_id: fileId,
+        file_unique_id: fileUniqueId,
+        file_name: fileName ?? "kova-input-audio.ogg",
+        mime_type: contentType,
+        duration: 2
+      }
+    };
+  }
+  if (kind === "document") {
+    return {
+      document: {
+        file_id: fileId,
+        file_unique_id: fileUniqueId,
+        file_name: fileName ?? "kova-input-document.txt",
+        mime_type: contentType
+      }
+    };
+  }
+  return {
+    photo: [{
+      file_id: fileId,
+      file_unique_id: fileUniqueId,
+      width: 320,
+      height: 180,
+      file_size: 128
+    }]
+  };
+}
+
+function mediaContentType(kind) {
+  return {
+    video: "video/mp4",
+    audio: "audio/ogg",
+    document: "text/plain",
+    image: "image/png"
+  }[kind] ?? "application/octet-stream";
 }
 
 export function telegramBotEchoUpdate({ workflowCase, inbound, observations }) {

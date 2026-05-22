@@ -75,6 +75,30 @@ async function handleRequest(request, response) {
     });
     return;
   }
+  if (request.method === "GET" && url.pathname.startsWith(`/file/bot${token}/`)) {
+    const filePath = decodeURIComponent(url.pathname.slice(`/file/bot${token}/`.length));
+    const body = mediaBytesForFilePath(filePath);
+    const call = {
+      schemaVersion: "kova.telegramPlatformShim.call.v1",
+      receivedAt: new Date().toISOString(),
+      tokenMatches: true,
+      method: "downloadFile",
+      path: url.pathname,
+      body: { file_path: filePath },
+      responseOk: true,
+      result: {
+        file_path: filePath,
+        sizeBytes: body.length,
+        sha256: sha256(body),
+        fingerprint: mediaFingerprint(body)
+      }
+    };
+    calls.push(call);
+    await appendJsonLine(callsPath, call);
+    response.writeHead(200, { "content-type": contentTypeForFilePath(filePath) });
+    response.end(body);
+    return;
+  }
   if (request.method === "POST" && url.pathname === "/__kova/enqueue-update") {
     const body = await readRequestBody(request);
     const payload = parseJsonObject(body.toString("utf8"));
@@ -228,6 +252,18 @@ function telegramResult(method, body) {
     const result = offset === null ? updates : updates.filter((update) => update.update_id >= offset);
     return { ok: true, result };
   }
+  if (method === "getFile") {
+    const fileId = body.file_id ?? body.fileId ?? "kova-file";
+    return {
+      ok: true,
+      result: {
+        file_id: fileId,
+        file_unique_id: `${fileId}-unique`,
+        file_size: mediaBytesForFilePath(filePathForFileId(fileId)).length,
+        file_path: filePathForFileId(fileId)
+      }
+    };
+  }
   if (isSendMethod(method)) {
     return {
       ok: true,
@@ -316,6 +352,49 @@ function normalizePollOptions(value) {
     }
   }
   return [];
+}
+
+function filePathForFileId(fileId) {
+  const value = String(fileId ?? "kova-file");
+  if (value.includes("video")) {
+    return `videos/${value}.mp4`;
+  }
+  if (value.includes("audio") || value.includes("voice")) {
+    return `audio/${value}.ogg`;
+  }
+  if (value.includes("document") || value.includes("file")) {
+    return `documents/${value}.txt`;
+  }
+  return `photos/${value}.png`;
+}
+
+function contentTypeForFilePath(filePath) {
+  if (/\.mp4$/iu.test(filePath)) {
+    return "video/mp4";
+  }
+  if (/\.(?:ogg|opus)$/iu.test(filePath)) {
+    return "audio/ogg";
+  }
+  if (/\.txt$/iu.test(filePath)) {
+    return "text/plain; charset=utf-8";
+  }
+  return "image/png";
+}
+
+function mediaBytesForFilePath(filePath) {
+  if (/\.mp4$/iu.test(filePath)) {
+    return Buffer.from("KOVA_TELEGRAM_VIDEO_INPUT");
+  }
+  if (/\.(?:ogg|opus)$/iu.test(filePath)) {
+    return Buffer.from("KOVA_TELEGRAM_AUDIO_INPUT");
+  }
+  if (/\.txt$/iu.test(filePath)) {
+    return Buffer.from("KOVA_TELEGRAM_DOCUMENT_INPUT\n");
+  }
+  return Buffer.from([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    ...Buffer.from("KOVA_TELEGRAM_IMAGE_INPUT")
+  ]);
 }
 
 function parseTelegramBody(request, rawBody) {
