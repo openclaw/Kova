@@ -1,0 +1,156 @@
+{
+  "schemaVersion": "kova.channelWorkflowFamily.v1",
+  "id": "media-transformation",
+  "title": "Transform User Media",
+  "userAction": "user sends media to OpenClaw and asks for transformed media back in the same conversation",
+  "openclawSurface": "channel inbound media resolved into agent context with transformed media delivered back to the source conversation",
+  "ownerArea": "OpenClaw inbound media and generated result delivery runtime",
+  "sourceRefs": [
+    "src/channels/inbound-event/context.ts#buildChannelInboundEventContext",
+    "src/channels/inbound-event/media.ts#buildChannelInboundMediaPayload",
+    "src/auto-reply/media-note.ts#formatMediaNote",
+    "src/agents/tools/video-generate-tool.ts#VideoGenerateToolProperties",
+    "src/agents/subagent-announce-delivery.ts#deliverSubagentAnnouncement"
+  ],
+  "contentKinds": [
+    "image",
+    "video"
+  ],
+  "routeKinds": [
+    "direct",
+    "thread"
+  ],
+  "deliveryModes": [
+    "completion-handoff",
+    "message-tool-only-source-delivery",
+    "background-completion"
+  ],
+  "lifecycles": [
+    "async-completion",
+    "success",
+    "terminal"
+  ],
+  "atoms": [
+    {
+      "group": "workflow",
+      "id": "inbound-media-context"
+    },
+    {
+      "group": "workflow",
+      "id": "background-artifact-completion"
+    },
+    {
+      "group": "workflow",
+      "id": "completion-handoff"
+    },
+    {
+      "group": "workflow",
+      "id": "message-tool-only-source-delivery"
+    },
+    {
+      "group": "workflow",
+      "id": "terminal-after-final"
+    },
+    {
+      "group": "durable-final",
+      "id": "media"
+    },
+    {
+      "group": "durable-final",
+      "id": "message-sending-hooks"
+    }
+  ],
+  "cases": [
+    {
+      "id": "media-transformation.image-to-video",
+      "workflow": "media-transformation",
+      "matrix": {
+        "content": "video",
+        "route": "direct",
+        "delivery": "completion-handoff",
+        "lifecycle": "async-completion"
+      },
+      "input": {
+        "media": {
+          "kind": "image",
+          "fileId": "kova-image-input",
+          "fileName": "kova-input-image.png"
+        }
+      },
+      "userAction": "user sends an image and asks OpenClaw to turn it into a short video, then receives the video in the same chat",
+      "openclawSurface": "channel inbound image message with background generated video delivery",
+      "prompt": "Turn this image into a short launch teaser video.",
+      "providerScript": {
+        "toolCalls": [
+          {
+            "name": "video_generate",
+            "arguments": {
+              "action": "generate",
+              "prompt": "short launch teaser video based on the attached image",
+              "image": "{{request.text.match:media attached: ([^(]+) [(]}}",
+              "filename": "kova-image-to-video.mp4",
+              "durationSeconds": 2
+            }
+          }
+        ],
+        "finalText": "NO_REPLY",
+        "completionToolCalls": [
+          {
+            "name": "message",
+            "arguments": {
+              "action": "send",
+              "message": "KOVA_MEDIA_TRANSFORMATION_VIDEO_READY",
+              "media": "{{request.text.match:path=\"([^\"]+)\"}}"
+            }
+          }
+        ],
+        "completionFinalText": "NO_REPLY"
+      },
+      "expects": {
+        "visibleDeliveries": 1,
+        "kind": "media",
+        "text": "KOVA_MEDIA_TRANSFORMATION_VIDEO_READY",
+        "replyTo": "none",
+        "mediaSourcePolicy": "present-existing",
+        "hooks": true,
+        "terminal": true,
+        "noDuplicateFinal": true,
+        "asyncCompletionTimeoutMs": 15000
+      },
+      "providerRequests": {
+        "mode": "minimum",
+        "min": 4
+      },
+      "atoms": [
+        {
+          "group": "workflow",
+          "id": "inbound-media-context"
+        },
+        {
+          "group": "workflow",
+          "id": "background-artifact-completion"
+        },
+        {
+          "group": "workflow",
+          "id": "completion-handoff"
+        },
+        {
+          "group": "workflow",
+          "id": "message-tool-only-source-delivery"
+        },
+        {
+          "group": "workflow",
+          "id": "terminal-after-final"
+        },
+        {
+          "group": "durable-final",
+          "id": "media"
+        },
+        {
+          "group": "durable-final",
+          "id": "message-sending-hooks"
+        }
+      ]
+    }
+  ]
+}

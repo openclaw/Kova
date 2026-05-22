@@ -391,10 +391,10 @@ function mediaBytesForFilePath(filePath) {
   if (/\.txt$/iu.test(filePath)) {
     return Buffer.from("KOVA_TELEGRAM_DOCUMENT_INPUT\n");
   }
-  return Buffer.from([
-    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-    ...Buffer.from("KOVA_TELEGRAM_IMAGE_INPUT")
-  ]);
+  return Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR42mP8z8AARLJgYGBgYPgPAAf5AgPlsp7cAAAAAElFTkSuQmCC",
+    "base64"
+  );
 }
 
 function parseTelegramBody(request, rawBody) {

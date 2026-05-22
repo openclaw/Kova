@@ -13,6 +13,8 @@
     "src/infra/outbound/source-delivery-plan.ts",
     "src/agents/pi-embedded-runner/run/payloads.ts",
     "src/channels/turn/bot-loop-protection.ts",
+    "src/channels/inbound-event/context.ts",
+    "src/channels/inbound-event/media.ts",
     "src/agents/subagent-announce-delivery.ts"
   ],
   "capabilities": [
@@ -411,6 +413,15 @@
       "baselineExpectation": "a generated-media background completion must wake the requester conversation, route the completion through the required message-tool delivery path, preserve the source route, and deliver the generated media exactly once",
       "proofModes": ["model-turn", "deterministic-shim", "live-smoke"],
       "declarationSource": "src/agents/subagent-announce-delivery.ts"
+    },
+    {
+      "id": "inbound-media-context",
+      "group": "workflow",
+      "title": "Inbound Media Context",
+      "sourceSymbol": "buildChannelInboundMediaPayload",
+      "baselineExpectation": "a user-sent channel media item must be resolved by the adapter, attached to the channel inbound context, and made available to the agent/tool path as normal OpenClaw media input",
+      "proofModes": ["model-turn", "deterministic-shim", "live-smoke"],
+      "declarationSource": "src/channels/inbound-event/media.ts"
     },
     {
       "id": "failure-visible-once",
