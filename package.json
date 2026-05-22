@@ -12,7 +12,13 @@
     "plan": "node bin/kova.mjs plan",
     "check": "node bin/kova.mjs self-check",
     "test:snapshots": "node tests/render-snapshots.mjs",
-    "pack:release": "scripts/package-release.sh"
+    "pack:release": "scripts/package-release.sh",
+    "check:changed": "npm run check",
+    "test:changed": "npm run check",
+    "crabbox:hydrate": "crabbox actions hydrate",
+    "crabbox:run": "crabbox run",
+    "crabbox:stop": "crabbox stop",
+    "crabbox:warmup": "crabbox warmup"
   },
   "engines": {
     "node": ">=22"
