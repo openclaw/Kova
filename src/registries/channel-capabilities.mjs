@@ -111,7 +111,6 @@ function validateChannelBaseShape(channel, errors) {
   validateAdapterDistribution(channel?.adapterDistribution, "adapterDistribution", errors);
   validateStringArray(channel?.declarationSources, "declarationSources", errors, { nonEmpty: true });
   validateStringArray(channel?.workflowCaseIds, "workflowCaseIds", errors, { optional: true });
-  validateWorkflowOverrides(channel?.workflowOverrides, "workflowOverrides", errors);
   validateDeterministicShim(channel?.deterministicShim, "deterministicShim", errors);
 }
 
@@ -216,27 +215,6 @@ function validateAdapterDistribution(value, prefix, errors) {
     requireString(value, "packageName", errors, prefix);
     requireString(value, "pluginId", errors, prefix);
     requireString(value, "localBuildPath", errors, prefix);
-  }
-}
-
-function validateWorkflowOverrides(value, prefix, errors) {
-  if (value === undefined) {
-    return;
-  }
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    errors.push(`${prefix} must be an object when set`);
-    return;
-  }
-  for (const [caseId, override] of Object.entries(value)) {
-    if (!override || typeof override !== "object" || Array.isArray(override)) {
-      errors.push(`${prefix}.${caseId} must be an object`);
-      continue;
-    }
-    for (const key of ["visibleDeliveries", "textDeliveryIndex", "mediaDeliveryIndex"]) {
-      if (override[key] !== undefined && (!Number.isInteger(override[key]) || override[key] < 0)) {
-        errors.push(`${prefix}.${caseId}.${key} must be a non-negative integer when set`);
-      }
-    }
   }
 }
 

@@ -9,18 +9,5 @@ export function selectWorkflowCases({ channelRegistry, workflowCatalog, caseSet:
     const unknown = ids.filter((id) => !casesById.has(id));
     throw new Error(`unknown workflow case${unknown.length === 1 ? "" : "s"}: ${unknown.join(", ")}`);
   }
-  return selected.map((workflowCase) => applyWorkflowOverride(workflowCase, channelRegistry.workflowOverrides?.[workflowCase.id]));
-}
-
-function applyWorkflowOverride(workflowCase, override) {
-  if (!override || typeof override !== "object" || Array.isArray(override)) {
-    return workflowCase;
-  }
-  return {
-    ...workflowCase,
-    expects: {
-      ...workflowCase.expects,
-      ...override
-    }
-  };
+  return selected;
 }
