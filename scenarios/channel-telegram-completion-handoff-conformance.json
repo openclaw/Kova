@@ -1,0 +1,62 @@
+{
+  "id": "channel-telegram-completion-handoff-conformance",
+  "surface": "channel-telegram-capability-conformance",
+  "title": "Telegram Completion Handoff Conformance",
+  "objective": "Run the real OpenClaw Telegram adapter against the local Telegram Bot API shim and prove only the generated-media completion handoff workflows used for regression isolation.",
+  "tags": [
+    "channel",
+    "telegram",
+    "capability",
+    "adapter",
+    "shim",
+    "focused"
+  ],
+  "targetKinds": [
+    "npm",
+    "release",
+    "runtime",
+    "local-build"
+  ],
+  "timeoutMs": 180000,
+  "evidenceArtifactMaxBytes": 8388608,
+  "thresholds": {},
+  "phases": [
+    {
+      "id": "provision",
+      "title": "Provision Runtime Env",
+      "intent": "Create a disposable OpenClaw environment without starting the gateway so Kova can configure the packaged Telegram adapter for the shim.",
+      "commands": [
+        "ocm start {env} {startSelector} --no-service --json"
+      ],
+      "evidence": [
+        "OCM start JSON",
+        "env name",
+        "runtime binding"
+      ],
+      "healthScope": "none",
+      "collectionIntent": "service-only"
+    },
+    {
+      "id": "channel-telegram-completion-handoff-workflows",
+      "title": "Run Telegram Completion Handoff Workflows",
+      "intent": "Inject normal Telegram user messages that ask OpenClaw to generate media, then verify the completed media is sent back through Telegram direct and topic/thread routes.",
+      "commands": [
+        "node {kovaRoot}/support/channel-conformance/run.mjs --env {env} --artifact-dir {artifactDir} --channel telegram --tier adapter-shim --case-set completion-handoff.image.generated-direct,completion-handoff.image.generated-thread --continue-on-failure true --timeout-ms 180000"
+      ],
+      "evidence": [
+        "local Telegram Bot API shim",
+        "OpenClaw Telegram apiRoot config",
+        "real Telegram adapter polling",
+        "Telegram-shaped inbound user updates",
+        "mock provider request journal",
+        "Telegram sendMessage/media API calls",
+        "completion handoff route and media delivery invariants"
+      ],
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
+    }
+  ],
+  "proves": [
+    "telegram-conformance"
+  ]
+}
