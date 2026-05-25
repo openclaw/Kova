@@ -1,6 +1,6 @@
 ---
 name: ocm-operator
-description: Use OpenClaw Manager (OCM) safely and correctly for OpenClaw environment lifecycle work, runtime installation/builds, release-shaped local builds, upgrades, migration/adoption, cloning existing user state, service supervision, gateway logs, dev worktrees, plugin testing, model/provider smoke tests, TUI/dashboard checks, cleanup, and concise reporting. Use whenever Codex is asked to use OCM, manage OpenClaw envs/runtimes/services, test OpenClaw with OCM, reproduce existing-user or new-user flows, or avoid breaking user state while working with OpenClaw.
+description: "OCM/OpenClaw envs: create, clone, upgrade, runtimes, services, logs, cleanup."
 ---
 
 # OCM Operator

@@ -1,6 +1,6 @@
 ---
 name: kova-operator
-description: Use Kova to benchmark and validate OpenClaw with real release-shaped installs, OCM-backed disposable environments, startup/plugin/gateway/dashboard/TUI/agent/provider scenarios, CPU/RSS/event-loop/latency/resource attribution, baselines, release gates, and concise evidence reports. Use when asked to benchmark OpenClaw, evaluate OpenClaw performance, run Kova, produce Kova reports, investigate slow OpenClaw replies, validate OpenClaw release readiness, or compare OpenClaw builds across machines.
+description: "Kova/OpenClaw validation: benchmarks, release gates, scenarios, perf reports."
 ---
 
 # Kova Operator
