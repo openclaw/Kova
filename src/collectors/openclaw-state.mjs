@@ -27,6 +27,7 @@ const EXCLUDED_DIRS = new Set([
 ]);
 
 const KNOWN_FILES = [
+  ".openclaw/openclaw.json",
   "config.json",
   "settings.json",
   "providers.json",
@@ -37,6 +38,7 @@ const KNOWN_FILES = [
   "config/providers.json",
   "config/models.json",
   "config/auth.json",
+  "config/kova-doctor-upgrade-evidence.json",
   "config/version.json",
   "config/kova-source-release.json",
   "plugins/legacy-index.json",

@@ -1,0 +1,43 @@
+{
+  "id": "legacy-core-config-doctor-2026-4-24",
+  "title": "Legacy Core Config Doctor 2026.4.24",
+  "objective": "A 2026.4.24-shaped core config with stale gateway/runtime/model keys and a preserved user field, used to verify Doctor repairs stale core config without dropping unrelated user config.",
+  "tags": [
+    "config",
+    "doctor",
+    "upgrade",
+    "2026-4-24"
+  ],
+  "setup": [
+    {
+      "id": "write-legacy-core-config",
+      "title": "Write Legacy Core Config",
+      "intent": "Create stale core config keys from the 2026.4.24 plugin-architecture boundary and write evidence explaining the breaking-change risk.",
+      "afterPhase": "clone",
+      "commands": [
+        "ocm env exec {env} -- node {kovaRoot}/support/write-doctor-upgrade-state.mjs --state legacy-core-config-doctor-2026-4-24"
+      ],
+      "evidence": [
+        "legacy core config exists",
+        "doctor upgrade evidence names PR #78896 and PR #79203",
+        "source-release marker identifies 2026.4.24 plugin-architecture boundary"
+      ]
+    }
+  ],
+  "traits": [
+    "existing-user",
+    "old-release",
+    "migration-state",
+    "config-state"
+  ],
+  "riskArea": "core-config-doctor-repair",
+  "ownerArea": "gateway",
+  "setupEvidence": [
+    "config/kova-doctor-upgrade-evidence.json lists PR #78896 and PR #79203 as breakage evidence",
+    ".openclaw/openclaw.json contains legacy gateway_port, runtime.pi, and models.defaultProvider keys",
+    "config/kova-source-release.json marks release 2026.4.24"
+  ],
+  "cleanupGuarantees": [
+    "disposable env cleanup removes legacy core config fixture files"
+  ]
+}

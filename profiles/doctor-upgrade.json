@@ -1,0 +1,51 @@
+{
+  "id": "doctor-upgrade",
+  "title": "Doctor Upgrade Matrix",
+  "objective": "Focused OpenClaw upgrade coverage for Doctor repair across old, meaningful config profiles tied to known breaking-change boundaries.",
+  "targetKinds": [
+    "local-build"
+  ],
+  "entries": [
+    {
+      "scenario": "doctor-repair-upgrade",
+      "state": "legacy-core-config-doctor-2026-4-24",
+      "timeoutMs": 300000
+    },
+    {
+      "scenario": "doctor-repair-upgrade",
+      "state": "legacy-plugin-config-doctor-2026-5-22",
+      "timeoutMs": 300000
+    },
+    {
+      "scenario": "doctor-repair-upgrade",
+      "state": "legacy-provider-config-doctor-2026-5-7",
+      "timeoutMs": 300000
+    },
+    {
+      "scenario": "doctor-repair-upgrade",
+      "state": "legacy-channel-config-doctor-2026-5-7",
+      "timeoutMs": 300000
+    },
+    {
+      "scenario": "doctor-repair-upgrade",
+      "state": "legacy-runtime-pin-doctor-2026-5-8",
+      "timeoutMs": 300000
+    }
+  ],
+  "purpose": "upgrade",
+  "gate": {
+    "id": "doctor-upgrade-gate",
+    "blocking": [
+      {
+        "scenario": "doctor-repair-upgrade"
+      }
+    ],
+    "coverage": {
+      "requirements": {
+        "blocking": [
+          "upgrade-existing-user:doctor-repair"
+        ]
+      }
+    }
+  }
+}

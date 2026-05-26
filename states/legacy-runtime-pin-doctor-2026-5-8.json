@@ -1,0 +1,43 @@
+{
+  "id": "legacy-runtime-pin-doctor-2026-5-8",
+  "title": "Legacy Runtime Pin Doctor 2026.5.8",
+  "objective": "A stale Pi runtime pin config from the Codex runtime routing migration boundary, used to verify Doctor removes or rewrites runtime pins and the default agent path remains usable.",
+  "tags": [
+    "runtime",
+    "config",
+    "doctor",
+    "upgrade"
+  ],
+  "setup": [
+    {
+      "id": "write-legacy-runtime-pin",
+      "title": "Write Legacy Runtime Pin",
+      "intent": "Create stale Pi runtime pins and disabled Codex plugin state tied to recent Codex migration Doctor contracts.",
+      "afterPhase": "clone",
+      "commands": [
+        "ocm env exec {env} -- node {kovaRoot}/support/write-doctor-upgrade-state.mjs --state legacy-runtime-pin-doctor-2026-5-8"
+      ],
+      "evidence": [
+        "legacy runtime pin config exists",
+        "doctor upgrade evidence names PR #79238 and PR #85312",
+        "stale Pi runtime path is present before repair"
+      ]
+    }
+  ],
+  "traits": [
+    "existing-user",
+    "migration-state",
+    "config-state",
+    "runtime-deps"
+  ],
+  "riskArea": "runtime-pin-doctor-repair",
+  "ownerArea": "agents",
+  "setupEvidence": [
+    "config/kova-doctor-upgrade-evidence.json lists PR #79238, PR #85312, and stale Pi runtime commits as breakage evidence",
+    ".openclaw/openclaw.json contains agents.defaults.agentRuntime.id=pi",
+    ".openclaw/openclaw.json contains stale /usr/local/lib/openclaw/pi-runtime path"
+  ],
+  "cleanupGuarantees": [
+    "disposable env cleanup removes legacy runtime pin fixture files"
+  ]
+}

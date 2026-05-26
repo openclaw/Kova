@@ -1,0 +1,121 @@
+{
+  "id": "doctor-repair-upgrade",
+  "surface": "upgrade-existing-user",
+  "title": "Doctor Repair Upgrade",
+  "objective": "Clone a disposable old-version-shaped OpenClaw env, apply a legacy config fixture from a known breaking-change boundary, upgrade to the target runtime, run Doctor repair, and verify the repaired env keeps status, plugin, provider, and gateway health usable.",
+  "tags": [
+    "existing-user",
+    "upgrade",
+    "doctor",
+    "config",
+    "migration"
+  ],
+  "targetKinds": [
+    "local-build",
+    "release",
+    "runtime",
+    "npm"
+  ],
+  "auth": {
+    "mode": "skip"
+  },
+  "timeoutMs": 300000,
+  "thresholds": {
+    "upgradeMs": 180000,
+    "doctorFixMs": 60000,
+    "gatewayReadyMs": 60000,
+    "statusMs": 10000,
+    "pluginsListMs": 10000,
+    "modelsListMs": 20000,
+    "missingDependencyErrors": 0,
+    "pluginLoadFailures": 0
+  },
+  "phases": [
+    {
+      "id": "clone",
+      "title": "Clone Existing Env",
+      "intent": "Clone a durable existing env into a disposable Kova env before applying legacy config or upgrade actions.",
+      "commands": [
+        "ocm env clone {sourceEnv} {env} --json"
+      ],
+      "evidence": [
+        "clone result",
+        "source env",
+        "clone root"
+      ],
+      "healthScope": "none"
+    },
+    {
+      "id": "upgrade",
+      "title": "Upgrade To Target",
+      "intent": "Run the real target upgrade path through OCM after the legacy config state has been applied.",
+      "commands": [
+        "ocm upgrade {env} {upgradeSelector} --json"
+      ],
+      "evidence": [
+        "target upgrade JSON",
+        "snapshot id",
+        "doctor/update output",
+        "rollback status"
+      ],
+      "healthScope": "readiness"
+    },
+    {
+      "id": "doctor-repair",
+      "title": "Doctor Repair",
+      "intent": "Run Doctor repair and then run non-interactive Doctor again to prove repairable config validation errors are gone.",
+      "commands": [
+        "ocm @{env} -- doctor --fix --non-interactive",
+        "ocm @{env} -- doctor --non-interactive"
+      ],
+      "evidence": [
+        "doctor fix output",
+        "doctor clean output",
+        "no repairable config validation errors after fix"
+      ],
+      "healthScope": "post-ready"
+    },
+    {
+      "id": "post-repair-health",
+      "title": "Post-Repair Health",
+      "intent": "Verify the repaired env still supports core status, plugin discovery, model discovery, service health, and clean gateway logs.",
+      "commands": [
+        "ocm @{env} -- status",
+        "ocm @{env} -- plugins list",
+        "ocm @{env} -- models list"
+      ],
+      "evidence": [
+        "gateway state",
+        "OpenClaw status output",
+        "plugins list output",
+        "models list output",
+        "gateway logs without config validation loops, missing dependencies, or plugin load failures"
+      ],
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
+    }
+  ],
+  "evidenceContract": {
+    "snapshots": [
+      {
+        "id": "legacy-config-state",
+        "afterPhase": "clone",
+        "label": "Legacy config state after fixture setup",
+        "summary": "Captures the old config profile and Kova evidence marker before target upgrade.",
+        "required": true,
+        "maxFileBytes": 65536
+      },
+      {
+        "id": "post-doctor-config-state",
+        "afterPhase": "doctor-repair",
+        "label": "Post-Doctor config state",
+        "summary": "Captures the repaired config state after doctor --fix and doctor --non-interactive.",
+        "required": true,
+        "maxFileBytes": 65536
+      }
+    ]
+  },
+  "proves": [
+    "doctor-repair"
+  ]
+}

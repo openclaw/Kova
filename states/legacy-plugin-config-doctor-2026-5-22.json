@@ -1,0 +1,43 @@
+{
+  "id": "legacy-plugin-config-doctor-2026-5-22",
+  "title": "Legacy Plugin Config Doctor 2026.5.22",
+  "objective": "A plugin config containing stale install index data and bundled plugin load paths, used to verify Doctor does not reintroduce plugin load-path loops and leaves plugins list/gateway startup clean.",
+  "tags": [
+    "plugins",
+    "config",
+    "doctor",
+    "upgrade"
+  ],
+  "setup": [
+    {
+      "id": "write-legacy-plugin-config",
+      "title": "Write Legacy Plugin Config",
+      "intent": "Create stale plugin install metadata and bundled plugin load paths tied to recent plugin Doctor regressions.",
+      "afterPhase": "clone",
+      "commands": [
+        "ocm env exec {env} -- node {kovaRoot}/support/write-doctor-upgrade-state.mjs --state legacy-plugin-config-doctor-2026-5-22"
+      ],
+      "evidence": [
+        "legacy plugin config exists",
+        "doctor upgrade evidence names issue #85334 and PR #85358",
+        "stale plugins/installs.json exists"
+      ]
+    }
+  ],
+  "traits": [
+    "existing-user",
+    "migration-state",
+    "config-state",
+    "plugin-pressure"
+  ],
+  "riskArea": "plugin-config-doctor-repair",
+  "ownerArea": "plugins",
+  "setupEvidence": [
+    "config/kova-doctor-upgrade-evidence.json lists issue #85334, PR #85358, and PR #85170 as breakage evidence",
+    ".openclaw/openclaw.json contains legacy plugins.load.paths pointing at bundled plugin directories",
+    "plugins/installs.json uses an older install-index shape"
+  ],
+  "cleanupGuarantees": [
+    "disposable env cleanup removes legacy plugin config fixture files"
+  ]
+}

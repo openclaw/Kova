@@ -195,6 +195,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(provisioningBlockedStatusCheck());
     checks.push(cleanupProofRequiredCheck());
     checks.push(await openClawStateSnapshotCheck(tmp));
+    checks.push(await doctorUpgradeSnapshotEvidenceCheck(tmp));
     checks.push(upgradeStateSnapshotInvariantsCheck());
     checks.push(upgradeLogDerivedInvariantsCheck());
     checks.push(localBuildTargetSetupResourceExclusionCheck());
@@ -287,6 +288,22 @@ export async function runSelfCheck(flags = {}) {
     checks.push(await jsonCommandCheck("local-build-upgrade-plan-json", "node bin/kova.mjs matrix plan --profile local-build-upgrade --target local-build:/tmp/openclaw --include scenario:upgrade-stable-release-to-local-build --json", (data) => {
       assertEqual(data.profile?.id, "local-build-upgrade", "local-build upgrade profile id");
       assertEqual(data.entries?.[0]?.scenario?.id, "upgrade-stable-release-to-local-build", "local-build stable upgrade scenario");
+    }));
+    checks.push(await jsonCommandCheck("doctor-upgrade-plan-json", "node bin/kova.mjs matrix plan --profile doctor-upgrade --target local-build:/tmp/openclaw --json", (data) => {
+      assertEqual(data.profile?.id, "doctor-upgrade", "doctor upgrade profile id");
+      assertEqual(data.entries?.length, 5, "doctor upgrade state variety");
+      assertEqual(data.resolvedCoverage?.statuses?.planned, 5, "doctor upgrade resolved obligations");
+      assertEqual(data.resolvedCoverage?.gaps?.length, 0, "doctor upgrade coverage gaps");
+      const states = new Set(data.entries?.map((entry) => entry.state?.id));
+      for (const state of [
+        "legacy-core-config-doctor-2026-4-24",
+        "legacy-plugin-config-doctor-2026-5-22",
+        "legacy-provider-config-doctor-2026-5-7",
+        "legacy-channel-config-doctor-2026-5-7",
+        "legacy-runtime-pin-doctor-2026-5-8"
+      ]) {
+        assertEqual(states.has(state), true, `doctor upgrade includes ${state}`);
+      }
     }));
     checks.push(await jsonCommandCheck("release-upgrade-dry-run-json", `node bin/kova.mjs run --target release:beta --scenario upgrade-stable-release-to-beta --state stable-release-user --report-dir ${quoteShell(tmp)} --json`, async (data) => {
       const report = JSON.parse(await readFile(data.jsonPath, "utf8"));
@@ -2137,6 +2154,58 @@ async function openClawStateSnapshotCheck(tmp) {
       id: "openclaw-state-snapshot",
       status: "FAIL",
       command: "capture bounded redacted OpenClaw state snapshot",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+async function doctorUpgradeSnapshotEvidenceCheck(tmp) {
+  const home = join(tmp, "doctor-upgrade-snapshot-openclaw-home");
+  const state = "legacy-channel-config-doctor-2026-5-7";
+  try {
+    const writeResult = await runCommand(
+      `node support/write-doctor-upgrade-state.mjs --state ${quoteShell(state)}`,
+      {
+        env: { OPENCLAW_HOME: home },
+        timeoutMs: 30000
+      }
+    );
+    if (writeResult.status !== 0) {
+      throw new Error(`doctor fixture writer failed: ${writeResult.stderr || writeResult.stdout}`);
+    }
+
+    const captureResult = await runCommand(
+      `node support/capture-openclaw-state.mjs --home ${quoteShell(home)} --label doctor-fixture`,
+      {
+        timeoutMs: 30000,
+        maxOutputChars: 200000
+      }
+    );
+    if (captureResult.status !== 0) {
+      throw new Error(`doctor fixture snapshot failed: ${captureResult.stderr || captureResult.stdout}`);
+    }
+    const snapshot = JSON.parse(captureResult.stdout);
+    const files = new Set((snapshot.files ?? []).map((file) => file.path));
+    assertEqual(files.has(".openclaw/openclaw.json"), true, "doctor fixture snapshot includes legacy OpenClaw config");
+    assertEqual(files.has("config/kova-doctor-upgrade-evidence.json"), true, "doctor fixture snapshot includes Kova evidence marker");
+    assertEqual(
+      snapshot.config?.files?.includes("config/kova-doctor-upgrade-evidence.json"),
+      true,
+      "doctor fixture evidence marker is summarized as config"
+    );
+
+    return {
+      id: "doctor-upgrade-snapshot-evidence",
+      status: "PASS",
+      command: "write doctor fixture and capture OpenClaw state snapshot",
+      durationMs: writeResult.durationMs + captureResult.durationMs
+    };
+  } catch (error) {
+    return {
+      id: "doctor-upgrade-snapshot-evidence",
+      status: "FAIL",
+      command: "write doctor fixture and capture OpenClaw state snapshot",
       durationMs: 0,
       message: error.message
     };

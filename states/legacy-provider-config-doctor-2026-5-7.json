@@ -1,0 +1,44 @@
+{
+  "id": "legacy-provider-config-doctor-2026-5-7",
+  "title": "Legacy Provider Config Doctor 2026.5.7",
+  "objective": "A provider/model config with OpenAI Codex model refs and legacy compat fields, used to verify Doctor preserves runtime-specific model routing and model discovery remains coherent.",
+  "tags": [
+    "providers",
+    "models",
+    "config",
+    "doctor",
+    "upgrade"
+  ],
+  "setup": [
+    {
+      "id": "write-legacy-provider-config",
+      "title": "Write Legacy Provider Config",
+      "intent": "Create stale provider model refs and compat fields from recent Doctor/provider normalization regressions.",
+      "afterPhase": "clone",
+      "commands": [
+        "ocm env exec {env} -- node {kovaRoot}/support/write-doctor-upgrade-state.mjs --state legacy-provider-config-doctor-2026-5-7"
+      ],
+      "evidence": [
+        "legacy provider config exists",
+        "doctor upgrade evidence names PR #78967 and PR #78971",
+        "OpenAI Codex model refs are present before repair"
+      ]
+    }
+  ],
+  "traits": [
+    "existing-user",
+    "migration-state",
+    "config-state",
+    "provider-pressure"
+  ],
+  "riskArea": "provider-config-doctor-repair",
+  "ownerArea": "models",
+  "setupEvidence": [
+    "config/kova-doctor-upgrade-evidence.json lists PR #78967, PR #78971, and provider alias catalog commits as breakage evidence",
+    ".openclaw/openclaw.json contains openai-codex/gpt-5 runtime-specific model refs",
+    ".openclaw/openclaw.json contains legacy compatibleProvider and responsesApi provider fields"
+  ],
+  "cleanupGuarantees": [
+    "disposable env cleanup removes legacy provider config fixture files"
+  ]
+}

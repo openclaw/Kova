@@ -1,0 +1,43 @@
+{
+  "id": "legacy-channel-config-doctor-2026-5-7",
+  "title": "Legacy Channel Config Doctor 2026.5.7",
+  "objective": "A channel config with removed core channel schema and stale channel plugin state, used to verify plugin-owned Doctor repairs do not leave config validation failures.",
+  "tags": [
+    "channels",
+    "plugins",
+    "config",
+    "doctor",
+    "upgrade"
+  ],
+  "setup": [
+    {
+      "id": "write-legacy-channel-config",
+      "title": "Write Legacy Channel Config",
+      "intent": "Create stale channel config from channel schema and external plugin repair boundaries.",
+      "afterPhase": "clone",
+      "commands": [
+        "ocm env exec {env} -- node {kovaRoot}/support/write-doctor-upgrade-state.mjs --state legacy-channel-config-doctor-2026-5-7"
+      ],
+      "evidence": [
+        "legacy channel config exists",
+        "doctor upgrade evidence names PR #78612 and PR #78876",
+        "Feishu stale-state repair commit evidence is recorded"
+      ]
+    }
+  ],
+  "traits": [
+    "existing-user",
+    "migration-state",
+    "config-state"
+  ],
+  "riskArea": "channel-config-doctor-repair",
+  "ownerArea": "channels",
+  "setupEvidence": [
+    "config/kova-doctor-upgrade-evidence.json lists PR #78612, PR #78876, and commit b7c461af7b as breakage evidence",
+    ".openclaw/openclaw.json contains removed core BlueBubbles-style channel config",
+    ".openclaw/openclaw.json contains stale Feishu and Telegram channel config shapes"
+  ],
+  "cleanupGuarantees": [
+    "disposable env cleanup removes legacy channel config fixture files"
+  ]
+}

@@ -77,6 +77,32 @@
         "pluginIndexPresent",
         "doctorFixMs"
       ]
+    },
+    {
+      "id": "doctor-repair",
+      "states": [
+        "legacy-channel-config-doctor-2026-5-7",
+        "legacy-core-config-doctor-2026-4-24",
+        "legacy-plugin-config-doctor-2026-5-22",
+        "legacy-provider-config-doctor-2026-5-7",
+        "legacy-runtime-pin-doctor-2026-5-8"
+      ],
+      "targetKinds": [
+        "npm",
+        "release",
+        "runtime",
+        "local-build"
+      ],
+      "metrics": [
+        "upgradeMs",
+        "doctorFixMs",
+        "gatewayReadyMs",
+        "statusMs",
+        "pluginsListMs",
+        "modelsListMs",
+        "missingDependencyErrors",
+        "pluginLoadFailures"
+      ]
     }
   ]
 }
