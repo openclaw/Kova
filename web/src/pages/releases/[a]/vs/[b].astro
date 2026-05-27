@@ -1,0 +1,85 @@
+---
+import Base from "../../../../layouts/Base.astro";
+import { comparisonPairs } from "../../../../lib/scenarios";
+import { fmtMetric, deltaClass } from "../../../../lib/release-format";
+import type { ComparisonRow } from "../../../../content.config";
+
+export async function getStaticPaths() {
+  const pairs = await comparisonPairs();
+  return pairs.map(({ a, b, vsVer }) => ({
+    params: { a: a.ver, b: vsVer },
+    props: { a, b, vsVer },
+  }));
+}
+
+const { a, b, vsVer } = Astro.props;
+const rows = a.comparison!.rows;
+
+const summary = rows.reduce(
+  (acc, r) => {
+    const d = deltaClass(r.deltaPct, r.lowerIsBetter !== false);
+    if (d.cls === "delta-up") acc.regressed++;
+    else if (d.cls === "delta-down") acc.improved++;
+    else acc.flat++;
+    return acc;
+  },
+  { regressed: 0, improved: 0, flat: 0 },
+);
+---
+
+<Base title={`kova — ${a.ver} vs ${vsVer}`} active="releases">
+  <div class="container">
+
+    <div class="release-header">
+      <a class="release-back" href={`/releases/${a.ver}`}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M15 18 L9 12 L15 6" />
+        </svg>
+        {a.ver}
+      </a>
+      <h1 class="release-title">{a.ver} vs {vsVer}</h1>
+      <div class="release-tags">
+        <span class="release-tag">{a.sha}</span>
+        {b && <span class="release-tag">{b.sha}</span>}
+        <span>{a.date}{b ? ` ← ${b.date}` : ""}</span>
+      </div>
+
+      <div class="headline-strip">
+        <div class="v2-status-counts">
+          <div class="fail"><span class="num">{summary.regressed}</span><span class="lbl">regressed</span></div>
+          <div class="pass"><span class="num">{summary.improved}</span><span class="lbl">improved</span></div>
+          <div><span class="num">{summary.flat}</span><span class="lbl">flat</span></div>
+          <div><span class="num">{rows.length}</span><span class="lbl">tracked</span></div>
+        </div>
+      </div>
+    </div>
+
+    <section>
+      <div class="section-rule"><h2>Per-metric delta</h2></div>
+      <div class="compare">
+        {rows.map((row: ComparisonRow) => {
+          const d = deltaClass(row.deltaPct, row.lowerIsBetter !== false);
+          return (
+            <div class="compare-row">
+              <span class="compare-scenario">
+                <a href={`/scenarios/${row.scenarioId}`} style="color:inherit;border-bottom:1px solid var(--border-2);">{row.scenarioId}</a>
+              </span>
+              <span class="compare-metric">{row.metric}</span>
+              <span class="compare-metric">{fmtMetric(row.before, row.unit)} → {fmtMetric(row.after, row.unit)}</span>
+              <span class:list={["compare-delta", d.cls]}>
+                {d.arrow} {row.deltaPct > 0 ? "+" : ""}{row.deltaPct.toFixed(1)}%
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+
+    {!b && (
+      <p style="font-family:var(--font-mono);font-size:var(--text-2);color:var(--text-3c);max-width:60ch;margin-top:var(--space-5);">
+        Baseline release <strong>{vsVer}</strong> has no archived detail; comparison shown is precomputed from the {a.ver} run.
+      </p>
+    )}
+
+  </div>
+</Base>

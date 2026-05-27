@@ -176,7 +176,12 @@ const hasRuns = runsList.length > 0;
 
         {release.comparison && release.comparison.rows.length > 0 && (
           <section>
-            <div class="section-rule"><h2>vs {release.comparison.vsVer}</h2></div>
+            <div class="section-rule">
+              <h2>vs {release.comparison.vsVer}</h2>
+            </div>
+            <p style="margin: calc(-1 * var(--space-3)) 0 var(--space-3); font-family:var(--font-mono); font-size:var(--text-1); color:var(--text-3c);">
+              <a href={`/releases/${release.ver}/vs/${release.comparison.vsVer}`} style="color:var(--text-2c); border-bottom:1px solid var(--border-2);">open full comparison →</a>
+            </p>
             <div class="compare">
               {release.comparison.rows.map((row: ComparisonRow) => {
                 const d = deltaClass(row.deltaPct, row.lowerIsBetter !== false);
