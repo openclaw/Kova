@@ -28,10 +28,29 @@ export function evaluateWorkflowCase({
     invariant(`${workflowCase.id}:silent`, expects.silent !== true || finalVisible.every((delivery) => delivery.silent === true), `${workflowCase.id} preserved silent delivery intent`),
     invariant(`${workflowCase.id}:media-present`, expects.kind !== "media" || finalVisible.some((delivery) => delivery.kind === "media" && delivery.media?.some((media) => media.present)), `${workflowCase.id} delivered media through a native media send`),
     invariant(`${workflowCase.id}:media-source`, mediaSourceMatches(expects, finalVisible), mediaSourceReason(workflowCase.id, expects, finalVisible)),
+    ...livePreviewInvariants(workflowCase, observations),
     invariant(`${workflowCase.id}:native-message-proof`, expectedVisible === 0 || finalVisible.every((delivery) => Array.isArray(delivery.nativeMessages) && delivery.nativeMessages.length > 0), `${workflowCase.id} linked logical delivery to native platform message proof`),
     invariant(`${workflowCase.id}:unmatched-native-visible-sends`, unmatchedNative.length === 0, unmatchedNativeVisibleReason(workflowCase.id, unmatchedNative)),
     invariant(`${workflowCase.id}:no-duplicate-final`, expects.allowMultipleFinalSends === true || finalVisible.length <= expectedVisible, `${workflowCase.id} did not duplicate visible final delivery`),
     invariant(`${workflowCase.id}:no-self-trigger`, expects.noSelfTrigger !== true || providerRequestsAfterEcho === 0, `${workflowCase.id} did not start provider work from bot-authored channel echo`)
+  ];
+}
+
+function livePreviewInvariants(workflowCase, observations) {
+  const expected = objectOrEmpty(objectOrEmpty(workflowCase?.expects).livePreview);
+  if (Object.keys(expected).length === 0) {
+    return [];
+  }
+  const proof = objectOrEmpty(observations?.livePreview);
+  const caseId = workflowCase.id;
+  return [
+    invariant(`${caseId}:live-draft-preview`, expected.draftPreview !== true || Number(proof.draftPreviewCount ?? 0) > 0, `${caseId} created a live draft preview`),
+    invariant(`${caseId}:live-preview-finalization`, expected.previewFinalization !== true || proof.previewFinalized === true, `${caseId} finalized the live preview`),
+    invariant(`${caseId}:live-progress-updates`, expected.progressUpdates !== true || Number(proof.progressUpdateCount ?? 0) > 0, `${caseId} updated live progress preview`),
+    invariant(`${caseId}:live-preview-receipt`, expected.previewReceipt !== true || proof.previewReceiptPresent === true, `${caseId} retained live preview receipt`),
+    invariant(`${caseId}:live-final-edit`, expected.finalizer !== "final-edit" || Number(proof.finalEditCount ?? 0) > 0, `${caseId} finalized the live preview in place`),
+    invariant(`${caseId}:live-normal-fallback`, expected.finalizer !== "normal-fallback" || Number(proof.normalFallbackCount ?? 0) > 0, `${caseId} fell back to normal final delivery after live preview`),
+    invariant(`${caseId}:live-retain-ambiguous`, expected.retainOnAmbiguousFailure !== true || proof.retainedOnAmbiguousFailure === true, `${caseId} retained the live preview on ambiguous finalization failure`)
   ];
 }
 

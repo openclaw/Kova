@@ -71,5 +71,79 @@
       "id": "retain-on-ambiguous-failure"
     }
   ],
-  "cases": []
+  "cases": [
+    {
+      "id": "live-preview.progress-normal-fallback",
+      "workflow": "live-preview-finalization",
+      "matrix": {
+        "content": "text",
+        "route": "direct",
+        "delivery": "live-finalizer",
+        "lifecycle": "success"
+      },
+      "userAction": "user asks OpenClaw to perform a small channel action and sees progress before the final answer appears normally",
+      "openclawSurface": "channel inbound direct message with live progress preview and normal final delivery fallback",
+      "ownerArea": "OpenClaw live channel runtime and adapter",
+      "prompt": "React to this launch note, then tell me when it is done.",
+      "livePreview": {
+        "mode": "progress"
+      },
+      "providerScript": {
+        "toolCalls": [
+          {
+            "name": "message",
+            "arguments": {
+              "action": "react",
+              "emoji": "👍"
+            }
+          }
+        ],
+        "finalText": "KOVA_LIVE_PREVIEW_NORMAL_FALLBACK_OK"
+      },
+      "expects": {
+        "visibleDeliveries": 1,
+        "kind": "text",
+        "text": "KOVA_LIVE_PREVIEW_NORMAL_FALLBACK_OK",
+        "livePreview": {
+          "draftPreview": true,
+          "previewFinalization": true,
+          "progressUpdates": true,
+          "previewReceipt": true,
+          "finalizer": "normal-fallback"
+        },
+        "terminal": true,
+        "noDuplicateFinal": true
+      },
+      "atoms": [
+        {
+          "group": "live-preview",
+          "id": "draft-preview"
+        },
+        {
+          "group": "live-preview",
+          "id": "preview-finalization"
+        },
+        {
+          "group": "live-preview",
+          "id": "progress-updates"
+        },
+        {
+          "group": "live-finalizer",
+          "id": "normal-fallback"
+        },
+        {
+          "group": "live-finalizer",
+          "id": "preview-receipt"
+        },
+        {
+          "group": "durable-final",
+          "id": "text"
+        },
+        {
+          "group": "native-platform",
+          "id": "action-react"
+        }
+      ]
+    }
+  ]
 }

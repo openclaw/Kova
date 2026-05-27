@@ -6,7 +6,32 @@ export function configureTelegramOpenClaw({ repoRoot, envName, platform, timeout
   platform.repoRoot = repoRoot;
   platform.envName = envName;
   platform.timeoutMs = timeoutMs;
-  return runCommand("ocm", [
+  return runTelegramConfigure({
+    repoRoot,
+    envName,
+    platform,
+    timeoutMs
+  });
+}
+
+export function configureTelegramWorkflowCase({ workflowCase, platform }) {
+  const livePreview = workflowCase?.livePreview && typeof workflowCase.livePreview === "object" && !Array.isArray(workflowCase.livePreview)
+    ? workflowCase.livePreview
+    : null;
+  const mode = typeof livePreview?.mode === "string" && livePreview.mode.length > 0
+    ? livePreview.mode
+    : "partial";
+  return runTelegramConfigure({
+    repoRoot: platform.repoRoot,
+    envName: platform.envName,
+    platform,
+    timeoutMs: platform.timeoutMs,
+    streamingMode: mode
+  });
+}
+
+function runTelegramConfigure({ repoRoot, envName, platform, timeoutMs, streamingMode = null }) {
+  const args = [
     "env",
     "exec",
     envName,
@@ -17,7 +42,11 @@ export function configureTelegramOpenClaw({ repoRoot, envName, platform, timeout
     platform.portPath,
     "--token",
     TELEGRAM_TOKEN
-  ], timeoutMs);
+  ];
+  if (streamingMode) {
+    args.push("--streaming-mode", streamingMode);
+  }
+  return runCommand("ocm", args, timeoutMs);
 }
 
 export async function startTelegramOpenClaw({ repoRoot, envName, artifactDir, timeoutMs }) {

@@ -11,6 +11,7 @@ const VISIBLE_SEND_METHODS = new Set([
 ]);
 
 export function normalizeTelegramObservations({ workflowCase, inbound, calls }) {
+  const livePreview = normalizeLivePreview({ workflowCase, calls });
   const visibleCalls = calls.filter((call) => isVisibleDeliveryCall(call, workflowCase));
   const deliveries = visibleCalls
     .map((call) => normalizeDelivery(call, workflowCase));
@@ -19,9 +20,49 @@ export function normalizeTelegramObservations({ workflowCase, inbound, calls }) 
     channelId: "telegram",
     inbound,
     inboundMedia: normalizeInboundMedia({ inbound, calls }),
+    livePreview,
     deliveries,
     unmatchedNativeMessages: [],
     nativeCallSummary: summarizeNativeCalls(calls, visibleCalls.length, deliveries.length)
+  };
+}
+
+function normalizeLivePreview({ workflowCase, calls }) {
+  const expects = objectOrEmpty(workflowCase?.expects);
+  const expected = objectOrEmpty(expects.livePreview);
+  if (Object.keys(expected).length === 0) {
+    return {
+      expected: false,
+      draftPreviewCount: 0,
+      progressUpdateCount: 0,
+      finalEditCount: 0,
+      normalFallbackCount: 0,
+      previewReceiptPresent: false,
+      retainedOnAmbiguousFailure: false
+    };
+  }
+  const previewCalls = calls.filter((call) => isLivePreviewDraftCall(call, workflowCase));
+  const finalEditCalls = calls.filter((call) => isLivePreviewFinalEditCall(call, workflowCase));
+  const normalFallbackCalls = calls.filter((call) => isLivePreviewNormalFallbackCall(call, workflowCase));
+  const previewMessageIds = new Set(previewCalls
+    .map((call) => call.result?.message_id)
+    .filter((messageId) => messageId != null)
+    .map((messageId) => String(messageId)));
+  const previewDeleteCalls = calls.filter((call) =>
+    call.method === "deleteMessage" &&
+    call.responseOk === true &&
+    previewMessageIds.has(String(call.body?.message_id))
+  );
+  return {
+    expected: true,
+    draftPreviewCount: previewCalls.filter((call) => call.method === "sendMessage").length,
+    progressUpdateCount: previewCalls.length,
+    finalEditCount: finalEditCalls.length,
+    normalFallbackCount: normalFallbackCalls.length,
+    previewReceiptPresent: previewCalls.some((call) => call.result?.message_id != null),
+    previewFinalized: finalEditCalls.length > 0 || previewDeleteCalls.length > 0,
+    retainedOnAmbiguousFailure: false,
+    methods: [...new Set([...previewCalls, ...finalEditCalls, ...normalFallbackCalls].map((call) => call.method))]
   };
 }
 
@@ -100,12 +141,72 @@ function nativeActionsForMethod(method) {
 }
 
 function isVisibleDeliveryCall(call, workflowCase) {
+  if (isLivePreviewDraftCall(call, workflowCase)) {
+    return false;
+  }
+  if (isLivePreviewFinalEditCall(call, workflowCase)) {
+    return true;
+  }
   if (VISIBLE_SEND_METHODS.has(call.method)) {
     return true;
   }
   return workflowCase?.expects?.errorFinal === true &&
     call.method === "editMessageText" &&
     !isTransientStatusText(typeof call.body?.text === "string" ? call.body.text : null);
+}
+
+function isLivePreviewDraftCall(call, workflowCase) {
+  const expects = objectOrEmpty(workflowCase?.expects);
+  const expected = objectOrEmpty(expects.livePreview);
+  if (Object.keys(expected).length === 0) {
+    return false;
+  }
+  if (call.method !== "sendMessage" && call.method !== "editMessageText") {
+    return false;
+  }
+  const text = typeof call.body?.text === "string" ? call.body.text : "";
+  if (!text) {
+    return false;
+  }
+  const finalText = typeof expects.text === "string" ? expects.text : null;
+  if (finalText && text.includes(finalText)) {
+    return false;
+  }
+  const previewLabel = typeof workflowCase?.livePreview?.label === "string" ? workflowCase.livePreview.label : null;
+  if (previewLabel && text.includes(previewLabel)) {
+    return true;
+  }
+  if (isTransientStatusText(text)) {
+    return true;
+  }
+  return workflowCase?.livePreview?.mode !== "progress";
+}
+
+function isLivePreviewFinalEditCall(call, workflowCase) {
+  const expects = objectOrEmpty(workflowCase?.expects);
+  const expected = objectOrEmpty(expects.livePreview);
+  if (expected.finalizer !== "final-edit") {
+    return false;
+  }
+  if (call.method !== "editMessageText") {
+    return false;
+  }
+  const text = typeof call.body?.text === "string" ? call.body.text : "";
+  return typeof expects.text === "string" && text.includes(expects.text);
+}
+
+function isLivePreviewNormalFallbackCall(call, workflowCase) {
+  const expects = objectOrEmpty(workflowCase?.expects);
+  const expected = objectOrEmpty(expects.livePreview);
+  if (expected.finalizer !== "normal-fallback") {
+    return false;
+  }
+  if (!VISIBLE_SEND_METHODS.has(call.method)) {
+    return false;
+  }
+  const text = typeof call.body?.text === "string" ? call.body.text : "";
+  const caption = typeof call.body?.caption === "string" ? call.body.caption : "";
+  return typeof expects.text === "string" && `${text}\n${caption}`.includes(expects.text);
 }
 
 function normalizeDelivery(call, workflowCase) {

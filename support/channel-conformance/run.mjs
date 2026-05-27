@@ -155,6 +155,12 @@ async function runWorkflowCase({ driver, workflowCase, platform }) {
   try {
     const providerRequestCountBefore = await countProviderRequests({ artifactDir });
     const callCursor = (await driver.readPlatformCalls({ platform })).length;
+    if (typeof driver.configureWorkflowCase === "function") {
+      const configureCaseResult = await driver.configureWorkflowCase({ workflowCase: runnableWorkflowCase, platform });
+      if (configureCaseResult?.status !== 0) {
+        throw new Error(`channel ${channelId} workflow case configuration failed for ${runnableWorkflowCase.id}: ${configureCaseResult?.command ?? "unknown command"}`);
+      }
+    }
     await resetProviderScriptForCase({
       repoRoot,
       artifactDir,

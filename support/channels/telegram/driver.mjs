@@ -4,6 +4,7 @@ import {
   telegramInboundForCase
 } from "./events.mjs";
 import {
+  configureTelegramWorkflowCase,
   configureTelegramOpenClaw,
   startTelegramOpenClaw
 } from "./openclaw.mjs";
@@ -16,6 +17,7 @@ import {
 
 export const startPlatform = startTelegramPlatform;
 export const configureOpenClaw = configureTelegramOpenClaw;
+export const configureWorkflowCase = configureTelegramWorkflowCase;
 export const startOpenClaw = startTelegramOpenClaw;
 
 const SUPPORTED_ROUTES = new Set([

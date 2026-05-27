@@ -5,6 +5,7 @@ import path from "node:path";
 const args = parseArgs(process.argv.slice(2));
 const portFile = requiredArg(args, "port-file");
 const token = args.token ?? "999001:kova-telegram-token";
+const streamingMode = optionalString(args["streaming-mode"]);
 const port = fs.readFileSync(portFile, "utf8").trim();
 if (!/^\d+$/u.test(port)) {
   throw new Error(`invalid Telegram shim port in ${portFile}`);
@@ -72,6 +73,14 @@ config.channels = {
       ...(existingTelegram.capabilities ?? {}),
       inlineButtons: "all"
     },
+    ...(streamingMode ? {
+      streaming: {
+        ...(existingTelegram.streaming && typeof existingTelegram.streaming === "object" && !Array.isArray(existingTelegram.streaming)
+          ? existingTelegram.streaming
+          : {}),
+        mode: streamingMode
+      }
+    } : {}),
     reactionLevel: "minimal",
     replyToMode: "all"
   }
@@ -111,6 +120,10 @@ function requiredArg(parsed, key) {
     throw new Error(`--${key} is required`);
   }
   return value;
+}
+
+function optionalString(value) {
+  return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 function requiredEnv(name) {

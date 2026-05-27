@@ -4785,6 +4785,80 @@
           "ownerArea": "OpenClaw channel runtime"
         },
         {
+          "id": "live-preview.progress-normal-fallback",
+          "workflow": "live-preview-finalization",
+          "matrix": {
+            "content": "text",
+            "route": "direct",
+            "delivery": "live-finalizer",
+            "lifecycle": "success"
+          },
+          "userAction": "user asks OpenClaw to perform a small channel action and sees progress before the final answer appears normally",
+          "openclawSurface": "channel inbound direct message with live progress preview and normal final delivery fallback",
+          "ownerArea": "OpenClaw live channel runtime and adapter",
+          "prompt": "React to this launch note, then tell me when it is done.",
+          "livePreview": {
+            "mode": "progress"
+          },
+          "providerScript": {
+            "toolCalls": [
+              {
+                "name": "message",
+                "arguments": {
+                  "action": "react",
+                  "emoji": "👍"
+                }
+              }
+            ],
+            "finalText": "KOVA_LIVE_PREVIEW_NORMAL_FALLBACK_OK"
+          },
+          "expects": {
+            "visibleDeliveries": 1,
+            "kind": "text",
+            "text": "KOVA_LIVE_PREVIEW_NORMAL_FALLBACK_OK",
+            "livePreview": {
+              "draftPreview": true,
+              "previewFinalization": true,
+              "progressUpdates": true,
+              "previewReceipt": true,
+              "finalizer": "normal-fallback"
+            },
+            "terminal": true,
+            "noDuplicateFinal": true
+          },
+          "atoms": [
+            {
+              "group": "live-preview",
+              "id": "draft-preview"
+            },
+            {
+              "group": "live-preview",
+              "id": "preview-finalization"
+            },
+            {
+              "group": "live-preview",
+              "id": "progress-updates"
+            },
+            {
+              "group": "live-finalizer",
+              "id": "normal-fallback"
+            },
+            {
+              "group": "live-finalizer",
+              "id": "preview-receipt"
+            },
+            {
+              "group": "durable-final",
+              "id": "text"
+            },
+            {
+              "group": "native-platform",
+              "id": "action-react"
+            }
+          ],
+          "inventoryWorkflow": "live-preview-finalization"
+        },
+        {
           "id": "media-transformation.image-to-video",
           "workflow": "media-transformation",
           "matrix": {
@@ -5831,7 +5905,7 @@
         "schemaVersion": "kova.channelWorkflowCoverage.v1",
         "channelId": "discord",
         "selectedCount": 18,
-        "skippedCount": 12,
+        "skippedCount": 13,
         "selected": [
           {
             "id": "completion-handoff.image.generated-direct",
@@ -6499,6 +6573,54 @@
             "driverReason": null
           },
           {
+            "id": "live-preview.progress-normal-fallback",
+            "workflow": "live-preview-finalization",
+            "inventoryWorkflow": "live-preview-finalization",
+            "userAction": "user asks OpenClaw to perform a small channel action and sees progress before the final answer appears normally",
+            "matrix": {
+              "content": "text",
+              "route": "direct",
+              "delivery": "live-finalizer",
+              "lifecycle": "success"
+            },
+            "atoms": [
+              {
+                "group": "live-preview",
+                "id": "draft-preview"
+              },
+              {
+                "group": "live-preview",
+                "id": "preview-finalization"
+              },
+              {
+                "group": "live-preview",
+                "id": "progress-updates"
+              },
+              {
+                "group": "live-finalizer",
+                "id": "normal-fallback"
+              },
+              {
+                "group": "live-finalizer",
+                "id": "preview-receipt"
+              },
+              {
+                "group": "durable-final",
+                "id": "text"
+              },
+              {
+                "group": "native-platform",
+                "id": "action-react"
+              }
+            ],
+            "reason": "missing atoms: live-finalizer:preview-receipt, native-platform:action-react",
+            "missingAtoms": [
+              "live-finalizer:preview-receipt",
+              "native-platform:action-react"
+            ],
+            "driverReason": null
+          },
+          {
             "id": "native-action.send.presentation-pin",
             "workflow": "native-platform-action",
             "inventoryWorkflow": "native-platform-action",
@@ -6975,7 +7097,7 @@
       "workflowCoverage": {
         "schemaVersion": "kova.channelWorkflowCoverage.v1",
         "channelId": "telegram",
-        "selectedCount": 27,
+        "selectedCount": 28,
         "skippedCount": 3,
         "selected": [
           {
@@ -7285,6 +7407,48 @@
               {
                 "group": "durable-final",
                 "id": "thread"
+              }
+            ]
+          },
+          {
+            "id": "live-preview.progress-normal-fallback",
+            "workflow": "live-preview-finalization",
+            "inventoryWorkflow": "live-preview-finalization",
+            "userAction": "user asks OpenClaw to perform a small channel action and sees progress before the final answer appears normally",
+            "matrix": {
+              "content": "text",
+              "route": "direct",
+              "delivery": "live-finalizer",
+              "lifecycle": "success"
+            },
+            "atoms": [
+              {
+                "group": "live-preview",
+                "id": "draft-preview"
+              },
+              {
+                "group": "live-preview",
+                "id": "preview-finalization"
+              },
+              {
+                "group": "live-preview",
+                "id": "progress-updates"
+              },
+              {
+                "group": "live-finalizer",
+                "id": "normal-fallback"
+              },
+              {
+                "group": "live-finalizer",
+                "id": "preview-receipt"
+              },
+              {
+                "group": "durable-final",
+                "id": "text"
+              },
+              {
+                "group": "native-platform",
+                "id": "action-react"
               }
             ]
           },
@@ -7884,6 +8048,7 @@
         "media-reply-thread-final",
         "media-batch-final",
         "thread-final",
+        "live-preview.progress-normal-fallback",
         "media-transformation.image-to-video",
         "native-action.send.presentation-pin",
         "native-action.poll",
