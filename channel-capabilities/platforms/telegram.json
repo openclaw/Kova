@@ -17,6 +17,7 @@
     "durable-final": [
       "text",
       "media",
+      "poll",
       "payload",
       "reply-to",
       "thread",

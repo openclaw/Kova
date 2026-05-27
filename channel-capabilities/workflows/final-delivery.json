@@ -13,6 +13,7 @@
   "contentKinds": [
     "text",
     "media",
+    "poll",
     "payload",
     "batch"
   ],
@@ -37,6 +38,10 @@
     {
       "group": "durable-final",
       "id": "media"
+    },
+    {
+      "group": "durable-final",
+      "id": "poll"
     },
     {
       "group": "durable-final",

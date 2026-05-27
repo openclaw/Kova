@@ -7747,6 +7747,7 @@ esac
   await writeFile(join(repoDir, "src", "channels", "message", "types.ts"), `export const durableFinalDeliveryCapabilities = [
   "text",
   "media",
+  "poll",
   "payload",
   "silent",
   "replyTo",
@@ -10067,6 +10068,7 @@ function assertOpenClawChannelCapabilityCatalog(catalog) {
     JSON.stringify([
       "text",
       "media",
+      "poll",
       "payload",
       "silent",
       "reply-to",

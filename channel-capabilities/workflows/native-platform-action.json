@@ -177,6 +177,10 @@
       },
       "atoms": [
         {
+          "group": "durable-final",
+          "id": "poll"
+        },
+        {
           "group": "native-platform",
           "id": "action-poll"
         }

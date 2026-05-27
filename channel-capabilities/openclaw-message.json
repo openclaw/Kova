@@ -37,6 +37,15 @@
       "declarationSource": "src/channels/message/types.ts"
     },
     {
+      "id": "poll",
+      "group": "durable-final",
+      "title": "Durable Final Poll",
+      "sourceSymbol": "durableFinalDeliveryCapabilities.poll",
+      "baselineExpectation": "poll results can be rendered, sent, receipted, and committed through the shared message-channel path",
+      "proofModes": ["preflight", "baseline", "deterministic-shim", "live-smoke"],
+      "declarationSource": "src/channels/message/types.ts"
+    },
+    {
       "id": "payload",
       "group": "durable-final",
       "title": "Durable Final Payload",
