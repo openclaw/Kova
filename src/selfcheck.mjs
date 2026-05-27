@@ -1674,6 +1674,28 @@ function channelCapabilityResultIngestionCheck() {
     assertEqual(workflowEvidence[0].proofMode, "workflow-baseline", "channel probe turn proof mode attached");
     assertEqual(workflowEvidence[0].artifactPath, "/tmp/kova/channel-probe-turn.json", "channel probe turn artifact path attached");
 
+    const compactEvidence = channelCapabilityEvidenceFromResult({
+      status: 0,
+      stdout: JSON.stringify({
+        schemaVersion: "kova.channelCapabilityRun.v1",
+        proofMode: "channel-platform-conformance",
+        artifactPath: "/tmp/kova/channel-conformance-telegram.json",
+        ownerArea: "telegram adapter/runtime",
+        capabilities: [{
+          channelId: "telegram",
+          group: "live-preview",
+          capabilityId: "draft-preview",
+          required: true,
+          status: "missing",
+          summary: "telegram live-preview:draft-preview capability has no selected user-flow proof",
+          reason: "no selected telegram user flow proves live-preview:draft-preview"
+        }]
+      })
+    }, "channel-telegram-runtime-workflows", 0);
+    assertEqual(compactEvidence.length, 1, "compact channel capability row parsed");
+    assertEqual(compactEvidence[0].status, "missing", "compact missing channel capability retained");
+    assertEqual(compactEvidence[0].artifactPath, "/tmp/kova/channel-conformance-telegram.json", "compact channel capability row uses top-level artifact path");
+
     const record = {
       scenario: "channel-telegram-capability-conformance",
       surface: "channel-telegram-capability-conformance",

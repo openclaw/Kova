@@ -113,7 +113,7 @@ process.stdout.write(`${JSON.stringify({
   artifactPath,
   ownerArea: `${channelId} adapter/runtime`,
   channelId,
-  capabilities: [
+  capabilities: compactCapabilityRows([
     ...result.rows.map((row) => ({
       channelId,
       group: "workflow",
@@ -124,12 +124,11 @@ process.stdout.write(`${JSON.stringify({
       summary: row.summary,
       reason: row.reason,
       failureOwner: row.failureOwner ?? null,
-      ownerArea: row.ownerArea,
-      artifactPath
+      ownerArea: row.ownerArea
     })),
     ...(result.capabilityProofRows ?? [])
-  ]
-}, null, 2)}\n`);
+  ])
+})}\n`);
 
 const setupFailedBeforeAnyWorkflow = !result.ok && result.rows.length === 0;
 process.exit(result.ok || (continueOnFailure && !setupFailedBeforeAnyWorkflow) ? 0 : 1);
@@ -347,6 +346,25 @@ function classifyWorkflowFailure({ failedInvariant, runtimeDiagnostics, workflow
     failureOwner: "unknown",
     ownerArea: workflowCase.ownerArea ?? `${channelId} adapter/runtime`
   };
+}
+
+function compactCapabilityRows(rows) {
+  return (rows ?? []).map((row) => omitNullish({
+    channelId: row.channelId,
+    group: row.group,
+    capabilityId: row.capabilityId,
+    required: row.required,
+    status: row.status,
+    proofMode: row.proofMode,
+    summary: row.summary,
+    reason: row.reason,
+    failureOwner: row.failureOwner,
+    ownerArea: row.ownerArea
+  }));
+}
+
+function omitNullish(value) {
+  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== null && entry !== undefined));
 }
 
 function classifyRunnerFailure(reason, workflowCase) {
