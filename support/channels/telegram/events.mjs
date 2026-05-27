@@ -3,9 +3,9 @@ export const TELEGRAM_TOKEN = "999001:kova-telegram-token";
 const BOT_ID = 999001;
 const BOT_USERNAME = "kova_mock_bot";
 const USER_ID = 200;
-const DIRECT_CHAT_ID = 200;
-const GROUP_CHAT_ID = -1003970070733;
-const THREAD_ID = 12;
+const DIRECT_CHAT_ID_BASE = 200_000;
+const GROUP_CHAT_ID_BASE = -1003970000000;
+const THREAD_ID_BASE = 12;
 
 let updateSequence = 1000;
 let messageSequence = 5000;
@@ -15,14 +15,12 @@ export function telegramInboundForCase(workflowCase) {
   const reply = caseUsesReply(workflowCase);
   const roomEvent = caseUsesRoomEvent(workflowCase);
   const media = inboundMediaForCase(workflowCase);
+  const route = telegramRouteForCase(workflowCase, { threaded, roomEvent });
   const messageId = nextMessageId();
   const grouped = threaded || roomEvent;
   const chat = grouped
-    ? { id: GROUP_CHAT_ID, type: "supergroup", title: "Kova Telegram Shim", is_forum: true }
-    : { id: DIRECT_CHAT_ID, type: "private", first_name: "Kova User" };
-  const routeKey = threaded
-    ? `${GROUP_CHAT_ID}:topic:${THREAD_ID}`
-    : String(grouped ? GROUP_CHAT_ID : DIRECT_CHAT_ID);
+    ? { id: route.chatId, type: "supergroup", title: "Kova Telegram Shim", is_forum: true }
+    : { id: route.chatId, type: "private", first_name: "Kova User" };
   const text = grouped && !roomEvent ? `@${BOT_USERNAME} ${workflowCase.prompt}` : workflowCase.prompt;
   const message = {
     message_id: messageId,
@@ -35,7 +33,7 @@ export function telegramInboundForCase(workflowCase) {
       username: "kova_user"
     },
     ...(media ? { caption: text, ...media.telegramFields } : { text }),
-    ...(threaded ? { message_thread_id: THREAD_ID, is_topic_message: true } : {}),
+    ...(threaded ? { message_thread_id: route.threadId, is_topic_message: true } : {}),
     ...(reply ? {
       reply_to_message: {
         message_id: 900,
@@ -56,8 +54,8 @@ export function telegramInboundForCase(workflowCase) {
     messageKey: String(messageId),
     route: {
       kind: threaded ? "thread" : "direct",
-      key: routeKey,
-      parentKey: threaded ? String(GROUP_CHAT_ID) : null
+      key: route.key,
+      parentKey: threaded ? String(route.chatId) : null
     },
     media: media?.facts ?? [],
     native: {
@@ -66,6 +64,26 @@ export function telegramInboundForCase(workflowCase) {
         message
       }
     }
+  };
+}
+
+function telegramRouteForCase(workflowCase, { threaded, roomEvent }) {
+  const scopeHash = hashScope(workflowCase?.flowScope?.scopeKey ?? workflowCase?.id ?? "default");
+  const grouped = threaded || roomEvent;
+  if (!grouped) {
+    const chatId = DIRECT_CHAT_ID_BASE + (scopeHash % 1_000_000);
+    return {
+      chatId,
+      threadId: null,
+      key: String(chatId)
+    };
+  }
+  const chatId = GROUP_CHAT_ID_BASE - (scopeHash % 1_000_000);
+  const threadId = threaded ? THREAD_ID_BASE + (scopeHash % 10_000) : null;
+  return {
+    chatId,
+    threadId,
+    key: threadId == null ? String(chatId) : `${chatId}:topic:${threadId}`
   };
 }
 
@@ -188,6 +206,15 @@ function caseUsesReply(workflowCase) {
 
 function caseUsesRoomEvent(workflowCase) {
   return workflowCase.sourceReplyDeliveryMode === "message_tool_only";
+}
+
+function hashScope(value) {
+  let hash = 2166136261;
+  for (const char of String(value)) {
+    hash ^= char.codePointAt(0) ?? 0;
+    hash = Math.imul(hash, 16777619) >>> 0;
+  }
+  return hash;
 }
 
 function nextUpdateId() {

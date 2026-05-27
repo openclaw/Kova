@@ -14,6 +14,7 @@ import { assertValidObservationSet } from "./observation-schema.mjs";
 import { planWorkflowCases } from "./planner.mjs";
 import { declaredCapabilityProofRows } from "./capability-proof.mjs";
 import { collectRuntimeDiagnostics, runtimeDiagnosticOwnerArea } from "./runtime-diagnostics.mjs";
+import { withWorkflowFlowScope } from "./session-policy.mjs";
 import { loadChannelCapabilities } from "../../src/registries/channel-capabilities.mjs";
 import { loadChannelWorkflowCaseCatalog } from "../../src/registries/channel-workflow-cases.mjs";
 
@@ -46,7 +47,7 @@ try {
   const startupResult = await driver.startOpenClaw({ repoRoot, envName, artifactDir, platform, timeoutMs });
   const rows = [];
   for (let index = 0; index < selectedCases.length; index += 1) {
-    const row = await runWorkflowCase({ driver, workflowCase: selectedCases[index], platform });
+    const row = await runWorkflowCase({ driver, workflowCase: selectedCases[index], platform, index });
     rows.push(row);
     if (row.status !== "passed" && index < selectedCases.length - 1) {
       await restartOpenClawAfterFailedCase({ driver, platform, failedCaseId: row.id });
@@ -147,10 +148,13 @@ async function loadChannelDriver(id) {
   return validateChannelDriver(mod, id);
 }
 
-async function runWorkflowCase({ driver, workflowCase, platform }) {
+async function runWorkflowCase({ driver, workflowCase, platform, index }) {
   const startedAtEpochMs = Date.now();
   const fixtures = await prepareWorkflowFixtures(workflowCase, { envName });
-  const runnableWorkflowCase = withFixtureMediaSourceProof(workflowCase, fixtures);
+  const runnableWorkflowCase = withWorkflowFlowScope(
+    withFixtureMediaSourceProof(workflowCase, fixtures),
+    { index }
+  );
   let row;
   try {
     if (typeof driver.configureWorkflowCase === "function") {
@@ -228,6 +232,8 @@ async function runWorkflowCase({ driver, workflowCase, platform }) {
       workflow: runnableWorkflowCase.workflow,
       inventoryWorkflow: runnableWorkflowCase.inventoryWorkflow,
       matrix: runnableWorkflowCase.matrix,
+      sessionPolicy: runnableWorkflowCase.flowScope?.sessionPolicy ?? null,
+      flowScope: runnableWorkflowCase.flowScope ?? null,
       userAction: runnableWorkflowCase.userAction,
       failureOwner: failed ? failureClassification.failureOwner : null,
       ownerArea: failed
