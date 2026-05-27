@@ -71,38 +71,26 @@
       "userAction": "user asks OpenClaw to make an image for this chat and receives the completed image in the same chat",
       "openclawSurface": "channel inbound direct message with background generated image delivery",
       "prompt": "Create a simple launch announcement image for this chat.",
-      "providerScript": {
-        "toolCalls": [
-          {
-            "name": "image_generate",
+        "providerScript": {
+          "toolCalls": [
+            {
+              "name": "image_generate",
             "arguments": {
               "action": "generate",
               "prompt": "simple launch announcement image",
               "filename": "kova-completion-handoff-direct.png",
               "count": 1
+              }
             }
-          }
-        ],
-        "finalText": "NO_REPLY",
-        "completionToolCalls": [
-          {
-            "name": "message",
-            "arguments": {
-              "action": "send",
-              "message": "KOVA_COMPLETION_MEDIA_READY",
-              "media": "{{kova.generatedMediaPath}}"
-            }
-          }
-        ],
-        "completionFinalText": "NO_REPLY"
-      },
-      "expects": {
-        "visibleDeliveries": 1,
-        "kind": "media",
-        "text": "KOVA_COMPLETION_MEDIA_READY",
-        "replyTo": "none",
-        "mediaSourcePolicy": "present-existing",
-        "hooks": true,
+          ],
+          "finalText": "NO_REPLY"
+        },
+        "expects": {
+          "visibleDeliveries": 1,
+          "kind": "media",
+          "replyTo": "none",
+          "mediaSourcePolicy": "present-existing",
+          "hooks": true,
         "terminal": true,
         "noDuplicateFinal": true,
         "asyncCompletionTimeoutMs": 15000
@@ -146,38 +134,26 @@
       "userAction": "user asks OpenClaw from inside a thread to make an image and receives the completed image in that same thread",
       "openclawSurface": "channel inbound threaded message with background generated image delivery",
       "prompt": "Create a simple launch announcement image for this thread.",
-      "providerScript": {
-        "toolCalls": [
-          {
-            "name": "image_generate",
+        "providerScript": {
+          "toolCalls": [
+            {
+              "name": "image_generate",
             "arguments": {
               "action": "generate",
               "prompt": "simple launch announcement image for a thread",
               "filename": "kova-completion-handoff-thread.png",
               "count": 1
+              }
             }
-          }
-        ],
-        "finalText": "NO_REPLY",
-        "completionToolCalls": [
-          {
-            "name": "message",
-            "arguments": {
-              "action": "send",
-              "message": "KOVA_COMPLETION_MEDIA_READY",
-              "media": "{{kova.generatedMediaPath}}"
-            }
-          }
-        ],
-        "completionFinalText": "NO_REPLY"
-      },
-      "expects": {
-        "visibleDeliveries": 1,
-        "kind": "media",
-        "text": "KOVA_COMPLETION_MEDIA_READY",
-        "replyTo": "none",
-        "threadId": "kova-model-turn-thread",
-        "mediaSourcePolicy": "present-existing",
+          ],
+          "finalText": "NO_REPLY"
+        },
+        "expects": {
+          "visibleDeliveries": 1,
+          "kind": "media",
+          "replyTo": "none",
+          "threadId": "kova-model-turn-thread",
+          "mediaSourcePolicy": "present-existing",
         "hooks": true,
         "terminal": true,
         "noDuplicateFinal": true,

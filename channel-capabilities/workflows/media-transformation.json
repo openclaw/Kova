@@ -80,39 +80,27 @@
       "userAction": "user sends an image and asks OpenClaw to turn it into a short video, then receives the video in the same chat",
       "openclawSurface": "channel inbound image message with background generated video delivery",
       "prompt": "Turn this image into a short launch teaser video.",
-      "providerScript": {
-        "toolCalls": [
-          {
-            "name": "video_generate",
+        "providerScript": {
+          "toolCalls": [
+            {
+              "name": "video_generate",
             "arguments": {
               "action": "generate",
               "prompt": "short launch teaser video based on the attached image",
               "image": "{{request.text.match:media attached: ([^(]+) [(]}}",
               "filename": "kova-image-to-video.mp4",
               "durationSeconds": 2
+              }
             }
-          }
-        ],
-        "finalText": "NO_REPLY",
-        "completionToolCalls": [
-          {
-            "name": "message",
-            "arguments": {
-              "action": "send",
-              "message": "KOVA_MEDIA_TRANSFORMATION_VIDEO_READY",
-              "media": "{{kova.generatedMediaPath}}"
-            }
-          }
-        ],
-        "completionFinalText": "NO_REPLY"
-      },
-      "expects": {
-        "visibleDeliveries": 1,
-        "kind": "media",
-        "text": "KOVA_MEDIA_TRANSFORMATION_VIDEO_READY",
-        "replyTo": "none",
-        "mediaSourcePolicy": "present-existing",
-        "hooks": true,
+          ],
+          "finalText": "NO_REPLY"
+        },
+        "expects": {
+          "visibleDeliveries": 1,
+          "kind": "media",
+          "replyTo": "none",
+          "mediaSourcePolicy": "present-existing",
+          "hooks": true,
         "terminal": true,
         "noDuplicateFinal": true,
         "asyncCompletionTimeoutMs": 60000
