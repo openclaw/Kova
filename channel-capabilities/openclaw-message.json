@@ -267,7 +267,7 @@
       "title": "Message Tool Send Action",
       "sourceSymbol": "ChannelMessageToolDiscovery.actions.send",
       "baselineExpectation": "a channel can expose its native send action through the OpenClaw message tool discovery path",
-      "proofModes": ["preflight", "deterministic-shim", "live-smoke"],
+      "proofModes": ["deterministic-shim", "live-smoke"],
       "declarationSource": "src/channels/plugins/message-action-discovery.ts"
     },
     {
@@ -276,7 +276,7 @@
       "title": "Message Tool Poll Action",
       "sourceSymbol": "ChannelMessageToolDiscovery.actions.poll",
       "baselineExpectation": "a channel can expose its native poll action through the OpenClaw message tool discovery path when the platform supports polls",
-      "proofModes": ["preflight", "deterministic-shim", "live-smoke"],
+      "proofModes": ["deterministic-shim", "live-smoke"],
       "declarationSource": "src/channels/plugins/message-action-discovery.ts"
     },
     {
@@ -285,7 +285,7 @@
       "title": "Message Tool React Action",
       "sourceSymbol": "ChannelMessageToolDiscovery.actions.react",
       "baselineExpectation": "a channel can expose its native reaction action through the OpenClaw message tool discovery path when the platform supports reactions",
-      "proofModes": ["preflight", "deterministic-shim", "live-smoke"],
+      "proofModes": ["deterministic-shim", "live-smoke"],
       "declarationSource": "src/channels/plugins/message-action-discovery.ts"
     },
     {
@@ -294,7 +294,7 @@
       "title": "Message Tool Delete Action",
       "sourceSymbol": "ChannelMessageToolDiscovery.actions.delete",
       "baselineExpectation": "a channel can expose native message deletion through the OpenClaw message tool discovery path when the platform supports deletion",
-      "proofModes": ["preflight", "deterministic-shim", "live-smoke"],
+      "proofModes": ["deterministic-shim", "live-smoke"],
       "declarationSource": "src/channels/plugins/message-action-discovery.ts"
     },
     {
@@ -303,7 +303,7 @@
       "title": "Message Tool Edit Action",
       "sourceSymbol": "ChannelMessageToolDiscovery.actions.edit",
       "baselineExpectation": "a channel can expose native message editing through the OpenClaw message tool discovery path when the platform supports edits",
-      "proofModes": ["preflight", "deterministic-shim", "live-smoke"],
+      "proofModes": ["deterministic-shim", "live-smoke"],
       "declarationSource": "src/channels/plugins/message-action-discovery.ts"
     },
     {
@@ -312,7 +312,7 @@
       "title": "Message Tool Topic Create Action",
       "sourceSymbol": "ChannelMessageToolDiscovery.actions.topic-create",
       "baselineExpectation": "a channel can expose native topic creation through the OpenClaw message tool discovery path when the platform supports topics",
-      "proofModes": ["preflight", "deterministic-shim", "live-smoke"],
+      "proofModes": ["deterministic-shim", "live-smoke"],
       "declarationSource": "src/channels/plugins/message-action-discovery.ts"
     },
     {
@@ -321,7 +321,7 @@
       "title": "Message Tool Topic Edit Action",
       "sourceSymbol": "ChannelMessageToolDiscovery.actions.topic-edit",
       "baselineExpectation": "a channel can expose native topic editing through the OpenClaw message tool discovery path when the platform supports topics",
-      "proofModes": ["preflight", "deterministic-shim", "live-smoke"],
+      "proofModes": ["deterministic-shim", "live-smoke"],
       "declarationSource": "src/channels/plugins/message-action-discovery.ts"
     },
     {
@@ -330,7 +330,7 @@
       "title": "Message Delivery Pin",
       "sourceSymbol": "CHANNEL_MESSAGE_CAPABILITIES.delivery-pin",
       "baselineExpectation": "a channel can expose and execute the OpenClaw delivery pin capability through its message tool and outbound adapter surfaces",
-      "proofModes": ["preflight", "deterministic-shim", "live-smoke"],
+      "proofModes": ["deterministic-shim", "live-smoke"],
       "declarationSource": "src/channels/plugins/message-capabilities.ts"
     },
     {
@@ -339,7 +339,7 @@
       "title": "Message Presentation",
       "sourceSymbol": "CHANNEL_MESSAGE_CAPABILITIES.presentation",
       "baselineExpectation": "a channel can expose and render portable OpenClaw message presentation data through its message tool and outbound adapter surfaces",
-      "proofModes": ["preflight", "deterministic-shim", "live-smoke"],
+      "proofModes": ["deterministic-shim", "live-smoke"],
       "declarationSource": "src/channels/plugins/message-capabilities.ts"
     },
     {
