@@ -157,6 +157,7 @@
       },
       "ownerArea": "OpenClaw",
       "failedCommand": null,
+      "failureDomain": null,
       "failureReason": null,
       "measurements": {
         "readiness": {
@@ -255,6 +256,7 @@
       },
       "ownerArea": "OpenClaw",
       "failedCommand": null,
+      "failureDomain": null,
       "failureReason": null,
       "measurements": {
         "readiness": {

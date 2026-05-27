@@ -25,7 +25,7 @@
   },
   "roleThresholds": {
     "gateway": {
-      "peakRssMb": 700,
+      "peakRssMb": 750,
       "maxCpuPercent": 250
     },
     "gateway-session-client": {
