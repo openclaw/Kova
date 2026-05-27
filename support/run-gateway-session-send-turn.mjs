@@ -104,9 +104,12 @@ try {
     gatewayTransport.client?.close();
   }
 } catch (error) {
+  const failure = classifyGatewaySessionFailure(error);
   failJson(error, {
     surface: "gateway-session-send-turn",
     finishedAtEpochMs: Date.now(),
+    failureDomain: failure.failureDomain,
+    recordStatus: failure.recordStatus,
     assistantTextEvidence: error?.assistantTextEvidence ?? null
   });
 }
@@ -170,6 +173,30 @@ function rejectUnsupportedArgs(args, allowed) {
   if (unknown.length > 0) {
     throw new Error(`unsupported argument${unknown.length === 1 ? "" : "s"}: ${unknown.map((key) => `--${key}`).join(", ")}`);
   }
+}
+
+function classifyGatewaySessionFailure(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (isHarnessFailureMessage(message)) {
+    return {
+      failureDomain: "kova-harness",
+      recordStatus: "BLOCKED"
+    };
+  }
+  return {
+    failureDomain: "openclaw",
+    recordStatus: "FAIL"
+  };
+}
+
+function isHarnessFailureMessage(message) {
+  return /^unsupported argument/.test(message) ||
+    /^unexpected argument:/.test(message) ||
+    /^--[a-z0-9-]+ requires a value$/.test(message) ||
+    /^invalid (?:boolean value|positive integer|timeout):/.test(message) ||
+    /^--env is required$/.test(message) ||
+    /^ocm\b/.test(message) ||
+    /^invalid gateway port from OCM status:/.test(message);
 }
 
 function readBoolean(value, defaultValue) {
