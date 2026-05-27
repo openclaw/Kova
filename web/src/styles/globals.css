@@ -1217,3 +1217,95 @@ button {
   .v2-status-counts { justify-content: flex-start; }
   .v2-status-cta { align-items: flex-start; }
 }
+
+/* ─── Phases timeline (release detail) ───────────────────── */
+
+.phases-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.phases-axis {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: var(--text-1);
+  color: var(--text-3c);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px dashed var(--border-1);
+  padding-bottom: var(--space-2);
+}
+
+.phases-axis .phases-total { color: var(--text-2c); }
+
+.phase-row {
+  display: grid;
+  grid-template-columns: 12ch minmax(0, 1fr) 8ch;
+  align-items: center;
+  gap: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-2);
+  color: var(--text-2c);
+}
+
+.phase-name { color: var(--text-1c); }
+
+.phase-track {
+  position: relative;
+  height: 8px;
+  background: var(--surface-2);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.phase-bar {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--text-3c);
+  transition: width 200ms ease;
+}
+
+.phase-bar.bar-pass { background: var(--pass); }
+.phase-bar.bar-fail { background: var(--fail); }
+.phase-bar.bar-block { background: var(--warn); }
+
+.phase-elapsed { text-align: right; color: var(--text-2c); }
+
+.run-scenario-sample {
+  margin-left: auto;
+  color: var(--text-3c);
+  font-family: var(--font-mono);
+  font-size: var(--text-1);
+}
+
+/* ─── Runs: expand/collapse all toggle ───────────────────── */
+
+.runs-toolbar {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.runs-toggle {
+  background: transparent;
+  border: 1px solid var(--border-2);
+  color: var(--text-2c);
+  font-family: var(--font-mono);
+  font-size: var(--text-1);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: var(--space-2) var(--space-3);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.runs-toggle:hover {
+  color: var(--text-1c);
+  background: var(--surface-2);
+  border-color: var(--border-3);
+}
