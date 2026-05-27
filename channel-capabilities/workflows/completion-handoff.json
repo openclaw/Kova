@@ -83,7 +83,18 @@
               }
             }
           ],
-          "finalText": "NO_REPLY"
+          "finalText": "NO_REPLY",
+          "completionToolCalls": [
+            {
+              "name": "message",
+              "arguments": {
+                "action": "send",
+                "message": "The generated image is ready.",
+                "media": "{{kova.generatedMediaPath}}"
+              }
+            }
+          ],
+          "completionFinalText": "NO_REPLY"
         },
         "expects": {
           "visibleDeliveries": 1,
@@ -146,7 +157,18 @@
               }
             }
           ],
-          "finalText": "NO_REPLY"
+          "finalText": "NO_REPLY",
+          "completionToolCalls": [
+            {
+              "name": "message",
+              "arguments": {
+                "action": "send",
+                "message": "The generated image is ready.",
+                "media": "{{kova.generatedMediaPath}}"
+              }
+            }
+          ],
+          "completionFinalText": "NO_REPLY"
         },
         "expects": {
           "visibleDeliveries": 1,

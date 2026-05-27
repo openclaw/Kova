@@ -1832,7 +1832,22 @@ async function channelGeneratedMediaProviderScriptCheck() {
     const completionScript = channelWorkflowScript([completionCaseId], process.cwd());
     const completionStepIds = completionScript.steps.map((step) => step.id);
     assertEqual(completionStepIds.includes(`${completionCaseId}:final`), true, "completion handoff provider script finalizes the initial generator turn");
-    assertEqual(completionStepIds.includes(`${completionCaseId}:completion-tool-calls`), false, "completion handoff provider script does not manufacture a second source-delivery turn");
+    assertEqual(completionStepIds.includes(`${completionCaseId}:completion-tool-calls`), true, "completion handoff provider script models the OpenClaw completion delivery turn");
+    const completionStep = completionScript.steps.find((step) => step.id === `${completionCaseId}:completion-tool-calls`);
+    const completionRendered = await resolveScriptStep(completionStep, {
+      requestBody: {
+        input: [{
+          content: [{
+            text: "Attachments:\n1. type=image name=\"kova-completion-handoff-direct---abc.png\" path=\"/tmp/kova-completion-handoff-direct---abc.png\""
+          }]
+        }]
+      }
+    });
+    const completionToolCall = completionRendered?.respond?.toolCalls?.[0];
+    const completionArgs = JSON.parse(completionToolCall?.arguments ?? "{}");
+    assertEqual(completionToolCall?.name, "message", "completion handoff provider script uses the message tool for completion delivery");
+    assertEqual(completionArgs.action, "send", "completion handoff provider script sends generated media through message tool");
+    assertEqual(completionArgs.media, "/tmp/kova-completion-handoff-direct---abc.png", "completion handoff provider script preserves the generated media path from the OpenClaw completion event");
 
     const sourceCaseId = "source-visible-delivery.media.message-tool-only";
     const sourceScript = channelWorkflowScript([sourceCaseId], process.cwd());
