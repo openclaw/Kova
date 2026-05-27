@@ -23,6 +23,10 @@ export function firstFailedCommand(record, options = {}) {
 }
 
 export function summarizeFailureReason(result) {
+  const structured = summarizeStructuredFailure(result, 260);
+  if (structured) {
+    return structured;
+  }
   return summarizeCommandFailure(result, {
     maxLength: 260,
     filterOcmHelp: true,
@@ -32,12 +36,49 @@ export function summarizeFailureReason(result) {
 }
 
 export function summarizeFailedCommand(result) {
+  const structured = summarizeStructuredFailure(result, 220);
+  if (structured) {
+    return structured;
+  }
   return summarizeCommandFailure(result, {
     maxLength: 220,
     filterOcmHelp: false,
     exitedText: (status, command) => `command exited ${status}: ${command}`,
     timedOutText: (command) => `command timed out: ${command}`
   });
+}
+
+function summarizeStructuredFailure(result, maxLength) {
+  const interpretation = result?.interpretation ?? parseStructuredStdout(result?.stdout);
+  if (!interpretation || interpretation.structured === false) {
+    return null;
+  }
+  const domain = interpretation.failureDomain ? `${interpretation.failureDomain}: ` : "";
+  const reason = interpretation.reason ?? null;
+  if (!reason) {
+    return null;
+  }
+  return truncate(`${domain}${reason}`, maxLength);
+}
+
+function parseStructuredStdout(stdout) {
+  const text = String(stdout ?? "").trim();
+  if (!text.startsWith("{")) {
+    return null;
+  }
+  try {
+    const payload = JSON.parse(text);
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      return null;
+    }
+    return {
+      structured: true,
+      failureDomain: typeof payload.failureDomain === "string" ? payload.failureDomain : null,
+      reason: typeof payload.error === "string" ? payload.error : null
+    };
+  } catch {
+    return null;
+  }
 }
 
 function summarizeCommandFailure(result, options) {

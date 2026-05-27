@@ -10917,6 +10917,22 @@ function commandResultInterpretationCheck() {
     assertEqual(interpreted.interpretation.structured, true, "structured helper result detected");
     assertEqual(interpreted.interpretation.failureDomain, "kova-harness", "failure domain preserved");
     assertEqual(commandFailureRecordStatus(interpreted), "BLOCKED", "structured record status honored");
+    const summary = buildReportSummary({
+      schemaVersion: "kova.report.v1",
+      mode: "execution",
+      target: "runtime:stable",
+      records: [{
+        scenario: "structured-helper-failure",
+        surface: "structured-helper-failure",
+        title: "Structured Helper Failure",
+        status: "BLOCKED",
+        phases: [{ id: "run", results: [interpreted] }],
+        measurements: {}
+      }],
+      summary: { statuses: { BLOCKED: 1 } }
+    });
+    assertEqual(summary.scenarios?.[0]?.failureDomain, "kova-harness", "summary failure domain");
+    assertEqual(summary.scenarios?.[0]?.failureReason, "kova-harness: fixture setup failed", "summary failure reason uses structured evidence");
 
     const unstructured = interpretCommandResult({
       command: "node support/example.mjs",

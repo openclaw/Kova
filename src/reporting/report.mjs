@@ -1008,6 +1008,7 @@ function summarizeSample(record, index) {
     state: record.state ?? null,
     ownerArea: record.likelyOwner ?? null,
     failedCommand: failed?.command ?? null,
+    failureDomain: failed?.interpretation?.failureDomain ?? null,
     failureReason: failed ? summarizeFailureReason(failed) : null,
     measurements: summarizeSampleMetrics(record.measurements),
     violations: record.violations ?? [],
@@ -1271,7 +1272,11 @@ export function renderPasteSummary(report) {
       lines.push(`- Command: ${failed.command}`);
       lines.push(`- Status: ${failed.status}${failed.timedOut ? " (timeout)" : ""}`);
       lines.push(`- Duration: ${failed.durationMs}ms`);
-      lines.push(`- Likely OpenClaw area: ${record.likelyOwner ?? "OpenClaw"}`);
+      const failureDomain = failed.interpretation?.failureDomain ?? null;
+      if (failureDomain) {
+        lines.push(`- Failure domain: ${failureDomain}`);
+      }
+      lines.push(`- Likely area: ${failureDomain === "kova-harness" ? "Kova harness" : record.likelyOwner ?? "OpenClaw"}`);
       const stderr = failed.stderr?.trim();
       const stdout = failed.stdout?.trim();
       if (stderr) {
