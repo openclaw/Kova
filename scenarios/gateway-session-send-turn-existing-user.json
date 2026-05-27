@@ -97,10 +97,10 @@
       "title": "Post-Gateway-Session Health",
       "intent": "Verify the cloned gateway remains responsive after the Gateway session turn and collect logs for embedded-run/liveness evidence.",
       "commands": [
-        "ocm @{env} -- gateway status --json --require-rpc"
+        "ocm @{env} -- status --json"
       ],
       "evidence": [
-        "gateway status probe",
+        "env status probe",
         "embedded-run traces",
         "liveness warnings",
         "plugin errors",

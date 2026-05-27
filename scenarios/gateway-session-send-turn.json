@@ -108,10 +108,10 @@
       "title": "Post-Gateway-Session Health",
       "intent": "Verify the gateway remains responsive after cold and warm Gateway session message turns.",
       "commands": [
-        "ocm @{env} -- gateway status --json --require-rpc"
+        "ocm @{env} -- status --json"
       ],
       "evidence": [
-        "gateway status probe",
+        "env status probe",
         "provider logs",
         "plugin errors",
         "memory after Gateway session turn"
