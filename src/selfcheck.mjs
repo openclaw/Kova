@@ -17,6 +17,7 @@ import { assertValidObservationSet } from "../support/channel-conformance/observ
 import { planWorkflowCases } from "../support/channel-conformance/planner.mjs";
 import { channelWorkflowScript } from "../support/channel-workflow-provider-script.mjs";
 import { evaluateGate } from "./matrix/gate.mjs";
+import { extractAssistantVisibleText } from "../support/openclaw-runtime.mjs";
 import {
   comparePerformanceToBaseline,
   loadBaselineStore,
@@ -525,6 +526,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(await heapProfileParserCheck());
     checks.push(await providerEvidenceParserCheck());
     checks.push(agentTurnBreakdownCheck());
+    checks.push(gatewaySessionHistoryTextExtractionCheck());
     checks.push(gatewaySessionTurnEvaluationCheck());
     checks.push(gatewaySessionEvidenceInvariantCheck());
     checks.push(gatewaySessionPreProviderAttributionCheck());
@@ -3850,6 +3852,45 @@ function agentTurnBreakdownCheck() {
       id: "agent-turn-breakdown",
       status: "FAIL",
       command: "evaluate synthetic agent turn phase breakdowns",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function gatewaySessionHistoryTextExtractionCheck() {
+  try {
+    const text = extractAssistantVisibleText({
+      role: "assistant",
+      content: [
+        {
+          type: "text",
+          text: "KOVA_AGENT_OK"
+        }
+      ],
+      api: "openai-responses",
+      provider: "openai",
+      model: "gpt-5.5",
+      usage: {
+        input: 0,
+        output: 0,
+        totalTokens: 0
+      },
+      stopReason: "stop"
+    });
+    assertEqual(text, "KOVA_AGENT_OK", "Gateway session history assistant content text");
+
+    return {
+      id: "gateway-session-history-text-extraction",
+      status: "PASS",
+      command: "extract Gateway chat.history assistant text",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "gateway-session-history-text-extraction",
+      status: "FAIL",
+      command: "extract Gateway chat.history assistant text",
       durationMs: 0,
       message: error.message
     };

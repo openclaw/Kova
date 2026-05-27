@@ -2,7 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import {
-  extractText,
+  extractAssistantVisibleText,
   failJson,
   finishJson,
   openDirectGatewayRpcClient,
@@ -97,18 +97,24 @@ try {
       finalAssistantVisibleText: history.matchedAssistantText,
       finalAssistantRawText: history.lastAssistantText,
       assistantMessageCount: history.assistantTexts.length,
+      assistantTextEvidence: history.assistantTextEvidence,
       expectedTextPresent: textEquals(history.matchedAssistantText, expectedText)
     });
   } finally {
     gatewayTransport.client?.close();
   }
 } catch (error) {
-  failJson(error, { surface: "gateway-session-send-turn", finishedAtEpochMs: Date.now() });
+  failJson(error, {
+    surface: "gateway-session-send-turn",
+    finishedAtEpochMs: Date.now(),
+    assistantTextEvidence: error?.assistantTextEvidence ?? null
+  });
 }
 
 async function waitForAssistantText({ gatewayTransport, sessionKey, expectedText, timeoutMs, minAssistantCount }) {
   const deadline = Date.now() + timeoutMs;
   let lastAssistantText = "";
+  let assistantTextEvidence = null;
   let lastHistoryError = null;
   let assistantTexts = [];
   let assistantFirstSeenAtEpochMs = null;
@@ -119,7 +125,9 @@ async function waitForAssistantText({ gatewayTransport, sessionKey, expectedText
       pollCount += 1;
       const history = await gatewayCall(gatewayTransport, "chat.history", { sessionKey, limit: 16 }, Math.min(15000, Math.max(1000, deadline - Date.now())));
       lastHistoryError = null;
-      assistantTexts = extractAssistantTexts(history?.messages ?? []);
+      const messages = history?.messages ?? [];
+      assistantTexts = extractAssistantTexts(messages);
+      assistantTextEvidence = summarizeAssistantTextEvidence(messages);
       lastAssistantText = assistantTexts.at(-1) ?? "";
       const eligibleAssistantTexts = assistantTexts.slice(Math.max(0, minAssistantCount - 1));
       if (assistantFirstSeenAtEpochMs === null && eligibleAssistantTexts.length > 0) {
@@ -135,7 +143,8 @@ async function waitForAssistantText({ gatewayTransport, sessionKey, expectedText
           assistantMatchedAtEpochMs: Date.now(),
           pollCount,
           errorCount,
-          lastHistoryErrorMessage: null
+          lastHistoryErrorMessage: null,
+          assistantTextEvidence
         };
       }
     } catch (error) {
@@ -144,9 +153,11 @@ async function waitForAssistantText({ gatewayTransport, sessionKey, expectedText
     }
     await sleep(500);
   }
-  throw new Error(
+  const error = new Error(
     `timed out waiting for Gateway session assistant text exactly equal to ${JSON.stringify(expectedText)}; last=${JSON.stringify(lastAssistantText)}; lastHistoryError=${JSON.stringify(lastHistoryError?.message ?? null)}`
   );
+  error.assistantTextEvidence = assistantTextEvidence;
+  throw error;
 }
 
 async function gatewayCall(gatewayTransport, method, params, timeoutMs) {
@@ -190,13 +201,63 @@ function extractAssistantTexts(messages) {
     return [];
   }
   return messages
-    .filter((message) => {
-      const role = String(message?.role ?? message?.sender ?? message?.type ?? "").toLowerCase();
-      return role.includes("assistant") || role.includes("agent");
-    })
-    .map((message) => extractText(message))
+    .filter(isAssistantMessage)
+    .map((message) => extractAssistantVisibleText(message))
     .map((text) => text.trim())
     .filter(Boolean);
+}
+
+function summarizeAssistantTextEvidence(messages) {
+  const allMessages = Array.isArray(messages) ? messages : [];
+  const candidates = allMessages.filter(isAssistantMessage);
+  return {
+    schemaVersion: "kova.assistantTextEvidence.v1",
+    historyMessageCount: allMessages.length,
+    assistantCandidateCount: candidates.length,
+    candidates: candidates.slice(-4).map((message) => {
+      const visibleText = extractAssistantVisibleText(message);
+      return {
+        role: assistantRole(message),
+        keys: Object.keys(message ?? {}).slice(0, 12),
+        contentShape: contentShape(message?.content),
+        visibleTextPreview: truncateEvidenceText(visibleText, 240),
+        visibleTextLength: visibleText.length
+      };
+    })
+  };
+}
+
+function isAssistantMessage(message) {
+  const role = assistantRole(message).toLowerCase();
+  return role.includes("assistant") || role.includes("agent");
+}
+
+function assistantRole(message) {
+  return String(message?.role ?? message?.sender ?? message?.type ?? "");
+}
+
+function contentShape(value) {
+  if (typeof value === "string") {
+    return "string";
+  }
+  if (Array.isArray(value)) {
+    const types = value
+      .map((entry) => typeof entry?.type === "string" ? entry.type : typeof entry)
+      .slice(0, 8);
+    return `array(${value.length})[${types.join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    return `object{${Object.keys(value).slice(0, 8).join(",")}}`;
+  }
+  return value == null ? "nullish" : typeof value;
+}
+
+function truncateEvidenceText(value, maxLength) {
+  const text = String(value ?? "");
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return `${text.slice(0, maxLength)}...`;
 }
 
 function textEquals(actual, expected) {

@@ -360,12 +360,42 @@ export function extractText(value) {
   if (Array.isArray(value)) {
     return value.map(extractText).filter(Boolean).join("\n");
   }
-  for (const key of ["finalAssistantVisibleText", "finalAssistantRawText", "text", "content", "reply"]) {
+  for (const key of ["finalAssistantVisibleText", "finalAssistantRawText", "text"]) {
     if (typeof value[key] === "string") {
       return value[key];
     }
   }
+  if (Object.hasOwn(value, "content")) {
+    const contentText = extractText(value.content).trim();
+    if (contentText) {
+      return contentText;
+    }
+  }
+  if (typeof value.reply === "string") {
+    return value.reply;
+  }
   return Object.values(value).map(extractText).filter(Boolean).join("\n");
+}
+
+export function extractAssistantVisibleText(message) {
+  if (typeof message === "string") {
+    return message;
+  }
+  if (!message || typeof message !== "object") {
+    return "";
+  }
+  if (Array.isArray(message)) {
+    return message.map(extractAssistantVisibleText).filter(Boolean).join("\n");
+  }
+  if (Object.hasOwn(message, "content")) {
+    return extractText(message.content).trim();
+  }
+  for (const key of ["finalAssistantVisibleText", "finalAssistantRawText", "text", "reply", "output_text"]) {
+    if (typeof message[key] === "string") {
+      return message[key].trim();
+    }
+  }
+  return "";
 }
 
 export async function sleep(ms) {
