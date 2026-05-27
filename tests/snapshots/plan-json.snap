@@ -2094,6 +2094,32 @@
             "pluginIndexPresent",
             "doctorFixMs"
           ]
+        },
+        {
+          "id": "doctor-repair",
+          "states": [
+            "legacy-channel-config-doctor-2026-5-7",
+            "legacy-core-config-doctor-2026-4-24",
+            "legacy-plugin-config-doctor-2026-5-22",
+            "legacy-provider-config-doctor-2026-5-7",
+            "legacy-runtime-pin-doctor-2026-5-8"
+          ],
+          "targetKinds": [
+            "npm",
+            "release",
+            "runtime",
+            "local-build"
+          ],
+          "metrics": [
+            "upgradeMs",
+            "doctorFixMs",
+            "gatewayReadyMs",
+            "statusMs",
+            "pluginsListMs",
+            "modelsListMs",
+            "missingDependencyErrors",
+            "pluginLoadFailures"
+          ]
         }
       ]
     },
@@ -10083,6 +10109,127 @@
       ]
     },
     {
+      "id": "doctor-repair-upgrade",
+      "surface": "upgrade-existing-user",
+      "title": "Doctor Repair Upgrade",
+      "objective": "Clone a disposable old-version-shaped OpenClaw env, apply a legacy config fixture from a known breaking-change boundary, upgrade to the target runtime, run Doctor repair, and verify the repaired env keeps status, plugin, provider, and gateway health usable.",
+      "tags": [
+        "existing-user",
+        "upgrade",
+        "doctor",
+        "config",
+        "migration"
+      ],
+      "targetKinds": [
+        "local-build",
+        "release",
+        "runtime",
+        "npm"
+      ],
+      "auth": {
+        "mode": "skip"
+      },
+      "timeoutMs": 300000,
+      "thresholds": {
+        "upgradeMs": 180000,
+        "doctorFixMs": 60000,
+        "gatewayReadyMs": 60000,
+        "statusMs": 10000,
+        "pluginsListMs": 10000,
+        "modelsListMs": 20000,
+        "missingDependencyErrors": 0,
+        "pluginLoadFailures": 0
+      },
+      "phases": [
+        {
+          "id": "clone",
+          "title": "Clone Existing Env",
+          "intent": "Clone a durable existing env into a disposable Kova env before applying legacy config or upgrade actions.",
+          "commands": [
+            "ocm env clone {sourceEnv} {env} --json"
+          ],
+          "evidence": [
+            "clone result",
+            "source env",
+            "clone root"
+          ],
+          "healthScope": "none"
+        },
+        {
+          "id": "upgrade",
+          "title": "Upgrade To Target",
+          "intent": "Run the real target upgrade path through OCM after the legacy config state has been applied.",
+          "commands": [
+            "ocm upgrade {env} {upgradeSelector} --json"
+          ],
+          "evidence": [
+            "target upgrade JSON",
+            "snapshot id",
+            "doctor/update output",
+            "rollback status"
+          ],
+          "healthScope": "readiness"
+        },
+        {
+          "id": "doctor-repair",
+          "title": "Doctor Repair",
+          "intent": "Run Doctor repair and then run non-interactive Doctor again to prove repairable config validation errors are gone.",
+          "commands": [
+            "ocm @{env} -- doctor --fix --non-interactive",
+            "ocm @{env} -- doctor --non-interactive"
+          ],
+          "evidence": [
+            "doctor fix output",
+            "doctor clean output",
+            "no repairable config validation errors after fix"
+          ],
+          "healthScope": "post-ready"
+        },
+        {
+          "id": "post-repair-health",
+          "title": "Post-Repair Health",
+          "intent": "Verify the repaired env still supports core status, plugin discovery, model discovery, service health, and clean gateway logs.",
+          "commands": [
+            "ocm @{env} -- status",
+            "ocm @{env} -- plugins list",
+            "ocm @{env} -- models list"
+          ],
+          "evidence": [
+            "gateway state",
+            "OpenClaw status output",
+            "plugins list output",
+            "models list output",
+            "gateway logs without config validation loops, missing dependencies, or plugin load failures"
+          ],
+          "healthScope": "post-ready",
+          "collectionIntent": "post-ready-health"
+        }
+      ],
+      "evidenceContract": {
+        "snapshots": [
+          {
+            "id": "legacy-config-state",
+            "afterPhase": "clone",
+            "label": "Legacy config state after fixture setup",
+            "summary": "Captures the old config profile and Kova evidence marker before target upgrade.",
+            "required": true,
+            "maxFileBytes": 65536
+          },
+          {
+            "id": "post-doctor-config-state",
+            "afterPhase": "doctor-repair",
+            "label": "Post-Doctor config state",
+            "summary": "Captures the repaired config state after doctor --fix and doctor --non-interactive.",
+            "required": true,
+            "maxFileBytes": 65536
+          }
+        ]
+      },
+      "proves": [
+        "doctor-repair"
+      ]
+    },
+    {
       "id": "failure-injection",
       "surface": "failure-containment",
       "title": "OpenClaw Failure Containment",
@@ -12757,6 +12904,222 @@
       ]
     },
     {
+      "id": "legacy-channel-config-doctor-2026-5-7",
+      "title": "Legacy Channel Config Doctor 2026.5.7",
+      "objective": "A channel config with removed core channel schema and stale channel plugin state, used to verify plugin-owned Doctor repairs do not leave config validation failures.",
+      "tags": [
+        "channels",
+        "plugins",
+        "config",
+        "doctor",
+        "upgrade"
+      ],
+      "setup": [
+        {
+          "id": "write-legacy-channel-config",
+          "title": "Write Legacy Channel Config",
+          "intent": "Create stale channel config from channel schema and external plugin repair boundaries.",
+          "afterPhase": "clone",
+          "commands": [
+            "ocm env exec {env} -- node {kovaRoot}/support/write-doctor-upgrade-state.mjs --state legacy-channel-config-doctor-2026-5-7"
+          ],
+          "evidence": [
+            "legacy channel config exists",
+            "doctor upgrade evidence names PR #78612 and PR #78876",
+            "Feishu stale-state repair commit evidence is recorded"
+          ]
+        }
+      ],
+      "traits": [
+        "existing-user",
+        "migration-state",
+        "config-state"
+      ],
+      "riskArea": "channel-config-doctor-repair",
+      "ownerArea": "channels",
+      "setupEvidence": [
+        "config/kova-doctor-upgrade-evidence.json lists PR #78612, PR #78876, and commit b7c461af7b as breakage evidence",
+        ".openclaw/openclaw.json contains removed core BlueBubbles-style channel config",
+        ".openclaw/openclaw.json contains stale Feishu and Telegram channel config shapes"
+      ],
+      "cleanupGuarantees": [
+        "disposable env cleanup removes legacy channel config fixture files"
+      ]
+    },
+    {
+      "id": "legacy-core-config-doctor-2026-4-24",
+      "title": "Legacy Core Config Doctor 2026.4.24",
+      "objective": "A 2026.4.24-shaped core config with stale gateway/runtime/model keys and a preserved user field, used to verify Doctor repairs stale core config without dropping unrelated user config.",
+      "tags": [
+        "config",
+        "doctor",
+        "upgrade",
+        "2026-4-24"
+      ],
+      "setup": [
+        {
+          "id": "write-legacy-core-config",
+          "title": "Write Legacy Core Config",
+          "intent": "Create stale core config keys from the 2026.4.24 plugin-architecture boundary and write evidence explaining the breaking-change risk.",
+          "afterPhase": "clone",
+          "commands": [
+            "ocm env exec {env} -- node {kovaRoot}/support/write-doctor-upgrade-state.mjs --state legacy-core-config-doctor-2026-4-24"
+          ],
+          "evidence": [
+            "legacy core config exists",
+            "doctor upgrade evidence names PR #78896 and PR #79203",
+            "source-release marker identifies 2026.4.24 plugin-architecture boundary"
+          ]
+        }
+      ],
+      "traits": [
+        "existing-user",
+        "old-release",
+        "migration-state",
+        "config-state"
+      ],
+      "riskArea": "core-config-doctor-repair",
+      "ownerArea": "gateway",
+      "setupEvidence": [
+        "config/kova-doctor-upgrade-evidence.json lists PR #78896 and PR #79203 as breakage evidence",
+        ".openclaw/openclaw.json contains legacy gateway_port, runtime.pi, and models.defaultProvider keys",
+        "config/kova-source-release.json marks release 2026.4.24"
+      ],
+      "cleanupGuarantees": [
+        "disposable env cleanup removes legacy core config fixture files"
+      ]
+    },
+    {
+      "id": "legacy-plugin-config-doctor-2026-5-22",
+      "title": "Legacy Plugin Config Doctor 2026.5.22",
+      "objective": "A plugin config containing stale install index data and bundled plugin load paths, used to verify Doctor does not reintroduce plugin load-path loops and leaves plugins list/gateway startup clean.",
+      "tags": [
+        "plugins",
+        "config",
+        "doctor",
+        "upgrade"
+      ],
+      "setup": [
+        {
+          "id": "write-legacy-plugin-config",
+          "title": "Write Legacy Plugin Config",
+          "intent": "Create stale plugin install metadata and bundled plugin load paths tied to recent plugin Doctor regressions.",
+          "afterPhase": "clone",
+          "commands": [
+            "ocm env exec {env} -- node {kovaRoot}/support/write-doctor-upgrade-state.mjs --state legacy-plugin-config-doctor-2026-5-22"
+          ],
+          "evidence": [
+            "legacy plugin config exists",
+            "doctor upgrade evidence names issue #85334 and PR #85358",
+            "stale plugins/installs.json exists"
+          ]
+        }
+      ],
+      "traits": [
+        "existing-user",
+        "migration-state",
+        "config-state",
+        "plugin-pressure"
+      ],
+      "riskArea": "plugin-config-doctor-repair",
+      "ownerArea": "plugins",
+      "setupEvidence": [
+        "config/kova-doctor-upgrade-evidence.json lists issue #85334, PR #85358, and PR #85170 as breakage evidence",
+        ".openclaw/openclaw.json contains legacy plugins.load.paths pointing at bundled plugin directories",
+        "plugins/installs.json uses an older install-index shape"
+      ],
+      "cleanupGuarantees": [
+        "disposable env cleanup removes legacy plugin config fixture files"
+      ]
+    },
+    {
+      "id": "legacy-provider-config-doctor-2026-5-7",
+      "title": "Legacy Provider Config Doctor 2026.5.7",
+      "objective": "A provider/model config with OpenAI Codex model refs and legacy compat fields, used to verify Doctor preserves runtime-specific model routing and model discovery remains coherent.",
+      "tags": [
+        "providers",
+        "models",
+        "config",
+        "doctor",
+        "upgrade"
+      ],
+      "setup": [
+        {
+          "id": "write-legacy-provider-config",
+          "title": "Write Legacy Provider Config",
+          "intent": "Create stale provider model refs and compat fields from recent Doctor/provider normalization regressions.",
+          "afterPhase": "clone",
+          "commands": [
+            "ocm env exec {env} -- node {kovaRoot}/support/write-doctor-upgrade-state.mjs --state legacy-provider-config-doctor-2026-5-7"
+          ],
+          "evidence": [
+            "legacy provider config exists",
+            "doctor upgrade evidence names PR #78967 and PR #78971",
+            "OpenAI Codex model refs are present before repair"
+          ]
+        }
+      ],
+      "traits": [
+        "existing-user",
+        "migration-state",
+        "config-state",
+        "provider-pressure"
+      ],
+      "riskArea": "provider-config-doctor-repair",
+      "ownerArea": "models",
+      "setupEvidence": [
+        "config/kova-doctor-upgrade-evidence.json lists PR #78967, PR #78971, and provider alias catalog commits as breakage evidence",
+        ".openclaw/openclaw.json contains openai-codex/gpt-5 runtime-specific model refs",
+        ".openclaw/openclaw.json contains legacy compatibleProvider and responsesApi provider fields"
+      ],
+      "cleanupGuarantees": [
+        "disposable env cleanup removes legacy provider config fixture files"
+      ]
+    },
+    {
+      "id": "legacy-runtime-pin-doctor-2026-5-8",
+      "title": "Legacy Runtime Pin Doctor 2026.5.8",
+      "objective": "A stale Pi runtime pin config from the Codex runtime routing migration boundary, used to verify Doctor removes or rewrites runtime pins and the default agent path remains usable.",
+      "tags": [
+        "runtime",
+        "config",
+        "doctor",
+        "upgrade"
+      ],
+      "setup": [
+        {
+          "id": "write-legacy-runtime-pin",
+          "title": "Write Legacy Runtime Pin",
+          "intent": "Create stale Pi runtime pins and disabled Codex plugin state tied to recent Codex migration Doctor contracts.",
+          "afterPhase": "clone",
+          "commands": [
+            "ocm env exec {env} -- node {kovaRoot}/support/write-doctor-upgrade-state.mjs --state legacy-runtime-pin-doctor-2026-5-8"
+          ],
+          "evidence": [
+            "legacy runtime pin config exists",
+            "doctor upgrade evidence names PR #79238 and PR #85312",
+            "stale Pi runtime path is present before repair"
+          ]
+        }
+      ],
+      "traits": [
+        "existing-user",
+        "migration-state",
+        "config-state",
+        "runtime-deps"
+      ],
+      "riskArea": "runtime-pin-doctor-repair",
+      "ownerArea": "agents",
+      "setupEvidence": [
+        "config/kova-doctor-upgrade-evidence.json lists PR #79238, PR #85312, and stale Pi runtime commits as breakage evidence",
+        ".openclaw/openclaw.json contains agents.defaults.agentRuntime.id=pi",
+        ".openclaw/openclaw.json contains stale /usr/local/lib/openclaw/pi-runtime path"
+      ],
+      "cleanupGuarantees": [
+        "disposable env cleanup removes legacy runtime pin fixture files"
+      ]
+    },
+    {
       "id": "malformed-large-session-store",
       "title": "Malformed Large Session Store",
       "objective": "A deliberately malformed large session-store wrapper, used to detect expensive startup parsing, repair, and rejection behavior without confusing it with valid user session state.",
@@ -13697,6 +14060,23 @@
       }
     },
     {
+      "id": "doctor-upgrade",
+      "title": "Doctor Upgrade Matrix",
+      "objective": "Focused OpenClaw upgrade coverage for Doctor repair across old, meaningful config profiles tied to known breaking-change boundaries.",
+      "purpose": "upgrade",
+      "entryCount": 5,
+      "targetKinds": [
+        "local-build"
+      ],
+      "diagnostics": null,
+      "calibration": null,
+      "gate": {
+        "id": "doctor-upgrade-gate",
+        "blockingCount": 5,
+        "warningCount": 0
+      }
+    },
+    {
       "id": "exhaustive",
       "title": "Exhaustive Matrix",
       "objective": "Maximum local OpenClaw coverage across install, upgrade, plugins, providers, config corruption, filesystem pressure, service recovery, and performance scenarios.",
@@ -14085,8 +14465,9 @@
         "id": "upgrade-existing-user",
         "title": "Existing User Upgrade",
         "ownerArea": "upgrade",
-        "scenarioCount": 6,
+        "scenarioCount": 7,
         "scenarios": [
+          "doctor-repair-upgrade",
           "upgrade-durable-clone-to-local-build",
           "upgrade-existing-user",
           "upgrade-from-2026-4-20",
@@ -14189,6 +14570,10 @@
       {
         "scenario": "dashboard-readiness",
         "surface": "dashboard"
+      },
+      {
+        "scenario": "doctor-repair-upgrade",
+        "surface": "upgrade-existing-user"
       },
       {
         "scenario": "failure-injection",
@@ -14515,6 +14900,149 @@
             "gateway-session-send-turn",
             "openai-compatible-turn",
             "tui-message-turn"
+          ]
+        }
+      },
+      {
+        "id": "doctor-upgrade",
+        "entryCount": 5,
+        "surfaces": [
+          "upgrade-existing-user"
+        ],
+        "states": [
+          "legacy-channel-config-doctor-2026-5-7",
+          "legacy-core-config-doctor-2026-4-24",
+          "legacy-plugin-config-doctor-2026-5-22",
+          "legacy-provider-config-doctor-2026-5-7",
+          "legacy-runtime-pin-doctor-2026-5-8"
+        ],
+        "scenarios": [
+          "doctor-repair-upgrade"
+        ],
+        "requirements": [
+          "upgrade-existing-user:doctor-repair"
+        ],
+        "stateSurfaces": [
+          "upgrade-existing-user:legacy-channel-config-doctor-2026-5-7",
+          "upgrade-existing-user:legacy-core-config-doctor-2026-4-24",
+          "upgrade-existing-user:legacy-plugin-config-doctor-2026-5-22",
+          "upgrade-existing-user:legacy-provider-config-doctor-2026-5-7",
+          "upgrade-existing-user:legacy-runtime-pin-doctor-2026-5-8"
+        ],
+        "required": {
+          "surfaces": [
+            "upgrade-existing-user"
+          ],
+          "scenarios": [
+            "doctor-repair-upgrade"
+          ],
+          "states": [
+            "legacy-channel-config-doctor-2026-5-7",
+            "legacy-core-config-doctor-2026-4-24",
+            "legacy-plugin-config-doctor-2026-5-22",
+            "legacy-provider-config-doctor-2026-5-7",
+            "legacy-runtime-pin-doctor-2026-5-8"
+          ],
+          "traits": [
+            "config-state",
+            "existing-user",
+            "migration-state",
+            "old-release",
+            "plugin-pressure",
+            "provider-pressure",
+            "runtime-deps"
+          ],
+          "platforms": [],
+          "requirements": [
+            "upgrade-existing-user:doctor-repair"
+          ],
+          "stateSurfaces": [
+            "upgrade-existing-user:legacy-channel-config-doctor-2026-5-7",
+            "upgrade-existing-user:legacy-core-config-doctor-2026-4-24",
+            "upgrade-existing-user:legacy-plugin-config-doctor-2026-5-22",
+            "upgrade-existing-user:legacy-provider-config-doctor-2026-5-7",
+            "upgrade-existing-user:legacy-runtime-pin-doctor-2026-5-8"
+          ]
+        },
+        "gaps": {
+          "surfaces": [],
+          "scenarios": [],
+          "states": [],
+          "traits": [],
+          "platforms": [],
+          "requirements": [],
+          "stateSurfaces": []
+        },
+        "currentPlatformKeys": [
+          "arm64",
+          "darwin",
+          "darwin-arm64"
+        ],
+        "stateTraitCoverage": {
+          "config-state": [
+            "legacy-channel-config-doctor-2026-5-7",
+            "legacy-core-config-doctor-2026-4-24",
+            "legacy-plugin-config-doctor-2026-5-22",
+            "legacy-provider-config-doctor-2026-5-7",
+            "legacy-runtime-pin-doctor-2026-5-8"
+          ],
+          "existing-user": [
+            "legacy-channel-config-doctor-2026-5-7",
+            "legacy-core-config-doctor-2026-4-24",
+            "legacy-plugin-config-doctor-2026-5-22",
+            "legacy-provider-config-doctor-2026-5-7",
+            "legacy-runtime-pin-doctor-2026-5-8"
+          ],
+          "migration-state": [
+            "legacy-channel-config-doctor-2026-5-7",
+            "legacy-core-config-doctor-2026-4-24",
+            "legacy-plugin-config-doctor-2026-5-22",
+            "legacy-provider-config-doctor-2026-5-7",
+            "legacy-runtime-pin-doctor-2026-5-8"
+          ],
+          "old-release": [
+            "legacy-core-config-doctor-2026-4-24"
+          ],
+          "plugin-pressure": [
+            "legacy-plugin-config-doctor-2026-5-22"
+          ],
+          "provider-pressure": [
+            "legacy-provider-config-doctor-2026-5-7"
+          ],
+          "runtime-deps": [
+            "legacy-runtime-pin-doctor-2026-5-8"
+          ]
+        },
+        "stateSurfaceCoverage": {
+          "upgrade-existing-user": [
+            "legacy-channel-config-doctor-2026-5-7",
+            "legacy-core-config-doctor-2026-4-24",
+            "legacy-plugin-config-doctor-2026-5-22",
+            "legacy-provider-config-doctor-2026-5-7",
+            "legacy-runtime-pin-doctor-2026-5-8"
+          ]
+        },
+        "traitSurfaceCoverage": {
+          "config-state": [
+            "upgrade-existing-user"
+          ],
+          "existing-user": [
+            "upgrade-existing-user"
+          ],
+          "migration-state": [
+            "upgrade-existing-user"
+          ],
+          "old-release": [
+            "upgrade-existing-user"
+          ],
+          "plugin-pressure": [
+            "upgrade-existing-user"
+          ],
+          "provider-pressure": [
+            "upgrade-existing-user"
+          ],
+          "runtime-deps": [
+            "upgrade-existing-user"
           ]
         }
       },
