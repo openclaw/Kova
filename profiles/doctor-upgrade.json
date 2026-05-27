@@ -35,11 +35,6 @@
   "purpose": "upgrade",
   "gate": {
     "id": "doctor-upgrade-gate",
-    "blocking": [
-      {
-        "scenario": "doctor-repair-upgrade"
-      }
-    ],
     "coverage": {
       "requirements": {
         "blocking": [

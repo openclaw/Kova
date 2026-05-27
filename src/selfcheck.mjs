@@ -649,6 +649,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(gatePlatformCoverageCheck());
     checks.push(gateNonReleaseOutcomeCheck());
     checks.push(gateRequirementCoverageCheck());
+    checks.push(await doctorUpgradeGatePolicyCheck());
     checks.push(gateSubsystemSummaryCheck());
     checks.push(safetyGuardCheck());
     checks.push(await failingCommandCheck(
@@ -2666,6 +2667,66 @@ function gateRequirementCoverageCheck() {
       id: "gate-requirement-coverage",
       status: "FAIL",
       command: "evaluate synthetic release gate requirement coverage",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+async function doctorUpgradeGatePolicyCheck() {
+  try {
+    const profile = JSON.parse(await readFile("profiles/doctor-upgrade.json", "utf8"));
+    const states = [
+      "legacy-core-config-doctor-2026-4-24",
+      "legacy-plugin-config-doctor-2026-5-22",
+      "legacy-provider-config-doctor-2026-5-7",
+      "legacy-channel-config-doctor-2026-5-7",
+      "legacy-runtime-pin-doctor-2026-5-8"
+    ];
+    const records = states.map((state) => ({
+      scenario: "doctor-repair-upgrade",
+      surface: "upgrade-existing-user",
+      state: { id: state },
+      status: "PASS",
+      title: "Doctor Repair Upgrade",
+      likelyOwner: "OpenClaw",
+      phases: []
+    }));
+    const gate = evaluateGate({
+      mode: "execution",
+      controls: {
+        include: [],
+        exclude: []
+      },
+      records
+    }, profile, {
+      resolvedCoverage: {
+        obligations: records.map((record) => ({
+          surface: "upgrade-existing-user",
+          requirement: "doctor-repair",
+          scenario: record.scenario,
+          state: record.state.id,
+          status: "planned"
+        }))
+      }
+    });
+
+    assertEqual(gate.verdict, "SHIP", "doctor upgrade gate ships with all stateful records");
+    assertEqual(gate.complete, true, "doctor upgrade gate complete");
+    assertEqual(gate.missingRequiredCount, 0, "doctor upgrade gate no missing stateful records");
+    assertEqual(gate.required?.length, states.length, "doctor upgrade gate requires every state");
+
+    return {
+      id: "doctor-upgrade-gate-policy",
+      status: "PASS",
+      command: "evaluate synthetic doctor upgrade stateful gate policy",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "doctor-upgrade-gate-policy",
+      status: "FAIL",
+      command: "evaluate synthetic doctor upgrade stateful gate policy",
       durationMs: 0,
       message: error.message
     };
