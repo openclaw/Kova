@@ -11,14 +11,10 @@ import {
   fmtMetric,
   deltaClass,
 } from "../../lib/release-format";
+import RunScenarioCard from "../../components/RunScenarioCard.astro";
 import type {
   Headline,
   Run,
-  RunScenario,
-  Phase,
-  MetricRow,
-  Finding,
-  Prove,
   ComparisonRow,
   Scenario,
 } from "../../content.config";
@@ -35,12 +31,13 @@ const { release } = Astro.props;
 const latest = await latestRelease();
 const hasDetail = Boolean(release.scenarios && release.scenarios.length);
 const counts = hasDetail ? scenarioCounts(release.scenarios!) : null;
+const runsList: Run[] = release.runs ?? [];
+const hasRuns = runsList.length > 0;
 ---
 
 <Base title={`kova — ${release.ver}`} active="releases">
   <div class="container">
 
-    {/* Header strip: back link, title, sha + runtime targets + date. */}
     <div class="release-header">
       <a class="release-back" href="/releases">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -57,7 +54,6 @@ const counts = hasDetail ? scenarioCounts(release.scenarios!) : null;
 
       {hasDetail && counts && (
         <div class="headline-strip">
-          {/* Neutral counts row — no SHIP/DO_NOT_SHIP language. */}
           <div class="v2-status-counts">
             <div class="pass"><span class="num">{counts.pass}</span><span class="lbl">pass</span></div>
             <div class="fail"><span class="num">{counts.fail}</span><span class="lbl">fail</span></div>
@@ -85,7 +81,6 @@ const counts = hasDetail ? scenarioCounts(release.scenarios!) : null;
       )}
     </div>
 
-    {/* No-detail releases (history stubs): friendly redirect to latest. */}
     {!hasDetail && (
       <p style="font-family:var(--font-mono);font-size:var(--text-2);color:var(--text-3c);max-width:60ch;margin-top:var(--space-5);">
         No detailed scenario data archived for this release.
@@ -95,7 +90,6 @@ const counts = hasDetail ? scenarioCounts(release.scenarios!) : null;
 
     {hasDetail && (
       <>
-        {/* Scenarios overview: tile per scenario with worst-metric headline + sparkline. */}
         <section>
           <div class="section-rule"><h2>Scenarios</h2></div>
           <div class="scenario-grid">
@@ -138,12 +132,15 @@ const counts = hasDetail ? scenarioCounts(release.scenarios!) : null;
           </div>
         </section>
 
-        {/* Runs: each is a <details> for native expand/collapse, no JS island. */}
-        {release.runs && release.runs.length > 0 && (
+        {hasRuns && (
           <section>
             <div class="section-rule"><h2>Runs</h2></div>
-            <div class="run-list">
-              {release.runs.map((r: Run) => (
+            <div class="runs-toolbar" data-runs-toolbar>
+              <button class="runs-toggle" type="button" data-runs-action="expand">Expand all</button>
+              <button class="runs-toggle" type="button" data-runs-action="collapse">Collapse all</button>
+            </div>
+            <div class="run-list" data-run-list>
+              {runsList.map((r: Run) => (
                 <details class="run" open={r.expandedByDefault ?? false}>
                   <summary>
                     <span class="caret">▶</span>
@@ -159,87 +156,7 @@ const counts = hasDetail ? scenarioCounts(release.scenarios!) : null;
 
                   {r.scenarios && r.scenarios.length > 0 && (
                     <div class="run-body">
-                      {r.scenarios.map((rs: RunScenario) => (
-                        <div class="run-scenario" id={`scenario-${rs.id}`}>
-                          <div class="run-scenario-head">
-                            <span class="run-scenario-id">{rs.id}</span>
-                            <span class:list={["verdict", rs.state === "pass" ? "verdict-pass" : rs.state === "fail" ? "verdict-fail" : "verdict-warn"]}>
-                              <span class="verdict-dot"></span>{rs.state.toUpperCase()}
-                            </span>
-                            <span style="margin-left:auto; color: var(--text-3c); font-family: var(--font-mono); font-size: var(--text-1)">
-                              {rs.sampleCount} sample{rs.sampleCount === 1 ? "" : "s"}
-                              {rs.sampleValue != null && rs.sampleUnit ? ` · ${fmtVal(rs.sampleValue, rs.sampleUnit)} ${rs.sampleUnit}` : ""}
-                            </span>
-                          </div>
-
-                          {rs.metrics && rs.metrics.length > 0 && (
-                            <>
-                              <div class="sub">Metrics</div>
-                              <table class="tbl">
-                                <thead>
-                                  <tr><th>metric</th><th class="num">value</th><th class="num">threshold</th><th>status</th></tr>
-                                </thead>
-                                <tbody>
-                                  {rs.metrics.map((m: MetricRow) => (
-                                    <tr class={m.child ? "child" : undefined}>
-                                      <td>{m.name}</td>
-                                      <td class="num">{fmtMetric(m.value, m.unit)}</td>
-                                      <td class:list={["num", m.threshold == null && "dim"]}>{m.threshold == null ? "—" : fmtMetric(m.threshold, m.unit)}</td>
-                                      <td class={`st-${m.state}`}>{m.state}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </>
-                          )}
-
-                          {rs.phases && rs.phases.length > 0 && (
-                            <>
-                              <div class="sub">Phases</div>
-                              <table class="tbl">
-                                <thead><tr><th>phase</th><th class="num">elapsed</th><th>status</th></tr></thead>
-                                <tbody>
-                                  {rs.phases.map((p: Phase) => (
-                                    <tr>
-                                      <td>{p.name}</td>
-                                      <td class="num">{fmtMs(p.elapsedMs)}</td>
-                                      <td class={`st-${p.state}`}>{p.state}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </>
-                          )}
-
-                          {rs.findings && rs.findings.length > 0 && (
-                            <>
-                              <div class="sub">Findings</div>
-                              <ul class="findings">
-                                {rs.findings.map((f: Finding) => (
-                                  <li>
-                                    <span class:list={["glyph", f.kind === "warn" && "warn"]}>{f.kind === "warn" ? "⚠" : f.kind === "info" ? "ℹ" : "✗"}</span>
-                                    <span>{f.text}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            </>
-                          )}
-
-                          {rs.proves && rs.proves.length > 0 && (
-                            <>
-                              <div class="sub">Proves</div>
-                              <ul class="proves">
-                                {rs.proves.map((p: Prove) => (
-                                  <li>
-                                    <span class:list={["glyph", p.state]}>{p.state === "pass" ? "✓" : "✗"}</span>
-                                    <span>{p.text}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            </>
-                          )}
-                        </div>
-                      ))}
+                      {r.scenarios.map((rs) => <RunScenarioCard scenario={rs} />)}
 
                       {r.bundle && (
                         <div style="margin-top: var(--space-5); display: flex; justify-content: flex-end;">
@@ -257,7 +174,6 @@ const counts = hasDetail ? scenarioCounts(release.scenarios!) : null;
           </section>
         )}
 
-        {/* Comparison: only render when we have rows. */}
         {release.comparison && release.comparison.rows.length > 0 && (
           <section>
             <div class="section-rule"><h2>vs {release.comparison.vsVer}</h2></div>
@@ -279,12 +195,11 @@ const counts = hasDetail ? scenarioCounts(release.scenarios!) : null;
           </section>
         )}
 
-        {/* Bundles: aggregated from runs, no separate top-level source. */}
-        {release.runs?.some((r: Run) => r.bundle) && (
+        {runsList.some((r: Run) => r.bundle) && (
           <section>
             <div class="section-rule"><h2>Bundles</h2></div>
             <div class="bundles">
-              {release.runs!.filter((r: Run) => r.bundle).map((r: Run) => (
+              {runsList.filter((r: Run) => r.bundle).map((r: Run) => (
                 <a class="bundle" href={r.bundle!.href}>
                   <span>{r.bundle!.name}</span>
                   <span class="bytes">{fmtBytes(r.bundle!.bytes)}</span>
@@ -297,4 +212,20 @@ const counts = hasDetail ? scenarioCounts(release.scenarios!) : null;
     )}
 
   </div>
+
+  <script>
+    // Expand/collapse all <details class="run"> within the run list.
+    const list = document.querySelector<HTMLElement>("[data-run-list]");
+    const toolbar = document.querySelector<HTMLElement>("[data-runs-toolbar]");
+    if (list && toolbar) {
+      toolbar.addEventListener("click", (e) => {
+        const btn = (e.target as HTMLElement).closest("[data-runs-action]");
+        if (!(btn instanceof HTMLElement)) return;
+        const open = btn.dataset.runsAction === "expand";
+        list.querySelectorAll<HTMLDetailsElement>("details.run").forEach((d) => {
+          d.open = open;
+        });
+      });
+    }
+  </script>
 </Base>
