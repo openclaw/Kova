@@ -1,7 +1,27 @@
 ---
 import Base from "../../layouts/Base.astro";
 import { getCollection } from "astro:content";
-import { latestRelease } from "../../lib/releases";
+import { latestRelease, scenarioCounts } from "../../lib/releases";
+import { fmtVal } from "../../lib/format";
+import { spark } from "../../lib/sparkline";
+import {
+  fmtMs,
+  fmtBytes,
+  fmtRunStamp,
+  fmtMetric,
+  deltaClass,
+} from "../../lib/release-format";
+import type {
+  Headline,
+  Run,
+  RunScenario,
+  Phase,
+  MetricRow,
+  Finding,
+  Prove,
+  ComparisonRow,
+  Scenario,
+} from "../../content.config";
 
 export async function getStaticPaths() {
   const all = await getCollection("releases");
@@ -13,33 +33,268 @@ export async function getStaticPaths() {
 
 const { release } = Astro.props;
 const latest = await latestRelease();
-const isLatest = release.ver === latest.ver;
+const hasDetail = Boolean(release.scenarios && release.scenarios.length);
+const counts = hasDetail ? scenarioCounts(release.scenarios!) : null;
 ---
 
 <Base title={`kova — ${release.ver}`} active="releases">
   <div class="container">
-    <div class="section-head" style="margin-top: var(--space-7)">
-      <h1 class="section-title">{release.ver}</h1>
-      <span class="section-meta">
-        <a href="/releases" style="color:var(--text-2c)">← all releases</a>
-      </span>
+
+    {/* Header strip: back link, title, sha + runtime targets + date. */}
+    <div class="release-header">
+      <a class="release-back" href="/releases">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M15 18 L9 12 L15 6" />
+        </svg>
+        releases
+      </a>
+      <h1 class="release-title">{release.ver}</h1>
+      <div class="release-tags">
+        <span class="release-tag">{release.sha}</span>
+        {release.runtimeTargets?.map((t: string) => <span class="release-tag">{t}</span>)}
+        <span>{release.date}</span>
+      </div>
+
+      {hasDetail && counts && (
+        <div class="headline-strip">
+          {/* Neutral counts row — no SHIP/DO_NOT_SHIP language. */}
+          <div class="v2-status-counts">
+            <div class="pass"><span class="num">{counts.pass}</span><span class="lbl">pass</span></div>
+            <div class="fail"><span class="num">{counts.fail}</span><span class="lbl">fail</span></div>
+            <div class="warn"><span class="num">{counts.block}</span><span class="lbl">blocked</span></div>
+            <div><span class="num">{counts.total}</span><span class="lbl">total</span></div>
+          </div>
+
+          {release.headline?.map((h: Headline) => {
+            const d = h.deltaPct != null ? deltaClass(h.deltaPct, h.lowerIsBetter !== false) : null;
+            return (
+              <div class="headline">
+                <span class="headline-label">{h.label}</span>
+                <span class="headline-metric">
+                  {fmtVal(h.value, h.unit)}<span class="headline-unit">{h.unit}</span>
+                </span>
+                {d && h.deltaPct != null && h.vsVer && (
+                  <span class:list={["delta", d.cls]}>
+                    {d.arrow} {h.deltaPct > 0 ? "+" : ""}{h.deltaPct.toFixed(1)}% vs {h.vsVer}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
 
-    <p style="font-family:var(--font-mono);font-size:var(--text-2);color:var(--text-3c);max-width:60ch;">
-      {release.date} · {release.sha}
-      {release.runs ? ` · ${release.runs} runs · ${release.host}` : ""}
-    </p>
-
-    {isLatest ? (
-      <p style="font-family:var(--font-mono);font-size:var(--text-2);color:var(--text-3c);max-width:60ch;">
-        Full release detail (header strip · scenario grid · runs list · comparison · bundles)
-        lands in Phase A follow-up. For now, the home page surfaces this release's scenarios.
-      </p>
-    ) : (
-      <p style="font-family:var(--font-mono);font-size:var(--text-2);color:var(--text-3c);max-width:60ch;">
-        No detailed scenario data archived for this release yet. Jump to the
-        <a href={`/releases/${latest.ver}`} style="color:var(--text-1c);border-bottom:1px solid var(--border-2);"> latest release</a>.
+    {/* No-detail releases (history stubs): friendly redirect to latest. */}
+    {!hasDetail && (
+      <p style="font-family:var(--font-mono);font-size:var(--text-2);color:var(--text-3c);max-width:60ch;margin-top:var(--space-5);">
+        No detailed scenario data archived for this release.
+        Jump to the <a href={`/releases/${latest.ver}`} style="color:var(--text-1c);border-bottom:1px solid var(--border-2);">latest release</a>.
       </p>
     )}
+
+    {hasDetail && (
+      <>
+        {/* Scenarios overview: tile per scenario with worst-metric headline + sparkline. */}
+        <section>
+          <div class="section-rule"><h2>Scenarios</h2></div>
+          <div class="scenario-grid">
+            {release.scenarios!.map((s: Scenario) => (
+              <a class="scenario-tile" href={`#scenario-${s.id}`}>
+                <div class="scenario-tile-head">
+                  <span class="scenario-id">{s.id}</span>
+                  <span class:list={["verdict", s.state === "pass" ? "verdict-pass" : s.state === "fail" ? "verdict-fail" : "verdict-warn"]}>
+                    <span class="verdict-dot"></span>{s.state === "pass" ? "PASS" : s.state === "fail" ? "FAIL" : "BLOCKED"}
+                  </span>
+                </div>
+                {s.worstMetric ? (
+                  <>
+                    <div class="worst">
+                      <span class="worst-value">{fmtVal(s.worstMetric.value, s.worstMetric.unit)}</span>
+                      <span class="worst-unit">{s.worstMetric.unit}</span>
+                    </div>
+                    <div class="worst-name" style="font-family: var(--font-mono); font-size: var(--text-1); color: var(--text-3c);">
+                      {s.worstMetric.name}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div class="worst">
+                      <span class="worst-value">{fmtVal(s.value, s.unit)}</span>
+                      <span class="worst-unit">{s.unit}</span>
+                    </div>
+                    <div class="worst-name" style="font-family: var(--font-mono); font-size: var(--text-1); color: var(--text-3c);">
+                      threshold {fmtVal(s.threshold, s.unit)} {s.unit}
+                    </div>
+                  </>
+                )}
+                {s.spark ? (
+                  <Fragment set:html={spark(s.spark, { state: s.state })} />
+                ) : (
+                  <div class="v2-tile-empty">— no sample —</div>
+                )}
+              </a>
+            ))}
+          </div>
+        </section>
+
+        {/* Runs: each is a <details> for native expand/collapse, no JS island. */}
+        {release.runs && release.runs.length > 0 && (
+          <section>
+            <div class="section-rule"><h2>Runs</h2></div>
+            <div class="run-list">
+              {release.runs.map((r: Run) => (
+                <details class="run" open={r.expandedByDefault ?? false}>
+                  <summary>
+                    <span class="caret">▶</span>
+                    <span class="col-runtime">{r.runtime}</span>
+                    <span class="col-profile">{r.profile}</span>
+                    <span class="col-date">{fmtRunStamp(r.startedAt)}</span>
+                    <span class="col-dur">{fmtMs(r.durationMs)}</span>
+                    <span class="col-samples">{r.entryCount} entries</span>
+                    <span class:list={["verdict", r.state === "pass" ? "verdict-pass" : r.state === "fail" ? "verdict-fail" : "verdict-warn"]}>
+                      <span class="verdict-dot"></span>{r.state.toUpperCase()}
+                    </span>
+                  </summary>
+
+                  {r.scenarios && r.scenarios.length > 0 && (
+                    <div class="run-body">
+                      {r.scenarios.map((rs: RunScenario) => (
+                        <div class="run-scenario" id={`scenario-${rs.id}`}>
+                          <div class="run-scenario-head">
+                            <span class="run-scenario-id">{rs.id}</span>
+                            <span class:list={["verdict", rs.state === "pass" ? "verdict-pass" : rs.state === "fail" ? "verdict-fail" : "verdict-warn"]}>
+                              <span class="verdict-dot"></span>{rs.state.toUpperCase()}
+                            </span>
+                            <span style="margin-left:auto; color: var(--text-3c); font-family: var(--font-mono); font-size: var(--text-1)">
+                              {rs.sampleCount} sample{rs.sampleCount === 1 ? "" : "s"}
+                              {rs.sampleValue != null && rs.sampleUnit ? ` · ${fmtVal(rs.sampleValue, rs.sampleUnit)} ${rs.sampleUnit}` : ""}
+                            </span>
+                          </div>
+
+                          {rs.metrics && rs.metrics.length > 0 && (
+                            <>
+                              <div class="sub">Metrics</div>
+                              <table class="tbl">
+                                <thead>
+                                  <tr><th>metric</th><th class="num">value</th><th class="num">threshold</th><th>status</th></tr>
+                                </thead>
+                                <tbody>
+                                  {rs.metrics.map((m: MetricRow) => (
+                                    <tr class={m.child ? "child" : undefined}>
+                                      <td>{m.name}</td>
+                                      <td class="num">{fmtMetric(m.value, m.unit)}</td>
+                                      <td class:list={["num", m.threshold == null && "dim"]}>{m.threshold == null ? "—" : fmtMetric(m.threshold, m.unit)}</td>
+                                      <td class={`st-${m.state}`}>{m.state}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </>
+                          )}
+
+                          {rs.phases && rs.phases.length > 0 && (
+                            <>
+                              <div class="sub">Phases</div>
+                              <table class="tbl">
+                                <thead><tr><th>phase</th><th class="num">elapsed</th><th>status</th></tr></thead>
+                                <tbody>
+                                  {rs.phases.map((p: Phase) => (
+                                    <tr>
+                                      <td>{p.name}</td>
+                                      <td class="num">{fmtMs(p.elapsedMs)}</td>
+                                      <td class={`st-${p.state}`}>{p.state}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </>
+                          )}
+
+                          {rs.findings && rs.findings.length > 0 && (
+                            <>
+                              <div class="sub">Findings</div>
+                              <ul class="findings">
+                                {rs.findings.map((f: Finding) => (
+                                  <li>
+                                    <span class:list={["glyph", f.kind === "warn" && "warn"]}>{f.kind === "warn" ? "⚠" : f.kind === "info" ? "ℹ" : "✗"}</span>
+                                    <span>{f.text}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </>
+                          )}
+
+                          {rs.proves && rs.proves.length > 0 && (
+                            <>
+                              <div class="sub">Proves</div>
+                              <ul class="proves">
+                                {rs.proves.map((p: Prove) => (
+                                  <li>
+                                    <span class:list={["glyph", p.state]}>{p.state === "pass" ? "✓" : "✗"}</span>
+                                    <span>{p.text}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </>
+                          )}
+                        </div>
+                      ))}
+
+                      {r.bundle && (
+                        <div style="margin-top: var(--space-5); display: flex; justify-content: flex-end;">
+                          <a class="bundle" href={r.bundle.href} style="max-width: 320px;">
+                            <span>{r.bundle.name}</span>
+                            <span class="bytes">{fmtBytes(r.bundle.bytes)}</span>
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </details>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Comparison: only render when we have rows. */}
+        {release.comparison && release.comparison.rows.length > 0 && (
+          <section>
+            <div class="section-rule"><h2>vs {release.comparison.vsVer}</h2></div>
+            <div class="compare">
+              {release.comparison.rows.map((row: ComparisonRow) => {
+                const d = deltaClass(row.deltaPct, row.lowerIsBetter !== false);
+                return (
+                  <div class="compare-row">
+                    <span class="compare-scenario">{row.scenarioId}</span>
+                    <span class="compare-metric">{row.metric}</span>
+                    <span class="compare-metric">{fmtMetric(row.before, row.unit)} → {fmtMetric(row.after, row.unit)}</span>
+                    <span class:list={["compare-delta", d.cls]}>
+                      {d.arrow} {row.deltaPct > 0 ? "+" : ""}{row.deltaPct.toFixed(1)}%
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* Bundles: aggregated from runs, no separate top-level source. */}
+        {release.runs?.some((r: Run) => r.bundle) && (
+          <section>
+            <div class="section-rule"><h2>Bundles</h2></div>
+            <div class="bundles">
+              {release.runs!.filter((r: Run) => r.bundle).map((r: Run) => (
+                <a class="bundle" href={r.bundle!.href}>
+                  <span>{r.bundle!.name}</span>
+                  <span class="bytes">{fmtBytes(r.bundle!.bytes)}</span>
+                </a>
+              ))}
+            </div>
+          </section>
+        )}
+      </>
+    )}
+
   </div>
 </Base>
