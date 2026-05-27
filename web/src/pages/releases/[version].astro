@@ -1,0 +1,45 @@
+---
+import Base from "../../layouts/Base.astro";
+import { getCollection } from "astro:content";
+import { latestRelease } from "../../lib/releases";
+
+export async function getStaticPaths() {
+  const all = await getCollection("releases");
+  return all.map((entry) => ({
+    params: { version: entry.data.ver },
+    props: { release: entry.data },
+  }));
+}
+
+const { release } = Astro.props;
+const latest = await latestRelease();
+const isLatest = release.ver === latest.ver;
+---
+
+<Base title={`kova — ${release.ver}`} active="releases">
+  <div class="container">
+    <div class="section-head" style="margin-top: var(--space-7)">
+      <h1 class="section-title">{release.ver}</h1>
+      <span class="section-meta">
+        <a href="/releases" style="color:var(--text-2c)">← all releases</a>
+      </span>
+    </div>
+
+    <p style="font-family:var(--font-mono);font-size:var(--text-2);color:var(--text-3c);max-width:60ch;">
+      {release.date} · {release.sha}
+      {release.runs ? ` · ${release.runs} runs · ${release.host}` : ""}
+    </p>
+
+    {isLatest ? (
+      <p style="font-family:var(--font-mono);font-size:var(--text-2);color:var(--text-3c);max-width:60ch;">
+        Full release detail (header strip · scenario grid · runs list · comparison · bundles)
+        lands in Phase A follow-up. For now, the home page surfaces this release's scenarios.
+      </p>
+    ) : (
+      <p style="font-family:var(--font-mono);font-size:var(--text-2);color:var(--text-3c);max-width:60ch;">
+        No detailed scenario data archived for this release yet. Jump to the
+        <a href={`/releases/${latest.ver}`} style="color:var(--text-1c);border-bottom:1px solid var(--border-2);"> latest release</a>.
+      </p>
+    )}
+  </div>
+</Base>

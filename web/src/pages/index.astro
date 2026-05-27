@@ -1,0 +1,118 @@
+---
+import Base from "../layouts/Base.astro";
+import { latestRelease, allReleases, scenarioCounts } from "../lib/releases";
+import type { Scenario } from "../content.config";
+import { fmtVal, deltaFromSpark, deltaText } from "../lib/format";
+import { spark } from "../lib/sparkline";
+
+const release = await latestRelease();
+const scenarios = release.scenarios!;
+const counts = scenarioCounts(scenarios);
+const history = await allReleases();
+
+const coldDelta = release.coldReadyDeltaPct ?? 0;
+const coldDeltaCls =
+  Math.abs(coldDelta) < 0.5 ? "delta-flat"
+  : coldDelta > 0 ? "delta-up"
+  : "delta-down";
+const coldDeltaText =
+  Math.abs(coldDelta) < 0.5
+    ? "— stable cold ready"
+    : `${coldDelta > 0 ? "▲" : "▼"} ${coldDelta > 0 ? "+" : ""}${coldDelta.toFixed(1)}% cold ready`;
+---
+
+<Base title="kova — OpenClaw performance" active="home">
+  <div class="container">
+    {/* Compact status band: release + counts + neutral cold-ready delta. */}
+    <section class="v2-status">
+      <div class="v2-status-version">
+        <strong>OpenClaw {release.ver}</strong>
+        <span class="meta">
+          {release.date} · {release.sha} · {release.runs} runs · {release.host}
+        </span>
+      </div>
+      <div class="v2-status-counts">
+        <div class="pass"><span class="num">{counts.pass}</span><span class="lbl">pass</span></div>
+        <div class="fail"><span class="num">{counts.fail}</span><span class="lbl">fail</span></div>
+        <div class="warn"><span class="num">{counts.block}</span><span class="lbl">blocked</span></div>
+        <div><span class="num">{counts.total}</span><span class="lbl">total</span></div>
+      </div>
+      <div class="v2-status-cta">
+        <span class:list={["summary", coldDeltaCls]}>{coldDeltaText}</span>
+        <a href={`/releases/${release.ver}`}>open release →</a>
+      </div>
+    </section>
+
+    {/* Scenario wall: every tracked scenario, current state, last 6 releases. */}
+    <div class="section-head" style="margin-top: var(--space-6)">
+      <h2 class="section-title">Scenarios</h2>
+      <span class="section-meta">current state · sparkline = last 6 releases</span>
+    </div>
+
+    <div class="v2-wall">
+      {scenarios.map((s: Scenario) => {
+        const dInfo = s.spark ? deltaFromSpark(s.spark, s.lowerIsBetter !== false) : null;
+        const dt = deltaText(dInfo);
+        let vs = "";
+        let vsCls = "";
+        if (s.state === "fail" && s.value != null) {
+          const over = ((s.value - s.threshold) / s.threshold) * 100;
+          vs = `+${over.toFixed(1)}% over`;
+          vsCls = "breach";
+        } else if (s.state === "pass" && s.value != null) {
+          const under = ((s.threshold - s.value) / s.threshold) * 100;
+          vs = `${under.toFixed(0)}% headroom`;
+        }
+        return (
+          <a class:list={["v2-tile", s.state]} href={`/releases/${release.ver}`}>
+            <div class="v2-tile-head">
+              <span class="v2-tile-name">{s.id}</span>
+              <span class="v2-tile-dot" aria-hidden="true"></span>
+            </div>
+            <div class="v2-tile-row">
+              <span class="v2-tile-value">
+                {fmtVal(s.value, s.unit)}<span class="unit">{s.unit}</span>
+              </span>
+              <span class:list={["v2-tile-delta", dt.cls]}>
+                {s.spark ? dt.text : "no sample"}
+              </span>
+            </div>
+            {s.spark ? (
+              <Fragment set:html={spark(s.spark, { state: s.state })} />
+            ) : (
+              <div class="v2-tile-empty">— env failed to provision —</div>
+            )}
+            <div class="v2-tile-foot">
+              <span>threshold {fmtVal(s.threshold, s.unit)} {s.unit}</span>
+              <span class={vsCls}>{vs}</span>
+            </div>
+          </a>
+        );
+      })}
+    </div>
+
+    {/* Release history: colored cells, neutral labels. Oldest-first reads naturally. */}
+    <div class="v2-history">
+      <div class="section-head">
+        <h2 class="section-title">Release history</h2>
+        <span class="section-meta"><a href="/releases" style="color:var(--text-2c)">timeline →</a></span>
+      </div>
+      <div class="v2-history-grid">
+        {[...history].reverse().map((r) => (
+          <a class:list={["v2-history-cell", r.passed ? "pass" : "fail"]} href={`/releases/${r.ver}`} title={r.ver}>
+            <span class="ver">{r.ver}</span>
+            <span>{r.passed ? "clean" : "regressions"}</span>
+          </a>
+        ))}
+      </div>
+    </div>
+
+    {/* Methodology footer: facts, not prose. */}
+    <div class="v2-meth">
+      <span><strong>hardware</strong>M3 Max · 36 GB · macOS 15.4</span>
+      <span><strong>harness</strong>kova 0.8.2 · ocm 0.6.1</span>
+      <span><strong>profile</strong>release-smoke</span>
+      <span><strong>samples</strong>5 per scenario · median ±σ</span>
+    </div>
+  </div>
+</Base>

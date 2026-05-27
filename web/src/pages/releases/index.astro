@@ -1,0 +1,35 @@
+---
+import Base from "../../layouts/Base.astro";
+import { allReleases } from "../../lib/releases";
+
+const releases = await allReleases();
+const latest = releases[0]!;
+---
+
+<Base title="kova — releases" active="releases">
+  <div class="container">
+    <div class="section-head" style="margin-top: var(--space-7)">
+      <h1 class="section-title">Releases</h1>
+      <span class="section-meta">{releases.length} tracked · {latest.ver} latest</span>
+    </div>
+
+    {/*
+      Phase A placeholder: list links into per-release pages. Full timeline
+      cards (mockups/releases.html) land in the Phase A follow-up.
+    */}
+    <div class="recent">
+      {releases.map((r) => (
+        <a class="recent-row" href={`/releases/${r.ver}`}>
+          <span class="rel">{r.ver}</span>
+          <span class="info">{r.date} · <span class="sha">{r.sha}</span></span>
+          <span class="delta">
+            <span class:list={["chip", r.passed ? "pass" : "fail"]}>
+              {r.passed ? "all gates passed" : "regressions"}
+            </span>
+          </span>
+          <span class="arrow">→</span>
+        </a>
+      ))}
+    </div>
+  </div>
+</Base>
