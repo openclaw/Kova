@@ -5790,7 +5790,7 @@ function providerFailureEvaluationCheck() {
             finishedAt: "2026-04-30T10:00:02.000Z",
             finishedAtEpochMs: 1777543202000,
             durationMs: 1000,
-            stdout: "{\"finalAssistantVisibleText\":\"KOVA_AGENT_OK\"}",
+            stdout: "{\"payloads\":[{\"text\":\"KOVA_AGENT_OK\"}]}",
             stderr: "",
             processSnapshots: {
               leaks: {
@@ -6659,7 +6659,7 @@ function agentColdWarmEvaluationCheck() {
             finishedAt: "2026-04-30T10:01:03.000Z",
             finishedAtEpochMs: 1777543263000,
             durationMs: 62000,
-            stdout: "{\"finalAssistantVisibleText\":\"KOVA_AGENT_OK\"}",
+            stdout: "{\"payloads\":[{\"text\":\"KOVA_AGENT_OK\"}]}",
             stderr: ""
           }],
           metrics: { logs: zeroLogMetrics(), health: { ok: true } }
@@ -6675,7 +6675,7 @@ function agentColdWarmEvaluationCheck() {
             finishedAt: "2026-04-30T10:01:12.000Z",
             finishedAtEpochMs: 1777543272000,
             durationMs: 2000,
-            stdout: "{\"finalAssistantVisibleText\":\"KOVA_AGENT_OK\"}",
+            stdout: "{\"finalAssistantVisibleText\":\"KOVA_AGENT_OK\",\"payloads\":[{\"text\":\"WRONG_REPLY\"}]}",
             stderr: ""
           }],
           metrics: { logs: zeroLogMetrics(), health: { ok: true } }
@@ -6742,6 +6742,8 @@ function agentColdWarmEvaluationCheck() {
     assertEqual(record.measurements.coldProviderFinalMs, 800, "cold provider final");
     assertEqual(record.measurements.agentLatencyDiagnosis.kind, "cold-pre-provider-stall", "latency diagnosis kind");
     assertEqual(record.measurements.agentTurns[0].responseOk, true, "cold response ok");
+    assertEqual(record.measurements.agentTurns[0].responseText, "KOVA_AGENT_OK", "payload response text");
+    assertEqual(record.measurements.agentTurns[1].responseText, "KOVA_AGENT_OK", "final assistant response precedence");
     assertEqual(record.measurements.agentTurns[1].providerRoutes[0].value, "/v1/responses", "warm provider route evidence");
     assertEqual(
       renderPasteSummary({
