@@ -5790,7 +5790,7 @@ function providerFailureEvaluationCheck() {
             finishedAt: "2026-04-30T10:00:02.000Z",
             finishedAtEpochMs: 1777543202000,
             durationMs: 1000,
-            stdout: "{\"finalAssistantVisibleText\":\"KOVA_AGENT_OK\"}",
+            stdout: "{\"payloads\":[{\"text\":\"KOVA_AGENT_OK\"}]}",
             stderr: "",
             processSnapshots: {
               leaks: {
@@ -6659,7 +6659,7 @@ function agentColdWarmEvaluationCheck() {
             finishedAt: "2026-04-30T10:01:03.000Z",
             finishedAtEpochMs: 1777543263000,
             durationMs: 62000,
-            stdout: "{\"finalAssistantVisibleText\":\"KOVA_AGENT_OK\"}",
+            stdout: "{\"payloads\":[{\"text\":\"KOVA_AGENT_OK\"}]}",
             stderr: ""
           }],
           metrics: { logs: zeroLogMetrics(), health: { ok: true } }
