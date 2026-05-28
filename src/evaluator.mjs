@@ -8,6 +8,7 @@ import {
   summarizeGatewaySessionPreProviderAttributions
 } from "./collectors/gateway-session-turn-attribution.mjs";
 import { computeProviderTurnAttribution } from "./collectors/provider.mjs";
+import { summarizeChannelWorkflowResources } from "./collectors/channel-workflow-resources.mjs";
 import { isExpectedKovaMockProviderFailureLine, summarizeRuntimeDepsLogs } from "./collectors/logs.mjs";
 import { buildHealthMeasurement, healthReadinessClassification } from "./health.mjs";
 import { resolveThresholdPolicy } from "./evaluation/thresholds.mjs";
@@ -40,6 +41,7 @@ export function evaluateRecord(record, scenario, options = {}) {
   const measurementScopeSummary = summarizeMeasurementScopes(record);
   const measuredResults = collectResults(record, { productOnly: true });
   const resourceSummary = collectResourceSummary(measuredResults);
+  const channelWorkflowResources = summarizeChannelWorkflowResources(measuredResults);
   const primaryResourceRole = resolvePrimaryResourceRole(resourceSummary, options.surface);
   const primaryRoleResources = primaryResourceRole ? resourceSummary.byRole[primaryResourceRole] : null;
   const peakTrackedRssMb = maxNullable(
@@ -952,6 +954,9 @@ export function evaluateRecord(record, scenario, options = {}) {
     resourceTrend: resourceSummary.trend,
     resourceTopByRss: resourceSummary.topByRss,
     resourceTopByCpu: resourceSummary.topByCpu,
+    channelWorkflowResources,
+    channelWorkflowResourceTopByGatewayRss: channelWorkflowResources.topByGatewayRss,
+    channelWorkflowResourceTopByTrackedRss: channelWorkflowResources.topByTrackedRss,
     openclawTimelineAvailable: timelineSummary.available,
     openclawTimelineArtifacts: timelineSummary.timelineArtifacts,
     openclawTimelineEventCount: timelineSummary.eventCount,

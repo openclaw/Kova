@@ -1546,6 +1546,9 @@ function pushMeasurementBrief(lines, measurements, { compact }) {
   lines.push(`- startup: listening ${valueMs(readiness?.listeningReadyAtMs)}; health ${valueMs(readiness?.healthReadyAtMs)}; readiness ${readiness?.classification ?? "unknown"}; gateway ${measurements.finalGatewayState ?? "unknown"}; restarts ${measurements.gatewayRestartCount ?? "unknown"}`);
   lines.push(`- health: startup p95 ${valueMs(measurements.health?.startupSamples?.p95Ms)}; post-ready p95 ${valueMs(measurements.health?.postReadySamples?.p95Ms)}; failures ${totalHealthFailures ?? "unknown"}; final failures ${measurements.health?.final?.failureCount ?? "unknown"}${healthSlowestText(measurements)}`);
   lines.push(`- resources: ${resourceHeadlineText(measurements)} ${valueMb(resourceHeadlineValue(measurements))}; tracked total ${valueMb(measurements.resourcePeakTrackedRssMb)}; max CPU ${valuePercent(measurements.cpuPercentMax)}; samples ${measurements.resourceSampleCount ?? "unknown"}; roles ${rolePeakText(measurements)}`);
+  if (measurements.channelWorkflowResources?.available) {
+    lines.push(`- channel workflow resources: ${formatChannelWorkflowResourceRows(measurements.channelWorkflowResourceTopByGatewayRss ?? [])}`);
+  }
   lines.push(`- agent: turn ${valueMs(measurements.agentTurnMs, "not-run")}; cold/warm ${valueMs(measurements.coldAgentTurnMs)}/${valueMs(measurements.warmAgentTurnMs)}; cold-warm delta ${valueMs(measurements.agentColdWarmDeltaMs)}; pre-provider ${valueMs(measurements.agentPreProviderMs)}; provider ${valueMs(measurements.agentProviderFinalMs)}; metadata scans ${measurements.agentMetadataScanCount ?? "unknown"} (${valueMs(measurements.agentMetadataScanTotalMs)}); event-loop ${valueMs(measurements.agentEventLoopMaxMs)}; polls ${measurements.agentSessionPollCount ?? "unknown"}; cleanup ${valueMs(measurements.agentCleanupMaxMs)}; diagnosis ${measurements.agentLatencyDiagnosis?.kind ?? "unknown"}; leaks ${measurements.agentProcessLeakCount ?? "unknown"}`);
   if (measurements.agentTurnStats) {
     lines.push(`- Agent turn stats: count ${measurements.agentTurnStats.count ?? measurements.agentTurnCount ?? "unknown"}; p95 ${valueMs(measurements.agentTurnP95Ms)}; max ${valueMs(measurements.agentTurnMaxMs)}; pre-provider p95 ${valueMs(measurements.agentPreProviderP95Ms)}`);
@@ -1619,6 +1622,16 @@ function valueMb(value) {
 
 function valuePercent(value) {
   return value === null || value === undefined ? "unknown" : `${value}%`;
+}
+
+function formatChannelWorkflowResourceRows(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return "no attributed workflow samples";
+  }
+  return rows.slice(0, 3).map((row) => {
+    const label = row.caseId ?? row.workflow ?? "unknown";
+    return `${label} gateway ${valueMb(row.peakGatewayRssMb)} tracked ${valueMb(row.peakTrackedRssMb)}`;
+  }).join("; ");
 }
 
 function resourceHeadlineValue(measurements) {

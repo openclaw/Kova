@@ -197,6 +197,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(channelCapabilityResultIngestionCheck());
     checks.push(channelDeclaredCapabilityProofRowsCheck());
     checks.push(await channelGeneratedMediaProviderScriptCheck());
+    checks.push(await channelWorkflowResourceAttributionCheck(tmp));
     checks.push(channelModelTurnMultiInvariantEvaluationCheck());
     checks.push(optionalDiagnosticGapCheck());
     checks.push(provisioningBlockedStatusCheck());
@@ -1878,6 +1879,140 @@ async function channelGeneratedMediaProviderScriptCheck() {
       message: error.message
     };
   }
+}
+
+async function channelWorkflowResourceAttributionCheck(tmp) {
+  try {
+    const dir = await mkdtemp(join(tmp, "channel-workflow-resources-"));
+    const conformanceArtifactPath = join(dir, "channel-conformance-telegram.json");
+    const resourceSampleArtifactPath = join(dir, "resource-samples.jsonl");
+    const commandStartedAtEpochMs = 100000;
+
+    await writeFile(conformanceArtifactPath, JSON.stringify({
+      schemaVersion: "kova.channelConformanceArtifact.v1",
+      channelId: "telegram",
+      rows: [{
+        id: "final-text.reply-current",
+        status: "passed",
+        workflow: "final-text-current-reply",
+        inventoryWorkflow: "final-delivery",
+        matrix: {
+          content: "text",
+          route: "reply",
+          delivery: "final",
+          lifecycle: "success"
+        },
+        userAction: "user replies in a chat and receives a direct answer",
+        startedAtEpochMs: commandStartedAtEpochMs + 1000,
+        finishedAtEpochMs: commandStartedAtEpochMs + 3000,
+        durationMs: 2000
+      }, {
+        id: "media-transformation.image-to-video",
+        status: "passed",
+        workflow: "media-transformation",
+        inventoryWorkflow: "media-transformation",
+        matrix: {
+          content: "video",
+          route: "reply",
+          delivery: "completion-handoff",
+          lifecycle: "async-completion"
+        },
+        userAction: "user sends an image and asks OpenClaw to make a video from it",
+        startedAtEpochMs: commandStartedAtEpochMs + 4000,
+        finishedAtEpochMs: commandStartedAtEpochMs + 8000,
+        durationMs: 4000
+      }]
+    }, null, 2), "utf8");
+    await writeFile(resourceSampleArtifactPath, [
+      resourceSampleLine(1000, 210, 50, 5),
+      resourceSampleLine(2000, 240, 60, 10),
+      resourceSampleLine(5000, 720, 110, 70),
+      resourceSampleLine(7000, 805, 120, 82)
+    ].join("\n") + "\n", "utf8");
+
+    const record = {
+      scenario: "channel-telegram-capability-conformance",
+      status: "PASS",
+      phases: [{
+        id: "channel-conformance",
+        results: [{
+          command: "node support/channel-conformance/run.mjs --channel telegram",
+          status: 0,
+          stdout: JSON.stringify({
+            schemaVersion: "kova.channelCapabilityRun.v1",
+            proofMode: "channel-platform-conformance",
+            artifactPath: conformanceArtifactPath,
+            channelId: "telegram",
+            capabilities: []
+          }),
+          stderr: "",
+          startedAtEpochMs: commandStartedAtEpochMs,
+          finishedAtEpochMs: commandStartedAtEpochMs + 9000,
+          durationMs: 9000,
+          resourceSamples: {
+            schemaVersion: "kova.resourceSamples.v1",
+            sampleCount: 4,
+            artifactPath: resourceSampleArtifactPath
+          }
+        }]
+      }]
+    };
+
+    evaluateRecord(record, {
+      id: "channel-telegram-capability-conformance",
+      surface: "channel-telegram-capability-conformance",
+      thresholds: {}
+    }, {
+      surface: { id: "channel-telegram-capability-conformance", thresholds: {} },
+      targetPlan: { kind: "runtime" }
+    });
+
+    const resources = record.measurements.channelWorkflowResources;
+    assertEqual(resources?.available, true, "channel workflow resource attribution available");
+    assertEqual(resources?.caseCount, 2, "channel workflow resource case count");
+    assertEqual(resources?.topByGatewayRss?.[0]?.caseId, "media-transformation.image-to-video", "highest gateway RSS is attributed to the media workflow");
+    assertEqual(resources?.topByGatewayRss?.[0]?.peakGatewayRssMb, 805, "gateway RSS peak is captured from the workflow window");
+    assertEqual(resources?.topByGatewayRss?.[0]?.userAction, "user sends an image and asks OpenClaw to make a video from it", "user action is preserved with resource attribution");
+
+    return {
+      id: "channel-workflow-resource-attribution",
+      status: "PASS",
+      command: "attribute channel workflow resource samples to user workflow rows",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "channel-workflow-resource-attribution",
+      status: "FAIL",
+      command: "attribute channel workflow resource samples to user workflow rows",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function resourceSampleLine(elapsedMs, gatewayRssMb, commandRssMb, cpuPercent) {
+  return JSON.stringify({
+    timestamp: new Date(1700000000000 + elapsedMs).toISOString(),
+    elapsedMs,
+    processes: [{
+      pid: 101,
+      ppid: 1,
+      rssMb: gatewayRssMb,
+      cpuPercent,
+      roles: ["gateway", "gateway-tree"],
+      role: "gateway,gateway-tree",
+      command: "openclaw gateway"
+    }, {
+      pid: 202,
+      ppid: 1,
+      rssMb: commandRssMb,
+      cpuPercent: 1,
+      roles: ["command-tree"],
+      role: "command-tree",
+      command: "node support/channel-conformance/run.mjs"
+    }]
+  });
 }
 
 function channelModelTurnMultiInvariantEvaluationCheck() {
