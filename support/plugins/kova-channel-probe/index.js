@@ -530,7 +530,13 @@ async function runOpenClawModelTurn({
       },
       deliver: async (delivered, info) => {
         if (info?.kind !== "final") {
-          return deliverAdapterPayload(delivered, { targetId, replyToId, threadId, silent });
+          return deliverAdapterPayload(delivered, {
+            targetId,
+            replyToId,
+            threadId,
+            silent,
+            deliveryKind: typeof info?.kind === "string" ? info.kind : null
+          });
         }
         return recordUnhandledDeliveryPayload(delivered, { targetId, replyToId, threadId, silent, info });
       },
@@ -595,6 +601,7 @@ async function recordOutbound(kind, ctx) {
     mediaUrl: ctx.mediaUrl ?? null,
     mediaPathExists: typeof ctx.mediaUrl === "string" && existsSync(ctx.mediaUrl),
     payload: ctx.payload ?? null,
+    deliveryKind: ctx.deliveryKind ?? null,
     isError: ctx.payload?.isError === true || ctx.isError === true,
     silent: ctx.silent ?? false,
     threadId: ctx.threadId ?? null,
@@ -613,7 +620,8 @@ async function deliverAdapterPayload(payload, options = {}) {
     isError: payload?.isError === true,
     silent: options.silent === true,
     threadId: options.threadId ?? null,
-    replyToId: options.replyToId ?? null
+    replyToId: options.replyToId ?? null,
+    deliveryKind: options.deliveryKind ?? null
   });
 }
 

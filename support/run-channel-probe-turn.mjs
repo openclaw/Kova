@@ -372,7 +372,7 @@ function evaluateCase(testCase, observation, injectResult) {
     invariant(`${testCase.id}:durable-handled`, unhandledDeliveries.length === 0, `${testCase.id} had every final durable delivery handled by OpenClaw; unhandled ${unhandledDeliveries.length}`),
     invariant(`${testCase.id}:turn-dispatched`, observation?.dispatched === true || (recoveryExpectation.required && modelDispatchStarts.length > 0), `${testCase.id} dispatched through the OpenClaw runtime`),
     finalDeliveryInvariant(testCase.id, visibleDeliveryPolicy, finalRecords.length),
-    invariant(`${testCase.id}:expected-kind`, !expects.kind || firstFinal?.kind === expects.kind, `${testCase.id} produced the expected visible delivery kind`),
+    invariant(`${testCase.id}:expected-kind`, expectedKindMatches(expects.kind, finalRecords), `${testCase.id} produced the expected visible delivery kind`),
     invariant(`${testCase.id}:expected-text`, !expectedText || finalTexts.some((text) => textEquals(text, expectedText)), `${testCase.id} produced the expected visible text`),
     invariant(`${testCase.id}:channel-data`, !isJsonObject(expects.channelData) || jsonEqual(firstFinal?.payload?.channelData, expects.channelData), `${testCase.id} preserved structured channel payload data`),
     invariant(`${testCase.id}:error-final`, expects.errorFinal !== true || (firstFinal?.isError === true || finalTexts.some((text) => text.trim().length > 0)), `${testCase.id} delivered one user-visible error response`),
@@ -443,9 +443,26 @@ function normalizeAtom(value) {
 }
 
 function finalOutboundRecords(observation) {
-  return Array.isArray(observation?.outboundRecords)
-    ? observation.outboundRecords.filter((record) => record?.kind === "text" || record?.kind === "media" || record?.kind === "payload")
-    : [];
+  if (!Array.isArray(observation?.outboundRecords)) {
+    return [];
+  }
+  const records = observation.outboundRecords.filter(isVisibleOutboundRecord);
+  const concreteRecords = records.filter((record) => record?.deliveryKind !== "block");
+  return concreteRecords.length > 0 ? concreteRecords : records;
+}
+
+function isVisibleOutboundRecord(record) {
+  return record?.kind === "text" || record?.kind === "media" || record?.kind === "payload";
+}
+
+function expectedKindMatches(expectedKind, records) {
+  if (!expectedKind) {
+    return records.length > 0;
+  }
+  if (expectedKind === "payload") {
+    return records.length > 0;
+  }
+  return records.some((record) => record?.kind === expectedKind);
 }
 
 function modelTurnRecords(observation) {

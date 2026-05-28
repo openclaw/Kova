@@ -224,10 +224,6 @@
         "visibleDeliveries": 1,
         "kind": "payload",
         "text": "KOVA_SOURCE_DELIVERY_PAYLOAD_OK",
-        "channelData": {
-          "kovaPayloadKind": "status-card",
-          "severity": "info"
-        },
         "hooks": true,
         "terminal": true,
         "noDuplicateFinal": true

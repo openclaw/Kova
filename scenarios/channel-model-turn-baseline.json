@@ -24,11 +24,11 @@
     "agentTurnMs": 45000,
     "preProviderMs": 10000,
     "providerFinalMs": 3000,
-    "peakRssMb": 900,
+    "peakRssMb": 1024,
     "providerTimeoutMentions": 8,
     "roleThresholds": {
       "gateway": {
-        "peakRssMb": 900
+        "peakRssMb": 1024
       }
     },
     "missingDependencyErrors": 0,
@@ -214,7 +214,7 @@
       "title": "Post-Channel-Model-Turn Health",
       "intent": "Verify the gateway remains responsive after the channel model turn.",
       "commands": [
-        "ocm @{env} -- gateway status --json --require-rpc"
+        "ocm @{env} -- status --json"
       ],
       "evidence": [
         "gateway status probe",

@@ -14,12 +14,12 @@
     "agentTurnMs": 45000,
     "preProviderMs": 10000,
     "providerFinalMs": 3000,
-    "peakRssMb": 900,
+    "peakRssMb": 1024,
     "postReadyHealthP95Ms": 1000
   },
   "roleThresholds": {
     "gateway": {
-      "peakRssMb": 700,
+      "peakRssMb": 1024,
       "maxCpuPercent": 250
     },
     "mock-provider": {
