@@ -1,3 +1,5 @@
+![Kova banner](docs/assets/readme-banner.jpg)
+
 # Kova
 
 **The OpenClaw runtime validation lab.**
