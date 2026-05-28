@@ -4,11 +4,23 @@ import { Font } from "astro:assets";
 
 export interface Props {
   title: string;
-  /** Active nav item: "home" | "releases" | "scenarios" | "matrix" | "methodology". */
-  active?: "home" | "releases" | "scenarios" | "matrix" | "methodology";
+  /** Active nav item: "home" | "releases" | "scenarios" | "matrix". */
+  active?: "home" | "releases" | "scenarios" | "matrix";
+  /** Short, factual page description for OG / social preview. */
+  description?: string;
+  /** Site-relative OG image path (e.g. `/og/2026.5.16-beta.7.png`). */
+  ogImage?: string;
 }
 
-const { title, active = "home" } = Astro.props;
+const {
+  title,
+  active = "home",
+  description = "OpenClaw runtime performance — every release, every scenario, measured continuously.",
+  ogImage = "/og/default.png",
+} = Astro.props;
+
+const canonical = new URL(Astro.url.pathname, Astro.site).toString();
+const ogImageUrl = new URL(ogImage, Astro.site).toString();
 ---
 
 <!doctype html>
@@ -18,6 +30,25 @@ const { title, active = "home" } = Astro.props;
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="generator" content={Astro.generator} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="canonical" href={canonical} />
+    <meta name="description" content={description} />
+
+    {/* Open Graph + Twitter cards. og:image is a PNG (1200×630) generated
+        at build time by `src/pages/og/[ver].png.ts` for release pages, or
+        a static default for everything else. */}
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="kova" />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={ogImageUrl} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImageUrl} />
+
     {/*
       Block-rendering inline script: read theme preference BEFORE first paint
       to prevent flash-of-wrong-theme. Must be in <head> and synchronous.
@@ -64,14 +95,11 @@ const { title, active = "home" } = Astro.props;
             <a href="/releases" aria-current={active === "releases" ? "page" : undefined}>
               Releases
             </a>
-            <a href="/scenarios" aria-current={active === "scenarios" ? "page" : undefined}>
-              Scenarios
-            </a>
             <a href="/matrix" aria-current={active === "matrix" ? "page" : undefined}>
               Matrix
             </a>
-            <a href="#" aria-current={active === "methodology" ? "page" : undefined}>
-              Methodology
+            <a href="/scenarios" aria-current={active === "scenarios" ? "page" : undefined}>
+              Scenarios
             </a>
           </nav>
           <span class="header-spacer"></span>
@@ -106,6 +134,40 @@ const { title, active = "home" } = Astro.props;
     </div>
 
     <script>
+      document.addEventListener("click", (event) => {
+        if (
+          event.defaultPrevented ||
+          event.button !== 0 ||
+          event.metaKey ||
+          event.ctrlKey ||
+          event.shiftKey ||
+          event.altKey
+        ) {
+          return;
+        }
+
+        const target = event.target instanceof Element
+          ? event.target.closest("[data-history-back]")
+          : null;
+        if (!(target instanceof HTMLAnchorElement)) return;
+
+        let canUseHistory = false;
+        try {
+          const referrer = document.referrer ? new URL(document.referrer) : null;
+          canUseHistory =
+            window.history.length > 1 &&
+            referrer?.origin === window.location.origin &&
+            referrer.href !== window.location.href;
+        } catch {
+          canUseHistory = false;
+        }
+
+        if (canUseHistory) {
+          event.preventDefault();
+          window.history.back();
+        }
+      });
+
       // Theme toggle handler. Theme is bootstrapped in <head> to avoid FOUC.
       const btn = document.getElementById("theme-toggle");
       if (btn) {

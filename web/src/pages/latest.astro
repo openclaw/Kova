@@ -1,0 +1,57 @@
+---
+/**
+ * /latest — meta-refresh + canonical to the most recently published
+ * release. SSG-friendly (no server adapter). Bots see the canonical
+ * link; humans get redirected in the next tick.
+ *
+ * Release ordering matches `allReleases()` (newest first by
+ * `releaseDate`). When the content collection is empty we render a
+ * minimal explanation rather than an infinite refresh loop.
+ */
+
+import { allReleases } from "../lib/releases";
+
+const releases = await allReleases();
+const latest = releases[0];
+const target = latest ? `/releases/${latest.ver}` : "/";
+const canonicalUrl = new URL(target, Astro.site).toString();
+---
+
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>kova — latest OpenClaw release</title>
+    {latest ? (
+      <Fragment>
+        <link rel="canonical" href={canonicalUrl} />
+        <meta http-equiv="refresh" content={`0;url=${target}`} />
+        <meta name="description" content={`Latest OpenClaw release — redirecting to ${latest.ver}.`} />
+      </Fragment>
+    ) : (
+      <meta name="description" content="No releases published yet." />
+    )}
+    <style>
+      body { font-family: ui-monospace, monospace; background: #0a0a0b; color: #fafafa;
+        margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+      a { color: inherit; }
+    </style>
+  </head>
+  <body>
+    {latest ? (
+      <p>
+        Redirecting to <a href={target}>OpenClaw {latest.ver}</a>…
+      </p>
+    ) : (
+      <p>No releases published yet — see <a href="/">home</a>.</p>
+    )}
+    {latest && (
+      <script is:inline define:vars={{ target }}>
+        // Hard-redirect as well as meta-refresh so back-button history
+        // points to the resolved release URL, not /latest.
+        window.location.replace(target);
+      </script>
+    )}
+  </body>
+</html>

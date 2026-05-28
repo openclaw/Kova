@@ -17,10 +17,12 @@ export interface TrendPoint {
   value: number | null;
   state: Scenario["state"];
   threshold: number;
+  metric?: string;
 }
 
 export interface ScenarioHistory {
   id: string;
+  metric?: string;
   unit: string;
   lowerIsBetter: boolean;
   points: TrendPoint[];
@@ -29,7 +31,9 @@ export interface ScenarioHistory {
 /**
  * Build per-scenario history. Releases without `scenarios[]` (history stubs)
  * contribute nothing. Mismatched (unit, lowerIsBetter) across versions are
- * split into separate compatibility buckets.
+ * split into compatibility buckets first so trend math never crosses units.
+ * The public route is `/scenarios/<id>`, so when an id has multiple buckets we
+ * expose the bucket with the newest datapoint as the canonical scenario page.
  */
 export async function scenarioHistories(): Promise<Map<string, ScenarioHistory>> {
   const releases = await allReleases();
@@ -43,19 +47,37 @@ export async function scenarioHistories(): Promise<Map<string, ScenarioHistory>>
       const key = `${s.id}::${s.unit}::${lib ? "low" : "high"}`;
       let bucket = byKey.get(key);
       if (!bucket) {
-        bucket = { id: s.id, unit: s.unit, lowerIsBetter: lib, points: [] };
+        bucket = { id: s.id, metric: s.metric, unit: s.unit, lowerIsBetter: lib, points: [] };
         byKey.set(key, bucket);
       }
+      bucket.metric = s.metric ?? bucket.metric;
       bucket.points.push({
         ver: r.ver,
         releaseDate: r.releaseDate,
         value: s.value,
         state: s.state,
         threshold: s.threshold,
+        metric: s.metric,
       });
     }
   }
-  return byKey;
+  return canonicalByScenarioId(byKey);
+}
+
+function canonicalByScenarioId(histories: Map<string, ScenarioHistory>): Map<string, ScenarioHistory> {
+  const byId = new Map<string, ScenarioHistory>();
+  for (const history of histories.values()) {
+    const current = byId.get(history.id);
+    if (!current || latestPointTime(history) > latestPointTime(current)) {
+      byId.set(history.id, history);
+    }
+  }
+  return byId;
+}
+
+function latestPointTime(history: ScenarioHistory): number {
+  const latest = history.points[history.points.length - 1];
+  return latest ? latest.releaseDate.getTime() : -Infinity;
 }
 
 /**

@@ -49,9 +49,10 @@ export interface MatrixRow {
 }
 
 export interface HeadlineColumn {
-  cold: { value: number | null; breach: boolean } | null;
-  rss:  { value: number | null; breach: boolean } | null;
-  gw:   { value: number | null; breach: boolean } | null;
+  startup: { value: number | null; breach: boolean } | null;
+  turn:    { value: number | null; breach: boolean } | null;
+  pre:     { value: number | null; breach: boolean } | null;
+  gw:      { value: number | null; breach: boolean } | null;
 }
 
 export interface MatrixData {
@@ -63,21 +64,7 @@ export interface MatrixData {
 
 const COLD_ID = "release-runtime-startup";
 const GW_ID = "gateway-performance";
-
-/** Pick the worst (largest) peakRss-style number from a release's scenarios. */
-function worstPeakRssFromRelease(r: Release): { value: number; breach: boolean } | null {
-  let worst: number | null = null;
-  let worstThr: number | null = null;
-  for (const s of r.scenarios ?? []) {
-    if (s.unit !== "MB" || s.value == null) continue;
-    if (worst == null || s.value > worst) {
-      worst = s.value;
-      worstThr = s.threshold;
-    }
-  }
-  if (worst == null) return null;
-  return { value: worst, breach: worstThr != null && worst > worstThr };
-}
+const TURN_ID = "gateway-session-send-turn";
 
 function rowFromHistory(h: ScenarioHistory, releases: MatrixRelease[]): MatrixRow {
   const byVer = new Map(h.points.map((p) => [p.ver, p] as const));
@@ -149,21 +136,38 @@ export async function matrixData(): Promise<MatrixData> {
     .sort((a, b) => a.id.localeCompare(b.id))
     .map((h) => rowFromHistory(h, matrixReleases));
 
-  // Headlines per release: cold from release-runtime-startup, gw from
-  // gateway-performance, rss from worst MB-unit scenario in that release.
+  // Headlines per release: startup and agent turn are the public story.
+  // Gateway p95 stays as a responsiveness guardrail; RSS remains detail-only.
   const headlines: HeadlineColumn[] = releasesAsc.map((r) => {
     const scenarios = r.scenarios ?? [];
-    const cold = scenarios.find((s) => s.id === COLD_ID);
-    const gw   = scenarios.find((s) => s.id === GW_ID);
-    const rss  = worstPeakRssFromRelease(r);
+    const startup = headlineMetric(r, ["startup.s", "cold.ready.s"]) ?? scenarioMetric(scenarios.find((s) => s.id === COLD_ID), "s");
+    const turn = headlineMetric(r, ["agent.turn.s"]) ?? scenarioMetric(scenarios.find((s) => s.id === TURN_ID), "s");
+    const pre = headlineMetric(r, ["agent.pre_provider.s"]);
+    const gw = headlineMetric(r, ["health.p95.ms"]) ?? scenarioMetric(scenarios.find((s) => s.id === GW_ID), "ms");
     return {
-      cold: cold ? { value: cold.value, breach: cold.state === "fail" } : null,
-      gw:   gw   ? { value: gw.value,   breach: gw.state === "fail" }   : null,
-      rss,
+      startup,
+      turn,
+      pre,
+      gw,
     };
   });
 
   return { releases: matrixReleases, rows, headlines };
+}
+
+function headlineMetric(r: Release, metrics: string[]): { value: number | null; breach: boolean } | null {
+  const hit = r.headline?.find((h) => metrics.includes(h.metric ?? ""));
+  if (!hit) return null;
+  return { value: hit.value, breach: false };
+}
+
+function scenarioMetric(s: Scenario | undefined, unit: "s" | "ms"): { value: number | null; breach: boolean } | null {
+  if (!s) return null;
+  const divisor = unit === "s" && s.unit === "ms" ? 1000 : 1;
+  return {
+    value: s.value == null ? null : s.value / divisor,
+    breach: s.state === "fail",
+  };
 }
 
 /** Returns Δ% between two consecutive non-null values in a sequence. */

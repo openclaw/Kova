@@ -10,7 +10,11 @@ export async function allReleases(): Promise<Array<Release & { id: string }>> {
   const entries = await getCollection("releases");
   return entries
     .map((e) => ({ id: e.id, ...e.data }))
-    .sort((a, b) => b.releaseDate.getTime() - a.releaseDate.getTime());
+    .sort((a, b) => {
+      const byDate = b.releaseDate.getTime() - a.releaseDate.getTime();
+      if (byDate !== 0) return byDate;
+      return b.ver.localeCompare(a.ver, undefined, { numeric: true, sensitivity: "base" });
+    });
 }
 
 export async function latestRelease(): Promise<Release & { id: string }> {

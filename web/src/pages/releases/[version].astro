@@ -3,7 +3,6 @@ import Base from "../../layouts/Base.astro";
 import { getCollection } from "astro:content";
 import { latestRelease, scenarioCounts } from "../../lib/releases";
 import { fmtVal } from "../../lib/format";
-import { spark } from "../../lib/sparkline";
 import {
   fmtMs,
   fmtBytes,
@@ -12,6 +11,7 @@ import {
   deltaClass,
 } from "../../lib/release-format";
 import RunScenarioCard from "../../components/RunScenarioCard.astro";
+import ScenarioTile from "../../components/ScenarioTile.astro";
 import type {
   Headline,
   Run,
@@ -33,13 +33,26 @@ const hasDetail = Boolean(release.scenarios && release.scenarios.length);
 const counts = hasDetail ? scenarioCounts(release.scenarios!) : null;
 const runsList: Run[] = release.runs ?? [];
 const hasRuns = runsList.length > 0;
+const publicHeadlines = (release.headline ?? []).filter((h: Headline) => !isResourceMetric(h.metric));
+const publicComparisonRows = release.comparison?.rows.filter((row: ComparisonRow) => !isResourceMetric(row.metric)) ?? [];
+
+function isResourceMetric(metric: string | undefined): boolean {
+  return /\b(rss|cpu|memory)\b/i.test(metric ?? "");
+}
 ---
 
-<Base title={`kova — ${release.ver}`} active="releases">
+<Base
+  title={`kova — OpenClaw ${release.ver}`}
+  active="releases"
+  description={hasDetail && counts
+    ? `OpenClaw ${release.ver} · ${counts.pass} pass · ${counts.fail} fail · ${counts.block} blocked · measured by kova.`
+    : `OpenClaw ${release.ver} · measured by kova.`}
+  ogImage={`/og/${release.ver}.png`}
+>
   <div class="container">
 
     <div class="release-header">
-      <a class="release-back" href="/releases">
+      <a class="release-back" href="/releases" data-history-back>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M15 18 L9 12 L15 6" />
         </svg>
@@ -61,7 +74,7 @@ const hasRuns = runsList.length > 0;
             <div><span class="num">{counts.total}</span><span class="lbl">total</span></div>
           </div>
 
-          {release.headline?.map((h: Headline) => {
+          {publicHeadlines.map((h: Headline) => {
             const d = h.deltaPct != null ? deltaClass(h.deltaPct, h.lowerIsBetter !== false) : null;
             return (
               <div class="headline">
@@ -92,42 +105,9 @@ const hasRuns = runsList.length > 0;
       <>
         <section>
           <div class="section-rule"><h2>Scenarios</h2></div>
-          <div class="scenario-grid">
+          <div class="v2-wall">
             {release.scenarios!.map((s: Scenario) => (
-              <a class="scenario-tile" href={`/scenarios/${s.id}`}>
-                <div class="scenario-tile-head">
-                  <span class="scenario-id">{s.id}</span>
-                  <span class:list={["verdict", s.state === "pass" ? "verdict-pass" : s.state === "fail" ? "verdict-fail" : "verdict-warn"]}>
-                    <span class="verdict-dot"></span>{s.state === "pass" ? "PASS" : s.state === "fail" ? "FAIL" : "BLOCKED"}
-                  </span>
-                </div>
-                {s.worstMetric ? (
-                  <>
-                    <div class="worst">
-                      <span class="worst-value">{fmtVal(s.worstMetric.value, s.worstMetric.unit)}</span>
-                      <span class="worst-unit">{s.worstMetric.unit}</span>
-                    </div>
-                    <div class="worst-name" style="font-family: var(--font-mono); font-size: var(--text-1); color: var(--text-3c);">
-                      {s.worstMetric.name}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div class="worst">
-                      <span class="worst-value">{fmtVal(s.value, s.unit)}</span>
-                      <span class="worst-unit">{s.unit}</span>
-                    </div>
-                    <div class="worst-name" style="font-family: var(--font-mono); font-size: var(--text-1); color: var(--text-3c);">
-                      threshold {fmtVal(s.threshold, s.unit)} {s.unit}
-                    </div>
-                  </>
-                )}
-                {s.spark ? (
-                  <Fragment set:html={spark(s.spark, { state: s.state })} />
-                ) : (
-                  <div class="v2-tile-empty">— no sample —</div>
-                )}
-              </a>
+              <ScenarioTile scenario={s} href={`#scenario-${s.id}`} emptyMessage="— no sample —" />
             ))}
           </div>
         </section>
@@ -174,7 +154,7 @@ const hasRuns = runsList.length > 0;
           </section>
         )}
 
-        {release.comparison && release.comparison.rows.length > 0 && (
+        {release.comparison && publicComparisonRows.length > 0 && (
           <section>
             <div class="section-rule">
               <h2>vs {release.comparison.vsVer}</h2>
@@ -183,7 +163,7 @@ const hasRuns = runsList.length > 0;
               <a href={`/releases/${release.ver}/vs/${release.comparison.vsVer}`} style="color:var(--text-2c); border-bottom:1px solid var(--border-2);">open full comparison →</a>
             </p>
             <div class="compare">
-              {release.comparison.rows.map((row: ComparisonRow) => {
+              {publicComparisonRows.map((row: ComparisonRow) => {
                 const d = deltaClass(row.deltaPct, row.lowerIsBetter !== false);
                 return (
                   <div class="compare-row">

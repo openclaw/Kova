@@ -13,7 +13,11 @@ export async function getStaticPaths() {
 }
 
 const { a, b, vsVer } = Astro.props;
-const rows = a.comparison!.rows;
+const rows = a.comparison!.rows.filter((row: ComparisonRow) => !isResourceMetric(row.metric));
+
+function isResourceMetric(metric: string | undefined): boolean {
+  return /\b(rss|cpu|memory)\b/i.test(metric ?? "");
+}
 
 const summary = rows.reduce(
   (acc, r) => {
@@ -31,7 +35,7 @@ const summary = rows.reduce(
   <div class="container">
 
     <div class="release-header">
-      <a class="release-back" href={`/releases/${a.ver}`}>
+      <a class="release-back" href={`/releases/${a.ver}`} data-history-back>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M15 18 L9 12 L15 6" />
         </svg>

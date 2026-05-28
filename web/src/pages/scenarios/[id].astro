@@ -26,15 +26,16 @@ const hasTrend = history.points.filter((p) => p.value != null).length >= 2;
   <div class="container">
 
     <div class="release-header">
-      <a class="release-back" href="/">
+      <a class="release-back" href="/scenarios" data-history-back>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M15 18 L9 12 L15 6" />
         </svg>
-        home
+        scenarios
       </a>
       <h1 class="release-title">{history.id}</h1>
       <div class="release-tags">
         <span class="release-tag">{history.unit}</span>
+        {history.metric && <span class="release-tag">{history.metric}</span>}
         <span class="release-tag">{history.lowerIsBetter ? "lower is better" : "higher is better"}</span>
         {latestThreshold != null && <span class="release-tag">threshold {fmtMetric(latestThreshold, history.unit)}</span>}
       </div>

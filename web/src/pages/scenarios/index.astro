@@ -32,7 +32,7 @@ const list = [...histories.values()].sort((a, b) => a.id.localeCompare(b.id));
           <a class="recent-row" href={`/scenarios/${h.id}`}>
             <span class="rel">{h.id}</span>
             <span class="info">
-              {h.points.length} datapoint{h.points.length === 1 ? "" : "s"} ·{" "}
+              {h.metric ? `${h.metric} · ` : ""}{h.points.length} datapoint{h.points.length === 1 ? "" : "s"} ·{" "}
               <span class:list={["sha", last ? `st-${last.state}` : ""]}>
                 {last?.value != null ? fmtMetric(last.value, h.unit) : "—"}
               </span>

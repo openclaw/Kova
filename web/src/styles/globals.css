@@ -501,6 +501,7 @@ button {
   align-items: end;
   gap: var(--space-7);
   padding: var(--space-5) 0;
+  flex-wrap: wrap;
 }
 
 .headline-strip .verdict { font-size: var(--text-2); padding: 5px 10px; }
@@ -1016,55 +1017,6 @@ button {
 .recent-row .delta { font-weight: 500; }
 .recent-row .arrow { color: var(--text-3c); }
 
-/* ─── Home: methodology ──────────────────────────────────── */
-
-.methodology {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-3);
-  padding: var(--space-5);
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: var(--space-5);
-}
-
-.meth-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.meth-label {
-  font-family: var(--font-mono);
-  font-size: var(--text-1);
-  color: var(--text-3c);
-  text-transform: lowercase;
-  letter-spacing: 0.04em;
-}
-
-.meth-value {
-  font-family: var(--font-mono);
-  font-size: var(--text-3);
-  color: var(--text-1c);
-  word-break: break-word;
-}
-
-.meth-cmd {
-  grid-column: 1 / -1;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
-  padding: var(--space-3) var(--space-4);
-  font-family: var(--font-mono);
-  font-size: var(--text-2);
-  color: var(--text-2c);
-  overflow-x: auto;
-  white-space: nowrap;
-}
-
-.meth-cmd .prompt { color: var(--text-3c); user-select: none; margin-right: var(--space-2); }
-.meth-cmd .flag   { color: var(--text-1c); }
-
 /* ─── Responsive ─────────────────────────────────────────── */
 
 @media (max-width: 900px) {
@@ -1147,6 +1099,14 @@ button {
 
 .v2-tile-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
 .v2-tile-name { font-family: var(--font-mono); font-size: var(--text-2); color: var(--text-2c); letter-spacing: 0.01em; }
+.v2-tile-metric {
+  margin-top: calc(-1 * var(--space-2));
+  font-family: var(--font-mono);
+  font-size: var(--text-1);
+  color: var(--text-3c);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
 .v2-tile-dot {
   width: 8px; height: 8px; border-radius: 50%; flex: none;
   background: var(--text-4c);
@@ -1202,15 +1162,6 @@ button {
 .v2-history-cell.fail .ver { color: var(--fail); }
 .v2-history-cell.pass { border-color: color-mix(in srgb, var(--pass) 32%, var(--border)); }
 .v2-history-cell.pass .ver { color: var(--pass); }
-
-.v2-meth {
-  margin-top: var(--space-6);
-  display: flex; gap: var(--space-5); flex-wrap: wrap;
-  padding: var(--space-4) 0;
-  border-top: 1px solid var(--border);
-  font-family: var(--font-mono); font-size: var(--text-1); color: var(--text-3c);
-}
-.v2-meth strong { color: var(--text-2c); font-weight: 500; margin-right: 6px; }
 
 @media (max-width: 700px) {
   .v2-status { grid-template-columns: 1fr; text-align: left; }

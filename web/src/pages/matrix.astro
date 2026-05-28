@@ -150,8 +150,9 @@ function deltaSpan(curr: number | null | undefined, prev: number | null | undefi
             <tr>
               <th>release</th>
               <th>counts (p/f/b)</th>
-              <th class="num">cold-ready</th>
-              <th class="num">peak.rss (worst)</th>
+              <th class="num">startup</th>
+              <th class="num">agent turn</th>
+              <th class="num">pre-provider</th>
               <th class="num">gw.p95</th>
             </tr>
           </thead>
@@ -177,20 +178,30 @@ function deltaSpan(curr: number | null | undefined, prev: number | null | undefi
                     )}
                   </td>
                   <td class="num">
-                    {h.cold && h.cold.value != null ? (
+                    {h.startup && h.startup.value != null ? (
                       <Fragment>
-                        <span class:list={[h.cold.breach && "matrix-breach"]}>{fmtMetric(h.cold.value, "s")}</span>
-                        <Fragment set:html={deltaSpan(h.cold.value, ph?.cold?.value, true)} />
+                        <span class:list={[h.startup.breach && "matrix-breach"]}>{fmtMetric(h.startup.value, "s")}</span>
+                        <Fragment set:html={deltaSpan(h.startup.value, ph?.startup?.value, true)} />
                       </Fragment>
                     ) : (
                       <span style="color: var(--text-3c)">—</span>
                     )}
                   </td>
                   <td class="num">
-                    {h.rss && h.rss.value != null ? (
+                    {h.turn && h.turn.value != null ? (
                       <Fragment>
-                        <span class:list={[h.rss.breach && "matrix-breach"]}>{fmtMetric(h.rss.value, "MB")}</span>
-                        <Fragment set:html={deltaSpan(h.rss.value, ph?.rss?.value, true)} />
+                        <span class:list={[h.turn.breach && "matrix-breach"]}>{fmtMetric(h.turn.value, "s")}</span>
+                        <Fragment set:html={deltaSpan(h.turn.value, ph?.turn?.value, true)} />
+                      </Fragment>
+                    ) : (
+                      <span style="color: var(--text-3c)">—</span>
+                    )}
+                  </td>
+                  <td class="num">
+                    {h.pre && h.pre.value != null ? (
+                      <Fragment>
+                        <span class:list={[h.pre.breach && "matrix-breach"]}>{fmtMetric(h.pre.value, "s")}</span>
+                        <Fragment set:html={deltaSpan(h.pre.value, ph?.pre?.value, true)} />
                       </Fragment>
                     ) : (
                       <span style="color: var(--text-3c)">—</span>
@@ -213,7 +224,7 @@ function deltaSpan(curr: number | null | undefined, prev: number | null | undefi
         </table>
       </div>
       <p class="matrix-note">
-        cold-ready = release-runtime-startup · peak.rss = worst RSS across scenarios · gw.p95 = gateway-performance · deltas vs immediate previous release
+        startup = release-runtime-startup · agent turn/pre-provider = gateway-session-send-turn full turn breakdown · gw.p95 = gateway-performance · deltas vs immediate previous release
       </p>
     </section>
 

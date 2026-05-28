@@ -2,8 +2,7 @@
 import Base from "../layouts/Base.astro";
 import { latestRelease, allReleases, scenarioCounts } from "../lib/releases";
 import type { Scenario } from "../content.config";
-import { fmtVal, deltaFromSpark, deltaText } from "../lib/format";
-import { spark } from "../lib/sparkline";
+import ScenarioTile from "../components/ScenarioTile.astro";
 
 const release = await latestRelease();
 const scenarios = release.scenarios!;
@@ -50,45 +49,9 @@ const coldDeltaText =
     </div>
 
     <div class="v2-wall">
-      {scenarios.map((s: Scenario) => {
-        const dInfo = s.spark ? deltaFromSpark(s.spark, s.lowerIsBetter !== false) : null;
-        const dt = deltaText(dInfo);
-        let vs = "";
-        let vsCls = "";
-        if (s.state === "fail" && s.value != null) {
-          const over = ((s.value - s.threshold) / s.threshold) * 100;
-          vs = `+${over.toFixed(1)}% over`;
-          vsCls = "breach";
-        } else if (s.state === "pass" && s.value != null) {
-          const under = ((s.threshold - s.value) / s.threshold) * 100;
-          vs = `${under.toFixed(0)}% headroom`;
-        }
-        return (
-          <a class:list={["v2-tile", s.state]} href={`/releases/${release.ver}`}>
-            <div class="v2-tile-head">
-              <span class="v2-tile-name">{s.id}</span>
-              <span class="v2-tile-dot" aria-hidden="true"></span>
-            </div>
-            <div class="v2-tile-row">
-              <span class="v2-tile-value">
-                {fmtVal(s.value, s.unit)}<span class="unit">{s.unit}</span>
-              </span>
-              <span class:list={["v2-tile-delta", dt.cls]}>
-                {s.spark ? dt.text : "no sample"}
-              </span>
-            </div>
-            {s.spark ? (
-              <Fragment set:html={spark(s.spark, { state: s.state })} />
-            ) : (
-              <div class="v2-tile-empty">— env failed to provision —</div>
-            )}
-            <div class="v2-tile-foot">
-              <span>threshold {fmtVal(s.threshold, s.unit)} {s.unit}</span>
-              <span class={vsCls}>{vs}</span>
-            </div>
-          </a>
-        );
-      })}
+      {scenarios.map((s: Scenario) => (
+        <ScenarioTile scenario={s} href={`/releases/${release.ver}`} />
+      ))}
     </div>
 
     {/* Release history: colored cells, neutral labels. Oldest-first reads naturally. */}
@@ -107,12 +70,5 @@ const coldDeltaText =
       </div>
     </div>
 
-    {/* Methodology footer: facts, not prose. */}
-    <div class="v2-meth">
-      <span><strong>hardware</strong>M3 Max · 36 GB · macOS 15.4</span>
-      <span><strong>harness</strong>kova 0.8.2 · ocm 0.6.1</span>
-      <span><strong>profile</strong>release-smoke</span>
-      <span><strong>samples</strong>5 per scenario · median ±σ</span>
-    </div>
   </div>
 </Base>
