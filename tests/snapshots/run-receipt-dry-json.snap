@@ -3,9 +3,15 @@
   "generatedAt": "<iso>",
   "mode": "dry-run",
   "runId": "kova-<runId>",
-  "reportPath": "<home>/.kova/reports/kova-<runId>.md",
-  "jsonPath": "<home>/.kova/reports/kova-<runId>.json",
-  "summaryPath": "<home>/.kova/reports/kova-<runId>.summary.json",
+  "reportPath": "<kova-home>/reports/kova-<runId>.md",
+  "jsonPath": "<kova-home>/reports/kova-<runId>.json",
+  "summaryPath": "<kova-home>/reports/kova-<runId>.summary.json",
+  "networkFrontage": {
+    "schemaVersion": "kova.networkFrontage.v1",
+    "mode": "port",
+    "enabled": false,
+    "allocations": []
+  },
   "performance": {
     "schemaVersion": "kova.performance.v1",
     "repeat": 1,

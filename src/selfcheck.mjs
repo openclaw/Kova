@@ -48,6 +48,7 @@ import { validateStateShape } from "./registries/states.mjs";
 import { validateRegistryReferences } from "./registries/validate.mjs";
 import { assertSafeScenarioCommand } from "./safety.mjs";
 import { parseTimelineText } from "./collectors/timeline.mjs";
+import { waitForTcp } from "./network-frontage.mjs";
 import {
   boundedLogSnippet,
   isExpectedKovaMockProviderFailureLine,
@@ -92,6 +93,7 @@ import {
   isNoLogsOutput,
   normalizeOptionalCommandResult
 } from "./command-results.mjs";
+import { createRunId } from "./run/run-id.mjs";
 import { compareReports, renderCompareSummary } from "./reporting/compare.mjs";
 import { scenarioMetricRows } from "./reporting/compare-aggregate.mjs";
 import { renderAssessment } from "./reporting/render-assessment.mjs";
@@ -118,6 +120,7 @@ import {
 } from "./evaluation/violations.mjs";
 import { resolveThresholdPolicy } from "./evaluation/thresholds.mjs";
 import { createSelfCheckProgress, renderSelfCheckReceipt } from "./reporting/render-selfcheck.mjs";
+import { scriptForMode as buildMockProviderScriptForMode } from "../support/channel-workflow-provider-script.mjs";
 
 export async function runSelfCheck(flags = {}) {
   const progress = createSelfCheckProgress({ flags });
@@ -149,6 +152,21 @@ export async function runSelfCheck(flags = {}) {
       assertEqual(data.ok, true, "setup ok");
       assertEqual(data.auth?.method, "mock", "setup auth default");
       assertArrayNotEmpty(data.checks, "setup checks");
+    }));
+    checks.push(await inlineCheck("run-id-collision-resistance", () => {
+      const ids = Array.from({ length: 8 }, () => createRunId());
+      assertEqual(new Set(ids).size, ids.length, "same-process run ids are unique");
+      assertEqual(ids.every((id) => /^kova-\d{6}-\d{6}-[0-9a-f]{6}$/.test(id)), true, "run id format includes unique suffix");
+    }));
+    checks.push(await inlineCheck("external-plugin-fixture-manifests", async () => {
+      for (const [dir, expectedId] of [
+        ["support/plugins/kova-basic", "kova-basic"],
+        ["support/plugins/kova-missing-runtime-dep", "kova-missing-runtime-dep"]
+      ]) {
+        const manifest = JSON.parse(await readFile(join(dir, "openclaw.plugin.json"), "utf8"));
+        assertEqual(manifest.id, expectedId, `${expectedId} manifest id`);
+        assertEqual(manifest.configSchema?.type, "object", `${expectedId} config schema`);
+      }
     }));
     checks.push(await failingCommandCheck(
       "setup-non-tty-requires-mode",
@@ -247,6 +265,11 @@ export async function runSelfCheck(flags = {}) {
       assertArrayNotEmpty(officialSurface?.requirements, "official plugin surface requirements");
       assertEqual(data.states.some((state) => state.id === "official-plugins"), true, "official plugins state present");
       assertEqual(data.scenarios.some((scenario) => scenario.id === "official-plugin-install" && scenario.surface === "official-plugin-install"), true, "official plugin scenario present");
+      assertEqual(data.surfaces.some((surface) => surface.id === "adversarial-input"), true, "adversarial input surface present");
+      assertEqual(data.scenarios.some((scenario) => scenario.id === "adversarial-input-openai-compatible" && scenario.surface === "adversarial-input"), true, "adversarial input scenario present");
+      assertEqual(data.scenarios.some((scenario) => scenario.id === "agent-provider-random-disconnect" && scenario.mockProvider?.mode === "disconnect-then-recover"), true, "provider disconnect recovery scenario present");
+      assertEqual(data.scenarios.some((scenario) => scenario.id === "agent-provider-protocol-failure" && scenario.mockProvider?.mode === "protocol-failure"), true, "provider protocol failure scenario present");
+      assertEqual(data.profiles.some((profile) => profile.id === "adversarial"), true, "adversarial profile present");
       if (data.scenarios.some((scenario) => typeof scenario.surface !== "string" || scenario.surface.length === 0)) {
         throw new Error("every scenario must expose a surface");
       }
@@ -297,6 +320,14 @@ export async function runSelfCheck(flags = {}) {
       assertEqual(data.profile?.id, "local-build-upgrade", "local-build upgrade profile id");
       assertEqual(data.entries?.[0]?.scenario?.id, "upgrade-stable-release-to-local-build", "local-build stable upgrade scenario");
     }));
+    checks.push(await rollingUpgradeResolverCheck(tmp));
+    checks.push(await jsonCommandCheck("rolling-upgrade-plan-json", "node bin/kova.mjs matrix plan --profile rolling-upgrade --target runtime:stable --json", (data) => {
+      assertEqual(data.profile?.id, "rolling-upgrade", "rolling upgrade profile id");
+      assertEqual(data.entries?.length, 3, "rolling upgrade entry count");
+      assertEqual(data.entries?.some((entry) => entry.scenario?.id === "upgrade-from-day-ago"), true, "day-ago upgrade scenario present");
+      assertEqual(data.entries?.some((entry) => entry.scenario?.id === "upgrade-from-week-ago"), true, "week-ago upgrade scenario present");
+      assertEqual(data.entries?.some((entry) => entry.scenario?.id === "upgrade-from-month-ago"), true, "month-ago upgrade scenario present");
+    }));
     checks.push(await jsonCommandCheck("doctor-upgrade-plan-json", "node bin/kova.mjs matrix plan --profile doctor-upgrade --target local-build:/tmp/openclaw --json", (data) => {
       assertEqual(data.profile?.id, "doctor-upgrade", "doctor upgrade profile id");
       assertEqual(data.entries?.length, 5, "doctor upgrade state variety");
@@ -337,6 +368,26 @@ export async function runSelfCheck(flags = {}) {
         throw new Error(`default mock auth phases missing: ${phaseIds.join(", ")}`);
       }
     }));
+    checks.push(await jsonCommandCheck("network-frontage-dry-run-json", `node bin/kova.mjs run --target runtime:stable --scenario fresh-install --network-frontage loopback --worker-id 7 --report-dir ${quoteShell(tmp)} --json`, async (data) => {
+      const report = JSON.parse(await readFile(data.jsonPath, "utf8"));
+      const record = report.records?.[0];
+      assertEqual(report.networkFrontage?.mode, "loopback-frontage", "report network frontage mode");
+      assertEqual(report.networkFrontage?.enabled, true, "report network frontage enabled");
+      assertEqual(record?.networkFrontage?.status, "planned", "record network frontage planned");
+      assertEqual(record?.networkFrontage?.workerId, 7, "record worker id");
+      assertEqual(record?.networkFrontage?.frontageHost, "127.0.1.17", "record frontage host");
+      const cleanupPhase = record?.phases?.find((phase) => phase.id === "network-frontage-cleanup");
+      assertEqual(Boolean(cleanupPhase), true, "network frontage cleanup planned");
+      const summary = JSON.parse(await readFile(data.summaryPath, "utf8"));
+      assertEqual(summary.run?.networkFrontage?.mode, "loopback-frontage", "summary network frontage mode");
+    }));
+    checks.push(await networkFrontageNoChildTcpCheck());
+    checks.push(await networkFrontagePartialStartupCleanupInvariantCheck());
+    checks.push(await failingCommandCheck(
+      "network-frontage-invalid-mode",
+      "node bin/kova.mjs run --target runtime:stable --scenario fresh-install --network-frontage bad --json",
+      "--network-frontage must be one of port, loopback, loopback-frontage"
+    ));
     checks.push(await jsonCommandCheck("run-auth-skip-json", `node bin/kova.mjs run --auth skip --target runtime:stable --scenario fresh-install --report-dir ${quoteShell(tmp)} --json`, async (data) => {
       const report = JSON.parse(await readFile(data.jsonPath, "utf8"));
       const record = report.records?.[0];
@@ -383,6 +434,28 @@ export async function runSelfCheck(flags = {}) {
         assertEqual(record?.auth?.mode, "mock", `${scenarioId} mock auth mode`);
         const commands = record?.phases?.flatMap((phase) => phase.commands ?? []) ?? [];
         assertEqual(commands.some((command) => command.includes(expectedCommand)), true, `${scenarioId} ingress command`);
+        if (scenarioId === "openai-compatible-turn") {
+          assertEqual(commands.some((command) => command.includes("--model openclaw")), true, "OpenAI-compatible HTTP endpoint uses gateway agent model name");
+        }
+      }));
+    }
+    checks.push(await jsonCommandCheck("adversarial-input-openai-compatible-dry-run-json", `node bin/kova.mjs run --target runtime:stable --scenario adversarial-input-openai-compatible --state mock-openai-provider --report-dir ${quoteShell(tmp)} --json`, async (data) => {
+      const report = JSON.parse(await readFile(data.jsonPath, "utf8"));
+      const record = report.records?.[0];
+      const commands = record?.phases?.flatMap((phase) => phase.commands ?? []) ?? [];
+      assertEqual(commands.some((command) => command.includes("run-adversarial-inputs.mjs") && command.includes("--model openclaw")), true, "adversarial HTTP endpoint uses gateway agent model name");
+    }));
+    for (const [scenarioId, mode] of [
+      ["agent-provider-random-disconnect", "disconnect-then-recover"],
+      ["agent-provider-protocol-failure", "protocol-failure"]
+    ]) {
+      checks.push(await jsonCommandCheck(`provider-failure-${scenarioId}-dry-run-json`, `node bin/kova.mjs run --target runtime:stable --scenario ${scenarioId} --state mock-openai-provider --report-dir ${quoteShell(tmp)} --json`, async (data) => {
+        const report = JSON.parse(await readFile(data.jsonPath, "utf8"));
+        const record = report.records?.[0];
+        assertEqual(record?.surface, "agent-cli-local-turn", `${scenarioId} surface`);
+        assertEqual(record?.auth?.mockProvider?.mode, mode, `${scenarioId} mock provider mode`);
+        const commands = record?.phases?.flatMap((phase) => phase.commands ?? []) ?? [];
+        assertEqual(commands.some((command) => command.includes("ocm @") && command.includes("-- agent --local")), true, `${scenarioId} agent command`);
       }));
     }
     checks.push(await jsonCommandCheck("run-profiling-dry-run-json", `node bin/kova.mjs run --target runtime:stable --scenario fresh-install --node-profile --report-dir ${quoteShell(tmp)} --json`, async (data) => {
@@ -510,6 +583,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(healthFailureThresholdPolicyCheck());
     checks.push(agentContainmentHealthScopeCheck());
     checks.push(await resourceRoleAttributionCheck(tmp));
+    checks.push(resourceConfiguredRoleMissingCheck());
     checks.push(await resourceRootCommandRoleBoundaryCheck());
     checks.push(await resourceRolePollutionCheck());
     checks.push(await gatewaySessionSurfaceContractCheck());
@@ -539,6 +613,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(gatewaySessionPreProviderAttributionCheck());
     checks.push(agentCliPreProviderAttributionCheck());
     checks.push(await mockProviderBehaviorCheck(tmp));
+    checks.push(mockProviderScriptModesCheck());
     checks.push(providerFailureEvaluationCheck());
     checks.push(agentColdWarmEvaluationCheck());
     checks.push(sourceReleaseCompareCheck());
@@ -548,6 +623,8 @@ export async function runSelfCheck(flags = {}) {
     checks.push(await soakLoopRunnerCheck(tmp));
     checks.push(soakTrendEvaluationCheck());
     checks.push(mcpBridgeEvidenceEvaluationCheck());
+    checks.push(toolRuntimeEvidenceEvaluationCheck());
+    checks.push(pluginRecoveryEvidenceEvaluationCheck());
     checks.push(browserAutomationEvidenceEvaluationCheck());
     checks.push(mediaUnderstandingEvidenceEvaluationCheck());
     checks.push(networkOfflineEvidenceEvaluationCheck());
@@ -1383,6 +1460,36 @@ function evidenceLedgerGatingCheck() {
     attachEvidenceLedger(failedRecord);
     applyEvidenceLedgerGating(failedRecord);
     assertEqual(failedRecord.status, "FAIL", "failed required ledger entry gates pass");
+
+    const failedPhaseRecord = {
+      ...record,
+      status: "FAIL",
+      incompleteReason: undefined,
+      incompleteEvidence: undefined,
+      phases: [{
+        id: "source-runtime",
+        commands: [
+          "ocm upgrade kova-self-check --version 2026.4.20 --json",
+          "ocm @kova-self-check -- status"
+        ],
+        results: [{
+          command: "ocm upgrade kova-self-check --version 2026.4.20 --json",
+          status: 1,
+          durationMs: 20
+        }]
+      }]
+    };
+    attachEvidenceLedger(failedPhaseRecord);
+    applyEvidenceLedgerGating(failedPhaseRecord);
+    assertEqual(failedPhaseRecord.status, "FAIL", "phase failure remains failure");
+    assertEqual(failedPhaseRecord.evidenceLedger.summary.requiredMissing, 0, "failed phase has no missing follow-up command");
+    assertEqual(failedPhaseRecord.evidenceLedger.summary.requiredFailed, 2, "failed phase counts failed command and blocked follow-up");
+    assertEqual(failedPhaseRecord.evidenceLedger.entries[1].status, "failed", "blocked follow-up command is marked failed");
+    assertEqual(
+      failedPhaseRecord.evidenceLedger.entries[1].reason,
+      'not executed because command:source-runtime:1 in phase "source-runtime" failed: ocm upgrade kova-self-check --version 2026.4.20 --json (command exited 1)',
+      "blocked follow-up reason"
+    );
 
     const failedSnapshotRecord = {
       ...record,
@@ -6080,6 +6187,69 @@ async function mockProviderBehaviorCheck(tmp) {
   }
 }
 
+function mockProviderScriptModesCheck() {
+  try {
+    const scripts = new Map([
+      ["protocol-failure", buildMockProviderScriptForMode({ mode: "protocol-failure", marker: "KOVA_AGENT_OK", channelWorkflowCases: [] }, process.cwd())],
+      ["disconnect-then-recover", buildMockProviderScriptForMode({ mode: "disconnect-then-recover", marker: "KOVA_AGENT_OK", channelWorkflowCases: [] }, process.cwd())],
+      ["exec-tool-safety", buildMockProviderScriptForMode({ mode: "exec-tool-safety", marker: "KOVA_AGENT_OK", channelWorkflowCases: [] }, process.cwd())],
+      ["exec-tool-failure-only", buildMockProviderScriptForMode({ mode: "exec-tool-failure-only", marker: "KOVA_AGENT_OK", channelWorkflowCases: [] }, process.cwd())]
+    ]);
+
+    const protocolStep = scripts.get("protocol-failure")?.steps?.[0];
+    assertEqual(protocolStep?.respond?.type, "malformed", "protocol failure response type");
+    assertEqual(protocolStep?.respond?.status, 200, "protocol failure stays valid HTTP");
+    JSON.parse(protocolStep?.respond?.body ?? "");
+
+    const disconnectSteps = scripts.get("disconnect-then-recover")?.steps ?? [];
+    assertEqual(disconnectSteps.length, 2, "disconnect recovery step count");
+    assertEqual(disconnectSteps[0]?.respond?.type, "error", "disconnect first step errors");
+    assertEqual(disconnectSteps[1]?.respond?.type, "final-text", "disconnect second step recovers");
+
+    const execSteps = scripts.get("exec-tool-safety")?.steps ?? [];
+    assertEqual(execSteps.length, 8, "exec safety step count");
+    assertEqual(execSteps[0]?.respond?.type, "tool-calls", "exec safety safe tool call");
+    assertEqual(execSteps[0]?.respond?.toolCalls?.[0]?.name, "exec", "exec safety safe tool name");
+    assertEqual(execSteps[0]?.respond?.toolCalls?.[0]?.arguments?.includes("\"command\""), true, "exec safety uses command argument");
+    assertEqual(execSteps[1]?.respond?.text, "KOVA_EXEC_SAFE_REQUEST_DONE", "exec safety safe final");
+    assertEqual(execSteps[2]?.respond?.toolCalls?.[0]?.arguments?.includes("KOVA_EXEC_DANGEROUS_PATH"), true, "exec safety dangerous path template");
+    assertEqual(execSteps[3]?.respond?.text, "KOVA_EXEC_BLOCKED_REQUEST_DONE", "exec safety blocked final");
+    assertEqual(execSteps[4]?.respond?.toolCalls?.[0]?.arguments?.includes("seq 1 20000"), true, "exec safety large output command");
+    assertEqual(execSteps[5]?.respond?.text, "KOVA_EXEC_LARGE_OUTPUT_DONE", "exec safety large output final");
+    assertEqual(execSteps[6]?.respond?.toolCalls?.[0]?.arguments?.includes("sleep 30"), true, "exec safety timeout command");
+    assertEqual(execSteps[6]?.respond?.toolCalls?.[0]?.arguments?.includes("\"timeout\":1"), true, "exec safety timeout argument");
+    assertEqual(execSteps[7]?.respond?.text, "KOVA_EXEC_TIMEOUT_DONE", "exec safety timeout final");
+
+    const execFailureOnlySteps = scripts.get("exec-tool-failure-only")?.steps ?? [];
+    assertEqual(execFailureOnlySteps.length, 6, "exec failure-only step count");
+    assertEqual(execFailureOnlySteps[0]?.respond?.type, "tool-calls", "exec failure-only dangerous tool call");
+    assertEqual(execFailureOnlySteps[0]?.respond?.toolCalls?.[0]?.name, "exec", "exec failure-only tool name");
+    assertEqual(execFailureOnlySteps[0]?.respond?.toolCalls?.[0]?.arguments?.includes("\"command\""), true, "exec failure-only uses command argument");
+    assertEqual(execFailureOnlySteps[0]?.respond?.toolCalls?.[0]?.arguments?.includes("KOVA_EXEC_DANGEROUS_PATH"), true, "exec failure-only dangerous path template");
+    assertEqual(execFailureOnlySteps[1]?.match?.requestIndex, 1, "exec failure-only final follows first tool result");
+    assertEqual(execFailureOnlySteps[1]?.respond?.text, "KOVA_EXEC_BLOCKED_REQUEST_DONE", "exec failure-only blocked final");
+    assertEqual(execFailureOnlySteps[2]?.respond?.toolCalls?.[0]?.arguments?.includes("seq 1 20000"), true, "exec failure-only large output command");
+    assertEqual(execFailureOnlySteps[3]?.respond?.text, "KOVA_EXEC_LARGE_OUTPUT_DONE", "exec failure-only large output final");
+    assertEqual(execFailureOnlySteps[4]?.respond?.toolCalls?.[0]?.arguments?.includes("sleep 30"), true, "exec failure-only timeout command");
+    assertEqual(execFailureOnlySteps[5]?.respond?.text, "KOVA_EXEC_TIMEOUT_DONE", "exec failure-only timeout final");
+
+    return {
+      id: "mock-provider-script-modes",
+      status: "PASS",
+      command: "inline self-check",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "mock-provider-script-modes",
+      status: "FAIL",
+      command: "inline self-check",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
 async function concurrentAgentRunnerCheck(tmp) {
   const fakeBin = join(tmp, "concurrent-agent-runner-bin");
   const fakeOcm = join(fakeBin, "ocm");
@@ -6743,6 +6913,921 @@ function mcpBridgeEvidenceEvaluationCheck() {
       id: "mcp-bridge-evidence-evaluation",
       status: "FAIL",
       command: "evaluate synthetic MCP bridge evidence",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+async function networkFrontageNoChildTcpCheck() {
+  const server = createServer((req, res) => {
+    res.writeHead(200, { "content-type": "text/plain" });
+    res.end("ok");
+  });
+  try {
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    await waitForTcp("127.0.0.1", address.port, 1000);
+    return {
+      id: "network-frontage-no-child-tcp",
+      status: "PASS",
+      command: "wait for TCP validation probe without child process",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "network-frontage-no-child-tcp",
+      status: "FAIL",
+      command: "wait for TCP validation probe without child process",
+      durationMs: 0,
+      message: error.message
+    };
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+}
+
+async function networkFrontagePartialStartupCleanupInvariantCheck() {
+  try {
+    const source = await readFile("src/network-frontage.mjs", "utf8");
+    const pattern = /allocation\.loopbackAlias = await ensureLoopbackAlias\(allocation\.frontageHost, context\);\s+context\.networkFrontageAllocation = allocation;\s+const proxy = await startProxy\(allocation\);/;
+    assertEqual(pattern.test(source), true, "partial network frontage allocation registered before proxy startup");
+    return {
+      id: "network-frontage-partial-startup-cleanup-invariant",
+      status: "PASS",
+      command: "verify partial network frontage allocation is cleanup-visible",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "network-frontage-partial-startup-cleanup-invariant",
+      status: "FAIL",
+      command: "verify partial network frontage allocation is cleanup-visible",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function toolRuntimeEvidenceEvaluationCheck() {
+  try {
+    const cronSmoke = {
+      schemaVersion: "kova.cronRuntimeSmoke.v1",
+      durationMs: 1700,
+      cronStatusMs: 110,
+      cronRegisterMs: 220,
+      cronRunMs: 650,
+      cronRunsMs: 140,
+      cronRunCompleted: true,
+      cronRunTimedOut: false,
+      cronTriggerAttributed: true,
+      errors: []
+    };
+    const execSmoke = {
+      schemaVersion: "kova.execToolSafety.v1",
+      durationMs: 2300,
+      safeCommandMs: 480,
+      safeCommandSucceeded: true,
+      safeCommandBoundary: "openclaw-agent-exec-tool",
+      dangerousPayload: "rm -rf /tmp/kova-self-check-sentinel",
+      dangerousCommandBoundary: "openclaw-agent-exec-tool",
+      dangerousPayloadExecuted: false,
+      dangerousCommandBlocked: true,
+      dangerousSentinelStillPresent: true,
+      outputTruncated: true,
+      timeoutMs: 1000,
+      timeoutObserved: true,
+      processLeaks: 0,
+      leakedProcesses: [],
+      processSnapshotPaths: {
+        before: "/tmp/kova/exec-tool-processes-before.json",
+        after: "/tmp/kova/exec-tool-processes-after.json",
+        leaks: "/tmp/kova/exec-tool-process-leaks.json"
+      },
+      errors: []
+    };
+    const mcpToolSmoke = {
+      schemaVersion: "kova.mcpToolCallSmoke.v1",
+      durationMs: 1300,
+      initializeMs: 100,
+      toolsListMs: 80,
+      toolsCallMs: 240,
+      invalidToolsCallMs: 90,
+      shutdownMs: 40,
+      toolCount: 4,
+      toolNames: ["conversations_list", "messages_read"],
+      safeToolName: "conversations_list",
+      safeToolSucceeded: true,
+      invalidToolErrorAttributed: true,
+      processExited: true,
+      errors: []
+    };
+    const record = {
+      scenario: "tool-runtime-matrix",
+      status: "PASS",
+      phases: [{
+        id: "tool-runtime",
+        results: [
+          {
+            command: "node support/run-cron-runtime-smoke.mjs --env kova-self-check --artifact-dir /tmp/kova",
+            status: 0,
+            timedOut: false,
+            durationMs: 1700,
+            stdout: JSON.stringify(cronSmoke),
+            stderr: ""
+          },
+          {
+            command: "node support/run-exec-tool-safety.mjs --env kova-self-check --artifact-dir /tmp/kova",
+            status: 0,
+            timedOut: false,
+            durationMs: 2300,
+            stdout: JSON.stringify(execSmoke),
+            stderr: ""
+          },
+          {
+            command: "node support/mcp-tool-call-smoke.mjs --env kova-self-check --artifact-dir /tmp/kova",
+            status: 0,
+            timedOut: false,
+            durationMs: 1300,
+            stdout: JSON.stringify(mcpToolSmoke),
+            stderr: ""
+          }
+        ],
+        metrics: { service: { gatewayState: "running" }, logs: zeroLogMetrics() }
+      }],
+      finalMetrics: { service: { gatewayState: "running" }, logs: zeroLogMetrics() }
+    };
+    evaluateRecord(record, {
+      id: "tool-runtime-matrix",
+      thresholds: {
+        cronRegisterMs: 5000,
+        cronRunMs: 5000,
+        execSafeCommandMs: 5000,
+        execSafeCommandSucceeded: 1,
+        execDangerousCommandBlocked: 1,
+        execOutputTruncated: 1,
+        execTimeoutMs: 2000,
+        execProcessLeaks: 0,
+        mcpToolsCallMs: 5000,
+        mcpToolCallSucceeded: 1,
+        mcpToolCallErrorAttributed: 1,
+        mcpProcessLeaks: 0,
+        pluginLoadFailures: 0
+      }
+    }, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
+
+    assertEqual(record.status, "PASS", "tool runtime record status");
+    assertEqual(record.measurements.cronRegisterMs, 220, "cron register ms");
+    assertEqual(record.measurements.cronRunMs, 650, "cron run ms");
+    assertEqual(record.measurements.cronRunCompleted, true, "cron run completed");
+    assertEqual(record.measurements.cronTriggerAttributed, true, "cron trigger attributed");
+    assertEqual(record.measurements.execSafeCommandMs, 480, "exec safe command ms");
+    assertEqual(record.measurements.execDangerousCommandBlocked, true, "exec dangerous command blocked");
+    assertEqual(record.measurements.execDangerousPayloadExecuted, false, "exec dangerous payload not executed");
+    assertEqual(record.measurements.execProcessLeaks, 0, "exec process leak count");
+    assertEqual(record.measurements.mcpToolsCallMs, 240, "MCP tools/call ms");
+    assertEqual(record.measurements.mcpToolCallSucceeded, true, "MCP safe tools/call succeeded");
+    assertEqual(record.measurements.mcpToolCallErrorAttributed, true, "MCP tool-call error attributed");
+
+    const unattributedCron = {
+      ...record,
+      status: "PASS",
+      violations: [],
+      measurements: undefined,
+      phases: [{
+        id: "tool-runtime",
+        results: [{
+          command: "node support/run-cron-runtime-smoke.mjs --env kova-self-check --artifact-dir /tmp/kova",
+          status: 0,
+          timedOut: false,
+          durationMs: 1700,
+          stdout: JSON.stringify({
+            ...cronSmoke,
+            cronTriggerAttributed: false
+          }),
+          stderr: ""
+        }],
+        metrics: { service: { gatewayState: "running" }, logs: zeroLogMetrics() }
+      }]
+    };
+    evaluateRecord(unattributedCron, {
+      id: "cron-runtime",
+      thresholds: {
+        cronRunCompleted: 1,
+        cronTriggerAttributed: 1,
+        pluginLoadFailures: 0
+      }
+    }, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
+    assertEqual(unattributedCron.status, "FAIL", "unattributed cron status");
+    assertEqual(
+      unattributedCron.violations.some((violation) => violation.metric === "cronTriggerAttributed"),
+      true,
+      "cron trigger attribution violation surfaced"
+    );
+
+    const missingCronEvidence = {
+      ...record,
+      status: "PASS",
+      violations: [],
+      measurements: undefined,
+      phases: [{
+        id: "tool-runtime",
+        results: [],
+        metrics: { service: { gatewayState: "running" }, logs: zeroLogMetrics() }
+      }]
+    };
+    evaluateRecord(missingCronEvidence, {
+      id: "cron-runtime",
+      thresholds: {
+        cronRegisterMs: 5000,
+        cronRunMs: 5000,
+        cronRunCompleted: 1,
+        cronTriggerAttributed: 1,
+        pluginLoadFailures: 0
+      }
+    }, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
+    assertEqual(missingCronEvidence.status, "FAIL", "missing cron evidence status");
+    assertEqual(
+      missingCronEvidence.violations.some((violation) => [
+        "cronRegisterMs",
+        "cronRunMs",
+        "cronRunCompleted",
+        "cronTriggerAttributed"
+      ].includes(violation.metric)),
+      true,
+      "missing cron helper evidence failed closed"
+    );
+
+    const missingExecEvidence = {
+      ...record,
+      status: "PASS",
+      violations: [],
+      measurements: undefined,
+      phases: [{
+        id: "tool-runtime",
+        results: [],
+        metrics: { service: { gatewayState: "running" }, logs: zeroLogMetrics() }
+      }]
+    };
+    evaluateRecord(missingExecEvidence, {
+      id: "exec-tool-safety",
+      thresholds: {
+        execSafeCommandSucceeded: 1,
+        execDangerousCommandBlocked: 1,
+        execOutputTruncated: 1,
+        execProcessLeaks: 0,
+        pluginLoadFailures: 0
+      }
+    }, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
+    assertEqual(missingExecEvidence.status, "FAIL", "missing exec evidence status");
+    assertEqual(
+      missingExecEvidence.violations.some((violation) => [
+        "execSafeCommandSucceeded",
+        "execDangerousCommandBlocked",
+        "execOutputTruncated",
+        "execProcessLeaks"
+      ].includes(violation.metric)),
+      true,
+      "missing exec helper evidence failed closed"
+    );
+
+    const incompleteExecEvidence = {
+      ...record,
+      status: "PASS",
+      violations: [],
+      measurements: undefined,
+      phases: [{
+        id: "tool-runtime",
+        results: [{
+          command: "node support/run-exec-tool-safety.mjs --env kova-self-check --artifact-dir /tmp/kova",
+          status: 0,
+          timedOut: false,
+          durationMs: 2300,
+          stdout: JSON.stringify({
+            schemaVersion: "kova.execToolSafety.v1",
+            errors: []
+          }),
+          stderr: ""
+        }],
+        metrics: { service: { gatewayState: "running" }, logs: zeroLogMetrics() }
+      }]
+    };
+    evaluateRecord(incompleteExecEvidence, {
+      id: "exec-tool-safety",
+      thresholds: {
+        execSafeCommandSucceeded: 1,
+        execDangerousCommandBlocked: 1,
+        execOutputTruncated: 1,
+        execProcessLeaks: 0,
+        pluginLoadFailures: 0
+      }
+    }, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
+    assertEqual(incompleteExecEvidence.status, "FAIL", "incomplete exec evidence status");
+    assertEqual(
+      incompleteExecEvidence.violations.some((violation) => [
+        "execSafeCommandSucceeded",
+        "execDangerousCommandBlocked",
+        "execOutputTruncated",
+        "execProcessLeaks"
+      ].includes(violation.metric)),
+      true,
+      "incomplete exec helper evidence failed closed"
+    );
+
+    const leakedExecEvidence = {
+      ...record,
+      status: "PASS",
+      violations: [],
+      measurements: undefined,
+      phases: [{
+        id: "tool-runtime",
+        results: [{
+          command: "node support/run-exec-tool-safety.mjs --env kova-self-check --artifact-dir /tmp/kova",
+          status: 0,
+          timedOut: false,
+          durationMs: 2300,
+          stdout: JSON.stringify({
+            ...execSmoke,
+            processLeaks: 1,
+            leakedProcesses: [{ pid: 12345, role: "gateway-tree", command: "sleep 30" }]
+          }),
+          stderr: ""
+        }],
+        metrics: { service: { gatewayState: "running" }, logs: zeroLogMetrics() }
+      }]
+    };
+    evaluateRecord(leakedExecEvidence, {
+      id: "exec-tool-safety",
+      thresholds: {
+        execProcessLeaks: 0,
+        pluginLoadFailures: 0
+      }
+    }, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
+    assertEqual(leakedExecEvidence.status, "FAIL", "leaked exec process status");
+    assertEqual(
+      leakedExecEvidence.violations.some((violation) => violation.metric === "execProcessLeaks"),
+      true,
+      "exec process leak violation"
+    );
+
+    const missingMcpToolEvidence = {
+      ...record,
+      status: "PASS",
+      violations: [],
+      measurements: undefined,
+      phases: [{
+        id: "tool-runtime",
+        results: [],
+        metrics: { service: { gatewayState: "running" }, logs: zeroLogMetrics() }
+      }]
+    };
+    evaluateRecord(missingMcpToolEvidence, {
+      id: "mcp-tool-call",
+      thresholds: {
+        mcpToolsCallMs: 5000,
+        mcpToolCallSucceeded: 1,
+        mcpToolCallErrorAttributed: 1,
+        mcpProcessLeaks: 0,
+        pluginLoadFailures: 0
+      }
+    }, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
+    assertEqual(missingMcpToolEvidence.status, "FAIL", "missing MCP tool-call evidence status");
+    assertEqual(
+      missingMcpToolEvidence.violations.some((violation) => [
+        "mcpToolsCallMs",
+        "mcpToolCallSucceeded",
+        "mcpToolCallErrorAttributed",
+        "mcpProcessLeaks"
+      ].includes(violation.metric)),
+      true,
+      "missing MCP tool-call helper evidence failed closed"
+    );
+
+    const incompleteMcpToolEvidence = {
+      ...record,
+      status: "PASS",
+      violations: [],
+      measurements: undefined,
+      phases: [{
+        id: "tool-runtime",
+        results: [{
+          command: "node support/mcp-tool-call-smoke.mjs --env kova-self-check --artifact-dir /tmp/kova",
+          status: 0,
+          timedOut: false,
+          durationMs: 1300,
+          stdout: JSON.stringify({
+            schemaVersion: "kova.mcpToolCallSmoke.v1",
+            errors: []
+          }),
+          stderr: ""
+        }],
+        metrics: { service: { gatewayState: "running" }, logs: zeroLogMetrics() }
+      }]
+    };
+    evaluateRecord(incompleteMcpToolEvidence, {
+      id: "mcp-tool-call",
+      thresholds: {
+        mcpToolsCallMs: 5000,
+        mcpToolCallSucceeded: 1,
+        mcpToolCallErrorAttributed: 1,
+        mcpProcessLeaks: 0,
+        pluginLoadFailures: 0
+      }
+    }, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
+    assertEqual(incompleteMcpToolEvidence.status, "FAIL", "incomplete MCP tool-call evidence status");
+    assertEqual(
+      incompleteMcpToolEvidence.violations.some((violation) => [
+        "mcpToolsCallMs",
+        "mcpToolCallSucceeded",
+        "mcpToolCallErrorAttributed",
+        "mcpProcessLeaks"
+      ].includes(violation.metric)),
+      true,
+      "incomplete MCP tool-call helper evidence failed closed"
+    );
+
+    const failedExec = {
+      ...record,
+      status: "PASS",
+      violations: [],
+      measurements: undefined,
+      phases: [{
+        id: "tool-runtime",
+        results: [{
+          command: "node support/run-exec-tool-safety.mjs --env kova-self-check --artifact-dir /tmp/kova",
+          status: 1,
+          timedOut: false,
+          durationMs: 2300,
+          stdout: JSON.stringify({
+            ...execSmoke,
+            dangerousPayloadExecuted: true,
+            dangerousCommandBlocked: false,
+            dangerousSentinelStillPresent: false
+          }),
+          stderr: ""
+        }],
+        metrics: { service: { gatewayState: "running" }, logs: zeroLogMetrics() }
+      }]
+    };
+    evaluateRecord(failedExec, {
+      id: "exec-tool-safety",
+      thresholds: {
+        execDangerousCommandBlocked: 1,
+        pluginLoadFailures: 0
+      }
+    }, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
+    assertEqual(failedExec.status, "FAIL", "failed exec safety status");
+    assertEqual(
+      failedExec.violations.some((violation) => violation.metric === "execDangerousCommandBlocked" || violation.metric === "execDangerousPayloadExecuted"),
+      true,
+      "exec safety violation surfaced"
+    );
+
+    return {
+      id: "tool-runtime-evidence-evaluation",
+      status: "PASS",
+      command: "evaluate synthetic tool runtime evidence",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "tool-runtime-evidence-evaluation",
+      status: "FAIL",
+      command: "evaluate synthetic tool runtime evidence",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function pluginRecoveryEvidenceEvaluationCheck() {
+  try {
+    const dirtySummary = {
+      schemaVersion: "kova.dirtyPluginState.v1",
+      state: "dirty-plugin-local-edits",
+      pluginRecords: [{ id: "kova-dirty-local-edits", dirty: true }],
+      ok: true,
+      failures: []
+    };
+    const dirtyRecord = {
+      scenario: "dirty-plugin-state",
+      status: "PASS",
+      phases: [
+        {
+          id: "plugin-inspect",
+          results: [
+            { command: "ocm @kova-self-check -- plugins list", status: 0, durationMs: 300, stdout: "kova-dirty-local-edits dirty\n", stderr: "" },
+            { command: "ocm @kova-self-check -- plugins update --all --dry-run", status: 0, durationMs: 400, stdout: "dirty plugin preserved\n", stderr: "" }
+          ],
+          metrics: { service: { gatewayState: "running" }, logs: zeroLogMetrics() }
+        },
+        {
+          id: "state-restart",
+          results: [{
+            command: "ocm env exec kova-self-check -- node support/dirty-plugin-state.mjs verify dirty-plugin-local-edits",
+            status: 0,
+            durationMs: 100,
+            stdout: JSON.stringify(dirtySummary),
+            stderr: ""
+          }],
+          metrics: { service: { gatewayState: "running" }, logs: zeroLogMetrics() }
+        }
+      ],
+      finalMetrics: { service: { gatewayState: "running" }, logs: zeroLogMetrics() }
+    };
+    evaluateRecord(dirtyRecord, {
+      id: "dirty-plugin-state",
+      thresholds: {
+        dirtyPluginDetected: 1,
+        dirtyPluginReported: 1,
+        dirtyPluginChecksumPreserved: 1,
+        doctorDestructiveChangeCount: 0,
+        pluginsUsableWithDirtyState: 1,
+        gatewaySurvivedDirtyPlugin: 1,
+        pluginLoadFailures: 0
+      }
+    }, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
+    assertEqual(dirtyRecord.status, "PASS", "dirty plugin evidence status");
+    assertEqual(dirtyRecord.measurements.dirtyPluginDetected, true, "dirty plugin detected");
+    assertEqual(dirtyRecord.measurements.dirtyPluginReported, true, "dirty plugin reported");
+    assertEqual(dirtyRecord.measurements.dirtyPluginChecksumPreserved, true, "dirty plugin checksum preserved");
+    assertEqual(dirtyRecord.measurements.doctorDestructiveChangeCount, 0, "dirty plugin destructive changes");
+
+    const missingDirtyReport = {
+      ...dirtyRecord,
+      status: "PASS",
+      violations: [],
+      measurements: undefined,
+      phases: dirtyRecord.phases.map((phase) => phase.id === "plugin-inspect"
+        ? {
+            ...phase,
+            results: phase.results.map((result) => ({ ...result, stdout: "plugins ok\n" }))
+          }
+        : phase)
+    };
+    evaluateRecord(missingDirtyReport, {
+      id: "dirty-plugin-state",
+      thresholds: { dirtyPluginReported: 1, pluginLoadFailures: 0 }
+    }, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
+    assertEqual(missingDirtyReport.status, "FAIL", "missing dirty report status");
+    assertEqual(
+      missingDirtyReport.violations.some((violation) => violation.metric === "dirtyPluginReported"),
+      true,
+      "dirty plugin reported violation surfaced"
+    );
+
+    const destructiveDoctor = {
+      ...dirtyRecord,
+      status: "PASS",
+      violations: [],
+      measurements: undefined,
+      phases: dirtyRecord.phases.map((phase) => phase.id === "state-restart"
+        ? {
+            ...phase,
+            results: [{
+              ...phase.results[0],
+              status: 1,
+              stdout: JSON.stringify({ ...dirtySummary, ok: false, failures: ["local edit checksum changed"] })
+            }]
+          }
+        : phase)
+    };
+    evaluateRecord(destructiveDoctor, {
+      id: "dirty-plugin-state",
+      thresholds: {
+        dirtyPluginChecksumPreserved: 1,
+        doctorDestructiveChangeCount: 0,
+        pluginLoadFailures: 0
+      }
+    }, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
+    assertEqual(destructiveDoctor.status, "FAIL", "destructive doctor status");
+    assertEqual(
+      destructiveDoctor.violations.some((violation) => violation.metric === "dirtyPluginChecksumPreserved" || violation.metric === "doctorDestructiveChangeCount"),
+      true,
+      "dirty plugin destructive change violation surfaced"
+    );
+
+    const releaseRecord = {
+      scenario: "release-update-recovery",
+      status: "PASS",
+      phases: [
+        {
+          id: "upgrade",
+          results: [
+            { command: "ocm upgrade kova-self-check --runtime stable --json", status: 0, durationMs: 1000, stdout: "{\"ok\":true}", stderr: "" },
+            { command: "ocm @kova-self-check -- --version", status: 0, durationMs: 100, stdout: "2026.5.20\n", stderr: "" }
+          ],
+          metrics: { service: { gatewayState: "running" }, logs: zeroLogMetrics() }
+        },
+        {
+          id: "plugin-health",
+          results: [
+            { command: "ocm @kova-self-check -- plugins list", status: 0, durationMs: 200, stdout: "plugins ok\n", stderr: "" },
+            { command: "ocm @kova-self-check -- plugins update --all --dry-run", status: 0, durationMs: 250, stdout: "dry run ok\n", stderr: "" }
+          ],
+          metrics: { service: { gatewayState: "running" }, logs: zeroLogMetrics() }
+        },
+        {
+          id: "doctor-repair",
+          results: [
+            {
+              command: "node support/run-doctor-repair.mjs --env kova-self-check",
+              status: 0,
+              durationMs: 300,
+              stdout: JSON.stringify({
+                schemaVersion: "kova.doctorRepair.v1",
+                durationMs: 300,
+                status: 0,
+                doctorFixSucceeded: true,
+                doctorUnrepairedFindingCount: 0,
+                errors: []
+              }),
+              stderr: ""
+            },
+            { command: "ocm @kova-self-check -- status", status: 0, durationMs: 100, stdout: "running\n", stderr: "" }
+          ],
+          metrics: { service: { gatewayState: "running" }, logs: zeroLogMetrics() }
+        },
+        {
+          id: "update-retry",
+          results: [
+            { command: "ocm upgrade kova-self-check --runtime stable --json", status: 0, durationMs: 900, stdout: "{\"ok\":true}", stderr: "" },
+            { command: "ocm @kova-self-check -- --version", status: 0, durationMs: 100, stdout: "2026.5.20\n", stderr: "" }
+          ],
+          metrics: { service: { gatewayState: "running" }, logs: zeroLogMetrics() }
+        },
+        {
+          id: "rollback",
+          results: [
+            {
+              command: "node support/restore-first-ocm-upgrade-snapshot.mjs --env kova-self-check",
+              status: 0,
+              durationMs: 500,
+              stdout: JSON.stringify({ schemaVersion: "kova.ocmUpgradeSnapshotRestore.v1", snapshotId: "snap-1", restored: { ok: true } }),
+              stderr: ""
+            },
+            { command: "ocm @kova-self-check -- plugins list", status: 0, durationMs: 200, stdout: "plugins ok\n", stderr: "" }
+          ],
+          metrics: { service: { gatewayState: "running" }, logs: zeroLogMetrics() }
+        },
+        {
+          id: "state-rollback",
+          results: [{
+            command: "ocm env exec kova-self-check -- node support/dirty-plugin-state.mjs verify update-recovery-plugin-user",
+            status: 0,
+            durationMs: 100,
+            stdout: JSON.stringify({ ...dirtySummary, state: "update-recovery-plugin-user" }),
+            stderr: ""
+          }],
+          metrics: { service: { gatewayState: "running" }, logs: zeroLogMetrics() }
+        }
+      ],
+      finalMetrics: { service: { gatewayState: "running" }, logs: zeroLogMetrics() }
+    };
+    evaluateRecord(releaseRecord, {
+      id: "release-update-recovery",
+      thresholds: {
+        updateRetryVersionDrift: 0,
+        doctorFixSucceeded: 1,
+        doctorUnrepairedFindingCount: 0,
+        rollbackAvailable: 1,
+        rollbackSucceeded: 1,
+        pluginsUsableAfterUpgrade: 1,
+        pluginsUsableAfterRollback: 1,
+        rollbackPreservedPluginData: 1,
+        pluginLoadFailures: 0
+      }
+    }, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
+    assertEqual(releaseRecord.status, "PASS", "release recovery evidence status");
+    assertEqual(releaseRecord.measurements.doctorFixSucceeded, true, "doctor fix succeeded");
+    assertEqual(releaseRecord.measurements.doctorUnrepairedFindingCount, 0, "doctor unrepaired finding count");
+    assertEqual(releaseRecord.measurements.updateRetryVersionDrift, 0, "update retry version drift");
+    assertEqual(releaseRecord.measurements.rollbackAvailable, true, "rollback available");
+    assertEqual(releaseRecord.measurements.pluginsUsableAfterRollback, true, "plugins usable after rollback");
+
+    const missingDoctorEvidence = {
+      ...releaseRecord,
+      status: "PASS",
+      violations: [],
+      measurements: undefined,
+      phases: releaseRecord.phases.map((phase) => phase.id === "doctor-repair"
+        ? {
+            ...phase,
+            results: [{
+              command: "ocm @kova-self-check -- doctor --fix",
+              status: 0,
+              durationMs: 300,
+              stdout: "doctor ok\n",
+              stderr: ""
+            }]
+          }
+        : phase)
+    };
+    evaluateRecord(missingDoctorEvidence, {
+      id: "release-update-recovery",
+      thresholds: {
+        doctorFixSucceeded: 1,
+        doctorUnrepairedFindingCount: 0,
+        pluginLoadFailures: 0
+      }
+    }, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
+    assertEqual(missingDoctorEvidence.status, "FAIL", "missing doctor evidence status");
+    assertEqual(
+      missingDoctorEvidence.violations.some((violation) => violation.metric === "doctorFixSucceeded" || violation.metric === "doctorUnrepairedFindingCount"),
+      true,
+      "missing structured doctor evidence failed closed"
+    );
+
+    const unrepairedDoctor = {
+      ...releaseRecord,
+      status: "PASS",
+      violations: [],
+      measurements: undefined,
+      phases: releaseRecord.phases.map((phase) => phase.id === "doctor-repair"
+        ? {
+            ...phase,
+            results: phase.results.map((result) => result.command.includes("run-doctor-repair.mjs")
+              ? {
+                  ...result,
+                  status: 1,
+                  stdout: JSON.stringify({
+                    schemaVersion: "kova.doctorRepair.v1",
+                    durationMs: 300,
+                    status: 0,
+                    doctorFixSucceeded: false,
+                    doctorUnrepairedFindingCount: 2,
+                    errors: ["doctor left 2 unrepaired findings"]
+                  })
+                }
+              : result)
+          }
+        : phase)
+    };
+    evaluateRecord(unrepairedDoctor, {
+      id: "release-update-recovery",
+      thresholds: {
+        doctorFixSucceeded: 1,
+        doctorUnrepairedFindingCount: 0,
+        pluginLoadFailures: 0
+      }
+    }, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
+    assertEqual(unrepairedDoctor.status, "FAIL", "unrepaired doctor status");
+    assertEqual(
+      unrepairedDoctor.violations.some((violation) => violation.metric === "doctorFixSucceeded" || violation.metric === "doctorUnrepairedFindingCount"),
+      true,
+      "unrepaired doctor violation surfaced"
+    );
+
+    const missingRollback = {
+      ...releaseRecord,
+      status: "PASS",
+      violations: [],
+      measurements: undefined,
+      phases: releaseRecord.phases.map((phase) => phase.id === "rollback"
+        ? {
+            ...phase,
+            results: phase.results.map((result) => result.command.includes("restore-first")
+              ? { ...result, status: 1, stdout: "", stderr: "no OCM pre-upgrade snapshots found" }
+              : result)
+          }
+        : phase)
+    };
+    evaluateRecord(missingRollback, {
+      id: "release-update-recovery",
+      thresholds: {
+        rollbackAvailable: 1,
+        rollbackSucceeded: 1,
+        pluginsUsableAfterRollback: 1,
+        pluginLoadFailures: 0
+      }
+    }, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
+    assertEqual(missingRollback.status, "FAIL", "missing rollback status");
+    assertEqual(
+      missingRollback.violations.some((violation) => violation.metric === "rollbackAvailable" || violation.metric === "rollbackSucceeded"),
+      true,
+      "rollback violation surfaced"
+    );
+
+    const driftedRetry = {
+      ...releaseRecord,
+      status: "PASS",
+      violations: [],
+      measurements: undefined,
+      phases: releaseRecord.phases.map((phase) => phase.id === "update-retry"
+        ? {
+            ...phase,
+            results: phase.results.map((result) => / -- --version\b/.test(result.command)
+              ? { ...result, stdout: "2026.5.21\n" }
+              : result)
+          }
+        : phase)
+    };
+    evaluateRecord(driftedRetry, {
+      id: "release-update-recovery",
+      thresholds: { updateRetryVersionDrift: 0, pluginLoadFailures: 0 }
+    }, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
+    assertEqual(driftedRetry.status, "FAIL", "drifted retry status");
+    assertEqual(
+      driftedRetry.violations.some((violation) => violation.metric === "updateRetryVersionDrift"),
+      true,
+      "retry drift violation surfaced"
+    );
+
+    const lostRollbackFixture = {
+      ...releaseRecord,
+      status: "PASS",
+      violations: [],
+      measurements: undefined,
+      phases: releaseRecord.phases.map((phase) => phase.id === "state-rollback"
+        ? {
+            ...phase,
+            results: phase.results.map((result) => ({
+              ...result,
+              status: 1,
+              stdout: JSON.stringify({
+                ...dirtySummary,
+                state: "update-recovery-plugin-user",
+                ok: false,
+                failures: ["rollback fixture marker missing"]
+              })
+            }))
+          }
+        : phase)
+    };
+    evaluateRecord(lostRollbackFixture, {
+      id: "release-update-recovery",
+      thresholds: {
+        rollbackPreservedPluginData: 1,
+        pluginLoadFailures: 0
+      }
+    }, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
+    assertEqual(lostRollbackFixture.status, "FAIL", "lost rollback fixture status");
+    assertEqual(
+      lostRollbackFixture.violations.some((violation) => violation.metric === "rollbackPreservedPluginData"),
+      true,
+      "rollback fixture preservation violation surfaced"
+    );
+
+    const missingRollbackFixtureVerifier = {
+      ...releaseRecord,
+      status: "PASS",
+      violations: [],
+      measurements: undefined,
+      phases: releaseRecord.phases.filter((phase) => phase.id !== "state-rollback")
+    };
+    evaluateRecord(missingRollbackFixtureVerifier, {
+      id: "release-update-recovery",
+      thresholds: {
+        rollbackPreservedPluginData: 1,
+        pluginLoadFailures: 0
+      }
+    }, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
+    assertEqual(missingRollbackFixtureVerifier.status, "FAIL", "missing rollback fixture verifier status");
+    assertEqual(
+      missingRollbackFixtureVerifier.violations.some((violation) => violation.metric === "rollbackPreservedPluginData"),
+      true,
+      "missing rollback fixture verifier failed closed"
+    );
+
+    const unusableRollbackPlugins = {
+      ...releaseRecord,
+      status: "PASS",
+      violations: [],
+      measurements: undefined,
+      phases: releaseRecord.phases.map((phase) => phase.id === "rollback"
+        ? {
+            ...phase,
+            results: phase.results.map((result) => / -- plugins list\b/.test(result.command)
+              ? { ...result, status: 1, stdout: "", stderr: "plugin list failed" }
+              : result)
+          }
+        : phase)
+    };
+    evaluateRecord(unusableRollbackPlugins, {
+      id: "release-update-recovery",
+      thresholds: { pluginsUsableAfterRollback: 1, pluginLoadFailures: 0 }
+    }, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
+    assertEqual(unusableRollbackPlugins.status, "FAIL", "unusable rollback plugins status");
+    assertEqual(
+      unusableRollbackPlugins.violations.some((violation) => violation.metric === "pluginsUsableAfterRollback"),
+      true,
+      "post-rollback plugin usability violation surfaced"
+    );
+
+    return {
+      id: "plugin-recovery-evidence-evaluation",
+      status: "PASS",
+      command: "evaluate synthetic dirty plugin and release recovery evidence",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "plugin-recovery-evidence-evaluation",
+      status: "FAIL",
+      command: "evaluate synthetic dirty plugin and release recovery evidence",
       durationMs: 0,
       message: error.message
     };
@@ -7964,15 +9049,22 @@ async function repeatedWorkAuditCheck() {
     true,
     "repeated work audit duplicate status command"
   );
+  const allowedExplicitEvidenceScenarios = new Set([
+    "adversarial-input-openai-compatible",
+    "agent-provider-protocol-failure",
+    "agent-provider-random-disconnect",
+    "cron-runtime",
+    "dirty-plugin-state",
+    "exec-tool-safety",
+    "mcp-tool-call",
+    "plugin-legacy-unsafe-memory",
+    "release-update-recovery",
+    "tool-failure-containment"
+  ]);
   assertEqual(
-    audit.explicitEvidenceCommands.some((entry) => entry.kind === "logs"),
-    false,
-    "repeated work audit log evidence commands removed"
-  );
-  assertEqual(
-    audit.explicitEvidenceCommands.length,
-    0,
-    "repeated work audit explicit evidence commands empty"
+    audit.explicitEvidenceCommands.every((entry) => allowedExplicitEvidenceScenarios.has(entry.scenario)),
+    true,
+    "repeated work audit explicit evidence commands are limited to failure-state scenarios"
   );
   assertEqual(
     audit.commandReceiptLocks.some((lock) => lock.scenario === "release-runtime-startup"),
@@ -7992,6 +9084,65 @@ async function repeatedWorkAuditCheck() {
   return {
     id: "repeated-work-audit",
     status: "PASS"
+  };
+}
+
+async function rollingUpgradeResolverCheck(tmp) {
+  const dir = await mkdtemp(join(tmp, "rolling-upgrade-"));
+  const timeFile = join(dir, "time.json");
+  await writeFile(timeFile, `${JSON.stringify({
+    time: {
+      created: "2026-04-01T00:00:00.000Z",
+      "2026.4.15": "2026-04-15T00:00:00.000Z",
+      "2026.5.1": "2026-05-01T00:00:00.000Z",
+      "2026.5.14": "2026-05-14T12:00:00.000Z",
+      "2026.5.20": "2026-05-20T00:00:00.000Z",
+      modified: "2026-05-21T00:00:00.000Z"
+    }
+  })}\n`, "utf8");
+  const ocmPath = join(dir, "ocm");
+  await writeFile(ocmPath, `#!/bin/sh\nprintf '{"ok":true,"args":['\nfirst=1\nfor arg in "$@"; do\n  if [ "$first" = 0 ]; then printf ','; fi\n  first=0\n  node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' -- "$arg"\ndone\nprintf ']}\\n'\n`, "utf8");
+  await chmod(ocmPath, 0o755);
+
+  const day = await runCommand(
+    `node support/resolve-openclaw-release-age.mjs --time-file ${quoteShell(timeFile)} --age day --now 2026-05-21T12:00:00.000Z`,
+    { timeoutMs: 30000 }
+  );
+  if (day.status !== 0 || day.stdout.trim() !== "2026.5.20") {
+    return {
+      id: "rolling-upgrade-resolver",
+      status: "FAIL",
+      command: "node support/resolve-openclaw-release-age.mjs --age day",
+      durationMs: day.durationMs,
+      message: `day resolver expected 2026.5.20, got ${JSON.stringify(day.stdout.trim() || day.stderr.trim())}`
+    };
+  }
+  const result = await runCommand(
+    `PATH=${quoteShell(dir)}:$PATH node support/run-openclaw-release-age-upgrade.mjs --env kova-self-check --age month --now 2026-05-21T12:00:00.000Z --time-file ${quoteShell(timeFile)} --json`,
+    { timeoutMs: 30000, maxOutputChars: 1000000 }
+  );
+  let upgrade = null;
+  try {
+    upgrade = JSON.parse(result.stdout);
+  } catch {
+    upgrade = null;
+  }
+  const args = upgrade?.ocm?.json?.args ?? [];
+  const versionFlagIndex = args.indexOf("--version");
+  if (result.status !== 0 || upgrade?.version !== "2026.4.15" || args[versionFlagIndex + 1] !== "2026.4.15") {
+    return {
+      id: "rolling-upgrade-resolver",
+      status: "FAIL",
+      command: result.command,
+      durationMs: result.durationMs,
+      message: result.stderr.trim() || result.stdout.trim() || `exit ${result.status}`
+    };
+  }
+  return {
+    id: "rolling-upgrade-resolver",
+    status: "PASS",
+    command: "resolve day/week/month source versions and run fake ocm upgrade",
+    durationMs: day.durationMs + result.durationMs
   };
 }
 
@@ -8755,6 +9906,93 @@ async function resourceRoleAttributionCheck(tmp) {
       status: "FAIL",
       command,
       durationMs: result.durationMs,
+      message: error.message
+    };
+  }
+}
+
+function resourceConfiguredRoleMissingCheck() {
+  try {
+    const record = {
+      scenario: "mcp-tool-call",
+      status: "PASS",
+      phases: [{
+        id: "mcp",
+        measurementScope: "product",
+        results: [{
+          command: "node support/mcp-tool-call-smoke.mjs --env kova-self-check",
+          status: 0,
+          durationMs: 100,
+          resourceSamples: {
+            schemaVersion: "kova.resourceSamples.v1",
+            sampleCount: 1,
+            peakTotalRssMb: 1060,
+            maxTotalCpuPercent: 120,
+            peakCommandTreeRssMb: 410,
+            peakGatewayRssMb: 650,
+            byRole: {
+              gateway: { peakRssMb: 650, maxCpuPercent: 80, peakProcessCount: 1 },
+              "gateway-tree": { peakRssMb: 650, maxCpuPercent: 80, peakProcessCount: 1 },
+              "tool-runtime": { peakRssMb: 410, maxCpuPercent: 120, peakProcessCount: 1 },
+              "command-tree": { peakRssMb: 410, maxCpuPercent: 120, peakProcessCount: 1 }
+            },
+            topRolesByRss: [
+              { role: "gateway", peakRssMb: 650, maxCpuPercent: 80 },
+              { role: "tool-runtime", peakRssMb: 410, maxCpuPercent: 120 }
+            ],
+            topRolesByCpu: [
+              { role: "tool-runtime", peakRssMb: 410, maxCpuPercent: 120 },
+              { role: "gateway", peakRssMb: 650, maxCpuPercent: 80 }
+            ],
+            topByRss: [],
+            topByCpu: []
+          }
+        }]
+      }],
+      finalMetrics: {
+        service: { gatewayState: "running" },
+        logs: zeroLogMetrics()
+      }
+    };
+    evaluateRecord(record, { thresholds: { peakRssMb: 900 } }, {
+      surface: {
+        resourcePrimaryRole: "mcp-runtime",
+        thresholds: {},
+        roleThresholds: {
+          gateway: { peakRssMb: 850 },
+          "tool-runtime": { peakRssMb: 500 }
+        },
+        diagnostics: { expectedSpans: [] }
+      },
+      targetPlan: { kind: "runtime" }
+    });
+    assertEqual(record.status, "FAIL", "missing configured primary role fails active resource threshold");
+    assertEqual(record.measurements.peakRssMb, null, "missing primary role has no headline RSS value");
+    assertEqual(record.measurements.resourceGateKind, "role-missing", "missing primary role gate kind");
+    assertEqual(record.measurements.resourcePrimaryRole, "mcp-runtime", "configured primary role retained");
+    assertEqual(record.measurements.resourceGateAttribution?.topRolesByRss?.[0]?.role, "gateway", "top RSS role retained for diagnosis");
+    assertEqual(
+      record.violations?.some((violation) => violation.metric === "resourceByRole.mcp-runtime.missing"),
+      true,
+      "missing configured role violation surfaced"
+    );
+    assertEqual(
+      record.violations?.some((violation) => violation.metric === "peakRssMb"),
+      false,
+      "aggregate RSS is not reported as component RSS"
+    );
+    return {
+      id: "resource-configured-role-missing",
+      status: "PASS",
+      command: "evaluate missing configured resource role RSS attribution",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "resource-configured-role-missing",
+      status: "FAIL",
+      command: "evaluate missing configured resource role RSS attribution",
+      durationMs: 0,
       message: error.message
     };
   }
@@ -10915,7 +12153,7 @@ async function mockAuthOpenClawConfigCheck(tmp) {
   await writeFile(portFile, "12345\n", "utf8");
   const command = [
     `OPENCLAW_HOME=${quoteShell(home)}`,
-    `node support/configure-openclaw-mock-auth.mjs --port-file ${quoteShell(portFile)} --gateway-http-endpoint chatCompletions`
+    `node support/configure-openclaw-mock-auth.mjs --port-file ${quoteShell(portFile)} --skip-health-check --gateway-http-endpoint chatCompletions`
   ].join(" ");
   const result = await runCommand(command, { timeoutMs: 30000, maxOutputChars: 1000000 });
   try {
@@ -11303,6 +12541,27 @@ async function jsonCommandCheck(id, command, validate) {
       status: "FAIL",
       command,
       durationMs: result.durationMs,
+      message: error.message
+    };
+  }
+}
+
+async function inlineCheck(id, validate) {
+  const startedAt = Date.now();
+  try {
+    await validate();
+    return {
+      id,
+      status: "PASS",
+      command: "inline self-check",
+      durationMs: Date.now() - startedAt
+    };
+  } catch (error) {
+    return {
+      id,
+      status: "FAIL",
+      command: "inline self-check",
+      durationMs: Date.now() - startedAt,
       message: error.message
     };
   }

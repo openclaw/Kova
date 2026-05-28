@@ -4,18 +4,18 @@
   "runId": "kova-<runId>",
   "reportGeneratedAt": "<iso>",
   "mode": "execution",
-  "target": "local-build:<home>/WorkSpace/ShakkerNerd/OpenSource/OpenClaw/shakker-claw",
+  "target": "runtime:stable",
   "from": null,
   "platform": {
     "os": "darwin",
+    "release": "25.4.0",
     "arch": "arm64",
-    "release": "25.3.0",
-    "node": "v24.13.0"
+    "node": "v26.0.0"
   },
   "decision": {
     "verdict": "FAIL",
     "ok": false,
-    "reason": "peak RSS 904.5 MB exceeded threshold 900 MB",
+    "reason": "gateway peak RSS 950 MB exceeded threshold 800 MB",
     "blockingFindingCount": 2,
     "warningFindingCount": 0
   },
@@ -24,40 +24,58 @@
     "state": {
       "id": "fresh",
       "title": "Fresh OpenClaw User",
-      "objective": "A new isolated OpenClaw home with no intentional state mutations beyond normal scenario provisioning."
+      "objective": "A new isolated OpenClaw home."
     },
-    "repeat": null,
+    "repeat": 1,
     "parallel": null,
-    "auth": null,
-    "targetCleanup": {
-      "runtimeName": "kova-local-1777521905334",
-      "status": "removed",
-      "reason": null,
-      "durationMs": 2607
+    "auth": {
+      "mode": "mock"
+    },
+    "targetCleanup": null,
+    "networkFrontage": {
+      "schemaVersion": "kova.networkFrontage.v1",
+      "mode": "port",
+      "enabled": false,
+      "allocations": []
     }
   },
   "coverage": {
     "recordCount": 1,
     "scenarioCount": 1,
     "scenarios": [
-      "release-runtime-startup"
+      "fresh-install"
     ],
     "stateCount": 1,
     "states": [
       "fresh"
     ],
-    "surfaceCount": 0,
-    "surfaces": []
+    "surfaceCount": 1,
+    "surfaces": [
+      "fresh-install"
+    ]
   },
   "proof": {
     "recordCount": 1,
-    "completeness": {},
-    "requiredTotal": 0,
+    "completeness": {
+      "complete": 1
+    },
+    "requiredTotal": 1,
     "requiredMissing": 0,
-    "requiredFailed": 0,
+    "requiredFailed": 1,
     "byCategory": {},
     "missingRequired": [],
-    "failedRequired": []
+    "failedRequired": [
+      {
+        "scenario": "fresh-install",
+        "state": "fresh",
+        "sampleIndex": 1,
+        "id": "fresh-install-resource-proof",
+        "status": "failed",
+        "summary": "gateway RSS stayed under threshold",
+        "reason": "gateway peak RSS 950 MB exceeded threshold 800 MB",
+        "artifactPath": null
+      }
+    ]
   },
   "channelCapabilities": {
     "total": 0,
@@ -72,89 +90,90 @@
     "missingRequired": []
   },
   "gate": null,
-  "performance": null,
+  "performance": {
+    "schemaVersion": "kova.performance.v1",
+    "repeat": 1,
+    "groupCount": 1,
+    "unstableGroupCount": 0,
+    "profiledRunCount": 0,
+    "baselineRegressionCount": null,
+    "missingBaselineCount": null,
+    "baselineReviewOk": null,
+    "baselineReviewBlockerCount": null,
+    "savedBaselinePath": null,
+    "regressions": []
+  },
   "failureBrief": {
     "decision": "FAIL",
-    "primaryBlocker": "release-runtime-startup/fresh",
-    "why": "peak RSS 904.5 MB exceeded threshold 900 MB",
+    "primaryBlocker": "fresh-install/fresh",
+    "why": "gateway peak RSS 950 MB exceeded threshold 800 MB",
     "evidence": [
-      "gatewayRssMb: 348.8",
-      "cpuPercentMax: 150.1",
-      "resourcePeakCpuAtMs: 1437",
-      "topCpuFunction: (idle) 309157.19ms",
-      "topHeapFunction: readFileSync 19.2MB",
-      "missingDependencyErrors: 0",
-      "pluginLoadFailures: 0",
-      "CPU peaked at 150.1% around 1437ms"
+      "readinessHealthReadyMs: 1200",
+      "readinessListeningMs: 800",
+      "gatewayRssMb: 950",
+      "cpuPercentMax: 90",
+      "gateway: 950MB RSS, 60% CPU",
+      "gateway peak RSS 950 MB exceeded threshold 800 MB"
     ],
     "likelyOwner": "OpenClaw",
-    "fixerPrompt": "Investigate OpenClaw release gate failure release-runtime-startup/fresh. Kova decision was FAIL on darwin-arm64. Primary evidence: peak RSS 904.5 MB exceeded threshold 900 MB. Measurements: gatewayRssMb: 348.8; cpuPercentMax: 150.1; resourcePeakCpuAtMs: 1437; topCpuFunction: (idle) 309157.19ms; topHeapFunction: readFileSync 19.2MB; missingDependencyErrors: 0; pluginLoadFailures: 0; CPU peaked at 150.1% around 1437ms. Dependency/plugin load errors were zero, so focus on startup, memory, CPU, gateway readiness, runtime deps staging, provider/model load, and UI asset initialization. Likely owner area: OpenClaw."
+    "fixerPrompt": "Investigate OpenClaw release gate failure fresh-install/fresh. Kova decision was FAIL on darwin-arm64. Primary evidence: gateway peak RSS 950 MB exceeded threshold 800 MB. Measurements: readinessHealthReadyMs: 1200; readinessListeningMs: 800; gatewayRssMb: 950; cpuPercentMax: 90; gateway: 950MB RSS, 60% CPU; gateway peak RSS 950 MB exceeded threshold 800 MB. Likely owner area: OpenClaw."
   },
   "recommendedNextScenario": {
-    "scenario": "release-runtime-startup",
+    "scenario": "fresh-install",
     "state": "fresh",
-    "target": "local-build:<home>/WorkSpace/ShakkerNerd/OpenSource/OpenClaw/shakker-claw",
-    "reason": "peak RSS 904.5 MB exceeded threshold 900 MB",
-    "command": "node bin/kova.mjs run --target local-build:<home>/WorkSpace/ShakkerNerd/OpenSource/OpenClaw/shakker-claw --scenario release-runtime-startup --state fresh --execute --profile-on-failure --retain-on-failure --json"
+    "target": "runtime:stable",
+    "reason": "gateway peak RSS 950 MB exceeded threshold 800 MB",
+    "command": "node bin/kova.mjs run --target runtime:stable --scenario fresh-install --state fresh --execute --profile-on-failure --retain-on-failure --json"
   },
   "statuses": {
     "FAIL": 1
   },
   "findings": [
     {
-      "id": "release-runtime-startup:fresh:peakRssMb:1",
+      "id": "fresh-install:fresh:resourceByRole.gateway.peakRssMb:1",
       "severity": "fail",
       "kind": "violation",
-      "scenario": "release-runtime-startup",
+      "scenario": "fresh-install",
       "state": "fresh",
       "sampleIndex": 1,
       "ownerArea": "OpenClaw",
-      "metric": "peakRssMb",
-      "summary": "peak RSS 904.5 MB exceeded threshold 900 MB",
+      "metric": "resourceByRole.gateway.peakRssMb",
+      "summary": "gateway peak RSS 950 MB exceeded threshold 800 MB",
       "expected": null,
-      "actual": 904.5,
+      "actual": 950,
       "evidence": [
-        "gatewayRssMb: 348.8",
-        "cpuPercentMax: 150.1",
-        "resourcePeakCpuAtMs: 1437",
-        "topCpuFunction: (idle) 309157.19ms",
-        "topHeapFunction: readFileSync 19.2MB",
-        "missingDependencyErrors: 0",
-        "pluginLoadFailures: 0",
-        "CPU peaked at 150.1% around 1437ms"
+        "readinessHealthReadyMs: 1200",
+        "readinessListeningMs: 800",
+        "gatewayRssMb: 950",
+        "cpuPercentMax: 90",
+        "gateway: 950MB RSS, 60% CPU",
+        "gateway peak RSS 950 MB exceeded threshold 800 MB"
       ]
     },
     {
-      "id": "release-runtime-startup:fresh:readinessClassification:1",
-      "severity": "fail",
-      "kind": "violation",
-      "scenario": "release-runtime-startup",
+      "id": "fresh-install:fresh:fresh-install-resource-proof:1",
+      "severity": "incomplete",
+      "kind": "evidence",
+      "scenario": "fresh-install",
       "state": "fresh",
       "sampleIndex": 1,
       "ownerArea": "OpenClaw",
-      "metric": "readinessClassification",
-      "summary": "gateway hard failure: gateway TCP socket never accepted connections before the hard deadline",
-      "expected": null,
-      "actual": "hard-failure",
+      "metric": null,
+      "summary": "undefined proof failed: gateway RSS stayed under threshold",
+      "expected": "required proof obligation passes",
+      "actual": "proof collection failed",
       "evidence": [
-        "gatewayRssMb: 348.8",
-        "cpuPercentMax: 150.1",
-        "resourcePeakCpuAtMs: 1437",
-        "topCpuFunction: (idle) 309157.19ms",
-        "topHeapFunction: readFileSync 19.2MB",
-        "missingDependencyErrors: 0",
-        "pluginLoadFailures: 0",
-        "CPU peaked at 150.1% around 1437ms"
+        "gateway peak RSS 950 MB exceeded threshold 800 MB"
       ]
     }
   ],
   "groups": [
     {
-      "key": "release-runtime-startup|unknown|fresh",
-      "scenario": "release-runtime-startup",
-      "surface": null,
+      "key": "fresh-install|fresh-install|fresh",
+      "scenario": "fresh-install",
+      "surface": "fresh-install",
       "state": "fresh",
-      "title": "Release Runtime Startup",
+      "title": "Fresh Install",
       "sampleCount": 1,
       "statuses": {
         "FAIL": 1
@@ -166,17 +185,16 @@
   "samples": [
     {
       "sampleIndex": 1,
-      "repeatTotal": null,
-      "scenario": "release-runtime-startup",
-      "surface": null,
-      "title": "Release Runtime Startup",
+      "repeatTotal": 1,
+      "scenario": "fresh-install",
+      "surface": "fresh-install",
+      "title": "Fresh Install",
       "status": "FAIL",
-      "cleanup": "destroyed",
-      "target": "local-build:<home>/WorkSpace/ShakkerNerd/OpenSource/OpenClaw/shakker-claw",
+      "cleanup": "retained",
+      "target": "runtime:stable",
       "state": {
         "id": "fresh",
-        "title": "Fresh OpenClaw User",
-        "objective": "A new isolated OpenClaw home with no intentional state mutations beyond normal scenario provisioning."
+        "title": "Fresh OpenClaw User"
       },
       "ownerArea": "OpenClaw",
       "failedCommand": null,
@@ -184,29 +202,44 @@
       "failureReason": null,
       "measurements": {
         "readiness": {
-          "listeningReadyAtMs": null,
-          "healthReadyAtMs": null,
-          "classification": null,
-          "reason": null
+          "listeningReadyAtMs": 800,
+          "healthReadyAtMs": 1200,
+          "classification": "ready",
+          "reason": "gateway became healthy within the readiness threshold"
         },
         "health": {
-          "startupP95Ms": null,
-          "postReadyP95Ms": null,
-          "finalFailures": null,
-          "totalFailures": null,
-          "slowestSample": null
+          "startupP95Ms": 200,
+          "postReadyP95Ms": 20,
+          "finalFailures": 0,
+          "totalFailures": 0,
+          "slowestSample": {
+            "phaseId": "provision",
+            "durationMs": 200
+          }
         },
         "resources": {
-          "peakRssMb": 348.8,
-          "cpuPercentMax": 150.1,
+          "peakRssMb": 950,
+          "cpuPercentMax": 90,
           "primaryRole": null,
           "gateKind": null,
-          "sampleCount": 20,
-          "commandTreePeakRssMb": 555.7,
-          "gatewayPeakRssMb": 348.8,
-          "trackedPeakRssMb": null,
-          "topRolesByRss": [],
-          "topRolesByCpu": []
+          "sampleCount": 3,
+          "commandTreePeakRssMb": null,
+          "gatewayPeakRssMb": 950,
+          "trackedPeakRssMb": 950,
+          "topRolesByRss": [
+            {
+              "role": "gateway",
+              "peakRssMb": 950,
+              "maxCpuPercent": 60
+            }
+          ],
+          "topRolesByCpu": [
+            {
+              "role": "gateway",
+              "peakRssMb": 950,
+              "maxCpuPercent": 60
+            }
+          ]
         },
         "agent": {
           "turnMs": null,
@@ -229,40 +262,33 @@
           "agentCli": null
         },
         "plugins": {
-          "missingDependencyErrors": 0,
-          "pluginLoadFailures": 0,
+          "missingDependencyErrors": null,
+          "pluginLoadFailures": null,
           "officialPluginInstallOk": null,
           "officialPluginInstallMs": null,
           "officialPluginSecurityBlocks": null
         },
         "diagnostics": {
-          "timelineAvailable": true,
-          "timelineEventCount": 55,
-          "timelineParseErrors": 0,
-          "slowestSpanName": "plugins.metadata.scan",
-          "slowestSpanMs": 42.97,
+          "timelineAvailable": null,
+          "timelineEventCount": null,
+          "timelineParseErrors": null,
+          "slowestSpanName": null,
+          "slowestSpanMs": null,
           "openSpanCount": null,
           "openRequiredSpanCount": null,
           "missingRequiredSpanCount": null,
           "openSpans": [],
-          "eventLoopMaxMs": 0,
+          "eventLoopMaxMs": null,
           "providerRequestMaxMs": null
         }
       },
       "violations": [
         {
-          "kind": "threshold",
-          "metric": "peakRssMb",
-          "expected": "<= 900",
-          "actual": 904.5,
-          "message": "peak RSS 904.5 MB exceeded threshold 900 MB"
-        },
-        {
-          "kind": "gateway",
-          "metric": "readinessClassification",
-          "expected": "ready",
-          "actual": "hard-failure",
-          "message": "gateway hard failure: gateway TCP socket never accepted connections before the hard deadline"
+          "kind": "resource",
+          "metric": "resourceByRole.gateway.peakRssMb",
+          "expected": "<= 800",
+          "actual": 950,
+          "message": "gateway peak RSS 950 MB exceeded threshold 800 MB"
         }
       ],
       "artifactRoot": null
@@ -272,17 +298,16 @@
   "scenarios": [
     {
       "sampleIndex": 1,
-      "repeatTotal": null,
-      "scenario": "release-runtime-startup",
-      "surface": null,
-      "title": "Release Runtime Startup",
+      "repeatTotal": 1,
+      "scenario": "fresh-install",
+      "surface": "fresh-install",
+      "title": "Fresh Install",
       "status": "FAIL",
-      "cleanup": "destroyed",
-      "target": "local-build:<home>/WorkSpace/ShakkerNerd/OpenSource/OpenClaw/shakker-claw",
+      "cleanup": "retained",
+      "target": "runtime:stable",
       "state": {
         "id": "fresh",
-        "title": "Fresh OpenClaw User",
-        "objective": "A new isolated OpenClaw home with no intentional state mutations beyond normal scenario provisioning."
+        "title": "Fresh OpenClaw User"
       },
       "ownerArea": "OpenClaw",
       "failedCommand": null,
@@ -290,29 +315,44 @@
       "failureReason": null,
       "measurements": {
         "readiness": {
-          "listeningReadyAtMs": null,
-          "healthReadyAtMs": null,
-          "classification": null,
-          "reason": null
+          "listeningReadyAtMs": 800,
+          "healthReadyAtMs": 1200,
+          "classification": "ready",
+          "reason": "gateway became healthy within the readiness threshold"
         },
         "health": {
-          "startupP95Ms": null,
-          "postReadyP95Ms": null,
-          "finalFailures": null,
-          "totalFailures": null,
-          "slowestSample": null
+          "startupP95Ms": 200,
+          "postReadyP95Ms": 20,
+          "finalFailures": 0,
+          "totalFailures": 0,
+          "slowestSample": {
+            "phaseId": "provision",
+            "durationMs": 200
+          }
         },
         "resources": {
-          "peakRssMb": 348.8,
-          "cpuPercentMax": 150.1,
+          "peakRssMb": 950,
+          "cpuPercentMax": 90,
           "primaryRole": null,
           "gateKind": null,
-          "sampleCount": 20,
-          "commandTreePeakRssMb": 555.7,
-          "gatewayPeakRssMb": 348.8,
-          "trackedPeakRssMb": null,
-          "topRolesByRss": [],
-          "topRolesByCpu": []
+          "sampleCount": 3,
+          "commandTreePeakRssMb": null,
+          "gatewayPeakRssMb": 950,
+          "trackedPeakRssMb": 950,
+          "topRolesByRss": [
+            {
+              "role": "gateway",
+              "peakRssMb": 950,
+              "maxCpuPercent": 60
+            }
+          ],
+          "topRolesByCpu": [
+            {
+              "role": "gateway",
+              "peakRssMb": 950,
+              "maxCpuPercent": 60
+            }
+          ]
         },
         "agent": {
           "turnMs": null,
@@ -335,40 +375,33 @@
           "agentCli": null
         },
         "plugins": {
-          "missingDependencyErrors": 0,
-          "pluginLoadFailures": 0,
+          "missingDependencyErrors": null,
+          "pluginLoadFailures": null,
           "officialPluginInstallOk": null,
           "officialPluginInstallMs": null,
           "officialPluginSecurityBlocks": null
         },
         "diagnostics": {
-          "timelineAvailable": true,
-          "timelineEventCount": 55,
-          "timelineParseErrors": 0,
-          "slowestSpanName": "plugins.metadata.scan",
-          "slowestSpanMs": 42.97,
+          "timelineAvailable": null,
+          "timelineEventCount": null,
+          "timelineParseErrors": null,
+          "slowestSpanName": null,
+          "slowestSpanMs": null,
           "openSpanCount": null,
           "openRequiredSpanCount": null,
           "missingRequiredSpanCount": null,
           "openSpans": [],
-          "eventLoopMaxMs": 0,
+          "eventLoopMaxMs": null,
           "providerRequestMaxMs": null
         }
       },
       "violations": [
         {
-          "kind": "threshold",
-          "metric": "peakRssMb",
-          "expected": "<= 900",
-          "actual": 904.5,
-          "message": "peak RSS 904.5 MB exceeded threshold 900 MB"
-        },
-        {
-          "kind": "gateway",
-          "metric": "readinessClassification",
-          "expected": "ready",
-          "actual": "hard-failure",
-          "message": "gateway hard failure: gateway TCP socket never accepted connections before the hard deadline"
+          "kind": "resource",
+          "metric": "resourceByRole.gateway.peakRssMb",
+          "expected": "<= 800",
+          "actual": 950,
+          "message": "gateway peak RSS 950 MB exceeded threshold 800 MB"
         }
       ],
       "artifactRoot": null

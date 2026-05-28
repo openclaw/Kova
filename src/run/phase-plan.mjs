@@ -12,6 +12,7 @@ import {
   withPhaseContract
 } from "../measurement-contract.mjs";
 import { ocmEnvDestroy, ocmRuntimeBuildLocal } from "../ocm/commands.mjs";
+import { plannedNetworkFrontage } from "../network-frontage.mjs";
 import { repoRoot } from "../paths.mjs";
 import {
   materializeLifecycleCommands,
@@ -77,6 +78,18 @@ export function buildPlannedPhases(scenario, context, envName, artifactDir, auth
     const cleanupPhase = buildStateLifecyclePhase(context, envName, scenario, "cleanup", context.state?.cleanup ?? [], artifactDir);
     if (cleanupPhase) {
       phases.push(cleanupPhase);
+    }
+    const frontage = plannedNetworkFrontage(context, envName);
+    if (frontage.enabled) {
+      phases.push({
+        id: "network-frontage-cleanup",
+        title: "Network Frontage Cleanup",
+        intent: "Stop the per-env loopback frontage proxy before destroying the disposable Kova env.",
+        measurementScope: "cleanup",
+        driverKind: "kova",
+        commands: [`kova network frontage stop ${frontage.frontageHost}:<frontage-port>`],
+        evidence: ["network frontage proxy stopped"]
+      });
     }
     phases.push({
       id: "env-cleanup",
@@ -277,7 +290,11 @@ export function phaseSupportsAuthSetup(phase, authPolicy) {
     return false;
   }
   const commands = phase.commands ?? [];
-  return commands.some((command) => /\bocm\s+(start|env clone)\b/.test(command));
+  return commands.some((command) => (
+    /\bocm\s+env\s+clone\b/.test(command) ||
+    (/\bocm\s+start\b/.test(command) && !/\s--no-service(?:\s|$)/.test(command)) ||
+    /\bplugins\s+install\b/.test(command)
+  ));
 }
 
 export function targetSetupCommand(targetPlan) {

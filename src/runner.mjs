@@ -31,10 +31,12 @@ import { envNameFor } from "./run/env-name.mjs";
 import { collectEnvMetrics } from "./metrics.mjs";
 import { collectorArtifactDirs, prepareCollectorArtifactDirs } from "./collectors/artifacts.mjs";
 import {
+  isAgentMessageCommand,
   phaseResultStatus
 } from "./measurement-contract.mjs";
 import { metricOptions } from "./run/metric-options.mjs";
 import { artifactsDir } from "./paths.mjs";
+import { plannedNetworkFrontage, stopNetworkFrontage } from "./network-frontage.mjs";
 import { assertKovaEnvName } from "./safety.mjs";
 import { join } from "node:path";
 export { createRunId } from "./run/run-id.mjs";
@@ -59,6 +61,7 @@ export function buildDryRunRecord(scenario, context) {
     thresholds: scenario.thresholds,
     cleanup: context.keepEnv ? "retained" : "planned",
     auth: authPolicy.summary,
+    networkFrontage: plannedNetworkFrontage(context, envName),
     profiling: profilingSummary(context),
     collectorArtifactDirs: collectorArtifactDirs(artifactDir),
     phases: buildPlannedPhases(scenario, context, envName, artifactDir, authPolicy)
@@ -146,8 +149,13 @@ export async function executeScenario(scenario, context) {
         for (const [commandIndex, command] of plannedPhase.commands.entries()) {
           const result = await runScenarioCommand(command, context, envName, artifactDir, phase.id, commandIndex, authPolicy);
           results.push(result);
+          record.networkFrontage = context.networkFrontageAllocation ?? record.networkFrontage;
           appendChannelCapabilityEvidence(record, result, phase.id, commandIndex);
-          if (result.status !== 0) {
+          if (result.status !== 0 && isExpectedAgentFailureCommand(phase, result)) {
+            result.evidenceStatus = "passed";
+            result.evidenceReason = "expected agent failure command exited nonzero";
+          }
+          if (result.status !== 0 && !isExpectedAgentFailureCommand(phase, result)) {
             scenarioFailed = true;
             record.status = classifyCommandFailure(result);
             break;
@@ -210,6 +218,22 @@ export async function executeScenario(scenario, context) {
     await collectPreCleanupEvidence(record, scenario, context, envName, artifactDir, authPolicy);
 
     const shouldRetain = context.keepEnv || (context.retainOnFailure && record.status !== "PASS");
+    const networkCleanup = await stopNetworkFrontage(context);
+    if (networkCleanup) {
+      record.phases.push({
+        id: "network-frontage-cleanup",
+        title: "Network Frontage Cleanup",
+        intent: "Stop the per-env loopback frontage proxy before destroying or retaining the Kova env.",
+        measurementScope: "cleanup",
+        driverKind: "kova",
+        commands: [networkCleanup.command],
+        evidence: ["network frontage proxy stopped"],
+        results: [networkCleanup]
+      });
+      if (networkCleanup.status !== 0 && record.status === "PASS") {
+        record.status = "BLOCKED";
+      }
+    }
     if (!shouldRetain) {
       context.onPhase?.("cleanup");
       const authCleanupPhase = await executeAuthPhase(
@@ -244,6 +268,7 @@ export async function executeScenario(scenario, context) {
       record.cleanup = "retained";
       record.retainedReason = context.keepEnv ? "keep-env" : "failure";
     }
+    record.networkFrontage = context.networkFrontageAllocation ?? record.networkFrontage;
 
     await attachPostCleanupEvidence(record, scenario, context, artifactDir);
   }
@@ -284,6 +309,13 @@ function classifyEnvDestroyCleanup(result) {
   }
 
   return "destroy-failed";
+}
+
+function isExpectedAgentFailureCommand(phase, result) {
+  return phase?.expectedAgentFailure === true &&
+    result?.timedOut !== true &&
+    typeof result?.command === "string" &&
+    isAgentMessageCommand(result.command);
 }
 
 function shouldApplyAuthAfterPhase(phase, authPolicy, record) {
@@ -336,6 +368,9 @@ function summarizeOfficialPlugins(plugins) {
 }
 
 function classifyCommandFailure(result) {
+  if (result.harnessBlocker) {
+    return "BLOCKED";
+  }
   const structuredStatus = commandFailureRecordStatus(result);
   if (structuredStatus) {
     return structuredStatus;

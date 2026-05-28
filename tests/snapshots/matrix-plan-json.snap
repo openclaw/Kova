@@ -4,8 +4,8 @@
   "platform": {
     "os": "darwin",
     "arch": "arm64",
-    "release": "25.3.0",
-    "node": "v24.13.0"
+    "release": "25.5.0",
+    "node": "v26.0.0"
   },
   "profile": {
     "id": "smoke",

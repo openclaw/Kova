@@ -15,6 +15,7 @@ export function buildRunContext({
   controls = null,
   targetSetup = { completed: false }
 }) {
+  const networkFrontage = controls?.networkFrontage ?? flags.networkFrontage ?? flags.network_frontage_controls ?? null;
   return {
     target,
     targetPlan,
@@ -41,6 +42,7 @@ export function buildRunContext({
     processRoles: registry.processRoles,
     surfacesById: Object.fromEntries(registry.surfaces.map((surface) => [surface.id, surface])),
     targetSetup,
-    auth
+    auth,
+    networkFrontage
   };
 }

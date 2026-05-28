@@ -1,0 +1,16 @@
+{
+  "id": "kova-legacy-unsafe-memory",
+  "activation": {
+    "onStartup": true
+  },
+  "name": "Kova Legacy Unsafe Memory",
+  "description": "Compatibility fixture for legacy plugins that relied on unsafe buffer behavior and must now fail closed without taking down OpenClaw.",
+  "contracts": {
+    "tools": []
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

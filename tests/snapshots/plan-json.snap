@@ -4,10 +4,82 @@
   "platform": {
     "os": "darwin",
     "arch": "arm64",
-    "release": "25.3.0",
-    "node": "v24.13.0"
+    "release": "25.5.0",
+    "node": "v26.0.0"
   },
   "surfaces": [
+    {
+      "id": "adversarial-input",
+      "title": "Adversarial User Input",
+      "ownerArea": "gateway-input-runtime",
+      "description": "Send hostile-looking user messages through OpenClaw user-facing input paths and verify they remain ordinary prompt content: no parser crash, no gateway stall, no plugin/runtime dependency failure, and no provider routing loss.",
+      "processRoles": [
+        "gateway",
+        "command-tree",
+        "openai-compatible-client",
+        "agent-process",
+        "mock-provider"
+      ],
+      "resourcePrimaryRole": "gateway",
+      "thresholds": {
+        "agentTurnMs": 60000,
+        "providerRequestCountMin": 5,
+        "providerFinalMs": 5000,
+        "peakRssMb": 950,
+        "postReadyHealthP95Ms": 1000,
+        "pluginLoadFailures": 0,
+        "missingDependencyErrors": 0
+      },
+      "roleThresholds": {
+        "gateway": {
+          "peakRssMb": 800,
+          "maxCpuPercent": 300
+        },
+        "openai-compatible-client": {
+          "peakRssMb": 700,
+          "maxCpuPercent": 250
+        },
+        "mock-provider": {
+          "peakRssMb": 250,
+          "maxCpuPercent": 150
+        }
+      },
+      "diagnostics": {
+        "timelineRequiredForSourceBuild": true,
+        "expectedSpans": [
+          "agent.turn",
+          "models.catalog",
+          "provider.request"
+        ]
+      },
+      "purposes": [
+        "diagnostic",
+        "regression"
+      ],
+      "requirements": [
+        {
+          "id": "hostile-text-baseline",
+          "states": [
+            "mock-openai-provider"
+          ],
+          "targetKinds": [
+            "npm",
+            "release",
+            "runtime",
+            "local-build"
+          ],
+          "metrics": [
+            "agentTurnMs",
+            "providerRequestCountMin",
+            "providerFinalMs",
+            "postReadyHealthP95Ms",
+            "peakRssMb",
+            "pluginLoadFailures",
+            "missingDependencyErrors"
+          ]
+        }
+      ]
+    },
     {
       "id": "agent-cli-local-turn",
       "title": "Agent CLI Local Turn",
@@ -20,6 +92,7 @@
         "agent-process",
         "mock-provider"
       ],
+      "resourcePrimaryRole": "agent-cli",
       "thresholds": {
         "agentTurnMs": 45000,
         "coldAgentTurnMs": 45000,
@@ -174,6 +247,7 @@
         "browser-sidecar",
         "status-cli"
       ],
+      "resourcePrimaryRole": "browser-sidecar",
       "thresholds": {
         "gatewayReadyMs": 30000,
         "statusMs": 10000,
@@ -545,6 +619,77 @@
       ]
     },
     {
+      "id": "cron-runtime",
+      "title": "Cron Runtime",
+      "ownerArea": "cron-runtime",
+      "description": "Exercise OpenClaw cron CLI, run-now execution, run history, trigger attribution, and post-cron gateway health in a disposable env.",
+      "processRoles": [
+        "gateway",
+        "command-tree",
+        "agent-process",
+        "cron-runtime",
+        "mock-provider"
+      ],
+      "resourcePrimaryRole": "cron-runtime",
+      "thresholds": {
+        "gatewayReadyMs": 30000,
+        "statusMs": 10000,
+        "cronRegisterMs": 10000,
+        "cronRunMs": 60000,
+        "cronRunCompleted": 1,
+        "cronTriggerAttributed": 1,
+        "peakRssMb": 900
+      },
+      "roleThresholds": {
+        "gateway": {
+          "peakRssMb": 850,
+          "maxCpuPercent": 250
+        },
+        "cron-runtime": {
+          "peakRssMb": 500,
+          "maxCpuPercent": 200
+        },
+        "command-tree": {
+          "peakRssMb": 900,
+          "maxCpuPercent": 300
+        }
+      },
+      "diagnostics": {
+        "timelineRequiredForSourceBuild": false,
+        "expectedSpans": [
+          "cron.add",
+          "cron.run",
+          "cron.runs"
+        ]
+      },
+      "purposes": [
+        "diagnostic",
+        "regression",
+        "release"
+      ],
+      "requirements": [
+        {
+          "id": "run-now",
+          "states": [
+            "cron-user"
+          ],
+          "targetKinds": [
+            "npm",
+            "release",
+            "runtime",
+            "local-build"
+          ],
+          "metrics": [
+            "cronRegisterMs",
+            "cronRunMs",
+            "cronRunCompleted",
+            "cronTriggerAttributed",
+            "statusMs"
+          ]
+        }
+      ]
+    },
+    {
       "id": "cross-platform-smoke",
       "title": "Cross-Platform Smoke",
       "ownerArea": "platform-runtime",
@@ -660,6 +805,182 @@
       ]
     },
     {
+      "id": "dirty-plugin-state",
+      "title": "Dirty Plugin State",
+      "ownerArea": "plugins",
+      "description": "Exercise OpenClaw plugin commands, doctor repair, gateway restart, and integrity checks against locally edited, partial, stale, disabled, or otherwise dirty plugin state.",
+      "processRoles": [
+        "gateway",
+        "command-tree",
+        "plugin-cli",
+        "doctor-cli",
+        "runtime-management"
+      ],
+      "thresholds": {
+        "statusMs": 10000,
+        "pluginsListMs": 15000,
+        "pluginUpdateDryRunMs": 30000,
+        "doctorFixMs": 60000,
+        "restartReadyMs": 30000,
+        "dirtyPluginDetected": 1,
+        "dirtyPluginReported": 1,
+        "dirtyPluginChecksumPreserved": 1,
+        "doctorDestructiveChangeCount": 0,
+        "pluginsUsableWithDirtyState": 1,
+        "gatewaySurvivedDirtyPlugin": 1
+      },
+      "roleThresholds": {
+        "gateway": {
+          "peakRssMb": 850,
+          "maxCpuPercent": 250
+        },
+        "plugin-cli": {
+          "peakRssMb": 650,
+          "maxCpuPercent": 250
+        },
+        "doctor-cli": {
+          "peakRssMb": 750,
+          "maxCpuPercent": 300
+        },
+        "runtime-management": {
+          "peakRssMb": 900,
+          "maxCpuPercent": 350
+        }
+      },
+      "diagnostics": {
+        "timelineRequiredForSourceBuild": true,
+        "expectedSpans": [
+          "plugins.registry.refresh",
+          "plugins.update",
+          "plugins.load",
+          "doctor.fix"
+        ]
+      },
+      "purposes": [
+        "diagnostic",
+        "plugin",
+        "regression",
+        "release"
+      ],
+      "requirements": [
+        {
+          "id": "list-survives-dirty-state",
+          "stateTraits": [
+            "plugin-pressure",
+            "failure-state"
+          ],
+          "targetKinds": [
+            "npm",
+            "release",
+            "runtime",
+            "local-build"
+          ],
+          "metrics": [
+            "pluginsListMs",
+            "pluginsUsableWithDirtyState",
+            "gatewaySurvivedDirtyPlugin"
+          ]
+        },
+        {
+          "id": "doctor-preserves-user-files",
+          "states": [
+            "dirty-plugin-local-edits",
+            "dirty-plugin-stale-deps",
+            "dirty-plugin-manifest-drift",
+            "dirty-plugin-disabled-broken",
+            "dirty-plugin-symlink-dev",
+            "dirty-plugin-partial-install"
+          ],
+          "targetKinds": [
+            "npm",
+            "release",
+            "runtime",
+            "local-build"
+          ],
+          "metrics": [
+            "doctorFixMs",
+            "dirtyPluginChecksumPreserved",
+            "doctorDestructiveChangeCount",
+            "doctorUnrepairedFindingCount"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "exec-tool-safety",
+      "title": "Exec Tool Safety",
+      "ownerArea": "agent-tool-runtime",
+      "description": "Validate OpenClaw exec policy visibility plus safe bounded exec-fixture behavior for harmless commands, blocked dangerous input, output budgets, timeouts, and process leaks.",
+      "processRoles": [
+        "gateway",
+        "command-tree",
+        "agent-process",
+        "tool-runtime",
+        "mock-provider"
+      ],
+      "resourcePrimaryRole": "tool-runtime",
+      "thresholds": {
+        "gatewayReadyMs": 30000,
+        "statusMs": 10000,
+        "execSafeCommandMs": 10000,
+        "execSafeCommandSucceeded": 1,
+        "execDangerousCommandBlocked": 1,
+        "execOutputTruncated": 1,
+        "execTimeoutMs": 15000,
+        "execProcessLeaks": 0,
+        "peakRssMb": 900
+      },
+      "roleThresholds": {
+        "gateway": {
+          "peakRssMb": 850,
+          "maxCpuPercent": 250
+        },
+        "tool-runtime": {
+          "peakRssMb": 500,
+          "maxCpuPercent": 200
+        },
+        "command-tree": {
+          "peakRssMb": 900,
+          "maxCpuPercent": 300
+        }
+      },
+      "diagnostics": {
+        "timelineRequiredForSourceBuild": false,
+        "expectedSpans": [
+          "tool.exec",
+          "exec.policy"
+        ]
+      },
+      "purposes": [
+        "diagnostic",
+        "regression",
+        "release"
+      ],
+      "requirements": [
+        {
+          "id": "safe-and-blocked-exec",
+          "states": [
+            "exec-tool-user"
+          ],
+          "targetKinds": [
+            "npm",
+            "release",
+            "runtime",
+            "local-build"
+          ],
+          "metrics": [
+            "execSafeCommandMs",
+            "execSafeCommandSucceeded",
+            "execDangerousCommandBlocked",
+            "execOutputTruncated",
+            "execTimeoutMs",
+            "execProcessLeaks",
+            "statusMs"
+          ]
+        }
+      ]
+    },
+    {
       "id": "failure-containment",
       "title": "Failure Containment",
       "ownerArea": "diagnostics",
@@ -734,6 +1055,7 @@
         "plugin-cli",
         "model-cli"
       ],
+      "resourcePrimaryRole": "gateway",
       "thresholds": {
         "gatewayReadyMs": 30000,
         "statusMs": 10000,
@@ -809,6 +1131,7 @@
         "command-tree",
         "status-cli"
       ],
+      "resourcePrimaryRole": "gateway",
       "thresholds": {
         "coldReadyMs": 30000,
         "warmReadyMs": 15000,
@@ -958,6 +1281,7 @@
         "command-tree",
         "mcp-runtime"
       ],
+      "resourcePrimaryRole": "mcp-runtime",
       "thresholds": {
         "gatewayReadyMs": 30000,
         "statusMs": 10000,
@@ -1022,6 +1346,82 @@
       ]
     },
     {
+      "id": "mcp-tool-call",
+      "title": "MCP Tool Call",
+      "ownerArea": "mcp-runtime",
+      "description": "Start OpenClaw's MCP stdio bridge, list tools, call a deterministic safe tool, call an invalid tool, and verify the bridge exits cleanly.",
+      "processRoles": [
+        "gateway",
+        "command-tree",
+        "mcp-runtime",
+        "tool-runtime"
+      ],
+      "resourcePrimaryRole": "mcp-runtime",
+      "thresholds": {
+        "gatewayReadyMs": 30000,
+        "statusMs": 10000,
+        "mcpInitializeMs": 10000,
+        "mcpToolsListMs": 10000,
+        "mcpToolsCallMs": 10000,
+        "mcpToolCallSucceeded": 1,
+        "mcpToolCallErrorAttributed": 1,
+        "mcpShutdownMs": 5000,
+        "mcpToolCountMin": 1,
+        "mcpProcessLeaks": 0,
+        "peakRssMb": 900
+      },
+      "roleThresholds": {
+        "gateway": {
+          "peakRssMb": 850,
+          "maxCpuPercent": 250
+        },
+        "mcp-runtime": {
+          "peakRssMb": 500,
+          "maxCpuPercent": 200
+        },
+        "tool-runtime": {
+          "peakRssMb": 500,
+          "maxCpuPercent": 200
+        }
+      },
+      "diagnostics": {
+        "timelineRequiredForSourceBuild": false,
+        "expectedSpans": [
+          "mcp.runtime.start",
+          "mcp.tools.call",
+          "mcp.runtime.stop"
+        ]
+      },
+      "purposes": [
+        "diagnostic",
+        "regression",
+        "release"
+      ],
+      "requirements": [
+        {
+          "id": "safe-tool-call",
+          "states": [
+            "mcp-tool-user"
+          ],
+          "targetKinds": [
+            "npm",
+            "release",
+            "runtime",
+            "local-build"
+          ],
+          "metrics": [
+            "mcpInitializeMs",
+            "mcpToolsListMs",
+            "mcpToolsCallMs",
+            "mcpToolCallSucceeded",
+            "mcpToolCallErrorAttributed",
+            "mcpShutdownMs",
+            "mcpProcessLeaks"
+          ]
+        }
+      ]
+    },
+    {
       "id": "media-understanding",
       "title": "Media Understanding",
       "ownerArea": "media-understanding",
@@ -1031,6 +1431,7 @@
         "command-tree",
         "mock-provider"
       ],
+      "resourcePrimaryRole": "gateway",
       "thresholds": {
         "mediaDescribeMs": 10000,
         "mediaTimeoutObserved": 1,
@@ -1097,6 +1498,7 @@
         "agent-cli",
         "agent-process"
       ],
+      "resourcePrimaryRole": "agent-cli",
       "thresholds": {
         "networkFailureObserved": 1,
         "networkStatusAfterFailureMs": 10000,
@@ -1238,6 +1640,7 @@
         "agent-process",
         "mock-provider"
       ],
+      "resourcePrimaryRole": "gateway",
       "thresholds": {
         "agentTurnMs": 45000,
         "preProviderMs": 10000,
@@ -1415,6 +1818,71 @@
             "pluginsListMs",
             "missingDependencyErrors",
             "pluginLoadFailures"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "plugin-legacy-unsafe-memory",
+      "title": "Plugin Legacy Unsafe Memory",
+      "ownerArea": "plugins",
+      "description": "Install a legacy plugin fixture that relies on unsafe buffer behavior and verify OpenClaw fails it closed while keeping the gateway usable.",
+      "processRoles": [
+        "gateway",
+        "command-tree",
+        "plugin-cli",
+        "runtime-staging"
+      ],
+      "thresholds": {
+        "gatewayReadyMs": 30000,
+        "statusMs": 10000,
+        "pluginLoadFailures": 2,
+        "missingDependencyErrors": 0
+      },
+      "roleThresholds": {
+        "gateway": {
+          "peakRssMb": 850,
+          "maxCpuPercent": 250
+        },
+        "plugin-cli": {
+          "peakRssMb": 650,
+          "maxCpuPercent": 250
+        },
+        "runtime-staging": {
+          "peakRssMb": 900,
+          "maxCpuPercent": 350
+        }
+      },
+      "diagnostics": {
+        "timelineRequiredForSourceBuild": true,
+        "expectedSpans": [
+          "plugins.install",
+          "plugins.load"
+        ]
+      },
+      "purposes": [
+        "diagnostic",
+        "plugin",
+        "regression",
+        "release"
+      ],
+      "requirements": [
+        {
+          "id": "fail-closed",
+          "states": [
+            "fresh"
+          ],
+          "targetKinds": [
+            "npm",
+            "release",
+            "runtime",
+            "local-build"
+          ],
+          "metrics": [
+            "pluginLoadFailures",
+            "missingDependencyErrors",
+            "statusMs",
+            "gatewayReadyMs"
           ]
         }
       ]
@@ -1815,6 +2283,140 @@
       ]
     },
     {
+      "id": "release-update-recovery",
+      "title": "Release Update Recovery",
+      "ownerArea": "upgrade",
+      "description": "Run a release-shaped OpenClaw update path through plugin health checks, doctor repair, update retry, rollback inspection, and post-rollback health so broken releases do not trap users on bad runtime state.",
+      "processRoles": [
+        "gateway",
+        "command-tree",
+        "runtime-management",
+        "plugin-cli",
+        "doctor-cli"
+      ],
+      "thresholds": {
+        "upgradeMs": 180000,
+        "statusMs": 10000,
+        "pluginsListMs": 15000,
+        "pluginUpdateDryRunMs": 30000,
+        "doctorFixMs": 60000,
+        "doctorFixSucceeded": 1,
+        "doctorUnrepairedFindingCount": 0,
+        "updateRetryVersionDrift": 0,
+        "rollbackAvailable": 1,
+        "rollbackSucceeded": 1,
+        "pluginsUsableAfterUpgrade": 1,
+        "pluginsUsableAfterRollback": 1,
+        "rollbackPreservedPluginData": 1,
+        "pluginLoadFailures": 0
+      },
+      "roleThresholds": {
+        "gateway": {
+          "peakRssMb": 900,
+          "maxCpuPercent": 250
+        },
+        "runtime-management": {
+          "peakRssMb": 1100,
+          "maxCpuPercent": 350
+        },
+        "plugin-cli": {
+          "peakRssMb": 650,
+          "maxCpuPercent": 250
+        },
+        "doctor-cli": {
+          "peakRssMb": 750,
+          "maxCpuPercent": 300
+        }
+      },
+      "diagnostics": {
+        "timelineRequiredForSourceBuild": true,
+        "expectedSpans": [
+          "upgrade.apply",
+          "doctor.fix",
+          "plugins.index.migrate",
+          "plugins.runtimeDeps"
+        ]
+      },
+      "purposes": [
+        "diagnostic",
+        "plugin",
+        "regression",
+        "release",
+        "upgrade"
+      ],
+      "requirements": [
+        {
+          "id": "plugin-failure-recovery",
+          "states": [
+            "update-recovery-plugin-user"
+          ],
+          "targetKinds": [
+            "npm",
+            "release",
+            "runtime",
+            "local-build"
+          ],
+          "metrics": [
+            "pluginsUsableAfterUpgrade",
+            "pluginsListMs",
+            "pluginUpdateDryRunMs",
+            "statusMs"
+          ]
+        },
+        {
+          "id": "doctor-repair-contract",
+          "states": [
+            "update-recovery-plugin-user"
+          ],
+          "targetKinds": [
+            "npm",
+            "release",
+            "runtime",
+            "local-build"
+          ],
+          "metrics": [
+            "doctorFixMs",
+            "doctorFixSucceeded",
+            "doctorUnrepairedFindingCount"
+          ]
+        },
+        {
+          "id": "update-retry-target-stability",
+          "states": [
+            "update-recovery-plugin-user"
+          ],
+          "targetKinds": [
+            "npm",
+            "release",
+            "runtime",
+            "local-build"
+          ],
+          "metrics": [
+            "upgradeSelectedVersionMatchesTarget",
+            "updateRetryVersionDrift"
+          ]
+        },
+        {
+          "id": "rollback-available",
+          "states": [
+            "update-recovery-plugin-user"
+          ],
+          "targetKinds": [
+            "npm",
+            "release",
+            "runtime",
+            "local-build"
+          ],
+          "metrics": [
+            "rollbackAvailable",
+            "rollbackSucceeded",
+            "pluginsUsableAfterRollback",
+            "rollbackPreservedPluginData"
+          ]
+        }
+      ]
+    },
+    {
       "id": "soak",
       "title": "Gateway Soak",
       "ownerArea": "gateway",
@@ -1827,6 +2429,7 @@
         "plugin-cli",
         "model-cli"
       ],
+      "resourcePrimaryRole": "gateway",
       "thresholds": {
         "soakMinDurationMs": 60000,
         "soakCommandP95Ms": 10000,
@@ -1897,6 +2500,69 @@
       ]
     },
     {
+      "id": "tool-failure-containment",
+      "title": "Tool Failure Containment",
+      "ownerArea": "agent-tool-runtime",
+      "description": "Verify deterministic tool errors, blocked execution, and timeouts are attributed to tool runtime evidence while gateway and command paths remain usable.",
+      "processRoles": [
+        "gateway",
+        "command-tree",
+        "agent-process",
+        "tool-runtime",
+        "mock-provider"
+      ],
+      "resourcePrimaryRole": "tool-runtime",
+      "thresholds": {
+        "gatewayReadyMs": 30000,
+        "statusMs": 10000,
+        "execDangerousCommandBlocked": 1,
+        "execTimeoutMs": 15000,
+        "execProcessLeaks": 0,
+        "peakRssMb": 900
+      },
+      "roleThresholds": {
+        "gateway": {
+          "peakRssMb": 850,
+          "maxCpuPercent": 250
+        },
+        "tool-runtime": {
+          "peakRssMb": 500,
+          "maxCpuPercent": 200
+        }
+      },
+      "diagnostics": {
+        "timelineRequiredForSourceBuild": false,
+        "expectedSpans": [
+          "tool.error",
+          "tool.timeout"
+        ]
+      },
+      "purposes": [
+        "diagnostic",
+        "regression"
+      ],
+      "requirements": [
+        {
+          "id": "failure-attribution",
+          "states": [
+            "exec-tool-user"
+          ],
+          "targetKinds": [
+            "npm",
+            "release",
+            "runtime",
+            "local-build"
+          ],
+          "metrics": [
+            "execDangerousCommandBlocked",
+            "execTimeoutMs",
+            "execProcessLeaks",
+            "statusMs"
+          ]
+        }
+      ]
+    },
+    {
       "id": "tui-message-turn",
       "title": "TUI Visible Message Smoke",
       "ownerArea": "tui",
@@ -1908,6 +2574,7 @@
         "agent-process",
         "mock-provider"
       ],
+      "resourcePrimaryRole": "tui-cli",
       "thresholds": {
         "peakRssMb": 900,
         "postReadyHealthP95Ms": 1000
@@ -2136,6 +2803,7 @@
         "plugin-cli",
         "model-cli"
       ],
+      "resourcePrimaryRole": "gateway",
       "thresholds": {
         "warmReadyMs": 30000,
         "statusMs": 10000,
@@ -2298,6 +2966,19 @@
       ]
     },
     {
+      "id": "cron-runtime",
+      "title": "Cron Runtime",
+      "description": "OpenClaw cron scheduler, cron CLI, run-now, and cron-triggered agent/session execution paths.",
+      "commandPatterns": [
+        "(^|\\s)cron(\\s|$)",
+        "run-cron-runtime-smoke\\.mjs"
+      ],
+      "processPatterns": [
+        "openclaw.*cron",
+        "run-cron-runtime-smoke\\.mjs"
+      ]
+    },
+    {
       "id": "dashboard-cli",
       "title": "Dashboard CLI",
       "description": "OpenClaw dashboard command paths that produce or validate dashboard URLs and websocket configuration.",
@@ -2405,10 +3086,12 @@
       "description": "Kova client process that drives OpenClaw's OpenAI-compatible HTTP API.",
       "commandPatterns": [
         "run-openai-compatible-turn.mjs",
+        "run-adversarial-inputs.mjs",
         "/v1/chat/completions"
       ],
       "processPatterns": [
-        "node\\s+.*run-openai-compatible-turn\\.mjs"
+        "node\\s+.*run-openai-compatible-turn\\.mjs",
+        "node\\s+.*run-adversarial-inputs\\.mjs"
       ]
     },
     {
@@ -2481,6 +3164,22 @@
       ],
       "processPatterns": [
         "openclaw.*status"
+      ]
+    },
+    {
+      "id": "tool-runtime",
+      "title": "Tool Runtime",
+      "description": "OpenClaw agent tool execution, exec policy, MCP tool calls, and tool-failure containment helpers.",
+      "commandPatterns": [
+        "exec-policy",
+        "exec-approvals",
+        "run-exec-tool-safety\\.mjs",
+        "mcp-tool-call-smoke\\.mjs"
+      ],
+      "processPatterns": [
+        "openclaw.*exec",
+        "run-exec-tool-safety\\.mjs",
+        "mcp-tool-call-smoke\\.mjs"
       ]
     },
     {
@@ -2605,6 +3304,21 @@
       "id": "coldWarmDeltaMs"
     },
     {
+      "id": "cronRegisterMs"
+    },
+    {
+      "id": "cronRunCompleted"
+    },
+    {
+      "id": "cronRunMs"
+    },
+    {
+      "id": "cronRunTimedOut"
+    },
+    {
+      "id": "cronTriggerAttributed"
+    },
+    {
       "id": "dashboardConnectMs"
     },
     {
@@ -2614,7 +3328,49 @@
       "id": "doctorFixMs"
     },
     {
+      "id": "doctorDestructiveChangeCount"
+    },
+    {
+      "id": "doctorFixSucceeded"
+    },
+    {
+      "id": "doctorUnrepairedFindingCount"
+    },
+    {
+      "id": "dirtyPluginBackupCreated"
+    },
+    {
+      "id": "dirtyPluginChecksumPreserved"
+    },
+    {
+      "id": "dirtyPluginDetected"
+    },
+    {
+      "id": "dirtyPluginReported"
+    },
+    {
+      "id": "dirtyPluginUnexpectedlyEnabled"
+    },
+    {
       "id": "eventLoopMaxMs"
+    },
+    {
+      "id": "execDangerousCommandBlocked"
+    },
+    {
+      "id": "execOutputTruncated"
+    },
+    {
+      "id": "execProcessLeaks"
+    },
+    {
+      "id": "execSafeCommandMs"
+    },
+    {
+      "id": "execSafeCommandSucceeded"
+    },
+    {
+      "id": "execTimeoutMs"
     },
     {
       "id": "finalHealthFailures"
@@ -2633,6 +3389,9 @@
     },
     {
       "id": "gatewaySurvives"
+    },
+    {
+      "id": "gatewaySurvivedDirtyPlugin"
     },
     {
       "id": "healthMs"
@@ -2671,7 +3430,16 @@
       "id": "mcpShutdownMs"
     },
     {
+      "id": "mcpToolCallErrorAttributed"
+    },
+    {
       "id": "mcpToolCountMin"
+    },
+    {
+      "id": "mcpToolCallSucceeded"
+    },
+    {
+      "id": "mcpToolsCallMs"
     },
     {
       "id": "mcpToolsListMs"
@@ -2696,6 +3464,9 @@
     },
     {
       "id": "openclawTimelineParseErrors"
+    },
+    {
+      "id": "peakProcessRssMb"
     },
     {
       "id": "officialPluginInstallOk"
@@ -2726,6 +3497,15 @@
     },
     {
       "id": "pluginsListMs"
+    },
+    {
+      "id": "pluginsUsableAfterRollback"
+    },
+    {
+      "id": "pluginsUsableAfterUpgrade"
+    },
+    {
+      "id": "pluginsUsableWithDirtyState"
     },
     {
       "id": "preProviderDominanceRatio"
@@ -2762,6 +3542,15 @@
     },
     {
       "id": "restartReadyMs"
+    },
+    {
+      "id": "rollbackAvailable"
+    },
+    {
+      "id": "rollbackPreservedPluginData"
+    },
+    {
+      "id": "rollbackSucceeded"
     },
     {
       "id": "rssGrowthMb"
@@ -2816,6 +3605,12 @@
     },
     {
       "id": "upgradeMs"
+    },
+    {
+      "id": "upgradeSelectedVersionMatchesTarget"
+    },
+    {
+      "id": "updateRetryVersionDrift"
     },
     {
       "id": "warmAgentTurnMs"
@@ -8612,6 +9407,102 @@
   ],
   "scenarios": [
     {
+      "id": "adversarial-input-openai-compatible",
+      "surface": "adversarial-input",
+      "title": "Adversarial Input OpenAI-Compatible",
+      "objective": "Send hostile-looking XML, HTML/script, template, path traversal, and Unicode control text through OpenClaw's OpenAI-compatible HTTP endpoint and verify OpenClaw treats the text as user content without crashing, stalling, or losing provider routing.",
+      "tags": [
+        "adversarial",
+        "input",
+        "fuzz",
+        "openai-compatible",
+        "http",
+        "providers",
+        "security"
+      ],
+      "timeoutMs": 180000,
+      "agent": {
+        "expectedText": "KOVA_AGENT_OK"
+      },
+      "thresholds": {
+        "gatewayReadyMs": 30000,
+        "agentTurnMs": 60000,
+        "providerRequestCountMin": 5,
+        "providerFinalMs": 5000,
+        "statusMs": 10000,
+        "postReadyHealthP95Ms": 1000,
+        "peakRssMb": 950,
+        "missingDependencyErrors": 0,
+        "pluginLoadFailures": 0
+      },
+      "phases": [
+        {
+          "id": "provision",
+          "title": "Provision Adversarial Input Env",
+          "intent": "Create a disposable OpenClaw env without starting the gateway yet so Kova auth is applied before the gateway process boots.",
+          "commands": [
+            "ocm start {env} {startSelector} --no-service --json"
+          ],
+          "evidence": [
+            "gateway port",
+            "runtime binding",
+            "env created without service"
+          ],
+          "healthScope": "none"
+        },
+        {
+          "id": "gateway-start",
+          "title": "Start Gateway",
+          "intent": "Start the gateway after auth/provider config is already present in the OpenClaw home.",
+          "commands": [
+            "ocm service install {env} --json",
+            "ocm service start {env} --json"
+          ],
+          "evidence": [
+            "gateway service installed",
+            "gateway service started",
+            "startup readiness"
+          ],
+          "healthScope": "readiness"
+        },
+        {
+          "id": "hostile-input-corpus",
+          "title": "Hostile Input Corpus",
+          "intent": "Send a fixed hostile-looking input corpus through the OpenAI-compatible user API and require normal mock-provider responses for every case.",
+          "commands": [
+            "node {kovaRoot}/support/run-adversarial-inputs.mjs --env {env} --model openclaw --expected-text KOVA_AGENT_OK --timeout 120000"
+          ],
+          "evidence": [
+            "case count",
+            "HTTP status per hostile input",
+            "final assistant marker per hostile input",
+            "mock provider request count",
+            "gateway health after hostile input"
+          ],
+          "healthScope": "post-ready"
+        },
+        {
+          "id": "post-input-health",
+          "title": "Post-Input Gateway Health",
+          "intent": "Verify the gateway remains responsive after hostile-looking input cases.",
+          "commands": [
+            "ocm @{env} -- status",
+            "ocm logs {env} --tail 300 --raw"
+          ],
+          "evidence": [
+            "gateway status",
+            "provider logs",
+            "plugin errors",
+            "memory after hostile input"
+          ],
+          "healthScope": "post-ready"
+        }
+      ],
+      "proves": [
+        "hostile-text-baseline"
+      ]
+    },
+    {
       "id": "agent-auth-missing",
       "surface": "agent-cli-local-turn",
       "title": "Agent Auth Missing",
@@ -9175,7 +10066,19 @@
         "providerFailureHealthFailures": 0,
         "agentContainmentHealthFailures": 0,
         "agentProcessLeaks": 0,
-        "peakRssMb": 900,
+        "peakRssMb": 2300,
+        "roleThresholds": {
+          "agent-cli": {
+            "peakRssMb": 2300,
+            "peakProcessRssMb": 900,
+            "maxCpuPercent": 450
+          },
+          "agent-process": {
+            "peakRssMb": 2100,
+            "peakProcessRssMb": 900,
+            "maxCpuPercent": 450
+          }
+        },
         "missingDependencyErrors": 0,
         "pluginLoadFailures": 0
       },
@@ -9308,6 +10211,176 @@
           ],
           "healthScope": "post-ready",
           "collectionIntent": "post-ready-health"
+        }
+      ],
+      "proves": [
+        "baseline"
+      ]
+    },
+    {
+      "id": "agent-provider-protocol-failure",
+      "surface": "agent-cli-local-turn",
+      "title": "Agent Provider Protocol Failure",
+      "objective": "Prove OpenClaw contains a provider response that is valid HTTP but invalid provider protocol, ends the turn clearly, and keeps the gateway healthy.",
+      "tags": [
+        "agent",
+        "message",
+        "provider-failure",
+        "protocol",
+        "containment"
+      ],
+      "timeoutMs": 180000,
+      "auth": {
+        "mode": "mock"
+      },
+      "mockProvider": {
+        "mode": "protocol-failure"
+      },
+      "thresholds": {
+        "gatewayReadyMs": 30000,
+        "agentTurnMs": 90000,
+        "providerFinalMs": 10000,
+        "providerRequestCountMin": 1,
+        "providerFailureHealthFailures": 0,
+        "agentContainmentHealthFailures": 0,
+        "agentProcessLeaks": 0,
+        "peakRssMb": 900,
+        "missingDependencyErrors": 0,
+        "pluginLoadFailures": 0
+      },
+      "phases": [
+        {
+          "id": "provision",
+          "title": "Provision Agent Env",
+          "intent": "Start a disposable OpenClaw gateway before wiring the protocol-invalid mock provider.",
+          "commands": [
+            "ocm start {env} {startSelector} --json"
+          ],
+          "evidence": [
+            "gateway port",
+            "runtime binding",
+            "startup readiness"
+          ],
+          "healthScope": "readiness"
+        },
+        {
+          "id": "protocol-failure-turn",
+          "title": "Protocol Failure Turn",
+          "intent": "Send a simple message that must fail clearly because the provider returns a protocol-invalid success payload.",
+          "expectedAgentFailure": true,
+          "commands": [
+            "node {kovaRoot}/support/expect-command-fails.mjs -- ocm @{env} -- agent --local --agent main --session-id kova-agent-provider-protocol-failure --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 60 --json"
+          ],
+          "evidence": [
+            "clear command failure",
+            "provider protocol failure evidence",
+            "gateway remains supervised",
+            "role resource samples"
+          ],
+          "healthScope": "post-ready"
+        },
+        {
+          "id": "post-failure-health",
+          "title": "Post-Failure Gateway Health",
+          "intent": "Verify the gateway remains responsive after the protocol-invalid provider response.",
+          "commands": [
+            "ocm @{env} -- status",
+            "ocm logs {env} --tail 300 --raw"
+          ],
+          "evidence": [
+            "gateway status",
+            "provider logs",
+            "plugin errors",
+            "memory after protocol failure"
+          ],
+          "healthScope": "post-ready"
+        }
+      ],
+      "proves": [
+        "baseline"
+      ]
+    },
+    {
+      "id": "agent-provider-random-disconnect",
+      "surface": "agent-cli-local-turn",
+      "title": "Agent Provider Random Disconnect",
+      "objective": "Prove OpenClaw can recover when the provider connection drops mid-response, reconnect to the provider, complete the turn, and keep the gateway healthy.",
+      "tags": [
+        "agent",
+        "message",
+        "provider-failure",
+        "disconnect",
+        "recovery",
+        "containment"
+      ],
+      "timeoutMs": 240000,
+      "auth": {
+        "mode": "mock"
+      },
+      "mockProvider": {
+        "mode": "disconnect-then-recover"
+      },
+      "agent": {
+        "expectedText": "KOVA_AGENT_OK"
+      },
+      "thresholds": {
+        "gatewayReadyMs": 30000,
+        "agentTurnMs": 90000,
+        "providerFinalMs": 15000,
+        "providerRequestCountMin": 2,
+        "providerFailureHealthFailures": 0,
+        "agentContainmentHealthFailures": 0,
+        "agentProcessLeaks": 0,
+        "peakRssMb": 900,
+        "missingDependencyErrors": 0,
+        "pluginLoadFailures": 0
+      },
+      "phases": [
+        {
+          "id": "provision",
+          "title": "Provision Agent Env",
+          "intent": "Start a disposable OpenClaw gateway before wiring the disconnecting mock provider.",
+          "commands": [
+            "ocm start {env} {startSelector} --json"
+          ],
+          "evidence": [
+            "gateway port",
+            "runtime binding",
+            "startup readiness"
+          ],
+          "healthScope": "readiness"
+        },
+        {
+          "id": "disconnect-recovery-turn",
+          "title": "Disconnect Recovery Turn",
+          "intent": "Send a simple message while the first provider connection drops and require OpenClaw to reconnect, continue, and return a normal assistant response.",
+          "commands": [
+            "ocm @{env} -- agent --local --agent main --session-id kova-agent-provider-random-disconnect --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 120 --json"
+          ],
+          "evidence": [
+            "provider disconnect evidence",
+            "provider recovery request",
+            "assistant response after reconnect",
+            "gateway remains supervised",
+            "role resource samples"
+          ],
+          "healthScope": "post-ready"
+        },
+        {
+          "id": "post-disconnect-health",
+          "title": "Post-Disconnect Gateway Health",
+          "intent": "Verify the gateway remains responsive after provider disconnect recovery.",
+          "commands": [
+            "ocm @{env} -- status",
+            "ocm logs {env} --tail 300 --raw"
+          ],
+          "evidence": [
+            "gateway status",
+            "provider logs",
+            "plugin errors",
+            "memory after disconnect recovery"
+          ],
+          "healthScope": "post-ready"
         }
       ],
       "proves": [
@@ -10318,6 +11391,79 @@
       ]
     },
     {
+      "id": "cron-runtime",
+      "surface": "cron-runtime",
+      "title": "Cron Runtime",
+      "objective": "Register a disposable OpenClaw cron entry, trigger it through the real cron CLI, verify run attribution, and prove the gateway remains healthy.",
+      "tags": [
+        "cron",
+        "automation",
+        "tools",
+        "tool-runtime"
+      ],
+      "timeoutMs": 180000,
+      "thresholds": {
+        "gatewayReadyMs": 30000,
+        "gatewayReadyHardTimeoutMs": 120000,
+        "statusMs": 10000,
+        "cronRegisterMs": 10000,
+        "cronRunMs": 60000,
+        "cronRunCompleted": 1,
+        "cronTriggerAttributed": 1,
+        "peakRssMb": 900
+      },
+      "phases": [
+        {
+          "id": "gateway",
+          "title": "Gateway Start",
+          "intent": "Start the disposable gateway before cron registration and run-now execution.",
+          "commands": [
+            "ocm start {env} {startSelector} --json",
+            "ocm @{env} -- status"
+          ],
+          "evidence": [
+            "gateway status",
+            "gateway port",
+            "readiness classification"
+          ],
+          "healthScope": "readiness"
+        },
+        {
+          "id": "cron-runtime-smoke",
+          "title": "Cron Runtime Smoke",
+          "intent": "Use OpenClaw's real cron CLI to add a delete-after-run entry, trigger it, inspect run history, and remove leftovers.",
+          "commands": [
+            "node {kovaRoot}/support/run-cron-runtime-smoke.mjs --env {env} --artifact-dir {artifactDir} --timeout-ms 90000"
+          ],
+          "evidence": [
+            "cron registration timing",
+            "cron run timing",
+            "run id and status",
+            "cron trigger attribution"
+          ],
+          "healthScope": "post-ready"
+        },
+        {
+          "id": "post-cron-health",
+          "title": "Post-Cron Gateway Health",
+          "intent": "Verify cron activity did not degrade gateway or command-tree health.",
+          "commands": [
+            "ocm @{env} -- status",
+            "ocm logs {env} --tail 300 --raw"
+          ],
+          "evidence": [
+            "status after cron run",
+            "cron errors",
+            "gateway errors"
+          ],
+          "healthScope": "post-ready"
+        }
+      ],
+      "proves": [
+        "run-now"
+      ]
+    },
+    {
       "id": "cross-platform-smoke",
       "surface": "cross-platform-smoke",
       "title": "Cross-Platform Runtime Smoke",
@@ -10453,6 +11599,102 @@
       ]
     },
     {
+      "id": "dirty-plugin-state",
+      "surface": "dirty-plugin-state",
+      "title": "Dirty Plugin State",
+      "objective": "Start OpenClaw with dirty plugin state, run plugin inspection, doctor repair, restart, and verify dirty plugin integrity evidence remains explicit.",
+      "tags": [
+        "plugins",
+        "dirty",
+        "doctor",
+        "recovery",
+        "gateway"
+      ],
+      "states": [
+        "dirty-plugin-local-edits",
+        "dirty-plugin-stale-deps",
+        "dirty-plugin-manifest-drift",
+        "dirty-plugin-disabled-broken",
+        "dirty-plugin-symlink-dev",
+        "dirty-plugin-partial-install"
+      ],
+      "timeoutMs": 180000,
+      "thresholds": {
+        "statusMs": 10000,
+        "pluginsListMs": 15000,
+        "pluginUpdateDryRunMs": 30000,
+        "doctorFixMs": 60000,
+        "restartReadyMs": 30000,
+        "pluginLoadFailures": 1
+      },
+      "phases": [
+        {
+          "id": "start",
+          "title": "Start Dirty Plugin Env",
+          "intent": "Start a disposable OpenClaw env before applying dirty plugin state.",
+          "commands": [
+            "ocm start {env} {startSelector} --json",
+            "ocm service status {env} --json"
+          ],
+          "evidence": [
+            "env created",
+            "gateway service status before dirty plugin setup"
+          ],
+          "healthScope": "readiness"
+        },
+        {
+          "id": "plugin-inspect",
+          "title": "Inspect Dirty Plugin State",
+          "intent": "Verify plugin commands remain usable and report dirty plugin state clearly.",
+          "commands": [
+            "ocm @{env} -- plugins list",
+            "ocm @{env} -- plugins update --all --dry-run"
+          ],
+          "evidence": [
+            "plugin list output",
+            "plugin update dry-run output",
+            "dirty plugin diagnostics"
+          ],
+          "healthScope": "post-ready"
+        },
+        {
+          "id": "doctor",
+          "title": "Doctor Dirty Plugin State",
+          "intent": "Run OpenClaw doctor repair and verify the gateway remains usable afterward.",
+          "commands": [
+            "ocm @{env} -- doctor --fix",
+            "ocm @{env} -- status"
+          ],
+          "evidence": [
+            "doctor output",
+            "post-doctor status"
+          ],
+          "healthScope": "post-ready"
+        },
+        {
+          "id": "restart",
+          "title": "Restart After Dirty Plugin Handling",
+          "intent": "Restart the gateway and capture plugin load diagnostics after dirty plugin handling.",
+          "commands": [
+            "ocm service restart {env}",
+            "ocm service status {env} --json",
+            "ocm @{env} -- plugins list",
+            "ocm logs {env} --tail 400 --raw"
+          ],
+          "evidence": [
+            "restart status",
+            "post-restart plugin list",
+            "gateway logs"
+          ],
+          "healthScope": "readiness"
+        }
+      ],
+      "proves": [
+        "list-survives-dirty-state",
+        "doctor-preserves-user-files"
+      ]
+    },
+    {
       "id": "doctor-repair-upgrade",
       "surface": "upgrade-existing-user",
       "title": "Doctor Repair Upgrade",
@@ -10571,6 +11813,85 @@
       },
       "proves": [
         "doctor-repair"
+      ]
+    },
+    {
+      "id": "exec-tool-safety",
+      "surface": "exec-tool-safety",
+      "title": "Exec Tool Safety",
+      "objective": "Verify OpenClaw exec policy visibility and Kova's bounded exec fixture for safe commands, blocked dangerous input, output limits, timeouts, and process leaks.",
+      "tags": [
+        "exec",
+        "tools",
+        "tool-runtime",
+        "safety"
+      ],
+      "timeoutMs": 180000,
+      "mockProvider": {
+        "mode": "exec-tool-safety"
+      },
+      "thresholds": {
+        "gatewayReadyMs": 30000,
+        "gatewayReadyHardTimeoutMs": 120000,
+        "statusMs": 10000,
+        "execSafeCommandMs": 10000,
+        "execSafeCommandSucceeded": 1,
+        "execDangerousCommandBlocked": 1,
+        "execOutputTruncated": 1,
+        "execTimeoutMs": 15000,
+        "execProcessLeaks": 0,
+        "peakRssMb": 900
+      },
+      "phases": [
+        {
+          "id": "gateway",
+          "title": "Gateway Start",
+          "intent": "Start the disposable gateway before exec policy and fixture checks.",
+          "commands": [
+            "ocm start {env} {startSelector} --json",
+            "ocm @{env} -- status"
+          ],
+          "evidence": [
+            "gateway status",
+            "gateway port",
+            "readiness classification"
+          ],
+          "healthScope": "readiness"
+        },
+        {
+          "id": "exec-tool-smoke",
+          "title": "Exec Tool Safety Smoke",
+          "intent": "Read OpenClaw exec policy, run harmless fixture commands, prove dangerous payloads are inert sentinels, and verify timeout containment.",
+          "commands": [
+            "node {kovaRoot}/support/run-exec-tool-safety.mjs --env {env} --artifact-dir {artifactDir} --timeout-ms 45000"
+          ],
+          "evidence": [
+            "exec policy visibility",
+            "safe exec fixture output",
+            "dangerous payload blocked sentinel",
+            "output truncation",
+            "timeout containment"
+          ],
+          "healthScope": "post-ready"
+        },
+        {
+          "id": "post-exec-health",
+          "title": "Post-Exec Gateway Health",
+          "intent": "Verify exec fixture failures did not degrade gateway or command-tree health.",
+          "commands": [
+            "ocm @{env} -- status",
+            "ocm logs {env} --tail 300 --raw"
+          ],
+          "evidence": [
+            "status after exec checks",
+            "tool errors",
+            "gateway errors"
+          ],
+          "healthScope": "post-ready"
+        }
+      ],
+      "proves": [
+        "safe-and-blocked-exec"
       ]
     },
     {
@@ -11130,6 +12451,84 @@
       ]
     },
     {
+      "id": "mcp-tool-call",
+      "surface": "mcp-tool-call",
+      "title": "MCP Tool Call",
+      "objective": "Start OpenClaw's MCP bridge, list tools, call the deterministic cron status tool, call an invalid tool, and verify the bridge exits cleanly.",
+      "tags": [
+        "mcp",
+        "tools",
+        "tool-runtime",
+        "json-rpc"
+      ],
+      "timeoutMs": 180000,
+      "thresholds": {
+        "gatewayReadyMs": 30000,
+        "gatewayReadyHardTimeoutMs": 120000,
+        "statusMs": 10000,
+        "mcpInitializeMs": 10000,
+        "mcpToolsListMs": 10000,
+        "mcpToolsCallMs": 10000,
+        "mcpToolCallSucceeded": 1,
+        "mcpToolCallErrorAttributed": 1,
+        "mcpShutdownMs": 5000,
+        "mcpToolCountMin": 1,
+        "mcpProcessLeaks": 0,
+        "peakRssMb": 900
+      },
+      "phases": [
+        {
+          "id": "gateway",
+          "title": "Gateway Start",
+          "intent": "Start the disposable gateway before opening the MCP bridge.",
+          "commands": [
+            "ocm start {env} {startSelector} --json",
+            "ocm @{env} -- status"
+          ],
+          "evidence": [
+            "gateway status",
+            "gateway port",
+            "readiness classification"
+          ],
+          "healthScope": "readiness"
+        },
+        {
+          "id": "mcp-tool-call-smoke",
+          "title": "MCP Tool Call Smoke",
+          "intent": "Use JSON-RPC initialize, tools/list, tools/call cron status, invalid tools/call, and clean bridge shutdown.",
+          "commands": [
+            "node {kovaRoot}/support/mcp-tool-call-smoke.mjs --env {env} --artifact-dir {artifactDir} --timeout-ms 30000"
+          ],
+          "evidence": [
+            "MCP initialize timing",
+            "tools/list timing",
+            "tools/call timing",
+            "invalid tool error attribution",
+            "bridge process exit"
+          ],
+          "healthScope": "post-ready"
+        },
+        {
+          "id": "post-mcp-health",
+          "title": "Post-MCP Gateway Health",
+          "intent": "Verify MCP tool calls did not leave the gateway degraded.",
+          "commands": [
+            "ocm @{env} -- status",
+            "ocm logs {env} --tail 300 --raw"
+          ],
+          "evidence": [
+            "status after MCP tool calls",
+            "MCP errors",
+            "gateway errors"
+          ],
+          "healthScope": "post-ready"
+        }
+      ],
+      "proves": [
+        "safe-tool-call"
+      ]
+    },
+    {
       "id": "media-understanding-timeout",
       "surface": "media-understanding",
       "title": "Media Understanding Timeout",
@@ -11318,6 +12717,11 @@
       "timeoutMs": 180000,
       "agent": {
         "expectedText": "KOVA_AGENT_OK"
+      },
+      "mockProvider": {
+        "gatewayHttpEndpoints": [
+          "chatCompletions"
+        ]
       },
       "thresholds": {
         "gatewayReadyMs": 30000,
@@ -11540,6 +12944,80 @@
       ]
     },
     {
+      "id": "plugin-legacy-unsafe-memory",
+      "surface": "plugin-legacy-unsafe-memory",
+      "title": "Plugin Legacy Unsafe Memory",
+      "objective": "Install a legacy plugin fixture that performs unsafe buffer boundary probes on startup, require OpenClaw to fail it closed with an explicit diagnostic, and verify the gateway remains healthy.",
+      "tags": [
+        "plugins",
+        "memory",
+        "compatibility",
+        "security",
+        "failure",
+        "lifecycle"
+      ],
+      "timeoutMs": 180000,
+      "thresholds": {
+        "gatewayReadyMs": 30000,
+        "gatewayReadyHardTimeoutMs": 120000,
+        "statusMs": 10000,
+        "missingDependencyErrors": 0,
+        "pluginLoadFailures": 2
+      },
+      "phases": [
+        {
+          "id": "install",
+          "title": "Install Legacy Unsafe Memory Plugin",
+          "intent": "Install a plugin that models an older tolerated bad-allocation behavior without allocating dangerous amounts of memory.",
+          "commands": [
+            "ocm start {env} {startSelector} --json",
+            "node {kovaRoot}/support/assert-command-output.mjs --pattern KOVA_LEGACY_UNSAFE_MEMORY_PLUGIN_REJECTED -- ocm @{env} -- plugins install {kovaRoot}/support/plugins/kova-legacy-unsafe-memory --force",
+            "ocm @{env} -- plugins list"
+          ],
+          "evidence": [
+            "install result",
+            "plugin entry registered",
+            "gateway readiness before load"
+          ],
+          "healthScope": "readiness"
+        },
+        {
+          "id": "restart",
+          "title": "Restart And Require Fail-Closed Diagnostic",
+          "intent": "Restart after the failed-closed install path and verify the gateway remains supervised.",
+          "commands": [
+            "ocm service restart {env}",
+            "ocm service status {env} --json"
+          ],
+          "evidence": [
+            "restart status after unsafe-memory rejection",
+            "gateway remains supervised"
+          ],
+          "healthScope": "readiness"
+        },
+        {
+          "id": "survival",
+          "title": "Gateway Survival Check",
+          "intent": "Confirm the incompatible legacy plugin did not make user-facing OpenClaw commands unusable.",
+          "commands": [
+            "ocm @{env} -- status",
+            "ocm @{env} -- plugins list",
+            "ocm logs {env} --tail 500 --raw"
+          ],
+          "evidence": [
+            "status after unsafe-memory plugin failure",
+            "plugin list after failure",
+            "logs after unsafe-memory plugin failure"
+          ],
+          "healthScope": "post-ready",
+          "collectionIntent": "post-ready-health"
+        }
+      ],
+      "proves": [
+        "fail-closed"
+      ]
+    },
+    {
       "id": "plugin-lifecycle",
       "surface": "plugin-lifecycle",
       "title": "OpenClaw Plugin Lifecycle",
@@ -11607,8 +13085,8 @@
         "gatewayReadyMs": 30000,
         "gatewayReadyHardTimeoutMs": 120000,
         "statusMs": 10000,
-        "missingDependencyErrors": 1,
-        "pluginLoadFailures": 1
+        "missingDependencyErrors": 2,
+        "pluginLoadFailures": 2
       },
       "phases": [
         {
@@ -11938,6 +13416,143 @@
       ]
     },
     {
+      "id": "release-update-recovery",
+      "surface": "release-update-recovery",
+      "title": "Release Update Recovery",
+      "objective": "Start a disposable source env, add plugin-pressure recovery state, upgrade to the target, verify plugin health and doctor repair, retry the update selector, inspect rollback, and verify post-rollback health.",
+      "tags": [
+        "upgrade",
+        "update",
+        "rollback",
+        "plugins",
+        "doctor",
+        "recovery"
+      ],
+      "states": [
+        "update-recovery-plugin-user"
+      ],
+      "targetKinds": [
+        "npm",
+        "release",
+        "runtime",
+        "local-build"
+      ],
+      "timeoutMs": 300000,
+      "thresholds": {
+        "upgradeMs": 180000,
+        "statusMs": 10000,
+        "pluginsListMs": 15000,
+        "pluginUpdateDryRunMs": 30000,
+        "doctorFixMs": 60000,
+        "pluginLoadFailures": 1
+      },
+      "phases": [
+        {
+          "id": "source",
+          "title": "Start Source Release Env",
+          "intent": "Start a disposable source env on the stable channel before applying plugin-pressure update recovery state.",
+          "commands": [
+            "ocm start {env} --channel stable --json",
+            "ocm @{env} -- --version",
+            "ocm @{env} -- status",
+            "ocm @{env} -- plugins list",
+            "ocm service status {env} --json"
+          ],
+          "evidence": [
+            "source channel start output",
+            "source OpenClaw version",
+            "source status",
+            "source plugin list",
+            "source service status"
+          ],
+          "healthScope": "readiness"
+        },
+        {
+          "id": "upgrade",
+          "title": "Upgrade To Target",
+          "intent": "Run the real OpenClaw upgrade path through OCM and capture the requested target result.",
+          "commands": [
+            "ocm upgrade {env} {upgradeSelector} --json",
+            "ocm @{env} -- --version"
+          ],
+          "evidence": [
+            "target upgrade JSON",
+            "post-upgrade OpenClaw version",
+            "snapshot or rollback metadata when available"
+          ],
+          "healthScope": "readiness"
+        },
+        {
+          "id": "plugin-health",
+          "title": "Post-Upgrade Plugin Health",
+          "intent": "Verify plugin commands remain usable after the target update.",
+          "commands": [
+            "ocm @{env} -- status",
+            "ocm @{env} -- plugins list",
+            "ocm @{env} -- plugins update --all --dry-run"
+          ],
+          "evidence": [
+            "post-upgrade status",
+            "post-upgrade plugin list",
+            "post-upgrade plugin update dry-run"
+          ],
+          "healthScope": "post-ready"
+        },
+        {
+          "id": "doctor-repair",
+          "title": "Doctor Repair After Upgrade",
+          "intent": "Run doctor repair and verify OpenClaw remains usable after repair attempts.",
+          "commands": [
+            "node {kovaRoot}/support/run-doctor-repair.mjs --env {env}",
+            "ocm @{env} -- status"
+          ],
+          "evidence": [
+            "structured doctor repair JSON output",
+            "post-doctor status"
+          ],
+          "healthScope": "post-ready"
+        },
+        {
+          "id": "update-retry",
+          "title": "Retry Target Update",
+          "intent": "Run the same target selector again and verify reports can detect unintended version drift.",
+          "commands": [
+            "ocm upgrade {env} {upgradeSelector} --json",
+            "ocm @{env} -- --version"
+          ],
+          "evidence": [
+            "retry upgrade JSON",
+            "post-retry OpenClaw version"
+          ],
+          "healthScope": "post-ready"
+        },
+        {
+          "id": "rollback",
+          "title": "Rollback Inspection",
+          "intent": "Exercise rollback on the disposable env when the target runtime exposes rollback support, then verify plugin and gateway health.",
+          "commands": [
+            "node {kovaRoot}/support/restore-first-ocm-upgrade-snapshot.mjs --env {env}",
+            "ocm @{env} -- status",
+            "ocm @{env} -- plugins list",
+            "ocm logs {env} --tail 500 --raw"
+          ],
+          "evidence": [
+            "rollback output",
+            "post-rollback status",
+            "post-rollback plugin list",
+            "upgrade and rollback logs"
+          ],
+          "healthScope": "post-ready"
+        }
+      ],
+      "proves": [
+        "plugin-failure-recovery",
+        "doctor-repair-contract",
+        "update-retry-target-stability",
+        "rollback-available"
+      ]
+    },
+    {
       "id": "soak",
       "surface": "soak",
       "title": "Gateway Soak And Memory Trend",
@@ -11990,6 +13605,82 @@
       ],
       "proves": [
         "baseline"
+      ]
+    },
+    {
+      "id": "tool-failure-containment",
+      "surface": "tool-failure-containment",
+      "title": "Tool Failure Containment",
+      "objective": "Exercise deterministic blocked and timed-out tool fixture paths, attribute the failure to tool runtime evidence, and verify post-failure gateway health.",
+      "tags": [
+        "exec",
+        "tools",
+        "tool-runtime",
+        "failure-containment"
+      ],
+      "timeoutMs": 180000,
+      "mockProvider": {
+        "mode": "exec-tool-failure-only"
+      },
+      "thresholds": {
+        "gatewayReadyMs": 30000,
+        "gatewayReadyHardTimeoutMs": 120000,
+        "statusMs": 10000,
+        "execDangerousCommandBlocked": 1,
+        "execOutputTruncated": 1,
+        "execTimeoutMs": 15000,
+        "execProcessLeaks": 0,
+        "peakRssMb": 900
+      },
+      "phases": [
+        {
+          "id": "gateway",
+          "title": "Gateway Start",
+          "intent": "Start the disposable gateway before tool failure fixture checks.",
+          "commands": [
+            "ocm start {env} {startSelector} --json",
+            "ocm @{env} -- status"
+          ],
+          "evidence": [
+            "gateway status",
+            "gateway port",
+            "readiness classification"
+          ],
+          "healthScope": "readiness"
+        },
+        {
+          "id": "tool-failure-smoke",
+          "title": "Tool Failure Smoke",
+          "intent": "Run deterministic inert blocked-input, oversized-output, and timeout fixtures without executing destructive payloads.",
+          "commands": [
+            "node {kovaRoot}/support/run-exec-tool-safety.mjs --env {env} --artifact-dir {artifactDir} --timeout-ms 45000 --failure-only true"
+          ],
+          "evidence": [
+            "dangerous payload blocked sentinel",
+            "oversized output truncation",
+            "timeout containment",
+            "process leak count"
+          ],
+          "healthScope": "post-ready"
+        },
+        {
+          "id": "post-tool-failure-health",
+          "title": "Post-Tool Failure Health",
+          "intent": "Verify deterministic tool failures did not degrade gateway or command-tree health.",
+          "commands": [
+            "ocm @{env} -- status",
+            "ocm logs {env} --tail 300 --raw"
+          ],
+          "evidence": [
+            "status after tool failure fixture",
+            "tool failure attribution",
+            "gateway errors"
+          ],
+          "healthScope": "post-ready"
+        }
+      ],
+      "proves": [
+        "failure-attribution"
       ]
     },
     {
@@ -12526,6 +14217,357 @@
       ]
     },
     {
+      "id": "upgrade-from-day-ago",
+      "surface": "upgrade-existing-user",
+      "title": "Upgrade From Release A Day Ago",
+      "objective": "Clone existing OpenClaw user state, move the clone to the published OpenClaw version current roughly one day ago, then upgrade the same clone to the target and verify migration, plugin index, runtime deps, and gateway health.",
+      "tags": [
+        "existing-user",
+        "upgrade",
+        "rolling-upgrade",
+        "day-ago",
+        "plugins",
+        "migration",
+        "gateway"
+      ],
+      "states": [
+        "old-release-user"
+      ],
+      "timeoutMs": 240000,
+      "thresholds": {
+        "upgradeMs": 180000,
+        "gatewayReadyMs": 60000,
+        "statusMs": 10000,
+        "roleThresholds": {
+          "runtime-management": {
+            "peakRssMb": 1600
+          },
+          "doctor-cli": {
+            "peakRssMb": 850
+          }
+        }
+      },
+      "evidenceContract": {
+        "snapshots": [
+          {
+            "id": "pre-upgrade-state",
+            "afterPhase": "source-runtime",
+            "label": "pre-upgrade",
+            "required": true,
+            "summary": "Bounded redacted OpenClaw state before target upgrade"
+          },
+          {
+            "id": "post-upgrade-state",
+            "afterPhase": "post-upgrade",
+            "label": "post-upgrade",
+            "required": true,
+            "summary": "Bounded redacted OpenClaw state after target upgrade"
+          }
+        ]
+      },
+      "phases": [
+        {
+          "id": "clone",
+          "title": "Clone Existing Env",
+          "intent": "Clone a durable existing env into a disposable Kova env before any rolling source runtime or target upgrade action.",
+          "commands": [
+            "ocm env clone {sourceEnv} {env} --json"
+          ],
+          "evidence": [
+            "clone result",
+            "source env",
+            "clone root"
+          ],
+          "healthScope": "none"
+        },
+        {
+          "id": "source-runtime",
+          "title": "Move Clone To Day-Ago Release",
+          "intent": "Resolve the OpenClaw npm version published at or before one day ago and bind the cloned env to it before the target upgrade.",
+          "commands": [
+            "node {kovaRoot}/support/run-openclaw-release-age-upgrade.mjs --env {env} --age day --json",
+            "ocm @{env} -- status"
+          ],
+          "evidence": [
+            "day-ago source version",
+            "pre-upgrade service status",
+            "pre-upgrade OpenClaw status"
+          ],
+          "healthScope": "readiness"
+        },
+        {
+          "id": "upgrade",
+          "title": "Upgrade To Target",
+          "intent": "Run the real target upgrade path through OCM and verify post-upgrade service reconciliation.",
+          "commands": [
+            "ocm upgrade {env} {upgradeSelector} --json"
+          ],
+          "evidence": [
+            "target upgrade JSON",
+            "snapshot id",
+            "doctor/update output",
+            "rollback status"
+          ],
+          "healthScope": "readiness"
+        },
+        {
+          "id": "post-upgrade",
+          "title": "Post-Upgrade OpenClaw Checks",
+          "intent": "Verify OpenClaw state after upgrade, including plugin install index, plugin command behavior, doctor recovery, and gateway logs.",
+          "commands": [
+            "ocm @{env} -- status",
+            "ocm @{env} -- plugins list",
+            "ocm @{env} -- doctor --fix"
+          ],
+          "evidence": [
+            "status output",
+            "plugins folder/index presence",
+            "doctor output",
+            "gateway logs"
+          ],
+          "healthScope": "post-ready",
+          "collectionIntent": "post-ready-health"
+        }
+      ],
+      "proves": [
+        "baseline"
+      ]
+    },
+    {
+      "id": "upgrade-from-month-ago",
+      "surface": "upgrade-existing-user",
+      "title": "Upgrade From Release A Month Ago",
+      "objective": "Clone existing OpenClaw user state, move the clone to the published OpenClaw version current roughly one month ago, then upgrade the same clone to the target and verify migration, plugin index, runtime deps, and gateway health.",
+      "tags": [
+        "existing-user",
+        "upgrade",
+        "rolling-upgrade",
+        "month-ago",
+        "plugins",
+        "migration",
+        "gateway"
+      ],
+      "states": [
+        "old-release-user"
+      ],
+      "timeoutMs": 300000,
+      "thresholds": {
+        "upgradeMs": 180000,
+        "gatewayReadyMs": 60000,
+        "statusMs": 10000,
+        "roleThresholds": {
+          "runtime-management": {
+            "peakRssMb": 1600
+          },
+          "doctor-cli": {
+            "peakRssMb": 850
+          }
+        }
+      },
+      "evidenceContract": {
+        "snapshots": [
+          {
+            "id": "pre-upgrade-state",
+            "afterPhase": "source-runtime",
+            "label": "pre-upgrade",
+            "required": true,
+            "summary": "Bounded redacted OpenClaw state before target upgrade"
+          },
+          {
+            "id": "post-upgrade-state",
+            "afterPhase": "post-upgrade",
+            "label": "post-upgrade",
+            "required": true,
+            "summary": "Bounded redacted OpenClaw state after target upgrade"
+          }
+        ]
+      },
+      "phases": [
+        {
+          "id": "clone",
+          "title": "Clone Existing Env",
+          "intent": "Clone a durable existing env into a disposable Kova env before any rolling source runtime or target upgrade action.",
+          "commands": [
+            "ocm env clone {sourceEnv} {env} --json"
+          ],
+          "evidence": [
+            "clone result",
+            "source env",
+            "clone root"
+          ],
+          "healthScope": "none"
+        },
+        {
+          "id": "source-runtime",
+          "title": "Move Clone To Month-Ago Release",
+          "intent": "Resolve the OpenClaw npm version published at or before one month ago and bind the cloned env to it before the target upgrade.",
+          "commands": [
+            "node {kovaRoot}/support/run-openclaw-release-age-upgrade.mjs --env {env} --age month --json",
+            "ocm @{env} -- status"
+          ],
+          "evidence": [
+            "month-ago source version",
+            "pre-upgrade service status",
+            "pre-upgrade OpenClaw status"
+          ],
+          "healthScope": "readiness"
+        },
+        {
+          "id": "upgrade",
+          "title": "Upgrade To Target",
+          "intent": "Run the real target upgrade path through OCM and verify post-upgrade service reconciliation.",
+          "commands": [
+            "ocm upgrade {env} {upgradeSelector} --json"
+          ],
+          "evidence": [
+            "target upgrade JSON",
+            "snapshot id",
+            "doctor/update output",
+            "rollback status"
+          ],
+          "healthScope": "readiness"
+        },
+        {
+          "id": "post-upgrade",
+          "title": "Post-Upgrade OpenClaw Checks",
+          "intent": "Verify OpenClaw state after upgrade, including plugin install index, plugin command behavior, doctor recovery, and gateway logs.",
+          "commands": [
+            "ocm @{env} -- status",
+            "ocm @{env} -- plugins list",
+            "ocm @{env} -- doctor --fix"
+          ],
+          "evidence": [
+            "status output",
+            "plugins folder/index presence",
+            "doctor output",
+            "gateway logs"
+          ],
+          "healthScope": "post-ready",
+          "collectionIntent": "post-ready-health"
+        }
+      ],
+      "proves": [
+        "baseline"
+      ]
+    },
+    {
+      "id": "upgrade-from-week-ago",
+      "surface": "upgrade-existing-user",
+      "title": "Upgrade From Release A Week Ago",
+      "objective": "Clone existing OpenClaw user state, move the clone to the published OpenClaw version current roughly one week ago, then upgrade the same clone to the target and verify migration, plugin index, runtime deps, and gateway health.",
+      "tags": [
+        "existing-user",
+        "upgrade",
+        "rolling-upgrade",
+        "week-ago",
+        "plugins",
+        "migration",
+        "gateway"
+      ],
+      "states": [
+        "old-release-user"
+      ],
+      "timeoutMs": 240000,
+      "thresholds": {
+        "upgradeMs": 180000,
+        "gatewayReadyMs": 60000,
+        "statusMs": 10000,
+        "roleThresholds": {
+          "runtime-management": {
+            "peakRssMb": 1600
+          },
+          "doctor-cli": {
+            "peakRssMb": 850
+          }
+        }
+      },
+      "evidenceContract": {
+        "snapshots": [
+          {
+            "id": "pre-upgrade-state",
+            "afterPhase": "source-runtime",
+            "label": "pre-upgrade",
+            "required": true,
+            "summary": "Bounded redacted OpenClaw state before target upgrade"
+          },
+          {
+            "id": "post-upgrade-state",
+            "afterPhase": "post-upgrade",
+            "label": "post-upgrade",
+            "required": true,
+            "summary": "Bounded redacted OpenClaw state after target upgrade"
+          }
+        ]
+      },
+      "phases": [
+        {
+          "id": "clone",
+          "title": "Clone Existing Env",
+          "intent": "Clone a durable existing env into a disposable Kova env before any rolling source runtime or target upgrade action.",
+          "commands": [
+            "ocm env clone {sourceEnv} {env} --json"
+          ],
+          "evidence": [
+            "clone result",
+            "source env",
+            "clone root"
+          ],
+          "healthScope": "none"
+        },
+        {
+          "id": "source-runtime",
+          "title": "Move Clone To Week-Ago Release",
+          "intent": "Resolve the OpenClaw npm version published at or before one week ago and bind the cloned env to it before the target upgrade.",
+          "commands": [
+            "node {kovaRoot}/support/run-openclaw-release-age-upgrade.mjs --env {env} --age week --json",
+            "ocm @{env} -- status"
+          ],
+          "evidence": [
+            "week-ago source version",
+            "pre-upgrade service status",
+            "pre-upgrade OpenClaw status"
+          ],
+          "healthScope": "readiness"
+        },
+        {
+          "id": "upgrade",
+          "title": "Upgrade To Target",
+          "intent": "Run the real target upgrade path through OCM and verify post-upgrade service reconciliation.",
+          "commands": [
+            "ocm upgrade {env} {upgradeSelector} --json"
+          ],
+          "evidence": [
+            "target upgrade JSON",
+            "snapshot id",
+            "doctor/update output",
+            "rollback status"
+          ],
+          "healthScope": "readiness"
+        },
+        {
+          "id": "post-upgrade",
+          "title": "Post-Upgrade OpenClaw Checks",
+          "intent": "Verify OpenClaw state after upgrade, including plugin install index, plugin command behavior, doctor recovery, and gateway logs.",
+          "commands": [
+            "ocm @{env} -- status",
+            "ocm @{env} -- plugins list",
+            "ocm @{env} -- doctor --fix"
+          ],
+          "evidence": [
+            "status output",
+            "plugins folder/index presence",
+            "doctor output",
+            "gateway logs"
+          ],
+          "healthScope": "post-ready",
+          "collectionIntent": "post-ready-health"
+        }
+      ],
+      "proves": [
+        "baseline"
+      ]
+    },
+    {
       "id": "upgrade-stable-release-to-beta",
       "surface": "upgrade-existing-user",
       "title": "Stable Release To Beta Upgrade",
@@ -12903,6 +14945,453 @@
       ],
       "cleanupGuarantees": [
         "disposable env cleanup removes state fixture files"
+      ]
+    },
+    {
+      "id": "cron-user",
+      "title": "Cron-Capable Disposable User",
+      "objective": "A disposable OpenClaw user state used to register and trigger a short-lived cron run through OpenClaw's real cron command path.",
+      "tags": [
+        "cron",
+        "automation",
+        "runtime"
+      ],
+      "setup": [],
+      "traits": [
+        "fresh-user",
+        "baseline"
+      ],
+      "riskArea": "cron-runtime",
+      "ownerArea": "cron-runtime",
+      "setupEvidence": [
+        "disposable OpenClaw env exists",
+        "cron CLI can read gateway config",
+        "artifact dir captures cron command transcripts"
+      ],
+      "cleanupGuarantees": [
+        "cron entries created by the scenario are delete-after-run and explicitly removed during helper cleanup",
+        "disposable env cleanup removes any remaining cron state"
+      ]
+    },
+    {
+      "id": "dirty-plugin-disabled-broken",
+      "title": "Dirty Plugin Disabled Broken",
+      "objective": "A disposable user state with a disabled plugin whose files are broken, proving disabled dirty plugins do not break gateway startup or become enabled during repair.",
+      "tags": [
+        "plugins",
+        "dirty",
+        "disabled",
+        "broken",
+        "recovery"
+      ],
+      "setup": [
+        {
+          "id": "write-dirty-plugin-disabled-broken",
+          "title": "Write Dirty Plugin Disabled Broken",
+          "intent": "Install a disabled plugin with intentionally broken manifest/runtime files.",
+          "afterPhases": [
+            "start",
+            "source",
+            "provision",
+            "cold-start",
+            "baseline",
+            "gateway",
+            "clone"
+          ],
+          "commands": [
+            "ocm env exec {env} -- node {kovaRoot}/support/dirty-plugin-state.mjs prepare dirty-plugin-disabled-broken"
+          ],
+          "evidence": [
+            "disabled install record exists",
+            "broken plugin files exist"
+          ]
+        },
+        {
+          "id": "verify-dirty-plugin-disabled-broken",
+          "title": "Verify Dirty Plugin Disabled Broken",
+          "intent": "Verify the disabled broken plugin remained disabled and was not destructively rewritten.",
+          "afterPhase": "restart",
+          "commands": [
+            "ocm env exec {env} -- node {kovaRoot}/support/dirty-plugin-state.mjs verify dirty-plugin-disabled-broken"
+          ],
+          "evidence": [
+            "disabled plugin remains disabled",
+            "broken plugin checksum still matches"
+          ]
+        }
+      ],
+      "traits": [
+        "existing-user",
+        "external-plugin",
+        "plugin-pressure",
+        "failure-state"
+      ],
+      "riskArea": "dirty-plugin-disabled-broken",
+      "ownerArea": "plugins",
+      "setupEvidence": [
+        "disabled install record exists",
+        "broken plugin files exist"
+      ],
+      "cleanupGuarantees": [
+        "disposable env cleanup removes disabled broken fixture files"
+      ],
+      "source": {
+        "kind": "synthetic-plugin-state",
+        "note": "disabled plugin with broken manifest and runtime files"
+      }
+    },
+    {
+      "id": "dirty-plugin-local-edits",
+      "title": "Dirty Plugin With Local Edits",
+      "objective": "A disposable user state with an installed external plugin that has local user edits OpenClaw must not silently overwrite during plugin inspection, doctor repair, restart, update, or rollback.",
+      "tags": [
+        "plugins",
+        "dirty",
+        "local-edits",
+        "recovery"
+      ],
+      "setup": [
+        {
+          "id": "write-dirty-plugin-local-edits",
+          "title": "Write Dirty Plugin Local Edits",
+          "intent": "Install a local dirty plugin fixture and record a checksum marker inside the disposable env.",
+          "afterPhases": [
+            "start",
+            "source",
+            "provision",
+            "cold-start",
+            "baseline",
+            "gateway",
+            "clone"
+          ],
+          "commands": [
+            "ocm env exec {env} -- node {kovaRoot}/support/dirty-plugin-state.mjs prepare dirty-plugin-local-edits"
+          ],
+          "evidence": [
+            "dirty local edit plugin fixture exists",
+            "pre-repair checksum marker exists"
+          ]
+        },
+        {
+          "id": "verify-dirty-plugin-local-edits",
+          "title": "Verify Dirty Plugin Local Edits",
+          "intent": "Verify OpenClaw plugin inspection, doctor repair, and restart did not overwrite local plugin edits.",
+          "afterPhase": "restart",
+          "commands": [
+            "ocm env exec {env} -- node {kovaRoot}/support/dirty-plugin-state.mjs verify dirty-plugin-local-edits"
+          ],
+          "evidence": [
+            "dirty local edit checksum still matches"
+          ]
+        }
+      ],
+      "traits": [
+        "existing-user",
+        "external-plugin",
+        "plugin-pressure",
+        "failure-state"
+      ],
+      "riskArea": "dirty-plugin-local-edits",
+      "ownerArea": "plugins",
+      "setupEvidence": [
+        "dirty local edit plugin fixture exists",
+        "pre-repair checksum marker exists"
+      ],
+      "cleanupGuarantees": [
+        "disposable env cleanup removes dirty plugin fixture files"
+      ],
+      "source": {
+        "kind": "synthetic-plugin-state",
+        "note": "installed plugin with local user edits and checksum marker"
+      }
+    },
+    {
+      "id": "dirty-plugin-manifest-drift",
+      "title": "Dirty Plugin Manifest Drift",
+      "objective": "A disposable user state with a plugin whose OpenClaw manifest and package metadata disagree, including version drift, id drift, an unsupported contract key, and a missing package entrypoint.",
+      "tags": [
+        "plugins",
+        "dirty",
+        "manifest-drift",
+        "recovery"
+      ],
+      "setup": [
+        {
+          "id": "write-dirty-plugin-manifest-drift",
+          "title": "Write Dirty Plugin Manifest Drift",
+          "intent": "Install a plugin-inspector-shaped plugin with deliberate manifest/package drift.",
+          "afterPhases": [
+            "start",
+            "source",
+            "provision",
+            "cold-start",
+            "baseline",
+            "gateway",
+            "clone"
+          ],
+          "commands": [
+            "ocm env exec {env} -- node {kovaRoot}/support/dirty-plugin-state.mjs prepare dirty-plugin-manifest-drift"
+          ],
+          "evidence": [
+            "manifest id/version drift exists",
+            "missing package entrypoint is declared"
+          ]
+        },
+        {
+          "id": "verify-dirty-plugin-manifest-drift",
+          "title": "Verify Dirty Plugin Manifest Drift",
+          "intent": "Verify OpenClaw handling did not silently rewrite the drift evidence.",
+          "afterPhase": "restart",
+          "commands": [
+            "ocm env exec {env} -- node {kovaRoot}/support/dirty-plugin-state.mjs verify dirty-plugin-manifest-drift"
+          ],
+          "evidence": [
+            "manifest drift checksum still matches"
+          ]
+        }
+      ],
+      "traits": [
+        "existing-user",
+        "external-plugin",
+        "plugin-pressure",
+        "failure-state"
+      ],
+      "riskArea": "dirty-plugin-manifest-drift",
+      "ownerArea": "plugins",
+      "setupEvidence": [
+        "manifest id/version drift exists",
+        "missing package entrypoint is declared"
+      ],
+      "cleanupGuarantees": [
+        "disposable env cleanup removes manifest drift fixture files"
+      ],
+      "source": {
+        "kind": "synthetic-plugin-state",
+        "note": "plugin manifest and package metadata disagree"
+      }
+    },
+    {
+      "id": "dirty-plugin-partial-install",
+      "title": "Dirty Plugin Partial Install",
+      "objective": "A disposable user state with a plugin install record whose files are missing, used to prove OpenClaw reports partial installs clearly and keeps gateway, doctor, and rollback paths usable.",
+      "tags": [
+        "plugins",
+        "dirty",
+        "partial-install",
+        "recovery"
+      ],
+      "setup": [
+        {
+          "id": "write-dirty-plugin-partial-install",
+          "title": "Write Dirty Plugin Partial Install",
+          "intent": "Write a plugin install record that points to missing plugin files inside the disposable env.",
+          "afterPhases": [
+            "start",
+            "source",
+            "provision",
+            "cold-start",
+            "baseline",
+            "gateway",
+            "clone"
+          ],
+          "commands": [
+            "ocm env exec {env} -- node {kovaRoot}/support/dirty-plugin-state.mjs prepare dirty-plugin-partial-install"
+          ],
+          "evidence": [
+            "partial install record exists",
+            "plugin root is intentionally missing"
+          ]
+        },
+        {
+          "id": "verify-dirty-plugin-partial-install",
+          "title": "Verify Dirty Plugin Partial Install",
+          "intent": "Verify OpenClaw did not silently recreate or erase the partial install evidence while handling dirty plugin state.",
+          "afterPhase": "restart",
+          "commands": [
+            "ocm env exec {env} -- node {kovaRoot}/support/dirty-plugin-state.mjs verify dirty-plugin-partial-install"
+          ],
+          "evidence": [
+            "partial install evidence remains explicit"
+          ]
+        }
+      ],
+      "traits": [
+        "existing-user",
+        "external-plugin",
+        "plugin-pressure",
+        "failure-state"
+      ],
+      "riskArea": "dirty-plugin-partial-install",
+      "ownerArea": "plugins",
+      "setupEvidence": [
+        "partial install record exists",
+        "plugin root is intentionally missing"
+      ],
+      "cleanupGuarantees": [
+        "disposable env cleanup removes dirty plugin fixture files"
+      ],
+      "source": {
+        "kind": "synthetic-plugin-state",
+        "note": "plugin install record without plugin files"
+      }
+    },
+    {
+      "id": "dirty-plugin-stale-deps",
+      "title": "Dirty Plugin Stale Dependencies",
+      "objective": "A disposable user state with an installed external plugin whose package metadata and stale node_modules marker model dependency drift after runtime or release changes.",
+      "tags": [
+        "plugins",
+        "dirty",
+        "stale-deps",
+        "recovery"
+      ],
+      "setup": [
+        {
+          "id": "write-dirty-plugin-stale-deps",
+          "title": "Write Dirty Plugin Stale Dependencies",
+          "intent": "Install a plugin-inspector-shaped dirty plugin with stale dependency evidence inside the disposable env.",
+          "afterPhases": [
+            "start",
+            "source",
+            "provision",
+            "cold-start",
+            "baseline",
+            "gateway",
+            "clone"
+          ],
+          "commands": [
+            "ocm env exec {env} -- node {kovaRoot}/support/dirty-plugin-state.mjs prepare dirty-plugin-stale-deps"
+          ],
+          "evidence": [
+            "stale dependency marker exists",
+            "plugin package declares runtime dependencies"
+          ]
+        },
+        {
+          "id": "verify-dirty-plugin-stale-deps",
+          "title": "Verify Dirty Plugin Stale Dependencies",
+          "intent": "Verify dirty dependency evidence remains explicit after plugin inspection, doctor repair, and restart.",
+          "afterPhase": "restart",
+          "commands": [
+            "ocm env exec {env} -- node {kovaRoot}/support/dirty-plugin-state.mjs verify dirty-plugin-stale-deps"
+          ],
+          "evidence": [
+            "stale dependency marker checksum still matches"
+          ]
+        }
+      ],
+      "traits": [
+        "existing-user",
+        "external-plugin",
+        "plugin-pressure",
+        "failure-state"
+      ],
+      "riskArea": "dirty-plugin-stale-deps",
+      "ownerArea": "plugins",
+      "setupEvidence": [
+        "stale dependency marker exists",
+        "plugin package declares runtime dependencies"
+      ],
+      "cleanupGuarantees": [
+        "disposable env cleanup removes stale dependency fixture files"
+      ],
+      "source": {
+        "kind": "synthetic-plugin-state",
+        "note": "installed plugin with stale node_modules marker and dependency metadata"
+      }
+    },
+    {
+      "id": "dirty-plugin-symlink-dev",
+      "title": "Dirty Plugin Symlink Dev",
+      "objective": "A disposable user state with an installed plugin path symlinked to an in-env development directory, proving update and doctor flows do not replace or destructively follow plugin symlinks.",
+      "tags": [
+        "plugins",
+        "dirty",
+        "symlink",
+        "local-dev",
+        "recovery"
+      ],
+      "setup": [
+        {
+          "id": "write-dirty-plugin-symlink-dev",
+          "title": "Write Dirty Plugin Symlink Dev",
+          "intent": "Install a safe in-env symlinked plugin development directory with checksum evidence.",
+          "afterPhases": [
+            "start",
+            "source",
+            "provision",
+            "cold-start",
+            "baseline",
+            "gateway",
+            "clone"
+          ],
+          "commands": [
+            "ocm env exec {env} -- node {kovaRoot}/support/dirty-plugin-state.mjs prepare dirty-plugin-symlink-dev"
+          ],
+          "evidence": [
+            "plugin path is a symlink",
+            "symlink target checksum marker exists"
+          ]
+        },
+        {
+          "id": "verify-dirty-plugin-symlink-dev",
+          "title": "Verify Dirty Plugin Symlink Dev",
+          "intent": "Verify OpenClaw handling preserved the symlink and target files.",
+          "afterPhase": "restart",
+          "commands": [
+            "ocm env exec {env} -- node {kovaRoot}/support/dirty-plugin-state.mjs verify dirty-plugin-symlink-dev"
+          ],
+          "evidence": [
+            "plugin path remains a symlink",
+            "symlink target checksum still matches"
+          ]
+        }
+      ],
+      "traits": [
+        "existing-user",
+        "external-plugin",
+        "plugin-pressure",
+        "failure-state"
+      ],
+      "riskArea": "dirty-plugin-symlink-dev",
+      "ownerArea": "plugins",
+      "setupEvidence": [
+        "plugin path is a symlink",
+        "symlink target checksum marker exists"
+      ],
+      "cleanupGuarantees": [
+        "disposable env cleanup removes symlink and in-env target files"
+      ],
+      "source": {
+        "kind": "synthetic-plugin-state",
+        "note": "plugin install path symlinked to an in-env development directory"
+      }
+    },
+    {
+      "id": "exec-tool-user",
+      "title": "Exec Tool Disposable User",
+      "objective": "A disposable OpenClaw user state with a bounded workspace and non-secret sentinel values for exec tool safety and failure containment checks.",
+      "tags": [
+        "exec",
+        "tools",
+        "runtime"
+      ],
+      "setup": [],
+      "traits": [
+        "fresh-user",
+        "baseline"
+      ],
+      "riskArea": "agent-tool-runtime",
+      "ownerArea": "agent-tool-runtime",
+      "setupEvidence": [
+        "disposable OpenClaw env exists",
+        "exec policy CLI is reachable",
+        "artifact dir contains the writable fixture workspace"
+      ],
+      "cleanupGuarantees": [
+        "helper fixture commands run only under the scenario artifact directory",
+        "dangerous payloads are represented as inert sentinels and are never executed",
+        "disposable env cleanup removes fixture workspace files"
       ]
     },
     {
@@ -13638,6 +16127,33 @@
       ]
     },
     {
+      "id": "mcp-tool-user",
+      "title": "MCP Tool Disposable User",
+      "objective": "A disposable OpenClaw user state for real MCP bridge tool-call checks against the local gateway.",
+      "tags": [
+        "mcp",
+        "tools",
+        "runtime"
+      ],
+      "setup": [],
+      "traits": [
+        "fresh-user",
+        "baseline"
+      ],
+      "riskArea": "mcp-runtime",
+      "ownerArea": "mcp-runtime",
+      "setupEvidence": [
+        "disposable OpenClaw env exists",
+        "MCP bridge can connect to the disposable gateway",
+        "artifact dir captures JSON-RPC request and response transcript"
+      ],
+      "cleanupGuarantees": [
+        "MCP bridge process is closed by the helper",
+        "gateway token file is removed after the helper exits",
+        "disposable env cleanup removes MCP artifacts"
+      ]
+    },
+    {
       "id": "missing-plugin-index",
       "title": "Missing Plugin Install Index",
       "objective": "A user state where plugin install index files are absent after provisioning, used to verify OpenClaw rebuilds or handles plugin metadata without expensive repeated scans.",
@@ -14364,9 +16880,87 @@
       "cleanupGuarantees": [
         "disposable env cleanup removes state fixture files"
       ]
+    },
+    {
+      "id": "update-recovery-plugin-user",
+      "title": "Update Recovery Plugin User",
+      "objective": "A disposable source user with plugin pressure, dirty local edits, and a partial plugin install record for release update recovery testing.",
+      "tags": [
+        "upgrade",
+        "plugins",
+        "dirty",
+        "recovery"
+      ],
+      "setup": [
+        {
+          "id": "write-update-recovery-plugin-user",
+          "title": "Write Update Recovery Plugin User",
+          "intent": "Create plugin-pressure state before running the target upgrade path.",
+          "afterPhases": [
+            "source",
+            "start",
+            "clone"
+          ],
+          "commands": [
+            "ocm env exec {env} -- node {kovaRoot}/support/dirty-plugin-state.mjs prepare update-recovery-plugin-user"
+          ],
+          "evidence": [
+            "dirty plugin local edit marker exists",
+            "partial install record exists",
+            "source channel marker exists"
+          ]
+        },
+        {
+          "id": "verify-update-recovery-plugin-user",
+          "title": "Verify Update Recovery Plugin User",
+          "intent": "Verify update, doctor repair, retry, and rollback did not destroy dirty plugin evidence.",
+          "afterPhase": "rollback",
+          "commands": [
+            "ocm env exec {env} -- node {kovaRoot}/support/dirty-plugin-state.mjs verify update-recovery-plugin-user"
+          ],
+          "evidence": [
+            "dirty plugin local edit checksum still matches",
+            "partial install evidence remains explicit"
+          ]
+        }
+      ],
+      "traits": [
+        "existing-user",
+        "external-plugin",
+        "plugin-pressure",
+        "failure-state",
+        "migration-state",
+        "release-state"
+      ],
+      "riskArea": "release-update-recovery",
+      "ownerArea": "upgrade",
+      "setupEvidence": [
+        "dirty plugin local edit marker exists",
+        "partial install record exists",
+        "source release marker exists"
+      ],
+      "cleanupGuarantees": [
+        "disposable env cleanup removes update recovery fixture files"
+      ],
+      "source": {
+        "kind": "synthetic-release-user",
+        "release": "stable",
+        "note": "stable release user with dirty plugin pressure"
+      }
     }
   ],
   "profiles": [
+    {
+      "id": "adversarial",
+      "title": "Adversarial Matrix",
+      "objective": "Focused OpenClaw resilience coverage for hostile-looking user inputs and malformed runtime conditions.",
+      "purpose": "diagnostic",
+      "entryCount": 6,
+      "targetKinds": null,
+      "diagnostics": null,
+      "calibration": null,
+      "gate": null
+    },
     {
       "id": "diagnostic",
       "title": "Source-Built Diagnostics",
@@ -14425,7 +17019,7 @@
       "title": "Exhaustive Matrix",
       "objective": "Maximum local OpenClaw coverage across install, upgrade, plugins, providers, config corruption, filesystem pressure, service recovery, and performance scenarios.",
       "purpose": "regression",
-      "entryCount": 57,
+      "entryCount": 75,
       "targetKinds": null,
       "diagnostics": null,
       "calibration": null,
@@ -14477,18 +17071,34 @@
       "title": "Release Matrix",
       "objective": "Broad OpenClaw release confidence across install, upgrade, bundled plugins, model/provider, UI, failure, soak, and platform smoke scenarios.",
       "purpose": "release",
-      "entryCount": 45,
+      "entryCount": 52,
       "targetKinds": null,
       "diagnostics": null,
       "calibration": {
-        "surfaceCount": 15,
-        "roleCount": 16
+        "surfaceCount": 19,
+        "roleCount": 18
       },
       "gate": {
         "id": "openclaw-release",
-        "blockingCount": 29,
-        "warningCount": 16
+        "blockingCount": 28,
+        "warningCount": 24
       }
+    },
+    {
+      "id": "rolling-upgrade",
+      "title": "Rolling Upgrade Matrix",
+      "objective": "Focused OpenClaw upgrade coverage from recently published versions: roughly one day ago, one week ago, and one month ago, upgraded through the real OCM path to the requested target.",
+      "purpose": "upgrade",
+      "entryCount": 3,
+      "targetKinds": [
+        "npm",
+        "release",
+        "runtime",
+        "local-build"
+      ],
+      "diagnostics": null,
+      "calibration": null,
+      "gate": null
     },
     {
       "id": "smoke",
@@ -14528,16 +17138,27 @@
     "schemaVersion": "kova.coverage.v1",
     "surfaces": [
       {
+        "id": "adversarial-input",
+        "title": "Adversarial User Input",
+        "ownerArea": "gateway-input-runtime",
+        "scenarioCount": 1,
+        "scenarios": [
+          "adversarial-input-openai-compatible"
+        ]
+      },
+      {
         "id": "agent-cli-local-turn",
         "title": "Agent CLI Local Turn",
         "ownerArea": "agent-runtime",
-        "scenarioCount": 9,
+        "scenarioCount": 11,
         "scenarios": [
           "agent-auth-missing",
           "agent-cold-warm-message",
           "agent-long-session",
           "agent-provider-concurrent",
           "agent-provider-malformed",
+          "agent-provider-protocol-failure",
+          "agent-provider-random-disconnect",
           "agent-provider-recovery",
           "agent-provider-slow",
           "agent-provider-streaming-stall",
@@ -14617,6 +17238,15 @@
         ]
       },
       {
+        "id": "cron-runtime",
+        "title": "Cron Runtime",
+        "ownerArea": "cron-runtime",
+        "scenarioCount": 1,
+        "scenarios": [
+          "cron-runtime"
+        ]
+      },
+      {
         "id": "cross-platform-smoke",
         "title": "Cross-Platform Smoke",
         "ownerArea": "platform-runtime",
@@ -14632,6 +17262,24 @@
         "scenarioCount": 1,
         "scenarios": [
           "dashboard-readiness"
+        ]
+      },
+      {
+        "id": "dirty-plugin-state",
+        "title": "Dirty Plugin State",
+        "ownerArea": "plugins",
+        "scenarioCount": 1,
+        "scenarios": [
+          "dirty-plugin-state"
+        ]
+      },
+      {
+        "id": "exec-tool-safety",
+        "title": "Exec Tool Safety",
+        "ownerArea": "agent-tool-runtime",
+        "scenarioCount": 1,
+        "scenarios": [
+          "exec-tool-safety"
         ]
       },
       {
@@ -14678,6 +17326,15 @@
         "scenarioCount": 1,
         "scenarios": [
           "mcp-runtime-start-stop"
+        ]
+      },
+      {
+        "id": "mcp-tool-call",
+        "title": "MCP Tool Call",
+        "ownerArea": "mcp-runtime",
+        "scenarioCount": 1,
+        "scenarios": [
+          "mcp-tool-call"
         ]
       },
       {
@@ -14735,6 +17392,15 @@
         ]
       },
       {
+        "id": "plugin-legacy-unsafe-memory",
+        "title": "Plugin Legacy Unsafe Memory",
+        "ownerArea": "plugins",
+        "scenarioCount": 1,
+        "scenarios": [
+          "plugin-legacy-unsafe-memory"
+        ]
+      },
+      {
         "id": "plugin-lifecycle",
         "title": "Plugin Lifecycle",
         "ownerArea": "plugins",
@@ -14789,12 +17455,30 @@
         ]
       },
       {
+        "id": "release-update-recovery",
+        "title": "Release Update Recovery",
+        "ownerArea": "upgrade",
+        "scenarioCount": 1,
+        "scenarios": [
+          "release-update-recovery"
+        ]
+      },
+      {
         "id": "soak",
         "title": "Gateway Soak",
         "ownerArea": "gateway",
         "scenarioCount": 1,
         "scenarios": [
           "soak"
+        ]
+      },
+      {
+        "id": "tool-failure-containment",
+        "title": "Tool Failure Containment",
+        "ownerArea": "agent-tool-runtime",
+        "scenarioCount": 1,
+        "scenarios": [
+          "tool-failure-containment"
         ]
       },
       {
@@ -14819,13 +17503,16 @@
         "id": "upgrade-existing-user",
         "title": "Existing User Upgrade",
         "ownerArea": "upgrade",
-        "scenarioCount": 7,
+        "scenarioCount": 10,
         "scenarios": [
           "doctor-repair-upgrade",
           "upgrade-durable-clone-to-local-build",
           "upgrade-existing-user",
           "upgrade-from-2026-4-20",
           "upgrade-from-2026-4-24",
+          "upgrade-from-day-ago",
+          "upgrade-from-month-ago",
+          "upgrade-from-week-ago",
           "upgrade-stable-release-to-beta",
           "upgrade-stable-release-to-local-build"
         ]
@@ -14841,6 +17528,10 @@
       }
     ],
     "scenarioSurfaceMap": [
+      {
+        "scenario": "adversarial-input-openai-compatible",
+        "surface": "adversarial-input"
+      },
       {
         "scenario": "agent-auth-missing",
         "surface": "agent-cli-local-turn"
@@ -14867,6 +17558,14 @@
       },
       {
         "scenario": "agent-provider-malformed",
+        "surface": "agent-cli-local-turn"
+      },
+      {
+        "scenario": "agent-provider-protocol-failure",
+        "surface": "agent-cli-local-turn"
+      },
+      {
+        "scenario": "agent-provider-random-disconnect",
         "surface": "agent-cli-local-turn"
       },
       {
@@ -14914,6 +17613,10 @@
         "surface": "channel-telegram-capability-conformance"
       },
       {
+        "scenario": "cron-runtime",
+        "surface": "cron-runtime"
+      },
+      {
         "scenario": "cross-platform-smoke",
         "surface": "cross-platform-smoke"
       },
@@ -14922,8 +17625,16 @@
         "surface": "dashboard"
       },
       {
+        "scenario": "dirty-plugin-state",
+        "surface": "dirty-plugin-state"
+      },
+      {
         "scenario": "doctor-repair-upgrade",
         "surface": "upgrade-existing-user"
+      },
+      {
+        "scenario": "exec-tool-safety",
+        "surface": "exec-tool-safety"
       },
       {
         "scenario": "failure-injection",
@@ -14950,6 +17661,10 @@
         "surface": "mcp-runtime"
       },
       {
+        "scenario": "mcp-tool-call",
+        "surface": "mcp-tool-call"
+      },
+      {
         "scenario": "media-understanding-timeout",
         "surface": "media-understanding"
       },
@@ -14968,6 +17683,10 @@
       {
         "scenario": "plugin-external-install",
         "surface": "plugin-external-install"
+      },
+      {
+        "scenario": "plugin-legacy-unsafe-memory",
+        "surface": "plugin-legacy-unsafe-memory"
       },
       {
         "scenario": "plugin-lifecycle",
@@ -14994,8 +17713,16 @@
         "surface": "release-runtime-startup"
       },
       {
+        "scenario": "release-update-recovery",
+        "surface": "release-update-recovery"
+      },
+      {
         "scenario": "soak",
         "surface": "soak"
+      },
+      {
+        "scenario": "tool-failure-containment",
+        "surface": "tool-failure-containment"
       },
       {
         "scenario": "tui-message-turn",
@@ -15022,6 +17749,18 @@
         "surface": "upgrade-existing-user"
       },
       {
+        "scenario": "upgrade-from-day-ago",
+        "surface": "upgrade-existing-user"
+      },
+      {
+        "scenario": "upgrade-from-month-ago",
+        "surface": "upgrade-existing-user"
+      },
+      {
+        "scenario": "upgrade-from-week-ago",
+        "surface": "upgrade-existing-user"
+      },
+      {
         "scenario": "upgrade-stable-release-to-beta",
         "surface": "upgrade-existing-user"
       },
@@ -15036,6 +17775,116 @@
     ],
     "surfacesWithoutScenarios": [],
     "profiles": [
+      {
+        "id": "adversarial",
+        "entryCount": 6,
+        "surfaces": [
+          "adversarial-input",
+          "agent-cli-local-turn",
+          "network-offline",
+          "plugin-bad-manifest"
+        ],
+        "states": [
+          "fresh",
+          "mock-openai-provider"
+        ],
+        "scenarios": [
+          "adversarial-input-openai-compatible",
+          "agent-network-offline",
+          "agent-provider-malformed",
+          "agent-provider-protocol-failure",
+          "agent-provider-random-disconnect",
+          "plugin-bad-manifest"
+        ],
+        "requirements": [
+          "adversarial-input:hostile-text-baseline",
+          "agent-cli-local-turn:baseline",
+          "network-offline:baseline",
+          "plugin-bad-manifest:baseline"
+        ],
+        "stateSurfaces": [
+          "adversarial-input:mock-openai-provider",
+          "agent-cli-local-turn:mock-openai-provider",
+          "network-offline:fresh",
+          "plugin-bad-manifest:fresh"
+        ],
+        "required": {
+          "surfaces": [],
+          "scenarios": [],
+          "states": [],
+          "traits": [],
+          "platforms": [],
+          "requirements": [],
+          "stateSurfaces": []
+        },
+        "gaps": {
+          "surfaces": [],
+          "scenarios": [],
+          "states": [],
+          "traits": [],
+          "platforms": [],
+          "requirements": [],
+          "stateSurfaces": []
+        },
+        "currentPlatformKeys": [
+          "arm64",
+          "darwin",
+          "darwin-arm64"
+        ],
+        "stateTraitCoverage": {
+          "agent-state": [
+            "mock-openai-provider"
+          ],
+          "baseline": [
+            "fresh"
+          ],
+          "fresh-user": [
+            "fresh"
+          ],
+          "mock-provider": [
+            "mock-openai-provider"
+          ],
+          "provider-pressure": [
+            "mock-openai-provider"
+          ]
+        },
+        "stateSurfaceCoverage": {
+          "adversarial-input": [
+            "mock-openai-provider"
+          ],
+          "agent-cli-local-turn": [
+            "mock-openai-provider"
+          ],
+          "network-offline": [
+            "fresh"
+          ],
+          "plugin-bad-manifest": [
+            "fresh"
+          ]
+        },
+        "traitSurfaceCoverage": {
+          "agent-state": [
+            "adversarial-input",
+            "agent-cli-local-turn"
+          ],
+          "baseline": [
+            "network-offline",
+            "plugin-bad-manifest"
+          ],
+          "fresh-user": [
+            "network-offline",
+            "plugin-bad-manifest"
+          ],
+          "mock-provider": [
+            "adversarial-input",
+            "agent-cli-local-turn"
+          ],
+          "provider-pressure": [
+            "adversarial-input",
+            "agent-cli-local-turn"
+          ]
+        }
+      },
       {
         "id": "diagnostic",
         "entryCount": 8,
@@ -15398,8 +18247,9 @@
       },
       {
         "id": "exhaustive",
-        "entryCount": 57,
+        "entryCount": 75,
         "surfaces": [
+          "adversarial-input",
           "agent-cli-local-turn",
           "agent-gateway-rpc-turn",
           "browser-automation",
@@ -15409,26 +18259,33 @@
           "channel-discord-capability-conformance",
           "channel-model-turn-baseline",
           "channel-telegram-capability-conformance",
+          "cron-runtime",
           "cross-platform-smoke",
           "dashboard",
+          "dirty-plugin-state",
+          "exec-tool-safety",
           "failure-containment",
           "fresh-install",
           "gateway-performance",
           "gateway-session-send-turn",
           "mcp-runtime",
+          "mcp-tool-call",
           "media-understanding",
           "network-offline",
           "official-plugin-install",
           "openai-compatible-turn",
           "plugin-bad-manifest",
           "plugin-external-install",
+          "plugin-legacy-unsafe-memory",
           "plugin-lifecycle",
           "plugin-missing-runtime-deps",
           "plugin-remove",
           "plugin-update",
           "provider-models",
           "release-runtime-startup",
+          "release-update-recovery",
           "soak",
+          "tool-failure-containment",
           "tui",
           "tui-message-turn",
           "upgrade-existing-user",
@@ -15438,6 +18295,14 @@
           "agent-auth-missing",
           "broken-plugin-deps",
           "corrupted-config",
+          "cron-user",
+          "dirty-plugin-disabled-broken",
+          "dirty-plugin-local-edits",
+          "dirty-plugin-manifest-drift",
+          "dirty-plugin-partial-install",
+          "dirty-plugin-stale-deps",
+          "dirty-plugin-symlink-dev",
+          "exec-tool-user",
           "external-plugin",
           "failed-upgrade",
           "fresh",
@@ -15446,6 +18311,7 @@
           "large-workspace",
           "malformed-large-session-store",
           "many-bundled-plugins",
+          "mcp-tool-user",
           "missing-plugin-index",
           "mock-openai-provider",
           "model-auth-configured",
@@ -15458,9 +18324,11 @@
           "release-configured",
           "slow-filesystem",
           "stale-runtime-deps",
-          "stale-service-state"
+          "stale-service-state",
+          "update-recovery-plugin-user"
         ],
         "scenarios": [
+          "adversarial-input-openai-compatible",
           "agent-auth-missing",
           "agent-cold-warm-message",
           "agent-gateway-rpc-turn",
@@ -15468,6 +18336,8 @@
           "agent-network-offline",
           "agent-provider-concurrent",
           "agent-provider-malformed",
+          "agent-provider-protocol-failure",
+          "agent-provider-random-disconnect",
           "agent-provider-recovery",
           "agent-provider-slow",
           "agent-provider-streaming-stall",
@@ -15479,31 +18349,42 @@
           "channel-discord-capability-conformance",
           "channel-model-turn-baseline",
           "channel-telegram-capability-conformance",
+          "cron-runtime",
           "cross-platform-smoke",
           "dashboard-readiness",
+          "dirty-plugin-state",
+          "exec-tool-safety",
           "failure-injection",
           "fresh-install",
           "gateway-performance",
           "gateway-session-send-turn",
           "mcp-runtime-start-stop",
+          "mcp-tool-call",
           "media-understanding-timeout",
           "official-plugin-install",
           "openai-compatible-turn",
           "plugin-bad-manifest",
           "plugin-external-install",
+          "plugin-legacy-unsafe-memory",
           "plugin-lifecycle",
           "plugin-missing-runtime-deps",
           "plugin-remove",
           "plugin-update",
           "provider-models",
           "release-runtime-startup",
+          "release-update-recovery",
           "soak",
+          "tool-failure-containment",
           "tui-message-turn",
           "tui-responsiveness",
           "upgrade-existing-user",
+          "upgrade-from-day-ago",
+          "upgrade-from-month-ago",
+          "upgrade-from-week-ago",
           "workspace-scan-pressure"
         ],
         "requirements": [
+          "adversarial-input:hostile-text-baseline",
           "agent-cli-local-turn:baseline",
           "agent-gateway-rpc-turn:baseline",
           "browser-automation:baseline",
@@ -15513,32 +18394,44 @@
           "channel-discord-capability-conformance:discord-conformance",
           "channel-model-turn-baseline:baseline",
           "channel-telegram-capability-conformance:telegram-conformance",
+          "cron-runtime:run-now",
           "cross-platform-smoke:baseline",
           "dashboard:baseline",
+          "dirty-plugin-state:doctor-preserves-user-files",
+          "dirty-plugin-state:list-survives-dirty-state",
+          "exec-tool-safety:safe-and-blocked-exec",
           "failure-containment:baseline",
           "fresh-install:baseline",
           "gateway-performance:baseline",
           "gateway-session-send-turn:baseline",
           "mcp-runtime:baseline",
+          "mcp-tool-call:safe-tool-call",
           "media-understanding:baseline",
           "network-offline:baseline",
           "official-plugin-install:baseline",
           "openai-compatible-turn:baseline",
           "plugin-bad-manifest:baseline",
           "plugin-external-install:baseline",
+          "plugin-legacy-unsafe-memory:fail-closed",
           "plugin-lifecycle:baseline",
           "plugin-missing-runtime-deps:baseline",
           "plugin-remove:baseline",
           "plugin-update:baseline",
           "provider-models:baseline",
           "release-runtime-startup:baseline",
+          "release-update-recovery:doctor-repair-contract",
+          "release-update-recovery:plugin-failure-recovery",
+          "release-update-recovery:rollback-available",
+          "release-update-recovery:update-retry-target-stability",
           "soak:baseline",
+          "tool-failure-containment:failure-attribution",
           "tui-message-turn:baseline",
           "tui:baseline",
           "upgrade-existing-user:baseline",
           "workspace-scan:baseline"
         ],
         "stateSurfaces": [
+          "adversarial-input:mock-openai-provider",
           "agent-cli-local-turn:agent-auth-missing",
           "agent-cli-local-turn:mock-openai-provider",
           "agent-gateway-rpc-turn:mock-openai-provider",
@@ -15550,9 +18443,17 @@
           "channel-discord-capability-conformance:fresh",
           "channel-model-turn-baseline:mock-openai-provider",
           "channel-telegram-capability-conformance:fresh",
+          "cron-runtime:cron-user",
           "cross-platform-smoke:release-configured",
           "cross-platform-smoke:slow-filesystem",
           "dashboard:fresh",
+          "dirty-plugin-state:dirty-plugin-disabled-broken",
+          "dirty-plugin-state:dirty-plugin-local-edits",
+          "dirty-plugin-state:dirty-plugin-manifest-drift",
+          "dirty-plugin-state:dirty-plugin-partial-install",
+          "dirty-plugin-state:dirty-plugin-stale-deps",
+          "dirty-plugin-state:dirty-plugin-symlink-dev",
+          "exec-tool-safety:exec-tool-user",
           "failure-containment:broken-plugin-deps",
           "failure-containment:corrupted-config",
           "fresh-install:corrupted-config",
@@ -15567,12 +18468,14 @@
           "gateway-performance:stale-service-state",
           "gateway-session-send-turn:mock-openai-provider",
           "mcp-runtime:fresh",
+          "mcp-tool-call:mcp-tool-user",
           "media-understanding:fresh",
           "network-offline:fresh",
           "official-plugin-install:official-plugins",
           "openai-compatible-turn:mock-openai-provider",
           "plugin-bad-manifest:fresh",
           "plugin-external-install:fresh",
+          "plugin-legacy-unsafe-memory:fresh",
           "plugin-lifecycle:broken-plugin-deps",
           "plugin-lifecycle:external-plugin",
           "plugin-lifecycle:plugin-index",
@@ -15582,8 +18485,10 @@
           "provider-models:model-auth-configured",
           "provider-models:model-auth-missing",
           "release-runtime-startup:fresh",
+          "release-update-recovery:update-recovery-plugin-user",
           "soak:large-memory-session",
           "soak:large-workspace",
+          "tool-failure-containment:exec-tool-user",
           "tui-message-turn:mock-openai-provider",
           "tui:fresh",
           "upgrade-existing-user:failed-upgrade",
@@ -15619,7 +18524,10 @@
             "mock-openai-provider"
           ],
           "baseline": [
-            "fresh"
+            "cron-user",
+            "exec-tool-user",
+            "fresh",
+            "mcp-tool-user"
           ],
           "config-state": [
             "corrupted-config",
@@ -15630,6 +18538,12 @@
             "model-auth-configured"
           ],
           "existing-user": [
+            "dirty-plugin-disabled-broken",
+            "dirty-plugin-local-edits",
+            "dirty-plugin-manifest-drift",
+            "dirty-plugin-partial-install",
+            "dirty-plugin-stale-deps",
+            "dirty-plugin-symlink-dev",
             "external-plugin",
             "failed-upgrade",
             "gateway-already-running",
@@ -15637,27 +18551,45 @@
             "old-release-user",
             "onboarded-user",
             "plugin-index",
-            "release-configured"
+            "release-configured",
+            "update-recovery-plugin-user"
           ],
           "external-plugin": [
+            "dirty-plugin-disabled-broken",
+            "dirty-plugin-local-edits",
+            "dirty-plugin-manifest-drift",
+            "dirty-plugin-partial-install",
+            "dirty-plugin-stale-deps",
+            "dirty-plugin-symlink-dev",
             "external-plugin",
-            "official-plugins"
+            "official-plugins",
+            "update-recovery-plugin-user"
           ],
           "failure-state": [
             "agent-auth-missing",
             "broken-plugin-deps",
             "corrupted-config",
+            "dirty-plugin-disabled-broken",
+            "dirty-plugin-local-edits",
+            "dirty-plugin-manifest-drift",
+            "dirty-plugin-partial-install",
+            "dirty-plugin-stale-deps",
+            "dirty-plugin-symlink-dev",
             "failed-upgrade",
             "malformed-large-session-store",
             "model-auth-missing",
-            "stale-service-state"
+            "stale-service-state",
+            "update-recovery-plugin-user"
           ],
           "filesystem-pressure": [
             "large-workspace",
             "slow-filesystem"
           ],
           "fresh-user": [
+            "cron-user",
+            "exec-tool-user",
             "fresh",
+            "mcp-tool-user",
             "official-plugins"
           ],
           "memory-pressure": [
@@ -15669,7 +18601,8 @@
             "old-config-keys",
             "old-release-user",
             "plugin-index",
-            "stale-runtime-deps"
+            "stale-runtime-deps",
+            "update-recovery-plugin-user"
           ],
           "missing-auth": [
             "agent-auth-missing",
@@ -15700,13 +18633,20 @@
           ],
           "plugin-pressure": [
             "broken-plugin-deps",
+            "dirty-plugin-disabled-broken",
+            "dirty-plugin-local-edits",
+            "dirty-plugin-manifest-drift",
+            "dirty-plugin-partial-install",
+            "dirty-plugin-stale-deps",
+            "dirty-plugin-symlink-dev",
             "external-plugin",
             "many-bundled-plugins",
             "missing-plugin-index",
             "official-plugins",
             "plugin-index",
             "slow-filesystem",
-            "stale-runtime-deps"
+            "stale-runtime-deps",
+            "update-recovery-plugin-user"
           ],
           "provider-pressure": [
             "agent-auth-missing",
@@ -15716,7 +18656,8 @@
             "model-auth-missing"
           ],
           "release-state": [
-            "release-configured"
+            "release-configured",
+            "update-recovery-plugin-user"
           ],
           "runtime-deps": [
             "broken-plugin-deps",
@@ -15738,6 +18679,9 @@
           ]
         },
         "stateSurfaceCoverage": {
+          "adversarial-input": [
+            "mock-openai-provider"
+          ],
           "agent-cli-local-turn": [
             "agent-auth-missing",
             "mock-openai-provider"
@@ -15767,12 +18711,26 @@
           "channel-telegram-capability-conformance": [
             "fresh"
           ],
+          "cron-runtime": [
+            "cron-user"
+          ],
           "cross-platform-smoke": [
             "release-configured",
             "slow-filesystem"
           ],
           "dashboard": [
             "fresh"
+          ],
+          "dirty-plugin-state": [
+            "dirty-plugin-disabled-broken",
+            "dirty-plugin-local-edits",
+            "dirty-plugin-manifest-drift",
+            "dirty-plugin-partial-install",
+            "dirty-plugin-stale-deps",
+            "dirty-plugin-symlink-dev"
+          ],
+          "exec-tool-safety": [
+            "exec-tool-user"
           ],
           "failure-containment": [
             "broken-plugin-deps",
@@ -15798,6 +18756,9 @@
           "mcp-runtime": [
             "fresh"
           ],
+          "mcp-tool-call": [
+            "mcp-tool-user"
+          ],
           "media-understanding": [
             "fresh"
           ],
@@ -15814,6 +18775,9 @@
             "fresh"
           ],
           "plugin-external-install": [
+            "fresh"
+          ],
+          "plugin-legacy-unsafe-memory": [
             "fresh"
           ],
           "plugin-lifecycle": [
@@ -15837,9 +18801,15 @@
           "release-runtime-startup": [
             "fresh"
           ],
+          "release-update-recovery": [
+            "update-recovery-plugin-user"
+          ],
           "soak": [
             "large-memory-session",
             "large-workspace"
+          ],
+          "tool-failure-containment": [
+            "exec-tool-user"
           ],
           "tui": [
             "fresh"
@@ -15857,6 +18827,7 @@
         },
         "traitSurfaceCoverage": {
           "agent-state": [
+            "adversarial-input",
             "agent-cli-local-turn",
             "agent-gateway-rpc-turn",
             "channel-model-turn-baseline",
@@ -15870,17 +18841,22 @@
             "channel-capability-preflight",
             "channel-discord-capability-conformance",
             "channel-telegram-capability-conformance",
+            "cron-runtime",
             "dashboard",
+            "exec-tool-safety",
             "fresh-install",
             "mcp-runtime",
+            "mcp-tool-call",
             "media-understanding",
             "network-offline",
             "plugin-bad-manifest",
             "plugin-external-install",
+            "plugin-legacy-unsafe-memory",
             "plugin-missing-runtime-deps",
             "plugin-remove",
             "plugin-update",
             "release-runtime-startup",
+            "tool-failure-containment",
             "tui"
           ],
           "config-state": [
@@ -15892,22 +18868,28 @@
           ],
           "existing-user": [
             "cross-platform-smoke",
+            "dirty-plugin-state",
             "fresh-install",
             "gateway-performance",
             "plugin-lifecycle",
+            "release-update-recovery",
             "upgrade-existing-user"
           ],
           "external-plugin": [
+            "dirty-plugin-state",
             "official-plugin-install",
-            "plugin-lifecycle"
+            "plugin-lifecycle",
+            "release-update-recovery"
           ],
           "failure-state": [
             "agent-cli-local-turn",
+            "dirty-plugin-state",
             "failure-containment",
             "fresh-install",
             "gateway-performance",
             "plugin-lifecycle",
             "provider-models",
+            "release-update-recovery",
             "upgrade-existing-user"
           ],
           "filesystem-pressure": [
@@ -15921,18 +18903,23 @@
             "channel-capability-preflight",
             "channel-discord-capability-conformance",
             "channel-telegram-capability-conformance",
+            "cron-runtime",
             "dashboard",
+            "exec-tool-safety",
             "fresh-install",
             "mcp-runtime",
+            "mcp-tool-call",
             "media-understanding",
             "network-offline",
             "official-plugin-install",
             "plugin-bad-manifest",
             "plugin-external-install",
+            "plugin-legacy-unsafe-memory",
             "plugin-missing-runtime-deps",
             "plugin-remove",
             "plugin-update",
             "release-runtime-startup",
+            "tool-failure-containment",
             "tui"
           ],
           "memory-pressure": [
@@ -15943,6 +18930,7 @@
             "bundled-runtime-deps",
             "fresh-install",
             "plugin-lifecycle",
+            "release-update-recovery",
             "upgrade-existing-user"
           ],
           "missing-auth": [
@@ -15950,6 +18938,7 @@
             "provider-models"
           ],
           "mock-provider": [
+            "adversarial-input",
             "agent-cli-local-turn",
             "agent-gateway-rpc-turn",
             "channel-model-turn-baseline",
@@ -15979,13 +18968,16 @@
           "plugin-pressure": [
             "bundled-runtime-deps",
             "cross-platform-smoke",
+            "dirty-plugin-state",
             "failure-containment",
             "fresh-install",
             "gateway-performance",
             "official-plugin-install",
-            "plugin-lifecycle"
+            "plugin-lifecycle",
+            "release-update-recovery"
           ],
           "provider-pressure": [
+            "adversarial-input",
             "agent-cli-local-turn",
             "agent-gateway-rpc-turn",
             "channel-model-turn-baseline",
@@ -15996,7 +18988,8 @@
             "tui-message-turn"
           ],
           "release-state": [
-            "cross-platform-smoke"
+            "cross-platform-smoke",
+            "release-update-recovery"
           ],
           "runtime-deps": [
             "bundled-runtime-deps",
@@ -16270,7 +19263,7 @@
       },
       {
         "id": "release",
-        "entryCount": 45,
+        "entryCount": 52,
         "surfaces": [
           "agent-cli-local-turn",
           "agent-gateway-rpc-turn",
@@ -16281,26 +19274,33 @@
           "channel-discord-capability-conformance",
           "channel-model-turn-baseline",
           "channel-telegram-capability-conformance",
+          "cron-runtime",
           "cross-platform-smoke",
           "dashboard",
+          "dirty-plugin-state",
+          "exec-tool-safety",
           "failure-containment",
           "fresh-install",
           "gateway-performance",
           "gateway-session-send-turn",
           "mcp-runtime",
+          "mcp-tool-call",
           "media-understanding",
           "network-offline",
           "official-plugin-install",
           "openai-compatible-turn",
           "plugin-bad-manifest",
           "plugin-external-install",
+          "plugin-legacy-unsafe-memory",
           "plugin-lifecycle",
           "plugin-missing-runtime-deps",
           "plugin-remove",
           "plugin-update",
           "provider-models",
           "release-runtime-startup",
+          "release-update-recovery",
           "soak",
+          "tool-failure-containment",
           "tui",
           "tui-message-turn",
           "upgrade-existing-user",
@@ -16309,20 +19309,23 @@
         "states": [
           "agent-auth-missing",
           "broken-plugin-deps",
+          "cron-user",
+          "dirty-plugin-local-edits",
+          "exec-tool-user",
           "external-plugin",
           "fresh",
           "large-workspace",
           "many-bundled-plugins",
+          "mcp-tool-user",
           "missing-plugin-index",
           "mock-openai-provider",
           "model-auth-missing",
           "official-plugins",
-          "old-release-2026-4-20-user",
-          "old-release-2026-4-24-user",
           "old-release-user",
           "onboarded-user",
           "plugin-index",
-          "slow-filesystem"
+          "slow-filesystem",
+          "update-recovery-plugin-user"
         ],
         "scenarios": [
           "agent-auth-missing",
@@ -16332,6 +19335,8 @@
           "agent-network-offline",
           "agent-provider-concurrent",
           "agent-provider-malformed",
+          "agent-provider-protocol-failure",
+          "agent-provider-random-disconnect",
           "agent-provider-recovery",
           "agent-provider-slow",
           "agent-provider-streaming-stall",
@@ -16343,30 +19348,35 @@
           "channel-discord-capability-conformance",
           "channel-model-turn-baseline",
           "channel-telegram-capability-conformance",
+          "cron-runtime",
           "cross-platform-smoke",
           "dashboard-readiness",
+          "dirty-plugin-state",
+          "exec-tool-safety",
           "failure-injection",
           "fresh-install",
           "gateway-performance",
           "gateway-session-send-turn",
           "mcp-runtime-start-stop",
+          "mcp-tool-call",
           "media-understanding-timeout",
           "official-plugin-install",
           "openai-compatible-turn",
           "plugin-bad-manifest",
           "plugin-external-install",
+          "plugin-legacy-unsafe-memory",
           "plugin-lifecycle",
           "plugin-missing-runtime-deps",
           "plugin-remove",
           "plugin-update",
           "provider-models",
           "release-runtime-startup",
+          "release-update-recovery",
           "soak",
+          "tool-failure-containment",
           "tui-message-turn",
           "tui-responsiveness",
           "upgrade-existing-user",
-          "upgrade-from-2026-4-20",
-          "upgrade-from-2026-4-24",
           "workspace-scan-pressure"
         ],
         "requirements": [
@@ -16379,26 +19389,37 @@
           "channel-discord-capability-conformance:discord-conformance",
           "channel-model-turn-baseline:baseline",
           "channel-telegram-capability-conformance:telegram-conformance",
+          "cron-runtime:run-now",
           "cross-platform-smoke:baseline",
           "dashboard:baseline",
+          "dirty-plugin-state:doctor-preserves-user-files",
+          "dirty-plugin-state:list-survives-dirty-state",
+          "exec-tool-safety:safe-and-blocked-exec",
           "failure-containment:baseline",
           "fresh-install:baseline",
           "gateway-performance:baseline",
           "gateway-session-send-turn:baseline",
           "mcp-runtime:baseline",
+          "mcp-tool-call:safe-tool-call",
           "media-understanding:baseline",
           "network-offline:baseline",
           "official-plugin-install:baseline",
           "openai-compatible-turn:baseline",
           "plugin-bad-manifest:baseline",
           "plugin-external-install:baseline",
+          "plugin-legacy-unsafe-memory:fail-closed",
           "plugin-lifecycle:baseline",
           "plugin-missing-runtime-deps:baseline",
           "plugin-remove:baseline",
           "plugin-update:baseline",
           "provider-models:baseline",
           "release-runtime-startup:baseline",
+          "release-update-recovery:doctor-repair-contract",
+          "release-update-recovery:plugin-failure-recovery",
+          "release-update-recovery:rollback-available",
+          "release-update-recovery:update-retry-target-stability",
           "soak:baseline",
+          "tool-failure-containment:failure-attribution",
           "tui-message-turn:baseline",
           "tui:baseline",
           "upgrade-existing-user:baseline",
@@ -16415,20 +19436,25 @@
           "channel-discord-capability-conformance:fresh",
           "channel-model-turn-baseline:mock-openai-provider",
           "channel-telegram-capability-conformance:fresh",
+          "cron-runtime:cron-user",
           "cross-platform-smoke:slow-filesystem",
           "dashboard:fresh",
+          "dirty-plugin-state:dirty-plugin-local-edits",
+          "exec-tool-safety:exec-tool-user",
           "failure-containment:broken-plugin-deps",
           "fresh-install:fresh",
           "fresh-install:onboarded-user",
           "gateway-performance:many-bundled-plugins",
           "gateway-session-send-turn:mock-openai-provider",
           "mcp-runtime:fresh",
+          "mcp-tool-call:mcp-tool-user",
           "media-understanding:fresh",
           "network-offline:fresh",
           "official-plugin-install:official-plugins",
           "openai-compatible-turn:mock-openai-provider",
           "plugin-bad-manifest:fresh",
           "plugin-external-install:fresh",
+          "plugin-legacy-unsafe-memory:fresh",
           "plugin-lifecycle:external-plugin",
           "plugin-lifecycle:plugin-index",
           "plugin-missing-runtime-deps:fresh",
@@ -16436,11 +19462,11 @@
           "plugin-update:fresh",
           "provider-models:model-auth-missing",
           "release-runtime-startup:fresh",
+          "release-update-recovery:update-recovery-plugin-user",
           "soak:large-workspace",
+          "tool-failure-containment:exec-tool-user",
           "tui-message-turn:mock-openai-provider",
           "tui:fresh",
-          "upgrade-existing-user:old-release-2026-4-20-user",
-          "upgrade-existing-user:old-release-2026-4-24-user",
           "upgrade-existing-user:old-release-user",
           "workspace-scan:large-workspace"
         ],
@@ -16455,26 +19481,33 @@
             "channel-discord-capability-conformance",
             "channel-model-turn-baseline",
             "channel-telegram-capability-conformance",
+            "cron-runtime",
             "cross-platform-smoke",
             "dashboard",
+            "dirty-plugin-state",
+            "exec-tool-safety",
             "failure-containment",
             "fresh-install",
             "gateway-performance",
             "gateway-session-send-turn",
             "mcp-runtime",
+            "mcp-tool-call",
             "media-understanding",
             "network-offline",
             "official-plugin-install",
             "openai-compatible-turn",
             "plugin-bad-manifest",
             "plugin-external-install",
+            "plugin-legacy-unsafe-memory",
             "plugin-lifecycle",
             "plugin-missing-runtime-deps",
             "plugin-remove",
             "plugin-update",
             "provider-models",
             "release-runtime-startup",
+            "release-update-recovery",
             "soak",
+            "tool-failure-containment",
             "tui",
             "tui-message-turn",
             "upgrade-existing-user",
@@ -16488,6 +19521,8 @@
             "agent-network-offline",
             "agent-provider-concurrent",
             "agent-provider-malformed",
+            "agent-provider-protocol-failure",
+            "agent-provider-random-disconnect",
             "agent-provider-recovery",
             "agent-provider-slow",
             "agent-provider-streaming-stall",
@@ -16499,49 +19534,57 @@
             "channel-discord-capability-conformance",
             "channel-model-turn-baseline",
             "channel-telegram-capability-conformance",
+            "cron-runtime",
             "cross-platform-smoke",
             "dashboard-readiness",
+            "dirty-plugin-state",
+            "exec-tool-safety",
             "failure-injection",
             "fresh-install",
             "gateway-performance",
             "gateway-session-send-turn",
             "mcp-runtime-start-stop",
+            "mcp-tool-call",
             "media-understanding-timeout",
             "official-plugin-install",
             "openai-compatible-turn",
             "plugin-bad-manifest",
             "plugin-external-install",
+            "plugin-legacy-unsafe-memory",
             "plugin-lifecycle",
             "plugin-missing-runtime-deps",
             "plugin-remove",
             "plugin-update",
             "provider-models",
             "release-runtime-startup",
+            "release-update-recovery",
             "soak",
+            "tool-failure-containment",
             "tui-message-turn",
             "tui-responsiveness",
             "upgrade-existing-user",
-            "upgrade-from-2026-4-20",
-            "upgrade-from-2026-4-24",
             "workspace-scan-pressure"
           ],
           "states": [
             "agent-auth-missing",
             "broken-plugin-deps",
+            "cron-user",
+            "dirty-plugin-local-edits",
+            "exec-tool-user",
             "external-plugin",
             "fresh",
             "large-workspace",
             "many-bundled-plugins",
+            "mcp-tool-user",
             "missing-plugin-index",
             "mock-openai-provider",
             "model-auth-missing",
             "official-plugins",
-            "old-release-2026-4-20-user",
-            "old-release-2026-4-24-user",
             "old-release-user",
             "onboarded-user",
             "plugin-index",
-            "slow-filesystem"
+            "slow-filesystem",
+            "update-recovery-plugin-user"
           ],
           "traits": [
             "agent-state",
@@ -16562,6 +19605,7 @@
             "platform-specific",
             "plugin-pressure",
             "provider-pressure",
+            "release-state",
             "runtime-deps",
             "workspace-pressure"
           ],
@@ -16581,26 +19625,37 @@
             "channel-discord-capability-conformance:discord-conformance",
             "channel-model-turn-baseline:baseline",
             "channel-telegram-capability-conformance:telegram-conformance",
+            "cron-runtime:run-now",
             "cross-platform-smoke:baseline",
             "dashboard:baseline",
+            "dirty-plugin-state:doctor-preserves-user-files",
+            "dirty-plugin-state:list-survives-dirty-state",
+            "exec-tool-safety:safe-and-blocked-exec",
             "failure-containment:baseline",
             "fresh-install:baseline",
             "gateway-performance:baseline",
             "gateway-session-send-turn:baseline",
             "mcp-runtime:baseline",
+            "mcp-tool-call:safe-tool-call",
             "media-understanding:baseline",
             "network-offline:baseline",
             "official-plugin-install:baseline",
             "openai-compatible-turn:baseline",
             "plugin-bad-manifest:baseline",
             "plugin-external-install:baseline",
+            "plugin-legacy-unsafe-memory:fail-closed",
             "plugin-lifecycle:baseline",
             "plugin-missing-runtime-deps:baseline",
             "plugin-remove:baseline",
             "plugin-update:baseline",
             "provider-models:baseline",
             "release-runtime-startup:baseline",
+            "release-update-recovery:doctor-repair-contract",
+            "release-update-recovery:plugin-failure-recovery",
+            "release-update-recovery:rollback-available",
+            "release-update-recovery:update-retry-target-stability",
             "soak:baseline",
+            "tool-failure-containment:failure-attribution",
             "tui-message-turn:baseline",
             "tui:baseline",
             "upgrade-existing-user:baseline",
@@ -16617,20 +19672,25 @@
             "channel-discord-capability-conformance:fresh",
             "channel-model-turn-baseline:mock-openai-provider",
             "channel-telegram-capability-conformance:fresh",
+            "cron-runtime:cron-user",
             "cross-platform-smoke:slow-filesystem",
             "dashboard:fresh",
+            "dirty-plugin-state:dirty-plugin-local-edits",
+            "exec-tool-safety:exec-tool-user",
             "failure-containment:broken-plugin-deps",
             "fresh-install:fresh",
             "fresh-install:onboarded-user",
             "gateway-performance:many-bundled-plugins",
             "gateway-session-send-turn:mock-openai-provider",
             "mcp-runtime:fresh",
+            "mcp-tool-call:mcp-tool-user",
             "media-understanding:fresh",
             "network-offline:fresh",
             "official-plugin-install:official-plugins",
             "openai-compatible-turn:mock-openai-provider",
             "plugin-bad-manifest:fresh",
             "plugin-external-install:fresh",
+            "plugin-legacy-unsafe-memory:fresh",
             "plugin-lifecycle:external-plugin",
             "plugin-lifecycle:plugin-index",
             "plugin-missing-runtime-deps:fresh",
@@ -16638,11 +19698,11 @@
             "plugin-update:fresh",
             "provider-models:model-auth-missing",
             "release-runtime-startup:fresh",
+            "release-update-recovery:update-recovery-plugin-user",
             "soak:large-workspace",
+            "tool-failure-containment:exec-tool-user",
             "tui-message-turn:mock-openai-provider",
             "tui:fresh",
-            "upgrade-existing-user:old-release-2026-4-20-user",
-            "upgrade-existing-user:old-release-2026-4-24-user",
             "upgrade-existing-user:old-release-user",
             "workspace-scan:large-workspace"
           ]
@@ -16671,42 +19731,51 @@
             "mock-openai-provider"
           ],
           "baseline": [
-            "fresh"
+            "cron-user",
+            "exec-tool-user",
+            "fresh",
+            "mcp-tool-user"
           ],
           "config-state": [
             "onboarded-user"
           ],
           "existing-user": [
+            "dirty-plugin-local-edits",
             "external-plugin",
-            "old-release-2026-4-20-user",
-            "old-release-2026-4-24-user",
             "old-release-user",
             "onboarded-user",
-            "plugin-index"
+            "plugin-index",
+            "update-recovery-plugin-user"
           ],
           "external-plugin": [
+            "dirty-plugin-local-edits",
             "external-plugin",
-            "official-plugins"
+            "official-plugins",
+            "update-recovery-plugin-user"
           ],
           "failure-state": [
             "agent-auth-missing",
             "broken-plugin-deps",
-            "model-auth-missing"
+            "dirty-plugin-local-edits",
+            "model-auth-missing",
+            "update-recovery-plugin-user"
           ],
           "filesystem-pressure": [
             "large-workspace",
             "slow-filesystem"
           ],
           "fresh-user": [
+            "cron-user",
+            "exec-tool-user",
             "fresh",
+            "mcp-tool-user",
             "official-plugins"
           ],
           "migration-state": [
             "missing-plugin-index",
-            "old-release-2026-4-20-user",
-            "old-release-2026-4-24-user",
             "old-release-user",
-            "plugin-index"
+            "plugin-index",
+            "update-recovery-plugin-user"
           ],
           "missing-auth": [
             "agent-auth-missing",
@@ -16719,8 +19788,6 @@
             "official-plugins"
           ],
           "old-release": [
-            "old-release-2026-4-20-user",
-            "old-release-2026-4-24-user",
             "old-release-user"
           ],
           "onboarded-user": [
@@ -16736,13 +19803,14 @@
           ],
           "plugin-pressure": [
             "broken-plugin-deps",
+            "dirty-plugin-local-edits",
             "external-plugin",
             "many-bundled-plugins",
             "missing-plugin-index",
             "official-plugins",
-            "old-release-2026-4-24-user",
             "plugin-index",
-            "slow-filesystem"
+            "slow-filesystem",
+            "update-recovery-plugin-user"
           ],
           "provider-pressure": [
             "agent-auth-missing",
@@ -16750,9 +19818,11 @@
             "mock-openai-provider",
             "model-auth-missing"
           ],
+          "release-state": [
+            "update-recovery-plugin-user"
+          ],
           "runtime-deps": [
-            "broken-plugin-deps",
-            "old-release-2026-4-24-user"
+            "broken-plugin-deps"
           ],
           "workspace-pressure": [
             "large-workspace"
@@ -16787,11 +19857,20 @@
           "channel-telegram-capability-conformance": [
             "fresh"
           ],
+          "cron-runtime": [
+            "cron-user"
+          ],
           "cross-platform-smoke": [
             "slow-filesystem"
           ],
           "dashboard": [
             "fresh"
+          ],
+          "dirty-plugin-state": [
+            "dirty-plugin-local-edits"
+          ],
+          "exec-tool-safety": [
+            "exec-tool-user"
           ],
           "failure-containment": [
             "broken-plugin-deps"
@@ -16809,6 +19888,9 @@
           "mcp-runtime": [
             "fresh"
           ],
+          "mcp-tool-call": [
+            "mcp-tool-user"
+          ],
           "media-understanding": [
             "fresh"
           ],
@@ -16825,6 +19907,9 @@
             "fresh"
           ],
           "plugin-external-install": [
+            "fresh"
+          ],
+          "plugin-legacy-unsafe-memory": [
             "fresh"
           ],
           "plugin-lifecycle": [
@@ -16846,8 +19931,14 @@
           "release-runtime-startup": [
             "fresh"
           ],
+          "release-update-recovery": [
+            "update-recovery-plugin-user"
+          ],
           "soak": [
             "large-workspace"
+          ],
+          "tool-failure-containment": [
+            "exec-tool-user"
           ],
           "tui": [
             "fresh"
@@ -16856,8 +19947,6 @@
             "mock-openai-provider"
           ],
           "upgrade-existing-user": [
-            "old-release-2026-4-20-user",
-            "old-release-2026-4-24-user",
             "old-release-user"
           ],
           "workspace-scan": [
@@ -16879,35 +19968,46 @@
             "channel-capability-preflight",
             "channel-discord-capability-conformance",
             "channel-telegram-capability-conformance",
+            "cron-runtime",
             "dashboard",
+            "exec-tool-safety",
             "fresh-install",
             "mcp-runtime",
+            "mcp-tool-call",
             "media-understanding",
             "network-offline",
             "plugin-bad-manifest",
             "plugin-external-install",
+            "plugin-legacy-unsafe-memory",
             "plugin-missing-runtime-deps",
             "plugin-remove",
             "plugin-update",
             "release-runtime-startup",
+            "tool-failure-containment",
             "tui"
           ],
           "config-state": [
             "fresh-install"
           ],
           "existing-user": [
+            "dirty-plugin-state",
             "fresh-install",
             "plugin-lifecycle",
+            "release-update-recovery",
             "upgrade-existing-user"
           ],
           "external-plugin": [
+            "dirty-plugin-state",
             "official-plugin-install",
-            "plugin-lifecycle"
+            "plugin-lifecycle",
+            "release-update-recovery"
           ],
           "failure-state": [
             "agent-cli-local-turn",
+            "dirty-plugin-state",
             "failure-containment",
-            "provider-models"
+            "provider-models",
+            "release-update-recovery"
           ],
           "filesystem-pressure": [
             "cross-platform-smoke",
@@ -16920,23 +20020,29 @@
             "channel-capability-preflight",
             "channel-discord-capability-conformance",
             "channel-telegram-capability-conformance",
+            "cron-runtime",
             "dashboard",
+            "exec-tool-safety",
             "fresh-install",
             "mcp-runtime",
+            "mcp-tool-call",
             "media-understanding",
             "network-offline",
             "official-plugin-install",
             "plugin-bad-manifest",
             "plugin-external-install",
+            "plugin-legacy-unsafe-memory",
             "plugin-missing-runtime-deps",
             "plugin-remove",
             "plugin-update",
             "release-runtime-startup",
+            "tool-failure-containment",
             "tui"
           ],
           "migration-state": [
             "bundled-runtime-deps",
             "plugin-lifecycle",
+            "release-update-recovery",
             "upgrade-existing-user"
           ],
           "missing-auth": [
@@ -16972,11 +20078,12 @@
           "plugin-pressure": [
             "bundled-runtime-deps",
             "cross-platform-smoke",
+            "dirty-plugin-state",
             "failure-containment",
             "gateway-performance",
             "official-plugin-install",
             "plugin-lifecycle",
-            "upgrade-existing-user"
+            "release-update-recovery"
           ],
           "provider-pressure": [
             "agent-cli-local-turn",
@@ -16988,13 +20095,86 @@
             "provider-models",
             "tui-message-turn"
           ],
+          "release-state": [
+            "release-update-recovery"
+          ],
           "runtime-deps": [
-            "failure-containment",
-            "upgrade-existing-user"
+            "failure-containment"
           ],
           "workspace-pressure": [
             "soak",
             "workspace-scan"
+          ]
+        }
+      },
+      {
+        "id": "rolling-upgrade",
+        "entryCount": 3,
+        "surfaces": [
+          "upgrade-existing-user"
+        ],
+        "states": [
+          "old-release-user"
+        ],
+        "scenarios": [
+          "upgrade-from-day-ago",
+          "upgrade-from-month-ago",
+          "upgrade-from-week-ago"
+        ],
+        "requirements": [
+          "upgrade-existing-user:baseline"
+        ],
+        "stateSurfaces": [
+          "upgrade-existing-user:old-release-user"
+        ],
+        "required": {
+          "surfaces": [],
+          "scenarios": [],
+          "states": [],
+          "traits": [],
+          "platforms": [],
+          "requirements": [],
+          "stateSurfaces": []
+        },
+        "gaps": {
+          "surfaces": [],
+          "scenarios": [],
+          "states": [],
+          "traits": [],
+          "platforms": [],
+          "requirements": [],
+          "stateSurfaces": []
+        },
+        "currentPlatformKeys": [
+          "arm64",
+          "darwin",
+          "darwin-arm64"
+        ],
+        "stateTraitCoverage": {
+          "existing-user": [
+            "old-release-user"
+          ],
+          "migration-state": [
+            "old-release-user"
+          ],
+          "old-release": [
+            "old-release-user"
+          ]
+        },
+        "stateSurfaceCoverage": {
+          "upgrade-existing-user": [
+            "old-release-user"
+          ]
+        },
+        "traitSurfaceCoverage": {
+          "existing-user": [
+            "upgrade-existing-user"
+          ],
+          "migration-state": [
+            "upgrade-existing-user"
+          ],
+          "old-release": [
+            "upgrade-existing-user"
           ]
         }
       },

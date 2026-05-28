@@ -12,10 +12,10 @@
 //   UPDATE_SNAPSHOTS=1 node tests/render-snapshots.mjs  # write/update snapshots
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, mkdtempSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..");
@@ -23,24 +23,25 @@ const snapDir = join(here, "snapshots");
 mkdirSync(snapDir, { recursive: true });
 
 const UPDATE = process.env.UPDATE_SNAPSHOTS === "1";
+const SNAPSHOT_KOVA_HOME = mkdtempSync(join(tmpdir(), "kova-snapshots-"));
 
-const PASS_REPORT = "artifacts/phase9-deep-profile-run2/kova-2026-04-30T031128Z.json";
-const FAIL_REPORT = "artifacts/phase9-timeline-proof/kova-2026-04-30T040505Z.json";
+const PASS_REPORT = "tests/fixtures/reports/pass.json";
+const FAIL_REPORT = "tests/fixtures/reports/fail.json";
 
 const cases = [
   { name: "report-pass-compact", args: ["report", PASS_REPORT] },
   { name: "report-pass-full", args: ["report", "--full", PASS_REPORT] },
   { name: "report-fail-compact", args: ["report", FAIL_REPORT] },
   { name: "report-fail-full", args: ["report", "--full", FAIL_REPORT] },
-  { name: "compare-pass-vs-fail", args: ["report", "compare", PASS_REPORT, FAIL_REPORT] },
-  { name: "compare-pass-vs-fail-full", args: ["report", "compare", "--full", PASS_REPORT, FAIL_REPORT] },
+  { name: "compare-pass-vs-fail", args: ["report", "compare", PASS_REPORT, FAIL_REPORT], allowNonZero: true },
+  { name: "compare-pass-vs-fail-full", args: ["report", "compare", "--full", PASS_REPORT, FAIL_REPORT], allowNonZero: true },
   { name: "plan-default", args: ["plan"] },
   { name: "help-default", args: ["help"] },
   // JSON contracts (agent-facing). Locks the machine-readable shape so
   // future renderer-only changes can't silently drift the JSON payload.
   { name: "report-fail-json", args: ["report", "--json", FAIL_REPORT] },
   { name: "report-pass-json", args: ["report", "--json", PASS_REPORT] },
-  { name: "compare-json", args: ["report", "compare", "--json", PASS_REPORT, FAIL_REPORT] },
+  { name: "compare-json", args: ["report", "compare", "--json", PASS_REPORT, FAIL_REPORT], allowNonZero: true },
   { name: "plan-json", args: ["plan", "--json"] },
   // Dry-run receipts (run + matrix) and matrix plan. These exercise the
   // KPI strip, scenarios rollup, and artifact-pointer renderers — none of
@@ -62,6 +63,7 @@ function normalize(out) {
   // Make snapshots portable: scrub machine-specific paths and unstable times.
   const home = homedir();
   return out
+    .replaceAll(SNAPSHOT_KOVA_HOME, "<kova-home>")
     .replaceAll(repoRoot, "<repo>")
     .replaceAll(home, "<home>")
     // ISO-like timestamps in the meta strip, e.g. "2026-05-17 02:23 UTC".
@@ -83,11 +85,15 @@ function runCase(c) {
   // on regressions — that's expected output).
   const r = spawnSync("node", ["bin/kova.mjs", ...c.args], {
     cwd: repoRoot,
-    env: { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0", COLUMNS: "80" },
+    env: { ...process.env, KOVA_HOME: SNAPSHOT_KOVA_HOME, NO_COLOR: "1", FORCE_COLOR: "0", COLUMNS: "80" },
     encoding: "utf8",
     maxBuffer: 16 * 1024 * 1024,
   });
   if (r.error) throw r.error;
+  if (r.status !== 0 && c.allowNonZero !== true) {
+    const output = [r.stderr, r.stdout].filter(Boolean).join("\n").trim();
+    throw new Error(`exit ${r.status}${output ? `: ${output}` : ""}`);
+  }
   return normalize(r.stdout || "");
 }
 

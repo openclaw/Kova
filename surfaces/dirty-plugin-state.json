@@ -1,0 +1,102 @@
+{
+  "id": "dirty-plugin-state",
+  "title": "Dirty Plugin State",
+  "ownerArea": "plugins",
+  "description": "Exercise OpenClaw plugin commands, doctor repair, gateway restart, and integrity checks against locally edited, partial, stale, disabled, or otherwise dirty plugin state.",
+  "processRoles": [
+    "gateway",
+    "command-tree",
+    "plugin-cli",
+    "doctor-cli",
+    "runtime-management"
+  ],
+  "thresholds": {
+    "statusMs": 10000,
+    "pluginsListMs": 15000,
+    "pluginUpdateDryRunMs": 30000,
+    "doctorFixMs": 60000,
+    "restartReadyMs": 30000,
+    "dirtyPluginDetected": 1,
+    "dirtyPluginReported": 1,
+    "dirtyPluginChecksumPreserved": 1,
+    "doctorDestructiveChangeCount": 0,
+    "pluginsUsableWithDirtyState": 1,
+    "gatewaySurvivedDirtyPlugin": 1
+  },
+  "roleThresholds": {
+    "gateway": {
+      "peakRssMb": 850,
+      "maxCpuPercent": 250
+    },
+    "plugin-cli": {
+      "peakRssMb": 650,
+      "maxCpuPercent": 250
+    },
+    "doctor-cli": {
+      "peakRssMb": 750,
+      "maxCpuPercent": 300
+    },
+    "runtime-management": {
+      "peakRssMb": 900,
+      "maxCpuPercent": 350
+    }
+  },
+  "diagnostics": {
+    "timelineRequiredForSourceBuild": true,
+    "expectedSpans": [
+      "plugins.registry.refresh",
+      "plugins.update",
+      "plugins.load",
+      "doctor.fix"
+    ]
+  },
+  "purposes": [
+    "diagnostic",
+    "plugin",
+    "regression",
+    "release"
+  ],
+  "requirements": [
+    {
+      "id": "list-survives-dirty-state",
+      "stateTraits": [
+        "plugin-pressure",
+        "failure-state"
+      ],
+      "targetKinds": [
+        "npm",
+        "release",
+        "runtime",
+        "local-build"
+      ],
+      "metrics": [
+        "pluginsListMs",
+        "pluginsUsableWithDirtyState",
+        "gatewaySurvivedDirtyPlugin"
+      ]
+    },
+    {
+      "id": "doctor-preserves-user-files",
+      "states": [
+        "dirty-plugin-local-edits",
+        "dirty-plugin-stale-deps",
+        "dirty-plugin-manifest-drift",
+        "dirty-plugin-disabled-broken",
+        "dirty-plugin-symlink-dev",
+        "dirty-plugin-partial-install"
+      ],
+      "targetKinds": [
+        "npm",
+        "release",
+        "runtime",
+        "local-build"
+      ],
+      "metrics": [
+        "doctorFixMs",
+        "dirtyPluginChecksumPreserved",
+        "doctorDestructiveChangeCount",
+        "doctorUnrepairedFindingCount"
+      ]
+    }
+  ]
+}

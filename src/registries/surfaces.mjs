@@ -127,7 +127,7 @@ function validateRoleThresholds(value, prefix, errors) {
       errors.push(`${prefix}.${role} must be an object`);
       continue;
     }
-    for (const key of ["peakRssMb", "maxCpuPercent"]) {
+    for (const key of ["peakRssMb", "peakProcessRssMb", "maxCpuPercent"]) {
       if (thresholds[key] !== undefined && (typeof thresholds[key] !== "number" || thresholds[key] < 0)) {
         errors.push(`${prefix}.${role}.${key} must be a non-negative number when set`);
       }

@@ -201,7 +201,7 @@ function aggregatePhases(samples) {
       const results = sp?.results ?? [];
       const total = results.reduce((acc, r) => acc + (Number(r.durationMs) || 0), 0);
       if (total > 0) elapsedSamples.push(total);
-      if (results.some((r) => r.status === "FAIL" || r.exitCode > 0)) anyFail = true;
+      if (results.some((r) => commandResultFailed(r))) anyFail = true;
     }
     const stats = summarizeSamples(elapsedSamples);
     return {
@@ -210,6 +210,23 @@ function aggregatePhases(samples) {
       elapsedMs: stats.median,
     };
   });
+}
+
+function commandResultFailed(result) {
+  if (!result) {
+    return false;
+  }
+  if (result.timedOut === true) {
+    return true;
+  }
+  if (typeof result.status === "number") {
+    return result.status !== 0;
+  }
+  if (typeof result.exitCode === "number") {
+    return result.exitCode !== 0;
+  }
+  const status = String(result.status ?? "").toUpperCase();
+  return status === "FAIL" || status === "FAILED" || status === "ERROR";
 }
 
 function aggregateMetrics(samples) {

@@ -1,0 +1,72 @@
+{
+  "id": "adversarial-input",
+  "title": "Adversarial User Input",
+  "ownerArea": "gateway-input-runtime",
+  "description": "Send hostile-looking user messages through OpenClaw user-facing input paths and verify they remain ordinary prompt content: no parser crash, no gateway stall, no plugin/runtime dependency failure, and no provider routing loss.",
+  "processRoles": [
+    "gateway",
+    "command-tree",
+    "openai-compatible-client",
+    "agent-process",
+    "mock-provider"
+  ],
+  "resourcePrimaryRole": "gateway",
+  "thresholds": {
+    "agentTurnMs": 60000,
+    "providerRequestCountMin": 5,
+    "providerFinalMs": 5000,
+    "peakRssMb": 950,
+    "postReadyHealthP95Ms": 1000,
+    "pluginLoadFailures": 0,
+    "missingDependencyErrors": 0
+  },
+  "roleThresholds": {
+    "gateway": {
+      "peakRssMb": 800,
+      "maxCpuPercent": 300
+    },
+    "openai-compatible-client": {
+      "peakRssMb": 700,
+      "maxCpuPercent": 250
+    },
+    "mock-provider": {
+      "peakRssMb": 250,
+      "maxCpuPercent": 150
+    }
+  },
+  "diagnostics": {
+    "timelineRequiredForSourceBuild": true,
+    "expectedSpans": [
+      "agent.turn",
+      "models.catalog",
+      "provider.request"
+    ]
+  },
+  "purposes": [
+    "diagnostic",
+    "regression"
+  ],
+  "requirements": [
+    {
+      "id": "hostile-text-baseline",
+      "states": [
+        "mock-openai-provider"
+      ],
+      "targetKinds": [
+        "npm",
+        "release",
+        "runtime",
+        "local-build"
+      ],
+      "metrics": [
+        "agentTurnMs",
+        "providerRequestCountMin",
+        "providerFinalMs",
+        "postReadyHealthP95Ms",
+        "peakRssMb",
+        "pluginLoadFailures",
+        "missingDependencyErrors"
+      ]
+    }
+  ]
+}

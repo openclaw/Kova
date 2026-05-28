@@ -1,0 +1,26 @@
+{
+  "id": "cron-user",
+  "title": "Cron-Capable Disposable User",
+  "objective": "A disposable OpenClaw user state used to register and trigger a short-lived cron run through OpenClaw's real cron command path.",
+  "tags": [
+    "cron",
+    "automation",
+    "runtime"
+  ],
+  "setup": [],
+  "traits": [
+    "fresh-user",
+    "baseline"
+  ],
+  "riskArea": "cron-runtime",
+  "ownerArea": "cron-runtime",
+  "setupEvidence": [
+    "disposable OpenClaw env exists",
+    "cron CLI can read gateway config",
+    "artifact dir captures cron command transcripts"
+  ],
+  "cleanupGuarantees": [
+    "cron entries created by the scenario are delete-after-run and explicitly removed during helper cleanup",
+    "disposable env cleanup removes any remaining cron state"
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "id": "dirty-plugin-manifest-drift",
+  "title": "Dirty Plugin Manifest Drift",
+  "objective": "A disposable user state with a plugin whose OpenClaw manifest and package metadata disagree, including version drift, id drift, an unsupported contract key, and a missing package entrypoint.",
+  "tags": [
+    "plugins",
+    "dirty",
+    "manifest-drift",
+    "recovery"
+  ],
+  "setup": [
+    {
+      "id": "write-dirty-plugin-manifest-drift",
+      "title": "Write Dirty Plugin Manifest Drift",
+      "intent": "Install a plugin-inspector-shaped plugin with deliberate manifest/package drift.",
+      "afterPhases": [
+        "start",
+        "source",
+        "provision",
+        "cold-start",
+        "baseline",
+        "gateway",
+        "clone"
+      ],
+      "commands": [
+        "ocm env exec {env} -- node {kovaRoot}/support/dirty-plugin-state.mjs prepare dirty-plugin-manifest-drift"
+      ],
+      "evidence": [
+        "manifest id/version drift exists",
+        "missing package entrypoint is declared"
+      ]
+    },
+    {
+      "id": "verify-dirty-plugin-manifest-drift",
+      "title": "Verify Dirty Plugin Manifest Drift",
+      "intent": "Verify OpenClaw handling did not silently rewrite the drift evidence.",
+      "afterPhase": "restart",
+      "commands": [
+        "ocm env exec {env} -- node {kovaRoot}/support/dirty-plugin-state.mjs verify dirty-plugin-manifest-drift"
+      ],
+      "evidence": [
+        "manifest drift checksum still matches"
+      ]
+    }
+  ],
+  "traits": [
+    "existing-user",
+    "external-plugin",
+    "plugin-pressure",
+    "failure-state"
+  ],
+  "riskArea": "dirty-plugin-manifest-drift",
+  "ownerArea": "plugins",
+  "setupEvidence": [
+    "manifest id/version drift exists",
+    "missing package entrypoint is declared"
+  ],
+  "cleanupGuarantees": [
+    "disposable env cleanup removes manifest drift fixture files"
+  ],
+  "source": {
+    "kind": "synthetic-plugin-state",
+    "note": "plugin manifest and package metadata disagree"
+  }
+}

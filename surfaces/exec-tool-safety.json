@@ -1,0 +1,74 @@
+{
+  "id": "exec-tool-safety",
+  "title": "Exec Tool Safety",
+  "ownerArea": "agent-tool-runtime",
+  "description": "Validate OpenClaw exec policy visibility plus safe bounded exec-fixture behavior for harmless commands, blocked dangerous input, output budgets, timeouts, and process leaks.",
+  "processRoles": [
+    "gateway",
+    "command-tree",
+    "agent-process",
+    "tool-runtime",
+    "mock-provider"
+  ],
+  "resourcePrimaryRole": "tool-runtime",
+  "thresholds": {
+    "gatewayReadyMs": 30000,
+    "statusMs": 10000,
+    "execSafeCommandMs": 10000,
+    "execSafeCommandSucceeded": 1,
+    "execDangerousCommandBlocked": 1,
+    "execOutputTruncated": 1,
+    "execTimeoutMs": 15000,
+    "execProcessLeaks": 0,
+    "peakRssMb": 900
+  },
+  "roleThresholds": {
+    "gateway": {
+      "peakRssMb": 850,
+      "maxCpuPercent": 250
+    },
+    "tool-runtime": {
+      "peakRssMb": 500,
+      "maxCpuPercent": 200
+    },
+    "command-tree": {
+      "peakRssMb": 900,
+      "maxCpuPercent": 300
+    }
+  },
+  "diagnostics": {
+    "timelineRequiredForSourceBuild": false,
+    "expectedSpans": [
+      "tool.exec",
+      "exec.policy"
+    ]
+  },
+  "purposes": [
+    "diagnostic",
+    "regression",
+    "release"
+  ],
+  "requirements": [
+    {
+      "id": "safe-and-blocked-exec",
+      "states": [
+        "exec-tool-user"
+      ],
+      "targetKinds": [
+        "npm",
+        "release",
+        "runtime",
+        "local-build"
+      ],
+      "metrics": [
+        "execSafeCommandMs",
+        "execSafeCommandSucceeded",
+        "execDangerousCommandBlocked",
+        "execOutputTruncated",
+        "execTimeoutMs",
+        "execProcessLeaks",
+        "statusMs"
+      ]
+    }
+  ]
+}

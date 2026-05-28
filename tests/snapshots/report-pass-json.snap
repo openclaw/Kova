@@ -4,19 +4,19 @@
   "runId": "kova-<runId>",
   "reportGeneratedAt": "<iso>",
   "mode": "execution",
-  "target": "local-build:<home>/WorkSpace/ShakkerNerd/OpenSource/OpenClaw/shakker-claw",
+  "target": "runtime:stable",
   "from": null,
   "platform": {
     "os": "darwin",
+    "release": "25.4.0",
     "arch": "arm64",
-    "release": "25.3.0",
-    "node": "v24.13.0"
+    "node": "v26.0.0"
   },
   "decision": {
-    "verdict": "FAIL",
-    "ok": false,
-    "reason": "gateway hard failure: gateway TCP socket never accepted connections before the hard deadline",
-    "blockingFindingCount": 1,
+    "verdict": "PASS",
+    "ok": true,
+    "reason": "all executed scenarios passed",
+    "blockingFindingCount": 0,
     "warningFindingCount": 0
   },
   "run": {
@@ -24,35 +24,42 @@
     "state": {
       "id": "fresh",
       "title": "Fresh OpenClaw User",
-      "objective": "A new isolated OpenClaw home with no intentional state mutations beyond normal scenario provisioning."
+      "objective": "A new isolated OpenClaw home."
     },
-    "repeat": null,
+    "repeat": 1,
     "parallel": null,
-    "auth": null,
-    "targetCleanup": {
-      "runtimeName": "kova-local-1777518688136",
-      "status": "removed",
-      "reason": null,
-      "durationMs": 1981
+    "auth": {
+      "mode": "mock"
+    },
+    "targetCleanup": null,
+    "networkFrontage": {
+      "schemaVersion": "kova.networkFrontage.v1",
+      "mode": "port",
+      "enabled": false,
+      "allocations": []
     }
   },
   "coverage": {
     "recordCount": 1,
     "scenarioCount": 1,
     "scenarios": [
-      "release-runtime-startup"
+      "fresh-install"
     ],
     "stateCount": 1,
     "states": [
       "fresh"
     ],
-    "surfaceCount": 0,
-    "surfaces": []
+    "surfaceCount": 1,
+    "surfaces": [
+      "fresh-install"
+    ]
   },
   "proof": {
     "recordCount": 1,
-    "completeness": {},
-    "requiredTotal": 0,
+    "completeness": {
+      "complete": 1
+    },
+    "requiredTotal": 1,
     "requiredMissing": 0,
     "requiredFailed": 0,
     "byCategory": {},
@@ -72,69 +79,35 @@
     "missingRequired": []
   },
   "gate": null,
-  "performance": null,
-  "failureBrief": {
-    "decision": "FAIL",
-    "primaryBlocker": "release-runtime-startup/fresh",
-    "why": "gateway hard failure: gateway TCP socket never accepted connections before the hard deadline",
-    "evidence": [
-      "gatewayRssMb: 286.8",
-      "cpuPercentMax: 143.1",
-      "resourcePeakCpuAtMs: 1091",
-      "topCpuFunction: (idle) 145175.04ms",
-      "topHeapFunction: readFileSync 14.5MB",
-      "missingDependencyErrors: 0",
-      "pluginLoadFailures: 0",
-      "CPU peaked at 143.1% around 1091ms"
-    ],
-    "likelyOwner": "OpenClaw",
-    "fixerPrompt": "Investigate OpenClaw release gate failure release-runtime-startup/fresh. Kova decision was FAIL on darwin-arm64. Primary evidence: gateway hard failure: gateway TCP socket never accepted connections before the hard deadline. Measurements: gatewayRssMb: 286.8; cpuPercentMax: 143.1; resourcePeakCpuAtMs: 1091; topCpuFunction: (idle) 145175.04ms; topHeapFunction: readFileSync 14.5MB; missingDependencyErrors: 0; pluginLoadFailures: 0; CPU peaked at 143.1% around 1091ms. Dependency/plugin load errors were zero, so focus on startup, memory, CPU, gateway readiness, runtime deps staging, provider/model load, and UI asset initialization. Likely owner area: OpenClaw."
+  "performance": {
+    "schemaVersion": "kova.performance.v1",
+    "repeat": 1,
+    "groupCount": 1,
+    "unstableGroupCount": 0,
+    "profiledRunCount": 0,
+    "baselineRegressionCount": null,
+    "missingBaselineCount": null,
+    "baselineReviewOk": null,
+    "baselineReviewBlockerCount": null,
+    "savedBaselinePath": null,
+    "regressions": []
   },
-  "recommendedNextScenario": {
-    "scenario": "release-runtime-startup",
-    "state": "fresh",
-    "target": "local-build:<home>/WorkSpace/ShakkerNerd/OpenSource/OpenClaw/shakker-claw",
-    "reason": "gateway hard failure: gateway TCP socket never accepted connections before the hard deadline",
-    "command": "node bin/kova.mjs run --target local-build:<home>/WorkSpace/ShakkerNerd/OpenSource/OpenClaw/shakker-claw --scenario release-runtime-startup --state fresh --execute --profile-on-failure --retain-on-failure --json"
-  },
+  "failureBrief": null,
+  "recommendedNextScenario": null,
   "statuses": {
-    "FAIL": 1
+    "PASS": 1
   },
-  "findings": [
-    {
-      "id": "release-runtime-startup:fresh:readinessClassification:1",
-      "severity": "fail",
-      "kind": "violation",
-      "scenario": "release-runtime-startup",
-      "state": "fresh",
-      "sampleIndex": 1,
-      "ownerArea": "OpenClaw",
-      "metric": "readinessClassification",
-      "summary": "gateway hard failure: gateway TCP socket never accepted connections before the hard deadline",
-      "expected": null,
-      "actual": "hard-failure",
-      "evidence": [
-        "gatewayRssMb: 286.8",
-        "cpuPercentMax: 143.1",
-        "resourcePeakCpuAtMs: 1091",
-        "topCpuFunction: (idle) 145175.04ms",
-        "topHeapFunction: readFileSync 14.5MB",
-        "missingDependencyErrors: 0",
-        "pluginLoadFailures: 0",
-        "CPU peaked at 143.1% around 1091ms"
-      ]
-    }
-  ],
+  "findings": [],
   "groups": [
     {
-      "key": "release-runtime-startup|unknown|fresh",
-      "scenario": "release-runtime-startup",
-      "surface": null,
+      "key": "fresh-install|fresh-install|fresh",
+      "scenario": "fresh-install",
+      "surface": "fresh-install",
       "state": "fresh",
-      "title": "Release Runtime Startup",
+      "title": "Fresh Install",
       "sampleCount": 1,
       "statuses": {
-        "FAIL": 1
+        "PASS": 1
       },
       "resourceInterpretation": null,
       "metrics": {}
@@ -143,17 +116,16 @@
   "samples": [
     {
       "sampleIndex": 1,
-      "repeatTotal": null,
-      "scenario": "release-runtime-startup",
-      "surface": null,
-      "title": "Release Runtime Startup",
-      "status": "FAIL",
+      "repeatTotal": 1,
+      "scenario": "fresh-install",
+      "surface": "fresh-install",
+      "title": "Fresh Install",
+      "status": "PASS",
       "cleanup": "destroyed",
-      "target": "local-build:<home>/WorkSpace/ShakkerNerd/OpenSource/OpenClaw/shakker-claw",
+      "target": "runtime:stable",
       "state": {
         "id": "fresh",
-        "title": "Fresh OpenClaw User",
-        "objective": "A new isolated OpenClaw home with no intentional state mutations beyond normal scenario provisioning."
+        "title": "Fresh OpenClaw User"
       },
       "ownerArea": "OpenClaw",
       "failedCommand": null,
@@ -161,29 +133,44 @@
       "failureReason": null,
       "measurements": {
         "readiness": {
-          "listeningReadyAtMs": null,
-          "healthReadyAtMs": null,
-          "classification": null,
-          "reason": null
+          "listeningReadyAtMs": 800,
+          "healthReadyAtMs": 1200,
+          "classification": "ready",
+          "reason": "gateway became healthy within the readiness threshold"
         },
         "health": {
-          "startupP95Ms": null,
-          "postReadyP95Ms": null,
-          "finalFailures": null,
-          "totalFailures": null,
-          "slowestSample": null
+          "startupP95Ms": 200,
+          "postReadyP95Ms": 20,
+          "finalFailures": 0,
+          "totalFailures": 0,
+          "slowestSample": {
+            "phaseId": "provision",
+            "durationMs": 200
+          }
         },
         "resources": {
-          "peakRssMb": 286.8,
-          "cpuPercentMax": 143.1,
+          "peakRssMb": 420,
+          "cpuPercentMax": 90,
           "primaryRole": null,
           "gateKind": null,
-          "sampleCount": 22,
-          "commandTreePeakRssMb": 539.6,
-          "gatewayPeakRssMb": 286.8,
-          "trackedPeakRssMb": null,
-          "topRolesByRss": [],
-          "topRolesByCpu": []
+          "sampleCount": 3,
+          "commandTreePeakRssMb": null,
+          "gatewayPeakRssMb": null,
+          "trackedPeakRssMb": 420,
+          "topRolesByRss": [
+            {
+              "role": "gateway",
+              "peakRssMb": 420,
+              "maxCpuPercent": 60
+            }
+          ],
+          "topRolesByCpu": [
+            {
+              "role": "gateway",
+              "peakRssMb": 420,
+              "maxCpuPercent": 60
+            }
+          ]
         },
         "agent": {
           "turnMs": null,
@@ -206,16 +193,16 @@
           "agentCli": null
         },
         "plugins": {
-          "missingDependencyErrors": 0,
-          "pluginLoadFailures": 0,
+          "missingDependencyErrors": null,
+          "pluginLoadFailures": null,
           "officialPluginInstallOk": null,
           "officialPluginInstallMs": null,
           "officialPluginSecurityBlocks": null
         },
         "diagnostics": {
-          "timelineAvailable": false,
-          "timelineEventCount": 0,
-          "timelineParseErrors": 0,
+          "timelineAvailable": null,
+          "timelineEventCount": null,
+          "timelineParseErrors": null,
           "slowestSpanName": null,
           "slowestSpanMs": null,
           "openSpanCount": null,
@@ -226,15 +213,7 @@
           "providerRequestMaxMs": null
         }
       },
-      "violations": [
-        {
-          "kind": "gateway",
-          "metric": "readinessClassification",
-          "expected": "ready",
-          "actual": "hard-failure",
-          "message": "gateway hard failure: gateway TCP socket never accepted connections before the hard deadline"
-        }
-      ],
+      "violations": [],
       "artifactRoot": null
     }
   ],
@@ -242,17 +221,16 @@
   "scenarios": [
     {
       "sampleIndex": 1,
-      "repeatTotal": null,
-      "scenario": "release-runtime-startup",
-      "surface": null,
-      "title": "Release Runtime Startup",
-      "status": "FAIL",
+      "repeatTotal": 1,
+      "scenario": "fresh-install",
+      "surface": "fresh-install",
+      "title": "Fresh Install",
+      "status": "PASS",
       "cleanup": "destroyed",
-      "target": "local-build:<home>/WorkSpace/ShakkerNerd/OpenSource/OpenClaw/shakker-claw",
+      "target": "runtime:stable",
       "state": {
         "id": "fresh",
-        "title": "Fresh OpenClaw User",
-        "objective": "A new isolated OpenClaw home with no intentional state mutations beyond normal scenario provisioning."
+        "title": "Fresh OpenClaw User"
       },
       "ownerArea": "OpenClaw",
       "failedCommand": null,
@@ -260,29 +238,44 @@
       "failureReason": null,
       "measurements": {
         "readiness": {
-          "listeningReadyAtMs": null,
-          "healthReadyAtMs": null,
-          "classification": null,
-          "reason": null
+          "listeningReadyAtMs": 800,
+          "healthReadyAtMs": 1200,
+          "classification": "ready",
+          "reason": "gateway became healthy within the readiness threshold"
         },
         "health": {
-          "startupP95Ms": null,
-          "postReadyP95Ms": null,
-          "finalFailures": null,
-          "totalFailures": null,
-          "slowestSample": null
+          "startupP95Ms": 200,
+          "postReadyP95Ms": 20,
+          "finalFailures": 0,
+          "totalFailures": 0,
+          "slowestSample": {
+            "phaseId": "provision",
+            "durationMs": 200
+          }
         },
         "resources": {
-          "peakRssMb": 286.8,
-          "cpuPercentMax": 143.1,
+          "peakRssMb": 420,
+          "cpuPercentMax": 90,
           "primaryRole": null,
           "gateKind": null,
-          "sampleCount": 22,
-          "commandTreePeakRssMb": 539.6,
-          "gatewayPeakRssMb": 286.8,
-          "trackedPeakRssMb": null,
-          "topRolesByRss": [],
-          "topRolesByCpu": []
+          "sampleCount": 3,
+          "commandTreePeakRssMb": null,
+          "gatewayPeakRssMb": null,
+          "trackedPeakRssMb": 420,
+          "topRolesByRss": [
+            {
+              "role": "gateway",
+              "peakRssMb": 420,
+              "maxCpuPercent": 60
+            }
+          ],
+          "topRolesByCpu": [
+            {
+              "role": "gateway",
+              "peakRssMb": 420,
+              "maxCpuPercent": 60
+            }
+          ]
         },
         "agent": {
           "turnMs": null,
@@ -305,16 +298,16 @@
           "agentCli": null
         },
         "plugins": {
-          "missingDependencyErrors": 0,
-          "pluginLoadFailures": 0,
+          "missingDependencyErrors": null,
+          "pluginLoadFailures": null,
           "officialPluginInstallOk": null,
           "officialPluginInstallMs": null,
           "officialPluginSecurityBlocks": null
         },
         "diagnostics": {
-          "timelineAvailable": false,
-          "timelineEventCount": 0,
-          "timelineParseErrors": 0,
+          "timelineAvailable": null,
+          "timelineEventCount": null,
+          "timelineParseErrors": null,
           "slowestSpanName": null,
           "slowestSpanMs": null,
           "openSpanCount": null,
@@ -325,15 +318,7 @@
           "providerRequestMaxMs": null
         }
       },
-      "violations": [
-        {
-          "kind": "gateway",
-          "metric": "readinessClassification",
-          "expected": "ready",
-          "actual": "hard-failure",
-          "message": "gateway hard failure: gateway TCP socket never accepted connections before the hard deadline"
-        }
-      ],
+      "violations": [],
       "artifactRoot": null
     }
   ]

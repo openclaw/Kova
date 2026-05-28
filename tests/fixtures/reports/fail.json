@@ -1,0 +1,143 @@
+{
+  "schemaVersion": "kova.report.v1",
+  "generatedAt": "2026-05-21T00:00:01.000Z",
+  "runId": "kova-260521-000001-badbad",
+  "mode": "execution",
+  "target": "runtime:stable",
+  "from": null,
+  "controls": {
+    "repeat": 1
+  },
+  "auth": {
+    "mode": "mock"
+  },
+  "state": {
+    "id": "fresh",
+    "title": "Fresh OpenClaw User",
+    "objective": "A new isolated OpenClaw home."
+  },
+  "platform": {
+    "os": "darwin",
+    "release": "25.4.0",
+    "arch": "arm64",
+    "node": "v26.0.0"
+  },
+  "targetCleanup": null,
+  "networkFrontage": {
+    "schemaVersion": "kova.networkFrontage.v1",
+    "mode": "port",
+    "enabled": false,
+    "allocations": []
+  },
+  "performance": {
+    "schemaVersion": "kova.performance.v1",
+    "repeat": 1,
+    "parallel": null,
+    "parallelContaminated": false,
+    "groupCount": 1,
+    "unstableGroupCount": 0,
+    "profiledRunCount": 0,
+    "baselineRegressionCount": null,
+    "missingBaselineCount": null,
+    "baselineReviewOk": null,
+    "baselineReviewBlockerCount": null,
+    "savedBaselinePath": null
+  },
+  "summary": {
+    "total": 1,
+    "statuses": {
+      "FAIL": 1
+    }
+  },
+  "records": [
+    {
+      "scenario": "fresh-install",
+      "surface": "fresh-install",
+      "title": "Fresh Install",
+      "status": "FAIL",
+      "target": "runtime:stable",
+      "state": {
+        "id": "fresh",
+        "title": "Fresh OpenClaw User"
+      },
+      "repeat": {
+        "index": 1,
+        "total": 1
+      },
+      "likelyOwner": "OpenClaw",
+      "cleanup": "retained",
+      "measurements": {
+        "coldReadyMs": 1200,
+        "statusMs": 300,
+        "peakRssMb": 950,
+        "cpuPercentMax": 90,
+        "resourceSampleCount": 3,
+        "resourcePeakTrackedRssMb": 950,
+        "resourcePeakGatewayRssMb": 950,
+        "health": {
+          "readiness": {
+            "listeningReadyAtMs": 800,
+            "healthReadyAtMs": 1200,
+            "classification": "ready",
+            "reason": "gateway became healthy within the readiness threshold"
+          },
+          "startupSamples": {
+            "p95Ms": 200
+          },
+          "postReadySamples": {
+            "p95Ms": 20
+          },
+          "final": {
+            "failureCount": 0
+          },
+          "slowestSample": {
+            "phaseId": "provision",
+            "durationMs": 200
+          }
+        },
+        "resourceTopRolesByRss": [
+          {
+            "role": "gateway",
+            "peakRssMb": 950,
+            "maxCpuPercent": 60
+          }
+        ],
+        "resourceTopRolesByCpu": [
+          {
+            "role": "gateway",
+            "peakRssMb": 950,
+            "maxCpuPercent": 60
+          }
+        ]
+      },
+      "violations": [
+        {
+          "kind": "resource",
+          "metric": "resourceByRole.gateway.peakRssMb",
+          "expected": "<= 800",
+          "actual": 950,
+          "message": "gateway peak RSS 950 MB exceeded threshold 800 MB"
+        }
+      ],
+      "evidenceLedger": {
+        "schemaVersion": "kova.evidenceLedger.v1",
+        "completeness": "failed",
+        "summary": {
+          "required": 1,
+          "byStatus": {
+            "failed": 1
+          }
+        },
+        "entries": [
+          {
+            "id": "fresh-install-resource-proof",
+            "required": true,
+            "status": "failed",
+            "summary": "gateway RSS stayed under threshold",
+            "reason": "gateway peak RSS 950 MB exceeded threshold 800 MB"
+          }
+        ]
+      }
+    }
+  ]
+}

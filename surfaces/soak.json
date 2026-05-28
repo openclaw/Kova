@@ -11,6 +11,7 @@
     "plugin-cli",
     "model-cli"
   ],
+  "resourcePrimaryRole": "gateway",
   "thresholds": {
     "soakMinDurationMs": 60000,
     "soakCommandP95Ms": 10000,

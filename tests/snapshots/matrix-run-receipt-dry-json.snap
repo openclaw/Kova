@@ -14,13 +14,19 @@
     "calibration": null,
     "gate": null
   },
-  "reportPath": "<home>/.kova/reports/kova-<runId>-smoke.md",
-  "jsonPath": "<home>/.kova/reports/kova-<runId>-smoke.json",
-  "summaryPath": "<home>/.kova/reports/kova-<runId>-smoke.summary.json",
-  "bundlePath": "<home>/.kova/reports/kova-<runId>-bundle.tar.gz",
-  "checksumPath": "<home>/.kova/reports/kova-<runId>-bundle.tar.gz.sha256",
+  "reportPath": "<kova-home>/reports/kova-<runId>-smoke.md",
+  "jsonPath": "<kova-home>/reports/kova-<runId>-smoke.json",
+  "summaryPath": "<kova-home>/reports/kova-<runId>-smoke.summary.json",
+  "bundlePath": "<kova-home>/reports/kova-<runId>-bundle.tar.gz",
+  "checksumPath": "<kova-home>/reports/kova-<runId>-bundle.tar.gz.sha256",
   "retainedGateArtifacts": null,
   "gate": null,
+  "networkFrontage": {
+    "schemaVersion": "kova.networkFrontage.v1",
+    "mode": "port",
+    "enabled": false,
+    "allocations": []
+  },
   "performance": {
     "schemaVersion": "kova.performance.v1",
     "repeat": 1,

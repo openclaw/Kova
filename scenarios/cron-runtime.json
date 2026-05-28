@@ -1,0 +1,73 @@
+{
+  "id": "cron-runtime",
+  "surface": "cron-runtime",
+  "title": "Cron Runtime",
+  "objective": "Register a disposable OpenClaw cron entry, trigger it through the real cron CLI, verify run attribution, and prove the gateway remains healthy.",
+  "tags": [
+    "cron",
+    "automation",
+    "tools",
+    "tool-runtime"
+  ],
+  "timeoutMs": 180000,
+  "thresholds": {
+    "gatewayReadyMs": 30000,
+    "gatewayReadyHardTimeoutMs": 120000,
+    "statusMs": 10000,
+    "cronRegisterMs": 10000,
+    "cronRunMs": 60000,
+    "cronRunCompleted": 1,
+    "cronTriggerAttributed": 1,
+    "peakRssMb": 900
+  },
+  "phases": [
+    {
+      "id": "gateway",
+      "title": "Gateway Start",
+      "intent": "Start the disposable gateway before cron registration and run-now execution.",
+      "commands": [
+        "ocm start {env} {startSelector} --json",
+        "ocm @{env} -- status"
+      ],
+      "evidence": [
+        "gateway status",
+        "gateway port",
+        "readiness classification"
+      ],
+      "healthScope": "readiness"
+    },
+    {
+      "id": "cron-runtime-smoke",
+      "title": "Cron Runtime Smoke",
+      "intent": "Use OpenClaw's real cron CLI to add a delete-after-run entry, trigger it, inspect run history, and remove leftovers.",
+      "commands": [
+        "node {kovaRoot}/support/run-cron-runtime-smoke.mjs --env {env} --artifact-dir {artifactDir} --timeout-ms 90000"
+      ],
+      "evidence": [
+        "cron registration timing",
+        "cron run timing",
+        "run id and status",
+        "cron trigger attribution"
+      ],
+      "healthScope": "post-ready"
+    },
+    {
+      "id": "post-cron-health",
+      "title": "Post-Cron Gateway Health",
+      "intent": "Verify cron activity did not degrade gateway or command-tree health.",
+      "commands": [
+        "ocm @{env} -- status",
+        "ocm logs {env} --tail 300 --raw"
+      ],
+      "evidence": [
+        "status after cron run",
+        "cron errors",
+        "gateway errors"
+      ],
+      "healthScope": "post-ready"
+    }
+  ],
+  "proves": [
+    "run-now"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "kova-basic",
+  "activation": {
+    "onStartup": true
+  },
+  "name": "Kova Basic",
+  "description": "External plugin fixture used by Kova lifecycle scenarios.",
+  "contracts": {
+    "tools": []
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

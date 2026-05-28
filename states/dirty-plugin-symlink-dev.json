@@ -1,0 +1,67 @@
+{
+  "id": "dirty-plugin-symlink-dev",
+  "title": "Dirty Plugin Symlink Dev",
+  "objective": "A disposable user state with an installed plugin path symlinked to an in-env development directory, proving update and doctor flows do not replace or destructively follow plugin symlinks.",
+  "tags": [
+    "plugins",
+    "dirty",
+    "symlink",
+    "local-dev",
+    "recovery"
+  ],
+  "setup": [
+    {
+      "id": "write-dirty-plugin-symlink-dev",
+      "title": "Write Dirty Plugin Symlink Dev",
+      "intent": "Install a safe in-env symlinked plugin development directory with checksum evidence.",
+      "afterPhases": [
+        "start",
+        "source",
+        "provision",
+        "cold-start",
+        "baseline",
+        "gateway",
+        "clone"
+      ],
+      "commands": [
+        "ocm env exec {env} -- node {kovaRoot}/support/dirty-plugin-state.mjs prepare dirty-plugin-symlink-dev"
+      ],
+      "evidence": [
+        "plugin path is a symlink",
+        "symlink target checksum marker exists"
+      ]
+    },
+    {
+      "id": "verify-dirty-plugin-symlink-dev",
+      "title": "Verify Dirty Plugin Symlink Dev",
+      "intent": "Verify OpenClaw handling preserved the symlink and target files.",
+      "afterPhase": "restart",
+      "commands": [
+        "ocm env exec {env} -- node {kovaRoot}/support/dirty-plugin-state.mjs verify dirty-plugin-symlink-dev"
+      ],
+      "evidence": [
+        "plugin path remains a symlink",
+        "symlink target checksum still matches"
+      ]
+    }
+  ],
+  "traits": [
+    "existing-user",
+    "external-plugin",
+    "plugin-pressure",
+    "failure-state"
+  ],
+  "riskArea": "dirty-plugin-symlink-dev",
+  "ownerArea": "plugins",
+  "setupEvidence": [
+    "plugin path is a symlink",
+    "symlink target checksum marker exists"
+  ],
+  "cleanupGuarantees": [
+    "disposable env cleanup removes symlink and in-env target files"
+  ],
+  "source": {
+    "kind": "synthetic-plugin-state",
+    "note": "plugin install path symlinked to an in-env development directory"
+  }
+}

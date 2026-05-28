@@ -1,42 +1,38 @@
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  KOVA  ·  report compare                                                     ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
-   [FAIL]   4 regressions · 1 affected
-            local-build:…Claw/shakker-claw → local-build:…Claw/shakker-claw
+   [FAIL]   5 regressions · 1 affected           runtime:stable → runtime:stable
 
-  baseline  local-build:…Claw/shakker-claw    kova-<runId>
-  current   local-build:…Claw/shakker-claw    kova-<runId>
-  delta     4 regressions  ·  1 scenario affected
+  baseline  runtime:stable    kova-<runId>
+  current   runtime:stable    kova-<runId>
+  delta     5 regressions  ·  1 scenario affected
 
 ─── scenarios ──────────────────────────────────────────────────────────────────
 
-scenario                 samples  verdict            Δ  worst metric
-release-runtime-startup      0/1  [REGRESSED]       +3  nodeProfileTopFunctionMs
-    ↳ 32.8× tol
+scenario              samples  verdict            Δ  worst metric
+fresh-install             0/1  [REGRESSED]       +3  status regressed from PASS…
 
-─── release-runtime-startup ────────────────────── [REGRESSED] · FAIL → FAIL ───
+─── fresh-install ──────────────────────────────── [REGRESSED] · PASS → FAIL ───
 
-metric               baseline       current              Δ    tolerance   status
-diagnosticArtifa…           0   128,880,485   +128,880,485   26,214,400   OVER
-heapSnapshotBytes           0   128,809,325   +128,809,325   52,428,800   OVER
-nodeProfileTopFu…     145,175       309,157        +113.0%        5,000   OVER
-timeline.events             0            55            +55            —   WATCH
-nodeCpuProfileCo…           5             6         +20.0%            —   WATCH
-nodeHeapProfileC…           5             6         +20.0%            —   WATCH
+metric                  baseline     current         Δ   tolerance   status
+gateway.rss.mb            420 MB      950 MB   +126.2%      100 MB   OVER
+tracked.total.rss.mb      420 MB      950 MB   +126.2%      100 MB   OVER
 
 ─── findings ───────────────────────────────────────────────────────────────────
 
-  + ✗ diagnosticArtifactBytes +128,880,485 (0 -> 128,880,485)
-      release-runtime-startup/fresh tolerance 26214400; diagnosticArtifactBytes
-      increased by 128880485 (0 -> 128880485), over tolerance 26214400
-  + ✗ heapSnapshotBytes +128,809,325 (0 -> 128,809,325)
-      release-runtime-startup/fresh tolerance 52428800; heapSnapshotBytes
-      increased by 128809325 (0 -> 128809325), over tolerance 52428800
-  + ✗ nodeProfileTopFunctionMs +163,982.15 (145,175.04 -> 309,157.19)
-      release-runtime-startup/fresh tolerance 5000; nodeProfileTopFunctionMs
-      increased by 163982.15 (145175.04 -> 309157.19), over tolerance 5000
-  + ✗ peak RSS 904.5 MB (cap 900 MB)
-      release-runtime-startup/fresh gatewayRssMb: 348.8; cpuPercentMax: 150.1
+  + ✗ status regressed from PASS to FAIL
+      fresh-install/fresh status regressed from PASS to FAIL
+  + ✗ gateway.rss.mb +530 (420 -> 950)
+      fresh-install/fresh tolerance 100; peakRssMb increased by 530 (420 ->
+      950), over tolerance 100
+  + ✗ tracked.total.rss.mb +530 (420 -> 950)
+      fresh-install/fresh tolerance 100; resourcePeakTrackedRssMb increased by
+      530 (420 -> 950), over tolerance 100
+  + ✗ gateway peak RSS 950 MB (cap 800 MB)
+      fresh-install/fresh readinessHealthReadyMs: 1200; readinessListeningMs:
+      800
+  + ⚠ undefined proof failed: gateway RSS stayed under threshold
+      fresh-install/fresh gateway peak RSS 950 MB (cap 800 MB)
 
 ─── next ───────────────────────────────────────────────────────────────────────
 

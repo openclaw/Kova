@@ -206,11 +206,18 @@ node bin/kova.mjs matrix run --profile release-upgrade \
 node bin/kova.mjs matrix run --profile local-build-upgrade \
   --target local-build:/path/to/openclaw \
   --source-env <existing-env> --execute --json
+
+node bin/kova.mjs matrix run --profile rolling-upgrade \
+  --target runtime:stable \
+  --source-env <existing-env> --execute --json
 ```
 
 `release-upgrade` is specifically stable-to-beta; running it with
 `release:stable` is rejected. `local-build-upgrade` exercises stable-release
 and cloned existing-user upgrades against the release-shaped local build.
+`rolling-upgrade` clones existing-user state, resolves published OpenClaw npm
+versions from roughly one day, one week, and one month ago at execution time,
+then upgrades each clone to the requested target.
 
 Never mutate durable envs directly for Kova tests unless a human explicitly
 asks for that exact env to be changed.

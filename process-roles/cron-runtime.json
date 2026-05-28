@@ -1,0 +1,13 @@
+{
+  "id": "cron-runtime",
+  "title": "Cron Runtime",
+  "description": "OpenClaw cron scheduler, cron CLI, run-now, and cron-triggered agent/session execution paths.",
+  "commandPatterns": [
+    "(^|\\s)cron(\\s|$)",
+    "run-cron-runtime-smoke\\.mjs"
+  ],
+  "processPatterns": [
+    "openclaw.*cron",
+    "run-cron-runtime-smoke\\.mjs"
+  ]
+}

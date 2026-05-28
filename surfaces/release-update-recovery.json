@@ -1,0 +1,134 @@
+{
+  "id": "release-update-recovery",
+  "title": "Release Update Recovery",
+  "ownerArea": "upgrade",
+  "description": "Run a release-shaped OpenClaw update path through plugin health checks, doctor repair, update retry, rollback inspection, and post-rollback health so broken releases do not trap users on bad runtime state.",
+  "processRoles": [
+    "gateway",
+    "command-tree",
+    "runtime-management",
+    "plugin-cli",
+    "doctor-cli"
+  ],
+  "thresholds": {
+    "upgradeMs": 180000,
+    "statusMs": 10000,
+    "pluginsListMs": 15000,
+    "pluginUpdateDryRunMs": 30000,
+    "doctorFixMs": 60000,
+    "doctorFixSucceeded": 1,
+    "doctorUnrepairedFindingCount": 0,
+    "updateRetryVersionDrift": 0,
+    "rollbackAvailable": 1,
+    "rollbackSucceeded": 1,
+    "pluginsUsableAfterUpgrade": 1,
+    "pluginsUsableAfterRollback": 1,
+    "rollbackPreservedPluginData": 1,
+    "pluginLoadFailures": 0
+  },
+  "roleThresholds": {
+    "gateway": {
+      "peakRssMb": 900,
+      "maxCpuPercent": 250
+    },
+    "runtime-management": {
+      "peakRssMb": 1100,
+      "maxCpuPercent": 350
+    },
+    "plugin-cli": {
+      "peakRssMb": 650,
+      "maxCpuPercent": 250
+    },
+    "doctor-cli": {
+      "peakRssMb": 750,
+      "maxCpuPercent": 300
+    }
+  },
+  "diagnostics": {
+    "timelineRequiredForSourceBuild": true,
+    "expectedSpans": [
+      "upgrade.apply",
+      "doctor.fix",
+      "plugins.index.migrate",
+      "plugins.runtimeDeps"
+    ]
+  },
+  "purposes": [
+    "diagnostic",
+    "plugin",
+    "regression",
+    "release",
+    "upgrade"
+  ],
+  "requirements": [
+    {
+      "id": "plugin-failure-recovery",
+      "states": [
+        "update-recovery-plugin-user"
+      ],
+      "targetKinds": [
+        "npm",
+        "release",
+        "runtime",
+        "local-build"
+      ],
+      "metrics": [
+        "pluginsUsableAfterUpgrade",
+        "pluginsListMs",
+        "pluginUpdateDryRunMs",
+        "statusMs"
+      ]
+    },
+    {
+      "id": "doctor-repair-contract",
+      "states": [
+        "update-recovery-plugin-user"
+      ],
+      "targetKinds": [
+        "npm",
+        "release",
+        "runtime",
+        "local-build"
+      ],
+      "metrics": [
+        "doctorFixMs",
+        "doctorFixSucceeded",
+        "doctorUnrepairedFindingCount"
+      ]
+    },
+    {
+      "id": "update-retry-target-stability",
+      "states": [
+        "update-recovery-plugin-user"
+      ],
+      "targetKinds": [
+        "npm",
+        "release",
+        "runtime",
+        "local-build"
+      ],
+      "metrics": [
+        "upgradeSelectedVersionMatchesTarget",
+        "updateRetryVersionDrift"
+      ]
+    },
+    {
+      "id": "rollback-available",
+      "states": [
+        "update-recovery-plugin-user"
+      ],
+      "targetKinds": [
+        "npm",
+        "release",
+        "runtime",
+        "local-build"
+      ],
+      "metrics": [
+        "rollbackAvailable",
+        "rollbackSucceeded",
+        "pluginsUsableAfterRollback",
+        "rollbackPreservedPluginData"
+      ]
+    }
+  ]
+}

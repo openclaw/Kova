@@ -371,21 +371,27 @@ function agentTurnExpectedCount(scenario, turns) {
 function agentCliLocalTransportOk(turns, expectedTurnCount) {
   const scopedTurns = turns.slice(0, expectedTurnCount);
   return scopedTurns.length >= expectedTurnCount &&
-    scopedTurns.every((turn) => commandUsesFlag(turn.command, "--local") && !turn.gatewaySession);
+    scopedTurns.every((turn) => turnUsesLocalAgentCli(turn) && !turn.gatewaySession);
 }
 
 function agentCliLocalTransportReason(turns, expectedTurnCount) {
   if (turns.length < expectedTurnCount) {
     return `expected at least ${expectedTurnCount} agent turn(s), found ${turns.length}`;
   }
-  const bad = turns.slice(0, expectedTurnCount).find((turn) => !commandUsesFlag(turn.command, "--local") || turn.gatewaySession);
+  const bad = turns.slice(0, expectedTurnCount).find((turn) => !turnUsesLocalAgentCli(turn) || turn.gatewaySession);
   if (!bad) {
     return null;
   }
-  if (!commandUsesFlag(bad.command, "--local")) {
+  if (!turnUsesLocalAgentCli(bad)) {
     return `${bad.phaseId} command did not include --local`;
   }
   return `${bad.phaseId} had Gateway session transport evidence`;
+}
+
+function turnUsesLocalAgentCli(turn) {
+  const command = turn?.command ?? "";
+  return commandUsesFlag(command, "--local") ||
+    command.includes("run-concurrent-agent-turns.mjs");
 }
 
 function commandUsesFlag(command, flag) {
@@ -448,7 +454,7 @@ function agentProviderProofOk(providerEvidence, turns, scenario, expectedTurnCou
     turn.missingProviderRequest === false &&
     (turn.requestCount ?? 0) > 0 &&
     turn.providerAfterCommandEnd !== true &&
-    turn.providerStatuses.every((status) => !Number.isFinite(Number(status.value)) || Number(status.value) < 400)
+    successfulTurnProviderStatusesOk(turn, scenario)
   );
 }
 
@@ -471,13 +477,32 @@ function agentProviderProofReason(providerEvidence, turns, scenario, expectedTur
   if (late) {
     return `${late.phaseId} provider request arrived after command window by ${late.providerLateByMs ?? "unknown"}ms`;
   }
-  const failedStatus = successfulTurns.find((turn) =>
-    turn.providerStatuses.some((status) => Number.isFinite(Number(status.value)) && Number(status.value) >= 400)
-  );
+  const failedStatus = successfulTurns.find((turn) => !successfulTurnProviderStatusesOk(turn, scenario));
   if (failedStatus) {
     return `${failedStatus.phaseId} had provider HTTP error status evidence`;
   }
   return null;
+}
+
+function successfulTurnProviderStatusesOk(turn, scenario) {
+  const numericStatuses = (turn.providerStatuses ?? [])
+    .map((status) => Number(status.value))
+    .filter((value) => Number.isFinite(value));
+  if (numericStatuses.every((value) => value < 400)) {
+    return true;
+  }
+  if (!providerRecoveryScenarioAllowsFailedRequest(scenario)) {
+    return false;
+  }
+  const hasSuccess = numericStatuses.some((value) => value >= 200 && value < 300);
+  const recoverableErrors = new Set(["provider-error", "provider-disconnect", "http"]);
+  const hasRecoverableError = (turn.providerErrors ?? []).some((error) => recoverableErrors.has(error.kind));
+  return hasSuccess && hasRecoverableError;
+}
+
+function providerRecoveryScenarioAllowsFailedRequest(scenario) {
+  return scenario?.mockProvider?.mode === "error-then-recover" ||
+    scenario?.mockProvider?.mode === "disconnect-then-recover";
 }
 
 function agentTurnLatencyOk(turns, scenario, expectedTurnCount) {
@@ -514,13 +539,15 @@ function agentTurnLatencyReason(turns, scenario, expectedTurnCount) {
 
 function agentCliNoServiceHealthOk(record) {
   const final = record.measurements?.health?.final;
-  return record.measurements?.finalGatewayState === "disabled" &&
+  const expectedGatewayState = agentCliRecordExpectsRunningGateway(record) ? "running" : "disabled";
+  return record.measurements?.finalGatewayState === expectedGatewayState &&
     final?.failureCount === 0 &&
     findCommandResult(record, (result) => result.command?.includes(" -- status"))?.status === 0;
 }
 
 function agentCliNoServiceHealthReason(record) {
-  if (record.measurements?.finalGatewayState !== "disabled") {
+  const expectedGatewayState = agentCliRecordExpectsRunningGateway(record) ? "running" : "disabled";
+  if (record.measurements?.finalGatewayState !== expectedGatewayState) {
     return `final gateway state was ${record.measurements?.finalGatewayState ?? "missing"}`;
   }
   if (record.measurements?.health?.final?.failureCount !== 0) {
@@ -530,6 +557,16 @@ function agentCliNoServiceHealthReason(record) {
     return "post-agent status command did not pass";
   }
   return null;
+}
+
+function agentCliRecordExpectsRunningGateway(record) {
+  return (record.phases ?? []).some((phase) =>
+    (phase.commands ?? []).some((command) =>
+      command.startsWith("ocm service start ") ||
+      command.startsWith("ocm service restart ") ||
+      (command.startsWith("ocm start ") && !/(?:^|\s)--no-service(?:\s|$)/.test(command))
+    )
+  );
 }
 
 function agentCliResourceProofOk(measurements) {

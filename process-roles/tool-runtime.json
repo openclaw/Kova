@@ -1,0 +1,16 @@
+{
+  "id": "tool-runtime",
+  "title": "Tool Runtime",
+  "description": "OpenClaw agent tool execution, exec policy, MCP tool calls, and tool-failure containment helpers.",
+  "commandPatterns": [
+    "exec-policy",
+    "exec-approvals",
+    "run-exec-tool-safety\\.mjs",
+    "mcp-tool-call-smoke\\.mjs"
+  ],
+  "processPatterns": [
+    "openclaw.*exec",
+    "run-exec-tool-safety\\.mjs",
+    "mcp-tool-call-smoke\\.mjs"
+  ]
+}

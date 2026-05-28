@@ -49,7 +49,21 @@ export function checkRoleThresholds(violations, byRole, roleThresholds) {
         role,
         expected: `<= ${thresholds.peakRssMb}`,
         actual: summary.peakRssMb,
+        attribution: resourceAttribution(role, summary),
         message: `${role} peak RSS ${summary.peakRssMb} MB exceeded threshold ${thresholds.peakRssMb} MB`
+      });
+    }
+    const peakProcessRssMb = summary.peakRssProcess?.rssMb;
+    if (typeof thresholds.peakProcessRssMb === "number" && typeof peakProcessRssMb === "number" &&
+      peakProcessRssMb > thresholds.peakProcessRssMb) {
+      violations.push({
+        kind: "resource",
+        metric: `resourceByRole.${role}.peakProcessRssMb`,
+        role,
+        expected: `<= ${thresholds.peakProcessRssMb}`,
+        actual: peakProcessRssMb,
+        attribution: resourceAttribution(role, summary),
+        message: `${role} peak process RSS ${peakProcessRssMb} MB exceeded threshold ${thresholds.peakProcessRssMb} MB`
       });
     }
     if (typeof thresholds.maxCpuPercent === "number" && typeof summary.maxCpuPercent === "number" &&
@@ -66,6 +80,17 @@ export function checkRoleThresholds(violations, byRole, roleThresholds) {
   }
 }
 
+function resourceAttribution(role, summary) {
+  return {
+    role,
+    peakRssMb: summary?.peakRssMb ?? null,
+    maxCpuPercent: summary?.maxCpuPercent ?? null,
+    peakProcessCount: summary?.peakProcessCount ?? null,
+    peakRssProcess: summary?.peakRssProcess ?? null,
+    peakCpuProcess: summary?.peakCpuProcess ?? null
+  };
+}
+
 export function checkAggregateThreshold(violations, actual, metric, threshold) {
   if (typeof threshold !== "number" || typeof actual !== "number" || actual <= threshold) {
     return;
@@ -77,6 +102,22 @@ export function checkAggregateThreshold(violations, actual, metric, threshold) {
     actual,
     message: `${metric} ${actual}ms exceeded threshold ${threshold}ms`
   });
+}
+
+export function checkBooleanThreshold(violations, kind, metric, actual, threshold, message) {
+  if (typeof threshold !== "number" || actual === null || actual === undefined) {
+    return;
+  }
+  const expected = threshold >= 1;
+  if (actual !== expected) {
+    violations.push({
+      kind,
+      metric,
+      expected,
+      actual,
+      message
+    });
+  }
 }
 
 export function checkTurnThreshold(violations, turn, metric, threshold, message) {

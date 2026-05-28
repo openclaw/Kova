@@ -1,0 +1,76 @@
+{
+  "id": "tool-failure-containment",
+  "surface": "tool-failure-containment",
+  "title": "Tool Failure Containment",
+  "objective": "Exercise deterministic blocked and timed-out tool fixture paths, attribute the failure to tool runtime evidence, and verify post-failure gateway health.",
+  "tags": [
+    "exec",
+    "tools",
+    "tool-runtime",
+    "failure-containment"
+  ],
+  "timeoutMs": 180000,
+  "mockProvider": {
+    "mode": "exec-tool-failure-only"
+  },
+  "thresholds": {
+    "gatewayReadyMs": 30000,
+    "gatewayReadyHardTimeoutMs": 120000,
+    "statusMs": 10000,
+    "execDangerousCommandBlocked": 1,
+    "execOutputTruncated": 1,
+    "execTimeoutMs": 15000,
+    "execProcessLeaks": 0,
+    "peakRssMb": 900
+  },
+  "phases": [
+    {
+      "id": "gateway",
+      "title": "Gateway Start",
+      "intent": "Start the disposable gateway before tool failure fixture checks.",
+      "commands": [
+        "ocm start {env} {startSelector} --json",
+        "ocm @{env} -- status"
+      ],
+      "evidence": [
+        "gateway status",
+        "gateway port",
+        "readiness classification"
+      ],
+      "healthScope": "readiness"
+    },
+    {
+      "id": "tool-failure-smoke",
+      "title": "Tool Failure Smoke",
+      "intent": "Run deterministic inert blocked-input, oversized-output, and timeout fixtures without executing destructive payloads.",
+      "commands": [
+        "node {kovaRoot}/support/run-exec-tool-safety.mjs --env {env} --artifact-dir {artifactDir} --timeout-ms 45000 --failure-only true"
+      ],
+      "evidence": [
+        "dangerous payload blocked sentinel",
+        "oversized output truncation",
+        "timeout containment",
+        "process leak count"
+      ],
+      "healthScope": "post-ready"
+    },
+    {
+      "id": "post-tool-failure-health",
+      "title": "Post-Tool Failure Health",
+      "intent": "Verify deterministic tool failures did not degrade gateway or command-tree health.",
+      "commands": [
+        "ocm @{env} -- status",
+        "ocm logs {env} --tail 300 --raw"
+      ],
+      "evidence": [
+        "status after tool failure fixture",
+        "tool failure attribution",
+        "gateway errors"
+      ],
+      "healthScope": "post-ready"
+    }
+  ],
+  "proves": [
+    "failure-attribution"
+  ]
+}

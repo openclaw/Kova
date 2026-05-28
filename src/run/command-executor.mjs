@@ -11,11 +11,13 @@ import {
   isAgentMessageCommand,
   tagCommandResult
 } from "../measurement-contract.mjs";
+import { assertNetworkFrontageCommandSafe, maybeStartNetworkFrontage } from "../network-frontage.mjs";
 import { assertSafeScenarioCommand } from "../safety.mjs";
 import { safeSegment } from "./phase-commands.mjs";
 
 export async function runScenarioCommand(command, context, envName, artifactDir, phaseId, commandIndex, authPolicy = null) {
   assertSafeScenarioCommand(command, context, envName);
+  assertNetworkFrontageCommandSafe(command, context);
   const agentCommand = isAgentMessageCommand(command);
   const snapshotOptions = {
     envName,
@@ -43,6 +45,19 @@ export async function runScenarioCommand(command, context, envName, artifactDir,
   });
   normalizeOptionalCommandResult(result);
   tagCommandResult(result, phaseId);
+  if (result.status === 0) {
+    try {
+      const allocation = await maybeStartNetworkFrontage(context, envName, artifactDir);
+      if (allocation?.status === "active") {
+        result.networkFrontage = allocation;
+      }
+    } catch (error) {
+      result.status = 1;
+      result.harnessBlocker = true;
+      result.stderr = `${result.stderr ?? ""}${result.stderr ? "\n" : ""}network frontage blocked: ${error.message}`;
+      result.networkFrontage = context.networkFrontageAllocation ?? null;
+    }
+  }
   attachCommandResultInterpretation(result);
   if (agentCommand) {
     await sleep(1000);

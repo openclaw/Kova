@@ -60,6 +60,14 @@
         "peakRssMb": 500,
         "maxCpuPercent": 200
       },
+      "cron-runtime": {
+        "peakRssMb": 500,
+        "maxCpuPercent": 200
+      },
+      "tool-runtime": {
+        "peakRssMb": 500,
+        "maxCpuPercent": 200
+      },
       "browser-sidecar": {
         "peakRssMb": 700,
         "maxCpuPercent": 250
@@ -183,6 +191,52 @@
           "pluginLoadFailures": 0
         }
       },
+      "cron-runtime": {
+        "thresholds": {
+          "cronRegisterMs": 10000,
+          "cronRunMs": 60000,
+          "cronRunCompleted": 1,
+          "cronTriggerAttributed": 1,
+          "statusMs": 10000,
+          "pluginLoadFailures": 0
+        }
+      },
+      "exec-tool-safety": {
+        "thresholds": {
+          "execSafeCommandMs": 10000,
+          "execSafeCommandSucceeded": 1,
+          "execDangerousCommandBlocked": 1,
+          "execOutputTruncated": 1,
+          "execTimeoutMs": 15000,
+          "execProcessLeaks": 0,
+          "statusMs": 10000,
+          "pluginLoadFailures": 0
+        }
+      },
+      "mcp-tool-call": {
+        "thresholds": {
+          "mcpInitializeMs": 10000,
+          "mcpToolsListMs": 10000,
+          "mcpToolsCallMs": 10000,
+          "mcpToolCallSucceeded": 1,
+          "mcpToolCallErrorAttributed": 1,
+          "mcpShutdownMs": 5000,
+          "mcpToolCountMin": 1,
+          "mcpProcessLeaks": 0,
+          "statusMs": 10000,
+          "pluginLoadFailures": 0
+        }
+      },
+      "tool-failure-containment": {
+        "thresholds": {
+          "execDangerousCommandBlocked": 1,
+          "execOutputTruncated": 1,
+          "execTimeoutMs": 15000,
+          "execProcessLeaks": 0,
+          "statusMs": 10000,
+          "pluginLoadFailures": 0
+        }
+      },
       "browser-automation": {
         "thresholds": {
           "browserDoctorMs": 15000,
@@ -247,6 +301,7 @@
           "plugin-update:baseline",
           "plugin-bad-manifest:baseline",
           "plugin-missing-runtime-deps:baseline",
+          "plugin-legacy-unsafe-memory:fail-closed",
           "bundled-plugin-startup:baseline",
           "provider-models:baseline",
           "agent-cli-local-turn:baseline",
@@ -263,10 +318,20 @@
           "soak:baseline",
           "workspace-scan:baseline",
           "mcp-runtime:baseline",
+          "cron-runtime:run-now",
+          "exec-tool-safety:safe-and-blocked-exec",
+          "mcp-tool-call:safe-tool-call",
+          "tool-failure-containment:failure-attribution",
           "browser-automation:baseline",
           "media-understanding:baseline",
           "network-offline:baseline",
-          "cross-platform-smoke:baseline"
+          "cross-platform-smoke:baseline",
+          "dirty-plugin-state:list-survives-dirty-state",
+          "dirty-plugin-state:doctor-preserves-user-files",
+          "release-update-recovery:plugin-failure-recovery",
+          "release-update-recovery:doctor-repair-contract",
+          "release-update-recovery:update-retry-target-stability",
+          "release-update-recovery:rollback-available"
         ]
       }
     },
@@ -305,14 +370,6 @@
         "state": "old-release-user"
       },
       {
-        "scenario": "upgrade-from-2026-4-20",
-        "state": "old-release-2026-4-20-user"
-      },
-      {
-        "scenario": "upgrade-from-2026-4-24",
-        "state": "old-release-2026-4-24-user"
-      },
-      {
         "scenario": "bundled-runtime-deps",
         "state": "missing-plugin-index"
       },
@@ -342,6 +399,10 @@
       },
       {
         "scenario": "plugin-missing-runtime-deps",
+        "state": "fresh"
+      },
+      {
+        "scenario": "plugin-legacy-unsafe-memory",
         "state": "fresh"
       },
       {
@@ -403,7 +464,15 @@
         "state": "mock-openai-provider"
       },
       {
+        "scenario": "agent-provider-protocol-failure",
+        "state": "mock-openai-provider"
+      },
+      {
         "scenario": "agent-provider-streaming-stall",
+        "state": "mock-openai-provider"
+      },
+      {
+        "scenario": "agent-provider-random-disconnect",
         "state": "mock-openai-provider"
       },
       {
@@ -439,6 +508,26 @@
         "state": "fresh"
       },
       {
+        "scenario": "cron-runtime",
+        "state": "cron-user",
+        "timeoutMs": 180000
+      },
+      {
+        "scenario": "exec-tool-safety",
+        "state": "exec-tool-user",
+        "timeoutMs": 180000
+      },
+      {
+        "scenario": "mcp-tool-call",
+        "state": "mcp-tool-user",
+        "timeoutMs": 180000
+      },
+      {
+        "scenario": "tool-failure-containment",
+        "state": "exec-tool-user",
+        "timeoutMs": 180000
+      },
+      {
         "scenario": "browser-automation-smoke",
         "state": "fresh",
         "timeoutMs": 180000
@@ -452,6 +541,16 @@
         "scenario": "agent-network-offline",
         "state": "fresh",
         "timeoutMs": 180000
+      },
+      {
+        "scenario": "dirty-plugin-state",
+        "state": "dirty-plugin-local-edits",
+        "timeoutMs": 180000
+      },
+      {
+        "scenario": "release-update-recovery",
+        "state": "update-recovery-plugin-user",
+        "timeoutMs": 300000
       },
       {
         "scenario": "cross-platform-smoke",
@@ -495,16 +594,6 @@
       "timeoutMs": 180000
     },
     {
-      "scenario": "upgrade-from-2026-4-20",
-      "state": "old-release-2026-4-20-user",
-      "timeoutMs": 240000
-    },
-    {
-      "scenario": "upgrade-from-2026-4-24",
-      "state": "old-release-2026-4-24-user",
-      "timeoutMs": 240000
-    },
-    {
       "scenario": "bundled-runtime-deps",
       "state": "missing-plugin-index"
     },
@@ -536,6 +625,20 @@
     {
       "scenario": "plugin-missing-runtime-deps",
       "state": "fresh"
+    },
+    {
+      "scenario": "plugin-legacy-unsafe-memory",
+      "state": "fresh"
+    },
+    {
+      "scenario": "dirty-plugin-state",
+      "state": "dirty-plugin-local-edits",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "release-update-recovery",
+      "state": "update-recovery-plugin-user",
+      "timeoutMs": 300000
     },
     {
       "scenario": "bundled-plugin-startup",
@@ -590,9 +693,19 @@
       "timeoutMs": 180000
     },
     {
+      "scenario": "agent-provider-protocol-failure",
+      "state": "mock-openai-provider",
+      "timeoutMs": 180000
+    },
+    {
       "scenario": "agent-provider-streaming-stall",
       "state": "mock-openai-provider",
       "timeoutMs": 180000
+    },
+    {
+      "scenario": "agent-provider-random-disconnect",
+      "state": "mock-openai-provider",
+      "timeoutMs": 240000
     },
     {
       "scenario": "agent-provider-concurrent",
@@ -643,6 +756,26 @@
     {
       "scenario": "mcp-runtime-start-stop",
       "state": "fresh"
+    },
+    {
+      "scenario": "cron-runtime",
+      "state": "cron-user",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "exec-tool-safety",
+      "state": "exec-tool-user",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "mcp-tool-call",
+      "state": "mcp-tool-user",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "tool-failure-containment",
+      "state": "exec-tool-user",
+      "timeoutMs": 180000
     },
     {
       "scenario": "browser-automation-smoke",

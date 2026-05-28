@@ -1,0 +1,78 @@
+{
+  "id": "mcp-tool-call",
+  "surface": "mcp-tool-call",
+  "title": "MCP Tool Call",
+  "objective": "Start OpenClaw's MCP bridge, list tools, call the deterministic cron status tool, call an invalid tool, and verify the bridge exits cleanly.",
+  "tags": [
+    "mcp",
+    "tools",
+    "tool-runtime",
+    "json-rpc"
+  ],
+  "timeoutMs": 180000,
+  "thresholds": {
+    "gatewayReadyMs": 30000,
+    "gatewayReadyHardTimeoutMs": 120000,
+    "statusMs": 10000,
+    "mcpInitializeMs": 10000,
+    "mcpToolsListMs": 10000,
+    "mcpToolsCallMs": 10000,
+    "mcpToolCallSucceeded": 1,
+    "mcpToolCallErrorAttributed": 1,
+    "mcpShutdownMs": 5000,
+    "mcpToolCountMin": 1,
+    "mcpProcessLeaks": 0,
+    "peakRssMb": 900
+  },
+  "phases": [
+    {
+      "id": "gateway",
+      "title": "Gateway Start",
+      "intent": "Start the disposable gateway before opening the MCP bridge.",
+      "commands": [
+        "ocm start {env} {startSelector} --json",
+        "ocm @{env} -- status"
+      ],
+      "evidence": [
+        "gateway status",
+        "gateway port",
+        "readiness classification"
+      ],
+      "healthScope": "readiness"
+    },
+    {
+      "id": "mcp-tool-call-smoke",
+      "title": "MCP Tool Call Smoke",
+      "intent": "Use JSON-RPC initialize, tools/list, tools/call cron status, invalid tools/call, and clean bridge shutdown.",
+      "commands": [
+        "node {kovaRoot}/support/mcp-tool-call-smoke.mjs --env {env} --artifact-dir {artifactDir} --timeout-ms 30000"
+      ],
+      "evidence": [
+        "MCP initialize timing",
+        "tools/list timing",
+        "tools/call timing",
+        "invalid tool error attribution",
+        "bridge process exit"
+      ],
+      "healthScope": "post-ready"
+    },
+    {
+      "id": "post-mcp-health",
+      "title": "Post-MCP Gateway Health",
+      "intent": "Verify MCP tool calls did not leave the gateway degraded.",
+      "commands": [
+        "ocm @{env} -- status",
+        "ocm logs {env} --tail 300 --raw"
+      ],
+      "evidence": [
+        "status after MCP tool calls",
+        "MCP errors",
+        "gateway errors"
+      ],
+      "healthScope": "post-ready"
+    }
+  ],
+  "proves": [
+    "safe-tool-call"
+  ]
+}

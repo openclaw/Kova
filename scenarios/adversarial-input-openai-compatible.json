@@ -1,0 +1,96 @@
+{
+  "id": "adversarial-input-openai-compatible",
+  "surface": "adversarial-input",
+  "title": "Adversarial Input OpenAI-Compatible",
+  "objective": "Send hostile-looking XML, HTML/script, template, path traversal, and Unicode control text through OpenClaw's OpenAI-compatible HTTP endpoint and verify OpenClaw treats the text as user content without crashing, stalling, or losing provider routing.",
+  "tags": [
+    "adversarial",
+    "input",
+    "fuzz",
+    "openai-compatible",
+    "http",
+    "providers",
+    "security"
+  ],
+  "timeoutMs": 180000,
+  "agent": {
+    "expectedText": "KOVA_AGENT_OK"
+  },
+  "thresholds": {
+    "gatewayReadyMs": 30000,
+    "agentTurnMs": 60000,
+    "providerRequestCountMin": 5,
+    "providerFinalMs": 5000,
+    "statusMs": 10000,
+    "postReadyHealthP95Ms": 1000,
+    "peakRssMb": 950,
+    "missingDependencyErrors": 0,
+    "pluginLoadFailures": 0
+  },
+  "phases": [
+    {
+      "id": "provision",
+      "title": "Provision Adversarial Input Env",
+      "intent": "Create a disposable OpenClaw env without starting the gateway yet so Kova auth is applied before the gateway process boots.",
+      "commands": [
+        "ocm start {env} {startSelector} --no-service --json"
+      ],
+      "evidence": [
+        "gateway port",
+        "runtime binding",
+        "env created without service"
+      ],
+      "healthScope": "none"
+    },
+    {
+      "id": "gateway-start",
+      "title": "Start Gateway",
+      "intent": "Start the gateway after auth/provider config is already present in the OpenClaw home.",
+      "commands": [
+        "ocm service install {env} --json",
+        "ocm service start {env} --json"
+      ],
+      "evidence": [
+        "gateway service installed",
+        "gateway service started",
+        "startup readiness"
+      ],
+      "healthScope": "readiness"
+    },
+    {
+      "id": "hostile-input-corpus",
+      "title": "Hostile Input Corpus",
+      "intent": "Send a fixed hostile-looking input corpus through the OpenAI-compatible user API and require normal mock-provider responses for every case.",
+      "commands": [
+        "node {kovaRoot}/support/run-adversarial-inputs.mjs --env {env} --model openclaw --expected-text KOVA_AGENT_OK --timeout 120000"
+      ],
+      "evidence": [
+        "case count",
+        "HTTP status per hostile input",
+        "final assistant marker per hostile input",
+        "mock provider request count",
+        "gateway health after hostile input"
+      ],
+      "healthScope": "post-ready"
+    },
+    {
+      "id": "post-input-health",
+      "title": "Post-Input Gateway Health",
+      "intent": "Verify the gateway remains responsive after hostile-looking input cases.",
+      "commands": [
+        "ocm @{env} -- status",
+        "ocm logs {env} --tail 300 --raw"
+      ],
+      "evidence": [
+        "gateway status",
+        "provider logs",
+        "plugin errors",
+        "memory after hostile input"
+      ],
+      "healthScope": "post-ready"
+    }
+  ],
+  "proves": [
+    "hostile-text-baseline"
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "id": "dirty-plugin-stale-deps",
+  "title": "Dirty Plugin Stale Dependencies",
+  "objective": "A disposable user state with an installed external plugin whose package metadata and stale node_modules marker model dependency drift after runtime or release changes.",
+  "tags": [
+    "plugins",
+    "dirty",
+    "stale-deps",
+    "recovery"
+  ],
+  "setup": [
+    {
+      "id": "write-dirty-plugin-stale-deps",
+      "title": "Write Dirty Plugin Stale Dependencies",
+      "intent": "Install a plugin-inspector-shaped dirty plugin with stale dependency evidence inside the disposable env.",
+      "afterPhases": [
+        "start",
+        "source",
+        "provision",
+        "cold-start",
+        "baseline",
+        "gateway",
+        "clone"
+      ],
+      "commands": [
+        "ocm env exec {env} -- node {kovaRoot}/support/dirty-plugin-state.mjs prepare dirty-plugin-stale-deps"
+      ],
+      "evidence": [
+        "stale dependency marker exists",
+        "plugin package declares runtime dependencies"
+      ]
+    },
+    {
+      "id": "verify-dirty-plugin-stale-deps",
+      "title": "Verify Dirty Plugin Stale Dependencies",
+      "intent": "Verify dirty dependency evidence remains explicit after plugin inspection, doctor repair, and restart.",
+      "afterPhase": "restart",
+      "commands": [
+        "ocm env exec {env} -- node {kovaRoot}/support/dirty-plugin-state.mjs verify dirty-plugin-stale-deps"
+      ],
+      "evidence": [
+        "stale dependency marker checksum still matches"
+      ]
+    }
+  ],
+  "traits": [
+    "existing-user",
+    "external-plugin",
+    "plugin-pressure",
+    "failure-state"
+  ],
+  "riskArea": "dirty-plugin-stale-deps",
+  "ownerArea": "plugins",
+  "setupEvidence": [
+    "stale dependency marker exists",
+    "plugin package declares runtime dependencies"
+  ],
+  "cleanupGuarantees": [
+    "disposable env cleanup removes stale dependency fixture files"
+  ],
+  "source": {
+    "kind": "synthetic-plugin-state",
+    "note": "installed plugin with stale node_modules marker and dependency metadata"
+  }
+}

@@ -8,7 +8,7 @@ import {
   verifyExternalCliAuth
 } from "./external-cli-auth.mjs";
 import { platformInfo } from "./platform.mjs";
-import { artifactsDir, credentialsDir, liveEnvPath, providersPath, reportsDir } from "./paths.mjs";
+import { artifactsDir, credentialsDir, liveEnvPath, providersPath, reportsDir, repoRoot } from "./paths.mjs";
 import { configureCredentialProvider, ensureCredentialStore } from "./auth.mjs";
 import { renderSetup } from "./reporting/render-setup.mjs";
 
@@ -36,6 +36,7 @@ export async function runSetup(flags = {}) {
   }));
   checks.push(await directoryCheck("reports-dir", reportsDir));
   checks.push(await directoryCheck("artifacts-dir", artifactsDir));
+  checks.push(await mockProviderPackageCheck());
   checks.push(await credentialStoreCheck(auth));
   checks.push(skillGuidanceCheck());
 
@@ -381,6 +382,28 @@ async function directoryCheck(id, path) {
       status: "FAIL",
       path,
       message: error.message
+    };
+  }
+}
+
+async function mockProviderPackageCheck() {
+  const bin = `${repoRoot}/node_modules/.bin/mock-ai-provider`;
+  try {
+    await access(bin, constants.X_OK);
+    return {
+      id: "mock-ai-provider",
+      required: true,
+      status: "PASS",
+      path: bin,
+      message: "local mock-ai-provider package is installed"
+    };
+  } catch (error) {
+    return {
+      id: "mock-ai-provider",
+      required: true,
+      status: "FAIL",
+      path: bin,
+      message: "Kova requires the npm package mock-ai-provider; run npm install in the Kova repo"
     };
   }
 }

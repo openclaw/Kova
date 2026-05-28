@@ -1,0 +1,16 @@
+{
+  "id": "kova-missing-runtime-dep",
+  "activation": {
+    "onStartup": true
+  },
+  "name": "Kova Missing Runtime Dep",
+  "description": "External plugin fixture that should fail with a missing dependency diagnostic.",
+  "contracts": {
+    "tools": []
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

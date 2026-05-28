@@ -1,0 +1,65 @@
+{
+  "id": "dirty-plugin-local-edits",
+  "title": "Dirty Plugin With Local Edits",
+  "objective": "A disposable user state with an installed external plugin that has local user edits OpenClaw must not silently overwrite during plugin inspection, doctor repair, restart, update, or rollback.",
+  "tags": [
+    "plugins",
+    "dirty",
+    "local-edits",
+    "recovery"
+  ],
+  "setup": [
+    {
+      "id": "write-dirty-plugin-local-edits",
+      "title": "Write Dirty Plugin Local Edits",
+      "intent": "Install a local dirty plugin fixture and record a checksum marker inside the disposable env.",
+      "afterPhases": [
+        "start",
+        "source",
+        "provision",
+        "cold-start",
+        "baseline",
+        "gateway",
+        "clone"
+      ],
+      "commands": [
+        "ocm env exec {env} -- node {kovaRoot}/support/dirty-plugin-state.mjs prepare dirty-plugin-local-edits"
+      ],
+      "evidence": [
+        "dirty local edit plugin fixture exists",
+        "pre-repair checksum marker exists"
+      ]
+    },
+    {
+      "id": "verify-dirty-plugin-local-edits",
+      "title": "Verify Dirty Plugin Local Edits",
+      "intent": "Verify OpenClaw plugin inspection, doctor repair, and restart did not overwrite local plugin edits.",
+      "afterPhase": "restart",
+      "commands": [
+        "ocm env exec {env} -- node {kovaRoot}/support/dirty-plugin-state.mjs verify dirty-plugin-local-edits"
+      ],
+      "evidence": [
+        "dirty local edit checksum still matches"
+      ]
+    }
+  ],
+  "traits": [
+    "existing-user",
+    "external-plugin",
+    "plugin-pressure",
+    "failure-state"
+  ],
+  "riskArea": "dirty-plugin-local-edits",
+  "ownerArea": "plugins",
+  "setupEvidence": [
+    "dirty local edit plugin fixture exists",
+    "pre-repair checksum marker exists"
+  ],
+  "cleanupGuarantees": [
+    "disposable env cleanup removes dirty plugin fixture files"
+  ],
+  "source": {
+    "kind": "synthetic-plugin-state",
+    "note": "installed plugin with local user edits and checksum marker"
+  }
+}

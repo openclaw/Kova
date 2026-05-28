@@ -1,0 +1,67 @@
+{
+  "id": "dirty-plugin-disabled-broken",
+  "title": "Dirty Plugin Disabled Broken",
+  "objective": "A disposable user state with a disabled plugin whose files are broken, proving disabled dirty plugins do not break gateway startup or become enabled during repair.",
+  "tags": [
+    "plugins",
+    "dirty",
+    "disabled",
+    "broken",
+    "recovery"
+  ],
+  "setup": [
+    {
+      "id": "write-dirty-plugin-disabled-broken",
+      "title": "Write Dirty Plugin Disabled Broken",
+      "intent": "Install a disabled plugin with intentionally broken manifest/runtime files.",
+      "afterPhases": [
+        "start",
+        "source",
+        "provision",
+        "cold-start",
+        "baseline",
+        "gateway",
+        "clone"
+      ],
+      "commands": [
+        "ocm env exec {env} -- node {kovaRoot}/support/dirty-plugin-state.mjs prepare dirty-plugin-disabled-broken"
+      ],
+      "evidence": [
+        "disabled install record exists",
+        "broken plugin files exist"
+      ]
+    },
+    {
+      "id": "verify-dirty-plugin-disabled-broken",
+      "title": "Verify Dirty Plugin Disabled Broken",
+      "intent": "Verify the disabled broken plugin remained disabled and was not destructively rewritten.",
+      "afterPhase": "restart",
+      "commands": [
+        "ocm env exec {env} -- node {kovaRoot}/support/dirty-plugin-state.mjs verify dirty-plugin-disabled-broken"
+      ],
+      "evidence": [
+        "disabled plugin remains disabled",
+        "broken plugin checksum still matches"
+      ]
+    }
+  ],
+  "traits": [
+    "existing-user",
+    "external-plugin",
+    "plugin-pressure",
+    "failure-state"
+  ],
+  "riskArea": "dirty-plugin-disabled-broken",
+  "ownerArea": "plugins",
+  "setupEvidence": [
+    "disabled install record exists",
+    "broken plugin files exist"
+  ],
+  "cleanupGuarantees": [
+    "disposable env cleanup removes disabled broken fixture files"
+  ],
+  "source": {
+    "kind": "synthetic-plugin-state",
+    "note": "disabled plugin with broken manifest and runtime files"
+  }
+}

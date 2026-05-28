@@ -11,6 +11,9 @@ const port = fs.readFileSync(options.portFile, "utf8").trim();
 if (!/^\d+$/.test(port)) {
   throw new Error(`invalid mock provider port in ${options.portFile}`);
 }
+if (!options.skipHealthCheck) {
+  await assertMockProviderReady(port);
+}
 
 const stateDir = process.env.OPENCLAW_STATE_DIR || path.join(requiredEnv("OPENCLAW_HOME"), ".openclaw");
 const configPath = process.env.OPENCLAW_CONFIG_PATH || path.join(stateDir, "openclaw.json");
@@ -136,6 +139,16 @@ config.gateway = {
     mode: "token",
     token: gatewayToken
   },
+  http: {
+    ...(config.gateway?.http || {}),
+    endpoints: {
+      ...(config.gateway?.http?.endpoints || {}),
+      chatCompletions: {
+        ...(config.gateway?.http?.endpoints?.chatCompletions || {}),
+        enabled: true
+      }
+    }
+  },
   remote: {
     ...(config.gateway?.remote || {}),
     token: gatewayToken
@@ -165,10 +178,33 @@ config.session = {
 fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 console.log(configPath);
 
+async function assertMockProviderReady(port) {
+  const url = `http://127.0.0.1:${port}/health`;
+  const deadline = Date.now() + 5000;
+  let lastError = null;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(url);
+      if (response.ok) {
+        return;
+      }
+      lastError = new Error(`HTTP ${response.status}`);
+    } catch (error) {
+      lastError = error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`mock-ai-provider is not reachable at ${url}: ${lastError?.message ?? "unknown error"}`);
+}
+
 function parseArgs(args) {
   const parsed = { gatewayHttpEndpoints: [] };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
+    if (arg === "--skip-health-check") {
+      parsed.skiphealthcheck = true;
+      continue;
+    }
     if (!arg.startsWith("--")) {
       throw new Error(`unexpected argument: ${arg}`);
     }
@@ -192,6 +228,7 @@ function parseArgs(args) {
   }
   return {
     portFile: parsed.portfile,
+    skipHealthCheck: parsed.skiphealthcheck === true,
     gatewayHttpEndpoints: parsed.gatewayHttpEndpoints
   };
 }

@@ -1,0 +1,26 @@
+{
+  "name": "kova-legacy-unsafe-memory-plugin",
+  "version": "1.0.0",
+  "description": "Kova plugin compatibility fixture for unsafe legacy buffer allocation behavior",
+  "type": "module",
+  "exports": {
+    ".": "./index.js"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.4.25"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.js"
+    ],
+    "install": {
+      "defaultChoice": "local",
+      "minHostVersion": ">=2026.4.25"
+    }
+  }
+}

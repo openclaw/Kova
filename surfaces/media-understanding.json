@@ -8,6 +8,7 @@
     "command-tree",
     "mock-provider"
   ],
+  "resourcePrimaryRole": "gateway",
   "thresholds": {
     "mediaDescribeMs": 10000,
     "mediaTimeoutObserved": 1,
