@@ -36,9 +36,13 @@ export async function loadPriorReleases(dir) {
 }
 
 /**
- * Pick the chronologically-previous release before `targetDate`.
- * Releases with no `releaseDate` are skipped. The target version itself
- * is excluded so re-publishing doesn't compare against itself.
+ * Pick the chronologically-previous release before `targetDate` in the same
+ * release lane. Stable publishes compare to stable releases only, and
+ * pre-release publishes compare to pre-releases only; mixing the lanes makes
+ * public deltas read as a fallback to whichever artifact happened to be newer.
+ *
+ * Releases with no `releaseDate` are skipped. The target version itself is
+ * excluded so re-publishing doesn't compare against itself.
  *
  * @param {Array<{ id: string; data: any }>} releases
  * @param {string} targetVer
@@ -51,7 +55,9 @@ export function findImmediatePrior(releases, targetVer, targetDate) {
   let best = null;
   let bestT = -Infinity;
   for (const r of releases) {
-    if (r.data?.ver === targetVer) continue;
+    const ver = r.data?.ver ?? r.id;
+    if (ver === targetVer) continue;
+    if (!sameReleaseLane(ver, targetVer)) continue;
     const d = r.data?.releaseDate ? new Date(r.data.releaseDate).getTime() : NaN;
     if (!Number.isFinite(d) || d >= t) continue;
     if (d > bestT) {
@@ -60,6 +66,14 @@ export function findImmediatePrior(releases, targetVer, targetDate) {
     }
   }
   return best;
+}
+
+function isPreReleaseVersion(ver) {
+  return typeof ver === "string" && ver.includes("-");
+}
+
+function sameReleaseLane(a, b) {
+  return isPreReleaseVersion(a) === isPreReleaseVersion(b);
 }
 
 function pctDelta(curr, prev) {
