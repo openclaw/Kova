@@ -1,0 +1,65 @@
+{
+  "id": "dirty-plugin-partial-install",
+  "title": "Dirty Plugin Partial Install",
+  "objective": "A disposable user state with a plugin install record whose files are missing, used to prove OpenClaw reports partial installs clearly and keeps gateway, doctor, and rollback paths usable.",
+  "tags": [
+    "plugins",
+    "dirty",
+    "partial-install",
+    "recovery"
+  ],
+  "setup": [
+    {
+      "id": "write-dirty-plugin-partial-install",
+      "title": "Write Dirty Plugin Partial Install",
+      "intent": "Write a plugin install record that points to missing plugin files inside the disposable env.",
+      "afterPhases": [
+        "start",
+        "source",
+        "provision",
+        "cold-start",
+        "baseline",
+        "gateway",
+        "clone"
+      ],
+      "commands": [
+        "ocm env exec {env} -- node {kovaRoot}/support/dirty-plugin-state.mjs prepare dirty-plugin-partial-install"
+      ],
+      "evidence": [
+        "partial install record exists",
+        "plugin root is intentionally missing"
+      ]
+    },
+    {
+      "id": "verify-dirty-plugin-partial-install",
+      "title": "Verify Dirty Plugin Partial Install",
+      "intent": "Verify OpenClaw did not silently recreate or erase the partial install evidence while handling dirty plugin state.",
+      "afterPhase": "restart",
+      "commands": [
+        "ocm env exec {env} -- node {kovaRoot}/support/dirty-plugin-state.mjs verify dirty-plugin-partial-install"
+      ],
+      "evidence": [
+        "partial install evidence remains explicit"
+      ]
+    }
+  ],
+  "traits": [
+    "existing-user",
+    "external-plugin",
+    "plugin-pressure",
+    "failure-state"
+  ],
+  "riskArea": "dirty-plugin-partial-install",
+  "ownerArea": "plugins",
+  "setupEvidence": [
+    "partial install record exists",
+    "plugin root is intentionally missing"
+  ],
+  "cleanupGuarantees": [
+    "disposable env cleanup removes dirty plugin fixture files"
+  ],
+  "source": {
+    "kind": "synthetic-plugin-state",
+    "note": "plugin install record without plugin files"
+  }
+}

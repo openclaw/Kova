@@ -1,0 +1,27 @@
+{
+  "id": "mcp-tool-user",
+  "title": "MCP Tool Disposable User",
+  "objective": "A disposable OpenClaw user state for real MCP bridge tool-call checks against the local gateway.",
+  "tags": [
+    "mcp",
+    "tools",
+    "runtime"
+  ],
+  "setup": [],
+  "traits": [
+    "fresh-user",
+    "baseline"
+  ],
+  "riskArea": "mcp-runtime",
+  "ownerArea": "mcp-runtime",
+  "setupEvidence": [
+    "disposable OpenClaw env exists",
+    "MCP bridge can connect to the disposable gateway",
+    "artifact dir captures JSON-RPC request and response transcript"
+  ],
+  "cleanupGuarantees": [
+    "MCP bridge process is closed by the helper",
+    "gateway token file is removed after the helper exits",
+    "disposable env cleanup removes MCP artifacts"
+  ]
+}

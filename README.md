@@ -21,7 +21,7 @@ browsers, soak — with **real execution evidence**, not synthetic confidence.
 |---|---|
 | 🚀 **Install & upgrade** | Fresh installs, release-track upgrades, version-to-version, durable-env clone → local-build, migrations. |
 | 🧩 **Every runtime path** | Gateway, sessions, plugins, agent (CLI + Gateway), dashboard, TUI, MCP, browser, OpenAI-compatible, soak. |
-| 💥 **Failure containment** | Timeouts, malformed providers, streaming stalls, network offline, missing auth, concurrent load, recovery. |
+| 💥 **Failure containment** | Timeouts, malformed providers, streaming stalls, network offline, missing auth, hostile-looking inputs, concurrent load, recovery. |
 | ⏱ **Honest agent latency** | Pre-provider · provider · post-provider, split per turn with timeline span evidence. |
 | 🧠 **Process attribution** | CPU and RSS across 21 named roles — never just "memory was high". |
 | 📈 **Baselines & regressions** | `--repeat N` with median / p95 / max / variance. Per-platform baselines. Gate refuses to ship without proof. |
@@ -30,7 +30,7 @@ browsers, soak — with **real execution evidence**, not synthetic confidence.
 | 🤖 **Agent-first I/O** | `kova.report.v1` JSON, summary, bundle, paste, compare. Verdict-led dashboard by default. |
 
 ```text
-42 scenarios   ·   29 surfaces   ·   26 states   ·   8 profiles
+56 scenarios   ·   37 surfaces   ·   37 states   ·   10 profiles
 21 process roles   ·   15+ collectors
 ```
 
@@ -90,6 +90,7 @@ smoke                  fast confidence over core paths
 diagnostic             local-build with timeline + span expectations
 release                ship / no-ship gate coverage
 soak                   long-running pressure and stability
+adversarial            hostile input and failure-containment checks
 release-upgrade        published release-track upgrade matrix
 local-build-upgrade    upgrade into a local build
 official-plugins       bundled + official plugin coverage

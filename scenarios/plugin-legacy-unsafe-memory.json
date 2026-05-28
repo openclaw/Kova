@@ -1,0 +1,74 @@
+{
+  "id": "plugin-legacy-unsafe-memory",
+  "surface": "plugin-legacy-unsafe-memory",
+  "title": "Plugin Legacy Unsafe Memory",
+  "objective": "Install a legacy plugin fixture that performs unsafe buffer boundary probes on startup, require OpenClaw to fail it closed with an explicit diagnostic, and verify the gateway remains healthy.",
+  "tags": [
+    "plugins",
+    "memory",
+    "compatibility",
+    "security",
+    "failure",
+    "lifecycle"
+  ],
+  "timeoutMs": 180000,
+  "thresholds": {
+    "gatewayReadyMs": 30000,
+    "gatewayReadyHardTimeoutMs": 120000,
+    "statusMs": 10000,
+    "missingDependencyErrors": 0,
+    "pluginLoadFailures": 2
+  },
+  "phases": [
+    {
+      "id": "install",
+      "title": "Install Legacy Unsafe Memory Plugin",
+      "intent": "Install a plugin that models an older tolerated bad-allocation behavior without allocating dangerous amounts of memory.",
+      "commands": [
+        "ocm start {env} {startSelector} --json",
+        "node {kovaRoot}/support/assert-command-output.mjs --pattern KOVA_LEGACY_UNSAFE_MEMORY_PLUGIN_REJECTED -- ocm @{env} -- plugins install {kovaRoot}/support/plugins/kova-legacy-unsafe-memory --force",
+        "ocm @{env} -- plugins list"
+      ],
+      "evidence": [
+        "install result",
+        "plugin entry registered",
+        "gateway readiness before load"
+      ],
+      "healthScope": "readiness"
+    },
+    {
+      "id": "restart",
+      "title": "Restart And Require Fail-Closed Diagnostic",
+      "intent": "Restart after the failed-closed install path and verify the gateway remains supervised.",
+      "commands": [
+        "ocm service restart {env}",
+        "ocm service status {env} --json"
+      ],
+      "evidence": [
+        "restart status after unsafe-memory rejection",
+        "gateway remains supervised"
+      ],
+      "healthScope": "readiness"
+    },
+    {
+      "id": "survival",
+      "title": "Gateway Survival Check",
+      "intent": "Confirm the incompatible legacy plugin did not make user-facing OpenClaw commands unusable.",
+      "commands": [
+        "ocm @{env} -- status",
+        "ocm @{env} -- plugins list",
+        "ocm logs {env} --tail 500 --raw"
+      ],
+      "evidence": [
+        "status after unsafe-memory plugin failure",
+        "plugin list after failure",
+        "logs after unsafe-memory plugin failure"
+      ],
+      "healthScope": "post-ready",
+      "collectionIntent": "post-ready-health"
+    }
+  ],
+  "proves": [
+    "fail-closed"
+  ]
+}

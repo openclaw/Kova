@@ -1,0 +1,96 @@
+{
+  "id": "dirty-plugin-state",
+  "surface": "dirty-plugin-state",
+  "title": "Dirty Plugin State",
+  "objective": "Start OpenClaw with dirty plugin state, run plugin inspection, doctor repair, restart, and verify dirty plugin integrity evidence remains explicit.",
+  "tags": [
+    "plugins",
+    "dirty",
+    "doctor",
+    "recovery",
+    "gateway"
+  ],
+  "states": [
+    "dirty-plugin-local-edits",
+    "dirty-plugin-stale-deps",
+    "dirty-plugin-manifest-drift",
+    "dirty-plugin-disabled-broken",
+    "dirty-plugin-symlink-dev",
+    "dirty-plugin-partial-install"
+  ],
+  "timeoutMs": 180000,
+  "thresholds": {
+    "statusMs": 10000,
+    "pluginsListMs": 15000,
+    "pluginUpdateDryRunMs": 30000,
+    "doctorFixMs": 60000,
+    "restartReadyMs": 30000,
+    "pluginLoadFailures": 1
+  },
+  "phases": [
+    {
+      "id": "start",
+      "title": "Start Dirty Plugin Env",
+      "intent": "Start a disposable OpenClaw env before applying dirty plugin state.",
+      "commands": [
+        "ocm start {env} {startSelector} --json",
+        "ocm service status {env} --json"
+      ],
+      "evidence": [
+        "env created",
+        "gateway service status before dirty plugin setup"
+      ],
+      "healthScope": "readiness"
+    },
+    {
+      "id": "plugin-inspect",
+      "title": "Inspect Dirty Plugin State",
+      "intent": "Verify plugin commands remain usable and report dirty plugin state clearly.",
+      "commands": [
+        "ocm @{env} -- plugins list",
+        "ocm @{env} -- plugins update --all --dry-run"
+      ],
+      "evidence": [
+        "plugin list output",
+        "plugin update dry-run output",
+        "dirty plugin diagnostics"
+      ],
+      "healthScope": "post-ready"
+    },
+    {
+      "id": "doctor",
+      "title": "Doctor Dirty Plugin State",
+      "intent": "Run OpenClaw doctor repair and verify the gateway remains usable afterward.",
+      "commands": [
+        "ocm @{env} -- doctor --fix",
+        "ocm @{env} -- status"
+      ],
+      "evidence": [
+        "doctor output",
+        "post-doctor status"
+      ],
+      "healthScope": "post-ready"
+    },
+    {
+      "id": "restart",
+      "title": "Restart After Dirty Plugin Handling",
+      "intent": "Restart the gateway and capture plugin load diagnostics after dirty plugin handling.",
+      "commands": [
+        "ocm service restart {env}",
+        "ocm service status {env} --json",
+        "ocm @{env} -- plugins list",
+        "ocm logs {env} --tail 400 --raw"
+      ],
+      "evidence": [
+        "restart status",
+        "post-restart plugin list",
+        "gateway logs"
+      ],
+      "healthScope": "readiness"
+    }
+  ],
+  "proves": [
+    "list-survives-dirty-state",
+    "doctor-preserves-user-files"
+  ]
+}

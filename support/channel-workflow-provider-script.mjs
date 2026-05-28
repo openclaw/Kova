@@ -44,6 +44,51 @@ export function scriptForMode(options, repoRoot) {
       }
     }]);
   }
+  if (mode === "protocol-failure") {
+    return makeScript(mode, [{
+      id: "kova-protocol-failure-response",
+      respond: {
+        type: "malformed",
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: "kova-protocol-failure",
+          object: "response",
+          status: "completed",
+          output: [
+            {
+              type: "message",
+              role: "assistant",
+              content: [
+                {
+                  type: "unexpected_text_shape",
+                  value: marker
+                }
+              ]
+            }
+          ]
+        })
+      }
+    }]);
+  }
+  if (mode === "disconnect-then-recover") {
+    return makeScript(mode, [
+      {
+        id: "kova-disconnect-then-recover-disconnect",
+        respond: {
+          type: "error",
+          status: errorStatus,
+          message: "mock provider connection dropped before final response",
+          errorType: "provider-disconnect",
+          code: "kova_mock_provider_disconnect"
+        }
+      },
+      {
+        id: "kova-disconnect-then-recover-final",
+        respond: final
+      }
+    ]);
+  }
   if (mode === "error-then-recover") {
     return makeScript(mode, [
       {
@@ -59,6 +104,209 @@ export function scriptForMode(options, repoRoot) {
       {
         id: "kova-error-then-recover-final",
         respond: final
+      }
+    ]);
+  }
+  if (mode === "exec-tool-safety") {
+    return makeScript(mode, [
+      {
+        id: "kova-exec-tool-safety-safe-tool-call",
+        respond: {
+          type: "tool-calls",
+          toolCalls: [
+            {
+              id: "call_kova_exec_tool_safety_safe",
+              name: "exec",
+              arguments: JSON.stringify({ command: "printf KOVA_EXEC_OK" })
+            }
+          ]
+        }
+      },
+      {
+        id: "kova-exec-tool-safety-safe-final",
+        match: {
+          requestIndex: 1,
+          hasToolResult: true,
+          priorToolCallName: "exec"
+        },
+        respond: {
+          type: "final-text",
+          text: "KOVA_EXEC_SAFE_REQUEST_DONE"
+        }
+      },
+      {
+        id: "kova-exec-tool-safety-dangerous-tool-call",
+        match: {
+          requestIndex: 2,
+          hasToolResult: false
+        },
+        respond: {
+          type: "tool-calls",
+          toolCalls: [
+            {
+              id: "call_kova_exec_tool_safety_blocked",
+              name: "exec",
+              arguments: "{\"command\":\"rm -rf {{request.text.match:KOVA_EXEC_DANGEROUS_PATH=([^:]+)}}\"}"
+            }
+          ]
+        }
+      },
+      {
+        id: "kova-exec-tool-safety-dangerous-final",
+        match: {
+          requestIndex: 3,
+          hasToolResult: true,
+          priorToolCallName: "exec"
+        },
+        respond: {
+          type: "final-text",
+          text: "KOVA_EXEC_BLOCKED_REQUEST_DONE"
+        }
+      },
+      {
+        id: "kova-exec-tool-safety-large-output-tool-call",
+        match: {
+          requestIndex: 4,
+          hasToolResult: false
+        },
+        respond: {
+          type: "tool-calls",
+          toolCalls: [
+            {
+              id: "call_kova_exec_tool_safety_large_output",
+              name: "exec",
+              arguments: JSON.stringify({ command: "seq 1 20000" })
+            }
+          ]
+        }
+      },
+      {
+        id: "kova-exec-tool-safety-large-output-final",
+        match: {
+          requestIndex: 5,
+          hasToolResult: true,
+          priorToolCallName: "exec"
+        },
+        respond: {
+          type: "final-text",
+          text: "KOVA_EXEC_LARGE_OUTPUT_DONE"
+        }
+      },
+      {
+        id: "kova-exec-tool-safety-timeout-tool-call",
+        match: {
+          requestIndex: 6,
+          hasToolResult: false
+        },
+        respond: {
+          type: "tool-calls",
+          toolCalls: [
+            {
+              id: "call_kova_exec_tool_safety_timeout",
+              name: "exec",
+              arguments: JSON.stringify({ command: "sleep 30", timeout: 1 })
+            }
+          ]
+        }
+      },
+      {
+        id: "kova-exec-tool-safety-timeout-final",
+        match: {
+          requestIndex: 7,
+          hasToolResult: true,
+          priorToolCallName: "exec"
+        },
+        respond: {
+          type: "final-text",
+          text: "KOVA_EXEC_TIMEOUT_DONE"
+        }
+      }
+    ]);
+  }
+  if (mode === "exec-tool-failure-only") {
+    return makeScript(mode, [
+      {
+        id: "kova-exec-tool-failure-only-dangerous-tool-call",
+        respond: {
+          type: "tool-calls",
+          toolCalls: [
+            {
+              id: "call_kova_exec_tool_failure_only_blocked",
+              name: "exec",
+              arguments: "{\"command\":\"rm -rf {{request.text.match:KOVA_EXEC_DANGEROUS_PATH=([^:]+)}}\"}"
+            }
+          ]
+        }
+      },
+      {
+        id: "kova-exec-tool-failure-only-dangerous-final",
+        match: {
+          requestIndex: 1,
+          hasToolResult: true,
+          priorToolCallName: "exec"
+        },
+        respond: {
+          type: "final-text",
+          text: "KOVA_EXEC_BLOCKED_REQUEST_DONE"
+        }
+      },
+      {
+        id: "kova-exec-tool-failure-only-large-output-tool-call",
+        match: {
+          requestIndex: 2,
+          hasToolResult: false
+        },
+        respond: {
+          type: "tool-calls",
+          toolCalls: [
+            {
+              id: "call_kova_exec_tool_failure_only_large_output",
+              name: "exec",
+              arguments: JSON.stringify({ command: "seq 1 20000" })
+            }
+          ]
+        }
+      },
+      {
+        id: "kova-exec-tool-failure-only-large-output-final",
+        match: {
+          requestIndex: 3,
+          hasToolResult: true,
+          priorToolCallName: "exec"
+        },
+        respond: {
+          type: "final-text",
+          text: "KOVA_EXEC_LARGE_OUTPUT_DONE"
+        }
+      },
+      {
+        id: "kova-exec-tool-failure-only-timeout-tool-call",
+        match: {
+          requestIndex: 4,
+          hasToolResult: false
+        },
+        respond: {
+          type: "tool-calls",
+          toolCalls: [
+            {
+              id: "call_kova_exec_tool_failure_only_timeout",
+              name: "exec",
+              arguments: JSON.stringify({ command: "sleep 30", timeout: 1 })
+            }
+          ]
+        }
+      },
+      {
+        id: "kova-exec-tool-failure-only-timeout-final",
+        match: {
+          requestIndex: 5,
+          hasToolResult: true,
+          priorToolCallName: "exec"
+        },
+        respond: {
+          type: "final-text",
+          text: "KOVA_EXEC_TIMEOUT_DONE"
+        }
       }
     ]);
   }

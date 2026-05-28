@@ -21,11 +21,54 @@ import {
 } from "./measurement-contract.mjs";
 import {
   checkAggregateThreshold,
+  checkBooleanThreshold,
   checkDuration,
   checkEvidenceThreshold,
   checkRoleThresholds,
   checkTurnThreshold
 } from "./evaluation/violations.mjs";
+
+const DIRTY_PLUGIN_METRICS = [
+  "dirtyPluginDetected",
+  "dirtyPluginReported",
+  "dirtyPluginChecksumPreserved",
+  "doctorDestructiveChangeCount",
+  "pluginsUsableWithDirtyState",
+  "gatewaySurvivedDirtyPlugin"
+];
+
+const RELEASE_RECOVERY_METRICS = [
+  "doctorFixSucceeded",
+  "doctorUnrepairedFindingCount",
+  "updateRetryVersionDrift",
+  "rollbackAvailable",
+  "rollbackSucceeded",
+  "pluginsUsableAfterUpgrade",
+  "pluginsUsableAfterRollback",
+  "rollbackPreservedPluginData"
+];
+
+const CRON_RUNTIME_METRICS = [
+  "cronRegisterMs",
+  "cronRunMs",
+  "cronRunCompleted",
+  "cronTriggerAttributed"
+];
+
+const EXEC_TOOL_METRICS = [
+  "execSafeCommandMs",
+  "execSafeCommandSucceeded",
+  "execDangerousCommandBlocked",
+  "execOutputTruncated",
+  "execTimeoutMs",
+  "execProcessLeaks"
+];
+
+const MCP_TOOL_CALL_METRICS = [
+  "mcpToolsCallMs",
+  "mcpToolCallSucceeded",
+  "mcpToolCallErrorAttributed"
+];
 
 export function evaluateRecord(record, scenario, options = {}) {
   const originalStatus = record.status;
@@ -42,20 +85,19 @@ export function evaluateRecord(record, scenario, options = {}) {
   const measuredResults = collectResults(record, { productOnly: true });
   const resourceSummary = collectResourceSummary(measuredResults);
   const channelWorkflowResources = summarizeChannelWorkflowResources(measuredResults);
-  const primaryResourceRole = resolvePrimaryResourceRole(resourceSummary, options.surface);
-  const primaryRoleResources = primaryResourceRole ? resourceSummary.byRole[primaryResourceRole] : null;
   const peakTrackedRssMb = maxNullable(
     collectPeakRss(record, { productOnly: true }),
     resourceSummary.peakTotalRssMb
   );
   const cpuPercentMaxTracked = maxNullable(collectCpuPercentMax(record, { productOnly: true }), resourceSummary.maxTotalCpuPercent);
-  const resourceGateKind = primaryResourceRole && primaryRoleResources ? "role" : "tracked-total";
-  const peakRssMb = resourceGateKind === "role" && typeof primaryRoleResources?.peakRssMb === "number"
-    ? primaryRoleResources.peakRssMb
-    : peakTrackedRssMb;
-  const cpuPercentMax = resourceGateKind === "role" && typeof primaryRoleResources?.maxCpuPercent === "number"
-    ? primaryRoleResources.maxCpuPercent
-    : cpuPercentMaxTracked;
+  const resourceGate = resolveResourceGate(resourceSummary, options.surface, {
+    peakTrackedRssMb,
+    cpuPercentMaxTracked
+  });
+  const primaryResourceRole = resourceGate.primaryRole;
+  const resourceGateKind = resourceGate.kind;
+  const peakRssMb = resourceGate.peakRssMb;
+  const cpuPercentMax = resourceGate.cpuPercentMax;
   const commandMissingDependencyErrors = countMissingDependencyErrors(allResults);
   const missingDependencyErrors = combineCommandAndLogCount(
     commandMissingDependencyErrors,
@@ -141,6 +183,11 @@ export function evaluateRecord(record, scenario, options = {}) {
   const finalHealthFailures = health.final?.failureCount ?? 0;
   const soakEvidence = collectSoakEvidence(allResults);
   const mcpBridgeEvidence = collectMcpBridgeEvidence(allResults);
+  const cronRuntimeEvidence = collectCronRuntimeEvidence(allResults);
+  const execToolEvidence = collectExecToolEvidence(allResults);
+  const mcpToolCallEvidence = collectMcpToolCallEvidence(allResults);
+  const dirtyPluginEvidence = collectDirtyPluginEvidence(record);
+  const releaseRecoveryEvidence = collectReleaseRecoveryEvidence(record);
   const browserAutomationEvidence = collectBrowserAutomationEvidence(allResults);
   const mediaUnderstandingEvidence = collectMediaUnderstandingEvidence(allResults);
   const networkOfflineEvidence = collectNetworkOfflineEvidence(allResults);
@@ -157,6 +204,7 @@ export function evaluateRecord(record, scenario, options = {}) {
   const pluginsListMs = maxDurationWhere(allResults, (command) => command.includes(" -- plugins list"));
   const pluginInstallMs = maxDurationWhere(allResults, (command) => command.includes("run-official-plugin-install.mjs") || command.includes(" -- plugins install"));
   const modelsListMs = maxDurationWhere(allResults, (command) => command.includes(" -- models list"));
+  const doctorFixMs = maxDurationWhere(allResults, isDoctorFixCommand);
   const rssGrowthMb = maxNullable(resourceSummary.maxTotalRssGrowthMb);
   const gatewayRssGrowthMb = maxNullable(resourceSummary.maxGatewayRssGrowthMb);
 
@@ -173,14 +221,31 @@ export function evaluateRecord(record, scenario, options = {}) {
     command.startsWith("ocm service restart ")
   );
   checkDuration(violations, allResults, "upgradeMs", thresholds.upgradeMs, (command) => command.startsWith("ocm upgrade "));
+  checkDuration(violations, allResults, "doctorFixMs", thresholds.doctorFixMs, isDoctorFixCommand);
+
+  if (resourceGateKind === "role-missing" && hasActivePrimaryResourceThreshold(thresholds, roleThresholds, primaryResourceRole)) {
+    violations.push({
+      kind: "resource",
+      metric: `resourceByRole.${primaryResourceRole}.missing`,
+      role: primaryResourceRole,
+      resourceGateKind,
+      expected: "configured primary resource role observed in product samples",
+      actual: "missing",
+      attribution: resourceGate.attribution,
+      message: `${primaryResourceRole} resource evidence was not captured; configured primary resource role has active resource thresholds${resourceBreakdownSuffix(resourceSummary, resourceGate)}`
+    });
+  }
 
   if (typeof thresholds.peakRssMb === "number" && peakRssMb !== null && peakRssMb > thresholds.peakRssMb) {
     violations.push({
       kind: "threshold",
       metric: "peakRssMb",
+      role: resourceGate.role ?? null,
+      resourceGateKind,
+      attribution: resourceGate.attribution,
       expected: `<= ${thresholds.peakRssMb}`,
       actual: peakRssMb,
-      message: `${resourceRssLabel(primaryResourceRole, resourceGateKind)} ${peakRssMb} MB exceeded threshold ${thresholds.peakRssMb} MB`
+      message: `${resourceRssLabel(primaryResourceRole, resourceGateKind)} ${peakRssMb} MB exceeded threshold ${thresholds.peakRssMb} MB${resourceBreakdownSuffix(resourceSummary, resourceGate)}`
     });
   }
 
@@ -386,6 +451,104 @@ export function evaluateRecord(record, scenario, options = {}) {
         expected: "0",
         actual: mcpBridgeEvidence.errors.length,
         message: `MCP bridge smoke reported ${mcpBridgeEvidence.errors.length} error(s): ${mcpBridgeEvidence.errors[0]}`
+      });
+    }
+  }
+
+  if (cronRuntimeEvidence.available || hasAnyThreshold(thresholds, CRON_RUNTIME_METRICS)) {
+    checkRequiredMaxGate(violations, "cron", "cronRegisterMs", cronRuntimeEvidence.cronRegisterMs, thresholds.cronRegisterMs, "Cron registration");
+    checkRequiredMaxGate(violations, "cron", "cronRunMs", cronRuntimeEvidence.cronRunMs, thresholds.cronRunMs, "Cron run");
+    checkRequiredBooleanGate(violations, "cron", "cronRunCompleted", cronRuntimeEvidence.cronRunCompleted, thresholds.cronRunCompleted, "Cron run did not complete");
+    checkRequiredBooleanGate(violations, "cron", "cronTriggerAttributed", cronRuntimeEvidence.cronTriggerAttributed, thresholds.cronTriggerAttributed, "Cron run was not attributed to a cron trigger");
+    if (cronRuntimeEvidence.errors.length > 0) {
+      violations.push({
+        kind: "cron",
+        metric: "cronRuntimeErrors",
+        expected: "0",
+        actual: cronRuntimeEvidence.errors.length,
+        message: `cron runtime smoke reported ${cronRuntimeEvidence.errors.length} error(s): ${cronRuntimeEvidence.errors[0]}`
+      });
+    }
+  }
+
+  if (execToolEvidence.available || hasAnyThreshold(thresholds, EXEC_TOOL_METRICS)) {
+    checkRequiredMaxGate(violations, "exec", "execSafeCommandMs", execToolEvidence.safeCommandMs, thresholds.execSafeCommandMs, "Exec safe command");
+    checkRequiredMaxGate(violations, "exec", "execTimeoutMs", execToolEvidence.timeoutMs, thresholds.execTimeoutMs, "Exec timeout containment");
+    checkRequiredBooleanGate(violations, "exec", "execSafeCommandSucceeded", execToolEvidence.safeCommandSucceeded, thresholds.execSafeCommandSucceeded, "OpenClaw exec safe command did not succeed");
+    checkRequiredBooleanGate(violations, "exec", "execDangerousCommandBlocked", execToolEvidence.dangerousCommandBlocked, thresholds.execDangerousCommandBlocked, "OpenClaw exec dangerous command was not blocked");
+    checkRequiredBooleanGate(violations, "exec", "execOutputTruncated", execToolEvidence.outputTruncated, thresholds.execOutputTruncated, "Exec output was not bounded");
+    checkRequiredMaxGate(violations, "exec", "execProcessLeaks", execToolEvidence.processLeaks, thresholds.execProcessLeaks, "Exec process leak count");
+    if (execToolEvidence.dangerousPayloadExecuted === true) {
+      violations.push({
+        kind: "exec",
+        metric: "execDangerousPayloadExecuted",
+        expected: false,
+        actual: true,
+        message: "dangerous exec sentinel was removed; OpenClaw executed the blocked payload"
+      });
+    }
+    if (execToolEvidence.errors.length > 0) {
+      violations.push({
+        kind: "exec",
+        metric: "execToolErrors",
+        expected: "0",
+        actual: execToolEvidence.errors.length,
+        message: `exec tool smoke reported ${execToolEvidence.errors.length} error(s): ${execToolEvidence.errors[0]}`
+      });
+    }
+  }
+
+  if (mcpToolCallEvidence.available || hasAnyThreshold(thresholds, MCP_TOOL_CALL_METRICS)) {
+    checkRequiredMaxGate(violations, "mcp", "mcpToolsCallMs", mcpToolCallEvidence.toolsCallMs, thresholds.mcpToolsCallMs, "MCP tools/call");
+    checkRequiredBooleanGate(violations, "mcp", "mcpToolCallSucceeded", mcpToolCallEvidence.safeToolSucceeded, thresholds.mcpToolCallSucceeded, "MCP tools/call did not return a successful safe tool result");
+    checkRequiredBooleanGate(violations, "mcp", "mcpToolCallErrorAttributed", mcpToolCallEvidence.invalidToolErrorAttributed, thresholds.mcpToolCallErrorAttributed, "MCP invalid tool call was not attributed as a tool error");
+    const leakCount = mcpToolCallEvidence.processExited === false ? 1 : 0;
+    checkRequiredMaxGate(violations, "mcp", "mcpProcessLeaks", mcpToolCallEvidence.processExited === null ? null : leakCount, thresholds.mcpProcessLeaks, "MCP tool-call bridge process leak count");
+    if (mcpToolCallEvidence.errors.length > 0) {
+      violations.push({
+        kind: "mcp",
+        metric: "mcpToolCallErrors",
+        expected: "0",
+        actual: mcpToolCallEvidence.errors.length,
+        message: `MCP tool-call smoke reported ${mcpToolCallEvidence.errors.length} error(s): ${mcpToolCallEvidence.errors[0]}`
+      });
+    }
+  }
+
+  if (dirtyPluginEvidence.available || hasAnyThreshold(thresholds, DIRTY_PLUGIN_METRICS)) {
+    checkRequiredBooleanGate(violations, "plugins", "dirtyPluginDetected", dirtyPluginEvidence.dirtyPluginDetected, thresholds.dirtyPluginDetected, "Dirty plugin state was not detected");
+    checkRequiredBooleanGate(violations, "plugins", "dirtyPluginReported", dirtyPluginEvidence.dirtyPluginReported, thresholds.dirtyPluginReported, "Dirty plugin state was not reported in plugin command evidence");
+    checkRequiredBooleanGate(violations, "plugins", "dirtyPluginChecksumPreserved", dirtyPluginEvidence.dirtyPluginChecksumPreserved, thresholds.dirtyPluginChecksumPreserved, "Dirty plugin checksum evidence was not preserved");
+    checkRequiredMaxGate(violations, "plugins", "doctorDestructiveChangeCount", dirtyPluginEvidence.doctorDestructiveChangeCount, thresholds.doctorDestructiveChangeCount, "Doctor destructive dirty-plugin change count");
+    checkRequiredBooleanGate(violations, "plugins", "pluginsUsableWithDirtyState", dirtyPluginEvidence.pluginsUsableWithDirtyState, thresholds.pluginsUsableWithDirtyState, "Plugin commands were not usable with dirty plugin state");
+    checkRequiredBooleanGate(violations, "plugins", "gatewaySurvivedDirtyPlugin", dirtyPluginEvidence.gatewaySurvivedDirtyPlugin, thresholds.gatewaySurvivedDirtyPlugin, "Gateway did not survive dirty plugin handling");
+    if (dirtyPluginEvidence.errors.length > 0) {
+      violations.push({
+        kind: "plugins",
+        metric: "dirtyPluginErrors",
+        expected: "0",
+        actual: dirtyPluginEvidence.errors.length,
+        message: `dirty plugin verifier reported ${dirtyPluginEvidence.errors.length} error(s): ${dirtyPluginEvidence.errors[0]}`
+      });
+    }
+  }
+
+  if (releaseRecoveryEvidence.available || hasAnyThreshold(thresholds, RELEASE_RECOVERY_METRICS)) {
+    checkRequiredBooleanGate(violations, "upgrade", "doctorFixSucceeded", releaseRecoveryEvidence.doctorFixSucceeded, thresholds.doctorFixSucceeded, "Doctor repair did not complete successfully");
+    checkRequiredMaxGate(violations, "upgrade", "doctorUnrepairedFindingCount", releaseRecoveryEvidence.doctorUnrepairedFindingCount, thresholds.doctorUnrepairedFindingCount, "Doctor unrepaired finding count");
+    checkRequiredMaxGate(violations, "upgrade", "updateRetryVersionDrift", releaseRecoveryEvidence.updateRetryVersionDrift, thresholds.updateRetryVersionDrift, "Update retry version drift");
+    checkRequiredBooleanGate(violations, "upgrade", "rollbackAvailable", releaseRecoveryEvidence.rollbackAvailable, thresholds.rollbackAvailable, "Rollback snapshot was not available");
+    checkRequiredBooleanGate(violations, "upgrade", "rollbackSucceeded", releaseRecoveryEvidence.rollbackSucceeded, thresholds.rollbackSucceeded, "Rollback did not succeed");
+    checkRequiredBooleanGate(violations, "upgrade", "pluginsUsableAfterUpgrade", releaseRecoveryEvidence.pluginsUsableAfterUpgrade, thresholds.pluginsUsableAfterUpgrade, "Plugin commands were not usable after upgrade");
+    checkRequiredBooleanGate(violations, "upgrade", "pluginsUsableAfterRollback", releaseRecoveryEvidence.pluginsUsableAfterRollback, thresholds.pluginsUsableAfterRollback, "Plugin commands were not usable after rollback");
+    checkRequiredBooleanGate(violations, "upgrade", "rollbackPreservedPluginData", releaseRecoveryEvidence.rollbackPreservedPluginData, thresholds.rollbackPreservedPluginData, "Rollback did not preserve plugin fixture data");
+    if (releaseRecoveryEvidence.errors.length > 0) {
+      violations.push({
+        kind: "upgrade",
+        metric: "releaseRecoveryErrors",
+        expected: "0",
+        actual: releaseRecoveryEvidence.errors.length,
+        message: `release recovery evidence reported ${releaseRecoveryEvidence.errors.length} error(s): ${releaseRecoveryEvidence.errors[0]}`
       });
     }
   }
@@ -780,12 +943,15 @@ export function evaluateRecord(record, scenario, options = {}) {
     resourceMeasurementScope: "product",
     resourcePrimaryRole: primaryResourceRole,
     resourceGateKind,
+    resourceGateReason: resourceGate.reason,
+    resourceGateAttribution: resourceGate.attribution,
     resourcePeakTrackedRssMb: peakTrackedRssMb,
     resourceCpuPercentMaxTracked: cpuPercentMaxTracked,
     coldReadyMs,
     warmReadyMs,
     upgradeMs,
     statusMs,
+    doctorFixMs,
     pluginsListMs,
     pluginInstallMs,
     modelsListMs,
@@ -861,6 +1027,42 @@ export function evaluateRecord(record, scenario, options = {}) {
     finalGatewayState,
     soakEvidence,
     mcpBridgeEvidence,
+    cronRuntimeEvidence,
+    execToolEvidence,
+    mcpToolCallEvidence,
+    dirtyPluginEvidence,
+    releaseRecoveryEvidence,
+    cronStatusMs: cronRuntimeEvidence.cronStatusMs,
+    cronRegisterMs: cronRuntimeEvidence.cronRegisterMs,
+    cronRunMs: cronRuntimeEvidence.cronRunMs,
+    cronRunCompleted: cronRuntimeEvidence.cronRunCompleted,
+    cronTriggerAttributed: cronRuntimeEvidence.cronTriggerAttributed,
+    execSafeCommandMs: execToolEvidence.safeCommandMs,
+    execSafeCommandSucceeded: execToolEvidence.safeCommandSucceeded,
+    execDangerousCommandBlocked: execToolEvidence.dangerousCommandBlocked,
+    execDangerousPayloadExecuted: execToolEvidence.dangerousPayloadExecuted,
+    execOutputTruncated: execToolEvidence.outputTruncated,
+    execTimeoutMs: execToolEvidence.timeoutMs,
+    execProcessLeaks: execToolEvidence.processLeaks,
+    mcpToolsCallMs: mcpToolCallEvidence.toolsCallMs,
+    mcpInvalidToolsCallMs: mcpToolCallEvidence.invalidToolsCallMs,
+    mcpToolCallSucceeded: mcpToolCallEvidence.safeToolSucceeded,
+    mcpSafeToolName: mcpToolCallEvidence.safeToolName,
+    mcpToolCallErrorAttributed: mcpToolCallEvidence.invalidToolErrorAttributed,
+    dirtyPluginDetected: dirtyPluginEvidence.dirtyPluginDetected,
+    dirtyPluginReported: dirtyPluginEvidence.dirtyPluginReported,
+    dirtyPluginChecksumPreserved: dirtyPluginEvidence.dirtyPluginChecksumPreserved,
+    doctorDestructiveChangeCount: dirtyPluginEvidence.doctorDestructiveChangeCount,
+    pluginsUsableWithDirtyState: dirtyPluginEvidence.pluginsUsableWithDirtyState,
+    gatewaySurvivedDirtyPlugin: dirtyPluginEvidence.gatewaySurvivedDirtyPlugin,
+    doctorFixSucceeded: releaseRecoveryEvidence.doctorFixSucceeded,
+    doctorUnrepairedFindingCount: releaseRecoveryEvidence.doctorUnrepairedFindingCount,
+    updateRetryVersionDrift: releaseRecoveryEvidence.updateRetryVersionDrift,
+    rollbackAvailable: releaseRecoveryEvidence.rollbackAvailable,
+    rollbackSucceeded: releaseRecoveryEvidence.rollbackSucceeded,
+    pluginsUsableAfterUpgrade: releaseRecoveryEvidence.pluginsUsableAfterUpgrade,
+    pluginsUsableAfterRollback: releaseRecoveryEvidence.pluginsUsableAfterRollback,
+    rollbackPreservedPluginData: releaseRecoveryEvidence.rollbackPreservedPluginData,
     mcpInitializeMs: mcpBridgeEvidence.initializeMs,
     mcpToolsListMs: mcpBridgeEvidence.toolsListMs,
     mcpShutdownMs: mcpBridgeEvidence.shutdownMs,
@@ -1557,6 +1759,10 @@ function isPostAgentStatusCommand(command) {
     /\s--\s+gateway\s+status\b/.test(command) ||
     /@\S+\s+--\s+gateway\s+status\b/.test(command)
   );
+}
+
+function isDoctorFixCommand(command) {
+  return String(command ?? "").includes("run-doctor-repair.mjs") || String(command ?? "").includes(" doctor --fix");
 }
 
 function checkAgentFailureContainment(violations, containment) {
@@ -2342,6 +2548,10 @@ function maxDurationWhere(results, predicate) {
   return durations.length === 0 ? null : Math.max(...durations);
 }
 
+function sumNumbers(values) {
+  return values.reduce((total, value) => total + (typeof value === "number" ? value : 0), 0);
+}
+
 function countHealthFailures(record) {
   let count = 0;
   for (const phase of record.phases ?? []) {
@@ -2521,6 +2731,247 @@ function collectMcpBridgeEvidence(results) {
 }
 
 function parseMcpBridgeSmokeOutput(result) {
+  return parseSchemaOutput(result, "kova.mcpBridgeSmoke.v1");
+}
+
+function collectCronRuntimeEvidence(results) {
+  const smokes = results
+    .filter((result) => result.command?.includes("run-cron-runtime-smoke.mjs"))
+    .map((result) => parseSchemaOutput(result, "kova.cronRuntimeSmoke.v1"))
+    .filter(Boolean);
+  if (smokes.length === 0) {
+    return {
+      schemaVersion: "kova.cronRuntimeEvidence.v1",
+      available: false,
+      cronStatusMs: null,
+      cronRegisterMs: null,
+      cronRunMs: null,
+      cronRunsMs: null,
+      cronRunCompleted: null,
+      cronTriggerAttributed: null,
+      errors: [],
+      smokes: []
+    };
+  }
+  return {
+    schemaVersion: "kova.cronRuntimeEvidence.v1",
+    available: true,
+    cronStatusMs: maxNullable(...smokes.map((smoke) => smoke.cronStatusMs)),
+    cronRegisterMs: maxNullable(...smokes.map((smoke) => smoke.cronRegisterMs)),
+    cronRunMs: maxNullable(...smokes.map((smoke) => smoke.cronRunMs)),
+    cronRunsMs: maxNullable(...smokes.map((smoke) => smoke.cronRunsMs)),
+    cronRunCompleted: smokes.every((smoke) => smoke.cronRunCompleted === true),
+    cronTriggerAttributed: smokes.every((smoke) => smoke.cronTriggerAttributed === true),
+    errors: smokes.flatMap((smoke) => smoke.errors ?? []),
+    smokes: smokes.map((smoke) => ({
+      durationMs: smoke.durationMs ?? null,
+      cronStatusMs: smoke.cronStatusMs ?? null,
+      cronRegisterMs: smoke.cronRegisterMs ?? null,
+      cronRunMs: smoke.cronRunMs ?? null,
+      cronRunsMs: smoke.cronRunsMs ?? null,
+      cronRunCompleted: smoke.cronRunCompleted ?? null,
+      cronTriggerAttributed: smoke.cronTriggerAttributed ?? null,
+      errors: smoke.errors ?? []
+    }))
+  };
+}
+
+function collectExecToolEvidence(results) {
+  const smokes = results
+    .filter((result) => result.command?.includes("run-exec-tool-safety.mjs"))
+    .map((result) => parseSchemaOutput(result, "kova.execToolSafety.v1"))
+    .filter(Boolean);
+  if (smokes.length === 0) {
+    return {
+      schemaVersion: "kova.execToolEvidence.v1",
+      available: false,
+      safeCommandMs: null,
+      safeCommandSucceeded: null,
+      dangerousCommandBlocked: null,
+      dangerousPayloadExecuted: null,
+      outputTruncated: null,
+      timeoutMs: null,
+      processLeaks: null,
+      errors: [],
+      smokes: []
+    };
+  }
+  return {
+    schemaVersion: "kova.execToolEvidence.v1",
+    available: true,
+    safeCommandMs: maxNullable(...smokes.map((smoke) => smoke.safeCommandMs)),
+    safeCommandSucceeded: nullableEvery(smokes.map((smoke) => smoke.safeCommandSucceeded)),
+    dangerousCommandBlocked: nullableEvery(smokes.map((smoke) => smoke.dangerousCommandBlocked)),
+    dangerousPayloadExecuted: smokes.some((smoke) => smoke.dangerousPayloadExecuted === true),
+    outputTruncated: nullableEvery(smokes.map((smoke) => smoke.outputTruncated)),
+    timeoutMs: maxNullable(...smokes.map((smoke) => smoke.timeoutMs)),
+    processLeaks: maxNullable(...smokes.map((smoke) => smoke.processLeaks)),
+    errors: smokes.flatMap((smoke) => smoke.errors ?? []),
+    smokes: smokes.map((smoke) => ({
+      durationMs: smoke.durationMs ?? null,
+      safeCommandMs: smoke.safeCommandMs ?? null,
+      safeCommandSucceeded: smoke.safeCommandSucceeded ?? null,
+      safeCommandBoundary: smoke.safeCommandBoundary ?? null,
+      dangerousCommandBlocked: smoke.dangerousCommandBlocked ?? null,
+      dangerousCommandBoundary: smoke.dangerousCommandBoundary ?? null,
+      dangerousPayloadExecuted: smoke.dangerousPayloadExecuted ?? null,
+      outputTruncated: smoke.outputTruncated ?? null,
+      timeoutMs: smoke.timeoutMs ?? null,
+      processLeaks: smoke.processLeaks ?? null,
+      errors: smoke.errors ?? []
+    }))
+  };
+}
+
+function collectMcpToolCallEvidence(results) {
+  const smokes = results
+    .filter((result) => result.command?.includes("mcp-tool-call-smoke.mjs"))
+    .map((result) => parseSchemaOutput(result, "kova.mcpToolCallSmoke.v1"))
+    .filter(Boolean);
+  if (smokes.length === 0) {
+    return {
+      schemaVersion: "kova.mcpToolCallEvidence.v1",
+      available: false,
+      toolsCallMs: null,
+      invalidToolsCallMs: null,
+      safeToolSucceeded: null,
+      safeToolName: null,
+      invalidToolErrorAttributed: null,
+      processExited: null,
+      errors: [],
+      smokes: []
+    };
+  }
+  return {
+    schemaVersion: "kova.mcpToolCallEvidence.v1",
+    available: true,
+    toolsCallMs: maxNullable(...smokes.map((smoke) => smoke.toolsCallMs)),
+    invalidToolsCallMs: maxNullable(...smokes.map((smoke) => smoke.invalidToolsCallMs)),
+    safeToolSucceeded: smokes.every((smoke) => smoke.safeToolSucceeded === true),
+    safeToolName: smokes.find((smoke) => typeof smoke.safeToolName === "string")?.safeToolName ?? null,
+    invalidToolErrorAttributed: smokes.every((smoke) => smoke.invalidToolErrorAttributed === true),
+    processExited: smokes.every((smoke) => smoke.processExited === true),
+    errors: smokes.flatMap((smoke) => smoke.errors ?? []),
+    smokes: smokes.map((smoke) => ({
+      durationMs: smoke.durationMs ?? null,
+      toolsCallMs: smoke.toolsCallMs ?? null,
+      invalidToolsCallMs: smoke.invalidToolsCallMs ?? null,
+      safeToolName: smoke.safeToolName ?? null,
+      safeToolSucceeded: smoke.safeToolSucceeded ?? null,
+      invalidToolErrorAttributed: smoke.invalidToolErrorAttributed ?? null,
+      processExited: smoke.processExited ?? null,
+      errors: smoke.errors ?? []
+    }))
+  };
+}
+
+function collectDirtyPluginEvidence(record) {
+  const entries = collectPhaseResultEntries(record);
+  const summaries = entries
+    .filter(({ result }) => result.command?.includes("dirty-plugin-state.mjs"))
+    .map(({ phase, result }) => ({ phase, result, parsed: parseSchemaOutput(result, "kova.dirtyPluginState.v1") }))
+    .filter((entry) => entry.parsed);
+  const verifierSummaries = summaries.filter(({ result }) => result.command?.includes(" verify "));
+  const pluginCommands = entries.filter(({ phase, result }) =>
+    (phase.id === "plugin-inspect" || phase.id === "restart") &&
+    / -- plugins (?:list|update\b)/.test(result.command ?? "")
+  );
+  const pluginCommandText = pluginCommands.map(({ result }) => `${result.stdout ?? ""}\n${result.stderr ?? ""}`).join("\n");
+  const pluginCommandStatuses = pluginCommands.map(({ result }) => result.status);
+  const verifierFailures = verifierSummaries.flatMap(({ parsed }) => parsed.failures ?? []);
+  const failedVerifierCommands = summaries
+    .filter(({ result }) => result.status !== 0)
+    .map(({ result }) => firstLine(result.stderr) || firstLine(result.stdout) || `dirty plugin verifier exited ${result.status}`);
+  const dirtyRecords = summaries.flatMap(({ parsed }) => parsed.pluginRecords ?? [])
+    .filter((plugin) => String(plugin.id ?? "").startsWith("kova-dirty-"));
+  const checksumVerdicts = verifierSummaries
+    .map(({ parsed }) => typeof parsed.ok === "boolean" ? parsed.ok : null)
+    .filter((value) => value !== null);
+
+  return {
+    schemaVersion: "kova.dirtyPluginEvidence.v1",
+    available: summaries.length > 0 || pluginCommands.length > 0,
+    dirtyPluginDetected: dirtyRecords.length > 0 ? dirtyRecords.some((plugin) => plugin.dirty === true || plugin.partial === true || plugin.broken === true || plugin.symlink === true || plugin.staleDeps === true || plugin.manifestDrift === true) : null,
+    dirtyPluginReported: pluginCommandText.length > 0 ? /kova-dirty-|dirty plugin|dirty/i.test(pluginCommandText) : null,
+    dirtyPluginChecksumPreserved: checksumVerdicts.length > 0 ? checksumVerdicts.every(Boolean) : null,
+    doctorDestructiveChangeCount: verifierSummaries.length > 0 ? verifierFailures.length : null,
+    pluginsUsableWithDirtyState: pluginCommandStatuses.length > 0 ? pluginCommandStatuses.every((status) => status === 0) : null,
+    gatewaySurvivedDirtyPlugin: dirtyGatewaySurvived(record, entries),
+    errors: [...verifierFailures, ...failedVerifierCommands],
+    summaries: summaries.map(({ phase, result, parsed }) => ({
+      phaseId: phase.id,
+      command: result.command,
+      status: result.status,
+      state: parsed.state ?? null,
+      ok: parsed.ok ?? null,
+      aggregateMarkerMissing: parsed.aggregateMarkerMissing ?? null,
+      pluginRecordCount: Array.isArray(parsed.pluginRecords) ? parsed.pluginRecords.length : 0,
+      failures: parsed.failures ?? []
+    }))
+  };
+}
+
+function collectReleaseRecoveryEvidence(record) {
+  const entries = collectPhaseResultEntries(record);
+  const upgradeVersion = extractPhaseVersion(entries, "upgrade");
+  const retryVersion = extractPhaseVersion(entries, "update-retry");
+  const rollbackResult = entries.find(({ phase, result }) =>
+    phase.id === "rollback" && result.command?.includes("restore-first-ocm-upgrade-snapshot.mjs")
+  )?.result ?? null;
+  const rollbackParsed = rollbackResult ? parseSchemaOutput(rollbackResult, "kova.ocmUpgradeSnapshotRestore.v1") : null;
+  const doctorResults = entries.filter(({ phase, result }) =>
+    phase.id === "doctor-repair" && isDoctorFixCommand(result.command)
+  );
+  const doctorSummaries = doctorResults
+    .map(({ result }) => parseSchemaOutput(result, "kova.doctorRepair.v1"))
+    .filter(Boolean);
+  const postUpgradePluginCommands = entries.filter(({ phase, result }) =>
+    phase.id === "plugin-health" && / -- plugins (?:list|update\b)/.test(result.command ?? "")
+  );
+  const postRollbackPluginCommands = entries.filter(({ phase, result }) =>
+    phase.id === "rollback" && / -- plugins list\b/.test(result.command ?? "")
+  );
+  const rollbackVerifier = entries
+    .filter(({ phase, result }) => phase.id === "state-rollback" && result.command?.includes("dirty-plugin-state.mjs") && result.command.includes(" verify "))
+    .map(({ result }) => parseSchemaOutput(result, "kova.dirtyPluginState.v1"))
+    .filter(Boolean);
+  const rollbackFailures = rollbackVerifier.flatMap((parsed) => parsed.failures ?? []);
+  const restoreFailure = rollbackResult && rollbackResult.status !== 0
+    ? firstLine(rollbackResult.stderr) || firstLine(rollbackResult.stdout) || `rollback restore exited ${rollbackResult.status}`
+    : null;
+  const doctorEvidenceMissing = doctorResults.length > 0 && doctorSummaries.length === 0
+    ? "doctor repair command did not emit kova.doctorRepair.v1 evidence"
+    : null;
+  const doctorFailures = doctorSummaries.flatMap((parsed) => parsed.errors ?? []);
+
+  return {
+    schemaVersion: "kova.releaseRecoveryEvidence.v1",
+    available: Boolean(upgradeVersion || retryVersion || rollbackResult || doctorResults.length || doctorSummaries.length || postUpgradePluginCommands.length || postRollbackPluginCommands.length || rollbackVerifier.length),
+    doctorFixSucceeded: doctorSummaries.length > 0 ? doctorSummaries.every((parsed) => parsed.doctorFixSucceeded === true) : null,
+    doctorUnrepairedFindingCount: doctorSummaries.length > 0 ? sumNumbers(doctorSummaries.map((parsed) => parsed.doctorUnrepairedFindingCount)) : null,
+    updateRetryVersionDrift: upgradeVersion && retryVersion ? (upgradeVersion === retryVersion ? 0 : 1) : null,
+    upgradeVersion,
+    retryVersion,
+    rollbackAvailable: rollbackResult ? rollbackResult.status === 0 && Boolean(rollbackParsed?.snapshotId) : null,
+    rollbackSucceeded: rollbackResult ? rollbackResult.status === 0 && Boolean(rollbackParsed?.restored) : null,
+    pluginsUsableAfterUpgrade: postUpgradePluginCommands.length > 0 ? postUpgradePluginCommands.every(({ result }) => result.status === 0) : null,
+    pluginsUsableAfterRollback: postRollbackPluginCommands.length > 0 ? postRollbackPluginCommands.every(({ result }) => result.status === 0) : null,
+    rollbackPreservedPluginData: rollbackVerifier.length > 0 ? rollbackVerifier.every((parsed) => parsed.ok === true) : null,
+    errors: [restoreFailure, doctorEvidenceMissing, ...doctorFailures, ...rollbackFailures].filter(Boolean),
+    doctor: doctorSummaries.map((parsed) => ({
+      status: parsed.status ?? null,
+      doctorFixSucceeded: parsed.doctorFixSucceeded ?? null,
+      doctorUnrepairedFindingCount: parsed.doctorUnrepairedFindingCount ?? null
+    })),
+    rollback: rollbackResult ? {
+      status: rollbackResult.status,
+      snapshotId: rollbackParsed?.snapshotId ?? null,
+      selectedBy: rollbackParsed?.selectedBy ?? null
+    } : null
+  };
+}
+
+function parseSchemaOutput(result, schemaVersion) {
   const text = result.stdout ?? "";
   const jsonStart = text.indexOf("{");
   if (jsonStart < 0) {
@@ -2528,10 +2979,43 @@ function parseMcpBridgeSmokeOutput(result) {
   }
   try {
     const parsed = JSON.parse(text.slice(jsonStart));
-    return parsed?.schemaVersion === "kova.mcpBridgeSmoke.v1" ? parsed : null;
+    return parsed?.schemaVersion === schemaVersion ? parsed : null;
   } catch {
     return null;
   }
+}
+
+function nullableEvery(values) {
+  const concrete = values.filter((value) => value !== null && value !== undefined);
+  return concrete.length === 0 ? null : concrete.every((value) => value === true);
+}
+
+function dirtyGatewaySurvived(record, entries) {
+  if (record.finalMetrics?.service?.gatewayState === "running") {
+    return true;
+  }
+  const statusResults = entries.filter(({ phase, result }) =>
+    (phase.id === "doctor" || phase.id === "restart") &&
+    (/ -- status\b/.test(result.command ?? "") || /service status/.test(result.command ?? ""))
+  );
+  return statusResults.length > 0 ? statusResults.every(({ result }) => result.status === 0) : null;
+}
+
+function extractPhaseVersion(entries, phaseId) {
+  const result = entries.find(({ phase, result }) => phase.id === phaseId && / -- --version\b/.test(result.command ?? ""))?.result;
+  if (!result) {
+    return null;
+  }
+  return extractOpenClawVersion(result.stdout) ?? extractOpenClawVersion(result.stderr);
+}
+
+function extractOpenClawVersion(text = "") {
+  const match = String(text).match(/\b(\d{4}\.\d+\.\d+(?:[-+._a-z0-9]+)?)\b/i);
+  return match?.[1] ?? null;
+}
+
+function firstLine(value) {
+  return String(value ?? "").split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? "";
 }
 
 function collectBrowserAutomationEvidence(results) {
@@ -2874,6 +3358,23 @@ function collectResults(record, options = {}) {
   return results;
 }
 
+function collectPhaseResultEntries(record, options = {}) {
+  const excludePhaseIds = new Set(options.excludePhaseIds ?? []);
+  const entries = [];
+  for (const phase of record.phases ?? []) {
+    if (excludePhaseIds.has(phase.id)) {
+      continue;
+    }
+    if (options.productOnly === true && !measuredProductPhase(phase)) {
+      continue;
+    }
+    for (const result of phase.results ?? []) {
+      entries.push({ phase, result });
+    }
+  }
+  return entries;
+}
+
 function recordExpectsGateway(record) {
   return collectResults(record).some((result) => {
     const command = result.command ?? "";
@@ -3021,6 +3522,52 @@ function mergeRoleSummaries(target, source) {
       existing.peakCpuProcess = summary.peakCpuProcess ?? null;
     }
     target.set(role, existing);
+  }
+}
+
+function hasAnyThreshold(thresholds, metrics) {
+  return metrics.some((metric) => typeof thresholds[metric] === "number");
+}
+
+function checkRequiredBooleanGate(violations, kind, metric, actual, threshold, message) {
+  if (typeof threshold !== "number") {
+    return;
+  }
+  if (actual === null || actual === undefined) {
+    violations.push({
+      kind,
+      metric,
+      expected: threshold >= 1,
+      actual: null,
+      message: `${message}; metric evidence was not captured`
+    });
+    return;
+  }
+  checkBooleanThreshold(violations, kind, metric, actual, threshold, message);
+}
+
+function checkRequiredMaxGate(violations, kind, metric, actual, threshold, label) {
+  if (typeof threshold !== "number") {
+    return;
+  }
+  if (actual === null || actual === undefined) {
+    violations.push({
+      kind,
+      metric,
+      expected: `<= ${threshold}`,
+      actual: null,
+      message: `${label} evidence was not captured`
+    });
+    return;
+  }
+  if (actual > threshold) {
+    violations.push({
+      kind,
+      metric,
+      expected: `<= ${threshold}`,
+      actual,
+      message: `${label} ${actual} exceeded threshold ${threshold}`
+    });
   }
 }
 
@@ -3249,7 +3796,7 @@ function mergeRoles(left, right) {
 
 const LOG_METRIC_PATTERNS = {
   missingDependencyErrors: /cannot find (module|package)|missing dependenc|missing runtime dep/i,
-  pluginLoadFailures: /\[plugins\].*failed to load|plugin.*failed to load|\[plugins\].*plugin service failed|plugin service failed/i,
+  pluginLoadFailures: /\[plugins\].*failed to load|plugin.*failed to load|\[plugins\].*failed during register|plugin.*failed during register|\[plugins\].*plugin service failed|plugin service failed/i,
   metadataScanMentions: /collectBundledPluginMetadata|bundled plugin metadata|manifest read|readdirSync/i,
   configNormalizationMentions: /config normal/i,
   gatewayRestartMentions: /gateway.*restart|restart.*gateway|service restart|restarting/i,
@@ -3741,19 +4288,100 @@ function allMetricObjects(record) {
   ].filter(Boolean);
 }
 
-function resolvePrimaryResourceRole(resourceSummary, surface) {
+function resolveResourceGate(resourceSummary, surface, { peakTrackedRssMb, cpuPercentMaxTracked }) {
   const configured = surface?.resourcePrimaryRole ?? null;
   if (typeof configured === "string" && configured.length > 0) {
-    return configured;
+    const resources = resourceSummary?.byRole?.[configured] ?? null;
+    if (resources) {
+      return roleResourceGate(configured, resources, "configured primary resource role");
+    }
+    return {
+      kind: "role-missing",
+      primaryRole: configured,
+      role: configured,
+      peakRssMb: null,
+      cpuPercentMax: null,
+      reason: `configured primary resource role '${configured}' was not observed in product resource samples`,
+      attribution: {
+        role: configured,
+        observed: false,
+        topRolesByRss: resourceSummary?.topRolesByRss?.slice(0, 4) ?? [],
+        topRolesByCpu: resourceSummary?.topRolesByCpu?.slice(0, 4) ?? [],
+        peakRssProcess: compactSampleProcess(resourceSummary?.peakRssSample?.topProcess),
+        peakCpuProcess: compactSampleProcess(resourceSummary?.peakCpuSample?.topProcess)
+      }
+    };
   }
   const gateway = resourceSummary?.byRole?.gateway;
   if (typeof gateway?.peakRssMb === "number" || typeof gateway?.maxCpuPercent === "number") {
-    return "gateway";
+    return roleResourceGate("gateway", gateway, "default gateway resource role");
   }
-  return null;
+  const topRole = firstObservedRole(resourceSummary?.topRolesByRss) ?? firstObservedRole(resourceSummary?.topRolesByCpu);
+  if (topRole) {
+    const resources = resourceSummary?.byRole?.[topRole] ?? null;
+    if (resources) {
+      return roleResourceGate(topRole, resources, "largest observed resource role");
+    }
+  }
+  return {
+    kind: "tracked-total",
+    primaryRole: null,
+    role: null,
+    peakRssMb: peakTrackedRssMb,
+    cpuPercentMax: cpuPercentMaxTracked,
+    reason: "no product resource role was observed; using tracked aggregate",
+    attribution: {
+      role: null,
+      observed: false,
+      topRolesByRss: resourceSummary?.topRolesByRss?.slice(0, 4) ?? [],
+      topRolesByCpu: resourceSummary?.topRolesByCpu?.slice(0, 4) ?? [],
+      peakRssProcess: compactSampleProcess(resourceSummary?.peakRssSample?.topProcess),
+      peakCpuProcess: compactSampleProcess(resourceSummary?.peakCpuSample?.topProcess)
+    }
+  };
+}
+
+function roleResourceGate(role, resources, reason) {
+  return {
+    kind: "role",
+    primaryRole: role,
+    role,
+    peakRssMb: typeof resources?.peakRssMb === "number" ? resources.peakRssMb : null,
+    cpuPercentMax: typeof resources?.maxCpuPercent === "number" ? resources.maxCpuPercent : null,
+    reason,
+    attribution: {
+      role,
+      observed: true,
+      peakRssMb: resources?.peakRssMb ?? null,
+      maxCpuPercent: resources?.maxCpuPercent ?? null,
+      peakProcessCount: resources?.peakProcessCount ?? null,
+      peakRssProcess: resources?.peakRssProcess ?? null,
+      peakCpuProcess: resources?.peakCpuProcess ?? null
+    }
+  };
+}
+
+function firstObservedRole(roles) {
+  return (roles ?? []).find((entry) => typeof entry?.role === "string" && entry.role.length > 0)?.role ?? null;
+}
+
+function hasActivePrimaryResourceThreshold(thresholds, roleThresholds, primaryResourceRole) {
+  if (!primaryResourceRole) {
+    return false;
+  }
+  if (typeof thresholds?.peakRssMb === "number" || typeof thresholds?.cpuPercentMax === "number") {
+    return true;
+  }
+  const role = roleThresholds?.[primaryResourceRole] ?? null;
+  return typeof role?.peakRssMb === "number" ||
+    typeof role?.peakProcessRssMb === "number" ||
+    typeof role?.maxCpuPercent === "number";
 }
 
 function resourceRssLabel(primaryResourceRole, resourceGateKind) {
+  if (resourceGateKind === "role-missing") {
+    return `${primaryResourceRole} RSS`;
+  }
   if (resourceGateKind !== "role") {
     return "tracked total peak RSS";
   }
@@ -3761,6 +4389,23 @@ function resourceRssLabel(primaryResourceRole, resourceGateKind) {
     return "gateway peak RSS";
   }
   return `${primaryResourceRole} peak RSS`;
+}
+
+function resourceBreakdownSuffix(resourceSummary, resourceGate) {
+  const topRoles = (resourceSummary?.topRolesByRss ?? [])
+    .filter((entry) => entry?.role && typeof entry.peakRssMb === "number")
+    .slice(0, 3)
+    .map((entry) => `${entry.role} ${entry.peakRssMb} MB`);
+  if (topRoles.length === 0) {
+    return "";
+  }
+  if (resourceGate.kind === "role") {
+    return `; observed role ${resourceGate.role}; top RSS roles: ${topRoles.join(", ")}`;
+  }
+  if (resourceGate.kind === "tracked-total") {
+    return `; aggregate only; top RSS roles: ${topRoles.join(", ")}`;
+  }
+  return `; configured role not observed; top RSS roles: ${topRoles.join(", ")}`;
 }
 
 function countDiagnosticMetric(record, key) {

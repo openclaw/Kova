@@ -21,16 +21,19 @@ export function buildUpgradeLogDerivedInvariants(record) {
   const pluginLoadFailures = record.measurements?.pluginLoadFailures;
   const doctor = findCommandResult(record, (result) => result.command?.includes(" -- doctor"));
   const logsProof = collectedLogsProof(record, "post-upgrade");
+  const postUpgradeBlocker = failedCommandBeforeOrInPhase(record, "post-upgrade");
+  const logsOk = collectedLogsOk(logsProof);
+  const doctorStatus = doctorOutputStatus(doctor);
 
   return [
     {
       id: "upgrade-logs-captured",
       phaseId: "post-upgrade",
       required: true,
-      status: collectedLogsOk(logsProof) ? "passed" : "missing",
+      status: logsOk ? "passed" : postUpgradeBlocker ? "failed" : "missing",
       summary: "post-upgrade gateway logs were captured for dependency and plugin-load checks",
       artifactPath: collectedLogArtifactPath(record),
-      reason: collectedLogsReason(logsProof)
+      reason: logsOk ? null : postUpgradeBlocker?.reason ?? collectedLogsReason(logsProof)
     },
     zeroCountInvariant({
       id: "no-missing-runtime-dependency-errors",
@@ -48,10 +51,10 @@ export function buildUpgradeLogDerivedInvariants(record) {
       id: "doctor-output-captured",
       phaseId: doctor?.phaseId ?? "post-upgrade",
       required: true,
-      status: doctorOutputStatus(doctor),
+      status: doctorStatus === "passed" ? "passed" : postUpgradeBlocker ? "failed" : doctorStatus,
       summary: "post-upgrade doctor output was captured for interpretation",
       artifactPath: null,
-      reason: doctorOutputReason(doctor)
+      reason: doctorStatus === "passed" ? null : postUpgradeBlocker?.reason ?? doctorOutputReason(doctor)
     }
   ];
 }
@@ -85,16 +88,18 @@ export function buildUpgradeStateSnapshotInvariants(record) {
 
   const pre = findSnapshotResult(record, "snapshot:pre-upgrade-state");
   const post = findSnapshotResult(record, "snapshot:post-upgrade-state");
+  const snapshotBlocker = failedCommandBeforeOrInPhase(record, "post-upgrade");
+  const snapshotsPresent = Boolean(pre?.snapshot && post?.snapshot);
   const invariants = [];
 
   invariants.push({
     id: "upgrade-state-snapshots-present",
     phaseId: "evidence-post-upgrade-snapshots",
     required: true,
-    status: pre?.snapshot && post?.snapshot ? "passed" : "missing",
+    status: snapshotsPresent ? "passed" : snapshotBlocker ? "failed" : "missing",
     summary: "pre-upgrade and post-upgrade OpenClaw state snapshots were collected",
     artifactPath: post?.evidenceArtifactPath ?? pre?.evidenceArtifactPath ?? null,
-    reason: pre?.snapshot && post?.snapshot ? null : "required upgrade state snapshot result was not recorded"
+    reason: snapshotsPresent ? null : snapshotBlocker?.reason ?? "required upgrade state snapshot result was not recorded"
   });
 
   if (!pre?.snapshot || !post?.snapshot) {
@@ -203,4 +208,37 @@ export function buildUpgradeStateSnapshotInvariants(record) {
   }));
 
   return invariants;
+}
+
+function failedCommandBeforeOrInPhase(record, phaseId) {
+  const phases = record.phases ?? [];
+  const targetIndex = phases.findIndex((phase) => phase.id === phaseId);
+  const lastIndex = targetIndex === -1 ? phases.length - 1 : targetIndex;
+  for (const [phaseIndex, phase] of phases.entries()) {
+    if (phaseIndex > lastIndex) {
+      break;
+    }
+    for (const [resultIndex, result] of (phase.results ?? []).entries()) {
+      if (!result || result.evidenceStatus === "passed" || result.status === 0) {
+        continue;
+      }
+      const command = result.command ?? phase.commands?.[resultIndex] ?? "unknown command";
+      return {
+        phaseId: phase.id ?? "unknown",
+        command,
+        reason: `not collected because phase "${phase.id ?? "unknown"}" failed at command ${resultIndex + 1}: ${shortCommand(command)} (${failedResultLabel(result)})`
+      };
+    }
+  }
+  return null;
+}
+
+function shortCommand(command) {
+  return typeof command === "string" && command.length > 160
+    ? `${command.slice(0, 157)}...`
+    : String(command ?? "unknown command");
+}
+
+function failedResultLabel(result) {
+  return result?.timedOut ? "command timed out" : `command exited ${result?.status ?? "unknown"}`;
 }

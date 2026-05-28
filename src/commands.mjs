@@ -33,7 +33,8 @@ export function runCommand(command, options = {}) {
     const sampler = options.resourceSample
       ? startResourceSampler(child.pid, {
         ...options.resourceSample,
-        rootCommand: command
+        rootCommand: command,
+        redactValues: options.redactValues ?? []
       })
       : null;
     let stdout = "";

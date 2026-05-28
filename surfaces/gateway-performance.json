@@ -9,6 +9,7 @@
     "command-tree",
     "status-cli"
   ],
+  "resourcePrimaryRole": "gateway",
   "thresholds": {
     "coldReadyMs": 30000,
     "warmReadyMs": 15000,

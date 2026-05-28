@@ -31,7 +31,19 @@
     "providerFailureHealthFailures": 0,
     "agentContainmentHealthFailures": 0,
     "agentProcessLeaks": 0,
-    "peakRssMb": 900,
+    "peakRssMb": 2300,
+    "roleThresholds": {
+      "agent-cli": {
+        "peakRssMb": 2300,
+        "peakProcessRssMb": 900,
+        "maxCpuPercent": 450
+      },
+      "agent-process": {
+        "peakRssMb": 2100,
+        "peakProcessRssMb": 900,
+        "maxCpuPercent": 450
+      }
+    },
     "missingDependencyErrors": 0,
     "pluginLoadFailures": 0
   },

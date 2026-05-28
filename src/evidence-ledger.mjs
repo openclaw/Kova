@@ -43,9 +43,10 @@ export function buildEvidenceLedger(record) {
   for (const phase of record.phases ?? []) {
     const commands = phase.commands ?? [];
     const results = phase.results ?? [];
+    const blockingCommand = firstFailedCommandInPhase(phase, results);
     for (const [index, command] of commands.entries()) {
       const result = results[index] ?? null;
-      entries.push(commandEntry({ record, phase, index, command, result }));
+      entries.push(commandEntry({ record, phase, index, command, result, blockingCommand }));
     }
   }
   for (const invariant of record.evidenceInvariants ?? []) {
@@ -141,11 +142,11 @@ function completenessForEntries(entries) {
     : "complete";
 }
 
-function commandEntry({ record, phase, index, command, result }) {
+function commandEntry({ record, phase, index, command, result, blockingCommand }) {
   const executed = record.status !== RECORD_STATUS.DRY_RUN;
   const category = result?.evidenceKind ?? phase.evidenceKind ?? "command";
   const evidenceId = result?.evidenceId ?? phase.evidenceIds?.[index] ?? `command:${phase.id}:${index + 1}`;
-  const status = commandStatus({ executed, result });
+  const status = commandStatus({ executed, result, blockingCommand });
   return {
     id: evidenceId,
     category,
@@ -155,15 +156,18 @@ function commandEntry({ record, phase, index, command, result }) {
     commandIndex: index,
     summary: result?.evidenceSummary ?? phase.evidenceSummaries?.[index] ?? summarizeCommand(command),
     artifactPath: result?.evidenceArtifactPath ?? phase.evidenceArtifactPaths?.[index] ?? null,
-    reason: result?.evidenceReason ?? commandReason({ executed, result, status })
+    reason: result?.evidenceReason ?? commandReason({ executed, result, status, blockingCommand })
   };
 }
 
-function commandStatus({ executed, result }) {
+function commandStatus({ executed, result, blockingCommand }) {
   if (!executed) {
     return "skipped";
   }
   if (!result) {
+    if (blockingCommand) {
+      return "failed";
+    }
     return "missing";
   }
   if (result.evidenceStatus) {
@@ -172,7 +176,7 @@ function commandStatus({ executed, result }) {
   return result.status === 0 ? "passed" : "failed";
 }
 
-function commandReason({ executed, result, status }) {
+function commandReason({ executed, result, status, blockingCommand }) {
   if (!executed) {
     return "dry-run command was planned but not executed";
   }
@@ -180,12 +184,41 @@ function commandReason({ executed, result, status }) {
     return "command was planned but no result was recorded";
   }
   if (status === "failed") {
+    if (!result) {
+      return `not executed because ${blockingCommand.id} in phase "${blockingCommand.phaseId}" failed: ${blockingCommand.summary} (${blockingCommand.reason})`;
+    }
     if (result?.timedOut) {
       return "command timed out";
     }
     return `command exited ${result?.status ?? "unknown"}`;
   }
   return null;
+}
+
+function firstFailedCommandInPhase(phase, results) {
+  for (const [index, result] of results.entries()) {
+    if (!commandResultFailed(result)) {
+      continue;
+    }
+    return {
+      id: result.evidenceId ?? phase.evidenceIds?.[index] ?? `command:${phase.id}:${index + 1}`,
+      phaseId: phase.id,
+      summary: result.evidenceSummary ?? phase.evidenceSummaries?.[index] ?? summarizeCommand(result.command),
+      reason: failedCommandReason(result)
+    };
+  }
+  return null;
+}
+
+function commandResultFailed(result) {
+  return result && result.evidenceStatus !== "passed" && result.status !== 0;
+}
+
+function failedCommandReason(result) {
+  if (result?.timedOut) {
+    return "command timed out";
+  }
+  return `command exited ${result?.status ?? "unknown"}`;
 }
 
 function summarizeEntries(entries) {

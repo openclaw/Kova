@@ -39,7 +39,7 @@ export function startResourceSampler(rootPid, options = {}) {
   };
 
   function sample() {
-    const allProcesses = listProcesses();
+    const allProcesses = listProcesses(options.redactValues ?? []);
     if (options.envName && (gatewayPid === null || samples.length >= gatewayRefreshSample)) {
       gatewayPid = resolveGatewayPid(options.envName);
       gatewayRefreshSample = samples.length + 5;
@@ -403,7 +403,7 @@ function matchesAny(patterns, value) {
   return patterns.some((pattern) => pattern.regex ? pattern.regex.test(text) : text.includes(pattern.raw));
 }
 
-function listProcesses() {
+function listProcesses(redactValues = []) {
   const result = spawnSync("ps", ["-axo", "pid=,ppid=,rss=,%cpu=,command="], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "ignore"],
@@ -425,17 +425,24 @@ function listProcesses() {
       rssKb: Number(match[3]),
       rssMb: roundMb(Number(match[3])),
       cpuPercent: Number(match[4]),
-      command: redactProcessCommand(match[5])
+      command: redactProcessCommand(match[5], redactValues)
     });
   }
   return processes;
 }
 
-function redactProcessCommand(command) {
-  return String(command)
+function redactProcessCommand(command, redactValues = []) {
+  let text = String(command)
     .replace(/\b([A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD)[A-Z0-9_]*)=('[^']*'|"[^"]*"|\S+)/gi, "$1=[redacted]")
+    .replace(/(^|\s)(--(?:api-key|password|token))(?:=|\s+)(('[^']*')|("[^"]*")|\S+)/gi, "$1$2 [redacted]")
     .replace(/\bsk-[A-Za-z0-9_-]{12,}\b/g, "sk-[redacted]")
     .replace(/\b(xox[baprs]-[A-Za-z0-9-]{10,})\b/g, "[redacted-slack-token]");
+  for (const value of redactValues) {
+    if (typeof value === "string" && value.length > 0) {
+      text = text.split(value).join("[redacted]");
+    }
+  }
+  return text;
 }
 
 function collectProcessTreePids(processes, rootPid) {

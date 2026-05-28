@@ -7,10 +7,10 @@
   Entries 12   ·   Dry-run 12   ·   Failed 0   ·   Performance 12 groups
 
 ─── artifacts ──────────────────────────────────────────────────────────────────
-  ◆ markdown    ~/.kova/reports/kova-<runId>-smoke.md
-  ◆ json        ~/.kova/reports/kova-<runId>-smoke.json
-  ◆ summary     ~/.kova/reports/kova-<runId>-smoke.summary.json
-  ◆ bundle      ~/.kova/reports/kova-<runId>-bundle.tar.gz
+  ◆ markdown    <kova-home>/reports/kova-<runId>-smoke.md
+  ◆ json        <kova-home>/reports/kova-<runId>-smoke.json
+  ◆ summary     <kova-home>/reports/kova-<runId>-smoke.summary.json
+  ◆ bundle      <kova-home>/reports/kova-<runId>-bundle.tar.gz
 
 ─── scenarios ──────────────────────────────────────────────────────────────────
 

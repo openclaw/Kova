@@ -10,6 +10,7 @@
     "agent-process",
     "mock-provider"
   ],
+  "resourcePrimaryRole": "gateway",
   "thresholds": {
     "agentTurnMs": 45000,
     "preProviderMs": 10000,

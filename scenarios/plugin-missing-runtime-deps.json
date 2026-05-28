@@ -14,8 +14,8 @@
     "gatewayReadyMs": 30000,
     "gatewayReadyHardTimeoutMs": 120000,
     "statusMs": 10000,
-    "missingDependencyErrors": 1,
-    "pluginLoadFailures": 1
+    "missingDependencyErrors": 2,
+    "pluginLoadFailures": 2
   },
   "phases": [
     {

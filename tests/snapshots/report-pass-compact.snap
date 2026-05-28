@@ -1,32 +1,22 @@
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  KOVA  ·  report                                                             ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
-   [FAIL]   1 scenario failed · 1/1 sample failed · single-sample
+   [PASS]   1 scenario passed · 1 sample · single-sample
 
-  run kova-<runId> · target local-build:<home>/WorkSpace/ShakkerNerd/OpenSource/OpenClaw/shakker-claw · <ts>
+  run kova-<runId> · target runtime:stable · <ts>
 
 ─── scenarios ──────────────────────────────────────────────────────────────────
-  scenario                 samples  verdict    worst metric
-  release-runtime-startup      0/1  [FAIL]     readinessClassification
-      ↳ gateway hard failure: gateway TCP socket never accepted connections befor…
+  scenario              samples  verdict    worst metric
+  fresh-install             1/1  [PASS]     —
 
-─── release-runtime-startup ────────────────────────────── [FAIL] · 1 sample ───
-
-  Phases
-       phase                 elapsed  note
-    ✓  target-setup           56.0 s
-    ✓  provision              158 ms
-    ✓  post-start             3.29 s
-    ✓  startup-logs            57 ms
+─── fresh-install ──────────────────────────────────────── [PASS] · 1 sample ───
 
   Metrics
     metric                value   threshold   status
-    cold.ready.ms        158 ms           —   PASS
-    health.p95.ms          1 ms           —   PASS
-    gateway.rss.mb       287 MB           —   PASS
-    cpu.max.%             143 %           —   PASS
+    cold.ready.ms      1,200 ms           —   PASS
+    gateway.rss.mb       420 MB           —   PASS
+    cpu.max.%              90 %           —   PASS
 
 ─── next ───────────────────────────────────────────────────────────────────────
   → kova report --full kova-<runId>
-  → node bin/kova.mjs run --target local-build:<home>/WorkSpace/ShakkerNerd/OpenSource/OpenClaw/shakker-claw --scenario release-runtime-startup --state fresh --execute --profile-on-failure --retain-on-failure --json
   → kova report bundle kova-<runId>

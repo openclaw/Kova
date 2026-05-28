@@ -122,8 +122,10 @@ export function isAgentMessageCommand(command) {
   return isAgentCliMessageCommand(text) ||
     text.includes("run-concurrent-agent-turns.mjs") ||
     text.includes("run-gateway-session-send-turn.mjs") ||
+    text.includes("run-tui-message-turn.mjs") ||
     text.includes("run-channel-probe-turn.mjs") ||
-    text.includes("run-openai-compatible-turn.mjs");
+    text.includes("run-openai-compatible-turn.mjs") ||
+    text.includes("run-adversarial-inputs.mjs");
 }
 
 export function isAgentCliMessageCommand(command) {

@@ -1,0 +1,83 @@
+{
+  "id": "agent-provider-protocol-failure",
+  "surface": "agent-cli-local-turn",
+  "title": "Agent Provider Protocol Failure",
+  "objective": "Prove OpenClaw contains a provider response that is valid HTTP but invalid provider protocol, ends the turn clearly, and keeps the gateway healthy.",
+  "tags": [
+    "agent",
+    "message",
+    "provider-failure",
+    "protocol",
+    "containment"
+  ],
+  "timeoutMs": 180000,
+  "auth": {
+    "mode": "mock"
+  },
+  "mockProvider": {
+    "mode": "protocol-failure"
+  },
+  "thresholds": {
+    "gatewayReadyMs": 30000,
+    "agentTurnMs": 90000,
+    "providerFinalMs": 10000,
+    "providerRequestCountMin": 1,
+    "providerFailureHealthFailures": 0,
+    "agentContainmentHealthFailures": 0,
+    "agentProcessLeaks": 0,
+    "peakRssMb": 900,
+    "missingDependencyErrors": 0,
+    "pluginLoadFailures": 0
+  },
+  "phases": [
+    {
+      "id": "provision",
+      "title": "Provision Agent Env",
+      "intent": "Start a disposable OpenClaw gateway before wiring the protocol-invalid mock provider.",
+      "commands": [
+        "ocm start {env} {startSelector} --json"
+      ],
+      "evidence": [
+        "gateway port",
+        "runtime binding",
+        "startup readiness"
+      ],
+      "healthScope": "readiness"
+    },
+    {
+      "id": "protocol-failure-turn",
+      "title": "Protocol Failure Turn",
+      "intent": "Send a simple message that must fail clearly because the provider returns a protocol-invalid success payload.",
+      "expectedAgentFailure": true,
+      "commands": [
+        "node {kovaRoot}/support/expect-command-fails.mjs -- ocm @{env} -- agent --local --agent main --session-id kova-agent-provider-protocol-failure --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 60 --json"
+      ],
+      "evidence": [
+        "clear command failure",
+        "provider protocol failure evidence",
+        "gateway remains supervised",
+        "role resource samples"
+      ],
+      "healthScope": "post-ready"
+    },
+    {
+      "id": "post-failure-health",
+      "title": "Post-Failure Gateway Health",
+      "intent": "Verify the gateway remains responsive after the protocol-invalid provider response.",
+      "commands": [
+        "ocm @{env} -- status",
+        "ocm logs {env} --tail 300 --raw"
+      ],
+      "evidence": [
+        "gateway status",
+        "provider logs",
+        "plugin errors",
+        "memory after protocol failure"
+      ],
+      "healthScope": "post-ready"
+    }
+  ],
+  "proves": [
+    "baseline"
+  ]
+}

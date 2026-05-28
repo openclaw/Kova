@@ -42,6 +42,7 @@ function mutationRules() {
   return [
     { pattern: new RegExp(`^ocm\\s+start\\s+${token}(?:\\s|$)`), label: "ocm start" },
     { pattern: new RegExp(`^ocm\\s+upgrade\\s+${token}(?:\\s|$)`), label: "ocm upgrade" },
+    { pattern: new RegExp(`^ocm\\s+rollback\\s+${token}(?:\\s|$)`), label: "ocm rollback" },
     { pattern: new RegExp(`^ocm\\s+logs\\s+${token}(?:\\s|$)`), label: "ocm logs" },
     { pattern: new RegExp(`^ocm\\s+service\\s+(?:status|start|stop|restart)\\s+${token}(?:\\s|$)`), label: "ocm service" },
     { pattern: new RegExp(`^ocm\\s+env\\s+(?:destroy|exec|run|use)\\s+${token}(?:\\s|$)`), label: "ocm env" },

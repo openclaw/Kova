@@ -10,6 +10,7 @@
     "agent-process",
     "mock-provider"
   ],
+  "resourcePrimaryRole": "tui-cli",
   "thresholds": {
     "peakRssMb": 900,
     "postReadyHealthP95Ms": 1000

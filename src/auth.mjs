@@ -16,7 +16,19 @@ export const authOverrideModes = ["default", "mock", "live", "skip", "missing", 
 
 const defaultProviderId = "openai";
 const mockApiKey = "kova-mock-key";
-const mockProviderModes = new Set(["normal", "slow", "timeout", "malformed", "streaming-stall", "error-then-recover", "concurrent-pressure"]);
+const mockProviderModes = new Set([
+  "normal",
+  "slow",
+  "timeout",
+  "malformed",
+  "protocol-failure",
+  "streaming-stall",
+  "disconnect-then-recover",
+  "error-then-recover",
+  "concurrent-pressure",
+  "exec-tool-safety",
+  "exec-tool-failure-only"
+]);
 
 export async function ensureCredentialStore() {
   await mkdir(credentialsDir, { recursive: true });
@@ -551,7 +563,7 @@ export function mockAiProviderServeCommand({ scriptPath, requestLog, serverLog, 
   const bin = quoteShell(join(repoRoot, "node_modules/.bin/mock-ai-provider"));
   const args = `serve --providers openai --script ${quoteShell(scriptPath)} --port 0 --request-log ${quoteShell(requestLog)}`;
   const output = `>${quoteShell(serverLog)} 2>&1 & echo $! >${quoteShell(pidFile)}`;
-  return `test -x ${bin}; ${bin} ${args} ${output}`;
+  return `test -x ${bin} || { echo "Kova requires the local npm package mock-ai-provider; run npm install in the Kova repo" >&2; exit 127; }; ${bin} ${args} ${output}`;
 }
 
 function mockProviderPolicy(scenario, state) {

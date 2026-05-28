@@ -1,0 +1,79 @@
+{
+  "id": "exec-tool-safety",
+  "surface": "exec-tool-safety",
+  "title": "Exec Tool Safety",
+  "objective": "Verify OpenClaw exec policy visibility and Kova's bounded exec fixture for safe commands, blocked dangerous input, output limits, timeouts, and process leaks.",
+  "tags": [
+    "exec",
+    "tools",
+    "tool-runtime",
+    "safety"
+  ],
+  "timeoutMs": 180000,
+  "mockProvider": {
+    "mode": "exec-tool-safety"
+  },
+  "thresholds": {
+    "gatewayReadyMs": 30000,
+    "gatewayReadyHardTimeoutMs": 120000,
+    "statusMs": 10000,
+    "execSafeCommandMs": 10000,
+    "execSafeCommandSucceeded": 1,
+    "execDangerousCommandBlocked": 1,
+    "execOutputTruncated": 1,
+    "execTimeoutMs": 15000,
+    "execProcessLeaks": 0,
+    "peakRssMb": 900
+  },
+  "phases": [
+    {
+      "id": "gateway",
+      "title": "Gateway Start",
+      "intent": "Start the disposable gateway before exec policy and fixture checks.",
+      "commands": [
+        "ocm start {env} {startSelector} --json",
+        "ocm @{env} -- status"
+      ],
+      "evidence": [
+        "gateway status",
+        "gateway port",
+        "readiness classification"
+      ],
+      "healthScope": "readiness"
+    },
+    {
+      "id": "exec-tool-smoke",
+      "title": "Exec Tool Safety Smoke",
+      "intent": "Read OpenClaw exec policy, run harmless fixture commands, prove dangerous payloads are inert sentinels, and verify timeout containment.",
+      "commands": [
+        "node {kovaRoot}/support/run-exec-tool-safety.mjs --env {env} --artifact-dir {artifactDir} --timeout-ms 45000"
+      ],
+      "evidence": [
+        "exec policy visibility",
+        "safe exec fixture output",
+        "dangerous payload blocked sentinel",
+        "output truncation",
+        "timeout containment"
+      ],
+      "healthScope": "post-ready"
+    },
+    {
+      "id": "post-exec-health",
+      "title": "Post-Exec Gateway Health",
+      "intent": "Verify exec fixture failures did not degrade gateway or command-tree health.",
+      "commands": [
+        "ocm @{env} -- status",
+        "ocm logs {env} --tail 300 --raw"
+      ],
+      "evidence": [
+        "status after exec checks",
+        "tool errors",
+        "gateway errors"
+      ],
+      "healthScope": "post-ready"
+    }
+  ],
+  "proves": [
+    "safe-and-blocked-exec"
+  ]
+}

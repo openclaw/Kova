@@ -14,6 +14,7 @@ import {
 } from "../performance/baselines.mjs";
 import { buildPerformanceSummary } from "../performance/stats.mjs";
 import { reportsDir, displayPath } from "../paths.mjs";
+import { networkFrontageControls, summarizeNetworkFrontage } from "../network-frontage.mjs";
 import { loadRegistryContext } from "../registries/context.mjs";
 import { loadScenarios, validateScenarioRun } from "../registries/scenarios.mjs";
 import { loadState } from "../registries/states.mjs";
@@ -49,6 +50,7 @@ export async function runScenarioCommand(flags) {
   const repeat = positiveIntegerFlag(flags, "repeat", 1);
   const auth = await resolveRunAuthContext(flags);
   const regressionThresholds = await loadRegressionThresholds(flags);
+  const networkFrontage = networkFrontageControls(flags);
   const baselinePath = resolveBaselinePath(flags.baseline);
   const saveBaselinePath = resolveBaselinePath(flags.save_baseline);
   const baselineStore = baselinePath ? await loadBaselineStore(baselinePath) : null;
@@ -62,6 +64,7 @@ export async function runScenarioCommand(flags) {
     state,
     runId,
     auth,
+    controls: { networkFrontage },
     timeoutMs: resolveRunTimeout(scenarios, flags)
   });
   const records = [];
@@ -98,8 +101,10 @@ export async function runScenarioCommand(flags) {
       repeat,
       baseline: baselinePath,
       saveBaseline: saveBaselinePath,
-      auth: auth.requestedMode
+      auth: auth.requestedMode,
+      networkFrontage
     },
+    networkFrontage: summarizeNetworkFrontage(records, networkFrontage),
     performance,
     records
   });
@@ -123,6 +128,7 @@ export async function runScenarioCommand(flags) {
       reportPath: outputPaths.markdown,
       jsonPath: outputPaths.json,
       summaryPath: outputPaths.summary,
+      networkFrontage: report.networkFrontage,
       performance: summarizePerformanceReceipt(report.performance, report.baseline),
       summary: report.summary
     }, null, 2));

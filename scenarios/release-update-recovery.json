@@ -1,0 +1,137 @@
+{
+  "id": "release-update-recovery",
+  "surface": "release-update-recovery",
+  "title": "Release Update Recovery",
+  "objective": "Start a disposable source env, add plugin-pressure recovery state, upgrade to the target, verify plugin health and doctor repair, retry the update selector, inspect rollback, and verify post-rollback health.",
+  "tags": [
+    "upgrade",
+    "update",
+    "rollback",
+    "plugins",
+    "doctor",
+    "recovery"
+  ],
+  "states": [
+    "update-recovery-plugin-user"
+  ],
+  "targetKinds": [
+    "npm",
+    "release",
+    "runtime",
+    "local-build"
+  ],
+  "timeoutMs": 300000,
+  "thresholds": {
+    "upgradeMs": 180000,
+    "statusMs": 10000,
+    "pluginsListMs": 15000,
+    "pluginUpdateDryRunMs": 30000,
+    "doctorFixMs": 60000,
+    "pluginLoadFailures": 1
+  },
+  "phases": [
+    {
+      "id": "source",
+      "title": "Start Source Release Env",
+      "intent": "Start a disposable source env on the stable channel before applying plugin-pressure update recovery state.",
+      "commands": [
+        "ocm start {env} --channel stable --json",
+        "ocm @{env} -- --version",
+        "ocm @{env} -- status",
+        "ocm @{env} -- plugins list",
+        "ocm service status {env} --json"
+      ],
+      "evidence": [
+        "source channel start output",
+        "source OpenClaw version",
+        "source status",
+        "source plugin list",
+        "source service status"
+      ],
+      "healthScope": "readiness"
+    },
+    {
+      "id": "upgrade",
+      "title": "Upgrade To Target",
+      "intent": "Run the real OpenClaw upgrade path through OCM and capture the requested target result.",
+      "commands": [
+        "ocm upgrade {env} {upgradeSelector} --json",
+        "ocm @{env} -- --version"
+      ],
+      "evidence": [
+        "target upgrade JSON",
+        "post-upgrade OpenClaw version",
+        "snapshot or rollback metadata when available"
+      ],
+      "healthScope": "readiness"
+    },
+    {
+      "id": "plugin-health",
+      "title": "Post-Upgrade Plugin Health",
+      "intent": "Verify plugin commands remain usable after the target update.",
+      "commands": [
+        "ocm @{env} -- status",
+        "ocm @{env} -- plugins list",
+        "ocm @{env} -- plugins update --all --dry-run"
+      ],
+      "evidence": [
+        "post-upgrade status",
+        "post-upgrade plugin list",
+        "post-upgrade plugin update dry-run"
+      ],
+      "healthScope": "post-ready"
+    },
+    {
+      "id": "doctor-repair",
+      "title": "Doctor Repair After Upgrade",
+      "intent": "Run doctor repair and verify OpenClaw remains usable after repair attempts.",
+      "commands": [
+        "node {kovaRoot}/support/run-doctor-repair.mjs --env {env}",
+        "ocm @{env} -- status"
+      ],
+      "evidence": [
+        "structured doctor repair JSON output",
+        "post-doctor status"
+      ],
+      "healthScope": "post-ready"
+    },
+    {
+      "id": "update-retry",
+      "title": "Retry Target Update",
+      "intent": "Run the same target selector again and verify reports can detect unintended version drift.",
+      "commands": [
+        "ocm upgrade {env} {upgradeSelector} --json",
+        "ocm @{env} -- --version"
+      ],
+      "evidence": [
+        "retry upgrade JSON",
+        "post-retry OpenClaw version"
+      ],
+      "healthScope": "post-ready"
+    },
+    {
+      "id": "rollback",
+      "title": "Rollback Inspection",
+      "intent": "Exercise rollback on the disposable env when the target runtime exposes rollback support, then verify plugin and gateway health.",
+      "commands": [
+        "node {kovaRoot}/support/restore-first-ocm-upgrade-snapshot.mjs --env {env}",
+        "ocm @{env} -- status",
+        "ocm @{env} -- plugins list",
+        "ocm logs {env} --tail 500 --raw"
+      ],
+      "evidence": [
+        "rollback output",
+        "post-rollback status",
+        "post-rollback plugin list",
+        "upgrade and rollback logs"
+      ],
+      "healthScope": "post-ready"
+    }
+  ],
+  "proves": [
+    "plugin-failure-recovery",
+    "doctor-repair-contract",
+    "update-retry-target-stability",
+    "rollback-available"
+  ]
+}

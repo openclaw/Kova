@@ -1,0 +1,87 @@
+{
+  "id": "agent-provider-random-disconnect",
+  "surface": "agent-cli-local-turn",
+  "title": "Agent Provider Random Disconnect",
+  "objective": "Prove OpenClaw can recover when the provider connection drops mid-response, reconnect to the provider, complete the turn, and keep the gateway healthy.",
+  "tags": [
+    "agent",
+    "message",
+    "provider-failure",
+    "disconnect",
+    "recovery",
+    "containment"
+  ],
+  "timeoutMs": 240000,
+  "auth": {
+    "mode": "mock"
+  },
+  "mockProvider": {
+    "mode": "disconnect-then-recover"
+  },
+  "agent": {
+    "expectedText": "KOVA_AGENT_OK"
+  },
+  "thresholds": {
+    "gatewayReadyMs": 30000,
+    "agentTurnMs": 90000,
+    "providerFinalMs": 15000,
+    "providerRequestCountMin": 2,
+    "providerFailureHealthFailures": 0,
+    "agentContainmentHealthFailures": 0,
+    "agentProcessLeaks": 0,
+    "peakRssMb": 900,
+    "missingDependencyErrors": 0,
+    "pluginLoadFailures": 0
+  },
+  "phases": [
+    {
+      "id": "provision",
+      "title": "Provision Agent Env",
+      "intent": "Start a disposable OpenClaw gateway before wiring the disconnecting mock provider.",
+      "commands": [
+        "ocm start {env} {startSelector} --json"
+      ],
+      "evidence": [
+        "gateway port",
+        "runtime binding",
+        "startup readiness"
+      ],
+      "healthScope": "readiness"
+    },
+    {
+      "id": "disconnect-recovery-turn",
+      "title": "Disconnect Recovery Turn",
+      "intent": "Send a simple message while the first provider connection drops and require OpenClaw to reconnect, continue, and return a normal assistant response.",
+      "commands": [
+        "ocm @{env} -- agent --local --agent main --session-id kova-agent-provider-random-disconnect --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 120 --json"
+      ],
+      "evidence": [
+        "provider disconnect evidence",
+        "provider recovery request",
+        "assistant response after reconnect",
+        "gateway remains supervised",
+        "role resource samples"
+      ],
+      "healthScope": "post-ready"
+    },
+    {
+      "id": "post-disconnect-health",
+      "title": "Post-Disconnect Gateway Health",
+      "intent": "Verify the gateway remains responsive after provider disconnect recovery.",
+      "commands": [
+        "ocm @{env} -- status",
+        "ocm logs {env} --tail 300 --raw"
+      ],
+      "evidence": [
+        "gateway status",
+        "provider logs",
+        "plugin errors",
+        "memory after disconnect recovery"
+      ],
+      "healthScope": "post-ready"
+    }
+  ],
+  "proves": [
+    "baseline"
+  ]
+}

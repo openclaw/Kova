@@ -63,6 +63,21 @@
       "timeoutMs": 180000
     },
     {
+      "scenario": "upgrade-from-day-ago",
+      "state": "old-release-user",
+      "timeoutMs": 300000
+    },
+    {
+      "scenario": "upgrade-from-week-ago",
+      "state": "old-release-user",
+      "timeoutMs": 300000
+    },
+    {
+      "scenario": "upgrade-from-month-ago",
+      "state": "old-release-user",
+      "timeoutMs": 360000
+    },
+    {
       "scenario": "bundled-runtime-deps",
       "state": "missing-plugin-index"
     },
@@ -108,6 +123,45 @@
       "state": "fresh"
     },
     {
+      "scenario": "plugin-legacy-unsafe-memory",
+      "state": "fresh"
+    },
+    {
+      "scenario": "dirty-plugin-state",
+      "state": "dirty-plugin-local-edits",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "dirty-plugin-state",
+      "state": "dirty-plugin-stale-deps",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "dirty-plugin-state",
+      "state": "dirty-plugin-manifest-drift",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "dirty-plugin-state",
+      "state": "dirty-plugin-disabled-broken",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "dirty-plugin-state",
+      "state": "dirty-plugin-symlink-dev",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "dirty-plugin-state",
+      "state": "dirty-plugin-partial-install",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "release-update-recovery",
+      "state": "update-recovery-plugin-user",
+      "timeoutMs": 300000
+    },
+    {
       "scenario": "bundled-plugin-startup",
       "state": "fresh"
     },
@@ -145,6 +199,11 @@
       "timeoutMs": 180000
     },
     {
+      "scenario": "adversarial-input-openai-compatible",
+      "state": "mock-openai-provider",
+      "timeoutMs": 180000
+    },
+    {
       "scenario": "agent-auth-missing",
       "state": "agent-auth-missing",
       "timeoutMs": 180000
@@ -170,9 +229,19 @@
       "timeoutMs": 180000
     },
     {
+      "scenario": "agent-provider-protocol-failure",
+      "state": "mock-openai-provider",
+      "timeoutMs": 180000
+    },
+    {
       "scenario": "agent-provider-streaming-stall",
       "state": "mock-openai-provider",
       "timeoutMs": 180000
+    },
+    {
+      "scenario": "agent-provider-random-disconnect",
+      "state": "mock-openai-provider",
+      "timeoutMs": 240000
     },
     {
       "scenario": "agent-provider-concurrent",
@@ -195,6 +264,26 @@
     {
       "scenario": "mcp-runtime-start-stop",
       "state": "fresh"
+    },
+    {
+      "scenario": "cron-runtime",
+      "state": "cron-user",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "exec-tool-safety",
+      "state": "exec-tool-user",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "mcp-tool-call",
+      "state": "mcp-tool-user",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "tool-failure-containment",
+      "state": "exec-tool-user",
+      "timeoutMs": 180000
     },
     {
       "scenario": "browser-automation-smoke",

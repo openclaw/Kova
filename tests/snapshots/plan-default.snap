@@ -1,9 +1,9 @@
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  KOVA  ·  plan                                                               ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
-   48 scenarios · 33 surfaces                   darwin 25.3.0 · arm64 · v24.13.0
+   61 scenarios · 41 surfaces                    darwin 25.5.0 · arm64 · v26.0.0
 
-  Scenarios 48   ·   States 32   ·   Profiles 10   ·   Surfaces 33
+  Scenarios 61   ·   States 42   ·   Profiles 12   ·   Surfaces 41
 
 ─── surfaces by owner ──────────────────────────────────────────────────────────
   ◆ OpenClaw  2 surfaces · 2 scenarios
@@ -15,12 +15,17 @@
     • channel-telegram-capability-conformance  1 scenario
   ◆ agent-cli-gateway-client  1 surface · 1 scenario
     • agent-gateway-rpc-turn  1 scenario
-  ◆ agent-runtime  1 surface · 9 scenarios
-    • agent-cli-local-turn  9 scenarios
+  ◆ agent-runtime  1 surface · 11 scenarios
+    • agent-cli-local-turn  11 scenarios
+  ◆ agent-tool-runtime  2 surfaces · 2 scenarios
+    • exec-tool-safety  1 scenario
+    • tool-failure-containment  1 scenario
   ◆ browser-runtime  1 surface · 1 scenario
     • browser-automation  1 scenario
   ◆ control-ui  1 surface · 1 scenario
     • dashboard  1 scenario
+  ◆ cron-runtime  1 surface · 1 scenario
+    • cron-runtime  1 scenario
   ◆ diagnostics  1 surface · 1 scenario
     • failure-containment  1 scenario
   ◆ gateway  2 surfaces · 2 scenarios
@@ -28,20 +33,25 @@
     • soak  1 scenario
   ◆ gateway-chat-session-runtime  1 surface · 2 scenarios
     • gateway-session-send-turn  2 scenarios
+  ◆ gateway-input-runtime  1 surface · 1 scenario
+    • adversarial-input  1 scenario
   ◆ gateway-openai-compatible-runtime  1 surface · 1 scenario
     • openai-compatible-turn  1 scenario
-  ◆ mcp-runtime  1 surface · 1 scenario
+  ◆ mcp-runtime  2 surfaces · 2 scenarios
     • mcp-runtime  1 scenario
+    • mcp-tool-call  1 scenario
   ◆ media-understanding  1 surface · 1 scenario
     • media-understanding  1 scenario
   ◆ platform-runtime  1 surface · 1 scenario
     • cross-platform-smoke  1 scenario
-  ◆ plugins  9 surfaces · 9 scenarios
+  ◆ plugins  11 surfaces · 11 scenarios
     • bundled-plugin-startup  1 scenario
     • bundled-runtime-deps  1 scenario
+    • dirty-plugin-state  1 scenario
     • official-plugin-install  1 scenario
     • plugin-bad-manifest  1 scenario
     • plugin-external-install  1 scenario
+    • plugin-legacy-unsafe-memory  1 scenario
     • plugin-lifecycle  1 scenario
     • plugin-missing-runtime-deps  1 scenario
     • plugin-remove  1 scenario
@@ -58,8 +68,9 @@
     • tui  1 scenario
   ◆ tui  1 surface · 1 scenario
     • tui-message-turn  1 scenario
-  ◆ upgrade  1 surface · 7 scenarios
-    • upgrade-existing-user  7 scenarios
+  ◆ upgrade  2 surfaces · 11 scenarios
+    • release-update-recovery  1 scenario
+    • upgrade-existing-user  10 scenarios
   ◆ workspace-runtime  1 surface · 1 scenario
     • workspace-scan  1 scenario
 
@@ -70,6 +81,7 @@
 
 ─── scenarios ──────────────────────────────────────────────────────────────────
   id                  surface             states  phases  title
+  adversarial-input…  adversarial-input        0       4  Adversarial Input Ope…
   agent-auth-missing  agent-cli-local-t…       1       3  Agent Auth Missing
   agent-cold-warm-m…  agent-cli-local-t…       0       4  Agent CLI Local Cold/…
   agent-gateway-rpc…  agent-gateway-rpc…       0       4  Agent CLI Gateway RPC…
@@ -77,15 +89,14 @@
   agent-network-off…  network-offline          0       3  Agent Network Offline
   agent-provider-co…  agent-cli-local-t…       0       3  Agent Provider Concur…
   agent-provider-ma…  agent-cli-local-t…       0       3  Agent Provider Malfor…
+  agent-provider-pr…  agent-cli-local-t…       0       3  Agent Provider Protoc…
+  agent-provider-ra…  agent-cli-local-t…       0       3  Agent Provider Random…
   agent-provider-re…  agent-cli-local-t…       0       4  Agent Provider Recove…
   agent-provider-sl…  agent-cli-local-t…       0       3  Agent Provider Slow
-  agent-provider-st…  agent-cli-local-t…       0       3  Agent Provider Stream…
-  agent-provider-ti…  agent-cli-local-t…       0       3  Agent Provider Timeout
-  browser-automatio…  browser-automation       0       3  Browser Automation Sm…
-  + 36 more scenarios (use --scenario <id> to filter, or --json for full list)
+  + 49 more scenarios (use --scenario <id> to filter, or --json for full list)
 
 ─── next ───────────────────────────────────────────────────────────────────────
 
-  → kova run --scenario agent-auth-missing
+  → kova run --scenario adversarial-input-openai-compatible
   → kova matrix plan --profile smoke --target runtime:stable
   → kova plan --json

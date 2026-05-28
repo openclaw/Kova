@@ -1,0 +1,27 @@
+{
+  "id": "exec-tool-user",
+  "title": "Exec Tool Disposable User",
+  "objective": "A disposable OpenClaw user state with a bounded workspace and non-secret sentinel values for exec tool safety and failure containment checks.",
+  "tags": [
+    "exec",
+    "tools",
+    "runtime"
+  ],
+  "setup": [],
+  "traits": [
+    "fresh-user",
+    "baseline"
+  ],
+  "riskArea": "agent-tool-runtime",
+  "ownerArea": "agent-tool-runtime",
+  "setupEvidence": [
+    "disposable OpenClaw env exists",
+    "exec policy CLI is reachable",
+    "artifact dir contains the writable fixture workspace"
+  ],
+  "cleanupGuarantees": [
+    "helper fixture commands run only under the scenario artifact directory",
+    "dangerous payloads are represented as inert sentinels and are never executed",
+    "disposable env cleanup removes fixture workspace files"
+  ]
+}

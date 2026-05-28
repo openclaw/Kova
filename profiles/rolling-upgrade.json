@@ -1,0 +1,29 @@
+{
+  "id": "rolling-upgrade",
+  "title": "Rolling Upgrade Matrix",
+  "objective": "Focused OpenClaw upgrade coverage from recently published versions: roughly one day ago, one week ago, and one month ago, upgraded through the real OCM path to the requested target.",
+  "targetKinds": [
+    "npm",
+    "release",
+    "runtime",
+    "local-build"
+  ],
+  "entries": [
+    {
+      "scenario": "upgrade-from-day-ago",
+      "state": "old-release-user",
+      "timeoutMs": 300000
+    },
+    {
+      "scenario": "upgrade-from-week-ago",
+      "state": "old-release-user",
+      "timeoutMs": 300000
+    },
+    {
+      "scenario": "upgrade-from-month-ago",
+      "state": "old-release-user",
+      "timeoutMs": 360000
+    }
+  ],
+  "purpose": "upgrade"
+}

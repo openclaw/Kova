@@ -90,7 +90,19 @@ function validateMockProvider(mockProvider, prefix, errors) {
     errors.push(`${prefix} must be an object`);
     return;
   }
-  const modes = ["normal", "slow", "timeout", "malformed", "streaming-stall", "error-then-recover", "concurrent-pressure"];
+  const modes = [
+    "normal",
+    "slow",
+    "timeout",
+    "malformed",
+    "protocol-failure",
+    "streaming-stall",
+    "disconnect-then-recover",
+    "error-then-recover",
+    "concurrent-pressure",
+    "exec-tool-safety",
+    "exec-tool-failure-only"
+  ];
   if (mockProvider.mode !== undefined && !modes.includes(mockProvider.mode)) {
     errors.push(`${prefix}.mode must be one of ${modes.join(", ")}`);
   }

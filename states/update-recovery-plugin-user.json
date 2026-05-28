@@ -1,0 +1,67 @@
+{
+  "id": "update-recovery-plugin-user",
+  "title": "Update Recovery Plugin User",
+  "objective": "A disposable source user with plugin pressure, dirty local edits, and a partial plugin install record for release update recovery testing.",
+  "tags": [
+    "upgrade",
+    "plugins",
+    "dirty",
+    "recovery"
+  ],
+  "setup": [
+    {
+      "id": "write-update-recovery-plugin-user",
+      "title": "Write Update Recovery Plugin User",
+      "intent": "Create plugin-pressure state before running the target upgrade path.",
+      "afterPhases": [
+        "source",
+        "start",
+        "clone"
+      ],
+      "commands": [
+        "ocm env exec {env} -- node {kovaRoot}/support/dirty-plugin-state.mjs prepare update-recovery-plugin-user"
+      ],
+      "evidence": [
+        "dirty plugin local edit marker exists",
+        "partial install record exists",
+        "source channel marker exists"
+      ]
+    },
+    {
+      "id": "verify-update-recovery-plugin-user",
+      "title": "Verify Update Recovery Plugin User",
+      "intent": "Verify update, doctor repair, retry, and rollback did not destroy dirty plugin evidence.",
+      "afterPhase": "rollback",
+      "commands": [
+        "ocm env exec {env} -- node {kovaRoot}/support/dirty-plugin-state.mjs verify update-recovery-plugin-user"
+      ],
+      "evidence": [
+        "dirty plugin local edit checksum still matches",
+        "partial install evidence remains explicit"
+      ]
+    }
+  ],
+  "traits": [
+    "existing-user",
+    "external-plugin",
+    "plugin-pressure",
+    "failure-state",
+    "migration-state",
+    "release-state"
+  ],
+  "riskArea": "release-update-recovery",
+  "ownerArea": "upgrade",
+  "setupEvidence": [
+    "dirty plugin local edit marker exists",
+    "partial install record exists",
+    "source release marker exists"
+  ],
+  "cleanupGuarantees": [
+    "disposable env cleanup removes update recovery fixture files"
+  ],
+  "source": {
+    "kind": "synthetic-release-user",
+    "release": "stable",
+    "note": "stable release user with dirty plugin pressure"
+  }
+}

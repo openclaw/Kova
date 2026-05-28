@@ -14,7 +14,9 @@ export function renderMarkdownReport(report) {
   const summary = buildReportSummary(report);
   const verdictBand = markdownVerdictBand(summary.decision.verdict);
   const platformLine = `${summary.platform?.os ?? "unknown"} ${summary.platform?.release ?? ""} (${summary.platform?.arch ?? "unknown"}) · ${summary.platform?.node ?? "unknown"}`.trim();
-  const authLine = `${summary.run.auth?.mode ?? "unknown"}${summary.run.auth?.providerId ? ` (${summary.run.auth.providerId})` : ""}`;
+  const authMode = summary.run.auth?.requestedMode ?? summary.run.auth?.live?.method ?? "unknown";
+  const authProvider = summary.run.auth?.live?.providerId ?? summary.run.auth?.credentialStore?.defaultProvider ?? null;
+  const authLine = `${authMode}${authProvider ? ` (${authProvider})` : ""}`;
   const statusBreakdown = Object.entries(summary.statuses).map(([status, count]) => `${status}:${count}`).join(", ") || "none";
   const lines = [
     "# Kova OpenClaw Runtime Report",
@@ -44,6 +46,7 @@ export function renderMarkdownReport(report) {
     `| Platform | ${tableCell(platformLine)} |`,
     `| Repeat / parallel | ${tableCell(`${summary.run.repeat ?? "unknown"} / ${summary.run.parallel ?? "unknown"}`)} |`,
     `| Auth | ${tableCell(authLine)} |`,
+    `| Network frontage | ${tableCell(summary.run.networkFrontage?.mode ?? "port")} |`,
     "",
     "## Coverage",
     "",
@@ -215,25 +218,27 @@ function formatSampleSummaryTable(samples = []) {
     lines.push("");
     return lines;
   }
-  lines.push("| Sample | Status | Scenario | Health Ready | Gateway RSS | Tracked RSS | Cold Turn | Warm Turn | Blocker |");
-  lines.push("|---:|---|---|---:|---:|---:|---:|---:|---|");
+  lines.push("| Sample | Status | Scenario | Upgrade From | Health Ready | Gateway RSS | Tracked RSS | Cold Turn | Warm Turn | Blocker |");
+  lines.push("|---:|---|---|---|---:|---:|---:|---:|---:|---|");
   for (const sample of samples.slice(0, 20)) {
     const measurements = sample.measurements ?? {};
+    const readinessNotApplicable = measurements.readiness?.classification === "not-applicable";
     const blocker = sample.violations?.[0]?.message ?? sample.failureReason ?? "";
     lines.push([
       sample.sampleIndex,
       tableCell(sample.status),
       tableCell([sample.scenario, sample.state?.id].filter(Boolean).join("/") || "unknown"),
-      tableCell(valueMs(measurements.readiness?.healthReadyAtMs)),
+      tableCell(sample.upgrade?.fromVersion ?? sample.upgrade?.fromLabel ?? ""),
+      tableCell(valueMs(measurements.readiness?.healthReadyAtMs, readinessNotApplicable ? "n/a" : "unknown")),
       tableCell(valueMb(measurements.resources?.gatewayPeakRssMb)),
       tableCell(valueMb(measurements.resources?.trackedPeakRssMb)),
-      tableCell(valueMs(measurements.agent?.coldTurnMs)),
-      tableCell(valueMs(measurements.agent?.warmTurnMs)),
+      tableCell(valueMs(measurements.agent?.coldTurnMs, "n/a")),
+      tableCell(valueMs(measurements.agent?.warmTurnMs, "n/a")),
       tableCell(blocker)
     ].join(" | ").replace(/^/, "| ").replace(/$/, " |"));
   }
   if (samples.length > 20) {
-    lines.push(`|  |  | ${samples.length - 20} additional sample(s) omitted from Markdown |  |  |  |  |  | see summary JSON |`);
+    lines.push(`|  |  | ${samples.length - 20} additional sample(s) omitted from Markdown |  |  |  |  |  |  | see summary JSON |`);
   }
   lines.push("");
   return lines;
@@ -259,6 +264,10 @@ function formatSelectedSampleDetails(records = []) {
     lines.push("");
     lines.push(`- Status: ${record.status}`);
     lines.push(`- Cleanup: ${record.cleanup ?? "not-run"}`);
+    const upgrade = summarizeUpgradeSource(record);
+    if (upgrade) {
+      lines.push(`- Upgrade from: ${upgrade.fromVersion ?? upgrade.fromLabel ?? "unknown"}${upgrade.age ? ` (${upgrade.age})` : ""}`);
+    }
     if (record.collectorArtifactDirs?.root) {
       lines.push(`- Artifact root: ${record.collectorArtifactDirs.root}`);
     }
@@ -399,7 +408,7 @@ function formatTargetCleanupSummary(targetCleanup) {
 function metricMedian(group, metricId) {
   const metric = group.metrics?.[metricId];
   if (!metric) {
-    return "unknown";
+    return "n/a";
   }
   const unit = metric.unit ?? "";
   return `${metric.median ?? "?"}${unit}`;
@@ -531,7 +540,8 @@ export function buildReportSummary(report) {
       repeat: report.controls?.repeat ?? report.performance?.repeat ?? null,
       parallel: report.controls?.parallel ?? report.performance?.parallel ?? null,
       auth: report.auth ?? null,
-      targetCleanup: summarizeTargetCleanup(report.targetCleanup)
+      targetCleanup: summarizeTargetCleanup(report.targetCleanup),
+      networkFrontage: report.networkFrontage ?? null
     },
     coverage: summarizeCoverage(records),
     proof: summarizeProofCompleteness(records),
@@ -779,25 +789,26 @@ function ledgerFindings(record, index, state) {
     if (!entry.required) {
       continue;
     }
-    if (entry.status === "missing") {
+    const status = normalizedEvidenceStatus(record, entry);
+    if (status === "missing") {
       findings.push(ledgerFinding(record, index, state, entry, {
         severity: "incomplete",
         kind: "evidence",
         actual: "missing proof"
       }));
-    } else if (entry.status === "failed" && entry.category === "invariant") {
+    } else if (status === "failed" && entry.category === "invariant") {
       findings.push(ledgerFinding(record, index, state, entry, {
         severity: "fail",
         kind: "invariant",
         actual: "invariant failed"
       }));
-    } else if (entry.status === "failed" && entry.category === "channel-capability") {
+    } else if (status === "failed" && entry.category === "channel-capability") {
       findings.push(ledgerFinding(record, index, state, entry, {
         severity: "fail",
         kind: "channel-capability",
         actual: "capability behavior failed"
       }));
-    } else if (entry.status === "failed" && entry.category !== "command") {
+    } else if (status === "failed" && entry.category !== "command") {
       findings.push(ledgerFinding(record, index, state, entry, {
         severity: "incomplete",
         kind: "evidence",
@@ -808,7 +819,20 @@ function ledgerFindings(record, index, state) {
   return findings;
 }
 
+function normalizedEvidenceStatus(record, entry) {
+  if (
+    entry.status === "missing" &&
+    record.status === RECORD_STATUS.FAIL &&
+    record.surface === "upgrade-existing-user" &&
+    entry.category === "invariant"
+  ) {
+    return "failed";
+  }
+  return entry.status;
+}
+
 function ledgerFinding(record, index, state, entry, { severity, kind, actual }) {
+  const status = normalizedEvidenceStatus(record, entry);
   return {
     id: `${record.scenario}:${state ?? "none"}:${entry.id}:${index + 1}`,
     severity,
@@ -818,7 +842,7 @@ function ledgerFinding(record, index, state, entry, { severity, kind, actual }) 
     sampleIndex: record.repeat?.index ?? index + 1,
     ownerArea: entry.ownerArea ?? record.likelyOwner ?? null,
     metric: null,
-    summary: `${entry.category} proof ${entry.status}: ${entry.summary ?? entry.id}`,
+    summary: `${entry.category} proof ${status}: ${entry.summary ?? entry.id}`,
     expected: "required proof obligation passes",
     actual,
     evidence: [entry.reason, entry.artifactPath].filter(Boolean).slice(0, 2)
@@ -868,31 +892,43 @@ function summarizeProofCompleteness(records) {
     if (!ledger) {
       continue;
     }
-    proof.completeness[ledger.completeness ?? "unknown"] = (proof.completeness[ledger.completeness ?? "unknown"] ?? 0) + 1;
-    proof.requiredTotal += ledger.summary?.required ?? 0;
-    proof.requiredMissing += ledger.summary?.requiredMissing ?? 0;
-    proof.requiredFailed += ledger.summary?.requiredFailed ?? 0;
     for (const [category, count] of Object.entries(ledger.summary?.byCategory ?? {})) {
       proof.byCategory[category] = (proof.byCategory[category] ?? 0) + count;
     }
+    if (record.status === RECORD_STATUS.DRY_RUN || record.status === RECORD_STATUS.SKIPPED) {
+      proof.completeness[ledger.completeness ?? "unknown"] = (proof.completeness[ledger.completeness ?? "unknown"] ?? 0) + 1;
+      proof.requiredTotal += ledger.summary?.required ?? 0;
+      proof.requiredMissing += ledger.summary?.requiredMissing ?? 0;
+      proof.requiredFailed += ledger.summary?.requiredFailed ?? 0;
+      continue;
+    }
+    const requiredEntries = (ledger.entries ?? []).filter((entry) => entry.required);
+    const normalizedStatuses = requiredEntries.map((entry) => normalizedEvidenceStatus(record, entry));
+    const requiredMissing = normalizedStatuses.filter((status) => status === "missing").length;
+    const requiredFailed = normalizedStatuses.filter((status) => status === "failed").length;
+    proof.completeness[requiredMissing > 0 ? "incomplete" : "complete"] = (proof.completeness[requiredMissing > 0 ? "incomplete" : "complete"] ?? 0) + 1;
+    proof.requiredTotal += requiredEntries.length;
+    proof.requiredMissing += requiredMissing;
+    proof.requiredFailed += requiredFailed;
     for (const entry of ledger.entries ?? []) {
       if (!entry.required) {
         continue;
       }
+      const status = normalizedEvidenceStatus(record, entry);
       const item = {
         scenario: record.scenario ?? "unknown",
         state: record.state?.id ?? null,
         sampleIndex: record.repeat?.index ?? index + 1,
         id: entry.id,
         category: entry.category,
-        status: entry.status,
+        status,
         summary: entry.summary ?? null,
         reason: entry.reason ?? null,
         artifactPath: entry.artifactPath ?? null
       };
-      if (entry.status === "missing") {
+      if (status === "missing") {
         proof.missingRequired.push(item);
-      } else if (entry.status === "failed") {
+      } else if (status === "failed") {
         proof.failedRequired.push(item);
       }
     }
@@ -1040,7 +1076,7 @@ function compactGroupMetrics(metrics = {}) {
 
 function summarizeSample(record, index) {
   const failed = firstFailedCommand(record, { includeCleanup: true });
-  return {
+  const sample = {
     sampleIndex: record.repeat?.index ?? index + 1,
     repeatTotal: record.repeat?.total ?? null,
     scenario: record.scenario ?? null,
@@ -1058,6 +1094,67 @@ function summarizeSample(record, index) {
     violations: record.violations ?? [],
     artifactRoot: record.collectorArtifactDirs?.root ?? null
   };
+  const upgrade = summarizeUpgradeSource(record);
+  if (upgrade) {
+    sample.upgrade = upgrade;
+  }
+  return sample;
+}
+
+function summarizeUpgradeSource(record) {
+  if (record.surface !== "upgrade-existing-user") {
+    return null;
+  }
+  const sourcePhase = (record.phases ?? []).find((phase) => phase.id === "source-runtime");
+  const sourceResults = sourcePhase?.results ?? [];
+  for (const result of sourceResults) {
+    const parsed = parseFirstJsonObject(result?.stdout);
+    if (parsed?.schemaVersion === "kova.openclawReleaseAgeUpgrade.v1") {
+      return {
+        fromVersion: parsed.version ?? null,
+        fromLabel: parsed.age ? `${parsed.age}-ago release` : null,
+        age: parsed.age ?? null,
+        status: parsed.status ?? result.status ?? null,
+        command: parsed.command ?? result.command ?? null
+      };
+    }
+  }
+  for (const result of sourceResults) {
+    const command = result?.command ?? "";
+    const version = command.match(/(?:^|\s)--version\s+'?([0-9][0-9A-Za-z.-]*)'?/)?.[1] ?? null;
+    if (version) {
+      return {
+        fromVersion: version,
+        fromLabel: null,
+        age: null,
+        status: result.status ?? null,
+        command
+      };
+    }
+  }
+  if (record.from) {
+    return {
+      fromVersion: null,
+      fromLabel: record.from,
+      age: null,
+      status: null,
+      command: null
+    };
+  }
+  return null;
+}
+
+function parseFirstJsonObject(value) {
+  const text = String(value ?? "");
+  const start = text.indexOf("{");
+  if (start === -1) {
+    return null;
+  }
+  try {
+    return JSON.parse(text.slice(start));
+  } catch {
+    return null;
+  }
 }
 
 function summarizeSampleMetrics(measurements) {
@@ -1586,16 +1683,32 @@ function compactRolePeaks(measurements) {
 function pushMeasurementBrief(lines, measurements, { compact }) {
   const readiness = measurements.health?.readiness ?? null;
   const totalHealthFailures = measurements.health ? healthTotalFailures(measurements.health) : null;
+  const readinessReason = readiness?.reason ?? null;
+  const readinessNotApplicable = readiness?.classification === "not-applicable";
+  const noProcessSamples = !hasValue(measurements.resourceSampleCount);
   lines.push("Measurements:");
-  lines.push(`- startup: listening ${valueMs(readiness?.listeningReadyAtMs)}; health ${valueMs(readiness?.healthReadyAtMs)}; readiness ${readiness?.classification ?? "unknown"}; gateway ${measurements.finalGatewayState ?? "unknown"}; restarts ${measurements.gatewayRestartCount ?? "unknown"}`);
-  lines.push(`- health: startup p95 ${valueMs(measurements.health?.startupSamples?.p95Ms)}; post-ready p95 ${valueMs(measurements.health?.postReadySamples?.p95Ms)}; failures ${totalHealthFailures ?? "unknown"}; final failures ${measurements.health?.final?.failureCount ?? "unknown"}${healthSlowestText(measurements)}`);
-  lines.push(`- resources: ${resourceHeadlineText(measurements)} ${valueMb(resourceHeadlineValue(measurements))}; tracked total ${valueMb(measurements.resourcePeakTrackedRssMb)}; max CPU ${valuePercent(measurements.cpuPercentMax)}; samples ${measurements.resourceSampleCount ?? "unknown"}; roles ${rolePeakText(measurements)}`);
+  lines.push(`- startup: listening ${valueMs(readiness?.listeningReadyAtMs, readinessNotApplicable ? "n/a" : "unknown")}; health ${valueMs(readiness?.healthReadyAtMs, readinessNotApplicable ? "n/a" : "unknown")}; readiness ${readiness?.classification ?? "unknown"}${readinessReason ? ` (${readinessReason})` : ""}; gateway ${measurements.finalGatewayState ?? "unknown"}; restarts ${measurements.gatewayRestartCount ?? (readinessNotApplicable ? "n/a" : "unknown")}`);
+  if (measurements.health) {
+    const healthFallback = readinessNotApplicable ? "n/a" : "not-collected";
+    lines.push(`- health: startup p95 ${valueMs(measurements.health.startupSamples?.p95Ms, healthFallback)}; post-ready p95 ${valueMs(measurements.health.postReadySamples?.p95Ms, healthFallback)}; failures ${totalHealthFailures ?? healthFallback}; final failures ${measurements.health.final?.failureCount ?? healthFallback}${healthSlowestText(measurements)}`);
+  } else {
+    lines.push(`- health: n/a${readinessReason ? ` (${readinessReason})` : ""}`);
+  }
+  if (noProcessSamples && readinessNotApplicable) {
+    lines.push(`- resources: n/a (${readinessReason ?? "no gateway process expected"})`);
+  } else {
+    lines.push(`- resources: ${resourceHeadlineText(measurements)} ${valueMb(resourceHeadlineValue(measurements))}; tracked total ${valueMb(measurements.resourcePeakTrackedRssMb)}; max CPU ${valuePercent(measurements.cpuPercentMax)}; samples ${measurements.resourceSampleCount ?? "unknown"}; roles ${rolePeakText(measurements)}`);
+  }
   if (measurements.channelWorkflowResources?.available) {
     lines.push(`- channel workflow resources: ${formatChannelWorkflowResourceRows(measurements.channelWorkflowResourceTopByGatewayRss ?? [])}`);
   }
-  lines.push(`- agent: turn ${valueMs(measurements.agentTurnMs, "not-run")}; cold/warm ${valueMs(measurements.coldAgentTurnMs)}/${valueMs(measurements.warmAgentTurnMs)}; cold-warm delta ${valueMs(measurements.agentColdWarmDeltaMs)}; pre-provider ${valueMs(measurements.agentPreProviderMs)}; provider ${valueMs(measurements.agentProviderFinalMs)}; metadata scans ${measurements.agentMetadataScanCount ?? "unknown"} (${valueMs(measurements.agentMetadataScanTotalMs)}); event-loop ${valueMs(measurements.agentEventLoopMaxMs)}; polls ${measurements.agentSessionPollCount ?? "unknown"}; cleanup ${valueMs(measurements.agentCleanupMaxMs)}; diagnosis ${measurements.agentLatencyDiagnosis?.kind ?? "unknown"}; leaks ${measurements.agentProcessLeakCount ?? "unknown"}`);
+  if (hasAgentSignal(measurements)) {
+    lines.push(`- agent: turn ${valueMs(measurements.agentTurnMs, "not-run")}; cold/warm ${valueMs(measurements.coldAgentTurnMs, "n/a")}/${valueMs(measurements.warmAgentTurnMs, "n/a")}; cold-warm delta ${valueMs(measurements.agentColdWarmDeltaMs, "n/a")}; pre-provider ${valueMs(measurements.agentPreProviderMs, "n/a")}; provider ${valueMs(measurements.agentProviderFinalMs, "n/a")}; metadata scans ${measurements.agentMetadataScanCount ?? "n/a"} (${valueMs(measurements.agentMetadataScanTotalMs, "n/a")}); event-loop ${valueMs(measurements.agentEventLoopMaxMs, "n/a")}; polls ${measurements.agentSessionPollCount ?? "n/a"}; cleanup ${valueMs(measurements.agentCleanupMaxMs, "n/a")}; diagnosis ${measurements.agentLatencyDiagnosis?.kind ?? "n/a"}; leaks ${measurements.agentProcessLeakCount ?? "n/a"}`);
+  } else {
+    lines.push("- agent: not-run");
+  }
   if (measurements.agentTurnStats) {
-    lines.push(`- Agent turn stats: count ${measurements.agentTurnStats.count ?? measurements.agentTurnCount ?? "unknown"}; p95 ${valueMs(measurements.agentTurnP95Ms)}; max ${valueMs(measurements.agentTurnMaxMs)}; pre-provider p95 ${valueMs(measurements.agentPreProviderP95Ms)}`);
+    lines.push(`- Agent turn stats: count ${measurements.agentTurnStats.count ?? measurements.agentTurnCount ?? "unknown"}; p95 ${valueMs(measurements.agentTurnP95Ms, "n/a")}; max ${valueMs(measurements.agentTurnMaxMs, "n/a")}; pre-provider p95 ${valueMs(measurements.agentPreProviderP95Ms, "n/a")}`);
   }
   if (measurements.gatewaySessionPreProviderAttribution?.count > 0) {
     lines.push(`- gateway session attribution: cold known ${valueMs(measurements.coldPreProviderAttributedMs)} / unattributed ${valueMs(measurements.coldPreProviderUnattributedMs)}; warm known ${valueMs(measurements.warmPreProviderAttributedMs)} / unattributed ${valueMs(measurements.warmPreProviderUnattributedMs)}`);
@@ -1603,10 +1716,10 @@ function pushMeasurementBrief(lines, measurements, { compact }) {
   if (measurements.agentCliPreProviderAttribution?.count > 0) {
     lines.push(`- agent CLI attribution: cold known ${valueMs(measurements.coldPreProviderAttributedMs)} / unattributed ${valueMs(measurements.coldPreProviderUnattributedMs)}; warm known ${valueMs(measurements.warmPreProviderAttributedMs)} / unattributed ${valueMs(measurements.warmPreProviderUnattributedMs)}`);
   }
-  lines.push(`- plugins/runtime: missing deps ${measurements.missingDependencyErrors ?? "unknown"}; plugin failures ${measurements.pluginLoadFailures ?? "unknown"}; runtime deps ${valueMs(measurements.runtimeDepsStagingMs)}${runtimeDepsPluginText(measurements)}; warm restages ${measurements.warmRuntimeDepsRestageCount ?? "unknown"}; warm reuse ${measurements.runtimeDepsWarmReuseOk ?? "unknown"}`);
+  lines.push(`- plugins/runtime: missing deps ${measurements.missingDependencyErrors ?? "not-observed"}; plugin failures ${measurements.pluginLoadFailures ?? "not-observed"}; runtime deps ${valueMs(measurements.runtimeDepsStagingMs, "not-observed")}${runtimeDepsPluginText(measurements)}; warm restages ${measurements.warmRuntimeDepsRestageCount ?? "n/a"}; warm reuse ${measurements.runtimeDepsWarmReuseOk ?? "n/a"}`);
 
   if (!compact || hasDiagnosticSignal(measurements)) {
-    lines.push(`- diagnostics: timeline ${measurements.openclawTimelineAvailable ? "available" : "unavailable"}; slowest span ${measurements.openclawSlowestSpanName ?? "unknown"} ${valueMs(measurements.openclawSlowestSpanMs)}; embedded traces ${measurements.embeddedRunTraceCount ?? 0}; liveness warnings ${measurements.openclawLivenessWarningCount ?? 0}; open spans ${measurements.openclawOpenSpanCount ?? "unknown"} (${measurements.openclawOpenRequiredSpanCount ?? "unknown"} required); node CPU/heap/trace ${measurements.nodeCpuProfileCount ?? "unknown"}/${measurements.nodeHeapProfileCount ?? "unknown"}/${measurements.nodeTraceEventCount ?? "unknown"}`);
+    lines.push(`- diagnostics: timeline ${measurements.openclawTimelineAvailable ? "available" : "unavailable"}; slowest span ${measurements.openclawSlowestSpanName ?? "none"} ${valueMs(measurements.openclawSlowestSpanMs, "n/a")}; embedded traces ${measurements.embeddedRunTraceCount ?? 0}; liveness warnings ${measurements.openclawLivenessWarningCount ?? 0}; open spans ${measurements.openclawOpenSpanCount ?? 0} (${measurements.openclawOpenRequiredSpanCount ?? 0} required); node CPU/heap/trace ${measurements.nodeCpuProfileCount ?? 0}/${measurements.nodeHeapProfileCount ?? 0}/${measurements.nodeTraceEventCount ?? 0}`);
   }
   if (!compact && hasMcpSignal(measurements)) {
     lines.push(`- mcp: init ${valueMs(measurements.mcpInitializeMs)}; tools/list ${valueMs(measurements.mcpToolsListMs)}; shutdown ${valueMs(measurements.mcpShutdownMs)}; tools ${measurements.mcpToolCount ?? "unknown"}`);
@@ -1620,7 +1733,7 @@ function rolePeakText(measurements) {
   const text = compactRolePeaks(measurements).slice(0, 4)
     .map((role) => `${role.role} ${role.peakRssMb ?? "?"}MB/${role.maxCpuPercent ?? "?"}%`)
     .join(", ");
-  return text || "unknown";
+  return text || "none";
 }
 
 function runtimeDepsPluginText(measurements) {
@@ -1650,6 +1763,16 @@ function hasBrowserSignal(measurements) {
     hasValue(measurements.browserStartMs) ||
     hasValue(measurements.browserOpenMs) ||
     hasValue(measurements.browserSnapshotMs);
+}
+
+function hasAgentSignal(measurements) {
+  return hasValue(measurements.agentTurnMs) ||
+    hasValue(measurements.coldAgentTurnMs) ||
+    hasValue(measurements.warmAgentTurnMs) ||
+    (measurements.agentTurns?.length ?? 0) > 0 ||
+    (measurements.agentTurnStats?.count ?? 0) > 0 ||
+    hasValue(measurements.agentPreProviderMs) ||
+    hasValue(measurements.agentProviderFinalMs);
 }
 
 function hasValue(value) {
@@ -1684,6 +1807,9 @@ function resourceHeadlineValue(measurements) {
 
 function resourceHeadlineEvidenceLabel(measurements) {
   const role = measurements.resourcePrimaryRole ?? null;
+  if (measurements.resourceGateKind === "role-missing") {
+    return role ? `${role}RssMbNotObserved` : "resourceRoleNotObserved";
+  }
   if (measurements.resourceGateKind === "tracked-total") {
     return "trackedTotalRssMb";
   }
@@ -1695,6 +1821,9 @@ function resourceHeadlineEvidenceLabel(measurements) {
 
 function resourceHeadlineText(measurements) {
   const role = measurements.resourcePrimaryRole ?? null;
+  if (measurements.resourceGateKind === "role-missing") {
+    return role ? `${role} RSS not observed` : "primary RSS not observed";
+  }
   if (measurements.resourceGateKind === "tracked-total") {
     return "tracked total RSS";
   }

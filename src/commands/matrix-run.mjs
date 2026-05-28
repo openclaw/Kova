@@ -18,6 +18,7 @@ import {
 } from "../performance/baselines.mjs";
 import { buildPerformanceSummary } from "../performance/stats.mjs";
 import { reportsDir, displayPath } from "../paths.mjs";
+import { networkFrontageControls, summarizeNetworkFrontage } from "../network-frontage.mjs";
 import { bundleReport, retainGateArtifacts } from "../reporting/artifacts.mjs";
 import { runEntries, runScenarioRepeats } from "../run/engine.mjs";
 import { allocateReportOutputPaths, releaseReportOutputLock, writeReportOutputs } from "../run/report-output.mjs";
@@ -45,6 +46,7 @@ export async function runMatrixRun(flags) {
   const targetSelector = targetPlan.selector ?? target;
   const fromSelector = fromPlan?.selector ?? flags.from ?? null;
   const regressionThresholds = await loadRegressionThresholds(flags);
+  const networkFrontage = networkFrontageControls(flags);
   const baselinePath = resolveBaselinePath(flags.baseline);
   const saveBaselinePath = resolveBaselinePath(flags.save_baseline);
   const baselineStore = baselinePath ? await loadBaselineStore(baselinePath) : null;
@@ -72,7 +74,10 @@ export async function runMatrixRun(flags) {
       from: fromSelector,
       state: entry.state,
       runId,
-      controls,
+      controls: {
+        ...controls,
+        networkFrontage
+      },
       auth,
       targetSetup,
       timeoutMs: resolveEntryTimeout(entry, flags)
@@ -109,11 +114,15 @@ export async function runMatrixRun(flags) {
     profile: profileSummary(profile),
     target: targetSelector,
     from: fromSelector,
-    controls,
+    controls: {
+      ...controls,
+      networkFrontage
+    },
     auth: authReportSummary(auth),
     state: null,
     platform,
     targetCleanup,
+    networkFrontage: summarizeNetworkFrontage(records, networkFrontage),
     performance,
     gate: null,
     records
@@ -159,6 +168,7 @@ export async function runMatrixRun(flags) {
       checksumPath: bundle.checksumPath,
       retainedGateArtifacts,
       gate: summarizeGateReceipt(gate),
+      networkFrontage: report.networkFrontage,
       performance: summarizePerformanceReceipt(report.performance, report.baseline),
       summary: report.summary
     }, null, 2));

@@ -3,9 +3,9 @@
   "ver": "2026.4.30-internal",
   "releaseDate": "2026-04-30",
   "sha": "local-build",
-  "passed": false,
+  "passed": true,
   "input": {
-    "path": "artifacts/phase9-deep-profile-run2/kova-<runId>.json",
+    "path": "tests/fixtures/reports/pass.json",
     "kind": "internal-report"
   },
   "destination": {
@@ -19,5 +19,5 @@
   "runCount": 1,
   "coldReadyDeltaPct": null,
   "comparisonRows": 0,
-  "headlineCount": 1
+  "headlineCount": 0
 }

@@ -1,0 +1,38 @@
+{
+  "id": "adversarial",
+  "title": "Adversarial Matrix",
+  "objective": "Focused OpenClaw resilience coverage for hostile-looking user inputs and malformed runtime conditions.",
+  "entries": [
+    {
+      "scenario": "adversarial-input-openai-compatible",
+      "state": "mock-openai-provider",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "agent-provider-malformed",
+      "state": "mock-openai-provider",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "agent-provider-protocol-failure",
+      "state": "mock-openai-provider",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "agent-provider-random-disconnect",
+      "state": "mock-openai-provider",
+      "timeoutMs": 240000
+    },
+    {
+      "scenario": "plugin-bad-manifest",
+      "state": "fresh",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "agent-network-offline",
+      "state": "fresh",
+      "timeoutMs": 180000
+    }
+  ],
+  "purpose": "diagnostic"
+}

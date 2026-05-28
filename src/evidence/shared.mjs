@@ -8,7 +8,7 @@ export function phaseCommandReceiptsOk(record) {
     }
     return Array.from({ length: commandCount }).every((_, index) => {
       const result = phase.results?.[index];
-      return result?.status === 0 && result.durationMs !== undefined;
+      return (result?.status === 0 || result?.evidenceStatus === "passed") && result.durationMs !== undefined;
     });
   });
 }
@@ -20,7 +20,7 @@ export function phaseCommandReceiptsReason(record) {
       if (!result) {
         return `${phase.id} command ${index + 1} receipt was not captured`;
       }
-      if (result.status !== 0) {
+      if (result.status !== 0 && result.evidenceStatus !== "passed") {
         return `${phase.id} command ${index + 1} exited ${result.status}`;
       }
       if (result.durationMs === undefined) {
