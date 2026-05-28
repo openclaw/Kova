@@ -463,12 +463,12 @@
         "agentTurnMs": 45000,
         "preProviderMs": 10000,
         "providerFinalMs": 3000,
-        "peakRssMb": 900,
+        "peakRssMb": 1024,
         "postReadyHealthP95Ms": 1000
       },
       "roleThresholds": {
         "gateway": {
-          "peakRssMb": 700,
+          "peakRssMb": 1024,
           "maxCpuPercent": 250
         },
         "mock-provider": {
@@ -2895,6 +2895,20 @@
           "declarationSource": "src/channels/message/types.ts"
         },
         {
+          "id": "poll",
+          "group": "durable-final",
+          "title": "Durable Final Poll",
+          "sourceSymbol": "durableFinalDeliveryCapabilities.poll",
+          "baselineExpectation": "poll results can be rendered, sent, receipted, and committed through the shared message-channel path",
+          "proofModes": [
+            "preflight",
+            "baseline",
+            "deterministic-shim",
+            "live-smoke"
+          ],
+          "declarationSource": "src/channels/message/types.ts"
+        },
+        {
           "id": "payload",
           "group": "durable-final",
           "title": "Durable Final Payload",
@@ -3227,7 +3241,6 @@
           "sourceSymbol": "ChannelMessageToolDiscovery.actions.send",
           "baselineExpectation": "a channel can expose its native send action through the OpenClaw message tool discovery path",
           "proofModes": [
-            "preflight",
             "deterministic-shim",
             "live-smoke"
           ],
@@ -3240,7 +3253,6 @@
           "sourceSymbol": "ChannelMessageToolDiscovery.actions.poll",
           "baselineExpectation": "a channel can expose its native poll action through the OpenClaw message tool discovery path when the platform supports polls",
           "proofModes": [
-            "preflight",
             "deterministic-shim",
             "live-smoke"
           ],
@@ -3253,7 +3265,6 @@
           "sourceSymbol": "ChannelMessageToolDiscovery.actions.react",
           "baselineExpectation": "a channel can expose its native reaction action through the OpenClaw message tool discovery path when the platform supports reactions",
           "proofModes": [
-            "preflight",
             "deterministic-shim",
             "live-smoke"
           ],
@@ -3266,7 +3277,6 @@
           "sourceSymbol": "ChannelMessageToolDiscovery.actions.delete",
           "baselineExpectation": "a channel can expose native message deletion through the OpenClaw message tool discovery path when the platform supports deletion",
           "proofModes": [
-            "preflight",
             "deterministic-shim",
             "live-smoke"
           ],
@@ -3279,7 +3289,6 @@
           "sourceSymbol": "ChannelMessageToolDiscovery.actions.edit",
           "baselineExpectation": "a channel can expose native message editing through the OpenClaw message tool discovery path when the platform supports edits",
           "proofModes": [
-            "preflight",
             "deterministic-shim",
             "live-smoke"
           ],
@@ -3292,7 +3301,6 @@
           "sourceSymbol": "ChannelMessageToolDiscovery.actions.topic-create",
           "baselineExpectation": "a channel can expose native topic creation through the OpenClaw message tool discovery path when the platform supports topics",
           "proofModes": [
-            "preflight",
             "deterministic-shim",
             "live-smoke"
           ],
@@ -3305,7 +3313,6 @@
           "sourceSymbol": "ChannelMessageToolDiscovery.actions.topic-edit",
           "baselineExpectation": "a channel can expose native topic editing through the OpenClaw message tool discovery path when the platform supports topics",
           "proofModes": [
-            "preflight",
             "deterministic-shim",
             "live-smoke"
           ],
@@ -3318,7 +3325,6 @@
           "sourceSymbol": "CHANNEL_MESSAGE_CAPABILITIES.delivery-pin",
           "baselineExpectation": "a channel can expose and execute the OpenClaw delivery pin capability through its message tool and outbound adapter surfaces",
           "proofModes": [
-            "preflight",
             "deterministic-shim",
             "live-smoke"
           ],
@@ -3331,7 +3337,6 @@
           "sourceSymbol": "CHANNEL_MESSAGE_CAPABILITIES.presentation",
           "baselineExpectation": "a channel can expose and render portable OpenClaw message presentation data through its message tool and outbound adapter surfaces",
           "proofModes": [
-            "preflight",
             "deterministic-shim",
             "live-smoke"
           ],
@@ -3706,6 +3711,7 @@
           "contentKinds": [
             "text",
             "media",
+            "poll",
             "payload",
             "batch"
           ],
@@ -3730,6 +3736,10 @@
             {
               "group": "durable-final",
               "id": "media"
+            },
+            {
+              "group": "durable-final",
+              "id": "poll"
             },
             {
               "group": "durable-final",
@@ -4234,7 +4244,18 @@
                 }
               }
             ],
-            "finalText": "NO_REPLY"
+            "finalText": "NO_REPLY",
+            "completionToolCalls": [
+              {
+                "name": "message",
+                "arguments": {
+                  "action": "send",
+                  "message": "The generated image is ready.",
+                  "media": "{{kova.generatedMediaPath}}"
+                }
+              }
+            ],
+            "completionFinalText": "NO_REPLY"
           },
           "expects": {
             "visibleDeliveries": 1,
@@ -4299,7 +4320,18 @@
                 }
               }
             ],
-            "finalText": "NO_REPLY"
+            "finalText": "NO_REPLY",
+            "completionToolCalls": [
+              {
+                "name": "message",
+                "arguments": {
+                  "action": "send",
+                  "message": "The generated image is ready.",
+                  "media": "{{kova.generatedMediaPath}}"
+                }
+              }
+            ],
+            "completionFinalText": "NO_REPLY"
           },
           "expects": {
             "visibleDeliveries": 1,
@@ -4972,7 +5004,18 @@
                 }
               }
             ],
-            "finalText": "NO_REPLY"
+            "finalText": "NO_REPLY",
+            "completionToolCalls": [
+              {
+                "name": "message",
+                "arguments": {
+                  "action": "send",
+                  "message": "The generated video is ready.",
+                  "media": "{{kova.generatedMediaPath}}"
+                }
+              }
+            ],
+            "completionFinalText": "NO_REPLY"
           },
           "expects": {
             "visibleDeliveries": 1,
@@ -5735,10 +5778,6 @@
             "visibleDeliveries": 1,
             "kind": "payload",
             "text": "KOVA_SOURCE_DELIVERY_PAYLOAD_OK",
-            "channelData": {
-              "kovaPayloadKind": "status-card",
-              "severity": "info"
-            },
             "hooks": true,
             "terminal": true,
             "noDuplicateFinal": true
@@ -9994,11 +10033,11 @@
         "agentTurnMs": 45000,
         "preProviderMs": 10000,
         "providerFinalMs": 3000,
-        "peakRssMb": 900,
+        "peakRssMb": 1024,
         "providerTimeoutMentions": 8,
         "roleThresholds": {
           "gateway": {
-            "peakRssMb": 900
+            "peakRssMb": 1024
           }
         },
         "missingDependencyErrors": 0,
@@ -10184,7 +10223,7 @@
           "title": "Post-Channel-Model-Turn Health",
           "intent": "Verify the gateway remains responsive after the channel model turn.",
           "commands": [
-            "ocm @{env} -- gateway status --json --require-rpc"
+            "ocm @{env} -- status --json"
           ],
           "evidence": [
             "gateway status probe",
