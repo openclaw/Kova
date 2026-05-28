@@ -64,6 +64,7 @@ export function renderMarkdownReport(report) {
   lines.push(...formatPerformanceSummaryTable(summary.groups));
   lines.push(...formatSampleSummaryTable(summary.samples));
   lines.push(...formatResourceRoleSection(report.records));
+  lines.push(...formatChannelWorkflowResourceSection(report.records));
   lines.push(...formatSelectedSampleDetails(report.records));
   lines.push(...formatArtifactSection(summary.artifacts));
   lines.push(...formatTargetCleanupSummary(report.targetCleanup));
@@ -455,6 +456,49 @@ function summarizeResourceRoles(records = []) {
     const rightScore = Math.max(right.peakRssMb ?? 0, right.maxCpuPercent ?? 0);
     return rightScore - leftScore;
   });
+}
+
+function formatChannelWorkflowResourceSection(records = []) {
+  const rows = summarizeChannelWorkflowResources(records).slice(0, 8);
+  if (rows.length === 0) {
+    return [];
+  }
+
+  const lines = ["## Channel Workflow Resources", ""];
+  lines.push("| Scenario | Channel | Workflow Case | Gateway RSS | Tracked RSS | CPU | User Action |");
+  lines.push("|---|---|---|---:|---:|---:|---|");
+  for (const row of rows) {
+    lines.push([
+      tableCell(row.scenario),
+      tableCell(row.channelId),
+      tableCell(row.caseId),
+      tableCell(valueMb(row.peakGatewayRssMb)),
+      tableCell(valueMb(row.peakTrackedRssMb)),
+      tableCell(valuePercent(row.maxCpuPercent)),
+      tableCell(row.userAction)
+    ].join(" | ").replace(/^/, "| ").replace(/$/, " |"));
+  }
+  lines.push("");
+  return lines;
+}
+
+function summarizeChannelWorkflowResources(records = []) {
+  const rows = [];
+  for (const [index, record] of records.entries()) {
+    const scenario = [record.scenario, record.state?.id].filter(Boolean).join("/") || `sample-${index + 1}`;
+    for (const row of record.measurements?.channelWorkflowResourceTopByGatewayRss ?? []) {
+      rows.push({
+        scenario,
+        channelId: row.channelId ?? "unknown",
+        caseId: row.caseId ?? row.workflow ?? "unknown",
+        userAction: row.userAction ?? "unknown",
+        peakGatewayRssMb: row.peakGatewayRssMb ?? null,
+        peakTrackedRssMb: row.peakTrackedRssMb ?? null,
+        maxCpuPercent: row.maxCpuPercent ?? null
+      });
+    }
+  }
+  return rows.toSorted((left, right) => (right.peakGatewayRssMb ?? 0) - (left.peakGatewayRssMb ?? 0));
 }
 
 export function buildReportSummary(report) {
