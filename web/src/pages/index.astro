@@ -1,6 +1,12 @@
 ---
 import Base from "../layouts/Base.astro";
-import { latestStableRelease, stableReleases, scenarioCounts } from "../lib/releases";
+import {
+  latestStableRelease,
+  stableReleases,
+  scenarioCounts,
+  scenarioSampleSummary,
+  scenarioTrendView,
+} from "../lib/releases";
 import type { Scenario } from "../content.config";
 import ScenarioTile from "../components/ScenarioTile.astro";
 
@@ -9,8 +15,14 @@ const scenarios = release.scenarios ?? [];
 const hasScenarioData = scenarios.length > 0;
 const counts = scenarioCounts(scenarios);
 const history = await stableReleases();
+const sampleSummary = scenarioSampleSummary(release);
+const trend = scenarioTrendView(release, history);
+const displayedScenarios = trend.scenarios;
+const sparklineSummary = trend.releaseCount >= 2
+  ? `sparkline = last ${trend.releaseCount} stable releases`
+  : "sparkline = repeated samples";
 
-const coldDelta = hasScenarioData ? (release.coldReadyDeltaPct ?? 0) : null;
+const coldDelta = hasScenarioData ? (release.coldReadyDeltaPct ?? null) : null;
 const coldDeltaCls =
   coldDelta == null ? "delta-flat"
   : Math.abs(coldDelta) < 0.5 ? "delta-flat"
@@ -18,13 +30,13 @@ const coldDeltaCls =
   : "delta-down";
 const coldDeltaText =
   coldDelta == null
-    ? "— no scenario data"
+    ? "— no prior stable baseline"
   : Math.abs(coldDelta) < 0.5
     ? "— stable cold ready"
     : `${coldDelta > 0 ? "▲" : "▼"} ${coldDelta > 0 ? "+" : ""}${coldDelta.toFixed(1)}% cold ready`;
 ---
 
-<Base title="kova — OpenClaw performance" active="home">
+<Base title="Kova — OpenClaw performance" active="home">
   <div class="container">
     {/* Compact status band: release + counts + neutral cold-ready delta. */}
     <section class="v2-status">
@@ -46,16 +58,18 @@ const coldDeltaText =
       </div>
     </section>
 
-    {/* Scenario wall: every tracked scenario, current state, last 6 releases. */}
+    {/* Scenario wall: every tracked scenario, current state, repeated samples. */}
     <div class="section-head" style="margin-top: var(--space-6)">
       <h2 class="section-title">Scenarios</h2>
-      <span class="section-meta">current state · sparkline = last 6 releases</span>
+      <span class="section-meta">
+        current state{sampleSummary ? ` · ${sampleSummary}` : ""} · {sparklineSummary}
+      </span>
     </div>
 
     {hasScenarioData ? (
       <div class="v2-wall">
-        {scenarios.map((s: Scenario) => (
-          <ScenarioTile scenario={s} href={`/releases/${release.ver}`} />
+        {displayedScenarios.map((s: Scenario) => (
+          <ScenarioTile scenario={s} href={`/releases/${release.ver}#scenario-${s.id}`} />
         ))}
       </div>
     ) : (

@@ -28,35 +28,58 @@ const { scenario: s, href, emptyMessage = "— env failed to provision —" } = 
 
 const dInfo = s.spark ? deltaFromSpark(s.spark, s.lowerIsBetter !== false) : null;
 const dt = deltaText(dInfo);
-const deltaLabel = s.spark ? (s.spark.length < 2 ? "first sample" : dt.text) : "no sample";
+const hasValue = s.value != null;
+const numericValue = hasValue ? s.value! : null;
+const friendlyLabel = s.metric ?? s.id;
+const deltaLabel = s.spark ? (s.spark.length < 2 ? "first sample" : dt.text) : (hasValue ? "no sample" : "status");
+const valueLabel = hasValue ? fmtVal(s.value, s.unit) : stateText(s.state);
+const footLeft = hasValue && s.threshold > 0
+  ? `${s.metric ?? "threshold"} ≤ ${fmtVal(s.threshold, s.unit)} ${s.unit}`.trim()
+  : (s.metric ?? "status");
 
 let vs = "";
 let vsCls = "";
-if (s.state === "fail" && s.value != null) {
-  const over = s.threshold > 0 ? ((s.value - s.threshold) / s.threshold) * 100 : null;
-  if (over != null && over > 0) {
+if (s.state === "fail" && numericValue != null) {
+  const over = s.threshold > 0 ? ((numericValue - s.threshold) / s.threshold) * 100 : null;
+  if (s.worstMetric) {
+    vs = formatWorstMetric(s.worstMetric);
+  } else if (over != null && over > 0) {
     vs = `+${over.toFixed(1)}% over`;
-  } else if (s.worstMetric) {
-    vs = s.worstMetric.name;
   } else {
     vs = "failed";
   }
   vsCls = "breach";
-} else if (s.state === "pass" && s.value != null) {
-  const under = s.threshold > 0 ? ((s.threshold - s.value) / s.threshold) * 100 : null;
+} else if (s.state === "fail") {
+  vs = s.worstMetric ? formatWorstMetric(s.worstMetric) : "failed";
+  vsCls = "breach";
+} else if (s.state === "pass" && numericValue != null) {
+  const under = s.threshold > 0 ? ((s.threshold - numericValue) / s.threshold) * 100 : null;
   vs = under != null ? `${under.toFixed(0)}% headroom` : "";
+} else if (s.state === "pass") {
+  vs = "passed";
+}
+
+function stateText(state: Scenario["state"]) {
+  if (state === "pass") return "passed";
+  if (state === "fail") return "failed";
+  return "blocked";
+}
+
+function formatWorstMetric(metric: NonNullable<Scenario["worstMetric"]>) {
+  if (metric.value === 0 && metric.unit === "") return metric.name;
+  return `${metric.name} ${fmtVal(metric.value, metric.unit)}${metric.unit}`;
 }
 ---
 
 <a class:list={["v2-tile", s.state]} href={href}>
   <div class="v2-tile-head">
-    <span class="v2-tile-name">{s.id}</span>
+    <span class="v2-tile-name">{friendlyLabel}</span>
     <span class="v2-tile-dot" aria-hidden="true"></span>
   </div>
-  {s.metric && <div class="v2-tile-metric">{s.metric}</div>}
+  <div class="v2-tile-metric">{s.id}</div>
   <div class="v2-tile-row">
-    <span class="v2-tile-value">
-      {fmtVal(s.value, s.unit)}<span class="unit">{s.unit}</span>
+    <span class:list={["v2-tile-value", !hasValue && "status-value"]}>
+      {valueLabel}{hasValue && s.unit && <span class="unit">{s.unit}</span>}
     </span>
     <span class:list={["v2-tile-delta", dt.cls]}>
       {deltaLabel}
@@ -68,7 +91,7 @@ if (s.state === "fail" && s.value != null) {
     <div class="v2-tile-empty">{emptyMessage}</div>
   )}
   <div class="v2-tile-foot">
-    <span>{s.metric ?? "threshold"} ≤ {fmtVal(s.threshold, s.unit)} {s.unit}</span>
+    <span>{footLeft}</span>
     <span class={vsCls}>{vs}</span>
   </div>
 </a>

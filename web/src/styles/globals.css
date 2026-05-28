@@ -1098,14 +1098,20 @@ button {
 .v2-tile.block::before { background: var(--warn); }
 
 .v2-tile-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
-.v2-tile-name { font-family: var(--font-mono); font-size: var(--text-2); color: var(--text-2c); letter-spacing: 0.01em; }
+.v2-tile-name {
+  font-family: var(--font-sans);
+  font-size: var(--text-3);
+  font-weight: 650;
+  color: var(--text-1c);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
 .v2-tile-metric {
   margin-top: calc(-1 * var(--space-2));
   font-family: var(--font-mono);
   font-size: var(--text-1);
   color: var(--text-3c);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
 }
 .v2-tile-dot {
   width: 8px; height: 8px; border-radius: 50%; flex: none;
@@ -1125,6 +1131,13 @@ button {
   line-height: 1;
 }
 .v2-tile.block .v2-tile-value { color: var(--text-3c); font-size: var(--text-5); }
+.v2-tile-value.status-value {
+  font-size: var(--text-5);
+  text-transform: lowercase;
+  letter-spacing: 0;
+}
+.v2-tile.fail .v2-tile-value.status-value { color: var(--fail); }
+.v2-tile.pass .v2-tile-value.status-value { color: var(--pass); }
 .v2-tile-value .unit { font-size: 0.5em; color: var(--text-3c); margin-left: 0.2em; }
 .v2-tile-delta { font-family: var(--font-mono); font-size: var(--text-1); }
 .v2-tile .spark { height: 28px; }

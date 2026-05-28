@@ -15,7 +15,7 @@
   "dryRun": true,
   "augmented": true,
   "priorVer": null,
-  "scenarioCount": 10,
+  "scenarioCount": 12,
   "runCount": 1,
   "coldReadyDeltaPct": null,
   "comparisonRows": 0,

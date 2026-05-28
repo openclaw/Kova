@@ -1,7 +1,7 @@
 ---
 import Base from "../../layouts/Base.astro";
 import { getCollection } from "astro:content";
-import { latestRelease, scenarioCounts } from "../../lib/releases";
+import { latestRelease, scenarioCounts, scenarioSampleSummary } from "../../lib/releases";
 import { fmtVal } from "../../lib/format";
 import {
   fmtMs,
@@ -33,6 +33,7 @@ const hasDetail = Boolean(release.scenarios && release.scenarios.length);
 const counts = hasDetail ? scenarioCounts(release.scenarios!) : null;
 const runsList: Run[] = release.runs ?? [];
 const hasRuns = runsList.length > 0;
+const sampleSummary = scenarioSampleSummary(release);
 const publicHeadlines = (release.headline ?? []).filter((h: Headline) => !isResourceMetric(h.metric));
 const publicComparisonRows = release.comparison?.rows.filter((row: ComparisonRow) => !isResourceMetric(row.metric)) ?? [];
 
@@ -42,11 +43,11 @@ function isResourceMetric(metric: string | undefined): boolean {
 ---
 
 <Base
-  title={`kova — OpenClaw ${release.ver}`}
+  title={`Kova — OpenClaw ${release.ver}`}
   active="releases"
   description={hasDetail && counts
-    ? `OpenClaw ${release.ver} · ${counts.pass} pass · ${counts.fail} fail · ${counts.block} blocked · measured by kova.`
-    : `OpenClaw ${release.ver} · measured by kova.`}
+    ? `OpenClaw ${release.ver} · ${counts.pass} pass · ${counts.fail} fail · ${counts.block} blocked · measured by Kova.`
+    : `OpenClaw ${release.ver} · measured by Kova.`}
   ogImage={`/og/${release.ver}.png`}
 >
   <div class="container">
@@ -104,7 +105,10 @@ function isResourceMetric(metric: string | undefined): boolean {
     {hasDetail && (
       <>
         <section>
-          <div class="section-rule"><h2>Scenarios</h2></div>
+          <div class="section-rule">
+            <h2>Scenarios</h2>
+            {sampleSummary && <span class="section-meta">{sampleSummary} · medians shown</span>}
+          </div>
           <div class="v2-wall">
             {release.scenarios!.map((s: Scenario) => (
               <ScenarioTile scenario={s} href={`#scenario-${s.id}`} emptyMessage="— no sample —" />

@@ -9,7 +9,7 @@
  * is `null` (rendered as "not measured"), not faked.
  */
 
-import { stableReleases } from "./releases";
+import { scenarioSampleSummary, stableReleases } from "./releases";
 import { scenarioHistories, type ScenarioHistory, type TrendPoint } from "./scenarios";
 import type { Release, Scenario } from "../content.config";
 
@@ -60,6 +60,7 @@ export interface MatrixData {
   rows: MatrixRow[];
   /** Per-release headline values (one per release, aligned to `releases[]`). */
   headlines: HeadlineColumn[];
+  sampleSummary: string | null;
 }
 
 const COLD_ID = "release-runtime-startup";
@@ -155,7 +156,7 @@ export async function matrixData(): Promise<MatrixData> {
     };
   });
 
-  return { releases: matrixReleases, rows, headlines };
+  return { releases: matrixReleases, rows, headlines, sampleSummary: scenarioSampleSummary(releasesDesc[0]) };
 }
 
 function headlineMetric(r: Release, metrics: string[]): { value: number | null; breach: boolean } | null {

@@ -69,3 +69,54 @@ export function scenarioCounts(scenarios: Scenario[]) {
   }
   return { pass, fail, block, total: scenarios.length };
 }
+
+export function scenarioSampleSummary(release: Release): string | null {
+  const counts = (release.runs ?? [])
+    .flatMap((run) => run.scenarios ?? [])
+    .map((scenario) => scenario.sampleCount)
+    .filter((count) => Number.isFinite(count) && count > 0);
+  if (counts.length === 0) return null;
+
+  const min = Math.min(...counts);
+  const max = Math.max(...counts);
+  const sampleText = max === 1 ? "sample" : "samples";
+  return min === max
+    ? `${max} ${sampleText}/scenario`
+    : `${min}-${max} samples/scenario`;
+}
+
+export function scenarioTrendView(
+  release: Release,
+  releases: Release[],
+  limit = 6,
+): { scenarios: Scenario[]; releaseCount: number } {
+  const scenarios = release.scenarios ?? [];
+  const trendReleases = [...releases]
+    .filter((r) => (r.scenarios ?? []).length > 0)
+    .reverse()
+    .slice(-limit);
+
+  if (trendReleases.length < 2) {
+    return { scenarios, releaseCount: trendReleases.length };
+  }
+
+  return {
+    scenarios: scenarios.map((scenario) => withReleaseTrend(scenario, trendReleases)),
+    releaseCount: trendReleases.length,
+  };
+}
+
+function withReleaseTrend(scenario: Scenario, releases: Release[]): Scenario {
+  const lowerIsBetter = scenario.lowerIsBetter !== false;
+  const values = releases
+    .map((release) => (release.scenarios ?? []).find((candidate) =>
+      candidate.id === scenario.id &&
+      candidate.unit === scenario.unit &&
+      (candidate.lowerIsBetter !== false) === lowerIsBetter,
+    ))
+    .filter((candidate): candidate is Scenario => Boolean(candidate))
+    .map((candidate) => candidate.value)
+    .filter((value): value is number => value != null && Number.isFinite(value));
+
+  return values.length >= 2 ? { ...scenario, spark: values } : scenario;
+}

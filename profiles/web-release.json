@@ -1,7 +1,7 @@
 {
   "id": "web-release",
   "title": "Web Release Metrics",
-  "objective": "Generate public release-page metrics for startup, gateway responsiveness, agent turn latency, Gateway session send latency, and runtime/plugin health without running the full release gate.",
+  "objective": "Generate public release-page metrics for startup, gateway responsiveness, session send latency, agent/channel/TUI turn latency, dashboard responsiveness, and runtime/plugin health without running the full release gate.",
   "entries": [
     {
       "scenario": "release-runtime-startup",
@@ -29,13 +29,23 @@
       "timeoutMs": 240000
     },
     {
-      "scenario": "agent-gateway-rpc-turn",
+      "scenario": "openai-compatible-turn",
       "state": "mock-openai-provider",
       "timeoutMs": 180000
     },
     {
-      "scenario": "openai-compatible-turn",
+      "scenario": "channel-model-turn-baseline",
       "state": "mock-openai-provider",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "tui-message-turn",
+      "state": "mock-openai-provider",
+      "timeoutMs": 180000
+    },
+    {
+      "scenario": "dashboard-readiness",
+      "state": "fresh",
       "timeoutMs": 180000
     },
     {

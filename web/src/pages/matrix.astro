@@ -20,6 +20,7 @@ import { fmtMetric, deltaClass } from "../lib/release-format";
 const data = await matrixData();
 const lastIdx = data.releases.length - 1;
 const latest = data.releases[lastIdx];
+const sampleSummary = data.sampleSummary ? `${data.sampleSummary} · medians shown` : "medians shown";
 
 // per-release column verdict for heatmap aggregate header row
 const verdicts = data.releases.map((r) => {
@@ -95,12 +96,12 @@ function deltaSpan(curr: number | null | undefined, prev: number | null | undefi
 }
 ---
 
-<Base title="kova — matrix" active="matrix">
+<Base title="Kova — matrix" active="matrix">
   <div class="container">
     <div class="section-head" style="margin-top: var(--space-6)">
       <h1 class="section-title">Matrix · all releases</h1>
       <span class="section-meta">
-        {data.rows.length} scenario{data.rows.length === 1 ? "" : "s"} · {data.releases.length} release{data.releases.length === 1 ? "" : "s"} · measured by kova on m3-max-01
+        {data.rows.length} scenario{data.rows.length === 1 ? "" : "s"} · {data.releases.length} release{data.releases.length === 1 ? "" : "s"} · {sampleSummary}
       </span>
     </div>
 

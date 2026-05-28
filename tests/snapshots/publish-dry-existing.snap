@@ -6,5 +6,5 @@ _dry-run — no files written_
 - input: `web/src/content/releases/2026.5.26.json` (web-payload)
 - destination: `web/src/content/releases/2026.5.26.json` · replacing existing
 - sha: `2026.5.26` · passed: no
-- scenarios: 10 · runs: 1 · headline rows: 4
+- scenarios: 12 · runs: 1 · headline rows: 4
 - augmented vs prior: `—` · comparison rows: 0 · cold-ready Δ: —

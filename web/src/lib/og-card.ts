@@ -98,7 +98,7 @@ export function cardSvg(d: CardData): string {
             stroke="${TOKENS.text1}" stroke-width="3" fill="none"
             stroke-linecap="round" stroke-linejoin="round" />
       <text x="125" y="32" font-family="ui-sans-serif, system-ui, sans-serif"
-            font-size="36" font-weight="600" fill="${TOKENS.text1}">kova</text>
+            font-size="36" font-weight="600" fill="${TOKENS.text1}">Kova</text>
     </g>`;
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
@@ -171,7 +171,7 @@ export function releaseCard(release: Release): CardData {
   }
 
   return {
-    eyebrow: "OpenClaw release · measured by kova",
+    eyebrow: "OpenClaw release · measured by Kova",
     headline: `OpenClaw ${release.ver}`,
     subhead: release.date,
     counts,
@@ -183,9 +183,9 @@ export function releaseCard(release: Release): CardData {
 }
 
 export const defaultCard: CardData = {
-  eyebrow: "Continuous · reproducible · public",
+  eyebrow: "Stable releases · reproducible · public",
   headline: "OpenClaw runtime performance",
-  subhead: "Startup time · agent run time · measured by kova",
+  subhead: "Startup time · agent run time · measured by Kova",
   counts: null,
   hero: null,
   fact: "kova.openclaw.dev",

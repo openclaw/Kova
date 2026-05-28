@@ -14515,9 +14515,9 @@
     {
       "id": "web-release",
       "title": "Web Release Metrics",
-      "objective": "Generate public release-page metrics for startup, gateway responsiveness, agent turn latency, Gateway session send latency, and runtime/plugin health without running the full release gate.",
+      "objective": "Generate public release-page metrics for startup, gateway responsiveness, session send latency, agent/channel/TUI turn latency, dashboard responsiveness, and runtime/plugin health without running the full release gate.",
       "purpose": "release",
-      "entryCount": 10,
+      "entryCount": 12,
       "targetKinds": null,
       "diagnostics": null,
       "calibration": null,
@@ -17407,18 +17407,20 @@
       },
       {
         "id": "web-release",
-        "entryCount": 10,
+        "entryCount": 12,
         "surfaces": [
           "agent-cli-local-turn",
-          "agent-gateway-rpc-turn",
           "bundled-plugin-startup",
           "bundled-runtime-deps",
+          "channel-model-turn-baseline",
+          "dashboard",
           "fresh-install",
           "gateway-performance",
           "gateway-session-send-turn",
           "openai-compatible-turn",
           "plugin-lifecycle",
-          "release-runtime-startup"
+          "release-runtime-startup",
+          "tui-message-turn"
         ],
         "states": [
           "fresh",
@@ -17429,39 +17431,45 @@
         ],
         "scenarios": [
           "agent-cold-warm-message",
-          "agent-gateway-rpc-turn",
           "bundled-plugin-startup",
           "bundled-runtime-deps",
+          "channel-model-turn-baseline",
+          "dashboard-readiness",
           "fresh-install",
           "gateway-performance",
           "gateway-session-send-turn",
           "openai-compatible-turn",
           "plugin-lifecycle",
-          "release-runtime-startup"
+          "release-runtime-startup",
+          "tui-message-turn"
         ],
         "requirements": [
           "agent-cli-local-turn:baseline",
-          "agent-gateway-rpc-turn:baseline",
           "bundled-plugin-startup:baseline",
           "bundled-runtime-deps:baseline",
+          "channel-model-turn-baseline:baseline",
+          "dashboard:baseline",
           "fresh-install:baseline",
           "gateway-performance:baseline",
           "gateway-session-send-turn:baseline",
           "openai-compatible-turn:baseline",
           "plugin-lifecycle:baseline",
-          "release-runtime-startup:baseline"
+          "release-runtime-startup:baseline",
+          "tui-message-turn:baseline"
         ],
         "stateSurfaces": [
           "agent-cli-local-turn:mock-openai-provider",
-          "agent-gateway-rpc-turn:mock-openai-provider",
           "bundled-plugin-startup:fresh",
           "bundled-runtime-deps:missing-plugin-index",
+          "channel-model-turn-baseline:mock-openai-provider",
+          "dashboard:fresh",
           "fresh-install:fresh",
           "gateway-performance:many-bundled-plugins",
           "gateway-session-send-turn:mock-openai-provider",
           "openai-compatible-turn:mock-openai-provider",
           "plugin-lifecycle:plugin-index",
-          "release-runtime-startup:fresh"
+          "release-runtime-startup:fresh",
+          "tui-message-turn:mock-openai-provider"
         ],
         "required": {
           "surfaces": [],
@@ -17523,14 +17531,17 @@
           "agent-cli-local-turn": [
             "mock-openai-provider"
           ],
-          "agent-gateway-rpc-turn": [
-            "mock-openai-provider"
-          ],
           "bundled-plugin-startup": [
             "fresh"
           ],
           "bundled-runtime-deps": [
             "missing-plugin-index"
+          ],
+          "channel-model-turn-baseline": [
+            "mock-openai-provider"
+          ],
+          "dashboard": [
+            "fresh"
           ],
           "fresh-install": [
             "fresh"
@@ -17549,17 +17560,22 @@
           ],
           "release-runtime-startup": [
             "fresh"
+          ],
+          "tui-message-turn": [
+            "mock-openai-provider"
           ]
         },
         "traitSurfaceCoverage": {
           "agent-state": [
             "agent-cli-local-turn",
-            "agent-gateway-rpc-turn",
+            "channel-model-turn-baseline",
             "gateway-session-send-turn",
-            "openai-compatible-turn"
+            "openai-compatible-turn",
+            "tui-message-turn"
           ],
           "baseline": [
             "bundled-plugin-startup",
+            "dashboard",
             "fresh-install",
             "release-runtime-startup"
           ],
@@ -17568,6 +17584,7 @@
           ],
           "fresh-user": [
             "bundled-plugin-startup",
+            "dashboard",
             "fresh-install",
             "release-runtime-startup"
           ],
@@ -17577,9 +17594,10 @@
           ],
           "mock-provider": [
             "agent-cli-local-turn",
-            "agent-gateway-rpc-turn",
+            "channel-model-turn-baseline",
             "gateway-session-send-turn",
-            "openai-compatible-turn"
+            "openai-compatible-turn",
+            "tui-message-turn"
           ],
           "performance-pressure": [
             "gateway-performance"
@@ -17591,10 +17609,11 @@
           ],
           "provider-pressure": [
             "agent-cli-local-turn",
-            "agent-gateway-rpc-turn",
+            "channel-model-turn-baseline",
             "gateway-performance",
             "gateway-session-send-turn",
-            "openai-compatible-turn"
+            "openai-compatible-turn",
+            "tui-message-turn"
           ]
         }
       }

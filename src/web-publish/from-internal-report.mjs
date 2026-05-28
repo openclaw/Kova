@@ -27,7 +27,60 @@ const PREFERRED_SCENARIO_METRICS = new Map([
   ["agent-gateway-rpc-turn", ["agentTurnMs", "agentPreProviderMs"]],
   ["gateway-session-send-turn", ["agentTurnMs", "coldAgentTurnMs", "warmAgentTurnMs", "agentPreProviderMs"]],
   ["openai-compatible-turn", ["agentTurnMs", "agentPreProviderMs"]],
+  ["channel-model-turn-baseline", ["agentTurnMs", "agentPreProviderMs"]],
+  ["tui-message-turn", ["readinessHealthReadyMs", "coldReadyMs", "postReadyHealthP95Ms"]],
+  ["dashboard-readiness", ["readinessHealthReadyMs", "postReadyHealthP95Ms", "coldReadyMs"]],
+  ["plugin-lifecycle", ["coldReadyMs", "readinessHealthReadyMs", "warmReadyMs"]],
+  ["bundled-runtime-deps", ["coldReadyMs", "readinessHealthReadyMs", "warmReadyMs"]],
+  ["bundled-plugin-startup", ["coldReadyMs", "readinessHealthReadyMs", "warmReadyMs"]],
 ]);
+
+const PUBLIC_SCENARIO_LABELS = {
+  "release-runtime-startup": "Startup",
+  "fresh-install": "Fresh Install",
+  "gateway-performance": "GW P95",
+  "gateway-session-send-turn": "Session Send",
+  "agent-cold-warm-message": "Agent Run",
+  "agent-gateway-rpc-turn": "Agent Run",
+  "openai-compatible-turn": "OpenAI Turn",
+  "channel-model-turn-baseline": "Channel Turn",
+  "tui-message-turn": "TUI Ready",
+  "dashboard-readiness": "Dashboard Ready",
+  "plugin-lifecycle": "Plugin Health",
+  "bundled-runtime-deps": "Runtime Deps",
+  "bundled-plugin-startup": "Plugin Startup",
+};
+
+const PUBLIC_SCENARIO_THRESHOLDS = {
+  "release-runtime-startup": 1500,
+  "fresh-install": 1000,
+  "gateway-performance": 290,
+  "gateway-session-send-turn": 2500,
+  "agent-cold-warm-message": 7500,
+  "agent-gateway-rpc-turn": 2500,
+  "openai-compatible-turn": 2500,
+  "channel-model-turn-baseline": 7500,
+  "tui-message-turn": 4500,
+  "dashboard-readiness": 2000,
+  "plugin-lifecycle": 1500,
+  "bundled-runtime-deps": 1500,
+  "bundled-plugin-startup": 1500,
+};
+
+const PUBLIC_SCENARIO_ORDER = [
+  "release-runtime-startup",
+  "fresh-install",
+  "gateway-session-send-turn",
+  "agent-cold-warm-message",
+  "channel-model-turn-baseline",
+  "tui-message-turn",
+  "dashboard-readiness",
+  "gateway-performance",
+  "openai-compatible-turn",
+  "bundled-plugin-startup",
+  "bundled-runtime-deps",
+  "plugin-lifecycle",
+];
 
 const HEADLINE_SPECS = [
   {
@@ -75,6 +128,7 @@ const PUBLIC_METRIC_LABELS = {
   coldProviderFinalMs: "cold provider",
   warmProviderFinalMs: "warm provider",
   agentPostProviderMs: "post-provider",
+  preProviderDominanceRatio: "pre-provider share",
   postReadyHealthP95Ms: "gw.p95",
   healthP95Ms: "gw.p95",
   startupHealthP95Ms: "startup p95",
@@ -82,6 +136,8 @@ const PUBLIC_METRIC_LABELS = {
   readinessHealthReadyMs: "startup",
   readinessListeningMs: "listening",
   warmReadyMs: "warm ready",
+  dashboardConnectMs: "dashboard",
+  tuiSmokeMs: "tui",
 };
 
 const PUBLIC_METRIC_UNITS = {
@@ -112,6 +168,7 @@ export function projectInternalReport(report, metadata = {}) {
 
   const summary = buildReportSummary(report);
   const scenarios = aggregateScenarios(report, summary.findings);
+  const orderedScenarios = orderPublicScenarios(scenarios);
   const records = report.records ?? [];
 
   return pruneUndefined({
@@ -124,8 +181,18 @@ export function projectInternalReport(report, metadata = {}) {
     host: hostFromReport(report),
     runtimeTargets: runtimeTargetsFromReport(report),
     headline: projectHeadlines(records),
-    scenarios: scenarios.map((scenario) => projectScenarioSummary(scenario, records)),
-    runs: [projectRun(report, summary, scenarios, records)],
+    scenarios: orderedScenarios.map((scenario) => projectScenarioSummary(scenario, records)),
+    runs: [projectRun(report, summary, orderedScenarios, records)],
+  });
+}
+
+function orderPublicScenarios(scenarios) {
+  const rank = new Map(PUBLIC_SCENARIO_ORDER.map((id, index) => [id, index]));
+  return [...scenarios].sort((a, b) => {
+    const ar = rank.get(a.id) ?? Number.MAX_SAFE_INTEGER;
+    const br = rank.get(b.id) ?? Number.MAX_SAFE_INTEGER;
+    if (ar !== br) return ar - br;
+    return String(a.id).localeCompare(String(b.id));
   });
 }
 
@@ -150,7 +217,7 @@ function projectRun(report, summary, scenarios, records) {
 }
 
 function projectScenarioSummary(scenario, records) {
-  const headline = chooseScenarioHeadline(scenario, records);
+  const headline = publicScenarioHeadline(scenario, chooseScenarioHeadline(scenario, records));
   return pruneUndefined({
     id: scenario.id,
     metric: headline.metric,
@@ -165,7 +232,7 @@ function projectScenarioSummary(scenario, records) {
 }
 
 function projectRunScenario(scenario, records) {
-  const headline = chooseScenarioHeadline(scenario, records);
+  const headline = publicScenarioHeadline(scenario, chooseScenarioHeadline(scenario, records));
   return pruneUndefined({
     id: scenario.id,
     state: stateFromVerdict(scenario.verdict),
@@ -350,6 +417,17 @@ function chooseScenarioHeadline(scenario, records) {
   };
 }
 
+function publicScenarioHeadline(scenario, headline) {
+  const metric = PUBLIC_SCENARIO_LABELS[scenario.id] ?? headline.metric;
+  const threshold = PUBLIC_SCENARIO_THRESHOLDS[scenario.id] ?? headline.threshold;
+  return {
+    ...headline,
+    metric,
+    threshold,
+    worstMetric: headline.worstMetric ?? failureReasonMetric(scenario),
+  };
+}
+
 function headlineFromViolation(violation, scenario) {
   const metricKey = normalizeViolationMetricKey(violation.metric);
   const rawValue = numericOrNull(violation.actual);
@@ -371,15 +449,13 @@ function headlineFromViolation(violation, scenario) {
 }
 
 function headlineFromMetric(metric, scenario, records = []) {
-  const raw = metric.value ?? metric.stats?.median ?? metric.stats?.max ?? null;
+  const raw = metric.stats?.median ?? metric.value ?? metric.stats?.max ?? null;
   const normalized = normalizeMetricValue(metric.key, raw, metric.unit);
   const thresholdRaw = metric.threshold ?? directThreshold(scenario.id, records, metric.key);
   const threshold = normalizeMetricValue(metric.key, thresholdRaw, metric.unit).value;
   const label = publicMetricLabel(metric.key, metric.label ?? METRIC_LABELS[metric.key] ?? metric.key);
   const unit = normalized.unit || metric.unit || METRIC_UNITS[metric.key] || "";
-  const spark = metric.stats?.samples?.length
-    ? metric.stats.samples.map((v) => normalizeMetricValue(metric.key, v, unit).value).filter((v) => v != null)
-    : normalized.value == null ? null : [normalized.value];
+  const spark = metricSpark(metric, scenario, records, unit, normalized.value);
 
   return {
     metric: label,
@@ -400,7 +476,7 @@ function directScenarioMetric(scenarioId, records, metricKey) {
     .filter((v) => Number.isFinite(Number(v)))
     .map(Number);
   if (values.length === 0) return null;
-  const value = values[values.length - 1];
+  const value = median(values);
   const unit = PUBLIC_METRIC_UNITS[metricKey] ?? METRIC_UNITS[metricKey] ?? "";
   const normalized = normalizeMetricValue(metricKey, value, unit);
   const threshold = normalizeMetricValue(metricKey, directThreshold(scenarioId, records, metricKey), unit).value;
@@ -414,10 +490,33 @@ function directScenarioMetric(scenarioId, records, metricKey) {
   };
 }
 
+function metricSpark(metric, scenario, records, unit, fallbackValue) {
+  const aggregateSamples = metric.stats?.samples;
+  if (Array.isArray(aggregateSamples) && aggregateSamples.length > 0) {
+    return aggregateSamples.map((v) => normalizeMetricValue(metric.key, v, unit).value).filter((v) => v != null);
+  }
+
+  const recordSamples = metricSamplesFromRecords(scenario.id, records, metric.key, unit);
+  if (recordSamples.length > 0) return recordSamples;
+  return fallbackValue == null ? null : [fallbackValue];
+}
+
+function metricSamplesFromRecords(scenarioId, records, metricKey, unit) {
+  return records
+    .filter((record) => record.scenario === scenarioId)
+    .map((record) => measurementMetricValue(record.measurements ?? {}, metricKey))
+    .filter((value) => Number.isFinite(Number(value)))
+    .map((value) => normalizeMetricValue(metricKey, Number(value), unit).value)
+    .filter((value) => value != null);
+}
+
 function attachWorstMetric(headline, scenario, records) {
   if (headline?.worstMetric || scenario.verdict !== "FAIL") return headline;
   const violation = findHeadlineViolation(scenario.id, records);
-  if (!violation) return headline;
+  if (!violation) {
+    const reason = failureReasonMetric(scenario);
+    return reason ? { ...headline, worstMetric: reason } : headline;
+  }
   const metricKey = normalizeViolationMetricKey(violation.metric);
   const rawValue = numericOrNull(violation.actual);
   const value = normalizeMetricValue(metricKey, rawValue, METRIC_UNITS[metricKey] ?? "");
@@ -430,6 +529,24 @@ function attachWorstMetric(headline, scenario, records) {
       unit: value.unit,
     },
   };
+}
+
+function failureReasonMetric(scenario) {
+  if (scenario.verdict !== "FAIL") return undefined;
+  const text = (scenario.findings ?? []).find((finding) => finding.severity === "blocking" || finding.severity === "fail")?.summary
+    ?? (scenario.findings ?? [])[0]?.summary;
+  const reason = publicFailureReason(text);
+  return reason ? { name: reason, value: 0, unit: "" } : undefined;
+}
+
+function publicFailureReason(text) {
+  const s = String(text ?? "");
+  if (!s) return "";
+  if (/pre-provider work dominated/i.test(s)) return "pre-provider share";
+  if (/without a usable assistant response|did not produce the expected assistant response/i.test(s)) return "no assistant response";
+  if (/no .*provider request/i.test(s)) return "no provider request";
+  if (/final gateway state was restarting/i.test(s)) return "gateway restarting";
+  return s.length > 34 ? `${s.slice(0, 31)}...` : s;
 }
 
 function directThreshold(scenarioId, records, metricKey) {
@@ -525,7 +642,7 @@ function projectHeadlines(records) {
   for (const spec of HEADLINE_SPECS) {
     const hit = spec.worstAcrossScenarios
       ? worstRecordMetric(records, spec.metricKeys)
-      : firstRecordMetric(records, spec.scenarioId, spec.metricKeys);
+      : aggregateScenarioMetric(records, spec.scenarioId, spec.metricKeys);
     if (!hit) continue;
     out.push({
       label: spec.label,
@@ -539,12 +656,15 @@ function projectHeadlines(records) {
   return out;
 }
 
-function firstRecordMetric(records, scenarioId, keys) {
-  for (const record of records) {
-    if (record.scenario !== scenarioId) continue;
-    for (const key of keys) {
-      const value = measurementMetricValue(record.measurements ?? {}, key);
-      if (Number.isFinite(Number(value))) return { record, key, value: Number(value) };
+function aggregateScenarioMetric(records, scenarioId, keys) {
+  const samples = records.filter((record) => record.scenario === scenarioId);
+  for (const key of keys) {
+    const values = samples
+      .map((record) => measurementMetricValue(record.measurements ?? {}, key))
+      .filter((value) => Number.isFinite(Number(value)))
+      .map(Number);
+    if (values.length > 0) {
+      return { record: samples[0], key, value: median(values) };
     }
   }
   return null;
@@ -704,6 +824,17 @@ function round(value, digits = 0) {
   if (!Number.isFinite(Number(value))) return value;
   const factor = 10 ** digits;
   return Math.round(Number(value) * factor) / factor;
+}
+
+function median(values) {
+  const sorted = values
+    .map(Number)
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b);
+  if (sorted.length === 0) return null;
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) return sorted[mid];
+  return (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
 function pruneUndefined(value) {
