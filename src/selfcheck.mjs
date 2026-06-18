@@ -2912,6 +2912,8 @@ function agentColdWarmEvaluationCheck() {
   try {
     const coldCommand = "ocm @kova -- agent --local --agent main --session-id kova-agent-cold-warm --message hi --json";
     const warmCommand = "ocm @kova -- agent --local --agent main --session-id kova-agent-cold-warm --message hi --json";
+    const truncatedPayloadResponse = `{"payloads":[{"text":"KOVA_AGENT_OK"}],"meta":{"details":"${"x".repeat(20000)}
+[truncated 100 chars]`;
     const record = {
       scenario: "agent-cold-warm-message",
       status: "PASS",
@@ -2928,7 +2930,7 @@ function agentColdWarmEvaluationCheck() {
             finishedAt: "2026-04-30T10:01:03.000Z",
             finishedAtEpochMs: 1777543263000,
             durationMs: 62000,
-            stdout: "{\"finalAssistantVisibleText\":\"KOVA_AGENT_OK\"}",
+            stdout: truncatedPayloadResponse,
             stderr: ""
           }],
           metrics: { logs: zeroLogMetrics(), health: { ok: true } }
@@ -3011,6 +3013,8 @@ function agentColdWarmEvaluationCheck() {
     assertEqual(record.measurements.coldProviderFinalMs, 800, "cold provider final");
     assertEqual(record.measurements.agentLatencyDiagnosis.kind, "cold-pre-provider-stall", "latency diagnosis kind");
     assertEqual(record.measurements.agentTurns[0].responseOk, true, "cold response ok");
+    assertEqual(record.measurements.agentTurns[0].responseText, "KOVA_AGENT_OK", "truncated payload response text");
+    assertEqual(record.measurements.agentTurns[1].responseText, "KOVA_AGENT_OK", "final assistant response precedence");
     assertEqual(record.measurements.agentTurns[1].providerRoutes[0].value, "/v1/responses", "warm provider route evidence");
     assertEqual(
       renderPasteSummary({
