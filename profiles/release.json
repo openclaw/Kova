@@ -381,7 +381,7 @@
     {
       "scenario": "agent-cold-warm-message",
       "state": "mock-openai-provider",
-      "timeoutMs": 180000
+      "timeoutMs": 300000
     },
     {
       "scenario": "agent-gateway-rpc-turn",

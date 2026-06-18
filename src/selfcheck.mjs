@@ -292,6 +292,11 @@ export async function runSelfCheck(flags = {}) {
       assertEqual(data.profile?.diagnostics?.timelineRequired, true, "diagnostic timeline required");
       assertArrayNotEmpty(data.entries, "diagnostic entries");
     }));
+    checks.push(await jsonCommandCheck("release-agent-cold-warm-plan-json", "node bin/kova.mjs matrix plan --profile release --target local-build:/tmp/openclaw --include scenario:agent-cold-warm-message --json", (data) => {
+      assertEqual(data.profile?.id, "release", "release profile id");
+      assertEqual(data.entries?.length, 1, "release agent cold/warm entry count");
+      assertEqual(data.entries?.[0]?.timeoutMs, 300000, "release agent cold/warm timeout");
+    }));
     checks.push(await failingCommandCheck(
       "diagnostic-profile-rejects-non-local-build",
       "node bin/kova.mjs matrix plan --profile diagnostic --target runtime:stable --json",
