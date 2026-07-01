@@ -2516,6 +2516,7 @@
         "gatewayReadyMs": 30000,
         "statusMs": 10000,
         "execDangerousCommandBlocked": 1,
+        "execOutputTruncated": 1,
         "execTimeoutMs": 15000,
         "execProcessLeaks": 0,
         "peakRssMb": 900
@@ -2555,6 +2556,7 @@
           ],
           "metrics": [
             "execDangerousCommandBlocked",
+            "execOutputTruncated",
             "execTimeoutMs",
             "execProcessLeaks",
             "statusMs"
