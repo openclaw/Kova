@@ -1,3 +1,5 @@
+import { commandResultFailed } from "../measurement-contract.mjs";
+
 const PRIORITY_PATTERNS = [
   /Cannot find module/i,
   /Error \[/i,
@@ -11,7 +13,7 @@ const PRIORITY_PATTERNS = [
 export function firstFailedCommand(record, options = {}) {
   for (const phase of record?.phases ?? []) {
     for (const result of phase.results ?? []) {
-      if (result.status !== 0 || result.timedOut) {
+      if (commandResultFailed(result)) {
         return result;
       }
     }

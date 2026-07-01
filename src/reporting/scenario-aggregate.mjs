@@ -13,6 +13,7 @@
 // Output is what the UI primitives expect, so the renderer is just glue.
 
 import { measurementMetricValue } from "../health.mjs";
+import { commandResultFailed } from "../measurement-contract.mjs";
 import { summarizeSamples, classifyConfidence } from "../ui/confidence.mjs";
 
 // Metrics we always surface (when present) as scenario headline metrics,
@@ -210,23 +211,6 @@ function aggregatePhases(samples) {
       elapsedMs: stats.median,
     };
   });
-}
-
-function commandResultFailed(result) {
-  if (!result) {
-    return false;
-  }
-  if (result.timedOut === true) {
-    return true;
-  }
-  if (typeof result.status === "number") {
-    return result.status !== 0;
-  }
-  if (typeof result.exitCode === "number") {
-    return result.exitCode !== 0;
-  }
-  const status = String(result.status ?? "").toUpperCase();
-  return status === "FAIL" || status === "FAILED" || status === "ERROR";
 }
 
 function aggregateMetrics(samples) {

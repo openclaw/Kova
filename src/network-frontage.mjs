@@ -215,6 +215,7 @@ export async function stopNetworkFrontage(context) {
     status: status === 0 ? "stopped" : "stop-failed",
     result
   };
+  allocation.status = status === 0 ? "stopped" : "stop-failed";
   context.networkFrontageProxy = null;
   return result;
 }

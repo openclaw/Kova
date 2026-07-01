@@ -15,6 +15,7 @@ import { resolveThresholdPolicy } from "./evaluation/thresholds.mjs";
 import {
   isAgentCliMessageCommand,
   isAgentMessageCommand,
+  commandResultPassed,
   measuredProductPhase,
   measurementScopeForPhase,
   normalizeMeasurementScope
@@ -1215,10 +1216,11 @@ function collectAgentTurns(record, providerEvidence, scenario, timelineSummary, 
       const expectedTextPresent = typeof expectedText === "string" && expectedText.length > 0
         ? responseMatchesExpectedText(response, expectedText)
         : null;
-      const expectedFailureObserved = expectedFailure === true && result.status === 0 && result.timedOut !== true;
+      const commandPassed = commandResultPassed(result) && result.timedOut !== true;
+      const expectedFailureObserved = expectedFailure === true && commandPassed;
       const normalResponseOk = channelModelTurn
-        ? result.status === 0 && result.timedOut !== true
-        : result.status === 0 && result.timedOut !== true && response.usable === true && (expectedTextPresent !== false);
+        ? commandPassed
+        : commandPassed && response.usable === true && (expectedTextPresent !== false);
       const isAgentCliTurn = isAgentCliMessageCommand(result.command);
       const phaseBreakdown = buildAgentTurnBreakdown({ result: timingResult, attribution, timelineSummary, logSummary });
       const turnDiagnostics = summarizeActiveTurnDiagnostics({
