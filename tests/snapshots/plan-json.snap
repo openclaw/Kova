@@ -2747,6 +2747,7 @@
             "old-release-2026-4-20-user",
             "old-release-2026-4-24-user",
             "old-release-user",
+            "rolling-old-release-user",
             "onboarded-user",
             "plugin-index",
             "stable-release-user"
@@ -14234,7 +14235,7 @@
         "gateway"
       ],
       "states": [
-        "old-release-user"
+        "rolling-old-release-user"
       ],
       "timeoutMs": 240000,
       "thresholds": {
@@ -14351,7 +14352,7 @@
         "gateway"
       ],
       "states": [
-        "old-release-user"
+        "rolling-old-release-user"
       ],
       "timeoutMs": 300000,
       "thresholds": {
@@ -14468,7 +14469,7 @@
         "gateway"
       ],
       "states": [
-        "old-release-user"
+        "rolling-old-release-user"
       ],
       "timeoutMs": 240000,
       "thresholds": {
@@ -16702,6 +16703,54 @@
       ]
     },
     {
+      "id": "rolling-old-release-user",
+      "title": "Rolling Old Release User",
+      "objective": "A generated old-release-shaped user state for rolling upgrade scenarios, with legacy markers seeded before the source runtime is resolved.",
+      "tags": [
+        "existing-user",
+        "upgrade",
+        "old-release",
+        "rolling-upgrade"
+      ],
+      "setup": [
+        {
+          "id": "write-rolling-old-release-markers",
+          "title": "Write Rolling Old Release Markers",
+          "intent": "Create legacy state markers before the rolling source-runtime phase binds the clone to a resolved published release.",
+          "afterPhases": [
+            "clone"
+          ],
+          "commands": [
+            "ocm env exec {env} -- node -e 'const fs=require(\"fs\"), path=require(\"path\"); const home=process.env.OPENCLAW_HOME; fs.mkdirSync(path.join(home,\"config\"),{recursive:true}); fs.mkdirSync(path.join(home,\"plugins\"),{recursive:true}); fs.writeFileSync(path.join(home,\"config\",\"version.json\"),JSON.stringify({schemaVersion:\"kova.fixture.old-release.v1\",release:\"2026.4.20\",channel:\"stable\"},null,2)); fs.writeFileSync(path.join(home,\"plugins\",\"legacy-index.json\"),JSON.stringify({plugins:[\"browser\",\"openai\",\"anthropic\"]},null,2));'"
+          ],
+          "evidence": [
+            "legacy version marker exists before rolling source runtime",
+            "legacy plugin index exists before rolling source runtime"
+          ],
+          "collectionIntent": "service-only"
+        }
+      ],
+      "traits": [
+        "existing-user",
+        "old-release",
+        "migration-state"
+      ],
+      "riskArea": "release-upgrade",
+      "ownerArea": "upgrade",
+      "setupEvidence": [
+        "legacy version marker exists before rolling source runtime",
+        "legacy plugin index exists before rolling source runtime"
+      ],
+      "cleanupGuarantees": [
+        "disposable env cleanup removes state fixture files"
+      ],
+      "source": {
+        "kind": "synthetic-rolling-old-release",
+        "release": "2026.4.20",
+        "note": "legacy markers are written only before resolving the rolling source runtime"
+      }
+    },
+    {
       "id": "slow-filesystem",
       "title": "Slow Filesystem Pressure",
       "objective": "A user state that creates many small plugin metadata files, used to expose synchronous metadata scans on slow filesystems such as WSL2.",
@@ -18325,6 +18374,7 @@
           "onboarded-user",
           "plugin-index",
           "release-configured",
+          "rolling-old-release-user",
           "slow-filesystem",
           "stale-runtime-deps",
           "stale-service-state",
@@ -18496,6 +18546,7 @@
           "tui:fresh",
           "upgrade-existing-user:failed-upgrade",
           "upgrade-existing-user:old-release-user",
+          "upgrade-existing-user:rolling-old-release-user",
           "workspace-scan:large-workspace"
         ],
         "required": {
@@ -18555,6 +18606,7 @@
             "onboarded-user",
             "plugin-index",
             "release-configured",
+            "rolling-old-release-user",
             "update-recovery-plugin-user"
           ],
           "external-plugin": [
@@ -18604,6 +18656,7 @@
             "old-config-keys",
             "old-release-user",
             "plugin-index",
+            "rolling-old-release-user",
             "stale-runtime-deps",
             "update-recovery-plugin-user"
           ],
@@ -18619,7 +18672,8 @@
           ],
           "old-release": [
             "failed-upgrade",
-            "old-release-user"
+            "old-release-user",
+            "rolling-old-release-user"
           ],
           "onboarded-user": [
             "onboarded-user"
@@ -18822,7 +18876,8 @@
           ],
           "upgrade-existing-user": [
             "failed-upgrade",
-            "old-release-user"
+            "old-release-user",
+            "rolling-old-release-user"
           ],
           "workspace-scan": [
             "large-workspace"
@@ -20117,7 +20172,7 @@
           "upgrade-existing-user"
         ],
         "states": [
-          "old-release-user"
+          "rolling-old-release-user"
         ],
         "scenarios": [
           "upgrade-from-day-ago",
@@ -20128,7 +20183,7 @@
           "upgrade-existing-user:baseline"
         ],
         "stateSurfaces": [
-          "upgrade-existing-user:old-release-user"
+          "upgrade-existing-user:rolling-old-release-user"
         ],
         "required": {
           "surfaces": [],
@@ -20155,18 +20210,18 @@
         ],
         "stateTraitCoverage": {
           "existing-user": [
-            "old-release-user"
+            "rolling-old-release-user"
           ],
           "migration-state": [
-            "old-release-user"
+            "rolling-old-release-user"
           ],
           "old-release": [
-            "old-release-user"
+            "rolling-old-release-user"
           ]
         },
         "stateSurfaceCoverage": {
           "upgrade-existing-user": [
-            "old-release-user"
+            "rolling-old-release-user"
           ]
         },
         "traitSurfaceCoverage": {

@@ -327,6 +327,24 @@ export async function runSelfCheck(flags = {}) {
       assertEqual(data.entries?.some((entry) => entry.scenario?.id === "upgrade-from-day-ago"), true, "day-ago upgrade scenario present");
       assertEqual(data.entries?.some((entry) => entry.scenario?.id === "upgrade-from-week-ago"), true, "week-ago upgrade scenario present");
       assertEqual(data.entries?.some((entry) => entry.scenario?.id === "upgrade-from-month-ago"), true, "month-ago upgrade scenario present");
+      assertEqual(data.entries?.every((entry) => entry.state?.id === "rolling-old-release-user"), true, "rolling upgrade uses rolling-specific old-release state");
+    }));
+    checks.push(await jsonCommandCheck("rolling-upgrade-dry-run-json", `node bin/kova.mjs matrix run --profile rolling-upgrade --target runtime:stable --source-env ${quoteShell("Team Env")} --report-dir ${quoteShell(tmp)} --json`, async (data) => {
+      assertEqual(data.profile?.id, "rolling-upgrade", "rolling upgrade run profile id");
+      const report = JSON.parse(await readFile(data.jsonPath, "utf8"));
+      const rollingRecords = (report.records ?? []).filter((record) => String(record.scenario ?? "").startsWith("upgrade-from-"));
+      assertEqual(rollingRecords.length, 3, "rolling upgrade dry-run records");
+      assertEqual(rollingRecords.every((record) => record.state?.id === "rolling-old-release-user"), true, "rolling dry-run records use rolling state");
+      assertEqual(
+        rollingRecords.every((record) => !(record.phases ?? []).some((phase) => phase.id === "state-source-runtime")),
+        true,
+        "rolling source runtime is not overwritten by static old-release state"
+      );
+      assertEqual(
+        rollingRecords.every((record) => (record.phases ?? []).some((phase) => phase.id === "evidence-source-runtime-snapshots")),
+        true,
+        "rolling pre-upgrade snapshots remain after source runtime"
+      );
     }));
     checks.push(await jsonCommandCheck("doctor-upgrade-plan-json", "node bin/kova.mjs matrix plan --profile doctor-upgrade --target local-build:/tmp/openclaw --json", (data) => {
       assertEqual(data.profile?.id, "doctor-upgrade", "doctor upgrade profile id");
