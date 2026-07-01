@@ -450,6 +450,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(networkFrontageHelperEndpointCheck());
     checks.push(await openAiCompatibleTurnFrontageCheck(tmp));
     checks.push(await networkFrontageProductPreflightBlocksPendingCheck(tmp));
+    checks.push(await networkFrontageBootstrapCommandsBypassPreflightCheck(tmp));
     checks.push(await cronGatewayTokenEnvCheck(tmp));
     checks.push(await networkFrontagePartialStartupCleanupInvariantCheck());
     checks.push(await failingCommandCheck(
@@ -7731,7 +7732,7 @@ if (args[0] === "@kova-self-check" && args[1] === "--" && args[2] === "mcp" && a
 }
 
 async function networkFrontageProductPreflightBlocksPendingCheck(tmp) {
-  const previous = snapshotEnv(["PATH"]);
+  const previous = snapshotEnv(["PATH", "SHELL"]);
   const fakeBin = join(tmp, "network-frontage-pending-bin");
   const artifactDir = join(tmp, "network-frontage-pending-artifacts");
   const sentinel = join(tmp, "network-frontage-pending-ran");
@@ -7749,6 +7750,7 @@ exit 2
 `, "utf8");
     await chmod(fakeOcm, 0o755);
     process.env.PATH = `${fakeBin}:${process.env.PATH ?? ""}`;
+    process.env.SHELL = "/bin/sh";
 
     const result = await runScenarioCommand(
       `node -e "require('node:fs').writeFileSync(process.argv[1], 'ran')" ${quoteShell(sentinel)}`,
@@ -7793,6 +7795,85 @@ exit 2
       id: "network-frontage-product-preflight-blocks-pending",
       status: "FAIL",
       command: "run product command with pending network frontage",
+      durationMs: 0,
+      message: error.message
+    };
+  } finally {
+    restoreEnv(previous);
+  }
+}
+
+async function networkFrontageBootstrapCommandsBypassPreflightCheck(tmp) {
+  const previous = snapshotEnv(["PATH", "SHELL"]);
+  const fakeBin = join(tmp, "network-frontage-bootstrap-bin");
+  const artifactDir = join(tmp, "network-frontage-bootstrap-artifacts");
+  const commandLog = join(tmp, "network-frontage-bootstrap-commands.log");
+  const fakeOcm = join(fakeBin, "ocm");
+  try {
+    await mkdir(fakeBin, { recursive: true });
+    await mkdir(artifactDir, { recursive: true });
+    await writeFile(fakeOcm, `#!/bin/sh
+printf '%s\\n' "$*" >> ${quoteShell(commandLog)}
+if [ "$1" = "start" ]; then
+  printf '{"env":"%s","started":true}\\n' "$2"
+  exit 0
+fi
+if [ "$1:$2" = "service:start" ]; then
+  printf '{"env":"%s","serviceStarted":true}\\n' "$3"
+  exit 0
+fi
+echo "unexpected mock ocm command: $*" >&2
+exit 2
+`, "utf8");
+    await chmod(fakeOcm, 0o755);
+    process.env.PATH = `${fakeBin}:${process.env.PATH ?? ""}`;
+    process.env.SHELL = "/bin/sh";
+
+    const context = {
+      timeoutMs: 5000,
+      networkFrontage: {
+        enabled: true,
+        mode: "loopback-frontage",
+        workerId: 7
+      },
+      networkFrontageAllocation: {
+        status: "BLOCKED",
+        reason: "preexisting frontage blocker"
+      }
+    };
+    const startResult = await runScenarioCommand(
+      "ocm start kova-self-check --json",
+      context,
+      "kova-self-check",
+      artifactDir,
+      "source",
+      0
+    );
+    const serviceStartResult = await runScenarioCommand(
+      "ocm service start kova-self-check --json",
+      context,
+      "kova-self-check",
+      artifactDir,
+      "restart",
+      1
+    );
+    const log = await readFile(commandLog, "utf8");
+    assertEqual(startResult.status, 0, "ocm start bypasses frontage preflight outside provision phase");
+    assertEqual(serviceStartResult.status, 0, "ocm service start bypasses frontage preflight outside gateway-start phase");
+    assertEqual(log.includes("start kova-self-check --json"), true, "ocm start command spawned");
+    assertEqual(log.includes("service start kova-self-check --json"), true, "ocm service start command spawned");
+
+    return {
+      id: "network-frontage-bootstrap-commands-bypass-preflight",
+      status: "PASS",
+      command: "run bootstrap commands with preexisting blocked network frontage",
+      durationMs: startResult.durationMs + serviceStartResult.durationMs
+    };
+  } catch (error) {
+    return {
+      id: "network-frontage-bootstrap-commands-bypass-preflight",
+      status: "FAIL",
+      command: "run bootstrap commands with preexisting blocked network frontage",
       durationMs: 0,
       message: error.message
     };
