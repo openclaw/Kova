@@ -109,6 +109,12 @@ function isNetworkFrontageBootstrapCommand(command, phaseId) {
   if (/\bocm\s+service\s+(?:install|start|restart)\b/.test(text)) {
     return true;
   }
+  if (/\bocm\s+env\s+clone\b/.test(text) || /\bocm\s+upgrade\b/.test(text)) {
+    return true;
+  }
+  if (/\brun-openclaw-release-age-upgrade\.mjs\b/.test(text) || /\brestore-first-ocm-upgrade-snapshot\.mjs\b/.test(text)) {
+    return true;
+  }
   return /\bocm\s+start\b/.test(text) && !/(?:^|\s)--no-service(?:\s|$)/.test(text);
 }
 
