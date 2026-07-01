@@ -30,8 +30,8 @@ browsers, soak — with **real execution evidence**, not synthetic confidence.
 | 🤖 **Agent-first I/O** | `kova.report.v1` JSON, summary, bundle, paste, compare. Verdict-led dashboard by default. |
 
 ```text
-61 scenarios   ·   41 surfaces   ·   42 states   ·   12 profiles
-21 process roles   ·   15+ collectors
+61 scenarios   ·   41 surfaces   ·   43 states   ·   12 profiles
+23 process roles   ·   15+ collectors
 ```
 
 ## Quickstart
