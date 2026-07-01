@@ -48,7 +48,8 @@ import { validateStateShape } from "./registries/states.mjs";
 import { validateRegistryReferences } from "./registries/validate.mjs";
 import { assertSafeScenarioCommand } from "./safety.mjs";
 import { parseTimelineText } from "./collectors/timeline.mjs";
-import { waitForTcp } from "./network-frontage.mjs";
+import { stopNetworkFrontage, waitForTcp } from "./network-frontage.mjs";
+import { phaseResultStatus } from "./measurement-contract.mjs";
 import {
   boundedLogSnippet,
   isExpectedKovaMockProviderFailureLine,
@@ -74,6 +75,7 @@ import {
 import { captureProcessSnapshot, classifyRegistryRolesForProcess, classifySnapshotRolesForProcess, diffProcessSnapshots, summarizeResourceSamples } from "./collectors/resources.mjs";
 import { captureOpenClawStateSnapshot } from "./collectors/openclaw-state.mjs";
 import { buildReportSummary, renderMarkdownReport, renderPasteSummary, renderReportSummary, summarizeRecords } from "./reporting/report.mjs";
+import { firstFailedCommand } from "./reporting/failures.mjs";
 import { buildRepeatedWorkAudit } from "./audits/repeated-work.mjs";
 import { ENV_COLLECTOR_IDS, resolveCollectionPolicy } from "./collection-policy.mjs";
 import { channelPlatformsDir } from "./paths.mjs";
@@ -6893,7 +6895,9 @@ function agentAuthFailureEvaluationCheck() {
           expectedAgentFailure: true,
           results: [{
             command,
-            status: 0,
+            status: 1,
+            evidenceStatus: "passed",
+            evidenceReason: "expected agent failure command exited nonzero",
             timedOut: false,
             startedAt: "2026-04-30T10:00:01.000Z",
             startedAtEpochMs: 1777543201000,
@@ -6950,6 +6954,13 @@ function agentAuthFailureEvaluationCheck() {
     }, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
 
     assertEqual(record.status, "PASS", "agent auth failure scenario status");
+    assertEqual(phaseResultStatus(record.phases[0].results), "success", "expected agent failure phase status is successful evidence");
+    assertEqual(firstFailedCommand(record), null, "expected agent failure is not surfaced as failed command");
+    const reportScenarios = aggregateScenarios({
+      records: [record],
+      summary: { total: 1, statuses: { PASS: 1 } }
+    });
+    assertEqual(reportScenarios[0]?.phases?.[0]?.status, "PASS", "expected agent failure phase aggregates as pass");
     assertEqual(record.measurements.agentTurnCount, 1, "auth failure agent turn count");
     assertEqual(record.measurements.agentTurns[0].expectedFailureObserved, true, "auth failure observed");
     assertEqual(record.measurements.agentLatencyDiagnosis.kind, "auth-failure", "auth failure diagnosis");
@@ -7257,6 +7268,22 @@ async function networkFrontagePartialStartupCleanupInvariantCheck() {
     const source = await readFile("src/network-frontage.mjs", "utf8");
     const pattern = /allocation\.loopbackAlias = await ensureLoopbackAlias\(allocation\.frontageHost, context\);\s+context\.networkFrontageAllocation = allocation;\s+const proxy = await startProxy\(allocation\);/;
     assertEqual(pattern.test(source), true, "partial network frontage allocation registered before proxy startup");
+    const context = {
+      networkFrontageAllocation: {
+        status: "active",
+        frontageHost: "127.0.0.1",
+        frontagePort: 43123,
+        loopbackAlias: { createdByKova: false }
+      },
+      networkFrontageProxy: {
+        child: { kill() {} },
+        closed: Promise.resolve()
+      }
+    };
+    const result = await stopNetworkFrontage(context);
+    assertEqual(result.status, 0, "synthetic network frontage cleanup status");
+    assertEqual(context.networkFrontageAllocation.status, "stopped", "network frontage allocation top-level status is stopped after cleanup");
+    assertEqual(context.networkFrontageAllocation.cleanup.status, "stopped", "network frontage cleanup status is stopped");
     return {
       id: "network-frontage-partial-startup-cleanup-invariant",
       status: "PASS",

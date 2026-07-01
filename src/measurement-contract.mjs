@@ -31,7 +31,41 @@ export function phaseResultStatus(results) {
   if (!Array.isArray(results) || results.length === 0) {
     return "empty";
   }
-  return results.every((result) => result.status === 0) ? "success" : "failure";
+  return results.every((result) => commandResultPassed(result)) ? "success" : "failure";
+}
+
+export function commandResultPassed(result) {
+  if (!result) {
+    return false;
+  }
+  if (typeof result.evidenceStatus === "string") {
+    return result.evidenceStatus === "passed";
+  }
+  if (result.status === 0 || result.exitCode === 0) {
+    return true;
+  }
+  const status = String(result.status ?? "").toUpperCase();
+  return status === "PASS" || status === "PASSED";
+}
+
+export function commandResultFailed(result) {
+  if (!result) {
+    return false;
+  }
+  if (commandResultPassed(result)) {
+    return false;
+  }
+  if (result.timedOut === true) {
+    return true;
+  }
+  if (typeof result.status === "number") {
+    return result.status !== 0;
+  }
+  if (typeof result.exitCode === "number") {
+    return result.exitCode !== 0;
+  }
+  const status = String(result.status ?? "").toUpperCase();
+  return status === "FAIL" || status === "FAILED" || status === "ERROR";
 }
 
 export function readinessThresholdForPhase(scenario, phase) {
