@@ -99,6 +99,7 @@ export async function collectEnvMetrics(envName, options = {}) {
   const readinessMode = collectionPolicy.readiness ?? "wait";
   const readinessEnabled = collectorEnabled(collectionPolicy, "readiness");
   const healthEnabled = collectionPolicy.healthSamples !== false && collectorEnabled(collectionPolicy, "health");
+  const probeEndpoint = activeNetworkFrontageProbeEndpoint(options.networkFrontageAllocation);
   if (serviceJson.gatewayPort && readinessEnabled && readinessMode !== "none" && shouldProbeReadiness(serviceJson, readinessTimeoutMs)) {
     await collectReadinessAndHealth(metrics, collectors, serviceJson.gatewayPort, {
       readinessTimeoutMs,
@@ -108,6 +109,7 @@ export async function collectEnvMetrics(envName, options = {}) {
       healthSampleCount,
       healthIntervalMs,
       timeoutMs,
+      probeEndpoint,
       sampleHealthAfterReady: Boolean(serviceJson.childPid)
     });
   } else if (serviceJson.gatewayPort && readinessEnabled) {
@@ -130,7 +132,8 @@ export async function collectEnvMetrics(envName, options = {}) {
       await collectPostReadyHealth(metrics, collectors, serviceJson.gatewayPort, {
         healthSampleCount,
         healthIntervalMs,
-        timeoutMs
+        timeoutMs,
+        probeEndpoint
       });
     } else if (healthEnabled && serviceJson.childPid) {
       recordSkippedCollector(collectors, "health", "post-ready health sampling requires either a readiness wait or an explicit post-ready collection policy");
@@ -145,7 +148,8 @@ export async function collectEnvMetrics(envName, options = {}) {
       await collectPostReadyHealth(metrics, collectors, serviceJson.gatewayPort, {
         healthSampleCount,
         healthIntervalMs,
-        timeoutMs
+        timeoutMs,
+        probeEndpoint
       });
     } else if (!collectorEnabled(collectionPolicy, "health")) {
       recordSkippedCollector(collectors, "health", collectionPolicy.reason);
@@ -218,7 +222,8 @@ async function collectReadinessAndHealth(metrics, collectors, port, options) {
     timeoutMs: options.readinessTimeoutMs,
     thresholdMs: options.readinessThresholdMs,
     intervalMs: options.readinessIntervalMs,
-    probeTimeoutMs: options.probeTimeoutMs
+    probeTimeoutMs: options.probeTimeoutMs,
+    probeEndpoint: options.probeEndpoint
   });
   recordCollector(collectors, "readiness", {
     commandStatus: metrics.readiness.ready ? 0 : 1,
@@ -232,7 +237,8 @@ async function collectReadinessAndHealth(metrics, collectors, port, options) {
     metrics.healthSamples = await collectHealthSamples(port, {
       count: options.healthSampleCount,
       intervalMs: options.healthIntervalMs,
-      timeoutMs: options.timeoutMs
+      timeoutMs: options.timeoutMs,
+      probeEndpoint: options.probeEndpoint
     });
     metrics.health = metrics.healthSamples.at(-1) ?? null;
   } else {
@@ -247,7 +253,8 @@ async function collectPostReadyHealth(metrics, collectors, port, options) {
   metrics.healthSamples = await collectHealthSamples(port, {
     count: options.healthSampleCount,
     intervalMs: options.healthIntervalMs,
-    timeoutMs: options.timeoutMs
+    timeoutMs: options.timeoutMs,
+    probeEndpoint: options.probeEndpoint
   });
   metrics.health = metrics.healthSamples.at(-1) ?? null;
   metrics.healthSummary = summarizeHealthSamples(metrics.healthSamples);
@@ -258,6 +265,23 @@ async function collectPostReadyHealth(metrics, collectors, port, options) {
     timedOut: false,
     error: failureCount === 0 ? null : `${failureCount} post-ready health sample(s) failed`
   });
+}
+
+function activeNetworkFrontageProbeEndpoint(allocation) {
+  if (allocation?.status !== "active") {
+    return null;
+  }
+  const host = allocation.frontageHost;
+  const port = Number(allocation.frontagePort);
+  if (typeof host !== "string" || host.length === 0 || !Number.isInteger(port) || port <= 0) {
+    return null;
+  }
+  return {
+    source: "network-frontage",
+    host,
+    port,
+    url: `http://${host}:${port}`
+  };
 }
 
 async function collectLogAndTimelineMetrics(metrics, collectors, envName, timeoutMs, options, collectionPolicy) {

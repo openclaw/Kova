@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
+import { resolveGatewayEndpoint } from "./gateway-endpoint.mjs";
 
 const SCHEMA_VERSION = "kova.soakLoop.v1";
 
@@ -93,13 +94,15 @@ async function collectGatewayHealth(env, timeoutMs, iterationIndex) {
   const started = Date.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), Math.min(timeoutMs, 5000));
+  const gateway = resolveGatewayEndpoint({ gatewayPort: Number(service.gatewayPort) }, { gateway: { port: Number(service.gatewayPort) } }, { protocol: "http" });
   try {
-    const response = await fetch(`http://127.0.0.1:${Number(service.gatewayPort)}/health`, {
+    const response = await fetch(`${gateway.url}/health`, {
       signal: controller.signal
     });
     await response.text();
     return {
       ...base,
+      gateway: { source: gateway.source, host: gateway.host, port: gateway.port, url: gateway.url },
       gatewayPort: Number(service.gatewayPort),
       ok: response.ok,
       status: response.status,
@@ -108,6 +111,7 @@ async function collectGatewayHealth(env, timeoutMs, iterationIndex) {
   } catch (error) {
     return {
       ...base,
+      gateway: { source: gateway.source, host: gateway.host, port: gateway.port, url: gateway.url },
       gatewayPort: Number(service.gatewayPort),
       durationMs: Date.now() - started,
       error: error.name === "AbortError" ? "health request timed out" : error.message

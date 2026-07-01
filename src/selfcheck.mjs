@@ -448,6 +448,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(networkFrontageProductGuardCheck());
     checks.push(networkFrontageRuntimeEnvCheck());
     checks.push(networkFrontageHelperEndpointCheck());
+    checks.push(await openAiCompatibleTurnFrontageCheck(tmp));
     checks.push(await networkFrontageProductPreflightBlocksPendingCheck(tmp));
     checks.push(await cronGatewayTokenEnvCheck(tmp));
     checks.push(await networkFrontagePartialStartupCleanupInvariantCheck());
@@ -7140,7 +7141,7 @@ function agentAuthFailureEvaluationCheck() {
 async function soakLoopRunnerCheck(tmp) {
   const fakeBin = join(tmp, "soak-loop-runner-bin");
   const fakeOcm = join(fakeBin, "ocm");
-  const port = 39291;
+  const gatewayPort = 39291;
   await mkdir(fakeBin, { recursive: true });
   await writeFile(fakeOcm, [
     "#!/usr/bin/env node",
@@ -7153,14 +7154,29 @@ async function soakLoopRunnerCheck(tmp) {
   ].join("\n"), "utf8");
   await chmod(fakeOcm, 0o755);
 
-  const command = [
-    `node -e "require('node:http').createServer((req,res)=>{res.end('ok')}).listen(${port},'127.0.0.1')" >/dev/null 2>&1 & server_pid=$!`,
-    `PATH=${quoteShell(fakeBin)}:$PATH KOVA_FAKE_PORT=${port} node support/run-soak-loop.mjs --env kova-self-check --duration-ms 50 --interval-ms 0 --timeout-ms 5000`,
-    "rc=$?",
-    "kill $server_pid 2>/dev/null || true",
-    "exit $rc"
-  ].join("; ");
-  const result = await runCommand(command, { shell: "/bin/sh", timeoutMs: 10000, maxOutputChars: 1000000 });
+  const server = createServer((request, response) => {
+    request.resume();
+    response.writeHead(200, { "content-type": "text/plain" });
+    response.end("ok");
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const frontagePort = server.address().port;
+  const command = "node support/run-soak-loop.mjs --env kova-self-check --duration-ms 50 --interval-ms 0 --timeout-ms 5000";
+  const result = await runCommand(command, {
+    shell: "/bin/sh",
+    timeoutMs: 10000,
+    maxOutputChars: 1000000,
+    env: {
+      PATH: `${fakeBin}:${process.env.PATH}`,
+      KOVA_FAKE_PORT: String(gatewayPort),
+      KOVA_NETWORK_FRONTAGE_ENABLED: "1",
+      KOVA_NETWORK_FRONTAGE_HOST: "127.0.0.1",
+      KOVA_NETWORK_FRONTAGE_PORT: String(frontagePort)
+    }
+  });
   try {
     if (result.status !== 0) {
       throw new Error(`soak loop runner failed: ${result.stderr || result.stdout}`);
@@ -7171,6 +7187,9 @@ async function soakLoopRunnerCheck(tmp) {
     assertEqual(summary.commandSummary.failureCount, 0, "soak loop command failures");
     assertEqual(summary.healthSummary.failureCount, 0, "soak loop health failures");
     assertEqual(summary.commandSummary.byId.status.count >= 1, true, "soak loop status command count");
+    assertEqual(summary.healthSamples?.[0]?.gatewayPort, gatewayPort, "soak loop preserves gateway metadata port");
+    assertEqual(summary.healthSamples?.[0]?.gateway?.source, "network-frontage", "soak loop health uses frontage endpoint");
+    assertEqual(summary.healthSamples?.[0]?.gateway?.port, frontagePort, "soak loop health uses frontage port");
     return {
       id: "soak-loop-runner",
       status: "PASS",
@@ -7185,6 +7204,103 @@ async function soakLoopRunnerCheck(tmp) {
       durationMs: result.durationMs,
       message: error.message
     };
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+}
+
+async function openAiCompatibleTurnFrontageCheck(tmp) {
+  const fakeBin = join(tmp, "openai-compatible-frontage-bin");
+  const fakeOcm = join(fakeBin, "ocm");
+  const home = join(tmp, "openai-compatible-frontage-home");
+  const packageRoot = join(tmp, "openai-compatible-frontage-runtime");
+  const gatewayPort = 39292;
+  let hitCount = 0;
+  await mkdir(fakeBin, { recursive: true });
+  await mkdir(join(home, ".openclaw"), { recursive: true });
+  await mkdir(join(packageRoot, "bin"), { recursive: true });
+  await writeFile(join(home, ".openclaw", "openclaw.json"), JSON.stringify({
+    gateway: {
+      port: gatewayPort,
+      auth: { token: "kova-openai-compatible-token" }
+    }
+  }), "utf8");
+  await writeFile(fakeOcm, [
+    "#!/usr/bin/env node",
+    "const args = process.argv.slice(2);",
+    "if (args[0] === 'env' && args[1] === 'status') {",
+    "  process.stdout.write(JSON.stringify({ root: process.env.KOVA_FAKE_ROOT, gatewayPort: Number(process.env.KOVA_FAKE_GATEWAY_PORT) }) + '\\n');",
+    "  process.exit(0);",
+    "}",
+    "if (args[0] === 'env' && args[1] === 'resolve') {",
+    "  process.stdout.write(JSON.stringify({ binaryPath: process.env.KOVA_FAKE_BINARY_PATH, bindingKind: 'runtime', bindingName: 'stable', runtimeReleaseVersion: 'self-check', runtimeReleaseChannel: 'stable', runtimeSourceKind: 'mock' }) + '\\n');",
+    "  process.exit(0);",
+    "}",
+    "console.error('unexpected ocm args: ' + args.join(' '));",
+    "process.exit(1);"
+  ].join("\n"), "utf8");
+  await chmod(fakeOcm, 0o755);
+
+  const server = createServer((request, response) => {
+    hitCount += 1;
+    request.resume();
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({
+      choices: [{
+        message: {
+          role: "assistant",
+          content: "KOVA_AGENT_OK"
+        }
+      }]
+    }));
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const frontagePort = server.address().port;
+  const command = "node support/run-openai-compatible-turn.mjs --env kova-self-check --expected-text KOVA_AGENT_OK --timeout 5000";
+  const result = await runCommand(command, {
+    shell: "/bin/sh",
+    timeoutMs: 10000,
+    maxOutputChars: 1000000,
+    env: {
+      PATH: `${fakeBin}:${process.env.PATH}`,
+      KOVA_FAKE_ROOT: home,
+      KOVA_FAKE_GATEWAY_PORT: String(gatewayPort),
+      KOVA_FAKE_BINARY_PATH: join(packageRoot, "bin", "openclaw"),
+      KOVA_NETWORK_FRONTAGE_ENABLED: "1",
+      KOVA_NETWORK_FRONTAGE_HOST: "127.0.0.1",
+      KOVA_NETWORK_FRONTAGE_PORT: String(frontagePort)
+    },
+    redactValues: ["kova-openai-compatible-token"]
+  });
+  try {
+    if (result.status !== 0) {
+      throw new Error(`OpenAI-compatible frontage check failed: ${result.stderr || result.stdout}`);
+    }
+    const summary = JSON.parse(result.stdout);
+    assertEqual(hitCount, 1, "OpenAI-compatible helper uses injected frontage endpoint");
+    assertEqual(summary.ok, true, "OpenAI-compatible helper ok");
+    assertEqual(summary.expectedTextPresent, true, "OpenAI-compatible expected text present");
+    assertEqual(summary.gateway?.source, "network-frontage", "OpenAI-compatible gateway source");
+    assertEqual(summary.gateway?.port, frontagePort, "OpenAI-compatible gateway frontage port");
+    return {
+      id: "openai-compatible-turn-frontage",
+      status: "PASS",
+      command,
+      durationMs: result.durationMs
+    };
+  } catch (error) {
+    return {
+      id: "openai-compatible-turn-frontage",
+      status: "FAIL",
+      command,
+      durationMs: result.durationMs,
+      message: error.message
+    };
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
   }
 }
 
@@ -10322,13 +10438,21 @@ async function collectionPolicyResolverCheck(tmp) {
     true,
     "post-ready metrics records health collector"
   );
+
+  const frontagePostReadyMetrics = await collectPostReadySelfCheckMetrics(tmp, postReadyPolicy, {
+    useNetworkFrontage: true
+  });
+  assertEqual(frontagePostReadyMetrics.service?.gatewayPort, 9, "frontage metrics preserve raw service gateway port");
+  assertEqual(frontagePostReadyMetrics.healthSummary?.failureCount, 0, "frontage metrics health samples pass");
+  assertEqual(frontagePostReadyMetrics.healthSamples?.[0]?.source, "network-frontage", "frontage metrics health uses frontage source");
+  assertEqual(frontagePostReadyMetrics.healthSamples?.[0]?.port !== 9, true, "frontage metrics health avoids raw gateway port");
   return {
     id: "collection-policy-resolver",
     status: "PASS"
   };
 }
 
-async function collectPostReadySelfCheckMetrics(tmp, collectionPolicy) {
+async function collectPostReadySelfCheckMetrics(tmp, collectionPolicy, options = {}) {
   const fakeBin = join(tmp, "post-ready-policy-bin");
   const fakeOcm = join(fakeBin, "ocm");
   await mkdir(fakeBin, { recursive: true });
@@ -10353,13 +10477,14 @@ async function collectPostReadySelfCheckMetrics(tmp, collectionPolicy) {
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const port = server.address().port;
+  const reportedGatewayPort = options.useNetworkFrontage === true ? 9 : port;
   const previousPath = process.env.PATH;
   const previousShell = process.env.SHELL;
   const previousPort = process.env.KOVA_FAKE_PORT;
   const previousChildPid = process.env.KOVA_FAKE_CHILD_PID;
   process.env.PATH = `${fakeBin}:${previousPath}`;
   process.env.SHELL = "/bin/sh";
-  process.env.KOVA_FAKE_PORT = String(port);
+  process.env.KOVA_FAKE_PORT = String(reportedGatewayPort);
   process.env.KOVA_FAKE_CHILD_PID = String(process.pid);
   try {
     return await collectEnvMetrics("kova-self-check-post-ready", {
@@ -10367,7 +10492,14 @@ async function collectPostReadySelfCheckMetrics(tmp, collectionPolicy) {
       timeoutMs: 1000,
       healthSamples: 2,
       healthIntervalMs: 0,
-      readinessTimeoutMs: 0
+      readinessTimeoutMs: 0,
+      networkFrontageAllocation: options.useNetworkFrontage === true
+        ? {
+            status: "active",
+            frontageHost: "127.0.0.1",
+            frontagePort: port
+          }
+        : null
     });
   } finally {
     process.env.PATH = previousPath;
