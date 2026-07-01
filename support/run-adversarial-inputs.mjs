@@ -11,6 +11,7 @@ import {
   prepareOpenClawRuntimeFromOcmEnv,
   readTimeoutMs
 } from "./openclaw-runtime.mjs";
+import { resolveGatewayEndpoint } from "./gateway-endpoint.mjs";
 
 const startedAtEpochMs = Date.now();
 
@@ -47,12 +48,13 @@ try {
   const expectedText = args["expected-text"] ?? "KOVA_AGENT_OK";
   const model = args.model ?? "openclaw";
   const token = readGatewayToken(cfg);
+  const gateway = resolveGatewayEndpoint({ gatewayPort: runtimeContext.gatewayPort }, cfg, { protocol: "http" });
   const results = [];
 
   for (const item of CASES) {
     results.push(await sendCase({
       item,
-      runtimeContext,
+      gateway,
       model,
       expectedText,
       token,
@@ -64,6 +66,7 @@ try {
   if (failed.length > 0) {
     failureEvidence = buildEvidence({
       runtimeContext,
+      gateway,
       model,
       expectedText,
       results,
@@ -74,6 +77,7 @@ try {
 
   finishJson(buildEvidence({
     runtimeContext,
+    gateway,
     model,
     expectedText,
     results,
@@ -83,20 +87,21 @@ try {
   failJson(error, { surface: "adversarial-input", finishedAtEpochMs: Date.now(), ...failureEvidence });
 }
 
-function buildEvidence({ runtimeContext, model, expectedText, results, ok }) {
+function buildEvidence({ runtimeContext, gateway, model, expectedText, results, ok }) {
   return {
     ok,
     surface: "adversarial-input",
     method: "POST /v1/chat/completions",
     envName: runtimeContext.envName,
     runtime: runtimeContext.runtime,
+    gateway,
     model,
     expectedText,
     startedAtEpochMs,
     finishedAtEpochMs: Date.now(),
     caseCount: results.length,
     failedCaseIds: results.filter((result) => result.ok !== true).map((result) => result.id),
-    finalAssistantVisibleText: ok ? expectedText : results.find((result) => result.ok !== true)?.finalAssistantVisibleText ?? null,
+    finalAssistantVisibleText: results.find((result) => result.ok !== true)?.finalAssistantVisibleText ?? results[0]?.finalAssistantVisibleText ?? null,
     finalAssistantCaseText: results.map((result) => `${result.id}:${result.finalAssistantVisibleText}`).join("\n"),
     finalAssistantRawText: JSON.stringify(results),
     expectedTextPresent: results.every((result) => result.expectedTextPresent === true),
@@ -132,10 +137,10 @@ function prepareRuntimeContext(args) {
   };
 }
 
-async function sendCase({ item, runtimeContext, model, expectedText, token, timeoutMs }) {
+async function sendCase({ item, gateway, model, expectedText, token, timeoutMs }) {
   const requestStartedAtEpochMs = Date.now();
   const response = await postJson({
-    port: runtimeContext.gatewayPort,
+    gateway,
     path: "/v1/chat/completions",
     token,
     timeoutMs,
@@ -155,24 +160,25 @@ async function sendCase({ item, runtimeContext, model, expectedText, token, time
   const finalText = extractText(body?.choices?.[0]?.message ?? body);
   return {
     id: item.id,
-    ok: response.status >= 200 && response.status < 300 && finalText.includes(expectedText),
+    ok: response.status >= 200 && response.status < 300 && textEquals(finalText, expectedText),
     status: response.status,
     requestStartedAtEpochMs,
     finishedAtEpochMs: Date.now(),
     durationMs: Date.now() - requestStartedAtEpochMs,
-    expectedTextPresent: finalText.includes(expectedText),
+    expectedTextPresent: textEquals(finalText, expectedText),
     finalAssistantVisibleText: finalText,
     error: response.status >= 200 && response.status < 300 ? null : response.bodyText.slice(0, 1000)
   };
 }
 
-function postJson({ port, path: requestPath, token, timeoutMs, timeoutLabel, body }) {
+function postJson({ gateway, path: requestPath, token, timeoutMs, timeoutLabel, body }) {
   const bodyText = JSON.stringify(body);
+  const url = new URL(requestPath, gateway.url);
   return new Promise((resolve, reject) => {
     const request = http.request({
-      hostname: "127.0.0.1",
-      port,
-      path: requestPath,
+      hostname: url.hostname,
+      port: url.port,
+      path: `${url.pathname}${url.search}`,
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -196,6 +202,10 @@ function postJson({ port, path: requestPath, token, timeoutMs, timeoutLabel, bod
     request.on("error", reject);
     request.end(bodyText);
   });
+}
+
+function textEquals(actual, expected) {
+  return typeof actual === "string" && typeof expected === "string" && actual.trim() === expected.trim();
 }
 
 function readGatewayToken(cfg) {
