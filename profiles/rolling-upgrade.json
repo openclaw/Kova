@@ -11,17 +11,17 @@
   "entries": [
     {
       "scenario": "upgrade-from-day-ago",
-      "state": "old-release-user",
+      "state": "rolling-old-release-user",
       "timeoutMs": 300000
     },
     {
       "scenario": "upgrade-from-week-ago",
-      "state": "old-release-user",
+      "state": "rolling-old-release-user",
       "timeoutMs": 300000
     },
     {
       "scenario": "upgrade-from-month-ago",
-      "state": "old-release-user",
+      "state": "rolling-old-release-user",
       "timeoutMs": 360000
     }
   ],

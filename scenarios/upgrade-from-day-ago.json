@@ -13,7 +13,7 @@
     "gateway"
   ],
   "states": [
-    "old-release-user"
+    "rolling-old-release-user"
   ],
   "timeoutMs": 240000,
   "thresholds": {
