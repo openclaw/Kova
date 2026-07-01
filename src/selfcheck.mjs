@@ -47,8 +47,9 @@ import { validateScenarioShape } from "./registries/scenarios.mjs";
 import { validateStateShape } from "./registries/states.mjs";
 import { validateRegistryReferences } from "./registries/validate.mjs";
 import { assertSafeScenarioCommand } from "./safety.mjs";
+import { measurementScopeForPhase } from "./measurement-contract.mjs";
 import { parseTimelineText } from "./collectors/timeline.mjs";
-import { stopNetworkFrontage, waitForTcp } from "./network-frontage.mjs";
+import { assertNetworkFrontageCommandSafe, stopNetworkFrontage, waitForTcp } from "./network-frontage.mjs";
 import {
   boundedLogSnippet,
   isExpectedKovaMockProviderFailureLine,
@@ -411,7 +412,13 @@ export async function runSelfCheck(flags = {}) {
       const summary = JSON.parse(await readFile(data.summaryPath, "utf8"));
       assertEqual(summary.run?.networkFrontage?.mode, "loopback-frontage", "summary network frontage mode");
     }));
+    checks.push(await jsonCommandCheck("network-frontage-stale-worker-env-ignored-json", `KOVA_WORKER_ID=abc node bin/kova.mjs run --target runtime:stable --scenario fresh-install --report-dir ${quoteShell(tmp)} --json`, async (data) => {
+      const report = JSON.parse(await readFile(data.jsonPath, "utf8"));
+      assertEqual(report.networkFrontage?.mode, "port", "stale worker env keeps default port mode");
+      assertEqual(report.networkFrontage?.enabled, false, "stale worker env does not enable frontage");
+    }));
     checks.push(await networkFrontageNoChildTcpCheck());
+    checks.push(networkFrontageProductGuardCheck());
     checks.push(await networkFrontagePartialStartupCleanupInvariantCheck());
     checks.push(await failingCommandCheck(
       "network-frontage-invalid-mode",
@@ -7370,6 +7377,46 @@ async function networkFrontageNoChildTcpCheck() {
     };
   } finally {
     await new Promise((resolve) => server.close(resolve));
+  }
+}
+
+function networkFrontageProductGuardCheck() {
+  try {
+    const context = {
+      networkFrontage: {
+        enabled: true
+      }
+    };
+    const authProbe = "node -e 'fetch(\"http://127.0.0.1:12345/health\")'";
+    const productProbe = "node -e 'fetch(\"http://127.0.0.1:12345/health\")'";
+    let productRejected = false;
+
+    if (measurementScopeForPhase({ id: "auth-prepare", commands: [authProbe] }) === "product") {
+      assertNetworkFrontageCommandSafe(authProbe, context);
+    }
+    try {
+      if (measurementScopeForPhase({ id: "agent-turn", commands: [productProbe] }) === "product") {
+        assertNetworkFrontageCommandSafe(productProbe, context);
+      }
+    } catch (error) {
+      productRejected = /forbids fixed loopback URLs/.test(error.message);
+    }
+    assertEqual(productRejected, true, "product fixed loopback URL is rejected");
+
+    return {
+      id: "network-frontage-product-guard",
+      status: "PASS",
+      command: "verify network frontage guard applies only to product commands",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "network-frontage-product-guard",
+      status: "FAIL",
+      command: "verify network frontage guard applies only to product commands",
+      durationMs: 0,
+      message: error.message
+    };
   }
 }
 
