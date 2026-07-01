@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -50,7 +51,7 @@ import { validateRegistryReferences } from "./registries/validate.mjs";
 import { assertSafeScenarioCommand } from "./safety.mjs";
 import { measurementScopeForPhase } from "./measurement-contract.mjs";
 import { parseTimelineText } from "./collectors/timeline.mjs";
-import { assertNetworkFrontageCommandSafe, networkFrontageCommandEnv, stopNetworkFrontage, waitForTcp } from "./network-frontage.mjs";
+import { assertNetworkFrontageCommandSafe, networkFrontageCommandEnv, stopNetworkFrontage, waitForProxyReady, waitForTcp } from "./network-frontage.mjs";
 import { resolveGatewayEndpoint } from "../support/gateway-endpoint.mjs";
 import {
   boundedLogSnippet,
@@ -8035,6 +8036,30 @@ async function networkFrontagePartialStartupCleanupInvariantCheck() {
     const source = await readFile("src/network-frontage.mjs", "utf8");
     const pattern = /allocation\.loopbackAlias = await ensureLoopbackAlias\(allocation\.frontageHost, context\);\s+context\.networkFrontageAllocation = allocation;\s+const proxy = await startProxy\(allocation\);/;
     assertEqual(pattern.test(source), true, "partial network frontage allocation registered before proxy startup");
+    const blocker = createServer((request, response) => {
+      response.writeHead(200, { "content-type": "text/plain" });
+      response.end("not-kova-frontage");
+    });
+    await new Promise((resolve) => blocker.listen(0, "127.0.0.1", resolve));
+    const blockedPort = blocker.address().port;
+    const proxy = spawn(process.execPath, [
+      join(process.cwd(), "support", "network-frontage-proxy.mjs"),
+      "--listen-host", "127.0.0.1",
+      "--listen-port", String(blockedPort),
+      "--target-host", "127.0.0.1",
+      "--target-port", String(blockedPort)
+    ], {
+      stdio: ["ignore", "ignore", "pipe"]
+    });
+    try {
+      await waitForProxyReady(proxy, 1000);
+      throw new Error("occupied frontage was accepted as ready");
+    } catch (error) {
+      assertEqual(/bind failed|exited before listening/.test(error.message), true, "occupied frontage bind is rejected");
+    } finally {
+      proxy.kill("SIGTERM");
+      await new Promise((resolve) => blocker.close(resolve));
+    }
     const runnerSource = await readFile("src/runner.mjs", "utf8");
     const retentionPattern = /const networkCleanup = await stopNetworkFrontage\(context\);[\s\S]+const shouldRetain = shouldRetainEnv\(context, record\);[\s\S]+if \(!shouldRetain\)/;
     assertEqual(retentionPattern.test(runnerSource), true, "retain-on-failure is computed after network frontage cleanup can update status");

@@ -309,8 +309,8 @@ function startProxy(allocation) {
   });
   child.stderr.pipe(log);
   const closed = new Promise((resolve) => child.once("close", (code, signal) => resolve({ code, signal })));
-  return waitForTcp(allocation.frontageHost, allocation.frontagePort, 1500, child)
-    .then(() => ({ child, pid: child.pid, closed }));
+  return waitForProxyReady(child, 1500)
+    .then((ready) => ({ child, pid: child.pid, closed, ready }));
 }
 
 async function validateFrontage(allocation) {
@@ -348,6 +348,70 @@ async function validateFrontage(allocation) {
       error: error.message
     };
   }
+}
+
+export function waitForProxyReady(child, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    let stderr = "";
+    let settled = false;
+    const timer = setTimeout(() => {
+      rejectOnce(new Error(`network frontage proxy did not report listening within ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      child.stderr.off("data", onData);
+      child.off("error", onError);
+      child.off("close", onClose);
+    };
+    const rejectOnce = (error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const resolveOnce = (event) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(event);
+    };
+    const onError = (error) => {
+      rejectOnce(error);
+    };
+    const onClose = (code, signal) => {
+      rejectOnce(new Error(`network frontage proxy exited before listening (code=${code ?? "null"}, signal=${signal ?? "none"})`));
+    };
+    const onData = (chunk) => {
+      stderr += chunk.toString("utf8");
+      for (;;) {
+        const newline = stderr.indexOf("\n");
+        if (newline < 0) {
+          break;
+        }
+        const line = stderr.slice(0, newline).trim();
+        stderr = stderr.slice(newline + 1);
+        if (!line) {
+          continue;
+        }
+        let event;
+        try {
+          event = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        if (event.event === "listening") {
+          resolveOnce(event);
+        } else if (event.event === "bind-error") {
+          rejectOnce(new Error(`network frontage proxy bind failed: ${event.message ?? "unknown error"}`));
+        }
+      }
+    };
+
+    child.stderr.on("data", onData);
+    child.once("error", onError);
+    child.once("close", onClose);
+  });
 }
 
 export function waitForTcp(host, port, timeoutMs, child = null) {
