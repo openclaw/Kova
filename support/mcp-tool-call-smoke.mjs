@@ -46,6 +46,7 @@ const summary = {
 let child;
 let tokenFile;
 let tokenTempDir;
+let redactionValues = [];
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.once(signal, () => {
@@ -64,6 +65,7 @@ try {
   if (typeof token !== "string" || token.length === 0) {
     throw new Error(`gateway.auth.token missing in ${envInfo.configPath}`);
   }
+  redactionValues = [token];
 
   tokenTempDir = await mkdtemp(join(tmpdir(), "kova-mcp-token-"));
   tokenFile = join(tokenTempDir, "gateway-token");
@@ -178,7 +180,7 @@ async function runMcpBridgeAttempt(gatewayUrl, gatewayTokenFile, gatewayToken) {
   }, timeoutMs);
   summary.toolsCallMs = Date.now() - callStarted;
   summary.safeToolSucceeded = callResult?.isError !== true && Array.isArray(callResult?.content);
-  summary.safeToolResultSnippet = JSON.stringify(callResult ?? {}).slice(0, 4000);
+  summary.safeToolResultSnippet = redactText(JSON.stringify(callResult ?? {})).slice(0, 4000);
   if (!summary.safeToolSucceeded) {
     throw new Error(`MCP tools/call ${summary.safeToolName} did not return a successful tool result`);
   }
@@ -458,8 +460,21 @@ function redactMessage(message) {
     if (/token/i.test(key) && typeof value === "string") {
       return "<redacted>";
     }
+    if (typeof value === "string") {
+      return redactText(value);
+    }
     return value;
   }));
+}
+
+function redactText(value) {
+  let text = String(value ?? "");
+  for (const secret of redactionValues) {
+    if (typeof secret === "string" && secret.length > 0) {
+      text = text.replaceAll(secret, "<redacted>");
+    }
+  }
+  return text;
 }
 
 function parseArgs(values) {
@@ -503,7 +518,7 @@ function assertKovaEnvName(value) {
 }
 
 function formatError(error) {
-  return error instanceof Error ? error.message : String(error);
+  return redactText(error instanceof Error ? error.message : String(error));
 }
 
 function cleanupTokenSync() {

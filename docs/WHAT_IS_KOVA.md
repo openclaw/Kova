@@ -187,7 +187,7 @@ with `--retain-on-failure` when inspection is needed.
 Network isolation is a separate concern from OCM state isolation. The planned
 macOS-faithful model is a per-worker loopback frontage/proxy layer, where
 OpenClaw still runs as a normal macOS process and sees `127.0.0.1`, while the
-host control plane addresses each worker through distinct loopback frontages
+Kova host runner addresses each worker through distinct loopback frontages
 such as `127.0.1.11`, `127.0.1.12`, and `127.0.1.13`. See
 [Network Isolation Plan](NETWORK_ISOLATION_PLAN.md).
 

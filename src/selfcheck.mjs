@@ -560,6 +560,7 @@ export async function runSelfCheck(flags = {}) {
       assertEqual(commands.some((command) => command.includes("ocm start") && command.includes("--json")), true, "MCP gateway start command");
       assertEqual(record?.thresholds?.mcpProcessLeaks, 0, "MCP process leak threshold");
     }));
+    checks.push(await mcpToolCallSmokeRedactsGatewayTokenCheck(tmp));
     checks.push(await commandCheck(
       "mcp-runtime-role-patterns",
       "node -e \"const role=require('./process-roles/mcp-runtime.json'); if (role.commandPatterns.includes('mcp') || role.processPatterns.includes('mcp') || role.processPatterns.some((p)=>p.includes('modelcontextprotocol'))) process.exit(1);\""
@@ -7524,6 +7525,92 @@ function networkFrontageHelperEndpointCheck() {
     };
   } finally {
     restoreEnv(previous);
+  }
+}
+
+async function mcpToolCallSmokeRedactsGatewayTokenCheck(tmp) {
+  const fakeBin = join(tmp, "mcp-tool-redaction-bin");
+  const home = join(tmp, "mcp-tool-redaction-home");
+  const artifactDir = join(tmp, "mcp-tool-redaction-artifacts");
+  const configPath = join(home, ".openclaw", "openclaw.json");
+  const fakeOcm = join(fakeBin, "ocm");
+  const token = "kova-self-check-mcp-gateway-token";
+  try {
+    await mkdir(fakeBin, { recursive: true });
+    await mkdir(join(home, ".openclaw"), { recursive: true });
+    await mkdir(artifactDir, { recursive: true });
+    await writeFile(configPath, JSON.stringify({
+      gateway: {
+        port: 43123,
+        auth: { token }
+      }
+    }), "utf8");
+    await writeFile(fakeOcm, `#!/usr/bin/env node
+import readline from "node:readline";
+
+const args = process.argv.slice(2);
+if (args[0] === "env" && args[1] === "show") {
+  console.log(JSON.stringify({ configPath: ${JSON.stringify(configPath)}, gatewayPort: 43123 }));
+  process.exit(0);
+}
+if (args[0] === "@kova-self-check" && args[1] === "--" && args[2] === "status") {
+  console.log("ready");
+  process.exit(0);
+}
+if (args[0] === "@kova-self-check" && args[1] === "--" && args[2] === "mcp" && args[3] === "serve") {
+  const lines = readline.createInterface({ input: process.stdin });
+  lines.on("line", (line) => {
+    if (!line.trim()) return;
+    const message = JSON.parse(line);
+    if (message.method === "initialize") {
+      write({ jsonrpc: "2.0", id: message.id, result: { protocolVersion: "2024-11-05", capabilities: {}, serverInfo: { name: "fake-mcp" } } });
+    } else if (message.method === "tools/list") {
+      write({ jsonrpc: "2.0", id: message.id, result: { tools: [{ name: "cron", inputSchema: { type: "object" } }] } });
+    } else if (message.method === "tools/call" && message.params?.name === "cron") {
+      const gatewayToken = message.params?.arguments?.gatewayToken ?? "";
+      write({ jsonrpc: "2.0", id: message.id, result: { isError: false, content: [{ type: "text", text: "echoed " + gatewayToken }], auth: { token: gatewayToken } } });
+    } else if (message.method === "tools/call") {
+      write({ jsonrpc: "2.0", id: message.id, result: { isError: true, content: [{ type: "text", text: "unknown tool" }] } });
+    }
+  });
+  function write(value) {
+    process.stdout.write(JSON.stringify(value) + "\\n");
+  }
+} else {
+  console.error("unexpected mock ocm command: " + args.join(" "));
+  process.exit(2);
+}
+`, "utf8");
+    await chmod(fakeOcm, 0o755);
+
+    const result = await runCommand(
+      `PATH=${quoteShell(fakeBin)}:$PATH node support/mcp-tool-call-smoke.mjs --env kova-self-check --artifact-dir ${quoteShell(artifactDir)} --timeout-ms 5000`,
+      { shell: "/bin/sh", timeoutMs: 30000, maxOutputChars: 1000000 }
+    );
+    if (result.status !== 0) {
+      throw new Error(result.stderr.trim() || result.stdout.trim() || `exit ${result.status}`);
+    }
+    const summary = JSON.parse(result.stdout);
+    const artifact = await readFile(join(artifactDir, "mcp-tool-call-smoke.json"), "utf8");
+    assertEqual(result.stdout.includes(token), false, "MCP tool-call stdout redacts gateway token");
+    assertEqual(artifact.includes(token), false, "MCP tool-call artifact redacts gateway token");
+    assertEqual(summary.safeToolResultSnippet.includes("<redacted>"), true, "MCP tool result snippet contains redaction marker");
+    assertEqual(JSON.stringify(summary.transcript).includes("<redacted>"), true, "MCP transcript contains redaction marker");
+
+    return {
+      id: "mcp-tool-call-smoke-redacts-gateway-token",
+      status: "PASS",
+      command: "run MCP tool-call smoke against token-echoing fake MCP bridge",
+      durationMs: result.durationMs
+    };
+  } catch (error) {
+    return {
+      id: "mcp-tool-call-smoke-redacts-gateway-token",
+      status: "FAIL",
+      command: "run MCP tool-call smoke against token-echoing fake MCP bridge",
+      durationMs: 0,
+      message: error.message
+    };
   }
 }
 
