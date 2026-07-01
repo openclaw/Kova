@@ -12,7 +12,7 @@ import {
   measurementScopeForPhase,
   tagCommandResult
 } from "../measurement-contract.mjs";
-import { assertNetworkFrontageCommandSafe, maybeStartNetworkFrontage } from "../network-frontage.mjs";
+import { assertNetworkFrontageCommandSafe, maybeStartNetworkFrontage, networkFrontageCommandEnv } from "../network-frontage.mjs";
 import { assertSafeScenarioCommand } from "../safety.mjs";
 import { safeSegment } from "./phase-commands.mjs";
 
@@ -36,6 +36,7 @@ export async function runScenarioCommand(command, context, envName, artifactDir,
     timeoutMs: context.timeoutMs,
     env: {
       ...diagnosticsEnv(context, envName, artifactDir),
+      ...networkFrontageCommandEnv(context),
       ...(authPolicy?.commandEnv ?? {})
     },
     redactValues: authPolicy?.redactionValues ?? context.auth?.redactionValues ?? [],

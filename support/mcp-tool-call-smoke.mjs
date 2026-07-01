@@ -5,6 +5,7 @@ import { rmSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { resolveGatewayEndpoint } from "./gateway-endpoint.mjs";
 
 const SCHEMA_VERSION = "kova.mcpToolCallSmoke.v1";
 
@@ -70,12 +71,9 @@ try {
   await chmod(tokenFile, 0o600);
   await mkdir(artifactDir, { recursive: true });
 
-  const gatewayPort = Number(envInfo.gatewayPort ?? config?.gateway?.port);
-  if (!Number.isInteger(gatewayPort) || gatewayPort <= 0) {
-    throw new Error("gateway port missing from OCM env metadata and OpenClaw config");
-  }
-  const gatewayUrl = `ws://127.0.0.1:${gatewayPort}`;
-  summary.gateway = { port: gatewayPort, url: gatewayUrl };
+  const gateway = resolveGatewayEndpoint(envInfo, config, { protocol: "ws" });
+  const gatewayUrl = gateway.url;
+  summary.gateway = { source: gateway.source, host: gateway.host, port: gateway.port, url: gatewayUrl };
   const maxBridgeAttempts = 3;
   for (let attempt = 1; attempt <= maxBridgeAttempts; attempt += 1) {
     const attemptSummary = {

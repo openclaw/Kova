@@ -212,7 +212,6 @@ export async function executeScenario(scenario, context) {
   } finally {
     await collectPreCleanupEvidence(record, scenario, context, envName, artifactDir, authPolicy);
 
-    const shouldRetain = context.keepEnv || (context.retainOnFailure && record.status !== "PASS");
     const networkCleanup = await stopNetworkFrontage(context);
     if (networkCleanup) {
       record.phases.push({
@@ -229,6 +228,7 @@ export async function executeScenario(scenario, context) {
         record.status = "BLOCKED";
       }
     }
+    const shouldRetain = shouldRetainEnv(context, record);
     if (!shouldRetain) {
       context.onPhase?.("cleanup");
       const authCleanupPhase = await executeAuthPhase(
@@ -269,6 +269,10 @@ export async function executeScenario(scenario, context) {
   }
 
   return record;
+}
+
+function shouldRetainEnv(context, record) {
+  return context.keepEnv || (context.retainOnFailure && record.status !== "PASS");
 }
 
 function profilingSummary(context) {

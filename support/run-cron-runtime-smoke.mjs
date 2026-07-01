@@ -3,6 +3,7 @@
 import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { resolveGatewayEndpoint } from "./gateway-endpoint.mjs";
 
 const SCHEMA_VERSION = "kova.cronRuntimeSmoke.v1";
 
@@ -26,6 +27,7 @@ const summary = {
   cronRunCompleted: false,
   cronRunTimedOut: false,
   cronTriggerAttributed: false,
+  gateway: null,
   cronId: null,
   runId: null,
   runStatus: null,
@@ -37,12 +39,15 @@ try {
   await mkdir(artifactDir, { recursive: true });
   const gateway = await resolveExplicitGateway(envName, timeoutMs);
   const gatewayArgs = gateway.args;
+  const gatewayEnv = gateway.env;
+  summary.gateway = gateway.summary ?? null;
   const approvalGatewayArgs = omitGatewayUrlArg(gatewayArgs);
 
   const status = await retryOcm(["@", "--", "cron", "status", ...gatewayArgs, "--json"], Math.min(timeoutMs, 15000), {
     attempts: 6,
     delayMs: 1000,
-    label: "cron status"
+    label: "cron status",
+    env: gatewayEnv
   });
   summary.cronStatusMs = status.durationMs;
   recordCommand("cron status", status);
@@ -71,7 +76,8 @@ try {
     label: "cron add",
     approveScopeUpgrade: true,
     gatewayArgs: approvalGatewayArgs,
-    gateway
+    gateway,
+    env: gatewayEnv
   });
   summary.cronRegisterMs = register.durationMs;
   recordCommand("cron add", register);
@@ -104,7 +110,8 @@ try {
       label: "cron run",
       approveScopeUpgrade: true,
       gatewayArgs: approvalGatewayArgs,
-      gateway
+      gateway,
+      env: gatewayEnv
     });
     summary.cronRunMs = run.durationMs;
     summary.cronRunTimedOut = run.timedOut === true;
@@ -118,7 +125,7 @@ try {
       throw new Error(`cron run failed: ${firstLine(run.stderr) || firstLine(run.stdout) || run.status}`);
     }
   } finally {
-    const runs = await timedOcm(["@", "--", "cron", "runs", "--id", summary.cronId, "--limit", "5", ...gatewayArgs], 15000);
+    const runs = await timedOcm(["@", "--", "cron", "runs", "--id", summary.cronId, "--limit", "5", ...gatewayArgs], 15000, gatewayEnv);
     summary.cronRunsMs = runs.durationMs;
     recordCommand("cron runs", runs);
     const runsJson = parseJsonOutput(runs.stdout);
@@ -126,7 +133,7 @@ try {
     summary.runStatus ||= findFirstString(runsJson, ["status", "state", "result"]);
     summary.cronTriggerAttributed ||= hasCronAttribution(runsJson, summary.cronId);
 
-    const rm = await timedOcm(["@", "--", "cron", "rm", summary.cronId, ...gatewayArgs, "--json"], 15000);
+    const rm = await timedOcm(["@", "--", "cron", "rm", summary.cronId, ...gatewayArgs, "--json"], 15000, gatewayEnv);
     recordCommand("cron rm", rm);
   }
 } catch (error) {
@@ -145,17 +152,16 @@ async function resolveExplicitGateway(env, requestTimeoutMs) {
   const envInfo = await readOcmEnvInfo(env, requestTimeoutMs);
   const config = JSON.parse(await readFile(envInfo.configPath, "utf8"));
   const token = config?.gateway?.auth?.token ?? config?.gateway?.remote?.token;
-  const gatewayPort = Number(envInfo.gatewayPort ?? config?.gateway?.port);
   if (typeof token !== "string" || token.length === 0) {
-    return { args: [], direct: null };
+    return { args: [], summary: null, direct: null, env: {} };
   }
-  if (!Number.isInteger(gatewayPort) || gatewayPort <= 0) {
-    return { args: ["--token", token], direct: null };
-  }
-  const url = `ws://127.0.0.1:${gatewayPort}`;
+  const gateway = resolveGatewayEndpoint(envInfo, config, { protocol: "ws" });
+  const url = gateway.url;
   return {
-    args: ["--url", url, "--token", token],
-    direct: { url, token }
+    args: ["--url", url],
+    summary: { source: gateway.source, host: gateway.host, port: gateway.port, url },
+    direct: { url, token },
+    env: { OPENCLAW_GATEWAY_TOKEN: token }
   };
 }
 
@@ -179,10 +185,10 @@ async function readOcmEnvInfo(env, requestTimeoutMs) {
   return JSON.parse(result.stdout);
 }
 
-async function timedOcm(args, commandTimeoutMs) {
+async function timedOcm(args, commandTimeoutMs, envOverrides = {}) {
   const actualArgs = args.map((arg) => arg === "@" ? `@${envName}` : arg);
   const started = Date.now();
-  const result = await runProcess("ocm", actualArgs, commandTimeoutMs);
+  const result = await runProcess("ocm", actualArgs, commandTimeoutMs, envOverrides);
   return { ...result, durationMs: Date.now() - started };
 }
 
@@ -190,15 +196,15 @@ async function retryOcm(args, commandTimeoutMs, options) {
   const attempts = options.attempts ?? 1;
   let last;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    last = await timedOcm(args, commandTimeoutMs);
+    last = await timedOcm(args, commandTimeoutMs, options.env);
     if (last.status === 0) {
       return last;
     }
     if (options.approveScopeUpgrade) {
-      const approved = await approveScopeUpgradeIfNeeded(last, options.gatewayArgs ?? [], options.gateway);
+      const approved = await approveScopeUpgradeIfNeeded(last, options.gatewayArgs ?? [], options.gateway, options.env);
       if (approved) {
         await sleep(options.delayMs ?? 500);
-        last = await timedOcm(args, commandTimeoutMs);
+        last = await timedOcm(args, commandTimeoutMs, options.env);
         if (last.status === 0) {
           return last;
         }
@@ -215,7 +221,7 @@ async function retryOcm(args, commandTimeoutMs, options) {
   return last;
 }
 
-async function approveScopeUpgradeIfNeeded(result, gatewayArgs, gateway) {
+async function approveScopeUpgradeIfNeeded(result, gatewayArgs, gateway, envOverrides = {}) {
   const requestId = findScopeUpgradeRequestId(`${result.stderr ?? ""}\n${result.stdout ?? ""}`);
   if (!requestId) {
     return false;
@@ -235,7 +241,7 @@ async function approveScopeUpgradeIfNeeded(result, gatewayArgs, gateway) {
     requestId,
     ...gatewayArgs,
     "--json"
-  ], 30000);
+  ], 30000, envOverrides);
   recordCommand(`scope upgrade approve ${requestId}`, approval);
   return approval.status === 0;
 }
@@ -441,9 +447,9 @@ function recordCommand(label, result) {
   });
 }
 
-function runProcess(command, args, commandTimeoutMs) {
+function runProcess(command, args, commandTimeoutMs, envOverrides = {}) {
   return new Promise((resolve) => {
-    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], env: process.env });
+    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...envOverrides } });
     let stdout = "";
     let stderr = "";
     let timedOut = false;

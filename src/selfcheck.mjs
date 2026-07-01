@@ -49,7 +49,8 @@ import { validateRegistryReferences } from "./registries/validate.mjs";
 import { assertSafeScenarioCommand } from "./safety.mjs";
 import { measurementScopeForPhase } from "./measurement-contract.mjs";
 import { parseTimelineText } from "./collectors/timeline.mjs";
-import { assertNetworkFrontageCommandSafe, stopNetworkFrontage, waitForTcp } from "./network-frontage.mjs";
+import { assertNetworkFrontageCommandSafe, networkFrontageCommandEnv, stopNetworkFrontage, waitForTcp } from "./network-frontage.mjs";
+import { resolveGatewayEndpoint } from "../support/gateway-endpoint.mjs";
 import {
   boundedLogSnippet,
   isExpectedKovaMockProviderFailureLine,
@@ -419,6 +420,9 @@ export async function runSelfCheck(flags = {}) {
     }));
     checks.push(await networkFrontageNoChildTcpCheck());
     checks.push(networkFrontageProductGuardCheck());
+    checks.push(networkFrontageRuntimeEnvCheck());
+    checks.push(networkFrontageHelperEndpointCheck());
+    checks.push(await cronGatewayTokenEnvCheck(tmp));
     checks.push(await networkFrontagePartialStartupCleanupInvariantCheck());
     checks.push(await failingCommandCheck(
       "network-frontage-invalid-mode",
@@ -7420,11 +7424,173 @@ function networkFrontageProductGuardCheck() {
   }
 }
 
+function networkFrontageRuntimeEnvCheck() {
+  try {
+    const env = networkFrontageCommandEnv({
+      networkFrontage: { enabled: true },
+      networkFrontageAllocation: {
+        status: "active",
+        frontageHost: "127.0.1.17",
+        frontagePort: 19876
+      }
+    });
+    assertEqual(env.KOVA_NETWORK_FRONTAGE_ENABLED, "1", "frontage env enabled");
+    assertEqual(env.KOVA_NETWORK_FRONTAGE_HOST, "127.0.1.17", "frontage env host");
+    assertEqual(env.KOVA_NETWORK_FRONTAGE_PORT, "19876", "frontage env port");
+    assertEqual(env.KOVA_NETWORK_FRONTAGE_WS_URL, "ws://127.0.1.17:19876", "frontage env websocket URL");
+    assertEqual(Object.keys(networkFrontageCommandEnv({ networkFrontage: { enabled: true } })).length, 0, "inactive frontage env omitted");
+
+    return {
+      id: "network-frontage-runtime-env",
+      status: "PASS",
+      command: "verify active network frontage env contract",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "network-frontage-runtime-env",
+      status: "FAIL",
+      command: "verify active network frontage env contract",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function networkFrontageHelperEndpointCheck() {
+  const previous = snapshotEnv([
+    "KOVA_NETWORK_FRONTAGE_ENABLED",
+    "KOVA_NETWORK_FRONTAGE_HOST",
+    "KOVA_NETWORK_FRONTAGE_PORT",
+    "KOVA_NETWORK_FRONTAGE_WS_URL"
+  ]);
+  try {
+    delete process.env.KOVA_NETWORK_FRONTAGE_ENABLED;
+    delete process.env.KOVA_NETWORK_FRONTAGE_HOST;
+    delete process.env.KOVA_NETWORK_FRONTAGE_PORT;
+    delete process.env.KOVA_NETWORK_FRONTAGE_WS_URL;
+    const fallback = resolveGatewayEndpoint({ gatewayPort: 18789 }, { gateway: { port: 18789 } }, { protocol: "ws" });
+    assertEqual(fallback.source, "ocm-env-metadata", "helper fallback source");
+    assertEqual(fallback.url, "ws://127.0.0.1:18789", "helper fallback URL");
+
+    process.env.KOVA_NETWORK_FRONTAGE_ENABLED = "1";
+    process.env.KOVA_NETWORK_FRONTAGE_HOST = "127.0.1.17";
+    process.env.KOVA_NETWORK_FRONTAGE_PORT = "19876";
+    const frontage = resolveGatewayEndpoint({ gatewayPort: 18789 }, { gateway: { port: 18789 } }, { protocol: "ws" });
+    assertEqual(frontage.source, "network-frontage", "helper frontage source");
+    assertEqual(frontage.url, "ws://127.0.1.17:19876", "helper frontage URL");
+
+    return {
+      id: "network-frontage-helper-endpoint",
+      status: "PASS",
+      command: "verify helpers prefer active network frontage endpoint",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "network-frontage-helper-endpoint",
+      status: "FAIL",
+      command: "verify helpers prefer active network frontage endpoint",
+      durationMs: 0,
+      message: error.message
+    };
+  } finally {
+    restoreEnv(previous);
+  }
+}
+
+function snapshotEnv(keys) {
+  return Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+}
+
+function restoreEnv(values) {
+  for (const [key, value] of Object.entries(values)) {
+    restoreOptionalEnv(key, value);
+  }
+}
+
+async function cronGatewayTokenEnvCheck(tmp) {
+  const fakeBin = join(tmp, "cron-token-env-bin");
+  const artifactDir = join(tmp, "cron-token-env-artifacts");
+  const configPath = join(tmp, "cron-token-env-openclaw.json");
+  const ocmLog = join(tmp, "cron-token-env-ocm.log");
+  const envLog = join(tmp, "cron-token-env-seen.log");
+  const token = "kova-self-check-gateway-token";
+  await mkdir(fakeBin, { recursive: true });
+  await mkdir(artifactDir, { recursive: true });
+  await writeFile(configPath, JSON.stringify({ gateway: { port: 18789, auth: { token } } }), "utf8");
+  const fakeOcm = join(fakeBin, "ocm");
+  await writeFile(fakeOcm, `#!/bin/sh
+printf '%s\\n' "$*" >> "$KOVA_MOCK_OCM_LOG"
+if [ "\${OPENCLAW_GATEWAY_TOKEN:-}" = "$KOVA_EXPECTED_GATEWAY_TOKEN" ]; then
+  printf 'token-env-present\\n' >> "$KOVA_MOCK_ENV_LOG"
+fi
+case "$1:$2" in
+  env:show)
+    printf '{"configPath":%s,"gatewayPort":18789}\\n' "$KOVA_FAKE_CONFIG_JSON"
+    exit 0
+    ;;
+esac
+if [ "$2" = "--" ]; then
+  shift 2
+fi
+case "$1:$2" in
+  cron:status) printf '{"enabled":true}\\n'; exit 0 ;;
+  cron:add) printf '{"id":"job-1"}\\n'; exit 0 ;;
+  cron:run) printf '{"runId":"run-1","status":"ok","cronId":"job-1"}\\n'; exit 0 ;;
+  cron:runs) printf '{"entries":[{"runId":"run-1","status":"ok","cronId":"job-1","action":"finished"}]}\\n'; exit 0 ;;
+  cron:rm) printf '{"removed":true}\\n'; exit 0 ;;
+esac
+echo "unhandled mock ocm command: $*" >&2
+exit 2
+`, "utf8");
+  await chmod(fakeOcm, 0o755);
+
+  const command = `PATH=${quoteShell(fakeBin)}:$PATH KOVA_EXPECTED_GATEWAY_TOKEN=${quoteShell(token)} KOVA_FAKE_CONFIG_JSON=${quoteShell(JSON.stringify(configPath))} KOVA_MOCK_OCM_LOG=${quoteShell(ocmLog)} KOVA_MOCK_ENV_LOG=${quoteShell(envLog)} KOVA_NETWORK_FRONTAGE_ENABLED=1 KOVA_NETWORK_FRONTAGE_HOST=127.0.1.17 KOVA_NETWORK_FRONTAGE_PORT=19876 node support/run-cron-runtime-smoke.mjs --env kova-self-check --artifact-dir ${quoteShell(artifactDir)} --timeout-ms 5000`;
+  const result = await runCommand(command, {
+    shell: "/bin/sh",
+    timeoutMs: 30000,
+    maxOutputChars: 1000000
+  });
+
+  try {
+    if (result.status !== 0) {
+      throw new Error(result.stderr.trim() || result.stdout.trim() || `exit ${result.status}`);
+    }
+    const summary = JSON.parse(result.stdout);
+    const log = await readFile(ocmLog, "utf8");
+    const envHits = await readFile(envLog, "utf8");
+    assertEqual(summary.gateway?.source, "network-frontage", "cron helper uses frontage endpoint source");
+    assertEqual(summary.gateway?.url, "ws://127.0.1.17:19876", "cron helper uses frontage endpoint URL");
+    assertEqual(log.includes(token), false, "cron helper does not pass gateway token in argv");
+    assertEqual(log.includes("--token"), false, "cron helper does not pass token flag in argv");
+    assertEqual(envHits.trim().split(/\r?\n/).filter(Boolean).length >= 5, true, "cron helper passes gateway token through child env");
+
+    return {
+      id: "cron-gateway-token-env",
+      status: "PASS",
+      command,
+      durationMs: result.durationMs
+    };
+  } catch (error) {
+    return {
+      id: "cron-gateway-token-env",
+      status: "FAIL",
+      command,
+      durationMs: result.durationMs,
+      message: error.message
+    };
+  }
+}
+
 async function networkFrontagePartialStartupCleanupInvariantCheck() {
   try {
     const source = await readFile("src/network-frontage.mjs", "utf8");
     const pattern = /allocation\.loopbackAlias = await ensureLoopbackAlias\(allocation\.frontageHost, context\);\s+context\.networkFrontageAllocation = allocation;\s+const proxy = await startProxy\(allocation\);/;
     assertEqual(pattern.test(source), true, "partial network frontage allocation registered before proxy startup");
+    const runnerSource = await readFile("src/runner.mjs", "utf8");
+    const retentionPattern = /const networkCleanup = await stopNetworkFrontage\(context\);[\s\S]+const shouldRetain = shouldRetainEnv\(context, record\);[\s\S]+if \(!shouldRetain\)/;
+    assertEqual(retentionPattern.test(runnerSource), true, "retain-on-failure is computed after network frontage cleanup can update status");
     const context = {
       networkFrontageAllocation: {
         status: "active",
