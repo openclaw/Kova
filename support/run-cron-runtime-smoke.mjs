@@ -113,7 +113,7 @@ try {
     summary.runId = findFirstString(runJson, ["runId", "id", "sessionId"]);
     summary.runStatus = findFirstString(runJson, ["status", "state", "result"]);
     summary.cronRunCompleted = run.status === 0 && !run.timedOut;
-    summary.cronTriggerAttributed = hasCronAttribution(runJson, summary.cronId, summary.runId);
+    summary.cronTriggerAttributed = hasCronAttribution(runJson, summary.cronId);
     if (run.status !== 0) {
       throw new Error(`cron run failed: ${firstLine(run.stderr) || firstLine(run.stdout) || run.status}`);
     }
@@ -124,7 +124,7 @@ try {
     const runsJson = parseJsonOutput(runs.stdout);
     summary.runId ||= findFirstString(runsJson, ["runId", "id", "sessionId"]);
     summary.runStatus ||= findFirstString(runsJson, ["status", "state", "result"]);
-    summary.cronTriggerAttributed ||= hasCronAttribution(runsJson, summary.cronId, summary.runId);
+    summary.cronTriggerAttributed ||= hasCronAttribution(runsJson, summary.cronId);
 
     const rm = await timedOcm(["@", "--", "cron", "rm", summary.cronId, ...gatewayArgs, "--json"], 15000);
     recordCommand("cron rm", rm);
@@ -197,9 +197,10 @@ async function retryOcm(args, commandTimeoutMs, options) {
     if (options.approveScopeUpgrade) {
       const approved = await approveScopeUpgradeIfNeeded(last, options.gatewayArgs ?? [], options.gateway);
       if (approved) {
-        if (attempt < attempts) {
-          await sleep(options.delayMs ?? 500);
-          continue;
+        await sleep(options.delayMs ?? 500);
+        last = await timedOcm(args, commandTimeoutMs);
+        if (last.status === 0) {
+          return last;
         }
       }
     }
@@ -505,10 +506,40 @@ function findFirstString(value, keys) {
   return null;
 }
 
-function hasCronAttribution(value, cronId, runId) {
-  const text = JSON.stringify(value ?? {});
-  return /cron/i.test(text) || (typeof cronId === "string" && text.includes(cronId)) ||
-    (typeof runId === "string" && text.includes(runId));
+function hasCronAttribution(value, cronId) {
+  return findCronAttribution(value, cronId) !== null;
+}
+
+function findCronAttribution(value, cronId) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const queue = [{ key: "", value }];
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current || typeof current.value !== "object" || current.value === null) {
+      continue;
+    }
+    for (const [key, nested] of Object.entries(current.value)) {
+      if (nested && typeof nested === "object") {
+        queue.push({ key, value: nested });
+        continue;
+      }
+      if (typeof nested !== "string" || nested.length === 0) {
+        continue;
+      }
+      if (typeof cronId === "string" && nested === cronId) {
+        return { key, value: nested };
+      }
+      if (/(^|[-_])(cron|schedule|trigger|systemEvent|event)([-_]|$)/i.test(key)) {
+        return { key, value: nested };
+      }
+      if (/KOVA_CRON_RUNTIME_OK/.test(nested)) {
+        return { key, value: nested };
+      }
+    }
+  }
+  return null;
 }
 
 function parseArgs(values) {
