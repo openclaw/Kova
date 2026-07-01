@@ -9,6 +9,7 @@ import { collectorArtifactDirs } from "../collectors/artifacts.mjs";
 import { captureProcessSnapshot, diffProcessSnapshots } from "../collectors/resources.mjs";
 import {
   isAgentMessageCommand,
+  measurementScopeForPhase,
   tagCommandResult
 } from "../measurement-contract.mjs";
 import { assertNetworkFrontageCommandSafe, maybeStartNetworkFrontage } from "../network-frontage.mjs";
@@ -17,7 +18,9 @@ import { safeSegment } from "./phase-commands.mjs";
 
 export async function runScenarioCommand(command, context, envName, artifactDir, phaseId, commandIndex, authPolicy = null) {
   assertSafeScenarioCommand(command, context, envName);
-  assertNetworkFrontageCommandSafe(command, context);
+  if (measurementScopeForPhase({ id: phaseId, commands: [command] }) === "product") {
+    assertNetworkFrontageCommandSafe(command, context);
+  }
   const agentCommand = isAgentMessageCommand(command);
   const snapshotOptions = {
     envName,

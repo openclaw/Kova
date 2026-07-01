@@ -30,7 +30,7 @@ export function normalizeNetworkFrontageMode(value) {
 
 export function networkFrontageControls(flags = {}) {
   const mode = normalizeNetworkFrontageMode(flags.network_frontage);
-  const workerId = flags.worker_id ?? process.env.KOVA_WORKER_ID ?? null;
+  const workerId = flags.worker_id ?? (mode === "loopback-frontage" ? process.env.KOVA_WORKER_ID : null) ?? null;
   return {
     schemaVersion: NETWORK_FRONTAGE_SCHEMA,
     mode,
