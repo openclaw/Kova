@@ -99,6 +99,9 @@ try {
   summary.processExited = true;
   summary.exitStatus = exit.status;
   summary.exitSignal = exit.signal;
+  if (exit.status !== 0 || exit.signal !== null) {
+    throw new Error(`MCP bridge did not exit cleanly (status=${exit.status ?? "null"}, signal=${exit.signal ?? "none"})`);
+  }
 } catch (error) {
   summary.errors.push(formatError(error));
   if (child && !summary.processExited) {
