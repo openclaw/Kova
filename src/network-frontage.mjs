@@ -80,6 +80,20 @@ export function assertNetworkFrontageCommandSafe(command, context) {
   }
 }
 
+export function networkFrontageCommandEnv(context) {
+  const allocation = context.networkFrontageAllocation;
+  if (!context.networkFrontage?.enabled || allocation?.status !== "active") {
+    return {};
+  }
+  return {
+    KOVA_NETWORK_FRONTAGE_ENABLED: "1",
+    KOVA_NETWORK_FRONTAGE_HOST: allocation.frontageHost,
+    KOVA_NETWORK_FRONTAGE_PORT: String(allocation.frontagePort),
+    KOVA_NETWORK_FRONTAGE_HTTP_URL: `http://${allocation.frontageHost}:${allocation.frontagePort}`,
+    KOVA_NETWORK_FRONTAGE_WS_URL: `ws://${allocation.frontageHost}:${allocation.frontagePort}`
+  };
+}
+
 export async function maybeStartNetworkFrontage(context, envName, artifactDir) {
   if (!context.networkFrontage?.enabled) {
     return null;
