@@ -3512,6 +3512,7 @@ exit 2
 
   const command = `node bin/kova.mjs run --target local-build:${quoteShell(repoDir)} --scenario fresh-install --execute --report-dir ${quoteShell(reportDir)} --json`;
   const result = await runCommand(command, {
+    shell: "/bin/sh",
     timeoutMs: 30000,
     maxOutputChars: 1000000,
     env: {
@@ -3576,6 +3577,7 @@ exit 2
 
   const command = `node bin/kova.mjs run --target local-build:${quoteShell(repoDir)} --scenario fresh-install --execute --report-dir ${quoteShell(reportDir)} --json`;
   const result = await runCommand(command, {
+    shell: "/bin/sh",
     timeoutMs: 30000,
     maxOutputChars: 1000000,
     env: {
@@ -3804,7 +3806,7 @@ async function liveApiKeyExecutionCheck(tmp) {
     `KOVA_MOCK_OCM_LOG=${quoteShell(ocmLog)}`,
     `node bin/kova.mjs run --target runtime:stable --scenario fresh-install --auth live --execute --report-dir ${quoteShell(reportDir)} --json`
   ].join(" ");
-  const result = await runCommand(command, { timeoutMs: 30000, maxOutputChars: 1000000, redactValues: [secret] });
+  const result = await runCommand(command, { shell: "/bin/sh", timeoutMs: 30000, maxOutputChars: 1000000, redactValues: [secret] });
 
   try {
     if (result.status !== 0) {
@@ -3886,7 +3888,7 @@ async function liveExternalCliDryRunCheck(tmp) {
     `KOVA_HOME=${quoteShell(kovaHome)}`,
     `node bin/kova.mjs run --target runtime:stable --scenario fresh-install --auth live --report-dir ${quoteShell(reportDir)} --json`
   ].join(" ");
-  const result = await runCommand(command, { timeoutMs: 30000, maxOutputChars: 1000000 });
+  const result = await runCommand(command, { shell: "/bin/sh", timeoutMs: 30000, maxOutputChars: 1000000 });
 
   try {
     if (result.status !== 0) {
@@ -3957,7 +3959,7 @@ async function liveAnthropicExternalCliDryRunCheck(tmp) {
     `KOVA_HOME=${quoteShell(kovaHome)}`,
     `node bin/kova.mjs run --target runtime:stable --scenario fresh-install --auth live --report-dir ${quoteShell(reportDir)} --json`
   ].join(" ");
-  const result = await runCommand(command, { timeoutMs: 30000, maxOutputChars: 1000000 });
+  const result = await runCommand(command, { shell: "/bin/sh", timeoutMs: 30000, maxOutputChars: 1000000 });
 
   try {
     if (result.status !== 0) {
@@ -6310,7 +6312,7 @@ async function concurrentAgentRunnerCheck(tmp) {
   await chmod(fakeOcm, 0o755);
 
   const command = `PATH=${quoteShell(fakeBin)}:$PATH node support/run-concurrent-agent-turns.mjs --env kova-self-check --count 2 --session-prefix kova-self-check-concurrent --message hi --expected-text KOVA_AGENT_OK --timeout 5`;
-  const result = await runCommand(command, { timeoutMs: 10000 });
+  const result = await runCommand(command, { shell: "/bin/sh", timeoutMs: 10000 });
   try {
     if (result.status !== 0) {
       throw new Error(`concurrent agent runner failed: ${result.stderr || result.stdout}`);
@@ -6376,9 +6378,9 @@ async function officialPluginInstallRunnerCheck(tmp) {
   await chmod(fakeOcm, 0o755);
 
   const successCommand = `PATH=${quoteShell(fakeBin)}:$PATH node support/run-official-plugin-install.mjs --env kova-self-check --state states/official-plugins.json --artifact-dir ${quoteShell(artifactDir)} --timeout-ms 5000`;
-  const success = await runCommand(successCommand, { timeoutMs: 10000, maxOutputChars: 1000000 });
+  const success = await runCommand(successCommand, { shell: "/bin/sh", timeoutMs: 10000, maxOutputChars: 1000000 });
   const blockedCommand = `PATH=${quoteShell(fakeBin)}:$PATH KOVA_FAKE_OCM_SECURITY_BLOCK=1 node support/run-official-plugin-install.mjs --env kova-self-check --state states/official-plugins.json --artifact-dir ${quoteShell(join(tmp, "official-plugin-blocked-artifacts"))} --timeout-ms 5000`;
-  const blocked = await runCommand(blockedCommand, { timeoutMs: 10000, maxOutputChars: 1000000 });
+  const blocked = await runCommand(blockedCommand, { shell: "/bin/sh", timeoutMs: 10000, maxOutputChars: 1000000 });
 
   try {
     if (success.status !== 0) {
@@ -6979,7 +6981,7 @@ async function soakLoopRunnerCheck(tmp) {
     "kill $server_pid 2>/dev/null || true",
     "exit $rc"
   ].join("; ");
-  const result = await runCommand(command, { timeoutMs: 10000, maxOutputChars: 1000000 });
+  const result = await runCommand(command, { shell: "/bin/sh", timeoutMs: 10000, maxOutputChars: 1000000 });
   try {
     if (result.status !== 0) {
       throw new Error(`soak loop runner failed: ${result.stderr || result.stdout}`);
@@ -9469,7 +9471,7 @@ async function rollingUpgradeResolverCheck(tmp) {
   }
   const result = await runCommand(
     `PATH=${quoteShell(dir)}:$PATH node support/run-openclaw-release-age-upgrade.mjs --env kova-self-check --age month --now 2026-05-21T12:00:00.000Z --time-file ${quoteShell(timeFile)} --json`,
-    { timeoutMs: 30000, maxOutputChars: 1000000 }
+    { shell: "/bin/sh", timeoutMs: 30000, maxOutputChars: 1000000 }
   );
   let upgrade = null;
   try {
@@ -9737,9 +9739,11 @@ async function collectPostReadySelfCheckMetrics(tmp, collectionPolicy) {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const port = server.address().port;
   const previousPath = process.env.PATH;
+  const previousShell = process.env.SHELL;
   const previousPort = process.env.KOVA_FAKE_PORT;
   const previousChildPid = process.env.KOVA_FAKE_CHILD_PID;
   process.env.PATH = `${fakeBin}:${previousPath}`;
+  process.env.SHELL = "/bin/sh";
   process.env.KOVA_FAKE_PORT = String(port);
   process.env.KOVA_FAKE_CHILD_PID = String(process.pid);
   try {
@@ -9752,6 +9756,7 @@ async function collectPostReadySelfCheckMetrics(tmp, collectionPolicy) {
     });
   } finally {
     process.env.PATH = previousPath;
+    restoreOptionalEnv("SHELL", previousShell);
     restoreOptionalEnv("KOVA_FAKE_PORT", previousPort);
     restoreOptionalEnv("KOVA_FAKE_CHILD_PID", previousChildPid);
     await new Promise((resolve) => server.close(resolve));
@@ -12395,7 +12400,7 @@ async function externalCliSetupCheck(tmp) {
     `KOVA_HOME=${quoteShell(kovaHome)}`,
     "node bin/kova.mjs setup --non-interactive --provider openai --auth external-cli --json"
   ].join(" ");
-  const result = await runCommand(command, { timeoutMs: 30000, maxOutputChars: 1000000 });
+  const result = await runCommand(command, { shell: "/bin/sh", timeoutMs: 30000, maxOutputChars: 1000000 });
   try {
     if (result.status !== 0) {
       throw new Error(result.stderr.trim() || result.stdout.trim() || `exit ${result.status}`);

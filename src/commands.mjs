@@ -23,10 +23,14 @@ export function runCommand(command, options = {}) {
   const startedAtEpochMs = Date.now();
   const startedAt = new Date(startedAtEpochMs).toISOString();
   return new Promise((resolve) => {
-    const shell = process.env.SHELL || "/bin/sh";
+    const shell = options.shell ?? process.env.SHELL ?? "/bin/sh";
+    const childEnv = { ...process.env, ...(options.env ?? {}) };
+    if (options.shell !== undefined && options.env?.SHELL === undefined) {
+      childEnv.SHELL = options.shell;
+    }
     const child = spawn(shell, ["-c", command], {
       cwd: repoRoot,
-      env: { ...process.env, ...(options.env ?? {}) },
+      env: childEnv,
       stdio: ["ignore", "pipe", "pipe"]
     });
 
