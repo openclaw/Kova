@@ -13,6 +13,8 @@ const artifactDir = requiredArg(args, "artifact-dir");
 const timeoutMs = positiveInt(args["timeout-ms"] ?? 90000, "timeout-ms");
 assertKovaEnvName(envName);
 
+let redactionValues = [];
+
 const startedAtEpochMs = Date.now();
 const summary = {
   schemaVersion: SCHEMA_VERSION,
@@ -41,7 +43,7 @@ try {
   const gatewayArgs = gateway.args;
   const gatewayEnv = gateway.env;
   summary.gateway = gateway.summary ?? null;
-  const approvalGatewayArgs = omitGatewayUrlArg(gatewayArgs);
+  const approvalGatewayArgs = omitGatewayOverrideArgs(gatewayArgs);
 
   const status = await retryOcm(["@", "--", "cron", "status", ...gatewayArgs, "--json"], Math.min(timeoutMs, 15000), {
     attempts: 6,
@@ -155,20 +157,21 @@ async function resolveExplicitGateway(env, requestTimeoutMs) {
   if (typeof token !== "string" || token.length === 0) {
     return { args: [], summary: null, direct: null, env: {} };
   }
+  redactionValues = [token];
   const gateway = resolveGatewayEndpoint(envInfo, config, { protocol: "ws" });
   const url = gateway.url;
   return {
-    args: ["--url", url],
+    args: ["--url", url, "--token", token],
     summary: { source: gateway.source, host: gateway.host, port: gateway.port, url },
     direct: { url, token },
     env: { OPENCLAW_GATEWAY_TOKEN: token }
   };
 }
 
-function omitGatewayUrlArg(args) {
+function omitGatewayOverrideArgs(args) {
   const out = [];
   for (let index = 0; index < args.length; index += 1) {
-    if (args[index] === "--url") {
+    if (args[index] === "--url" || args[index] === "--token" || args[index] === "--password") {
       index += 1;
       continue;
     }
@@ -593,7 +596,17 @@ function firstLine(value) {
 }
 
 function trimSnippet(value) {
-  return String(value ?? "").slice(-4000);
+  return redactText(String(value ?? "")).slice(-4000);
+}
+
+function redactText(value) {
+  let text = String(value ?? "");
+  for (const secret of redactionValues) {
+    if (typeof secret === "string" && secret.length > 0) {
+      text = text.split(secret).join("<redacted>");
+    }
+  }
+  return text;
 }
 
 function formatError(error) {
