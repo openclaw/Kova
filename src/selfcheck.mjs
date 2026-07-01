@@ -7353,9 +7353,13 @@ function toolRuntimeEvidenceEvaluationCheck() {
         execOutputTruncated: 1,
         execTimeoutMs: 2000,
         execProcessLeaks: 0,
+        mcpInitializeMs: 5000,
+        mcpToolsListMs: 5000,
         mcpToolsCallMs: 5000,
         mcpToolCallSucceeded: 1,
         mcpToolCallErrorAttributed: 1,
+        mcpShutdownMs: 5000,
+        mcpToolCountMin: 1,
         mcpProcessLeaks: 0,
         pluginLoadFailures: 0
       }
@@ -7370,9 +7374,14 @@ function toolRuntimeEvidenceEvaluationCheck() {
     assertEqual(record.measurements.execDangerousCommandBlocked, true, "exec dangerous command blocked");
     assertEqual(record.measurements.execDangerousPayloadExecuted, false, "exec dangerous payload not executed");
     assertEqual(record.measurements.execProcessLeaks, 0, "exec process leak count");
+    assertEqual(record.measurements.mcpInitializeMs, 100, "MCP initialize ms");
+    assertEqual(record.measurements.mcpToolsListMs, 80, "MCP tools/list ms");
     assertEqual(record.measurements.mcpToolsCallMs, 240, "MCP tools/call ms");
     assertEqual(record.measurements.mcpToolCallSucceeded, true, "MCP safe tools/call succeeded");
     assertEqual(record.measurements.mcpToolCallErrorAttributed, true, "MCP tool-call error attributed");
+    assertEqual(record.measurements.mcpShutdownMs, 40, "MCP shutdown ms");
+    assertEqual(record.measurements.mcpToolCount, 4, "MCP tool count");
+    assertEqual(record.measurements.mcpProcessLeaks, 0, "MCP process leak count");
 
     const unattributedCron = {
       ...record,
@@ -7569,9 +7578,13 @@ function toolRuntimeEvidenceEvaluationCheck() {
     evaluateRecord(missingMcpToolEvidence, {
       id: "mcp-tool-call",
       thresholds: {
+        mcpInitializeMs: 5000,
+        mcpToolsListMs: 5000,
         mcpToolsCallMs: 5000,
         mcpToolCallSucceeded: 1,
         mcpToolCallErrorAttributed: 1,
+        mcpShutdownMs: 5000,
+        mcpToolCountMin: 1,
         mcpProcessLeaks: 0,
         pluginLoadFailures: 0
       }
@@ -7579,9 +7592,13 @@ function toolRuntimeEvidenceEvaluationCheck() {
     assertEqual(missingMcpToolEvidence.status, "FAIL", "missing MCP tool-call evidence status");
     assertEqual(
       missingMcpToolEvidence.violations.some((violation) => [
+        "mcpInitializeMs",
+        "mcpToolsListMs",
         "mcpToolsCallMs",
         "mcpToolCallSucceeded",
         "mcpToolCallErrorAttributed",
+        "mcpShutdownMs",
+        "mcpToolCountMin",
         "mcpProcessLeaks"
       ].includes(violation.metric)),
       true,
@@ -7612,9 +7629,13 @@ function toolRuntimeEvidenceEvaluationCheck() {
     evaluateRecord(incompleteMcpToolEvidence, {
       id: "mcp-tool-call",
       thresholds: {
+        mcpInitializeMs: 5000,
+        mcpToolsListMs: 5000,
         mcpToolsCallMs: 5000,
         mcpToolCallSucceeded: 1,
         mcpToolCallErrorAttributed: 1,
+        mcpShutdownMs: 5000,
+        mcpToolCountMin: 1,
         mcpProcessLeaks: 0,
         pluginLoadFailures: 0
       }
@@ -7622,13 +7643,60 @@ function toolRuntimeEvidenceEvaluationCheck() {
     assertEqual(incompleteMcpToolEvidence.status, "FAIL", "incomplete MCP tool-call evidence status");
     assertEqual(
       incompleteMcpToolEvidence.violations.some((violation) => [
+        "mcpInitializeMs",
+        "mcpToolsListMs",
         "mcpToolsCallMs",
         "mcpToolCallSucceeded",
         "mcpToolCallErrorAttributed",
+        "mcpShutdownMs",
+        "mcpToolCountMin",
         "mcpProcessLeaks"
       ].includes(violation.metric)),
       true,
       "incomplete MCP tool-call helper evidence failed closed"
+    );
+
+    const slowMcpLifecycle = {
+      ...record,
+      status: "PASS",
+      violations: [],
+      measurements: undefined,
+      phases: [{
+        id: "tool-runtime",
+        results: [{
+          command: "node support/mcp-tool-call-smoke.mjs --env kova-self-check --artifact-dir /tmp/kova",
+          status: 0,
+          timedOut: false,
+          durationMs: 1300,
+          stdout: JSON.stringify({
+            ...mcpToolSmoke,
+            initializeMs: 6000,
+            toolsListMs: 7000,
+            shutdownMs: 8000,
+            toolCount: 0
+          }),
+          stderr: ""
+        }],
+        metrics: { service: { gatewayState: "running" }, logs: zeroLogMetrics() }
+      }]
+    };
+    evaluateRecord(slowMcpLifecycle, {
+      id: "mcp-tool-call",
+      thresholds: {
+        mcpInitializeMs: 5000,
+        mcpToolsListMs: 5000,
+        mcpShutdownMs: 5000,
+        mcpToolCountMin: 1,
+        pluginLoadFailures: 0
+      }
+    }, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
+    assertEqual(slowMcpLifecycle.status, "FAIL", "slow MCP lifecycle status");
+    assertEqual(
+      ["mcpInitializeMs", "mcpToolsListMs", "mcpShutdownMs", "mcpToolCountMin"].every((metric) =>
+        slowMcpLifecycle.violations.some((violation) => violation.metric === metric)
+      ),
+      true,
+      "slow MCP lifecycle violations surfaced"
     );
 
     const failedExec = {
