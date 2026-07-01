@@ -8003,11 +8003,14 @@ exit 2
     }
     const summary = JSON.parse(result.stdout);
     const log = await readFile(ocmLog, "utf8");
+    const artifact = await readFile(join(artifactDir, "cron-runtime-smoke.json"), "utf8");
     const envHits = await readFile(envLog, "utf8");
     assertEqual(summary.gateway?.source, "network-frontage", "cron helper uses frontage endpoint source");
     assertEqual(summary.gateway?.url, "ws://127.0.1.17:19876", "cron helper uses frontage endpoint URL");
-    assertEqual(log.includes(token), false, "cron helper does not pass gateway token in argv");
-    assertEqual(log.includes("--token"), false, "cron helper does not pass token flag in argv");
+    assertEqual(log.includes("--token"), true, "cron helper passes explicit token flag with explicit URL");
+    assertEqual(log.includes(token), true, "cron helper passes explicit gateway token to cron CLI");
+    assertEqual(result.stdout.includes(token), false, "cron helper redacts gateway token from stdout summary");
+    assertEqual(artifact.includes(token), false, "cron helper redacts gateway token from artifact summary");
     assertEqual(envHits.trim().split(/\r?\n/).filter(Boolean).length >= 5, true, "cron helper passes gateway token through child env");
 
     return {
