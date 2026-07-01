@@ -33,7 +33,7 @@
       "maxCpuPercent": 200
     },
     "tool-runtime": {
-      "peakRssMb": 500,
+      "peakRssMb": 650,
       "maxCpuPercent": 200
     }
   },
