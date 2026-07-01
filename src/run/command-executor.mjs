@@ -18,8 +18,13 @@ import { safeSegment } from "./phase-commands.mjs";
 
 export async function runScenarioCommand(command, context, envName, artifactDir, phaseId, commandIndex, authPolicy = null) {
   assertSafeScenarioCommand(command, context, envName);
-  if (measurementScopeForPhase({ id: phaseId, commands: [command] }) === "product") {
+  const measurementScope = measurementScopeForPhase({ id: phaseId, commands: [command] });
+  if (measurementScope === "product") {
     assertNetworkFrontageCommandSafe(command, context);
+    const preflight = await ensureNetworkFrontageForProductCommand(command, context, envName, artifactDir, phaseId);
+    if (preflight) {
+      return preflight;
+    }
   }
   const agentCommand = isAgentMessageCommand(command);
   const snapshotOptions = {
@@ -81,6 +86,51 @@ export async function runScenarioCommand(command, context, envName, artifactDir,
       leaks: processLeaks
     };
   }
+  return result;
+}
+
+async function ensureNetworkFrontageForProductCommand(command, context, envName, artifactDir, phaseId) {
+  if (!context.networkFrontage?.enabled || isNetworkFrontageBootstrapCommand(command, phaseId)) {
+    return null;
+  }
+  try {
+    const allocation = await maybeStartNetworkFrontage(context, envName, artifactDir);
+    if (!allocation || allocation.status === "active") {
+      return null;
+    }
+    return networkFrontageBlockedResult(command, allocation, `network frontage is ${allocation.status ?? "unavailable"}: ${allocation.reason ?? allocation.blocker ?? "not active"}`, phaseId);
+  } catch (error) {
+    return networkFrontageBlockedResult(command, context.networkFrontageAllocation ?? null, `network frontage blocked: ${error.message}`, phaseId);
+  }
+}
+
+function isNetworkFrontageBootstrapCommand(command, phaseId) {
+  const text = String(command ?? "");
+  if (phaseId === "gateway-start" && /\bocm\s+service\s+(?:install|start|restart)\b/.test(text)) {
+    return true;
+  }
+  return phaseId === "provision" && /\bocm\s+start\b/.test(text) && !/(?:^|\s)--no-service(?:\s|$)/.test(text);
+}
+
+function networkFrontageBlockedResult(command, allocation, stderr, phaseId) {
+  const startedAtEpochMs = Date.now();
+  const result = {
+    command,
+    status: 1,
+    signal: null,
+    timedOut: false,
+    startedAt: new Date(startedAtEpochMs).toISOString(),
+    startedAtEpochMs,
+    finishedAt: new Date(startedAtEpochMs).toISOString(),
+    finishedAtEpochMs: startedAtEpochMs,
+    durationMs: 0,
+    stdout: "",
+    stderr,
+    harnessBlocker: true,
+    networkFrontage: allocation ?? null
+  };
+  tagCommandResult(result, phaseId);
+  attachCommandResultInterpretation(result);
   return result;
 }
 

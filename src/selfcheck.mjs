@@ -41,6 +41,7 @@ import {
   validateChannelWorkflowCaseCatalogShape,
   validateChannelWorkflowCaseInventoryReferences
 } from "./registries/channel-workflow-cases.mjs";
+import { runScenarioCommand } from "./run/command-executor.mjs";
 import { loadProcessRoles } from "./registries/process-roles.mjs";
 import { validateProfileShape } from "./registries/profiles.mjs";
 import { validateScenarioShape } from "./registries/scenarios.mjs";
@@ -447,6 +448,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(networkFrontageProductGuardCheck());
     checks.push(networkFrontageRuntimeEnvCheck());
     checks.push(networkFrontageHelperEndpointCheck());
+    checks.push(await networkFrontageProductPreflightBlocksPendingCheck(tmp));
     checks.push(await cronGatewayTokenEnvCheck(tmp));
     checks.push(await networkFrontagePartialStartupCleanupInvariantCheck());
     checks.push(await failingCommandCheck(
@@ -7517,6 +7519,77 @@ function networkFrontageHelperEndpointCheck() {
       id: "network-frontage-helper-endpoint",
       status: "FAIL",
       command: "verify helpers prefer active network frontage endpoint",
+      durationMs: 0,
+      message: error.message
+    };
+  } finally {
+    restoreEnv(previous);
+  }
+}
+
+async function networkFrontageProductPreflightBlocksPendingCheck(tmp) {
+  const previous = snapshotEnv(["PATH"]);
+  const fakeBin = join(tmp, "network-frontage-pending-bin");
+  const artifactDir = join(tmp, "network-frontage-pending-artifacts");
+  const sentinel = join(tmp, "network-frontage-pending-ran");
+  const fakeOcm = join(fakeBin, "ocm");
+  try {
+    await mkdir(fakeBin, { recursive: true });
+    await mkdir(artifactDir, { recursive: true });
+    await writeFile(fakeOcm, `#!/bin/sh
+if [ "$1:$2" = "service:status" ]; then
+  printf '{"gatewayPort":43123,"gatewayState":"starting","running":false}\\n'
+  exit 0
+fi
+echo "unexpected mock ocm command: $*" >&2
+exit 2
+`, "utf8");
+    await chmod(fakeOcm, 0o755);
+    process.env.PATH = `${fakeBin}:${process.env.PATH ?? ""}`;
+
+    const result = await runScenarioCommand(
+      `node -e "require('node:fs').writeFileSync(process.argv[1], 'ran')" ${quoteShell(sentinel)}`,
+      {
+        timeoutMs: 5000,
+        networkFrontage: {
+          enabled: true,
+          mode: "loopback-frontage",
+          workerId: 7
+        }
+      },
+      "kova-self-check",
+      artifactDir,
+      "agent-turn",
+      0
+    );
+
+    let commandRan = false;
+    try {
+      await stat(sentinel);
+      commandRan = true;
+    } catch (error) {
+      if (error.code !== "ENOENT") {
+        throw error;
+      }
+    }
+
+    assertEqual(result.status, 1, "pending network frontage blocks product command");
+    assertEqual(result.harnessBlocker, true, "pending network frontage is a harness blocker");
+    assertEqual(result.networkFrontage?.status, "pending", "pending network frontage result is attached");
+    assertEqual(/network frontage is pending/.test(result.stderr), true, "pending network frontage reason reported");
+    assertEqual(commandRan, false, "product command is not spawned before active network frontage");
+
+    return {
+      id: "network-frontage-product-preflight-blocks-pending",
+      status: "PASS",
+      command: "run product command with pending network frontage",
+      durationMs: result.durationMs
+    };
+  } catch (error) {
+    return {
+      id: "network-frontage-product-preflight-blocks-pending",
+      status: "FAIL",
+      command: "run product command with pending network frontage",
       durationMs: 0,
       message: error.message
     };
