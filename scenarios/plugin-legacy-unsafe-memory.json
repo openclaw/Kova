@@ -19,6 +19,9 @@
     "missingDependencyErrors": 0,
     "pluginLoadFailures": 2
   },
+  "expectedPluginFailureMarkers": [
+    "KOVA_LEGACY_UNSAFE_MEMORY_PLUGIN_REJECTED"
+  ],
   "phases": [
     {
       "id": "install",
@@ -43,7 +46,7 @@
       "commands": [
         "ocm service restart {env}",
         "ocm service status {env} --json",
-        "node {kovaRoot}/support/assert-command-output.mjs --pattern KOVA_LEGACY_UNSAFE_MEMORY_PLUGIN_REJECTED -- ocm logs {env} --tail 500 --raw"
+        "node {kovaRoot}/support/assert-command-output.mjs --pattern KOVA_LEGACY_UNSAFE_MEMORY_PLUGIN_REJECTED --retries 12 --delay-ms 750 -- ocm logs {env} --tail 500 --raw"
       ],
       "evidence": [
         "restart status after unsafe-memory rejection",
