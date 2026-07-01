@@ -615,6 +615,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(await mockProviderBehaviorCheck(tmp));
     checks.push(mockProviderScriptModesCheck());
     checks.push(providerFailureEvaluationCheck());
+    checks.push(providerSpecificFailureEvaluationCheck());
     checks.push(agentColdWarmEvaluationCheck());
     checks.push(sourceReleaseCompareCheck());
     checks.push(await concurrentAgentRunnerCheck(tmp));
@@ -3674,6 +3675,37 @@ async function providerEvidenceParserCheck() {
     assertEqual(evidence.requestCount, 2, "provider request count");
     assertEqual(evidence.providerDurationMs, 6700, "provider duration includes first through last response");
     assertEqual(evidence.firstByteLatencyMs, 15, "first byte latency");
+    const protocolEvidence = parseProviderRequestLog(JSON.stringify({
+      schemaVersion: "mock-ai-provider.request.v1",
+      requestId: "req_protocol",
+      receivedAt: "2026-04-30T10:00:02.000Z",
+      receivedAtEpochMs: 1777543202000,
+      respondedAt: "2026-04-30T10:00:02.010Z",
+      respondedAtEpochMs: 1777543202010,
+      method: "POST",
+      path: "/v1/responses",
+      status: 200,
+      matchedScriptStep: "kova-protocol-failure-response",
+      responseType: "malformed"
+    }));
+    assertEqual(protocolEvidence.requests[0]?.mode, "protocol-failure", "protocol-failure inferred from script step");
+    assertEqual(protocolEvidence.requests[0]?.errorClass, "malformed-response", "protocol-failure malformed response class");
+    const disconnectEvidence = parseProviderRequestLog(JSON.stringify({
+      schemaVersion: "mock-ai-provider.request.v1",
+      requestId: "req_disconnect",
+      receivedAt: "2026-04-30T10:00:03.000Z",
+      receivedAtEpochMs: 1777543203000,
+      respondedAt: "2026-04-30T10:00:03.010Z",
+      respondedAtEpochMs: 1777543203010,
+      method: "POST",
+      path: "/v1/responses",
+      status: 503,
+      matchedScriptStep: "kova-disconnect-then-recover-disconnect",
+      responseType: "error",
+      errorClass: "provider-disconnect"
+    }));
+    assertEqual(disconnectEvidence.requests[0]?.mode, "disconnect-then-recover", "disconnect recovery inferred from script step");
+    assertEqual(disconnectEvidence.requests[0]?.errorClass, "provider-disconnect", "disconnect error class preserved");
     const timelineEvidence = parseTimelineProviderRequestLog([
       JSON.stringify({
         schemaVersion: "openclaw.diagnostics.v1",
@@ -6480,6 +6512,239 @@ function providerFailureEvaluationCheck() {
       message: error.message
     };
   }
+}
+
+function providerSpecificFailureEvaluationCheck() {
+  try {
+    const protocolRecord = syntheticProviderSpecificRecord({
+      scenarioId: "agent-provider-protocol-failure",
+      phaseId: "protocol-failure-provider-turn",
+      expectedFailure: true,
+      commandStatus: 0,
+      stdout: "",
+      stderr: "provider returned protocol-invalid response",
+      providerRequests: [{
+        requestId: "provider-protocol-failure",
+        mode: "protocol-failure",
+        outcome: "malformed",
+        errorClass: "malformed-response",
+        responseType: "malformed",
+        receivedAtEpochMs: 1777543201500,
+        respondedAtEpochMs: 1777543201520,
+        status: 200,
+        statusClass: "2xx"
+      }]
+    });
+    evaluateRecord(protocolRecord, {
+      id: "agent-provider-protocol-failure",
+      mockProvider: { mode: "protocol-failure" },
+      agent: { expectedFailure: true },
+      thresholds: { providerFailureHealthFailures: 0 }
+    }, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
+    assertEqual(protocolRecord.status, "PASS", "provider protocol failure scenario status");
+    assertEqual(protocolRecord.measurements.agentProviderSimulation.protocolFailureObserved, true, "provider protocol failure observed");
+    assertEqual(
+      protocolRecord.measurements.agentFailureFixerSummary.items.some((item) => item.kind === "provider-protocol-failure"),
+      true,
+      "provider protocol failure fixer evidence"
+    );
+
+    const protocolMissingSpecificEvidence = syntheticProviderSpecificRecord({
+      scenarioId: "agent-provider-protocol-failure",
+      phaseId: "protocol-failure-provider-turn",
+      expectedFailure: true,
+      commandStatus: 0,
+      stdout: "",
+      stderr: "provider returned malformed response",
+      providerRequests: [{
+        requestId: "provider-malformed",
+        mode: "malformed",
+        outcome: "malformed",
+        errorClass: "malformed-response",
+        responseType: "malformed",
+        receivedAtEpochMs: 1777543201500,
+        respondedAtEpochMs: 1777543201520,
+        status: 200,
+        statusClass: "2xx"
+      }]
+    });
+    evaluateRecord(protocolMissingSpecificEvidence, {
+      id: "agent-provider-protocol-failure",
+      mockProvider: { mode: "protocol-failure" },
+      agent: { expectedFailure: true },
+      thresholds: { providerFailureHealthFailures: 0 }
+    }, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
+    assertEqual(protocolMissingSpecificEvidence.status, "FAIL", "protocol failure missing specific evidence fails");
+    assertEqual(
+      protocolMissingSpecificEvidence.violations.some((violation) => violation.metric === "providerProtocolFailureObserved"),
+      true,
+      "protocol failure violation emitted"
+    );
+
+    const disconnectRecord = syntheticProviderSpecificRecord({
+      scenarioId: "agent-provider-random-disconnect",
+      phaseId: "disconnect-provider-turn",
+      expectedFailure: false,
+      commandStatus: 0,
+      stdout: JSON.stringify({ finalAssistantVisibleText: "KOVA_AGENT_OK" }),
+      stderr: "",
+      providerRequests: [
+        {
+          requestId: "provider-disconnect",
+          mode: "disconnect-then-recover",
+          outcome: "error",
+          errorClass: "provider-disconnect",
+          responseType: "error",
+          receivedAtEpochMs: 1777543201500,
+          respondedAtEpochMs: 1777543201520,
+          status: 503,
+          statusClass: "5xx"
+        },
+        {
+          requestId: "provider-disconnect-recover",
+          mode: "normal",
+          outcome: "completed",
+          errorClass: null,
+          responseType: "final-text",
+          receivedAtEpochMs: 1777543201600,
+          respondedAtEpochMs: 1777543201700,
+          status: 200,
+          statusClass: "2xx"
+        }
+      ]
+    });
+    evaluateRecord(disconnectRecord, {
+      id: "agent-provider-random-disconnect",
+      mockProvider: { mode: "disconnect-then-recover" },
+      agent: { expectedText: "KOVA_AGENT_OK" },
+      thresholds: { providerFailureHealthFailures: 0 }
+    }, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
+    assertEqual(disconnectRecord.status, "PASS", "provider disconnect recovery scenario status");
+    assertEqual(disconnectRecord.measurements.agentProviderSimulation.disconnectObserved, true, "provider disconnect observed");
+    assertEqual(disconnectRecord.measurements.agentProviderSimulation.recoveryOk, true, "provider disconnect recovery ok");
+    assertEqual(disconnectRecord.measurements.agentLatencyDiagnosis.kind, "provider-disconnect", "provider disconnect diagnosis");
+    assertEqual(
+      disconnectRecord.measurements.agentFailureFixerSummary.items.some((item) => item.kind === "provider-disconnect"),
+      true,
+      "provider disconnect fixer evidence"
+    );
+
+    const disconnectMissingSpecificEvidence = syntheticProviderSpecificRecord({
+      scenarioId: "agent-provider-random-disconnect",
+      phaseId: "disconnect-provider-turn",
+      expectedFailure: false,
+      commandStatus: 0,
+      stdout: JSON.stringify({ finalAssistantVisibleText: "KOVA_AGENT_OK" }),
+      stderr: "",
+      providerRequests: [
+        {
+          requestId: "provider-generic-error",
+          mode: "disconnect-then-recover",
+          outcome: "error",
+          errorClass: "provider-error",
+          responseType: "error",
+          receivedAtEpochMs: 1777543201500,
+          respondedAtEpochMs: 1777543201520,
+          status: 503,
+          statusClass: "5xx"
+        },
+        {
+          requestId: "provider-generic-recover",
+          mode: "normal",
+          outcome: "completed",
+          errorClass: null,
+          responseType: "final-text",
+          receivedAtEpochMs: 1777543201600,
+          respondedAtEpochMs: 1777543201700,
+          status: 200,
+          statusClass: "2xx"
+        }
+      ]
+    });
+    evaluateRecord(disconnectMissingSpecificEvidence, {
+      id: "agent-provider-random-disconnect",
+      mockProvider: { mode: "disconnect-then-recover" },
+      agent: { expectedText: "KOVA_AGENT_OK" },
+      thresholds: { providerFailureHealthFailures: 0 }
+    }, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
+    assertEqual(disconnectMissingSpecificEvidence.status, "FAIL", "disconnect missing specific evidence fails");
+    assertEqual(
+      disconnectMissingSpecificEvidence.violations.some((violation) => violation.metric === "providerDisconnectObserved"),
+      true,
+      "disconnect violation emitted"
+    );
+
+    return {
+      id: "provider-specific-failure-evaluation",
+      status: "PASS",
+      command: "evaluate synthetic provider protocol and disconnect evidence",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "provider-specific-failure-evaluation",
+      status: "FAIL",
+      command: "evaluate synthetic provider protocol and disconnect evidence",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function syntheticProviderSpecificRecord({ scenarioId, phaseId, expectedFailure, commandStatus, stdout, stderr, providerRequests }) {
+  const startedAtEpochMs = 1777543201000;
+  const finishedAtEpochMs = 1777543203000;
+  const normalizedRequests = providerRequests.map((request) => ({
+    receivedAt: new Date(request.receivedAtEpochMs).toISOString(),
+    respondedAt: new Date(request.respondedAtEpochMs).toISOString(),
+    firstByteLatencyMs: 10,
+    firstChunkLatencyMs: 10,
+    route: "/v1/responses",
+    model: "gpt-5.5",
+    stream: true,
+    ...request
+  }));
+  return {
+    scenario: scenarioId,
+    status: "PASS",
+    auth: { mode: "mock", source: "mock", providerId: "openai" },
+    phases: [
+      {
+        id: phaseId,
+        expectedAgentFailure: expectedFailure,
+        results: [{
+          command: "ocm @kova-self-check -- agent --local --agent main --session-id kova-provider-specific --message hi --json",
+          status: commandStatus,
+          timedOut: false,
+          startedAt: new Date(startedAtEpochMs).toISOString(),
+          startedAtEpochMs,
+          finishedAt: new Date(finishedAtEpochMs).toISOString(),
+          finishedAtEpochMs,
+          durationMs: finishedAtEpochMs - startedAtEpochMs,
+          stdout,
+          stderr,
+          processSnapshots: {
+            leaks: {
+              schemaVersion: "kova.processLeakSummary.v1",
+              leakCount: 0,
+              leakedProcesses: [],
+              leaksByRole: {}
+            }
+          }
+        }],
+        metrics: { logs: zeroLogMetrics(), health: { ok: true } }
+      }
+    ],
+    providerEvidence: {
+      available: true,
+      requestCount: normalizedRequests.length,
+      requests: normalizedRequests
+    },
+    finalMetrics: {
+      service: { gatewayState: "running" },
+      logs: zeroLogMetrics()
+    }
+  };
 }
 
 function providerConcurrentEvaluationCheck() {

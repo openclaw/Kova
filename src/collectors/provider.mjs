@@ -462,7 +462,19 @@ function mockAiProviderMode(raw, matchedScriptStep, responseType) {
     return null;
   }
   const text = `${matchedScriptStep ?? ""} ${responseType ?? ""}`;
-  for (const mode of ["error-then-recover", "concurrent-pressure", "streaming-stall", "malformed", "timeout", "slow", "normal"]) {
+  for (const mode of [
+    "disconnect-then-recover",
+    "error-then-recover",
+    "concurrent-pressure",
+    "protocol-failure",
+    "exec-tool-failure-only",
+    "exec-tool-safety",
+    "streaming-stall",
+    "malformed",
+    "timeout",
+    "slow",
+    "normal"
+  ]) {
     if (text.includes(mode)) {
       return mode;
     }

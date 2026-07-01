@@ -70,6 +70,8 @@ const MCP_TOOL_CALL_METRICS = [
   "mcpToolCallErrorAttributed"
 ];
 
+const PROVIDER_RECOVERY_MODES = new Set(["error-then-recover", "disconnect-then-recover"]);
+
 export function evaluateRecord(record, scenario, options = {}) {
   const originalStatus = record.status;
   const thresholdPolicy = resolveThresholdPolicy({
@@ -1945,6 +1947,7 @@ function evaluateProviderSimulation({ turns, scenario, record, thresholds, healt
   const mode = scenario.mockProvider?.mode ?? "normal";
   const expected = mode !== "normal" && scenario.agent !== undefined;
   const issue = classifyProviderIssue(turns);
+  const providerRequests = record.providerEvidence?.requests ?? [];
   const expectedFailureTurns = turns.filter((turn) => turn.expectedFailure === true);
   const normalTurns = turns.filter((turn) => turn.expectedFailure !== true);
   const healthLimit = typeof thresholds.providerFailureHealthFailures === "number" ? thresholds.providerFailureHealthFailures : 0;
@@ -1955,9 +1958,18 @@ function evaluateProviderSimulation({ turns, scenario, record, thresholds, healt
     finalGatewayState === "running" &&
     healthFailures <= healthLimit
   );
-  const recoveryOk = mode === "error-then-recover"
-    ? turns.some((turn) => hasProviderFailureEvidence(turn)) &&
-      turns.some((turn) => turn.responseOk === true && hasSuccessfulProviderRequest(turn))
+  const protocolFailureObserved = mode === "protocol-failure"
+    ? hasProtocolFailureRequest(providerRequests) && issue.kind === "malformed-response"
+    : null;
+  const disconnectObserved = mode === "disconnect-then-recover"
+    ? hasDisconnectFailureRequest(providerRequests) || turns.some((turn) => hasProviderFailureEvidence(turn, "provider-disconnect"))
+    : null;
+  const recoveryOk = PROVIDER_RECOVERY_MODES.has(mode)
+    ? hasProviderFailureBeforeSuccessfulRequest(providerRequests, mode) ||
+      (
+        turns.some((turn) => hasProviderFailureEvidence(turn, mode === "disconnect-then-recover" ? "provider-disconnect" : null)) &&
+        turns.some((turn) => turn.responseOk === true && hasSuccessfulProviderRequest(turn))
+      )
     : null;
   const providerSlowMinMs = thresholds.providerSlowMinMs ?? scenario.mockProvider?.delayMs ?? null;
   const slowObserved = mode === "slow"
@@ -1985,6 +1997,8 @@ function evaluateProviderSimulation({ turns, scenario, record, thresholds, healt
     expectedFailureCount: expectedFailureTurns.length,
     expectedFailureObservedCount: expectedFailureTurns.filter((turn) => turn.expectedFailureObserved === true).length,
     successfulTurnCount: normalTurns.filter((turn) => turn.responseOk === true).length,
+    protocolFailureObserved,
+    disconnectObserved,
     finalGatewayState,
     healthFailures,
     healthFailureScope: "post-startup",
@@ -2041,6 +2055,15 @@ function checkProviderSimulation(violations, simulation) {
       message: "mock provider malformed mode did not produce malformed response evidence"
     });
   }
+  if (simulation.mode === "protocol-failure" && simulation.protocolFailureObserved !== true) {
+    violations.push({
+      kind: "provider-simulation",
+      metric: "providerProtocolFailureObserved",
+      expected: "protocol-invalid provider response from protocol-failure fixture",
+      actual: simulation.observedIssue,
+      message: "mock provider protocol-failure mode did not prove the protocol-invalid provider response was exercised"
+    });
+  }
   if (simulation.mode === "error-then-recover" && simulation.recoveryOk !== true) {
     violations.push({
       kind: "provider-simulation",
@@ -2048,6 +2071,24 @@ function checkProviderSimulation(violations, simulation) {
       expected: "first request fails and later request succeeds",
       actual: simulation.recoveryOk,
       message: "mock provider error-then-recover mode did not prove agent recovery"
+    });
+  }
+  if (simulation.mode === "disconnect-then-recover" && simulation.disconnectObserved !== true) {
+    violations.push({
+      kind: "provider-simulation",
+      metric: "providerDisconnectObserved",
+      expected: "provider disconnect evidence before recovery",
+      actual: simulation.observedIssue,
+      message: "mock provider disconnect-then-recover mode did not prove a provider disconnect"
+    });
+  }
+  if (simulation.mode === "disconnect-then-recover" && simulation.recoveryOk !== true) {
+    violations.push({
+      kind: "provider-simulation",
+      metric: "providerDisconnectRecoveryOk",
+      expected: "disconnect request fails and later provider request succeeds",
+      actual: simulation.recoveryOk,
+      message: "mock provider disconnect-then-recover mode did not prove recovery after disconnect"
     });
   }
   if (simulation.mode === "concurrent-pressure" && simulation.concurrentObserved !== true) {
@@ -2086,11 +2127,18 @@ function buildAgentFailureFixerSummary(latencyDiagnosis, cleanupDiagnosis, provi
       likelyOwner: "provider streaming / agent turn cancellation"
     });
   }
-  if (providerSimulation?.expected === true && (providerSimulation.mode === "malformed" || providerSimulation.observedIssue === "malformed-response")) {
+  if (providerSimulation?.expected === true && providerSimulation.mode !== "protocol-failure" && (providerSimulation.mode === "malformed" || providerSimulation.observedIssue === "malformed-response")) {
     items.push({
       kind: "malformed-response",
       summary: "Provider returned malformed output; verify OpenClaw reports a clear provider parse error and keeps the session usable.",
       likelyOwner: "provider response parsing"
+    });
+  }
+  if (providerSimulation?.expected === true && providerSimulation.mode === "protocol-failure") {
+    items.push({
+      kind: "provider-protocol-failure",
+      summary: "Provider returned a protocol-invalid response; verify OpenClaw reports a clear provider contract error and keeps the session usable.",
+      likelyOwner: "provider response contract handling"
     });
   }
   if (providerSimulation?.expected === true && providerSimulation.recoveryOk === true) {
@@ -2098,6 +2146,13 @@ function buildAgentFailureFixerSummary(latencyDiagnosis, cleanupDiagnosis, provi
       kind: "provider-recovered",
       summary: "Provider failed and later recovered; verify retry/recovery behavior is intentional and latency remains acceptable.",
       likelyOwner: "provider retry / agent recovery"
+    });
+  }
+  if (providerSimulation?.expected === true && providerSimulation.observedIssue === "provider-disconnect") {
+    items.push({
+      kind: "provider-disconnect",
+      summary: providerSimulation.observedIssueSummary ?? "Provider disconnected before recovery; verify OpenClaw reports the interruption and leaves follow-up turns usable.",
+      likelyOwner: "provider transport recovery"
     });
   }
   if (providerSimulation?.expected === true && providerSimulation.observedIssue === "provider-error") {
@@ -2386,6 +2441,9 @@ function classifyProviderIssue(turns) {
   if (errorKinds.has("malformed-response")) {
     return { kind: "malformed-response", summary: "Provider returned a malformed response." };
   }
+  if (errorKinds.has("provider-disconnect")) {
+    return { kind: "provider-disconnect", summary: "Provider disconnected before completing the agent turn." };
+  }
   if (errorKinds.has("provider-error")) {
     return { kind: "provider-error", summary: "Provider returned an explicit error before recovery or failure handling." };
   }
@@ -2403,11 +2461,61 @@ function hasSuccessfulProviderRequest(turn) {
   return (turn.providerStatuses ?? []).some((status) => Number(status.value) >= 200 && Number(status.value) < 300);
 }
 
-function hasProviderFailureEvidence(turn) {
+function hasProviderFailureEvidence(turn, expectedKind = null) {
+  if (expectedKind) {
+    return (turn.providerErrors ?? []).some((error) => error.kind === expectedKind);
+  }
   return (turn.providerErrors ?? []).some((error) =>
-    ["provider-error", "provider-timeout", "streaming-stall", "malformed-response", "provider-aborted"].includes(error.kind) ||
+    ["provider-error", "provider-disconnect", "provider-timeout", "streaming-stall", "malformed-response", "provider-aborted"].includes(error.kind) ||
     (error.kind === "http" && typeof error.status === "number" && error.status >= 400)
   );
+}
+
+function hasProtocolFailureRequest(requests) {
+  return requests.some((request) =>
+    request.mode === "protocol-failure" &&
+    request.responseType === "malformed" &&
+    typeof request.status === "number" &&
+    request.status >= 200 &&
+    request.status < 300
+  );
+}
+
+function hasDisconnectFailureRequest(requests) {
+  return requests.some((request) => isProviderFailureRequest(request, "disconnect-then-recover"));
+}
+
+function hasProviderFailureBeforeSuccessfulRequest(requests, mode) {
+  let sawFailure = false;
+  for (const request of requests
+    .filter((item) => typeof item.receivedAtEpochMs === "number")
+    .toSorted((left, right) => left.receivedAtEpochMs - right.receivedAtEpochMs)) {
+    if (isProviderFailureRequest(request, mode)) {
+      sawFailure = true;
+      continue;
+    }
+    if (sawFailure && isSuccessfulProviderRequest(request)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isProviderFailureRequest(request, mode) {
+  if (mode === "disconnect-then-recover") {
+    return request.mode === "disconnect-then-recover" && request.errorClass === "provider-disconnect";
+  }
+  if (mode === "error-then-recover") {
+    return request.mode === "error-then-recover" && (
+      request.errorClass === "provider-error" ||
+      (typeof request.status === "number" && request.status >= 400)
+    );
+  }
+  return false;
+}
+
+function isSuccessfulProviderRequest(request) {
+  return typeof request.status === "number" && request.status >= 200 && request.status < 300;
 }
 
 function relevantAgentSpans(timelineSummary) {
