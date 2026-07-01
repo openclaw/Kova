@@ -20,6 +20,7 @@ export function metricOptions(context, scenario, phase, artifactDir, policyConte
     diagnosticReport: false,
     artifactDir,
     collectorArtifactDirs: collectorArtifactDirs(artifactDir),
+    networkFrontageAllocation: context.networkFrontageAllocation ?? null,
     collectionPolicy: resolveCollectionPolicy({
       kind: policyContext.kind,
       scenario: scenario?.id ?? null,

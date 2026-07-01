@@ -10,6 +10,7 @@ import {
   prepareOpenClawRuntimeFromOcmEnv,
   readTimeoutMs
 } from "./openclaw-runtime.mjs";
+import { resolveGatewayEndpoint } from "./gateway-endpoint.mjs";
 
 const startedAtEpochMs = Date.now();
 
@@ -21,13 +22,13 @@ try {
   const timeoutMs = readTimeoutMs(args.timeout, 120000);
   const model = args.model ?? "openclaw";
   const cfg = readConfig(runtimeContext.root);
-  const port = runtimeContext.gatewayPort;
+  const gateway = resolveGatewayEndpoint(runtimeContext, cfg, { protocol: "http" });
   const token = readGatewayToken(cfg);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error(`OpenAI-compatible request timed out after ${timeoutMs}ms`)), timeoutMs);
   const requestStartedAtEpochMs = Date.now();
   try {
-    const response = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
+    const response = await fetch(`${gateway.url}/v1/chat/completions`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -57,6 +58,12 @@ try {
       method: "POST /v1/chat/completions",
       envName: runtimeContext.envName,
       runtime: runtimeContext.runtime,
+      gateway: {
+        source: gateway.source,
+        host: gateway.host,
+        port: gateway.port,
+        url: gateway.url
+      },
       model,
       startedAtEpochMs,
       requestStartedAtEpochMs,

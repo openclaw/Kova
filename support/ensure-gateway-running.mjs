@@ -3,6 +3,7 @@
 import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { resolveGatewayEndpoint } from "./gateway-endpoint.mjs";
 
 const startedAtEpochMs = Date.now();
 
@@ -112,11 +113,21 @@ async function gatewayHealth(status) {
   }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 2000);
+  const gateway = resolveGatewayEndpoint({ gatewayPort: port }, { gateway: { port } }, { protocol: "http" });
   try {
-    const response = await fetch(`http://127.0.0.1:${port}/health`, { signal: controller.signal });
-    return { ok: response.ok, status: response.status };
+    const response = await fetch(`${gateway.url}/health`, { signal: controller.signal });
+    return {
+      ok: response.ok,
+      status: response.status,
+      gateway: { source: gateway.source, host: gateway.host, port: gateway.port, url: gateway.url }
+    };
   } catch (error) {
-    return { ok: false, status: null, error: error instanceof Error ? error.message : String(error) };
+    return {
+      ok: false,
+      status: null,
+      gateway: { source: gateway.source, host: gateway.host, port: gateway.port, url: gateway.url },
+      error: error instanceof Error ? error.message : String(error)
+    };
   } finally {
     clearTimeout(timeout);
   }

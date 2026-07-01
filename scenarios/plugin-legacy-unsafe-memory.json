@@ -26,7 +26,7 @@
       "intent": "Install a plugin that models an older tolerated bad-allocation behavior without allocating dangerous amounts of memory.",
       "commands": [
         "ocm start {env} {startSelector} --json",
-        "node {kovaRoot}/support/assert-command-output.mjs --pattern KOVA_LEGACY_UNSAFE_MEMORY_PLUGIN_REJECTED -- ocm @{env} -- plugins install {kovaRoot}/support/plugins/kova-legacy-unsafe-memory --force",
+        "ocm @{env} -- plugins install {kovaRoot}/support/plugins/kova-legacy-unsafe-memory --force",
         "ocm @{env} -- plugins list"
       ],
       "evidence": [
@@ -42,10 +42,12 @@
       "intent": "Restart after the failed-closed install path and verify the gateway remains supervised.",
       "commands": [
         "ocm service restart {env}",
-        "ocm service status {env} --json"
+        "ocm service status {env} --json",
+        "node {kovaRoot}/support/assert-command-output.mjs --pattern KOVA_LEGACY_UNSAFE_MEMORY_PLUGIN_REJECTED -- ocm logs {env} --tail 500 --raw"
       ],
       "evidence": [
         "restart status after unsafe-memory rejection",
+        "unsafe-memory fail-closed diagnostic",
         "gateway remains supervised"
       ],
       "healthScope": "readiness"

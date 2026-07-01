@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { resolveGatewayEndpoint } from "./gateway-endpoint.mjs";
 
 const GATEWAY_PROTOCOL_MIN_VERSION = 4;
 const GATEWAY_PROTOCOL_MAX_VERSION = 4;
@@ -103,9 +104,10 @@ export async function openDirectGatewayRpcClient(runtimeContext) {
   if (!token) {
     throw new Error("direct Gateway RPC requires a gateway auth token");
   }
+  const gateway = resolveGatewayEndpoint(runtimeContext, null, { protocol: "ws" });
 
   const client = new DirectGatewayRpcClient({
-    url: `ws://127.0.0.1:${runtimeContext.gatewayPort}`,
+    url: gateway.url,
     token
   });
   await client.connect();

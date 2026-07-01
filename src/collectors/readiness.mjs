@@ -4,6 +4,7 @@ export const READINESS_SCHEMA = "kova.readiness.v1";
 export const HEALTH_SAMPLES_SCHEMA = "kova.healthSamples.v1";
 
 export async function collectReadinessMetrics(port, options) {
+  const probe = normalizeProbeEndpoint(port, options.probeEndpoint);
   const startedAt = Date.now();
   const deadline = startedAt + options.timeoutMs;
   const thresholdMs = Math.max(0, Number(options.thresholdMs ?? options.timeoutMs ?? 0));
@@ -15,14 +16,14 @@ export async function collectReadinessMetrics(port, options) {
   let lastHealth = null;
 
   do {
-    lastListening = await collectListeningMetrics(port, options.probeTimeoutMs);
+    lastListening = await collectListeningMetrics(probe, options.probeTimeoutMs);
     lastListening.elapsedMs = Date.now() - startedAt;
     listeningAttempts.push(lastListening);
     if (lastListening.ok && listeningReadyAtMs === null) {
       listeningReadyAtMs = lastListening.elapsedMs;
     }
 
-    lastHealth = await collectHealthMetrics(port, options.probeTimeoutMs);
+    lastHealth = await collectHealthMetrics(probe, options.probeTimeoutMs);
     lastHealth.elapsedMs = Date.now() - startedAt;
     healthAttempts.push(lastHealth);
     if (lastHealth.ok) {
@@ -89,15 +90,17 @@ export function classifyReadiness({ thresholdMs, listeningReadyAtMs, healthReady
   };
 }
 
-export function collectListeningMetrics(port, timeoutMs) {
+export function collectListeningMetrics(probeTarget, timeoutMs) {
+  const probe = normalizeProbeEndpoint(probeTarget, null);
   const startedAt = Date.now();
   return new Promise((resolve) => {
-    const socket = createConnection({ host: "127.0.0.1", port: Number(port) });
+    const socket = createConnection({ host: probe.host, port: probe.port });
     const timer = setTimeout(() => {
       socket.destroy();
       resolve({
-        host: "127.0.0.1",
-        port: Number(port),
+        source: probe.source,
+        host: probe.host,
+        port: probe.port,
         ok: false,
         durationMs: Date.now() - startedAt,
         error: "tcp connect timed out"
@@ -108,8 +111,9 @@ export function collectListeningMetrics(port, timeoutMs) {
       clearTimeout(timer);
       socket.end();
       resolve({
-        host: "127.0.0.1",
-        port: Number(port),
+        source: probe.source,
+        host: probe.host,
+        port: probe.port,
         ok: true,
         durationMs: Date.now() - startedAt
       });
@@ -118,8 +122,9 @@ export function collectListeningMetrics(port, timeoutMs) {
     socket.once("error", (error) => {
       clearTimeout(timer);
       resolve({
-        host: "127.0.0.1",
-        port: Number(port),
+        source: probe.source,
+        host: probe.host,
+        port: probe.port,
         ok: false,
         durationMs: Date.now() - startedAt,
         error: error.message
@@ -128,18 +133,22 @@ export function collectListeningMetrics(port, timeoutMs) {
   });
 }
 
-export async function collectHealthMetrics(port, timeoutMs) {
+export async function collectHealthMetrics(probeTarget, timeoutMs) {
+  const probe = normalizeProbeEndpoint(probeTarget, null);
   const startedAt = Date.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), Math.min(timeoutMs, 5000));
 
   try {
-    const response = await fetch(`http://127.0.0.1:${Number(port)}/health`, {
+    const response = await fetch(`${probe.url}/health`, {
       signal: controller.signal
     });
     const text = await response.text();
     return {
-      url: `http://127.0.0.1:${Number(port)}/health`,
+      source: probe.source,
+      host: probe.host,
+      port: probe.port,
+      url: `${probe.url}/health`,
       ok: response.ok,
       status: response.status,
       durationMs: Date.now() - startedAt,
@@ -147,7 +156,10 @@ export async function collectHealthMetrics(port, timeoutMs) {
     };
   } catch (error) {
     return {
-      url: `http://127.0.0.1:${Number(port)}/health`,
+      source: probe.source,
+      host: probe.host,
+      port: probe.port,
+      url: `${probe.url}/health`,
       ok: false,
       status: null,
       durationMs: Date.now() - startedAt,
@@ -159,14 +171,41 @@ export async function collectHealthMetrics(port, timeoutMs) {
 }
 
 export async function collectHealthSamples(port, options) {
+  const probe = normalizeProbeEndpoint(port, options.probeEndpoint);
   const samples = [];
   for (let index = 0; index < options.count; index += 1) {
-    samples.push(await collectHealthMetrics(port, options.timeoutMs));
+    samples.push(await collectHealthMetrics(probe, options.timeoutMs));
     if (index < options.count - 1 && options.intervalMs > 0) {
       await sleep(options.intervalMs);
     }
   }
   return samples;
+}
+
+function normalizeProbeEndpoint(portOrEndpoint, explicitEndpoint) {
+  const endpoint = explicitEndpoint ?? (typeof portOrEndpoint === "object" ? portOrEndpoint : null);
+  if (endpoint) {
+    const host = endpoint.host;
+    const port = Number(endpoint.port);
+    if (typeof host === "string" && host.length > 0 && Number.isInteger(port) && port > 0) {
+      const url = typeof endpoint.url === "string" && endpoint.url.length > 0
+        ? endpoint.url.replace(/\/+$/, "")
+        : `http://${host}:${port}`;
+      return {
+        source: endpoint.source ?? "probe-endpoint",
+        host,
+        port,
+        url
+      };
+    }
+  }
+  const port = Number(portOrEndpoint);
+  return {
+    source: "gateway-port",
+    host: "127.0.0.1",
+    port,
+    url: `http://127.0.0.1:${port}`
+  };
 }
 
 export function summarizeHealthSamples(samples) {
