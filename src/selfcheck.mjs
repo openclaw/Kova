@@ -8200,6 +8200,61 @@ function toolRuntimeEvidenceEvaluationCheck() {
     assertEqual(record.measurements.mcpToolCount, 4, "MCP tool count");
     assertEqual(record.measurements.mcpProcessLeaks, 0, "MCP process leak count");
 
+    const expectedPluginFailureRecord = {
+      scenario: "plugin-legacy-unsafe-memory",
+      status: "PASS",
+      phases: [{
+        id: "survival",
+        results: [{
+          command: "ocm logs kova-self-check --tail 500 --raw",
+          status: 0,
+          timedOut: false,
+          durationMs: 20,
+          stdout: "[plugins] kova-legacy-unsafe-memory failed during register: Error: KOVA_LEGACY_UNSAFE_MEMORY_PLUGIN_REJECTED blocked=4/4\n",
+          stderr: ""
+        }],
+        metrics: { service: { gatewayState: "running" }, logs: zeroLogMetrics() }
+      }],
+      finalMetrics: { service: { gatewayState: "running" }, logs: zeroLogMetrics() }
+    };
+    evaluateRecord(expectedPluginFailureRecord, {
+      id: "plugin-legacy-unsafe-memory",
+      expectedPluginFailureMarkers: ["KOVA_LEGACY_UNSAFE_MEMORY_PLUGIN_REJECTED"],
+      thresholds: { pluginLoadFailures: 0 }
+    }, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
+    assertEqual(expectedPluginFailureRecord.status, "PASS", "expected plugin failure marker ignored");
+    assertEqual(expectedPluginFailureRecord.measurements.pluginLoadFailures, 0, "expected plugin failure marker does not count as generic plugin failure");
+
+    const unexpectedPluginFailureRecord = {
+      ...expectedPluginFailureRecord,
+      status: "PASS",
+      violations: [],
+      measurements: undefined,
+      phases: [{
+        id: "survival",
+        results: [{
+          command: "ocm logs kova-self-check --tail 500 --raw",
+          status: 0,
+          timedOut: false,
+          durationMs: 20,
+          stdout: "[plugins] unrelated-plugin failed during register: Error: boom\n",
+          stderr: ""
+        }],
+        metrics: { service: { gatewayState: "running" }, logs: zeroLogMetrics() }
+      }]
+    };
+    evaluateRecord(unexpectedPluginFailureRecord, {
+      id: "plugin-legacy-unsafe-memory",
+      expectedPluginFailureMarkers: ["KOVA_LEGACY_UNSAFE_MEMORY_PLUGIN_REJECTED"],
+      thresholds: { pluginLoadFailures: 0 }
+    }, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
+    assertEqual(unexpectedPluginFailureRecord.status, "FAIL", "unexpected plugin failure still fails");
+    assertEqual(
+      unexpectedPluginFailureRecord.violations.some((violation) => violation.metric === "pluginLoadFailures"),
+      true,
+      "unexpected plugin failure violation surfaced"
+    );
+
     const unattributedCron = {
       ...record,
       status: "PASS",

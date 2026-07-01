@@ -115,7 +115,9 @@ export function evaluateRecord(record, scenario, options = {}) {
     countLogMetric(record, "missingDependencyErrors", allResults),
     hasSuccessfulLogCommandResult(allResults)
   );
-  const pluginLoadFailures = countLogMetric(record, "pluginLoadFailures", allResults);
+  const pluginLoadFailures = countLogMetric(record, "pluginLoadFailures", allResults, {
+    ignoreLine: expectedPluginFailureLineIgnorer(scenario)
+  });
   const metadataScanMentions = countLogMetric(record, "metadataScanMentions", allResults);
   const configNormalizationMentions = countLogMetric(record, "configNormalizationMentions", allResults);
   const gatewayRestartCount = countGatewayRestarts(record, allResults);
@@ -3951,7 +3953,7 @@ const LOG_METRIC_PATTERNS = {
   v8DiagnosticMentions: /v8|diagnostic report|heapsnapshot|heap snapshot/i
 };
 
-function countLogMetric(record, key, results = []) {
+function countLogMetric(record, key, results = [], options = {}) {
   let observed = false;
   let count = 0;
   for (const phase of record.phases ?? []) {
@@ -3968,7 +3970,7 @@ function countLogMetric(record, key, results = []) {
     count = Math.max(count, finalValue);
   }
 
-  const commandLogMetric = countExplicitLogCommandMetric(results, key);
+  const commandLogMetric = countExplicitLogCommandMetric(results, key, options);
   if (commandLogMetric.observed || commandLogMetric.count > 0) {
     observed = true;
     count = Math.max(count, commandLogMetric.count);
@@ -3986,11 +3988,14 @@ function combineCommandAndLogCount(commandCount, logCount, logCommandObserved) {
   return logCommandObserved ? 0 : null;
 }
 
-function countExplicitLogCommandMetric(results, key) {
+function countExplicitLogCommandMetric(results, key, options = {}) {
   const pattern = LOG_METRIC_PATTERNS[key];
   if (!pattern) {
     return { observed: false, count: 0 };
   }
+  const ignoreLine = key === "providerTimeoutMentions"
+    ? isExpectedKovaMockProviderFailureLine
+    : options.ignoreLine;
   let observed = false;
   let count = 0;
   for (const result of results) {
@@ -4000,15 +4005,22 @@ function countExplicitLogCommandMetric(results, key) {
     if (result.status === 0) {
       observed = true;
     }
-    const matchCount = countPattern(`${result.stdout ?? ""}\n${result.stderr ?? ""}`, pattern, {
-      ignoreLine: key === "providerTimeoutMentions" ? isExpectedKovaMockProviderFailureLine : null
-    });
+    const matchCount = countPattern(`${result.stdout ?? ""}\n${result.stderr ?? ""}`, pattern, { ignoreLine });
     if (matchCount > 0) {
       observed = true;
       count += matchCount;
     }
   }
   return { observed, count };
+}
+
+function expectedPluginFailureLineIgnorer(scenario) {
+  const markers = (scenario?.expectedPluginFailureMarkers ?? [])
+    .filter((marker) => typeof marker === "string" && marker.length > 0);
+  if (markers.length === 0) {
+    return null;
+  }
+  return (line) => markers.some((marker) => String(line ?? "").includes(marker));
 }
 
 function hasSuccessfulLogCommandResult(results) {
