@@ -192,6 +192,9 @@ async function runMcpBridgeAttempt(gatewayUrl, gatewayTokenFile, gatewayToken) {
   summary.processExited = true;
   summary.exitStatus = exit.status;
   summary.exitSignal = exit.signal;
+  if (exit.status !== 0 || exit.signal !== null) {
+    throw new Error(`MCP bridge did not exit cleanly (status=${exit.status ?? "null"}, signal=${exit.signal ?? "none"})`);
+  }
 }
 
 function selectSafeToolCall(toolNames, gatewayUrl, gatewayToken) {
