@@ -106,10 +106,10 @@ async function ensureNetworkFrontageForProductCommand(command, context, envName,
 
 function isNetworkFrontageBootstrapCommand(command, phaseId) {
   const text = String(command ?? "");
-  if (phaseId === "gateway-start" && /\bocm\s+service\s+(?:install|start|restart)\b/.test(text)) {
+  if (/\bocm\s+service\s+(?:install|start|restart)\b/.test(text)) {
     return true;
   }
-  return phaseId === "provision" && /\bocm\s+start\b/.test(text) && !/(?:^|\s)--no-service(?:\s|$)/.test(text);
+  return /\bocm\s+start\b/.test(text) && !/(?:^|\s)--no-service(?:\s|$)/.test(text);
 }
 
 function networkFrontageBlockedResult(command, allocation, stderr, phaseId) {
