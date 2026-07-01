@@ -30,7 +30,7 @@ browsers, soak — with **real execution evidence**, not synthetic confidence.
 | 🤖 **Agent-first I/O** | `kova.report.v1` JSON, summary, bundle, paste, compare. Verdict-led dashboard by default. |
 
 ```text
-56 scenarios   ·   37 surfaces   ·   37 states   ·   10 profiles
+61 scenarios   ·   41 surfaces   ·   42 states   ·   12 profiles
 21 process roles   ·   15+ collectors
 ```
 
@@ -91,9 +91,12 @@ diagnostic             local-build with timeline + span expectations
 release                ship / no-ship gate coverage
 soak                   long-running pressure and stability
 adversarial            hostile input and failure-containment checks
+doctor-upgrade         doctor-guided upgrade repair checks
 release-upgrade        published release-track upgrade matrix
 local-build-upgrade    upgrade into a local build
 official-plugins       bundled + official plugin coverage
+rolling-upgrade        recent published release age upgrade checks
+web-release            web publish payload and report metrics
 exhaustive             the full sweep (--allow-exhaustive)
 ```
 
