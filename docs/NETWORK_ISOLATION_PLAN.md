@@ -129,8 +129,10 @@ cleanest isolation.
   provide preallocated frontages?
 - How should browser automation artifacts record internal versus frontage
   URLs?
-- Should `matrix run --parallel` automatically enable frontage allocation when
-  parallelism is greater than one?
+- Should `matrix run --parallel` eventually allocate one frontage per scenario
+  entry? Current Kova rejects `--network-frontage loopback` with
+  `--parallel > 1`; use sequential matrix runs or separate workers with distinct
+  `--worker-id` values.
 
 ## Acceptance Criteria
 

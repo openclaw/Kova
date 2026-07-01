@@ -47,6 +47,7 @@ export async function runMatrixRun(flags) {
   const fromSelector = fromPlan?.selector ?? flags.from ?? null;
   const regressionThresholds = await loadRegressionThresholds(flags);
   const networkFrontage = networkFrontageControls(flags);
+  validateNetworkFrontageParallelism(networkFrontage, controls);
   const baselinePath = resolveBaselinePath(flags.baseline);
   const saveBaselinePath = resolveBaselinePath(flags.save_baseline);
   const baselineStore = baselinePath ? await loadBaselineStore(baselinePath) : null;
@@ -209,6 +210,12 @@ export async function runMatrixRun(flags) {
 function validateProfileExecutionFlags(profile, flags) {
   if (flags.execute === true && profile.id === "exhaustive" && flags.allow_exhaustive !== true) {
     throw new Error("executing profile 'exhaustive' requires --allow-exhaustive");
+  }
+}
+
+function validateNetworkFrontageParallelism(networkFrontage, controls) {
+  if (networkFrontage.enabled && (controls.parallel ?? 1) > 1) {
+    throw new Error("--network-frontage loopback cannot be combined with matrix --parallel > 1; run sequentially or use separate workers with distinct --worker-id values");
   }
 }
 

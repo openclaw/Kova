@@ -388,6 +388,11 @@ export async function runSelfCheck(flags = {}) {
       "node bin/kova.mjs run --target runtime:stable --scenario fresh-install --network-frontage bad --json",
       "--network-frontage must be one of port, loopback, loopback-frontage"
     ));
+    checks.push(await failingCommandCheck(
+      "network-frontage-parallel-matrix-rejected",
+      "node bin/kova.mjs matrix run --profile smoke --target runtime:stable --include scenario:fresh-install --network-frontage loopback --worker-id 7 --parallel 2 --json",
+      "--network-frontage loopback cannot be combined with matrix --parallel > 1"
+    ));
     checks.push(await jsonCommandCheck("run-auth-skip-json", `node bin/kova.mjs run --auth skip --target runtime:stable --scenario fresh-install --report-dir ${quoteShell(tmp)} --json`, async (data) => {
       const report = JSON.parse(await readFile(data.jsonPath, "utf8"));
       const record = report.records?.[0];
