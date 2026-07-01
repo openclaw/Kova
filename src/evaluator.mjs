@@ -64,6 +64,14 @@ const EXEC_TOOL_METRICS = [
   "execProcessLeaks"
 ];
 
+const MCP_LIFECYCLE_METRICS = [
+  "mcpInitializeMs",
+  "mcpToolsListMs",
+  "mcpShutdownMs",
+  "mcpToolCountMin",
+  "mcpProcessLeaks"
+];
+
 const MCP_TOOL_CALL_METRICS = [
   "mcpToolsCallMs",
   "mcpToolCallSucceeded",
@@ -188,6 +196,7 @@ export function evaluateRecord(record, scenario, options = {}) {
   const cronRuntimeEvidence = collectCronRuntimeEvidence(allResults);
   const execToolEvidence = collectExecToolEvidence(allResults);
   const mcpToolCallEvidence = collectMcpToolCallEvidence(allResults);
+  const mcpLifecycleEvidence = combineMcpLifecycleEvidence(mcpBridgeEvidence, mcpToolCallEvidence);
   const dirtyPluginEvidence = collectDirtyPluginEvidence(record);
   const releaseRecoveryEvidence = collectReleaseRecoveryEvidence(record);
   const browserAutomationEvidence = collectBrowserAutomationEvidence(allResults);
@@ -394,58 +403,15 @@ export function evaluateRecord(record, scenario, options = {}) {
     });
   }
 
+  if (mcpLifecycleEvidence.available || hasAnyThreshold(thresholds, MCP_LIFECYCLE_METRICS)) {
+    checkRequiredMaxGate(violations, "mcp", "mcpInitializeMs", mcpLifecycleEvidence.initializeMs, thresholds.mcpInitializeMs, "MCP initialize");
+    checkRequiredMaxGate(violations, "mcp", "mcpToolsListMs", mcpLifecycleEvidence.toolsListMs, thresholds.mcpToolsListMs, "MCP tools/list");
+    checkRequiredMaxGate(violations, "mcp", "mcpShutdownMs", mcpLifecycleEvidence.shutdownMs, thresholds.mcpShutdownMs, "MCP shutdown");
+    checkRequiredMinGate(violations, "mcp", "mcpToolCountMin", mcpLifecycleEvidence.toolCount, thresholds.mcpToolCountMin, "MCP tool count");
+    checkRequiredMaxGate(violations, "mcp", "mcpProcessLeaks", mcpLifecycleEvidence.processLeaks, thresholds.mcpProcessLeaks, "MCP bridge process leak count");
+  }
+
   if (mcpBridgeEvidence.available) {
-    if (typeof thresholds.mcpInitializeMs === "number" && mcpBridgeEvidence.initializeMs !== null && mcpBridgeEvidence.initializeMs > thresholds.mcpInitializeMs) {
-      violations.push({
-        kind: "mcp",
-        metric: "mcpInitializeMs",
-        expected: `<= ${thresholds.mcpInitializeMs}`,
-        actual: mcpBridgeEvidence.initializeMs,
-        message: `MCP bridge initialize took ${mcpBridgeEvidence.initializeMs}ms, over threshold ${thresholds.mcpInitializeMs}ms`
-      });
-    }
-
-    if (typeof thresholds.mcpToolsListMs === "number" && mcpBridgeEvidence.toolsListMs !== null && mcpBridgeEvidence.toolsListMs > thresholds.mcpToolsListMs) {
-      violations.push({
-        kind: "mcp",
-        metric: "mcpToolsListMs",
-        expected: `<= ${thresholds.mcpToolsListMs}`,
-        actual: mcpBridgeEvidence.toolsListMs,
-        message: `MCP tools/list took ${mcpBridgeEvidence.toolsListMs}ms, over threshold ${thresholds.mcpToolsListMs}ms`
-      });
-    }
-
-    if (typeof thresholds.mcpShutdownMs === "number" && mcpBridgeEvidence.shutdownMs !== null && mcpBridgeEvidence.shutdownMs > thresholds.mcpShutdownMs) {
-      violations.push({
-        kind: "mcp",
-        metric: "mcpShutdownMs",
-        expected: `<= ${thresholds.mcpShutdownMs}`,
-        actual: mcpBridgeEvidence.shutdownMs,
-        message: `MCP bridge shutdown took ${mcpBridgeEvidence.shutdownMs}ms, over threshold ${thresholds.mcpShutdownMs}ms`
-      });
-    }
-
-    if (typeof thresholds.mcpToolCountMin === "number" && mcpBridgeEvidence.toolCount !== null && mcpBridgeEvidence.toolCount < thresholds.mcpToolCountMin) {
-      violations.push({
-        kind: "mcp",
-        metric: "mcpToolCountMin",
-        expected: `>= ${thresholds.mcpToolCountMin}`,
-        actual: mcpBridgeEvidence.toolCount,
-        message: `MCP bridge exposed ${mcpBridgeEvidence.toolCount} tool(s), below required ${thresholds.mcpToolCountMin}`
-      });
-    }
-
-    const leakCount = mcpBridgeEvidence.processExited === false ? 1 : 0;
-    if (typeof thresholds.mcpProcessLeaks === "number" && leakCount > thresholds.mcpProcessLeaks) {
-      violations.push({
-        kind: "mcp",
-        metric: "mcpProcessLeaks",
-        expected: `<= ${thresholds.mcpProcessLeaks}`,
-        actual: leakCount,
-        message: "MCP bridge process did not exit cleanly after the smoke"
-      });
-    }
-
     if (mcpBridgeEvidence.errors.length > 0) {
       violations.push({
         kind: "mcp",
@@ -504,8 +470,6 @@ export function evaluateRecord(record, scenario, options = {}) {
     checkRequiredMaxGate(violations, "mcp", "mcpToolsCallMs", mcpToolCallEvidence.toolsCallMs, thresholds.mcpToolsCallMs, "MCP tools/call");
     checkRequiredBooleanGate(violations, "mcp", "mcpToolCallSucceeded", mcpToolCallEvidence.safeToolSucceeded, thresholds.mcpToolCallSucceeded, "MCP tools/call did not return a successful safe tool result");
     checkRequiredBooleanGate(violations, "mcp", "mcpToolCallErrorAttributed", mcpToolCallEvidence.invalidToolErrorAttributed, thresholds.mcpToolCallErrorAttributed, "MCP invalid tool call was not attributed as a tool error");
-    const leakCount = mcpToolCallEvidence.processExited === false ? 1 : 0;
-    checkRequiredMaxGate(violations, "mcp", "mcpProcessLeaks", mcpToolCallEvidence.processExited === null ? null : leakCount, thresholds.mcpProcessLeaks, "MCP tool-call bridge process leak count");
     if (mcpToolCallEvidence.errors.length > 0) {
       violations.push({
         kind: "mcp",
@@ -1029,6 +993,7 @@ export function evaluateRecord(record, scenario, options = {}) {
     finalGatewayState,
     soakEvidence,
     mcpBridgeEvidence,
+    mcpLifecycleEvidence,
     cronRuntimeEvidence,
     execToolEvidence,
     mcpToolCallEvidence,
@@ -1065,14 +1030,14 @@ export function evaluateRecord(record, scenario, options = {}) {
     pluginsUsableAfterUpgrade: releaseRecoveryEvidence.pluginsUsableAfterUpgrade,
     pluginsUsableAfterRollback: releaseRecoveryEvidence.pluginsUsableAfterRollback,
     rollbackPreservedPluginData: releaseRecoveryEvidence.rollbackPreservedPluginData,
-    mcpInitializeMs: mcpBridgeEvidence.initializeMs,
-    mcpToolsListMs: mcpBridgeEvidence.toolsListMs,
-    mcpShutdownMs: mcpBridgeEvidence.shutdownMs,
-    mcpToolCount: mcpBridgeEvidence.toolCount,
-    mcpToolNames: mcpBridgeEvidence.toolNames,
-    mcpProcessExited: mcpBridgeEvidence.processExited,
-    mcpProcessLeaks: mcpBridgeEvidence.available ? (mcpBridgeEvidence.processExited === false ? 1 : 0) : null,
-    mcpErrors: mcpBridgeEvidence.errors,
+    mcpInitializeMs: mcpLifecycleEvidence.initializeMs,
+    mcpToolsListMs: mcpLifecycleEvidence.toolsListMs,
+    mcpShutdownMs: mcpLifecycleEvidence.shutdownMs,
+    mcpToolCount: mcpLifecycleEvidence.toolCount,
+    mcpToolNames: mcpLifecycleEvidence.toolNames,
+    mcpProcessExited: mcpLifecycleEvidence.processExited,
+    mcpProcessLeaks: mcpLifecycleEvidence.processLeaks,
+    mcpErrors: [...mcpBridgeEvidence.errors, ...mcpToolCallEvidence.errors],
     browserAutomationEvidence,
     browserDoctorMs: browserAutomationEvidence.browserDoctorMs,
     browserStartMs: browserAutomationEvidence.browserStartMs,
@@ -2940,8 +2905,13 @@ function collectMcpToolCallEvidence(results) {
     return {
       schemaVersion: "kova.mcpToolCallEvidence.v1",
       available: false,
+      initializeMs: null,
+      toolsListMs: null,
       toolsCallMs: null,
       invalidToolsCallMs: null,
+      shutdownMs: null,
+      toolCount: null,
+      toolNames: [],
       safeToolSucceeded: null,
       safeToolName: null,
       invalidToolErrorAttributed: null,
@@ -2953,8 +2923,13 @@ function collectMcpToolCallEvidence(results) {
   return {
     schemaVersion: "kova.mcpToolCallEvidence.v1",
     available: true,
+    initializeMs: maxNullable(...smokes.map((smoke) => smoke.initializeMs)),
+    toolsListMs: maxNullable(...smokes.map((smoke) => smoke.toolsListMs)),
     toolsCallMs: maxNullable(...smokes.map((smoke) => smoke.toolsCallMs)),
     invalidToolsCallMs: maxNullable(...smokes.map((smoke) => smoke.invalidToolsCallMs)),
+    shutdownMs: maxNullable(...smokes.map((smoke) => smoke.shutdownMs)),
+    toolCount: maxNullable(...smokes.map((smoke) => smoke.toolCount)),
+    toolNames: [...new Set(smokes.flatMap((smoke) => smoke.toolNames ?? []))].sort(),
     safeToolSucceeded: smokes.every((smoke) => smoke.safeToolSucceeded === true),
     safeToolName: smokes.find((smoke) => typeof smoke.safeToolName === "string")?.safeToolName ?? null,
     invalidToolErrorAttributed: smokes.every((smoke) => smoke.invalidToolErrorAttributed === true),
@@ -2962,14 +2937,48 @@ function collectMcpToolCallEvidence(results) {
     errors: smokes.flatMap((smoke) => smoke.errors ?? []),
     smokes: smokes.map((smoke) => ({
       durationMs: smoke.durationMs ?? null,
+      initializeMs: smoke.initializeMs ?? null,
+      toolsListMs: smoke.toolsListMs ?? null,
       toolsCallMs: smoke.toolsCallMs ?? null,
       invalidToolsCallMs: smoke.invalidToolsCallMs ?? null,
+      shutdownMs: smoke.shutdownMs ?? null,
+      toolCount: smoke.toolCount ?? null,
+      toolNames: smoke.toolNames ?? [],
       safeToolName: smoke.safeToolName ?? null,
       safeToolSucceeded: smoke.safeToolSucceeded ?? null,
       invalidToolErrorAttributed: smoke.invalidToolErrorAttributed ?? null,
       processExited: smoke.processExited ?? null,
       errors: smoke.errors ?? []
     }))
+  };
+}
+
+function combineMcpLifecycleEvidence(mcpBridgeEvidence, mcpToolCallEvidence) {
+  const sources = [mcpBridgeEvidence, mcpToolCallEvidence].filter((evidence) => evidence.available);
+  if (sources.length === 0) {
+    return {
+      schemaVersion: "kova.mcpLifecycleEvidence.v1",
+      available: false,
+      initializeMs: null,
+      toolsListMs: null,
+      shutdownMs: null,
+      toolCount: null,
+      toolNames: [],
+      processExited: null,
+      processLeaks: null
+    };
+  }
+  const processExited = sources.every((evidence) => evidence.processExited === true);
+  return {
+    schemaVersion: "kova.mcpLifecycleEvidence.v1",
+    available: true,
+    initializeMs: maxNullable(...sources.map((evidence) => evidence.initializeMs)),
+    toolsListMs: maxNullable(...sources.map((evidence) => evidence.toolsListMs)),
+    shutdownMs: maxNullable(...sources.map((evidence) => evidence.shutdownMs)),
+    toolCount: maxNullable(...sources.map((evidence) => evidence.toolCount)),
+    toolNames: [...new Set(sources.flatMap((evidence) => evidence.toolNames ?? []))].sort(),
+    processExited,
+    processLeaks: processExited ? 0 : 1
   };
 }
 
@@ -3675,6 +3684,31 @@ function checkRequiredMaxGate(violations, kind, metric, actual, threshold, label
       expected: `<= ${threshold}`,
       actual,
       message: `${label} ${actual} exceeded threshold ${threshold}`
+    });
+  }
+}
+
+function checkRequiredMinGate(violations, kind, metric, actual, threshold, label) {
+  if (typeof threshold !== "number") {
+    return;
+  }
+  if (actual === null || actual === undefined) {
+    violations.push({
+      kind,
+      metric,
+      expected: `>= ${threshold}`,
+      actual: null,
+      message: `${label} evidence was not captured`
+    });
+    return;
+  }
+  if (actual < threshold) {
+    violations.push({
+      kind,
+      metric,
+      expected: `>= ${threshold}`,
+      actual,
+      message: `${label} ${actual} below threshold ${threshold}`
     });
   }
 }
