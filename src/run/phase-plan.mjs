@@ -292,7 +292,8 @@ export function phaseSupportsAuthSetup(phase, authPolicy) {
   const commands = phase.commands ?? [];
   return commands.some((command) => (
     /\bocm\s+env\s+clone\b/.test(command) ||
-    (/\bocm\s+start\b/.test(command) && !/\s--no-service(?:\s|$)/.test(command)) ||
+    /\bocm\s+start\b/.test(command) ||
+    /\bocm\s+service\s+(?:install|start)\b/.test(command) ||
     /\bplugins\s+install\b/.test(command)
   ));
 }
