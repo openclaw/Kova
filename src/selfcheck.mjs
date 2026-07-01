@@ -49,7 +49,6 @@ import { validateRegistryReferences } from "./registries/validate.mjs";
 import { assertSafeScenarioCommand } from "./safety.mjs";
 import { parseTimelineText } from "./collectors/timeline.mjs";
 import { stopNetworkFrontage, waitForTcp } from "./network-frontage.mjs";
-import { phaseResultStatus } from "./measurement-contract.mjs";
 import {
   boundedLogSnippet,
   isExpectedKovaMockProviderFailureLine,
@@ -75,7 +74,6 @@ import {
 import { captureProcessSnapshot, classifyRegistryRolesForProcess, classifySnapshotRolesForProcess, diffProcessSnapshots, summarizeResourceSamples } from "./collectors/resources.mjs";
 import { captureOpenClawStateSnapshot } from "./collectors/openclaw-state.mjs";
 import { buildReportSummary, renderMarkdownReport, renderPasteSummary, renderReportSummary, summarizeRecords } from "./reporting/report.mjs";
-import { firstFailedCommand } from "./reporting/failures.mjs";
 import { buildRepeatedWorkAudit } from "./audits/repeated-work.mjs";
 import { ENV_COLLECTOR_IDS, resolveCollectionPolicy } from "./collection-policy.mjs";
 import { channelPlatformsDir } from "./paths.mjs";
@@ -6895,9 +6893,7 @@ function agentAuthFailureEvaluationCheck() {
           expectedAgentFailure: true,
           results: [{
             command,
-            status: 1,
-            evidenceStatus: "passed",
-            evidenceReason: "expected agent failure command exited nonzero",
+            status: 0,
             timedOut: false,
             startedAt: "2026-04-30T10:00:01.000Z",
             startedAtEpochMs: 1777543201000,
@@ -6954,13 +6950,6 @@ function agentAuthFailureEvaluationCheck() {
     }, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
 
     assertEqual(record.status, "PASS", "agent auth failure scenario status");
-    assertEqual(phaseResultStatus(record.phases[0].results), "success", "expected agent failure phase status is successful evidence");
-    assertEqual(firstFailedCommand(record), null, "expected agent failure is not surfaced as failed command");
-    const reportScenarios = aggregateScenarios({
-      records: [record],
-      summary: { total: 1, statuses: { PASS: 1 } }
-    });
-    assertEqual(reportScenarios[0]?.phases?.[0]?.status, "PASS", "expected agent failure phase aggregates as pass");
     assertEqual(record.measurements.agentTurnCount, 1, "auth failure agent turn count");
     assertEqual(record.measurements.agentTurns[0].expectedFailureObserved, true, "auth failure observed");
     assertEqual(record.measurements.agentLatencyDiagnosis.kind, "auth-failure", "auth failure diagnosis");

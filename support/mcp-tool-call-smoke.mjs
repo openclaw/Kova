@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
-import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { rmSync } from "node:fs";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const SCHEMA_VERSION = "kova.mcpToolCallSmoke.v1";
@@ -42,6 +44,17 @@ const summary = {
 
 let child;
 let tokenFile;
+let tokenTempDir;
+
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  process.once(signal, () => {
+    cleanupTokenSync();
+    if (child && !summary.processExited) {
+      child.kill(signal);
+    }
+    process.exit(signal === "SIGINT" ? 130 : 143);
+  });
+}
 
 try {
   const envInfo = await readOcmEnvInfo(envName, timeoutMs);
@@ -51,10 +64,11 @@ try {
     throw new Error(`gateway.auth.token missing in ${envInfo.configPath}`);
   }
 
-  await mkdir(artifactDir, { recursive: true });
-  tokenFile = join(artifactDir, "mcp-tool-call-gateway-token");
+  tokenTempDir = await mkdtemp(join(tmpdir(), "kova-mcp-token-"));
+  tokenFile = join(tokenTempDir, "gateway-token");
   await writeFile(tokenFile, token, { encoding: "utf8", mode: 0o600 });
   await chmod(tokenFile, 0o600);
+  await mkdir(artifactDir, { recursive: true });
 
   const gatewayPort = Number(envInfo.gatewayPort ?? config?.gateway?.port);
   if (!Number.isInteger(gatewayPort) || gatewayPort <= 0) {
@@ -99,6 +113,9 @@ try {
   }
   if (tokenFile) {
     await rm(tokenFile, { force: true });
+  }
+  if (tokenTempDir) {
+    await rm(tokenTempDir, { recursive: true, force: true });
   }
   const finishedAtEpochMs = Date.now();
   summary.finishedAt = new Date(finishedAtEpochMs).toISOString();
@@ -489,6 +506,19 @@ function assertKovaEnvName(value) {
 
 function formatError(error) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function cleanupTokenSync() {
+  if (tokenFile) {
+    try {
+      rmSync(tokenFile, { force: true });
+    } catch {}
+  }
+  if (tokenTempDir) {
+    try {
+      rmSync(tokenTempDir, { recursive: true, force: true });
+    } catch {}
+  }
 }
 
 function firstLine(value) {

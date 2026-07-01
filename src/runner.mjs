@@ -31,7 +31,6 @@ import { envNameFor } from "./run/env-name.mjs";
 import { collectEnvMetrics } from "./metrics.mjs";
 import { collectorArtifactDirs, prepareCollectorArtifactDirs } from "./collectors/artifacts.mjs";
 import {
-  isAgentMessageCommand,
   phaseResultStatus
 } from "./measurement-contract.mjs";
 import { metricOptions } from "./run/metric-options.mjs";
@@ -151,11 +150,7 @@ export async function executeScenario(scenario, context) {
           results.push(result);
           record.networkFrontage = context.networkFrontageAllocation ?? record.networkFrontage;
           appendChannelCapabilityEvidence(record, result, phase.id, commandIndex);
-          if (result.status !== 0 && isExpectedAgentFailureCommand(phase, result)) {
-            result.evidenceStatus = "passed";
-            result.evidenceReason = "expected agent failure command exited nonzero";
-          }
-          if (result.status !== 0 && !isExpectedAgentFailureCommand(phase, result)) {
+          if (result.status !== 0) {
             scenarioFailed = true;
             record.status = classifyCommandFailure(result);
             break;
@@ -309,13 +304,6 @@ function classifyEnvDestroyCleanup(result) {
   }
 
   return "destroy-failed";
-}
-
-function isExpectedAgentFailureCommand(phase, result) {
-  return phase?.expectedAgentFailure === true &&
-    result?.timedOut !== true &&
-    typeof result?.command === "string" &&
-    isAgentMessageCommand(result.command);
 }
 
 function shouldApplyAuthAfterPhase(phase, authPolicy, record) {
