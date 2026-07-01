@@ -120,6 +120,7 @@ const COMMANDS = [
       ["--repeat <n>", "samples per scenario"],
       ["--fail-fast", "abort on first failure"],
       ["--gate", "evaluate matrix against the profile gate policy"],
+      ["--network-frontage <mode>", "port|loopback; loopback cannot combine with --parallel > 1"],
       ["--allow-exhaustive", "required for executed exhaustive matrices"],
       ["--execute", "actually run; otherwise dry-run"],
       ["--baseline / --save-baseline", "see kova run"],
