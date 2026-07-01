@@ -651,6 +651,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(mockProviderScriptModesCheck());
     checks.push(providerFailureEvaluationCheck());
     checks.push(providerSpecificFailureEvaluationCheck());
+    checks.push(adversarialInputEvaluationCheck());
     checks.push(agentColdWarmEvaluationCheck());
     checks.push(sourceReleaseCompareCheck());
     checks.push(await concurrentAgentRunnerCheck(tmp));
@@ -6549,6 +6550,126 @@ function providerFailureEvaluationCheck() {
       message: error.message
     };
   }
+}
+
+function adversarialInputEvaluationCheck() {
+  try {
+    const command = "node support/run-adversarial-inputs.mjs --env kova-self-check --model openclaw --expected-text KOVA_AGENT_OK";
+    const record = {
+      scenario: "adversarial-input-openai-compatible",
+      status: "PASS",
+      auth: { mode: "mock", source: "mock", providerId: "openai" },
+      providerEvidence: {
+        available: true,
+        requestCount: 5,
+        requests: [
+          providerRequest({ startedAt: 1777543201000, finishedAt: 1777543201100, status: 200 }),
+          providerRequest({ startedAt: 1777543201200, finishedAt: 1777543201300, status: 200 }),
+          providerRequest({ startedAt: 1777543201400, finishedAt: 1777543201500, status: 200 }),
+          providerRequest({ startedAt: 1777543201600, finishedAt: 1777543201700, status: 200 }),
+          providerRequest({ startedAt: 1777543201800, finishedAt: 1777543201900, status: 200 })
+        ]
+      },
+      phases: [{
+        id: "hostile-input-corpus",
+        results: [{
+          command,
+          status: 0,
+          timedOut: false,
+          startedAt: "2026-04-30T10:00:01.000Z",
+          startedAtEpochMs: 1777543201000,
+          finishedAt: "2026-04-30T10:00:02.000Z",
+          finishedAtEpochMs: 1777543202000,
+          durationMs: 1000,
+          stdout: JSON.stringify({
+            ok: true,
+            surface: "adversarial-input",
+            expectedText: "KOVA_AGENT_OK",
+            finalAssistantVisibleText: "KOVA_AGENT_OK",
+            finalAssistantCaseText: [
+              "xml-close-tags:KOVA_AGENT_OK",
+              "html-script:KOVA_AGENT_OK",
+              "template-braces:KOVA_AGENT_OK",
+              "path-traversal:KOVA_AGENT_OK",
+              "unicode-controls:KOVA_AGENT_OK"
+            ].join("\n"),
+            expectedTextPresent: true,
+            caseCount: 5,
+            cases: [
+              { id: "xml-close-tags", ok: true, finalAssistantVisibleText: "KOVA_AGENT_OK", expectedTextPresent: true },
+              { id: "html-script", ok: true, finalAssistantVisibleText: "KOVA_AGENT_OK", expectedTextPresent: true },
+              { id: "template-braces", ok: true, finalAssistantVisibleText: "KOVA_AGENT_OK", expectedTextPresent: true },
+              { id: "path-traversal", ok: true, finalAssistantVisibleText: "KOVA_AGENT_OK", expectedTextPresent: true },
+              { id: "unicode-controls", ok: true, finalAssistantVisibleText: "KOVA_AGENT_OK", expectedTextPresent: true }
+            ]
+          }),
+          stderr: "",
+          processSnapshots: { leaks: zeroProcessLeakSummary() }
+        }]
+      }]
+    };
+    const scenario = {
+      id: "adversarial-input-openai-compatible",
+      surface: "adversarial-input",
+      agent: { expectedText: "KOVA_AGENT_OK" },
+      thresholds: {
+        providerRequestCountMin: 5,
+        providerFinalMs: 5000
+      },
+      mockProvider: { mode: "normal" }
+    };
+
+    evaluateRecord(record, scenario, { surface: { thresholds: {} }, targetPlan: { kind: "npm" } });
+    assertEqual(record.status, "PASS", "adversarial input corpus evaluates as pass");
+    assertEqual(record.measurements.agentTurnCount, 1, "adversarial input helper is one aggregate agent turn");
+    assertEqual(record.measurements.agentTurns[0].responseOk, true, "adversarial input aggregate response ok");
+    assertEqual(record.measurements.agentTurns[0].expectedTextPresent, true, "adversarial input exact expected text");
+    assertEqual(record.measurements.agentTurns[0].responseText, "KOVA_AGENT_OK", "adversarial input aggregate final marker");
+
+    return {
+      id: "adversarial-input-evaluation",
+      status: "PASS",
+      command: "evaluate synthetic adversarial input corpus response",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "adversarial-input-evaluation",
+      status: "FAIL",
+      command: "evaluate synthetic adversarial input corpus response",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function providerRequest({ startedAt, finishedAt, status }) {
+  return {
+    requestId: `provider-${startedAt}`,
+    mode: "normal",
+    outcome: "completed",
+    errorClass: null,
+    receivedAt: new Date(startedAt).toISOString(),
+    receivedAtEpochMs: startedAt,
+    respondedAt: new Date(finishedAt).toISOString(),
+    respondedAtEpochMs: finishedAt,
+    firstByteLatencyMs: Math.max(0, finishedAt - startedAt),
+    firstChunkLatencyMs: Math.max(0, finishedAt - startedAt),
+    route: "/v1/chat/completions",
+    model: "openclaw",
+    stream: false,
+    status,
+    statusClass: `${Math.floor(status / 100)}xx`
+  };
+}
+
+function zeroProcessLeakSummary() {
+  return {
+    schemaVersion: "kova.processLeakSummary.v1",
+    leakCount: 0,
+    leakedProcesses: [],
+    leaksByRole: {}
+  };
 }
 
 function providerSpecificFailureEvaluationCheck() {

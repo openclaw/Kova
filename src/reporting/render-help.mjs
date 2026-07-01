@@ -78,7 +78,7 @@ const COMMANDS = [
     id: "run", title: "kova run",
     blurb: "Run one OpenClaw scenario. Dry-run unless --execute.",
     usage: [
-      "kova run --target <selector> [--scenario <id>] [--state <id>] [--auth <method>] [--repeat <n>] [--execute] [--json|--plain]",
+      "kova run --target <selector> [--scenario <id>] [--state <id>] [--auth <method>] [--repeat <n>] [--network-frontage <mode>] [--worker-id <n>] [--execute] [--json|--plain]",
     ],
     flags: [
       ["--target <selector>", "npm:<v> | release:<n> | runtime:<n> | local-build:<path>"],
@@ -91,6 +91,8 @@ const COMMANDS = [
       ["--baseline [path]", "compare against baseline store"],
       ["--save-baseline [path]", "write reviewed-good aggregates"],
       ["--reviewed-good", "mark this run as a baseline candidate"],
+      ["--network-frontage <mode>", "port|loopback; loopback adds a per-env frontage proxy"],
+      ["--worker-id <n>", "worker identity used for loopback frontage allocation"],
       ["--deep-profile", "Node CPU/heap/trace + diagnostic report"],
       ["--node-profile", "Node CPU profile only"],
       ["--heap-snapshot", "heap snapshot only"],
@@ -110,7 +112,7 @@ const COMMANDS = [
     blurb: "Profile-driven multi-scenario plan / run with optional gate.",
     usage: [
       "kova matrix plan --profile <id> --target <selector> [--include <f>] [--exclude <f>] [--json|--plain]",
-      "kova matrix run --profile <id> --target <selector> [--parallel <n>] [--gate] [--execute] [--json|--plain]",
+      "kova matrix run --profile <id> --target <selector> [--parallel <n>] [--network-frontage <mode>] [--worker-id <n>] [--gate] [--execute] [--json|--plain]",
     ],
     flags: [
       ["--profile <id>", "smoke|release|release-upgrade|… (see kova plan)"],
@@ -121,6 +123,7 @@ const COMMANDS = [
       ["--fail-fast", "abort on first failure"],
       ["--gate", "evaluate matrix against the profile gate policy"],
       ["--network-frontage <mode>", "port|loopback; loopback cannot combine with --parallel > 1"],
+      ["--worker-id <n>", "worker identity used for loopback frontage allocation"],
       ["--allow-exhaustive", "required for executed exhaustive matrices"],
       ["--execute", "actually run; otherwise dry-run"],
       ["--baseline / --save-baseline", "see kova run"],

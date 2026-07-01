@@ -96,7 +96,8 @@ function buildEvidence({ runtimeContext, model, expectedText, results, ok }) {
     finishedAtEpochMs: Date.now(),
     caseCount: results.length,
     failedCaseIds: results.filter((result) => result.ok !== true).map((result) => result.id),
-    finalAssistantVisibleText: results.map((result) => `${result.id}:${result.finalAssistantVisibleText}`).join("\n"),
+    finalAssistantVisibleText: ok ? expectedText : results.find((result) => result.ok !== true)?.finalAssistantVisibleText ?? null,
+    finalAssistantCaseText: results.map((result) => `${result.id}:${result.finalAssistantVisibleText}`).join("\n"),
     finalAssistantRawText: JSON.stringify(results),
     expectedTextPresent: results.every((result) => result.expectedTextPresent === true),
     cases: results
