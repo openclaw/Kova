@@ -400,6 +400,31 @@ export async function runSelfCheck(flags = {}) {
       assertEqual(authSetup > provision, true, "auth setup follows no-service provision");
       assertEqual(gatewayStart > authSetup, true, "gateway start follows auth setup");
     }));
+    for (const scenarioId of [
+      "cron-runtime",
+      "exec-tool-safety",
+      "mcp-runtime-start-stop",
+      "mcp-tool-call",
+      "tool-failure-containment"
+    ]) {
+      checks.push(await jsonCommandCheck(`mock-auth-gateway-start-order-${scenarioId}-json`, `node bin/kova.mjs run --target runtime:stable --scenario ${scenarioId} --report-dir ${quoteShell(tmp)} --json`, async (data) => {
+        const report = JSON.parse(await readFile(data.jsonPath, "utf8"));
+        const record = report.records?.[0];
+        assertEqual(record?.auth?.mode, "mock", `${scenarioId} default auth mode`);
+        const phaseIds = record?.phases?.map((phase) => phase.id) ?? [];
+        const provision = phaseIds.indexOf("provision");
+        const authSetup = phaseIds.indexOf("auth-setup");
+        const gatewayStart = phaseIds.indexOf("gateway-start");
+        assertEqual(provision >= 0, true, `${scenarioId} no-service provision planned`);
+        assertEqual(authSetup > provision, true, `${scenarioId} auth setup follows provision`);
+        assertEqual(gatewayStart > authSetup, true, `${scenarioId} gateway start follows auth setup`);
+        const provisionCommands = record?.phases?.[provision]?.commands ?? [];
+        const gatewayStartCommands = record?.phases?.[gatewayStart]?.commands ?? [];
+        assertEqual(provisionCommands.some((command) => command.includes("ocm start") && command.includes("--no-service")), true, `${scenarioId} provision does not start gateway service`);
+        assertEqual(gatewayStartCommands.some((command) => command.includes("ocm service install")), true, `${scenarioId} gateway service install planned after auth`);
+        assertEqual(gatewayStartCommands.some((command) => command.includes("ocm service start")), true, `${scenarioId} gateway service start planned after auth`);
+      }));
+    }
     checks.push(await jsonCommandCheck("network-frontage-dry-run-json", `node bin/kova.mjs run --target runtime:stable --scenario fresh-install --network-frontage loopback --worker-id 7 --report-dir ${quoteShell(tmp)} --json`, async (data) => {
       const report = JSON.parse(await readFile(data.jsonPath, "utf8"));
       const record = report.records?.[0];

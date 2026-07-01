@@ -26,17 +26,32 @@
   },
   "phases": [
     {
-      "id": "gateway",
-      "title": "Gateway Start",
-      "intent": "Start the disposable gateway before opening the MCP bridge.",
+      "id": "provision",
+      "title": "Provision MCP Tool Env",
+      "intent": "Create the disposable OpenClaw env without starting the gateway yet so mock auth is applied before the gateway process boots.",
       "commands": [
-        "ocm start {env} {startSelector} --json",
-        "ocm @{env} -- status"
+        "ocm start {env} {startSelector} --no-service --json"
       ],
       "evidence": [
-        "gateway status",
         "gateway port",
-        "readiness classification"
+        "runtime binding",
+        "env created without service"
+      ],
+      "healthScope": "none",
+      "collectionIntent": "service-only"
+    },
+    {
+      "id": "gateway-start",
+      "title": "Start Gateway",
+      "intent": "Start the gateway after mock provider config is present in the OpenClaw home.",
+      "commands": [
+        "ocm service install {env} --json",
+        "ocm service start {env} --json"
+      ],
+      "evidence": [
+        "gateway service installed",
+        "gateway service started",
+        "startup readiness"
       ],
       "healthScope": "readiness"
     },
