@@ -516,6 +516,7 @@ export async function runSelfCheck(flags = {}) {
       const commands = record?.phases?.flatMap((phase) => phase.commands ?? []) ?? [];
       assertEqual(commands.some((command) => command.includes("run-adversarial-inputs.mjs") && command.includes("--model openclaw")), true, "adversarial HTTP endpoint uses gateway agent model name");
     }));
+    checks.push(await adversarialInputHelperExactFrontageCheck(tmp));
     for (const [scenarioId, mode] of [
       ["agent-provider-random-disconnect", "disconnect-then-recover"],
       ["agent-provider-protocol-failure", "protocol-failure"]
@@ -7521,6 +7522,67 @@ function networkFrontageHelperEndpointCheck() {
     };
   } finally {
     restoreEnv(previous);
+  }
+}
+
+async function adversarialInputHelperExactFrontageCheck(tmp) {
+  let hitCount = 0;
+  const server = createServer((request, response) => {
+    hitCount += 1;
+    request.resume();
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({
+      choices: [{
+        message: {
+          role: "assistant",
+          content: "prefix KOVA_AGENT_OK suffix"
+        }
+      }]
+    }));
+  });
+  try {
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const root = join(tmp, "adversarial-frontage-home");
+    await mkdir(root, { recursive: true });
+    await writeFile(join(root, "openclaw.json"), JSON.stringify({
+      gateway: {
+        port: 9,
+        auth: { token: "kova-self-check-token" }
+      }
+    }), "utf8");
+    const address = server.address();
+    const command = `KOVA_NETWORK_FRONTAGE_ENABLED=1 KOVA_NETWORK_FRONTAGE_HOST=127.0.0.1 KOVA_NETWORK_FRONTAGE_PORT=${address.port} node support/run-adversarial-inputs.mjs --openclaw-home ${quoteShell(root)} --gateway-port 9 --expected-text KOVA_AGENT_OK --timeout 5000`;
+    const result = await runCommand(command, {
+      shell: "/bin/sh",
+      timeoutMs: 30000,
+      maxOutputChars: 1000000
+    });
+    const summary = JSON.parse(result.stdout);
+    assertEqual(hitCount, 5, "adversarial helper uses injected frontage endpoint");
+    assertEqual(result.status !== 0, true, "adversarial helper rejects non-exact marker text");
+    assertEqual(summary.gateway?.source, "network-frontage", "adversarial helper reports frontage endpoint source");
+    assertEqual(summary.finalAssistantVisibleText, "prefix KOVA_AGENT_OK suffix", "adversarial helper preserves actual final text");
+    assertEqual(summary.expectedTextPresent, false, "adversarial helper does not mark containing text as exact");
+
+    return {
+      id: "adversarial-input-helper-exact-frontage",
+      status: "PASS",
+      command,
+      durationMs: result.durationMs
+    };
+  } catch (error) {
+    return {
+      id: "adversarial-input-helper-exact-frontage",
+      status: "FAIL",
+      command: "run adversarial input helper against fake frontage endpoint",
+      durationMs: 0,
+      message: error.message
+    };
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
   }
 }
 
