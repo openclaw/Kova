@@ -368,6 +368,18 @@ export async function runSelfCheck(flags = {}) {
         throw new Error(`default mock auth phases missing: ${phaseIds.join(", ")}`);
       }
     }));
+    checks.push(await jsonCommandCheck("run-auth-no-service-before-gateway-start-json", `node bin/kova.mjs run --target runtime:stable --scenario openai-compatible-turn --state mock-openai-provider --report-dir ${quoteShell(tmp)} --json`, async (data) => {
+      const report = JSON.parse(await readFile(data.jsonPath, "utf8"));
+      const record = report.records?.[0];
+      assertEqual(record?.auth?.mode, "mock", "no-service scenario default auth mode");
+      const phaseIds = record?.phases?.map((phase) => phase.id) ?? [];
+      const provision = phaseIds.indexOf("provision");
+      const authSetup = phaseIds.indexOf("auth-setup");
+      const gatewayStart = phaseIds.indexOf("gateway-start");
+      assertEqual(provision >= 0, true, "no-service provision planned");
+      assertEqual(authSetup > provision, true, "auth setup follows no-service provision");
+      assertEqual(gatewayStart > authSetup, true, "gateway start follows auth setup");
+    }));
     checks.push(await jsonCommandCheck("network-frontage-dry-run-json", `node bin/kova.mjs run --target runtime:stable --scenario fresh-install --network-frontage loopback --worker-id 7 --report-dir ${quoteShell(tmp)} --json`, async (data) => {
       const report = JSON.parse(await readFile(data.jsonPath, "utf8"));
       const record = report.records?.[0];
