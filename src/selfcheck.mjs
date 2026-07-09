@@ -1,7 +1,6 @@
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createServer } from "node:net";
 import { quoteShell, runCommand } from "./commands.mjs";
 import { runCleanupCommand } from "./cleanup.mjs";
 import { summarizeCpuProfiles } from "./collectors/node-profiles.mjs";
@@ -3997,23 +3996,15 @@ async function cleanupArtifactsCheck(tmp) {
 }
 
 async function readinessHealthImpliesListeningCheck() {
-  const server = createServer();
-  await new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve);
-  });
-  const address = server.address();
-  await new Promise((resolve, reject) => {
-    server.close((error) => error ? reject(error) : resolve());
-  });
-
   const originalFetch = globalThis.fetch;
   try {
     globalThis.fetch = async () => new Response('{"ok":true}', {
       status: 200,
       headers: { "content-type": "application/json" }
     });
-    const readiness = await collectReadinessMetrics(address.port, {
+    // TCP port zero cannot be a service endpoint, so the direct probe fails
+    // without reserving and releasing an ephemeral port another process could claim.
+    const readiness = await collectReadinessMetrics(0, {
       timeoutMs: 0,
       thresholdMs: 30000,
       intervalMs: 250,
