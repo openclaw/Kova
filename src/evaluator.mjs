@@ -2440,6 +2440,9 @@ function collectTimelineSummary(record) {
   }
 
   const available = timelines.some((timeline) => timeline.available);
+  const currentTimeline = timelines.findLast((timeline) => timeline.available) ?? null;
+  const openSpans = [...(currentTimeline?.openSpans ?? [])];
+  const openSpanCount = currentTimeline?.openSpanCount ?? openSpans.length;
   let eventCount = 0;
   let parseErrorCount = 0;
   let slowestSpan = null;
@@ -2449,8 +2452,6 @@ function collectTimelineSummary(record) {
   let repeatedSpanCount = 0;
   let runtimeDepsStageMaxMs = null;
   let slowestRuntimeDepsPlugin = null;
-  let openSpanCount = 0;
-  let openSpans = [];
   const keySpans = {};
   const spanTotals = {};
 
@@ -2459,9 +2460,7 @@ function collectTimelineSummary(record) {
     parseErrorCount = Math.max(parseErrorCount, timeline.parseErrorCount ?? 0);
     childProcessFailedCount = Math.max(childProcessFailedCount, timeline.childProcesses?.failedCount ?? 0);
     repeatedSpanCount = Math.max(repeatedSpanCount, timeline.repeatedSpans?.length ?? 0);
-    openSpanCount = Math.max(openSpanCount, timeline.openSpanCount ?? timeline.openSpans?.length ?? 0);
-    openSpans = mergeOpenSpans(openSpans, timeline.openSpans ?? []);
-    mergeKeySpans(keySpans, timeline.keySpans ?? {});
+    mergeKeySpans(keySpans, timeline.keySpans ?? {}, { current: timeline === currentTimeline });
     mergeSpanTotals(spanTotals, timeline.spanTotals ?? {});
     eventLoopMaxMs = maxNullable(eventLoopMaxMs, timeline.eventLoop?.maxMs);
     providerRequestMaxMs = maxNullable(providerRequestMaxMs, timeline.providers?.maxDurationMs);
@@ -2528,13 +2527,7 @@ function mergeSpanTotals(target, source) {
   }
 }
 
-function mergeOpenSpans(current, candidate) {
-  return [...current, ...candidate]
-    .toSorted((left, right) => (right.ageMs ?? -1) - (left.ageMs ?? -1))
-    .slice(0, 25);
-}
-
-function mergeKeySpans(target, source) {
+function mergeKeySpans(target, source, { current = false } = {}) {
   for (const [name, summary] of Object.entries(source)) {
     const existing = target[name] ?? {
       name,
@@ -2548,14 +2541,16 @@ function mergeKeySpans(target, source) {
     };
     existing.count += summary.count ?? 0;
     existing.errorCount += summary.errorCount ?? 0;
-    existing.openCount += summary.openCount ?? 0;
     existing.totalDurationMs = roundNumber(existing.totalDurationMs + (summary.totalDurationMs ?? 0));
     existing.maxDurationMs = maxNullable(existing.maxDurationMs, summary.maxDurationMs);
     if (summary.slowest?.durationMs !== undefined &&
       (!existing.slowest || summary.slowest.durationMs > existing.slowest.durationMs)) {
       existing.slowest = summary.slowest;
     }
-    existing.open = mergeOpenSpans(existing.open, summary.open ?? []).slice(0, 5);
+    if (current) {
+      existing.openCount = summary.openCount ?? summary.open?.length ?? 0;
+      existing.open = [...(summary.open ?? [])].slice(0, 5);
+    }
     target[name] = existing;
   }
 }

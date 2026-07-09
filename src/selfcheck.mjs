@@ -3588,20 +3588,17 @@ function diagnosticsTimelineEvaluationCheck() {
       "missing diagnostic timeline violation"
     );
 
-    const openSpanRecord = {
-      scenario: "diagnostic-open-span",
-      status: "PASS",
-      phases: [],
-      finalMetrics: {
-        service: { gatewayState: "running" },
-        logs: zeroLogMetrics(),
-        timeline: parseTimelineText([
-          "{\"type\":\"span.start\",\"timestamp\":\"2026-04-29T15:30:00.000Z\",\"name\":\"runtimeDeps.stage\",\"spanId\":\"1\"}",
-          "{\"type\":\"eventLoop.sample\",\"timestamp\":\"2026-04-29T15:30:06.000Z\",\"name\":\"eventLoop\",\"maxMs\":400}"
-        ].join("\n"))
-      }
-    };
-    evaluateRecord(openSpanRecord, { thresholds: {} }, {
+    const runtimeDepsStart =
+      "{\"type\":\"span.start\",\"timestamp\":\"2026-04-29T15:30:00.000Z\",\"name\":\"runtimeDeps.stage\",\"spanId\":\"1\"}";
+    const openRuntimeDepsTimeline = parseTimelineText([
+      runtimeDepsStart,
+      "{\"type\":\"eventLoop.sample\",\"timestamp\":\"2026-04-29T15:30:06.000Z\",\"name\":\"eventLoop\",\"maxMs\":400}"
+    ].join("\n"));
+    const closedRuntimeDepsTimeline = parseTimelineText([
+      runtimeDepsStart,
+      "{\"type\":\"span.end\",\"timestamp\":\"2026-04-29T15:30:06.000Z\",\"name\":\"runtimeDeps.stage\",\"spanId\":\"1\",\"durationMs\":6000}"
+    ].join("\n"));
+    const runtimeDepsTimelineOptions = {
       targetPlan: { kind: "local-build" },
       profile: { id: "diagnostic", diagnostics: { timelineRequired: true } },
       surface: {
@@ -3609,8 +3606,47 @@ function diagnosticsTimelineEvaluationCheck() {
         diagnostics: { expectedSpans: ["runtimeDeps.stage"] },
         thresholds: {}
       }
-    });
-    assertEqual(openSpanRecord.status, "FAIL", "open required span status");
+    };
+    const closedSpanRecord = {
+      scenario: "diagnostic-closed-span",
+      status: "PASS",
+      phases: [{ id: "gateway-start", metrics: { timeline: openRuntimeDepsTimeline } }],
+      finalMetrics: {
+        service: { gatewayState: "running" },
+        logs: zeroLogMetrics(),
+        timeline: closedRuntimeDepsTimeline
+      }
+    };
+    evaluateRecord(closedSpanRecord, { thresholds: {} }, runtimeDepsTimelineOptions);
+    assertEqual(closedSpanRecord.status, "PASS", "required span closed by final timeline status");
+    assertEqual(closedSpanRecord.measurements.openclawOpenSpanCount, 0, "final timeline open span count");
+    assertEqual(closedSpanRecord.measurements.openclawOpenRequiredSpanCount, 0, "final timeline required open span count");
+    assertEqual(closedSpanRecord.measurements.openclawOpenSpans.length, 0, "final timeline open span list");
+    assertEqual(
+      closedSpanRecord.measurements.openclawKeySpans["runtimeDeps.stage"]?.openCount,
+      0,
+      "final timeline key span open count"
+    );
+    assertEqual(
+      closedSpanRecord.measurements.openclawKeySpans["runtimeDeps.stage"]?.open.length,
+      0,
+      "final timeline key span open list"
+    );
+    assertEqual(closedSpanRecord.measurements.openclawEventLoopMaxMs, 400, "historical timeline event-loop maximum");
+    assertEqual(closedSpanRecord.measurements.openclawSlowestSpanMs, 6000, "historical timeline slowest span");
+
+    const openSpanRecord = {
+      scenario: "diagnostic-open-span",
+      status: "PASS",
+      phases: [],
+      finalMetrics: {
+        service: { gatewayState: "running" },
+        logs: zeroLogMetrics(),
+        timeline: openRuntimeDepsTimeline
+      }
+    };
+    evaluateRecord(openSpanRecord, { thresholds: {} }, runtimeDepsTimelineOptions);
+    assertEqual(openSpanRecord.status, "FAIL", "required span still open in final timeline status");
     assertEqual(openSpanRecord.measurements.openclawOpenRequiredSpanCount, 1, "open required span measurement");
     assertEqual(
       openSpanRecord.violations.some((violation) => violation.metric === "openclawOpenRequiredSpanCount"),
