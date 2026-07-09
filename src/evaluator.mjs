@@ -585,6 +585,19 @@ export function evaluateRecord(record, scenario, options = {}) {
     });
   }
 
+  const requiresWarmRuntimeDepsEvidence =
+    typeof thresholds.warmRuntimeDepsRestageCount === "number" ||
+    typeof thresholds.warmRuntimeDepsStagingMs === "number";
+  if (requiresWarmRuntimeDepsEvidence && !runtimeDepsLogEvidence.phaseMetricsAvailable) {
+    violations.push({
+      kind: "plugins",
+      metric: "runtimeDepsWarmReuseOk",
+      expected: "successful cold-start and warm-restart phase log metrics",
+      actual: null,
+      message: "runtime dependency reuse could not be evaluated because phase log metrics were unavailable"
+    });
+  }
+
   if (
     typeof thresholds.warmRuntimeDepsRestageCount === "number" &&
     runtimeDepsLogEvidence.warmRestart.installCount !== null &&
@@ -849,9 +862,14 @@ export function evaluateRecord(record, scenario, options = {}) {
     runtimeDepsPostbuildMaxMs: runtimeDepsLogEvidence.postbuildMaxMs,
     coldRuntimeDepsInstallCount: runtimeDepsLogEvidence.coldStart.installCount,
     coldRuntimeDepsStagingMs: runtimeDepsLogEvidence.coldStart.installMaxMs,
-    warmRuntimeDepsRestageCount: runtimeDepsLogEvidence.warmRestart.installCount,
-    warmRuntimeDepsStagingMs: runtimeDepsLogEvidence.warmRestart.installMaxMs,
-    runtimeDepsWarmReuseOk: runtimeDepsLogEvidence.warmRestart.installCount === null
+    warmRuntimeDepsRestageCount: runtimeDepsLogEvidence.phaseMetricsAvailable
+      ? runtimeDepsLogEvidence.warmRestart.installCount
+      : null,
+    warmRuntimeDepsStagingMs: runtimeDepsLogEvidence.phaseMetricsAvailable
+      ? runtimeDepsLogEvidence.warmRestart.installMaxMs
+      : null,
+    runtimeDepsWarmReuseOk: !runtimeDepsLogEvidence.phaseMetricsAvailable ||
+      runtimeDepsLogEvidence.warmRestart.installCount === null
       ? null
       : runtimeDepsLogEvidence.warmRestart.installCount === 0,
     pluginMetadataScanCount: openclawDiagnostics.pluginMetadataScanCount,
@@ -2815,14 +2833,19 @@ function collectOpenClawDiagnostics(record) {
 }
 
 function collectRuntimeDepsLogEvidence(record) {
-  const phases = (record.phases ?? []).map((phase) => ({
-    id: phase.id,
-    summary: summarizeRuntimeDepsPhase(phase)
-  }));
+  const phases = (record.phases ?? []).map((phase) => {
+    const metricsSummary = phase?.metrics?.logs?.runtimeDeps ?? null;
+    return {
+      id: phase.id,
+      summary: summarizeRuntimeDepsPhase(phase),
+      metricsSummary,
+      metricsAvailable: phase?.metrics?.logs?.commandStatus === 0 && Boolean(metricsSummary)
+    };
+  });
   const cold = selectRuntimeDepsPhase(phases, ["cold-start", "provision", "start", "gateway"]);
   const warm = selectRuntimeDepsPhase(phases, ["warm-restart", "restart"]);
-  const coldStart = compactRuntimeDepsPhase(cold);
-  const warmRestart = compactRuntimeDepsWarmPhase(warm, cold);
+  const coldStart = compactRuntimeDepsPhase(cold?.summary);
+  const warmRestart = compactRuntimeDepsWarmPhase(warm?.summary, cold?.summary);
   const allSummaries = [
     ...phases.map((phase) => phase.summary),
     ...allMetricObjects(record).map((metrics) => metrics.logs?.runtimeDeps).filter(Boolean)
@@ -2831,6 +2854,10 @@ function collectRuntimeDepsLogEvidence(record) {
   return {
     schemaVersion: "kova.runtimeDepsEvidence.v1",
     available: allSummaries.some((summary) => (summary?.eventCount ?? 0) > 0),
+    phaseMetricsAvailable:
+      cold?.metricsAvailable === true &&
+      (cold.metricsSummary?.eventCount ?? 0) > 0 &&
+      warm?.metricsAvailable === true,
     installCount: maxNullable(...allSummaries.map((summary) => summary?.installCount)),
     installMaxMs: maxNullable(...allSummaries.map((summary) => summary?.installMaxMs)),
     postbuildCount: maxNullable(...allSummaries.map((summary) => summary?.postbuildCount)),
@@ -2867,7 +2894,7 @@ function summarizeRuntimeDepsPhase(phase) {
 }
 
 function selectRuntimeDepsPhase(phases, ids) {
-  return phases.find((phase) => ids.includes(phase.id))?.summary ?? null;
+  return phases.find((phase) => ids.includes(phase.id)) ?? null;
 }
 
 function compactRuntimeDepsPhase(summary) {
