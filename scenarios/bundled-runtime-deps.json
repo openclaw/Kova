@@ -16,14 +16,14 @@
       "id": "cold-start",
       "title": "Cold Runtime Dependency Start",
       "intent": "Start a fresh env and capture bundled runtime dependency staging logs.",
-      "commands": ["ocm start {env} {startSelector} --json", "ocm logs {env} --tail 300 --raw"],
+      "commands": ["ocm start {env} {startSelector} --json"],
       "evidence": ["dependency staging duration", "installed dependency list", "missing dependency errors"]
     },
     {
       "id": "warm-restart",
       "title": "Warm Runtime Dependency Restart",
       "intent": "Restart with staged dependencies already present and verify no repeated expensive staging or missing dependency errors.",
-      "commands": ["ocm service restart {env}", "ocm service status {env} --json", "ocm logs {env} --tail 300 --raw"],
+      "commands": ["ocm service restart {env}", "ocm service status {env} --json"],
       "evidence": ["warm ready time", "dependency staging reuse", "missing dependency errors"]
     }
   ]

@@ -16,7 +16,7 @@ import {
 } from "./performance/baselines.mjs";
 import { buildPerformanceSummary } from "./performance/stats.mjs";
 import { loadProcessRoles } from "./registries/process-roles.mjs";
-import { validateScenarioShape } from "./registries/scenarios.mjs";
+import { loadScenarios, validateScenarioShape } from "./registries/scenarios.mjs";
 import { validateStateShape } from "./registries/states.mjs";
 import { validateRegistryReferences } from "./registries/validate.mjs";
 import { assertSafeScenarioCommand } from "./safety.mjs";
@@ -338,6 +338,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(diagnosticsTimelineEvaluationCheck());
     checks.push(runtimeDepsLogParserCheck());
     checks.push(embeddedRunLogParserCheck());
+    checks.push(await bundledRuntimeDepsScenarioCheck());
     checks.push(runtimeDepsWarmReuseEvaluationCheck());
     checks.push(await performanceBaselineCheck(tmp));
     checks.push(markdownFailureCardsCheck());
@@ -3443,6 +3444,33 @@ function runtimeDepsWarmReuseEvaluationCheck() {
     assertEqual(cleanRecord.measurements.warmRuntimeDepsRestageCount, 0, "warm restage count");
     assertEqual(cleanRecord.measurements.runtimeDepsWarmReuseOk, true, "warm reuse ok");
 
+    const missingEvidenceRecord = runtimeDepsRecord({
+      coldLog,
+      warmLog: coldLog,
+      includeRuntimeDepsEvidence: false
+    });
+    evaluateRecord(missingEvidenceRecord, scenario, { surface, targetPlan: { kind: "npm" } });
+    assertEqual(missingEvidenceRecord.status, "FAIL", "missing runtime deps evidence status");
+    assertEqual(missingEvidenceRecord.measurements.runtimeDepsWarmReuseOk, null, "missing evidence leaves warm reuse unknown");
+    assertEqual(
+      missingEvidenceRecord.violations.some((violation) => violation.metric === "runtimeDepsWarmReuseOk"),
+      true,
+      "missing runtime deps evidence violation"
+    );
+
+    const emptyEvidenceRecord = runtimeDepsRecord({
+      coldLog: "",
+      warmLog: ""
+    });
+    evaluateRecord(emptyEvidenceRecord, scenario, { surface, targetPlan: { kind: "npm" } });
+    assertEqual(emptyEvidenceRecord.status, "FAIL", "empty runtime deps evidence status");
+    assertEqual(emptyEvidenceRecord.measurements.runtimeDepsWarmReuseOk, null, "empty evidence leaves warm reuse unknown");
+    assertEqual(
+      emptyEvidenceRecord.violations.some((violation) => violation.metric === "runtimeDepsWarmReuseOk"),
+      true,
+      "empty runtime deps evidence violation"
+    );
+
     const restagedRecord = runtimeDepsRecord({
       coldLog,
       warmLog: [
@@ -3488,25 +3516,61 @@ function runtimeDepsWarmReuseEvaluationCheck() {
   }
 }
 
-function runtimeDepsRecord({ coldLog, warmLog }) {
+async function bundledRuntimeDepsScenarioCheck() {
+  try {
+    const [scenario] = await loadScenarios("bundled-runtime-deps");
+    const lifecycleCommands = scenario.phases.flatMap((phase) => phase.commands ?? []);
+    for (const [index, command] of lifecycleCommands.entries()) {
+      if (!/^ocm (?:start|service restart) /.test(command)) {
+        continue;
+      }
+      const nextCommand = lifecycleCommands[index + 1] ?? "";
+      if (/^ocm logs /.test(nextCommand)) {
+        throw new Error(`bundled-runtime-deps runs logs immediately after '${command}'`);
+      }
+    }
+    assertEqual(
+      lifecycleCommands.some((command) => /^ocm logs /.test(command)),
+      false,
+      "bundled runtime deps scenario relies on phase log metrics"
+    );
+
+    return {
+      id: "bundled-runtime-deps-scenario",
+      status: "PASS",
+      command: "validate bundled runtime deps scenario log collection",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "bundled-runtime-deps-scenario",
+      status: "FAIL",
+      command: "validate bundled runtime deps scenario log collection",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function runtimeDepsRecord({ coldLog, warmLog, includeRuntimeDepsEvidence = true }) {
   return {
     scenario: "bundled-runtime-deps",
     status: "PASS",
     phases: [
       {
         id: "cold-start",
-        results: [{ command: "ocm logs kova-runtime-deps --tail 300 --raw", status: 0, stdout: coldLog, stderr: "", durationMs: 100 }],
+        results: [{ command: "ocm start kova-runtime-deps runtime:stable --json", status: 0, stdout: "", stderr: "", durationMs: 100 }],
         metrics: {
           service: { gatewayState: "running" },
-          logs: zeroLogMetrics()
+          logs: runtimeDepsLogMetrics(coldLog, includeRuntimeDepsEvidence)
         }
       },
       {
         id: "warm-restart",
-        results: [{ command: "ocm logs kova-runtime-deps --tail 300 --raw", status: 0, stdout: warmLog, stderr: "", durationMs: 100 }],
+        results: [{ command: "ocm service restart kova-runtime-deps", status: 0, stdout: "", stderr: "", durationMs: 100 }],
         metrics: {
           service: { gatewayState: "running" },
-          logs: zeroLogMetrics()
+          logs: runtimeDepsLogMetrics(warmLog, includeRuntimeDepsEvidence)
         }
       }
     ],
@@ -3514,6 +3578,14 @@ function runtimeDepsRecord({ coldLog, warmLog }) {
       service: { gatewayState: "running" },
       logs: zeroLogMetrics()
     }
+  };
+}
+
+function runtimeDepsLogMetrics(log, includeRuntimeDepsEvidence) {
+  return {
+    ...zeroLogMetrics(),
+    commandStatus: 0,
+    ...(includeRuntimeDepsEvidence ? { runtimeDeps: summarizeRuntimeDepsLogs(log) } : {})
   };
 }
 
