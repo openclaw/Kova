@@ -15,7 +15,7 @@
   },
   "phases": [
     {
-      "id": "startup",
+      "id": "gateway-start",
       "title": "Start Bundled Plugin Gateway",
       "intent": "Start OpenClaw and let bundled plugin bootstrap run in the same shape users get from the target runtime.",
       "commands": ["ocm start {env} {startSelector} --json"],

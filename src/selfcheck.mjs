@@ -351,6 +351,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(runtimeDepsLogParserCheck());
     checks.push(embeddedRunLogParserCheck());
     checks.push(await bundledRuntimeDepsScenarioCheck());
+    checks.push(await bundledPluginStartupScenarioCheck());
     checks.push(runtimeDepsWarmReuseEvaluationCheck());
     checks.push(await performanceBaselineCheck(tmp));
     checks.push(markdownFailureCardsCheck());
@@ -3880,6 +3881,31 @@ async function bundledRuntimeDepsScenarioCheck() {
       id: "bundled-runtime-deps-scenario",
       status: "FAIL",
       command: "validate bundled runtime deps scenario log collection",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+async function bundledPluginStartupScenarioCheck() {
+  try {
+    const [scenario] = await loadScenarios("bundled-plugin-startup");
+    const startPhase = scenario.phases.find((phase) =>
+      (phase.commands ?? []).some((command) => /^ocm start /.test(command))
+    );
+    assertEqual(startPhase?.id, "gateway-start", "bundled plugin startup waits for readiness before auth setup");
+
+    return {
+      id: "bundled-plugin-startup-scenario",
+      status: "PASS",
+      command: "validate bundled plugin startup readiness ordering",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "bundled-plugin-startup-scenario",
+      status: "FAIL",
+      command: "validate bundled plugin startup readiness ordering",
       durationMs: 0,
       message: error.message
     };
