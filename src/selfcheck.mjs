@@ -877,7 +877,7 @@ async function releaseResourceCalibrationCheck() {
       "fresh-install": { gateway: 1050, "status-cli": 850, "plugin-cli": 800 },
       "gateway-performance": { gateway: 1050, "gateway-tree": 1200, "plugin-cli": 800, "status-cli": 850 },
       "bundled-runtime-deps": { gateway: 1050 },
-      "bundled-plugin-startup": { gateway: 900, "plugin-cli": 800 }
+      "bundled-plugin-startup": { gateway: 950, "plugin-cli": 800 }
     };
     for (const [surfaceId, roleCaps] of Object.entries(expectedRoleCaps)) {
       const surface = surfaceById.get(surfaceId);
@@ -888,6 +888,28 @@ async function releaseResourceCalibrationCheck() {
         assertEqual(policy.roleThresholds?.[role]?.peakRssMb, peakRssMb, `${surfaceId} ${role} RSS cap`);
       }
     }
+
+    const bundledPluginSurface = surfaceById.get("bundled-plugin-startup");
+    const bundledPluginPolicy = resolveThresholdPolicy({
+      profile: releaseProfile,
+      surface: bundledPluginSurface,
+      scenario: null
+    });
+    assertEqual(
+      bundledPluginSurface?.roleThresholds?.gateway?.peakRssMb,
+      950,
+      "bundled-plugin startup explicitly owns gateway RSS cap"
+    );
+    assertEqual(
+      bundledPluginSurface?.roleThresholds?.gateway?.maxCpuPercent,
+      250,
+      "bundled-plugin startup explicitly owns gateway CPU cap"
+    );
+    assertEqual(
+      bundledPluginPolicy.roleThresholds?.gateway?.maxCpuPercent,
+      250,
+      "bundled-plugin startup resolved gateway CPU cap"
+    );
 
     assertEqual(releaseProfile.calibration?.roles?.gateway?.peakRssMb, 900, "global release gateway RSS cap");
     assertEqual(releaseProfile.calibration?.roles?.["plugin-cli"]?.peakRssMb, 650, "global release plugin RSS cap");
