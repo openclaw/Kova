@@ -776,6 +776,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(await localBuildRuntimeCleanupCheck(tmp));
     checks.push(await localBuildRuntimeAlreadyAbsentCleanupCheck(tmp));
     checks.push(defaultGatewayResourceRoleCheck());
+    checks.push(gatewayProcessResourceRoleCheck());
     checks.push(compareRepeatAggregationCheck());
     checks.push(compareMetricOrderingCheck());
     checks.push(compareGatewayRssDedupeCheck());
@@ -1165,6 +1166,121 @@ function defaultGatewayResourceRoleCheck() {
       id: "default-gateway-resource-role",
       status: "FAIL",
       command: "evaluate default gateway RSS resource contract",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function gatewayProcessResourceRoleCheck() {
+  try {
+    const buildRecord = () => ({
+      scenario: "gateway-process-resource-role",
+      status: "PASS",
+      phases: [{
+        id: "scenario-command",
+        measurementScope: "product",
+        results: [{
+          command: "synthetic",
+          status: 0,
+          durationMs: 1,
+          resourceSamples: {
+            schemaVersion: "kova.resourceSamples.v1",
+            sampleCount: 1,
+            peakTotalRssMb: 700,
+            maxTotalCpuPercent: 80,
+            peakGatewayRssMb: 700,
+            byRole: {
+              gateway: { peakRssMb: 700, maxCpuPercent: 80, peakProcessCount: 1 },
+              "plugin-cli": { peakRssMb: 200, maxCpuPercent: 20, peakProcessCount: 1 }
+            },
+            topRolesByRss: [
+              { role: "gateway", peakRssMb: 700, maxCpuPercent: 80 },
+              { role: "plugin-cli", peakRssMb: 200, maxCpuPercent: 20 }
+            ],
+            topRolesByCpu: [
+              { role: "gateway", peakRssMb: 700, maxCpuPercent: 80 },
+              { role: "plugin-cli", peakRssMb: 200, maxCpuPercent: 20 }
+            ],
+            topByRss: [],
+            topByCpu: []
+          }
+        }],
+        metrics: {
+          process: { pid: 123, rssMb: 1000, cpuPercent: 300, command: "openclaw-gateway" },
+          logs: zeroLogMetrics()
+        }
+      }],
+      finalMetrics: {
+        process: { pid: 123, rssMb: 1100, cpuPercent: 320, command: "openclaw-gateway" },
+        service: { gatewayState: "running" },
+        logs: zeroLogMetrics()
+      }
+    });
+
+    const gatewayRecord = buildRecord();
+    evaluateRecord(gatewayRecord, { thresholds: { peakRssMb: 900, cpuPercentMax: 250 } }, {
+      surface: {
+        resourcePrimaryRole: "gateway",
+        thresholds: {},
+        roleThresholds: { gateway: { peakRssMb: 900, maxCpuPercent: 250 } }
+      }
+    });
+    assertEqual(gatewayRecord.status, "FAIL", "gateway final process metrics fail resource gate");
+    assertEqual(gatewayRecord.measurements.peakRssMb, 1100, "gateway final process RSS reaches headline gate");
+    assertEqual(gatewayRecord.measurements.cpuPercentMax, 320, "gateway final process CPU reaches headline gate");
+    assertEqual(gatewayRecord.measurements.resourceByRole.gateway.peakRssMb, 1100, "gateway role merges final process RSS");
+    assertEqual(gatewayRecord.measurements.resourceByRole.gateway.maxCpuPercent, 320, "gateway role merges final process CPU");
+    assertEqual(
+      gatewayRecord.violations.some((violation) => violation.metric === "peakRssMb"),
+      true,
+      "headline RSS threshold sees final process"
+    );
+    assertEqual(
+      gatewayRecord.violations.some((violation) => violation.metric === "cpuPercentMax"),
+      true,
+      "headline CPU threshold sees final process"
+    );
+    assertEqual(
+      gatewayRecord.violations.some((violation) => violation.metric === "resourceByRole.gateway.peakRssMb"),
+      true,
+      "gateway role RSS threshold sees final process"
+    );
+    assertEqual(
+      gatewayRecord.violations.some((violation) => violation.metric === "resourceByRole.gateway.maxCpuPercent"),
+      true,
+      "gateway role CPU threshold sees final process"
+    );
+
+    const pluginRecord = buildRecord();
+    evaluateRecord(pluginRecord, { thresholds: { peakRssMb: 300, cpuPercentMax: 50 } }, {
+      surface: { resourcePrimaryRole: "plugin-cli", thresholds: {} }
+    });
+    assertEqual(pluginRecord.status, "PASS", "gateway final process metrics do not pollute plugin role gate");
+    assertEqual(pluginRecord.measurements.peakRssMb, 200, "plugin role remains headline RSS gate");
+    assertEqual(pluginRecord.measurements.cpuPercentMax, 20, "plugin role remains headline CPU gate");
+    assertEqual(pluginRecord.measurements.resourceByRole.gateway.peakRssMb, 1100, "gateway final process RSS stays attributed");
+
+    const finalOnlyRecord = buildRecord();
+    delete finalOnlyRecord.phases[0].results[0].resourceSamples;
+    delete finalOnlyRecord.phases[0].metrics.process;
+    evaluateRecord(finalOnlyRecord, { thresholds: { peakRssMb: 1200, cpuPercentMax: 400 } }, {
+      surface: { resourcePrimaryRole: "gateway", thresholds: {} }
+    });
+    assertEqual(finalOnlyRecord.status, "PASS", "final gateway process metrics satisfy configured role evidence");
+    assertEqual(finalOnlyRecord.measurements.resourceGateKind, "role", "final gateway process avoids missing-role gate");
+    assertEqual(finalOnlyRecord.measurements.peakRssMb, 1100, "final-only gateway RSS reaches headline gate");
+    return {
+      id: "gateway-process-resource-role",
+      status: "PASS",
+      command: "evaluate gateway process resource role attribution",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "gateway-process-resource-role",
+      status: "FAIL",
+      command: "evaluate gateway process resource role attribution",
       durationMs: 0,
       message: error.message
     };
