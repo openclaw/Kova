@@ -253,6 +253,7 @@ export function comparePerformanceToBaseline(report, store, options = {}) {
   const groups = [];
   const regressions = [];
   const missing = [];
+  let skippedMetricCount = 0;
 
   for (const group of report.performance?.groups ?? []) {
     const representative = (report.records ?? []).find((record) =>
@@ -282,7 +283,19 @@ export function comparePerformanceToBaseline(report, store, options = {}) {
       continue;
     }
 
-    const groupRegressions = metricRegressions(baseline.aggregate?.metrics ?? {}, group.metrics ?? {}, thresholds);
+    const resourceContractMatches =
+      typeof baseline.aggregate?.resourceHeadlineContract === "string" &&
+      baseline.aggregate.resourceHeadlineContract === group.resourceHeadlineContract;
+    const skippedMetrics = resourceContractMatches
+      ? []
+      : ["peakRssMb", "resourcePeakGatewayRssMb", "cpuPercentMax"];
+    skippedMetricCount += skippedMetrics.length;
+    const groupRegressions = metricRegressions(
+      baseline.aggregate?.metrics ?? {},
+      group.metrics ?? {},
+      thresholds,
+      { skippedMetrics }
+    );
     regressions.push(...groupRegressions.map((regression) => ({
       ...regression,
       key,
@@ -297,6 +310,7 @@ export function comparePerformanceToBaseline(report, store, options = {}) {
       state: group.state,
       status: groupRegressions.length > 0 ? "REGRESSED" : "OK",
       baselineSource: baseline.source,
+      skippedMetrics,
       regressions: groupRegressions
     });
   }
@@ -309,6 +323,7 @@ export function comparePerformanceToBaseline(report, store, options = {}) {
     ok: regressions.length === 0,
     regressionCount: regressions.length,
     missingBaselineCount: missing.length,
+    skippedMetricCount,
     groups,
     regressions,
     missing
@@ -329,9 +344,13 @@ export function normalizeRegressionThresholds(input = null) {
   return thresholds;
 }
 
-function metricRegressions(baselineMetrics, currentMetrics, thresholds) {
+function metricRegressions(baselineMetrics, currentMetrics, thresholds, options = {}) {
   const regressions = [];
+  const skippedMetrics = new Set(options.skippedMetrics ?? []);
   for (const metric of PERFORMANCE_METRICS) {
+    if (skippedMetrics.has(metric.id)) {
+      continue;
+    }
     const baseline = baselineMetrics[metric.id];
     const current = currentMetrics[metric.id];
     if (!baseline || !current || typeof baseline.median !== "number" || typeof current.median !== "number") {

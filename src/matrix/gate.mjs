@@ -364,6 +364,7 @@ function summarizeBaselineComparison(comparison) {
     baselineEntryCount: comparison.baselineEntryCount ?? null,
     regressionCount: comparison.regressionCount ?? 0,
     missingBaselineCount: comparison.missingBaselineCount ?? 0,
+    skippedMetricCount: comparison.skippedMetricCount ?? 0,
     regressedGroups: (comparison.groups ?? [])
       .filter((group) => group.status === "REGRESSED")
       .map((group) => ({
@@ -408,6 +409,9 @@ function summarizeGateMeasurements(measurements) {
     readinessClassification: measurements.readinessClassification ?? null,
     timeToHealthReadyMs: measurements.timeToHealthReadyMs ?? null,
     peakRssMb: measurements.peakRssMb ?? null,
+    resourcePrimaryRole: measurements.resourcePrimaryRole ?? null,
+    resourceGateKind: measurements.resourceGateKind ?? null,
+    resourcePeakTrackedRssMb: measurements.resourcePeakTrackedRssMb ?? null,
     cpuPercentMax: measurements.cpuPercentMax ?? null,
     missingDependencyErrors: measurements.missingDependencyErrors ?? null,
     pluginLoadFailures: measurements.pluginLoadFailures ?? null,

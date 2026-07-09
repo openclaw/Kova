@@ -18,6 +18,7 @@ import { buildPerformanceSummary } from "./performance/stats.mjs";
 import { loadProcessRoles } from "./registries/process-roles.mjs";
 import { loadScenarios, validateScenarioShape } from "./registries/scenarios.mjs";
 import { validateStateShape } from "./registries/states.mjs";
+import { loadSurfaces } from "./registries/surfaces.mjs";
 import { validateRegistryReferences } from "./registries/validate.mjs";
 import { assertSafeScenarioCommand } from "./safety.mjs";
 import { parseTimelineText } from "./collectors/timeline.mjs";
@@ -35,7 +36,12 @@ import {
   parseProviderRequestLog,
   parseTimelineProviderRequestLog
 } from "./collectors/provider.mjs";
-import { captureProcessSnapshot, classifyRegistryRolesForProcess, diffProcessSnapshots } from "./collectors/resources.mjs";
+import {
+  captureProcessSnapshot,
+  classifyRegistryRolesForProcess,
+  diffProcessSnapshots,
+  summarizeResourceSamples
+} from "./collectors/resources.mjs";
 import { renderMarkdownReport, renderPasteSummary, renderReportSummary } from "./reporting/report.mjs";
 import { compareReports, renderCompareSummary } from "./reporting/compare.mjs";
 import {
@@ -111,6 +117,8 @@ export async function runSelfCheck(flags = {}) {
     checks.push(ocmCommandBuildersCheck());
     checks.push(evaluationViolationHelpersCheck());
     checks.push(localBuildTargetSetupResourceExclusionCheck());
+    checks.push(primaryResourceRoleEvaluationCheck());
+    checks.push(await primaryResourceRoleRegistryCheck());
     checks.push(await jsonCommandCheck("plan-json", "node bin/kova.mjs plan --json", (data) => {
       assertEqual(data.schemaVersion, "kova.plan.v1", "plan schema");
       assertArrayNotEmpty(data.surfaces, "plan surfaces");
@@ -585,16 +593,28 @@ function localBuildTargetSetupResourceExclusionCheck() {
         },
         {
           id: "scenario-command",
-          results: [{
-            command: "ocm @kova-self-check -- status",
-            status: 0,
-            durationMs: 100,
-            resourceSamples: syntheticResourceSamples({
-              peakRssMb: 100,
-              maxCpuPercent: 20,
-              role: "gateway"
-            })
-          }]
+          results: [
+            {
+              command: "ocm @kova-self-check -- status",
+              status: 0,
+              durationMs: 100,
+              resourceSamples: syntheticResourceSamples({
+                peakRssMb: 100,
+                maxCpuPercent: 20,
+                role: "gateway"
+              })
+            },
+            {
+              command: "node support/kova-helper.mjs",
+              status: 0,
+              durationMs: 100,
+              resourceSamples: syntheticResourceSamples({
+                peakRssMb: 600,
+                maxCpuPercent: 30,
+                role: "command-tree"
+              })
+            }
+          ]
         }
       ],
       finalMetrics: {
@@ -602,12 +622,15 @@ function localBuildTargetSetupResourceExclusionCheck() {
         logs: zeroLogMetrics()
       }
     };
-    evaluateRecord(record, { thresholds: { peakRssMb: 900 } }, {
-      surface: { thresholds: {} },
+    evaluateRecord(record, { thresholds: { peakRssMb: 200 } }, {
+      surface: { thresholds: {}, resourcePrimaryRole: "gateway" },
       targetPlan: { kind: "local-build" }
     });
     assertEqual(record.status, "PASS", "local-build target setup resources ignored status");
     assertEqual(record.measurements.peakRssMb, 100, "local-build target setup resources ignored RSS");
+    assertEqual(record.measurements.resourcePeakTrackedRssMb, 600, "tracked product helper RSS retained separately");
+    assertEqual(record.measurements.resourcePrimaryRole, "gateway", "primary resource role retained");
+    assertEqual(record.measurements.resourceGateKind, "role", "primary resource role gates headline RSS");
     assertEqual(record.measurements.resourceByRole.gateway.peakRssMb, 100, "scenario role RSS retained");
     assertEqual(record.measurements.resourceByRole["build-tooling"], undefined, "target setup role excluded");
     assertEqual(record.violations, undefined, "no-service local-build record has no gateway violation");
@@ -622,6 +645,153 @@ function localBuildTargetSetupResourceExclusionCheck() {
       id: "local-build-target-setup-resource-exclusion",
       status: "FAIL",
       command: "evaluate local-build target setup resource exclusion",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function primaryResourceRoleEvaluationCheck() {
+  try {
+    const scenario = { thresholds: { peakRssMb: 900 } };
+    const gatewayRecord = syntheticPrimaryResourceRecord();
+    evaluateRecord(gatewayRecord, scenario, {
+      surface: { thresholds: {}, roleThresholds: {}, resourcePrimaryRole: "gateway" }
+    });
+    assertEqual(gatewayRecord.status, "PASS", "configured gateway role gates below threshold");
+    assertEqual(gatewayRecord.measurements.peakRssMb, 700, "configured gateway role is headline RSS");
+    assertEqual(gatewayRecord.measurements.resourcePeakTrackedRssMb, 1250, "aggregate RSS remains diagnostic");
+    assertEqual(gatewayRecord.measurements.resourceGateKind, "role", "configured gateway uses role gate");
+
+    const pluginRecord = syntheticPrimaryResourceRecord();
+    evaluateRecord(pluginRecord, scenario, {
+      surface: { thresholds: {}, roleThresholds: {}, resourcePrimaryRole: "plugin-cli" }
+    });
+    assertEqual(pluginRecord.status, "FAIL", "configured plugin role gates above threshold");
+    assertEqual(pluginRecord.measurements.peakRssMb, 1000, "configured plugin role is headline RSS");
+    assertEqual(pluginRecord.measurements.resourcePeakTrackedRssMb, 1250, "failed role keeps aggregate diagnostic");
+    assertEqual(
+      pluginRecord.violations.some((violation) => violation.metric === "peakRssMb"),
+      true,
+      "configured plugin role produces headline threshold violation"
+    );
+
+    const missingRoleRecord = syntheticPrimaryResourceRecord();
+    evaluateRecord(missingRoleRecord, scenario, {
+      surface: { thresholds: {}, roleThresholds: {}, resourcePrimaryRole: "mcp-runtime" }
+    });
+    assertEqual(missingRoleRecord.status, "FAIL", "missing configured role fails closed");
+    assertEqual(missingRoleRecord.measurements.peakRssMb, null, "missing role does not relabel aggregate RSS");
+    assertEqual(missingRoleRecord.measurements.resourcePeakTrackedRssMb, 1250, "missing role keeps aggregate diagnostic");
+    assertEqual(missingRoleRecord.measurements.resourceGateKind, "role-missing", "missing role gate kind");
+    assertEqual(
+      missingRoleRecord.violations.some((violation) => violation.metric === "resourceByRole.mcp-runtime.missing"),
+      true,
+      "missing configured role violation"
+    );
+
+    return {
+      id: "primary-resource-role-evaluation",
+      status: "PASS",
+      command: "evaluate configured primary resource role gating",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "primary-resource-role-evaluation",
+      status: "FAIL",
+      command: "evaluate configured primary resource role gating",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function syntheticPrimaryResourceRecord() {
+  return {
+    scenario: "synthetic-primary-resource-role",
+    status: "PASS",
+    phases: [{
+      id: "sample",
+      results: [{
+        command: "synthetic resource sample",
+        status: 0,
+        durationMs: 1,
+        resourceSamples: {
+          schemaVersion: "kova.resourceSamples.v1",
+          sampleCount: 1,
+          peakTotalRssMb: 1250,
+          maxTotalCpuPercent: 180,
+          peakCommandTreeRssMb: 1000,
+          peakGatewayRssMb: 700,
+          byRole: {
+            gateway: { peakRssMb: 700, maxCpuPercent: 80, peakProcessCount: 1 },
+            "plugin-cli": { peakRssMb: 1000, maxCpuPercent: 180, peakProcessCount: 1 }
+          },
+          topRolesByRss: [
+            { role: "plugin-cli", peakRssMb: 1000, maxCpuPercent: 180 },
+            { role: "gateway", peakRssMb: 700, maxCpuPercent: 80 }
+          ],
+          topRolesByCpu: [
+            { role: "plugin-cli", peakRssMb: 1000, maxCpuPercent: 180 },
+            { role: "gateway", peakRssMb: 700, maxCpuPercent: 80 }
+          ],
+          topByRss: [],
+          topByCpu: []
+        }
+      }],
+      metrics: { logs: zeroLogMetrics() }
+    }],
+    finalMetrics: {
+      service: { gatewayState: "running" },
+      logs: zeroLogMetrics()
+    }
+  };
+}
+
+async function primaryResourceRoleRegistryCheck() {
+  try {
+    const scenarios = await loadScenarios();
+    const surfaces = await loadSurfaces();
+    const surfaceById = new Map(surfaces.map((surface) => [surface.id, surface]));
+    const gatedSurfaceIds = new Set(
+      surfaces
+        .filter((surface) =>
+          typeof surface.thresholds?.peakRssMb === "number" ||
+          surface.requiredMetrics?.includes("peakRssMb")
+        )
+        .map((surface) => surface.id)
+    );
+    for (const scenario of scenarios) {
+      if (typeof scenario.thresholds?.peakRssMb === "number") {
+        gatedSurfaceIds.add(scenario.surface);
+      }
+    }
+    for (const surfaceId of gatedSurfaceIds) {
+      const surface = surfaceById.get(surfaceId);
+      assertEqual(
+        typeof surface?.resourcePrimaryRole === "string" && surface.resourcePrimaryRole.length > 0,
+        true,
+        `${surfaceId} declares its primary RSS role`
+      );
+      assertEqual(
+        surface.processRoles?.includes(surface.resourcePrimaryRole),
+        true,
+        `${surfaceId} primary RSS role belongs to its process roles`
+      );
+    }
+
+    return {
+      id: "primary-resource-role-registry",
+      status: "PASS",
+      command: "validate primary resource roles for RSS-gated surfaces",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "primary-resource-role-registry",
+      status: "FAIL",
+      command: "validate primary resource roles for RSS-gated surfaces",
       durationMs: 0,
       message: error.message
     };
@@ -881,9 +1051,9 @@ async function performanceBaselineCheck(tmp) {
       platform,
       target: "local-build:/tmp/openclaw",
       records: [
-        syntheticPerformanceRecord(1, { timeToHealthReadyMs: 1000, peakRssMb: 400, cpuPercentMax: 20, eventLoopDelayMs: 100, agentTurnMs: 2000 }),
-        syntheticPerformanceRecord(2, { timeToHealthReadyMs: 1200, peakRssMb: 420, cpuPercentMax: 22, eventLoopDelayMs: 110, agentTurnMs: 2200 }),
-        syntheticPerformanceRecord(3, { timeToHealthReadyMs: 1100, peakRssMb: 410, cpuPercentMax: 21, eventLoopDelayMs: 105, agentTurnMs: 2100 })
+        syntheticPerformanceRecord(1, { timeToHealthReadyMs: 1000, peakRssMb: 400, resourcePeakGatewayRssMb: 400, cpuPercentMax: 20, eventLoopDelayMs: 100, agentTurnMs: 2000 }),
+        syntheticPerformanceRecord(2, { timeToHealthReadyMs: 1200, peakRssMb: 420, resourcePeakGatewayRssMb: 420, cpuPercentMax: 22, eventLoopDelayMs: 110, agentTurnMs: 2200 }),
+        syntheticPerformanceRecord(3, { timeToHealthReadyMs: 1100, peakRssMb: 410, resourcePeakGatewayRssMb: 410, cpuPercentMax: 21, eventLoopDelayMs: 105, agentTurnMs: 2100 })
       ]
     });
     baselineReport.performance = buildPerformanceSummary(baselineReport.records, { repeat: 3 });
@@ -930,15 +1100,20 @@ async function performanceBaselineCheck(tmp) {
     await saveBaselineStore(baselinePath, savedStore);
     const loadedStore = await loadBaselineStore(baselinePath);
     assertEqual(Object.keys(loadedStore.entries).length, 1, "baseline entry count");
+    assertEqual(
+      Object.values(loadedStore.entries)[0]?.aggregate?.resourceHeadlineContract,
+      "primary-role-v1",
+      "baseline stores resource headline contract"
+    );
 
     const currentReport = syntheticPerformanceReport({
       runId: "current",
       platform,
       target: "local-build:/tmp/openclaw",
       records: [
-        syntheticPerformanceRecord(1, { timeToHealthReadyMs: 1800, peakRssMb: 500, cpuPercentMax: 30, eventLoopDelayMs: 180, agentTurnMs: 3000 }),
-        syntheticPerformanceRecord(2, { timeToHealthReadyMs: 1900, peakRssMb: 510, cpuPercentMax: 31, eventLoopDelayMs: 190, agentTurnMs: 3100 }),
-        syntheticPerformanceRecord(3, { timeToHealthReadyMs: 2000, peakRssMb: 520, cpuPercentMax: 32, eventLoopDelayMs: 200, agentTurnMs: 3200 })
+        syntheticPerformanceRecord(1, { timeToHealthReadyMs: 1800, peakRssMb: 500, resourcePeakGatewayRssMb: 500, cpuPercentMax: 30, eventLoopDelayMs: 180, agentTurnMs: 3000 }),
+        syntheticPerformanceRecord(2, { timeToHealthReadyMs: 1900, peakRssMb: 510, resourcePeakGatewayRssMb: 510, cpuPercentMax: 31, eventLoopDelayMs: 190, agentTurnMs: 3100 }),
+        syntheticPerformanceRecord(3, { timeToHealthReadyMs: 2000, peakRssMb: 520, resourcePeakGatewayRssMb: 520, cpuPercentMax: 32, eventLoopDelayMs: 200, agentTurnMs: 3200 })
       ]
     });
     currentReport.performance = buildPerformanceSummary(currentReport.records, { repeat: 3 });
@@ -957,6 +1132,42 @@ async function performanceBaselineCheck(tmp) {
     });
     assertEqual(comparison.ok, false, "baseline comparison regression");
     assertEqual(comparison.regressions.some((regression) => regression.metric === "timeToHealthReadyMs"), true, "startup regression present");
+    assertEqual(comparison.regressions.some((regression) => regression.metric === "peakRssMb"), true, "compatible primary RSS regression present");
+    assertEqual(
+      comparison.regressions.some((regression) => regression.metric === "resourcePeakGatewayRssMb"),
+      true,
+      "compatible exact gateway RSS regression present"
+    );
+    assertEqual(comparison.regressions.some((regression) => regression.metric === "cpuPercentMax"), true, "compatible primary CPU regression present");
+
+    const legacyStore = structuredClone(loadedStore);
+    delete Object.values(legacyStore.entries)[0].aggregate.resourceHeadlineContract;
+    const legacyComparison = comparePerformanceToBaseline(currentReport, legacyStore, {
+      targetPlan,
+      regressionThresholds: { rssRegressionPercent: 10 }
+    });
+    assertEqual(
+      legacyComparison.regressions.some((regression) => regression.metric === "peakRssMb"),
+      false,
+      "legacy aggregate RSS is not compared with primary RSS"
+    );
+    assertEqual(
+      legacyComparison.regressions.some((regression) => regression.metric === "cpuPercentMax"),
+      false,
+      "legacy aggregate CPU is not compared with primary CPU"
+    );
+    assertEqual(
+      legacyComparison.regressions.some((regression) => regression.metric === "resourcePeakGatewayRssMb"),
+      false,
+      "legacy substring gateway RSS is not compared with exact gateway RSS"
+    );
+    assertEqual(
+      legacyComparison.groups[0]?.skippedMetrics?.includes("peakRssMb") &&
+        legacyComparison.groups[0]?.skippedMetrics?.includes("resourcePeakGatewayRssMb") &&
+        legacyComparison.groups[0]?.skippedMetrics?.includes("cpuPercentMax"),
+      true,
+      "legacy resource contract mismatch is reported"
+    );
     const regressedReview = reviewBaselineUpdate({
       ...currentReport,
       baseline: { path: baselinePath, comparison }
@@ -3825,6 +4036,14 @@ async function resourceRolePollutionCheck() {
         existingRoles: ["command-tree"]
       }
     );
+    const networkOfflineRoles = classifyRegistryRolesForProcess(
+      { command: "node support/agent-network-offline.mjs --env kova-agent-network-offline" },
+      {
+        processRoles,
+        rootCommand: "node support/agent-network-offline.mjs --env kova-agent-network-offline",
+        existingRoles: ["command-tree"]
+      }
+    );
     const openclawAgentRoles = classifyRegistryRolesForProcess(
       { command: "openclaw-agent" },
       {
@@ -3833,6 +4052,28 @@ async function resourceRolePollutionCheck() {
         existingRoles: ["command-tree"]
       }
     );
+    const resourceSummary = summarizeResourceSamples([{
+      timestamp: "2026-05-07T00:00:00.000Z",
+      elapsedMs: 1000,
+      processes: [
+        {
+          pid: 100,
+          rssMb: 700,
+          cpuPercent: 100,
+          roles: ["gateway", "gateway-tree"],
+          role: "gateway,gateway-tree",
+          command: "openclaw"
+        },
+        {
+          pid: 101,
+          rssMb: 60,
+          cpuPercent: 1,
+          roles: ["command-tree", "gateway-session-client", "gateway-tree"],
+          role: "command-tree,gateway-session-client,gateway-tree",
+          command: "node support/run-gateway-session-send-turn.mjs"
+        }
+      ]
+    }]);
 
     assertEqual(mockProviderRoles.includes("mock-provider"), true, "mock provider helper remains classified");
     assertEqual(mockProviderRoles.includes("agent-cli"), false, "KOVA_AGENT_OK marker must not imply agent-cli");
@@ -3840,8 +4081,12 @@ async function resourceRolePollutionCheck() {
     assertEqual(mockProviderRoles.includes("browser-sidecar"), false, "browser env name must not imply browser-sidecar");
     assertEqual(envNameRoles.includes("runtime-management"), false, "mcp-runtime env name must not imply runtime-management");
     assertEqual(envNameRoles.includes("model-cli"), false, "configure-openclaw fixture helper must not imply model-cli");
+    assertEqual(networkOfflineRoles.includes("agent-cli"), true, "network offline wrapper keeps agent-cli sampling alive");
     assertEqual(openclawAgentRoles.includes("agent-cli"), true, "openclaw-agent process must imply agent-cli");
     assertEqual(openclawAgentRoles.includes("agent-process"), true, "openclaw-agent process must imply agent-process");
+    assertEqual(resourceSummary.peakGatewayRssMb, 700, "gateway-tree descendants do not inflate gateway RSS");
+    assertEqual(resourceSummary.peakCommandTreeRssMb, 60, "gateway session client remains command-tree RSS");
+    assertEqual(resourceSummary.byRole["gateway-tree"].peakRssMb, 760, "gateway-tree aggregate remains diagnostic");
     return {
       id: "resource-role-pollution-boundary",
       status: "PASS",
