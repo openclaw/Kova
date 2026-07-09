@@ -23,11 +23,19 @@ export function evaluateRecord(record, scenario, options = {}) {
   const allResults = collectResults(record);
   const measuredResults = collectResults(record, { excludePhaseIds: ["target-setup"] });
   const resourceSummary = collectResourceSummary(measuredResults);
-  const peakRssMb = maxNullable(
+  const peakTrackedRssMb = maxNullable(
     collectPeakRss(record, { excludePhaseIds: ["target-setup"] }),
     resourceSummary.peakTotalRssMb
   );
-  const cpuPercentMax = maxNullable(collectCpuPercentMax(record), resourceSummary.maxTotalCpuPercent);
+  const cpuPercentMaxTracked = maxNullable(collectCpuPercentMax(record), resourceSummary.maxTotalCpuPercent);
+  const resourceGate = resolveResourceGate(resourceSummary, options.surface, {
+    peakTrackedRssMb,
+    cpuPercentMaxTracked
+  });
+  const primaryResourceRole = resourceGate.primaryRole;
+  const resourceGateKind = resourceGate.kind;
+  const peakRssMb = resourceGate.peakRssMb;
+  const cpuPercentMax = resourceGate.cpuPercentMax;
   const missingDependencyErrors = countMissingDependencyErrors(allResults) + countLogMetric(record, "missingDependencyErrors");
   const pluginLoadFailures = countLogMetric(record, "pluginLoadFailures");
   const metadataScanMentions = countLogMetric(record, "metadataScanMentions");
@@ -128,13 +136,26 @@ export function evaluateRecord(record, scenario, options = {}) {
   );
   checkDuration(violations, allResults, "upgradeMs", thresholds.upgradeMs, (command) => command.startsWith("ocm upgrade "));
 
+  if (
+    resourceGateKind === "role-missing" &&
+    hasActivePrimaryResourceThreshold(thresholds, roleThresholds, primaryResourceRole)
+  ) {
+    violations.push({
+      kind: "resource",
+      metric: `resourceByRole.${primaryResourceRole}.missing`,
+      expected: "configured primary resource role observed in resource samples",
+      actual: "missing",
+      message: `${primaryResourceRole} resource evidence was not captured; configured primary resource role has active thresholds${resourceBreakdownSuffix(resourceSummary, resourceGate)}`
+    });
+  }
+
   if (typeof thresholds.peakRssMb === "number" && peakRssMb !== null && peakRssMb > thresholds.peakRssMb) {
     violations.push({
       kind: "threshold",
       metric: "peakRssMb",
       expected: `<= ${thresholds.peakRssMb}`,
       actual: peakRssMb,
-      message: `peak RSS ${peakRssMb} MB exceeded threshold ${thresholds.peakRssMb} MB`
+      message: `${resourceRssLabel(primaryResourceRole, resourceGateKind)} ${peakRssMb} MB exceeded threshold ${thresholds.peakRssMb} MB${resourceBreakdownSuffix(resourceSummary, resourceGate)}`
     });
   }
 
@@ -676,6 +697,12 @@ export function evaluateRecord(record, scenario, options = {}) {
   record.measurements = {
     peakRssMb,
     cpuPercentMax,
+    resourcePrimaryRole: primaryResourceRole,
+    resourceGateKind,
+    resourceGateReason: resourceGate.reason,
+    resourceGateAttribution: resourceGate.attribution,
+    resourcePeakTrackedRssMb: peakTrackedRssMb,
+    resourceCpuPercentMaxTracked: cpuPercentMaxTracked,
     coldReadyMs,
     warmReadyMs,
     upgradeMs,
@@ -2949,6 +2976,112 @@ function allMetricObjects(record) {
     record.finalMetrics,
     record.failureDiagnostics
   ].filter(Boolean);
+}
+
+function resolveResourceGate(resourceSummary, surface, { peakTrackedRssMb, cpuPercentMaxTracked }) {
+  const configured = surface?.resourcePrimaryRole ?? null;
+  if (typeof configured === "string" && configured.length > 0) {
+    const resources = resourceSummary?.byRole?.[configured] ?? null;
+    if (resources) {
+      return roleResourceGate(configured, resources, "configured primary resource role");
+    }
+    return {
+      kind: "role-missing",
+      primaryRole: configured,
+      peakRssMb: null,
+      cpuPercentMax: null,
+      reason: `configured primary resource role '${configured}' was not observed in resource samples`,
+      attribution: {
+        role: configured,
+        observed: false,
+        topRolesByRss: resourceSummary?.topRolesByRss?.slice(0, 4) ?? [],
+        topRolesByCpu: resourceSummary?.topRolesByCpu?.slice(0, 4) ?? [],
+        peakRssProcess: compactSampleProcess(resourceSummary?.peakRssSample?.topProcess),
+        peakCpuProcess: compactSampleProcess(resourceSummary?.peakCpuSample?.topProcess)
+      }
+    };
+  }
+
+  const gateway = resourceSummary?.byRole?.gateway ?? null;
+  if (typeof gateway?.peakRssMb === "number" || typeof gateway?.maxCpuPercent === "number") {
+    return roleResourceGate("gateway", gateway, "default gateway resource role");
+  }
+
+  return {
+    kind: "tracked-total",
+    primaryRole: null,
+    peakRssMb: peakTrackedRssMb,
+    cpuPercentMax: cpuPercentMaxTracked,
+    reason: "no gateway resource role was observed; using tracked aggregate",
+    attribution: {
+      role: null,
+      observed: false,
+      topRolesByRss: resourceSummary?.topRolesByRss?.slice(0, 4) ?? [],
+      topRolesByCpu: resourceSummary?.topRolesByCpu?.slice(0, 4) ?? [],
+      peakRssProcess: compactSampleProcess(resourceSummary?.peakRssSample?.topProcess),
+      peakCpuProcess: compactSampleProcess(resourceSummary?.peakCpuSample?.topProcess)
+    }
+  };
+}
+
+function roleResourceGate(role, resources, reason) {
+  return {
+    kind: "role",
+    primaryRole: role,
+    peakRssMb: typeof resources?.peakRssMb === "number" ? resources.peakRssMb : null,
+    cpuPercentMax: typeof resources?.maxCpuPercent === "number" ? resources.maxCpuPercent : null,
+    reason,
+    attribution: {
+      role,
+      observed: true,
+      peakRssMb: resources?.peakRssMb ?? null,
+      maxCpuPercent: resources?.maxCpuPercent ?? null,
+      peakProcessCount: resources?.peakProcessCount ?? null,
+      peakRssProcess: resources?.peakRssProcess ?? null,
+      peakCpuProcess: resources?.peakCpuProcess ?? null
+    }
+  };
+}
+
+function hasActivePrimaryResourceThreshold(thresholds, roleThresholds, primaryResourceRole) {
+  if (!primaryResourceRole) {
+    return false;
+  }
+  if (typeof thresholds?.peakRssMb === "number" || typeof thresholds?.cpuPercentMax === "number") {
+    return true;
+  }
+  const role = roleThresholds?.[primaryResourceRole] ?? null;
+  return typeof role?.peakRssMb === "number" || typeof role?.maxCpuPercent === "number";
+}
+
+function resourceRssLabel(primaryResourceRole, resourceGateKind) {
+  if (resourceGateKind === "role-missing") {
+    return `${primaryResourceRole} RSS`;
+  }
+  if (resourceGateKind !== "role") {
+    return "tracked total peak RSS";
+  }
+  if (primaryResourceRole === "gateway") {
+    return "gateway peak RSS";
+  }
+  return `${primaryResourceRole} peak RSS`;
+}
+
+function resourceBreakdownSuffix(resourceSummary, resourceGate) {
+  const topRoles = (resourceSummary?.topRolesByRss ?? [])
+    .filter((entry) => entry?.role && typeof entry.peakRssMb === "number")
+    .slice(0, 3)
+    .map((entry) => `${entry.role} ${entry.peakRssMb} MB`);
+  if (topRoles.length === 0) {
+    return "";
+  }
+  if (resourceGate.kind === "role") {
+    return `; observed role ${resourceGate.primaryRole}; top RSS roles: ${topRoles.join(", ")}`;
+  }
+  if (resourceGate.kind === "tracked-total") {
+    return `; aggregate only; top RSS roles: ${topRoles.join(", ")}`;
+  }
+  return `; configured role not observed; top RSS roles: ${topRoles.join(", ")}`;
 }
 
 function countDiagnosticMetric(record, key) {

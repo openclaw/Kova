@@ -7,6 +7,7 @@
   "targetKinds": ["local-build", "npm", "channel", "runtime"],
   "requiredMetrics": ["gatewayReadyMs", "gatewayReadyHardTimeoutMs", "statusMs", "pluginsListMs", "peakRssMb", "runtimeDepsStagingMs", "pluginLoadFailures"],
   "processRoles": ["gateway", "gateway-tree", "command-tree", "runtime-management", "package-manager", "build-tooling", "runtime-staging", "plugin-cli"],
+  "resourcePrimaryRole": "gateway",
   "thresholds": { "gatewayReadyMs": 30000, "gatewayReadyHardTimeoutMs": 120000, "runtimeDepsStagingMs": 30000, "peakRssMb": 900 },
   "roleThresholds": {
     "gateway": { "peakRssMb": 800, "maxCpuPercent": 250 },

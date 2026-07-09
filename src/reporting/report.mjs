@@ -92,7 +92,8 @@ export function renderMarkdownReport(report) {
     lines.push(`- Likely owner on failure: ${record.likelyOwner}`);
     lines.push(`- Objective: ${record.objective}`);
     if (record.measurements) {
-      lines.push(`- Peak RSS: ${record.measurements.peakRssMb ?? "unknown"} MB`);
+      lines.push(`- ${resourceHeadlineText(record.measurements)}: ${record.measurements.peakRssMb ?? "unknown"} MB`);
+      lines.push(`- Tracked total peak RSS: ${record.measurements.resourcePeakTrackedRssMb ?? "unknown"} MB`);
       lines.push(`- Max CPU: ${record.measurements.cpuPercentMax ?? "unknown"}%`);
       lines.push(`- Resource samples: ${record.measurements.resourceSampleCount ?? "unknown"}`);
       lines.push(`- Command tree peak RSS: ${record.measurements.resourcePeakCommandTreeRssMb ?? "unknown"} MB`);
@@ -655,6 +656,9 @@ function summarizeMeasurements(measurements) {
   return {
     peakRssMb: measurements.peakRssMb ?? null,
     cpuPercentMax: measurements.cpuPercentMax ?? null,
+    resourcePrimaryRole: measurements.resourcePrimaryRole ?? null,
+    resourceGateKind: measurements.resourceGateKind ?? null,
+    resourcePeakTrackedRssMb: measurements.resourcePeakTrackedRssMb ?? null,
     timeToListeningMs: measurements.timeToListeningMs ?? null,
     timeToHealthReadyMs: measurements.timeToHealthReadyMs ?? null,
     readinessClassification: measurements.readinessClassification ?? null,
@@ -999,7 +1003,7 @@ function briefEvidence(measurements, violations) {
     items.push(`timeToListeningMs: ${measurements.timeToListeningMs}`);
   }
   if (measurements.peakRssMb !== null && measurements.peakRssMb !== undefined) {
-    items.push(`peakRssMb: ${measurements.peakRssMb}`);
+    items.push(`${resourceHeadlineEvidenceLabel(measurements)}: ${measurements.peakRssMb}`);
   }
   if (measurements.cpuPercentMax !== null && measurements.cpuPercentMax !== undefined) {
     items.push(`cpuPercentMax: ${measurements.cpuPercentMax}`);
@@ -1113,7 +1117,7 @@ function compactRolePeaks(measurements) {
 function pushMeasurementBrief(lines, measurements, { compact }) {
   lines.push("Measurements:");
   lines.push(`- startup: listening ${valueMs(measurements.timeToListeningMs)}; health ${valueMs(measurements.timeToHealthReadyMs)}; readiness ${measurements.readinessClassification ?? "unknown"}; gateway ${measurements.finalGatewayState ?? "unknown"}; restarts ${measurements.gatewayRestartCount ?? "unknown"}`);
-  lines.push(`- resources: peak RSS ${valueMb(measurements.peakRssMb)}; max CPU ${valuePercent(measurements.cpuPercentMax)}; samples ${measurements.resourceSampleCount ?? "unknown"}; roles ${rolePeakText(measurements)}`);
+  lines.push(`- resources: ${resourceHeadlineText(measurements)} ${valueMb(measurements.peakRssMb)}; tracked total ${valueMb(measurements.resourcePeakTrackedRssMb)}; max CPU ${valuePercent(measurements.cpuPercentMax)}; samples ${measurements.resourceSampleCount ?? "unknown"}; roles ${rolePeakText(measurements)}`);
   lines.push(`- agent: turn ${valueMs(measurements.agentTurnMs, "not-run")}; cold/warm ${valueMs(measurements.coldAgentTurnMs)}/${valueMs(measurements.warmAgentTurnMs)}; cold-warm delta ${valueMs(measurements.agentColdWarmDeltaMs)}; pre-provider ${valueMs(measurements.agentPreProviderMs)}; provider ${valueMs(measurements.agentProviderFinalMs)}; cleanup ${valueMs(measurements.agentCleanupMaxMs)}; diagnosis ${measurements.agentLatencyDiagnosis?.kind ?? "unknown"}; leaks ${measurements.agentProcessLeakCount ?? "unknown"}`);
   lines.push(`- plugins/runtime: missing deps ${measurements.missingDependencyErrors ?? "unknown"}; plugin failures ${measurements.pluginLoadFailures ?? "unknown"}; runtime deps ${valueMs(measurements.runtimeDepsStagingMs)}${runtimeDepsPluginText(measurements)}; warm restages ${measurements.warmRuntimeDepsRestageCount ?? "unknown"}; warm reuse ${measurements.runtimeDepsWarmReuseOk ?? "unknown"}`);
 
@@ -1184,6 +1188,34 @@ function valueMb(value) {
 
 function valuePercent(value) {
   return value === null || value === undefined ? "unknown" : `${value}%`;
+}
+
+function resourceHeadlineEvidenceLabel(measurements) {
+  const role = measurements.resourcePrimaryRole ?? null;
+  if (measurements.resourceGateKind === "role-missing") {
+    return role ? `${role}RssMbNotObserved` : "resourceRoleNotObserved";
+  }
+  if (measurements.resourceGateKind === "tracked-total") {
+    return "trackedTotalRssMb";
+  }
+  if (role === "gateway" || !role) {
+    return "gatewayRssMb";
+  }
+  return `${role}RssMb`;
+}
+
+function resourceHeadlineText(measurements) {
+  const role = measurements.resourcePrimaryRole ?? null;
+  if (measurements.resourceGateKind === "role-missing") {
+    return role ? `${role} RSS not observed` : "Primary RSS not observed";
+  }
+  if (measurements.resourceGateKind === "tracked-total") {
+    return "Tracked total RSS";
+  }
+  if (role === "gateway" || !role) {
+    return "Gateway RSS";
+  }
+  return `${role} RSS`;
 }
 
 function buildFixerPrompt({ report, primaryBlocker, why, measurements, evidence, likelyOwner }) {

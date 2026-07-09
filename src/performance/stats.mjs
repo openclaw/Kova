@@ -1,9 +1,10 @@
 export const PERFORMANCE_SCHEMA = "kova.performance.v1";
+export const RESOURCE_HEADLINE_CONTRACT = "primary-role-v1";
 
 export const PERFORMANCE_METRICS = [
   { id: "timeToHealthReadyMs", title: "Health Ready", unit: "ms", regressionKey: "startupRegressionPercent" },
   { id: "timeToListeningMs", title: "TCP Listening", unit: "ms", regressionKey: "startupRegressionPercent" },
-  { id: "peakRssMb", title: "Peak RSS", unit: "MB", regressionKey: "rssRegressionPercent" },
+  { id: "peakRssMb", title: "Primary RSS", unit: "MB", regressionKey: "rssRegressionPercent" },
   { id: "resourcePeakGatewayRssMb", title: "Gateway RSS", unit: "MB", regressionKey: "rssRegressionPercent" },
   { id: "cpuPercentMax", title: "Max CPU", unit: "%", regressionKey: "cpuRegressionPercent" },
   { id: "openclawEventLoopMaxMs", title: "Event Loop Max", unit: "ms", regressionKey: "eventLoopRegressionPercent" },
@@ -47,6 +48,7 @@ export function buildPerformanceSummary(records, options = {}) {
 
   return {
     schemaVersion: PERFORMANCE_SCHEMA,
+    resourceHeadlineContract: RESOURCE_HEADLINE_CONTRACT,
     generatedAt: new Date().toISOString(),
     repeat: options.repeat ?? null,
     metricCatalog: PERFORMANCE_METRICS.map(({ id, title, unit }) => ({ id, title, unit })),
@@ -166,6 +168,7 @@ function summarizeGroup(records, options) {
     resourceInterpretation: records.some((record) => record.profiling?.enabled === true)
       ? "instrumented"
       : "normal",
+    resourceHeadlineContract: RESOURCE_HEADLINE_CONTRACT,
     statuses: statusCounts(records),
     repeatIndexes: records.map((record) => record.repeat?.index ?? null).filter((value) => value !== null),
     metrics

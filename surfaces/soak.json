@@ -18,6 +18,7 @@
     "restartCount"
   ],
   "processRoles": ["gateway", "gateway-tree", "command-tree", "status-cli", "plugin-cli", "model-cli"],
+  "resourcePrimaryRole": "gateway",
   "thresholds": {
     "soakMinDurationMs": 60000,
     "soakCommandP95Ms": 10000,

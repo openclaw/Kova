@@ -7,6 +7,7 @@
   "targetKinds": ["npm", "channel", "runtime", "local-build"],
   "requiredMetrics": ["agentTurnMs", "agentTurnP95Ms", "coldPreProviderMs", "healthP95Ms", "peakRssMb", "pluginLoadFailures"],
   "processRoles": ["gateway", "command-tree", "tui-cli", "agent-process", "mock-provider"],
+  "resourcePrimaryRole": "tui-cli",
   "thresholds": { "agentTurnMs": 45000, "preProviderMs": 10000, "providerFinalMs": 3000, "healthP95Ms": 1000, "peakRssMb": 900 },
   "roleThresholds": {
     "gateway": { "peakRssMb": 700, "maxCpuPercent": 250 },
