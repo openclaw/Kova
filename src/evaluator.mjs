@@ -2861,12 +2861,10 @@ function collectOpenClawDiagnostics(record) {
 
 function collectRuntimeDepsLogEvidence(record) {
   const phases = (record.phases ?? []).map((phase) => {
-    const metricsSummary = phase?.metrics?.logs?.runtimeDeps ?? null;
     return {
       id: phase.id,
       summary: summarizeRuntimeDepsPhase(phase),
-      metricsSummary,
-      metricsAvailable: phase?.metrics?.logs?.commandStatus === 0 && Boolean(metricsSummary)
+      metricsAvailable: hasSuccessfulRuntimeDepsLogMetrics(phase?.metrics)
     };
   });
   const cold = selectRuntimeDepsPhase(phases, ["cold-start", "provision", "start", "gateway"]);
@@ -2881,10 +2879,7 @@ function collectRuntimeDepsLogEvidence(record) {
   return {
     schemaVersion: "kova.runtimeDepsEvidence.v1",
     available: allSummaries.some((summary) => (summary?.eventCount ?? 0) > 0),
-    phaseMetricsAvailable:
-      cold?.metricsAvailable === true &&
-      (cold.metricsSummary?.eventCount ?? 0) > 0 &&
-      warm?.metricsAvailable === true,
+    phaseMetricsAvailable: cold?.metricsAvailable === true && warm?.metricsAvailable === true,
     installCount: maxNullable(...allSummaries.map((summary) => summary?.installCount)),
     installMaxMs: maxNullable(...allSummaries.map((summary) => summary?.installMaxMs)),
     postbuildCount: maxNullable(...allSummaries.map((summary) => summary?.postbuildCount)),
@@ -2903,6 +2898,26 @@ function collectRuntimeDepsLogEvidence(record) {
       pluginIds: phase.summary.pluginIds
     }))
   };
+}
+
+function hasSuccessfulRuntimeDepsLogMetrics(metrics) {
+  const logs = metrics?.logs;
+  const summary = logs?.runtimeDeps;
+  // collectEnvMetrics runs this typed log collector after readiness. A valid
+  // zero-event summary proves collection completed; events are not guaranteed.
+  return metrics?.readiness?.ready === true &&
+    logs?.schemaVersion === "kova.logMetrics.v1" &&
+    logs.commandStatus === 0 &&
+    logs.timedOut === false &&
+    isRuntimeDepsLogSummary(summary);
+}
+
+function isRuntimeDepsLogSummary(summary) {
+  return summary?.schemaVersion === "kova.runtimeDepsLogSummary.v1" &&
+    [summary.eventCount, summary.stageCount, summary.installCount, summary.postbuildCount]
+      .every((value) => Number.isInteger(value) && value >= 0) &&
+    Array.isArray(summary.pluginIds) &&
+    Array.isArray(summary.events);
 }
 
 function summarizeRuntimeDepsPhase(phase) {

@@ -3725,17 +3725,29 @@ function runtimeDepsWarmReuseEvaluationCheck() {
       "missing runtime deps evidence violation"
     );
 
-    const emptyEvidenceRecord = runtimeDepsRecord({
+    const zeroEventEvidenceRecord = runtimeDepsRecord({
       coldLog: "",
       warmLog: ""
     });
-    evaluateRecord(emptyEvidenceRecord, scenario, { surface, targetPlan: { kind: "npm" } });
-    assertEqual(emptyEvidenceRecord.status, "FAIL", "empty runtime deps evidence status");
-    assertEqual(emptyEvidenceRecord.measurements.runtimeDepsWarmReuseOk, null, "empty evidence leaves warm reuse unknown");
+    evaluateRecord(zeroEventEvidenceRecord, scenario, { surface, targetPlan: { kind: "npm" } });
+    assertEqual(zeroEventEvidenceRecord.status, "PASS", "successful zero-event runtime deps evidence status");
+    assertEqual(zeroEventEvidenceRecord.measurements.runtimeDepsLogEvidence.phaseMetricsAvailable, true, "zero-event phase metrics available");
+    assertEqual(zeroEventEvidenceRecord.measurements.coldRuntimeDepsInstallCount, 0, "zero-event cold install count");
+    assertEqual(zeroEventEvidenceRecord.measurements.warmRuntimeDepsRestageCount, 0, "zero-event warm restage count");
+    assertEqual(zeroEventEvidenceRecord.measurements.runtimeDepsWarmReuseOk, true, "zero-event warm reuse ok");
+
+    const collectorFailureRecord = runtimeDepsRecord({
+      coldLog: "",
+      warmLog: "",
+      coldLogStatus: 1
+    });
+    evaluateRecord(collectorFailureRecord, scenario, { surface, targetPlan: { kind: "npm" } });
+    assertEqual(collectorFailureRecord.status, "FAIL", "failed runtime deps collector status");
+    assertEqual(collectorFailureRecord.measurements.runtimeDepsWarmReuseOk, null, "collector failure leaves warm reuse unknown");
     assertEqual(
-      emptyEvidenceRecord.violations.some((violation) => violation.metric === "runtimeDepsWarmReuseOk"),
+      collectorFailureRecord.violations.some((violation) => violation.metric === "runtimeDepsWarmReuseOk"),
       true,
-      "empty runtime deps evidence violation"
+      "failed runtime deps collector violation"
     );
 
     const restagedRecord = runtimeDepsRecord({
@@ -3819,7 +3831,13 @@ async function bundledRuntimeDepsScenarioCheck() {
   }
 }
 
-function runtimeDepsRecord({ coldLog, warmLog, includeRuntimeDepsEvidence = true }) {
+function runtimeDepsRecord({
+  coldLog,
+  warmLog,
+  includeRuntimeDepsEvidence = true,
+  coldLogStatus = 0,
+  warmLogStatus = 0
+}) {
   return {
     scenario: "bundled-runtime-deps",
     status: "PASS",
@@ -3829,7 +3847,8 @@ function runtimeDepsRecord({ coldLog, warmLog, includeRuntimeDepsEvidence = true
         results: [{ command: "ocm start kova-runtime-deps runtime:stable --json", status: 0, stdout: "", stderr: "", durationMs: 100 }],
         metrics: {
           service: { gatewayState: "running" },
-          logs: runtimeDepsLogMetrics(coldLog, includeRuntimeDepsEvidence)
+          readiness: { ready: true },
+          logs: runtimeDepsLogMetrics(coldLog, includeRuntimeDepsEvidence, coldLogStatus)
         }
       },
       {
@@ -3837,7 +3856,8 @@ function runtimeDepsRecord({ coldLog, warmLog, includeRuntimeDepsEvidence = true
         results: [{ command: "ocm service restart kova-runtime-deps", status: 0, stdout: "", stderr: "", durationMs: 100 }],
         metrics: {
           service: { gatewayState: "running" },
-          logs: runtimeDepsLogMetrics(warmLog, includeRuntimeDepsEvidence)
+          readiness: { ready: true },
+          logs: runtimeDepsLogMetrics(warmLog, includeRuntimeDepsEvidence, warmLogStatus)
         }
       }
     ],
@@ -3848,10 +3868,12 @@ function runtimeDepsRecord({ coldLog, warmLog, includeRuntimeDepsEvidence = true
   };
 }
 
-function runtimeDepsLogMetrics(log, includeRuntimeDepsEvidence) {
+function runtimeDepsLogMetrics(log, includeRuntimeDepsEvidence, commandStatus) {
   return {
     ...zeroLogMetrics(),
-    commandStatus: 0,
+    schemaVersion: "kova.logMetrics.v1",
+    commandStatus,
+    timedOut: false,
     ...(includeRuntimeDepsEvidence ? { runtimeDeps: summarizeRuntimeDepsLogs(log) } : {})
   };
 }
