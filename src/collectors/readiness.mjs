@@ -27,6 +27,9 @@ export async function collectReadinessMetrics(port, options) {
     healthAttempts.push(lastHealth);
     if (lastHealth.ok) {
       healthReadyAtMs = lastHealth.elapsedMs;
+      // A successful HTTP health response proves that the gateway accepted a
+      // TCP connection, even if it started between the two sequential probes.
+      listeningReadyAtMs ??= healthReadyAtMs;
       break;
     }
 
@@ -60,7 +63,8 @@ export async function collectReadinessMetrics(port, options) {
 }
 
 export function classifyReadiness({ thresholdMs, listeningReadyAtMs, healthReadyAtMs }) {
-  if (listeningReadyAtMs === null) {
+  const effectiveListeningReadyAtMs = listeningReadyAtMs ?? healthReadyAtMs;
+  if (effectiveListeningReadyAtMs === null) {
     return {
       state: "hard-failure",
       severity: "fail",

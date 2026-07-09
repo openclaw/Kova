@@ -1,6 +1,7 @@
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createServer } from "node:net";
 import { quoteShell, runCommand } from "./commands.mjs";
 import { runCleanupCommand } from "./cleanup.mjs";
 import { summarizeCpuProfiles } from "./collectors/node-profiles.mjs";
@@ -23,6 +24,7 @@ import { loadSurfaces } from "./registries/surfaces.mjs";
 import { validateRegistryReferences } from "./registries/validate.mjs";
 import { assertSafeScenarioCommand } from "./safety.mjs";
 import { parseTimelineText } from "./collectors/timeline.mjs";
+import { classifyReadiness, collectReadinessMetrics } from "./collectors/readiness.mjs";
 import {
   summarizeEmbeddedRunTraces,
   summarizeLivenessWarnings,
@@ -354,6 +356,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(await performanceBaselineCheck(tmp));
     checks.push(markdownFailureCardsCheck());
     checks.push(reportRecommendedNextScenarioCheck());
+    checks.push(await readinessHealthImpliesListeningCheck());
     checks.push(readinessClassificationCheck());
     checks.push(await resourceRoleAttributionCheck(tmp));
     checks.push(await resourceRootCommandRoleBoundaryCheck());
@@ -3939,6 +3942,68 @@ async function cleanupArtifactsCheck(tmp) {
     command: "node bin/kova.mjs cleanup artifacts --older-than-days 1 --execute --json",
     durationMs: dryRun.durationMs + execute.durationMs
   };
+}
+
+async function readinessHealthImpliesListeningCheck() {
+  const server = createServer();
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  await new Promise((resolve, reject) => {
+    server.close((error) => error ? reject(error) : resolve());
+  });
+
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => new Response('{"ok":true}', {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    });
+    const readiness = await collectReadinessMetrics(address.port, {
+      timeoutMs: 0,
+      thresholdMs: 30000,
+      intervalMs: 250,
+      probeTimeoutMs: 100
+    });
+    assertEqual(readiness.listeningAttempts[0]?.ok, false, "initial TCP probe failed");
+    assertEqual(readiness.healthAttempts[0]?.ok, true, "same-iteration health probe passed");
+    assertEqual(readiness.ready, true, "health success marks readiness");
+    assertEqual(readiness.listeningReady, true, "health success proves TCP listening");
+    assertEqual(
+      readiness.listeningReadyAtMs,
+      readiness.healthReadyAtMs,
+      "health timestamp bounds inferred TCP readiness"
+    );
+    assertEqual(readiness.classification.state, "ready", "health proof cannot classify as hard failure");
+    assertEqual(
+      classifyReadiness({
+        thresholdMs: 30000,
+        listeningReadyAtMs: null,
+        healthReadyAtMs: 6162
+      }).state,
+      "ready",
+      "classification independently honors health proof"
+    );
+
+    return {
+      id: "readiness-health-implies-listening",
+      status: "PASS",
+      command: "collect same-iteration TCP failure and successful health evidence",
+      durationMs: readiness.healthReadyAtMs
+    };
+  } catch (error) {
+    return {
+      id: "readiness-health-implies-listening",
+      status: "FAIL",
+      command: "collect same-iteration TCP failure and successful health evidence",
+      durationMs: 0,
+      message: error.message
+    };
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 }
 
 function readinessClassificationCheck() {
