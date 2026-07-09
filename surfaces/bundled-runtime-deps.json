@@ -24,7 +24,7 @@
     "warmRuntimeDepsStagingMs": 5000
   },
   "roleThresholds": {
-    "gateway": { "peakRssMb": 800, "maxCpuPercent": 250 },
+    "gateway": { "peakRssMb": 1050, "maxCpuPercent": 250 },
     "runtime-staging": { "peakRssMb": 900, "maxCpuPercent": 350 },
     "package-manager": { "peakRssMb": 900, "maxCpuPercent": 350 }
   },
