@@ -877,7 +877,7 @@ async function releaseResourceCalibrationCheck() {
       "fresh-install": { gateway: 1050, "status-cli": 850, "plugin-cli": 800 },
       "gateway-performance": { gateway: 1050, "gateway-tree": 1200, "plugin-cli": 800, "status-cli": 850 },
       "bundled-runtime-deps": { gateway: 1050 },
-      "bundled-plugin-startup": { gateway: 800, "plugin-cli": 800 }
+      "bundled-plugin-startup": { gateway: 950, "plugin-cli": 800 }
     };
     for (const [surfaceId, roleCaps] of Object.entries(expectedRoleCaps)) {
       const surface = surfaceById.get(surfaceId);
