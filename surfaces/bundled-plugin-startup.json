@@ -10,6 +10,7 @@
   "thresholds": { "gatewayReadyMs": 30000, "gatewayReadyHardTimeoutMs": 120000, "runtimeDepsStagingMs": 30000 },
   "roleThresholds": {
     "gateway": { "peakRssMb": 800, "maxCpuPercent": 250 },
+    "plugin-cli": { "peakRssMb": 800, "maxCpuPercent": 250 },
     "runtime-staging": { "peakRssMb": 900, "maxCpuPercent": 350 },
     "package-manager": { "peakRssMb": 900, "maxCpuPercent": 350 }
   },

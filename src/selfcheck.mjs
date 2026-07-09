@@ -16,6 +16,7 @@ import {
 } from "./performance/baselines.mjs";
 import { buildPerformanceSummary } from "./performance/stats.mjs";
 import { loadProcessRoles } from "./registries/process-roles.mjs";
+import { loadProfile } from "./registries/profiles.mjs";
 import { loadScenarios, validateScenarioShape } from "./registries/scenarios.mjs";
 import { validateStateShape } from "./registries/states.mjs";
 import { loadSurfaces } from "./registries/surfaces.mjs";
@@ -62,6 +63,7 @@ import {
   checkRoleThresholds,
   checkTurnThreshold
 } from "./evaluation/violations.mjs";
+import { resolveThresholdPolicy } from "./evaluation/thresholds.mjs";
 
 export async function runSelfCheck(flags = {}) {
   const checks = [];
@@ -119,6 +121,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(localBuildTargetSetupResourceExclusionCheck());
     checks.push(primaryResourceRoleEvaluationCheck());
     checks.push(await primaryResourceRoleRegistryCheck());
+    checks.push(await releaseResourceCalibrationCheck());
     checks.push(await jsonCommandCheck("plan-json", "node bin/kova.mjs plan --json", (data) => {
       assertEqual(data.schemaVersion, "kova.plan.v1", "plan schema");
       assertArrayNotEmpty(data.surfaces, "plan surfaces");
@@ -792,6 +795,59 @@ async function primaryResourceRoleRegistryCheck() {
       id: "primary-resource-role-registry",
       status: "FAIL",
       command: "validate primary resource roles for RSS-gated surfaces",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+async function releaseResourceCalibrationCheck() {
+  try {
+    const [scenarios, surfaces, releaseProfile] = await Promise.all([
+      loadScenarios(),
+      loadSurfaces(),
+      loadProfile("release")
+    ]);
+    const scenarioById = new Map(scenarios.map((scenario) => [scenario.id, scenario]));
+    const surfaceById = new Map(surfaces.map((surface) => [surface.id, surface]));
+
+    for (const scenarioId of ["fresh-install", "gateway-performance"]) {
+      const scenario = scenarioById.get(scenarioId);
+      const surface = surfaceById.get(scenarioId);
+      assertEqual(scenario?.thresholds?.peakRssMb, 1050, `${scenarioId} scenario primary RSS cap`);
+      assertEqual(surface?.thresholds?.peakRssMb, 1050, `${scenarioId} surface primary RSS cap`);
+    }
+
+    const expectedRoleCaps = {
+      "fresh-install": { gateway: 1050, "status-cli": 850, "plugin-cli": 800 },
+      "gateway-performance": { gateway: 1050, "gateway-tree": 1200, "status-cli": 850 },
+      "bundled-runtime-deps": { gateway: 1050 },
+      "bundled-plugin-startup": { gateway: 800, "plugin-cli": 800 }
+    };
+    for (const [surfaceId, roleCaps] of Object.entries(expectedRoleCaps)) {
+      const surface = surfaceById.get(surfaceId);
+      const scenario = scenarioById.get(surfaceId) ?? null;
+      const policy = resolveThresholdPolicy({ profile: releaseProfile, surface, scenario });
+      for (const [role, peakRssMb] of Object.entries(roleCaps)) {
+        assertEqual(policy.roleThresholds?.[role]?.peakRssMb, peakRssMb, `${surfaceId} ${role} RSS cap`);
+      }
+    }
+
+    assertEqual(releaseProfile.calibration?.roles?.gateway?.peakRssMb, 900, "global release gateway RSS cap");
+    assertEqual(releaseProfile.calibration?.roles?.["plugin-cli"]?.peakRssMb, 650, "global release plugin RSS cap");
+    assertEqual(releaseProfile.calibration?.roles?.["status-cli"], undefined, "global release status role stays uncalibrated");
+
+    return {
+      id: "release-resource-calibration",
+      status: "PASS",
+      command: "validate release resource calibration scope",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "release-resource-calibration",
+      status: "FAIL",
+      command: "validate release resource calibration scope",
       durationMs: 0,
       message: error.message
     };
