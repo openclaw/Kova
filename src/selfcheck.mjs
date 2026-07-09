@@ -693,6 +693,58 @@ function primaryResourceRoleEvaluationCheck() {
       "missing configured role violation"
     );
 
+    const gatewayProcessRecord = syntheticPrimaryResourceRecord();
+    gatewayProcessRecord.phases[0].metrics.process = {
+      pid: 123,
+      rssMb: 1000,
+      cpuPercent: 300,
+      command: "openclaw-gateway"
+    };
+    gatewayProcessRecord.finalMetrics.process = {
+      pid: 123,
+      rssMb: 1100,
+      cpuPercent: 320,
+      command: "openclaw-gateway"
+    };
+    evaluateRecord(gatewayProcessRecord, { thresholds: { peakRssMb: 900, cpuPercentMax: 250 } }, {
+      surface: {
+        thresholds: {},
+        roleThresholds: { gateway: { peakRssMb: 900, maxCpuPercent: 250 } },
+        resourcePrimaryRole: "gateway"
+      }
+    });
+    assertEqual(gatewayProcessRecord.status, "FAIL", "gateway snapshots fail resource gates");
+    assertEqual(gatewayProcessRecord.measurements.peakRssMb, 1100, "gateway snapshot RSS reaches headline gate");
+    assertEqual(gatewayProcessRecord.measurements.cpuPercentMax, 320, "gateway snapshot CPU reaches headline gate");
+    assertEqual(gatewayProcessRecord.measurements.resourceByRole.gateway.peakRssMb, 1100, "gateway role merges snapshot RSS");
+    assertEqual(gatewayProcessRecord.measurements.resourceByRole.gateway.maxCpuPercent, 320, "gateway role merges snapshot CPU");
+    for (const metric of ["peakRssMb", "cpuPercentMax", "resourceByRole.gateway.peakRssMb", "resourceByRole.gateway.maxCpuPercent"]) {
+      assertEqual(
+        gatewayProcessRecord.violations.some((violation) => violation.metric === metric),
+        true,
+        `${metric} sees gateway snapshot`
+      );
+    }
+
+    const isolatedPluginRecord = syntheticPrimaryResourceRecord();
+    isolatedPluginRecord.finalMetrics.process = gatewayProcessRecord.finalMetrics.process;
+    evaluateRecord(isolatedPluginRecord, { thresholds: { peakRssMb: 1050, cpuPercentMax: 200 } }, {
+      surface: { thresholds: {}, roleThresholds: {}, resourcePrimaryRole: "plugin-cli" }
+    });
+    assertEqual(isolatedPluginRecord.status, "PASS", "gateway snapshot does not pollute plugin role gate");
+    assertEqual(isolatedPluginRecord.measurements.peakRssMb, 1000, "plugin role remains headline RSS gate");
+    assertEqual(isolatedPluginRecord.measurements.cpuPercentMax, 180, "plugin role remains headline CPU gate");
+
+    const finalOnlyRecord = syntheticPrimaryResourceRecord();
+    delete finalOnlyRecord.phases[0].results[0].resourceSamples;
+    finalOnlyRecord.finalMetrics.process = gatewayProcessRecord.finalMetrics.process;
+    evaluateRecord(finalOnlyRecord, { thresholds: { peakRssMb: 1200, cpuPercentMax: 400 } }, {
+      surface: { thresholds: {}, roleThresholds: {}, resourcePrimaryRole: "gateway" }
+    });
+    assertEqual(finalOnlyRecord.status, "PASS", "final gateway snapshot satisfies configured role evidence");
+    assertEqual(finalOnlyRecord.measurements.resourceGateKind, "role", "final gateway snapshot avoids missing-role gate");
+    assertEqual(finalOnlyRecord.measurements.peakRssMb, 1100, "final-only gateway RSS reaches headline gate");
+
     return {
       id: "primary-resource-role-evaluation",
       status: "PASS",

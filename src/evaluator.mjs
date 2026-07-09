@@ -22,12 +22,10 @@ export function evaluateRecord(record, scenario, options = {}) {
   const violations = [];
   const allResults = collectResults(record);
   const measuredResults = collectResults(record, { excludePhaseIds: ["target-setup"] });
-  const resourceSummary = collectResourceSummary(measuredResults);
-  const peakTrackedRssMb = maxNullable(
-    collectPeakRss(record, { excludePhaseIds: ["target-setup"] }),
-    resourceSummary.peakTotalRssMb
-  );
-  const cpuPercentMaxTracked = maxNullable(collectCpuPercentMax(record), resourceSummary.maxTotalCpuPercent);
+  const gatewayProcessResources = collectGatewayProcessResources(record, { excludePhaseIds: ["target-setup"] });
+  const resourceSummary = collectResourceSummary(measuredResults, { gatewayProcessResources });
+  const peakTrackedRssMb = maxNullable(gatewayProcessResources?.peakRssMb, resourceSummary.peakTotalRssMb);
+  const cpuPercentMaxTracked = maxNullable(gatewayProcessResources?.maxCpuPercent, resourceSummary.maxTotalCpuPercent);
   const resourceGate = resolveResourceGate(resourceSummary, options.surface, {
     peakTrackedRssMb,
     cpuPercentMaxTracked
@@ -2238,28 +2236,55 @@ function recordExpectsGateway(record) {
   });
 }
 
-function collectPeakRss(record, options = {}) {
+function collectGatewayProcessResources(record, options = {}) {
+  // collectEnvMetrics.process samples OCM's supervised service.childPid, so it
+  // belongs to the gateway role without contaminating aggregate command trees.
   const excludePhaseIds = new Set(options.excludePhaseIds ?? []);
-  let peak = null;
+  let summary = null;
   for (const phase of record.phases ?? []) {
     if (excludePhaseIds.has(phase.id)) {
       continue;
     }
-    const rss = phase.metrics?.process?.rssMb;
-    if (typeof rss === "number") {
-      peak = peak === null ? rss : Math.max(peak, rss);
-    }
+    summary = mergeGatewayProcessMetrics(summary, phase.metrics?.process);
   }
-
-  const finalRss = record.finalMetrics?.process?.rssMb;
-  if (typeof finalRss === "number") {
-    peak = peak === null ? finalRss : Math.max(peak, finalRss);
-  }
-
-  return peak;
+  return mergeGatewayProcessMetrics(summary, record.finalMetrics?.process);
 }
 
-function collectResourceSummary(results) {
+function mergeGatewayProcessMetrics(summary, process) {
+  const rssMb = typeof process?.rssMb === "number" ? process.rssMb : null;
+  const cpuPercent = typeof process?.cpuPercent === "number" ? process.cpuPercent : null;
+  if (rssMb === null && cpuPercent === null) {
+    return summary;
+  }
+  const next = summary ?? {
+    peakRssMb: null,
+    maxCpuPercent: null,
+    peakRssAtMs: null,
+    peakCpuAtMs: null,
+    peakProcessCount: 1,
+    peakRssProcess: null,
+    peakCpuProcess: null
+  };
+  const compactProcess = {
+    pid: process.pid ?? null,
+    roles: ["gateway"],
+    role: "gateway",
+    rssMb,
+    cpuPercent,
+    command: process.command ?? null
+  };
+  if (rssMb !== null && (next.peakRssMb === null || rssMb > next.peakRssMb)) {
+    next.peakRssMb = rssMb;
+    next.peakRssProcess = compactProcess;
+  }
+  if (cpuPercent !== null && (next.maxCpuPercent === null || cpuPercent > next.maxCpuPercent)) {
+    next.maxCpuPercent = cpuPercent;
+    next.peakCpuProcess = compactProcess;
+  }
+  return next;
+}
+
+function collectResourceSummary(results, options = {}) {
   let sampleCount = 0;
   let peakTotalRssMb = null;
   let maxTotalCpuPercent = null;
@@ -2311,6 +2336,11 @@ function collectResourceSummary(results) {
       existing.lastSeenMs = Math.max(existing.lastSeenMs ?? process.lastSeenMs ?? 0, process.lastSeenMs ?? 0);
       byPid.set(process.pid, existing);
     }
+  }
+
+  if (options.gatewayProcessResources) {
+    mergeRoleSummaries(byRole, { gateway: options.gatewayProcessResources });
+    peakGatewayRssMb = maxNullable(peakGatewayRssMb, options.gatewayProcessResources.peakRssMb);
   }
 
   const processes = [...byPid.values()];
@@ -2528,23 +2558,6 @@ function mergeKeySpans(target, source) {
     existing.open = mergeOpenSpans(existing.open, summary.open ?? []).slice(0, 5);
     target[name] = existing;
   }
-}
-
-function collectCpuPercentMax(record) {
-  const values = [];
-  for (const phase of record.phases ?? []) {
-    const cpu = phase.metrics?.process?.cpuPercent;
-    if (typeof cpu === "number") {
-      values.push(cpu);
-    }
-  }
-
-  const finalCpu = record.finalMetrics?.process?.cpuPercent;
-  if (typeof finalCpu === "number") {
-    values.push(finalCpu);
-  }
-
-  return values.length === 0 ? null : Math.max(...values);
 }
 
 function maxNullable(...values) {
