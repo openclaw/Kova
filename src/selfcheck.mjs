@@ -820,7 +820,7 @@ async function releaseResourceCalibrationCheck() {
 
     const expectedRoleCaps = {
       "fresh-install": { gateway: 1050, "status-cli": 850, "plugin-cli": 800 },
-      "gateway-performance": { gateway: 1050, "gateway-tree": 1200, "status-cli": 850 },
+      "gateway-performance": { gateway: 1050, "gateway-tree": 1200, "plugin-cli": 800, "status-cli": 850 },
       "bundled-runtime-deps": { gateway: 1050 },
       "bundled-plugin-startup": { gateway: 800, "plugin-cli": 800 }
     };
@@ -829,6 +829,7 @@ async function releaseResourceCalibrationCheck() {
       const scenario = scenarioById.get(surfaceId) ?? null;
       const policy = resolveThresholdPolicy({ profile: releaseProfile, surface, scenario });
       for (const [role, peakRssMb] of Object.entries(roleCaps)) {
+        assertEqual(surface?.processRoles?.includes(role), true, `${surfaceId} declares ${role}`);
         assertEqual(policy.roleThresholds?.[role]?.peakRssMb, peakRssMb, `${surfaceId} ${role} RSS cap`);
       }
     }

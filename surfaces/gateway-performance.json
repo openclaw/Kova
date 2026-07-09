@@ -6,12 +6,13 @@
   "requiredStates": ["many-bundled-plugins", "gateway-already-running", "stale-service-state", "slow-filesystem"],
   "targetKinds": ["npm", "channel", "runtime", "local-build"],
   "requiredMetrics": ["coldReadyMs", "warmReadyMs", "healthP95Ms", "peakRssMb", "eventLoopMaxMs"],
-  "processRoles": ["gateway", "gateway-tree", "command-tree", "status-cli"],
+  "processRoles": ["gateway", "gateway-tree", "command-tree", "status-cli", "plugin-cli"],
   "resourcePrimaryRole": "gateway",
   "thresholds": { "coldReadyMs": 30000, "warmReadyMs": 15000, "healthP95Ms": 1000, "peakRssMb": 1050 },
   "roleThresholds": {
     "gateway": { "peakRssMb": 1050, "maxCpuPercent": 250 },
     "gateway-tree": { "peakRssMb": 1200, "maxCpuPercent": 300 },
+    "plugin-cli": { "peakRssMb": 800, "maxCpuPercent": 250 },
     "status-cli": { "peakRssMb": 850, "maxCpuPercent": 200 }
   },
   "diagnostics": {
