@@ -25,6 +25,7 @@ import { assertSafeScenarioCommand } from "./safety.mjs";
 import { parseTimelineText } from "./collectors/timeline.mjs";
 import { classifyReadiness, collectReadinessMetrics } from "./collectors/readiness.mjs";
 import {
+  countProviderTimeoutMentions,
   summarizeEmbeddedRunTraces,
   summarizeLivenessWarnings,
   summarizeRuntimeDepsLogs
@@ -354,6 +355,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(await diagnosticsTimelineCheck());
     checks.push(await diagnosticsOpenSpanCheck());
     checks.push(diagnosticsTimelineEvaluationCheck());
+    checks.push(providerTimeoutLogSignalCheck());
     checks.push(runtimeDepsLogParserCheck());
     checks.push(embeddedRunLogParserCheck());
     checks.push(await bundledRuntimeDepsScenarioCheck());
@@ -4075,6 +4077,39 @@ function diagnosticsTimelineEvaluationCheck() {
       id: "diagnostics-timeline-evaluation",
       status: "FAIL",
       command: "evaluate synthetic diagnostic timeline records",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function providerTimeoutLogSignalCheck() {
+  try {
+    const timeoutSignals = [
+      "provider request timed out after 60s",
+      "upstream provider timeout",
+      "model timeout after 30000ms",
+      'for provider "openai" timed out waiting for a model response'
+    ].join("\n");
+    const transportDiagnostics = [
+      "[provider-transport-fetch] [model-fetch] start provider=openai api=openai-responses model=gpt-5.5 method=POST url=http://127.0.0.1:36783/v1/responses timeoutMs=undefined proxy=none policy=custom",
+      "[provider-transport-fetch] [model-fetch] start provider=openai api=openai-responses model=gpt-5.5 method=POST url=http://127.0.0.1:36783/v1/responses timeoutMs=120000 proxy=none policy=custom"
+    ].join("\n");
+
+    assertEqual(countProviderTimeoutMentions(timeoutSignals), 4, "provider timeout outcome signals");
+    assertEqual(countProviderTimeoutMentions(transportDiagnostics), 0, "provider timeout transport metadata");
+
+    return {
+      id: "provider-timeout-log-signal",
+      status: "PASS",
+      command: "classify synthetic OpenClaw provider timeout logs",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "provider-timeout-log-signal",
+      status: "FAIL",
+      command: "classify synthetic OpenClaw provider timeout logs",
       durationMs: 0,
       message: error.message
     };

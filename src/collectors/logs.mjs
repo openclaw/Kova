@@ -5,6 +5,9 @@ import { ocmLogs } from "../ocm/commands.mjs";
 
 export const LOG_METRICS_SCHEMA = "kova.logMetrics.v1";
 
+const PROVIDER_TIMEOUT_SIGNAL_PATTERN =
+  /(?:\bprovider\b|\bmodel\b).*(?:\btimeout\b|\btimed out\b)|(?:\btimeout\b|\btimed out\b).*(?:\bprovider\b|\bmodel\b)/i;
+
 export async function collectLogMetrics(envName, timeoutMs, artifactDir) {
   const result = await runCommand(ocmLogs(envName, { tail: 200 }), { timeoutMs });
   const text = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
@@ -33,7 +36,7 @@ export async function collectLogMetrics(envName, timeoutMs, artifactDir) {
     listeningMentions: countPattern(text, /listening|server started|gateway ready|ready on|websocket/i),
     providerLoadMentions: countPattern(text, /provider.*load|load.*provider|provider registry|auth provider/i),
     modelCatalogMentions: countPattern(text, /model catalog|models list|loading models|available models/i),
-    providerTimeoutMentions: countPattern(text, /provider.*timeout|model.*timeout|timeout.*provider|timeout.*model/i),
+    providerTimeoutMentions: countProviderTimeoutMentions(text),
     eventLoopDelayMentions: countPattern(text, /event loop|event-loop|blocked loop|loop delay/i),
     v8DiagnosticMentions: countPattern(text, /v8|diagnostic report|heapsnapshot|heap snapshot/i),
     errorMentions: countPattern(text, /\berror\b|exception|unhandled/i),
@@ -45,6 +48,10 @@ export async function collectLogMetrics(envName, timeoutMs, artifactDir) {
     stdoutSnippet: result.stdout.slice(-4000),
     stderrSnippet: result.stderr.slice(-4000)
   };
+}
+
+export function countProviderTimeoutMentions(text) {
+  return countPattern(text, PROVIDER_TIMEOUT_SIGNAL_PATTERN);
 }
 
 export function summarizeEmbeddedRunTraces(text) {
