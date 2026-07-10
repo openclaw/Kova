@@ -56,6 +56,8 @@ kova.report.v1
   },
   "performance": {
     "schemaVersion": "kova.performance.v1",
+    "resourceMeasurementScope": "product",
+    "resourceHeadlineContract": "primary-role-product-scope-v2",
     "repeat": 3,
     "groupCount": 1,
     "unstableGroupCount": 0,
@@ -116,6 +118,10 @@ Important fields:
 - `collectorArtifactDirs`: stable per-record artifact directories used by
   collectors
 - `measurements`: evaluated measurements
+- `measurements.resourceMeasurementScope`: scope used for resource gates
+- `measurements.resourceHeadlineContract`: versioned resource accounting
+  contract used to decide whether historical resource values are comparable
+- `measurements.measurementScopeSummary`: phase and command counts by scope
 - `providerEvidence`: provider request timing, route/model/status summaries,
   optional token-like usage totals, and whether evidence came from mock-provider
   logs or OpenClaw timeline events
@@ -135,6 +141,8 @@ attempt was needed.
 
 Executed phases include:
 
+- `measurementScope`: `product`, `harness`, or `cleanup`; command resource
+  samples and post-phase process metrics inherit this phase-owned scope
 - `commands`: commands Kova ran
 - `results`: status, duration, stdout/stderr snippets, timeout state
 - `metrics`: service and process snapshot after the phase
@@ -299,6 +307,11 @@ percent, and increase percent. Release gates treat baseline regressions as
 blocking performance regressions, so a functional pass can still become
 `DO_NOT_SHIP` when OpenClaw gets materially slower or heavier.
 
+Resource baselines are comparable only when both `resourceMeasurementScope` and
+`resourceHeadlineContract` match. Kova skips RSS/CPU deltas from older or
+different accounting contracts, reports the mismatch and skipped metrics, and
+continues comparing non-resource metrics.
+
 ## Run Receipt
 
 `kova run --json` prints a receipt instead of text paths:
@@ -311,12 +324,16 @@ blocking performance regressions, so a functional pass can still become
   "reportPath": "/path/to/report.md",
   "jsonPath": "/path/to/report.json",
   "performance": {
+    "resourceMeasurementScope": "product",
+    "resourceHeadlineContract": "primary-role-product-scope-v2",
     "repeat": 3,
     "groupCount": 1,
     "unstableGroupCount": 0,
     "profiledRunCount": 0,
     "baselineRegressionCount": 0,
     "missingBaselineCount": 0,
+    "resourceContractMismatchCount": 0,
+    "skippedMetricCount": 0,
     "baselineReviewOk": true,
     "baselineReviewBlockerCount": 0,
     "savedBaselinePath": "/path/to/baselines.json"
@@ -492,8 +509,9 @@ The matrix receipt includes only the gate verdict/count summary; the full cards
 and subsystem briefs live in the JSON report.
 
 When `--baseline` is used, the gate also includes a compact historical baseline
-summary with regression count, missing baseline count, and regressed scenario
-groups. Baseline regressions remain blocking gate cards.
+summary with regression count, missing baseline count, resource contract
+mismatches, skipped metrics, and regressed scenario groups. Baseline regressions
+remain blocking gate cards.
 
 For non-ship gate runs, Kova retains a durable copy under
 `artifacts/release-gates/<runId>/`:
@@ -516,6 +534,8 @@ retained-artifacts.json
   "schemaVersion": "kova.compare.v1",
   "ok": false,
   "regressionCount": 1,
+  "resourceContractMismatchCount": 0,
+  "skippedMetricCount": 0,
   "scenarios": [
     {
       "key": "fresh-install:fresh",
@@ -534,7 +554,10 @@ retained-artifacts.json
 Comparison currently detects status regressions, missing scenario/state entries,
 and increases in peak RSS, health failures, health p95, missing dependency
 errors, plugin load failures, metadata scan mentions, and config normalization
-mentions.
+mentions. Resource deltas are compared only when both reports have the same
+resource scope and headline contract. Mismatched reports keep raw values but
+mark their resource deltas non-comparable and continue with non-resource
+regressions.
 
 ## Artifact Bundle
 

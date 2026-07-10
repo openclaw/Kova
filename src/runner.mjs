@@ -80,6 +80,7 @@ export async function executeScenario(scenario, context) {
     if (setupResults.length > 0) {
       record.phases.push({
         id: "target-setup",
+        measurementScope: "harness",
         title: "Target Runtime Setup",
         intent: "Prepare the target OpenClaw runtime selector for the scenario.",
         commands: setupResults.map((result) => result.command),
@@ -140,6 +141,7 @@ export async function executeScenario(scenario, context) {
 
         record.phases.push({
           id: phase.id,
+          measurementScope: phase.measurementScope,
           title: phase.title,
           intent: phase.intent,
           expectedAgentFailure: phase.expectedAgentFailure === true,
@@ -345,6 +347,7 @@ function buildPlannedPhases(scenario, context, envName, artifactDir, authPolicy)
     }
     phases.push({
       id: phase.id,
+      measurementScope: phase.measurementScope,
       title: phase.title,
       intent: phase.intent,
       expectedAgentFailure: phase.expectedAgentFailure === true,
@@ -384,6 +387,7 @@ function buildPlannedPhases(scenario, context, envName, artifactDir, authPolicy)
     }
     phases.push({
       id: "env-cleanup",
+      measurementScope: "cleanup",
       title: "Environment Cleanup",
       intent: "Destroy the disposable Kova env after the scenario finishes.",
       commands: [ocmEnvDestroy(envName)],
@@ -401,6 +405,7 @@ function buildTargetSetupPhase(context, envName) {
 
   return {
     id: "target-setup",
+    measurementScope: "harness",
     title: "Target Runtime Setup",
     intent: "Prepare the target OpenClaw runtime selector for the scenario.",
     commands: [targetSetupCommand(context.targetPlan)],
@@ -422,6 +427,7 @@ function buildStateLifecyclePhase(context, envName, scenario, kind, steps, artif
 
   return {
     id: kind,
+    measurementScope: kind === "cleanup" ? "cleanup" : "harness",
     title: stateLifecycleTitle(context.state?.id, kind, phaseId),
     intent: stateLifecycleIntent(context.state?.id, kind, phaseId),
     commands,
@@ -455,6 +461,7 @@ async function executeStateLifecycleSteps(context, envName, scenario, kind, step
 
   return {
     id: kind,
+    measurementScope: kind === "cleanup" ? "cleanup" : "harness",
     title: stateLifecycleTitle(context.state?.id, kind, phaseId),
     intent: stateLifecycleIntent(context.state?.id, kind, phaseId),
     commands,

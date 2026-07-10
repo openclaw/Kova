@@ -1,4 +1,5 @@
 import { scenariosDir } from "../paths.mjs";
+import { MEASUREMENT_SCOPES } from "../measurement-contract.mjs";
 import { assertNoShapeErrors, loadJsonRegistry, requireArray, requireKebabId, requireObject, requireString } from "./validate.mjs";
 
 export async function loadScenarios(selectedId) {
@@ -119,6 +120,9 @@ function validatePhases(phases, errors) {
 
     validateStringArray(phase.commands, `${prefix}.commands`, errors);
     validateStringArray(phase.evidence, `${prefix}.evidence`, errors);
+    if (phase.measurementScope !== undefined && !MEASUREMENT_SCOPES.has(phase.measurementScope)) {
+      errors.push(`${prefix}.measurementScope must be one of ${[...MEASUREMENT_SCOPES].join(", ")}`);
+    }
     if (phase.expectedAgentFailure !== undefined && typeof phase.expectedAgentFailure !== "boolean") {
       errors.push(`${prefix}.expectedAgentFailure must be a boolean when set`);
     }

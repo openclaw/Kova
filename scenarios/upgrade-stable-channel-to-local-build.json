@@ -17,6 +17,7 @@
   "phases": [
     {
       "id": "start",
+      "measurementScope": "harness",
       "title": "Start Stable Channel Env",
       "intent": "Create a disposable env through the real stable channel before upgrading to the local release-shaped runtime.",
       "commands": ["ocm start {env} --channel stable --json", "ocm service status {env} --json", "ocm @{env} -- status"],
@@ -24,6 +25,7 @@
     },
     {
       "id": "upgrade",
+      "measurementScope": "product",
       "title": "Upgrade To Local Build",
       "intent": "Run the real OpenClaw upgrade path to the release-shaped local build runtime.",
       "commands": ["ocm upgrade {env} {upgradeSelector} --json"],
@@ -31,6 +33,7 @@
     },
     {
       "id": "post-upgrade",
+      "measurementScope": "product",
       "title": "Post-Local-Build Upgrade Checks",
       "intent": "Verify the local build handles plugin indexes, runtime deps, doctor recovery, and gateway readiness after upgrade.",
       "commands": ["ocm service status {env} --json", "ocm @{env} -- status", "ocm @{env} -- plugins list", "ocm @{env} -- doctor --fix", "ocm logs {env} --tail 400 --raw"],

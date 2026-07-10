@@ -201,6 +201,7 @@ export function buildAuthPreparePhase(authPolicy, artifactDir) {
   const dir = mockDir(artifactDir);
   return {
     id: "auth-prepare",
+    measurementScope: "harness",
     title: "Auth Prepare",
     intent: "Start Kova's deterministic mock provider for the disposable OpenClaw env.",
     commands: [startMockProviderCommand(dir, authPolicy.mockProvider)],
@@ -216,6 +217,7 @@ export function buildAuthSetupPhase(authPolicy, envName, artifactDir) {
     const dir = mockDir(artifactDir);
     return {
       id: "auth-setup",
+      measurementScope: "harness",
       title: "Auth Setup",
       intent: "Configure the disposable OpenClaw env with Kova's mock provider auth.",
       commands: [configureMockAuthCommand(envName, dir)],
@@ -224,6 +226,7 @@ export function buildAuthSetupPhase(authPolicy, envName, artifactDir) {
   }
   return {
     id: "auth-setup",
+    measurementScope: "harness",
     title: "Auth Setup",
     intent: liveAuthSetupIntent(authPolicy),
     commands: [configureLiveAuthCommand(authPolicy, envName)],
@@ -238,6 +241,7 @@ export function buildAuthCleanupPhase(authPolicy, artifactDir) {
   const dir = mockDir(artifactDir);
   return {
     id: "auth-cleanup",
+    measurementScope: "cleanup",
     title: "Auth Cleanup",
     intent: "Stop Kova's deterministic mock provider.",
     commands: [`if test -f ${quoteShell(join(dir, "pid"))}; then kill "$(cat ${quoteShell(join(dir, "pid"))})" 2>/dev/null || true; fi`],

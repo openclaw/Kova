@@ -45,7 +45,7 @@ import {
   summarizeResourceSamples
 } from "./collectors/resources.mjs";
 import { renderMarkdownReport, renderPasteSummary, renderReportSummary } from "./reporting/report.mjs";
-import { compareReports, renderCompareSummary } from "./reporting/compare.mjs";
+import { compareReports, renderCompareFixerSummary, renderCompareSummary } from "./reporting/compare.mjs";
 import {
   ocmAt,
   ocmEnvDestroy,
@@ -174,6 +174,9 @@ export async function runSelfCheck(flags = {}) {
       const commands = (record?.phases ?? []).flatMap((phase) => phase.commands ?? []);
       assertEqual(commands.some((command) => command.includes("ocm start") && command.includes("--channel stable")), true, "stable start command present");
       assertEqual(commands.some((command) => command.includes("ocm upgrade") && /--channel '?beta'?/.test(command)), true, "beta upgrade command present");
+      assertEqual(record?.phases?.find((phase) => phase.id === "start")?.measurementScope, "harness", "stable source start scope");
+      assertEqual(record?.phases?.find((phase) => phase.id === "upgrade")?.measurementScope, "product", "candidate upgrade scope");
+      assertEqual(record?.phases?.find((phase) => phase.id === "post-upgrade")?.measurementScope, "product", "post-upgrade scope");
     }));
     checks.push(await jsonCommandCheck("durable-clone-local-build-dry-run-json", `node bin/kova.mjs run --target local-build:/tmp/openclaw --scenario upgrade-durable-clone-to-local-build --state plugin-index --source-env 'Team Env' --report-dir ${quoteShell(tmp)} --json`, async (data) => {
       const report = JSON.parse(await readFile(data.jsonPath, "utf8"));
@@ -181,6 +184,8 @@ export async function runSelfCheck(flags = {}) {
       const commands = (record?.phases ?? []).flatMap((phase) => phase.commands ?? []);
       assertEqual(commands.some((command) => command.includes("ocm env clone 'Team Env'")), true, "quoted source env clone command present");
       assertEqual(commands.some((command) => command.includes("ocm upgrade") && /--runtime '?kova-local-/.test(command)), true, "local-build runtime upgrade command present");
+      assertEqual(record?.phases?.find((phase) => phase.id === "clone")?.measurementScope, "harness", "durable clone scope");
+      assertEqual(record?.phases?.find((phase) => phase.id === "upgrade")?.measurementScope, "product", "durable candidate upgrade scope");
     }));
     checks.push(await jsonCommandCheck("run-auth-default-mock-json", `node bin/kova.mjs run --target runtime:stable --scenario fresh-install --report-dir ${quoteShell(tmp)} --json`, async (data) => {
       const report = JSON.parse(await readFile(data.jsonPath, "utf8"));
@@ -409,6 +414,11 @@ export async function runSelfCheck(flags = {}) {
         if (!command.includes("ocm env clone 'Team Env'")) {
           throw new Error(`source env was not shell-quoted: ${command}`);
         }
+        const phases = report.records?.[0]?.phases ?? [];
+        assertEqual(phases.find((phase) => phase.id === "clone")?.measurementScope, "harness", "clone scope roundtrip");
+        assertEqual(phases.find((phase) => phase.id === "source-runtime")?.measurementScope, "harness", "source runtime scope roundtrip");
+        assertEqual(phases.find((phase) => phase.id === "upgrade")?.measurementScope, "product", "upgrade scope roundtrip");
+        assertEqual(phases.find((phase) => phase.id === "post-upgrade")?.measurementScope, "product", "post-upgrade scope roundtrip");
       }
     ));
     checks.push(await localBuildRuntimeCleanupCheck(tmp));
@@ -422,6 +432,8 @@ export async function runSelfCheck(flags = {}) {
         assertEqual(data.mode, "dry-run", "run mode");
         assertEqual(data.summary?.statuses?.["DRY-RUN"], 2, "dry-run repeat count");
         assertEqual(data.performance?.repeat, 2, "run receipt repeat");
+        assertEqual(data.performance?.resourceMeasurementScope, "product", "run receipt resource scope");
+        assertEqual(data.performance?.resourceHeadlineContract, "primary-role-product-scope-v2", "run receipt resource contract");
         assertString(data.jsonPath, "json report path");
       }
     );
@@ -435,6 +447,8 @@ export async function runSelfCheck(flags = {}) {
         assertEqual(data.mode, "dry-run", "matrix dry-run mode");
         assertString(data.jsonPath, "matrix json report path");
         assertString(data.bundlePath, "matrix bundle path");
+        assertEqual(data.performance?.resourceMeasurementScope, "product", "matrix receipt resource scope");
+        assertEqual(data.performance?.resourceHeadlineContract, "primary-role-product-scope-v2", "matrix receipt resource contract");
         if (!data.bundlePath.startsWith(tmp)) {
           throw new Error(`matrix bundle path should use report dir: ${data.bundlePath}`);
         }
@@ -665,14 +679,20 @@ function setupResourceExclusionCheck() {
       status: "PASS",
       phases: [
         {
+          id: "provision",
+          commands: ["ocm start kova-self-check --runtime stable --no-service --json"],
+          results: []
+        },
+        {
           id: "auth-setup",
           results: [
             {
               command: "npm install",
               status: 0,
               durationMs: 100,
+              measurementScope: "product",
               resourceSamples: syntheticResourceSamples({
-                peakRssMb: 1600,
+                peakRssMb: 1548.2,
                 maxCpuPercent: 200,
                 role: "command-tree"
               })
@@ -682,58 +702,25 @@ function setupResourceExclusionCheck() {
               status: 0,
               durationMs: 100,
               resourceSamples: syntheticResourceSamples({
-                peakRssMb: 950,
+                peakRssMb: 834.8,
                 maxCpuPercent: 180,
                 role: "package-manager"
               })
             }
-          ],
-          metrics: {
-            process: {
-              pid: 1,
-              rssMb: 1400,
-              cpuPercent: 220,
-              command: "openclaw-gateway"
-            }
-          }
+          ]
         },
         {
-          id: "state-provision",
+          id: "cold-agent-turn",
           results: [{
-            command: "node setup-fixture.mjs",
+            command: "node support/kova-agent-resource-helper.mjs",
             status: 0,
             durationMs: 100,
             resourceSamples: syntheticResourceSamples({
-              peakRssMb: 1300,
-              maxCpuPercent: 150,
-              role: "command-tree"
+              peakRssMb: 855.1,
+              maxCpuPercent: 30,
+              roles: ["agent-cli", "agent-process", "command-tree"]
             })
           }]
-        },
-        {
-          id: "scenario-command",
-          results: [
-            {
-              command: "ocm @kova-self-check -- status",
-              status: 0,
-              durationMs: 100,
-              resourceSamples: syntheticResourceSamples({
-                peakRssMb: 100,
-                maxCpuPercent: 20,
-                role: "gateway"
-              })
-            },
-            {
-              command: "node support/kova-helper.mjs",
-              status: 0,
-              durationMs: 100,
-              resourceSamples: syntheticResourceSamples({
-                peakRssMb: 600,
-                maxCpuPercent: 30,
-                role: "command-tree"
-              })
-            }
-          ]
         },
         {
           id: "auth-cleanup",
@@ -765,41 +752,76 @@ function setupResourceExclusionCheck() {
         calibration: {
           roles: {
             "command-tree": { peakRssMb: 1200 },
-            "package-manager": { peakRssMb: 900 }
+            "package-manager": { peakRssMb: 900 },
+            "agent-cli": { peakRssMb: 900 },
+            "agent-process": { peakRssMb: 900 }
           }
         }
       },
-      surface: { thresholds: {}, resourcePrimaryRole: "gateway" }
+      surface: {
+        thresholds: {},
+        resourcePrimaryRole: "agent-cli",
+        roleThresholds: {
+          "agent-cli": { peakRssMb: 900 },
+          "agent-process": { peakRssMb: 900 }
+        }
+      }
     };
     evaluateRecord(record, { thresholds: { peakRssMb: 900 } }, options);
     assertEqual(record.status, "PASS", "setup resources do not fail runtime gates");
-    assertEqual(record.measurements.peakRssMb, 100, "final product gateway remains headline RSS");
-    assertEqual(record.measurements.resourcePeakTrackedRssMb, 600, "product command tree remains tracked");
-    assertEqual(record.measurements.resourceByRole["command-tree"].peakRssMb, 600, "setup command tree is excluded");
+    assertEqual(record.measurements.peakRssMb, 855.1, "product agent remains headline RSS");
+    assertEqual(record.measurements.resourcePeakTrackedRssMb, 855.1, "product agent command tree remains tracked");
+    assertEqual(record.measurements.resourcePrimaryRole, "agent-cli", "agent CLI is the primary resource role");
+    assertEqual(record.measurements.resourceByRole["agent-cli"].peakRssMb, 855.1, "agent CLI RSS retained");
+    assertEqual(record.measurements.resourceByRole["agent-process"].peakRssMb, 855.1, "agent process RSS retained");
+    assertEqual(record.measurements.resourceByRole["command-tree"].peakRssMb, 855.1, "setup command tree is excluded");
     assertEqual(record.measurements.resourceByRole["package-manager"], undefined, "setup package manager is excluded");
     assertEqual(record.measurements.resourceMeasurementScope, "product", "resource gate scope is explicit");
+    assertEqual(record.measurements.resourceHeadlineContract, "primary-role-product-scope-v2", "resource contract is explicit");
     assertEqual(record.measurements.measurementScopeSummary.productPhaseCount, 1, "product phase count");
     assertEqual(record.measurements.measurementScopeSummary.harnessPhaseCount, 2, "harness phase count");
     assertEqual(record.measurements.measurementScopeSummary.cleanupPhaseCount, 1, "cleanup phase count");
-    assertEqual(record.measurements.measurementScopeSummary.harnessCommandCount, 3, "harness command count");
-    assertEqual(record.phases[0].results[0].resourceSamples.peakTotalRssMb, 1600, "raw setup RSS remains available");
+    assertEqual(record.measurements.measurementScopeSummary.productCommandCount, 1, "product command count is phase-owned");
+    assertEqual(record.measurements.measurementScopeSummary.harnessCommandCount, 2, "harness command count is phase-owned");
+    assertEqual(record.measurements.measurementScopeSummary.cleanupCommandCount, 1, "cleanup command count");
+    assertEqual(record.phases[1].results[0].resourceSamples.peakTotalRssMb, 1548.2, "raw setup RSS remains available");
+    assertEqual(record.violations, undefined, "setup RSS does not create product violations");
 
     const runtimeRegression = structuredClone(record);
     runtimeRegression.status = "PASS";
     delete runtimeRegression.measurements;
     delete runtimeRegression.violations;
-    runtimeRegression.phases.find((phase) => phase.id === "scenario-command").results[1].resourceSamples =
+    const agentResult = runtimeRegression.phases.find((phase) => phase.id === "cold-agent-turn").results[0];
+    agentResult.measurementScope = "harness";
+    agentResult.resourceSamples =
       syntheticResourceSamples({
-        peakRssMb: 1300,
+        peakRssMb: 950,
         maxCpuPercent: 30,
-        role: "command-tree"
+        roles: ["agent-cli", "agent-process", "command-tree"]
       });
     evaluateRecord(runtimeRegression, { thresholds: { peakRssMb: 900 } }, options);
     assertEqual(runtimeRegression.status, "FAIL", "product runtime resources still fail closed");
+    assertEqual(runtimeRegression.measurements.peakRssMb, 950, "product agent regression remains headline RSS");
+    assertEqual(runtimeRegression.measurements.measurementScopeSummary.productCommandCount, 1, "result scope cannot bypass phase ownership");
+    assertEqual(
+      runtimeRegression.violations.some((violation) => violation.metric === "peakRssMb"),
+      true,
+      "headline agent RSS threshold remains active"
+    );
+    assertEqual(
+      runtimeRegression.violations.some((violation) => violation.metric === "resourceByRole.agent-cli.peakRssMb"),
+      true,
+      "agent CLI role threshold remains active"
+    );
+    assertEqual(
+      runtimeRegression.violations.some((violation) => violation.metric === "resourceByRole.agent-process.peakRssMb"),
+      true,
+      "agent process role threshold remains active"
+    );
     assertEqual(
       runtimeRegression.violations.some((violation) => violation.metric === "resourceByRole.command-tree.peakRssMb"),
-      true,
-      "product command tree threshold remains active"
+      false,
+      "command tree remains below its separate cap"
     );
     return {
       id: "setup-resource-exclusion",
@@ -1093,22 +1115,23 @@ async function releaseResourceCalibrationCheck() {
   }
 }
 
-function syntheticResourceSamples({ peakRssMb, maxCpuPercent, role }) {
+function syntheticResourceSamples({ peakRssMb, maxCpuPercent, role, roles = role ? [role] : [] }) {
   return {
     sampleCount: 1,
     peakTotalRssMb: peakRssMb,
     maxTotalCpuPercent: maxCpuPercent,
     peakCommandTreeRssMb: peakRssMb,
-    peakGatewayRssMb: role === "gateway" ? peakRssMb : 0,
-    byRole: {
-      [role]: {
+    peakGatewayRssMb: roles.includes("gateway") ? peakRssMb : 0,
+    byRole: Object.fromEntries(roles.map((entry) => [
+      entry,
+      {
         peakRssMb,
         maxCpuPercent,
         peakProcessCount: 1
       }
-    },
-    topRolesByRss: [{ role, peakRssMb, maxCpuPercent }],
-    topRolesByCpu: [{ role, peakRssMb, maxCpuPercent }],
+    ])),
+    topRolesByRss: roles.map((entry) => ({ role: entry, peakRssMb, maxCpuPercent })),
+    topRolesByCpu: roles.map((entry) => ({ role: entry, peakRssMb, maxCpuPercent })),
     topByRss: [],
     topByCpu: []
   };
@@ -1396,10 +1419,77 @@ async function performanceBaselineCheck(tmp) {
     const loadedStore = await loadBaselineStore(baselinePath);
     assertEqual(Object.keys(loadedStore.entries).length, 1, "baseline entry count");
     assertEqual(
+      Object.values(loadedStore.entries)[0]?.aggregate?.resourceMeasurementScope,
+      "product",
+      "baseline stores resource measurement scope"
+    );
+    assertEqual(
       Object.values(loadedStore.entries)[0]?.aggregate?.resourceHeadlineContract,
-      "primary-role-v1",
+      "primary-role-product-scope-v2",
       "baseline stores resource headline contract"
     );
+
+    const productResourceRegressionReport = syntheticPerformanceReport({
+      runId: "product-resource-regression",
+      platform,
+      target: "local-build:/tmp/openclaw",
+      records: [
+        syntheticPerformanceRecord(1, { timeToHealthReadyMs: 1000, peakRssMb: 500, resourcePeakGatewayRssMb: 500, cpuPercentMax: 20, eventLoopDelayMs: 100, agentTurnMs: 2000 }),
+        syntheticPerformanceRecord(2, { timeToHealthReadyMs: 1200, peakRssMb: 520, resourcePeakGatewayRssMb: 520, cpuPercentMax: 22, eventLoopDelayMs: 110, agentTurnMs: 2200 }),
+        syntheticPerformanceRecord(3, { timeToHealthReadyMs: 1100, peakRssMb: 510, resourcePeakGatewayRssMb: 510, cpuPercentMax: 21, eventLoopDelayMs: 105, agentTurnMs: 2100 })
+      ]
+    });
+    productResourceRegressionReport.performance = buildPerformanceSummary(productResourceRegressionReport.records, { repeat: 3 });
+    const productResourceComparison = comparePerformanceToBaseline(productResourceRegressionReport, loadedStore, {
+      targetPlan,
+      regressionThresholds: { rssRegressionPercent: 10 }
+    });
+    assertEqual(productResourceComparison.ok, false, "same-scope product resource regression blocks");
+    assertEqual(productResourceComparison.resourceContractMismatchCount, 0, "same-scope resource contract mismatch count");
+    assertEqual(productResourceComparison.skippedMetricCount, 0, "same-scope skipped resource metric count");
+    assertEqual(productResourceComparison.groups[0]?.resourceComparison?.compatible, true, "same-scope resource comparison compatible");
+    assertEqual(
+      productResourceComparison.regressions.some((regression) => regression.metric === "peakRssMb"),
+      true,
+      "same-scope primary RSS regression present"
+    );
+    assertEqual(
+      productResourceComparison.regressions.some((regression) => regression.metric === "resourcePeakGatewayRssMb"),
+      true,
+      "same-scope gateway RSS regression present"
+    );
+
+    const preProductScopeStore = structuredClone(loadedStore);
+    Object.values(preProductScopeStore.entries)[0].aggregate.resourceHeadlineContract = "primary-role-v1";
+    delete Object.values(preProductScopeStore.entries)[0].aggregate.resourceMeasurementScope;
+    const preProductScopeComparison = comparePerformanceToBaseline(productResourceRegressionReport, preProductScopeStore, {
+      targetPlan,
+      regressionThresholds: { rssRegressionPercent: 10 }
+    });
+    assertEqual(preProductScopeComparison.ok, true, "pre-product-scope resource baseline is ignored");
+    assertEqual(preProductScopeComparison.regressionCount, 0, "pre-product-scope resource regression count");
+    assertEqual(preProductScopeComparison.resourceContractMismatchCount, 1, "pre-product-scope contract mismatch count");
+    assertEqual(preProductScopeComparison.skippedMetricCount, 3, "pre-product-scope skipped resource metric count");
+    assertEqual(preProductScopeComparison.groups[0]?.resourceComparison?.compatible, false, "pre-product-scope comparison incompatible");
+    assertEqual(preProductScopeComparison.groups[0]?.resourceComparison?.baselineMeasurementScope, null, "pre-product-scope baseline scope");
+    assertEqual(preProductScopeComparison.groups[0]?.resourceComparison?.baselineHeadlineContract, "primary-role-v1", "pre-product-scope baseline contract");
+    assertEqual(
+      preProductScopeComparison.groups[0]?.skippedMetrics?.includes("peakRssMb") &&
+        preProductScopeComparison.groups[0]?.skippedMetrics?.includes("resourcePeakGatewayRssMb") &&
+        preProductScopeComparison.groups[0]?.skippedMetrics?.includes("cpuPercentMax"),
+      true,
+      "pre-product-scope resource metrics are reported as skipped"
+    );
+
+    const wrongScopeStore = structuredClone(loadedStore);
+    Object.values(wrongScopeStore.entries)[0].aggregate.resourceMeasurementScope = "harness";
+    const wrongScopeComparison = comparePerformanceToBaseline(productResourceRegressionReport, wrongScopeStore, {
+      targetPlan,
+      regressionThresholds: { rssRegressionPercent: 10 }
+    });
+    assertEqual(wrongScopeComparison.ok, true, "same headline with different resource scope is ignored");
+    assertEqual(wrongScopeComparison.resourceContractMismatchCount, 1, "resource scope mismatch count");
+    assertEqual(wrongScopeComparison.skippedMetricCount, 3, "resource scope mismatch skipped metrics");
 
     const currentReport = syntheticPerformanceReport({
       runId: "current",
@@ -1437,6 +1527,7 @@ async function performanceBaselineCheck(tmp) {
 
     const legacyStore = structuredClone(loadedStore);
     delete Object.values(legacyStore.entries)[0].aggregate.resourceHeadlineContract;
+    delete Object.values(legacyStore.entries)[0].aggregate.resourceMeasurementScope;
     const legacyComparison = comparePerformanceToBaseline(currentReport, legacyStore, {
       targetPlan,
       regressionThresholds: { rssRegressionPercent: 10 }
@@ -1463,6 +1554,118 @@ async function performanceBaselineCheck(tmp) {
       true,
       "legacy resource contract mismatch is reported"
     );
+    assertEqual(legacyComparison.ok, false, "non-resource regressions still block with legacy resource baseline");
+    assertEqual(
+      legacyComparison.regressions.some((regression) => regression.metric === "timeToHealthReadyMs"),
+      true,
+      "startup regression remains comparable with legacy resource baseline"
+    );
+
+    const reportCompareBaseline = syntheticPerformanceReport({
+      runId: "report-compare-baseline",
+      platform,
+      target: "local-build:/tmp/openclaw",
+      records: [
+        syntheticPerformanceRecord(1, {
+          timeToHealthReadyMs: 1000,
+          peakRssMb: 400,
+          cpuPercentMax: 20,
+          resourcePeakCommandTreeRssMb: 400,
+          resourcePeakGatewayRssMb: 400
+        })
+      ]
+    });
+    reportCompareBaseline.performance = buildPerformanceSummary(reportCompareBaseline.records, { repeat: 1 });
+    const reportCompareCurrent = syntheticPerformanceReport({
+      runId: "report-compare-current",
+      platform,
+      target: "local-build:/tmp/openclaw",
+      records: [
+        syntheticPerformanceRecord(1, {
+          timeToHealthReadyMs: 1000,
+          peakRssMb: 550,
+          cpuPercentMax: 50,
+          resourcePeakCommandTreeRssMb: 550,
+          resourcePeakGatewayRssMb: 550
+        })
+      ]
+    });
+    reportCompareCurrent.performance = buildPerformanceSummary(reportCompareCurrent.records, { repeat: 1 });
+    const sameContractReportComparison = compareReports(reportCompareBaseline, reportCompareCurrent);
+    assertEqual(sameContractReportComparison.ok, false, "same-contract report resource regression blocks");
+    assertEqual(sameContractReportComparison.regressionCount, 4, "same-contract report resource regression count");
+    assertEqual(sameContractReportComparison.resourceContractMismatchCount, 0, "same-contract report mismatch count");
+
+    const preScopeReport = structuredClone(reportCompareBaseline);
+    preScopeReport.performance.resourceMeasurementScope = null;
+    preScopeReport.performance.resourceHeadlineContract = "primary-role-v1";
+    preScopeReport.performance.groups[0].resourceMeasurementScope = null;
+    preScopeReport.performance.groups[0].resourceHeadlineContract = "primary-role-v1";
+    const incompatibleReportComparison = compareReports(preScopeReport, reportCompareCurrent);
+    assertEqual(incompatibleReportComparison.ok, true, "pre-scope report resource metrics are ignored");
+    assertEqual(incompatibleReportComparison.regressionCount, 0, "pre-scope report regression count");
+    assertEqual(incompatibleReportComparison.resourceContractMismatchCount, 1, "pre-scope report mismatch count");
+    assertEqual(incompatibleReportComparison.skippedMetricCount, 4, "pre-scope report skipped metric count");
+    assertEqual(incompatibleReportComparison.scenarios[0]?.resourceComparison?.compatible, false, "pre-scope report incompatible");
+    assertEqual(incompatibleReportComparison.scenarios[0]?.metrics?.peakRssMb?.comparable, false, "pre-scope RSS delta incomparable");
+    assertEqual(incompatibleReportComparison.scenarios[0]?.metrics?.peakRssMb?.delta, null, "pre-scope RSS delta omitted");
+    assertEqual(
+      renderCompareSummary(incompatibleReportComparison).includes("Resource contract mismatches: 1"),
+      true,
+      "compare summary reports resource contract mismatch"
+    );
+    assertEqual(
+      renderCompareFixerSummary(incompatibleReportComparison).includes("Skipped resource metrics: 4"),
+      true,
+      "compare fixer summary reports skipped resource metrics"
+    );
+
+    const nonResourceRegressionReport = structuredClone(reportCompareCurrent);
+    nonResourceRegressionReport.records[0].measurements.timeToHealthReadyMs = 7001;
+    nonResourceRegressionReport.performance = buildPerformanceSummary(nonResourceRegressionReport.records, { repeat: 1 });
+    const incompatibleNonResourceComparison = compareReports(preScopeReport, nonResourceRegressionReport);
+    assertEqual(incompatibleNonResourceComparison.ok, false, "non-resource report regression still blocks");
+    assertEqual(incompatibleNonResourceComparison.regressionCount, 1, "non-resource report regression count");
+    assertEqual(incompatibleNonResourceComparison.scenarios[0]?.regressions[0]?.metric, "timeToHealthReadyMs", "non-resource report regression metric");
+
+    const wrongScopeReport = structuredClone(reportCompareBaseline);
+    wrongScopeReport.performance.resourceMeasurementScope = "harness";
+    wrongScopeReport.performance.groups[0].resourceMeasurementScope = "harness";
+    const wrongScopeReportComparison = compareReports(wrongScopeReport, reportCompareCurrent);
+    assertEqual(wrongScopeReportComparison.ok, true, "same report contract with different scope is ignored");
+    assertEqual(wrongScopeReportComparison.skippedMetricCount, 4, "report scope mismatch skipped metric count");
+
+    const evidenceReport = structuredClone(productResourceRegressionReport);
+    evidenceReport.summary = { total: evidenceReport.records.length, statuses: { PASS: evidenceReport.records.length } };
+    evidenceReport.baseline = { path: baselinePath, comparison: preProductScopeComparison };
+    for (const record of evidenceReport.records) {
+      record.measurements.resourceMeasurementScope = "product";
+      record.measurements.resourceHeadlineContract = "primary-role-product-scope-v2";
+      record.measurements.measurementScopeSummary = {
+        schemaVersion: "kova.measurementScopeSummary.v1",
+        productPhaseCount: 1,
+        harnessPhaseCount: 2,
+        cleanupPhaseCount: 1,
+        productCommandCount: 1,
+        harnessCommandCount: 2,
+        cleanupCommandCount: 1
+      };
+    }
+    const structuredEvidence = renderReportSummary(evidenceReport, { structured: true });
+    assertEqual(structuredEvidence.performance?.resourceMeasurementScope, "product", "structured performance resource scope");
+    assertEqual(structuredEvidence.performance?.resourceHeadlineContract, "primary-role-product-scope-v2", "structured performance resource contract");
+    assertEqual(structuredEvidence.performance?.resourceContractMismatchCount, 1, "structured performance mismatch count");
+    assertEqual(structuredEvidence.scenarios[0]?.measurements?.resourceMeasurementScope, "product", "structured scenario resource scope");
+    assertEqual(
+      structuredEvidence.scenarios[0]?.measurements?.measurementScopeSummary?.harnessPhaseCount,
+      2,
+      "structured scenario scope summary"
+    );
+    const markdownEvidence = renderMarkdownReport(evidenceReport);
+    assertEqual(markdownEvidence.includes("- Resource measurement scope: product"), true, "Markdown resource scope");
+    assertEqual(markdownEvidence.includes("primary-role-product-scope-v2"), true, "Markdown resource contract");
+    assertEqual(markdownEvidence.includes("- Resource contract mismatches: 1"), true, "Markdown resource mismatch count");
+
     const regressedReview = reviewBaselineUpdate({
       ...currentReport,
       baseline: { path: baselinePath, comparison }
@@ -1487,6 +1690,25 @@ async function performanceBaselineCheck(tmp) {
     assertEqual(gate.baseline?.regressionCount, comparison.regressionCount, "gate baseline regression count");
     assertEqual(gate.baseline?.regressedGroups?.[0]?.scenario, "fresh-install", "gate baseline group scenario");
     assertEqual(gate.cards.some((card) => card.kind === "performance-regression"), true, "performance regression gate card");
+
+    const mismatchGate = evaluateGate({
+      mode: "execution",
+      controls: {},
+      platform,
+      baseline: { path: baselinePath, comparison: preProductScopeComparison },
+      records: productResourceRegressionReport.records
+    }, {
+      id: "perf-gate",
+      gate: {
+        id: "perf-gate",
+        blocking: [{ scenario: "fresh-install", state: "fresh" }]
+      }
+    });
+    assertEqual(mismatchGate.baseline?.resourceMeasurementScope, "product", "gate resource scope");
+    assertEqual(mismatchGate.baseline?.resourceHeadlineContract, "primary-role-product-scope-v2", "gate resource contract");
+    assertEqual(mismatchGate.baseline?.resourceContractMismatchCount, 1, "gate resource mismatch count");
+    assertEqual(mismatchGate.baseline?.skippedMetricCount, 3, "gate skipped resource metric count");
+    assertEqual(mismatchGate.baseline?.resourceContractMismatches?.length, 1, "gate resource mismatch evidence");
 
     return {
       id: "performance-baseline-regression",
@@ -5191,6 +5413,29 @@ function scenarioCloneFirstValidationCheck() {
     }
     assertEqual(rejectedSecondSourceUse, true, "second source env reference rejected");
 
+    let rejectedInvalidMeasurementScope = false;
+    try {
+      validateScenarioShape({
+        id: "bad-measurement-scope",
+        surface: "fresh-install",
+        title: "Bad Measurement Scope",
+        objective: "Uses an unsupported measurement scope.",
+        tags: ["test"],
+        thresholds: {},
+        phases: [{
+          id: "start",
+          measurementScope: "setup",
+          title: "Start",
+          intent: "Use an invalid scope.",
+          commands: ["ocm start {env} --runtime stable --json"],
+          evidence: ["start"]
+        }]
+      }, "bad-measurement-scope.json");
+    } catch (error) {
+      rejectedInvalidMeasurementScope = /measurementScope must be one of product, harness, cleanup/.test(error.message);
+    }
+    assertEqual(rejectedInvalidMeasurementScope, true, "invalid measurement scope rejected");
+
     validateScenarioShape({
       id: "good-existing-user",
       surface: "upgrade-existing-user",
@@ -5200,12 +5445,14 @@ function scenarioCloneFirstValidationCheck() {
       thresholds: {},
       phases: [{
         id: "clone",
+        measurementScope: "harness",
         title: "Clone",
         intent: "Clone source.",
         commands: ["ocm env clone {sourceEnv} {env} --json"],
         evidence: ["clone"]
       }, {
         id: "upgrade",
+        measurementScope: "product",
         title: "Upgrade",
         intent: "Upgrade disposable clone.",
         commands: ["ocm upgrade {env} --channel beta --json"],

@@ -672,7 +672,9 @@ function summarizeGateReceipt(gate) {
     subsystemCount: gate.subsystems?.length ?? 0,
     fixerSummaryCount: gate.fixerSummaries?.length ?? 0,
     baselineRegressionCount: gate.baseline?.regressionCount ?? null,
-    missingBaselineCount: gate.baseline?.missingBaselineCount ?? null
+    missingBaselineCount: gate.baseline?.missingBaselineCount ?? null,
+    resourceContractMismatchCount: gate.baseline?.resourceContractMismatchCount ?? null,
+    skippedMetricCount: gate.baseline?.skippedMetricCount ?? null
   };
 }
 
@@ -682,12 +684,16 @@ function summarizePerformanceReceipt(performance, baseline) {
   }
   return {
     schemaVersion: performance.schemaVersion,
+    resourceMeasurementScope: performance.resourceMeasurementScope ?? null,
+    resourceHeadlineContract: performance.resourceHeadlineContract ?? null,
     repeat: performance.repeat,
     groupCount: performance.groupCount,
     unstableGroupCount: performance.unstableGroupCount,
     profiledRunCount: performance.profiledRunCount ?? 0,
     baselineRegressionCount: baseline?.comparison?.regressionCount ?? null,
     missingBaselineCount: baseline?.comparison?.missingBaselineCount ?? null,
+    resourceContractMismatchCount: baseline?.comparison?.resourceContractMismatchCount ?? null,
+    skippedMetricCount: baseline?.comparison?.skippedMetricCount ?? null,
     baselineReviewOk: baseline?.review?.ok ?? null,
     baselineReviewBlockerCount: baseline?.review?.blockerCount ?? null,
     savedBaselinePath: baseline?.saved?.path ?? null
