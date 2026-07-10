@@ -254,8 +254,13 @@ export function comparePerformanceToBaseline(report, store, options = {}) {
   const regressions = [];
   const missing = [];
   let skippedMetricCount = 0;
+  let resourceContractMismatchCount = 0;
 
   for (const group of report.performance?.groups ?? []) {
+    const currentResourceMeasurementScope =
+      group.resourceMeasurementScope ?? report.performance?.resourceMeasurementScope ?? null;
+    const currentResourceHeadlineContract =
+      group.resourceHeadlineContract ?? report.performance?.resourceHeadlineContract ?? null;
     const representative = (report.records ?? []).find((record) =>
       record.scenario === group.scenario && record.state?.id === group.state && record.surface === group.surface
     );
@@ -278,14 +283,28 @@ export function comparePerformanceToBaseline(report, store, options = {}) {
         surface: group.surface,
         state: group.state,
         status: "NO_BASELINE",
+        resourceComparison: {
+          currentMeasurementScope: currentResourceMeasurementScope,
+          currentHeadlineContract: currentResourceHeadlineContract,
+          baselineMeasurementScope: null,
+          baselineHeadlineContract: null,
+          compatible: null
+        },
         regressions: []
       });
       continue;
     }
 
+    const baselineResourceMeasurementScope = baseline.aggregate?.resourceMeasurementScope ?? null;
+    const baselineResourceHeadlineContract = baseline.aggregate?.resourceHeadlineContract ?? null;
     const resourceContractMatches =
-      typeof baseline.aggregate?.resourceHeadlineContract === "string" &&
-      baseline.aggregate.resourceHeadlineContract === group.resourceHeadlineContract;
+      typeof baselineResourceMeasurementScope === "string" &&
+      baselineResourceMeasurementScope === currentResourceMeasurementScope &&
+      typeof baselineResourceHeadlineContract === "string" &&
+      baselineResourceHeadlineContract === currentResourceHeadlineContract;
+    if (!resourceContractMatches) {
+      resourceContractMismatchCount += 1;
+    }
     const skippedMetrics = resourceContractMatches
       ? []
       : ["peakRssMb", "resourcePeakGatewayRssMb", "cpuPercentMax"];
@@ -310,6 +329,13 @@ export function comparePerformanceToBaseline(report, store, options = {}) {
       state: group.state,
       status: groupRegressions.length > 0 ? "REGRESSED" : "OK",
       baselineSource: baseline.source,
+      resourceComparison: {
+        currentMeasurementScope: currentResourceMeasurementScope,
+        currentHeadlineContract: currentResourceHeadlineContract,
+        baselineMeasurementScope: baselineResourceMeasurementScope,
+        baselineHeadlineContract: baselineResourceHeadlineContract,
+        compatible: resourceContractMatches
+      },
       skippedMetrics,
       regressions: groupRegressions
     });
@@ -324,6 +350,9 @@ export function comparePerformanceToBaseline(report, store, options = {}) {
     regressionCount: regressions.length,
     missingBaselineCount: missing.length,
     skippedMetricCount,
+    resourceMeasurementScope: report.performance?.resourceMeasurementScope ?? null,
+    resourceHeadlineContract: report.performance?.resourceHeadlineContract ?? null,
+    resourceContractMismatchCount,
     groups,
     regressions,
     missing

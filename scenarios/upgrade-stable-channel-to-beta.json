@@ -18,6 +18,7 @@
   "phases": [
     {
       "id": "start",
+      "measurementScope": "harness",
       "title": "Start Stable Channel Env",
       "intent": "Create a disposable env through the real stable channel before switching to beta.",
       "commands": ["ocm start {env} --channel stable --json", "ocm service status {env} --json", "ocm @{env} -- status"],
@@ -25,6 +26,7 @@
     },
     {
       "id": "upgrade",
+      "measurementScope": "product",
       "title": "Upgrade To Beta",
       "intent": "Run the real OpenClaw upgrade path to the beta channel through OCM.",
       "commands": ["ocm upgrade {env} {upgradeSelector} --json"],
@@ -32,6 +34,7 @@
     },
     {
       "id": "post-upgrade",
+      "measurementScope": "product",
       "title": "Post-Beta Upgrade Checks",
       "intent": "Verify OpenClaw is usable after the beta channel upgrade and capture plugin/runtime dependency evidence.",
       "commands": ["ocm service status {env} --json", "ocm @{env} -- status", "ocm @{env} -- plugins list", "ocm @{env} -- doctor --fix", "ocm logs {env} --tail 400 --raw"],
