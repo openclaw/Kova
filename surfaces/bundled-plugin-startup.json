@@ -17,6 +17,10 @@
   },
   "roleThresholds": {
     "gateway": {
+      "peakRssMb": 950,
+      "maxCpuPercent": 250
+    },
+    "plugin-cli": {
       "peakRssMb": 800,
       "maxCpuPercent": 250
     },

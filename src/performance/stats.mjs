@@ -1,6 +1,8 @@
 import { measurementMetricValue } from "../health.mjs";
 
 export const PERFORMANCE_SCHEMA = "kova.performance.v1";
+export const RESOURCE_MEASUREMENT_SCOPE = "product";
+export const RESOURCE_HEADLINE_CONTRACT = "primary-role-product-scope-v2";
 
 export const PERFORMANCE_METRICS = [
   { id: "readinessHealthReadyMs", title: "Health Ready", unit: "ms", regressionKey: "startupRegressionPercent" },
@@ -58,6 +60,8 @@ export function buildPerformanceSummary(records, options = {}) {
 
   return {
     schemaVersion: PERFORMANCE_SCHEMA,
+    resourceMeasurementScope: RESOURCE_MEASUREMENT_SCOPE,
+    resourceHeadlineContract: RESOURCE_HEADLINE_CONTRACT,
     generatedAt: new Date().toISOString(),
     repeat: options.repeat ?? null,
     parallel: options.parallel ?? null,
@@ -181,6 +185,8 @@ function summarizeGroup(records, options) {
     resourceInterpretation: records.some((record) => record.profiling?.enabled === true)
       ? "instrumented"
       : "normal",
+    resourceMeasurementScope: RESOURCE_MEASUREMENT_SCOPE,
+    resourceHeadlineContract: RESOURCE_HEADLINE_CONTRACT,
     statuses: statusCounts(records),
     repeatIndexes: records.map((record) => record.repeat?.index ?? null).filter((value) => value !== null),
     metrics

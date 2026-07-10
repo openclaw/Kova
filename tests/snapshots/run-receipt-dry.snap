@@ -6,6 +6,10 @@
 
   Total 1   ·   Dry-run █████ 1   ·   Failed ░░░░░ 0   ·   Performance 1 group
 
+─── resource contract ──────────────────────────────────────────────────────────
+  Scope      product
+  Headline   primary-role-product-scope-v2
+
 ─── artifacts ──────────────────────────────────────────────────────────────────
   ◆ markdown    <kova-home>/reports/kova-<runId>.md
   ◆ json        <kova-home>/reports/kova-<runId>.json

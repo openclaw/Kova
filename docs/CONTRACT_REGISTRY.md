@@ -45,6 +45,20 @@ Then:
 Do not add a surface for an implementation detail. A surface should represent a
 real OpenClaw workflow a user or release gate cares about.
 
+## Phase Measurement Scope
+
+Scenario and state lifecycle phases may set `measurementScope` to `product`,
+`harness`, or `cleanup`. Resource gates use only `product` phases. Source
+acquisition, cloning, stable-source startup, provisioning, auth, fixture setup,
+and target-build phases are harness work. Candidate upgrades, post-upgrade
+validation, and gateway user turns are product work. Framework cleanup is
+recorded as cleanup work rather than product measurement.
+
+Scope belongs to the prepared phase because command resource samples and
+post-phase process snapshots share one owner. Command results cannot override
+their phase's scope. Product resource headlines use the versioned identity
+`primary-role-product-scope-v2`.
+
 ## Add A State
 
 Create `states/<id>.json`.

@@ -12,6 +12,12 @@ export const BASELINE_SCHEMA = "kova.baselines.v1";
 export const BASELINE_COMPARISON_SCHEMA = "kova.baselineComparison.v1";
 export const BASELINE_REVIEW_SCHEMA = "kova.baselineReview.v1";
 
+const RESOURCE_PERFORMANCE_METRICS = [
+  "peakRssMb",
+  "resourcePeakGatewayRssMb",
+  "cpuPercentMax"
+];
+
 export function defaultBaselinePath() {
   return join(baselinesDir, "baselines.json");
 }
@@ -262,8 +268,14 @@ export function comparePerformanceToBaseline(report, store, options = {}) {
   const groups = [];
   const regressions = [];
   const missing = [];
+  const resourceContractMismatches = [];
+  let skippedMetricCount = 0;
 
   for (const group of report.performance?.groups ?? []) {
+    const currentResourceMeasurementScope =
+      group.resourceMeasurementScope ?? report.performance?.resourceMeasurementScope ?? null;
+    const currentResourceHeadlineContract =
+      group.resourceHeadlineContract ?? report.performance?.resourceHeadlineContract ?? null;
     const representative = (report.records ?? []).find((record) =>
       record.scenario === group.scenario && record.state?.id === group.state && record.surface === group.surface
     );
@@ -286,12 +298,59 @@ export function comparePerformanceToBaseline(report, store, options = {}) {
         surface: group.surface,
         state: group.state,
         status: "NO_BASELINE",
+        resourceComparison: {
+          currentMeasurementScope: currentResourceMeasurementScope,
+          currentHeadlineContract: currentResourceHeadlineContract,
+          baselineMeasurementScope: null,
+          baselineHeadlineContract: null,
+          compatible: null
+        },
+        skippedMetrics: [],
+        metricComparisons: {},
         regressions: []
       });
       continue;
     }
 
-    const groupRegressions = metricRegressions(baseline.aggregate?.metrics ?? {}, group.metrics ?? {}, thresholds);
+    const baselineResourceMeasurementScope = baseline.aggregate?.resourceMeasurementScope ?? null;
+    const baselineResourceHeadlineContract = baseline.aggregate?.resourceHeadlineContract ?? null;
+    const resourceContractMatches =
+      typeof baselineResourceMeasurementScope === "string" &&
+      baselineResourceMeasurementScope === currentResourceMeasurementScope &&
+      typeof baselineResourceHeadlineContract === "string" &&
+      baselineResourceHeadlineContract === currentResourceHeadlineContract;
+    const resourceComparison = {
+      currentMeasurementScope: currentResourceMeasurementScope,
+      currentHeadlineContract: currentResourceHeadlineContract,
+      baselineMeasurementScope: baselineResourceMeasurementScope,
+      baselineHeadlineContract: baselineResourceHeadlineContract,
+      compatible: resourceContractMatches
+    };
+    const baselineMetrics = baseline.aggregate?.metrics ?? {};
+    const currentMetrics = group.metrics ?? {};
+    const skippedMetrics = resourceContractMatches
+      ? []
+      : RESOURCE_PERFORMANCE_METRICS.filter((metric) =>
+        numericMedian(baselineMetrics[metric]) !== null ||
+        numericMedian(currentMetrics[metric]) !== null
+      );
+    skippedMetricCount += skippedMetrics.length;
+    if (!resourceContractMatches) {
+      resourceContractMismatches.push({
+        key,
+        scenario: group.scenario,
+        surface: group.surface,
+        state: group.state,
+        resourceComparison,
+        skippedMetrics
+      });
+    }
+    const metricComparisons = buildMetricComparisons(baselineMetrics, currentMetrics, {
+      skippedMetrics
+    });
+    const groupRegressions = metricRegressions(baselineMetrics, currentMetrics, thresholds, {
+      skippedMetrics
+    });
     regressions.push(...groupRegressions.map((regression) => ({
       ...regression,
       key,
@@ -306,6 +365,9 @@ export function comparePerformanceToBaseline(report, store, options = {}) {
       state: group.state,
       status: groupRegressions.length > 0 ? "REGRESSED" : "OK",
       baselineSource: baseline.source,
+      resourceComparison,
+      skippedMetrics,
+      metricComparisons,
       regressions: groupRegressions
     });
   }
@@ -318,6 +380,11 @@ export function comparePerformanceToBaseline(report, store, options = {}) {
     ok: regressions.length === 0,
     regressionCount: regressions.length,
     missingBaselineCount: missing.length,
+    resourceMeasurementScope: report.performance?.resourceMeasurementScope ?? null,
+    resourceHeadlineContract: report.performance?.resourceHeadlineContract ?? null,
+    resourceContractMismatchCount: resourceContractMismatches.length,
+    skippedMetricCount,
+    resourceContractMismatches,
     groups,
     regressions,
     missing
@@ -338,9 +405,13 @@ export function normalizeRegressionThresholds(input = null) {
   return thresholds;
 }
 
-function metricRegressions(baselineMetrics, currentMetrics, thresholds) {
+function metricRegressions(baselineMetrics, currentMetrics, thresholds, options = {}) {
   const regressions = [];
+  const skippedMetrics = new Set(options.skippedMetrics ?? []);
   for (const metric of PERFORMANCE_METRICS) {
+    if (skippedMetrics.has(metric.id)) {
+      continue;
+    }
     const baseline = baselineMetrics[metric.id];
     const current = currentMetrics[metric.id];
     if (!baseline || !current || typeof baseline.median !== "number" || typeof current.median !== "number") {
@@ -370,6 +441,38 @@ function metricRegressions(baselineMetrics, currentMetrics, thresholds) {
     });
   }
   return regressions;
+}
+
+function buildMetricComparisons(baselineMetrics, currentMetrics, options = {}) {
+  const comparisons = {};
+  const skippedMetrics = new Set(options.skippedMetrics ?? []);
+  for (const metric of PERFORMANCE_METRICS) {
+    const baselineMedian = numericMedian(baselineMetrics[metric.id]);
+    const currentMedian = numericMedian(currentMetrics[metric.id]);
+    const skipped = skippedMetrics.has(metric.id);
+    if (!skipped && baselineMedian === null && currentMedian === null) {
+      continue;
+    }
+    const valuesAvailable = baselineMedian !== null && currentMedian !== null;
+    const comparable = !skipped && valuesAvailable;
+    comparisons[metric.id] = {
+      metric: metric.id,
+      title: metric.title,
+      unit: metric.unit,
+      baselineMedian,
+      currentMedian,
+      comparable,
+      delta: comparable ? round(currentMedian - baselineMedian) : null,
+      reason: skipped
+        ? "resource-contract-mismatch"
+        : (valuesAvailable ? null : "missing-metric")
+    };
+  }
+  return comparisons;
+}
+
+function numericMedian(metric) {
+  return typeof metric?.median === "number" ? metric.median : null;
 }
 
 function hasUnstableMetric(group) {

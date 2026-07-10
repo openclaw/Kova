@@ -35,8 +35,12 @@
     "groupCount": 12,
     "unstableGroupCount": 0,
     "profiledRunCount": 0,
+    "resourceMeasurementScope": "product",
+    "resourceHeadlineContract": "primary-role-product-scope-v2",
     "baselineRegressionCount": null,
     "missingBaselineCount": null,
+    "skippedMetricCount": null,
+    "resourceContractMismatchCount": null,
     "baselineReviewOk": null,
     "baselineReviewBlockerCount": null,
     "savedBaselinePath": null

@@ -1,5 +1,6 @@
 import { scenariosDir } from "../paths.mjs";
 import { validateCollectionIntent } from "../collection-contract.mjs";
+import { MEASUREMENT_SCOPES } from "../measurement-contract.mjs";
 import {
   assertNoShapeErrors,
   loadJsonRegistry,
@@ -149,6 +150,9 @@ function validatePhases(phases, errors) {
     validateStringArray(phase.evidence, `${prefix}.evidence`, errors);
     if (typeof phase.healthScope === "string" && !HEALTH_SCOPES.includes(phase.healthScope)) {
       errors.push(`${prefix}.healthScope must be one of ${HEALTH_SCOPES.join(", ")}`);
+    }
+    if (phase.measurementScope !== undefined && !MEASUREMENT_SCOPES.has(phase.measurementScope)) {
+      errors.push(`${prefix}.measurementScope must be one of ${[...MEASUREMENT_SCOPES].join(", ")}`);
     }
     if (phase.expectedAgentFailure !== undefined && typeof phase.expectedAgentFailure !== "boolean") {
       errors.push(`${prefix}.expectedAgentFailure must be a boolean when set`);

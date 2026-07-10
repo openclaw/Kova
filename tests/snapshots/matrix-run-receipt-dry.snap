@@ -6,6 +6,10 @@
 
   Entries 12   ·   Dry-run 12   ·   Failed 0   ·   Performance 12 groups
 
+─── resource contract ──────────────────────────────────────────────────────────
+  Scope      product
+  Headline   primary-role-product-scope-v2
+
 ─── artifacts ──────────────────────────────────────────────────────────────────
   ◆ markdown    <kova-home>/reports/kova-<runId>-smoke.md
   ◆ json        <kova-home>/reports/kova-<runId>-smoke.json

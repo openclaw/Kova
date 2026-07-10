@@ -133,21 +133,18 @@ export function driverKindForCommand(command) {
   return "unknown";
 }
 
-export function tagCommandResult(result, phaseId) {
-  result.measurementScope = measurementScopeForPhase({
-    id: phaseId,
-    measurementScope: result.measurementScope,
-    commands: [result.command]
-  });
+export function tagCommandResult(result, phase) {
+  result.measurementScope = measurementScopeForPhase(phase);
   result.driverKind = driverKindForCommand(result.command);
   return result;
 }
 
 export function withPhaseContract(phase, scope = null) {
+  const ownedPhase = scope === null ? phase : { ...phase, measurementScope: scope };
   return {
-    ...phase,
-    measurementScope: normalizeMeasurementScope(scope ?? phase.measurementScope, phase.id),
-    driverKind: phaseDriverKind(phase)
+    ...ownedPhase,
+    measurementScope: measurementScopeForPhase(ownedPhase),
+    driverKind: phaseDriverKind(ownedPhase)
   };
 }
 

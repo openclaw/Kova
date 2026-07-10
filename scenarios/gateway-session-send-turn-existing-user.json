@@ -33,6 +33,7 @@
   "phases": [
     {
       "id": "clone",
+      "measurementScope": "harness",
       "title": "Clone Existing Env",
       "intent": "Clone a durable existing user env into a disposable Kova env before runtime or message testing.",
       "commands": [
@@ -47,6 +48,7 @@
     },
     {
       "id": "upgrade",
+      "measurementScope": "product",
       "title": "Move Clone To Target Runtime",
       "intent": "Run the real OCM upgrade path so the cloned user state runs the requested OpenClaw target runtime.",
       "commands": [
@@ -61,6 +63,7 @@
     },
     {
       "id": "gateway-start",
+      "measurementScope": "product",
       "title": "Start Gateway",
       "intent": "Start the cloned gateway after upgrade and wait for readiness before sending a Gateway session message.",
       "commands": [
@@ -76,6 +79,7 @@
     },
     {
       "id": "gateway-session-turn",
+      "measurementScope": "product",
       "title": "Gateway Session Message",
       "intent": "Exercise Gateway sessions.send on cloned user state and verify final assistant text appears in chat history.",
       "commands": [
@@ -94,6 +98,7 @@
     },
     {
       "id": "post-gateway-session-health",
+      "measurementScope": "product",
       "title": "Post-Gateway-Session Health",
       "intent": "Verify the cloned gateway remains responsive after the Gateway session turn and collect logs for embedded-run/liveness evidence.",
       "commands": [

@@ -20,7 +20,9 @@
     },
     "findingCount": 0,
     "groupCount": 1,
-    "sampleCount": 1
+    "sampleCount": 1,
+    "resourceMeasurementScope": null,
+    "resourceHeadlineContract": null
   },
   "current": {
     "runId": "kova-<runId>",
@@ -41,7 +43,9 @@
     },
     "findingCount": 2,
     "groupCount": 1,
-    "sampleCount": 1
+    "sampleCount": 1,
+    "resourceMeasurementScope": null,
+    "resourceHeadlineContract": null
   },
   "thresholds": {
     "missingDependencyErrors": 0,
@@ -99,8 +103,10 @@
   },
   "sourceRelease": null,
   "ok": false,
-  "regressionCount": 5,
-  "scenarioRegressionCount": 3,
+  "regressionCount": 3,
+  "scenarioRegressionCount": 1,
+  "skippedMetricCount": 5,
+  "resourceContractMismatchCount": 1,
   "statusChanges": {
     "changes": [
       {
@@ -196,6 +202,26 @@
       },
       "baselineSampleCount": 1,
       "currentSampleCount": 1,
+      "resourceComparison": {
+        "baseline": {
+          "measurementScope": null,
+          "headlineContract": null
+        },
+        "current": {
+          "measurementScope": null,
+          "headlineContract": null
+        },
+        "scopeCompatible": false,
+        "headlineContractCompatible": false,
+        "compatible": false
+      },
+      "skippedMetrics": [
+        "peakRssMb",
+        "cpuPercentMax",
+        "resourceSampleCount",
+        "resourcePeakTrackedRssMb",
+        "resourcePeakGatewayRssMb"
+      ],
       "regressions": [
         {
           "kind": "status",
@@ -203,26 +229,6 @@
           "baseline": "PASS",
           "current": "FAIL",
           "message": "status regressed from PASS to FAIL"
-        },
-        {
-          "kind": "metric",
-          "metric": "peakRssMb",
-          "stat": "median",
-          "baseline": 420,
-          "current": 950,
-          "delta": 530,
-          "tolerance": 100,
-          "message": "peakRssMb increased by 530 (420 -> 950), over tolerance 100"
-        },
-        {
-          "kind": "metric",
-          "metric": "resourcePeakTrackedRssMb",
-          "stat": "median",
-          "baseline": 420,
-          "current": 950,
-          "delta": 530,
-          "tolerance": 100,
-          "message": "resourcePeakTrackedRssMb increased by 530 (420 -> 950), over tolerance 100"
         }
       ],
       "metrics": {
@@ -230,7 +236,8 @@
           "stat": "median",
           "baseline": 420,
           "current": 950,
-          "delta": 530,
+          "comparable": false,
+          "delta": null,
           "tolerance": 100,
           "baselineStats": {
             "count": 1,
@@ -251,7 +258,8 @@
           "stat": "median",
           "baseline": 90,
           "current": 90,
-          "delta": 0,
+          "comparable": false,
+          "delta": null,
           "tolerance": 25,
           "baselineStats": {
             "count": 1,
@@ -272,6 +280,7 @@
           "stat": "median",
           "baseline": 1200,
           "current": 1200,
+          "comparable": true,
           "delta": 0,
           "tolerance": 5000,
           "baselineStats": {
@@ -293,6 +302,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 3000,
           "baselineStats": {
@@ -314,6 +324,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 10000,
           "baselineStats": {
@@ -335,6 +346,7 @@
           "stat": "median",
           "baseline": 300,
           "current": 300,
+          "comparable": true,
           "delta": 0,
           "tolerance": 1000,
           "baselineStats": {
@@ -356,6 +368,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 1000,
           "baselineStats": {
@@ -377,6 +390,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 3000,
           "baselineStats": {
@@ -398,6 +412,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 10000,
           "baselineStats": {
@@ -419,6 +434,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 10000,
           "baselineStats": {
@@ -440,6 +456,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 5000,
           "baselineStats": {
@@ -461,6 +478,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 10000,
           "baselineStats": {
@@ -482,6 +500,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 5000,
           "baselineStats": {
@@ -503,6 +522,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 2500,
           "baselineStats": {
@@ -524,6 +544,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": null,
           "baselineStats": {
@@ -545,6 +566,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": null,
           "baselineStats": {
@@ -566,6 +588,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": null,
           "baselineStats": {
@@ -587,6 +610,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": null,
           "baselineStats": {
@@ -608,6 +632,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": null,
           "baselineStats": {
@@ -629,6 +654,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": null,
           "baselineStats": {
@@ -650,6 +676,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": null,
           "baselineStats": {
@@ -671,6 +698,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": null,
           "baselineStats": {
@@ -692,6 +720,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": null,
           "baselineStats": {
@@ -713,6 +742,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 5,
           "baselineStats": {
@@ -734,6 +764,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 1000,
           "baselineStats": {
@@ -755,6 +786,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": null,
           "baselineStats": {
@@ -776,6 +808,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 250,
           "baselineStats": {
@@ -797,6 +830,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": null,
           "baselineStats": {
@@ -818,6 +852,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 10,
           "baselineStats": {
@@ -839,6 +874,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": null,
           "baselineStats": {
@@ -860,6 +896,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 250,
           "baselineStats": {
@@ -881,6 +918,7 @@
           "stat": "median",
           "baseline": 800,
           "current": 800,
+          "comparable": true,
           "delta": 0,
           "tolerance": 3000,
           "baselineStats": {
@@ -902,6 +940,7 @@
           "stat": "median",
           "baseline": 1200,
           "current": 1200,
+          "comparable": true,
           "delta": 0,
           "tolerance": 5000,
           "baselineStats": {
@@ -923,6 +962,7 @@
           "stat": "median",
           "baseline": 200,
           "current": 200,
+          "comparable": true,
           "delta": 0,
           "tolerance": 1000,
           "baselineStats": {
@@ -944,6 +984,7 @@
           "stat": "median",
           "baseline": 20,
           "current": 20,
+          "comparable": true,
           "delta": 0,
           "tolerance": 1000,
           "baselineStats": {
@@ -965,6 +1006,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 0,
           "baselineStats": {
@@ -986,6 +1028,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 0,
           "baselineStats": {
@@ -1007,6 +1050,7 @@
           "stat": "median",
           "baseline": 0,
           "current": 0,
+          "comparable": true,
           "delta": 0,
           "tolerance": 0,
           "baselineStats": {
@@ -1028,6 +1072,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 0,
           "baselineStats": {
@@ -1049,6 +1094,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 0,
           "baselineStats": {
@@ -1070,6 +1116,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 0,
           "baselineStats": {
@@ -1091,6 +1138,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 0,
           "baselineStats": {
@@ -1112,6 +1160,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 10,
           "baselineStats": {
@@ -1133,6 +1182,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 10,
           "baselineStats": {
@@ -1154,6 +1204,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": null,
           "baselineStats": {
@@ -1175,6 +1226,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": null,
           "baselineStats": {
@@ -1196,6 +1248,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 0,
           "baselineStats": {
@@ -1217,6 +1270,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 0,
           "baselineStats": {
@@ -1238,6 +1292,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": null,
           "baselineStats": {
@@ -1259,6 +1314,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": null,
           "baselineStats": {
@@ -1280,6 +1336,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 26214400,
           "baselineStats": {
@@ -1301,6 +1358,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": null,
           "baselineStats": {
@@ -1322,6 +1380,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": null,
           "baselineStats": {
@@ -1343,6 +1402,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": null,
           "baselineStats": {
@@ -1364,6 +1424,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 104857600,
           "baselineStats": {
@@ -1385,6 +1446,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 5000,
           "baselineStats": {
@@ -1406,6 +1468,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 52428800,
           "baselineStats": {
@@ -1427,7 +1490,8 @@
           "stat": "median",
           "baseline": 3,
           "current": 3,
-          "delta": 0,
+          "comparable": false,
+          "delta": null,
           "tolerance": null,
           "baselineStats": {
             "count": 1,
@@ -1448,7 +1512,8 @@
           "stat": "median",
           "baseline": 420,
           "current": 950,
-          "delta": 530,
+          "comparable": false,
+          "delta": null,
           "tolerance": 100,
           "baselineStats": {
             "count": 1,
@@ -1469,6 +1534,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": false,
           "delta": null,
           "tolerance": 25,
           "baselineStats": {
@@ -1490,6 +1556,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": false,
           "delta": null,
           "tolerance": 100,
           "baselineStats": {
@@ -1511,6 +1578,7 @@
           "stat": "median",
           "baseline": null,
           "current": 950,
+          "comparable": false,
           "delta": null,
           "tolerance": 100,
           "baselineStats": {
@@ -1532,6 +1600,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": null,
           "baselineStats": {
@@ -1553,6 +1622,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 0,
           "baselineStats": {
@@ -1574,6 +1644,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 5000,
           "baselineStats": {
@@ -1595,6 +1666,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": null,
           "baselineStats": {
@@ -1616,6 +1688,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 250,
           "baselineStats": {
@@ -1637,6 +1710,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 5000,
           "baselineStats": {
@@ -1658,6 +1732,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 0,
           "baselineStats": {
@@ -1679,6 +1754,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 10,
           "baselineStats": {
@@ -1700,6 +1776,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 10,
           "baselineStats": {
@@ -1721,6 +1798,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 5000,
           "baselineStats": {
@@ -1742,6 +1820,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 250,
           "baselineStats": {
@@ -1763,6 +1842,7 @@
           "stat": "median",
           "baseline": null,
           "current": null,
+          "comparable": true,
           "delta": null,
           "tolerance": 5000,
           "baselineStats": {

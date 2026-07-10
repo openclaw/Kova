@@ -55,6 +55,8 @@ kova.report.v1
   },
   "performance": {
     "schemaVersion": "kova.performance.v1",
+    "resourceMeasurementScope": "product",
+    "resourceHeadlineContract": "primary-role-product-scope-v2",
     "repeat": 3,
     "groupCount": 1,
     "unstableGroupCount": 0,
@@ -91,7 +93,10 @@ failure cards.
 
 `performance` is present on run and matrix reports. It keeps individual scenario
 records untouched and adds aggregate stats grouped by scenario, surface, and
-state.
+state. Resource groups use `resourceMeasurementScope: "product"` and
+`resourceHeadlineContract: "primary-role-product-scope-v2"`; harness and cleanup
+work remains visible as evidence but does not contribute to resource headlines
+or gates.
 
 `baseline` is normally `null`. When `--baseline` is used, it contains the
 baseline store path and comparison results. When `--save-baseline` is used, it
@@ -118,6 +123,11 @@ Important fields:
 - `evidenceLedger`: compact machine-readable proof metadata for planned or
   executed commands and later scenario proof obligations
 - `measurements`: evaluated measurements
+- `measurements.resourceMeasurementScope`: scope used for resource gates
+- `measurements.resourceHeadlineContract`: versioned resource accounting
+  identity used to decide whether historical resource values are comparable
+- `measurements.measurementScopeSummary`: phase and command-result counts by
+  `product`, `harness`, and `cleanup` scope
 - `providerEvidence`: provider request timing, route/model/status summaries,
   optional token-like usage totals, and whether evidence came from mock-provider
   logs or OpenClaw timeline events
@@ -171,6 +181,8 @@ attempt was needed.
 
 Executed phases include:
 
+- `measurementScope`: `product`, `harness`, or `cleanup`; command resource
+  samples and post-phase process metrics inherit this phase-owned scope
 - `commands`: commands Kova ran
 - `results`: status, duration, stdout/stderr snippets, timeout state
 - `metrics`: service and process snapshot after the phase
@@ -540,6 +552,11 @@ percent, and increase percent. Release gates treat baseline regressions as
 blocking performance regressions, so a functional pass can still become
 `DO_NOT_SHIP` when OpenClaw gets materially slower or heavier.
 
+Resource baselines are comparable only when both `resourceMeasurementScope` and
+`resourceHeadlineContract` match. Kova skips RSS/CPU deltas from older or
+different accounting contracts, reports the mismatch and skipped metrics, and
+continues comparing status and other non-resource metrics.
+
 ## Run Receipt
 
 `kova run --json` prints a receipt instead of text paths:
@@ -556,8 +573,12 @@ blocking performance regressions, so a functional pass can still become
     "groupCount": 1,
     "unstableGroupCount": 0,
     "profiledRunCount": 0,
+    "resourceMeasurementScope": "product",
+    "resourceHeadlineContract": "primary-role-product-scope-v2",
     "baselineRegressionCount": 0,
     "missingBaselineCount": 0,
+    "skippedMetricCount": 0,
+    "resourceContractMismatchCount": 0,
     "baselineReviewOk": true,
     "baselineReviewBlockerCount": 0,
     "savedBaselinePath": "/path/to/baselines.json"
@@ -697,7 +718,7 @@ When a report contains failures, the structured summary also includes
 ```json
 {
   "schemaVersion": "kova.matrix.run.receipt.v1",
-  "mode": "dry-run",
+  "mode": "execution",
   "runId": "kova-2026-04-29T000000Z",
   "profile": {
     "id": "smoke",
@@ -709,10 +730,27 @@ When a report contains failures, the structured summary also includes
   "bundlePath": "/path/to/bundle.tar.gz",
   "checksumPath": "/path/to/bundle.tar.gz.sha256",
   "retainedGateArtifacts": null,
+  "gate": {
+    "verdict": "SHIP",
+    "baselineRegressionCount": 0,
+    "missingBaselineCount": 0,
+    "skippedMetricCount": 0,
+    "resourceMeasurementScope": "product",
+    "resourceHeadlineContract": "primary-role-product-scope-v2",
+    "resourceContractMismatchCount": 0
+  },
+  "performance": {
+    "resourceMeasurementScope": "product",
+    "resourceHeadlineContract": "primary-role-product-scope-v2",
+    "baselineRegressionCount": 0,
+    "missingBaselineCount": 0,
+    "skippedMetricCount": 0,
+    "resourceContractMismatchCount": 0
+  },
   "summary": {
     "total": 4,
     "statuses": {
-      "DRY-RUN": 4
+      "PASS": 4
     }
   }
 }
@@ -814,12 +852,16 @@ Gate cards are concise fixer records. They include severity, scenario/state,
 status, summary, expected/actual, impact, likely owner, failed command when
 available, violation text, and compact measurements. Gate reports also group
 cards by likely OpenClaw subsystem and generate compact subsystem fixer briefs.
-The matrix receipt includes only the gate verdict/count summary; the full cards
-and subsystem briefs live in the JSON report.
+The matrix receipt includes only the gate verdict/count summary, including the
+resource measurement identity and skipped comparison counts; the full cards,
+resource mismatch details, and subsystem briefs live in the JSON report.
 
 When `--baseline` is used, the gate also includes a compact historical baseline
-summary with regression count, missing baseline count, and regressed scenario
-groups. Baseline regressions remain blocking gate cards.
+summary with regression count, missing baseline count, resource measurement
+scope, resource headline contract, resource contract mismatch count, skipped
+metric count, mismatch details, and regressed scenario groups. Baseline
+regressions remain blocking gate cards. Resource contract mismatches skip only
+contract-dependent metrics; they do not suppress status or non-resource gates.
 
 For non-ship gate runs, Kova retains a durable copy under
 `artifacts/release-gates/<runId>/`:
@@ -842,14 +884,40 @@ retained-artifacts.json
   "schemaVersion": "kova.compare.v1",
   "ok": false,
   "regressionCount": 1,
+  "skippedMetricCount": 3,
+  "resourceContractMismatchCount": 1,
   "scenarios": [
     {
       "key": "fresh-install:fresh",
       "status": "REGRESSED",
+      "resourceComparison": {
+        "baseline": {
+          "measurementScope": "harness",
+          "headlineContract": "primary-role-v1"
+        },
+        "current": {
+          "measurementScope": "product",
+          "headlineContract": "primary-role-product-scope-v2"
+        },
+        "compatible": false
+      },
+      "skippedMetrics": [
+        "peakRssMb",
+        "peakRssMb.max",
+        "peakRssMb.p95"
+      ],
+      "metrics": {
+        "peakRssMb": {
+          "baseline": 400,
+          "current": 520,
+          "comparable": false,
+          "delta": null
+        }
+      },
       "regressions": [
         {
-          "metric": "peakRssMb",
-          "message": "peakRssMb increased by 120..."
+          "metric": "modelsListMs",
+          "message": "modelsListMs increased by 120..."
         }
       ]
     }
@@ -863,6 +931,12 @@ errors, plugin load failures, metadata scan mentions, and config normalization
 mentions. It also reports group-level status changes and finding deltas before
 metric deltas, so a comparison can say which failures were resolved, which
 new findings appeared, and whether repeat-run pass/fail counts improved.
+
+RSS, CPU, and resource sample-count metrics require matching
+`resourceMeasurementScope` and `resourceHeadlineContract` values. When either
+identity differs, median, max, and p95 rows retain their raw baseline/current
+values but use `comparable: false`, `delta: null`, and `SKIPPED` in the rendered
+table. Status transitions and non-resource metric regressions remain active.
 
 ## Artifact Bundle
 

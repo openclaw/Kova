@@ -32,6 +32,7 @@
   "phases": [
     {
       "id": "source",
+      "measurementScope": "harness",
       "title": "Start Source Release Env",
       "intent": "Start a disposable source env on the stable channel before applying plugin-pressure update recovery state.",
       "commands": [
@@ -52,6 +53,7 @@
     },
     {
       "id": "upgrade",
+      "measurementScope": "product",
       "title": "Upgrade To Target",
       "intent": "Run the real OpenClaw upgrade path through OCM and capture the requested target result.",
       "commands": [
@@ -67,6 +69,7 @@
     },
     {
       "id": "plugin-health",
+      "measurementScope": "product",
       "title": "Post-Upgrade Plugin Health",
       "intent": "Verify plugin commands remain usable after the target update.",
       "commands": [
@@ -83,6 +86,7 @@
     },
     {
       "id": "doctor-repair",
+      "measurementScope": "product",
       "title": "Doctor Repair After Upgrade",
       "intent": "Run doctor repair and verify OpenClaw remains usable after repair attempts.",
       "commands": [
@@ -97,6 +101,7 @@
     },
     {
       "id": "update-retry",
+      "measurementScope": "product",
       "title": "Retry Target Update",
       "intent": "Run the same target selector again and verify reports can detect unintended version drift.",
       "commands": [
@@ -111,6 +116,7 @@
     },
     {
       "id": "rollback",
+      "measurementScope": "product",
       "title": "Rollback Inspection",
       "intent": "Exercise rollback on the disposable env when the target runtime exposes rollback support, then verify plugin and gateway health.",
       "commands": [

@@ -15,7 +15,7 @@ export async function executeEvidenceSnapshotPhase(context, envName, scenario, a
 
   const results = [];
   for (const [commandIndex, command] of phase.commands.entries()) {
-    const result = await runScenarioCommand(command, context, envName, artifactDir, phase.id, commandIndex, authPolicy);
+    const result = await runScenarioCommand(command, context, envName, artifactDir, phase, commandIndex, authPolicy);
     const artifactPath = phase.evidenceArtifactPaths[commandIndex];
     result.evidenceKind = "snapshot";
     result.evidenceId = phase.evidenceIds[commandIndex];
@@ -43,7 +43,7 @@ export async function executeEvidenceSnapshotPhase(context, envName, scenario, a
     results,
     metrics: await collectEnvMetrics(envName, metricOptions(context, scenario, { id: afterPhaseId }, artifactDir, {
       kind: "evidence-snapshot",
-      measurementScope: phase.measurementScope,
+      measurementPhase: phase,
       resultStatus: phaseResultStatus(results)
     }))
   };
