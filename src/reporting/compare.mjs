@@ -205,7 +205,10 @@ export function compareReports(baseline, current, options = {}) {
       resourceComparable: resourceComparison.compatible
     });
     const skippedMetrics = Object.entries(metrics)
-      .filter(([, metric]) => metric.comparable === false)
+      .filter(([, metric]) =>
+        metric.comparable === false &&
+        (typeof metric.baseline === "number" || typeof metric.current === "number")
+      )
       .map(([metric]) => metric);
     if (!resourceComparison.compatible) {
       resourceContractMismatchCount += 1;

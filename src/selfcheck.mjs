@@ -108,7 +108,7 @@ import {
 } from "./command-results.mjs";
 import { createRunId } from "./run/run-id.mjs";
 import { compareReports, renderCompareSummary } from "./reporting/compare.mjs";
-import { scenarioMetricRows } from "./reporting/compare-aggregate.mjs";
+import { pickAffectedScenarios, scenarioMetricRows } from "./reporting/compare-aggregate.mjs";
 import { renderCompareAssessment } from "./reporting/render-compare.mjs";
 import { renderAssessment } from "./reporting/render-assessment.mjs";
 import { renderRunReceipt } from "./reporting/render-run-receipt.mjs";
@@ -303,6 +303,7 @@ export async function runSelfCheck(flags = {}) {
         "upgrade-from-day-ago": { clone: "harness", "source-runtime": "harness", upgrade: "product", "post-upgrade": "product" },
         "upgrade-from-week-ago": { clone: "harness", "source-runtime": "harness", upgrade: "product", "post-upgrade": "product" },
         "upgrade-from-month-ago": { clone: "harness", "source-runtime": "harness", upgrade: "product", "post-upgrade": "product" },
+        "release-update-recovery": { source: "harness", upgrade: "product", "plugin-health": "product", "doctor-repair": "product", "update-retry": "product", rollback: "product" },
         "upgrade-stable-release-to-beta": { start: "harness", upgrade: "product", "post-upgrade": "product" },
         "upgrade-stable-release-to-local-build": { start: "harness", upgrade: "product", "post-upgrade": "product" }
       };
@@ -1619,6 +1620,38 @@ function resourceContractCompareCheck() {
     const rendered = renderCompareAssessment(mismatched, { color: "never", full: true }, process.env, process.stdout);
     assertEqual(rendered.includes("resource contracts"), true, "default compare UI shows resource contract section");
     assertEqual(rendered.includes("peakRssMb.p95"), true, "default compare UI names skipped repeated resource metric");
+
+    const mismatchOnly = compareReports(legacyBaseline, baseline, { thresholds });
+    const mismatchOnlyScenario = mismatchOnly.scenarios.find((item) => item.key === "fresh-install:fresh");
+    assertEqual(mismatchOnly.ok, true, "resource-only contract mismatch remains non-blocking");
+    assertEqual(mismatchOnlyScenario.status, "OK", "mismatch-only scenario status remains ok");
+    assertEqual(
+      pickAffectedScenarios(mismatchOnly).some((item) => item.id === "fresh-install"),
+      true,
+      "mismatch-only scenario remains visible in affected rendering"
+    );
+    const mismatchOnlyRendered = renderCompareAssessment(
+      mismatchOnly,
+      { color: "never", full: true },
+      process.env,
+      process.stdout
+    );
+    assertEqual(mismatchOnlyRendered.includes("SKIPPED"), true, "mismatch-only table renders skipped raw rows");
+
+    const sparseLegacyBaseline = structuredClone(legacyBaseline);
+    const sparseCurrent = structuredClone(baseline);
+    for (const report of [sparseLegacyBaseline, sparseCurrent]) {
+      for (const record of report.records) {
+        delete record.measurements.resourcePeakTrackedRssMb;
+      }
+    }
+    const sparseMismatch = compareReports(sparseLegacyBaseline, sparseCurrent, { thresholds });
+    const sparseMismatchScenario = sparseMismatch.scenarios.find((item) => item.key === "fresh-install:fresh");
+    assertEqual(
+      sparseMismatchScenario.skippedMetrics.includes("resourcePeakTrackedRssMb"),
+      false,
+      "null resource metric is absent from skipped details"
+    );
 
     return {
       id: "resource-contract-compare",
@@ -3692,6 +3725,21 @@ async function performanceBaselineCheck(tmp) {
       assertEqual(mismatchComparison.groups[0]?.metricComparisons?.[metric]?.comparable, false, `${metric} baseline comparison skipped`);
       assertEqual(mismatchComparison.groups[0]?.metricComparisons?.[metric]?.delta, null, `${metric} baseline delta is null`);
     }
+
+    const sparseLegacyStore = structuredClone(legacyStore);
+    const sparseResourceReport = structuredClone(resourceOnlyReport);
+    delete Object.values(sparseLegacyStore.entries)[0].aggregate.metrics.resourcePeakGatewayRssMb;
+    delete sparseResourceReport.performance.groups[0].metrics.resourcePeakGatewayRssMb;
+    const sparseMismatchComparison = comparePerformanceToBaseline(sparseResourceReport, sparseLegacyStore, {
+      targetPlan,
+      regressionThresholds: { rssRegressionPercent: 10, cpuRegressionPercent: 10 }
+    });
+    assertEqual(sparseMismatchComparison.skippedMetricCount, 2, "baseline null resource metric is not counted as skipped");
+    assertEqual(
+      sparseMismatchComparison.groups[0].skippedMetrics.includes("resourcePeakGatewayRssMb"),
+      false,
+      "baseline null resource metric is absent from skipped details"
+    );
 
     const nonResourceRegressionReport = structuredClone(resourceOnlyReport);
     for (const [index, record] of nonResourceRegressionReport.records.entries()) {
@@ -10237,6 +10285,11 @@ function diagnosticsTimelineEvaluationCheck() {
       runtimeDepsStart,
       "{\"type\":\"span.end\",\"timestamp\":\"2026-04-29T15:30:06.000Z\",\"name\":\"runtimeDeps.stage\",\"spanId\":\"1\",\"durationMs\":6000}"
     ].join("\n"));
+    const longerOpenRuntimeDepsTimeline = parseTimelineText([
+      runtimeDepsStart,
+      "{\"type\":\"eventLoop.sample\",\"timestamp\":\"2026-04-29T15:30:04.000Z\",\"name\":\"eventLoop\",\"maxMs\":400}",
+      "{\"type\":\"eventLoop.sample\",\"timestamp\":\"2026-04-29T15:30:05.000Z\",\"name\":\"eventLoop\",\"maxMs\":500}"
+    ].join("\n"));
     const runtimeDepsTimelineOptions = {
       targetPlan: { kind: "local-build" },
       profile: { id: "diagnostic", diagnostics: { timelineRequired: true } },
@@ -10249,7 +10302,7 @@ function diagnosticsTimelineEvaluationCheck() {
     const closedSpanRecord = {
       scenario: "diagnostic-closed-span",
       status: "PASS",
-      phases: [{ id: "gateway-start", metrics: { timeline: openRuntimeDepsTimeline } }],
+      phases: [{ id: "gateway-start", metrics: { timeline: longerOpenRuntimeDepsTimeline } }],
       finalMetrics: {
         service: { gatewayState: "running" },
         logs: zeroLogMetrics(),
@@ -10271,7 +10324,8 @@ function diagnosticsTimelineEvaluationCheck() {
       0,
       "final timeline key span open list"
     );
-    assertEqual(closedSpanRecord.measurements.openclawEventLoopMaxMs, 400, "historical event-loop maximum");
+    assertEqual(closedSpanRecord.measurements.openclawTimelineEventCount, 3, "historical event-count maximum");
+    assertEqual(closedSpanRecord.measurements.openclawEventLoopMaxMs, 500, "historical event-loop maximum");
     assertEqual(closedSpanRecord.measurements.openclawSlowestSpanMs, 6000, "historical slowest span");
 
     const openSpanRecord = {

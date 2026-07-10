@@ -29,6 +29,7 @@ export function rollupScenarios(comparison) {
         id,
         states: [],
         regressionCount: 0,
+        resourceContractMismatchCount: 0,
         verdict: "UNCHANGED",
         baselineStatus: s.baselineStatus,
         currentStatus: s.currentStatus,
@@ -40,6 +41,9 @@ export function rollupScenarios(comparison) {
     const acc = byId.get(id);
     acc.states.push(s);
     acc.regressionCount += s.regressions?.length ?? 0;
+    if (s.resourceComparison?.compatible === false) {
+      acc.resourceContractMismatchCount += 1;
+    }
     acc.verdict = pickWorseVerdict(acc.verdict, s.status);
     acc.totalSamples += s.currentSampleCount ?? 0;
     acc.failedSamples += s.currentStatuses?.FAIL ?? 0;
@@ -57,7 +61,11 @@ export function rollupScenarios(comparison) {
 // only, in failure-first order.
 export function pickAffectedScenarios(comparison) {
   return rollupScenarios(comparison).filter((r) =>
-    r.regressionCount > 0 || r.verdict === "REGRESSED" || r.verdict === "NEW" || r.verdict === "MISSING"
+    r.regressionCount > 0 ||
+    r.resourceContractMismatchCount > 0 ||
+    r.verdict === "REGRESSED" ||
+    r.verdict === "NEW" ||
+    r.verdict === "MISSING"
   );
 }
 

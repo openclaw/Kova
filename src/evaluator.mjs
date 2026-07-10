@@ -3782,13 +3782,16 @@ function collectTimelineSummary(record) {
   }
 
   const available = timelines.some((timeline) => timeline.available);
-  let currentTimeline = null;
-  let currentEventCount = -1;
+  // A rotated final timeline owns terminal span state; the most complete
+  // snapshot retains attribution history from before the rotation.
+  const currentTimeline = timelines.findLast((timeline) => timeline.available) ?? null;
+  let attributionTimeline = null;
+  let attributionEventCount = -1;
   for (const timeline of timelines) {
-    const eventCount = timeline.eventCount ?? 0;
-    if (eventCount >= currentEventCount && Array.isArray(timeline.events)) {
-      currentTimeline = timeline;
-      currentEventCount = eventCount;
+    const eventCount = timeline.eventCount ?? timeline.events?.length ?? 0;
+    if (eventCount >= attributionEventCount && Array.isArray(timeline.events)) {
+      attributionTimeline = timeline;
+      attributionEventCount = eventCount;
     }
   }
   let eventCount = 0;
@@ -3804,9 +3807,9 @@ function collectTimelineSummary(record) {
   const latestOpenSpans = [...(currentTimeline?.openSpans ?? [])]
     .toSorted((left, right) => (right.ageMs ?? -1) - (left.ageMs ?? -1))
     .slice(0, 25);
-  const events = currentTimeline?.events ?? [];
-  const turnAttributionEvents = Array.isArray(currentTimeline?.turnAttributionEvents)
-    ? currentTimeline.turnAttributionEvents
+  const events = attributionTimeline?.events ?? [];
+  const turnAttributionEvents = Array.isArray(attributionTimeline?.turnAttributionEvents)
+    ? attributionTimeline.turnAttributionEvents
     : [];
   const artifacts = new Set();
   const keySpans = {};

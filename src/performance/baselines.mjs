@@ -326,7 +326,14 @@ export function comparePerformanceToBaseline(report, store, options = {}) {
       baselineHeadlineContract: baselineResourceHeadlineContract,
       compatible: resourceContractMatches
     };
-    const skippedMetrics = resourceContractMatches ? [] : [...RESOURCE_PERFORMANCE_METRICS];
+    const baselineMetrics = baseline.aggregate?.metrics ?? {};
+    const currentMetrics = group.metrics ?? {};
+    const skippedMetrics = resourceContractMatches
+      ? []
+      : RESOURCE_PERFORMANCE_METRICS.filter((metric) =>
+        numericMedian(baselineMetrics[metric]) !== null ||
+        numericMedian(currentMetrics[metric]) !== null
+      );
     skippedMetricCount += skippedMetrics.length;
     if (!resourceContractMatches) {
       resourceContractMismatches.push({
@@ -338,8 +345,6 @@ export function comparePerformanceToBaseline(report, store, options = {}) {
         skippedMetrics
       });
     }
-    const baselineMetrics = baseline.aggregate?.metrics ?? {};
-    const currentMetrics = group.metrics ?? {};
     const metricComparisons = buildMetricComparisons(baselineMetrics, currentMetrics, {
       skippedMetrics
     });

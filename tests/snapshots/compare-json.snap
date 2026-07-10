@@ -105,7 +105,7 @@
   "ok": false,
   "regressionCount": 3,
   "scenarioRegressionCount": 1,
-  "skippedMetricCount": 7,
+  "skippedMetricCount": 5,
   "resourceContractMismatchCount": 1,
   "statusChanges": {
     "changes": [
@@ -220,8 +220,6 @@
         "cpuPercentMax",
         "resourceSampleCount",
         "resourcePeakTrackedRssMb",
-        "resourceCpuPercentMaxTracked",
-        "resourcePeakCommandTreeRssMb",
         "resourcePeakGatewayRssMb"
       ],
       "regressions": [

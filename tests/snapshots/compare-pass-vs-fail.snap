@@ -6,14 +6,14 @@
 
   baseline  runtime:stable    kova-<runId>
   current   runtime:stable    kova-<runId>
-  delta     3 regressions  ·  1 scenario affected  ·  1 resource contract mismatch  ·  7 metrics skipped
+  delta     3 regressions  ·  1 scenario affected  ·  1 resource contract mismatch  ·  5 metrics skipped
 
 ─── resource contracts ─────────────────────────────────────────────────────────
 
-  ⚠ 1 mismatch · 7 metrics skipped
+  ⚠ 1 mismatch · 5 metrics skipped
   fresh-install:fresh
     contract unknown-scope/unknown-contract → unknown-scope/unknown-contract
-    skipped  peakRssMb, cpuPercentMax, resourceSampleCount, resourcePeakTrackedRssMb, resourceCpuPercentMaxTracked, resourcePeakCommandTreeRssMb, +1 more
+    skipped  peakRssMb, cpuPercentMax, resourceSampleCount, resourcePeakTrackedRssMb, resourcePeakGatewayRssMb
 
 ─── scenarios ──────────────────────────────────────────────────────────────────
 
