@@ -9,7 +9,10 @@ import {
 } from "./collectors/gateway-session-turn-attribution.mjs";
 import { computeProviderTurnAttribution } from "./collectors/provider.mjs";
 import { summarizeChannelWorkflowResources } from "./collectors/channel-workflow-resources.mjs";
-import { isExpectedKovaMockProviderFailureLine, summarizeRuntimeDepsLogs } from "./collectors/logs.mjs";
+import {
+  countProviderTimeoutMentions,
+  summarizeRuntimeDepsLogs
+} from "./collectors/logs.mjs";
 import { buildHealthMeasurement, healthReadinessClassification } from "./health.mjs";
 import { resolveThresholdPolicy } from "./evaluation/thresholds.mjs";
 import {
@@ -3778,6 +3781,15 @@ function collectTimelineSummary(record) {
   }
 
   const available = timelines.some((timeline) => timeline.available);
+  let currentTimeline = null;
+  let currentEventCount = -1;
+  for (const timeline of timelines) {
+    const eventCount = timeline.eventCount ?? 0;
+    if (eventCount >= currentEventCount && Array.isArray(timeline.events)) {
+      currentTimeline = timeline;
+      currentEventCount = eventCount;
+    }
+  }
   let eventCount = 0;
   let parseErrorCount = 0;
   let slowestSpan = null;
@@ -3787,25 +3799,19 @@ function collectTimelineSummary(record) {
   let repeatedSpanCount = 0;
   let runtimeDepsStageMaxMs = null;
   let slowestRuntimeDepsPlugin = null;
-  let latestOpenSpanCount = 0;
-  let latestOpenSpans = [];
-  let latestEventCount = -1;
-  let events = [];
-  let turnAttributionEvents = [];
+  const latestOpenSpanCount = currentTimeline?.openSpanCount ?? currentTimeline?.openSpans?.length ?? 0;
+  const latestOpenSpans = [...(currentTimeline?.openSpans ?? [])]
+    .toSorted((left, right) => (right.ageMs ?? -1) - (left.ageMs ?? -1))
+    .slice(0, 25);
+  const events = currentTimeline?.events ?? [];
+  const turnAttributionEvents = Array.isArray(currentTimeline?.turnAttributionEvents)
+    ? currentTimeline.turnAttributionEvents
+    : [];
   const artifacts = new Set();
   const keySpans = {};
   const spanTotals = {};
 
   for (const timeline of timelines) {
-    if ((timeline.eventCount ?? 0) >= latestEventCount && Array.isArray(timeline.events)) {
-      latestEventCount = timeline.eventCount ?? 0;
-      events = timeline.events;
-      turnAttributionEvents = Array.isArray(timeline.turnAttributionEvents) ? timeline.turnAttributionEvents : [];
-      latestOpenSpanCount = timeline.openSpanCount ?? timeline.openSpans?.length ?? 0;
-      latestOpenSpans = [...(timeline.openSpans ?? [])]
-        .toSorted((left, right) => (right.ageMs ?? -1) - (left.ageMs ?? -1))
-        .slice(0, 25);
-    }
     for (const artifact of timeline.artifacts ?? []) {
       artifacts.add(artifact);
     }
@@ -3813,7 +3819,9 @@ function collectTimelineSummary(record) {
     parseErrorCount = Math.max(parseErrorCount, timeline.parseErrorCount ?? 0);
     childProcessFailedCount = Math.max(childProcessFailedCount, timeline.childProcesses?.failedCount ?? 0);
     repeatedSpanCount = Math.max(repeatedSpanCount, timeline.repeatedSpans?.length ?? 0);
-    mergeKeySpans(keySpans, timeline.keySpans ?? {});
+    mergeKeySpans(keySpans, timeline.keySpans ?? {}, {
+      current: timeline === currentTimeline
+    });
     mergeSpanTotals(spanTotals, timeline.spanTotals ?? {});
     eventLoopMaxMs = maxNullable(eventLoopMaxMs, timeline.eventLoop?.maxMs);
     providerRequestMaxMs = maxNullable(providerRequestMaxMs, timeline.providers?.maxDurationMs);
@@ -3884,13 +3892,7 @@ function mergeSpanTotals(target, source) {
   }
 }
 
-function mergeOpenSpans(current, candidate) {
-  return [...current, ...candidate]
-    .toSorted((left, right) => (right.ageMs ?? -1) - (left.ageMs ?? -1))
-    .slice(0, 25);
-}
-
-function mergeKeySpans(target, source) {
+function mergeKeySpans(target, source, { current = false } = {}) {
   for (const [name, summary] of Object.entries(source)) {
     const existing = target[name] ?? {
       name,
@@ -3904,14 +3906,16 @@ function mergeKeySpans(target, source) {
     };
     existing.count += summary.count ?? 0;
     existing.errorCount += summary.errorCount ?? 0;
-    existing.openCount += summary.openCount ?? 0;
     existing.totalDurationMs = roundNumber(existing.totalDurationMs + (summary.totalDurationMs ?? 0));
     existing.maxDurationMs = maxNullable(existing.maxDurationMs, summary.maxDurationMs);
     if (summary.slowest?.durationMs !== undefined &&
       (!existing.slowest || summary.slowest.durationMs > existing.slowest.durationMs)) {
       existing.slowest = summary.slowest;
     }
-    existing.open = mergeOpenSpans(existing.open, summary.open ?? []).slice(0, 5);
+    if (current) {
+      existing.openCount = summary.openCount ?? summary.open?.length ?? 0;
+      existing.open = [...(summary.open ?? [])].slice(0, 5);
+    }
     target[name] = existing;
   }
 }
@@ -3954,7 +3958,6 @@ const LOG_METRIC_PATTERNS = {
   gatewayRestartMentions: /gateway.*restart|restart.*gateway|service restart|restarting/i,
   providerLoadMentions: /provider.*load|load.*provider|provider registry|auth provider/i,
   modelCatalogMentions: /model catalog|models list|loading models|available models/i,
-  providerTimeoutMentions: /provider.*timeout|model.*timeout|timeout.*provider|timeout.*model/i,
   eventLoopDelayMentions: /event loop|event-loop|blocked loop|loop delay/i,
   v8DiagnosticMentions: /v8|diagnostic report|heapsnapshot|heap snapshot/i
 };
@@ -3996,12 +3999,10 @@ function combineCommandAndLogCount(commandCount, logCount, logCommandObserved) {
 
 function countExplicitLogCommandMetric(results, key, options = {}) {
   const pattern = LOG_METRIC_PATTERNS[key];
-  if (!pattern) {
+  const providerTimeoutMetric = key === "providerTimeoutMentions";
+  if (!pattern && !providerTimeoutMetric) {
     return { observed: false, count: 0 };
   }
-  const ignoreLine = key === "providerTimeoutMentions"
-    ? isExpectedKovaMockProviderFailureLine
-    : options.ignoreLine;
   let observed = false;
   let count = 0;
   for (const result of results) {
@@ -4011,7 +4012,10 @@ function countExplicitLogCommandMetric(results, key, options = {}) {
     if (result.status === 0) {
       observed = true;
     }
-    const matchCount = countPattern(`${result.stdout ?? ""}\n${result.stderr ?? ""}`, pattern, { ignoreLine });
+    const text = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    const matchCount = providerTimeoutMetric
+      ? countProviderTimeoutMentions(text)
+      : countPattern(text, pattern, { ignoreLine: options.ignoreLine });
     if (matchCount > 0) {
       observed = true;
       count += matchCount;

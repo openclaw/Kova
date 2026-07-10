@@ -49,12 +49,16 @@ import { validateScenarioShape } from "./registries/scenarios.mjs";
 import { validateStateShape } from "./registries/states.mjs";
 import { validateRegistryReferences } from "./registries/validate.mjs";
 import { assertSafeScenarioCommand } from "./safety.mjs";
-import { measurementScopeForPhase } from "./measurement-contract.mjs";
+import {
+  measurementScopeForPhase,
+  readinessThresholdForPhase
+} from "./measurement-contract.mjs";
 import { parseTimelineText } from "./collectors/timeline.mjs";
 import { assertNetworkFrontageCommandSafe, networkFrontageCommandEnv, stopNetworkFrontage, waitForProxyReady, waitForTcp } from "./network-frontage.mjs";
 import { resolveGatewayEndpoint } from "../support/gateway-endpoint.mjs";
 import {
   boundedLogSnippet,
+  countProviderTimeoutMentions,
   isExpectedKovaMockProviderFailureLine,
   summarizeEmbeddedRunTraces,
   summarizeLivenessWarnings,
@@ -665,6 +669,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(await resourceRootCommandRoleBoundaryCheck());
     checks.push(await resourceRolePollutionCheck());
     checks.push(await gatewaySessionSurfaceContractCheck());
+    checks.push(await bundledPluginStartupSurfaceContractCheck());
     checks.push(await releaseRuntimeStartupSurfaceContractCheck());
     checks.push(await officialPluginInstallSurfaceContractCheck());
     checks.push(await agentCliLocalTurnSurfaceContractCheck());
@@ -9940,20 +9945,17 @@ function diagnosticsTimelineEvaluationCheck() {
       "strict missing span violation"
     );
 
-    const openSpanRecord = {
-      scenario: "diagnostic-open-span",
-      status: "PASS",
-      phases: [],
-      finalMetrics: {
-        service: { gatewayState: "running" },
-        logs: zeroLogMetrics(),
-        timeline: parseTimelineText([
-          "{\"type\":\"span.start\",\"timestamp\":\"2026-04-29T15:30:00.000Z\",\"name\":\"runtimeDeps.stage\",\"spanId\":\"1\"}",
-          "{\"type\":\"eventLoop.sample\",\"timestamp\":\"2026-04-29T15:30:06.000Z\",\"name\":\"eventLoop\",\"maxMs\":400}"
-        ].join("\n"))
-      }
-    };
-    evaluateRecord(openSpanRecord, { thresholds: {} }, {
+    const runtimeDepsStart =
+      "{\"type\":\"span.start\",\"timestamp\":\"2026-04-29T15:30:00.000Z\",\"name\":\"runtimeDeps.stage\",\"spanId\":\"1\"}";
+    const openRuntimeDepsTimeline = parseTimelineText([
+      runtimeDepsStart,
+      "{\"type\":\"eventLoop.sample\",\"timestamp\":\"2026-04-29T15:30:06.000Z\",\"name\":\"eventLoop\",\"maxMs\":400}"
+    ].join("\n"));
+    const closedRuntimeDepsTimeline = parseTimelineText([
+      runtimeDepsStart,
+      "{\"type\":\"span.end\",\"timestamp\":\"2026-04-29T15:30:06.000Z\",\"name\":\"runtimeDeps.stage\",\"spanId\":\"1\",\"durationMs\":6000}"
+    ].join("\n"));
+    const runtimeDepsTimelineOptions = {
       targetPlan: { kind: "local-build" },
       profile: { id: "diagnostic", diagnostics: { timelineRequired: true } },
       surface: {
@@ -9961,8 +9963,47 @@ function diagnosticsTimelineEvaluationCheck() {
         diagnostics: { expectedSpans: ["runtimeDeps.stage"] },
         thresholds: {}
       }
-    });
-    assertEqual(openSpanRecord.status, "FAIL", "open required span status");
+    };
+    const closedSpanRecord = {
+      scenario: "diagnostic-closed-span",
+      status: "PASS",
+      phases: [{ id: "gateway-start", metrics: { timeline: openRuntimeDepsTimeline } }],
+      finalMetrics: {
+        service: { gatewayState: "running" },
+        logs: zeroLogMetrics(),
+        timeline: closedRuntimeDepsTimeline
+      }
+    };
+    evaluateRecord(closedSpanRecord, { thresholds: {} }, runtimeDepsTimelineOptions);
+    assertEqual(closedSpanRecord.status, "PASS", "required span closed by final timeline status");
+    assertEqual(closedSpanRecord.measurements.openclawOpenSpanCount, 0, "final timeline open span count");
+    assertEqual(closedSpanRecord.measurements.openclawOpenRequiredSpanCount, 0, "final required open span count");
+    assertEqual(closedSpanRecord.measurements.openclawOpenSpans.length, 0, "final timeline open span list");
+    assertEqual(
+      closedSpanRecord.measurements.openclawKeySpans["runtimeDeps.stage"]?.openCount,
+      0,
+      "final timeline key span open count"
+    );
+    assertEqual(
+      closedSpanRecord.measurements.openclawKeySpans["runtimeDeps.stage"]?.open.length,
+      0,
+      "final timeline key span open list"
+    );
+    assertEqual(closedSpanRecord.measurements.openclawEventLoopMaxMs, 400, "historical event-loop maximum");
+    assertEqual(closedSpanRecord.measurements.openclawSlowestSpanMs, 6000, "historical slowest span");
+
+    const openSpanRecord = {
+      scenario: "diagnostic-open-span",
+      status: "PASS",
+      phases: [],
+      finalMetrics: {
+        service: { gatewayState: "running" },
+        logs: zeroLogMetrics(),
+        timeline: openRuntimeDepsTimeline
+      }
+    };
+    evaluateRecord(openSpanRecord, { thresholds: {} }, runtimeDepsTimelineOptions);
+    assertEqual(openSpanRecord.status, "FAIL", "required span still open in final timeline status");
     assertEqual(openSpanRecord.measurements.openclawOpenRequiredSpanCount, 1, "open required span measurement");
     assertEqual(
       openSpanRecord.violations.some((violation) => violation.metric === "openclawOpenRequiredSpanCount"),
@@ -11492,6 +11533,52 @@ async function resourceRolePollutionCheck() {
       id: "resource-role-pollution-boundary",
       status: "FAIL",
       command: "classify synthetic helper commands for role pollution",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+async function bundledPluginStartupSurfaceContractCheck() {
+  try {
+    const scenario = JSON.parse(await readFile("scenarios/bundled-plugin-startup.json", "utf8"));
+    const surface = JSON.parse(await readFile("surfaces/bundled-plugin-startup.json", "utf8"));
+    const releaseProfile = JSON.parse(await readFile("profiles/release.json", "utf8"));
+    const startPhase = scenario.phases.find((phase) =>
+      (phase.commands ?? []).some((command) => /^ocm start /.test(command))
+    );
+    const policy = resolveThresholdPolicy({
+      profile: releaseProfile,
+      surface,
+      scenario
+    });
+
+    assertEqual(startPhase?.id, "gateway-start", "bundled plugin startup uses readiness phase contract");
+    assertEqual(
+      readinessThresholdForPhase(scenario, startPhase),
+      30000,
+      "bundled plugin startup waits for gateway readiness"
+    );
+    assertEqual(surface.roleThresholds?.gateway?.peakRssMb, 950, "bundled plugin surface owns gateway RSS cap");
+    assertEqual(surface.roleThresholds?.gateway?.maxCpuPercent, 250, "bundled plugin surface owns gateway CPU cap");
+    assertEqual(surface.roleThresholds?.["plugin-cli"]?.peakRssMb, 800, "bundled plugin surface owns plugin CLI RSS cap");
+    assertEqual(surface.roleThresholds?.["plugin-cli"]?.maxCpuPercent, 250, "bundled plugin surface owns plugin CLI CPU cap");
+    assertEqual(policy.roleThresholds?.gateway?.peakRssMb, 950, "bundled plugin resolved gateway RSS cap");
+    assertEqual(policy.roleThresholds?.gateway?.maxCpuPercent, 250, "bundled plugin resolved gateway CPU cap");
+    assertEqual(policy.roleThresholds?.["plugin-cli"]?.peakRssMb, 800, "bundled plugin resolved plugin CLI RSS cap");
+    assertEqual(policy.roleThresholds?.["plugin-cli"]?.maxCpuPercent, 250, "bundled plugin resolved plugin CLI CPU cap");
+
+    return {
+      id: "bundled-plugin-startup-surface-contract",
+      status: "PASS",
+      command: "validate bundled plugin startup readiness and resource caps",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "bundled-plugin-startup-surface-contract",
+      status: "FAIL",
+      command: "validate bundled plugin startup readiness and resource caps",
       durationMs: 0,
       message: error.message
     };
@@ -13726,10 +13813,49 @@ function logSnippetBudgetCheck() {
 
 function expectedMockProviderFailureTimeoutLogCheck() {
   try {
+    const timeoutSignals = [
+      "provider request timed out after 60s",
+      "upstream provider timeout",
+      "model timeout after 30000ms",
+      "provider timeouts exceeded the retry budget",
+      "for provider openai timed out waiting for a model response"
+    ].join("\n");
+    const transportDiagnostics = [
+      "[provider-transport-fetch] start provider=openai model=gpt-5.5 timeoutMs=undefined",
+      "[model-fetch] start provider=openai model=gpt-5.5 timeoutMs=120000"
+    ].join("\n");
+    assertEqual(countProviderTimeoutMentions(timeoutSignals), 5, "provider timeout outcome signals");
+    assertEqual(countProviderTimeoutMentions(transportDiagnostics), 0, "provider timeout transport metadata");
     assertEqual(
       isExpectedKovaMockProviderFailureLine("embedded run failover decision reason=timeout rawError=503 mock provider channel workflow failure"),
       true,
       "expected Kova mock provider failure line is classified"
+    );
+    assertEqual(
+      countProviderTimeoutMentions("model fallback reason=timeout; mock provider channel workflow failure"),
+      0,
+      "expected mock provider failure timeout is excluded"
+    );
+
+    const transportMetadataRecord = {
+      scenario: "provider-timeout-metadata-self-check",
+      status: "PASS",
+      phases: [{
+        id: "logs",
+        results: [{
+          command: "ocm logs kova-self-check --tail 200 --raw",
+          status: 0,
+          stdout: transportDiagnostics,
+          stderr: "",
+          durationMs: 10
+        }]
+      }]
+    };
+    evaluateRecord(transportMetadataRecord, { thresholds: {} });
+    assertEqual(
+      transportMetadataRecord.violations?.some((violation) => violation.metric === "providerTimeoutMentions") ?? false,
+      false,
+      "transport timeout metadata does not create provider timeout violations"
     );
 
     const expectedFailureRecord = {

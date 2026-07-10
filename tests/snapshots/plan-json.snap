@@ -5,7 +5,7 @@
     "os": "darwin",
     "arch": "arm64",
     "release": "25.5.0",
-    "node": "v26.0.0"
+    "node": "v26.5.0"
   },
   "surfaces": [
     {
@@ -336,6 +336,10 @@
       },
       "roleThresholds": {
         "gateway": {
+          "peakRssMb": 950,
+          "maxCpuPercent": 250
+        },
+        "plugin-cli": {
           "peakRssMb": 800,
           "maxCpuPercent": 250
         },
@@ -1380,7 +1384,7 @@
           "maxCpuPercent": 200
         },
         "tool-runtime": {
-          "peakRssMb": 500,
+          "peakRssMb": 650,
           "maxCpuPercent": 200
         }
       },
@@ -10848,7 +10852,7 @@
       },
       "phases": [
         {
-          "id": "startup",
+          "id": "gateway-start",
           "title": "Start Bundled Plugin Gateway",
           "intent": "Start OpenClaw and let bundled plugin bootstrap run in the same shape users get from the target runtime.",
           "commands": [
@@ -11418,17 +11422,32 @@
       },
       "phases": [
         {
-          "id": "gateway",
-          "title": "Gateway Start",
-          "intent": "Start the disposable gateway before cron registration and run-now execution.",
+          "id": "provision",
+          "title": "Provision Cron Env",
+          "intent": "Create the disposable OpenClaw env without starting the gateway yet so mock auth is applied before the gateway process boots.",
           "commands": [
-            "ocm start {env} {startSelector} --json",
-            "ocm @{env} -- status"
+            "ocm start {env} {startSelector} --no-service --json"
           ],
           "evidence": [
-            "gateway status",
             "gateway port",
-            "readiness classification"
+            "runtime binding",
+            "env created without service"
+          ],
+          "healthScope": "none",
+          "collectionIntent": "service-only"
+        },
+        {
+          "id": "gateway-start",
+          "title": "Start Gateway",
+          "intent": "Start the gateway after mock provider config is present in the OpenClaw home.",
+          "commands": [
+            "ocm service install {env} --json",
+            "ocm service start {env} --json"
+          ],
+          "evidence": [
+            "gateway service installed",
+            "gateway service started",
+            "startup readiness"
           ],
           "healthScope": "readiness"
         },
@@ -11848,17 +11867,32 @@
       },
       "phases": [
         {
-          "id": "gateway",
-          "title": "Gateway Start",
-          "intent": "Start the disposable gateway before exec policy and fixture checks.",
+          "id": "provision",
+          "title": "Provision Exec Tool Env",
+          "intent": "Create the disposable OpenClaw env without starting the gateway yet so mock auth is applied before the gateway process boots.",
           "commands": [
-            "ocm start {env} {startSelector} --json",
-            "ocm @{env} -- status"
+            "ocm start {env} {startSelector} --no-service --json"
           ],
           "evidence": [
-            "gateway status",
             "gateway port",
-            "readiness classification"
+            "runtime binding",
+            "env created without service"
+          ],
+          "healthScope": "none",
+          "collectionIntent": "service-only"
+        },
+        {
+          "id": "gateway-start",
+          "title": "Start Gateway",
+          "intent": "Start the gateway after mock provider config is present in the OpenClaw home.",
+          "commands": [
+            "ocm service install {env} --json",
+            "ocm service start {env} --json"
+          ],
+          "evidence": [
+            "gateway service installed",
+            "gateway service started",
+            "startup readiness"
           ],
           "healthScope": "readiness"
         },
@@ -12404,17 +12438,32 @@
       },
       "phases": [
         {
-          "id": "gateway",
-          "title": "Gateway Start",
-          "intent": "Start the gateway and confirm it is healthy before opening the MCP stdio bridge.",
+          "id": "provision",
+          "title": "Provision MCP Runtime Env",
+          "intent": "Create the disposable OpenClaw env without starting the gateway yet so mock auth is applied before the gateway process boots.",
           "commands": [
-            "ocm start {env} {startSelector} --json",
-            "ocm @{env} -- status"
+            "ocm start {env} {startSelector} --no-service --json"
           ],
           "evidence": [
-            "gateway status",
             "gateway port",
-            "readiness classification"
+            "runtime binding",
+            "env created without service"
+          ],
+          "healthScope": "none",
+          "collectionIntent": "service-only"
+        },
+        {
+          "id": "gateway-start",
+          "title": "Start Gateway",
+          "intent": "Start the gateway after mock provider config is present in the OpenClaw home.",
+          "commands": [
+            "ocm service install {env} --json",
+            "ocm service start {env} --json"
+          ],
+          "evidence": [
+            "gateway service installed",
+            "gateway service started",
+            "startup readiness"
           ],
           "healthScope": "readiness"
         },
@@ -12482,17 +12531,32 @@
       },
       "phases": [
         {
-          "id": "gateway",
-          "title": "Gateway Start",
-          "intent": "Start the disposable gateway before opening the MCP bridge.",
+          "id": "provision",
+          "title": "Provision MCP Tool Env",
+          "intent": "Create the disposable OpenClaw env without starting the gateway yet so mock auth is applied before the gateway process boots.",
           "commands": [
-            "ocm start {env} {startSelector} --json",
-            "ocm @{env} -- status"
+            "ocm start {env} {startSelector} --no-service --json"
           ],
           "evidence": [
-            "gateway status",
             "gateway port",
-            "readiness classification"
+            "runtime binding",
+            "env created without service"
+          ],
+          "healthScope": "none",
+          "collectionIntent": "service-only"
+        },
+        {
+          "id": "gateway-start",
+          "title": "Start Gateway",
+          "intent": "Start the gateway after mock provider config is present in the OpenClaw home.",
+          "commands": [
+            "ocm service install {env} --json",
+            "ocm service start {env} --json"
+          ],
+          "evidence": [
+            "gateway service installed",
+            "gateway service started",
+            "startup readiness"
           ],
           "healthScope": "readiness"
         },
@@ -12968,6 +13032,9 @@
         "missingDependencyErrors": 0,
         "pluginLoadFailures": 2
       },
+      "expectedPluginFailureMarkers": [
+        "KOVA_LEGACY_UNSAFE_MEMORY_PLUGIN_REJECTED"
+      ],
       "phases": [
         {
           "id": "install",
@@ -12975,7 +13042,7 @@
           "intent": "Install a plugin that models an older tolerated bad-allocation behavior without allocating dangerous amounts of memory.",
           "commands": [
             "ocm start {env} {startSelector} --json",
-            "node {kovaRoot}/support/assert-command-output.mjs --pattern KOVA_LEGACY_UNSAFE_MEMORY_PLUGIN_REJECTED -- ocm @{env} -- plugins install {kovaRoot}/support/plugins/kova-legacy-unsafe-memory --force",
+            "ocm @{env} -- plugins install {kovaRoot}/support/plugins/kova-legacy-unsafe-memory --force",
             "ocm @{env} -- plugins list"
           ],
           "evidence": [
@@ -12991,10 +13058,12 @@
           "intent": "Restart after the failed-closed install path and verify the gateway remains supervised.",
           "commands": [
             "ocm service restart {env}",
-            "ocm service status {env} --json"
+            "ocm service status {env} --json",
+            "node {kovaRoot}/support/assert-command-output.mjs --pattern KOVA_LEGACY_UNSAFE_MEMORY_PLUGIN_REJECTED --retries 12 --delay-ms 750 -- ocm logs {env} --tail 500 --raw"
           ],
           "evidence": [
             "restart status after unsafe-memory rejection",
+            "unsafe-memory fail-closed diagnostic",
             "gateway remains supervised"
           ],
           "healthScope": "readiness"
@@ -13638,17 +13707,32 @@
       },
       "phases": [
         {
-          "id": "gateway",
-          "title": "Gateway Start",
-          "intent": "Start the disposable gateway before tool failure fixture checks.",
+          "id": "provision",
+          "title": "Provision Tool Failure Env",
+          "intent": "Create the disposable OpenClaw env without starting the gateway yet so mock auth is applied before the gateway process boots.",
           "commands": [
-            "ocm start {env} {startSelector} --json",
-            "ocm @{env} -- status"
+            "ocm start {env} {startSelector} --no-service --json"
           ],
           "evidence": [
-            "gateway status",
             "gateway port",
-            "readiness classification"
+            "runtime binding",
+            "env created without service"
+          ],
+          "healthScope": "none",
+          "collectionIntent": "service-only"
+        },
+        {
+          "id": "gateway-start",
+          "title": "Start Gateway",
+          "intent": "Start the gateway after mock provider config is present in the OpenClaw home.",
+          "commands": [
+            "ocm service install {env} --json",
+            "ocm service start {env} --json"
+          ],
+          "evidence": [
+            "gateway service installed",
+            "gateway service started",
+            "startup readiness"
           ],
           "healthScope": "readiness"
         },

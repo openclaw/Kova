@@ -6,6 +6,9 @@ import { ocmLogs } from "../ocm/commands.mjs";
 
 export const LOG_METRICS_SCHEMA = "kova.logMetrics.v1";
 
+const PROVIDER_TIMEOUT_SIGNAL_PATTERN =
+  /(?:\bprovider\b|\bmodel\b).*(?:\btimeouts?\b|\btimed out\b)|(?:\btimeouts?\b|\btimed out\b).*(?:\bprovider\b|\bmodel\b)/i;
+
 export async function collectLogMetrics(envName, timeoutMs, artifactDir) {
   const result = await runCommand(ocmLogs(envName, { tail: 200 }), { timeoutMs });
   const text = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
@@ -40,9 +43,7 @@ export async function collectLogMetrics(envName, timeoutMs, artifactDir) {
     listeningMentions: countPattern(text, /listening|server started|gateway ready|ready on|websocket/i),
     providerLoadMentions: countPattern(text, /provider.*load|load.*provider|provider registry|auth provider/i),
     modelCatalogMentions: countPattern(text, /model catalog|models list|loading models|available models/i),
-    providerTimeoutMentions: countPattern(text, /provider.*timeout|model.*timeout|timeout.*provider|timeout.*model/i, {
-      ignoreLine: isExpectedKovaMockProviderFailureLine
-    }),
+    providerTimeoutMentions: countProviderTimeoutMentions(text),
     eventLoopDelayMentions: countPattern(text, /event loop|event-loop|blocked loop|loop delay/i),
     v8DiagnosticMentions: countPattern(text, /v8|diagnostic report|heapsnapshot|heap snapshot/i),
     errorMentions: countPattern(text, /\berror\b|exception|unhandled/i),
@@ -309,6 +310,12 @@ export function extractStructuredDiagnosticEvents(text) {
 
 export function isExpectedKovaMockProviderFailureLine(line) {
   return /mock provider channel workflow failure|kova_channel_workflow_error/i.test(String(line ?? ""));
+}
+
+export function countProviderTimeoutMentions(text) {
+  return countPattern(String(text ?? ""), PROVIDER_TIMEOUT_SIGNAL_PATTERN, {
+    ignoreLine: isExpectedKovaMockProviderFailureLine
+  });
 }
 
 function countPattern(text, pattern, { ignoreLine = null } = {}) {

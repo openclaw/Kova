@@ -5,7 +5,7 @@
     "os": "darwin",
     "arch": "arm64",
     "release": "25.5.0",
-    "node": "v26.0.0"
+    "node": "v26.5.0"
   },
   "profile": {
     "id": "smoke",
