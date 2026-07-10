@@ -450,8 +450,11 @@ export async function runSelfCheck(flags = {}) {
       assertEqual(gatewayStart > authSetup, true, "gateway start follows auth setup");
     }));
     for (const scenarioId of [
+      "bundled-plugin-startup",
       "cron-runtime",
       "exec-tool-safety",
+      "fresh-install",
+      "gateway-performance",
       "mcp-runtime-start-stop",
       "mcp-tool-call",
       "tool-failure-containment"
@@ -461,17 +464,44 @@ export async function runSelfCheck(flags = {}) {
         const record = report.records?.[0];
         assertEqual(record?.auth?.mode, "mock", `${scenarioId} default auth mode`);
         const phaseIds = record?.phases?.map((phase) => phase.id) ?? [];
-        const provision = phaseIds.indexOf("provision");
+        const envCreate = record?.phases?.findIndex((phase) =>
+          (phase.commands ?? []).some((command) =>
+            command.includes("ocm start") && command.includes("--no-service")
+          ),
+        );
         const authSetup = phaseIds.indexOf("auth-setup");
-        const gatewayStart = phaseIds.indexOf("gateway-start");
-        assertEqual(provision >= 0, true, `${scenarioId} no-service provision planned`);
-        assertEqual(authSetup > provision, true, `${scenarioId} auth setup follows provision`);
+        const gatewayStart = record?.phases?.findIndex((phase) =>
+          (phase.commands ?? []).some((command) => command.includes("ocm service start")),
+        );
+        assertEqual(envCreate >= 0, true, `${scenarioId} no-service env creation planned`);
+        assertEqual(authSetup > envCreate, true, `${scenarioId} auth setup follows env creation`);
         assertEqual(gatewayStart > authSetup, true, `${scenarioId} gateway start follows auth setup`);
-        const provisionCommands = record?.phases?.[provision]?.commands ?? [];
+        const envCreateCommands = record?.phases?.[envCreate]?.commands ?? [];
         const gatewayStartCommands = record?.phases?.[gatewayStart]?.commands ?? [];
-        assertEqual(provisionCommands.some((command) => command.includes("ocm start") && command.includes("--no-service")), true, `${scenarioId} provision does not start gateway service`);
+        assertEqual(envCreateCommands.some((command) => command.includes("ocm start") && command.includes("--no-service")), true, `${scenarioId} env creation does not start gateway service`);
         assertEqual(gatewayStartCommands.some((command) => command.includes("ocm service install")), true, `${scenarioId} gateway service install planned after auth`);
         assertEqual(gatewayStartCommands.some((command) => command.includes("ocm service start")), true, `${scenarioId} gateway service start planned after auth`);
+      }));
+    }
+    for (const [scenarioId, stateId, statePhaseId] of [
+      ["fresh-install", "onboarded-user", "state-provision"],
+      ["gateway-performance", "gateway-already-running", "state-cold-start"]
+    ]) {
+      checks.push(await jsonCommandCheck(`mock-auth-state-order-${scenarioId}-${stateId}-json`, `node bin/kova.mjs run --target runtime:stable --scenario ${scenarioId} --state ${stateId} --report-dir ${quoteShell(tmp)} --json`, async (data) => {
+        const report = JSON.parse(await readFile(data.jsonPath, "utf8"));
+        const phases = report.records?.[0]?.phases ?? [];
+        const envCreate = phases.findIndex((phase) =>
+          (phase.commands ?? []).some((command) =>
+            command.includes("ocm start") && command.includes("--no-service")
+          ),
+        );
+        const gatewayStart = phases.findIndex((phase) =>
+          (phase.commands ?? []).some((command) => command.includes("ocm service start")),
+        );
+        const stateSetup = phases.findIndex((phase) => phase.id === statePhaseId);
+        assertEqual(envCreate >= 0, true, `${scenarioId} creates env without service`);
+        assertEqual(gatewayStart > envCreate, true, `${scenarioId} starts gateway after env creation`);
+        assertEqual(stateSetup > gatewayStart, true, `${scenarioId} applies ${stateId} after gateway start`);
       }));
     }
     checks.push(await jsonCommandCheck("network-frontage-dry-run-json", `node bin/kova.mjs run --target runtime:stable --scenario fresh-install --network-frontage loopback --worker-id 7 --report-dir ${quoteShell(tmp)} --json`, async (data) => {
@@ -997,6 +1027,14 @@ function measurementPhaseOwnershipCheck() {
     );
     assertEqual(forgedHarness.measurementScope, "product", "product phase overrides forged harness result scope");
     assertEqual(forgedProduct.measurementScope, "harness", "harness phase overrides forged product result scope");
+    assertEqual(
+      measurementScopeForPhase({
+        id: "env-create",
+        commands: ["ocm start kova-test --no-service"]
+      }),
+      "harness",
+      "no-service environment creation is harness-owned"
+    );
     return {
       id: "measurement-phase-ownership",
       status: "PASS",
@@ -4539,6 +4577,8 @@ function fakeOcmScript() {
   return `#!/bin/sh
 printf '%s\\n' "$*" >> "$KOVA_MOCK_OCM_LOG"
 case "$1:$2" in
+  service:install) echo '{"installed":true}'; exit 0 ;;
+  service:start) echo '{"started":true}'; exit 0 ;;
   service:status) echo '{"running":false,"desiredRunning":false,"childPid":null,"gatewayPort":null,"gatewayState":"stopped"}'; exit 0 ;;
   env:exec)
     env_name="$3"
@@ -11928,7 +11968,7 @@ async function bundledPluginStartupSurfaceContractCheck() {
     const surface = JSON.parse(await readFile("surfaces/bundled-plugin-startup.json", "utf8"));
     const releaseProfile = JSON.parse(await readFile("profiles/release.json", "utf8"));
     const startPhase = scenario.phases.find((phase) =>
-      (phase.commands ?? []).some((command) => /^ocm start /.test(command))
+      (phase.commands ?? []).some((command) => /^ocm service start /.test(command))
     );
     const policy = resolveThresholdPolicy({
       profile: releaseProfile,
@@ -12382,30 +12422,37 @@ function thresholdPolicyCalibrationCheck() {
       status: "PASS",
       phases: [{
         id: "sample",
-        results: [{
-          command: "ocm start kova-threshold-test",
-          status: 0,
-          durationMs: 150,
-          resourceSamples: {
-            schemaVersion: "kova.resourceSamples.v1",
-            sampleCount: 1,
-            peakTotalRssMb: 250,
-            maxTotalCpuPercent: 80,
-            byRole: {
-              gateway: {
-                peakRssMb: 250,
-                maxCpuPercent: 80,
-                peakRssAtMs: 10,
-                peakCpuAtMs: 10,
-                peakProcessCount: 1
-              }
-            },
-            topRolesByRss: [{ role: "gateway", peakRssMb: 250, maxCpuPercent: 80 }],
-            topRolesByCpu: [{ role: "gateway", peakRssMb: 250, maxCpuPercent: 80 }],
-            topByRss: [],
-            topByCpu: []
+        results: [
+          {
+            command: "ocm start kova-threshold-test --no-service",
+            status: 0,
+            durationMs: 300
+          },
+          {
+            command: "ocm service start kova-threshold-test",
+            status: 0,
+            durationMs: 150,
+            resourceSamples: {
+              schemaVersion: "kova.resourceSamples.v1",
+              sampleCount: 1,
+              peakTotalRssMb: 250,
+              maxTotalCpuPercent: 80,
+              byRole: {
+                gateway: {
+                  peakRssMb: 250,
+                  maxCpuPercent: 80,
+                  peakRssAtMs: 10,
+                  peakCpuAtMs: 10,
+                  peakProcessCount: 1
+                }
+              },
+              topRolesByRss: [{ role: "gateway", peakRssMb: 250, maxCpuPercent: 80 }],
+              topRolesByCpu: [{ role: "gateway", peakRssMb: 250, maxCpuPercent: 80 }],
+              topByRss: [],
+              topByCpu: []
+            }
           }
-        }],
+        ],
         metrics: { logs: zeroLogMetrics() }
       }],
       finalMetrics: {
@@ -12440,6 +12487,7 @@ function thresholdPolicyCalibrationCheck() {
     assertEqual(record.thresholdPolicy?.profileId, "release", "threshold policy profile id");
     assertEqual(record.thresholdPolicy?.thresholds?.coldReadyMs, 100, "profile surface threshold override");
     assertEqual(record.thresholdPolicy?.roleThresholds?.gateway?.peakRssMb, 200, "profile role threshold");
+    assertEqual(record.measurements?.coldReadyMs, 150, "cold-ready metric ignores no-service provisioning");
     assertEqual(
       record.violations.some((violation) => violation.metric === "coldReadyMs"),
       true,

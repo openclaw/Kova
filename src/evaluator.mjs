@@ -215,7 +215,7 @@ export function evaluateRecord(record, scenario, options = {}) {
   const readinessHealthReadyMs = health.readiness?.healthReadyAtMs ?? null;
   const readinessFailures = countReadinessFailures(record);
   const readinessClassification = healthReadinessClassification(health);
-  const coldReadyMs = maxDurationWhere(allResults, (command) => command.startsWith("ocm start "));
+  const coldReadyMs = maxDurationWhere(allResults, isGatewayColdStartCommand);
   const warmReadyMs = maxDurationWhere(allResults, (command) => command.startsWith("ocm service restart "));
   const upgradeMs = maxDurationWhere(allResults, (command) => command.startsWith("ocm upgrade "));
   const statusMs = maxDurationWhere(allResults, isPostAgentStatusCommand);
@@ -232,8 +232,12 @@ export function evaluateRecord(record, scenario, options = {}) {
     command.includes(" -- plugins update") && command.includes("--dry-run")
   );
   checkDuration(violations, allResults, "modelsListMs", thresholds.modelsListMs, (command) => command.includes(" -- models list"));
-  checkDuration(violations, allResults, "coldReadyMs", thresholds.coldReadyMs ?? thresholds.gatewayReadyMs, (command) =>
-    command.startsWith("ocm start ")
+  checkDuration(
+    violations,
+    allResults,
+    "coldReadyMs",
+    thresholds.coldReadyMs ?? thresholds.gatewayReadyMs,
+    isGatewayColdStartCommand
   );
   checkDuration(violations, allResults, "warmReadyMs", thresholds.warmReadyMs ?? thresholds.restartReadyMs, (command) =>
     command.startsWith("ocm service restart ")
@@ -3501,11 +3505,18 @@ function collectPhaseResultEntries(record, options = {}) {
 function recordExpectsGateway(record) {
   return collectResults(record).some((result) => {
     const command = result.command ?? "";
-    if (command.startsWith("ocm service start ") || command.startsWith("ocm service restart ")) {
+    if (isGatewayColdStartCommand(command) || command.startsWith("ocm service restart ")) {
       return true;
     }
-    return command.startsWith("ocm start ") && !/(?:^|\s)--no-service(?:\s|$)/.test(command);
+    return false;
   });
+}
+
+function isGatewayColdStartCommand(command) {
+  if (command.startsWith("ocm service start ")) {
+    return true;
+  }
+  return command.startsWith("ocm start ") && !/(?:^|\s)--no-service(?:\s|$)/.test(command);
 }
 
 function collectGatewayProcessResources(record, options = {}) {

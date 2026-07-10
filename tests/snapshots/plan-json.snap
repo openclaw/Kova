@@ -10857,13 +10857,31 @@
       },
       "phases": [
         {
-          "id": "gateway-start",
-          "title": "Start Bundled Plugin Gateway",
-          "intent": "Start OpenClaw and let bundled plugin bootstrap run in the same shape users get from the target runtime.",
+          "id": "env-create",
+          "title": "Create Bundled Plugin Env",
+          "intent": "Create the disposable OpenClaw env without starting the gateway yet so mock auth is applied before bundled plugin startup.",
           "commands": [
-            "ocm start {env} {startSelector} --json"
+            "ocm start {env} {startSelector} --no-service --json"
           ],
           "evidence": [
+            "gateway port",
+            "runtime binding",
+            "env created without service"
+          ],
+          "healthScope": "none",
+          "collectionIntent": "service-only"
+        },
+        {
+          "id": "gateway-start",
+          "title": "Start Bundled Plugin Gateway",
+          "intent": "Start OpenClaw after mock provider config is present and let bundled plugin bootstrap run in the same shape users get from the target runtime.",
+          "commands": [
+            "ocm service install {env} --json",
+            "ocm service start {env} --json"
+          ],
+          "evidence": [
+            "gateway service installed",
+            "gateway service started",
             "bundled plugin count",
             "readiness classification",
             "dependency staging"
@@ -12014,17 +12032,33 @@
       },
       "phases": [
         {
-          "id": "provision",
-          "title": "Provision Fresh Env",
-          "intent": "Create a disposable OpenClaw environment with the selected runtime and minimum local config.",
+          "id": "env-create",
+          "title": "Create Fresh Env",
+          "intent": "Create a disposable OpenClaw environment without starting the gateway yet so mock auth is applied before the gateway process boots.",
           "commands": [
-            "ocm start {env} {startSelector} --json"
+            "ocm start {env} {startSelector} --no-service --json"
           ],
           "evidence": [
             "OCM start JSON",
             "env name",
             "runtime binding",
             "gateway port"
+          ],
+          "healthScope": "none",
+          "collectionIntent": "service-only"
+        },
+        {
+          "id": "provision",
+          "title": "Provision Fresh Gateway",
+          "intent": "Start the gateway after mock provider config is present in the OpenClaw home.",
+          "commands": [
+            "ocm service install {env} --json",
+            "ocm service start {env} --json"
+          ],
+          "evidence": [
+            "gateway service installed",
+            "gateway service started",
+            "startup readiness"
           ],
           "healthScope": "readiness"
         },
@@ -12126,13 +12160,31 @@
       },
       "phases": [
         {
-          "id": "cold-start",
-          "title": "Cold Start",
-          "intent": "Start a fresh gateway and capture readiness timing, process state, and logs.",
+          "id": "env-create",
+          "title": "Create Performance Env",
+          "intent": "Create the disposable OpenClaw env without starting the gateway yet so mock auth is applied before startup measurements.",
           "commands": [
-            "ocm start {env} {startSelector} --json"
+            "ocm start {env} {startSelector} --no-service --json"
           ],
           "evidence": [
+            "gateway port",
+            "runtime binding",
+            "env created without service"
+          ],
+          "healthScope": "none",
+          "collectionIntent": "service-only"
+        },
+        {
+          "id": "cold-start",
+          "title": "Cold Start",
+          "intent": "Start the gateway after mock provider config is present, then capture readiness timing, process state, and logs.",
+          "commands": [
+            "ocm service install {env} --json",
+            "ocm service start {env} --json"
+          ],
+          "evidence": [
+            "gateway service installed",
+            "gateway service started",
             "ready time",
             "PID",
             "RSS",

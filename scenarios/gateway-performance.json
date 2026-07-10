@@ -19,13 +19,31 @@
   },
   "phases": [
     {
-      "id": "cold-start",
-      "title": "Cold Start",
-      "intent": "Start a fresh gateway and capture readiness timing, process state, and logs.",
+      "id": "env-create",
+      "title": "Create Performance Env",
+      "intent": "Create the disposable OpenClaw env without starting the gateway yet so mock auth is applied before startup measurements.",
       "commands": [
-        "ocm start {env} {startSelector} --json"
+        "ocm start {env} {startSelector} --no-service --json"
       ],
       "evidence": [
+        "gateway port",
+        "runtime binding",
+        "env created without service"
+      ],
+      "healthScope": "none",
+      "collectionIntent": "service-only"
+    },
+    {
+      "id": "cold-start",
+      "title": "Cold Start",
+      "intent": "Start the gateway after mock provider config is present, then capture readiness timing, process state, and logs.",
+      "commands": [
+        "ocm service install {env} --json",
+        "ocm service start {env} --json"
+      ],
+      "evidence": [
+        "gateway service installed",
+        "gateway service started",
         "ready time",
         "PID",
         "RSS",
