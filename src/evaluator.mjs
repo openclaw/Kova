@@ -3,6 +3,11 @@ import { computeProviderTurnAttribution } from "./collectors/provider.mjs";
 import { summarizeRuntimeDepsLogs } from "./collectors/logs.mjs";
 import { resolveThresholdPolicy } from "./evaluation/thresholds.mjs";
 import {
+  measuredProductPhase,
+  measurementScopeForPhase,
+  normalizeMeasurementScope
+} from "./measurement-contract.mjs";
+import {
   checkAggregateThreshold,
   checkDuration,
   checkEvidenceThreshold,
@@ -21,8 +26,9 @@ export function evaluateRecord(record, scenario, options = {}) {
   const roleThresholds = thresholdPolicy.roleThresholds;
   const violations = [];
   const allResults = collectResults(record);
-  const measuredResults = collectResults(record, { excludePhaseIds: ["target-setup"] });
-  const gatewayProcessResources = collectGatewayProcessResources(record, { excludePhaseIds: ["target-setup"] });
+  const measurementScopeSummary = summarizeMeasurementScopes(record);
+  const measuredResults = collectResults(record, { productOnly: true });
+  const gatewayProcessResources = collectGatewayProcessResources(record, { productOnly: true });
   const resourceSummary = collectResourceSummary(measuredResults, { gatewayProcessResources });
   const peakTrackedRssMb = maxNullable(gatewayProcessResources?.peakRssMb, resourceSummary.peakTotalRssMb);
   const cpuPercentMaxTracked = maxNullable(gatewayProcessResources?.maxCpuPercent, resourceSummary.maxTotalCpuPercent);
@@ -695,6 +701,8 @@ export function evaluateRecord(record, scenario, options = {}) {
   record.measurements = {
     peakRssMb,
     cpuPercentMax,
+    measurementScopeSummary,
+    resourceMeasurementScope: "product",
     resourcePrimaryRole: primaryResourceRole,
     resourceGateKind,
     resourceGateReason: resourceGate.reason,
@@ -2212,11 +2220,38 @@ function healthFailureCount(samples) {
   return samples.filter((sample) => sample && !sample.ok).length;
 }
 
+function summarizeMeasurementScopes(record) {
+  const phases = { product: 0, harness: 0, cleanup: 0 };
+  const results = { product: 0, harness: 0, cleanup: 0 };
+  for (const phase of record.phases ?? []) {
+    const phaseScope = measurementScopeForPhase(phase);
+    phases[phaseScope] += 1;
+    for (const result of phase.results ?? []) {
+      const resultScope = result.measurementScope
+        ? normalizeMeasurementScope(result.measurementScope, phase.id)
+        : phaseScope;
+      results[resultScope] += 1;
+    }
+  }
+  return {
+    schemaVersion: "kova.measurementScopeSummary.v1",
+    productPhaseCount: phases.product,
+    harnessPhaseCount: phases.harness,
+    cleanupPhaseCount: phases.cleanup,
+    productCommandCount: results.product,
+    harnessCommandCount: results.harness,
+    cleanupCommandCount: results.cleanup
+  };
+}
+
 function collectResults(record, options = {}) {
   const excludePhaseIds = new Set(options.excludePhaseIds ?? []);
   const results = [];
   for (const phase of record.phases ?? []) {
     if (excludePhaseIds.has(phase.id)) {
+      continue;
+    }
+    if (options.productOnly === true && !measuredProductPhase(phase)) {
       continue;
     }
     for (const result of phase.results ?? []) {
@@ -2243,6 +2278,9 @@ function collectGatewayProcessResources(record, options = {}) {
   let summary = null;
   for (const phase of record.phases ?? []) {
     if (excludePhaseIds.has(phase.id)) {
+      continue;
+    }
+    if (options.productOnly === true && !measuredProductPhase(phase)) {
       continue;
     }
     summary = mergeGatewayProcessMetrics(summary, phase.metrics?.process);

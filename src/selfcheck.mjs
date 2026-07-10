@@ -120,6 +120,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(ocmCommandBuildersCheck());
     checks.push(evaluationViolationHelpersCheck());
     checks.push(localBuildTargetSetupResourceExclusionCheck());
+    checks.push(setupResourceExclusionCheck());
     checks.push(primaryResourceRoleEvaluationCheck());
     checks.push(await primaryResourceRoleRegistryCheck());
     checks.push(await releaseResourceCalibrationCheck());
@@ -651,6 +652,166 @@ function localBuildTargetSetupResourceExclusionCheck() {
       id: "local-build-target-setup-resource-exclusion",
       status: "FAIL",
       command: "evaluate local-build target setup resource exclusion",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function setupResourceExclusionCheck() {
+  try {
+    const record = {
+      scenario: "setup-resource-scope",
+      status: "PASS",
+      phases: [
+        {
+          id: "auth-setup",
+          results: [
+            {
+              command: "npm install",
+              status: 0,
+              durationMs: 100,
+              resourceSamples: syntheticResourceSamples({
+                peakRssMb: 1600,
+                maxCpuPercent: 200,
+                role: "command-tree"
+              })
+            },
+            {
+              command: "npm install",
+              status: 0,
+              durationMs: 100,
+              resourceSamples: syntheticResourceSamples({
+                peakRssMb: 950,
+                maxCpuPercent: 180,
+                role: "package-manager"
+              })
+            }
+          ],
+          metrics: {
+            process: {
+              pid: 1,
+              rssMb: 1400,
+              cpuPercent: 220,
+              command: "openclaw-gateway"
+            }
+          }
+        },
+        {
+          id: "state-provision",
+          results: [{
+            command: "node setup-fixture.mjs",
+            status: 0,
+            durationMs: 100,
+            resourceSamples: syntheticResourceSamples({
+              peakRssMb: 1300,
+              maxCpuPercent: 150,
+              role: "command-tree"
+            })
+          }]
+        },
+        {
+          id: "scenario-command",
+          results: [
+            {
+              command: "ocm @kova-self-check -- status",
+              status: 0,
+              durationMs: 100,
+              resourceSamples: syntheticResourceSamples({
+                peakRssMb: 100,
+                maxCpuPercent: 20,
+                role: "gateway"
+              })
+            },
+            {
+              command: "node support/kova-helper.mjs",
+              status: 0,
+              durationMs: 100,
+              resourceSamples: syntheticResourceSamples({
+                peakRssMb: 600,
+                maxCpuPercent: 30,
+                role: "command-tree"
+              })
+            }
+          ]
+        },
+        {
+          id: "auth-cleanup",
+          results: [{
+            command: "rm -rf auth-state",
+            status: 0,
+            durationMs: 100,
+            resourceSamples: syntheticResourceSamples({
+              peakRssMb: 1500,
+              maxCpuPercent: 190,
+              role: "command-tree"
+            })
+          }]
+        }
+      ],
+      finalMetrics: {
+        process: {
+          pid: 2,
+          rssMb: 100,
+          cpuPercent: 20,
+          command: "openclaw-gateway"
+        },
+        service: { gatewayState: "running" },
+        logs: zeroLogMetrics()
+      }
+    };
+    const options = {
+      profile: {
+        calibration: {
+          roles: {
+            "command-tree": { peakRssMb: 1200 },
+            "package-manager": { peakRssMb: 900 }
+          }
+        }
+      },
+      surface: { thresholds: {}, resourcePrimaryRole: "gateway" }
+    };
+    evaluateRecord(record, { thresholds: { peakRssMb: 900 } }, options);
+    assertEqual(record.status, "PASS", "setup resources do not fail runtime gates");
+    assertEqual(record.measurements.peakRssMb, 100, "final product gateway remains headline RSS");
+    assertEqual(record.measurements.resourcePeakTrackedRssMb, 600, "product command tree remains tracked");
+    assertEqual(record.measurements.resourceByRole["command-tree"].peakRssMb, 600, "setup command tree is excluded");
+    assertEqual(record.measurements.resourceByRole["package-manager"], undefined, "setup package manager is excluded");
+    assertEqual(record.measurements.resourceMeasurementScope, "product", "resource gate scope is explicit");
+    assertEqual(record.measurements.measurementScopeSummary.productPhaseCount, 1, "product phase count");
+    assertEqual(record.measurements.measurementScopeSummary.harnessPhaseCount, 2, "harness phase count");
+    assertEqual(record.measurements.measurementScopeSummary.cleanupPhaseCount, 1, "cleanup phase count");
+    assertEqual(record.measurements.measurementScopeSummary.harnessCommandCount, 3, "harness command count");
+    assertEqual(record.phases[0].results[0].resourceSamples.peakTotalRssMb, 1600, "raw setup RSS remains available");
+
+    const runtimeRegression = structuredClone(record);
+    runtimeRegression.status = "PASS";
+    delete runtimeRegression.measurements;
+    delete runtimeRegression.violations;
+    runtimeRegression.phases.find((phase) => phase.id === "scenario-command").results[1].resourceSamples =
+      syntheticResourceSamples({
+        peakRssMb: 1300,
+        maxCpuPercent: 30,
+        role: "command-tree"
+      });
+    evaluateRecord(runtimeRegression, { thresholds: { peakRssMb: 900 } }, options);
+    assertEqual(runtimeRegression.status, "FAIL", "product runtime resources still fail closed");
+    assertEqual(
+      runtimeRegression.violations.some((violation) => violation.metric === "resourceByRole.command-tree.peakRssMb"),
+      true,
+      "product command tree threshold remains active"
+    );
+    return {
+      id: "setup-resource-exclusion",
+      status: "PASS",
+      command: "evaluate setup and runtime resource scopes",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "setup-resource-exclusion",
+      status: "FAIL",
+      command: "evaluate setup and runtime resource scopes",
       durationMs: 0,
       message: error.message
     };
