@@ -27,7 +27,11 @@ import {
   saveBaselineStore,
   updateBaselineStore
 } from "./performance/baselines.mjs";
-import { buildPerformanceSummary } from "./performance/stats.mjs";
+import {
+  buildPerformanceSummary,
+  RESOURCE_HEADLINE_CONTRACT,
+  RESOURCE_MEASUREMENT_SCOPE
+} from "./performance/stats.mjs";
 import {
   loadChannelCapabilities,
   validateChannelCapabilityCatalogReferences,
@@ -51,7 +55,8 @@ import { validateRegistryReferences } from "./registries/validate.mjs";
 import { assertSafeScenarioCommand } from "./safety.mjs";
 import {
   measurementScopeForPhase,
-  readinessThresholdForPhase
+  readinessThresholdForPhase,
+  tagCommandResult
 } from "./measurement-contract.mjs";
 import { parseTimelineText } from "./collectors/timeline.mjs";
 import { assertNetworkFrontageCommandSafe, networkFrontageCommandEnv, stopNetworkFrontage, waitForProxyReady, waitForTcp } from "./network-frontage.mjs";
@@ -104,8 +109,11 @@ import {
 import { createRunId } from "./run/run-id.mjs";
 import { compareReports, renderCompareSummary } from "./reporting/compare.mjs";
 import { scenarioMetricRows } from "./reporting/compare-aggregate.mjs";
+import { renderCompareAssessment } from "./reporting/render-compare.mjs";
 import { renderAssessment } from "./reporting/render-assessment.mjs";
+import { renderRunReceipt } from "./reporting/render-run-receipt.mjs";
 import { aggregateScenarios } from "./reporting/scenario-aggregate.mjs";
+import { summarizePerformanceReceipt } from "./run/options.mjs";
 import {
   ocmAt,
   ocmEnvDestroy,
@@ -215,6 +223,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(commandResultInterpretationCheck());
     checks.push(missingCollectorProofCheck());
     checks.push(ocmCommandBuildersCheck());
+    checks.push(measurementPhaseOwnershipCheck());
     checks.push(envNameLengthCheck());
     checks.push(evaluationViolationHelpersCheck());
     checks.push(statusFoundationCheck());
@@ -283,6 +292,29 @@ export async function runSelfCheck(flags = {}) {
       }
       if (data.scenarios.some((scenario) => !Array.isArray(scenario.proves) || scenario.proves.length === 0)) {
         throw new Error("every scenario must declare the surface requirement ids it proves");
+      }
+      const expectedScopes = {
+        "doctor-repair-upgrade": { clone: "harness", upgrade: "product", "doctor-repair": "product", "post-repair-health": "product" },
+        "gateway-session-send-turn-existing-user": { clone: "harness", upgrade: "product", "gateway-start": "product", "gateway-session-turn": "product", "post-gateway-session-health": "product" },
+        "upgrade-durable-clone-to-local-build": { clone: "harness", upgrade: "product", "post-upgrade": "product" },
+        "upgrade-existing-user": { clone: "harness", "source-runtime": "harness", upgrade: "product", "post-upgrade": "product" },
+        "upgrade-from-2026-4-20": { clone: "harness", "source-runtime": "harness", upgrade: "product", "post-upgrade": "product" },
+        "upgrade-from-2026-4-24": { clone: "harness", "source-runtime": "harness", upgrade: "product", "post-upgrade": "product" },
+        "upgrade-from-day-ago": { clone: "harness", "source-runtime": "harness", upgrade: "product", "post-upgrade": "product" },
+        "upgrade-from-week-ago": { clone: "harness", "source-runtime": "harness", upgrade: "product", "post-upgrade": "product" },
+        "upgrade-from-month-ago": { clone: "harness", "source-runtime": "harness", upgrade: "product", "post-upgrade": "product" },
+        "upgrade-stable-release-to-beta": { start: "harness", upgrade: "product", "post-upgrade": "product" },
+        "upgrade-stable-release-to-local-build": { start: "harness", upgrade: "product", "post-upgrade": "product" }
+      };
+      for (const [scenarioId, phaseScopes] of Object.entries(expectedScopes)) {
+        const scenario = data.scenarios.find((candidate) => candidate.id === scenarioId);
+        for (const [phaseId, scope] of Object.entries(phaseScopes)) {
+          assertEqual(
+            scenario?.phases?.find((phase) => phase.id === phaseId)?.measurementScope,
+            scope,
+            `${scenarioId}/${phaseId} measurement scope`
+          );
+        }
       }
     }));
     checks.push(await channelCapabilityRegistryCheck());
@@ -377,6 +409,9 @@ export async function runSelfCheck(flags = {}) {
       const commands = (record?.phases ?? []).flatMap((phase) => phase.commands ?? []);
       assertEqual(commands.some((command) => command.includes("ocm start") && command.includes("--channel stable")), true, "stable start command present");
       assertEqual(commands.some((command) => command.includes("ocm upgrade") && /--channel '?beta'?/.test(command)), true, "beta upgrade command present");
+      assertEqual(record?.phases?.find((phase) => phase.id === "start")?.measurementScope, "harness", "stable source start scope");
+      assertEqual(record?.phases?.find((phase) => phase.id === "upgrade")?.measurementScope, "product", "candidate upgrade scope");
+      assertEqual(record?.phases?.find((phase) => phase.id === "post-upgrade")?.measurementScope, "product", "post-upgrade scope");
     }));
     checks.push(await jsonCommandCheck("durable-clone-local-build-dry-run-json", `node bin/kova.mjs run --target local-build:/tmp/openclaw --scenario upgrade-durable-clone-to-local-build --state plugin-index --source-env 'Team Env' --report-dir ${quoteShell(tmp)} --json`, async (data) => {
       const report = JSON.parse(await readFile(data.jsonPath, "utf8"));
@@ -384,6 +419,8 @@ export async function runSelfCheck(flags = {}) {
       const commands = (record?.phases ?? []).flatMap((phase) => phase.commands ?? []);
       assertEqual(commands.some((command) => command.includes("ocm env clone 'Team Env'")), true, "quoted source env clone command present");
       assertEqual(commands.some((command) => command.includes("ocm upgrade") && /--runtime '?kova-local-/.test(command)), true, "local-build runtime upgrade command present");
+      assertEqual(record?.phases?.find((phase) => phase.id === "clone")?.measurementScope, "harness", "durable clone scope");
+      assertEqual(record?.phases?.find((phase) => phase.id === "upgrade")?.measurementScope, "product", "durable candidate upgrade scope");
     }));
     checks.push(await jsonCommandCheck("run-auth-default-mock-json", `node bin/kova.mjs run --target runtime:stable --scenario fresh-install --report-dir ${quoteShell(tmp)} --json`, async (data) => {
       const report = JSON.parse(await readFile(data.jsonPath, "utf8"));
@@ -785,6 +822,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(compareRepeatAggregationCheck());
     checks.push(compareMetricOrderingCheck());
     checks.push(compareGatewayRssDedupeCheck());
+    checks.push(resourceContractCompareCheck());
     checks.push(fixtureAccountingRenderCheck());
 
     const receiptCheck = await jsonCommandCheck(
@@ -795,6 +833,8 @@ export async function runSelfCheck(flags = {}) {
         assertEqual(data.mode, "dry-run", "run mode");
         assertEqual(data.summary?.statuses?.["DRY-RUN"], 2, "dry-run repeat count");
         assertEqual(data.performance?.repeat, 2, "run receipt repeat");
+        assertEqual(data.performance?.resourceMeasurementScope, RESOURCE_MEASUREMENT_SCOPE, "run receipt resource scope");
+        assertEqual(data.performance?.resourceHeadlineContract, RESOURCE_HEADLINE_CONTRACT, "run receipt resource contract");
         assertString(data.jsonPath, "json report path");
       }
     );
@@ -807,6 +847,8 @@ export async function runSelfCheck(flags = {}) {
       (data) => {
         assertEqual(data.schemaVersion, "kova.matrix.run.receipt.v1", "matrix run receipt schema");
         assertEqual(data.mode, "dry-run", "matrix dry-run mode");
+        assertEqual(data.performance?.resourceMeasurementScope, RESOURCE_MEASUREMENT_SCOPE, "matrix receipt resource scope");
+        assertEqual(data.performance?.resourceHeadlineContract, RESOURCE_HEADLINE_CONTRACT, "matrix receipt resource contract");
         assertString(data.jsonPath, "matrix json report path");
         assertString(data.bundlePath, "matrix bundle path");
         if (!data.bundlePath.startsWith(tmp)) {
@@ -936,6 +978,35 @@ function ocmCommandBuildersCheck() {
   }
 }
 
+function measurementPhaseOwnershipCheck() {
+  try {
+    const forgedHarness = tagCommandResult(
+      { command: "ocm @kova -- status", measurementScope: "harness" },
+      { id: "agent-turn", measurementScope: "product" }
+    );
+    const forgedProduct = tagCommandResult(
+      { command: "npm install", measurementScope: "product" },
+      { id: "auth-setup", measurementScope: "harness" }
+    );
+    assertEqual(forgedHarness.measurementScope, "product", "product phase overrides forged harness result scope");
+    assertEqual(forgedProduct.measurementScope, "harness", "harness phase overrides forged product result scope");
+    return {
+      id: "measurement-phase-ownership",
+      status: "PASS",
+      command: "validate phase-owned command measurement scope",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "measurement-phase-ownership",
+      status: "FAIL",
+      command: "validate phase-owned command measurement scope",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
 function envNameLengthCheck() {
   try {
     const name = envNameFor(
@@ -1015,6 +1086,7 @@ function localBuildTargetSetupResourceExclusionCheck() {
             command: "ocm runtime build-local kova-local-test --repo /tmp/openclaw --force",
             status: 0,
             durationMs: 60000,
+            measurementScope: "product",
             resourceSamples: syntheticResourceSamples({
               peakRssMb: 2500,
               maxCpuPercent: 350,
@@ -1043,6 +1115,7 @@ function localBuildTargetSetupResourceExclusionCheck() {
             command: "ocm @kova-self-check -- status",
             status: 0,
             durationMs: 100,
+            measurementScope: "harness",
             resourceSamples: syntheticResourceSamples({
               peakRssMb: 100,
               maxCpuPercent: 20,
@@ -1091,6 +1164,7 @@ function localBuildTargetSetupResourceExclusionCheck() {
     assertEqual(record.measurements.resourceByRole["build-tooling"], undefined, "target setup role excluded");
     assertEqual(record.measurements.resourceByRole["mock-provider"], undefined, "harness auth resources excluded");
     assertEqual(record.measurements.measurementScopeSummary.harnessCommandCount, 2, "harness command count");
+    assertEqual(record.measurements.measurementScopeSummary.productCommandCount, 2, "product command count is phase-owned");
     assertEqual(record.measurements.measurementScopeSummary.cleanupCommandCount, 1, "cleanup command count");
     assertEqual(record.violations, undefined, "no-service local-build record has no gateway violation");
     return {
@@ -1447,6 +1521,116 @@ function compareGatewayRssDedupeCheck() {
       id: "compare-gateway-rss-dedupe",
       status: "FAIL",
       command: "evaluate compare gateway RSS dedupe",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function resourceContractCompareCheck() {
+  try {
+    const report = (runId, offset) => syntheticPerformanceReport({
+      runId,
+      platform: { os: "darwin", arch: "arm64", release: "test", node: "v24.0.0" },
+      target: "runtime:stable",
+      records: [0, 10, 20].map((spread, index) => syntheticPerformanceRecord(index + 1, {
+        peakRssMb: 400 + offset + spread,
+        cpuPercentMax: 20 + offset + spread,
+        resourcePeakCommandTreeRssMb: 450 + offset + spread,
+        resourcePeakGatewayRssMb: 350 + offset + spread,
+        resourcePeakTrackedRssMb: 500 + offset + spread,
+        resourceCpuPercentMaxTracked: 30 + offset + spread,
+        resourceSampleCount: 10 + offset + spread,
+        modelsListMs: 100 + offset + spread
+      }))
+    });
+    const baseline = report("resource-contract-baseline", 0);
+    const current = report("resource-contract-current", 200);
+    const thresholds = {
+      peakRssMb: 10,
+      cpuPercentMax: 10,
+      resourcePeakCommandTreeRssMb: 10,
+      resourcePeakGatewayRssMb: 10,
+      resourcePeakTrackedRssMb: 10,
+      resourceCpuPercentMaxTracked: 10,
+      resourceSampleCount: 10,
+      modelsListMs: 10
+    };
+
+    const compatible = compareReports(baseline, current, { thresholds });
+    const compatibleScenario = compatible.scenarios.find((item) => item.key === "fresh-install:fresh");
+    for (const metric of [
+      "peakRssMb",
+      "peakRssMb.max",
+      "peakRssMb.p95",
+      "resourceSampleCount",
+      "resourceSampleCount.max",
+      "resourceSampleCount.p95"
+    ]) {
+      assertEqual(compatibleScenario.metrics[metric]?.comparable, true, `${metric} comparable under matching contract`);
+      assertEqual(typeof compatibleScenario.metrics[metric]?.delta, "number", `${metric} has numeric matching-contract delta`);
+    }
+    assertEqual(
+      compatibleScenario.regressions.some((regression) => regression.metric === "peakRssMb.p95"),
+      true,
+      "matching contract retains repeated resource p95 regression"
+    );
+
+    const legacyBaseline = structuredClone(baseline);
+    for (const record of legacyBaseline.records) {
+      record.measurements.resourceHeadlineContract = "primary-role-v1";
+    }
+    const mismatched = compareReports(legacyBaseline, current, { thresholds });
+    const mismatchedScenario = mismatched.scenarios.find((item) => item.key === "fresh-install:fresh");
+    assertEqual(mismatched.resourceContractMismatchCount, 1, "modern compare resource mismatch count");
+    assertEqual(mismatched.skippedMetricCount > 0, true, "modern compare skipped resource metric count");
+    for (const metric of [
+      "peakRssMb",
+      "peakRssMb.max",
+      "peakRssMb.p95",
+      "resourceSampleCount",
+      "resourceSampleCount.max",
+      "resourceSampleCount.p95"
+    ]) {
+      assertEqual(mismatchedScenario.metrics[metric]?.comparable, false, `${metric} skipped under mismatched contract`);
+      assertEqual(mismatchedScenario.metrics[metric]?.delta, null, `${metric} mismatched delta is null`);
+      assertEqual(mismatchedScenario.skippedMetrics.includes(metric), true, `${metric} appears in skipped metrics`);
+    }
+    assertEqual(
+      mismatchedScenario.regressions.some((regression) => /^(?:peakRssMb|cpuPercentMax|resource(?:Peak|Cpu|Sample))/.test(regression.metric)),
+      false,
+      "mismatched resource regressions are omitted"
+    );
+    assertEqual(
+      mismatchedScenario.regressions.some((regression) => regression.metric === "modelsListMs"),
+      true,
+      "mismatched resource contract preserves non-resource regression"
+    );
+    const rows = scenarioMetricRows(mismatchedScenario, { limit: Infinity });
+    const skippedRow = rows.find((row) => row.id === "peakRssMb.p95");
+    assertEqual(skippedRow?.status, "SKIPPED", "aggregate rows retain incomparable resource metrics as skipped");
+    assertEqual(skippedRow?.comparable, false, "aggregate skipped row remains incomparable");
+    assertEqual(skippedRow?.delta, null, "aggregate skipped row has no percent delta");
+    assertEqual(skippedRow?.absoluteDelta, null, "aggregate skipped row has no absolute delta");
+    assertEqual(typeof skippedRow?.baseline, "number", "aggregate skipped row retains raw baseline");
+    assertEqual(typeof skippedRow?.current, "number", "aggregate skipped row retains raw current");
+    assertEqual(rows.some((row) => row.id === "modelsListMs"), true, "aggregate rows retain non-resource metrics");
+    assertEqual(renderCompareSummary(mismatched).includes("Resource contract mismatches: 1"), true, "plain compare summary shows mismatch");
+    const rendered = renderCompareAssessment(mismatched, { color: "never", full: true }, process.env, process.stdout);
+    assertEqual(rendered.includes("resource contracts"), true, "default compare UI shows resource contract section");
+    assertEqual(rendered.includes("peakRssMb.p95"), true, "default compare UI names skipped repeated resource metric");
+
+    return {
+      id: "resource-contract-compare",
+      status: "PASS",
+      command: "compare compatible and mismatched resource contracts",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "resource-contract-compare",
+      status: "FAIL",
+      command: "compare compatible and mismatched resource contracts",
       durationMs: 0,
       message: error.message
     };
@@ -3366,9 +3550,9 @@ async function performanceBaselineCheck(tmp) {
       platform,
       target: "local-build:/tmp/openclaw",
       records: [
-        syntheticPerformanceRecord(1, { health: syntheticHealthMeasurement({ healthReadyAtMs: 1000 }), peakRssMb: 400, cpuPercentMax: 20, eventLoopDelayMs: 100, agentTurnMs: 2000 }),
-        syntheticPerformanceRecord(2, { health: syntheticHealthMeasurement({ healthReadyAtMs: 1200 }), peakRssMb: 420, cpuPercentMax: 22, eventLoopDelayMs: 110, agentTurnMs: 2200 }),
-        syntheticPerformanceRecord(3, { health: syntheticHealthMeasurement({ healthReadyAtMs: 1100 }), peakRssMb: 410, cpuPercentMax: 21, eventLoopDelayMs: 105, agentTurnMs: 2100 })
+        syntheticPerformanceRecord(1, { health: syntheticHealthMeasurement({ healthReadyAtMs: 1000 }), peakRssMb: 400, resourcePeakGatewayRssMb: 400, cpuPercentMax: 20, eventLoopDelayMs: 100, agentTurnMs: 2000 }),
+        syntheticPerformanceRecord(2, { health: syntheticHealthMeasurement({ healthReadyAtMs: 1200 }), peakRssMb: 420, resourcePeakGatewayRssMb: 420, cpuPercentMax: 22, eventLoopDelayMs: 110, agentTurnMs: 2200 }),
+        syntheticPerformanceRecord(3, { health: syntheticHealthMeasurement({ healthReadyAtMs: 1100 }), peakRssMb: 410, resourcePeakGatewayRssMb: 410, cpuPercentMax: 21, eventLoopDelayMs: 105, agentTurnMs: 2100 })
       ]
     });
     baselineReport.performance = buildPerformanceSummary(baselineReport.records, { repeat: 3 });
@@ -3420,6 +3604,9 @@ async function performanceBaselineCheck(tmp) {
       true,
       "baseline key includes target value"
     );
+    const storedAggregate = Object.values(loadedStore.entries)[0]?.aggregate;
+    assertEqual(storedAggregate?.resourceMeasurementScope, RESOURCE_MEASUREMENT_SCOPE, "baseline stores resource scope");
+    assertEqual(storedAggregate?.resourceHeadlineContract, RESOURCE_HEADLINE_CONTRACT, "baseline stores resource contract");
     const otherTargetComparison = comparePerformanceToBaseline(baselineReport, loadedStore, {
       targetPlan: { kind: "local-build", value: "/tmp/other-openclaw" }
     });
@@ -3443,12 +3630,15 @@ async function performanceBaselineCheck(tmp) {
       platform,
       target: "local-build:/tmp/openclaw",
       records: [
-        syntheticPerformanceRecord(1, { health: syntheticHealthMeasurement({ healthReadyAtMs: 1800 }), peakRssMb: 500, cpuPercentMax: 30, eventLoopDelayMs: 180, agentTurnMs: 3000 }),
-        syntheticPerformanceRecord(2, { health: syntheticHealthMeasurement({ healthReadyAtMs: 1900 }), peakRssMb: 510, cpuPercentMax: 31, eventLoopDelayMs: 190, agentTurnMs: 3100 }),
-        syntheticPerformanceRecord(3, { health: syntheticHealthMeasurement({ healthReadyAtMs: 2000 }), peakRssMb: 520, cpuPercentMax: 32, eventLoopDelayMs: 200, agentTurnMs: 3200 })
+        syntheticPerformanceRecord(1, { health: syntheticHealthMeasurement({ healthReadyAtMs: 1800 }), peakRssMb: 500, resourcePeakGatewayRssMb: 500, cpuPercentMax: 30, eventLoopDelayMs: 180, agentTurnMs: 3000 }),
+        syntheticPerformanceRecord(2, { health: syntheticHealthMeasurement({ healthReadyAtMs: 1900 }), peakRssMb: 510, resourcePeakGatewayRssMb: 510, cpuPercentMax: 31, eventLoopDelayMs: 190, agentTurnMs: 3100 }),
+        syntheticPerformanceRecord(3, { health: syntheticHealthMeasurement({ healthReadyAtMs: 2000 }), peakRssMb: 520, resourcePeakGatewayRssMb: 520, cpuPercentMax: 32, eventLoopDelayMs: 200, agentTurnMs: 3200 })
       ]
     });
     currentReport.performance = buildPerformanceSummary(currentReport.records, { repeat: 3 });
+    assertEqual(currentReport.performance.resourceMeasurementScope, RESOURCE_MEASUREMENT_SCOPE, "performance resource scope");
+    assertEqual(currentReport.performance.resourceHeadlineContract, RESOURCE_HEADLINE_CONTRACT, "performance resource contract");
+    assertEqual(currentReport.performance.groups[0].resourceHeadlineContract, RESOURCE_HEADLINE_CONTRACT, "performance group resource contract");
     assertEqual(currentReport.performance.groups[0].metrics.readinessHealthReadyMs.median, 1900, "performance median");
     assertEqual(currentReport.performance.groups[0].metrics.readinessHealthReadyMs.p95, 1990, "performance p95");
 
@@ -3464,6 +3654,92 @@ async function performanceBaselineCheck(tmp) {
     });
     assertEqual(comparison.ok, false, "baseline comparison regression");
     assertEqual(comparison.regressions.some((regression) => regression.metric === "readinessHealthReadyMs"), true, "startup regression present");
+    assertEqual(comparison.groups[0]?.resourceComparison?.compatible, true, "matching baseline resource contract compares");
+    assertEqual(comparison.groups[0]?.metricComparisons?.peakRssMb?.comparable, true, "matching baseline RSS is comparable");
+    assertEqual(typeof comparison.groups[0]?.metricComparisons?.peakRssMb?.delta, "number", "matching baseline RSS delta is numeric");
+
+    const resourceOnlyReport = syntheticPerformanceReport({
+      runId: "resource-only-regression",
+      platform,
+      target: "local-build:/tmp/openclaw",
+      records: [
+        syntheticPerformanceRecord(1, { health: syntheticHealthMeasurement({ healthReadyAtMs: 1000 }), peakRssMb: 600, resourcePeakGatewayRssMb: 600, cpuPercentMax: 40, eventLoopDelayMs: 100, agentTurnMs: 2000 }),
+        syntheticPerformanceRecord(2, { health: syntheticHealthMeasurement({ healthReadyAtMs: 1200 }), peakRssMb: 620, resourcePeakGatewayRssMb: 620, cpuPercentMax: 42, eventLoopDelayMs: 110, agentTurnMs: 2200 }),
+        syntheticPerformanceRecord(3, { health: syntheticHealthMeasurement({ healthReadyAtMs: 1100 }), peakRssMb: 610, resourcePeakGatewayRssMb: 610, cpuPercentMax: 41, eventLoopDelayMs: 105, agentTurnMs: 2100 })
+      ]
+    });
+    resourceOnlyReport.performance = buildPerformanceSummary(resourceOnlyReport.records, { repeat: 3 });
+    const compatibleResourceComparison = comparePerformanceToBaseline(resourceOnlyReport, loadedStore, {
+      targetPlan,
+      regressionThresholds: { rssRegressionPercent: 10, cpuRegressionPercent: 10 }
+    });
+    assertEqual(compatibleResourceComparison.ok, false, "matching contract resource regression blocks");
+    assertEqual(compatibleResourceComparison.regressions.some((regression) => regression.metric === "peakRssMb"), true, "matching contract RSS regression present");
+
+    const legacyStore = structuredClone(loadedStore);
+    const legacyAggregate = Object.values(legacyStore.entries)[0].aggregate;
+    legacyAggregate.resourceMeasurementScope = "harness";
+    legacyAggregate.resourceHeadlineContract = "primary-role-v1";
+    const mismatchComparison = comparePerformanceToBaseline(resourceOnlyReport, legacyStore, {
+      targetPlan,
+      regressionThresholds: { rssRegressionPercent: 10, cpuRegressionPercent: 10 }
+    });
+    assertEqual(mismatchComparison.ok, true, "mismatched resource-only baseline does not block");
+    assertEqual(mismatchComparison.resourceContractMismatchCount, 1, "baseline resource mismatch count");
+    assertEqual(mismatchComparison.skippedMetricCount, 3, "baseline skipped resource metric count");
+    assertEqual(mismatchComparison.groups[0]?.resourceComparison?.compatible, false, "baseline resource comparison incompatible");
+    for (const metric of ["peakRssMb", "resourcePeakGatewayRssMb", "cpuPercentMax"]) {
+      assertEqual(mismatchComparison.groups[0]?.metricComparisons?.[metric]?.comparable, false, `${metric} baseline comparison skipped`);
+      assertEqual(mismatchComparison.groups[0]?.metricComparisons?.[metric]?.delta, null, `${metric} baseline delta is null`);
+    }
+
+    const nonResourceRegressionReport = structuredClone(resourceOnlyReport);
+    for (const [index, record] of nonResourceRegressionReport.records.entries()) {
+      record.measurements.health = syntheticHealthMeasurement({ healthReadyAtMs: 2000 + (index * 100) });
+    }
+    nonResourceRegressionReport.performance = buildPerformanceSummary(nonResourceRegressionReport.records, { repeat: 3 });
+    const nonResourceMismatchComparison = comparePerformanceToBaseline(nonResourceRegressionReport, legacyStore, {
+      targetPlan,
+      regressionThresholds: { startupRegressionPercent: 10, rssRegressionPercent: 10, cpuRegressionPercent: 10 }
+    });
+    assertEqual(nonResourceMismatchComparison.ok, false, "resource mismatch preserves non-resource blocking regression");
+    assertEqual(nonResourceMismatchComparison.regressions.some((regression) => regression.metric === "readinessHealthReadyMs"), true, "non-resource startup regression remains active");
+
+    const mismatchGate = evaluateGate({
+      mode: "execution",
+      controls: {},
+      platform,
+      baseline: { path: baselinePath, comparison: mismatchComparison },
+      records: resourceOnlyReport.records
+    }, {
+      id: "resource-contract-gate",
+      gate: { id: "resource-contract-gate", blocking: [{ scenario: "fresh-install", state: "fresh" }] }
+    });
+    assertEqual(mismatchGate.verdict, "SHIP", "resource-only mismatch does not block gate");
+    assertEqual(mismatchGate.baseline?.resourceContractMismatchCount, 1, "gate propagates resource mismatch count");
+    assertEqual(mismatchGate.baseline?.skippedMetricCount, 3, "gate propagates skipped resource metrics");
+    assertEqual(mismatchGate.baseline?.resourceContractMismatches?.[0]?.resourceComparison?.compatible, false, "gate propagates resource mismatch detail");
+
+    const mismatchReport = {
+      ...resourceOnlyReport,
+      summary: { total: 3, statuses: { PASS: 3 } },
+      baseline: { path: baselinePath, comparison: mismatchComparison },
+      gate: mismatchGate
+    };
+    const structuredSummary = renderReportSummary(mismatchReport, { structured: true });
+    assertEqual(structuredSummary.performance?.resourceMeasurementScope, RESOURCE_MEASUREMENT_SCOPE, "structured report resource scope");
+    assertEqual(structuredSummary.performance?.resourceHeadlineContract, RESOURCE_HEADLINE_CONTRACT, "structured report resource contract");
+    assertEqual(structuredSummary.performance?.resourceContractMismatchCount, 1, "structured report resource mismatch count");
+    const markdown = renderMarkdownReport(mismatchReport);
+    assertEqual(markdown.includes("Resource measurement scope: product"), true, "Markdown report resource scope");
+    assertEqual(markdown.includes("Resource contract mismatches: 1"), true, "Markdown report resource mismatch");
+    const performanceReceipt = summarizePerformanceReceipt(resourceOnlyReport.performance, mismatchReport.baseline);
+    assertEqual(performanceReceipt.resourceHeadlineContract, RESOURCE_HEADLINE_CONTRACT, "JSON receipt resource contract");
+    assertEqual(performanceReceipt.resourceContractMismatchCount, 1, "JSON receipt resource mismatch count");
+    assertEqual(performanceReceipt.skippedMetricCount, 3, "JSON receipt skipped resource metric count");
+    const receipt = renderRunReceipt({ report: mismatchReport }, { color: "never" }, process.env, process.stdout);
+    assertEqual(receipt.includes("resource contract"), true, "human receipt resource contract section");
+    assertEqual(receipt.includes("1 baseline contract mismatch"), true, "human receipt resource mismatch count");
     const regressedReview = reviewBaselineUpdate({
       ...currentReport,
       baseline: { path: baselinePath, comparison }
@@ -3528,7 +3804,11 @@ function syntheticPerformanceRecord(index, measurements) {
     state: { id: "fresh", title: "Fresh" },
     repeat: { index, total: 3 },
     envName: `kova-fresh-install-r${index}`,
-    measurements,
+    measurements: {
+      resourceMeasurementScope: RESOURCE_MEASUREMENT_SCOPE,
+      resourceHeadlineContract: RESOURCE_HEADLINE_CONTRACT,
+      ...measurements
+    },
     phases: []
   };
 }
@@ -7886,7 +8166,7 @@ exit 2
       },
       "kova-self-check",
       artifactDir,
-      "agent-turn",
+      { id: "agent-turn", measurementScope: "product" },
       0
     );
 
@@ -7968,7 +8248,7 @@ exit 2
       context,
       "kova-self-check",
       artifactDir,
-      "source",
+      { id: "source", measurementScope: "product" },
       0
     );
     const serviceStartResult = await runScenarioCommand(
@@ -7976,7 +8256,7 @@ exit 2
       context,
       "kova-self-check",
       artifactDir,
-      "restart",
+      { id: "restart", measurementScope: "product" },
       1
     );
     const log = await readFile(commandLog, "utf8");
@@ -9756,6 +10036,8 @@ function syntheticCompareReport({ runId, target, timelineAvailable, preProviderM
       state: { id: "mock-openai-provider" },
       status: "PASS",
       measurements: {
+        resourceMeasurementScope: RESOURCE_MEASUREMENT_SCOPE,
+        resourceHeadlineContract: RESOURCE_HEADLINE_CONTRACT,
         openclawTimelineAvailable: timelineAvailable,
         openclawTimelineEventCount: timelineAvailable ? 20 : 0,
         openclawSlowestSpanName: timelineAvailable ? "agent.prepare" : null,
@@ -13268,6 +13550,31 @@ function scenarioHealthScopeValidationCheck() {
       rejectedInvalid = /healthScope must be one of/.test(error.message);
     }
     assertEqual(rejectedInvalid, true, "invalid healthScope rejected");
+
+    let rejectedMeasurementScope = false;
+    try {
+      validateScenarioShape({
+        id: "invalid-measurement-scope",
+        surface: "fresh-install",
+        title: "Invalid Measurement Scope",
+        objective: "Scenario phase with an invalid measurement scope.",
+        tags: ["fresh-user"],
+        proves: ["baseline"],
+        thresholds: {},
+        phases: [{
+          id: "start",
+          title: "Start",
+          intent: "Start gateway.",
+          healthScope: "readiness",
+          measurementScope: "setup",
+          commands: ["ocm start {env} {startSelector} --json"],
+          evidence: ["start"]
+        }]
+      }, "invalid-measurement-scope.json");
+    } catch (error) {
+      rejectedMeasurementScope = /measurementScope must be one of/.test(error.message);
+    }
+    assertEqual(rejectedMeasurementScope, true, "invalid measurementScope rejected");
 
     return {
       id: "scenario-health-scope-validation",

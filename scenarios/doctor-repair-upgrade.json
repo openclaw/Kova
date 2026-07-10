@@ -33,6 +33,7 @@
   "phases": [
     {
       "id": "clone",
+      "measurementScope": "harness",
       "title": "Clone Existing Env",
       "intent": "Clone a durable existing env into a disposable Kova env before applying legacy config or upgrade actions.",
       "commands": [
@@ -47,6 +48,7 @@
     },
     {
       "id": "upgrade",
+      "measurementScope": "product",
       "title": "Upgrade To Target",
       "intent": "Run the real target upgrade path through OCM after the legacy config state has been applied.",
       "commands": [
@@ -62,6 +64,7 @@
     },
     {
       "id": "doctor-repair",
+      "measurementScope": "product",
       "title": "Doctor Repair",
       "intent": "Run Doctor repair and then run non-interactive Doctor again to prove repairable config validation errors are gone.",
       "commands": [
@@ -77,6 +80,7 @@
     },
     {
       "id": "post-repair-health",
+      "measurementScope": "product",
       "title": "Post-Repair Health",
       "intent": "Verify the repaired env still supports core status, plugin discovery, model discovery, service health, and clean gateway logs.",
       "commands": [

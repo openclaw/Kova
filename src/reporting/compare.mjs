@@ -133,6 +133,16 @@ const COMPARE_METRICS = [
   "providerModelTimingMs"
 ];
 
+const RESOURCE_COMPARISON_METRICS = new Set([
+  "peakRssMb",
+  "cpuPercentMax",
+  "resourceSampleCount",
+  "resourcePeakCommandTreeRssMb",
+  "resourcePeakGatewayRssMb",
+  "resourcePeakTrackedRssMb",
+  "resourceCpuPercentMaxTracked"
+]);
+
 export function compareReports(baseline, current, options = {}) {
   const thresholds = resolveThresholds(options.thresholds);
   const baselineSummary = buildReportSummary(baseline);
@@ -140,6 +150,8 @@ export function compareReports(baseline, current, options = {}) {
   const baselineRecords = groupRecords(baseline.records ?? []);
   const currentRecords = groupRecords(current.records ?? []);
   const scenarios = [];
+  let skippedMetricCount = 0;
+  let resourceContractMismatchCount = 0;
 
   for (const [key, currentGroup] of currentRecords.entries()) {
     const baselineGroup = baselineRecords.get(key);
@@ -156,6 +168,12 @@ export function compareReports(baseline, current, options = {}) {
         currentStatuses: statusCounts(currentGroup),
         baselineSampleCount: 0,
         currentSampleCount: currentGroup.length,
+        resourceComparison: {
+          baseline: null,
+          current: resourceIdentity(current, currentGroup),
+          compatible: null
+        },
+        skippedMetrics: [],
         regressions: [],
         metrics: metricDeltas([], currentGroup, thresholds)
       });
@@ -163,6 +181,10 @@ export function compareReports(baseline, current, options = {}) {
     }
 
     const regressions = [];
+    const resourceComparison = compareResourceIdentity(
+      resourceIdentity(baseline, baselineGroup),
+      resourceIdentity(current, currentGroup)
+    );
     const baselineStatus = groupWorstStatus(baselineGroup);
     const currentStatus = groupWorstStatus(currentGroup);
     if (statusRank(currentStatus) > statusRank(baselineStatus)) {
@@ -175,7 +197,20 @@ export function compareReports(baseline, current, options = {}) {
       });
     }
 
-    regressions.push(...metricRegressions(baselineGroup, currentGroup, thresholds));
+    regressions.push(...metricRegressions(baselineGroup, currentGroup, thresholds, {
+      resourceComparable: resourceComparison.compatible
+    }));
+
+    const metrics = metricDeltas(baselineGroup, currentGroup, thresholds, {
+      resourceComparable: resourceComparison.compatible
+    });
+    const skippedMetrics = Object.entries(metrics)
+      .filter(([, metric]) => metric.comparable === false)
+      .map(([metric]) => metric);
+    if (!resourceComparison.compatible) {
+      resourceContractMismatchCount += 1;
+      skippedMetricCount += skippedMetrics.length;
+    }
 
     scenarios.push({
       key,
@@ -188,8 +223,10 @@ export function compareReports(baseline, current, options = {}) {
       currentStatuses: statusCounts(currentGroup),
       baselineSampleCount: baselineGroup.length,
       currentSampleCount: currentGroup.length,
+      resourceComparison,
+      skippedMetrics,
       regressions,
-      metrics: metricDeltas(baselineGroup, currentGroup, thresholds)
+      metrics
     });
   }
 
@@ -209,6 +246,12 @@ export function compareReports(baseline, current, options = {}) {
       currentStatuses: {},
       baselineSampleCount: baselineGroup.length,
       currentSampleCount: 0,
+      resourceComparison: {
+        baseline: resourceIdentity(baseline, baselineGroup),
+        current: null,
+        compatible: null
+      },
+      skippedMetrics: [],
       regressions: [{
         kind: "coverage",
         metric: "scenario",
@@ -237,6 +280,8 @@ export function compareReports(baseline, current, options = {}) {
     ok: regressionCount === 0 && sourceReleaseBlockingCount === 0,
     regressionCount,
     scenarioRegressionCount,
+    skippedMetricCount,
+    resourceContractMismatchCount,
     statusChanges,
     findingChanges,
     improvementCount: statusChanges.improvements.length + findingChanges.resolved.length,
@@ -254,6 +299,7 @@ export function renderCompareFixerSummary(comparison) {
     ""
   ];
 
+  appendResourceComparisonSummary(lines, comparison);
   if (comparison.ok) {
     lines.push("No blocking regressions were detected.");
     return lines.join("\n");
@@ -303,6 +349,8 @@ export function renderCompareSummary(comparison) {
     `Result: ${comparison.ok ? "OK" : "REGRESSED"}`,
     `Regressions: ${comparison.regressionCount}`,
     `Improvements: ${comparison.improvementCount ?? 0}`,
+    `Resource contract mismatches: ${comparison.resourceContractMismatchCount ?? 0}`,
+    `Skipped resource metrics: ${comparison.skippedMetricCount ?? 0}`,
     "",
     "Status changes:"
   ];
@@ -325,6 +373,15 @@ export function renderCompareSummary(comparison) {
     }
     for (const finding of comparison.findingChanges.resolved.slice(0, 8)) {
       lines.push(`- RESOLVED ${finding.severity.toUpperCase()} ${finding.scenario ?? "run"}${finding.state ? `/${finding.state}` : ""}: ${finding.summary}`);
+    }
+  }
+
+  if ((comparison.resourceContractMismatchCount ?? 0) > 0) {
+    lines.push("");
+    lines.push("Resource comparisons:");
+    for (const scenario of resourceContractMismatches(comparison)) {
+      lines.push(`- ${scenario.key}: ${formatResourceIdentity(scenario.resourceComparison.baseline)} -> ${formatResourceIdentity(scenario.resourceComparison.current)}`);
+      lines.push(`  skipped: ${scenario.skippedMetrics.join(", ") || "none"}`);
     }
   }
 
@@ -409,7 +466,101 @@ function reportSummary(report, summary) {
     decision: summary.decision,
     findingCount: summary.findings.length,
     groupCount: summary.groups.length,
-    sampleCount: summary.samples.length
+    sampleCount: summary.samples.length,
+    resourceMeasurementScope: report.performance?.resourceMeasurementScope ?? null,
+    resourceHeadlineContract: report.performance?.resourceHeadlineContract ?? null
+  };
+}
+
+function appendResourceComparisonSummary(lines, comparison) {
+  const mismatches = resourceContractMismatches(comparison);
+  if (mismatches.length === 0) {
+    return;
+  }
+  lines.push(`Resource contract mismatches: ${comparison.resourceContractMismatchCount ?? mismatches.length}`);
+  lines.push(`Skipped resource metrics: ${comparison.skippedMetricCount ?? 0}`);
+  for (const scenario of mismatches.slice(0, 6)) {
+    lines.push(`- ${scenario.key}: ${formatResourceIdentity(scenario.resourceComparison.baseline)} -> ${formatResourceIdentity(scenario.resourceComparison.current)}; skipped ${scenario.skippedMetrics.join(", ") || "none"}`);
+  }
+  if (mismatches.length > 6) {
+    lines.push(`- ${mismatches.length - 6} more resource contract mismatches`);
+  }
+  lines.push("");
+}
+
+function resourceContractMismatches(comparison) {
+  return (comparison.scenarios ?? []).filter((scenario) => scenario.resourceComparison?.compatible === false);
+}
+
+function formatResourceIdentity(identity) {
+  if (!identity) {
+    return "missing";
+  }
+  const value = `${identity.measurementScope ?? "unknown-scope"}/${identity.headlineContract ?? "unknown-contract"}`;
+  return identity.mixed ? `${value} (mixed)` : value;
+}
+
+function resourceIdentity(report, records = []) {
+  const variants = records.length > 0
+    ? records.map((record) => resourceIdentityForRecord(report, record))
+    : [resourceIdentityForRecord(report, null)];
+  const unique = new Map(variants.map((identity) => [resourceIdentityKey(identity), identity]));
+  if (unique.size === 1) {
+    return variants[0];
+  }
+  const scopes = new Set(variants.map((identity) => identity.measurementScope));
+  const contracts = new Set(variants.map((identity) => identity.headlineContract));
+  return {
+    measurementScope: scopes.size === 1 ? variants[0].measurementScope : null,
+    headlineContract: contracts.size === 1 ? variants[0].headlineContract : null,
+    mixed: true,
+    variants: [...unique.values()]
+  };
+}
+
+function resourceIdentityForRecord(report, record) {
+  const state = record?.state?.id ?? null;
+  const surface = record?.surface ?? null;
+  const group = (report.performance?.groups ?? []).find((candidate) =>
+    candidate.scenario === record?.scenario &&
+    (candidate.state ?? null) === state &&
+    (candidate.surface ?? null) === surface
+  );
+  return {
+    measurementScope:
+      record?.measurements?.resourceMeasurementScope ??
+      group?.resourceMeasurementScope ??
+      report.performance?.resourceMeasurementScope ??
+      null,
+    headlineContract:
+      record?.measurements?.resourceHeadlineContract ??
+      group?.resourceHeadlineContract ??
+      report.performance?.resourceHeadlineContract ??
+      null
+  };
+}
+
+function resourceIdentityKey(identity) {
+  return `${identity.measurementScope ?? "<missing>"}\u0000${identity.headlineContract ?? "<missing>"}`;
+}
+
+function compareResourceIdentity(baseline, current) {
+  const scopeCompatible =
+    !baseline.mixed &&
+    !current.mixed &&
+    typeof baseline.measurementScope === "string" &&
+    baseline.measurementScope === current.measurementScope;
+  const headlineContractCompatible =
+    !baseline.mixed &&
+    !current.mixed &&
+    typeof baseline.headlineContract === "string" &&
+    baseline.headlineContract === current.headlineContract;
+  return {
+    baseline,
+    current,
+    scopeCompatible,
+    headlineContractCompatible,
+    compatible: scopeCompatible && headlineContractCompatible
   };
 }
 
@@ -633,11 +784,14 @@ function statusRank(status) {
   return ranks[status] ?? 3;
 }
 
-function metricRegressions(baselineRecords, currentRecords, thresholds) {
+function metricRegressions(baselineRecords, currentRecords, thresholds, options = {}) {
   const regressions = [];
   const metricIds = compareMetricIdsForGroups(baselineRecords, currentRecords);
   for (const [metric, tolerance] of Object.entries(thresholds)) {
     if (!metricIds.includes(metric)) {
+      continue;
+    }
+    if (options.resourceComparable === false && isResourceComparisonMetric(metric)) {
       continue;
     }
     const baseline = summarizeMetricRecords(baselineRecords, metric);
@@ -685,20 +839,21 @@ function addIncreaseRegression(regressions, baseline, current, metric, tolerance
   });
 }
 
-function metricDeltas(baselineRecords, currentRecords, thresholds = {}) {
+function metricDeltas(baselineRecords, currentRecords, thresholds = {}, options = {}) {
   const metrics = {};
   for (const metric of compareMetricIdsForGroups(baselineRecords, currentRecords)) {
     const baseline = summarizeMetricRecords(baselineRecords, metric);
     const current = summarizeMetricRecords(currentRecords, metric);
     const tolerance = typeof thresholds[metric] === "number" ? thresholds[metric] : null;
+    const comparable = options.resourceComparable !== false || !isResourceComparisonMetric(metric);
     const repeatedMaxOnly = tolerance !== null && usesRepeatedMaxOnly(baseline, current, tolerance);
     if (!repeatedMaxOnly) {
-      addMetricDelta(metrics, metric, baseline, current, "median", tolerance);
+      addMetricDelta(metrics, metric, baseline, current, "median", tolerance, comparable);
     }
     if (baseline.count > 1 || current.count > 1) {
-      addMetricDelta(metrics, `${metric}.max`, baseline, current, "max", tolerance);
+      addMetricDelta(metrics, `${metric}.max`, baseline, current, "max", tolerance, comparable);
       if (!repeatedMaxOnly && (baseline.p95 !== null || current.p95 !== null)) {
-        addMetricDelta(metrics, `${metric}.p95`, baseline, current, "p95", tolerance);
+        addMetricDelta(metrics, `${metric}.p95`, baseline, current, "p95", tolerance, comparable);
       }
     }
   }
@@ -732,18 +887,23 @@ function metricSeriesEquivalent(records, leftMetric, rightMetric) {
   return pairs.length > 0 && pairs.every(([left, right]) => left === right);
 }
 
-function addMetricDelta(metrics, id, baseline, current, stat, tolerance = null) {
+function addMetricDelta(metrics, id, baseline, current, stat, tolerance = null, comparable = true) {
   const baselineValue = baseline?.[stat] ?? null;
   const currentValue = current?.[stat] ?? null;
   metrics[id] = {
     stat,
     baseline: baselineValue,
     current: currentValue,
-    delta: typeof baselineValue === "number" && typeof currentValue === "number" ? currentValue - baselineValue : null,
+    comparable,
+    delta: comparable && typeof baselineValue === "number" && typeof currentValue === "number" ? currentValue - baselineValue : null,
     tolerance,
     baselineStats: compactMetricStats(baseline),
     currentStats: compactMetricStats(current)
   };
+}
+
+function isResourceComparisonMetric(metric) {
+  return RESOURCE_COMPARISON_METRICS.has(String(metric).replace(/\.(?:median|max|p95)$/, ""));
 }
 
 function summarizeMetricRecords(records = [], metric) {

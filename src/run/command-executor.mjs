@@ -16,12 +16,13 @@ import { assertNetworkFrontageCommandSafe, maybeStartNetworkFrontage, networkFro
 import { assertSafeScenarioCommand } from "../safety.mjs";
 import { safeSegment } from "./phase-commands.mjs";
 
-export async function runScenarioCommand(command, context, envName, artifactDir, phaseId, commandIndex, authPolicy = null) {
+export async function runScenarioCommand(command, context, envName, artifactDir, phase, commandIndex, authPolicy = null) {
   assertSafeScenarioCommand(command, context, envName);
-  const measurementScope = measurementScopeForPhase({ id: phaseId, commands: [command] });
+  const phaseId = phase.id;
+  const measurementScope = measurementScopeForPhase(phase);
   if (measurementScope === "product") {
     assertNetworkFrontageCommandSafe(command, context);
-    const preflight = await ensureNetworkFrontageForProductCommand(command, context, envName, artifactDir, phaseId);
+    const preflight = await ensureNetworkFrontageForProductCommand(command, context, envName, artifactDir, phase);
     if (preflight) {
       return preflight;
     }
@@ -53,7 +54,7 @@ export async function runScenarioCommand(command, context, envName, artifactDir,
     }
   });
   normalizeOptionalCommandResult(result);
-  tagCommandResult(result, phaseId);
+  tagCommandResult(result, phase);
   if (result.status === 0) {
     try {
       const allocation = await maybeStartNetworkFrontage(context, envName, artifactDir);
@@ -89,7 +90,8 @@ export async function runScenarioCommand(command, context, envName, artifactDir,
   return result;
 }
 
-async function ensureNetworkFrontageForProductCommand(command, context, envName, artifactDir, phaseId) {
+async function ensureNetworkFrontageForProductCommand(command, context, envName, artifactDir, phase) {
+  const phaseId = phase.id;
   if (!context.networkFrontage?.enabled || isNetworkFrontageBootstrapCommand(command, phaseId)) {
     return null;
   }
@@ -98,9 +100,9 @@ async function ensureNetworkFrontageForProductCommand(command, context, envName,
     if (!allocation || allocation.status === "active") {
       return null;
     }
-    return networkFrontageBlockedResult(command, allocation, `network frontage is ${allocation.status ?? "unavailable"}: ${allocation.reason ?? allocation.blocker ?? "not active"}`, phaseId);
+    return networkFrontageBlockedResult(command, allocation, `network frontage is ${allocation.status ?? "unavailable"}: ${allocation.reason ?? allocation.blocker ?? "not active"}`, phase);
   } catch (error) {
-    return networkFrontageBlockedResult(command, context.networkFrontageAllocation ?? null, `network frontage blocked: ${error.message}`, phaseId);
+    return networkFrontageBlockedResult(command, context.networkFrontageAllocation ?? null, `network frontage blocked: ${error.message}`, phase);
   }
 }
 
@@ -118,7 +120,7 @@ function isNetworkFrontageBootstrapCommand(command, phaseId) {
   return /\bocm\s+start\b/.test(text) && !/(?:^|\s)--no-service(?:\s|$)/.test(text);
 }
 
-function networkFrontageBlockedResult(command, allocation, stderr, phaseId) {
+function networkFrontageBlockedResult(command, allocation, stderr, phase) {
   const startedAtEpochMs = Date.now();
   const result = {
     command,
@@ -135,7 +137,7 @@ function networkFrontageBlockedResult(command, allocation, stderr, phaseId) {
     harnessBlocker: true,
     networkFrontage: allocation ?? null
   };
-  tagCommandResult(result, phaseId);
+  tagCommandResult(result, phase);
   attachCommandResultInterpretation(result);
   return result;
 }

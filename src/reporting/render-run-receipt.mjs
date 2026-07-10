@@ -19,6 +19,9 @@ export function renderRunReceipt({ report, reportPath, jsonPath, summaryPath }, 
   sections.push("");
   sections.push(renderKpiStrip(report, ui));
 
+  const resourceContract = renderResourceContract(report, ui);
+  if (resourceContract) { sections.push(""); sections.push(resourceContract); }
+
   sections.push("");
   sections.push(renderArtifacts({ reportPath, jsonPath, summaryPath }, ui));
 
@@ -36,6 +39,9 @@ export function renderMatrixRunReceipt({ report, reportPath, jsonPath, summaryPa
   sections.push(renderBand(report, ui, { kind: "matrix" }));
   sections.push("");
   sections.push(renderKpiStrip(report, ui, { matrix: true }));
+
+  const resourceContract = renderResourceContract(report, ui);
+  if (resourceContract) { sections.push(""); sections.push(resourceContract); }
 
   const gate = renderGate(report.gate, ui);
   if (gate) { sections.push(""); sections.push(gate); }
@@ -150,6 +156,25 @@ function renderGate(gate, ui) {
     gate.missingRequiredCount   ? `${gate.missingRequiredCount} missing required` : null,
   ].filter(Boolean).join(`  ${g.sep}  `);
   if (counts) lines.push(`  ${c.dim("Findings")}   ${counts}`);
+  return lines.join("\n");
+}
+
+function renderResourceContract(report, ui) {
+  const performance = report.performance ?? {};
+  const scope = performance.resourceMeasurementScope ?? null;
+  const contract = performance.resourceHeadlineContract ?? null;
+  if (!scope && !contract) return null;
+
+  const comparison = report.baseline?.comparison ?? report.gate?.baseline ?? null;
+  const mismatches = comparison?.resourceContractMismatchCount ?? 0;
+  const skipped = comparison?.skippedMetricCount ?? 0;
+  const { c, g } = ui;
+  const lines = [ruleSection("resource contract", ui.width, ui)];
+  lines.push(`  ${c.dim("Scope")}      ${scope ?? "unknown"}`);
+  lines.push(`  ${c.dim("Headline")}   ${contract ?? "unknown"}`);
+  if (mismatches > 0) {
+    lines.push(`  ${c.warn(g.warn)} ${mismatches} baseline contract mismatch${mismatches === 1 ? "" : "es"}; ${skipped} resource metric${skipped === 1 ? "" : "s"} skipped`);
+  }
   return lines.join("\n");
 }
 

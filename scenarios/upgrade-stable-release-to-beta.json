@@ -31,6 +31,7 @@
   "phases": [
     {
       "id": "start",
+      "measurementScope": "harness",
       "title": "Start Stable Release Env",
       "intent": "Create a disposable env through the real stable release track before switching to beta.",
       "commands": [
@@ -46,6 +47,7 @@
     },
     {
       "id": "upgrade",
+      "measurementScope": "product",
       "title": "Upgrade To Beta",
       "intent": "Run the real OpenClaw upgrade path to the beta release track through OCM.",
       "commands": [
@@ -61,6 +63,7 @@
     },
     {
       "id": "post-upgrade",
+      "measurementScope": "product",
       "title": "Post-Beta Upgrade Checks",
       "intent": "Verify OpenClaw is usable after the beta release upgrade and capture plugin/runtime dependency evidence.",
       "commands": [

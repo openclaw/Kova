@@ -2,10 +2,11 @@ import { join } from "node:path";
 import { runCommand } from "../commands.mjs";
 import { collectorArtifactDirs } from "../collectors/artifacts.mjs";
 import { tagCommandResult } from "../measurement-contract.mjs";
-import { targetSetupCommand } from "./phase-plan.mjs";
+import { buildTargetSetupPhase } from "./phase-plan.mjs";
 
 export async function executeTargetSetup(context, envName, artifactDir) {
-  if (context.targetPlan.kind !== "local-build") {
+  const phase = buildTargetSetupPhase(context, envName);
+  if (!phase) {
     return [];
   }
   if (context.targetSetup?.completed) {
@@ -13,7 +14,7 @@ export async function executeTargetSetup(context, envName, artifactDir) {
   }
 
   const results = [
-    tagCommandResult(await runCommand(targetSetupCommand(context.targetPlan), {
+    tagCommandResult(await runCommand(phase.commands[0], {
       timeoutMs: context.timeoutMs,
       env: { KOVA_ENV_NAME: envName },
       resourceSample: context.resourceSampling === false ? null : {
@@ -22,7 +23,7 @@ export async function executeTargetSetup(context, envName, artifactDir) {
         processRoles: context.processRoles ?? [],
         artifactPath: join(collectorArtifactDirs(artifactDir).resourceSamples, "target-setup-1.jsonl")
       }
-    }), "target-setup")
+    }), phase)
   ];
   if (results.every((result) => result.status === 0) && context.targetSetup) {
     context.targetSetup.completed = true;

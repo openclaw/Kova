@@ -30,6 +30,7 @@
   "phases": [
     {
       "id": "clone",
+      "measurementScope": "harness",
       "title": "Clone Existing Env",
       "intent": "Clone a durable existing env into a disposable Kova env before any local-build upgrade action.",
       "commands": [
@@ -45,6 +46,7 @@
     },
     {
       "id": "upgrade",
+      "measurementScope": "product",
       "title": "Upgrade Clone To Local Build",
       "intent": "Run the real OpenClaw upgrade path against the cloned user state using the release-shaped local build runtime.",
       "commands": [
@@ -60,6 +62,7 @@
     },
     {
       "id": "post-upgrade",
+      "measurementScope": "product",
       "title": "Post-Upgrade Clone Checks",
       "intent": "Verify cloned user state survives local-build upgrade, including plugin index migration and gateway readiness.",
       "commands": [

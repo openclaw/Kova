@@ -64,7 +64,7 @@ export function renderMarkdownReport(report) {
   }
 
   lines.push(...formatFindingsSection(summary.findings));
-  lines.push(...formatPerformanceSummaryTable(summary.groups));
+  lines.push(...formatPerformanceSummaryTable(summary.groups, summary.performance));
   lines.push(...formatSampleSummaryTable(summary.samples));
   lines.push(...formatResourceRoleSection(report.records));
   lines.push(...formatChannelWorkflowResourceSection(report.records));
@@ -181,13 +181,23 @@ function formatChannelCapabilityProofSection(proof) {
   return lines;
 }
 
-function formatPerformanceSummaryTable(groups = []) {
+function formatPerformanceSummaryTable(groups = [], performance = null) {
   const lines = ["## Performance Summary", ""];
+  lines.push(`- Resource measurement scope: ${performance?.resourceMeasurementScope ?? "unknown"}`);
+  lines.push(`- Resource headline contract: \`${performance?.resourceHeadlineContract ?? "unknown"}\``);
   if (groups.length === 0) {
     lines.push("- No aggregate performance groups were recorded.");
     lines.push("");
     return lines;
   }
+  if ((performance?.resourceContractMismatchCount ?? 0) > 0) {
+    lines.push(`- Resource contract mismatches: ${performance.resourceContractMismatchCount}`);
+    lines.push(`- Skipped resource metrics: ${performance.skippedMetricCount ?? 0}`);
+    for (const mismatch of performance.resourceContractMismatches?.slice(0, 4) ?? []) {
+      lines.push(`- Resource baseline skipped: ${mismatch.scenario}/${mismatch.state ?? "none"} ${formatResourceComparison(mismatch.resourceComparison)}`);
+    }
+  }
+  lines.push("");
   lines.push("| Scenario | Samples | Status | Health Ready | Gateway RSS | Tracked RSS | CPU | Cold Turn | Warm Turn | Cold Pre-Provider |");
   lines.push("|---|---:|---|---:|---:|---:|---:|---:|---:|---:|");
   for (const group of groups.slice(0, 12)) {
@@ -418,6 +428,12 @@ function statusCountsText(statuses = {}) {
   return Object.entries(statuses).map(([status, count]) => `${status}:${count}`).join(", ") || "unknown";
 }
 
+function formatResourceComparison(comparison = {}) {
+  const baseline = `${comparison.baselineMeasurementScope ?? "unknown-scope"}/${comparison.baselineHeadlineContract ?? "unknown-contract"}`;
+  const current = `${comparison.currentMeasurementScope ?? "unknown-scope"}/${comparison.currentHeadlineContract ?? "unknown-contract"}`;
+  return `${baseline} -> ${current}`;
+}
+
 function tableCell(value) {
   return String(value ?? "unknown").replaceAll("|", "\\|").replace(/\s+/g, " ").trim();
 }
@@ -429,6 +445,11 @@ function formatResourceRoleSection(records = []) {
   }
 
   const lines = ["## Resource Roles", ""];
+  const identity = records.find((record) => record.measurements?.resourceHeadlineContract)?.measurements;
+  if (identity) {
+    lines.push(`- Measurement scope: ${identity.resourceMeasurementScope ?? "unknown"}`);
+    lines.push(`- Headline contract: \`${identity.resourceHeadlineContract}\``);
+  }
   for (const role of roles) {
     lines.push(`- ${role.role}: RSS ${role.peakRssMb ?? "unknown"} MB; CPU ${role.maxCpuPercent ?? "unknown"}%; scenario ${role.scenario}${role.state ? `/${role.state}` : ""}`);
   }
@@ -1035,6 +1056,8 @@ function summarizeReportGroups(report, samples) {
       sampleCount: group.sampleCount,
       statuses: group.statuses ?? {},
       resourceInterpretation: group.resourceInterpretation ?? null,
+      resourceMeasurementScope: group.resourceMeasurementScope ?? report.performance?.resourceMeasurementScope ?? null,
+      resourceHeadlineContract: group.resourceHeadlineContract ?? report.performance?.resourceHeadlineContract ?? null,
       metrics: compactGroupMetrics(group.metrics)
     }));
   }
@@ -1050,6 +1073,8 @@ function summarizeReportGroups(report, samples) {
       sampleCount: 0,
       statuses: {},
       resourceInterpretation: null,
+      resourceMeasurementScope: sample.measurements?.resources?.resourceMeasurementScope ?? null,
+      resourceHeadlineContract: sample.measurements?.resources?.resourceHeadlineContract ?? null,
       metrics: {}
     };
     group.sampleCount += 1;
@@ -1179,6 +1204,9 @@ function summarizeSampleMetrics(measurements) {
     resources: {
       peakRssMb: resourceHeadlineValue(measurements),
       cpuPercentMax: measurements.cpuPercentMax ?? null,
+      resourceMeasurementScope: measurements.resourceMeasurementScope ?? null,
+      resourceHeadlineContract: measurements.resourceHeadlineContract ?? null,
+      measurementScopeSummary: measurements.measurementScopeSummary ?? null,
       primaryRole: measurements.resourcePrimaryRole ?? null,
       gateKind: measurements.resourceGateKind ?? null,
       sampleCount: measurements.resourceSampleCount ?? null,
@@ -1301,12 +1329,17 @@ function summarizePerformance(performance, baseline) {
   }
   return {
     schemaVersion: performance.schemaVersion,
+    resourceMeasurementScope: performance.resourceMeasurementScope ?? null,
+    resourceHeadlineContract: performance.resourceHeadlineContract ?? null,
     repeat: performance.repeat ?? null,
     groupCount: performance.groupCount ?? 0,
     unstableGroupCount: performance.unstableGroupCount ?? 0,
     profiledRunCount: performance.profiledRunCount ?? 0,
     baselineRegressionCount: baseline?.comparison?.regressionCount ?? null,
     missingBaselineCount: baseline?.comparison?.missingBaselineCount ?? null,
+    resourceContractMismatchCount: baseline?.comparison?.resourceContractMismatchCount ?? null,
+    skippedMetricCount: baseline?.comparison?.skippedMetricCount ?? null,
+    resourceContractMismatches: baseline?.comparison?.resourceContractMismatches?.slice(0, 10) ?? [],
     baselineReviewOk: baseline?.review?.ok ?? null,
     baselineReviewBlockerCount: baseline?.review?.blockerCount ?? null,
     savedBaselinePath: baseline?.saved?.path ?? null,
@@ -1542,6 +1575,9 @@ function quoteCliValue(value) {
 
 function briefEvidence(measurements, violations) {
   const items = [];
+  if (measurements.resourceMeasurementScope || measurements.resourceHeadlineContract) {
+    items.push(`resourceScope: ${measurements.resourceMeasurementScope ?? "unknown"}; resourceContract: ${measurements.resourceHeadlineContract ?? "unknown"}`);
+  }
   const readiness = measurements.health?.readiness ?? null;
   if (readiness?.healthReadyAtMs !== null && readiness?.healthReadyAtMs !== undefined) {
     items.push(`readinessHealthReadyMs: ${readiness.healthReadyAtMs}`);
@@ -1695,9 +1731,9 @@ function pushMeasurementBrief(lines, measurements, { compact }) {
     lines.push(`- health: n/a${readinessReason ? ` (${readinessReason})` : ""}`);
   }
   if (noProcessSamples && readinessNotApplicable) {
-    lines.push(`- resources: n/a (${readinessReason ?? "no gateway process expected"})`);
+    lines.push(`- resources: scope ${measurements.resourceMeasurementScope ?? "unknown"}; contract ${measurements.resourceHeadlineContract ?? "unknown"}; n/a (${readinessReason ?? "no gateway process expected"})`);
   } else {
-    lines.push(`- resources: ${resourceHeadlineText(measurements)} ${valueMb(resourceHeadlineValue(measurements))}; tracked total ${valueMb(measurements.resourcePeakTrackedRssMb)}; max CPU ${valuePercent(measurements.cpuPercentMax)}; samples ${measurements.resourceSampleCount ?? "unknown"}; roles ${rolePeakText(measurements)}`);
+    lines.push(`- resources: scope ${measurements.resourceMeasurementScope ?? "unknown"}; contract ${measurements.resourceHeadlineContract ?? "unknown"}; ${resourceHeadlineText(measurements)} ${valueMb(resourceHeadlineValue(measurements))}; tracked total ${valueMb(measurements.resourcePeakTrackedRssMb)}; max CPU ${valuePercent(measurements.cpuPercentMax)}; samples ${measurements.resourceSampleCount ?? "unknown"}; roles ${rolePeakText(measurements)}`);
   }
   if (measurements.channelWorkflowResources?.available) {
     lines.push(`- channel workflow resources: ${formatChannelWorkflowResourceRows(measurements.channelWorkflowResourceTopByGatewayRss ?? [])}`);
@@ -1875,6 +1911,11 @@ function formatGateSection(gate) {
     lines.push("");
     lines.push(`- Regressions: ${gate.baseline.regressionCount}`);
     lines.push(`- Missing baselines: ${gate.baseline.missingBaselineCount}`);
+    lines.push(`- Resource contract mismatches: ${gate.baseline.resourceContractMismatchCount ?? 0}`);
+    lines.push(`- Skipped resource metrics: ${gate.baseline.skippedMetricCount ?? 0}`);
+    for (const group of (gate.baseline.resourceContractMismatches ?? []).slice(0, 4)) {
+      lines.push(`- Resource baseline skipped: ${group.scenario}/${group.state ?? "none"} ${formatResourceComparison(group.resourceComparison)}`);
+    }
     if (gate.baseline.regressedGroups?.length > 0) {
       for (const group of gate.baseline.regressedGroups.slice(0, 4)) {
         lines.push(`- ${group.scenario}/${group.state ?? "none"}: ${group.regressionCount} regression(s)`);

@@ -146,7 +146,7 @@ export async function executeScenario(scenario, context) {
         const plannedPhase = buildScenarioPhase(phase, context, envName, artifactDir);
         const results = [];
         for (const [commandIndex, command] of plannedPhase.commands.entries()) {
-          const result = await runScenarioCommand(command, context, envName, artifactDir, phase.id, commandIndex, authPolicy);
+          const result = await runScenarioCommand(command, context, envName, artifactDir, plannedPhase, commandIndex, authPolicy);
           results.push(result);
           record.networkFrontage = context.networkFrontageAllocation ?? record.networkFrontage;
           appendChannelCapabilityEvidence(record, result, phase.id, commandIndex);
@@ -160,7 +160,7 @@ export async function executeScenario(scenario, context) {
         record.phases.push({
           ...plannedPhase,
           results,
-          metrics: await collectEnvMetrics(envName, metricOptions(context, scenario, phase, artifactDir, {
+          metrics: await collectEnvMetrics(envName, metricOptions(context, scenario, plannedPhase, artifactDir, {
             kind: "scenario-phase",
             resultStatus: phaseResultStatus(results)
           }))

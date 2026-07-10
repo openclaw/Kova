@@ -23,6 +23,7 @@
   "phases": [
     {
       "id": "clone",
+      "measurementScope": "harness",
       "title": "Clone Existing Env",
       "intent": "Clone a durable existing env into a disposable Kova env before any old-release or upgrade action.",
       "commands": [
@@ -37,6 +38,7 @@
     },
     {
       "id": "source-runtime",
+      "measurementScope": "harness",
       "title": "Move Clone To 2026.4.20",
       "intent": "Use the real OCM upgrade path to bind and reconcile the cloned env on OpenClaw 2026.4.20 before the target upgrade.",
       "commands": [
@@ -52,6 +54,7 @@
     },
     {
       "id": "upgrade",
+      "measurementScope": "product",
       "title": "Upgrade To Target",
       "intent": "Run the real target upgrade path through OCM and verify post-upgrade service reconciliation.",
       "commands": [
@@ -67,6 +70,7 @@
     },
     {
       "id": "post-upgrade",
+      "measurementScope": "product",
       "title": "Post-Upgrade OpenClaw Checks",
       "intent": "Verify OpenClaw state after upgrade, including plugin install index, plugin command behavior, doctor recovery, and gateway logs.",
       "commands": [

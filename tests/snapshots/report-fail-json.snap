@@ -92,12 +92,17 @@
   "gate": null,
   "performance": {
     "schemaVersion": "kova.performance.v1",
+    "resourceMeasurementScope": null,
+    "resourceHeadlineContract": null,
     "repeat": 1,
     "groupCount": 1,
     "unstableGroupCount": 0,
     "profiledRunCount": 0,
     "baselineRegressionCount": null,
     "missingBaselineCount": null,
+    "resourceContractMismatchCount": null,
+    "skippedMetricCount": null,
+    "resourceContractMismatches": [],
     "baselineReviewOk": null,
     "baselineReviewBlockerCount": null,
     "savedBaselinePath": null,
@@ -179,6 +184,8 @@
         "FAIL": 1
       },
       "resourceInterpretation": null,
+      "resourceMeasurementScope": null,
+      "resourceHeadlineContract": null,
       "metrics": {}
     }
   ],
@@ -220,6 +227,9 @@
         "resources": {
           "peakRssMb": 950,
           "cpuPercentMax": 90,
+          "resourceMeasurementScope": null,
+          "resourceHeadlineContract": null,
+          "measurementScopeSummary": null,
           "primaryRole": null,
           "gateKind": null,
           "sampleCount": 3,
@@ -333,6 +343,9 @@
         "resources": {
           "peakRssMb": 950,
           "cpuPercentMax": 90,
+          "resourceMeasurementScope": null,
+          "resourceHeadlineContract": null,
+          "measurementScopeSummary": null,
           "primaryRole": null,
           "gateKind": null,
           "sampleCount": 3,

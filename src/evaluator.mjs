@@ -20,9 +20,12 @@ import {
   isAgentMessageCommand,
   commandResultPassed,
   measuredProductPhase,
-  measurementScopeForPhase,
-  normalizeMeasurementScope
+  measurementScopeForPhase
 } from "./measurement-contract.mjs";
+import {
+  RESOURCE_HEADLINE_CONTRACT,
+  RESOURCE_MEASUREMENT_SCOPE
+} from "./performance/stats.mjs";
 import {
   checkAggregateThreshold,
   checkBooleanThreshold,
@@ -910,7 +913,8 @@ export function evaluateRecord(record, scenario, options = {}) {
     peakRssMb,
     cpuPercentMax,
     measurementScopeSummary,
-    resourceMeasurementScope: "product",
+    resourceMeasurementScope: RESOURCE_MEASUREMENT_SCOPE,
+    resourceHeadlineContract: RESOURCE_HEADLINE_CONTRACT,
     resourcePrimaryRole: primaryResourceRole,
     resourceGateKind,
     resourceGateReason: resourceGate.reason,
@@ -3447,10 +3451,7 @@ function summarizeMeasurementScopes(record) {
   for (const phase of record.phases ?? []) {
     const phaseScope = measurementScopeForPhase(phase);
     phases[phaseScope] += 1;
-    for (const result of phase.results ?? []) {
-      const resultScope = result.measurementScope ? normalizeMeasurementScope(result.measurementScope, phase.id) : phaseScope;
-      results[resultScope] += 1;
-    }
+    results[phaseScope] += phase.results?.length ?? 0;
   }
   return {
     schemaVersion: "kova.measurementScopeSummary.v1",

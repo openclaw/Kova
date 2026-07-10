@@ -263,6 +263,10 @@ function summarizeGateReceipt(gate) {
     subsystemCount: gate.subsystems?.length ?? 0,
     fixerSummaryCount: gate.fixerSummaries?.length ?? 0,
     baselineRegressionCount: gate.baseline?.regressionCount ?? null,
-    missingBaselineCount: gate.baseline?.missingBaselineCount ?? null
+    missingBaselineCount: gate.baseline?.missingBaselineCount ?? null,
+    skippedMetricCount: gate.baseline?.skippedMetricCount ?? null,
+    resourceMeasurementScope: gate.baseline?.resourceMeasurementScope ?? null,
+    resourceHeadlineContract: gate.baseline?.resourceHeadlineContract ?? null,
+    resourceContractMismatchCount: gate.baseline?.resourceContractMismatchCount ?? null
   };
 }

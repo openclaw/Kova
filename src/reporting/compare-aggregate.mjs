@@ -80,6 +80,26 @@ export function scenarioMetricRows(scenario, { limit = 6 } = {}) {
     const b = m.baseline;
     const cur = m.current;
     if (b == null && cur == null) continue;
+    // Resource contracts can change what RSS/CPU/sample values mean. Retain
+    // the raw values, but never rank or present their deltas as comparable.
+    if (m?.comparable === false) {
+      rows.push({
+        id,
+        label: compareMetricLabel(id),
+        unit: METRIC_UNITS[parsed.base] ?? null,
+        direction: metricDirection(parsed.base),
+        baseline: b,
+        current: cur,
+        delta: null,
+        absoluteDelta: null,
+        threshold: typeof m.tolerance === "number" ? m.tolerance : null,
+        status: "SKIPPED",
+        headline: HEADLINE_METRICS.includes(parsed.base),
+        regressed: false,
+        comparable: false,
+      });
+      continue;
+    }
     const deltaPct = (typeof b === "number" && b !== 0 && typeof cur === "number")
       ? ((cur - b) / Math.abs(b)) * 100
       : null;
@@ -106,6 +126,7 @@ export function scenarioMetricRows(scenario, { limit = 6 } = {}) {
       status,
       headline: HEADLINE_METRICS.includes(parsed.base),
       regressed: !!reg,
+      comparable: true,
     });
   }
 
@@ -155,7 +176,8 @@ function compareStatusRank(row) {
     case "OVER": return 0;
     case "WATCH": return 1;
     case "PASS": return 2;
-    default: return 3;
+    case "SKIPPED": return 3;
+    default: return 4;
   }
 }
 

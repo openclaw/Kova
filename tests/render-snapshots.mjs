@@ -66,6 +66,7 @@ function normalize(out) {
     .replaceAll(SNAPSHOT_KOVA_HOME, "<kova-home>")
     .replaceAll(repoRoot, "<repo>")
     .replaceAll(home, "<home>")
+    .replaceAll(process.version, "<node>")
     // ISO-like timestamps in the meta strip, e.g. "2026-05-17 02:23 UTC".
     .replace(/\b\d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC\b/g, "<ts>")
     // generatedAt-style ISO timestamps in plan output.

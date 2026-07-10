@@ -327,6 +327,20 @@ function summarizeBaselineComparison(comparison) {
     baselineEntryCount: comparison.baselineEntryCount ?? null,
     regressionCount: comparison.regressionCount ?? 0,
     missingBaselineCount: comparison.missingBaselineCount ?? 0,
+    skippedMetricCount: comparison.skippedMetricCount ?? 0,
+    resourceMeasurementScope: comparison.resourceMeasurementScope ?? null,
+    resourceHeadlineContract: comparison.resourceHeadlineContract ?? null,
+    resourceContractMismatchCount: comparison.resourceContractMismatchCount ?? 0,
+    resourceContractMismatches: (comparison.groups ?? [])
+      .filter((group) => group.resourceComparison?.compatible === false)
+      .slice(0, 10)
+      .map((group) => ({
+        scenario: group.scenario,
+        state: group.state ?? null,
+        surface: group.surface ?? null,
+        resourceComparison: group.resourceComparison,
+        skippedMetrics: group.skippedMetrics ?? []
+      })),
     regressedGroups: (comparison.groups ?? [])
       .filter((group) => group.status === "REGRESSED")
       .map((group) => ({

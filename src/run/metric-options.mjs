@@ -1,14 +1,14 @@
 import { collectorArtifactDirs } from "../collectors/artifacts.mjs";
 import { resolveCollectionPolicy } from "../collection-policy.mjs";
 import {
-  normalizeMeasurementScope,
+  measurementScopeForPhase,
   readinessHardTimeoutForPhase,
   readinessThresholdForPhase
 } from "../measurement-contract.mjs";
 
 export function metricOptions(context, scenario, phase, artifactDir, policyContext = {}) {
   const readinessThresholdMs = readinessThresholdForPhase(scenario, phase);
-  const measurementScope = policyContext.measurementScope ?? normalizeMeasurementScope(phase?.measurementScope, phase?.id);
+  const measurementScope = measurementScopeForPhase(policyContext.measurementPhase ?? phase);
   return {
     timeoutMs: context.timeoutMs,
     healthSamples: context.healthSamples,

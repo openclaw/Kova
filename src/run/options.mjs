@@ -55,8 +55,12 @@ export function summarizePerformanceReceipt(performance, baseline) {
     groupCount: performance.groupCount,
     unstableGroupCount: performance.unstableGroupCount,
     profiledRunCount: performance.profiledRunCount ?? 0,
+    resourceMeasurementScope: performance.resourceMeasurementScope ?? null,
+    resourceHeadlineContract: performance.resourceHeadlineContract ?? null,
     baselineRegressionCount: baseline?.comparison?.regressionCount ?? null,
     missingBaselineCount: baseline?.comparison?.missingBaselineCount ?? null,
+    skippedMetricCount: baseline?.comparison?.skippedMetricCount ?? null,
+    resourceContractMismatchCount: baseline?.comparison?.resourceContractMismatchCount ?? null,
     baselineReviewOk: baseline?.review?.ok ?? null,
     baselineReviewBlockerCount: baseline?.review?.blockerCount ?? null,
     savedBaselinePath: baseline?.saved?.path ?? null

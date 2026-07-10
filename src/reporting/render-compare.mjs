@@ -32,6 +32,8 @@ import { METRIC_LABELS } from "./scenario-aggregate.mjs";
 const TOP_AFFECTED_SCENARIOS = 8;
 const TOP_METRICS_PER_SCENARIO = 6;
 const TOP_FINDINGS = 12;
+const TOP_RESOURCE_MISMATCHES = 6;
+const TOP_SKIPPED_RESOURCE_METRICS = 6;
 
 export function renderCompareAssessment(comparison, flags = {}, env = process.env, stream = process.stdout) {
   const ui = makeUi(flags, env, stream);
@@ -45,6 +47,9 @@ export function renderCompareFromComparison(comparison, ui, opts = {}) {
   sections.push(renderHeader(comparison, ui));
   sections.push("");
   sections.push(renderMetaStrip(comparison, ui));
+
+  const resourceComparison = renderResourceComparison(comparison, ui, isFull);
+  if (resourceComparison) { sections.push(""); sections.push(resourceComparison); }
 
   const rollup = renderRollup(comparison, ui);
   if (rollup) { sections.push(""); sections.push(rollup); }
@@ -67,11 +72,13 @@ function renderHeader(comparison, ui) {
   const regressions = comparison.regressionCount ?? 0;
   const improvements = comparison.improvementCount ?? 0;
   const affected = pickAffectedScenarios(comparison).length;
+  const resourceMismatches = comparison.resourceContractMismatchCount ?? 0;
 
   const parts = [];
   if (regressions > 0) parts.push(`${regressions} regression${regressions === 1 ? "" : "s"}`);
   if (improvements > 0) parts.push(`${improvements} improved`);
   if (affected > 0) parts.push(`${affected} affected`);
+  if (resourceMismatches > 0) parts.push(`${resourceMismatches} resource contract mismatch${resourceMismatches === 1 ? "" : "es"}`);
   if (parts.length === 0) parts.push("no changes");
   const headline = parts.join(` ${ui.g.sep} `);
 
@@ -121,6 +128,8 @@ function renderMetaStrip(comparison, ui) {
   const regressions = comparison.regressionCount ?? 0;
   const improvements = comparison.improvementCount ?? 0;
   const affected = pickAffectedScenarios(comparison).length;
+  const resourceMismatches = comparison.resourceContractMismatchCount ?? 0;
+  const skippedResourceMetrics = comparison.skippedMetricCount ?? 0;
 
   const rows = [
     ["baseline", truncateTarget(baseline.target ?? "—", ui), baseline.runId ?? ""],
@@ -137,12 +146,60 @@ function renderMetaStrip(comparison, ui) {
   const deltaParts = [];
   if (regressions > 0) deltaParts.push(c.err(`${regressions} regression${regressions === 1 ? "" : "s"}`));
   if (improvements > 0) deltaParts.push(c.ok(`+${improvements} improved`));
-  if (regressions === 0 && improvements === 0) deltaParts.push(c.dim("no changes"));
+  if (regressions === 0 && improvements === 0 && resourceMismatches === 0) deltaParts.push(c.dim("no changes"));
   if (affected > 0) deltaParts.push(c.dim(`${affected} scenario${affected === 1 ? "" : "s"} affected`));
+  if (resourceMismatches > 0) {
+    deltaParts.push(c.warn(`${resourceMismatches} resource contract mismatch${resourceMismatches === 1 ? "" : "es"}`));
+    deltaParts.push(c.dim(`${skippedResourceMetrics} metric${skippedResourceMetrics === 1 ? "" : "s"} skipped`));
+  }
   const sep = `  ${c.dim(g.sep)}  `;
   lines.push(`  ${c.dim("delta")}${" ".repeat(Math.max(1, labelW - "delta".length))}${deltaParts.join(sep)}`);
 
   return lines.join("\n");
+}
+
+// ─── resource comparison contract ───────────────────────────────────────────
+
+function renderResourceComparison(comparison, ui, isFull) {
+  const all = (comparison.scenarios ?? []).filter((scenario) => scenario.resourceComparison?.compatible === false);
+  if (all.length === 0) return null;
+
+  const visible = isFull ? all : all.slice(0, TOP_RESOURCE_MISMATCHES);
+  const skippedCount = comparison.skippedMetricCount ?? all.reduce(
+    (count, scenario) => count + (scenario.skippedMetrics?.length ?? 0),
+    0
+  );
+  const lines = [
+    ruleSection("resource contracts", ui.width, ui),
+    "",
+    `  ${ui.c.warn(ui.g.warn)} ${all.length} mismatch${all.length === 1 ? "" : "es"} ${ui.c.dim(ui.g.sep)} ${skippedCount} metric${skippedCount === 1 ? "" : "s"} skipped`
+  ];
+
+  for (const scenario of visible) {
+    const resource = scenario.resourceComparison;
+    const metrics = scenario.skippedMetrics ?? [];
+    const shownMetrics = isFull ? metrics : metrics.slice(0, TOP_SKIPPED_RESOURCE_METRICS);
+    const hiddenMetricCount = metrics.length - shownMetrics.length;
+    const metricText = [
+      shownMetrics.join(", "),
+      hiddenMetricCount > 0 ? `+${hiddenMetricCount} more` : null
+    ].filter(Boolean).join(", ") || "none";
+    lines.push(`  ${ui.c.head(scenario.key)}`);
+    lines.push(`    ${ui.c.dim("contract")} ${formatResourceIdentity(resource.baseline)} ${ui.g.arrow} ${formatResourceIdentity(resource.current)}`);
+    lines.push(`    ${ui.c.dim("skipped ")} ${metricText}`);
+  }
+
+  const hiddenMismatchCount = all.length - visible.length;
+  if (hiddenMismatchCount > 0) {
+    lines.push(`  ${ui.c.dim(`+ ${hiddenMismatchCount} more resource contract mismatch${hiddenMismatchCount === 1 ? "" : "es"} (--full)`)}`);
+  }
+  return lines.join("\n");
+}
+
+function formatResourceIdentity(identity) {
+  if (!identity) return "missing";
+  const value = `${identity.measurementScope ?? "unknown-scope"}/${identity.headlineContract ?? "unknown-contract"}`;
+  return identity.mixed ? `${value} (mixed)` : value;
 }
 
 // ─── scenarios roll-up ───────────────────────────────────────────────────────
