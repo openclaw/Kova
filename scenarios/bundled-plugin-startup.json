@@ -20,13 +20,31 @@
   },
   "phases": [
     {
-      "id": "gateway-start",
-      "title": "Start Bundled Plugin Gateway",
-      "intent": "Start OpenClaw and let bundled plugin bootstrap run in the same shape users get from the target runtime.",
+      "id": "env-create",
+      "title": "Create Bundled Plugin Env",
+      "intent": "Create the disposable OpenClaw env without starting the gateway yet so mock auth is applied before bundled plugin startup.",
       "commands": [
-        "ocm start {env} {startSelector} --json"
+        "ocm start {env} {startSelector} --no-service --json"
       ],
       "evidence": [
+        "gateway port",
+        "runtime binding",
+        "env created without service"
+      ],
+      "healthScope": "none",
+      "collectionIntent": "service-only"
+    },
+    {
+      "id": "gateway-start",
+      "title": "Start Bundled Plugin Gateway",
+      "intent": "Start OpenClaw after mock provider config is present and let bundled plugin bootstrap run in the same shape users get from the target runtime.",
+      "commands": [
+        "ocm service install {env} --json",
+        "ocm service start {env} --json"
+      ],
+      "evidence": [
+        "gateway service installed",
+        "gateway service started",
         "bundled plugin count",
         "readiness classification",
         "dependency staging"

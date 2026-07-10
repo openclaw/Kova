@@ -21,7 +21,7 @@ export function measurementScopeForPhase(phase) {
   if (MEASUREMENT_SCOPES.has(phase?.measurementScope)) {
     return phase.measurementScope;
   }
-  if (phase?.id === "provision" && (phase.commands ?? []).some((command) => /(?:^|\s)--no-service(?:\s|$)/.test(command))) {
+  if ((phase?.commands ?? []).some((command) => /(?:^|\s)--no-service(?:\s|$)/.test(command))) {
     return "harness";
   }
   return normalizeMeasurementScope(phase?.measurementScope, phase?.id);

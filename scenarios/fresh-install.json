@@ -19,17 +19,33 @@
   },
   "phases": [
     {
-      "id": "provision",
-      "title": "Provision Fresh Env",
-      "intent": "Create a disposable OpenClaw environment with the selected runtime and minimum local config.",
+      "id": "env-create",
+      "title": "Create Fresh Env",
+      "intent": "Create a disposable OpenClaw environment without starting the gateway yet so mock auth is applied before the gateway process boots.",
       "commands": [
-        "ocm start {env} {startSelector} --json"
+        "ocm start {env} {startSelector} --no-service --json"
       ],
       "evidence": [
         "OCM start JSON",
         "env name",
         "runtime binding",
         "gateway port"
+      ],
+      "healthScope": "none",
+      "collectionIntent": "service-only"
+    },
+    {
+      "id": "provision",
+      "title": "Provision Fresh Gateway",
+      "intent": "Start the gateway after mock provider config is present in the OpenClaw home.",
+      "commands": [
+        "ocm service install {env} --json",
+        "ocm service start {env} --json"
+      ],
+      "evidence": [
+        "gateway service installed",
+        "gateway service started",
+        "startup readiness"
       ],
       "healthScope": "readiness"
     },
