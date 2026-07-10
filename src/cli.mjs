@@ -59,9 +59,9 @@ Usage:
   kova plan [--scenario <id>] [--json|--plain]
   kova inventory plan [--openclaw-bin <path>] [--openclaw-repo <path>] [--subcommands <a,b>] [--require-modeled <capability[,capability]>] [--script-scope <product|all|none>] [--max-subcommands <n>] [--max-warnings <n>] [--timeout-ms <n>] [--json|--plain]
   kova inventory repeated-work [--json|--plain]
-  kova run --target <selector> [--from <selector>] [--source-env <env>] [--scenario <id>] [--state <id>] [--auth <mock|live|skip>] [--repeat <n>] [--baseline [path]] [--save-baseline [path] --reviewed-good] [--regression-thresholds <json>] [--network-frontage <port|loopback|loopback-frontage>] [--worker-id <n>] [--report-dir <path>] [--health-samples <n>] [--readiness-interval-ms <n>] [--resource-sample-interval-ms <n>] [--deep-profile] [--node-profile] [--heap-snapshot] [--profile-on-failure] [--execute] [--keep-env] [--retain-on-failure] [--json]
+  kova run --target <selector> [--from <selector>] [--source-env <env>] [--scenario <id>] [--state <id>] [--auth <mock|live|skip>] [--model <id>] [--repeat <n>] [--baseline [path]] [--save-baseline [path] --reviewed-good] [--regression-thresholds <json>] [--network-frontage <port|loopback|loopback-frontage>] [--worker-id <n>] [--report-dir <path>] [--health-samples <n>] [--readiness-interval-ms <n>] [--resource-sample-interval-ms <n>] [--deep-profile] [--node-profile] [--heap-snapshot] [--profile-on-failure] [--execute] [--keep-env] [--retain-on-failure] [--json]
   kova matrix plan --profile <id> --target <selector> [--from <selector>] [--include <filter>] [--exclude <filter>] [--parallel <n>] [--json|--plain]
-  kova matrix run --profile <id> --target <selector> [--from <selector>] [--source-env <env>] [--include <filter>] [--exclude <filter>] [--auth <mock|live|skip>] [--parallel <n>] [--repeat <n>] [--baseline [path]] [--save-baseline [path] --reviewed-good] [--regression-thresholds <json>] [--network-frontage <port|loopback|loopback-frontage>] [--worker-id <n>] [--fail-fast] [--gate] [--report-dir <path>] [--health-samples <n>] [--readiness-interval-ms <n>] [--resource-sample-interval-ms <n>] [--deep-profile] [--node-profile] [--heap-snapshot] [--profile-on-failure] [--execute] [--allow-exhaustive] [--keep-env] [--retain-on-failure] [--json]
+  kova matrix run --profile <id> --target <selector> [--from <selector>] [--source-env <env>] [--include <filter>] [--exclude <filter>] [--auth <mock|live|skip>] [--model <id>] [--parallel <n>] [--repeat <n>] [--baseline [path]] [--save-baseline [path] --reviewed-good] [--regression-thresholds <json>] [--network-frontage <port|loopback|loopback-frontage>] [--worker-id <n>] [--fail-fast] [--gate] [--report-dir <path>] [--health-samples <n>] [--readiness-interval-ms <n>] [--resource-sample-interval-ms <n>] [--deep-profile] [--node-profile] [--heap-snapshot] [--profile-on-failure] [--execute] [--allow-exhaustive] [--keep-env] [--retain-on-failure] [--json]
   kova reports [--limit <n>] [--json|--plain]
   kova report <runId|report.json> [--json|--plain]
   kova report list [--limit <n>] [--json|--plain]
@@ -96,6 +96,7 @@ Notes:
   Report commands accept either full JSON paths or run IDs from kova reports.
   --repeat records independent samples and computes aggregate performance stats.
   --auth defaults to mock so every disposable env has deliberate model auth unless a scenario opts out.
+  --model pins the live-auth model id and is rejected unless --auth live is selected.
   setup provider/auth choices accept prompt numbers in the interactive menu or canonical names such as openai, anthropic, env-only, api-key.
   external-cli setup derives Codex for OpenAI and Claude CLI for Anthropic, then verifies the CLI and auth evidence.
   --baseline compares executed aggregates against a Kova baseline store; without a path it uses the default store.

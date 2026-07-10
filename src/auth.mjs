@@ -83,10 +83,17 @@ export async function resolveRunAuthContext(flags = {}) {
   if (!authModes.includes(requestedMode)) {
     throw new Error(`--auth must be one of ${authModes.join(", ")}`);
   }
+  const modelId = normalizeModelId(flags.model);
+  if (modelId && requestedMode !== "live") {
+    throw new Error("--model requires --auth live");
+  }
 
   const store = await loadCredentialStore();
   const live = await verifyLiveCredentialStatus(liveCredentialStatus(store));
   if (requestedMode === "live" && !live.available && flags.source_env) {
+    if (modelId) {
+      throw new Error("--model cannot override auth inherited through --source-env");
+    }
     const inheritedLive = {
       available: true,
       providerId: null,
@@ -103,6 +110,7 @@ export async function resolveRunAuthContext(flags = {}) {
     return {
       schemaVersion: "kova.auth.context.v1",
       requestedMode,
+      modelId,
       credentialStore: credentialStoreSummary(store),
       liveEnv: store.liveEnv,
       live: inheritedLive,
@@ -116,6 +124,7 @@ export async function resolveRunAuthContext(flags = {}) {
   return {
     schemaVersion: "kova.auth.context.v1",
     requestedMode,
+    modelId,
     credentialStore: credentialStoreSummary(store),
     liveEnv: store.liveEnv,
     live,
@@ -157,6 +166,7 @@ export function scenarioAuthPolicy(context, scenario, state) {
       throw new Error(`live auth requested but credentials are unavailable: ${live?.reason ?? "not configured"}`);
     }
     const providerId = live.providerId;
+    const modelId = context.auth?.modelId ?? null;
     const env = live.envVars.reduce((values, envVar) => {
       if (context.auth.liveEnv[envVar]) {
         values[envVar] = context.auth.liveEnv[envVar];
@@ -169,6 +179,7 @@ export function scenarioAuthPolicy(context, scenario, state) {
       schemaVersion: "kova.auth.policy.v1",
       mode: "live",
       providerId,
+      modelId,
       source: live.method,
       externalCli: live.externalCli ?? null,
       setup: live.method !== "source-env",
@@ -178,6 +189,7 @@ export function scenarioAuthPolicy(context, scenario, state) {
       summary: authDisplay({
         mode: "live",
         providerId,
+        modelId,
         source: live.method,
         externalCli: live.externalCli ?? null,
         setup: live.method !== "source-env",
@@ -247,7 +259,7 @@ export function buildAuthSetupPhase(authPolicy, envName, artifactDir) {
     title: "Auth Setup",
     intent: liveAuthSetupIntent(authPolicy),
     collectionIntent: "service-only",
-    commands: [configureLiveAuthCommand(authPolicy, envName)],
+    commands: configureLiveAuthCommands(authPolicy, envName),
     evidence: liveAuthSetupEvidence(authPolicy)
   };
 }
@@ -273,6 +285,7 @@ export function authDisplay(policy) {
     schemaVersion: "kova.auth.summary.v1",
     mode: policy.mode,
     providerId: policy.providerId ?? null,
+    modelId: policy.modelId ?? null,
     source: policy.source,
     externalCli: policy.externalCli ?? null,
     setup: policy.setup === true,
@@ -289,6 +302,7 @@ export function authReportSummary(authContext) {
   return {
     schemaVersion: "kova.auth.report.v1",
     requestedMode: authContext.requestedMode,
+    modelId: authContext.modelId ?? null,
     credentialStore: authContext.credentialStore,
     live: {
       available: authContext.live.available,
@@ -650,10 +664,28 @@ function configureMockAuthCommand(envName, dir, mockProvider = {}) {
   return ocmEnvExec(envName, args);
 }
 
-function configureLiveAuthCommand(authPolicy, envName) {
-  if (authPolicy.setupKind === "openclaw-onboard") {
-    return configureLiveAuthViaOpenClawOnboardCommand(authPolicy, envName);
+function configureLiveAuthCommands(authPolicy, envName) {
+  const commands = authPolicy.setupKind === "openclaw-onboard"
+    ? [configureLiveAuthViaOpenClawOnboardCommand(authPolicy, envName)]
+    : [configureLiveAuthConfigPatchCommand(authPolicy, envName)];
+  if (authPolicy.modelId) {
+    commands.push(ocmAt(envName, ["models", "set", `${liveModelProviderId(authPolicy)}/${authPolicy.modelId}`]));
   }
+  return commands;
+}
+
+function liveModelProviderId(authPolicy) {
+  if (
+    authPolicy.providerId === "openai" &&
+    authPolicy.source === "external-cli" &&
+    authPolicy.externalCli === "codex"
+  ) {
+    return "codex";
+  }
+  return authPolicy.providerId;
+}
+
+function configureLiveAuthConfigPatchCommand(authPolicy, envName) {
   const envVar = authPolicy.summary.envVars?.[0] ?? defaultEnvVarForProvider(authPolicy.providerId);
   const args = [
     "node",
@@ -712,10 +744,11 @@ function liveAuthSetupIntent(authPolicy) {
 }
 
 function liveAuthSetupEvidence(authPolicy) {
+  const modelEvidence = authPolicy.modelId ? [`requested model ${authPolicy.modelId} selected`] : [];
   if (authPolicy.setupKind === "openclaw-onboard") {
-    return ["OpenClaw onboard command completed", "OpenClaw config references live auth env vars or selected external CLI", "live auth is environment-dependent"];
+    return ["OpenClaw onboard command completed", "OpenClaw config references live auth env vars or selected external CLI", ...modelEvidence, "live auth is environment-dependent"];
   }
-  return ["fixture auth config applied", "OpenClaw config references live auth env vars or selected external CLI", "live auth is environment-dependent"];
+  return ["fixture auth config applied", "OpenClaw config references live auth env vars or selected external CLI", ...modelEvidence, "live auth is environment-dependent"];
 }
 
 function liveOnboardConfig(authPolicy) {
@@ -745,6 +778,16 @@ function defaultEnvVarForProvider(providerId) {
     return "ANTHROPIC_API_KEY";
   }
   return "OPENAI_API_KEY";
+}
+
+function normalizeModelId(value) {
+  if (value === undefined) {
+    return null;
+  }
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error("--model requires a non-empty model id");
+  }
+  return value.trim();
 }
 
 async function pathExists(path) {

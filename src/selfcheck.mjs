@@ -195,6 +195,11 @@ export async function runSelfCheck(flags = {}) {
       `KOVA_HOME=${quoteShell(join(tmp, "empty-auth-home"))} node bin/kova.mjs run --target runtime:stable --scenario fresh-install --auth live --json`,
       "--auth live requires configured live credentials"
     ));
+    checks.push(await failingCommandCheck(
+      "model-requires-live-auth",
+      `KOVA_HOME=${quoteShell(join(tmp, "model-with-mock-auth-home"))} node bin/kova.mjs run --target runtime:stable --scenario fresh-install --model gpt-5.6 --json`,
+      "--model requires --auth live"
+    ));
     checks.push(await setupNumericFlagsRejectedCheck(tmp));
     checks.push(await externalCliSetupCheck(tmp));
     checks.push(await externalCliOpenClawConfigCheck(tmp));
@@ -708,6 +713,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(await resourceRolePollutionCheck());
     checks.push(await gatewaySessionSurfaceContractCheck());
     checks.push(await bundledPluginStartupSurfaceContractCheck());
+    checks.push(await releaseResourceCalibrationCheck());
     checks.push(await releaseRuntimeStartupSurfaceContractCheck());
     checks.push(await officialPluginInstallSurfaceContractCheck());
     checks.push(await agentCliLocalTurnSurfaceContractCheck());
@@ -4315,7 +4321,7 @@ async function liveApiKeyExecutionCheck(tmp) {
     `PATH=${quoteShell(`${binDir}:${process.env.PATH}`)}`,
     `KOVA_FAKE_OPENCLAW_HOME=${quoteShell(openclawHome)}`,
     `KOVA_MOCK_OCM_LOG=${quoteShell(ocmLog)}`,
-    `node bin/kova.mjs run --target runtime:stable --scenario fresh-install --auth live --execute --report-dir ${quoteShell(reportDir)} --json`
+    `node bin/kova.mjs run --target runtime:stable --scenario fresh-install --auth live --model gpt-5.6 --execute --report-dir ${quoteShell(reportDir)} --json`
   ].join(" ");
   const result = await runCommand(command, { shell: "/bin/sh", timeoutMs: 30000, maxOutputChars: 1000000, redactValues: [secret] });
 
@@ -4331,15 +4337,29 @@ async function liveApiKeyExecutionCheck(tmp) {
     const report = JSON.parse(reportText);
     const record = report.records?.[0];
     assertEqual(report.auth?.requestedMode, "live", "report requested live auth");
+    assertEqual(report.auth?.modelId, "gpt-5.6", "report requested live model");
     assertEqual(report.auth?.live?.environmentDependent, true, "top-level live env-dependent flag");
     assertEqual(record?.auth?.mode, "live", "record live auth mode");
     assertEqual(record?.auth?.source, "api-key", "record live auth source");
     assertEqual(record?.auth?.setupKind, "openclaw-onboard", "record live setup kind");
+    assertEqual(record?.auth?.modelId, "gpt-5.6", "record requested live model");
     assertEqual(record?.auth?.environmentDependent, true, "record live env-dependent flag");
     assertEqual(record?.auth?.secretValues, "redacted", "record secret values redacted");
     assertEqual(record?.providerEvidence?.environmentDependent, true, "provider evidence live env-dependent flag");
     const config = JSON.parse(await readFile(join(openclawHome, ".openclaw", "openclaw.json"), "utf8"));
     assertEqual(config.models?.providers?.openai?.apiKey?.id, "OPENAI_API_KEY", "OpenClaw live config env ref");
+    assertEqual(config.agents?.defaults?.model?.primary, "openai/gpt-5.6", "OpenClaw live model override");
+    const authSetupCommands = record.phases
+      ?.find((phase) => phase.id === "auth-setup")
+      ?.commands ?? [];
+    assertEqual(authSetupCommands.length, 2, "live model override runs after OpenClaw onboarding");
+    assertEqual(authSetupCommands[0]?.includes("onboard"), true, "live model override keeps OpenClaw onboarding");
+    assertEqual(
+      authSetupCommands[1]?.includes("models") && authSetupCommands[1]?.includes("set"),
+      true,
+      "live model override uses OpenClaw model selection"
+    );
+    assertEqual(authSetupCommands[1]?.includes("openai/gpt-5.6"), true, "live model override command");
     const serializedConfig = JSON.stringify(config);
     if (serializedConfig.includes(secret)) {
       throw new Error("live API key leaked into OpenClaw config");
@@ -4397,7 +4417,7 @@ async function liveExternalCliDryRunCheck(tmp) {
     `HOME=${quoteShell(home)}`,
     `PATH=${quoteShell(`${fakeBin}:${process.env.PATH}`)}`,
     `KOVA_HOME=${quoteShell(kovaHome)}`,
-    `node bin/kova.mjs run --target runtime:stable --scenario fresh-install --auth live --report-dir ${quoteShell(reportDir)} --json`
+    `node bin/kova.mjs run --target runtime:stable --scenario fresh-install --auth live --model gpt-5.6 --report-dir ${quoteShell(reportDir)} --json`
   ].join(" ");
   const result = await runCommand(command, { shell: "/bin/sh", timeoutMs: 30000, maxOutputChars: 1000000 });
 
@@ -4415,12 +4435,20 @@ async function liveExternalCliDryRunCheck(tmp) {
     assertEqual(record?.auth?.source, "external-cli", "external cli record source");
     assertEqual(record?.auth?.externalCli, "codex", "external cli record name");
     assertEqual(record?.auth?.setupKind, "fixture-config-patch", "codex cli fixture setup kind");
-    const authSetupCommand = record.phases
-      ?.flatMap((phase) => phase.commands ?? [])
-      ?.find((item) => item.includes("configure-openclaw-live-auth.mjs")) ?? "";
+    assertEqual(record?.auth?.modelId, "gpt-5.6", "external cli requested model");
+    const authSetupCommands = record.phases
+      ?.find((phase) => phase.id === "auth-setup")
+      ?.commands ?? [];
+    const authSetupCommand = authSetupCommands
+      .find((item) => item.includes("configure-openclaw-live-auth.mjs")) ?? "";
     if (!/'?--auth-method'?\s+'?external-cli'?/.test(authSetupCommand) || !/'?--external-cli'?\s+'?codex'?/.test(authSetupCommand)) {
       throw new Error(`external-cli auth setup command missing expected args: ${authSetupCommand}`);
     }
+    assertEqual(
+      authSetupCommands.some((item) => item.includes("models") && item.includes("set") && item.includes("codex/gpt-5.6")),
+      true,
+      "external cli model override keeps Codex provider"
+    );
     return {
       id: "live-external-cli-dry-run",
       status: "PASS",
@@ -4547,6 +4575,23 @@ JSON
           ;;
       esac
       echo '{"ok":true}'
+      exit 0
+    fi
+    if [ "$1" = "models" ] && [ "$2" = "set" ]; then
+      node - "$KOVA_FAKE_OPENCLAW_HOME/.openclaw/openclaw.json" "$3" <<'NODE'
+const fs = require("node:fs");
+const path = process.argv[2];
+const model = process.argv[3];
+const config = JSON.parse(fs.readFileSync(path, "utf8"));
+config.agents = config.agents || {};
+config.agents.defaults = config.agents.defaults || {};
+config.agents.defaults.model = {
+  ...(config.agents.defaults.model || {}),
+  primary: model
+};
+fs.writeFileSync(path, JSON.stringify(config, null, 2) + "\\n");
+NODE
+      echo "Default model: $3"
       exit 0
     fi
     echo "live command key=$OPENAI_API_KEY"
@@ -9849,6 +9894,8 @@ function agentColdWarmEvaluationCheck() {
   try {
     const coldCommand = "ocm @kova -- agent --local --agent main --session-id kova-agent-cold-warm --message hi --json";
     const warmCommand = "ocm @kova -- agent --local --agent main --session-id kova-agent-cold-warm --message hi --json";
+    const truncatedPayloadResponse = `{"payloads":[{"text":"KOVA_AGENT_OK"}],"meta":{"details":"${"x".repeat(20000)}
+[truncated 100 chars]`;
     const record = {
       scenario: "agent-cold-warm-message",
       status: "PASS",
@@ -9865,7 +9912,7 @@ function agentColdWarmEvaluationCheck() {
             finishedAt: "2026-04-30T10:01:03.000Z",
             finishedAtEpochMs: 1777543263000,
             durationMs: 62000,
-            stdout: "{\"payloads\":[{\"text\":\"KOVA_AGENT_OK\"}]}",
+            stdout: truncatedPayloadResponse,
             stderr: ""
           }],
           metrics: { logs: zeroLogMetrics(), health: { ok: true } }
@@ -9948,7 +9995,7 @@ function agentColdWarmEvaluationCheck() {
     assertEqual(record.measurements.coldProviderFinalMs, 800, "cold provider final");
     assertEqual(record.measurements.agentLatencyDiagnosis.kind, "cold-pre-provider-stall", "latency diagnosis kind");
     assertEqual(record.measurements.agentTurns[0].responseOk, true, "cold response ok");
-    assertEqual(record.measurements.agentTurns[0].responseText, "KOVA_AGENT_OK", "payload response text");
+    assertEqual(record.measurements.agentTurns[0].responseText, "KOVA_AGENT_OK", "truncated payload response text");
     assertEqual(record.measurements.agentTurns[1].responseText, "KOVA_AGENT_OK", "final assistant response precedence");
     assertEqual(record.measurements.agentTurns[1].providerRoutes[0].value, "/v1/responses", "warm provider route evidence");
     assertEqual(
@@ -11915,6 +11962,90 @@ async function bundledPluginStartupSurfaceContractCheck() {
       id: "bundled-plugin-startup-surface-contract",
       status: "FAIL",
       command: "validate bundled plugin startup readiness and resource caps",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+async function releaseResourceCalibrationCheck() {
+  try {
+    const [
+      freshScenario,
+      gatewayScenario,
+      freshSurface,
+      gatewaySurface,
+      bundledRuntimeSurface,
+      bundledPluginSurface,
+      releaseProfile
+    ] = await Promise.all([
+      readFile("scenarios/fresh-install.json", "utf8").then(JSON.parse),
+      readFile("scenarios/gateway-performance.json", "utf8").then(JSON.parse),
+      readFile("surfaces/fresh-install.json", "utf8").then(JSON.parse),
+      readFile("surfaces/gateway-performance.json", "utf8").then(JSON.parse),
+      readFile("surfaces/bundled-runtime-deps.json", "utf8").then(JSON.parse),
+      readFile("surfaces/bundled-plugin-startup.json", "utf8").then(JSON.parse),
+      readFile("profiles/release.json", "utf8").then(JSON.parse)
+    ]);
+
+    const contracts = [
+      {
+        id: "fresh-install",
+        scenario: freshScenario,
+        surface: freshSurface,
+        primaryRssMb: 1050,
+        roles: { gateway: 1050, "status-cli": 850, "plugin-cli": 800 }
+      },
+      {
+        id: "gateway-performance",
+        scenario: gatewayScenario,
+        surface: gatewaySurface,
+        primaryRssMb: 1050,
+        roles: { gateway: 1050, "gateway-tree": 1200, "status-cli": 850, "plugin-cli": 800 }
+      },
+      {
+        id: "bundled-runtime-deps",
+        scenario: null,
+        surface: bundledRuntimeSurface,
+        primaryRssMb: null,
+        roles: { gateway: 1050 }
+      },
+      {
+        id: "bundled-plugin-startup",
+        scenario: null,
+        surface: bundledPluginSurface,
+        primaryRssMb: null,
+        roles: { gateway: 950, "plugin-cli": 800 }
+      }
+    ];
+
+    for (const contract of contracts) {
+      const policy = resolveThresholdPolicy({
+        profile: releaseProfile,
+        surface: contract.surface,
+        scenario: contract.scenario
+      });
+      if (contract.primaryRssMb !== null) {
+        assertEqual(contract.scenario?.thresholds?.peakRssMb, contract.primaryRssMb, `${contract.id} scenario primary RSS cap`);
+        assertEqual(contract.surface?.thresholds?.peakRssMb, contract.primaryRssMb, `${contract.id} surface primary RSS cap`);
+      }
+      for (const [role, peakRssMb] of Object.entries(contract.roles)) {
+        assertEqual(contract.surface?.processRoles?.includes(role), true, `${contract.id} declares ${role}`);
+        assertEqual(policy.roleThresholds?.[role]?.peakRssMb, peakRssMb, `${contract.id} ${role} RSS cap`);
+      }
+    }
+
+    return {
+      id: "release-resource-calibration",
+      status: "PASS",
+      command: "validate release resource calibration scope",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "release-resource-calibration",
+      status: "FAIL",
+      command: "validate release resource calibration scope",
       durationMs: 0,
       message: error.message
     };

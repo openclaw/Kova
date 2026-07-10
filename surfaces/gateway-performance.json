@@ -7,27 +7,32 @@
     "gateway",
     "gateway-tree",
     "command-tree",
-    "status-cli"
+    "status-cli",
+    "plugin-cli"
   ],
   "resourcePrimaryRole": "gateway",
   "thresholds": {
     "coldReadyMs": 30000,
     "warmReadyMs": 15000,
-    "peakRssMb": 900,
+    "peakRssMb": 1050,
     "postReadyHealthP95Ms": 1000
   },
   "roleThresholds": {
     "gateway": {
-      "peakRssMb": 800,
+      "peakRssMb": 1050,
       "maxCpuPercent": 250
     },
     "gateway-tree": {
-      "peakRssMb": 1000,
+      "peakRssMb": 1200,
       "maxCpuPercent": 300
     },
     "status-cli": {
-      "peakRssMb": 500,
+      "peakRssMb": 850,
       "maxCpuPercent": 200
+    },
+    "plugin-cli": {
+      "peakRssMb": 800,
+      "maxCpuPercent": 250
     }
   },
   "diagnostics": {

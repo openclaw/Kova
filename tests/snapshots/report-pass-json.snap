@@ -8,9 +8,9 @@
   "from": null,
   "platform": {
     "os": "darwin",
-    "release": "25.4.0",
+    "release": "<os-release>",
     "arch": "arm64",
-    "node": "v26.0.0"
+    "node": "<node>"
   },
   "decision": {
     "verdict": "PASS",

@@ -40,6 +40,7 @@ kova.report.v1
   "auth": {
     "schemaVersion": "kova.auth.report.v1",
     "requestedMode": "mock",
+    "modelId": null,
     "credentialStore": {
       "schemaVersion": "kova.credentials.summary.v1",
       "home": "/Users/example/.kova/credentials"
@@ -200,6 +201,10 @@ OpenClaw env:
 - `fixture-config-patch`: Kova patched disposable env config directly for a
   live path that has no stable non-interactive OpenClaw command path. Treat this
   as runtime validation only, not proof that OpenClaw onboarding/auth UX passed.
+
+For live runs, `auth.modelId` records the explicit `--model` override. Kova
+applies it through `openclaw models set` after onboarding and before the first
+real service start.
 
 ## Metrics
 
