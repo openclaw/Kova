@@ -78,7 +78,7 @@ const COMMANDS = [
     id: "run", title: "kova run",
     blurb: "Run one OpenClaw scenario. Dry-run unless --execute.",
     usage: [
-      "kova run --target <selector> [--scenario <id>] [--state <id>] [--auth <method>] [--repeat <n>] [--network-frontage <mode>] [--worker-id <n>] [--execute] [--json|--plain]",
+      "kova run --target <selector> [--scenario <id>] [--state <id>] [--auth <method>] [--model <id>] [--repeat <n>] [--network-frontage <mode>] [--worker-id <n>] [--execute] [--json|--plain]",
     ],
     flags: [
       ["--target <selector>", "npm:<v> | release:<n> | runtime:<n> | local-build:<path>"],
@@ -86,6 +86,7 @@ const COMMANDS = [
       ["--scenario <id>", "scenario id (default: fresh-install)"],
       ["--state <id>", "state id"],
       ["--auth <method>", "mock|live|skip (default mock)"],
+      ["--model <id>", "live-auth model id override"],
       ["--repeat <n>", "independent samples"],
       ["--execute", "actually provision and run; otherwise dry-run"],
       ["--baseline [path]", "compare against baseline store"],
@@ -112,7 +113,7 @@ const COMMANDS = [
     blurb: "Profile-driven multi-scenario plan / run with optional gate.",
     usage: [
       "kova matrix plan --profile <id> --target <selector> [--include <f>] [--exclude <f>] [--json|--plain]",
-      "kova matrix run --profile <id> --target <selector> [--parallel <n>] [--network-frontage <mode>] [--worker-id <n>] [--gate] [--execute] [--json|--plain]",
+      "kova matrix run --profile <id> --target <selector> [--auth <method>] [--model <id>] [--parallel <n>] [--network-frontage <mode>] [--worker-id <n>] [--gate] [--execute] [--json|--plain]",
     ],
     flags: [
       ["--profile <id>", "smoke|release|release-upgrade|… (see kova plan)"],
@@ -120,6 +121,8 @@ const COMMANDS = [
       ["--include/--exclude <f>", "scenario:<id>, state:<id>, tag:<t>, or bare value"],
       ["--parallel <n>", "concurrent scenarios (default 1)"],
       ["--repeat <n>", "samples per scenario"],
+      ["--auth <method>", "mock|live|skip (default mock)"],
+      ["--model <id>", "live-auth model id override"],
       ["--fail-fast", "abort on first failure"],
       ["--gate", "evaluate matrix against the profile gate policy"],
       ["--network-frontage <mode>", "port|loopback; loopback cannot combine with --parallel > 1"],
@@ -231,6 +234,7 @@ const NOTES = [
   "run/matrix run are dry-run unless --execute is passed.",
   "--repeat records independent samples and computes aggregate performance stats.",
   "--auth defaults to mock so every disposable env has deliberate model auth.",
+  "--model pins the model id for live-auth runs.",
   "--deep-profile enables Node CPU/heap/trace + diagnostic report + denser sampling.",
   "Human-facing commands render dashboards by default; --plain renders compact text.",
   "Report commands accept either full JSON paths or run IDs from kova reports.",

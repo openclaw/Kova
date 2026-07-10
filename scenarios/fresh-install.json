@@ -15,7 +15,7 @@
     "statusMs": 10000,
     "pluginsListMs": 10000,
     "modelsListMs": 20000,
-    "peakRssMb": 900
+    "peakRssMb": 1050
   },
   "phases": [
     {

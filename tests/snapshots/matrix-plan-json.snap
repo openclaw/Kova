@@ -4,7 +4,7 @@
   "platform": {
     "os": "darwin",
     "arch": "arm64",
-    "release": "25.5.0",
+    "release": "<os-release>",
     "node": "<node>"
   },
   "profile": {

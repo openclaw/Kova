@@ -4616,6 +4616,11 @@ function extractAgentResponse(result) {
     // diagnostics alongside JSON in integration environments.
   }
 
+  const payloadText = findPayloadText(text);
+  if (typeof payloadText === "string" && payloadText.trim().length > 0 && payloadText.trim() !== "NO_REPLY") {
+    return { usable: true, text: payloadText.trim() };
+  }
+
   const match = text.match(/"finalAssistant(?:Raw|Visible)Text"\s*:\s*"([^"]+)"/);
   const finalText = match?.[1] ?? null;
   return {
@@ -4648,6 +4653,22 @@ function findFirstString(value, keys) {
     }
   }
   return null;
+}
+
+function findPayloadText(text) {
+  const payloadIndex = text.indexOf('"payloads"');
+  if (payloadIndex < 0) {
+    return null;
+  }
+  const payloadText = text.slice(payloadIndex).match(/"text"\s*:\s*"((?:\\.|[^"\\])*)"/)?.[1];
+  if (typeof payloadText !== "string") {
+    return null;
+  }
+  try {
+    return JSON.parse(`"${payloadText}"`);
+  } catch {
+    return payloadText;
+  }
 }
 
 function countMissingDependencyErrors(results) {

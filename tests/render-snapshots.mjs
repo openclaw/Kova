@@ -15,7 +15,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync, mkdirSync, existsSync, mkdtempSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { homedir, tmpdir } from "node:os";
+import { homedir, release, tmpdir } from "node:os";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..");
@@ -66,7 +66,9 @@ function normalize(out) {
     .replaceAll(SNAPSHOT_KOVA_HOME, "<kova-home>")
     .replaceAll(repoRoot, "<repo>")
     .replaceAll(home, "<home>")
+    .replaceAll(release(), "<os-release>")
     .replaceAll(process.version, "<node>")
+    .replace(/("node"\s*:\s*")v\d+\.\d+\.\d+(")/g, "$1<node>$2")
     // ISO-like timestamps in the meta strip, e.g. "2026-05-17 02:23 UTC".
     .replace(/\b\d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC\b/g, "<ts>")
     // generatedAt-style ISO timestamps in plan output.

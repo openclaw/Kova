@@ -1,7 +1,7 @@
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  KOVA  ·  plan                                                               ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
-   61 scenarios · 41 surfaces                    darwin 25.5.0 · arm64 · <node>
+   61 scenarios · 41 surfaces                    darwin <os-release> · arm64 · <node>
 
   Scenarios 61   ·   States 43   ·   Profiles 12   ·   Surfaces 41
 

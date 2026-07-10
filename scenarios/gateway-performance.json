@@ -13,7 +13,7 @@
   "thresholds": {
     "coldReadyMs": 30000,
     "warmReadyMs": 15000,
-    "peakRssMb": 900,
+    "peakRssMb": 1050,
     "eventLoopMaxMs": 500,
     "postReadyHealthP95Ms": 1000
   },

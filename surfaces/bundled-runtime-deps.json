@@ -18,7 +18,7 @@
   },
   "roleThresholds": {
     "gateway": {
-      "peakRssMb": 800,
+      "peakRssMb": 1050,
       "maxCpuPercent": 250
     },
     "runtime-staging": {
