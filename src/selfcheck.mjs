@@ -4400,6 +4400,11 @@ async function liveApiKeyExecutionCheck(tmp) {
     assertEqual(record?.providerEvidence?.environmentDependent, true, "provider evidence live env-dependent flag");
     const config = JSON.parse(await readFile(join(openclawHome, ".openclaw", "openclaw.json"), "utf8"));
     assertEqual(config.models?.providers?.openai?.apiKey?.id, "OPENAI_API_KEY", "OpenClaw live config env ref");
+    assertEqual(
+      config.models?.providers?.openai?.agentRuntime?.id,
+      "openclaw",
+      "OpenClaw live provider stays on the timeline-emitting harness"
+    );
     assertEqual(config.agents?.defaults?.model?.primary, "openai/gpt-5.6", "OpenClaw live model override");
     assertEqual(
       config.models?.providers?.openai?.models?.some((model) => model.id === "gpt-5.6"),
@@ -14176,6 +14181,11 @@ async function anthropicApiKeyOpenClawConfigCheck(tmp) {
     }
     const config = JSON.parse(await readFile(join(home, ".openclaw", "openclaw.json"), "utf8"));
     assertEqual(config.models?.providers?.anthropic?.apiKey?.id, "ANTHROPIC_API_KEY", "anthropic env ref");
+    assertEqual(
+      config.models?.providers?.anthropic?.agentRuntime?.id,
+      "openclaw",
+      "anthropic API-key provider runtime id"
+    );
     assertEqual(config.agents?.defaults?.model?.primary, "anthropic/claude-sonnet-4-5", "anthropic default model");
     return {
       id: "anthropic-api-key-openclaw-config",

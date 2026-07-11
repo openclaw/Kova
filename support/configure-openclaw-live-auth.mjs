@@ -33,6 +33,10 @@ if (authMethod !== "external-cli") {
       ...(config.models?.providers || {}),
       [providerKey]: {
         ...existingProvider,
+        agentRuntime: {
+          ...(existingProvider.agentRuntime || {}),
+          id: "openclaw"
+        },
         apiKey: {
           source: "env",
           provider: "default",
