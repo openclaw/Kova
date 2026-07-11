@@ -4,7 +4,7 @@ import {
   attachCleanupEvidence,
   attachEvidenceArtifactBudget
 } from "../evidence/record.mjs";
-import { evaluateRecord } from "../evaluator.mjs";
+import { compactEvaluatedTimelineEvidence, evaluateRecord } from "../evaluator.mjs";
 import { collectEnvMetrics, collectNodeProfileMetrics } from "../metrics.mjs";
 import { collectProviderEvidence } from "../collectors/provider.mjs";
 import { collectStateFixtureAccounting } from "../collectors/state-fixtures.mjs";
@@ -45,6 +45,7 @@ export async function attachPostCleanupEvidence(record, scenario, context, artif
   await attachEvidenceArtifactBudget(record, scenario);
   attachEvidenceLedger(record);
   applyEvidenceLedgerGating(record);
+  compactEvaluatedTimelineEvidence(record);
 }
 
 function shouldCaptureFailureDiagnostics(record, context) {

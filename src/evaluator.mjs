@@ -3781,16 +3781,31 @@ function compactSampleProcess(process) {
   };
 }
 
-function collectTimelineSummary(record) {
-  const timelines = [];
-  for (const phase of record.phases ?? []) {
-    if (phase.metrics?.timeline) {
-      timelines.push(phase.metrics.timeline);
+export function compactEvaluatedTimelineEvidence(record) {
+  const timelines = recordTimelines(record);
+  const currentTimeline = timelines.findLast((timeline) => timeline.available) ?? null;
+  let attributionTimeline = null;
+  let attributionEventCount = -1;
+  for (const timeline of timelines) {
+    const eventCount = timeline.eventCount ?? timeline.events?.length ?? 0;
+    if (eventCount >= attributionEventCount && Array.isArray(timeline.events)) {
+      attributionTimeline = timeline;
+      attributionEventCount = eventCount;
     }
   }
-  if (record.finalMetrics?.timeline) {
-    timelines.push(record.finalMetrics.timeline);
+
+  const retained = new Set([currentTimeline, attributionTimeline].filter(Boolean));
+  for (const timeline of timelines) {
+    if (retained.has(timeline)) {
+      continue;
+    }
+    delete timeline.events;
+    delete timeline.turnAttributionEvents;
   }
+}
+
+function collectTimelineSummary(record) {
+  const timelines = recordTimelines(record);
 
   const available = timelines.some((timeline) => timeline.available);
   // A rotated final timeline owns terminal span state; the most complete
@@ -3883,6 +3898,19 @@ function collectTimelineSummary(record) {
   };
 }
 
+function recordTimelines(record) {
+  const timelines = [];
+  for (const phase of record.phases ?? []) {
+    if (phase.metrics?.timeline) {
+      timelines.push(phase.metrics.timeline);
+    }
+  }
+  if (record.finalMetrics?.timeline) {
+    timelines.push(record.finalMetrics.timeline);
+  }
+  return timelines;
+}
+
 function mergeSpanTotals(target, source) {
   for (const [name, summary] of Object.entries(source)) {
     const existing = target[name] ?? {
@@ -3894,10 +3922,10 @@ function mergeSpanTotals(target, source) {
       maxDurationMs: null,
       slowest: null
     };
-    existing.count += summary.count ?? 0;
-    existing.errorCount += summary.errorCount ?? 0;
-    existing.openCount += summary.openCount ?? 0;
-    existing.totalDurationMs = roundNumber(existing.totalDurationMs + (summary.totalDurationMs ?? 0));
+    existing.count = Math.max(existing.count, summary.count ?? 0);
+    existing.errorCount = Math.max(existing.errorCount, summary.errorCount ?? 0);
+    existing.openCount = Math.max(existing.openCount, summary.openCount ?? 0);
+    existing.totalDurationMs = Math.max(existing.totalDurationMs, summary.totalDurationMs ?? 0);
     existing.maxDurationMs = maxNullable(existing.maxDurationMs, summary.maxDurationMs);
     if (summary.slowest?.durationMs !== undefined &&
       (!existing.slowest || summary.slowest.durationMs > existing.slowest.durationMs)) {
@@ -3919,9 +3947,9 @@ function mergeKeySpans(target, source, { current = false } = {}) {
       slowest: null,
       open: []
     };
-    existing.count += summary.count ?? 0;
-    existing.errorCount += summary.errorCount ?? 0;
-    existing.totalDurationMs = roundNumber(existing.totalDurationMs + (summary.totalDurationMs ?? 0));
+    existing.count = Math.max(existing.count, summary.count ?? 0);
+    existing.errorCount = Math.max(existing.errorCount, summary.errorCount ?? 0);
+    existing.totalDurationMs = Math.max(existing.totalDurationMs, summary.totalDurationMs ?? 0);
     existing.maxDurationMs = maxNullable(existing.maxDurationMs, summary.maxDurationMs);
     if (summary.slowest?.durationMs !== undefined &&
       (!existing.slowest || summary.slowest.durationMs > existing.slowest.durationMs)) {
