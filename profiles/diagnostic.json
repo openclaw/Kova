@@ -10,17 +10,6 @@
     "timelineRequired": true,
     "timelineRequiredForTargetKinds": [
       "local-build"
-    ],
-    "requiredKeySpans": [
-      "gateway.startup",
-      "gateway.ready",
-      "config.normalize",
-      "plugins.metadata.scan",
-      "runtimeDeps.stage",
-      "providers.load",
-      "models.catalog",
-      "agent.turn",
-      "agent.cleanup"
     ]
   },
   "calibration": {

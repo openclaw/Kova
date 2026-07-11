@@ -687,6 +687,11 @@ export async function runSelfCheck(flags = {}) {
       assertEqual(data.profile?.id, "diagnostic", "diagnostic profile id");
       assertEqual(data.profile?.localBuildProfile, "sourcePerformance", "diagnostic local build profile");
       assertEqual(data.profile?.diagnostics?.timelineRequired, true, "diagnostic timeline required");
+      assertEqual(
+        data.profile?.diagnostics?.requiredKeySpans,
+        undefined,
+        "heterogeneous diagnostic profile leaves span ownership to each surface"
+      );
       assertArrayNotEmpty(data.entries, "diagnostic entries");
     }));
     checks.push(await failingCommandCheck(
