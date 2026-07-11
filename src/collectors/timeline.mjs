@@ -46,9 +46,6 @@ export async function collectTimelineMetrics(artifactDir) {
     commandStatus: 0,
     statusLabel: timeline.available ? "PASS" : "INFO",
     durationMs: Date.now() - startedAt,
-    timeline: {
-      ...timeline
-    },
     available: timeline.available,
     eventCount: timeline.eventCount,
     parseErrorCount: timeline.parseErrorCount,

@@ -12,7 +12,7 @@ import { appendChannelCapabilityEvidence, channelCapabilityEvidenceFromResult } 
 import { summarizeCpuProfiles } from "./collectors/node-profiles.mjs";
 import { summarizeHeapProfiles } from "./collectors/heap.mjs";
 import { collectEnvMetrics } from "./metrics.mjs";
-import { evaluateRecord } from "./evaluator.mjs";
+import { compactEvaluatedTimelineEvidence, evaluateRecord } from "./evaluator.mjs";
 import { evaluateWorkflowCase } from "../support/channel-conformance/evaluator.mjs";
 import { assertValidObservationSet } from "../support/channel-conformance/observation-schema.mjs";
 import { planWorkflowCases } from "../support/channel-conformance/planner.mjs";
@@ -10620,6 +10620,34 @@ function diagnosticsTimelineEvaluationCheck() {
     assertEqual(closedSpanRecord.measurements.openclawTimelineEventCount, 3, "historical event-count maximum");
     assertEqual(closedSpanRecord.measurements.openclawEventLoopMaxMs, 500, "historical event-loop maximum");
     assertEqual(closedSpanRecord.measurements.openclawSlowestSpanMs, 6000, "historical slowest span");
+
+    const cumulativeTimelineRecord = {
+      scenario: "diagnostic-cumulative-timeline",
+      status: "PASS",
+      phases: [{
+        id: "gateway-start",
+        metrics: {
+          timeline: parseTimelineText(runtimeDepsStart)
+        }
+      }],
+      finalMetrics: {
+        service: { gatewayState: "running" },
+        logs: zeroLogMetrics(),
+        timeline: closedRuntimeDepsTimeline
+      }
+    };
+    evaluateRecord(cumulativeTimelineRecord, { thresholds: {} }, runtimeDepsTimelineOptions);
+    compactEvaluatedTimelineEvidence(cumulativeTimelineRecord);
+    assertEqual(
+      cumulativeTimelineRecord.phases[0].metrics.timeline.events,
+      undefined,
+      "redundant cumulative timeline events compacted"
+    );
+    assertEqual(
+      cumulativeTimelineRecord.finalMetrics.timeline.events.length,
+      2,
+      "latest cumulative timeline events retained"
+    );
 
     const openSpanRecord = {
       scenario: "diagnostic-open-span",
