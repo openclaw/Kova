@@ -13,7 +13,7 @@ export function buildRunContext({
   timeoutMs,
   profile = null,
   controls = null,
-  targetSetup = { completed: false }
+  targetSetup = { completed: false, failed: false, results: [] }
 }) {
   const networkFrontage = controls?.networkFrontage ?? flags.networkFrontage ?? flags.network_frontage_controls ?? null;
   return {
