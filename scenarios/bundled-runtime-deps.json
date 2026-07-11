@@ -18,13 +18,31 @@
   },
   "phases": [
     {
-      "id": "cold-start",
-      "title": "Cold Runtime Dependency Start",
-      "intent": "Start a fresh env and capture bundled runtime dependency staging logs.",
+      "id": "env-create",
+      "title": "Create Runtime Dependency Env",
+      "intent": "Create the disposable OpenClaw env without starting the gateway yet so mock auth is applied before runtime dependency staging.",
       "commands": [
-        "ocm start {env} {startSelector} --json"
+        "ocm start {env} {startSelector} --no-service --json"
       ],
       "evidence": [
+        "gateway port",
+        "runtime binding",
+        "env created without service"
+      ],
+      "healthScope": "none",
+      "collectionIntent": "service-only"
+    },
+    {
+      "id": "cold-start",
+      "title": "Cold Runtime Dependency Start",
+      "intent": "Start the gateway after mock provider config is present and capture bundled runtime dependency staging logs.",
+      "commands": [
+        "ocm service install {env} --json",
+        "ocm service start {env} --json"
+      ],
+      "evidence": [
+        "gateway service installed",
+        "gateway service started",
         "dependency staging duration",
         "installed dependency list",
         "missing dependency errors"
