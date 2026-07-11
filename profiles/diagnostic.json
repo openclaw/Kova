@@ -5,6 +5,7 @@
   "targetKinds": [
     "local-build"
   ],
+  "localBuildProfile": "sourcePerformance",
   "diagnostics": {
     "timelineRequired": true,
     "timelineRequiredForTargetKinds": [
