@@ -451,6 +451,7 @@ export async function runSelfCheck(flags = {}) {
     }));
     for (const scenarioId of [
       "bundled-plugin-startup",
+      "bundled-runtime-deps",
       "cron-runtime",
       "exec-tool-safety",
       "fresh-install",
@@ -484,6 +485,7 @@ export async function runSelfCheck(flags = {}) {
       }));
     }
     for (const [scenarioId, stateId, statePhaseId] of [
+      ["bundled-runtime-deps", "missing-plugin-index", "state-cold-start"],
       ["fresh-install", "onboarded-user", "state-provision"],
       ["gateway-performance", "gateway-already-running", "state-cold-start"]
     ]) {
