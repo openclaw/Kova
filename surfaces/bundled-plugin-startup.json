@@ -36,9 +36,9 @@
   "diagnostics": {
     "timelineRequiredForSourceBuild": true,
     "expectedSpans": [
-      "plugins.metadata",
-      "plugins.runtimeDeps",
-      "gateway.ready"
+      "gateway.ready",
+      "config.normalize",
+      "plugins.metadata.scan"
     ]
   },
   "purposes": [

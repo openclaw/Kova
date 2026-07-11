@@ -747,6 +747,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(resourceConfiguredRoleMissingCheck());
     checks.push(await resourceRootCommandRoleBoundaryCheck());
     checks.push(await resourceRolePollutionCheck());
+    checks.push(await startupSurfaceDiagnosticsContractCheck());
     checks.push(await gatewaySessionSurfaceContractCheck());
     checks.push(await bundledPluginStartupSurfaceContractCheck());
     checks.push(await releaseResourceCalibrationCheck());
@@ -12206,6 +12207,40 @@ async function bundledPluginStartupSurfaceContractCheck() {
       id: "bundled-plugin-startup-surface-contract",
       status: "FAIL",
       command: "validate bundled plugin startup readiness and resource caps",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+async function startupSurfaceDiagnosticsContractCheck() {
+  try {
+    const surfaceIds = [
+      "fresh-install",
+      "gateway-performance",
+      "bundled-plugin-startup",
+      "bundled-runtime-deps"
+    ];
+    const expectedSpans = ["gateway.ready", "config.normalize", "plugins.metadata.scan"];
+    for (const surfaceId of surfaceIds) {
+      const surface = JSON.parse(await readFile(`surfaces/${surfaceId}.json`, "utf8"));
+      const actualSpans = surface.diagnostics?.expectedSpans ?? [];
+      assertEqual(actualSpans.length, expectedSpans.length, `${surfaceId} diagnostic span count`);
+      for (const span of expectedSpans) {
+        assertEqual(actualSpans.includes(span), true, `${surfaceId} requires observed ${span} span`);
+      }
+    }
+    return {
+      id: "startup-surface-diagnostics-contract",
+      status: "PASS",
+      command: "validate startup surfaces against current OpenClaw timeline spans",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "startup-surface-diagnostics-contract",
+      status: "FAIL",
+      command: "validate startup surfaces against current OpenClaw timeline spans",
       durationMs: 0,
       message: error.message
     };

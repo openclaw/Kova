@@ -38,9 +38,9 @@
   "diagnostics": {
     "timelineRequiredForSourceBuild": true,
     "expectedSpans": [
-      "gateway.startup",
-      "health.ready",
-      "eventLoop.delay"
+      "gateway.ready",
+      "config.normalize",
+      "plugins.metadata.scan"
     ]
   },
   "purposes": [
