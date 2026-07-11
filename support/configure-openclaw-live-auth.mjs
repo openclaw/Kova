@@ -10,7 +10,7 @@ const externalCli = options.externalCli || null;
 const externalRuntime = authMethod === "external-cli"
   ? externalCliRuntimeConfig(provider, externalCli, options.model)
   : null;
-const model = externalRuntime?.model || options.model || defaultModel(provider);
+const model = externalRuntime?.model || modelConfig(provider, options.model);
 const providerKey = externalRuntime?.providerKey || providerConfigKey(provider);
 
 const stateDir = process.env.OPENCLAW_STATE_DIR || path.join(requiredEnv("OPENCLAW_HOME"), ".openclaw");
@@ -102,6 +102,18 @@ function defaultModel(provider) {
     contextWindow: 128000,
     contextTokens: 96000,
     maxTokens: 4096
+  };
+}
+
+function modelConfig(provider, modelId) {
+  const model = defaultModel(provider);
+  if (!modelId) {
+    return model;
+  }
+  return {
+    ...model,
+    id: modelId,
+    name: modelId
   };
 }
 

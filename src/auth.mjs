@@ -80,6 +80,7 @@ export async function configureCredentialProvider(options = {}) {
 
 export async function resolveRunAuthContext(flags = {}) {
   const requestedMode = flags.auth ? String(flags.auth) : "mock";
+  const explicitMode = flags.auth !== undefined;
   if (!authModes.includes(requestedMode)) {
     throw new Error(`--auth must be one of ${authModes.join(", ")}`);
   }
@@ -110,6 +111,7 @@ export async function resolveRunAuthContext(flags = {}) {
     return {
       schemaVersion: "kova.auth.context.v1",
       requestedMode,
+      explicitMode,
       modelId,
       credentialStore: credentialStoreSummary(store),
       liveEnv: store.liveEnv,
@@ -124,6 +126,7 @@ export async function resolveRunAuthContext(flags = {}) {
   return {
     schemaVersion: "kova.auth.context.v1",
     requestedMode,
+    explicitMode,
     modelId,
     credentialStore: credentialStoreSummary(store),
     liveEnv: store.liveEnv,
@@ -147,7 +150,9 @@ export function scenarioAuthPolicy(context, scenario, state) {
     };
   }
 
-  const requestedMode = override === "default" ? context.auth?.requestedMode ?? "mock" : override;
+  const requestedMode = context.auth?.explicitMode === true || override === "default"
+    ? context.auth?.requestedMode ?? "mock"
+    : override;
   if (requestedMode === "skip") {
     return {
       schemaVersion: "kova.auth.policy.v1",
@@ -668,21 +673,10 @@ function configureLiveAuthCommands(authPolicy, envName) {
   const commands = authPolicy.setupKind === "openclaw-onboard"
     ? [configureLiveAuthViaOpenClawOnboardCommand(authPolicy, envName)]
     : [configureLiveAuthConfigPatchCommand(authPolicy, envName)];
-  if (authPolicy.modelId) {
-    commands.push(ocmAt(envName, ["models", "set", `${liveModelProviderId(authPolicy)}/${authPolicy.modelId}`]));
+  if (authPolicy.setupKind === "openclaw-onboard" && authPolicy.modelId) {
+    commands.push(configureLiveAuthConfigPatchCommand(authPolicy, envName));
   }
   return commands;
-}
-
-function liveModelProviderId(authPolicy) {
-  if (
-    authPolicy.providerId === "openai" &&
-    authPolicy.source === "external-cli" &&
-    authPolicy.externalCli === "codex"
-  ) {
-    return "codex";
-  }
-  return authPolicy.providerId;
 }
 
 function configureLiveAuthConfigPatchCommand(authPolicy, envName) {
@@ -697,6 +691,9 @@ function configureLiveAuthConfigPatchCommand(authPolicy, envName) {
   ];
   if (authPolicy.source === "external-cli" && authPolicy.externalCli) {
     args.push("--auth-method", "external-cli", "--external-cli", authPolicy.externalCli);
+  }
+  if (authPolicy.modelId) {
+    args.push("--model", authPolicy.modelId);
   }
   return ocmEnvExec(envName, args);
 }

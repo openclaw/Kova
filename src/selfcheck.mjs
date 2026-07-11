@@ -4067,7 +4067,7 @@ exit 2
 `, "utf8");
   await chmod(ocmPath, 0o755);
 
-  const command = `node bin/kova.mjs run --target local-build:${quoteShell(repoDir)} --scenario fresh-install --execute --report-dir ${quoteShell(reportDir)} --json`;
+  const command = `node bin/kova.mjs matrix run --profile smoke --target local-build:${quoteShell(repoDir)} --include scenario:fresh-install --repeat 3 --auth skip --execute --report-dir ${quoteShell(reportDir)} --json`;
   const result = await runCommand(command, {
     shell: "/bin/sh",
     timeoutMs: 30000,
@@ -4132,7 +4132,7 @@ exit 2
 `, "utf8");
   await chmod(ocmPath, 0o755);
 
-  const command = `node bin/kova.mjs run --target local-build:${quoteShell(repoDir)} --scenario fresh-install --execute --report-dir ${quoteShell(reportDir)} --json`;
+  const command = `node bin/kova.mjs matrix run --profile smoke --target local-build:${quoteShell(repoDir)} --include scenario:fresh-install --repeat 3 --auth skip --execute --report-dir ${quoteShell(reportDir)} --json`;
   const result = await runCommand(command, {
     shell: "/bin/sh",
     timeoutMs: 30000,
@@ -4158,10 +4158,22 @@ exit 2
     }
     const summary = JSON.parse(summaryResult.stdout);
     const log = await readFile(ocmLog, "utf8");
-    assertEqual(report.summary?.statuses?.BLOCKED, 1, "failed local-build scenario status");
-    assertEqual(report.records?.[0]?.cleanup, "already-absent", "already absent env cleanup status");
+    assertEqual(report.summary?.statuses?.BLOCKED, 3, "failed local-build repeat statuses");
+    assertEqual(report.records?.every((record) => record.cleanup === "already-absent"), true, "already absent env cleanup statuses");
+    assertEqual(
+      report.records?.slice(1).every((record) =>
+        record.phases?.find((phase) => phase.id === "target-setup")?.results?.[0]?.cached === true
+      ),
+      true,
+      "failed target setup result reused after first attempt"
+    );
     assertEqual(report.targetCleanup?.status, "already-absent", "already absent local-build target cleanup status");
     assertEqual(summary.scenarios?.[0]?.failureReason, "dependency install failed", "summary failure reason");
+    assertEqual(
+      log.split("\n").filter((line) => line.startsWith("runtime build-local ")).length,
+      1,
+      "failed local-build target setup executes once per matrix"
+    );
     if (!/runtime remove kova-local-\d+ --json/.test(log)) {
       throw new Error(`runtime remove was not called after failed build; log:\n${log}`);
     }
@@ -4389,17 +4401,23 @@ async function liveApiKeyExecutionCheck(tmp) {
     const config = JSON.parse(await readFile(join(openclawHome, ".openclaw", "openclaw.json"), "utf8"));
     assertEqual(config.models?.providers?.openai?.apiKey?.id, "OPENAI_API_KEY", "OpenClaw live config env ref");
     assertEqual(config.agents?.defaults?.model?.primary, "openai/gpt-5.6", "OpenClaw live model override");
+    assertEqual(
+      config.models?.providers?.openai?.models?.some((model) => model.id === "gpt-5.6"),
+      true,
+      "OpenClaw live model registration"
+    );
     const authSetupCommands = record.phases
       ?.find((phase) => phase.id === "auth-setup")
       ?.commands ?? [];
     assertEqual(authSetupCommands.length, 2, "live model override runs after OpenClaw onboarding");
     assertEqual(authSetupCommands[0]?.includes("onboard"), true, "live model override keeps OpenClaw onboarding");
     assertEqual(
-      authSetupCommands[1]?.includes("models") && authSetupCommands[1]?.includes("set"),
+      authSetupCommands[1]?.includes("configure-openclaw-live-auth.mjs") &&
+        authSetupCommands[1]?.includes("--model") &&
+        authSetupCommands[1]?.includes("gpt-5.6"),
       true,
-      "live model override uses OpenClaw model selection"
+      "live model override registers the explicit provider model"
     );
-    assertEqual(authSetupCommands[1]?.includes("openai/gpt-5.6"), true, "live model override command");
     const serializedConfig = JSON.stringify(config);
     if (serializedConfig.includes(secret)) {
       throw new Error("live API key leaked into OpenClaw config");
@@ -4410,6 +4428,24 @@ async function liveApiKeyExecutionCheck(tmp) {
     if (!statusResult || statusResult.stdout.includes(secret) || !statusResult.stdout.includes("[REDACTED]")) {
       throw new Error("live command env was not redacted in command output");
     }
+    const overrideResult = await runCommand([
+      `KOVA_HOME=${quoteShell(home)}`,
+      `PATH=${quoteShell(`${binDir}:${process.env.PATH}`)}`,
+      `KOVA_FAKE_OPENCLAW_HOME=${quoteShell(openclawHome)}`,
+      `KOVA_MOCK_OCM_LOG=${quoteShell(ocmLog)}`,
+      `node bin/kova.mjs run --target runtime:stable --scenario agent-cold-warm-message --state mock-openai-provider --auth live --model gpt-5.6 --report-dir ${quoteShell(reportDir)} --json`
+    ].join(" "), {
+      shell: "/bin/sh",
+      timeoutMs: 30000,
+      maxOutputChars: 1000000,
+      redactValues: [secret]
+    });
+    if (overrideResult.status !== 0) {
+      throw new Error(overrideResult.stderr.trim() || overrideResult.stdout.trim() || `override exit ${overrideResult.status}`);
+    }
+    const overrideReceipt = JSON.parse(overrideResult.stdout);
+    const overrideReport = JSON.parse(await readFile(overrideReceipt.jsonPath, "utf8"));
+    assertEqual(overrideReport.records?.[0]?.auth?.mode, "live", "explicit live auth overrides mock state auth");
     return {
       id: "live-api-key-execution",
       status: "PASS",
@@ -4485,9 +4521,9 @@ async function liveExternalCliDryRunCheck(tmp) {
       throw new Error(`external-cli auth setup command missing expected args: ${authSetupCommand}`);
     }
     assertEqual(
-      authSetupCommands.some((item) => item.includes("models") && item.includes("set") && item.includes("codex/gpt-5.6")),
+      authSetupCommand.includes("--model") && authSetupCommand.includes("gpt-5.6"),
       true,
-      "external cli model override keeps Codex provider"
+      "external cli config registers the requested model"
     );
     return {
       id: "live-external-cli-dry-run",
