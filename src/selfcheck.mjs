@@ -12215,14 +12215,14 @@ async function bundledPluginStartupSurfaceContractCheck() {
 
 async function startupSurfaceDiagnosticsContractCheck() {
   try {
-    const surfaceIds = [
-      "fresh-install",
-      "gateway-performance",
-      "bundled-plugin-startup",
-      "bundled-runtime-deps"
-    ];
-    const expectedSpans = ["gateway.ready", "config.normalize", "plugins.metadata.scan"];
-    for (const surfaceId of surfaceIds) {
+    const startupSpans = ["gateway.ready", "config.normalize", "plugins.metadata.scan"];
+    const surfaceSpans = {
+      "fresh-install": startupSpans,
+      "gateway-performance": startupSpans,
+      "bundled-plugin-startup": [...startupSpans, "runtimeDeps.stage"],
+      "bundled-runtime-deps": [...startupSpans, "runtimeDeps.stage"]
+    };
+    for (const [surfaceId, expectedSpans] of Object.entries(surfaceSpans)) {
       const surface = JSON.parse(await readFile(`surfaces/${surfaceId}.json`, "utf8"));
       const actualSpans = surface.diagnostics?.expectedSpans ?? [];
       assertEqual(actualSpans.length, expectedSpans.length, `${surfaceId} diagnostic span count`);

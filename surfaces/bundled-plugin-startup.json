@@ -38,7 +38,8 @@
     "expectedSpans": [
       "gateway.ready",
       "config.normalize",
-      "plugins.metadata.scan"
+      "plugins.metadata.scan",
+      "runtimeDeps.stage"
     ]
   },
   "purposes": [
