@@ -47,6 +47,7 @@ import {
   validateChannelWorkflowCaseInventoryReferences
 } from "./registries/channel-workflow-cases.mjs";
 import { runScenarioCommand } from "./run/command-executor.mjs";
+import { executeTargetSetup } from "./run/target-setup.mjs";
 import { loadProcessRoles } from "./registries/process-roles.mjs";
 import { validateProfileShape } from "./registries/profiles.mjs";
 import { validateScenarioShape } from "./registries/scenarios.mjs";
@@ -854,6 +855,7 @@ export async function runSelfCheck(flags = {}) {
     ));
     checks.push(await localBuildRuntimeCleanupCheck(tmp));
     checks.push(await localBuildRuntimeAlreadyAbsentCleanupCheck(tmp));
+    checks.push(await localBuildProfileEnvCheck(tmp));
     checks.push(await localBuildParallelSingleFlightCheck(tmp));
     checks.push(defaultGatewayResourceRoleCheck());
     checks.push(gatewayProcessResourceRoleCheck());
@@ -4190,6 +4192,64 @@ exit 2
       durationMs: result.durationMs,
       message: error.message
     };
+  }
+}
+
+async function localBuildProfileEnvCheck(tmp) {
+  const binDir = join(tmp, "mock-bin-local-build-profile");
+  const buildProfileLog = join(tmp, "mock-local-build-profile.log");
+  await mkdir(binDir, { recursive: true });
+  const ocmPath = join(binDir, "ocm");
+  await writeFile(ocmPath, `#!/bin/sh
+printf '%s' "$OPENCLAW_OCM_RUNTIME_BUILD_PROFILE" > "$KOVA_MOCK_BUILD_PROFILE_LOG"
+echo '{"ok":true}'
+`, "utf8");
+  await chmod(ocmPath, 0o755);
+
+  const previousPath = process.env.PATH;
+  const previousLog = process.env.KOVA_MOCK_BUILD_PROFILE_LOG;
+  process.env.PATH = `${binDir}:${previousPath ?? ""}`;
+  process.env.KOVA_MOCK_BUILD_PROFILE_LOG = buildProfileLog;
+  try {
+    const results = await executeTargetSetup({
+      targetPlan: {
+        kind: "local-build",
+        runtimeName: "kova-local-profile-test",
+        repoPath: "/tmp/openclaw"
+      },
+      profile: {
+        localBuildProfile: "sourcePerformance"
+      },
+      timeoutMs: 30000,
+      resourceSampling: false,
+      targetSetup: { completed: false, failed: false, results: [], inFlight: null }
+    }, "kova-profile-test", tmp);
+    assertEqual(results.length, 1, "local build profile target setup result count");
+    assertEqual(results[0]?.status, 0, "local build profile target setup status");
+    assertEqual(
+      await readFile(buildProfileLog, "utf8"),
+      "sourcePerformance",
+      "local build profile forwarded to OCM"
+    );
+    return {
+      id: "local-build-profile-env",
+      status: "PASS",
+      command: "execute target setup with diagnostic local build profile",
+      durationMs: results[0]?.durationMs ?? 0
+    };
+  } catch (error) {
+    return {
+      id: "local-build-profile-env",
+      status: "FAIL",
+      command: "execute target setup with diagnostic local build profile",
+      durationMs: 0,
+      message: error.message
+    };
+  } finally {
+    restoreEnv({
+      PATH: previousPath,
+      KOVA_MOCK_BUILD_PROFILE_LOG: previousLog
+    });
   }
 }
 
