@@ -355,9 +355,9 @@
       "diagnostics": {
         "timelineRequiredForSourceBuild": true,
         "expectedSpans": [
-          "plugins.metadata",
-          "plugins.runtimeDeps",
-          "gateway.ready"
+          "gateway.ready",
+          "config.normalize",
+          "plugins.metadata.scan"
         ]
       },
       "purposes": [
@@ -423,9 +423,9 @@
       "diagnostics": {
         "timelineRequiredForSourceBuild": true,
         "expectedSpans": [
-          "runtimeDeps.stage",
-          "plugins.runtimeDeps",
-          "plugins.runtimeDeps.install"
+          "gateway.ready",
+          "config.normalize",
+          "plugins.metadata.scan"
         ]
       },
       "purposes": [
@@ -1086,9 +1086,9 @@
       "diagnostics": {
         "timelineRequiredForSourceBuild": true,
         "expectedSpans": [
-          "gateway.startup",
-          "plugins.metadata",
-          "providers.list"
+          "gateway.ready",
+          "config.normalize",
+          "plugins.metadata.scan"
         ]
       },
       "purposes": [
@@ -1164,9 +1164,9 @@
       "diagnostics": {
         "timelineRequiredForSourceBuild": true,
         "expectedSpans": [
-          "gateway.startup",
-          "health.ready",
-          "eventLoop.delay"
+          "gateway.ready",
+          "config.normalize",
+          "plugins.metadata.scan"
         ]
       },
       "purposes": [
@@ -17234,17 +17234,6 @@
         "timelineRequired": true,
         "timelineRequiredForTargetKinds": [
           "local-build"
-        ],
-        "requiredKeySpans": [
-          "gateway.startup",
-          "gateway.ready",
-          "config.normalize",
-          "plugins.metadata.scan",
-          "runtimeDeps.stage",
-          "providers.load",
-          "models.catalog",
-          "agent.turn",
-          "agent.cleanup"
         ]
       },
       "calibration": {
