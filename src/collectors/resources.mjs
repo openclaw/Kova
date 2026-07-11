@@ -8,13 +8,17 @@ export const RESOURCE_SAMPLES_SCHEMA = "kova.resourceSamples.v1";
 export const PROCESS_SNAPSHOT_SCHEMA = "kova.processSnapshot.v1";
 export const PROCESS_LEAKS_SCHEMA = "kova.processLeakSummary.v1";
 
+// Gateway PIDs remain stable across most phase commands. Reuse live PIDs so
+// resource sampling does not perturb the workload with repeated OCM launches.
+const gatewayPidsByEnv = new Map();
+
 export function startResourceSampler(rootPid, options = {}) {
   const startedAt = Date.now();
   const intervalMs = Math.max(250, Number(options.intervalMs ?? 1000));
   const roleMatchers = compileRoleMatchers(options.processRoles ?? []);
   const samples = [];
   let gatewayPid = null;
-  let gatewayRefreshSample = 0;
+  let nextGatewayLookupSample = 0;
 
   sample();
   const timer = setInterval(sample, intervalMs);
@@ -40,9 +44,16 @@ export function startResourceSampler(rootPid, options = {}) {
 
   function sample() {
     const allProcesses = listProcesses(options.redactValues ?? []);
-    if (options.envName && (gatewayPid === null || samples.length >= gatewayRefreshSample)) {
-      gatewayPid = resolveGatewayPid(options.envName);
-      gatewayRefreshSample = samples.length + 5;
+    if (options.envName) {
+      const knownGatewayPid = gatewayPid ?? gatewayPidsByEnv.get(options.envName) ?? null;
+      gatewayPid = liveGatewayPid(options.envName, gatewayPid, allProcesses);
+      if (knownGatewayPid !== null && gatewayPid === null) {
+        nextGatewayLookupSample = samples.length;
+      }
+      if (gatewayPid === null && samples.length >= nextGatewayLookupSample) {
+        gatewayPid = lookupGatewayPid(options.envName);
+        nextGatewayLookupSample = samples.length + 5;
+      }
     }
 
     const treePids = collectProcessTreePids(allProcesses, rootPid);
@@ -226,8 +237,10 @@ function roleRss(processes, role) {
 export function captureProcessSnapshot(options = {}) {
   const roleMatchers = compileRoleMatchers(options.processRoles ?? []);
   const envName = options.envName ?? null;
-  const gatewayPid = envName ? resolveGatewayPid(envName) : null;
   const allProcesses = listProcesses();
+  const gatewayPid = envName
+    ? liveGatewayPid(envName, null, allProcesses) ?? lookupGatewayPid(envName)
+    : null;
   const gatewayTreePids = gatewayPid === null ? new Set() : collectProcessTreePids(allProcesses, gatewayPid);
   const scopeTokens = snapshotScopeTokens(options);
   const included = [];
@@ -468,7 +481,19 @@ function collectProcessTreePids(processes, rootPid) {
   return pids;
 }
 
-function resolveGatewayPid(envName) {
+function liveGatewayPid(envName, currentPid, processes) {
+  const candidate = currentPid ?? gatewayPidsByEnv.get(envName) ?? null;
+  if (candidate === null) {
+    return null;
+  }
+  if (processes.some((process) => process.pid === candidate)) {
+    return candidate;
+  }
+  gatewayPidsByEnv.delete(envName);
+  return null;
+}
+
+function lookupGatewayPid(envName) {
   const result = spawnSync(process.env.SHELL || "/bin/sh", ["-lc", ocmServiceStatusJson(envName)], {
     cwd: repoRoot,
     encoding: "utf8",
@@ -480,7 +505,13 @@ function resolveGatewayPid(envName) {
   }
   try {
     const parsed = JSON.parse(result.stdout);
-    return typeof parsed.childPid === "number" ? parsed.childPid : null;
+    const childPid = typeof parsed.childPid === "number" ? parsed.childPid : null;
+    if (childPid === null) {
+      gatewayPidsByEnv.delete(envName);
+    } else {
+      gatewayPidsByEnv.set(envName, childPid);
+    }
+    return childPid;
   } catch {
     return null;
   }
