@@ -42,7 +42,7 @@ export async function resolveMatrixPlan(flags, options = {}) {
     platform,
     entries,
     resolvedCoverage,
-    controls: matrixControlSummary(flags, targetPlan)
+    controls: matrixControlSummary(flags)
   };
 }
 

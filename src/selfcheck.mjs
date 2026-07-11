@@ -856,6 +856,7 @@ export async function runSelfCheck(flags = {}) {
     ));
     checks.push(await localBuildRuntimeCleanupCheck(tmp));
     checks.push(await localBuildRuntimeAlreadyAbsentCleanupCheck(tmp));
+    checks.push(await localBuildParallelSingleFlightCheck(tmp));
     checks.push(defaultGatewayResourceRoleCheck());
     checks.push(gatewayProcessResourceRoleCheck());
     checks.push(compareRepeatAggregationCheck());
@@ -4186,6 +4187,103 @@ exit 2
   } catch (error) {
     return {
       id: "local-build-runtime-already-absent-cleanup",
+      status: "FAIL",
+      command,
+      durationMs: result.durationMs,
+      message: error.message
+    };
+  }
+}
+
+async function localBuildParallelSingleFlightCheck(tmp) {
+  const binDir = join(tmp, "mock-bin-parallel-local-build");
+  const repoDir = join(tmp, "mock-openclaw parallel local build");
+  const reportDir = join(tmp, "local-build-parallel-report");
+  const ocmLog = join(tmp, "mock-ocm-parallel.log");
+  const buildActive = join(tmp, "mock-ocm-build-active");
+  const buildOverlap = join(tmp, "mock-ocm-build-overlap");
+  await mkdir(binDir, { recursive: true });
+  await mkdir(repoDir, { recursive: true });
+  const ocmPath = join(binDir, "ocm");
+  await writeFile(ocmPath, `#!/bin/sh
+printf '%s\\n' "$*" >> "$KOVA_MOCK_OCM_LOG"
+case "$1:$2" in
+  runtime:build-local)
+    if [ -f "$KOVA_MOCK_BUILD_ACTIVE" ]; then
+      : > "$KOVA_MOCK_BUILD_OVERLAP"
+    fi
+    : > "$KOVA_MOCK_BUILD_ACTIVE"
+    sleep 1
+    rm -f "$KOVA_MOCK_BUILD_ACTIVE"
+    echo '{"ok":true}'
+    exit 0
+    ;;
+  runtime:remove) echo '{"removed":true}'; exit 0 ;;
+  service:status) echo '{"running":false,"desiredRunning":false,"childPid":null,"gatewayPort":null,"gatewayState":"stopped","runDir":"/tmp/kova-mock"}'; exit 0 ;;
+  service:install|service:start|service:restart|service:stop) echo '{"ok":true}'; exit 0 ;;
+  env:exec) exit 0 ;;
+  env:destroy) echo '{"destroyed":true}'; exit 0 ;;
+esac
+case "$1" in
+  start) echo '{"ok":true}'; exit 0 ;;
+  logs) exit 0 ;;
+  @*) echo 'ok'; exit 0 ;;
+  --version) echo 'mock-ocm'; exit 0 ;;
+esac
+echo "unhandled mock ocm command: $*" >&2
+exit 2
+`, "utf8");
+  await chmod(ocmPath, 0o755);
+
+  const command = `node bin/kova.mjs matrix run --profile smoke --target local-build:${quoteShell(repoDir)} --include scenario:fresh-install,scenario:bundled-runtime-deps,scenario:bundled-plugin-startup --parallel 3 --auth skip --execute --report-dir ${quoteShell(reportDir)} --json`;
+  const result = await runCommand(command, {
+    shell: "/bin/sh",
+    timeoutMs: 30000,
+    maxOutputChars: 1000000,
+    env: {
+      PATH: `${binDir}:${process.env.PATH}`,
+      KOVA_MOCK_OCM_LOG: ocmLog,
+      KOVA_MOCK_BUILD_ACTIVE: buildActive,
+      KOVA_MOCK_BUILD_OVERLAP: buildOverlap
+    }
+  });
+
+  try {
+    if (result.status !== 0) {
+      throw new Error(result.stderr.trim() || result.stdout.trim() || `exit ${result.status}`);
+    }
+    const receipt = JSON.parse(result.stdout);
+    const report = JSON.parse(await readFile(receipt.jsonPath, "utf8"));
+    const log = await readFile(ocmLog, "utf8");
+    assertEqual(report.controls?.requestedParallel, 3, "local-build requested parallelism");
+    assertEqual(report.controls?.parallel, 3, "local-build effective parallelism");
+    assertEqual(report.controls?.parallelAdjusted, false, "local-build parallelism is not adjusted");
+    assertEqual(
+      log.split("\n").filter((line) => line.startsWith("runtime build-local ")).length,
+      1,
+      "parallel local-build target setup executes once per matrix"
+    );
+    assertEqual(
+      report.records?.filter((record) => record.phases?.some((phase) => phase.id === "target-setup")).length,
+      1,
+      "parallel local-build target setup is recorded once"
+    );
+    let overlapDetected = true;
+    try {
+      await stat(buildOverlap);
+    } catch {
+      overlapDetected = false;
+    }
+    assertEqual(overlapDetected, false, "parallel local-build target setup does not overlap");
+    return {
+      id: "local-build-parallel-single-flight",
+      status: "PASS",
+      command,
+      durationMs: result.durationMs
+    };
+  } catch (error) {
+    return {
+      id: "local-build-parallel-single-flight",
       status: "FAIL",
       command,
       durationMs: result.durationMs,
