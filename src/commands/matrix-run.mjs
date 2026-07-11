@@ -56,7 +56,7 @@ export async function runMatrixRun(flags) {
   const reportRoot = flags.report_dir ? resolveFromCwd(flags.report_dir) : reportsDir;
   const { runId, outputPaths, lockPath } = await allocateReportOutputPaths(reportRoot, profile.id);
   try {
-  const targetSetup = { completed: false, failed: false, results: [] };
+  const targetSetup = { completed: false, failed: false, results: [], inFlight: null };
   const progress = createRunProgress({ flags, mode: flags.execute === true ? "execution" : "dry-run" });
   progress.runStart({
     scenarioCount: entries.length * (controls.repeat ?? 1),

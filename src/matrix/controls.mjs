@@ -1,11 +1,11 @@
 import { resolveBaselinePath } from "../performance/baselines.mjs";
 import { parseFilterList } from "./expand.mjs";
 
-export function matrixControlSummary(flags, targetPlan) {
+export function matrixControlSummary(flags) {
   const requestedParallel = positiveIntegerFlag(flags, "parallel", 1);
   const repeat = positiveIntegerFlag(flags, "repeat", 1);
   const failFast = flags.fail_fast === true;
-  const parallel = failFast || targetPlan.kind === "local-build" ? 1 : requestedParallel;
+  const parallel = failFast ? 1 : requestedParallel;
   return {
     include: parseFilterList(flags.include),
     exclude: parseFilterList(flags.exclude),

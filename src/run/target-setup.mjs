@@ -9,19 +9,47 @@ export async function executeTargetSetup(context, envName, artifactDir) {
   if (!phase) {
     return [];
   }
-  if (context.targetSetup?.completed) {
+  const targetSetup = context.targetSetup;
+  if (targetSetup?.completed) {
     return [];
   }
-  if (context.targetSetup?.failed) {
-    return context.targetSetup.results.map((result) => ({
-      ...result,
-      cached: true,
-      durationMs: 0,
-      originalDurationMs: result.durationMs
-    }));
+  if (targetSetup?.failed) {
+    return cachedFailureResults(targetSetup.results);
+  }
+  if (targetSetup?.inFlight) {
+    const results = await targetSetup.inFlight;
+    return results.every((result) => result.status === 0)
+      ? []
+      : cachedFailureResults(results);
   }
 
-  const results = [
+  const setupPromise = runTargetSetup(phase, context, envName, artifactDir);
+  if (targetSetup) {
+    // Local-build matrices share one runtime. Parallel scenarios wait on the
+    // same build so OCM never races multiple npm pack/install operations.
+    targetSetup.inFlight = setupPromise;
+  }
+
+  try {
+    const results = await setupPromise;
+    if (targetSetup) {
+      targetSetup.results = results;
+      if (results.every((result) => result.status === 0)) {
+        targetSetup.completed = true;
+      } else {
+        targetSetup.failed = true;
+      }
+    }
+    return results;
+  } finally {
+    if (targetSetup) {
+      targetSetup.inFlight = null;
+    }
+  }
+}
+
+async function runTargetSetup(phase, context, envName, artifactDir) {
+  return [
     tagCommandResult(await runCommand(phase.commands[0], {
       timeoutMs: context.timeoutMs,
       env: { KOVA_ENV_NAME: envName },
@@ -33,13 +61,13 @@ export async function executeTargetSetup(context, envName, artifactDir) {
       }
     }), phase)
   ];
-  if (results.every((result) => result.status === 0) && context.targetSetup) {
-    context.targetSetup.completed = true;
-  } else if (context.targetSetup) {
-    // A local-build runtime is shared by the whole matrix. Retrying the same
-    // failed build per scenario only burns time and cannot change the outcome.
-    context.targetSetup.failed = true;
-    context.targetSetup.results = results;
-  }
-  return results;
+}
+
+function cachedFailureResults(results) {
+  return results.map((result) => ({
+    ...result,
+    cached: true,
+    durationMs: 0,
+    originalDurationMs: result.durationMs
+  }));
 }
