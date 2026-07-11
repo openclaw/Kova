@@ -85,7 +85,7 @@ import {
   parseProviderRequestLog,
   parseTimelineProviderRequestLog
 } from "./collectors/provider.mjs";
-import { captureProcessSnapshot, classifyRegistryRolesForProcess, classifySnapshotRolesForProcess, diffProcessSnapshots, summarizeResourceSamples } from "./collectors/resources.mjs";
+import { captureProcessSnapshot, classifyRegistryRolesForProcess, classifySnapshotRolesForProcess, diffProcessSnapshots, startResourceSampler, summarizeResourceSamples } from "./collectors/resources.mjs";
 import { captureOpenClawStateSnapshot } from "./collectors/openclaw-state.mjs";
 import { buildReportSummary, renderMarkdownReport, renderPasteSummary, renderReportSummary, summarizeRecords } from "./reporting/report.mjs";
 import { buildRepeatedWorkAudit } from "./audits/repeated-work.mjs";
@@ -747,6 +747,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(resourceConfiguredRoleMissingCheck());
     checks.push(await resourceRootCommandRoleBoundaryCheck());
     checks.push(await resourceRolePollutionCheck());
+    checks.push(await resourceGatewayPidLookupCheck(tmp));
     checks.push(await startupSurfaceDiagnosticsContractCheck());
     checks.push(await gatewaySessionSurfaceContractCheck());
     checks.push(await bundledPluginStartupSurfaceContractCheck());
@@ -12482,6 +12483,90 @@ async function agentGatewayRpcTurnSurfaceContractCheck() {
       durationMs: 0,
       message: error.message
     };
+  }
+}
+
+async function resourceGatewayPidLookupCheck(tmp) {
+  const binDir = join(tmp, "resource-gateway-pid-bin");
+  const lookupLog = join(tmp, "resource-gateway-pid-lookups.log");
+  const fakeOcm = join(binDir, "ocm");
+  const fakeShell = join(binDir, "shell");
+  await mkdir(binDir, { recursive: true });
+  await writeFile(fakeOcm, `#!/bin/sh
+printf '%s\\n' "$*" >> "$KOVA_MOCK_OCM_LOG"
+if [ "$3" = "kova-resource-running" ]; then
+  printf '{"childPid":%s}\\n' "$KOVA_MOCK_GATEWAY_PID"
+else
+  printf '{"childPid":null}\\n'
+fi
+`, "utf8");
+  await writeFile(fakeShell, `#!/bin/sh
+exec /bin/sh -c "$2"
+`, "utf8");
+  await chmod(fakeOcm, 0o755);
+  await chmod(fakeShell, 0o755);
+
+  const previousPath = process.env.PATH;
+  const previousLog = process.env.KOVA_MOCK_OCM_LOG;
+  const previousPid = process.env.KOVA_MOCK_GATEWAY_PID;
+  const previousShell = process.env.SHELL;
+  process.env.PATH = `${binDir}:${previousPath ?? ""}`;
+  process.env.KOVA_MOCK_OCM_LOG = lookupLog;
+  process.env.KOVA_MOCK_GATEWAY_PID = String(process.pid);
+  process.env.SHELL = fakeShell;
+
+  try {
+    const first = startResourceSampler(process.pid, {
+      envName: "kova-resource-running",
+      intervalMs: 250
+    });
+    await first.stop();
+    const second = startResourceSampler(process.pid, {
+      envName: "kova-resource-running",
+      intervalMs: 250
+    });
+    await second.stop();
+
+    const missing = startResourceSampler(process.pid, {
+      envName: "kova-resource-missing",
+      intervalMs: 250
+    });
+    await sleep(600);
+    const missingSummary = await missing.stop();
+
+    const lookups = (await readFile(lookupLog, "utf8")).trim().split("\n").filter(Boolean);
+    assertEqual(
+      lookups.filter((line) => line.includes("kova-resource-running")).length,
+      1,
+      "live gateway pid reused across samplers"
+    );
+    assertEqual(
+      lookups.filter((line) => line.includes("kova-resource-missing")).length,
+      1,
+      "missing gateway pid lookup backs off"
+    );
+    assertEqual(missingSummary.sampleCount >= 3, true, "missing gateway sampler collected repeated samples");
+    return {
+      id: "resource-gateway-pid-lookups",
+      status: "PASS",
+      command: "reuse live gateway pid and back off missing pid lookups",
+      durationMs: 600
+    };
+  } catch (error) {
+    return {
+      id: "resource-gateway-pid-lookups",
+      status: "FAIL",
+      command: "reuse live gateway pid and back off missing pid lookups",
+      durationMs: 600,
+      message: error.message
+    };
+  } finally {
+    restoreEnv({
+      PATH: previousPath,
+      KOVA_MOCK_OCM_LOG: previousLog,
+      KOVA_MOCK_GATEWAY_PID: previousPid,
+      SHELL: previousShell
+    });
   }
 }
 
