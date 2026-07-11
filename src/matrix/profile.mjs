@@ -6,6 +6,7 @@ export function profileSummary(profile) {
     purpose: profile.purpose ?? null,
     entryCount: profile.entries.length,
     targetKinds: profile.targetKinds ?? null,
+    localBuildProfile: profile.localBuildProfile ?? null,
     diagnostics: profile.diagnostics ?? null,
     calibration: profile.calibration ? {
       surfaceCount: Object.keys(profile.calibration.surfaces ?? {}).length,

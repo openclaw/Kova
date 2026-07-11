@@ -684,6 +684,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(await jsonCommandCheck("diagnostic-profile-plan-json", "node bin/kova.mjs matrix plan --profile diagnostic --target local-build:/tmp/openclaw --include scenario:release-runtime-startup --json", (data) => {
       assertEqual(data.schemaVersion, "kova.matrix.plan.v1", "diagnostic matrix plan schema");
       assertEqual(data.profile?.id, "diagnostic", "diagnostic profile id");
+      assertEqual(data.profile?.localBuildProfile, "sourcePerformance", "diagnostic local build profile");
       assertEqual(data.profile?.diagnostics?.timelineRequired, true, "diagnostic timeline required");
       assertArrayNotEmpty(data.entries, "diagnostic entries");
     }));
@@ -12948,6 +12949,21 @@ function stateRegistryValidationCheck() {
       rejectedPurpose = /unknown purpose/.test(error.message);
     }
     assertEqual(rejectedPurpose, true, "unknown profile purpose rejected");
+
+    let rejectedLocalBuildProfile = false;
+    try {
+      validateProfileShape({
+        id: "profile",
+        title: "Bad Local Build Profile",
+        objective: "Invalid local build profile target.",
+        entries: [{ scenario: "scenario", state: "state" }],
+        targetKinds: ["runtime"],
+        localBuildProfile: "sourcePerformance"
+      }, "bad-local-build-profile.json");
+    } catch (error) {
+      rejectedLocalBuildProfile = /requires targetKinds to include local-build/.test(error.message);
+    }
+    assertEqual(rejectedLocalBuildProfile, true, "local build profile requires local-build target");
 
     let rejectedDerivedCoverage = false;
     try {

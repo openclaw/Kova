@@ -34,6 +34,7 @@ export function validateProfileShape(profile, sourceName = "profile") {
   requireArray(profile, "entries", errors);
   validatePurpose(profile.purpose, "purpose", errors, { optional: true });
   validateStringArray(profile.targetKinds, "targetKinds", errors, { optional: true });
+  validateLocalBuildProfile(profile, errors);
   validateDiagnostics(profile.diagnostics, "diagnostics", errors);
   validateCalibration(profile.calibration, "calibration", errors);
   validateEntries(profile.entries, errors);
@@ -43,6 +44,16 @@ export function validateProfileShape(profile, sourceName = "profile") {
   }
 
   assertNoShapeErrors(errors, sourceName);
+}
+
+function validateLocalBuildProfile(profile, errors) {
+  if (profile.localBuildProfile === undefined) {
+    return;
+  }
+  requireString(profile, "localBuildProfile", errors);
+  if (!profile.targetKinds?.includes("local-build")) {
+    errors.push("localBuildProfile requires targetKinds to include local-build");
+  }
 }
 
 function validateCalibration(calibration, prefix, errors) {
