@@ -155,10 +155,7 @@ export async function runSelfCheck(flags = {}) {
   process.env.KOVA_HOME = join(tmp, "kova-home");
 
   try {
-    checks.push(await commandCheck(
-      "syntax",
-      "for f in bin/kova.mjs $(find src -name '*.mjs' -type f | sort); do node --check \"$f\" || exit 1; done"
-    ));
+    checks.push(await syntaxCheck());
     checks.push(await jsonCommandCheck("version-json", "node bin/kova.mjs version --json", (data) => {
       assertEqual(data.schemaVersion, "kova.version.v1", "version schema");
       assertString(data.version, "version");
@@ -14113,6 +14110,52 @@ async function commandCheck(id, command) {
     durationMs: result.durationMs,
     message: result.status === 0 ? "" : result.stderr.trim() || result.stdout.trim() || `exit ${result.status}`
   };
+}
+
+async function syntaxCheck() {
+  const files = ["bin/kova.mjs", ...(await listModuleFiles("src"))];
+  const workerCount = Math.min(8, files.length);
+  const failures = [];
+  const startedAt = Date.now();
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < files.length) {
+      const file = files[nextIndex];
+      nextIndex += 1;
+      const result = await runCommand(`node --check ${quoteShell(file)}`, { timeoutMs: 30000 });
+      if (result.status !== 0) {
+        failures.push({
+          file,
+          message: result.stderr.trim() || result.stdout.trim() || `exit ${result.status}`
+        });
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  failures.sort((left, right) => left.file.localeCompare(right.file));
+  return {
+    id: "syntax",
+    status: failures.length === 0 ? "PASS" : "FAIL",
+    command: `node --check (${files.length} files, ${workerCount} workers)`,
+    durationMs: Date.now() - startedAt,
+    message: failures.map((failure) => `${failure.file}: ${failure.message}`).join("\n")
+  };
+}
+
+async function listModuleFiles(dir) {
+  const entries = await readdir(dir, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...await listModuleFiles(path));
+    } else if (entry.isFile() && entry.name.endsWith(".mjs")) {
+      files.push(path);
+    }
+  }
+  return files;
 }
 
 async function credentialStoreSelfCheck(tmp) {
