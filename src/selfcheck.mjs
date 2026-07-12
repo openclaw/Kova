@@ -1099,6 +1099,7 @@ async function runScopedSelfCheck(flags, scope, workspace) {
     checks.push(compareMetricOrderingCheck());
     checks.push(compareGatewayRssDedupeCheck());
     checks.push(resourceContractCompareCheck());
+    checks.push(await reportCompareExitStatusCheck());
     checks.push(fixtureAccountingRenderCheck());
 
     const receiptCheck = await jsonCommandCheck(
@@ -20849,6 +20850,51 @@ function zeroLogMetrics() {
     eventLoopDelayMentions: 0,
     v8DiagnosticMentions: 0
   };
+}
+
+async function reportCompareExitStatusCheck() {
+  const modes = [
+    { name: "dashboard", flag: "" },
+    { name: "plain", flag: "--plain" },
+    { name: "fixer", flag: "--fixer" },
+    { name: "json", flag: "--json" }
+  ];
+  let durationMs = 0;
+  try {
+    for (const mode of modes) {
+      const command = [
+        "node bin/kova.mjs report compare",
+        "tests/fixtures/reports/pass.json",
+        "tests/fixtures/reports/fail.json",
+        mode.flag
+      ].filter(Boolean).join(" ");
+      const result = await runCommand(command, {
+        timeoutMs: 30000,
+        maxOutputChars: 1000000
+      });
+      durationMs += result.durationMs;
+      assertEqual(result.status, 1, `${mode.name} failed comparison exit`);
+      if (mode.name === "json") {
+        assertEqual(JSON.parse(result.stdout).ok, false, "JSON failed comparison body");
+      } else {
+        assertEqual(result.stdout.trim().length > 0, true, `${mode.name} failed comparison body`);
+      }
+    }
+    return {
+      id: "report-compare-exit-status",
+      status: "PASS",
+      command: "verify failed comparison exits across render formats",
+      durationMs
+    };
+  } catch (error) {
+    return {
+      id: "report-compare-exit-status",
+      status: "FAIL",
+      command: "verify failed comparison exits across render formats",
+      durationMs,
+      message: error.message
+    };
+  }
 }
 
 async function reportRunIdReferenceCheck(tmp) {
