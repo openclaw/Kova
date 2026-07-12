@@ -138,7 +138,12 @@ import {
   runInSelfCheckScope
 } from "./selfcheck-scope.mjs";
 import { compareReports, renderCompareSummary } from "./reporting/compare.mjs";
-import { bundleReport, publishBundlePair, retainGateArtifacts } from "./reporting/artifacts.mjs";
+import {
+  bundleReport,
+  publishBundlePair,
+  retainedArtifactTreeDigest,
+  retainGateArtifacts
+} from "./reporting/artifacts.mjs";
 import { pickAffectedScenarios, scenarioMetricRows } from "./reporting/compare-aggregate.mjs";
 import { renderCompareAssessment } from "./reporting/render-compare.mjs";
 import { renderAssessment } from "./reporting/render-assessment.mjs";
@@ -1151,6 +1156,7 @@ async function runScopedSelfCheck(flags, scope, workspace) {
         }
       ));
       const publishBundle = await bundleReport(receiptCheck.data.jsonPath, { outputDir: tmp });
+      await writeFile(join(tmp, `${report.runId}-bundle.tar.gz`), "stale legacy bundle\n");
       const publishRoot = join(tmp, "publish-content-addressed");
       const publishOutDir = join(publishRoot, "src", "content", "releases");
       checks.push(await jsonCommandCheck(
@@ -5123,6 +5129,22 @@ async function reportPublicationCheck(tmp) {
       "markerless backup is preserved for operator inspection"
     );
     await rm(markerlessBackupPath);
+    await writeTransactionMarker(outputPaths);
+    await writeFile(markerlessBackupPath, "operator replacement\n");
+    let staleReportMarkerRejected = false;
+    try {
+      await writeReportOutputs(publicationRoot, publishedReport);
+    } catch (error) {
+      staleReportMarkerRejected = /report backup does not match transaction marker/.test(error.message);
+    }
+    assertEqual(staleReportMarkerRejected, true, "stale report backup marker fails closed");
+    assertEqual(
+      await readFile(markerlessBackupPath, "utf8"),
+      "operator replacement\n",
+      "stale report backup marker preserves unrelated replacement data"
+    );
+    await rm(markerlessBackupPath);
+    await rm(join(publicationRoot, `.${basename(outputPaths.json)}.kova-transaction`));
     const transactionTempPath = join(
       publicationRoot,
       `.${basename(outputPaths.json)}.kova-transaction.tmp`
@@ -5408,8 +5430,9 @@ async function reportPublicationCheck(tmp) {
     const emptyRetainedBackup = join(publicationRoot, ".empty-retained.bak");
     await mkdir(emptyRetainedBackup);
     await writeFile(`${emptyRetainedBackup}.owner`, `${JSON.stringify({
-      schemaVersion: "kova.retainedArtifactBackup.v1",
-      outputRoot: emptyRetainedRoot
+      schemaVersion: "kova.retainedArtifactBackup.v2",
+      outputRoot: emptyRetainedRoot,
+      treeSha256: await retainedArtifactTreeDigest(emptyRetainedBackup)
     })}\n`);
     await retainGateArtifacts(collisionReports[0], firstBundle, {
       outputDir: emptyRetainedRoot
@@ -5478,10 +5501,14 @@ async function reportPublicationCheck(tmp) {
     );
     await rm(retainedBackup, { recursive: true });
     const retainedBackupMarker = `${retainedBackup}.owner`;
-    const writeRetainedBackupMarker = () => writeFile(retainedBackupMarker, `${JSON.stringify({
-      schemaVersion: "kova.retainedArtifactBackup.v1",
-      outputRoot: retainedRoot
-    })}\n`);
+    const writeRetainedBackupMarker = async () => {
+      const treeSha256 = await retainedArtifactTreeDigest(retainedRoot);
+      await writeFile(retainedBackupMarker, `${JSON.stringify({
+        schemaVersion: "kova.retainedArtifactBackup.v2",
+        outputRoot: retainedRoot,
+        treeSha256
+      })}\n`);
+    };
     await writeRetainedBackupMarker();
     await rename(retainedRoot, retainedBackup);
     await mkdir(retainedRoot);
@@ -5501,6 +5528,32 @@ async function reportPublicationCheck(tmp) {
     });
     assertEqual(await fileExists(retained.jsonPath), true, "incomplete retained tree recovered from backup");
     assertEqual(await fileExists(retainedBackup), false, "recovered retained tree backup removed");
+
+    await writeRetainedBackupMarker();
+    await rename(retainedRoot, retainedBackup);
+    await rm(retainedBackup, { recursive: true });
+    await mkdir(retainedBackup);
+    const unrelatedBackupPath = join(retainedBackup, "operator-backup.txt");
+    await writeFile(unrelatedBackupPath, "preserve me\n");
+    let staleRetainedMarkerRejected = false;
+    try {
+      await retainGateArtifacts(collisionReports[0], firstBundle, {
+        outputDir: retainedRoot
+      });
+    } catch (error) {
+      staleRetainedMarkerRejected = /backup is not Kova-managed/.test(error.message);
+    }
+    assertEqual(staleRetainedMarkerRejected, true, "stale retained backup marker fails closed");
+    assertEqual(
+      await readFile(unrelatedBackupPath, "utf8"),
+      "preserve me\n",
+      "stale retained backup marker preserves unrelated replacement data"
+    );
+    await rm(retainedBackup, { recursive: true });
+    await rm(retainedBackupMarker);
+    await retainGateArtifacts(collisionReports[0], firstBundle, {
+      outputDir: retainedRoot
+    });
 
     await rm(collisionReports[0].replace(/\.json$/, ".md"));
     let missingMarkdownRejected = false;
@@ -5770,6 +5823,21 @@ async function fileLockRecoveryCheck(tmp) {
     }
     assertEqual(incompleteProtected, true, "incomplete lock without domain identity is preserved");
     await rm(incompleteLock);
+
+    const legacyCandidateLock = join(tmp, "legacy-candidate-publication.lock");
+    const legacyCandidatePath = `${legacyCandidateLock}.reclaim-${"a".repeat(64)}.candidate-12345678-1234-4123-8123-123456789abc`;
+    await writeFile(legacyCandidatePath, "{\n");
+    await utimes(legacyCandidatePath, old, old);
+    await withFileLock(legacyCandidateLock, async () => {}, {
+      staleMs: 1,
+      timeoutMs: 25,
+      retryMs: 2
+    });
+    assertEqual(
+      await fileExists(legacyCandidatePath),
+      false,
+      "stale torn legacy reclaim candidate is removed"
+    );
 
     const foreignDomainLock = join(tmp, "foreign-domain-publication.lock");
     await writeFile(foreignDomainLock, `${JSON.stringify({
