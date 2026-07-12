@@ -5,10 +5,6 @@ on:
     tags:
       - "v*"
 
-env:
-  OCM_INSTALL_REF: 9cc465d48cc0e263ae8204ed4e32b0bdb5e0b58b
-  OCM_VERSION: v0.2.25
-
 jobs:
   build:
     name: Build release archive
