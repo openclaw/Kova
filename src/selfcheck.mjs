@@ -3399,11 +3399,11 @@ async function openClawStateSymlinkContainmentCheck(tmp) {
     assertEqual(snapshot.plugins.pluginDirs.some((plugin) => plugin.path === "plugins/escaped-plugin"), false, "escaped plugin directory is omitted");
     assertEqual(snapshot.budget.excludedPaths.includes("settings.json"), true, "escaped known file is recorded");
     assertEqual(snapshot.budget.excludedPaths.includes(".openclaw/plugins"), true, "escaped plugin root is recorded");
-    assertEqual(snapshot.budget.excludedPaths.includes("plugins/escaped-plugin"), true, "escaped plugin directory is recorded");
+    assertEqual(snapshot.budget.excludedPaths.includes("plugins/escaped-plugin"), false, "escaped plugin directory name is not retained");
     assertEqual(
       snapshot.budget.excludedPaths.filter((path) => path.startsWith("plugins/escaped-plugin")).length,
-      2,
-      "escaped plugin exclusions respect the plugin directory budget"
+      0,
+      "escaped plugin names do not enter snapshot metadata"
     );
 
     return {
@@ -17895,6 +17895,8 @@ async function logArtifactRedactionCheck(tmp) {
   const compoundCliCanary = ["compound", "cli", "canary"].join("-");
   const timeoutTokenCanary = ["timeout", "token", "canary"].join("-");
   const yamlContinuationCanary = ["yaml", "continuation", "canary"].join("-");
+  const plainContinuationHeadCanary = ["plain", "continuation", "head", "canary"].join("-");
+  const plainContinuationTailCanary = ["plain", "continuation", "tail", "canary"].join("-");
   const cliContinuationCanary = ["cli", "continuation", "canary"].join("-");
   const clientSecretFlag = ["--client", "secret"].join("-");
   const canaries = [
@@ -17915,6 +17917,8 @@ async function logArtifactRedactionCheck(tmp) {
     compoundCliCanary,
     timeoutTokenCanary,
     yamlContinuationCanary,
+    plainContinuationHeadCanary,
+    plainContinuationTailCanary,
     cliContinuationCanary
   ];
   const fakeLogs = [
@@ -17942,6 +17946,7 @@ async function logArtifactRedactionCheck(tmp) {
       truncatedPemBodyCanary
     ].join("\n"),
     `${sessionTokenKey}: |2-\n  ${yamlContinuationCanary}`,
+    `${sessionTokenKey}: ${plainContinuationHeadCanary}\n  ${plainContinuationTailCanary}`,
     `command --token ${"\\"}\n  ${cliContinuationCanary}`
   ].join("\n");
   try {

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { mkdir, open, readdir, realpath, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, open, opendir, realpath, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 
 export const OPENCLAW_STATE_SNAPSHOT_SCHEMA = "kova.openclawStateSnapshot.v1";
@@ -226,7 +226,7 @@ async function summarizePluginRoot(home, resolvedHome, rootRelPath, limits, snap
     return;
   }
 
-  const entries = await readdir(resolvedRoot, { withFileTypes: true }).catch(() => null);
+  const entries = await readDirectoryEntries(resolvedRoot);
   if (!entries || !await directoryIdentityMatches(resolvedHome, rootPath, rootStats)) {
     recordExcludedPath(snapshot, rootRelPath);
     return;
@@ -250,11 +250,21 @@ async function summarizePluginRoot(home, resolvedHome, rootRelPath, limits, snap
 
   let seen = 0;
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-    if (!entry.isDirectory() && !entry.isSymbolicLink()) {
+    const relPath = `${rootRelPath}/${entry.name}`;
+    const candidatePath = join(rootPath, entry.name);
+    // Root entries are untrusted hints because the pathname can race with enumeration.
+    // Do not retain a name or read through it until its current target is contained.
+    const resolvedPluginRoot = await resolveContainedPathQuiet(resolvedHome, candidatePath);
+    if (!resolvedPluginRoot) {
+      snapshot.budget.omittedCount += 1;
       continue;
     }
-    if (entry.isDirectory() && EXCLUDED_DIRS.has(entry.name)) {
-      snapshot.budget.excludedPaths.push(`${rootRelPath}/${entry.name}`);
+    const candidateStats = await lstat(candidatePath).catch(() => null);
+    if (!candidateStats || (!candidateStats.isDirectory() && !candidateStats.isSymbolicLink())) {
+      continue;
+    }
+    if (candidateStats.isDirectory() && EXCLUDED_DIRS.has(entry.name)) {
+      snapshot.budget.excludedPaths.push(relPath);
       continue;
     }
     if (seen >= limits.maxPluginDirs) {
@@ -262,22 +272,12 @@ async function summarizePluginRoot(home, resolvedHome, rootRelPath, limits, snap
       continue;
     }
     seen += 1;
-    if (entry.isSymbolicLink()) {
-      snapshot.budget.excludedPaths.push(`${rootRelPath}/${entry.name}`);
+    if (candidateStats.isSymbolicLink()) {
+      snapshot.budget.excludedPaths.push(relPath);
       snapshot.budget.omittedCount += 1;
       continue;
     }
 
-    const relPath = `${rootRelPath}/${entry.name}`;
-    const resolvedPluginRoot = await resolveContainedPath(
-      resolvedHome,
-      join(resolvedRoot, entry.name),
-      relPath,
-      snapshot
-    );
-    if (!resolvedPluginRoot) {
-      continue;
-    }
     const plugin = {
       path: relPath,
       name: entry.name,
@@ -300,6 +300,23 @@ async function summarizePluginRoot(home, resolvedHome, rootRelPath, limits, snap
       }
     }
     snapshot.plugins.pluginDirs.push(plugin);
+  }
+}
+
+async function readDirectoryEntries(path) {
+  const directory = await opendir(path).catch(() => null);
+  if (!directory) {
+    return null;
+  }
+  const entries = [];
+  try {
+    for await (const entry of directory) {
+      entries.push(entry);
+    }
+    return entries;
+  } catch {
+    await directory.close().catch(() => {});
+    return null;
   }
 }
 
@@ -686,6 +703,11 @@ async function resolveContainedPath(resolvedHome, path, displayPath, snapshot) {
   }
   recordExcludedPath(snapshot, displayPath);
   return null;
+}
+
+async function resolveContainedPathQuiet(resolvedHome, path) {
+  const resolvedPath = await realpath(path).catch(() => null);
+  return resolvedPath && isContainedPath(resolvedHome, resolvedPath) ? resolvedPath : null;
 }
 
 function recordExcludedPath(snapshot, path) {
