@@ -17888,6 +17888,8 @@ async function logArtifactRedactionCheck(tmp) {
   const databasePasswordKey = ["DB", "PASSWORD"].join("_");
   const escapedJsonTail = ["escaped", "json", "tail", "canary"].join("-");
   const escapedCliTail = ["escaped", "cli", "tail", "canary"].join("-");
+  const unquotedFieldTail = ["unquoted", "field", "tail", "canary"].join("-");
+  const pemBodyCanary = ["pem", "body", "canary"].join("-");
   const canaries = [
     headerCanary,
     prefixedHeaderCanary,
@@ -17899,7 +17901,9 @@ async function logArtifactRedactionCheck(tmp) {
     quotedAssignmentTail,
     punctuatedAssignmentTail,
     escapedJsonTail,
-    escapedCliTail
+    escapedCliTail,
+    unquotedFieldTail,
+    pemBodyCanary
   ];
   const fakeLogs = [
     `Authorization${": "}Bearer ${headerCanary}`,
@@ -17912,7 +17916,13 @@ async function logArtifactRedactionCheck(tmp) {
     `${sessionTokenKey}="kova ${quotedAssignmentTail}"`,
     `${databasePasswordKey}=kova,${punctuatedAssignmentTail};done`,
     JSON.stringify({ [genericTokenKey]: `prefix"${escapedJsonTail}` }),
-    `command --token ${JSON.stringify(`prefix"${escapedCliTail}`)}`
+    `command --token ${JSON.stringify(`prefix"${escapedCliTail}`)}`,
+    `${databasePasswordKey.toLowerCase()}: kova ${unquotedFieldTail}`,
+    [
+      `private_${["key"].join("")}: -----BEGIN PRIVATE KEY-----`,
+      pemBodyCanary,
+      "-----END PRIVATE KEY-----"
+    ].join("\n")
   ].join("\n");
   try {
     await mkdir(fakeBin, { recursive: true });

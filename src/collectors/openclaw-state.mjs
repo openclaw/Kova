@@ -85,7 +85,16 @@ export async function captureOpenClawStateSnapshot(options = {}) {
     snapshot.budget.omittedCount += 1;
     return snapshot;
   }
-  const resolvedHome = await realpath(home);
+  const resolvedHome = await realpath(home).catch(() => null);
+  if (!resolvedHome) {
+    snapshot.home = {
+      present: false,
+      pathHash: snapshot.home.pathHash,
+      reason: "home disappeared during capture"
+    };
+    snapshot.budget.omittedCount += 1;
+    return snapshot;
+  }
 
   for (const relPath of KNOWN_FILES) {
     const summary = await summarizeFile(home, resolvedHome, relPath, limits, snapshot);
@@ -637,7 +646,7 @@ async function openContainedFile(resolvedHome, path, displayPath, snapshot) {
   }
   const handle = await open(
     initialPath,
-    constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0)
+    constants.O_RDONLY | (constants.O_NONBLOCK ?? 0) | (constants.O_NOFOLLOW ?? 0)
   ).catch(() => null);
   if (!handle) {
     return null;

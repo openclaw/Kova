@@ -14,8 +14,8 @@ const QUOTED_SENSITIVE_VALUE_PATTERN = new RegExp(
   "gi"
 );
 const UNQUOTED_SENSITIVE_FIELD_PATTERN = new RegExp(
-  `(["']?${SENSITIVE_LOG_KEY}["']?\\s*:\\s*)(?!["'])[^\\s,}\\]]+`,
-  "gi"
+  `(["']?${SENSITIVE_LOG_KEY}["']?\\s*:\\s*)(?!["']).*$`,
+  "gim"
 );
 const UNQUOTED_SENSITIVE_ASSIGNMENT_PATTERN = new RegExp(
   `(\\b${SENSITIVE_LOG_KEY}\\b\\s*=\\s*)(?!["'])\\S+`,
@@ -23,6 +23,8 @@ const UNQUOTED_SENSITIVE_ASSIGNMENT_PATTERN = new RegExp(
 );
 const QUOTED_SENSITIVE_CLI_VALUE_PATTERN =
   /((?:^|\s)--(?:api-key|access-token|auth-token|refresh-token|token|secret|password|cookie)(?:=|\s+))(["'])((?:\\.|(?!\2).)*)\2/gim;
+const PEM_PRIVATE_KEY_PATTERN =
+  /-----BEGIN ([A-Z0-9 ]*PRIVATE KEY)-----[\s\S]*?-----END \1-----/g;
 
 export async function collectLogMetrics(envName, timeoutMs, artifactDir, options = {}) {
   const result = await runCommand(ocmLogs(envName, { tail: 200 }), {
@@ -87,6 +89,7 @@ export async function collectLogMetrics(envName, timeoutMs, artifactDir, options
 
 export function redactLogText(value) {
   return String(value ?? "")
+    .replace(PEM_PRIVATE_KEY_PATTERN, "[REDACTED]")
     .replace(
       QUOTED_SENSITIVE_VALUE_PATTERN,
       "$1$2[REDACTED]$2"
