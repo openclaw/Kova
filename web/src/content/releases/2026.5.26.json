@@ -494,14 +494,14 @@
           "metrics": [
             {
               "name": "full turn",
-              "value": 2023,
+              "value": 1960,
               "unit": "ms",
               "threshold": 45000,
               "state": "pass"
             },
             {
               "name": "cold turn",
-              "value": 2023,
+              "value": 1960,
               "unit": "ms",
               "threshold": 45000,
               "state": "pass"
@@ -515,14 +515,14 @@
             },
             {
               "name": "pre-provider",
-              "value": 1675,
+              "value": 1630,
               "unit": "ms",
               "threshold": 10000,
               "state": "pass"
             },
             {
               "name": "provider",
-              "value": 4,
+              "value": 10,
               "unit": "ms",
               "threshold": 3000,
               "state": "pass"
@@ -536,7 +536,7 @@
             },
             {
               "name": "↳ cold send rpc",
-              "value": 11,
+              "value": 13,
               "unit": "ms",
               "threshold": null,
               "state": "pass",
@@ -544,7 +544,7 @@
             },
             {
               "name": "↳ cold matched assistant",
-              "value": 2023,
+              "value": 1960,
               "unit": "ms",
               "threshold": null,
               "state": "pass",
@@ -552,7 +552,7 @@
             },
             {
               "name": "↳ warm send rpc",
-              "value": 81,
+              "value": 84,
               "unit": "ms",
               "threshold": null,
               "state": "pass",
@@ -649,14 +649,14 @@
           "metrics": [
             {
               "name": "full turn",
-              "value": 5540,
+              "value": 5643,
               "unit": "ms",
               "threshold": 45000,
               "state": "pass"
             },
             {
               "name": "cold turn",
-              "value": 5507,
+              "value": 5643,
               "unit": "ms",
               "threshold": 45000,
               "state": "pass"
@@ -670,21 +670,21 @@
             },
             {
               "name": "pre-provider",
-              "value": 5257,
+              "value": 5332,
               "unit": "ms",
               "threshold": 10000,
               "state": "pass"
             },
             {
               "name": "provider",
-              "value": 7,
+              "value": 9,
               "unit": "ms",
               "threshold": 3000,
               "state": "pass"
             },
             {
               "name": "post-provider",
-              "value": 276,
+              "value": 289,
               "unit": "ms",
               "threshold": null,
               "state": "pass"
@@ -795,35 +795,35 @@
           "metrics": [
             {
               "name": "full turn",
-              "value": 5654,
+              "value": 5833,
               "unit": "ms",
               "threshold": 45000,
               "state": "pass"
             },
             {
               "name": "cold turn",
-              "value": 3232,
+              "value": 3398,
               "unit": "ms",
               "threshold": null,
               "state": "pass"
             },
             {
               "name": "warm turn",
-              "value": 2379,
+              "value": 2431,
               "unit": "ms",
               "threshold": null,
               "state": "pass"
             },
             {
               "name": "pre-provider",
-              "value": 285,
+              "value": 331,
               "unit": "ms",
               "threshold": 10000,
               "state": "pass"
             },
             {
               "name": "provider",
-              "value": 5294,
+              "value": 5431,
               "unit": "ms",
               "threshold": 3000,
               "state": "fail"
@@ -1209,7 +1209,7 @@
             {
               "name": "openai-compatible-turn",
               "elapsedMs": 249,
-              "state": "pass"
+              "state": "fail"
             },
             {
               "name": "auth-cleanup",
@@ -1220,14 +1220,14 @@
           "metrics": [
             {
               "name": "full turn",
-              "value": 276,
+              "value": 249,
               "unit": "ms",
               "threshold": 45000,
               "state": "pass"
             },
             {
               "name": "cold turn",
-              "value": 276,
+              "value": 249,
               "unit": "ms",
               "threshold": null,
               "state": "pass"
