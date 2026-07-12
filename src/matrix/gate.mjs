@@ -98,16 +98,20 @@ export function evaluateGate(report, profile, options = {}) {
   const blockingCards = cards.filter((card) => card.severity === "blocking");
   const warningCards = cards.filter((card) => card.severity === "warning");
   const infoCards = cards.filter((card) => card.severity === "info");
-  const blockedByHarness = blockingCards.some((card) =>
-    ["not-executed", "blocked", "incomplete-proof", "skipped", "dry-run"].includes(card.kind)
-  );
-  const openClawBlockingFailures = blockingCards.filter((card) => card.kind === "openclaw-failure");
-  const incompleteProof = blockingCards.some((card) => card.kind === "incomplete-proof");
-  const incomplete = missingRequired.length > 0 || incompleteProof;
+  const harnessBlockKinds = new Set([
+    "not-executed",
+    "blocked",
+    "incomplete-proof",
+    "skipped",
+    "dry-run"
+  ]);
+  const harnessBlockingCards = blockingCards.filter((card) => harnessBlockKinds.has(card.kind));
+  const blockedByHarness = harnessBlockingCards.length > 0;
+  const incomplete = missingRequired.length > 0 || blockedByHarness;
   const productBlockingFailures = blockingCards.filter((card) =>
-    !["not-executed", "blocked", "incomplete-proof", "skipped", "dry-run"].includes(card.kind)
+    !harnessBlockKinds.has(card.kind)
   );
-  const verdict = openClawBlockingFailures.length > 0 || productBlockingFailures.length > 0
+  const verdict = productBlockingFailures.length > 0
     ? "DO_NOT_SHIP"
     : blockedByHarness
       ? "BLOCKED"
