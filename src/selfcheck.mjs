@@ -1161,6 +1161,22 @@ async function runScopedSelfCheck(flags, scope, workspace) {
         }
       ));
       const publishBundle = await bundleReport(receiptCheck.data.jsonPath, { outputDir: tmp });
+      const committedReportBytes = await readFile(receiptCheck.data.jsonPath);
+      await writeFile(
+        receiptCheck.data.jsonPath,
+        `${JSON.stringify({ ...report, mode: "stale-generation" }, null, 2)}\n`
+      );
+      const staleGenerationBundle = await bundleReport(
+        receiptCheck.data.jsonPath,
+        { outputDir: tmp }
+      );
+      await writeFile(receiptCheck.data.jsonPath, committedReportBytes);
+      const newerBundleTime = new Date(Date.now() + 60_000);
+      await utimes(
+        staleGenerationBundle.outputPath,
+        newerBundleTime,
+        newerBundleTime
+      );
       await writeFile(join(tmp, `${report.runId}-bundle.tar.gz`), "stale legacy bundle\n");
       const publishRoot = join(tmp, "publish-content-addressed");
       const publishOutDir = join(publishRoot, "src", "content", "releases");
@@ -1171,6 +1187,11 @@ async function runScopedSelfCheck(flags, scope, workspace) {
           const payload = JSON.parse(await readFile(join(publishOutDir, "2026.7.12-selfcheck.json"), "utf8"));
           const bundleName = basename(publishBundle.outputPath);
           assertEqual(payload.runs?.[0]?.bundle?.name, bundleName, "publish discovers content-addressed report bundle");
+          assertEqual(
+            payload.runs?.[0]?.bundle?.name === basename(staleGenerationBundle.outputPath),
+            false,
+            "publish rejects a newer bundle from another report generation"
+          );
           assertEqual(
             await fileExists(join(publishRoot, "public", "bundles", bundleName)),
             true,
@@ -1738,6 +1759,34 @@ async function runScopedSelfCheck(flags, scope, workspace) {
       checks.push(await failingCommandCheck(
         "publish-rejects-invalid-explicit-bundle",
         `node bin/kova.mjs publish ${quoteShell(invalidExplicitReportPath)} --ver 2026.7.12-invalid-explicit --release-date 2026-07-12 --sha selfcheck --out-dir ${quoteShell(join(invalidExplicitRoot, "releases"))} --json`,
+        "explicitly referenced report bundle failed integrity verification"
+      ));
+      const legacyExplicitRoot = join(tmp, "publish-legacy-explicit");
+      const legacyExplicitReportPath = join(legacyExplicitRoot, "report.json");
+      const legacyExplicitMarkdownPath = join(legacyExplicitRoot, "report.md");
+      const legacyExplicitBundlePath = join(legacyExplicitRoot, "report-bundle.tar.gz");
+      await mkdir(legacyExplicitRoot);
+      const legacyExplicitReport = {
+        ...report,
+        bundlePath: legacyExplicitBundlePath
+      };
+      await writeFile(
+        legacyExplicitReportPath,
+        `${JSON.stringify(legacyExplicitReport, null, 2)}\n`
+      );
+      await writeFile(legacyExplicitMarkdownPath, "# legacy explicit bundle\n");
+      const contentAddressedLegacySource = await bundleReport(
+        legacyExplicitReportPath,
+        { outputDir: legacyExplicitRoot }
+      );
+      await cp(contentAddressedLegacySource.outputPath, legacyExplicitBundlePath);
+      await cp(
+        contentAddressedLegacySource.checksumPath,
+        `${legacyExplicitBundlePath}.sha256`
+      );
+      checks.push(await failingCommandCheck(
+        "publish-rejects-non-content-addressed-explicit-bundle",
+        `node bin/kova.mjs publish ${quoteShell(legacyExplicitReportPath)} --ver 2026.7.12-legacy-explicit --release-date 2026-07-12 --sha selfcheck --out-dir ${quoteShell(join(legacyExplicitRoot, "releases"))} --json`,
         "explicitly referenced report bundle failed integrity verification"
       ));
     }
@@ -6065,6 +6114,31 @@ async function reportPublicationCheck(tmp) {
     );
     await writeFile(orphanChecksumPath, "orphan\n");
     await writeFile(operatorChecksumPath, "operator copy\n");
+    const activeArchive = Buffer.from("active bundle publication\n");
+    const activeDigest = createHash("sha256").update(activeArchive).digest("hex");
+    const activeArchivePath = join(
+      bundleRoot,
+      `${firstLogicalBundleName}-${activeDigest}.tar.gz`
+    );
+    const activeChecksumPath = `${activeArchivePath}.sha256`;
+    await writeFile(
+      activeChecksumPath,
+      `${activeDigest}  ${basename(activeArchivePath)}\n`
+    );
+    let releaseActivePublication;
+    let markActivePublicationReady;
+    const activePublicationRelease = new Promise((resolve) => {
+      releaseActivePublication = resolve;
+    });
+    const activePublicationReady = new Promise((resolve) => {
+      markActivePublicationReady = resolve;
+    });
+    const activePublication = withFileLock(`${activeArchivePath}.lock`, async () => {
+      markActivePublicationReady();
+      await activePublicationRelease;
+      await writeFile(activeArchivePath, activeArchive);
+    });
+    await activePublicationReady;
     const staleBundleTransaction = randomUUID();
     const staleBundleStage = `${firstBundle.outputPath}.${staleBundleTransaction}.tmp`;
     const staleBundleBuildTransaction = randomUUID();
@@ -6153,8 +6227,28 @@ async function reportPublicationCheck(tmp) {
       })}\n`);
       await symlink(symlinkOwnedBundleTarget, symlinkOwnedBundleMarker);
     }
-    await bundleReport(collisionReports[0], { outputDir: bundleRoot });
+    let cleanupSettled = false;
+    const cleanupBundlePromise = bundleReport(
+      collisionReports[0],
+      { outputDir: bundleRoot }
+    ).finally(() => {
+      cleanupSettled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    assertEqual(
+      cleanupSettled,
+      false,
+      "orphan cleanup waits for an active bundle-pair publication"
+    );
+    releaseActivePublication();
+    await activePublication;
+    await cleanupBundlePromise;
     assertEqual(await fileExists(orphanChecksumPath), false, "logical bundle retry removes orphan checksum");
+    assertEqual(
+      await fileExists(activeArchivePath) && await fileExists(activeChecksumPath),
+      true,
+      "orphan cleanup preserves an active bundle-pair publication"
+    );
     assertEqual(
       await fileExists(staleBundleStage),
       false,
