@@ -24,6 +24,7 @@ make_repo() {
   cp "${script_dir}/release.sh" "${repo}/scripts/release.sh"
   cp "${script_dir}/update-version.sh" "${repo}/scripts/update-version.sh"
   cp "${script_dir}/validate-version.mjs" "${repo}/scripts/validate-version.mjs"
+  cp "${script_dir}/validate-version-metadata.mjs" "${repo}/scripts/validate-version-metadata.mjs"
   cat > "${repo}/scripts/package-release.sh" <<'EOF'
 #!/bin/sh
 set -eu
@@ -99,6 +100,30 @@ NODE
   test "$(node -p 'require("./package-lock.json").packages[""].version')" = "$test_version"
   test -z "$(git status --porcelain=v1)"
 )
+
+poisoned_lockfile_repo="$(make_repo poisoned-lockfile)"
+poisoned_lockfile_head="$(git -C "$poisoned_lockfile_repo" rev-parse HEAD)"
+node - "$poisoned_lockfile_repo" "$test_version" <<'NODE'
+const fs = require("node:fs");
+const [repo, version] = process.argv.slice(2);
+for (const path of ["package.json", "package-lock.json"]) {
+  const absolutePath = `${repo}/${path}`;
+  const value = JSON.parse(fs.readFileSync(absolutePath, "utf8"));
+  value.version = version;
+  if (path === "package-lock.json") {
+    value.packages[""].version = version;
+    value.packages["node_modules/json5"].resolved = "https://example.invalid/json5.tgz";
+  }
+  fs.writeFileSync(absolutePath, `${JSON.stringify(value, null, 2)}\n`);
+}
+NODE
+if poisoned_lockfile_output="$(cd "$poisoned_lockfile_repo" && scripts/release.sh "$test_version" --skip-checks 2>&1)"; then
+  echo "error: poisoned lockfile unexpectedly passed release validation" >&2
+  exit 1
+fi
+grep -q "package-lock.json contains changes outside version fields" <<<"$poisoned_lockfile_output"
+test "$(git -C "$poisoned_lockfile_repo" rev-parse HEAD)" = "$poisoned_lockfile_head"
+test "$(git -C "$poisoned_lockfile_repo" ls-remote origin refs/heads/main | awk '{ print $1 }')" = "$poisoned_lockfile_head"
 
 stale_repo="$(make_repo stale-main)"
 git clone --quiet "${tmp}/stale-main/remote.git" "${tmp}/stale-main/upstream"
