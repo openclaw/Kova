@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { allReleases } from "../../lib/releases";
 import { cardSvg, releaseCard, svgToPng } from "../../lib/og-card";
+import { MUTABLE_IMAGE_CACHE_CONTROL } from "../../lib/http";
 
 export async function getStaticPaths() {
   const releases = await allReleases();
@@ -15,7 +16,7 @@ export const GET: APIRoute = async ({ props }) => {
     status: 200,
     headers: {
       "Content-Type": "image/png",
-      "Cache-Control": "public, max-age=31536000, immutable",
+      "Cache-Control": MUTABLE_IMAGE_CACHE_CONTROL,
     },
   });
 };
