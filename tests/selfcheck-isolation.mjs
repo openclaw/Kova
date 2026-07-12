@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { runCommand } from "../src/commands.mjs";
 import {
   cleanupSelfCheckWorkspace,
   createSelfCheckScope,
-  createSelfCheckWorkspace
+  createSelfCheckWorkspace,
+  runInSelfCheckScope
 } from "../src/selfcheck-scope.mjs";
 import { resolveCollectionPolicy } from "../src/collection-policy.mjs";
 import { collectEnvMetrics } from "../src/metrics.mjs";
@@ -16,6 +18,8 @@ import { resolveTarget } from "../src/targets.mjs";
 const root = await mkdtemp(join(tmpdir(), "kova-selfcheck-isolation-test-"));
 
 try {
+  await verifyConcurrentInvocationHomes(root);
+
   const scopes = [createSelfCheckScope(), createSelfCheckScope()];
   assert.notEqual(scopes[0].id, scopes[1].id);
   assert.notEqual(scopes[0].envName, scopes[1].envName);
@@ -50,6 +54,58 @@ try {
   console.log("PASS self-check concurrent isolation");
 } finally {
   await rm(root, { recursive: true, force: true });
+}
+
+async function verifyConcurrentInvocationHomes(parentDir) {
+  let readyCount = 0;
+  let releaseBoth;
+  let releaseSecond;
+  let secondRoot;
+  const bothReady = new Promise((resolve) => {
+    releaseBoth = resolve;
+  });
+  const holdSecond = new Promise((resolve) => {
+    releaseSecond = resolve;
+  });
+
+  const invoke = (index) => runInSelfCheckScope(async ({ scope, workspace }) => {
+    if (index === 1) {
+      secondRoot = workspace.root;
+    }
+    readyCount += 1;
+    if (readyCount === 2) {
+      releaseBoth();
+    }
+    await bothReady;
+
+    const result = await runCommand(
+      "node -e 'process.stdout.write(process.env.KOVA_HOME ?? \"\")'",
+      { timeoutMs: 5000 }
+    );
+    assert.equal(result.status, 0);
+    assert.equal(result.stdout, workspace.kovaHome);
+
+    if (index === 1) {
+      await holdSecond;
+      await stat(workspace.root);
+    }
+    return {
+      scopeId: scope.id,
+      root: workspace.root,
+      kovaHome: result.stdout
+    };
+  }, parentDir);
+
+  const firstPromise = invoke(0);
+  const secondPromise = invoke(1);
+  const first = await firstPromise;
+  await assert.rejects(stat(first.root), { code: "ENOENT" });
+  await stat(secondRoot);
+  releaseSecond();
+  const second = await secondPromise;
+  await assert.rejects(stat(second.root), { code: "ENOENT" });
+  assert.notEqual(first.scopeId, second.scopeId);
+  assert.notEqual(first.kovaHome, second.kovaHome);
 }
 
 async function runProbe(parentDir, scope) {
