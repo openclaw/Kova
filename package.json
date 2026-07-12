@@ -30,6 +30,7 @@
   "dependencies": {
     "json5": "2.2.3",
     "mock-ai-provider": "0.1.2",
+    "tar-stream": "3.2.0",
     "zod": "^4.4.3"
   }
 }
