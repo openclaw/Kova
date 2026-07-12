@@ -1,5 +1,5 @@
-import { randomUUID } from "node:crypto";
-import { lstat, mkdir, open, rename, rm, stat, writeFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { lstat, mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { buildReportSummary, renderMarkdownReport } from "../reporting/report.mjs";
 import { createRunId } from "./run-id.mjs";
@@ -83,6 +83,10 @@ async function anyPathExists(paths) {
 
 async function replaceReportFileSet(entries, canonicalPath) {
   const transaction = randomUUID();
+  const transactionPath = join(
+    dirname(canonicalPath),
+    `.${basename(canonicalPath)}.kova-transaction`
+  );
   const staged = entries.map((entry) => ({
     ...entry,
     stagedPath: join(dirname(entry.path), `.${transaction}-${basename(entry.path)}.tmp`),
@@ -93,11 +97,18 @@ async function replaceReportFileSet(entries, canonicalPath) {
   let preserveBackups = false;
   let committed = false;
 
-  await recoverReportFileSet(staged, canonicalPath);
+  await recoverReportFileSet(staged, canonicalPath, transactionPath);
   try {
     for (const entry of staged) {
       await writeDurableFile(entry.stagedPath, entry.content);
     }
+    // Hash the complete generation before moving the old files. Recovery must
+    // not mistake a mixed set left by an incomplete rollback for a commit.
+    await writeDurableFile(
+      transactionPath,
+      `${JSON.stringify(buildReportTransaction(staged, canonicalPath), null, 2)}\n`
+    );
+    await syncDirectories(staged);
 
     // Remove the canonical JSON first and publish it last. Report readers use
     // that file as the commit marker and never observe a newly partial set.
@@ -152,15 +163,17 @@ async function replaceReportFileSet(entries, canonicalPath) {
     await Promise.all(staged.map((entry) => rm(entry.stagedPath, { force: true }).catch(() => {})));
     if (committed) {
       await Promise.all(staged.map((entry) => rm(entry.backupPath, { force: true }).catch(() => {})));
+      await rm(transactionPath, { force: true }).catch(() => {});
       await syncDirectories(staged).catch(() => {});
     } else if (!preserveBackups) {
       await Promise.all(staged.map((entry) => rm(entry.backupPath, { force: true })));
+      await rm(transactionPath, { force: true });
       await syncDirectories(staged);
     }
   }
 }
 
-async function recoverReportFileSet(entries, canonicalPath) {
+async function recoverReportFileSet(entries, canonicalPath, transactionPath) {
   const backupEntries = [];
   for (const entry of entries) {
     if (!await pathExists(entry.backupPath)) {
@@ -173,22 +186,13 @@ async function recoverReportFileSet(entries, canonicalPath) {
     backupEntries.push(entry);
   }
   if (backupEntries.length === 0) {
+    await rm(transactionPath, { force: true });
     return;
   }
 
-  const canonicalExists = await pathExists(canonicalPath);
-  let currentComplete = canonicalExists;
-  if (currentComplete) {
-    for (const entry of entries) {
-      const info = await lstat(entry.path).catch(() => null);
-      if (!info?.isFile()) {
-        currentComplete = false;
-        break;
-      }
-    }
-  }
-  if (currentComplete) {
+  if (await currentReportMatchesTransaction(entries, canonicalPath, transactionPath)) {
     await Promise.all(backupEntries.map((entry) => rm(entry.backupPath, { force: true })));
+    await rm(transactionPath, { force: true });
     await syncDirectories(entries);
     return;
   }
@@ -201,7 +205,65 @@ async function recoverReportFileSet(entries, canonicalPath) {
     await rm(entry.path, { force: true });
     await rename(entry.backupPath, entry.path);
   }
+  await rm(transactionPath, { force: true });
   await syncDirectories(entries);
+}
+
+function buildReportTransaction(entries, canonicalPath) {
+  return {
+    schemaVersion: "kova.reportTransaction.v1",
+    canonical: basename(canonicalPath),
+    files: entries.map((entry) => ({
+      name: basename(entry.path),
+      sha256: createHash("sha256").update(entry.content).digest("hex")
+    }))
+  };
+}
+
+async function currentReportMatchesTransaction(entries, canonicalPath, transactionPath) {
+  const marker = await readReportTransaction(transactionPath, entries, canonicalPath);
+  if (!marker) {
+    return false;
+  }
+  for (const expected of marker.files) {
+    const entry = entries.find((candidate) => basename(candidate.path) === expected.name);
+    const info = await lstat(entry.path).catch(() => null);
+    if (!info?.isFile()) {
+      return false;
+    }
+    const actual = createHash("sha256").update(await readFile(entry.path)).digest("hex");
+    if (actual !== expected.sha256) {
+      return false;
+    }
+  }
+  return true;
+}
+
+async function readReportTransaction(transactionPath, entries, canonicalPath) {
+  let marker;
+  try {
+    marker = JSON.parse(await readFile(transactionPath, "utf8"));
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return null;
+    }
+    throw new Error(`report transaction marker is invalid: ${transactionPath}`, { cause: error });
+  }
+  const expectedNames = entries.map((entry) => basename(entry.path)).sort();
+  const markerNames = Array.isArray(marker?.files)
+    ? marker.files.map((entry) => entry?.name).sort()
+    : [];
+  const valid = (
+    marker?.schemaVersion === "kova.reportTransaction.v1" &&
+    marker.canonical === basename(canonicalPath) &&
+    markerNames.length === expectedNames.length &&
+    markerNames.every((name, index) => name === expectedNames[index]) &&
+    marker.files.every((entry) => /^[a-f0-9]{64}$/.test(entry?.sha256 ?? ""))
+  );
+  if (!valid) {
+    throw new Error(`report transaction marker is invalid: ${transactionPath}`);
+  }
+  return marker;
 }
 
 async function writeDurableFile(path, content) {
