@@ -13,8 +13,10 @@ const SENSITIVE_VALUE_TO_LINE_END_PATTERN = new RegExp(
   `(["']?\\b${SENSITIVE_LOG_KEY}\\b["']?\\s*[:=]\\s*).*$`,
   "gim"
 );
-const SENSITIVE_CLI_TO_LINE_END_PATTERN =
-  /((?:^|\s)--(?:api-key|access-token|auth-token|refresh-token|token|secret|password|cookie)(?:=|\s+)).*$/gim;
+const SENSITIVE_CLI_TO_LINE_END_PATTERN = new RegExp(
+  `((?:^|\\s)--${SENSITIVE_LOG_KEY}(?:=|\\s+)).*$`,
+  "gim"
+);
 const PEM_PRIVATE_KEY_PATTERN =
   /-----BEGIN ([A-Z0-9 ]*PRIVATE KEY)-----[\s\S]*?-----END \1-----/g;
 
