@@ -112,9 +112,7 @@ import {
 } from "./command-results.mjs";
 import { createRunId } from "./run/run-id.mjs";
 import {
-  cleanupSelfCheckWorkspace,
-  createSelfCheckScope,
-  createSelfCheckWorkspace
+  runInSelfCheckScope
 } from "./selfcheck-scope.mjs";
 import { compareReports, renderCompareSummary } from "./reporting/compare.mjs";
 import { pickAffectedScenarios, scenarioMetricRows } from "./reporting/compare-aggregate.mjs";
@@ -150,7 +148,12 @@ import { projectInternalReport } from "./web-publish/from-internal-report.mjs";
 import { augmentWithDeltas, findImmediatePrior } from "./web-publish/projector.mjs";
 
 export async function runSelfCheck(flags = {}) {
-  const scope = createSelfCheckScope();
+  return runInSelfCheckScope(
+    ({ scope, workspace }) => runScopedSelfCheck(flags, scope, workspace)
+  );
+}
+
+async function runScopedSelfCheck(flags, scope, workspace) {
   const progress = createSelfCheckProgress({ flags });
   const checks = new Proxy([], {
     set(target, prop, value) {
@@ -162,13 +165,9 @@ export async function runSelfCheck(flags = {}) {
     },
   });
   progress.runStart();
-  const workspace = await createSelfCheckWorkspace(scope);
   const tmp = workspace.root;
-  const previousKovaHome = process.env.KOVA_HOME;
-  process.env.KOVA_HOME = workspace.kovaHome;
 
-  try {
-    checks.push(await syntaxCheck());
+  checks.push(await syntaxCheck());
     checks.push(await jsonCommandCheck("version-json", "node bin/kova.mjs version --json", (data) => {
       assertEqual(data.schemaVersion, "kova.version.v1", "version schema");
       assertString(data.version, "version");
@@ -1062,14 +1061,6 @@ export async function runSelfCheck(flags = {}) {
         }
       ));
     }
-  } finally {
-    if (previousKovaHome === undefined) {
-      delete process.env.KOVA_HOME;
-    } else {
-      process.env.KOVA_HOME = previousKovaHome;
-    }
-    await cleanupSelfCheckWorkspace(scope, workspace);
-  }
 
   const ok = checks.every((check) => check.status === "PASS");
   const result = {

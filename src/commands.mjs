@@ -1,8 +1,20 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { spawn, spawnSync } from "node:child_process";
 import { startResourceSampler } from "./collectors/resources.mjs";
 import { repoRoot } from "./paths.mjs";
 
 const defaultCommandTimeoutMs = 120000;
+const commandEnvStorage = new AsyncLocalStorage();
+
+export function runWithCommandEnv(env, callback) {
+  return commandEnvStorage.run(
+    {
+      ...(commandEnvStorage.getStore() ?? {}),
+      ...(env ?? {})
+    },
+    callback
+  );
+}
 
 export function checkCommand(command, args) {
   const result = spawnSync(command, args, {
@@ -24,7 +36,11 @@ export function runCommand(command, options = {}) {
   const startedAt = new Date(startedAtEpochMs).toISOString();
   return new Promise((resolve) => {
     const shell = options.shell ?? process.env.SHELL ?? "/bin/sh";
-    const childEnv = { ...process.env, ...(options.env ?? {}) };
+    const childEnv = {
+      ...process.env,
+      ...(commandEnvStorage.getStore() ?? {}),
+      ...(options.env ?? {})
+    };
     if (options.shell !== undefined && options.env?.SHELL === undefined) {
       childEnv.SHELL = options.shell;
     }
