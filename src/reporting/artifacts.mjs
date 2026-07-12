@@ -637,6 +637,10 @@ async function cleanupOrphanBundleChecksums(outputRoot, bundleName) {
     if (!name.startsWith(prefix) || !name.endsWith(suffix)) {
       continue;
     }
+    const digest = name.slice(prefix.length, -suffix.length);
+    if (!/^[a-f0-9]{64}$/.test(digest)) {
+      continue;
+    }
     const checksumPath = join(outputRoot, name);
     const archivePath = checksumPath.slice(0, -".sha256".length);
     if (!await pathExists(archivePath)) {
