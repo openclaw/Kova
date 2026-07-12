@@ -29,6 +29,7 @@ import {
   WEB_PAYLOAD_SCHEMA_VERSION,
 } from "../web-payload-contract.mjs";
 import { repoRoot, displayPath } from "../paths.mjs";
+import { artifactRunIdSegment } from "../reporting/artifact-names.mjs";
 import { resolveReportReference } from "../reporting/report-store.mjs";
 import { projectInternalReport } from "../web-publish/from-internal-report.mjs";
 import {
@@ -232,7 +233,9 @@ async function findReportBundlePath(report, inputPath) {
     if (await pathExists(candidate)) return candidate;
   }
   return findContentAddressedBundlePath(inputDir, [
-    safeBundlePrefix(runId),
+    typeof runId === "string"
+      ? safeBundlePrefix(artifactRunIdSegment(runId))
+      : null,
     safeBundlePrefix(inputBase),
     safeBundlePrefix(inputBase.replace(/-[^-]+$/, "")),
   ].filter(Boolean));
