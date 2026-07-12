@@ -293,7 +293,7 @@ export function buildAuthCleanupPhase(authPolicy, artifactDir) {
     title: "Auth Cleanup",
     intent: "Stop Kova's deterministic mock provider.",
     collectionIntent: "skip-env",
-    commands: [`if test -f ${quoteShell(join(dir, "pid"))}; then kill "$(cat ${quoteShell(join(dir, "pid"))})" 2>/dev/null || true; fi`],
+    commands: [mockProviderCleanupCommand(dir)],
     evidence: ["mock provider stopped"]
   };
 }
@@ -1083,11 +1083,14 @@ function startMockProviderCommand(dir, mockProvider = {}) {
     quoteShell(serverLog),
     quoteShell(portFile)
   ].join(" ");
+  const cleanup = mockProviderCleanupCommand(dir);
   return [
     `mkdir -p ${quoteShell(dir)}`,
+    `${cleanup} || exit $?`,
     `node ${quoteShell(join(repoRoot, "support/write-mock-ai-provider-script.mjs"))} ${scriptArgText}`,
     mockAiProviderServeCommand({ scriptPath, requestLog, serverLog, pidFile }),
     `for i in $(seq 1 100); do ${writePort} >/dev/null 2>&1 && test -s ${quoteShell(portFile)} && node -e 'fetch("http://127.0.0.1:"+process.argv[1]+"/health").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))' "$(cat ${quoteShell(portFile)})" && exit 0; sleep 0.1; done`,
+    cleanup,
     `cat ${quoteShell(serverLog)} >&2`,
     "exit 1"
   ].join("; ");
@@ -1098,6 +1101,23 @@ export function mockAiProviderServeCommand({ scriptPath, requestLog, serverLog, 
   const args = `serve --providers openai --script ${quoteShell(scriptPath)} --port 0 --request-log ${quoteShell(requestLog)}`;
   const output = `>${quoteShell(serverLog)} 2>&1 & echo $! >${quoteShell(pidFile)}`;
   return `test -x ${bin} || { echo "Kova requires the local npm package mock-ai-provider; run npm install in the Kova repo" >&2; exit 127; }; ${bin} ${args} ${output}`;
+}
+
+export function mockProviderCleanupCommand(dir) {
+  const values = {
+    pidFile: join(dir, "pid"),
+    executablePath: join(repoRoot, "node_modules/.bin/mock-ai-provider"),
+    scriptPath: join(dir, "script.json"),
+    requestLog: join(dir, "requests.jsonl")
+  };
+  return [
+    "node",
+    quoteShell(join(repoRoot, "support/stop-mock-ai-provider.mjs")),
+    "--pid-file", quoteShell(values.pidFile),
+    "--executable", quoteShell(values.executablePath),
+    "--script", quoteShell(values.scriptPath),
+    "--request-log", quoteShell(values.requestLog)
+  ].join(" ");
 }
 
 function mockProviderPolicy(scenario, state) {

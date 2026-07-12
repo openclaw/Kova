@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { chmod, link, lstat, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
+import { access, chmod, link, lstat, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -144,7 +144,9 @@ import {
   ocmServiceStatusJson,
   ocmTargetSelector
 } from "./ocm/commands.mjs";
-import { mockAiProviderServeCommand } from "./auth.mjs";
+import { buildAuthCleanupPhase, buildAuthPreparePhase, mockAiProviderServeCommand } from "./auth.mjs";
+import { diagnosticArtifactName, triggerDiagnosticReport, triggerHeapSnapshot } from "./collectors/diagnostics.mjs";
+import { isOwnedMockProviderCommand, stopOwnedMockProvider } from "./process-safety.mjs";
 import { envNameFor, maxOcmEnvNameLength } from "./run/env-name.mjs";
 import {
   checkAggregateThreshold,
@@ -883,6 +885,8 @@ async function runScopedSelfCheck(flags, scope, workspace) {
       assertArray(data.envs, "cleanup envs");
     }));
     checks.push(await cleanupArtifactsCheck(tmp));
+    checks.push(await mockProviderProcessSafetyCheck(tmp));
+    checks.push(await diagnosticArtifactIdentityCheck(tmp));
     checks.push(await diagnosticsTimelineCheck());
     checks.push(await diagnosticsOpenSpanCheck());
     checks.push(diagnosticsTimelineEvaluationCheck());
@@ -8370,6 +8374,217 @@ async function mockProviderBehaviorCheck(tmp) {
       status: "FAIL",
       command,
       durationMs: result.durationMs,
+      message: error.message
+    };
+  }
+}
+
+async function mockProviderProcessSafetyCheck(tmp) {
+  const dir = join(tmp, "mock-provider-process-safety");
+  await mkdir(dir, { recursive: true });
+  const executablePath = join(process.cwd(), "node_modules/.bin/mock-ai-provider");
+  const scriptPath = join(dir, "script.json");
+  const requestLog = join(dir, "requests.jsonl");
+  const pidFile = join(dir, "pid");
+  const expectedCommand = [
+    "node",
+    executablePath,
+    "serve --providers openai",
+    `--script ${scriptPath}`,
+    "--port 0",
+    `--request-log ${requestLog}`
+  ].join(" ");
+
+  try {
+    assertEqual(
+      isOwnedMockProviderCommand(expectedCommand, { executablePath, scriptPath, requestLog }),
+      true,
+      "exact mock provider process identity"
+    );
+    assertEqual(
+      isOwnedMockProviderCommand(expectedCommand, {
+        executablePath,
+        scriptPath: join(dir, "other", "script.json"),
+        requestLog
+      }),
+      false,
+      "same-basename mock provider script is not accepted"
+    );
+    assertEqual(
+      isOwnedMockProviderCommand(
+        `node unrelated.mjs ${expectedCommand}`,
+        { executablePath, scriptPath, requestLog }
+      ),
+      false,
+      "expected provider arguments do not authenticate an unrelated process"
+    );
+
+    for (const invalidPid of ["0\n", "-1\n"]) {
+      await writeFile(pidFile, invalidPid, "utf8");
+      let inspected = false;
+      let signaled = false;
+      const result = await stopOwnedMockProvider({
+        pidFile,
+        executablePath,
+        scriptPath,
+        requestLog,
+        inspectProcess: async () => {
+          inspected = true;
+          return expectedCommand;
+        },
+        signalProcess: () => {
+          signaled = true;
+        }
+      });
+      assertEqual(result.status, "invalid-pid", `${invalidPid.trim()} pid status`);
+      assertEqual(inspected, false, `${invalidPid.trim()} pid is not inspected`);
+      assertEqual(signaled, false, `${invalidPid.trim()} pid is not signaled`);
+      await assertPathMissing(pidFile, `${invalidPid.trim()} pid file removed`);
+    }
+
+    const unrelated = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+      stdio: "ignore"
+    });
+    try {
+      await writeFile(pidFile, `${unrelated.pid}\n`, "utf8");
+      const recycled = await stopOwnedMockProvider({
+        pidFile,
+        executablePath,
+        scriptPath,
+        requestLog
+      });
+      assertEqual(recycled.status, "identity-mismatch", "recycled pid identity status");
+      process.kill(unrelated.pid, 0);
+      await assertPathMissing(pidFile, "recycled pid file removed");
+    } finally {
+      unrelated.kill("SIGTERM");
+    }
+
+    const absent = await stopOwnedMockProvider({
+      pidFile,
+      executablePath,
+      scriptPath,
+      requestLog
+    });
+    assertEqual(absent.status, "already-absent", "mock cleanup is idempotent");
+
+    for (const failure of ["inspect", "signal"]) {
+      await writeFile(pidFile, "12345\n", "utf8");
+      let rejected = false;
+      try {
+        await stopOwnedMockProvider({
+          pidFile,
+          executablePath,
+          scriptPath,
+          requestLog,
+          inspectProcess: async () => {
+            if (failure === "inspect") {
+              throw new Error("process inspection failed");
+            }
+            return expectedCommand;
+          },
+          signalProcess: () => {
+            const error = new Error("signal denied");
+            error.code = "EPERM";
+            throw error;
+          }
+        });
+      } catch (error) {
+        rejected = error.message === (failure === "inspect" ? "process inspection failed" : "signal denied");
+      }
+      assertEqual(rejected, true, `${failure} failure is propagated`);
+      await access(pidFile);
+      await rm(pidFile, { force: true });
+    }
+
+    const cleanupPhase = buildAuthCleanupPhase({ mode: "mock" }, dir);
+    const cleanupCommand = cleanupPhase.commands[0];
+    assertEqual(cleanupCommand.includes("stop-mock-ai-provider.mjs"), true, "auth cleanup uses guarded helper");
+    assertEqual(cleanupCommand.includes(executablePath), true, "auth cleanup pins executable path");
+    assertEqual(cleanupCommand.includes(join(dir, "mock-openai", "script.json")), true, "auth cleanup pins script path");
+    assertEqual(cleanupCommand.includes(join(dir, "mock-openai", "requests.jsonl")), true, "auth cleanup pins request log");
+
+    const prepareDir = join(tmp, "mock-provider-startup-failure");
+    const preparePhase = buildAuthPreparePhase(
+      { mode: "mock", mockProvider: { mode: "normal" } },
+      prepareDir
+    );
+    const prepareCommand = preparePhase.commands[0]
+      .replace("seq 1 100", "seq 1 2")
+      .replace('+"/health"', '+"/not-ready"');
+    assertEqual(
+      prepareCommand.split("stop-mock-ai-provider.mjs").length - 1,
+      2,
+      "startup command cleans stale and unhealthy providers"
+    );
+    assertEqual(
+      prepareCommand.includes("stop-mock-ai-provider.mjs") && prepareCommand.includes(" || exit $?; "),
+      true,
+      "stale provider cleanup failure aborts startup"
+    );
+    const failedStartup = await runCommand(prepareCommand, { timeoutMs: 10000 });
+    assertEqual(failedStartup.status === 0, false, "unhealthy mock provider startup fails");
+    await assertPathMissing(join(prepareDir, "mock-openai", "pid"), "unhealthy startup pid file removed");
+    await sleep(200);
+    const processList = await runCommand("ps -ww -axo command=", { timeoutMs: 10000 });
+    assertEqual(
+      processList.stdout.includes(join(prepareDir, "mock-openai", "script.json")),
+      false,
+      "unhealthy mock provider process stopped"
+    );
+
+    return {
+      id: "mock-provider-process-safety",
+      status: "PASS",
+      command: "exercise guarded mock provider cleanup",
+      durationMs: failedStartup.durationMs
+    };
+  } catch (error) {
+    return {
+      id: "mock-provider-process-safety",
+      status: "FAIL",
+      command: "exercise guarded mock provider cleanup",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+async function diagnosticArtifactIdentityCheck(tmp) {
+  try {
+    const first = join(tmp, "diagnostics-a", "report.json");
+    const second = join(tmp, "diagnostics-b", "report.json");
+    const firstName = diagnosticArtifactName(first);
+    const secondName = diagnosticArtifactName(second);
+    assertEqual(firstName, diagnosticArtifactName(first), "diagnostic artifact name is stable");
+    assertEqual(firstName === secondName, false, "same-basename diagnostics remain distinct");
+    assertEqual(firstName.startsWith("report-"), true, "diagnostic artifact keeps source basename");
+    assertEqual(firstName.endsWith(".json"), true, "diagnostic artifact keeps source extension");
+
+    for (const invalidPid of [0, -1]) {
+      for (const trigger of [triggerHeapSnapshot, triggerDiagnosticReport]) {
+        let rejected = false;
+        try {
+          await trigger("kova-invalid-pid", invalidPid, 1000, null);
+        } catch (error) {
+          rejected = error.message.includes("must be a positive integer");
+        }
+        assertEqual(rejected, true, `${trigger.name} rejects pid ${invalidPid}`);
+      }
+    }
+
+    return {
+      id: "diagnostic-process-and-artifact-safety",
+      status: "PASS",
+      command: "validate diagnostic PID and artifact identity",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "diagnostic-process-and-artifact-safety",
+      status: "FAIL",
+      command: "validate diagnostic PID and artifact identity",
+      durationMs: 0,
       message: error.message
     };
   }
@@ -17717,6 +17932,18 @@ async function inlineCheck(id, validate) {
       message: error.message
     };
   }
+}
+
+async function assertPathMissing(path, label) {
+  try {
+    await access(path);
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+  throw new Error(`${label}: ${path} still exists`);
 }
 
 function validateReport(report) {
