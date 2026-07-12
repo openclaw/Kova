@@ -8,21 +8,13 @@ export const LOG_METRICS_SCHEMA = "kova.logMetrics.v1";
 
 const PROVIDER_TIMEOUT_SIGNAL_PATTERN =
   /(?:\bprovider\b|\bmodel\b).*(?:\btimeouts?\b|\btimed out\b)|(?:\btimeouts?\b|\btimed out\b).*(?:\bprovider\b|\bmodel\b)/i;
-const SENSITIVE_LOG_KEY = String.raw`[a-z0-9_-]*(?:api[_-]?key|token|secret|password|cookie|credential|private[_-]?key)[a-z0-9_-]*`;
-const QUOTED_SENSITIVE_VALUE_PATTERN = new RegExp(
-  `(["']?${SENSITIVE_LOG_KEY}["']?\\s*[:=]\\s*)(["'])((?:\\\\.|(?!\\2).)*)\\2`,
-  "gi"
-);
-const UNQUOTED_SENSITIVE_FIELD_PATTERN = new RegExp(
-  `(["']?${SENSITIVE_LOG_KEY}["']?\\s*:\\s*)(?!["']).*$`,
+const SENSITIVE_LOG_KEY = String.raw`[a-z0-9_-]*(?:api[_-]?key|token|secret|password|cookie|credential|private[_-]?key|authorization)[a-z0-9_-]*`;
+const SENSITIVE_VALUE_TO_LINE_END_PATTERN = new RegExp(
+  `(["']?\\b${SENSITIVE_LOG_KEY}\\b["']?\\s*[:=]\\s*).*$`,
   "gim"
 );
-const UNQUOTED_SENSITIVE_ASSIGNMENT_PATTERN = new RegExp(
-  `(\\b${SENSITIVE_LOG_KEY}\\b\\s*=\\s*)(?!["'])\\S+`,
-  "gi"
-);
-const QUOTED_SENSITIVE_CLI_VALUE_PATTERN =
-  /((?:^|\s)--(?:api-key|access-token|auth-token|refresh-token|token|secret|password|cookie)(?:=|\s+))(["'])((?:\\.|(?!\2).)*)\2/gim;
+const SENSITIVE_CLI_TO_LINE_END_PATTERN =
+  /((?:^|\s)--(?:api-key|access-token|auth-token|refresh-token|token|secret|password|cookie)(?:=|\s+)).*$/gim;
 const PEM_PRIVATE_KEY_PATTERN =
   /-----BEGIN ([A-Z0-9 ]*PRIVATE KEY)-----[\s\S]*?-----END \1-----/g;
 
@@ -91,23 +83,11 @@ export function redactLogText(value) {
   return String(value ?? "")
     .replace(PEM_PRIVATE_KEY_PATTERN, "[REDACTED]")
     .replace(
-      QUOTED_SENSITIVE_VALUE_PATTERN,
-      "$1$2[REDACTED]$2"
-    )
-    .replace(
-      UNQUOTED_SENSITIVE_FIELD_PATTERN,
+      SENSITIVE_VALUE_TO_LINE_END_PATTERN,
       "$1[REDACTED]"
     )
     .replace(
-      UNQUOTED_SENSITIVE_ASSIGNMENT_PATTERN,
-      "$1[REDACTED]"
-    )
-    .replace(
-      QUOTED_SENSITIVE_CLI_VALUE_PATTERN,
-      "$1[REDACTED]"
-    )
-    .replace(
-      /((?:^|\s)--(?:api-key|access-token|auth-token|refresh-token|token|secret|password|cookie)(?:=|\s+))[^\s,"']+/gim,
+      SENSITIVE_CLI_TO_LINE_END_PATTERN,
       "$1[REDACTED]"
     )
     .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [REDACTED]")
