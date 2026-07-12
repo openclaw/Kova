@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { access, chmod, link, mkdir, open, readFile, readdir, rename, unlink } from "node:fs/promises";
 import { constants } from "node:fs";
-import { isAbsolute, join } from "node:path";
+import { basename, isAbsolute, join } from "node:path";
 import { credentialsDir, liveEnvPath, providersPath, repoRoot } from "./paths.mjs";
 import { quoteShell } from "./commands.mjs";
 import { ocmAt, ocmEnvExec } from "./ocm/commands.mjs";
@@ -32,6 +32,7 @@ const mockProviderModes = new Set([
   "exec-tool-failure-only"
 ]);
 const credentialStoreLockPath = join(credentialsDir, ".store.lock");
+const credentialStoreTransactionPath = join(credentialsDir, ".store.transaction.json");
 const credentialStoreLockTimeoutMs = 20000;
 const credentialStoreLockOwnerPrefix = ".store.lock.owner-";
 const credentialStoreLockReaperPrefix = ".store.lock.reaping-";
@@ -54,6 +55,7 @@ export async function configureCredentialProvider(options = {}) {
 
     const metadata = await readProvidersMetadata();
     const liveEnv = await loadLiveEnv();
+    const previousMetadata = structuredClone(metadata);
     const previousLiveEnv = { ...liveEnv };
     const envVar = options.envVar ?? defaultEnvVarForProvider(providerId);
     const externalCli = method === "external-cli"
@@ -79,11 +81,10 @@ export async function configureCredentialProvider(options = {}) {
       liveEnv[envVar] = value;
     }
 
-    // Commit secrets first and provider metadata last so readers never see
-    // metadata that references a credential which has not reached disk.
     await writeCredentialStoreTransaction({
       metadata,
       liveEnv,
+      previousMetadata,
       previousLiveEnv
     });
     return credentialStoreSummary({ providers: metadata, liveEnv });
@@ -335,7 +336,10 @@ export function authReportSummary(authContext) {
 }
 
 export async function loadCredentialStore() {
-  return loadCredentialStoreUnlocked();
+  return withCredentialStoreLock(async () => {
+    await ensureCredentialStoreUnlocked();
+    return loadCredentialStoreUnlocked();
+  });
 }
 
 async function loadCredentialStoreUnlocked() {
@@ -425,50 +429,60 @@ async function loadLiveEnv() {
   }
 }
 
-async function writeLiveEnv(values) {
-  await atomicWriteFile(liveEnvPath, serializeLiveEnv(values), 0o600);
-}
-
 async function writeProvidersMetadata(metadata) {
   validateProvidersMetadata(metadata);
   await atomicWriteFile(providersPath, `${JSON.stringify(metadata, null, 2)}\n`, 0o600);
 }
 
-async function writeCredentialStoreTransaction({ metadata, liveEnv, previousLiveEnv }) {
+async function writeCredentialStoreTransaction({
+  metadata,
+  liveEnv,
+  previousMetadata,
+  previousLiveEnv
+}) {
   validateProvidersMetadata(metadata);
-  let stagedLiveEnv;
-  let stagedProviders;
-  let liveEnvCommitted = false;
+  const transaction = {
+    schemaVersion: "kova.credentials.transaction.v1",
+    id: randomUUID(),
+    createdAt: new Date().toISOString(),
+    previous: credentialStoreState(previousMetadata, previousLiveEnv),
+    next: credentialStoreState(metadata, liveEnv)
+  };
+  let journalPublished = false;
   try {
-    stagedLiveEnv = await stageFile(liveEnvPath, serializeLiveEnv(liveEnv), 0o600);
-    stagedProviders = await stageFile(
-      providersPath,
-      `${JSON.stringify(metadata, null, 2)}\n`,
+    await atomicWriteFile(
+      credentialStoreTransactionPath,
+      `${JSON.stringify(transaction)}\n`,
       0o600
     );
-    await commitStagedFile(stagedLiveEnv);
-    liveEnvCommitted = true;
-    await commitStagedFile(stagedProviders);
+    journalPublished = true;
+    await syncDirectory(credentialsDir);
+    await commitCredentialStoreState(transaction.next);
+    await removeCredentialStoreTransaction();
   } catch (error) {
-    if (liveEnvCommitted) {
-      try {
-        await atomicWriteFile(liveEnvPath, serializeLiveEnv(previousLiveEnv), 0o600);
-      } catch (rollbackError) {
-        throw new AggregateError(
-          [error, rollbackError],
-          "credential metadata commit failed and live.env rollback also failed"
-        );
-      }
+    if (!journalPublished) {
+      throw error;
+    }
+    let outcome;
+    try {
+      outcome = await recoverCredentialStoreTransaction();
+    } catch (recoveryError) {
+      throw new AggregateError(
+        [error, recoveryError],
+        "credential transaction failed and recovery also failed"
+      );
+    }
+    if (outcome === "committed") {
+      return;
     }
     throw error;
-  } finally {
-    const stagedFiles = [stagedLiveEnv, stagedProviders].filter(Boolean);
-    await Promise.all(stagedFiles.map((staged) => discardStagedFile(staged)));
   }
 }
 
 async function ensureCredentialStoreUnlocked() {
   await mkdir(credentialsDir, { recursive: true });
+  await recoverCredentialStoreTransaction();
+  await removeAbandonedCredentialStoreTemps();
   if (!(await pathExists(liveEnvPath))) {
     await atomicWriteFile(liveEnvPath, "", 0o600);
   } else {
@@ -476,6 +490,123 @@ async function ensureCredentialStoreUnlocked() {
   }
   if (!(await pathExists(providersPath))) {
     await writeProvidersMetadata(defaultProvidersMetadata());
+  }
+}
+
+function credentialStoreState(metadata, liveEnv) {
+  validateProvidersMetadata(metadata);
+  return {
+    providersText: `${JSON.stringify(metadata, null, 2)}\n`,
+    liveEnvText: serializeLiveEnv(liveEnv)
+  };
+}
+
+async function commitCredentialStoreState(state) {
+  validateCredentialStoreState(state);
+  let stagedLiveEnv;
+  let stagedProviders;
+  try {
+    stagedLiveEnv = await stageFile(liveEnvPath, state.liveEnvText, 0o600);
+    stagedProviders = await stageFile(providersPath, state.providersText, 0o600);
+    await commitStagedFile(stagedLiveEnv);
+    await commitStagedFile(stagedProviders);
+    await syncDirectory(credentialsDir);
+  } finally {
+    const stagedFiles = [stagedLiveEnv, stagedProviders].filter(Boolean);
+    await Promise.all(stagedFiles.map((staged) => discardStagedFile(staged)));
+  }
+}
+
+async function recoverCredentialStoreTransaction() {
+  let transaction;
+  try {
+    transaction = parseCredentialStoreTransaction(
+      await readFile(credentialStoreTransactionPath, "utf8")
+    );
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return "none";
+    }
+    throw error;
+  }
+
+  const [providersText, liveEnvText] = await Promise.all([
+    readFileIfExists(providersPath),
+    readFileIfExists(liveEnvPath)
+  ]);
+  const nextCommitted = providersText === transaction.next.providersText &&
+    liveEnvText === transaction.next.liveEnvText;
+  if (nextCommitted) {
+    await syncDirectory(credentialsDir);
+  } else {
+    await commitCredentialStoreState(transaction.previous);
+  }
+  await removeCredentialStoreTransaction();
+  return nextCommitted ? "committed" : "rolled-back";
+}
+
+function parseCredentialStoreTransaction(contents) {
+  const transaction = JSON.parse(contents);
+  if (transaction?.schemaVersion !== "kova.credentials.transaction.v1" ||
+      typeof transaction.id !== "string" ||
+      typeof transaction.createdAt !== "string") {
+    throw new Error("invalid credential transaction journal");
+  }
+  validateCredentialStoreState(transaction.previous);
+  validateCredentialStoreState(transaction.next);
+  return transaction;
+}
+
+function validateCredentialStoreState(state) {
+  if (!state || typeof state !== "object" ||
+      typeof state.providersText !== "string" ||
+      typeof state.liveEnvText !== "string") {
+    throw new Error("invalid credential transaction state");
+  }
+  validateProvidersMetadata(JSON.parse(state.providersText));
+  parseEnvFile(state.liveEnvText);
+}
+
+async function removeCredentialStoreTransaction() {
+  await unlink(credentialStoreTransactionPath);
+  await syncDirectory(credentialsDir);
+}
+
+async function removeAbandonedCredentialStoreTemps() {
+  const entries = await readdir(credentialsDir);
+  const prefixes = [
+    `${basename(credentialStoreTransactionPath)}.`,
+    `${basename(providersPath)}.`,
+    `${basename(liveEnvPath)}.`
+  ];
+  await Promise.all(entries
+    .filter((entry) => entry.endsWith(".tmp") && prefixes.some((prefix) => entry.startsWith(prefix)))
+    .map((entry) => unlink(join(credentialsDir, entry)).catch(() => {})));
+}
+
+async function readFileIfExists(path) {
+  try {
+    return await readFile(path, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function syncDirectory(path) {
+  let handle;
+  try {
+    handle = await open(path, "r");
+    await handle.sync();
+  } catch (error) {
+    if (process.platform !== "win32" ||
+        !["EPERM", "EISDIR", "EINVAL", "ENOTSUP"].includes(error.code)) {
+      throw error;
+    }
+  } finally {
+    await handle?.close();
   }
 }
 
