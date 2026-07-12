@@ -205,12 +205,16 @@ function gatewaySessionLatencyReason(turns) {
 }
 
 function providerProofOk(providerEvidence, agentTurns, expectedTurnCount) {
-  if (providerEvidence?.available !== true ||
-    !validRequestCount(providerEvidence.requestCount, expectedTurnCount)) {
-    return false;
-  }
   const gatewayTurns = agentTurns.filter((turn) => turn.gatewaySession);
   if (gatewayTurns.length < expectedTurnCount) {
+    return false;
+  }
+  const attributedRequestCount = gatewayTurns.reduce(
+    (total, turn) => validRequestCount(turn.requestCount, 1) ? total + turn.requestCount : Number.NaN,
+    0
+  );
+  if (providerEvidence?.available !== true ||
+    !validRequestCount(providerEvidence.requestCount, attributedRequestCount)) {
     return false;
   }
   return gatewayTurns.every((turn) => {
@@ -229,9 +233,6 @@ function providerProofReason(providerEvidence, agentTurns, expectedTurnCount) {
   if (providerEvidence?.available !== true) {
     return providerEvidence?.error ?? "provider evidence was not available";
   }
-  if (!validRequestCount(providerEvidence.requestCount, expectedTurnCount)) {
-    return `provider request count ${providerEvidence.requestCount ?? "missing"} was not a finite count of at least ${expectedTurnCount}`;
-  }
   const gatewayTurns = agentTurns.filter((turn) => turn.gatewaySession);
   if (gatewayTurns.length < expectedTurnCount) {
     return `agent turn attribution count ${gatewayTurns.length} was below required ${expectedTurnCount}`;
@@ -241,6 +242,13 @@ function providerProofReason(providerEvidence, agentTurns, expectedTurnCount) {
   );
   if (missing) {
     return `${missing.phaseId} had no attributed provider request`;
+  }
+  const attributedRequestCount = gatewayTurns.reduce(
+    (total, turn) => total + turn.requestCount,
+    0
+  );
+  if (!validRequestCount(providerEvidence.requestCount, attributedRequestCount)) {
+    return `provider request count ${providerEvidence.requestCount ?? "missing"} was not a finite count of at least ${attributedRequestCount}`;
   }
   const late = gatewayTurns.find((turn) => turn.providerAfterCommandEnd === true);
   if (late) {

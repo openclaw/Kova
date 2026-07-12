@@ -303,7 +303,9 @@ export function providerResponseStatusValues(statuses, requestCount, statuslessR
     Number.isInteger(status.count) &&
     status.count > 0
   );
-  const statusCount = validStatuses
+  const uniqueStatuses = validStatuses &&
+    new Set(statuses.map((status) => status.value)).size === statuses.length;
+  const statusCount = uniqueStatuses
     ? statuses.reduce((total, status) => total + status.count, 0)
     : null;
   return statusCount + statuslessRequestCount === requestCount
