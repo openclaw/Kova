@@ -4942,6 +4942,31 @@ async function reportPublicationCheck(tmp) {
     });
     assertEqual(await fileExists(recoverableBundlePath), true, "checksum-only bundle state recovered");
 
+    const symlinkReportPath = join(collisionRoot, "symlink-report.json");
+    const symlinkMarkdownPath = join(collisionRoot, "symlink-report.md");
+    const symlinkMarkdownTarget = join(collisionRoot, "symlink-target.md");
+    await writeFile(symlinkReportPath, `${JSON.stringify({ ...report, runId: "symlink-report" }, null, 2)}\n`);
+    await writeFile(symlinkMarkdownTarget, "linked report\n");
+    let symlinkSupported = true;
+    try {
+      await symlink(symlinkMarkdownTarget, symlinkMarkdownPath);
+    } catch (error) {
+      if (process.platform === "win32" && (error.code === "EPERM" || error.code === "EACCES")) {
+        symlinkSupported = false;
+      } else {
+        throw error;
+      }
+    }
+    if (symlinkSupported) {
+      let symlinkMarkdownRejected = false;
+      try {
+        await bundleReport(symlinkReportPath, { outputDir: bundleRoot });
+      } catch (error) {
+        symlinkMarkdownRejected = /not a regular file/.test(error.message);
+      }
+      assertEqual(symlinkMarkdownRejected, true, "bundle rejects symlinked Markdown");
+    }
+
     const retainedRoot = join(publicationRoot, "retained");
     const retained = await retainGateArtifacts(collisionReports[0], firstBundle, {
       outputDir: retainedRoot
@@ -5046,6 +5071,7 @@ async function fileLockRecoveryCheck(tmp) {
     await writeFile(reusedPidLock, `${JSON.stringify({
       token: "reused-pid",
       pid: process.pid,
+      processIdentity: "ps:reused-process",
       createdAt: new Date(Date.now() - 60_000).toISOString()
     })}\n`);
     await utimes(reusedPidLock, old, old);
@@ -5079,6 +5105,21 @@ async function fileLockRecoveryCheck(tmp) {
     })));
     assertEqual(maxActive, 1, "stale-lock contenders remain serialized");
     assertEqual(await fileExists(racedLock), false, "owned lock removed after serialized callbacks");
+
+    const liveLock = join(tmp, "live-publication.lock");
+    active = 0;
+    maxActive = 0;
+    await Promise.all([0, 1].map(() => withFileLock(liveLock, async () => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await sleep(40);
+      active -= 1;
+    }, {
+      staleMs: 5,
+      timeoutMs: 2_000,
+      retryMs: 2
+    })));
+    assertEqual(maxActive, 1, "live lock is not reclaimed after its stale threshold");
 
     return {
       id: "file-lock-recovery",

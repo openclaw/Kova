@@ -415,7 +415,7 @@ async function writeDurableFile(path, content) {
 async function requireRegularFile(path, label) {
   let info;
   try {
-    info = await stat(path);
+    info = await lstat(path);
   } catch (error) {
     if (error?.code === "ENOENT") {
       throw new Error(`${label} is missing: ${path}`);

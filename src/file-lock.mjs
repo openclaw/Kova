@@ -1,10 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
+import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { link, mkdir, open, readFile, readdir, rm, stat } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 
 const DEFAULT_STALE_MS = 10 * 60 * 1000;
 const DEFAULT_TIMEOUT_MS = 30 * 1000;
 const DEFAULT_RETRY_MS = 25;
+const CURRENT_PROCESS_IDENTITY = readProcessIdentity(process.pid);
 
 export async function withFileLock(lockPath, callback, options = {}) {
   await mkdir(dirname(lockPath), { recursive: true, mode: 0o700 });
@@ -172,9 +175,12 @@ async function removeOwnedFile(path, token) {
 function isAbandoned(snapshot, staleMs) {
   const pid = snapshot.owner?.pid;
   if (Number.isInteger(pid) && pid > 0) {
-    // PID liveness is useful for fast crash recovery, but PID reuse must not
-    // wedge these short publication critical sections forever.
-    return !processIsAlive(pid) || snapshot.ageMs >= staleMs;
+    if (!processIsAlive(pid)) {
+      return true;
+    }
+    const ownerIdentity = snapshot.owner?.processIdentity;
+    const currentIdentity = readProcessIdentity(pid);
+    return Boolean(ownerIdentity && currentIdentity && ownerIdentity !== currentIdentity);
   }
   return snapshot.ageMs >= staleMs;
 }
@@ -183,8 +189,48 @@ function lockMetadata(token) {
   return {
     token,
     pid: process.pid,
+    processIdentity: CURRENT_PROCESS_IDENTITY,
     createdAt: new Date().toISOString()
   };
+}
+
+function readProcessIdentity(pid) {
+  if (process.platform === "linux") {
+    try {
+      const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+      const fields = stat.slice(stat.lastIndexOf(")") + 2).trim().split(/\s+/);
+      const bootId = readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim();
+      return fields[19] && bootId ? `proc:${bootId}:${fields[19]}` : null;
+    } catch {
+      return null;
+    }
+  }
+  if (process.platform === "win32") {
+    const systemRoot = process.env.SystemRoot;
+    if (!systemRoot) {
+      return null;
+    }
+    const powershell = join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+    const result = spawnSync(powershell, [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      `(Get-Process -Id ${pid} -ErrorAction Stop).StartTime.ToUniversalTime().Ticks`
+    ], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 2_000
+    });
+    const startedAt = result.status === 0 ? result.stdout.trim() : "";
+    return /^\d+$/.test(startedAt) ? `windows:${startedAt}` : null;
+  }
+  const result = spawnSync("/bin/ps", ["-o", "lstart=", "-p", String(pid)], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+    timeout: 1_000
+  });
+  const startedAt = result.status === 0 ? result.stdout.trim().replace(/\s+/g, " ") : "";
+  return startedAt ? `ps:${startedAt}` : null;
 }
 
 function processIsAlive(pid) {
