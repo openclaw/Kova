@@ -5100,6 +5100,15 @@ async function reportPublicationCheck(tmp) {
     assertEqual(firstBundle.outputPath === secondBundle.outputPath, false, "colliding run IDs use distinct bundle paths");
     assertEqual(await fileExists(firstBundle.checksumPath), true, "first bundle checksum published");
     assertEqual(await fileExists(secondBundle.checksumPath), true, "second bundle checksum published");
+    let mismatchedRunBundleRejected = false;
+    try {
+      await retainGateArtifacts(collisionReports[0], secondBundle, {
+        outputDir: join(publicationRoot, "mismatched-run-retained")
+      });
+    } catch (error) {
+      mismatchedRunBundleRejected = /bundle run ID does not match report/.test(error.message);
+    }
+    assertEqual(mismatchedRunBundleRejected, true, "retention rejects a bundle from another run");
     const firstLogicalBundleName = basename(firstBundle.outputPath)
       .replace(/-[a-f0-9]{64}\.tar\.gz$/, "");
     const orphanChecksumPath = join(
@@ -5111,6 +5120,109 @@ async function reportPublicationCheck(tmp) {
     assertEqual(await fileExists(orphanChecksumPath), false, "logical bundle retry removes orphan checksum");
     const firstArchive = await readFile(firstBundle.outputPath);
     const firstChecksum = await readFile(firstBundle.checksumPath, "utf8");
+    const sameNameArchiveDir = join(publicationRoot, "same-name-archive");
+    const sameNameChecksumDir = join(publicationRoot, "same-name-checksum");
+    const sameNameArchivePath = join(sameNameArchiveDir, "bundle.tar.gz");
+    const sameNameChecksumPath = join(sameNameChecksumDir, "BUNDLE.TAR.GZ");
+    await mkdir(sameNameArchiveDir);
+    await mkdir(sameNameChecksumDir);
+    await writeFile(sameNameArchivePath, firstArchive);
+    await writeFile(
+      sameNameChecksumPath,
+      `${createHash("sha256").update(firstArchive).digest("hex")}  bundle.tar.gz\n`
+    );
+    let sameNameBundleRejected = false;
+    try {
+      await retainGateArtifacts(collisionReports[0], {
+        runId: "a/b",
+        outputPath: sameNameArchivePath,
+        checksumPath: sameNameChecksumPath
+      }, {
+        outputDir: join(publicationRoot, "same-name-retained")
+      });
+    } catch (error) {
+      sameNameBundleRejected = /must use distinct filenames/.test(error.message);
+    }
+    assertEqual(sameNameBundleRejected, true, "retention rejects colliding bundle filenames");
+    const reservedArchivePath = join(sameNameArchiveDir, "report.json");
+    const reservedChecksumPath = join(sameNameChecksumDir, "report.json.sha256");
+    await writeFile(reservedArchivePath, firstArchive);
+    await writeFile(
+      reservedChecksumPath,
+      `${createHash("sha256").update(firstArchive).digest("hex")}  report.json\n`
+    );
+    let reservedBundleNameRejected = false;
+    try {
+      await retainGateArtifacts(collisionReports[0], {
+        runId: "a/b",
+        outputPath: reservedArchivePath,
+        checksumPath: reservedChecksumPath
+      }, {
+        outputDir: join(publicationRoot, "reserved-name-retained")
+      });
+    } catch (error) {
+      reservedBundleNameRejected = /conflict with reserved retained artifacts/.test(error.message);
+    }
+    assertEqual(reservedBundleNameRejected, true, "retention rejects reserved bundle filenames");
+    const unicodeArchivePath = join(sameNameArchiveDir, "σ-bundle.tar.gz");
+    const unicodeChecksumPath = join(sameNameChecksumDir, "ς-bundle.tar.gz.sha256");
+    await writeFile(unicodeArchivePath, firstArchive);
+    await writeFile(unicodeChecksumPath, firstChecksum);
+    let unicodeBundleNameRejected = false;
+    try {
+      await retainGateArtifacts(collisionReports[0], {
+        runId: "a/b",
+        outputPath: unicodeArchivePath,
+        checksumPath: unicodeChecksumPath
+      }, {
+        outputDir: join(publicationRoot, "unicode-name-retained")
+      });
+    } catch (error) {
+      unicodeBundleNameRejected = /must use portable filenames/.test(error.message);
+    }
+    assertEqual(unicodeBundleNameRejected, true, "retention rejects non-portable bundle filenames");
+    for (const [name, archiveName, checksumName] of [
+      ["trailing-period", "bundle.tar.gz", "BUNDLE.TAR.GZ."],
+      ["device-stem-con", "CON.tar.gz", "con.tar.gz.sha256"],
+      ["device-stem-nul", "NUL.bundle", "nul.bundle.sha256"],
+      ["device-stem-com1", "COM1.archive", "com1.archive.sha256"]
+    ]) {
+      let portableBundleNameRejected = false;
+      try {
+        await retainGateArtifacts(collisionReports[0], {
+          runId: "a/b",
+          outputPath: join(sameNameArchiveDir, archiveName),
+          checksumPath: join(sameNameChecksumDir, checksumName)
+        }, {
+          outputDir: join(publicationRoot, `${name}-retained`)
+        });
+      } catch (error) {
+        portableBundleNameRejected = /must use portable filenames/.test(error.message);
+      }
+      assertEqual(portableBundleNameRejected, true, `retention rejects ${name} bundle filenames`);
+    }
+    if (process.platform !== "win32") {
+      await chmod(firstBundle.outputPath, 0o400);
+      await chmod(firstBundle.checksumPath, 0o400);
+      try {
+        const readOnlyRetained = await retainGateArtifacts(collisionReports[0], firstBundle, {
+          outputDir: join(publicationRoot, "read-only-retained")
+        });
+        assertEqual(
+          await fileExists(readOnlyRetained.bundlePath),
+          true,
+          "retention copies a read-only bundle"
+        );
+        assertEqual(
+          await fileExists(readOnlyRetained.checksumPath),
+          true,
+          "retention copies a read-only checksum"
+        );
+      } finally {
+        await chmod(firstBundle.outputPath, 0o600);
+        await chmod(firstBundle.checksumPath, 0o600);
+      }
+    }
     await rm(firstBundle.checksumPath);
     await mkdir(firstBundle.checksumPath);
     let invalidChecksumRejected = false;
@@ -5174,6 +5286,7 @@ async function reportPublicationCheck(tmp) {
     let mismatchedBundleRejected = false;
     try {
       await retainGateArtifacts(collisionReports[0], {
+        runId: "a/b",
         outputPath: firstBundle.outputPath,
         checksumPath: mismatchedChecksumPath
       }, {
@@ -5232,6 +5345,7 @@ async function reportPublicationCheck(tmp) {
     let retainedReplacementRejected = false;
     try {
       await retainGateArtifacts(collisionReports[0], {
+        runId: "a/b",
         outputPath: invalidBundle,
         checksumPath: firstBundle.checksumPath
       }, {
