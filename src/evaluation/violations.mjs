@@ -1,10 +1,13 @@
 export function checkDuration(violations, results, metric, threshold, predicate) {
-  if (typeof threshold !== "number") {
+  if (!activeFiniteThreshold(violations, metric, threshold)) {
     return;
   }
 
   for (const result of results) {
     if (!predicate(result.command)) {
+      continue;
+    }
+    if (!finiteNonNegativeMeasurement(violations, metric, result.durationMs, "durationMs")) {
       continue;
     }
     if (result.durationMs > threshold) {
@@ -21,7 +24,10 @@ export function checkDuration(violations, results, metric, threshold, predicate)
 }
 
 export function checkEvidenceThreshold(violations, kind, metric, actual, threshold, label) {
-  if (typeof threshold !== "number" || actual === null) {
+  if (!activeFiniteThreshold(violations, metric, threshold)) {
+    return;
+  }
+  if (!finiteNonNegativeMeasurement(violations, metric, actual, "measurement")) {
     return;
   }
   if (actual > threshold) {
@@ -41,8 +47,16 @@ export function checkRoleThresholds(violations, byRole, roleThresholds) {
     if (!summary) {
       continue;
     }
-    if (typeof thresholds.peakRssMb === "number" && typeof summary.peakRssMb === "number" &&
-      summary.peakRssMb > thresholds.peakRssMb) {
+    if (
+      activeFiniteThreshold(violations, `resourceByRole.${role}.peakRssMb`, thresholds.peakRssMb) &&
+      finiteNonNegativeMeasurement(
+        violations,
+        `resourceByRole.${role}.peakRssMb`,
+        summary.peakRssMb,
+        "measurement"
+      ) &&
+      summary.peakRssMb > thresholds.peakRssMb
+    ) {
       violations.push({
         kind: "resource",
         metric: `resourceByRole.${role}.peakRssMb`,
@@ -54,8 +68,20 @@ export function checkRoleThresholds(violations, byRole, roleThresholds) {
       });
     }
     const peakProcessRssMb = summary.peakRssProcess?.rssMb;
-    if (typeof thresholds.peakProcessRssMb === "number" && typeof peakProcessRssMb === "number" &&
-      peakProcessRssMb > thresholds.peakProcessRssMb) {
+    if (
+      activeFiniteThreshold(
+        violations,
+        `resourceByRole.${role}.peakProcessRssMb`,
+        thresholds.peakProcessRssMb
+      ) &&
+      finiteNonNegativeMeasurement(
+        violations,
+        `resourceByRole.${role}.peakProcessRssMb`,
+        peakProcessRssMb,
+        "measurement"
+      ) &&
+      peakProcessRssMb > thresholds.peakProcessRssMb
+    ) {
       violations.push({
         kind: "resource",
         metric: `resourceByRole.${role}.peakProcessRssMb`,
@@ -66,8 +92,20 @@ export function checkRoleThresholds(violations, byRole, roleThresholds) {
         message: `${role} peak process RSS ${peakProcessRssMb} MB exceeded threshold ${thresholds.peakProcessRssMb} MB`
       });
     }
-    if (typeof thresholds.maxCpuPercent === "number" && typeof summary.maxCpuPercent === "number" &&
-      summary.maxCpuPercent > thresholds.maxCpuPercent) {
+    if (
+      activeFiniteThreshold(
+        violations,
+        `resourceByRole.${role}.maxCpuPercent`,
+        thresholds.maxCpuPercent
+      ) &&
+      finiteNonNegativeMeasurement(
+        violations,
+        `resourceByRole.${role}.maxCpuPercent`,
+        summary.maxCpuPercent,
+        "measurement"
+      ) &&
+      summary.maxCpuPercent > thresholds.maxCpuPercent
+    ) {
       violations.push({
         kind: "resource",
         metric: `resourceByRole.${role}.maxCpuPercent`,
@@ -92,7 +130,10 @@ function resourceAttribution(role, summary) {
 }
 
 export function checkAggregateThreshold(violations, actual, metric, threshold) {
-  if (typeof threshold !== "number" || typeof actual !== "number" || actual <= threshold) {
+  if (!activeFiniteThreshold(violations, metric, threshold)) {
+    return;
+  }
+  if (!finiteNonNegativeMeasurement(violations, metric, actual, "measurement") || actual <= threshold) {
     return;
   }
   violations.push({
@@ -105,7 +146,11 @@ export function checkAggregateThreshold(violations, actual, metric, threshold) {
 }
 
 export function checkBooleanThreshold(violations, kind, metric, actual, threshold, message) {
-  if (typeof threshold !== "number" || actual === null || actual === undefined) {
+  if (!activeFiniteThreshold(violations, metric, threshold)) {
+    return;
+  }
+  if (typeof actual !== "boolean") {
+    malformedEvidence(violations, metric, "boolean measurement", actual);
     return;
   }
   const expected = threshold >= 1;
@@ -121,7 +166,13 @@ export function checkBooleanThreshold(violations, kind, metric, actual, threshol
 }
 
 export function checkTurnThreshold(violations, turn, metric, threshold, message) {
-  if (!turn || typeof threshold !== "number" || typeof turn[metric] !== "number" || turn[metric] <= threshold) {
+  if (!turn || !activeFiniteThreshold(violations, metric, threshold)) {
+    return;
+  }
+  if (
+    !finiteNonNegativeMeasurement(violations, metric, turn[metric], "turn measurement") ||
+    turn[metric] <= threshold
+  ) {
     return;
   }
   violations.push({
@@ -132,4 +183,51 @@ export function checkTurnThreshold(violations, turn, metric, threshold, message)
     actual: turn[metric],
     message: `${message}, over threshold ${threshold}ms`
   });
+}
+
+function activeFiniteThreshold(violations, metric, threshold) {
+  if (threshold === undefined) {
+    return false;
+  }
+  if (!Number.isFinite(threshold) || threshold < 0) {
+    malformedEvidence(violations, metric, "finite non-negative threshold", threshold);
+    return false;
+  }
+  return true;
+}
+
+function finiteNonNegativeMeasurement(violations, metric, actual, label) {
+  if (!Number.isFinite(actual) || actual < 0) {
+    malformedEvidence(violations, metric, `finite non-negative ${label}`, actual);
+    return false;
+  }
+  return true;
+}
+
+function malformedEvidence(violations, metric, expected, actual) {
+  violations.push({
+    kind: "kova-evidence",
+    failureDomain: "kova-harness",
+    metric,
+    expected,
+    actual: describeValue(actual),
+    message: `${metric} contained malformed Kova evidence: expected ${expected}, got ${describeValue(actual)}`
+  });
+}
+
+function describeValue(value) {
+  if (value === undefined) {
+    return "undefined";
+  }
+  if (typeof value === "number" && !Number.isFinite(value)) {
+    return String(value);
+  }
+  if (typeof value === "string") {
+    return JSON.stringify(value);
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
 }

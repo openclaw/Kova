@@ -1194,7 +1194,12 @@ export function evaluateRecord(record, scenario, options = {}) {
   record.thresholdPolicy = thresholdPolicy.report;
 
   if (violations.length > 0) {
-    if (originalStatus === "PASS") {
+    const malformedKovaEvidence = violations.some(
+      (violation) => violation.failureDomain === "kova-harness"
+    );
+    if (malformedKovaEvidence) {
+      record.status = "BLOCKED";
+    } else if (originalStatus === "PASS") {
       record.status = "FAIL";
     }
     record.violations = violations;
