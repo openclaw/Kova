@@ -19,7 +19,27 @@ export function ocmTargetSelector(targetPlan, commandKind = "start") {
 }
 
 export function ocmEnvDestroy(envName, options = {}) {
-  return `ocm env destroy ${quoteShell(envName)} --yes${options.force === true ? " --force" : ""}`;
+  if (options.force === true && options.stateToken !== undefined) {
+    throw new Error("ocm env destroy cannot combine force with a state token");
+  }
+  if (
+    options.stateToken !== undefined &&
+    (typeof options.stateToken !== "string" || options.stateToken.length === 0)
+  ) {
+    throw new Error("ocm env destroy state token must be a non-empty string");
+  }
+  const args = ["ocm env destroy", quoteShell(envName)];
+  if (options.json === true) args.push("--json");
+  args.push("--yes");
+  if (options.force === true) args.push("--force");
+  if (options.stateToken !== undefined) {
+    args.push("--if-state-token", quoteShell(options.stateToken));
+  }
+  return args.join(" ");
+}
+
+export function ocmEnvDestroyPreviewJson(envName) {
+  return `ocm env destroy ${quoteShell(envName)} --json`;
 }
 
 export function ocmEnvExec(envName, args) {
