@@ -192,6 +192,15 @@ async function listFiles(root, dir) {
 }
 
 export async function publishBundlePair({ archive, outputPath, checksumPath, checksum }) {
+  return withFileLock(`${outputPath}.lock`, () => publishBundlePairLocked({
+    archive,
+    outputPath,
+    checksumPath,
+    checksum
+  }));
+}
+
+async function publishBundlePairLocked({ archive, outputPath, checksumPath, checksum }) {
   const entries = [
     { path: outputPath, content: archive },
     { path: checksumPath, content: checksum }
@@ -254,6 +263,7 @@ async function replaceRetainedArtifactTree({
   let preserveBackup = false;
 
   try {
+    await assertManagedRetentionDirectory(outputRoot);
     await mkdir(stage, { recursive: false, mode: 0o700 });
     await cp(sourceJsonPath, join(stage, "report.json"));
     await cp(markdownPath, join(stage, "report.md"));
@@ -314,6 +324,55 @@ async function replaceRetainedArtifactTree({
     if (!preserveBackup) {
       await rm(backup, { recursive: true, force: true });
     }
+  }
+}
+
+async function assertManagedRetentionDirectory(path) {
+  if (!await pathExists(path)) {
+    return;
+  }
+  const info = await lstat(path);
+  if (!info.isDirectory()) {
+    throw new Error(`retained artifact destination is not a directory: ${path}`);
+  }
+  const entries = await readdir(path);
+  if (entries.length === 0) {
+    return;
+  }
+  const receiptPath = join(path, "retained-artifacts.json");
+  let receipt;
+  try {
+    receipt = JSON.parse(await readFile(receiptPath, "utf8"));
+  } catch {
+    throw new Error(`retained artifact destination must be empty or Kova-managed: ${path}`);
+  }
+  if (
+    receipt?.schemaVersion !== "kova.releaseGate.retainedArtifacts.v1" ||
+    resolve(receipt.outputDir ?? "") !== resolve(path) ||
+    resolve(receipt.reportPath ?? "") !== resolve(path, "report.md") ||
+    resolve(receipt.jsonPath ?? "") !== resolve(path, "report.json") ||
+    resolve(receipt.pasteSummaryPath ?? "") !== resolve(path, "paste-summary.txt")
+  ) {
+    throw new Error(`retained artifact destination must be empty or Kova-managed: ${path}`);
+  }
+  const managedEntries = new Set([
+    "retained-artifacts.json",
+    "report.json",
+    "report.md",
+    "paste-summary.txt"
+  ]);
+  for (const artifactPath of [receipt.bundlePath, receipt.checksumPath]) {
+    if (!artifactPath) {
+      continue;
+    }
+    const resolvedArtifactPath = resolve(artifactPath);
+    if (dirname(resolvedArtifactPath) !== resolve(path)) {
+      throw new Error(`retained artifact destination must be empty or Kova-managed: ${path}`);
+    }
+    managedEntries.add(basename(resolvedArtifactPath));
+  }
+  if (entries.some((entry) => !managedEntries.has(entry))) {
+    throw new Error(`retained artifact destination contains unmanaged files: ${path}`);
   }
 }
 
