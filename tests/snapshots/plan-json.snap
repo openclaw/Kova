@@ -2,8 +2,8 @@
   "schemaVersion": "kova.plan.v1",
   "generatedAt": "<iso>",
   "platform": {
-    "os": "darwin",
-    "arch": "arm64",
+    "os": "<os>",
+    "arch": "<arch>",
     "release": "<os-release>",
     "node": "<node>"
   },
@@ -18066,9 +18066,9 @@
           "stateSurfaces": []
         },
         "currentPlatformKeys": [
-          "arm64",
-          "darwin",
-          "darwin-arm64"
+          "<arch>",
+          "<os>",
+          "<os-arch>"
         ],
         "stateTraitCoverage": {
           "agent-state": [
@@ -18242,9 +18242,9 @@
           "stateSurfaces": []
         },
         "currentPlatformKeys": [
-          "arm64",
-          "darwin",
-          "darwin-arm64"
+          "<arch>",
+          "<os>",
+          "<os-arch>"
         ],
         "stateTraitCoverage": {
           "agent-state": [
@@ -18412,9 +18412,9 @@
           "stateSurfaces": []
         },
         "currentPlatformKeys": [
-          "arm64",
-          "darwin",
-          "darwin-arm64"
+          "<arch>",
+          "<os>",
+          "<os-arch>"
         ],
         "stateTraitCoverage": {
           "config-state": [
@@ -18755,9 +18755,9 @@
           "stateSurfaces": []
         },
         "currentPlatformKeys": [
-          "arm64",
-          "darwin",
-          "darwin-arm64"
+          "<arch>",
+          "<os>",
+          "<os-arch>"
         ],
         "stateTraitCoverage": {
           "agent-state": [
@@ -19299,9 +19299,9 @@
           "stateSurfaces": []
         },
         "currentPlatformKeys": [
-          "arm64",
-          "darwin",
-          "darwin-arm64"
+          "<arch>",
+          "<os>",
+          "<os-arch>"
         ],
         "stateTraitCoverage": {
           "config-state": [
@@ -19405,9 +19405,9 @@
           "stateSurfaces": []
         },
         "currentPlatformKeys": [
-          "arm64",
-          "darwin",
-          "darwin-arm64"
+          "<arch>",
+          "<os>",
+          "<os-arch>"
         ],
         "stateTraitCoverage": {
           "external-plugin": [
@@ -19480,9 +19480,9 @@
           "stateSurfaces": []
         },
         "currentPlatformKeys": [
-          "arm64",
-          "darwin",
-          "darwin-arm64"
+          "<arch>",
+          "<os>",
+          "<os-arch>"
         ],
         "stateTraitCoverage": {
           "existing-user": [
@@ -19966,9 +19966,9 @@
           "stateSurfaces": []
         },
         "currentPlatformKeys": [
-          "arm64",
-          "darwin",
-          "darwin-arm64"
+          "<arch>",
+          "<os>",
+          "<os-arch>"
         ],
         "stateTraitCoverage": {
           "agent-state": [
@@ -20391,9 +20391,9 @@
           "stateSurfaces": []
         },
         "currentPlatformKeys": [
-          "arm64",
-          "darwin",
-          "darwin-arm64"
+          "<arch>",
+          "<os>",
+          "<os-arch>"
         ],
         "stateTraitCoverage": {
           "existing-user": [
@@ -20508,9 +20508,9 @@
           "stateSurfaces": []
         },
         "currentPlatformKeys": [
-          "arm64",
-          "darwin",
-          "darwin-arm64"
+          "<arch>",
+          "<os>",
+          "<os-arch>"
         ],
         "stateTraitCoverage": {
           "agent-state": [
@@ -20704,9 +20704,9 @@
           "stateSurfaces": []
         },
         "currentPlatformKeys": [
-          "arm64",
-          "darwin",
-          "darwin-arm64"
+          "<arch>",
+          "<os>",
+          "<os-arch>"
         ],
         "stateTraitCoverage": {
           "agent-state": [
@@ -20915,9 +20915,9 @@
           "stateSurfaces": []
         },
         "currentPlatformKeys": [
-          "arm64",
-          "darwin",
-          "darwin-arm64"
+          "<arch>",
+          "<os>",
+          "<os-arch>"
         ],
         "stateTraitCoverage": {
           "agent-state": [

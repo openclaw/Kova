@@ -2,8 +2,8 @@
   "schemaVersion": "kova.matrix.plan.v1",
   "generatedAt": "<iso>",
   "platform": {
-    "os": "darwin",
-    "arch": "arm64",
+    "os": "<os>",
+    "arch": "<arch>",
     "release": "<os-release>",
     "node": "<node>"
   },
