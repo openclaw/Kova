@@ -18,9 +18,7 @@ export function buildGatewaySessionEvidenceInvariants(record, scenario = {}) {
   const expectedTurnCount = scenario.id === "gateway-session-send-turn" ? 2 : Math.max(1, turns.length);
   const health = record.measurements?.health ?? {};
   const providerEvidence = record.providerEvidence ?? {};
-  const agentTurns = Array.isArray(record.measurements?.agentTurns)
-    ? record.measurements.agentTurns
-    : [];
+  const agentTurns = normalizedAgentTurns(record.measurements?.agentTurns);
   const providerArtifacts = Array.isArray(providerEvidence.artifacts) ? providerEvidence.artifacts : [];
   const missingDependencyErrors = record.measurements?.missingDependencyErrors;
   const pluginLoadFailures = record.measurements?.pluginLoadFailures;
@@ -122,6 +120,13 @@ function collectGatewaySessionTurnResults(record) {
     }
   }
   return turns;
+}
+
+function normalizedAgentTurns(value) {
+  return Array.isArray(value) &&
+    value.every((turn) => turn && typeof turn === "object" && !Array.isArray(turn))
+    ? value
+    : [];
 }
 
 function missingGatewaySessionPayloadReason(turns) {

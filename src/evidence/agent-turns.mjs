@@ -20,9 +20,7 @@ export function buildAgentGatewayRpcTurnEvidenceInvariants(record, scenario = {}
     return [];
   }
 
-  const turns = Array.isArray(record.measurements?.agentTurns)
-    ? record.measurements.agentTurns
-    : [];
+  const turns = normalizedAgentTurns(record.measurements?.agentTurns);
   const expectedTurnCount = agentTurnExpectedCount(scenario, turns);
   const health = record.measurements?.health ?? {};
   const providerEvidence = record.providerEvidence ?? {};
@@ -247,9 +245,7 @@ export function buildAgentCliLocalTurnEvidenceInvariants(record, scenario = {}) 
     return [];
   }
 
-  const turns = Array.isArray(record.measurements?.agentTurns)
-    ? record.measurements.agentTurns
-    : [];
+  const turns = normalizedAgentTurns(record.measurements?.agentTurns);
   const expectedTurnCount = agentTurnExpectedCount(scenario, turns);
   const providerEvidence = record.providerEvidence ?? {};
   const providerArtifacts = Array.isArray(providerEvidence.artifacts) ? providerEvidence.artifacts : [];
@@ -362,6 +358,13 @@ export function buildAgentCliLocalTurnEvidenceInvariants(record, scenario = {}) 
       phaseId: "post-agent-health"
     })
   ];
+}
+
+function normalizedAgentTurns(value) {
+  return Array.isArray(value) &&
+    value.every((turn) => turn && typeof turn === "object" && !Array.isArray(turn))
+    ? value
+    : [];
 }
 
 function agentTurnExpectedCount(scenario, turns) {
