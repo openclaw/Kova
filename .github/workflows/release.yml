@@ -16,7 +16,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
       - name: Verify release ref
@@ -28,7 +28,7 @@ jobs:
             -c gpg.ssh.allowedSignersFile=.github/release-allowed-signers \
             verify-tag "${GITHUB_REF_NAME}"
           git merge-base --is-ancestor "${GITHUB_SHA}" origin/main
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
       - name: Install OCM
