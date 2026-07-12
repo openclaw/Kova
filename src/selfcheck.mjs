@@ -16163,13 +16163,16 @@ async function credentialStoreConcurrentWritersCheck(tmp) {
 async function setupDirectoryWriteProbeCheck(tmp) {
   const path = join(tmp, "directory-write-probe");
   const startedAt = Date.now();
-  if (typeof process.getuid === "function" && process.getuid() === 0) {
+  if (process.platform === "win32" ||
+      (typeof process.getuid === "function" && process.getuid() === 0)) {
     return {
       id: "setup-directory-child-write-probe",
       status: "PASS",
       command: "directoryCheck against mode 0222 fixture",
       durationMs: Date.now() - startedAt,
-      message: "skipped permission fixture as root"
+      message: process.platform === "win32"
+        ? "skipped POSIX permission fixture on Windows"
+        : "skipped permission fixture as root"
     };
   }
   await mkdir(path, { recursive: true });
