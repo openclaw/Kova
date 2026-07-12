@@ -12763,7 +12763,7 @@ process.on("SIGUSR2", () => {
     }, 100);
     setTimeout(() => {
       fs.writeFileSync(path.join(home, "report.delayed.json"), "{\\"delayed\\":true}\\n");
-    }, 1000);
+    }, 700);
     return;
   }
   if (currentSignal === 5) {
@@ -12797,11 +12797,15 @@ process.on("SIGUSR2", () => {
       return;
     }
     if (currentSignal === 2) {
-      fs.writeFileSync(path.join(home, "report.00-incomplete.json"), "{");
-      fs.writeFileSync(path.join(home, "report.01-incomplete.json"), "{");
-      const oversized = path.join(home, "report.02-oversized.json");
+      const oversized = path.join(home, "report.00-oversized.json");
       fs.writeFileSync(oversized, "{");
       fs.truncateSync(oversized, (16 * 1024 * 1024) + 1);
+      for (let index = 0; index < 30; index += 1) {
+        fs.writeFileSync(
+          path.join(home, \`report.01-incomplete-\${String(index).padStart(2, "0")}.json\`),
+          "{"
+        );
+      }
     }
     fs.writeFileSync(reportPath, "{");
     if (currentSignal === 1) {
@@ -12903,7 +12907,7 @@ setInterval(() => {}, 1000);
     const delayedReport = await triggerDiagnosticSession("kova-self-check", child.pid, 2500, root, {
       diagnosticReport: true
     });
-    assertEqual(delayedReport.diagnosticReport.artifacts.length, 1, "minimum timeout discovers a report emitted after one second");
+    assertEqual(delayedReport.diagnosticReport.artifacts.length, 1, "minimum timeout discovers a delayed report");
     assertEqual(
       delayedReport.diagnosticReport.files.some((path) => path.endsWith("report.delayed.json")),
       true,

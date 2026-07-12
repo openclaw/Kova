@@ -201,7 +201,9 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
     `refresh_attributed() { cut -f1 "$fresh" | ${attributionCommand} > "$attributed"; }`
   ].join("; ");
   const signalCommand = `kill -USR2 ${normalizedPid}`;
-  const artifactOutputCommand = `cut -f1 "$fresh" | sort | awk '/[.]heapsnapshot$/ { if (heap++ < 25) print; next } { if (report++ < 25) print }'`;
+  // Attributed paths get first claim on each cap. Invalid siblings remain as
+  // validation evidence only when they cannot displace a successful capture.
+  const artifactOutputCommand = `{ cut -f2 "$attributed"; cut -f1 "$fresh"; } | awk '!seen[$0]++ { if (/[.]heapsnapshot$/) { if (heap++ < 25) print; next } if (report++ < 25) print }'`;
   const command = ocmEnvExecShell(
     envName,
     `set -eu; ${sessionStateCommand}; ${signalCommand}; attempts=0; while :; do refresh_candidates; refresh_attributed; heap_count=$(awk -F '\\t' '$1 == "heap" { count++ } END { print count + 0 }' "$attributed"); report_count=$(awk -F '\\t' '$1 == "report" { count++ } END { print count + 0 }' "$attributed"); if ${readyConditions}; then break; fi; if [ "$attempts" -ge ${pollAttempts} ]; then break; fi; attempts=$((attempts + 1)); sleep ${DIAGNOSTIC_POLL_INTERVAL_MS / 1000}; done; ${artifactOutputCommand}`
