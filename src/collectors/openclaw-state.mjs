@@ -267,16 +267,16 @@ async function summarizePluginRoot(home, resolvedHome, rootRelPath, limits, snap
       snapshot.budget.excludedPaths.push(relPath);
       continue;
     }
-    if (seen >= limits.maxPluginDirs) {
-      snapshot.budget.omittedCount += 1;
-      continue;
-    }
-    seen += 1;
     if (candidateStats.isSymbolicLink()) {
       snapshot.budget.excludedPaths.push(relPath);
       snapshot.budget.omittedCount += 1;
       continue;
     }
+    if (seen >= limits.maxPluginDirs) {
+      snapshot.budget.omittedCount += 1;
+      continue;
+    }
+    seen += 1;
 
     const plugin = {
       path: relPath,

@@ -3363,7 +3363,11 @@ async function openClawStateSymlinkContainmentCheck(tmp) {
     await mkdir(join(home, "config"), { recursive: true });
     await mkdir(join(home, ".openclaw"), { recursive: true });
     await mkdir(join(home, "plugins"), { recursive: true });
+    await mkdir(join(home, "plugins", "z-plugin"), { recursive: true });
+    await mkdir(join(home, "plugins", "zz-plugin"), { recursive: true });
     await mkdir(join(outside, "plugins", "escaped-plugin"), { recursive: true });
+    await symlink("z-plugin", join(home, "plugins", "a-contained-alias"));
+    await symlink("zz-plugin", join(home, "plugins", "b-contained-alias"));
     await writeFile(
       join(outside, "settings.json"),
       JSON.stringify({ schemaVersion: "KOVA_KNOWN_FILE_ESCAPE_CANARY" }),
@@ -3397,6 +3401,8 @@ async function openClawStateSymlinkContainmentCheck(tmp) {
     assertEqual(snapshot.files.some((file) => file.path === "settings.json"), false, "escaped known file is omitted");
     assertEqual(snapshot.plugins.roots.some((root) => root.path === ".openclaw/plugins"), false, "escaped plugin root is omitted");
     assertEqual(snapshot.plugins.pluginDirs.some((plugin) => plugin.path === "plugins/escaped-plugin"), false, "escaped plugin directory is omitted");
+    assertEqual(snapshot.plugins.pluginDirs.some((plugin) => plugin.path === "plugins/z-plugin"), true, "contained symlinks do not consume the plugin budget");
+    assertEqual(snapshot.plugins.pluginDirs.some((plugin) => plugin.path === "plugins/zz-plugin"), true, "the plugin budget counts real directories");
     assertEqual(snapshot.budget.excludedPaths.includes("settings.json"), true, "escaped known file is recorded");
     assertEqual(snapshot.budget.excludedPaths.includes(".openclaw/plugins"), true, "escaped plugin root is recorded");
     assertEqual(snapshot.budget.excludedPaths.includes("plugins/escaped-plugin"), false, "escaped plugin directory name is not retained");
