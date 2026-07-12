@@ -109,18 +109,22 @@ export function runCommand(command, options = {}) {
     });
     child.on("error", async (error) => {
       clearTimeout(timer);
+      let terminationError = null;
       if (termination) {
-        reportTerminationError(await termination);
+        terminationError = await termination;
+        reportTerminationError(terminationError);
       }
       stderr.write(Buffer.from(error.message));
-      complete(timedOut ? 124 : 127, null);
+      complete(timedOut ? 124 : 127, null, Boolean(terminationError));
     });
     child.on("close", async (status, signal) => {
       clearTimeout(timer);
+      let terminationError = null;
       if (termination) {
-        reportTerminationError(await termination);
+        terminationError = await termination;
+        reportTerminationError(terminationError);
       }
-      complete(timedOut ? 124 : (status ?? 1), signal);
+      complete(timedOut ? 124 : (status ?? 1), signal, Boolean(terminationError));
     });
 
     function reportTerminationError(error) {
@@ -383,7 +387,9 @@ async function terminateTimedOutProcess(child) {
     return;
   }
   signalProcessTree(child, "SIGKILL");
-  await waitForProcessTreeExit(child, timeoutTerminationGraceMs);
+  if (!await waitForProcessTreeExit(child, timeoutTerminationGraceMs)) {
+    throw new Error(`process group ${child.pid ?? "unknown"} survived SIGKILL`);
+  }
 }
 
 function signalProcessTree(child, signal) {

@@ -16713,8 +16713,9 @@ function optionalNoLogsCommandCheck() {
         stderr: "ocm: no logs exist for env \"kova-empty-logs\" across stdout or stderr\n"
       }
     ]) {
+      const originalStatus = candidate.status;
       normalizeOptionalCommandResult(candidate);
-      assertEqual(candidate.status, 1, "non-exact missing logs output remains failed");
+      assertEqual(candidate.status, originalStatus, "non-exact missing logs output retains its failure status");
       assertEqual(candidate.optional, undefined, "non-exact missing logs output is not optional");
     }
     return {
