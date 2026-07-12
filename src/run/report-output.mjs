@@ -162,13 +162,9 @@ async function replaceReportFileSet(entries, canonicalPath) {
   } finally {
     await Promise.all(staged.map((entry) => rm(entry.stagedPath, { force: true }).catch(() => {})));
     if (committed) {
-      await Promise.all(staged.map((entry) => rm(entry.backupPath, { force: true }).catch(() => {})));
-      await rm(transactionPath, { force: true }).catch(() => {});
-      await syncDirectories(staged).catch(() => {});
+      await removeReportBackupsAndMarker(staged, transactionPath).catch(() => {});
     } else if (!preserveBackups) {
-      await Promise.all(staged.map((entry) => rm(entry.backupPath, { force: true })));
-      await rm(transactionPath, { force: true });
-      await syncDirectories(staged);
+      await removeReportBackupsAndMarker(staged, transactionPath);
     }
   }
 }
@@ -187,13 +183,12 @@ async function recoverReportFileSet(entries, canonicalPath, transactionPath) {
   }
   if (backupEntries.length === 0) {
     await rm(transactionPath, { force: true });
+    await syncDirectories(entries);
     return;
   }
 
   if (await currentReportMatchesTransaction(entries, canonicalPath, transactionPath)) {
-    await Promise.all(backupEntries.map((entry) => rm(entry.backupPath, { force: true })));
-    await rm(transactionPath, { force: true });
-    await syncDirectories(entries);
+    await removeReportBackupsAndMarker(entries, transactionPath);
     return;
   }
 
@@ -205,6 +200,16 @@ async function recoverReportFileSet(entries, canonicalPath, transactionPath) {
     await rm(entry.path, { force: true });
     await rename(entry.backupPath, entry.path);
   }
+  await syncDirectories(entries);
+  await rm(transactionPath, { force: true });
+  await syncDirectories(entries);
+}
+
+async function removeReportBackupsAndMarker(entries, transactionPath) {
+  // Keep the transaction marker durable until backup deletion is durable.
+  // Otherwise recovery cannot distinguish a committed generation from a mix.
+  await Promise.all(entries.map((entry) => rm(entry.backupPath, { force: true })));
+  await syncDirectories(entries);
   await rm(transactionPath, { force: true });
   await syncDirectories(entries);
 }

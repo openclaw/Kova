@@ -348,10 +348,7 @@ async function replaceRetainedArtifactTree({
     // restore a backup once recursive deletion may have started.
     oldTreeBackedUp = false;
     newTreePublished = false;
-    await rm(backup, { recursive: true, force: true })
-      .then(() => rm(backupMarker, { force: true }))
-      .then(() => syncDirectory(parent))
-      .catch(() => {});
+    await removeRetainedBackup(backup, backupMarker, parent).catch(() => {});
     return receipt;
   } catch (error) {
     const rollbackErrors = [];
@@ -361,9 +358,7 @@ async function replaceRetainedArtifactTree({
         .catch((rollbackError) => rollbackErrors.push(rollbackError));
     }
     if (oldTreeBackedUp) {
-      await rename(backup, outputRoot)
-        .then(() => rm(backupMarker, { force: true }))
-        .then(() => syncDirectory(parent))
+      await restoreRetainedBackup(backup, outputRoot, backupMarker, parent)
         .catch((rollbackError) => rollbackErrors.push(rollbackError));
     }
     if (rollbackErrors.length > 0) {
@@ -386,27 +381,41 @@ async function recoverRetainedArtifactTree(outputRoot, backup, backupMarker) {
   await requireOwnedBackupMarker(backupMarker, outputRoot);
   if (!await pathExists(outputRoot)) {
     await assertManagedRetentionDirectory(backup, outputRoot);
-    await rename(backup, outputRoot);
-    await rm(backupMarker, { force: true });
-    await syncDirectory(dirname(outputRoot));
+    await restoreRetainedBackup(backup, outputRoot, backupMarker, dirname(outputRoot));
     return;
   }
   await assertManagedRetentionDirectory(outputRoot);
+  let currentComplete = true;
   try {
     await assertManagedRetentionDirectory(outputRoot, outputRoot, true);
-    await rm(backup, { recursive: true });
-    await rm(backupMarker, { force: true });
-    await syncDirectory(dirname(outputRoot));
-    return;
   } catch {
+    currentComplete = false;
     // The current tree is Kova-managed but incomplete; restore the prior
     // committed tree only after proving the backup is valid.
   }
+  if (currentComplete) {
+    await removeRetainedBackup(backup, backupMarker, dirname(outputRoot));
+    return;
+  }
   await assertManagedRetentionDirectory(backup, outputRoot);
   await rm(outputRoot, { recursive: true });
-  await rename(backup, outputRoot);
+  await restoreRetainedBackup(backup, outputRoot, backupMarker, dirname(outputRoot));
+}
+
+async function removeRetainedBackup(backup, backupMarker, parent) {
+  // The owner marker must outlive the backup directory on durable storage.
+  // Recovery rejects a backup whose marker disappeared first.
+  await rm(backup, { recursive: true, force: true });
+  await syncDirectory(parent);
   await rm(backupMarker, { force: true });
-  await syncDirectory(dirname(outputRoot));
+  await syncDirectory(parent);
+}
+
+async function restoreRetainedBackup(backup, outputRoot, backupMarker, parent) {
+  await rename(backup, outputRoot);
+  await syncDirectory(parent);
+  await rm(backupMarker, { force: true });
+  await syncDirectory(parent);
 }
 
 async function requireOwnedBackupMarker(path, outputRoot) {
