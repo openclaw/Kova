@@ -13,6 +13,7 @@ import { summarizeCpuProfiles } from "./collectors/node-profiles.mjs";
 import { summarizeHeapProfiles } from "./collectors/heap.mjs";
 import { collectEnvMetrics } from "./metrics.mjs";
 import { compactEvaluatedTimelineEvidence, evaluateRecord } from "./evaluator.mjs";
+import { healthTotalFailures } from "./health.mjs";
 import { evaluateWorkflowCase } from "../support/channel-conformance/evaluator.mjs";
 import { assertValidObservationSet } from "../support/channel-conformance/observation-schema.mjs";
 import { planWorkflowCases } from "../support/channel-conformance/planner.mjs";
@@ -3181,6 +3182,68 @@ function upgradeStateSnapshotInvariantsCheck() {
     const passing = buildUpgradeStateSnapshotInvariants(record);
     assertEqual(passing.every((invariant) => invariant.status === "passed"), true, "preserved upgrade state invariants pass");
 
+    const missing = buildUpgradeStateSnapshotInvariants(upgradeSnapshotRecord({
+      pre: {},
+      post: {}
+    }));
+    const missingById = Object.fromEntries(missing.map((invariant) => [invariant.id, invariant]));
+    for (const id of [
+      "plugin-install-index-preserved",
+      "plugin-directory-count-not-decreased",
+      "provider-ids-preserved",
+      "model-ids-preserved",
+      "auth-method-shape-preserved",
+      "installed-plugin-ids-preserved",
+      "workspace-roots-preserved",
+      "runtime-target-kind-stable"
+    ]) {
+      assertEqual(missingById[id]?.status, "missing", `upgrade invariant ${id} requires captured inputs`);
+    }
+    for (const id of [
+      "local-build-target-hash-stable",
+      "service-desired-state-preserved",
+      "service-running-state-preserved",
+      "service-readiness-preserved"
+    ]) {
+      assertEqual(missingById[id]?.status, "passed", `optional upgrade invariant ${id} permits both inputs absent`);
+    }
+
+    const partialProviderRecord = upgradeSnapshotRecord({
+      pre: {
+        ...baseSnapshot,
+        models: { modelIds: ["gpt-5.5"] }
+      },
+      post: {
+        ...baseSnapshot,
+        models: { modelIds: ["gpt-5.5"] }
+      }
+    });
+    const partialProvider = buildUpgradeStateSnapshotInvariants(partialProviderRecord)
+      .find((invariant) => invariant.id === "provider-ids-preserved");
+    assertEqual(partialProvider?.status, "missing", "provider id union requires auth and model provider inputs");
+
+    const malformedRecord = upgradeSnapshotRecord({
+      pre: {
+        ...baseSnapshot,
+        runtime: { ...baseSnapshot.runtime, targetKind: false },
+        models: { ...baseSnapshot.models, modelIds: [null] },
+        pluginInstallIndexCount: -1
+      },
+      post: {
+        ...baseSnapshot,
+        runtime: { ...baseSnapshot.runtime, targetKind: false },
+        models: { ...baseSnapshot.models, modelIds: [null] },
+        pluginInstallIndexCount: -1
+      }
+    });
+    const malformedById = Object.fromEntries(
+      buildUpgradeStateSnapshotInvariants(malformedRecord)
+        .map((invariant) => [invariant.id, invariant])
+    );
+    assertEqual(malformedById["plugin-install-index-preserved"]?.status, "missing", "negative snapshot count is missing evidence");
+    assertEqual(malformedById["model-ids-preserved"]?.status, "missing", "malformed snapshot set is missing evidence");
+    assertEqual(malformedById["runtime-target-kind-stable"]?.status, "missing", "malformed equality input is missing evidence");
+
     const failingRecord = upgradeSnapshotRecord({
       pre: baseSnapshot,
       post: {
@@ -4981,6 +5044,49 @@ async function providerEvidenceParserCheck() {
     assertEqual(attribution.preProviderMs, 5000, "pre-provider latency");
     assertEqual(attribution.providerFinalMs, 800, "provider final latency");
     assertEqual(attribution.postProviderMs, 200, "post-provider latency");
+    const incompleteAttribution = computeProviderTurnAttribution({
+      command: "ocm @kova -- agent --local --agent main --session-id kova --message hi --json",
+      startedAt: "2026-04-30T10:00:01.000Z",
+      startedAtEpochMs: 1777543201000,
+      finishedAt: "2026-04-30T10:00:07.000Z",
+      finishedAtEpochMs: 1777543207000
+    }, {
+      available: true,
+      requests: [{
+        requestId: "req_incomplete",
+        receivedAt: "2026-04-30T10:00:05.000Z",
+        receivedAtEpochMs: 1777543205000,
+        route: "/v1/responses",
+        model: "gpt-5.5",
+        status: null,
+        errorClass: "provider-timeout"
+      }]
+    });
+    assertEqual(incompleteAttribution.requestCount, 1, "incomplete provider request remains attributed");
+    assertEqual(incompleteAttribution.missingProviderRequest, false, "started provider request is not erased as missing");
+    assertEqual(incompleteAttribution.providerFinalMs, null, "incomplete provider response has no final latency");
+    assertEqual(incompleteAttribution.errors[0]?.kind, "provider-timeout", "incomplete provider error evidence is retained");
+    const lateIncompleteAttribution = computeProviderTurnAttribution({
+      command: "ocm @kova -- agent --local --agent main --session-id kova --message hi --json",
+      startedAt: "2026-04-30T10:00:01.000Z",
+      startedAtEpochMs: 1777543201000,
+      finishedAt: "2026-04-30T10:00:07.000Z",
+      finishedAtEpochMs: 1777543207000
+    }, {
+      available: true,
+      requests: [{
+        requestId: "req_late_incomplete",
+        receivedAt: "2026-04-30T10:00:08.000Z",
+        receivedAtEpochMs: 1777543208000,
+        route: "/v1/responses",
+        model: "gpt-5.5",
+        status: null,
+        errorClass: "provider-timeout"
+      }]
+    });
+    assertEqual(lateIncompleteAttribution.providerAfterCommandEnd, true, "late incomplete provider request is retained");
+    assertEqual(lateIncompleteAttribution.preProviderMs, null, "late incomplete request has no pre-provider duration");
+    assertEqual(lateIncompleteAttribution.preProviderDominates, null, "late incomplete request has no dominance ratio");
     assertEqual(evidence.usage?.available, true, "provider usage availability");
     assertEqual(evidence.usage?.totalTokens, 12, "provider usage total tokens");
     return {
@@ -5953,6 +6059,46 @@ function gatewaySessionEvidenceInvariantCheck() {
     const providerProof = missingProviderInvariants.find((invariant) => invariant.id === "gateway-session-provider-proof");
     assertEqual(providerProof?.status, "missing", "missing provider proof is an incomplete evidence obligation");
 
+    const missingAggregateCountRecord = JSON.parse(JSON.stringify(record));
+    delete missingAggregateCountRecord.providerEvidence.requestCount;
+    const missingAggregateCountProof = buildGatewaySessionEvidenceInvariants(missingAggregateCountRecord, scenario)
+      .find((invariant) => invariant.id === "gateway-session-provider-proof");
+    assertEqual(missingAggregateCountProof?.status, "missing", "missing aggregate provider request count is incomplete evidence");
+
+    const missingStatusRecord = JSON.parse(JSON.stringify(record));
+    missingStatusRecord.measurements.agentTurns[0].providerStatuses = [];
+    const missingStatusProof = buildGatewaySessionEvidenceInvariants(missingStatusRecord, scenario)
+      .find((invariant) => invariant.id === "gateway-session-provider-proof");
+    assertEqual(missingStatusProof?.status, "missing", "empty provider response statuses are incomplete evidence");
+
+    const incompleteResponseRecord = JSON.parse(JSON.stringify(record));
+    incompleteResponseRecord.measurements.agentTurns[0].providerFinalMs = null;
+    incompleteResponseRecord.measurements.agentTurns[0].providerStatuses = [{ value: 200, count: 1 }];
+    const incompleteResponseProof = buildGatewaySessionEvidenceInvariants(incompleteResponseRecord, scenario)
+      .find((invariant) => invariant.id === "gateway-session-provider-proof");
+    assertEqual(incompleteResponseProof?.status, "missing", "unfinished provider response is incomplete gateway evidence");
+
+    const partialStatusRecord = JSON.parse(JSON.stringify(record));
+    partialStatusRecord.measurements.agentTurns[0].requestCount = 2;
+    partialStatusRecord.measurements.agentTurns[0].providerStatuses = [{ value: 200, count: 1 }];
+    const partialStatusProof = buildGatewaySessionEvidenceInvariants(partialStatusRecord, scenario)
+      .find((invariant) => invariant.id === "gateway-session-provider-proof");
+    assertEqual(partialStatusProof?.status, "missing", "gateway status evidence must cover every attributed request");
+
+    const malformedTurnRecord = JSON.parse(JSON.stringify(record));
+    malformedTurnRecord.measurements.agentTurns = { malformed: true };
+    const malformedTurnProof = buildGatewaySessionEvidenceInvariants(malformedTurnRecord, scenario)
+      .find((invariant) => invariant.id === "gateway-session-provider-proof");
+    assertEqual(malformedTurnProof?.status, "missing", "malformed agent turn evidence does not throw or pass");
+
+    const missingFinalHealthRecord = JSON.parse(JSON.stringify(record));
+    delete missingFinalHealthRecord.finalMetrics.health;
+    delete missingFinalHealthRecord.finalMetrics.healthSummary;
+    evaluateRecord(missingFinalHealthRecord, scenario, { surface: { thresholds: {} }, targetPlan: { kind: "runtime" } });
+    const missingFinalHealthProof = buildGatewaySessionEvidenceInvariants(missingFinalHealthRecord, scenario)
+      .find((invariant) => invariant.id === "gateway-session-readiness-health-proof");
+    assertEqual(missingFinalHealthProof?.status, "missing", "missing final health count is incomplete evidence");
+
     return {
       id: "gateway-session-evidence-invariants",
       status: "PASS",
@@ -6196,6 +6342,44 @@ function releaseRuntimeStartupEvidenceInvariantCheck() {
     const healthProof = stoppedInvariants.find((invariant) => invariant.id === "release-runtime-readiness-health-proof");
     assertEqual(healthProof?.status, "failed", "stopped final gateway state is failed evidence, not a pass");
 
+    const misplacedProvisionRecord = JSON.parse(JSON.stringify(record));
+    const misplacedStart = misplacedProvisionRecord.phases[0].results.shift();
+    misplacedProvisionRecord.phases[1].results.push(misplacedStart);
+    evaluateRecord(misplacedProvisionRecord, scenario, {
+      surface: { resourcePrimaryRole: "gateway", thresholds: {}, diagnostics: { expectedSpans: [] } },
+      targetPlan: { kind: "runtime" }
+    });
+    const misplacedProvisionProof = buildReleaseRuntimeStartupEvidenceInvariants(misplacedProvisionRecord, scenario)
+      .find((invariant) => invariant.id === "release-runtime-command-receipts");
+    assertEqual(misplacedProvisionProof?.status, "missing", "release provision receipt must come from provision phase");
+
+    for (const invalidDuration of [null, -1, Number.NaN]) {
+      const invalidDurationRecord = JSON.parse(JSON.stringify(record));
+      invalidDurationRecord.phases[0].results[0].durationMs = invalidDuration;
+      const invalidDurationProof = buildReleaseRuntimeStartupEvidenceInvariants(invalidDurationRecord, scenario)
+        .find((invariant) => invariant.id === "release-runtime-command-receipts");
+      assertEqual(invalidDurationProof?.status, "missing", `phase receipt duration ${invalidDuration} is rejected`);
+    }
+
+    const missingFinalHealthRecord = JSON.parse(JSON.stringify(record));
+    delete missingFinalHealthRecord.finalMetrics.health;
+    delete missingFinalHealthRecord.finalMetrics.healthSummary;
+    evaluateRecord(missingFinalHealthRecord, scenario, {
+      surface: { resourcePrimaryRole: "gateway", thresholds: {}, diagnostics: { expectedSpans: [] } },
+      targetPlan: { kind: "runtime" }
+    });
+    const missingFinalHealthProof = buildReleaseRuntimeStartupEvidenceInvariants(missingFinalHealthRecord, scenario)
+      .find((invariant) => invariant.id === "release-runtime-readiness-health-proof");
+    assertEqual(missingFinalHealthProof?.status, "missing", "release proof requires explicit final health failure count");
+
+    for (const malformedMeasurement of [null, "", " ", false]) {
+      const malformedResourceRecord = JSON.parse(JSON.stringify(record));
+      malformedResourceRecord.measurements.resourceByRole.gateway.peakRssMb = malformedMeasurement;
+      const resourceProof = buildReleaseRuntimeStartupEvidenceInvariants(malformedResourceRecord, scenario)
+        .find((invariant) => invariant.id === "release-runtime-resource-proof");
+      assertEqual(resourceProof?.status, "missing", `resource measurement ${JSON.stringify(malformedMeasurement)} is rejected`);
+    }
+
     return {
       id: "release-runtime-startup-evidence-invariants",
       status: "PASS",
@@ -6249,6 +6433,23 @@ function officialPluginInstallEvidenceInvariantCheck() {
     const securityProof = blockedInvariants.find((invariant) => invariant.id === "official-plugin-security-proof");
     assertEqual(securityProof?.status, "failed", "security block is failed official plugin evidence");
 
+    for (const malformedCount of [undefined, "0", -1]) {
+      const malformedSecurityRecord = syntheticOfficialPluginInstallRecord({
+        helperPayload: { securityBlockCount: malformedCount }
+      });
+      evaluateRecord(malformedSecurityRecord, scenario, {
+        surface: { thresholds: {}, diagnostics: { expectedSpans: [] } },
+        targetPlan: { kind: "runtime" }
+      });
+      const malformedSecurityProof = buildOfficialPluginInstallEvidenceInvariants(malformedSecurityRecord, scenario)
+        .find((invariant) => invariant.id === "official-plugin-security-proof");
+      assertEqual(
+        malformedSecurityProof?.status,
+        "missing",
+        `security block count ${JSON.stringify(malformedCount)} is incomplete evidence`
+      );
+    }
+
     const missingHelperRecord = syntheticOfficialPluginInstallRecord({ includeInstallHelper: false });
     evaluateRecord(missingHelperRecord, scenario, {
       surface: { thresholds: {}, diagnostics: { expectedSpans: [] } },
@@ -6257,6 +6458,47 @@ function officialPluginInstallEvidenceInvariantCheck() {
     const missingHelperInvariants = buildOfficialPluginInstallEvidenceInvariants(missingHelperRecord, scenario);
     const installProof = missingHelperInvariants.find((invariant) => invariant.id === "official-plugin-install-proof");
     assertEqual(installProof?.status, "missing", "missing official plugin helper JSON is incomplete proof");
+
+    const missingBaselineRecord = syntheticOfficialPluginInstallRecord();
+    missingBaselineRecord.phases[0].results = missingBaselineRecord.phases[0].results
+      .filter((result) => !result.command.includes(" -- plugins list"));
+    evaluateRecord(missingBaselineRecord, scenario, {
+      surface: { thresholds: {}, diagnostics: { expectedSpans: [] } },
+      targetPlan: { kind: "runtime" }
+    });
+    const missingBaselineProof = buildOfficialPluginInstallEvidenceInvariants(missingBaselineRecord, scenario)
+      .find((invariant) => invariant.id === "official-plugin-command-receipts");
+    assertEqual(missingBaselineProof?.status, "missing", "baseline plugin list must come from provision phase");
+
+    const missingFinalVerifyRecord = syntheticOfficialPluginInstallRecord();
+    missingFinalVerifyRecord.phases[3].results = missingFinalVerifyRecord.phases[3].results
+      .filter((result) => !result.command.includes(" -- plugins list"));
+    evaluateRecord(missingFinalVerifyRecord, scenario, {
+      surface: { thresholds: {}, diagnostics: { expectedSpans: [] } },
+      targetPlan: { kind: "runtime" }
+    });
+    const missingFinalVerifyInvariants = buildOfficialPluginInstallEvidenceInvariants(missingFinalVerifyRecord, scenario);
+    assertEqual(
+      missingFinalVerifyInvariants.find((invariant) => invariant.id === "official-plugin-command-receipts")?.status,
+      "missing",
+      "post-restart plugin list must come from verification phase"
+    );
+    assertEqual(
+      missingFinalVerifyInvariants.find((invariant) => invariant.id === "official-plugin-command-usability-proof")?.status,
+      "missing",
+      "post-restart usability proof requires its own command receipt"
+    );
+
+    const missingFinalHealthRecord = syntheticOfficialPluginInstallRecord();
+    delete missingFinalHealthRecord.finalMetrics.health;
+    delete missingFinalHealthRecord.finalMetrics.healthSummary;
+    evaluateRecord(missingFinalHealthRecord, scenario, {
+      surface: { thresholds: {}, diagnostics: { expectedSpans: [] } },
+      targetPlan: { kind: "runtime" }
+    });
+    const missingFinalHealthProof = buildOfficialPluginInstallEvidenceInvariants(missingFinalHealthRecord, scenario)
+      .find((invariant) => invariant.id === "official-plugin-readiness-health-proof");
+    assertEqual(missingFinalHealthProof?.status, "missing", "official plugin proof requires explicit final health failure count");
 
     return {
       id: "official-plugin-install-evidence-invariants",
@@ -6310,6 +6552,80 @@ function agentCliLocalTurnEvidenceInvariantCheck() {
     const missingProviderInvariants = buildAgentCliLocalTurnEvidenceInvariants(missingProviderRecord, scenario);
     const providerProof = missingProviderInvariants.find((invariant) => invariant.id === "agent-cli-provider-proof");
     assertEqual(providerProof?.status, "missing", "missing provider proof is incomplete agent CLI evidence");
+
+    const missingAggregateCountRecord = JSON.parse(JSON.stringify(record));
+    delete missingAggregateCountRecord.providerEvidence.requestCount;
+    const missingAggregateCountProof = buildAgentCliLocalTurnEvidenceInvariants(missingAggregateCountRecord, scenario)
+      .find((invariant) => invariant.id === "agent-cli-provider-proof");
+    assertEqual(missingAggregateCountProof?.status, "missing", "agent provider proof requires aggregate request count");
+
+    const invalidTurnCountRecord = JSON.parse(JSON.stringify(record));
+    invalidTurnCountRecord.measurements.agentTurns[0].requestCount = Infinity;
+    const invalidTurnCountProof = buildAgentCliLocalTurnEvidenceInvariants(invalidTurnCountRecord, scenario)
+      .find((invariant) => invariant.id === "agent-cli-provider-proof");
+    assertEqual(invalidTurnCountProof?.status, "missing", "agent provider proof requires finite per-turn request count");
+
+    for (const malformedStatuses of [
+      [],
+      { malformed: true },
+      [{ value: 200 }],
+      [{ value: 200, count: 0 }]
+    ]) {
+      const malformedStatusRecord = JSON.parse(JSON.stringify(record));
+      malformedStatusRecord.measurements.agentTurns[0].providerStatuses = malformedStatuses;
+      const malformedStatusProof = buildAgentCliLocalTurnEvidenceInvariants(malformedStatusRecord, scenario)
+        .find((invariant) => invariant.id === "agent-cli-provider-proof");
+      assertEqual(malformedStatusProof?.status, "missing", "malformed provider response statuses do not throw or pass");
+    }
+
+    const incompleteResponseRecord = JSON.parse(JSON.stringify(record));
+    incompleteResponseRecord.measurements.agentTurns[0].providerFinalMs = null;
+    incompleteResponseRecord.measurements.agentTurns[0].providerStatuses = [{ value: 200, count: 1 }];
+    const incompleteResponseProof = buildAgentCliLocalTurnEvidenceInvariants(incompleteResponseRecord, scenario)
+      .find((invariant) => invariant.id === "agent-cli-provider-proof");
+    assertEqual(incompleteResponseProof?.status, "missing", "unfinished provider response is incomplete agent evidence");
+
+    const partialStatusRecord = JSON.parse(JSON.stringify(record));
+    partialStatusRecord.measurements.agentTurns[0].requestCount = 2;
+    partialStatusRecord.measurements.agentTurns[0].providerStatuses = [{ value: 200, count: 1 }];
+    const partialStatusProof = buildAgentCliLocalTurnEvidenceInvariants(partialStatusRecord, scenario)
+      .find((invariant) => invariant.id === "agent-cli-provider-proof");
+    assertEqual(partialStatusProof?.status, "missing", "agent status evidence must cover every attributed request");
+
+    const recoveryScenario = {
+      ...scenario,
+      mockProvider: { mode: "disconnect-then-recover" }
+    };
+    const statuslessRecoveryRecord = JSON.parse(JSON.stringify(record));
+    statuslessRecoveryRecord.providerEvidence.requestCount = 3;
+    statuslessRecoveryRecord.measurements.agentTurns[0].requestCount = 2;
+    statuslessRecoveryRecord.measurements.agentTurns[0].providerStatuses = [{ value: 200, count: 1 }];
+    statuslessRecoveryRecord.measurements.agentTurns[0].providerErrors = [{
+      kind: "provider-disconnect",
+      requestId: "cold-disconnect",
+      status: null
+    }];
+    const statuslessRecoveryProof = buildAgentCliLocalTurnEvidenceInvariants(
+      statuslessRecoveryRecord,
+      recoveryScenario
+    ).find((invariant) => invariant.id === "agent-cli-provider-proof");
+    assertEqual(statuslessRecoveryProof?.status, "passed", "typed statusless recovery error accounts for request");
+
+    for (const malformedStatus of [false, "missing", { malformed: true }]) {
+      const malformedRecoveryRecord = JSON.parse(JSON.stringify(statuslessRecoveryRecord));
+      malformedRecoveryRecord.measurements.agentTurns[0].providerErrors[0].status = malformedStatus;
+      const malformedRecoveryProof = buildAgentCliLocalTurnEvidenceInvariants(
+        malformedRecoveryRecord,
+        recoveryScenario
+      ).find((invariant) => invariant.id === "agent-cli-provider-proof");
+      assertEqual(malformedRecoveryProof?.status, "missing", "malformed recovery error status is rejected");
+    }
+
+    const malformedTurnsRecord = JSON.parse(JSON.stringify(record));
+    malformedTurnsRecord.measurements.agentTurns = { malformed: true };
+    const malformedTurnsProof = buildAgentCliLocalTurnEvidenceInvariants(malformedTurnsRecord, scenario)
+      .find((invariant) => invariant.id === "agent-cli-provider-proof");
+    assertEqual(malformedTurnsProof?.status, "missing", "malformed provider turn array does not throw or pass");
 
     const nonLocalRecord = syntheticAgentCliLocalTurnRecord({
       coldCommand: "ocm @kova -- agent --agent main --session-id kova-agent-cold-warm --message hi --json"
@@ -12284,6 +12600,26 @@ function healthFailureThresholdPolicyCheck() {
       record.violations.some((violation) => violation.metric === "finalHealthFailures"),
       true,
       "final failed samples are violations"
+    );
+    assertEqual(
+      healthTotalFailures({
+        startupSamples: { failureCount: -1 },
+        postReadySamples: { failureCount: 1 },
+        unknownSamples: { failureCount: 0 },
+        final: { failureCount: 0 }
+      }),
+      null,
+      "negative health failure counts are rejected instead of offsetting failures"
+    );
+    assertEqual(
+      healthTotalFailures({
+        startupSamples: { failureCount: 0.5 },
+        postReadySamples: { failureCount: 0 },
+        unknownSamples: { failureCount: 0 },
+        final: { failureCount: 0 }
+      }),
+      null,
+      "fractional health failure counts are rejected"
     );
     return {
       id: "health-failure-threshold-policy",
