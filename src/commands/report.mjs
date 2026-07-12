@@ -103,6 +103,9 @@ async function compareReportsCommand(baselinePath, currentPath, flags) {
   const current = await readReport(currentPath);
   const thresholds = flags.thresholds ? JSON.parse(await readFile(resolveUserPath(flags.thresholds), "utf8")) : null;
   const comparison = compareReports(baseline, current, { thresholds });
+  if (!comparison.ok) {
+    process.exitCode = 1;
+  }
 
   if (flags.json) {
     console.log(JSON.stringify(comparison, null, 2));
@@ -113,9 +116,6 @@ async function compareReportsCommand(baselinePath, currentPath, flags) {
     console.log(flags.fixer ? renderCompareFixerSummary(comparison) : renderCompareSummary(comparison));
   } else {
     console.log(renderCompareAssessment(comparison, flags));
-  }
-  if (!comparison.ok) {
-    process.exitCode = 1;
   }
 }
 
