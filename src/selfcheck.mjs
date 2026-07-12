@@ -19366,6 +19366,10 @@ exit 2
       true,
       "unknown retention state is recorded for every env"
     );
+    const unknownRetentionExecute = await run("--execute");
+    assertEqual(unknownRetentionExecute.status !== 0, true, "unknown retention execute exits nonzero");
+    assertEqual(JSON.parse(unknownRetentionExecute.stdout).results.length, 0, "unknown retention executes no destroys");
+    assertEqual(await fileExists(destroyLog), false, "unknown retention execute performs no teardown");
     await rm(malformedReport);
 
     const invalidShapeReport = join(reports, "invalid-shape.json");
@@ -19382,6 +19386,20 @@ exit 2
     const invalidServicePlan = JSON.parse(invalidServiceInventory.stdout);
     assertEqual(invalidServicePlan.serviceInventory?.ok, false, "invalid service shape fails inventory");
     assertEqual(invalidServicePlan.candidates.length, 0, "invalid service shape blocks cleanup");
+    const invalidServiceExecute = await run("--execute", { KOVA_INVALID_SERVICE_INVENTORY: "1" });
+    assertEqual(invalidServiceExecute.status !== 0, true, "invalid service execute exits nonzero");
+    assertEqual(JSON.parse(invalidServiceExecute.stdout).results.length, 0, "invalid service executes no destroys");
+    assertEqual(await fileExists(destroyLog), false, "invalid service execute performs no teardown");
+    const forcedInvalidService = await run("--execute --force", {
+      KOVA_INVALID_SERVICE_INVENTORY: "1"
+    });
+    assertEqual(forcedInvalidService.status, 0, "force overrides invalid service inventory");
+    assertEqual(
+      JSON.parse(forcedInvalidService.stdout).results.length,
+      7,
+      "forced invalid service inventory destroys every Kova env"
+    );
+    await rm(destroyLog, { force: true });
 
     const invalidEnvInventory = await run("", { KOVA_INVALID_ENV_INVENTORY: "1" });
     assertEqual(invalidEnvInventory.status !== 0, true, "invalid env inventory exits nonzero");
@@ -19481,8 +19499,9 @@ exit 2
       status: "PASS",
       command: "exercise cleanup env eligibility, execute guard, and force override",
       durationMs: dry.durationMs + unknownRetention.durationMs +
-        invalidShapeRetention.durationMs + invalidServiceInventory.durationMs +
-        invalidEnvInventory.durationMs + falseExecute.durationMs +
+        unknownRetentionExecute.durationMs + invalidShapeRetention.durationMs +
+        invalidServiceInventory.durationMs + invalidServiceExecute.durationMs +
+        forcedInvalidService.durationMs + invalidEnvInventory.durationMs + falseExecute.durationMs +
         stateChanged.durationMs + activePreview.durationMs + recentlyUsed.durationMs +
         malformedPreview.durationMs + newlyRetained.durationMs +
         partialApply.durationMs + forcedPartialApply.durationMs +
