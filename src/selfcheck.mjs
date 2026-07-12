@@ -8468,6 +8468,43 @@ async function mockProviderProcessSafetyCheck(tmp) {
     });
     assertEqual(absent.status, "already-absent", "mock cleanup is idempotent");
 
+    await writeFile(pidFile, "12345\n", "utf8");
+    let delayedInspections = 0;
+    const delayedStop = await stopOwnedMockProvider({
+      pidFile,
+      executablePath,
+      scriptPath,
+      requestLog,
+      inspectProcess: async () => {
+        delayedInspections += 1;
+        return delayedInspections < 3 ? expectedCommand : null;
+      },
+      signalProcess: () => {},
+      wait: async () => {}
+    });
+    assertEqual(delayedStop.status, "stopped", "mock cleanup confirms delayed process exit");
+    assertEqual(delayedInspections, 3, "mock cleanup polls until process exit");
+    await assertPathMissing(pidFile, "confirmed stop removes pid file");
+
+    await writeFile(pidFile, "12345\n", "utf8");
+    let stopTimedOut = false;
+    try {
+      await stopOwnedMockProvider({
+        pidFile,
+        executablePath,
+        scriptPath,
+        requestLog,
+        inspectProcess: async () => expectedCommand,
+        signalProcess: () => {},
+        stopTimeoutMs: 0
+      });
+    } catch (error) {
+      stopTimedOut = error.message === "mock provider 12345 did not stop within 0ms";
+    }
+    assertEqual(stopTimedOut, true, "mock cleanup reports stop timeout");
+    await access(pidFile);
+    await rm(pidFile, { force: true });
+
     for (const failure of ["inspect", "signal"]) {
       await writeFile(pidFile, "12345\n", "utf8");
       let rejected = false;

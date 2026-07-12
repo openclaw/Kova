@@ -31,8 +31,12 @@ export async function stopOwnedMockProvider(options) {
     scriptPath,
     requestLog,
     inspectProcess = readProcessCommand,
-    signalProcess = process.kill
+    signalProcess = process.kill,
+    stopTimeoutMs = 5000,
+    pollIntervalMs = 50,
+    wait = sleep
   } = options;
+  const expectedCommand = { executablePath, scriptPath, requestLog };
 
   let rawPid;
   try {
@@ -56,12 +60,11 @@ export async function stopOwnedMockProvider(options) {
     const command = await inspectProcess(pid);
     if (command === null) {
       result = { status: "not-running", pid };
-    } else if (!isOwnedMockProviderCommand(command, { executablePath, scriptPath, requestLog })) {
+    } else if (!isOwnedMockProviderCommand(command, expectedCommand)) {
       result = { status: "identity-mismatch", pid };
     } else {
       try {
         signalProcess(pid, "SIGTERM");
-        result = { status: "signaled", pid };
       } catch (error) {
         if (error.code === "ESRCH") {
           result = { status: "not-running", pid };
@@ -69,11 +72,48 @@ export async function stopOwnedMockProvider(options) {
           throw error;
         }
       }
+      if (!result) {
+        const stopped = await waitForProcessExit({
+          pid,
+          expectedCommand,
+          inspectProcess,
+          stopTimeoutMs,
+          pollIntervalMs,
+          wait
+        });
+        if (!stopped) {
+          throw new Error(`mock provider ${pid} did not stop within ${stopTimeoutMs}ms`);
+        }
+        result = { status: "stopped", pid };
+      }
     }
   }
 
   await rm(pidFile, { force: true });
   return result;
+}
+
+async function waitForProcessExit(options) {
+  const {
+    pid,
+    expectedCommand,
+    inspectProcess,
+    stopTimeoutMs,
+    pollIntervalMs,
+    wait
+  } = options;
+  const deadline = Date.now() + Math.max(0, stopTimeoutMs);
+
+  while (true) {
+    const command = await inspectProcess(pid);
+    if (command === null || !isOwnedMockProviderCommand(command, expectedCommand)) {
+      return true;
+    }
+    if (Date.now() >= deadline) {
+      return false;
+    }
+    await wait(Math.min(Math.max(1, pollIntervalMs), deadline - Date.now()));
+  }
 }
 
 async function readProcessCommand(pid) {
@@ -90,6 +130,10 @@ async function readProcessCommand(pid) {
     }
     throw error;
   }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function escapeRegExp(value) {
