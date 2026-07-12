@@ -152,6 +152,7 @@ import {
 } from "./auth.mjs";
 import { diagnosticArtifactName, triggerDiagnosticReport, triggerHeapSnapshot } from "./collectors/diagnostics.mjs";
 import {
+  isOwnedLegacyMockProviderCommand,
   isOwnedMockProviderSupervisorCommand,
   mockProviderOwnerRecord,
   mockProviderStopFile,
@@ -8394,6 +8395,7 @@ async function mockProviderProcessSafetyCheck(tmp) {
   const dir = join(tmp, "mock-provider-process-safety");
   await mkdir(dir, { recursive: true });
   const supervisorPath = join(repoRoot, "support/mock-ai-provider-supervisor.mjs");
+  const legacyExecutablePath = join(repoRoot, "node_modules/.bin/mock-ai-provider");
   const scriptPath = join(dir, "script.json");
   const requestLog = join(dir, "requests.jsonl");
   const serverLog = join(dir, "server.log");
@@ -8401,11 +8403,21 @@ async function mockProviderProcessSafetyCheck(tmp) {
   const stopOptions = {
     pidFile,
     supervisorPath,
+    legacyExecutablePath,
     scriptPath,
     requestLog,
     serverLog
   };
   const expectedCommand = ["node", ...mockProviderSupervisorArgs(stopOptions)].join(" ");
+  const expectedLegacyCommand = [
+    "node",
+    legacyExecutablePath,
+    "serve",
+    "--providers", "openai",
+    "--script", scriptPath,
+    "--port", "0",
+    "--request-log", requestLog
+  ].join(" ");
   const ownerGeneration = "00000000-0000-4000-8000-000000000001";
   const replacementGeneration = "00000000-0000-4000-8000-000000000002";
   const ownerText = (pid, generation = ownerGeneration) => `${JSON.stringify(mockProviderOwnerRecord(pid, generation))}\n`;
@@ -8448,6 +8460,51 @@ async function mockProviderProcessSafetyCheck(tmp) {
       false,
       "trailing supervisor arguments do not authenticate a different invocation"
     );
+    assertEqual(
+      isOwnedLegacyMockProviderCommand(expectedLegacyCommand, stopOptions),
+      true,
+      "exact legacy mock provider identity"
+    );
+    assertEqual(
+      isOwnedLegacyMockProviderCommand(
+        `${expectedLegacyCommand} --script ${join(dir, "other", "script.json")}`,
+        stopOptions
+      ),
+      false,
+      "trailing legacy arguments do not authenticate a different invocation"
+    );
+
+    await writeFile(pidFile, "12345\n", "utf8");
+    let legacyInspections = 0;
+    let legacySignal = null;
+    const legacyStop = await stopOwnedMockProvider({
+      ...stopOptions,
+      inspectProcess: async () => {
+        legacyInspections += 1;
+        return legacyInspections === 1 ? expectedLegacyCommand : null;
+      },
+      signalProcess: (pid, signal) => {
+        legacySignal = { pid, signal };
+      },
+      wait: async () => {}
+    });
+    assertEqual(legacyStop.status, "legacy-stopped", "legacy provider is stopped after exact identity match");
+    assertEqual(JSON.stringify(legacySignal), JSON.stringify({ pid: 12345, signal: "SIGTERM" }), "legacy provider signal");
+    await assertPathMissing(pidFile, "stopped legacy provider pid file removed");
+
+    await writeFile(pidFile, "12345\n", "utf8");
+    let legacyMismatchRejected = false;
+    try {
+      await stopOwnedMockProvider({
+        ...stopOptions,
+        inspectProcess: async () => "node unrelated.mjs"
+      });
+    } catch (error) {
+      legacyMismatchRejected = error.message.includes("does not match the expected command");
+    }
+    assertEqual(legacyMismatchRejected, true, "legacy provider identity mismatch aborts cleanup");
+    await access(pidFile);
+    await rm(pidFile, { force: true });
 
     const failedPidFile = join(dir, "pid-directory");
     const failedScriptPath = join(dir, "failed-start-script.json");
@@ -8610,6 +8667,7 @@ async function mockProviderProcessSafetyCheck(tmp) {
     const cleanupCommand = cleanupPhase.commands[0];
     assertEqual(cleanupCommand.includes("stop-mock-ai-provider.mjs"), true, "auth cleanup uses guarded helper");
     assertEqual(cleanupCommand.includes(supervisorPath), true, "auth cleanup pins supervisor path");
+    assertEqual(cleanupCommand.includes(legacyExecutablePath), true, "auth cleanup pins legacy executable path");
     assertEqual(cleanupCommand.includes(join(dir, "mock-openai", "script.json")), true, "auth cleanup pins script path");
     assertEqual(cleanupCommand.includes(join(dir, "mock-openai", "requests.jsonl")), true, "auth cleanup pins request log");
     assertEqual(cleanupCommand.includes(join(dir, "mock-openai", "server.log")), true, "auth cleanup pins server log");

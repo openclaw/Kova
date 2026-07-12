@@ -14,7 +14,7 @@ function parseArgs(args) {
     }
     values[flag.slice(2)] = value;
   }
-  for (const key of ["pid-file", "supervisor", "script", "request-log", "server-log"]) {
+  for (const key of ["pid-file", "supervisor", "legacy-executable", "script", "request-log", "server-log"]) {
     if (!values[key]) {
       throw new Error(`--${key} is required`);
     }
@@ -22,6 +22,7 @@ function parseArgs(args) {
   return {
     pidFile: values["pid-file"],
     supervisorPath: values.supervisor,
+    legacyExecutablePath: values["legacy-executable"],
     scriptPath: values.script,
     requestLog: values["request-log"],
     serverLog: values["server-log"]

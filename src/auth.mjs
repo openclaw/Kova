@@ -1121,6 +1121,7 @@ export function mockProviderCleanupCommand(dir) {
   const values = {
     pidFile: join(dir, "pid"),
     supervisorPath: join(repoRoot, "support/mock-ai-provider-supervisor.mjs"),
+    legacyExecutablePath: join(repoRoot, "node_modules/.bin/mock-ai-provider"),
     scriptPath: join(dir, "script.json"),
     requestLog: join(dir, "requests.jsonl"),
     serverLog: join(dir, "server.log")
@@ -1130,6 +1131,7 @@ export function mockProviderCleanupCommand(dir) {
     quoteShell(join(repoRoot, "support/stop-mock-ai-provider.mjs")),
     "--pid-file", quoteShell(values.pidFile),
     "--supervisor", quoteShell(values.supervisorPath),
+    "--legacy-executable", quoteShell(values.legacyExecutablePath),
     "--script", quoteShell(values.scriptPath),
     "--request-log", quoteShell(values.requestLog),
     "--server-log", quoteShell(values.serverLog)
