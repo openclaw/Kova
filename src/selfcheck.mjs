@@ -943,6 +943,8 @@ async function runScopedSelfCheck(flags, scope, workspace) {
       assertEqual(data.schemaVersion, "kova.cleanup.envs.v1", "cleanup schema");
       assertEqual(data.execute, false, "cleanup execute flag");
       assertArray(data.envs, "cleanup envs");
+      assertEqual(data.envs.every((env) => typeof env === "string"), true, "cleanup v1 envs stay names");
+      assertArray(data.classifications, "cleanup classifications");
     }));
     checks.push(await cleanupEnvSafetyCheck(tmp));
     checks.push(await cleanupArtifactsCheck(tmp));
@@ -19264,11 +19266,12 @@ exit 2
     assertEqual(dry.status, 0, "cleanup safety dry-run exit");
     const plan = JSON.parse(dry.stdout);
     assertEqual(plan.candidates.join(","), "kova-stale", "only inactive stale env eligible");
-    assertEqual(plan.envs.find((item) => item.name === "kova-recent")?.reasons.includes("too-recent"), true, "recent env skipped");
-    assertEqual(plan.envs.find((item) => item.name === "kova-protected")?.reasons.includes("protected"), true, "protected env skipped");
-    assertEqual(plan.envs.find((item) => item.name === "kova-retained")?.reasons.includes("retained-by-run"), true, "retained env skipped");
-    assertEqual(plan.envs.find((item) => item.name === "kova-active")?.reasons.includes("active-service"), true, "active env skipped");
-    assertEqual(plan.envs.find((item) => item.name === "kova-unknown")?.reasons.includes("unknown-service-state"), true, "unknown service env skipped");
+    assertEqual(plan.envs.every((item) => typeof item === "string"), true, "cleanup v1 envs remain names");
+    assertEqual(plan.classifications.find((item) => item.name === "kova-recent")?.reasons.includes("too-recent"), true, "recent env skipped");
+    assertEqual(plan.classifications.find((item) => item.name === "kova-protected")?.reasons.includes("protected"), true, "protected env skipped");
+    assertEqual(plan.classifications.find((item) => item.name === "kova-retained")?.reasons.includes("retained-by-run"), true, "retained env skipped");
+    assertEqual(plan.classifications.find((item) => item.name === "kova-active")?.reasons.includes("active-service"), true, "active env skipped");
+    assertEqual(plan.classifications.find((item) => item.name === "kova-unknown")?.reasons.includes("unknown-service-state"), true, "unknown service env skipped");
 
     const malformedReport = join(reports, "malformed.json");
     await writeFile(malformedReport, "{not-json\n", "utf8");
@@ -19278,7 +19281,7 @@ exit 2
     assertEqual(unknownRetentionPlan.retentionInventory?.ok, false, "malformed report fails retention inventory");
     assertEqual(unknownRetentionPlan.candidates.length, 0, "unknown retention state blocks cleanup");
     assertEqual(
-      unknownRetentionPlan.envs.every((item) => item.reasons.includes("unknown-retention-state")),
+      unknownRetentionPlan.classifications.every((item) => item.reasons.includes("unknown-retention-state")),
       true,
       "unknown retention state is recorded for every env"
     );
