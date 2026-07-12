@@ -125,6 +125,7 @@ export function evaluateRecord(record, scenario, options = {}) {
   const metadataScanMentions = countLogMetric(record, "metadataScanMentions", allResults);
   const configNormalizationMentions = countLogMetric(record, "configNormalizationMentions", allResults);
   const gatewayRestartCount = countGatewayRestarts(record, allResults);
+  const intentionalRestartSourcePids = collectIntentionalRestartSourcePids(record);
   const providerLoadMentions = countLogMetric(record, "providerLoadMentions", allResults);
   const modelCatalogMentions = countLogMetric(record, "modelCatalogMentions", allResults);
   const providerTimeoutMentions = countLogMetric(record, "providerTimeoutMentions", allResults);
@@ -144,12 +145,12 @@ export function evaluateRecord(record, scenario, options = {}) {
   const diagnosticReportBytes = countDiagnosticReportMetric(record, "artifactBytes");
   const gatewayExpected = recordExpectsGateway(record);
   const openclawDiagnostics = collectOpenClawDiagnostics(record);
-  const timelineSummary = collectTimelineSummary(record);
+  const timelineSummary = collectTimelineSummary(record, { intentionalRestartSourcePids });
   const logSummary = collectLogSummary(record);
   const runtimeDepsLogEvidence = collectRuntimeDepsLogEvidence(record);
   const timelineRequirement = timelineRequirementFor(options);
   const requiredOpenSpans = requiredTimelineSpans(options);
-  const openRequiredSpans = timelineSummary.openSpans.filter((span) => requiredOpenSpans.has(span.name));
+  const openRequiredSpans = timelineSummary.openSpansAll.filter((span) => requiredOpenSpans.has(span.name));
   const missingRequiredSpans = missingTimelineSpans(timelineSummary, requiredOpenSpans);
   const diagnosticContract = diagnosticSpanContractFor(options);
   const runtimeDepsStagingMs = maxNullable(
@@ -1152,6 +1153,9 @@ export function evaluateRecord(record, scenario, options = {}) {
     openclawMissingRequiredSpanSeverity: diagnosticContract.missingSpanSeverity,
     openclawDiagnosticsContract: diagnosticContract,
     openclawOpenSpans: timelineSummary.openSpans,
+    openclawInterruptedRestartSpanCount: timelineSummary.interruptedRestartSpanCount,
+    openclawInterruptedRestartSpans: timelineSummary.interruptedRestartSpans,
+    openclawTerminalGatewayPid: timelineSummary.terminalGatewayPid,
     openclawKeySpans: timelineSummary.keySpans,
     openclawEventLoopMaxMs: timelineSummary.eventLoopMaxMs,
     openclawLogEventLoopMaxMs: logSummary.livenessWarnings.maxEventLoopDelayMaxMs,
@@ -2718,6 +2722,45 @@ function countGatewayRestarts(record, results = collectResults(record)) {
   return commandRestarts > 0 ? commandRestarts : null;
 }
 
+function collectIntentionalRestartSourcePids(record) {
+  const sourcePids = new Set();
+  let previousTimeline = null;
+  let restartPending = false;
+
+  for (const phase of record.phases ?? []) {
+    restartPending ||= (phase.results ?? []).some((result) =>
+      result.command?.startsWith("ocm service restart ") && commandResultPassed(result)
+    );
+    const timeline = phase.metrics?.timeline;
+    if (!timeline?.available) {
+      continue;
+    }
+    const gatewayPids = timeline.gatewayPids ?? [];
+    const transitionIsAdjacent = previousTimeline?.terminalGatewayPid !== null &&
+      previousTimeline?.terminalGatewayPid !== undefined &&
+      gatewayPids.at(-2) === previousTimeline.terminalGatewayPid &&
+      gatewayPids.at(-1) === timeline.terminalGatewayPid;
+    if (restartPending && transitionIsAdjacent) {
+      sourcePids.add(previousTimeline.terminalGatewayPid);
+    }
+    restartPending = false;
+    previousTimeline = timeline;
+  }
+
+  const finalTimeline = record.finalMetrics?.timeline;
+  if (restartPending && finalTimeline?.available && finalTimeline !== previousTimeline) {
+    const gatewayPids = finalTimeline.gatewayPids ?? [];
+    if (previousTimeline?.terminalGatewayPid !== null &&
+      previousTimeline?.terminalGatewayPid !== undefined &&
+      gatewayPids.at(-2) === previousTimeline.terminalGatewayPid &&
+      gatewayPids.at(-1) === finalTimeline.terminalGatewayPid) {
+      sourcePids.add(previousTimeline.terminalGatewayPid);
+    }
+  }
+
+  return sourcePids;
+}
+
 function collectSoakEvidence(results) {
   const loops = results
     .filter((result) => result.command?.includes("run-soak-loop.mjs"))
@@ -3804,6 +3847,7 @@ export function compactEvaluatedTimelineEvidence(record) {
 
   const retained = new Set([currentTimeline, attributionTimeline].filter(Boolean));
   for (const timeline of timelines) {
+    delete timeline.openSpansAll;
     if (retained.has(timeline)) {
       continue;
     }
@@ -3812,7 +3856,7 @@ export function compactEvaluatedTimelineEvidence(record) {
   }
 }
 
-function collectTimelineSummary(record) {
+function collectTimelineSummary(record, { intentionalRestartSourcePids = new Set() } = {}) {
   const timelines = recordTimelines(record);
 
   const available = timelines.some((timeline) => timeline.available);
@@ -3837,8 +3881,19 @@ function collectTimelineSummary(record) {
   let repeatedSpanCount = 0;
   let runtimeDepsStageMaxMs = null;
   let slowestRuntimeDepsPlugin = null;
-  const latestOpenSpanCount = currentTimeline?.openSpanCount ?? currentTimeline?.openSpans?.length ?? 0;
-  const latestOpenSpans = [...(currentTimeline?.openSpans ?? [])]
+  const terminalGatewayPid = currentTimeline?.terminalGatewayPid ?? null;
+  const rawOpenSpans = currentTimeline?.openSpansAll ?? currentTimeline?.openSpans ?? [];
+  const interruptedRestartSpans = terminalGatewayPid !== null
+    ? rawOpenSpans.filter((span) =>
+      span.pid !== null &&
+      span.pid !== terminalGatewayPid &&
+      intentionalRestartSourcePids.has(span.pid)
+    )
+    : [];
+  const interruptedRestartSpanSet = new Set(interruptedRestartSpans);
+  const latestOpenSpansAll = rawOpenSpans.filter((span) => !interruptedRestartSpanSet.has(span));
+  const latestOpenSpanCount = latestOpenSpansAll.length;
+  const latestOpenSpans = latestOpenSpansAll
     .toSorted((left, right) => (right.ageMs ?? -1) - (left.ageMs ?? -1))
     .slice(0, 25);
   const events = attributionTimeline?.events ?? [];
@@ -3883,6 +3938,8 @@ function collectTimelineSummary(record) {
     }
   }
 
+  replaceKeySpanOpenState(keySpans, latestOpenSpansAll);
+
   return {
     available,
     eventCount,
@@ -3892,6 +3949,10 @@ function collectTimelineSummary(record) {
     repeatedSpanCount,
     openSpanCount: latestOpenSpanCount,
     openSpans: latestOpenSpans,
+    openSpansAll: latestOpenSpansAll,
+    interruptedRestartSpanCount: interruptedRestartSpans.length,
+    interruptedRestartSpans: interruptedRestartSpans.slice(0, 25),
+    terminalGatewayPid,
     artifacts: [...artifacts],
     timelineArtifacts: [...artifacts],
     events,
@@ -3904,6 +3965,21 @@ function collectTimelineSummary(record) {
     runtimeDepsStageMaxMs,
     runtimeDepsStagePluginId: slowestRuntimeDepsPlugin?.pluginId ?? null
   };
+}
+
+function replaceKeySpanOpenState(keySpans, openSpans) {
+  for (const [name, summary] of Object.entries(keySpans)) {
+    const open = openSpans.filter((span) => keyTimelineSpanMatches(name, span.name));
+    summary.openCount = open.length;
+    summary.open = open.slice(0, 5);
+  }
+}
+
+function keyTimelineSpanMatches(keyName, spanName) {
+  if (keyName === "gateway.chat_send" || keyName === "auto_reply" || keyName === "reply") {
+    return spanName === keyName || spanName.startsWith(`${keyName}.`);
+  }
+  return spanName === keyName;
 }
 
 function recordTimelines(record) {

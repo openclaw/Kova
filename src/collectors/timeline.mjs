@@ -54,6 +54,9 @@ export async function collectTimelineMetrics(artifactDir) {
     spanTotals: timeline.spanTotals,
     repeatedSpans: timeline.repeatedSpans,
     openSpans: timeline.openSpans,
+    openSpansAll: timeline.openSpansAll,
+    gatewayPids: timeline.gatewayPids,
+    terminalGatewayPid: timeline.terminalGatewayPid,
     keySpans: timeline.keySpans,
     runtimeDeps: timeline.runtimeDeps,
     eventLoop: timeline.eventLoop,
@@ -113,7 +116,9 @@ export function summarizeTimeline(events, parseErrors = []) {
   const providerRequests = events.filter((event) => event.type === "provider.request");
   const childProcesses = events.filter((event) => event.type === "childProcess.exit");
   const spanTotals = summarizeSpans(spanEvents);
-  const openSpans = summarizeOpenSpans({ starts: spanStarts, terminals: spanEvents, events });
+  const openSpansAll = summarizeOpenSpans(events);
+  const openSpans = openSpansAll.slice(0, 25);
+  const gatewayPids = gatewayProcessPids(events);
   const runtimeDeps = summarizeRuntimeDeps(spanEvents);
   const slowestSpans = spanEvents
     .filter((event) => typeof event.durationMs === "number")
@@ -135,9 +140,12 @@ export function summarizeTimeline(events, parseErrors = []) {
       .filter((span) => span.count > 1)
       .toSorted((left, right) => (right.totalDurationMs - left.totalDurationMs) || (right.count - left.count))
       .slice(0, 10),
-    openSpanCount: openSpans.length,
+    openSpanCount: openSpansAll.length,
     openSpans,
-    keySpans: summarizeKeySpans({ spanEvents, openSpans }),
+    openSpansAll,
+    gatewayPids,
+    terminalGatewayPid: gatewayPids.at(-1) ?? null,
+    keySpans: summarizeKeySpans({ spanEvents, openSpans: openSpansAll }),
     runtimeDeps,
     eventLoop: summarizeEventLoop(eventLoopSamples),
     providers: summarizeTimedCollection(providerRequests),
@@ -160,6 +168,9 @@ function emptyTimeline(extra = {}) {
     repeatedSpans: [],
     openSpanCount: 0,
     openSpans: [],
+    openSpansAll: [],
+    gatewayPids: [],
+    terminalGatewayPid: null,
     keySpans: emptyKeySpans(),
     runtimeDeps: {
       count: 0,
@@ -286,22 +297,43 @@ function summarizeRuntimeDeps(events) {
   };
 }
 
-function summarizeOpenSpans({ starts, terminals, events }) {
-  const terminalKeys = new Set(terminals.map(spanIdentity).filter(Boolean));
-  const terminalNames = countNames(terminals);
+function summarizeOpenSpans(events) {
+  const starts = [];
+  const matched = new Set();
+  const buckets = new Map();
   const latestTimestamp = latestEventTimestamp(events);
-  const open = [];
 
-  for (const start of starts) {
-    const key = spanIdentity(start);
-    if (key && terminalKeys.has(key)) {
+  // Consume the append-only stream in order. Per-identity stacks keep matching
+  // amortized linear while newest-first wildcard matching handles reused span IDs.
+  for (const event of events) {
+    if (event.type === "span.start") {
+      const index = starts.push(event) - 1;
+      const bucket = spanMatchBucket(buckets, event);
+      bucket.all.push(index);
+      const pidKey = spanPidKey(event.pid);
+      const pidStack = bucket.byPid.get(pidKey) ?? [];
+      pidStack.push(index);
+      bucket.byPid.set(pidKey, pidStack);
       continue;
     }
-    if (!key && (terminalNames.get(start.name) ?? 0) > 0) {
-      terminalNames.set(start.name, terminalNames.get(start.name) - 1);
+    if (event.type !== "span.end" && event.type !== "span.error") {
       continue;
     }
-    open.push({
+    const bucket = buckets.get(spanMatchKey(event));
+    if (!bucket) {
+      continue;
+    }
+    const terminalPidKey = spanPidKey(event.pid);
+    const index = terminalPidKey === UNKNOWN_PID_KEY
+      ? popUnmatched(bucket.all, matched)
+      : popUnmatched(bucket.byPid.get(terminalPidKey), matched) ??
+        popUnmatched(bucket.byPid.get(UNKNOWN_PID_KEY), matched);
+    if (index !== null) {
+      matched.add(index);
+    }
+  }
+
+  return starts.flatMap((start, index) => matched.has(index) ? [] : [{
       type: start.type,
       name: start.name,
       spanId: start.spanId ?? null,
@@ -311,11 +343,34 @@ function summarizeOpenSpans({ starts, terminals, events }) {
       phase: start.phase ?? null,
       provider: start.provider ?? start.attributes?.provider ?? null,
       operation: start.operation ?? start.attributes?.operation ?? null,
-      pluginId: start.pluginId ?? start.attributes?.pluginId ?? null
-    });
-  }
+      pluginId: start.pluginId ?? start.attributes?.pluginId ?? null,
+      pid: start.pid ?? null
+    }]).toSorted((left, right) => (right.ageMs ?? -1) - (left.ageMs ?? -1));
+}
 
-  return open.toSorted((left, right) => (right.ageMs ?? -1) - (left.ageMs ?? -1)).slice(0, 25);
+const UNKNOWN_PID_KEY = "<unknown>";
+
+function spanMatchBucket(buckets, event) {
+  const key = spanMatchKey(event);
+  const bucket = buckets.get(key) ?? { all: [], byPid: new Map() };
+  buckets.set(key, bucket);
+  return bucket;
+}
+
+function spanMatchKey(event) {
+  const spanId = spanIdOrNull(event);
+  return spanId === null ? `name:${event.name}` : `id:${spanId}`;
+}
+
+function spanPidKey(pid) {
+  return pid === undefined || pid === null ? UNKNOWN_PID_KEY : String(pid);
+}
+
+function popUnmatched(stack, matched) {
+  while (stack?.length > 0 && matched.has(stack.at(-1))) {
+    stack.pop();
+  }
+  return stack?.pop() ?? null;
 }
 
 function summarizeKeySpans({ spanEvents, openSpans }) {
@@ -425,6 +480,7 @@ function compactTimedEvent(event) {
     provider: event.provider ?? event.attributes?.provider ?? null,
     operation: event.operation ?? event.attributes?.operation ?? null,
     pluginId: event.pluginId ?? event.attributes?.pluginId ?? null,
+    pid: event.pid ?? null,
     exitCode: event.exitCode ?? event.code ?? null,
     signal: event.signal ?? null,
     errorName: event.errorName ?? event.attributes?.errorName ?? null,
@@ -491,19 +547,34 @@ function parsedTimestampMs(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function spanIdentity(event) {
-  if (event.spanId !== undefined && event.spanId !== null && String(event.spanId).length > 0) {
-    return `id:${event.spanId}`;
+function spanIdOrNull(event) {
+  if (event.spanId === undefined || event.spanId === null || String(event.spanId).length === 0) {
+    return null;
   }
-  return null;
+  return String(event.spanId);
 }
 
-function countNames(events) {
-  const counts = new Map();
+function gatewayProcessPids(events) {
+  const pids = [];
   for (const event of events) {
-    counts.set(event.name, (counts.get(event.name) ?? 0) + 1);
+    if (event.pid === undefined || event.pid === null || !isGatewayLifecycleEvent(event)) {
+      continue;
+    }
+    const existing = pids.indexOf(event.pid);
+    if (existing !== -1) {
+      pids.splice(existing, 1);
+    }
+    pids.push(event.pid);
   }
-  return counts;
+  return pids;
+}
+
+function isGatewayLifecycleEvent(event) {
+  return event.name === "gateway.startup" ||
+    event.name === "gateway.ready" ||
+    event.name === "http.bound" ||
+    event.name === "http.listen" ||
+    String(event.spanId ?? "").startsWith("gateway-startup-");
 }
 
 function latestEventTimestamp(events) {

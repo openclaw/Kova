@@ -219,6 +219,9 @@
           "openRequiredSpanCount": null,
           "missingRequiredSpanCount": null,
           "openSpans": [],
+          "interruptedRestartSpanCount": null,
+          "interruptedRestartSpans": [],
+          "terminalGatewayPid": null,
           "eventLoopMaxMs": null,
           "providerRequestMaxMs": null
         }
@@ -327,6 +330,9 @@
           "openRequiredSpanCount": null,
           "missingRequiredSpanCount": null,
           "openSpans": [],
+          "interruptedRestartSpanCount": null,
+          "interruptedRestartSpans": [],
+          "terminalGatewayPid": null,
           "eventLoopMaxMs": null,
           "providerRequestMaxMs": null
         }
