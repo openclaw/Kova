@@ -372,8 +372,22 @@ async function loadRetentionInventory() {
     }
     try {
       const report = JSON.parse(await readFile(join(reportsDir, entry.name), "utf8"));
-      for (const record of report.records ?? []) {
-        if (record?.cleanup === "retained" && typeof record.envName === "string") {
+      if (
+        report === null ||
+        typeof report !== "object" ||
+        Array.isArray(report) ||
+        !Array.isArray(report.records)
+      ) {
+        throw new Error("records array missing");
+      }
+      for (const record of report.records) {
+        if (record === null || typeof record !== "object" || Array.isArray(record)) {
+          throw new Error("records array contains an invalid record");
+        }
+        if (record.cleanup === "retained") {
+          if (typeof record.envName !== "string" || record.envName.length === 0) {
+            throw new Error("retained record is missing envName");
+          }
           retained.add(record.envName);
         }
       }
