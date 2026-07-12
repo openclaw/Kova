@@ -173,7 +173,7 @@
         "expects": {
           "visibleDeliveries": 1,
           "kind": "media",
-          "replyTo": "none",
+          "replyTo": "inbound-message",
           "threadId": "kova-model-turn-thread",
           "mediaSourcePolicy": "present-existing",
         "hooks": true,
