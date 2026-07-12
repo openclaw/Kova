@@ -302,7 +302,40 @@ async function loadEnvSummaries() {
   if (!Array.isArray(summaries)) {
     throw new Error("ocm env list --json returned unexpected data");
   }
+  const names = new Set();
+  for (const summary of summaries) {
+    const error = validateEnvSummary(summary);
+    if (error) {
+      throw new Error(`ocm env list --json returned unexpected data: ${error}`);
+    }
+    if (names.has(summary.name)) {
+      throw new Error(`ocm env list --json returned duplicate env: ${summary.name}`);
+    }
+    names.add(summary.name);
+  }
   return summaries;
+}
+
+function validateEnvSummary(summary) {
+  if (summary === null || typeof summary !== "object" || Array.isArray(summary)) {
+    return "invalid environment record";
+  }
+  if (typeof summary.name !== "string" || summary.name.length === 0) {
+    return "environment record is missing name";
+  }
+  if (typeof summary.protected !== "boolean") {
+    return `environment ${summary.name} is missing protected state`;
+  }
+  if (typeof summary.createdAt !== "string" || !Number.isFinite(Date.parse(summary.createdAt))) {
+    return `environment ${summary.name} has invalid createdAt`;
+  }
+  if (
+    summary.lastUsedAt !== null &&
+    (typeof summary.lastUsedAt !== "string" || !Number.isFinite(Date.parse(summary.lastUsedAt)))
+  ) {
+    return `environment ${summary.name} has invalid lastUsedAt`;
+  }
+  return null;
 }
 
 async function loadCleanupEnvClassification(envName, cutoffMs) {
