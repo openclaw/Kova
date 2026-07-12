@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { access, chmod, link, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, symlink, truncate, utimes, writeFile } from "node:fs/promises";
+import { access, chmod, cp, link, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, symlink, truncate, utimes, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -4947,20 +4947,28 @@ async function reportPublicationCheck(tmp) {
   try {
     const report = syntheticPublicationReport();
     await mkdir(publicationRoot, { recursive: true });
+    let reportTransactionSequence = 0;
+    const nextReportTransaction = () => {
+      reportTransactionSequence += 1;
+      return `00000000-0000-4000-8000-${String(reportTransactionSequence).padStart(12, "0")}`;
+    };
     const writeTransactionMarker = async (outputPaths) => {
       const previousFiles = await Promise.all(Object.values(outputPaths).map(async (path) => ({
         name: basename(path),
         sha256: createHash("sha256").update(await readFile(path)).digest("hex")
       })));
+      const transaction = nextReportTransaction();
       await writeFile(
         join(publicationRoot, `.${basename(outputPaths.json)}.kova-transaction`),
         `${JSON.stringify({
-          schemaVersion: "kova.reportTransaction.v2",
+          schemaVersion: "kova.reportTransaction.v3",
+          transaction,
           canonical: basename(outputPaths.json),
           previousFiles,
           files: previousFiles
         })}\n`
       );
+      return transaction;
     };
     const failedPaths = buildReportOutputPaths(publicationRoot, "kova-260712-000000-aabbcc");
     const invalidSummaryPath = join(publicationRoot, "s".repeat(250));
@@ -4992,7 +5000,8 @@ async function reportPublicationCheck(tmp) {
     await writeFile(
       join(publicationRoot, `.${basename(mixedPaths.json)}.kova-transaction`),
       `${JSON.stringify({
-        schemaVersion: "kova.reportTransaction.v2",
+        schemaVersion: "kova.reportTransaction.v3",
+        transaction: nextReportTransaction(),
         canonical: basename(mixedPaths.json),
         previousFiles: [{
           name: basename(mixedPaths.json),
@@ -5044,7 +5053,8 @@ async function reportPublicationCheck(tmp) {
     await writeFile(
       join(publicationRoot, `.${basename(midBackupPaths.json)}.kova-transaction`),
       `${JSON.stringify({
-        schemaVersion: "kova.reportTransaction.v2",
+        schemaVersion: "kova.reportTransaction.v3",
+        transaction: nextReportTransaction(),
         canonical: basename(midBackupPaths.json),
         previousFiles: [
           {
@@ -5129,7 +5139,7 @@ async function reportPublicationCheck(tmp) {
       "markerless backup is preserved for operator inspection"
     );
     await rm(markerlessBackupPath);
-    await writeTransactionMarker(outputPaths);
+    const staleReportTransaction = await writeTransactionMarker(outputPaths);
     await writeFile(markerlessBackupPath, "operator replacement\n");
     let staleReportMarkerRejected = false;
     try {
@@ -5139,12 +5149,107 @@ async function reportPublicationCheck(tmp) {
     }
     assertEqual(staleReportMarkerRejected, true, "stale report backup marker fails closed");
     assertEqual(
-      await readFile(markerlessBackupPath, "utf8"),
+      await readFile(
+        join(`${markerlessBackupPath}.claim-${staleReportTransaction}`, "backup"),
+        "utf8"
+      ),
       "operator replacement\n",
-      "stale report backup marker preserves unrelated replacement data"
+      "stale report backup marker preserves unrelated claimed data"
+    );
+    await rm(`${markerlessBackupPath}.claim-${staleReportTransaction}`, { recursive: true });
+    await rm(join(publicationRoot, `.${basename(outputPaths.json)}.kova-transaction`));
+    const conflictingReportTransaction = await writeTransactionMarker(outputPaths);
+    const conflictingReportClaimContainer =
+      `${markerlessBackupPath}.claim-${conflictingReportTransaction}`;
+    const conflictingReportClaim = join(conflictingReportClaimContainer, "backup");
+    await mkdir(conflictingReportClaimContainer);
+    await rename(outputPaths.json, conflictingReportClaim);
+    await writeFile(markerlessBackupPath, "later operator replacement\n");
+    let conflictingReportBackupRejected = false;
+    try {
+      await writeReportOutputs(publicationRoot, publishedReport);
+    } catch (error) {
+      conflictingReportBackupRejected = /conflicting replacement/.test(error.message);
+    }
+    assertEqual(
+      conflictingReportBackupRejected,
+      true,
+      "claimed report backup rejects a fixed-path replacement"
+    );
+    assertEqual(
+      JSON.parse(await readFile(conflictingReportClaim, "utf8")).runId,
+      publishedReport.runId,
+      "claimed report backup remains intact after replacement"
+    );
+    assertEqual(
+      await readFile(markerlessBackupPath, "utf8"),
+      "later operator replacement\n",
+      "fixed-path report replacement remains intact"
     );
     await rm(markerlessBackupPath);
+    await rename(conflictingReportClaim, outputPaths.json);
+    await rm(conflictingReportClaimContainer, { recursive: true });
     await rm(join(publicationRoot, `.${basename(outputPaths.json)}.kova-transaction`));
+    const malformedReportTransaction = await writeTransactionMarker(outputPaths);
+    const malformedReportClaimContainer =
+      `${markerlessBackupPath}.claim-${malformedReportTransaction}`;
+    await rename(outputPaths.json, markerlessBackupPath);
+    await mkdir(malformedReportClaimContainer);
+    await writeFile(join(malformedReportClaimContainer, "foreign.txt"), "preserve me\n");
+    let malformedReportClaimRejected = false;
+    try {
+      await writeReportOutputs(publicationRoot, publishedReport);
+    } catch (error) {
+      malformedReportClaimRejected = /report backup claim is invalid/.test(error.message);
+    }
+    assertEqual(malformedReportClaimRejected, true, "malformed report claim fails closed");
+    assertEqual(
+      await readFile(join(malformedReportClaimContainer, "foreign.txt"), "utf8"),
+      "preserve me\n",
+      "malformed report claim preserves foreign data"
+    );
+    await rm(malformedReportClaimContainer, { recursive: true });
+    await rename(markerlessBackupPath, outputPaths.json);
+    await rm(join(publicationRoot, `.${basename(outputPaths.json)}.kova-transaction`));
+    const emptyReportClaimTransaction = await writeTransactionMarker(outputPaths);
+    const emptyReportClaimContainer =
+      `${markerlessBackupPath}.claim-${emptyReportClaimTransaction}`;
+    await mkdir(emptyReportClaimContainer);
+    await writeReportOutputs(publicationRoot, publishedReport);
+    assertEqual(
+      await fileExists(emptyReportClaimContainer),
+      false,
+      "empty post-cleanup report claim is finalized"
+    );
+    const restoredReportTransaction = nextReportTransaction();
+    const restoredPreviousFiles = await Promise.all(
+      Object.values(outputPaths).map(async (path) => ({
+        name: basename(path),
+        sha256: createHash("sha256").update(await readFile(path)).digest("hex")
+      }))
+    );
+    await writeFile(
+      join(publicationRoot, `.${basename(outputPaths.json)}.kova-transaction`),
+      `${JSON.stringify({
+        schemaVersion: "kova.reportTransaction.v3",
+        transaction: restoredReportTransaction,
+        canonical: basename(outputPaths.json),
+        previousFiles: restoredPreviousFiles,
+        files: restoredPreviousFiles.map((entry) => ({
+          ...entry,
+          sha256: "0".repeat(64)
+        }))
+      })}\n`
+    );
+    const emptyPostRestoreReportClaim =
+      `${markerlessBackupPath}.claim-${restoredReportTransaction}`;
+    await mkdir(emptyPostRestoreReportClaim);
+    await writeReportOutputs(publicationRoot, publishedReport);
+    assertEqual(
+      await fileExists(emptyPostRestoreReportClaim),
+      false,
+      "empty post-restore report claim is finalized from prior hashes"
+    );
     const transactionTempPath = join(
       publicationRoot,
       `.${basename(outputPaths.json)}.kova-transaction.tmp`
@@ -5156,16 +5261,41 @@ async function reportPublicationCheck(tmp) {
       false,
       "retry removes a torn staged transaction marker"
     );
-    await writeTransactionMarker(outputPaths);
+    const claimedReportTransaction = await writeTransactionMarker(outputPaths);
     for (const path of Object.values(outputPaths)) {
       await rename(path, join(publicationRoot, `.${basename(path)}.kova-backup`));
     }
+    const claimedMarkdownContainer = join(
+      publicationRoot,
+      `.${basename(outputPaths.markdown)}.kova-backup.claim-${claimedReportTransaction}`
+    );
+    const claimedMarkdownBackup = join(claimedMarkdownContainer, "backup");
+    await mkdir(claimedMarkdownContainer);
+    await rename(
+      join(publicationRoot, `.${basename(outputPaths.markdown)}.kova-backup`),
+      claimedMarkdownBackup
+    );
+    const claimedSummaryContainer = join(
+      publicationRoot,
+      `.${basename(outputPaths.summary)}.kova-backup.claim-${claimedReportTransaction}`
+    );
+    await mkdir(claimedSummaryContainer);
     await writeReportOutputs(publicationRoot, publishedReport);
     assertEqual(await fileExists(outputPaths.markdown), true, "interrupted report swap recovered");
     assertEqual(
       (await readdir(publicationRoot)).some((entry) => entry.endsWith(".kova-backup")),
       false,
       "recovered report backups removed"
+    );
+    assertEqual(
+      await fileExists(claimedMarkdownBackup),
+      false,
+      "recovered claimed report backup removed"
+    );
+    assertEqual(
+      await fileExists(claimedSummaryContainer),
+      false,
+      "empty report claim container resumes backup move"
     );
     await writeTransactionMarker(outputPaths);
     await rename(
@@ -5428,17 +5558,79 @@ async function reportPublicationCheck(tmp) {
 
     const emptyRetainedRoot = join(publicationRoot, "empty-retained");
     const emptyRetainedBackup = join(publicationRoot, ".empty-retained.bak");
+    const emptyRetainedClaimId = "10000000-0000-4000-8000-000000000001";
     await mkdir(emptyRetainedBackup);
     await writeFile(`${emptyRetainedBackup}.owner`, `${JSON.stringify({
-      schemaVersion: "kova.retainedArtifactBackup.v2",
+      schemaVersion: "kova.retainedArtifactBackup.v3",
       outputRoot: emptyRetainedRoot,
-      treeSha256: await retainedArtifactTreeDigest(emptyRetainedBackup)
+      treeSha256: await retainedArtifactTreeDigest(emptyRetainedBackup),
+      claimId: emptyRetainedClaimId,
+      phase: "pending"
     })}\n`);
+    const emptyRetainedClaimContainer =
+      `${emptyRetainedBackup}.claim-${emptyRetainedClaimId}`;
+    await mkdir(emptyRetainedClaimContainer);
     await retainGateArtifacts(collisionReports[0], firstBundle, {
       outputDir: emptyRetainedRoot
     });
     assertEqual(await fileExists(emptyRetainedRoot), true, "empty retained tree backup recovered");
     assertEqual(await fileExists(emptyRetainedBackup), false, "empty retained tree backup removed");
+
+    const restoredEmptyRoot = join(publicationRoot, "restored-empty-retained");
+    const restoredEmptyBackup = join(publicationRoot, ".restored-empty-retained.bak");
+    const restoredEmptyClaimId = "10000000-0000-4000-8000-000000000002";
+    await mkdir(restoredEmptyRoot);
+    await writeFile(`${restoredEmptyBackup}.owner`, `${JSON.stringify({
+      schemaVersion: "kova.retainedArtifactBackup.v3",
+      outputRoot: restoredEmptyRoot,
+      treeSha256: await retainedArtifactTreeDigest(restoredEmptyRoot),
+      claimId: restoredEmptyClaimId,
+      phase: "pending"
+    })}\n`);
+    await mkdir(`${restoredEmptyBackup}.claim-${restoredEmptyClaimId}`);
+    await retainGateArtifacts(collisionReports[0], firstBundle, {
+      outputDir: restoredEmptyRoot
+    });
+    assertEqual(
+      await fileExists(`${restoredEmptyBackup}.claim-${restoredEmptyClaimId}`),
+      false,
+      "empty restored retained tree finalizes its claim"
+    );
+    const restoredIncompleteRoot = join(publicationRoot, "restored-incomplete-retained");
+    const restoredIncompleteBackup = join(
+      publicationRoot,
+      ".restored-incomplete-retained.bak"
+    );
+    const restoredIncompleteClaimId = "10000000-0000-4000-8000-000000000003";
+    await mkdir(restoredIncompleteRoot);
+    await writeFile(
+      join(restoredIncompleteRoot, "retained-artifacts.json"),
+      `${JSON.stringify({
+        schemaVersion: "kova.releaseGate.retainedArtifacts.v1",
+        outputDir: restoredIncompleteRoot,
+        reportPath: join(restoredIncompleteRoot, "report.md"),
+        jsonPath: join(restoredIncompleteRoot, "report.json"),
+        pasteSummaryPath: join(restoredIncompleteRoot, "paste-summary.txt"),
+        bundlePath: null,
+        checksumPath: null
+      })}\n`
+    );
+    await writeFile(`${restoredIncompleteBackup}.owner`, `${JSON.stringify({
+      schemaVersion: "kova.retainedArtifactBackup.v3",
+      outputRoot: restoredIncompleteRoot,
+      treeSha256: await retainedArtifactTreeDigest(restoredIncompleteRoot),
+      claimId: restoredIncompleteClaimId,
+      phase: "pending"
+    })}\n`);
+    await mkdir(`${restoredIncompleteBackup}.claim-${restoredIncompleteClaimId}`);
+    await retainGateArtifacts(collisionReports[0], firstBundle, {
+      outputDir: restoredIncompleteRoot
+    });
+    assertEqual(
+      await fileExists(`${restoredIncompleteBackup}.claim-${restoredIncompleteClaimId}`),
+      false,
+      "incomplete restored retained tree finalizes its claim"
+    );
 
     const retainedRoot = join(publicationRoot, "retained");
     const retained = await retainGateArtifacts(collisionReports[0], firstBundle, {
@@ -5501,14 +5693,110 @@ async function reportPublicationCheck(tmp) {
     );
     await rm(retainedBackup, { recursive: true });
     const retainedBackupMarker = `${retainedBackup}.owner`;
-    const writeRetainedBackupMarker = async () => {
+    let retainedClaimSequence = 0;
+    const writeRetainedBackupMarker = async (phase = "pending") => {
+      retainedClaimSequence += 1;
+      const claimId = `20000000-0000-4000-8000-${String(retainedClaimSequence).padStart(12, "0")}`;
       const treeSha256 = await retainedArtifactTreeDigest(retainedRoot);
       await writeFile(retainedBackupMarker, `${JSON.stringify({
-        schemaVersion: "kova.retainedArtifactBackup.v2",
+        schemaVersion: "kova.retainedArtifactBackup.v3",
         outputRoot: retainedRoot,
-        treeSha256
+        treeSha256,
+        claimId,
+        phase
       })}\n`);
+      return claimId;
     };
+    const malformedRetainedClaimId = await writeRetainedBackupMarker();
+    await rename(retainedRoot, retainedBackup);
+    const malformedRetainedClaimContainer =
+      `${retainedBackup}.claim-${malformedRetainedClaimId}`;
+    await mkdir(malformedRetainedClaimContainer);
+    await writeFile(join(malformedRetainedClaimContainer, "foreign.txt"), "preserve me\n");
+    let malformedRetainedClaimRejected = false;
+    try {
+      await retainGateArtifacts(collisionReports[0], firstBundle, {
+        outputDir: retainedRoot
+      });
+    } catch (error) {
+      malformedRetainedClaimRejected = /retained artifact backup claim is invalid/.test(
+        error.message
+      );
+    }
+    assertEqual(malformedRetainedClaimRejected, true, "malformed retained claim fails closed");
+    assertEqual(
+      await readFile(join(malformedRetainedClaimContainer, "foreign.txt"), "utf8"),
+      "preserve me\n",
+      "malformed retained claim preserves foreign data"
+    );
+    await rm(malformedRetainedClaimContainer, { recursive: true });
+    await rename(retainedBackup, retainedRoot);
+    await rm(retainedBackupMarker);
+    const emptyPostRestoreClaimId = await writeRetainedBackupMarker();
+    await rename(retainedRoot, retainedBackup);
+    const emptyPostRestoreContainer =
+      `${retainedBackup}.claim-${emptyPostRestoreClaimId}`;
+    const emptyPostRestoreTree = join(emptyPostRestoreContainer, "tree");
+    await mkdir(emptyPostRestoreContainer);
+    await rename(retainedBackup, emptyPostRestoreTree);
+    await rename(emptyPostRestoreTree, retainedRoot);
+    await retainGateArtifacts(collisionReports[0], firstBundle, {
+      outputDir: retainedRoot
+    });
+    assertEqual(
+      await fileExists(emptyPostRestoreContainer),
+      false,
+      "empty post-restore retained claim is finalized"
+    );
+    const missingCurrentSnapshot = join(publicationRoot, "missing-current-snapshot");
+    await cp(retainedRoot, missingCurrentSnapshot, { recursive: true });
+    const missingCurrentClaimId = await writeRetainedBackupMarker("cleanup");
+    await rename(retainedRoot, retainedBackup);
+    const missingCurrentContainer =
+      `${retainedBackup}.claim-${missingCurrentClaimId}`;
+    const missingCurrentTree = join(missingCurrentContainer, "tree");
+    await mkdir(missingCurrentContainer);
+    await rename(retainedBackup, missingCurrentTree);
+    await rm(join(missingCurrentTree, "report.md"));
+    let missingCurrentCleanupRejected = false;
+    try {
+      await retainGateArtifacts(collisionReports[0], firstBundle, {
+        outputDir: retainedRoot
+      });
+    } catch (error) {
+      missingCurrentCleanupRejected = /cleanup is missing current tree/.test(error.message);
+    }
+    assertEqual(
+      missingCurrentCleanupRejected,
+      true,
+      "partial retained cleanup without a current tree fails closed"
+    );
+    assertEqual(
+      await fileExists(missingCurrentTree),
+      true,
+      "failed partial cleanup preserves the remaining claimed tree"
+    );
+    await rm(missingCurrentContainer, { recursive: true });
+    await cp(missingCurrentSnapshot, retainedRoot, { recursive: true });
+    await rm(missingCurrentSnapshot, { recursive: true });
+    await rm(retainedBackupMarker);
+    const partialCleanupClaimId = await writeRetainedBackupMarker("cleanup");
+    await rename(retainedRoot, retainedBackup);
+    const partialCleanupContainer =
+      `${retainedBackup}.claim-${partialCleanupClaimId}`;
+    const partialCleanupTree = join(partialCleanupContainer, "tree");
+    await mkdir(partialCleanupContainer);
+    await rename(retainedBackup, partialCleanupTree);
+    await cp(partialCleanupTree, retainedRoot, { recursive: true });
+    await rm(join(partialCleanupTree, "report.md"));
+    await retainGateArtifacts(collisionReports[0], firstBundle, {
+      outputDir: retainedRoot
+    });
+    assertEqual(
+      await fileExists(partialCleanupContainer),
+      false,
+      "partially deleted retained cleanup claim is finalized"
+    );
     await writeRetainedBackupMarker();
     await rename(retainedRoot, retainedBackup);
     await mkdir(retainedRoot);
@@ -5516,8 +5804,12 @@ async function reportPublicationCheck(tmp) {
       outputDir: retainedRoot
     });
     assertEqual(await fileExists(retained.jsonPath), true, "empty retained tree recovered from backup");
-    await writeRetainedBackupMarker();
+    const claimedRetainedToken = await writeRetainedBackupMarker();
     await rename(retainedRoot, retainedBackup);
+    const claimedRetainedContainer = `${retainedBackup}.claim-${claimedRetainedToken}`;
+    const claimedRetainedBackup = join(claimedRetainedContainer, "tree");
+    await mkdir(claimedRetainedContainer);
+    await rename(retainedBackup, claimedRetainedBackup);
     await mkdir(retainedRoot);
     await writeFile(
       join(retainedRoot, "retained-artifacts.json"),
@@ -5528,10 +5820,18 @@ async function reportPublicationCheck(tmp) {
     });
     assertEqual(await fileExists(retained.jsonPath), true, "incomplete retained tree recovered from backup");
     assertEqual(await fileExists(retainedBackup), false, "recovered retained tree backup removed");
+    assertEqual(
+      await fileExists(claimedRetainedBackup),
+      false,
+      "recovered claimed retained tree backup removed"
+    );
 
-    await writeRetainedBackupMarker();
+    const conflictingRetainedToken = await writeRetainedBackupMarker();
     await rename(retainedRoot, retainedBackup);
-    await rm(retainedBackup, { recursive: true });
+    const conflictingRetainedContainer = `${retainedBackup}.claim-${conflictingRetainedToken}`;
+    const conflictingRetainedClaim = join(conflictingRetainedContainer, "tree");
+    await mkdir(conflictingRetainedContainer);
+    await rename(retainedBackup, conflictingRetainedClaim);
     await mkdir(retainedBackup);
     const unrelatedBackupPath = join(retainedBackup, "operator-backup.txt");
     await writeFile(unrelatedBackupPath, "preserve me\n");
@@ -5541,15 +5841,22 @@ async function reportPublicationCheck(tmp) {
         outputDir: retainedRoot
       });
     } catch (error) {
-      staleRetainedMarkerRejected = /backup is not Kova-managed/.test(error.message);
+      staleRetainedMarkerRejected = /conflicting replacement/.test(error.message);
     }
-    assertEqual(staleRetainedMarkerRejected, true, "stale retained backup marker fails closed");
+    assertEqual(staleRetainedMarkerRejected, true, "claimed retained backup replacement fails closed");
     assertEqual(
       await readFile(unrelatedBackupPath, "utf8"),
       "preserve me\n",
-      "stale retained backup marker preserves unrelated replacement data"
+      "claimed retained backup preserves fixed-path replacement data"
+    );
+    assertEqual(
+      await fileExists(join(conflictingRetainedClaim, "retained-artifacts.json")),
+      true,
+      "claimed retained backup remains intact after replacement"
     );
     await rm(retainedBackup, { recursive: true });
+    await rename(conflictingRetainedClaim, retainedRoot);
+    await rm(conflictingRetainedContainer, { recursive: true });
     await rm(retainedBackupMarker);
     await retainGateArtifacts(collisionReports[0], firstBundle, {
       outputDir: retainedRoot
