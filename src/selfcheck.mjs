@@ -4910,6 +4910,25 @@ async function reportPublicationCheck(tmp) {
     assertEqual(invalidChecksumRejected, true, "bundle publication rejects invalid existing checksum");
     await rm(firstBundle.checksumPath, { recursive: true });
     await writeFile(firstBundle.checksumPath, firstChecksum);
+    await Promise.all([
+      publishBundlePair({
+        archive: firstArchive,
+        outputPath: firstBundle.outputPath,
+        checksumPath: firstBundle.checksumPath,
+        checksum: firstChecksum
+      }),
+      publishBundlePair({
+        archive: firstArchive,
+        outputPath: firstBundle.outputPath,
+        checksumPath: firstBundle.checksumPath,
+        checksum: firstChecksum
+      })
+    ]);
+    assertEqual(
+      await readFile(firstBundle.checksumPath, "utf8"),
+      firstChecksum,
+      "concurrent identical bundle publication preserves checksum"
+    );
 
     const retainedRoot = join(publicationRoot, "retained");
     const retained = await retainGateArtifacts(collisionReports[0], firstBundle, {
@@ -4935,6 +4954,23 @@ async function reportPublicationCheck(tmp) {
       retainedBeforeFailure,
       "failed retained replacement preserves prior tree"
     );
+    const unmanagedPath = join(retainedRoot, "operator-note.txt");
+    await writeFile(unmanagedPath, "preserve me\n");
+    let unmanagedRetentionRejected = false;
+    try {
+      await retainGateArtifacts(collisionReports[0], firstBundle, {
+        outputDir: retainedRoot
+      });
+    } catch (error) {
+      unmanagedRetentionRejected = /contains unmanaged files/.test(error.message);
+    }
+    assertEqual(unmanagedRetentionRejected, true, "retention rejects trees with unmanaged files");
+    assertEqual(
+      await readFile(unmanagedPath, "utf8"),
+      "preserve me\n",
+      "retention preserves unrelated destination data"
+    );
+    await rm(unmanagedPath);
 
     await rm(collisionReports[0].replace(/\.json$/, ".md"));
     let missingMarkdownRejected = false;
