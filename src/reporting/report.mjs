@@ -2,6 +2,7 @@ import { summarizeAgentTurnBreakdownForMarkdown } from "../collectors/agent-turn
 import { agentCliPreProviderMarkdownRows } from "../collectors/agent-cli-attribution.mjs";
 import { gatewaySessionPreProviderMarkdownRows } from "../collectors/gateway-session-turn-attribution.mjs";
 import {
+  healthKnownFailures,
   healthTotalFailures,
   healthTotalFailuresComplete,
   measurementMetricValue
@@ -1745,6 +1746,7 @@ function compactRolePeaks(measurements) {
 function pushMeasurementBrief(lines, measurements, { compact }) {
   const readiness = measurements.health?.readiness ?? null;
   const totalHealthFailures = measurements.health ? healthTotalFailures(measurements.health) : null;
+  const knownHealthFailures = measurements.health ? healthKnownFailures(measurements.health) : null;
   const totalHealthFailuresComplete = measurements.health
     ? healthTotalFailuresComplete(measurements.health)
     : false;
@@ -1757,7 +1759,7 @@ function pushMeasurementBrief(lines, measurements, { compact }) {
     const healthFallback = readinessNotApplicable ? "n/a" : "not-collected";
     const totalFailuresText = totalHealthFailuresComplete
       ? String(totalHealthFailures)
-      : `at least ${totalHealthFailures}`;
+      : `at least ${knownHealthFailures}`;
     lines.push(`- health: startup p95 ${valueMs(measurements.health.startupSamples?.p95Ms, healthFallback)}; post-ready p95 ${valueMs(measurements.health.postReadySamples?.p95Ms, healthFallback)}; failures ${totalFailuresText}; final failures ${measurements.health.final?.failureCount ?? healthFallback}${healthSlowestText(measurements)}`);
   } else {
     lines.push(`- health: n/a${readinessReason ? ` (${readinessReason})` : ""}`);
