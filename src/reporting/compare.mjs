@@ -671,8 +671,8 @@ function normalizeFindingText(finding) {
   const text = String(finding?.summary ?? finding?.message ?? "").toLowerCase();
   return text
     .replace(
-    /-?\d+(?:\.\d+)?(?=\s*(?:ms|s|sec|seconds?|kb|mb|gb|bytes?|%)(?:\b|$))/gi,
-    "#"
+      /-?\d+(?:\.\d+)?(?=\s*(?:(?:ms|s|sec|seconds?|kb|mb|gb|bytes?)\b|%))/gi,
+      "#"
     )
     .replace(
       /\b(threshold|limit|budget|ceiling|minimum|maximum)(\s*(?:of|=|:)?\s*)-?\d+(?:\.\d+)?/gi,

@@ -2863,6 +2863,31 @@ function compareIdentityAndRollupCheck() {
     const categoricalComparison = compareReports(categoricalBaseline, categoricalCurrent);
     assertEqual(categoricalComparison.findingChanges.new.length, 1, "categorical numeric finding is new");
     assertEqual(categoricalComparison.findingChanges.resolved.length, 1, "categorical numeric finding is resolved");
+    const percentageBaseline = syntheticPerformanceReport({
+      runId: "percentage-baseline",
+      platform: baseline.platform,
+      target: "runtime:stable",
+      records: [findingRecord([{
+        kind: "threshold",
+        metric: "errorRate",
+        expected: "<= 4",
+        message: "error rate 5% exceeded threshold 4%"
+      }])]
+    });
+    const percentageCurrent = syntheticPerformanceReport({
+      runId: "percentage-current",
+      platform: baseline.platform,
+      target: "runtime:stable",
+      records: [findingRecord([{
+        kind: "threshold",
+        metric: "errorRate",
+        expected: "<= 4",
+        message: "error rate 6% exceeded threshold 4%"
+      }])]
+    });
+    const percentageComparison = compareReports(percentageBaseline, percentageCurrent);
+    assertEqual(percentageComparison.findingChanges.new.length, 0, "percentage measurement remains same finding");
+    assertEqual(percentageComparison.findingChanges.resolved.length, 0, "percentage measurement is not resolved");
 
     const rollupInput = {
       scenarios: [{
