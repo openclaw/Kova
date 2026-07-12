@@ -8,6 +8,7 @@ import { basename, dirname, join } from "node:path";
 const DEFAULT_STALE_MS = 10 * 60 * 1000;
 const DEFAULT_TIMEOUT_MS = 30 * 1000;
 const DEFAULT_RETRY_MS = 25;
+const MAX_DIAGNOSTIC_FIELD_LENGTH = 160;
 const CURRENT_PROCESS_IDENTITY = readProcessIdentity(process.pid);
 const CURRENT_EXECUTION_DOMAIN = readExecutionDomainIdentity();
 
@@ -473,7 +474,75 @@ function processIsAlive(pid) {
 
 async function waitForRetry(startedAt, timeoutMs, retryMs, lockPath) {
   if (Date.now() - startedAt >= timeoutMs) {
-    throw new Error(`timed out waiting for Kova file lock: ${lockPath}`);
+    const snapshot = await readSnapshot(lockPath);
+    const ownerSummary = describeLockOwner(snapshot);
+    const recovery = snapshot
+      ? "The lock fails closed across execution domains. Recovery requires quiescing all Kova " +
+        "writers, verifying the owner process or host is dead, and re-reading the lock immediately " +
+        "before removal to confirm its owner and fingerprint still match this timeout."
+      : "The lock disappeared during the timeout; retry without removing any file.";
+    throw new Error(
+      `timed out waiting for Kova file lock: ${formatDiagnosticField(lockPath)}${ownerSummary}. ` +
+      recovery
+    );
   }
   await new Promise((resolve) => setTimeout(resolve, retryMs));
+}
+
+function describeLockOwner(snapshot) {
+  if (!snapshot) {
+    return " (owner disappeared during timeout)";
+  }
+  const owner = snapshot.owner;
+  if (!owner || typeof owner !== "object") {
+    return (
+      ` (owner metadata invalid; ageMs=${Math.max(0, Math.round(snapshot.ageMs))}, ` +
+      `fingerprint=${snapshot.fingerprint})`
+    );
+  }
+  const domain = owner.executionDomainIdentity;
+  const fields = [
+    Number.isInteger(owner.pid) && owner.pid > 0 ? `pid=${owner.pid}` : null,
+    ownerField("host", domain && typeof domain === "object" ? domain.host : null),
+    domain && typeof domain === "object" && domain.hardwareMachine
+      ? ownerField("hardwareMachine", domain.hardwareMachine)
+      : null,
+    domain && typeof domain === "object" && domain.installationMachine
+      ? ownerField("installationMachine", domain.installationMachine)
+      : null,
+    `ageMs=${Math.max(0, Math.round(snapshot.ageMs))}`,
+    `fingerprint=${snapshot.fingerprint}`
+  ].filter(Boolean);
+  return ` (owner ${fields.join(", ")})`;
+}
+
+function ownerField(name, value) {
+  return typeof value === "string" && value
+    ? `${name}=${formatDiagnosticField(value, MAX_DIAGNOSTIC_FIELD_LENGTH)}`
+    : null;
+}
+
+function formatDiagnosticField(value, maxLength) {
+  const characters = Array.from(String(value));
+  const bounded =
+    maxLength && characters.length > maxLength
+      ? [...characters.slice(0, maxLength), ".", ".", "."]
+      : characters;
+  let encoded = '"';
+  for (const character of bounded) {
+    const codePoint = character.codePointAt(0);
+    if (character === '"' || character === "\\") {
+      encoded += `\\${character}`;
+    } else if (codePoint >= 0x20 && codePoint <= 0x7e) {
+      encoded += character;
+    } else if (codePoint <= 0xffff) {
+      encoded += `\\u${codePoint.toString(16).padStart(4, "0")}`;
+    } else {
+      const offset = codePoint - 0x10000;
+      const high = 0xd800 + (offset >> 10);
+      const low = 0xdc00 + (offset & 0x3ff);
+      encoded += `\\u${high.toString(16)}\\u${low.toString(16)}`;
+    }
+  }
+  return `${encoded}"`;
 }

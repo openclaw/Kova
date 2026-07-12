@@ -124,8 +124,10 @@ export async function withBaselineStoreLock(path, callback) {
     dirname(canonicalPath),
     `.kova-baseline-${identity}.lock`
   );
-  // The lock shares the baseline store's filesystem so every host and user
-  // participating in the same store observes one RMW serialization point.
+  // Colocation serializes shared-filesystem writers, but foreign-owner locks
+  // fail closed. After a remote crash, an operator must verify owner death
+  // before removing the lock; portable filesystem primitives cannot fence a
+  // resumed stale writer safely.
   return withFileLock(lockPath, callback, { fileMode: 0o644 });
 }
 
