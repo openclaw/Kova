@@ -159,8 +159,11 @@ function finalMetricsEvidence(metrics) {
   if (!metrics) {
     return { status: "missing", reason: "final metrics were not collected" };
   }
-  if (metrics.error) {
-    return { status: "failed", reason: String(metrics.error) };
+  if (metrics.error !== null && metrics.error !== undefined) {
+    return {
+      status: "failed",
+      reason: String(metrics.error) || "final metrics collection failed"
+    };
   }
   if (typeof metrics.service?.gatewayState !== "string") {
     return { status: "missing", reason: "final service state was not collected" };
