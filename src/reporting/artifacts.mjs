@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { constants as fsConstants, createReadStream, createWriteStream } from "node:fs";
 import { cp, lstat, mkdir, open, readFile, readdir, realpath, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { createGzip } from "node:zlib";
 import { pack as packTar } from "tar-stream";
@@ -1509,9 +1509,18 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function pathIsAtOrBelow(path, root) {
-  const child = relative(resolve(root), resolve(path));
-  return child === "" || (child !== ".." && !child.startsWith(`..${sep}`));
+export function pathIsAtOrBelow(path, root, pathApi = {
+  isAbsolute,
+  relative,
+  resolve,
+  sep
+}) {
+  const child = pathApi.relative(pathApi.resolve(root), pathApi.resolve(path));
+  return child === "" || (
+    !pathApi.isAbsolute(child) &&
+    child !== ".." &&
+    !child.startsWith(`..${pathApi.sep}`)
+  );
 }
 
 async function requireRegularFile(path, label) {
