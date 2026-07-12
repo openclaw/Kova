@@ -3,7 +3,7 @@ import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, uti
 import { createServer } from "node:http";
 import { join } from "node:path";
 import { resolveScriptStep } from "mock-ai-provider/dist/providers/openai/common/scripted-response.js";
-import { quoteShell, runCommand } from "./commands.mjs";
+import { createBoundedOutputAccumulator, quoteShell, runCommand } from "./commands.mjs";
 import { runCleanupCommand } from "./cleanup.mjs";
 import { applyEvidenceLedgerGating, attachEvidenceLedger } from "./evidence-ledger.mjs";
 import { attachCleanupEvidence } from "./evidence/record.mjs";
@@ -63,7 +63,7 @@ import { validateScenarioShape } from "./registries/scenarios.mjs";
 import { validateStateShape } from "./registries/states.mjs";
 import { validateRegistryReferences } from "./registries/validate.mjs";
 import { isMissingOcmResource } from "./ocm/missing-resource.mjs";
-import { assertSafeScenarioCommand } from "./safety.mjs";
+import { assertSafeScenarioCommand, assertSingleTopLevelShellCommand } from "./safety.mjs";
 import { resolveTarget } from "./targets.mjs";
 import {
   measurementScopeForPhase,
@@ -117,6 +117,7 @@ import {
   commandFailureRecordStatus,
   interpretCommandResult,
   isNoLogsOutput,
+  isOptionalNoLogsResult,
   normalizeOptionalCommandResult
 } from "./command-results.mjs";
 import { createRunId } from "./run/run-id.mjs";
@@ -339,7 +340,7 @@ async function runScopedSelfCheck(flags, scope, workspace) {
       "external-cli codex is not usable"
     ));
     checks.push(await externalCliRunAuthVerificationCheck(tmp));
-    checks.push(await commandTimeoutContractCheck());
+    checks.push(await commandTimeoutContractCheck(tmp));
     checks.push(await commandOutputBudgetCheck());
     checks.push(logSnippetBudgetCheck());
     checks.push(expectedMockProviderFailureTimeoutLogCheck());
@@ -4754,7 +4755,21 @@ async function gateDryRunCheck(tmp) {
 function safetyGuardCheck() {
   try {
     assertSafeScenarioCommand("ocm start kova-safe-test --runtime stable --json", {}, "kova-safe-test");
+    assertSafeScenarioCommand("ocm --version", {}, "kova-safe-test");
     assertSafeScenarioCommand("ocm env clone 'Team Env' kova-safe-test --json", { sourceEnv: "Team Env" }, "kova-safe-test");
+    assertSafeScenarioCommand("node support/run-soak-loop.mjs --env kova-safe-test", {}, "kova-safe-test");
+    assertSafeScenarioCommand(
+      "node support/expect-command-fails.mjs -- ocm @kova-safe-test -- agent --local --message hi",
+      {},
+      "kova-safe-test"
+    );
+    assertSafeScenarioCommand(
+      "rm -rf '/tmp/kova-self-check-artifacts/import'",
+      {},
+      "kova-safe-test",
+      "/tmp/kova-self-check-artifacts"
+    );
+    assertSingleTopLevelShellCommand("ocm env exec kova-safe-test -- sh -lc 'printf \"a;b|c&&d\" >&2'");
     const blockedCases = [
       "ocm env destroy Violet --yes",
       "ocm upgrade Violet --channel beta --json",
@@ -4779,6 +4794,80 @@ function safetyGuardCheck() {
       wrongSourceBlocked = /refusing to mutate non-Kova/.test(error.message);
     }
     assertEqual(wrongSourceBlocked, true, "unexpected source env clone blocked");
+    const compoundCases = [
+      "ocm logs kova-safe-test; ocm env destroy Violet --yes",
+      "true && ocm env destroy Violet --yes",
+      "true | ocm env destroy Violet --yes",
+      "sleep 10 & ocm env destroy Violet --yes",
+      "true\nocm env destroy Violet --yes"
+    ];
+    let compoundBlocked = 0;
+    for (const command of compoundCases) {
+      try {
+        assertSafeScenarioCommand(command, {}, "kova-safe-test");
+      } catch (error) {
+        if (/refusing (?:compound )?scenario command/.test(error.message)) {
+          compoundBlocked += 1;
+        }
+      }
+    }
+    assertEqual(compoundBlocked, compoundCases.length, "top-level compound commands blocked");
+    const shellEvaluationCases = [
+      "echo \"$(ocm env destroy Violet --yes)\"",
+      "echo `ocm env destroy Violet --yes`",
+      "cat <(ocm env destroy Violet --yes)",
+      "sh -c 'ocm env destroy Violet --yes'",
+      "env ocm env destroy Violet --yes",
+      "KOVA_MODE=test ocm env destroy Violet --yes",
+      "\"$OCM\" env destroy Violet --yes",
+      "/usr/local/bin/ocm env destroy Violet --yes",
+      "! ocm env destroy Violet --yes",
+      "(ocm env destroy Violet --yes)",
+      "> /tmp/kova-redirection ocm env destroy Violet --yes",
+      "timeout 30 ocm env destroy Violet --yes",
+      "node -e 'require(\"node:child_process\").execFileSync(\"ocm\", [\"env\", \"destroy\", \"Violet\", \"--yes\"])'",
+      "node /tmp/support/run-soak-loop.mjs --env kova-safe-test",
+      "node support/run-openclaw-release-age-upgrade.mjs --env Violet --age day --json",
+      "node support/run-openclaw-release-age-upgrade.mjs --env=Violet --age day --json",
+      "node support/run-doctor-repair.mjs --env kova-safe-test --env Violet",
+      "node support/expect-command-fails.mjs -- ocm env destroy Violet --yes",
+      "node support/assert-command-output.mjs --pattern done -- ocm logs Violet --tail 20 --raw",
+      "ocm env des\\\ntroy Violet --yes",
+      "ocm --json env destroy Violet --yes",
+      "ocm e?? d?????? Violet --yes",
+      "rm -rf \"/tmp/kova-self-check-artifacts/im\\port\""
+    ];
+    let shellEvaluationBlocked = 0;
+    for (const command of shellEvaluationCases) {
+      try {
+        assertSafeScenarioCommand(command, {}, "kova-safe-test");
+      } catch (error) {
+        if (/^refusing /.test(error.message)) {
+          shellEvaluationBlocked += 1;
+        }
+      }
+    }
+    assertEqual(shellEvaluationBlocked, shellEvaluationCases.length, "shell evaluation bypasses blocked");
+    const artifactCleanupCases = [
+      ["rm -rf relative/import", "relative"],
+      ["rm -rf ~/kova-self-check-artifacts/import", "/tmp/kova-self-check-artifacts"]
+    ];
+    for (const [command, artifactDir] of artifactCleanupCases) {
+      let blocked = false;
+      try {
+        assertSafeScenarioCommand(command, {}, "kova-safe-test", artifactDir);
+      } catch (error) {
+        blocked = /unapproved artifact cleanup/.test(error.message);
+      }
+      assertEqual(blocked, true, `unsafe artifact cleanup path blocked: ${command}`);
+    }
+    let obfuscatedMutationBlocked = false;
+    try {
+      assertSafeScenarioCommand("ocm e''nv des''troy Violet --yes", {}, "kova-safe-test");
+    } catch (error) {
+      obfuscatedMutationBlocked = /refusing to mutate non-Kova/.test(error.message);
+    }
+    assertEqual(obfuscatedMutationBlocked, true, "quoted OCM mutation words are canonicalized");
     return {
       id: "durable-env-mutation-guard",
       status: "PASS",
@@ -9722,11 +9811,12 @@ if (args[0] === ${JSON.stringify(`@${scope.envName}`)} && args[1] === "--" && ar
 async function networkFrontageProductPreflightBlocksPendingCheck(tmp, scope) {
   const fakeBin = join(tmp, "network-frontage-pending-bin");
   const artifactDir = join(tmp, "network-frontage-pending-artifacts");
-  const sentinel = join(tmp, "network-frontage-pending-ran");
+  const sentinel = join(artifactDir, "import");
   const fakeOcm = join(fakeBin, "ocm");
   try {
     await mkdir(fakeBin, { recursive: true });
     await mkdir(artifactDir, { recursive: true });
+    await mkdir(sentinel, { recursive: true });
     await writeFile(fakeOcm, `#!/bin/sh
 if [ "$1:$2" = "service:status" ]; then
   printf '{"gatewayPort":43123,"gatewayState":"starting","running":false}\\n'
@@ -9737,7 +9827,7 @@ exit 2
 `, "utf8");
     await chmod(fakeOcm, 0o755);
     const result = await runScenarioCommand(
-      `node -e "require('node:fs').writeFileSync(process.argv[1], 'ran')" ${quoteShell(sentinel)}`,
+      `rm -rf ${quoteShell(sentinel)}`,
       {
         timeoutMs: 5000,
         networkFrontage: {
@@ -9759,9 +9849,10 @@ exit 2
     let commandRan = false;
     try {
       await stat(sentinel);
-      commandRan = true;
     } catch (error) {
-      if (error.code !== "ENOENT") {
+      if (error.code === "ENOENT") {
+        commandRan = true;
+      } else {
         throw error;
       }
     }
@@ -16259,7 +16350,7 @@ async function externalCliRunAuthVerificationCheck(tmp) {
   };
 }
 
-async function commandTimeoutContractCheck() {
+async function commandTimeoutContractCheck(tmp) {
   const command = "node -e 'setTimeout(() => console.log(\"default-timeout-ok\"), 20)'";
   try {
     const result = await runCommand(command, { maxOutputChars: 100000 });
@@ -16273,6 +16364,37 @@ async function commandTimeoutContractCheck() {
       invalidRejected = /timeoutMs must be a positive integer/.test(error.message);
     }
     assertEqual(invalidRejected, true, "invalid timeout rejected");
+    if (process.platform !== "win32") {
+      const pidPath = join(tmp, "timed-out-command.pid");
+      const stubbornTree = [
+        "trap '' TERM",
+        "sleep 30 & child=$!",
+        `printf '%s %s' "$$" "$child" > ${quoteShell(pidPath)}`,
+        "wait"
+      ].join("; ");
+      const timedOut = await runCommand(stubbornTree, {
+        timeoutMs: 500,
+        maxOutputChars: 1000
+      });
+      assertEqual(timedOut.status, 124, "timed out command status");
+      assertEqual(timedOut.timedOut, true, "timed out command marker");
+      const pids = (await readFile(pidPath, "utf8")).trim().split(/\s+/).map(Number);
+      assertEqual(pids.length, 2, "timed out process tree pids captured");
+      for (const pid of pids) {
+        let alive = true;
+        try {
+          process.kill(pid, 0);
+        } catch (error) {
+          if (error.code === "ESRCH") {
+            alive = false;
+          } else {
+            throw error;
+          }
+        }
+        assertEqual(alive, false, `timed out process ${pid} is closed`);
+      }
+      await assertShutdownSignalCleansProcessTree(tmp);
+    }
     return {
       id: "command-timeout-contract",
       status: "PASS",
@@ -16290,9 +16412,90 @@ async function commandTimeoutContractCheck() {
   }
 }
 
+async function assertShutdownSignalCleansProcessTree(tmp) {
+  const shutdownSignal = "SIGQUIT";
+  const expectedExitCode = 131;
+  const pidPath = join(tmp, "shutdown-forwarding-command.pid");
+  const commandsModuleUrl = new URL("./commands.mjs", import.meta.url).href;
+  const command = [
+    "trap '' TERM INT HUP QUIT",
+    "(trap '' TERM INT HUP QUIT; sleep 30) & child=$!",
+    `printf '%s %s' "$$" "$child" > ${quoteShell(pidPath)}`,
+    "wait"
+  ].join("; ");
+  const runnerCode = [
+    `import { runCommand } from ${JSON.stringify(commandsModuleUrl)};`,
+    `process.on(${JSON.stringify(shutdownSignal)}, () => {});`,
+    `await runCommand(${JSON.stringify(command)}, { timeoutMs: 60000 });`
+  ].join("\n");
+  const runner = spawn(process.execPath, ["--input-type=module", "-e", runnerCode], {
+    stdio: "ignore"
+  });
+  const closed = new Promise((resolve, reject) => {
+    runner.once("error", reject);
+    runner.once("close", (status, signal) => resolve({ status, signal }));
+  });
+  let pids = null;
+  try {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      try {
+        const raw = (await readFile(pidPath, "utf8")).trim();
+        if (/^\d+ \d+$/.test(raw)) {
+          pids = raw.split(" ").map(Number);
+          break;
+        }
+      } catch (error) {
+        if (error.code !== "ENOENT") {
+          throw error;
+        }
+      }
+      await sleep(25);
+    }
+    assertEqual(pids?.length, 2, "shutdown forwarding process tree pids captured");
+    runner.kill(shutdownSignal);
+    const result = await Promise.race([
+      closed,
+      sleep(5000).then(() => {
+        throw new Error("shutdown forwarding runner did not exit");
+      })
+    ]);
+    assertEqual(result.status, expectedExitCode, "shutdown forwarding returns the conventional signal exit code");
+    for (const pid of pids) {
+      let alive = true;
+      try {
+        process.kill(pid, 0);
+      } catch (error) {
+        if (error.code === "ESRCH") {
+          alive = false;
+        } else {
+          throw error;
+        }
+      }
+      assertEqual(alive, false, `shutdown-forwarded process ${pid} is closed`);
+    }
+  } finally {
+    if (runner.exitCode === null && runner.signalCode === null) {
+      runner.kill("SIGTERM");
+      await Promise.race([closed.catch(() => null), sleep(1500)]);
+      if (runner.exitCode === null && runner.signalCode === null) {
+        runner.kill("SIGKILL");
+      }
+    }
+    if (pids?.[0]) {
+      try {
+        process.kill(-pids[0], "SIGKILL");
+      } catch (error) {
+        if (error.code !== "ESRCH") {
+          throw error;
+        }
+      }
+    }
+  }
+}
+
 async function commandOutputBudgetCheck() {
   try {
-    const result = await runCommand("node -e 'process.stdout.write(\"x\".repeat(80)); process.stderr.write(\"y\".repeat(30));'", {
+    const result = await runCommand("node -e 'process.stdout.write(\"x\".repeat(1000000)); process.stderr.write(\"y\".repeat(100000));'", {
       timeoutMs: 10000,
       maxOutputChars: 20
     });
@@ -16300,8 +16503,20 @@ async function commandOutputBudgetCheck() {
     assertEqual(result.outputBudget?.schemaVersion, "kova.commandOutputBudget.v1", "command output budget schema");
     assertEqual(result.outputBudget?.stdout?.truncated, true, "stdout budget truncates");
     assertEqual(result.outputBudget?.stderr?.truncated, true, "stderr budget truncates");
-    assertEqual(result.outputBudget?.stdout?.omittedChars, 60, "stdout omitted chars");
-    assertEqual(result.outputBudget?.stderr?.omittedChars, 10, "stderr omitted chars");
+    assertEqual(result.outputBudget?.stdout?.omittedChars, 999980, "stdout omitted chars");
+    assertEqual(result.outputBudget?.stderr?.omittedChars, 99980, "stderr omitted chars");
+    const redactionValue = "kova-sensitive-marker";
+    const accumulator = createBoundedOutputAccumulator({
+      limit: 20,
+      redactValues: [redactionValue]
+    });
+    accumulator.write("prefix-kova-sensitive-");
+    accumulator.write("marker-suffix-that-is-truncated");
+    const redacted = accumulator.finish();
+    assertEqual(redacted.text.includes(redactionValue), false, "streaming accumulator redacts split secrets");
+    assertEqual(redacted.text.startsWith("prefix-[REDACTED]"), true, "streaming accumulator retains redaction marker");
+    assertEqual(redacted.truncated, true, "streaming redacted output remains bounded");
+    assertEqual(redacted.retainedChars, 20, "streaming redacted output cap");
     return {
       id: "command-output-budget",
       status: "PASS",
@@ -16456,12 +16671,51 @@ function optionalNoLogsCommandCheck() {
       command: "ocm logs 'kova-empty-logs' --tail 250 --raw",
       status: 1,
       stdout: "",
-      stderr: "ocm: no logs exist for env \"kova-empty-logs\" across stdout or stderr"
+      stderr: "ocm: no logs exist for env \"kova-empty-logs\" across stdout or stderr\n"
     });
-    assertEqual(isNoLogsOutput(`${result.stdout ?? ""}\n${result.stderr ?? ""}`), true, "missing logs output is detected");
+    assertEqual(isNoLogsOutput(result.stderr), true, "exact missing logs stderr is detected");
+    assertEqual(isOptionalNoLogsResult(result), true, "empty stdout and exact stderr are optional");
     assertEqual(result.status, 0, "missing logs are normalized to optional success");
     assertEqual(result.originalStatus, 1, "original log command status retained");
     assertEqual(result.optional, true, "optional marker set");
+    for (const candidate of [
+      {
+        command: "ocm logs 'kova-empty-logs' --tail 250 --raw",
+        status: 1,
+        stdout: "unexpected output",
+        stderr: "ocm: no logs exist for env \"kova-empty-logs\" across stdout or stderr\n"
+      },
+      {
+        command: "ocm logs 'kova-empty-logs' --tail 250 --raw",
+        status: 1,
+        stdout: "",
+        stderr: "warning\nocm: no logs exist for env \"kova-empty-logs\" across stdout or stderr\n"
+      },
+      {
+        command: "ocm logs 'kova-empty-logs' --tail 250 --raw",
+        status: 1,
+        stdout: "",
+        stderr: "ocm: no logs exist for env \"kova-empty-logs\" across stdout or stderr\nextra"
+      },
+      {
+        command: "ocm logs 'kova-empty-logs' --tail 250 --raw",
+        status: 124,
+        timedOut: true,
+        stdout: "",
+        stderr: "ocm: no logs exist for env \"kova-empty-logs\" across stdout or stderr\n"
+      },
+      {
+        command: "ocm logs 'kova-empty-logs' --tail 250 --raw",
+        status: 1,
+        signal: "SIGTERM",
+        stdout: "",
+        stderr: "ocm: no logs exist for env \"kova-empty-logs\" across stdout or stderr\n"
+      }
+    ]) {
+      normalizeOptionalCommandResult(candidate);
+      assertEqual(candidate.status, 1, "non-exact missing logs output remains failed");
+      assertEqual(candidate.optional, undefined, "non-exact missing logs output is not optional");
+    }
     return {
       id: "optional-no-logs-command",
       status: "PASS",
