@@ -4,8 +4,9 @@
 
 export function fmtMs(ms: number): string {
   if (ms >= 60_000) {
-    const m = Math.floor(ms / 60_000);
-    const s = Math.round((ms - m * 60_000) / 1000);
+    const totalSeconds = Math.round(ms / 1000);
+    const m = Math.floor(totalSeconds / 60);
+    const s = totalSeconds % 60;
     return `${m}m ${s.toString().padStart(2, "0")}s`;
   }
   if (ms >= 1000) return `${(ms / 1000).toFixed(2)} s`;
