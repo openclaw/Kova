@@ -6,6 +6,7 @@ import { basename, isAbsolute, join } from "node:path";
 import { credentialsDir, liveEnvPath, providersPath, repoRoot } from "./paths.mjs";
 import { quoteShell } from "./commands.mjs";
 import { ocmAt, ocmEnvExec } from "./ocm/commands.mjs";
+import { mockProviderSupervisorArgs } from "./process-safety.mjs";
 import {
   externalCliVerificationSummary,
   resolveExternalCliName,
@@ -1097,26 +1098,41 @@ function startMockProviderCommand(dir, mockProvider = {}) {
 }
 
 export function mockAiProviderServeCommand({ scriptPath, requestLog, serverLog, pidFile }) {
+  const values = {
+    supervisorPath: join(repoRoot, "support/mock-ai-provider-supervisor.mjs"),
+    scriptPath,
+    requestLog,
+    serverLog,
+    pidFile
+  };
   const bin = quoteShell(join(repoRoot, "node_modules/.bin/mock-ai-provider"));
-  const args = `serve --providers openai --script ${quoteShell(scriptPath)} --port 0 --request-log ${quoteShell(requestLog)}`;
-  const output = `>${quoteShell(serverLog)} 2>&1 & echo $! >${quoteShell(pidFile)}`;
-  return `test -x ${bin} || { echo "Kova requires the local npm package mock-ai-provider; run npm install in the Kova repo" >&2; exit 127; }; ${bin} ${args} ${output}`;
+  const publishedPid = quoteShell(pidFile);
+  const readPublishedPid = [
+    "node",
+    "-e",
+    quoteShell("const fs=require('fs'); const record=JSON.parse(fs.readFileSync(process.argv[1],'utf8')); process.stdout.write(String(record.pid));"),
+    publishedPid
+  ].join(" ");
+  const supervisor = ["node", ...mockProviderSupervisorArgs(values)].map(quoteShell).join(" ");
+  return `test -x ${bin} || { echo "Kova requires the local npm package mock-ai-provider; run npm install in the Kova repo" >&2; exit 127; }; ${supervisor} >/dev/null 2>&1 & supervisor_pid=$!; for i in $(seq 1 100); do if test -s ${publishedPid}; then published_pid=$(${readPublishedPid} 2>/dev/null || true); test "$published_pid" = "$supervisor_pid" && break; fi; kill -0 "$supervisor_pid" 2>/dev/null || break; sleep 0.05; done; published_pid=$(${readPublishedPid} 2>/dev/null || true); test "$published_pid" = "$supervisor_pid" || { kill "$supervisor_pid" 2>/dev/null || true; wait "$supervisor_pid"; status=$?; test "$status" -ne 0 && exit "$status"; echo "Kova mock provider supervisor did not publish its PID" >&2; exit 1; }`;
 }
 
 export function mockProviderCleanupCommand(dir) {
   const values = {
     pidFile: join(dir, "pid"),
-    executablePath: join(repoRoot, "node_modules/.bin/mock-ai-provider"),
+    supervisorPath: join(repoRoot, "support/mock-ai-provider-supervisor.mjs"),
     scriptPath: join(dir, "script.json"),
-    requestLog: join(dir, "requests.jsonl")
+    requestLog: join(dir, "requests.jsonl"),
+    serverLog: join(dir, "server.log")
   };
   return [
     "node",
     quoteShell(join(repoRoot, "support/stop-mock-ai-provider.mjs")),
     "--pid-file", quoteShell(values.pidFile),
-    "--executable", quoteShell(values.executablePath),
+    "--supervisor", quoteShell(values.supervisorPath),
     "--script", quoteShell(values.scriptPath),
-    "--request-log", quoteShell(values.requestLog)
+    "--request-log", quoteShell(values.requestLog),
+    "--server-log", quoteShell(values.serverLog)
   ].join(" ");
 }
 
