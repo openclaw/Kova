@@ -88,7 +88,8 @@ import {
 } from "./collectors/logs.mjs";
 import {
   buildAgentTurnBreakdown,
-  summarizeAgentTurnBreakdownForMarkdown
+  summarizeAgentTurnBreakdownForMarkdown,
+  summarizeLogStages
 } from "./collectors/agent-turns.mjs";
 import { buildAgentCliPreProviderAttribution } from "./collectors/agent-cli-attribution.mjs";
 import {
@@ -5936,6 +5937,18 @@ function agentTurnBreakdownCheck() {
     assertEqual(normal.breakdown.buckets.unknownMs, 15, "normal unattributed pre-provider bucket");
     assertEqual(normal.breakdown.provider.firstByteLatencyMs, 15, "normal first byte latency");
     assertEqual(normal.breakdown.sourceSpans.categories.modelCatalog.totalDurationMs, 70, "model catalog source span");
+
+    const partialEmbeddedStages = summarizeLogStages({
+      embeddedRuns: {
+        available: true,
+        eventCount: 3
+      },
+      stageTotals: {
+        "runtime-plugins": { count: 1, totalDurationMs: 42, maxDurationMs: 42 }
+      }
+    });
+    assertEqual(partialEmbeddedStages.eventCount, 3, "embedded run metadata remains authoritative");
+    assertEqual(partialEmbeddedStages.allStages[0]?.totalDurationMs, 42, "missing embedded stage totals fall back");
 
     const preProviderStall = syntheticTurn({
       startedAtEpochMs: 1000,
