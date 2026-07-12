@@ -77,8 +77,9 @@ export async function bundleReport(reportPath, options = {}) {
     const artifactIndex = await buildArtifactIndex(stage, bundleName);
     await writeFile(join(stage, "artifact-index.json"), `${JSON.stringify(artifactIndex, null, 2)}\n`, "utf8");
 
-    const tar = spawnSync("tar", ["-czf", stagedArchivePath, "-C", tmp, bundleName], {
+    const tar = spawnSync("tar", ["--format=ustar", "-czf", stagedArchivePath, "-C", tmp, bundleName], {
       encoding: "utf8",
+      env: { ...process.env, COPYFILE_DISABLE: "1" },
       stdio: ["ignore", "pipe", "pipe"]
     });
     if (tar.status !== 0) {
