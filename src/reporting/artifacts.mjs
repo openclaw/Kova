@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { withFileLock } from "../file-lock.mjs";
 import { artifactsDir } from "../paths.mjs";
+import { artifactRunIdSegment, isCanonicalRunId } from "./artifact-names.mjs";
 import { renderPasteSummary } from "./report.mjs";
 
 const RESERVED_RETAINED_FILENAMES = new Set([
@@ -26,7 +27,7 @@ export async function bundleReport(reportPath, options = {}) {
   const outputRoot = options.outputDir ? resolve(options.outputDir) : join(artifactsDir, "bundles");
   await mkdir(outputRoot, { recursive: true });
 
-  const bundleName = `${safeRunIdSegment(runId)}-bundle`;
+  const bundleName = `${artifactRunIdSegment(runId)}-bundle`;
   const tmp = await mkdtemp(join(tmpdir(), "kova-artifact-bundle-"));
   const stage = join(tmp, bundleName);
   const stagedArchivePath = join(tmp, `${bundleName}.tar.gz`);
@@ -127,7 +128,7 @@ export async function retainGateArtifacts(reportPath, bundle, options = {}) {
 
   const outputRoot = options.outputDir
     ? resolve(options.outputDir)
-    : join(artifactsDir, "release-gates", safeRunIdSegment(report.runId));
+    : join(artifactsDir, "release-gates", artifactRunIdSegment(report.runId));
   await mkdir(dirname(outputRoot), { recursive: true });
 
   const hasBundle = Boolean(bundle?.outputPath);
@@ -171,14 +172,6 @@ function siblingMarkdownPath(path) {
   return join(dirname(path), `${base}.md`);
 }
 
-function safeRunIdSegment(value) {
-  const runId = String(value);
-  if (isCanonicalRunId(runId)) {
-    return runId;
-  }
-  return `external-${createHash("sha256").update(runId).digest("hex").slice(0, 24)}`;
-}
-
 function portableRetentionFilenameKey(value) {
   if (
     !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value) ||
@@ -188,10 +181,6 @@ function portableRetentionFilenameKey(value) {
     throw new Error("retained report bundle filenames must use portable filenames");
   }
   return value.toLowerCase();
-}
-
-function isCanonicalRunId(value) {
-  return /^kova-\d{6}-\d{6}-[0-9a-f]{6}$/.test(value);
 }
 
 async function buildArtifactIndex(stage, bundleName) {

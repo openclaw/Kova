@@ -1167,6 +1167,42 @@ async function runScopedSelfCheck(flags, scope, workspace) {
           );
         }
       ));
+      const externalReportPath = join(tmp, "external-report.json");
+      const externalMarkdownPath = join(tmp, "external-report.md");
+      const externalReport = {
+        ...report,
+        runId: "external/report",
+        outputPaths: {
+          ...report.outputPaths,
+          json: externalReportPath,
+          markdown: externalMarkdownPath
+        }
+      };
+      await writeFile(externalReportPath, `${JSON.stringify(externalReport, null, 2)}\n`);
+      await writeFile(externalMarkdownPath, "# external report\n");
+      const externalBundle = await bundleReport(externalReportPath, { outputDir: tmp });
+      const externalPublishRoot = join(tmp, "publish-external-content-addressed");
+      const externalPublishOutDir = join(externalPublishRoot, "src", "content", "releases");
+      checks.push(await jsonCommandCheck(
+        "publish-noncanonical-content-addressed-bundle",
+        `node bin/kova.mjs publish ${quoteShell(externalReportPath)} --ver 2026.7.12-external-selfcheck --release-date 2026-07-12 --sha selfcheck --out-dir ${quoteShell(externalPublishOutDir)} --json`,
+        async () => {
+          const payload = JSON.parse(
+            await readFile(join(externalPublishOutDir, "2026.7.12-external-selfcheck.json"), "utf8")
+          );
+          const bundleName = basename(externalBundle.outputPath);
+          assertEqual(
+            payload.runs?.[0]?.bundle?.name,
+            bundleName,
+            "publish uses the producer mapping for noncanonical run IDs"
+          );
+          assertEqual(
+            await fileExists(join(externalPublishRoot, "public", "bundles", bundleName)),
+            true,
+            "publish copies noncanonical content-addressed report bundle"
+          );
+        }
+      ));
     }
 
   const ok = checks.every((check) => check.status === "PASS");
@@ -5518,7 +5554,7 @@ async function fileLockRecoveryCheck(tmp) {
           hardwareMachine: "machine-a",
           installationMachine: "install-a",
           boot: "boot-a",
-          pidNamespace: null
+          pidNamespace: "pid:[1]"
         },
         {
           host: "host-a",
@@ -5530,6 +5566,46 @@ async function fileLockRecoveryCheck(tmp) {
       ),
       "rebooted",
       "proven machine reboot is reclaimable"
+    );
+    assertEqual(
+      classifyExecutionDomain(
+        {
+          host: "host-a",
+          hardwareMachine: "machine-a",
+          installationMachine: "install-a",
+          boot: "boot-a",
+          pidNamespace: "pid:[1]"
+        },
+        {
+          host: "host-a",
+          hardwareMachine: "machine-a",
+          installationMachine: "install-a",
+          boot: "boot-b",
+          pidNamespace: "pid:[2]"
+        }
+      ),
+      "foreign",
+      "foreign PID namespace defeats reboot reclamation"
+    );
+    assertEqual(
+      classifyExecutionDomain(
+        {
+          host: "host-a",
+          hardwareMachine: "machine-a",
+          installationMachine: "install-a",
+          boot: "boot-a",
+          pidNamespace: null
+        },
+        {
+          host: "host-a",
+          hardwareMachine: "machine-a",
+          installationMachine: "install-a",
+          boot: "boot-b",
+          pidNamespace: null
+        }
+      ),
+      "unknown",
+      "missing PID namespace identity defeats reboot reclamation"
     );
     assertEqual(
       classifyExecutionDomain(
