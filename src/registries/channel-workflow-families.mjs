@@ -106,7 +106,7 @@ export async function loadChannelWorkflowFamilies(selectedId) {
 }
 
 export function workflowInventoryFromFamilies(families) {
-  return [{
+  const inventories = [{
     schemaVersion: "kova.channelWorkflowInventory.v1",
     id: "openclaw-channel-workflow-inventory",
     title: "OpenClaw Channel Workflow Inventory",
@@ -127,10 +127,14 @@ export function workflowInventoryFromFamilies(families) {
       ...(Array.isArray(family.unsupported) ? { unsupported: family.unsupported } : {})
     }))
   }];
+  for (const inventory of inventories) {
+    validateWorkflowInventoryCatalogShape(inventory, "derived channel workflow inventory");
+  }
+  return inventories;
 }
 
 export function workflowCaseCatalogFromFamilies(families) {
-  return [{
+  const catalogs = [{
     schemaVersion: "kova.channelWorkflowCaseCatalog.v1",
     id: "openclaw-channel-workflow-cases",
     title: "OpenClaw Channel Workflow Cases",
@@ -141,6 +145,10 @@ export function workflowCaseCatalogFromFamilies(families) {
       ownerArea: testCase.ownerArea ?? family.ownerArea
     })))
   }];
+  for (const catalog of catalogs) {
+    validateWorkflowCaseCatalogShape(catalog, "derived channel workflow case catalog");
+  }
+  return catalogs;
 }
 
 export function validateWorkflowInventoryCatalogShape(inventory, sourceName = "channel workflow inventory") {

@@ -45,6 +45,7 @@ export async function loadChannelCapabilities(selectedId) {
     loadChannelWorkflowCaseCatalog()
   ]);
   const catalogMap = channelCapabilityCatalogMap(capabilityCatalogs);
+  validateChannelProofPolicyReferences(proofPolicy, capabilityCatalogs);
   const workflowCases = workflowCatalogs.flatMap((catalog) => catalog.cases ?? []);
   return filtered.map((platform) => channelCapabilityFromPlatform(platform, catalogMap, proofPolicy, workflowCases));
 }
@@ -91,7 +92,7 @@ function channelCapabilityFromPlatform(platform, catalogMap, proofPolicy, workfl
       id,
       group,
       catalogId,
-      title: catalogCapability?.title ?? catalogId,
+      title: catalogCapability?.capability?.title ?? catalogId,
       requiredLevel: proof.requiredLevel,
       proofModes: proof.proofModes,
       declarationSource: declarationSourceFor(platform, group)
@@ -164,6 +165,19 @@ export function validateChannelCapabilityCatalogReferences(channels, catalogs) {
     }
   }
   assertNoShapeErrors(errors, "channel capability catalog references");
+}
+
+export function validateChannelProofPolicyReferences(policy, catalogs) {
+  const catalogMap = channelCapabilityCatalogMap(catalogs);
+  const errors = [];
+  for (const field of ["blockingCapabilities", "liveSmokeCapabilities"]) {
+    for (const key of policy?.[field] ?? []) {
+      if (!catalogMap.has(key)) {
+        errors.push(`${field} references unknown channel capability '${key}'`);
+      }
+    }
+  }
+  assertNoShapeErrors(errors, "channel proof policy references");
 }
 
 export function validateChannelCapabilityWorkflowReferences(channels, workflowCatalogs) {
