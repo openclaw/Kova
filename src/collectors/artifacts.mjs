@@ -3,6 +3,7 @@ import { copyFile, mkdir, stat } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 
 export const COLLECTOR_ARTIFACT_DIRS_SCHEMA = "kova.collectorArtifactDirs.v1";
+const MAX_ARTIFACT_NAME_BYTES = 255;
 
 export function collectorArtifactDirs(runArtifactDir) {
   return {
@@ -83,5 +84,28 @@ function collisionSafeArtifactName(source) {
   const extension = extname(name);
   const stem = extension ? name.slice(0, -extension.length) : name;
   const digest = createHash("sha256").update(source).digest("hex").slice(0, 12);
-  return `${stem}-${digest}${extension}`;
+  const digestSuffix = `-${digest}`;
+  const extensionBudget = MAX_ARTIFACT_NAME_BYTES - Buffer.byteLength(digestSuffix);
+  const retainedExtension = truncateUtf8(extension, extensionBudget);
+  const stemBudget = MAX_ARTIFACT_NAME_BYTES
+    - Buffer.byteLength(digestSuffix)
+    - Buffer.byteLength(retainedExtension);
+  return `${truncateUtf8(stem, stemBudget)}${digestSuffix}${retainedExtension}`;
+}
+
+function truncateUtf8(value, maxBytes) {
+  if (Buffer.byteLength(value) <= maxBytes) {
+    return value;
+  }
+  let result = "";
+  let bytes = 0;
+  for (const character of value) {
+    const characterBytes = Buffer.byteLength(character);
+    if (bytes + characterBytes > maxBytes) {
+      break;
+    }
+    result += character;
+    bytes += characterBytes;
+  }
+  return result;
 }
