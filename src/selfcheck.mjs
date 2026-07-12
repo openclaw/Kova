@@ -4869,6 +4869,21 @@ async function reportPublicationCheck(tmp) {
   try {
     const report = syntheticPublicationReport();
     await mkdir(publicationRoot, { recursive: true });
+    const writeTransactionMarker = async (outputPaths) => {
+      const previousFiles = await Promise.all(Object.values(outputPaths).map(async (path) => ({
+        name: basename(path),
+        sha256: createHash("sha256").update(await readFile(path)).digest("hex")
+      })));
+      await writeFile(
+        join(publicationRoot, `.${basename(outputPaths.json)}.kova-transaction`),
+        `${JSON.stringify({
+          schemaVersion: "kova.reportTransaction.v2",
+          canonical: basename(outputPaths.json),
+          previousFiles,
+          files: previousFiles
+        })}\n`
+      );
+    };
     const failedPaths = buildReportOutputPaths(publicationRoot, "kova-260712-000000-aabbcc");
     const invalidSummaryPath = join(publicationRoot, "s".repeat(250));
     let partialWriteRejected = false;
@@ -5013,6 +5028,29 @@ async function reportPublicationCheck(tmp) {
       publishedReport.runId,
       "canonical report JSON published"
     );
+    const markerlessBackupPath = join(
+      publicationRoot,
+      `.${basename(outputPaths.json)}.kova-backup`
+    );
+    await writeFile(markerlessBackupPath, oldCanonical);
+    let markerlessBackupRejected = false;
+    try {
+      await writeReportOutputs(publicationRoot, publishedReport);
+    } catch (error) {
+      markerlessBackupRejected = /report backup is missing transaction marker/.test(error.message);
+    }
+    assertEqual(markerlessBackupRejected, true, "markerless report backup rejected");
+    assertEqual(
+      JSON.parse(await readFile(outputPaths.json, "utf8")).runId,
+      publishedReport.runId,
+      "markerless backup does not replace the committed report"
+    );
+    assertEqual(
+      await readFile(markerlessBackupPath, "utf8"),
+      oldCanonical,
+      "markerless backup is preserved for operator inspection"
+    );
+    await rm(markerlessBackupPath);
     const transactionTempPath = join(
       publicationRoot,
       `.${basename(outputPaths.json)}.kova-transaction.tmp`
@@ -5024,6 +5062,7 @@ async function reportPublicationCheck(tmp) {
       false,
       "retry removes a torn staged transaction marker"
     );
+    await writeTransactionMarker(outputPaths);
     for (const path of Object.values(outputPaths)) {
       await rename(path, join(publicationRoot, `.${basename(path)}.kova-backup`));
     }
@@ -5034,6 +5073,7 @@ async function reportPublicationCheck(tmp) {
       false,
       "recovered report backups removed"
     );
+    await writeTransactionMarker(outputPaths);
     await rename(
       outputPaths.json,
       join(publicationRoot, `.${basename(outputPaths.json)}.kova-backup`)
