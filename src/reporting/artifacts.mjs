@@ -333,11 +333,10 @@ async function replaceRetainedArtifactTree({
     await syncDirectory(stage);
 
     if (await pathExists(outputRoot)) {
-      await writeDurableFile(backupMarker, `${JSON.stringify({
+      await writeDurableMarker(backupMarker, `${JSON.stringify({
         schemaVersion: "kova.retainedArtifactBackup.v1",
         outputRoot
       })}\n`);
-      await syncDirectory(parent);
       await rename(outputRoot, backup);
       oldTreeBackedUp = true;
       await syncDirectory(parent);
@@ -518,6 +517,17 @@ async function writeDurableFile(path, content) {
     await handle.sync();
   } finally {
     await handle.close();
+  }
+}
+
+async function writeDurableMarker(path, content) {
+  const stagedPath = `${path}.${randomUUID()}.tmp`;
+  try {
+    await writeDurableFile(stagedPath, content);
+    await rename(stagedPath, path);
+    await syncDirectory(dirname(path));
+  } finally {
+    await rm(stagedPath, { force: true });
   }
 }
 

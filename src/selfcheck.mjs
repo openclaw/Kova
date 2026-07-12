@@ -4866,8 +4866,11 @@ async function performanceBaselineCheck(tmp) {
 
 async function reportPublicationCheck(tmp) {
   const publicationRoot = join(tmp, "report-publication");
-  const report = JSON.parse(await readFile("tests/fixtures/reports/pass.json", "utf8"));
   try {
+    const report = JSON.parse(await readFile(
+      join(repoRoot, "tests", "fixtures", "reports", "pass.json"),
+      "utf8"
+    ));
     await mkdir(publicationRoot, { recursive: true });
     const failedPaths = buildReportOutputPaths(publicationRoot, "kova-260712-000000-aabbcc");
     const invalidSummaryPath = join(publicationRoot, "s".repeat(250));

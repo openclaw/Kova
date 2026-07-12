@@ -180,9 +180,6 @@ function isAbandoned(snapshot, staleMs) {
     if (typeof ownerDomain !== "object") {
       return false;
     }
-    if (ownerDomain.host !== CURRENT_EXECUTION_DOMAIN.host) {
-      return false;
-    }
     if (
       ownerDomain.boot &&
       CURRENT_EXECUTION_DOMAIN.boot &&
