@@ -1197,7 +1197,7 @@ export function evaluateRecord(record, scenario, options = {}) {
     const malformedKovaEvidence = violations.some(
       (violation) => violation.failureDomain === "kova-harness"
     );
-    if (malformedKovaEvidence) {
+    if (malformedKovaEvidence && originalStatus === "PASS") {
       record.status = "BLOCKED";
     } else if (originalStatus === "PASS") {
       record.status = "FAIL";

@@ -1391,6 +1391,16 @@ function evaluationViolationHelpersCheck() {
       true,
       "blocked record preserves malformed evidence reason"
     );
+    const failedMalformedRecord = {
+      status: "FAIL",
+      phases: structuredClone(malformedRecord.phases)
+    };
+    evaluateRecord(failedMalformedRecord, { thresholds: { statusMs: 50 } });
+    assertEqual(
+      failedMalformedRecord.status,
+      "FAIL",
+      "malformed Kova evidence does not hide an established target failure"
+    );
     return {
       id: "evaluation-violation-helpers",
       status: "PASS",
