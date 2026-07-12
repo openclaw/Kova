@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { chmod, cp, lstat, mkdir, mkdtemp, open, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, cp, lstat, mkdir, mkdtemp, open, readFile, readdir, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { withFileLock } from "../file-lock.mjs";
@@ -353,10 +353,13 @@ async function replaceRetainedArtifactTree({
 
     if (await pathExists(outputRoot)) {
       const treeSha256 = await retainedArtifactTreeDigest(outputRoot);
+      const claimId = randomUUID();
       await writeDurableMarker(backupMarker, `${JSON.stringify({
-        schemaVersion: "kova.retainedArtifactBackup.v2",
+        schemaVersion: "kova.retainedArtifactBackup.v3",
         outputRoot,
-        treeSha256
+        treeSha256,
+        claimId,
+        phase: "pending"
       })}\n`);
       await rename(outputRoot, backup);
       oldTreeBackedUp = true;
@@ -388,20 +391,39 @@ async function replaceRetainedArtifactTree({
     throw error;
   } finally {
     await rm(stage, { recursive: true, force: true });
-    if (!await pathExists(backup)) {
-      await removeOwnedBackupMarker(backupMarker, outputRoot);
-    }
+    await removeUnusedRetainedBackupMarker(backup, backupMarker, outputRoot);
   }
 }
 
 async function recoverRetainedArtifactTree(outputRoot, backup, backupMarker) {
-  if (!await pathExists(backup)) {
+  const marker = await readRetainedBackupMarker(backupMarker, outputRoot);
+  if (!marker) {
+    if (await retainedBackupStateExists(backup)) {
+      throw new Error(`retained artifact backup is not Kova-managed: ${backup}`);
+    }
+    return;
+  }
+  const claimedBackup = await claimRetainedBackup(backup, marker, outputRoot, dirname(outputRoot));
+  if (!claimedBackup) {
     await removeOwnedBackupMarker(backupMarker, outputRoot);
     return;
   }
-  await requireRetainedBackup(backup, backupMarker, outputRoot);
+  if (claimedBackup.empty) {
+    await assertCompletedRetainedClaim(outputRoot, claimedBackup);
+    await removeEmptyRetainedClaim(claimedBackup.container, backupMarker, dirname(outputRoot));
+    return;
+  }
+  if (claimedBackup.partial) {
+    await finishRetainedClaimCleanup(claimedBackup, backupMarker, dirname(outputRoot));
+    return;
+  }
   if (!await pathExists(outputRoot)) {
-    await restoreRetainedBackup(backup, outputRoot, backupMarker, dirname(outputRoot));
+    await restoreClaimedRetainedBackup(
+      claimedBackup,
+      outputRoot,
+      backupMarker,
+      dirname(outputRoot)
+    );
     return;
   }
   await assertManagedRetentionDirectory(outputRoot);
@@ -414,33 +436,96 @@ async function recoverRetainedArtifactTree(outputRoot, backup, backupMarker) {
     // committed tree only after proving the backup is valid.
   }
   if (currentComplete) {
-    await removeRetainedBackup(backup, backupMarker, outputRoot, dirname(outputRoot));
+    await removeClaimedRetainedBackup(
+      claimedBackup,
+      backupMarker,
+      dirname(outputRoot)
+    );
     return;
   }
   await rm(outputRoot, { recursive: true });
-  await restoreRetainedBackup(backup, outputRoot, backupMarker, dirname(outputRoot));
+  await restoreClaimedRetainedBackup(
+    claimedBackup,
+    outputRoot,
+    backupMarker,
+    dirname(outputRoot)
+  );
 }
 
 async function removeRetainedBackup(backup, backupMarker, outputRoot, parent) {
-  if (!await pathExists(backup)) {
+  const marker = await readRetainedBackupMarker(backupMarker, outputRoot);
+  if (!marker) {
+    if (await retainedBackupStateExists(backup)) {
+      throw new Error(`retained artifact backup is not Kova-managed: ${backup}`);
+    }
+    return;
+  }
+  const claimedBackup = await claimRetainedBackup(backup, marker, outputRoot, parent);
+  if (!claimedBackup) {
     await removeOwnedBackupMarker(backupMarker, outputRoot);
     return;
   }
-  await requireRetainedBackup(backup, backupMarker, outputRoot);
+  if (claimedBackup.empty) {
+    await assertCompletedRetainedClaim(outputRoot, claimedBackup);
+    await removeEmptyRetainedClaim(claimedBackup.container, backupMarker, parent);
+    return;
+  }
+  if (claimedBackup.partial) {
+    await finishRetainedClaimCleanup(claimedBackup, backupMarker, parent);
+    return;
+  }
+  await removeClaimedRetainedBackup(claimedBackup, backupMarker, parent);
+}
+
+async function removeClaimedRetainedBackup(claimedBackup, backupMarker, parent) {
   // The owner marker must outlive the backup directory on durable storage.
   // Recovery rejects a backup whose marker disappeared first.
-  await rm(backup, { recursive: true, force: true });
+  await validateClaimedRetainedBackup(claimedBackup);
+  await assertManagedRetentionDirectory(claimedBackup.outputRoot, claimedBackup.outputRoot, true);
+  await writeRetainedBackupPhase(backupMarker, claimedBackup.marker, "cleanup");
+  await finishRetainedClaimCleanup(claimedBackup, backupMarker, parent);
+}
+
+async function restoreRetainedBackup(backup, outputRoot, backupMarker, parent) {
+  const marker = await requireOwnedBackupMarker(backupMarker, outputRoot);
+  const claimedBackup = await claimRetainedBackup(backup, marker, outputRoot, parent);
+  if (!claimedBackup) {
+    throw new Error(`retained artifact backup is missing: ${backup}`);
+  }
+  if (claimedBackup.empty) {
+    await assertCompletedRetainedClaim(outputRoot, claimedBackup);
+    await removeEmptyRetainedClaim(claimedBackup.container, backupMarker, parent);
+    return;
+  }
+  if (claimedBackup.partial) {
+    await finishRetainedClaimCleanup(claimedBackup, backupMarker, parent);
+    return;
+  }
+  await restoreClaimedRetainedBackup(claimedBackup, outputRoot, backupMarker, parent);
+}
+
+async function restoreClaimedRetainedBackup(claimedBackup, outputRoot, backupMarker, parent) {
+  await validateClaimedRetainedBackup(claimedBackup);
+  await rename(claimedBackup.path, outputRoot);
+  await rmdir(claimedBackup.container);
   await syncDirectory(parent);
   await rm(backupMarker, { force: true });
   await syncDirectory(parent);
 }
 
-async function restoreRetainedBackup(backup, outputRoot, backupMarker, parent) {
-  await requireRetainedBackup(backup, backupMarker, outputRoot);
-  await rename(backup, outputRoot);
+async function removeEmptyRetainedClaim(claimContainer, backupMarker, parent) {
+  await assertEmptyRetainedClaimContainer(claimContainer);
+  await rmdir(claimContainer);
   await syncDirectory(parent);
   await rm(backupMarker, { force: true });
   await syncDirectory(parent);
+}
+
+async function readRetainedBackupMarker(path, outputRoot) {
+  if (!await pathExists(path)) {
+    return null;
+  }
+  return requireOwnedBackupMarker(path, outputRoot);
 }
 
 async function requireOwnedBackupMarker(path, outputRoot) {
@@ -455,25 +540,158 @@ async function requireOwnedBackupMarker(path, outputRoot) {
     throw new Error(`retained artifact backup is not Kova-managed: ${path}`);
   }
   if (
-    marker?.schemaVersion !== "kova.retainedArtifactBackup.v2" ||
+    marker?.schemaVersion !== "kova.retainedArtifactBackup.v3" ||
     resolve(marker.outputRoot ?? "") !== resolve(outputRoot) ||
-    !/^[a-f0-9]{64}$/.test(marker.treeSha256 ?? "")
+    !/^[a-f0-9]{64}$/.test(marker.treeSha256 ?? "") ||
+    !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+      marker.claimId ?? ""
+    ) ||
+    !["pending", "cleanup"].includes(marker.phase)
   ) {
     throw new Error(`retained artifact backup is not Kova-managed: ${path}`);
   }
   return marker;
 }
 
-async function requireRetainedBackup(backup, backupMarker, outputRoot) {
-  const marker = await requireOwnedBackupMarker(backupMarker, outputRoot);
+async function claimRetainedBackup(backup, marker, outputRoot, parent) {
+  const claimContainer = retainedBackupClaimContainer(backup, marker);
+  const claimPath = join(claimContainer, "tree");
+  const backupExists = await pathExists(backup);
+  const containerExists = await pathExists(claimContainer);
+  if (!backupExists && !containerExists) {
+    return null;
+  }
+  if (!containerExists) {
+    await mkdir(claimContainer, { recursive: false, mode: 0o700 });
+    await syncDirectory(parent);
+  }
+  await assertRetainedClaimContainer(claimContainer);
+  const claimExists = await pathExists(claimPath);
+  if (backupExists && claimExists) {
+    throw new Error(`retained artifact backup has a conflicting replacement: ${backup}`);
+  }
+  if (!backupExists && !claimExists) {
+    return {
+      container: claimContainer,
+      path: null,
+      empty: true,
+      outputRoot,
+      treeSha256: marker.treeSha256
+    };
+  }
+  if (backupExists) {
+    await rename(backup, claimPath);
+    await syncDirectory(claimContainer);
+    await syncDirectory(parent);
+  }
   try {
-    await assertManagedRetentionDirectory(backup, outputRoot);
-    if (await retainedArtifactTreeDigest(backup) !== marker.treeSha256) {
+    await assertManagedRetentionDirectory(claimPath, outputRoot);
+    if (await retainedArtifactTreeDigest(claimPath) !== marker.treeSha256) {
       throw new Error("tree digest mismatch");
     }
   } catch {
-    throw new Error(`retained artifact backup is not Kova-managed: ${backup}`);
+    if (marker.phase === "cleanup") {
+      return {
+        container: claimContainer,
+        path: claimPath,
+        empty: false,
+        partial: true,
+        outputRoot,
+        treeSha256: marker.treeSha256,
+        marker
+      };
+    }
+    throw new Error(`retained artifact backup is not Kova-managed: ${claimPath}`);
   }
+  return {
+    container: claimContainer,
+    path: claimPath,
+    empty: false,
+    partial: false,
+    outputRoot,
+    treeSha256: marker.treeSha256,
+    marker
+  };
+}
+
+function retainedBackupClaimContainer(backup, marker) {
+  return `${backup}.claim-${marker.claimId}`;
+}
+
+async function assertRetainedClaimContainer(path) {
+  const info = await lstat(path);
+  if (!info.isDirectory()) {
+    throw new Error(`retained artifact backup claim is invalid: ${path}`);
+  }
+  const names = await readdir(path);
+  if (names.some((name) => name !== "tree")) {
+    throw new Error(`retained artifact backup claim is invalid: ${path}`);
+  }
+}
+
+async function assertEmptyRetainedClaimContainer(path) {
+  await assertRetainedClaimContainer(path);
+  if ((await readdir(path)).length !== 0) {
+    throw new Error(`retained artifact backup claim is not empty: ${path}`);
+  }
+}
+
+async function validateClaimedRetainedBackup(claimedBackup) {
+  // The 0700 claim container and retention lock exclude peer Kova writers.
+  // Revalidate immediately before mutation; same-user hostile writers are outside the trust boundary.
+  await assertRetainedClaimContainer(claimedBackup.container);
+  try {
+    await assertManagedRetentionDirectory(claimedBackup.path, claimedBackup.outputRoot);
+    if (await retainedArtifactTreeDigest(claimedBackup.path) !== claimedBackup.treeSha256) {
+      throw new Error("tree digest mismatch");
+    }
+  } catch {
+    throw new Error(`retained artifact backup is not Kova-managed: ${claimedBackup.path}`);
+  }
+}
+
+async function assertCompletedRetainedClaim(outputRoot, claimedBackup) {
+  if (!await pathExists(outputRoot)) {
+    throw new Error(`retained artifact backup claim is incomplete: ${claimedBackup.container}`);
+  }
+  try {
+    if (await retainedArtifactTreeDigest(outputRoot) === claimedBackup.treeSha256) {
+      return;
+    }
+  } catch {
+    // A different current tree still qualifies if it is a complete committed generation.
+  }
+  await assertManagedRetentionDirectory(outputRoot, outputRoot, true);
+}
+
+async function writeRetainedBackupPhase(path, marker, phase) {
+  await writeDurableMarker(path, `${JSON.stringify({ ...marker, phase })}\n`);
+}
+
+async function finishRetainedClaimCleanup(claimedBackup, backupMarker, parent) {
+  if (!await pathExists(claimedBackup.outputRoot)) {
+    throw new Error(`retained artifact cleanup is missing current tree: ${claimedBackup.outputRoot}`);
+  }
+  await assertManagedRetentionDirectory(
+    claimedBackup.outputRoot,
+    claimedBackup.outputRoot,
+    true
+  );
+  await assertRetainedClaimContainer(claimedBackup.container);
+  await rm(claimedBackup.path, { recursive: true, force: true });
+  await rmdir(claimedBackup.container);
+  await syncDirectory(parent);
+  await rm(backupMarker, { force: true });
+  await syncDirectory(parent);
+}
+
+async function retainedBackupStateExists(backup) {
+  if (await pathExists(backup)) {
+    return true;
+  }
+  const names = await readdir(dirname(backup));
+  const prefix = `${basename(backup)}.claim-`;
+  return names.some((name) => name.startsWith(prefix));
 }
 
 async function removeOwnedBackupMarker(path, outputRoot) {
@@ -483,6 +701,20 @@ async function removeOwnedBackupMarker(path, outputRoot) {
   await requireOwnedBackupMarker(path, outputRoot);
   await rm(path, { force: true });
   await syncDirectory(dirname(path));
+}
+
+async function removeUnusedRetainedBackupMarker(backup, backupMarker, outputRoot) {
+  const marker = await readRetainedBackupMarker(backupMarker, outputRoot);
+  if (!marker) {
+    return;
+  }
+  if (
+    await pathExists(backup) ||
+    await pathExists(retainedBackupClaimContainer(backup, marker))
+  ) {
+    return;
+  }
+  await removeOwnedBackupMarker(backupMarker, outputRoot);
 }
 
 async function assertManagedRetentionDirectory(path, expectedOutputRoot = path, requireComplete = false) {
