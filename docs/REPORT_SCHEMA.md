@@ -875,8 +875,8 @@ For non-ship gate runs, Kova retains a durable copy under
 report.md
 report.json
 paste-summary.txt
-<runId>-bundle.tar.gz
-<runId>-bundle.tar.gz.sha256
+<runId>-bundle-<sha256>.tar.gz
+<runId>-bundle-<sha256>.tar.gz.sha256
 retained-artifacts.json
 ```
 

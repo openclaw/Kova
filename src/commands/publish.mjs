@@ -21,7 +21,7 @@
 
 import { copyFile, mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
 import { join, isAbsolute, resolve, basename, dirname, sep } from "node:path";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 
 import {
   parseRelease,
@@ -231,7 +231,49 @@ async function findReportBundlePath(report, inputPath) {
   for (const candidate of inferred) {
     if (await pathExists(candidate)) return candidate;
   }
-  return null;
+  return findContentAddressedBundlePath(inputDir, [
+    safeBundlePrefix(runId),
+    safeBundlePrefix(inputBase),
+    safeBundlePrefix(inputBase.replace(/-[^-]+$/, "")),
+  ].filter(Boolean));
+}
+
+function safeBundlePrefix(value) {
+  if (typeof value !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value)) {
+    return null;
+  }
+  return `${value}-bundle-`;
+}
+
+async function findContentAddressedBundlePath(inputDir, prefixes) {
+  const candidates = [];
+  for (const entry of await readdir(inputDir, { withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    const prefix = prefixes.find((item) => entry.name.startsWith(item));
+    if (!prefix || !entry.name.endsWith(".tar.gz")) continue;
+    const digest = entry.name.slice(prefix.length, -".tar.gz".length);
+    if (!/^[a-f0-9]{64}$/.test(digest)) continue;
+
+    const path = join(inputDir, entry.name);
+    const checksumPath = `${path}.sha256`;
+    if (!await pathExists(checksumPath)) continue;
+    const [archive, checksum, info] = await Promise.all([
+      readFile(path),
+      readFile(checksumPath, "utf8"),
+      stat(path),
+    ]);
+    const actualDigest = createHash("sha256").update(archive).digest("hex");
+    if (
+      actualDigest !== digest ||
+      checksum !== `${digest}  ${entry.name}\n`
+    ) {
+      continue;
+    }
+    candidates.push({ path, mtimeMs: info.mtimeMs });
+  }
+  candidates.sort((left, right) =>
+    right.mtimeMs - left.mtimeMs || left.path.localeCompare(right.path));
+  return candidates[0]?.path ?? null;
 }
 
 function resolvePublicBundlesDir(outDir) {
