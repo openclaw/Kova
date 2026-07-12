@@ -2965,6 +2965,13 @@ function evidenceLedgerGatingCheck() {
           durationMs: 20
         }]
       }],
+      finalMetrics: {
+        error: null,
+        service: { gatewayState: "running" },
+        health: { ok: true, durationMs: 5 },
+        healthSamples: [{ ok: true, durationMs: 5 }],
+        healthSummary: { count: 1, failureCount: 0 }
+      },
       measurements: {}
     };
     attachEvidenceLedger(record);
@@ -2993,6 +3000,23 @@ function evidenceLedgerGatingCheck() {
     applyEvidenceLedgerGating(failedRecord);
     assertEqual(failedRecord.status, "FAIL", "failed required ledger entry gates pass");
 
+    const missingMetricsRecord = {
+      ...record,
+      status: "PASS",
+      incompleteReason: undefined,
+      incompleteEvidence: undefined,
+      phases: []
+    };
+    delete missingMetricsRecord.finalMetrics;
+    attachEvidenceLedger(missingMetricsRecord);
+    applyEvidenceLedgerGating(missingMetricsRecord);
+    assertEqual(missingMetricsRecord.status, "INCOMPLETE", "absent final metrics gate pass as incomplete");
+    assertEqual(
+      missingMetricsRecord.evidenceLedger.entries.find((entry) => entry.id === "collector:final-metrics")?.status,
+      "missing",
+      "absent final metrics ledger status"
+    );
+
     const failedMetricsRecord = {
       ...record,
       status: "PASS",
@@ -3018,6 +3042,26 @@ function evidenceLedgerGatingCheck() {
       "failed",
       "failed final metrics ledger status"
     );
+
+    const incompleteSummaryRecord = {
+      ...record,
+      status: "PASS",
+      incompleteReason: undefined,
+      incompleteEvidence: undefined,
+      phases: [],
+      finalMetrics: {
+        error: null,
+        service: { gatewayState: "running" },
+        health: null,
+        healthSamples: [],
+        healthSummary: { count: 1 }
+      }
+    };
+    const incompleteSummaryHealth = buildHealthMeasurement(incompleteSummaryRecord);
+    assertEqual(incompleteSummaryHealth.final.ok, null, "count-only final health summary is unknown");
+    attachEvidenceLedger(incompleteSummaryRecord);
+    applyEvidenceLedgerGating(incompleteSummaryRecord);
+    assertEqual(incompleteSummaryRecord.status, "INCOMPLETE", "count-only final health summary gates pass");
 
     const failedPhaseRecord = {
       ...record,
@@ -3282,6 +3326,24 @@ async function webPayloadContractCheck(tmp) {
     }).ok,
     false,
     "negative threshold rejected"
+  );
+  assertEqual(
+    safeParseRelease({ ...payload, releaseDate: null }).ok,
+    false,
+    "null release date rejected"
+  );
+  assertEqual(
+    safeParseRelease({ ...payload, releaseDate: 0 }).ok,
+    false,
+    "numeric release date rejected"
+  );
+  assertEqual(
+    safeParseRelease({
+      ...payload,
+      runs: [{ ...payload.runs[0], startedAt: null }]
+    }).ok,
+    false,
+    "null run date rejected"
   );
 
   await writeFile(inputPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
