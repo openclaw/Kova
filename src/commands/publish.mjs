@@ -28,7 +28,6 @@ import { createGunzip } from "node:zlib";
 import { extract as extractTar } from "tar-stream";
 
 import {
-  parseRelease,
   safeParseRelease,
   WEB_PAYLOAD_SCHEMA_VERSION,
 } from "../web-payload-contract.mjs";
@@ -113,24 +112,23 @@ export async function runPublishCommand(flags) {
       `kova publish: payload failed ${WEB_PAYLOAD_SCHEMA_VERSION} validation:\n${detail}`
     );
   }
-  // Re-parse to get coerced types (Date) for the receipt.
-  const parsed = parseRelease(augmented, displayPath(inputPath));
+  const parsed = validation.data;
 
-  const destPath = join(outDir, `${augmented.ver}.json`);
-  const replacing = priors.some((r) => r.id === augmented.ver);
+  const destPath = join(outDir, `${parsed.ver}.json`);
+  const replacing = priors.some((r) => r.id === parsed.ver);
 
   if (!flags.dry_run) {
     await mkdir(outDir, { recursive: true });
     await copyProjectedBundles(bundleProjection.bundles);
-    await atomicWriteJson(destPath, augmented);
+    await atomicWriteJson(destPath, parsed);
   }
 
   const receipt = {
     schemaVersion: WEB_PAYLOAD_SCHEMA_VERSION,
-    ver: augmented.ver,
+    ver: parsed.ver,
     releaseDate: augmented.releaseDate,
-    sha: augmented.sha,
-    passed: augmented.passed,
+    sha: parsed.sha,
+    passed: parsed.passed,
     input: { path: displayPath(inputPath), kind },
     destination: { path: displayPath(destPath), replacing },
     dryRun: Boolean(flags.dry_run),

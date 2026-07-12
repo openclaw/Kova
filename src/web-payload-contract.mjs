@@ -33,63 +33,67 @@ export const stateEnum = z.enum(["pass", "fail", "block"]);
 export const findingKind = z.enum(["fail", "warn", "info"]);
 export const proveState = z.enum(["pass", "fail"]);
 
+const finiteNumber = z.number().finite();
+const nonnegativeNumber = finiteNumber.nonnegative();
+const nonnegativeInteger = z.number().int().nonnegative();
+
 /* ─── Per-scenario summary (top-level on a release) ───────────── */
 
-export const scenarioSchema = z.object({
+export const scenarioSchema = z.strictObject({
   id: z.string(),
   /** Public label for the headline metric, e.g. "startup" or "full turn". */
   metric: z.string().optional(),
-  value: z.number().nullable(),
+  value: finiteNumber.nullable(),
   unit: z.string(),
-  threshold: z.number(),
+  threshold: nonnegativeNumber,
   state: stateEnum,
   /** Trailing-window samples; null when no sample. */
-  spark: z.array(z.number()).nullable(),
+  spark: z.array(finiteNumber).nullable(),
   /** Defaults true; set false when higher numbers are better. */
   lowerIsBetter: z.boolean().optional(),
   /** Worst contributing metric, used by scenario tile. */
   worstMetric: z
-    .object({ name: z.string(), value: z.number(), unit: z.string() })
+    .strictObject({ name: z.string(), value: finiteNumber, unit: z.string() })
     .optional(),
 });
 
 /* ─── Per-run details (drill-down on /releases/<ver>) ─────────── */
 
-export const phaseSchema = z.object({
+export const phaseSchema = z.strictObject({
   name: z.string(),
-  elapsedMs: z.number(),
+  elapsedMs: nonnegativeInteger,
   state: stateEnum,
 });
 
-export const metricRowSchema = z.object({
+export const metricRowSchema = z.strictObject({
   name: z.string(),
-  value: z.number().nullable(),
+  value: finiteNumber.nullable(),
   unit: z.string(),
-  threshold: z.number().nullable(),
+  threshold: nonnegativeNumber.nullable(),
   state: stateEnum,
   /** Renders indented (role-scoped child of the previous metric). */
   child: z.boolean().optional(),
 });
 
-export const findingSchema = z.object({
+export const findingSchema = z.strictObject({
   kind: findingKind,
   text: z.string(),
   scenarioId: z.string().optional(),
   metric: z.string().optional(),
 });
 
-export const proveSchema = z.object({
+export const proveSchema = z.strictObject({
   state: proveState,
   text: z.string(),
   scenarioId: z.string().optional(),
 });
 
-export const runScenarioSchema = z.object({
+export const runScenarioSchema = z.strictObject({
   id: z.string(),
   state: stateEnum,
-  sampleCount: z.number(),
+  sampleCount: nonnegativeInteger,
   /** Headline number for this scenario in this run, before unit formatting. */
-  sampleValue: z.number().optional(),
+  sampleValue: finiteNumber.optional(),
   sampleUnit: z.string().optional(),
   phases: z.array(phaseSchema).optional(),
   metrics: z.array(metricRowSchema).optional(),
@@ -97,19 +101,19 @@ export const runScenarioSchema = z.object({
   proves: z.array(proveSchema).optional(),
 });
 
-export const bundleSchema = z.object({
+export const bundleSchema = z.strictObject({
   name: z.string(),
-  bytes: z.number(),
+  bytes: nonnegativeInteger,
   href: z.string(),
 });
 
-export const runSchema = z.object({
+export const runSchema = z.strictObject({
   id: z.string(),
   runtime: z.string(),
   profile: z.string(),
   startedAt: z.coerce.date(),
-  durationMs: z.number(),
-  entryCount: z.number(),
+  durationMs: nonnegativeInteger,
+  entryCount: nonnegativeInteger,
   state: stateEnum,
   host: z.string().optional(),
   command: z.string().optional(),
@@ -120,44 +124,44 @@ export const runSchema = z.object({
 
 /* ─── Headline + comparison (publish-time projections) ────────── */
 
-export const headlineSchema = z.object({
+export const headlineSchema = z.strictObject({
   label: z.string(),
-  value: z.number(),
+  value: finiteNumber,
   unit: z.string(),
   vsVer: z.string().optional(),
-  deltaPct: z.number().optional(),
+  deltaPct: finiteNumber.optional(),
   lowerIsBetter: z.boolean().optional(),
   scenarioId: z.string().optional(),
   metric: z.string().optional(),
 });
 
-export const comparisonRowSchema = z.object({
+export const comparisonRowSchema = z.strictObject({
   scenarioId: z.string(),
   metric: z.string(),
-  before: z.number(),
-  after: z.number(),
+  before: finiteNumber,
+  after: finiteNumber,
   unit: z.string(),
-  deltaPct: z.number(),
+  deltaPct: finiteNumber,
   lowerIsBetter: z.boolean().optional(),
 });
 
-export const comparisonSchema = z.object({
+export const comparisonSchema = z.strictObject({
   vsVer: z.string(),
   rows: z.array(comparisonRowSchema),
 });
 
 /* ─── Root release schema ─────────────────────────────────────── */
 
-export const releaseSchema = z.object({
+export const releaseSchema = z.strictObject({
   ver: z.string(),
   releaseDate: z.coerce.date(),
   date: z.string(),
   sha: z.string(),
   passed: z.boolean(),
   /** Number of runs executed. Kept even when `runs[]` is populated. */
-  runCount: z.number().optional(),
+  runCount: nonnegativeInteger.optional(),
   host: z.string().optional(),
-  coldReadyDeltaPct: z.number().optional(),
+  coldReadyDeltaPct: finiteNumber.optional(),
   scenarios: z.array(scenarioSchema).optional(),
   runtimeTargets: z.array(z.string()).optional(),
   headline: z.array(headlineSchema).optional(),
