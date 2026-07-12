@@ -1103,7 +1103,7 @@ async function runScopedSelfCheck(flags, scope, workspace) {
     checks.push(compareMetricOrderingCheck());
     checks.push(compareGatewayRssDedupeCheck());
     checks.push(resourceContractCompareCheck());
-    checks.push(await reportCompareExitStatusCheck());
+    checks.push(await reportCompareExitStatusCheck(tmp));
     checks.push(fixtureAccountingRenderCheck());
 
     const receiptCheck = await jsonCommandCheck(
@@ -21071,7 +21071,7 @@ function zeroLogMetrics() {
   };
 }
 
-async function reportCompareExitStatusCheck() {
+async function reportCompareExitStatusCheck(tmp) {
   const modes = [
     { name: "dashboard", flag: "" },
     { name: "plain", flag: "--plain" },
@@ -21080,11 +21080,39 @@ async function reportCompareExitStatusCheck() {
   ];
   let durationMs = 0;
   try {
+    const fixtureDir = join(tmp, "report-compare-exit-status");
+    const baselinePath = join(fixtureDir, "baseline.json");
+    const currentPath = join(fixtureDir, "current.json");
+    const platform = {
+      os: process.platform,
+      arch: process.arch,
+      release: "self-check",
+      node: process.version
+    };
+    await mkdir(fixtureDir, { recursive: true });
+    await writeFile(
+      baselinePath,
+      `${JSON.stringify(syntheticPerformanceReport({
+        runId: "report-compare-exit-baseline",
+        platform,
+        target: "runtime:stable",
+        records: [syntheticPerformanceRecord(1, { peakRssMb: 400 })]
+      }), null, 2)}\n`
+    );
+    await writeFile(
+      currentPath,
+      `${JSON.stringify(syntheticPerformanceReport({
+        runId: "report-compare-exit-current",
+        platform,
+        target: "runtime:stable",
+        records: [syntheticPerformanceRecord(1, { peakRssMb: 900 })]
+      }), null, 2)}\n`
+    );
     for (const mode of modes) {
       const command = [
         "node bin/kova.mjs report compare",
-        "tests/fixtures/reports/pass.json",
-        "tests/fixtures/reports/fail.json",
+        quoteShell(baselinePath),
+        quoteShell(currentPath),
         mode.flag
       ].filter(Boolean).join(" ");
       const result = await runCommand(command, {
