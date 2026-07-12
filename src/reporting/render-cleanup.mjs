@@ -25,7 +25,10 @@ export function renderCleanupEnvs({ envs, results, execute }, flags = {}, env = 
   }
 
   sections.push("");
-  sections.push(renderHint(execute, envs.length === 0 ? "no-envs" : "envs", ui, { kind: "envs" }));
+  sections.push(renderHint(execute, envs.length === 0 ? "no-envs" : "envs", ui, {
+    kind: "envs",
+    verdict
+  }));
   return withMargin(sections.join("\n"), ui.leftPad);
 }
 
@@ -49,7 +52,12 @@ export function renderCleanupArtifacts({ candidates, results, execute, artifacts
   }
 
   sections.push("");
-  sections.push(renderHint(execute, candidates.length === 0 ? "none" : "candidates", ui, { kind: "artifacts", olderThanDays, artifactsDir }));
+  sections.push(renderHint(execute, candidates.length === 0 ? "none" : "candidates", ui, {
+    kind: "artifacts",
+    olderThanDays,
+    artifactsDir,
+    verdict
+  }));
   return withMargin(sections.join("\n"), ui.leftPad);
 }
 
@@ -59,6 +67,8 @@ function deriveEnvsVerdict({ envs, results, execute }) {
     return { label: "DRY-RUN", tone: "INCOMPLETE", status: "PLANNED" };
   }
   const failed = results.filter((r) => r.status !== 0).length;
+  const missing = missingEnvResultCount(envs, results);
+  if (missing > 0) return { label: "INCOMPLETE", tone: "FAIL", status: "INCOMPLETE" };
   if (failed > 0) return { label: "PARTIAL", tone: "FAIL", status: "FAILED" };
   return { label: "CLEANED", tone: "PASS", status: "DONE" };
 }
@@ -69,15 +79,25 @@ function deriveArtifactsVerdict({ candidates, results, execute }) {
     return { label: "DRY-RUN", tone: "INCOMPLETE", status: "PLANNED" };
   }
   const failed = results.filter((r) => r.status !== 0).length;
+  const missing = missingArtifactResultCount(candidates, results);
+  if (missing > 0) return { label: "INCOMPLETE", tone: "FAIL", status: "INCOMPLETE" };
   if (failed > 0) return { label: "PARTIAL", tone: "FAIL", status: "FAILED" };
   return { label: "CLEANED", tone: "PASS", status: "DONE" };
 }
 
 function buildEnvsHeadline({ envs, results, execute }) {
-  if (!execute) return envs.length === 0 ? "nothing to do" : `${envs.length} would be removed`;
+  const eligible = eligibleEnvCount(envs);
+  if (!execute) return envs.length === 0 ? "nothing to do" : `${eligible} would be removed`;
   const removed = results.filter((r) => r.status === 0).length;
   const failed = results.filter((r) => r.status !== 0).length;
-  if (failed > 0) return `${removed} removed · ${failed} failed`;
+  const missing = missingEnvResultCount(envs, results);
+  if (failed > 0 || missing > 0) {
+    return [
+      `${removed} removed`,
+      ...(failed > 0 ? [`${failed} failed`] : []),
+      ...(missing > 0 ? [`${missing} not attempted`] : [])
+    ].join(" · ");
+  }
   return `${removed} removed`;
 }
 
@@ -85,18 +105,28 @@ function buildArtifactsHeadline({ candidates, results, execute }) {
   if (!execute) return candidates.length === 0 ? "nothing to do" : `${candidates.length} would be removed`;
   const removed = results.filter((r) => r.status === 0).length;
   const failed = results.filter((r) => r.status !== 0).length;
-  if (failed > 0) return `${removed} removed · ${failed} failed`;
+  const missing = missingArtifactResultCount(candidates, results);
+  if (failed > 0 || missing > 0) {
+    return [
+      `${removed} removed`,
+      ...(failed > 0 ? [`${failed} failed`] : []),
+      ...(missing > 0 ? [`${missing} not attempted`] : [])
+    ].join(" · ");
+  }
   return `${removed} removed`;
 }
 
 function renderEnvsKpi({ envs, results, execute }, ui) {
+  const eligible = eligibleEnvCount(envs);
   const removed = execute ? results.filter((r) => r.status === 0).length : 0;
-  const failed = execute ? results.filter((r) => r.status !== 0).length : 0;
+  const failed = execute
+    ? results.filter((r) => r.status !== 0).length + missingEnvResultCount(envs, results)
+    : 0;
   return kpiStrip([
     { label: "Stale envs", value: String(envs.length), hint: "matched", tone: "neutral" },
     {
       label: execute ? "Removed" : "Would remove",
-      value: execute ? String(removed) : String(envs.length),
+      value: execute ? String(removed) : String(eligible),
       hint: execute ? "destroyed" : "with --execute",
       tone: execute ? (removed > 0 ? "ok" : "dim") : "neutral",
     },
@@ -106,7 +136,9 @@ function renderEnvsKpi({ envs, results, execute }, ui) {
 
 function renderArtifactsKpi({ candidates, results, execute }, ui) {
   const removed = execute ? results.filter((r) => r.status === 0).length : 0;
-  const failed = execute ? results.filter((r) => r.status !== 0).length : 0;
+  const failed = execute
+    ? results.filter((r) => r.status !== 0).length + missingArtifactResultCount(candidates, results)
+    : 0;
   return kpiStrip([
     { label: "Candidates", value: String(candidates.length), hint: "matched", tone: "neutral" },
     {
@@ -179,10 +211,29 @@ function renderHint(execute, kind, ui, ctx = {}) {
   } else if (!execute) {
     const target = ctx.kind === "envs" ? "destroy the envs above" : "remove the dirs above";
     lines.push(`  ${c.head(g.arrow)} ${c.dim(`Re-run with --execute to ${target}.`)}`);
-  } else {
+  } else if (ctx.verdict?.status === "DONE") {
     lines.push(`  ${c.ok(g.check)} ${c.dim("Done.")}`);
+  } else {
+    lines.push(`  ${c.err(g.cross)} ${c.dim("Cleanup did not complete; review failed or skipped items above.")}`);
   }
   return lines.join("\n");
+}
+
+function eligibleEnvCount(envs) {
+  return envs.filter((env) => typeof env === "string" || env.eligible === true).length;
+}
+
+function missingEnvResultCount(envs, results) {
+  const completed = new Set(results.map((result) => result.env ?? extractEnvFromCommand(result.command)));
+  return envs
+    .filter((env) => typeof env === "string" || env.eligible === true)
+    .filter((env) => !completed.has(typeof env === "string" ? env : env.name))
+    .length;
+}
+
+function missingArtifactResultCount(candidates, results) {
+  const completed = new Set(results.map((result) => result.path));
+  return candidates.filter((candidate) => !completed.has(candidate.path)).length;
 }
 
 function extractEnvFromCommand(command) {
