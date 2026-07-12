@@ -35,6 +35,7 @@ try {
   for (const path of ["README.md", "LICENSE", "package.json", "package-lock.json"]) {
     await copyRequired(path);
   }
+  await writeReleasePackageJson();
 
   await mkdir(join(appDir, "docs"), { recursive: true });
   for (const path of [
@@ -115,6 +116,19 @@ async function copyRequired(path) {
   const destination = join(appDir, path);
   await mkdir(dirname(destination), { recursive: true });
   await cp(source, destination, { recursive: true });
+}
+
+async function writeReleasePackageJson() {
+  const path = join(appDir, "package.json");
+  const releasePackage = JSON.parse(await readFile(path, "utf8"));
+  releasePackage.scripts = {
+    kova: releasePackage.scripts.kova,
+    plan: releasePackage.scripts.plan,
+    check: releasePackage.scripts.check,
+    "check:changed": "npm run check",
+    "test:changed": "npm run check"
+  };
+  await writeFile(path, `${JSON.stringify(releasePackage, null, 2)}\n`, "utf8");
 }
 
 function parseOutputDir() {

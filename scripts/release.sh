@@ -73,8 +73,8 @@ remote_tag_signature_valid() {
   local valid=0
 
   git update-ref -d "$temp_ref" >/dev/null 2>&1 || true
-  if git fetch --quiet --force "$remote" "refs/tags/${tag}:${temp_ref}"; then
-    fetched_object_sha="$(git rev-parse "$temp_ref" 2>/dev/null || true)"
+  if git fetch --quiet --force --no-tags "$remote" "refs/tags/${tag}:${temp_ref}"; then
+    fetched_object_sha="$(git rev-parse --verify "$temp_ref" 2>/dev/null || true)"
     if [[ "$fetched_object_sha" == "$expected_object_sha" ]] && tag_signature_valid "$temp_ref"; then
       valid=1
     fi
@@ -200,7 +200,7 @@ if is_release_commit; then
 fi
 
 local_tag_commit_sha="$(ref_commit "$tag")"
-local_tag_object_sha="$(git rev-parse "$tag" 2>/dev/null || true)"
+local_tag_object_sha="$(git rev-parse --verify "refs/tags/${tag}" 2>/dev/null || true)"
 remote_tag_object_sha="$(remote_tag_object)"
 remote_tag_commit_sha="$(remote_tag_commit)"
 remote_main_sha="$(remote_ref_commit "refs/heads/main")"
@@ -244,6 +244,12 @@ if [[ -n "$remote_tag_object_sha" ]]; then
   if [[ -n "$local_tag_object_sha" && "$local_tag_object_sha" != "$remote_tag_object_sha" ]]; then
     echo "error: local and remote tag objects differ for ${tag}; reconcile them before retrying" >&2
     exit 1
+  fi
+  if [[ -z "$local_tag_object_sha" ]]; then
+    run_step "Adopting verified remote tag ${tag}" \
+      git fetch --quiet --force --no-tags "$remote" "refs/tags/${tag}:refs/tags/${tag}"
+    local_tag_object_sha="$(git rev-parse --verify "refs/tags/${tag}")"
+    local_tag_commit_sha="$(ref_commit "$tag")"
   fi
 fi
 
@@ -319,11 +325,6 @@ if [[ "$need_commit" -eq 1 ]]; then
   head_sha="$(git rev-parse HEAD)"
 else
   log_skip "release commit already exists"
-fi
-
-if [[ -z "$local_tag_commit_sha" && -n "$remote_tag_commit_sha" ]]; then
-  run_step "Fetching existing tag ${tag} from ${remote}" git fetch "$remote" "refs/tags/${tag}:refs/tags/${tag}"
-  local_tag_commit_sha="$(ref_commit "$tag")"
 fi
 
 if [[ -z "$local_tag_commit_sha" ]]; then
