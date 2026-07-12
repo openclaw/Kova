@@ -73,7 +73,7 @@ export async function collectLogMetrics(envName, timeoutMs, artifactDir, options
 export function redactLogText(value) {
   return String(value ?? "")
     .replace(
-      /^(\s*(?:authorization|proxy-authorization|x-api-key|api-key|cookie|set-cookie)\s*:\s*).+$/gim,
+      /^((?:.*?)(?:authorization|proxy-authorization|x-api-key|api-key|cookie|set-cookie)\s*:\s*).+$/gim,
       "$1[REDACTED]"
     )
     .replace(
