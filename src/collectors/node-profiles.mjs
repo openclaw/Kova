@@ -82,7 +82,6 @@ export async function collectNodeProfileMetrics(artifactDir) {
 export async function summarizeCpuProfiles(paths, options = {}) {
   const summaries = [];
   const limit = Math.max(1, Number(options.limit ?? 10));
-  const aggregateLimit = normalizedAggregateLimit(options.aggregateLimit, limit);
   const aggregateFunctions = new Map();
   let aggregateTotalSampleMs = 0;
 
@@ -93,11 +92,7 @@ export async function summarizeCpuProfiles(paths, options = {}) {
       aggregateTotalSampleMs = roundMs(
         aggregateTotalSampleMs + complete.totalSampleMs
       );
-      mergeAggregateFunctions(
-        aggregateFunctions,
-        complete.topFunctions,
-        aggregateLimit
-      );
+      mergeAggregateFunctions(aggregateFunctions, complete.topFunctions);
       summaries.push({
         path,
         ...complete,
@@ -184,7 +179,7 @@ function sampleDeltas(profile, sampleCount) {
   return Array.from({ length: sampleCount }, () => 0);
 }
 
-function mergeAggregateFunctions(merged, items, aggregateLimit) {
+function mergeAggregateFunctions(merged, items) {
   const profileKeys = new Set();
   for (const item of items) {
     const key = `${item.functionName}\n${item.url}\n${item.lineNumber ?? ""}\n${item.columnNumber ?? ""}`;
@@ -200,13 +195,9 @@ function mergeAggregateFunctions(merged, items, aggregateLimit) {
     }
     existing.selfPercent = null;
     merged.set(key, existing);
-    // Full per-profile summaries are discarded after this merge. The capped
-    // candidate set prevents many large profiles from accumulating in memory.
-    if (merged.size > aggregateLimit * 2) {
-      trimAggregateFunctions(merged, aggregateLimit);
-    }
+    // Keep one compact exact aggregate per identity; the full sorted profile
+    // list is discarded as soon as this merge completes.
   }
-  trimAggregateFunctions(merged, aggregateLimit);
 }
 
 function renderAggregateFunctions(merged, totalSampleMs, limit) {
@@ -217,26 +208,6 @@ function renderAggregateFunctions(merged, totalSampleMs, limit) {
       ...item,
       selfPercent: totalSampleMs > 0 ? roundPercent((item.selfMs / totalSampleMs) * 100) : null
     }));
-}
-
-function trimAggregateFunctions(merged, limit) {
-  if (merged.size <= limit) {
-    return;
-  }
-  const retained = [...merged.entries()]
-    .toSorted((left, right) => right[1].selfMs - left[1].selfMs)
-    .slice(0, limit);
-  merged.clear();
-  for (const [key, item] of retained) {
-    merged.set(key, item);
-  }
-}
-
-function normalizedAggregateLimit(value, outputLimit) {
-  const numeric = Number(value);
-  return Number.isFinite(numeric) && numeric > 0
-    ? Math.max(outputLimit, Math.floor(numeric))
-    : Math.max(100, outputLimit * 10);
 }
 
 function compactFrame(frame, nodeId) {

@@ -16,7 +16,6 @@ const DIAGNOSTIC_COMMAND_EXIT_RESERVE_MS = 1250;
 const DIAGNOSTIC_RUNNER_EXIT_RESERVE_MS = 250;
 const DIAGNOSTIC_POLL_INTERVAL_MS = 250;
 const MAX_DIAGNOSTIC_REPORT_BYTES = 16 * 1024 * 1024;
-const DIAGNOSTIC_VALIDATION_CONCURRENCY = 2;
 const DIAGNOSTIC_SEARCH_MAX_DEPTH = 6;
 
 export function collectOpenClawDiagnostics(logs) {
@@ -186,9 +185,10 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
     '-name "report.*.json" -o -name "*diagnostic*.json"',
     '-newer "$marker"'
   );
+  const sortedArtifacts = `${discoveredArtifacts} | sort`;
   const artifactOutputCommand = signalAlreadySent
-    ? discoveredArtifacts
-    : `${discoveredArtifacts} | awk '/[.]heapsnapshot$/ { if (heap++ < 25) print; next } { if (report++ < 25) print }'`;
+    ? sortedArtifacts
+    : `${sortedArtifacts} | awk '/[.]heapsnapshot$/ { if (heap++ < 25) print; next } { if (report++ < 25) print }'`;
   const command = ocmEnvExecShell(
     envName,
     `set -eu; ${markerCommand}; ${signalCommand}; attempts=0; while :; do heap_count=$(${discoveredHeaps} | wc -l | tr -d ' '); report_count=$(${discoveredReports} | wc -l | tr -d ' '); if ${readyConditions}; then break; fi; if [ "$attempts" -ge ${pollAttempts} ]; then break; fi; attempts=$((attempts + 1)); sleep ${DIAGNOSTIC_POLL_INTERVAL_MS / 1000}; done; ${artifactOutputCommand}`
@@ -287,10 +287,10 @@ async function retainTriggeredArtifacts({ requested, artifactDir, files, destina
     return { artifacts: [], artifactBytes: 0, error: null };
   }
   const destinationDir = join(artifactDir, destination);
-  const outcomes = await mapWithConcurrency(
-    [...new Set(files)],
-    DIAGNOSTIC_VALIDATION_CONCURRENCY,
-    async (file) => {
+  // Candidate lists are capped at 25 per class. Poll them together so a
+  // corrupt artifact cannot monopolize workers until the shared deadline.
+  const outcomes = await Promise.all(
+    [...new Set(files)].map(async (file) => {
       try {
         const remainingMs = Math.max(0, deadlineEpochMs - Date.now());
         await waitForStableFile(file, remainingMs, {
@@ -310,7 +310,7 @@ async function retainTriggeredArtifacts({ requested, artifactDir, files, destina
           error: error instanceof Error ? error.message : String(error)
         };
       }
-    }
+    })
   );
   const artifacts = [...new Set(outcomes.flatMap((outcome) => outcome.artifacts))];
   const artifactBytes = outcomes.reduce((total, outcome) => total + outcome.artifactBytes, 0);
@@ -533,24 +533,4 @@ function firstOutputLine(value) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function mapWithConcurrency(items, concurrency, worker) {
-  const results = new Array(items.length);
-  let nextIndex = 0;
-  async function runWorker() {
-    while (true) {
-      const index = nextIndex;
-      nextIndex += 1;
-      if (index >= items.length) {
-        return;
-      }
-      results[index] = await worker(items[index]);
-    }
-  }
-  await Promise.all(Array.from(
-    { length: Math.min(concurrency, items.length) },
-    () => runWorker()
-  ));
-  return results;
 }
