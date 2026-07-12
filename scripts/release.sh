@@ -14,8 +14,13 @@ run_step() {
   shift
   local started_at="$SECONDS"
   log_step "$description"
-  "$@"
-  log_step "done: ${description} ($((SECONDS - started_at))s)"
+  if "$@"; then
+    log_step "done: ${description} ($((SECONDS - started_at))s)"
+  else
+    local command_status=$?
+    log_step "failed: ${description} ($((SECONDS - started_at))s)"
+    return "$command_status"
+  fi
 }
 
 usage() {
@@ -73,7 +78,7 @@ only_version_files_dirty() {
   [[ "${#dirty_files[@]}" -gt 0 ]] || return 1
   for file in "${dirty_files[@]}"; do
     case "$file" in
-      package.json)
+      package.json|package-lock.json)
         ;;
       *)
         return 1
@@ -83,8 +88,10 @@ only_version_files_dirty() {
   return 0
 }
 
-current_head_subject() {
-  git log -1 --pretty=%s 2>/dev/null || true
+is_release_commit() {
+  [[ "$(git log -1 --pretty=%s 2>/dev/null || true)" == "$release_commit_message" ]] || return 1
+  [[ "$(git diff-tree --no-commit-id --name-only -r HEAD | sort -u)" == $'package-lock.json\npackage.json' ]] || return 1
+  [[ "$(git show HEAD:package.json | node -e 'let input=""; process.stdin.on("data", chunk => input += chunk); process.stdin.on("end", () => console.log(JSON.parse(input).version));')" == "$version" ]]
 }
 
 log_resume_state() {
@@ -135,14 +142,11 @@ if [[ -z "$version" ]]; then
   exit 1
 fi
 
-if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-  echo "error: version must look like 1.2.3 or 1.0.0-beta.1" >&2
-  exit 1
-fi
-
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "${script_dir}/.." && pwd)"
 cd "$repo_root"
+
+"${script_dir}/validate-version.mjs" "$version"
 
 branch="$(git symbolic-ref --quiet --short HEAD || true)"
 if [[ "$branch" != "main" ]]; then
@@ -167,15 +171,30 @@ fi
 refresh_dirty_files
 
 head_sha="$(git rev-parse HEAD)"
-head_subject="$(current_head_subject)"
 head_is_release_commit=0
-if [[ "$head_subject" == "$release_commit_message" ]]; then
+if is_release_commit; then
   head_is_release_commit=1
 fi
 
 local_tag_commit_sha="$(ref_commit "$tag")"
 remote_tag_commit_sha="$(remote_tag_commit)"
 remote_main_sha="$(remote_ref_commit "refs/heads/main")"
+
+if [[ -z "$remote_main_sha" ]]; then
+  echo "error: could not resolve ${remote}/main" >&2
+  exit 1
+fi
+
+if [[ "$head_is_release_commit" -eq 1 ]]; then
+  release_base_sha="$(git rev-parse HEAD^)"
+  if [[ "$remote_main_sha" != "$release_base_sha" && "$remote_main_sha" != "$head_sha" ]]; then
+    echo "error: ${remote}/main moved since the release commit was created; reconcile before retrying" >&2
+    exit 1
+  fi
+elif [[ "$remote_main_sha" != "$head_sha" ]]; then
+  echo "error: local main is not current with ${remote}/main; pull or reconcile before releasing" >&2
+  exit 1
+fi
 
 if [[ -n "$local_tag_commit_sha" && "$local_tag_commit_sha" != "$head_sha" ]]; then
   echo "error: local tag ${tag} already exists and does not point at HEAD" >&2
@@ -268,7 +287,7 @@ fi
 
 if [[ -z "$local_tag_commit_sha" ]]; then
   log_step "Creating signed tag ${tag}; git signing may prompt here"
-  if ! git -c tag.gpgSign=true tag -a "$tag" -m "$tag"; then
+  if ! git tag -s "$tag" -m "$tag"; then
     echo "error: failed to create signed tag ${tag}; make sure git tag signing is configured" >&2
     exit 1
   fi
@@ -280,6 +299,10 @@ if [[ -z "$local_tag_commit_sha" ]]; then
   log_step "done: Creating signed tag ${tag}"
   local_tag_commit_sha="$(ref_commit "$tag")"
 else
+  if ! tag_has_signature "$tag"; then
+    echo "error: existing tag ${tag} is not signed" >&2
+    exit 1
+  fi
   log_skip "local tag ${tag} already exists"
 fi
 
@@ -295,7 +318,7 @@ if [[ "$remote_tag_commit_sha" != "$head_sha" ]]; then
 fi
 
 if [[ "${#push_targets[@]}" -gt 0 ]]; then
-  run_step "Pushing ${push_targets[*]} to ${remote}" git push "$remote" "${push_targets[@]}"
+  run_step "Atomically pushing ${push_targets[*]} to ${remote}" git push --atomic "$remote" "${push_targets[@]}"
 else
   log_skip "main and ${tag} are already pushed to ${remote}"
 fi
@@ -304,10 +327,6 @@ cat <<EOF
 Release prep complete for ${tag}.
 
 Next:
-  1. Open GitHub Releases
-  2. Create or publish the release ${tag} from the existing tag
-  3. The release workflow will build and upload the tarballs
-
-Optional GitHub CLI:
-  gh release create ${tag} --title ${tag} --generate-notes
+  1. The tag-triggered release workflow will build and smoke-test the archive
+  2. GitHub Releases will be published only after those checks pass
 EOF
