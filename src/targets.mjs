@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { ocmTargetSelector } from "./ocm/commands.mjs";
 
 export function resolveTarget(selector, role) {
@@ -39,7 +40,12 @@ export function resolveTarget(selector, role) {
   }
 
   if (kind === "local-build") {
-    const runtimeName = `kova-local-${Date.now()}`;
+    const runtimeName = [
+      "kova-local",
+      Date.now().toString(36),
+      process.pid.toString(36),
+      randomBytes(4).toString("hex")
+    ].join("-");
     const target = {
       kind,
       value,
