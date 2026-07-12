@@ -176,7 +176,7 @@ function executableInvocation(binary, args) {
   if (extension === ".cmd" || extension === ".bat") {
     return {
       binary: windowsCommandProcessorPath(),
-      args: ["/d", "/s", "/c", `"%KOVA_EXTERNAL_CLI_BINARY%" ${args.join(" ")}`],
+      args: ["/d", "/s", "/c", `""%KOVA_EXTERNAL_CLI_BINARY%" ${args.join(" ")}"`],
       env: {
         ...process.env,
         KOVA_EXTERNAL_CLI_BINARY: binary
