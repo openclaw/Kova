@@ -48,6 +48,7 @@ import {
   validateChannelWorkflowCaseInventoryReferences
 } from "./registries/channel-workflow-cases.mjs";
 import { runScenarioCommand } from "./run/command-executor.mjs";
+import { runEntries } from "./run/engine.mjs";
 import { executeStateLifecycleSteps } from "./run/state-lifecycle.mjs";
 import { executeTargetSetup } from "./run/target-setup.mjs";
 import { loadProcessRoles } from "./registries/process-roles.mjs";
@@ -907,6 +908,7 @@ export async function runSelfCheck(flags = {}) {
         assertEqual(data.summary?.statuses?.["DRY-RUN"], 6, "filtered matrix dry-run count");
       }
     ));
+    checks.push(await matrixWorkerRejectionCheck());
     checks.push(await gateDryRunCheck(tmp));
     checks.push(gatePartialFailureCheck());
     checks.push(gatePartialPassCheck());
@@ -3289,6 +3291,65 @@ async function stateLifecycleCommandIndexesCheck(tmp) {
       id: "state-lifecycle-command-indexes",
       status: "FAIL",
       command: "execute multi-step state lifecycle with phase-wide command indexes",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+async function matrixWorkerRejectionCheck() {
+  const firstError = new Error("synthetic matrix worker failure");
+  const started = [];
+  const completed = [];
+  try {
+    let caught;
+    try {
+      await runEntries({
+        entries: [0, 1, 2, 3],
+        execute: true,
+        controls: { parallel: 2, failFast: false },
+        runEntry: async (entry) => {
+          started.push(entry);
+          if (entry === 0) {
+            await new Promise((resolve) => setTimeout(resolve, 5));
+            throw firstError;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 25));
+          completed.push(entry);
+          return [{ status: "PASS" }];
+        }
+      });
+    } catch (error) {
+      caught = error;
+    }
+    assertEqual(caught, firstError, "parallel matrix rethrows first worker error");
+    assertEqual(started.join(","), "0,1", "parallel matrix stops assigning new entries after rejection");
+    assertEqual(completed.join(","), "1", "parallel matrix drains active workers before rejecting");
+
+    const serialStarted = [];
+    const serialRecords = await runEntries({
+      entries: [0, 1],
+      execute: true,
+      controls: { parallel: 1, failFast: true },
+      runEntry: async (entry) => {
+        serialStarted.push(entry);
+        return [{ status: entry === 0 ? "FAIL" : "PASS" }];
+      }
+    });
+    assertEqual(serialStarted.join(","), "0", "serial fail-fast stops after first non-passing record");
+    assertEqual(serialRecords.length, 1, "serial fail-fast returns completed records");
+
+    return {
+      id: "matrix-worker-rejection",
+      status: "PASS",
+      command: "reject parallel matrix worker and drain active work",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "matrix-worker-rejection",
+      status: "FAIL",
+      command: "reject parallel matrix worker and drain active work",
       durationMs: 0,
       message: error.message
     };

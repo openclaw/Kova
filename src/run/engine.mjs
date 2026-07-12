@@ -67,14 +67,26 @@ export async function runEntries({ entries, runEntry, execute, controls }) {
 
   const records = new Array(entries.length);
   let nextIndex = 0;
+  let rejected = false;
+  let firstError;
   async function worker() {
-    while (nextIndex < entries.length) {
+    while (!rejected && nextIndex < entries.length) {
       const index = nextIndex;
       nextIndex += 1;
-      records[index] = await runEntry(entries[index]);
+      try {
+        records[index] = await runEntry(entries[index]);
+      } catch (error) {
+        if (!rejected) {
+          rejected = true;
+          firstError = error;
+        }
+      }
     }
   }
 
   await Promise.all(Array.from({ length: controls.parallel }, () => worker()));
+  if (rejected) {
+    throw firstError;
+  }
   return records.filter(Boolean).flat();
 }
