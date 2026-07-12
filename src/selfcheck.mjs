@@ -17886,6 +17886,8 @@ async function logArtifactRedactionCheck(tmp) {
   const genericTokenKey = ["to", "ken"].join("");
   const sessionTokenKey = ["SESSION", "TOKEN"].join("_");
   const databasePasswordKey = ["DB", "PASSWORD"].join("_");
+  const escapedJsonTail = ["escaped", "json", "tail", "canary"].join("-");
+  const escapedCliTail = ["escaped", "cli", "tail", "canary"].join("-");
   const canaries = [
     headerCanary,
     prefixedHeaderCanary,
@@ -17895,7 +17897,9 @@ async function logArtifactRedactionCheck(tmp) {
     exactRedactionValue,
     genericJsonCanary,
     quotedAssignmentTail,
-    punctuatedAssignmentTail
+    punctuatedAssignmentTail,
+    escapedJsonTail,
+    escapedCliTail
   ];
   const fakeLogs = [
     `Authorization${": "}Bearer ${headerCanary}`,
@@ -17906,7 +17910,9 @@ async function logArtifactRedactionCheck(tmp) {
     `exact=${exactRedactionValue}`,
     JSON.stringify({ [genericTokenKey]: genericJsonCanary }),
     `${sessionTokenKey}="kova ${quotedAssignmentTail}"`,
-    `${databasePasswordKey}=kova,${punctuatedAssignmentTail};done`
+    `${databasePasswordKey}=kova,${punctuatedAssignmentTail};done`,
+    JSON.stringify({ [genericTokenKey]: `prefix"${escapedJsonTail}` }),
+    `command --token ${JSON.stringify(`prefix"${escapedCliTail}`)}`
   ].join("\n");
   try {
     await mkdir(fakeBin, { recursive: true });
