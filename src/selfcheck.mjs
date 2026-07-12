@@ -2837,6 +2837,29 @@ function compareIdentityAndRollupCheck() {
       true,
       "finding compare uses semantic message identity"
     );
+    const categoricalBaseline = syntheticPerformanceReport({
+      runId: "categorical-baseline",
+      platform: baseline.platform,
+      target: "runtime:stable",
+      records: [findingRecord([{
+        kind: "protocol",
+        metric: "providerResponse",
+        message: "provider returned HTTP 401"
+      }])]
+    });
+    const categoricalCurrent = syntheticPerformanceReport({
+      runId: "categorical-current",
+      platform: baseline.platform,
+      target: "runtime:stable",
+      records: [findingRecord([{
+        kind: "protocol",
+        metric: "providerResponse",
+        message: "provider returned HTTP 500"
+      }])]
+    });
+    const categoricalComparison = compareReports(categoricalBaseline, categoricalCurrent);
+    assertEqual(categoricalComparison.findingChanges.new.length, 1, "categorical numeric finding is new");
+    assertEqual(categoricalComparison.findingChanges.resolved.length, 1, "categorical numeric finding is resolved");
 
     const rollupInput = {
       scenarios: [{
@@ -2863,6 +2886,27 @@ function compareIdentityAndRollupCheck() {
       assertEqual(rollup.currentStatus, "FAIL", "rollup retains worst current status");
       assertEqual(rollup.failedSamples, 2, "rollup counts all non-passing samples");
       assertEqual(rollup.passedSamples, 0, "rollup counts passed samples explicitly");
+    }
+    const mixedExecutionStates = [{
+      scenario: "mixed-execution",
+      status: "OK",
+      baselineStatus: "PASS",
+      currentStatus: "PASS",
+      currentSampleCount: 1,
+      currentStatuses: { PASS: 1 },
+      regressions: []
+    }, {
+      scenario: "mixed-execution",
+      status: "OK",
+      baselineStatus: "PASS",
+      currentStatus: "DRY-RUN",
+      currentSampleCount: 1,
+      currentStatuses: { "DRY-RUN": 1 },
+      regressions: []
+    }];
+    for (const scenarios of [mixedExecutionStates, [...mixedExecutionStates].reverse()]) {
+      const rollup = rollupScenarios({ scenarios })[0];
+      assertEqual(rollup.currentStatus, "DRY-RUN", "rollup dry-run outranks pass deterministically");
     }
 
     const improved = {

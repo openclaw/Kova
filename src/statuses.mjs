@@ -30,13 +30,13 @@ export function findingSeverityForStatus(status) {
 export function recordStatusRank(status) {
   const ranks = {
     [RECORD_STATUS.PASS]: 0,
-    [RECORD_STATUS.DRY_RUN]: 0,
-    [RECORD_STATUS.SKIPPED]: 1,
-    [RECORD_STATUS.INCOMPLETE]: 2,
-    [RECORD_STATUS.BLOCKED]: 3,
-    [RECORD_STATUS.FAIL]: 4
+    [RECORD_STATUS.DRY_RUN]: 1,
+    [RECORD_STATUS.SKIPPED]: 2,
+    [RECORD_STATUS.INCOMPLETE]: 3,
+    [RECORD_STATUS.BLOCKED]: 4,
+    [RECORD_STATUS.FAIL]: 5
   };
-  return ranks[status] ?? 2;
+  return ranks[status] ?? 3;
 }
 
 export function worseRecordStatus(left, right) {

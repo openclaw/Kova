@@ -646,7 +646,7 @@ function findingKey(finding) {
     finding.state ?? "none",
     finding.metric ?? "none",
     finding.command ?? (finding.metric ? "metric" : "none"),
-    normalizeFindingText(finding.summary ?? finding.message ?? "")
+    normalizeFindingText(finding)
   ].join("|");
 }
 
@@ -667,10 +667,17 @@ function stableFindingId(finding) {
   return id && !/:\d+$/.test(id) ? id : "none";
 }
 
-function normalizeFindingText(value) {
-  return String(value)
-    .toLowerCase()
-    .replace(/\b-?\d+(?:\.\d+)?\b/g, "#")
+function normalizeFindingText(finding) {
+  const expected = String(finding?.expected ?? "");
+  const thresholded = /(?:<=|>=|<|>)\s*-?\d/.test(expected);
+  const text = String(finding?.summary ?? finding?.message ?? "").toLowerCase();
+  const normalizedMeasurements = text.replace(
+    /-?\d+(?:\.\d+)?(?=\s*(?:ms|s|sec|seconds?|kb|mb|gb|bytes?|%)(?:\b|$))/gi,
+    "#"
+  );
+  return (thresholded
+    ? normalizedMeasurements.replace(/(?<![a-z0-9_])-?\d+(?:\.\d+)?(?![a-z0-9_])/g, "#")
+    : normalizedMeasurements)
     .replace(/\s+/g, " ")
     .trim();
 }
