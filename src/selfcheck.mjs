@@ -4943,6 +4943,15 @@ async function reportPublicationCheck(tmp) {
     assertEqual(firstBundle.outputPath === secondBundle.outputPath, false, "colliding run IDs use distinct bundle paths");
     assertEqual(await fileExists(firstBundle.checksumPath), true, "first bundle checksum published");
     assertEqual(await fileExists(secondBundle.checksumPath), true, "second bundle checksum published");
+    const firstLogicalBundleName = basename(firstBundle.outputPath)
+      .replace(/-[a-f0-9]{64}\.tar\.gz$/, "");
+    const orphanChecksumPath = join(
+      bundleRoot,
+      `${firstLogicalBundleName}-${"0".repeat(64)}.tar.gz.sha256`
+    );
+    await writeFile(orphanChecksumPath, "orphan\n");
+    await bundleReport(collisionReports[0], { outputDir: bundleRoot });
+    assertEqual(await fileExists(orphanChecksumPath), false, "logical bundle retry removes orphan checksum");
     const firstArchive = await readFile(firstBundle.outputPath);
     const firstChecksum = await readFile(firstBundle.checksumPath, "utf8");
     await rm(firstBundle.checksumPath);
