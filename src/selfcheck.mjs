@@ -1,7 +1,6 @@
 import { spawn } from "node:child_process";
 import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveScriptStep } from "mock-ai-provider/dist/providers/openai/common/scripted-response.js";
 import { quoteShell, runCommand } from "./commands.mjs";
@@ -112,6 +111,11 @@ import {
   normalizeOptionalCommandResult
 } from "./command-results.mjs";
 import { createRunId } from "./run/run-id.mjs";
+import {
+  cleanupSelfCheckWorkspace,
+  createSelfCheckScope,
+  createSelfCheckWorkspace
+} from "./selfcheck-scope.mjs";
 import { compareReports, renderCompareSummary } from "./reporting/compare.mjs";
 import { pickAffectedScenarios, scenarioMetricRows } from "./reporting/compare-aggregate.mjs";
 import { renderCompareAssessment } from "./reporting/render-compare.mjs";
@@ -146,6 +150,7 @@ import { projectInternalReport } from "./web-publish/from-internal-report.mjs";
 import { augmentWithDeltas, findImmediatePrior } from "./web-publish/projector.mjs";
 
 export async function runSelfCheck(flags = {}) {
+  const scope = createSelfCheckScope();
   const progress = createSelfCheckProgress({ flags });
   const checks = new Proxy([], {
     set(target, prop, value) {
@@ -157,9 +162,10 @@ export async function runSelfCheck(flags = {}) {
     },
   });
   progress.runStart();
-  const tmp = await mkdtemp(join(tmpdir(), "kova-self-check-"));
+  const workspace = await createSelfCheckWorkspace(scope);
+  const tmp = workspace.root;
   const previousKovaHome = process.env.KOVA_HOME;
-  process.env.KOVA_HOME = join(tmp, "kova-home");
+  process.env.KOVA_HOME = workspace.kovaHome;
 
   try {
     checks.push(await syntaxCheck());
@@ -431,7 +437,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(await channelCapabilityRegistryCheck());
     checks.push(await inventoryPlanCheck(tmp));
     checks.push(await repeatedWorkAuditCheck());
-    checks.push(await collectionPolicyResolverCheck(tmp));
+    checks.push(await collectionPolicyResolverCheck(tmp, scope));
     checks.push(await jsonCommandCheck("matrix-plan-json", "node bin/kova.mjs matrix plan --profile smoke --target runtime:stable --include scenario:fresh-install --parallel 2 --json", (data) => {
       assertEqual(data.schemaVersion, "kova.matrix.plan.v1", "matrix plan schema");
       assertEqual(data.profile?.id, "smoke", "matrix profile id");
@@ -471,7 +477,7 @@ export async function runSelfCheck(flags = {}) {
       assertEqual(data.profile?.id, "local-build-upgrade", "local-build upgrade profile id");
       assertEqual(data.entries?.[0]?.scenario?.id, "upgrade-stable-release-to-local-build", "local-build stable upgrade scenario");
     }));
-    checks.push(await rollingUpgradeResolverCheck(tmp));
+    checks.push(await rollingUpgradeResolverCheck(tmp, scope));
     checks.push(await jsonCommandCheck("rolling-upgrade-plan-json", "node bin/kova.mjs matrix plan --profile rolling-upgrade --target runtime:stable --json", (data) => {
       assertEqual(data.profile?.id, "rolling-upgrade", "rolling upgrade profile id");
       assertEqual(data.entries?.length, 3, "rolling upgrade entry count");
@@ -633,10 +639,10 @@ export async function runSelfCheck(flags = {}) {
     checks.push(networkFrontageProductGuardCheck());
     checks.push(networkFrontageRuntimeEnvCheck());
     checks.push(networkFrontageHelperEndpointCheck());
-    checks.push(await openAiCompatibleTurnFrontageCheck(tmp));
-    checks.push(await networkFrontageProductPreflightBlocksPendingCheck(tmp));
-    checks.push(await networkFrontageBootstrapCommandsBypassPreflightCheck(tmp));
-    checks.push(await cronGatewayTokenEnvCheck(tmp));
+    checks.push(await openAiCompatibleTurnFrontageCheck(tmp, scope));
+    checks.push(await networkFrontageProductPreflightBlocksPendingCheck(tmp, scope));
+    checks.push(await networkFrontageBootstrapCommandsBypassPreflightCheck(tmp, scope));
+    checks.push(await cronGatewayTokenEnvCheck(tmp, scope));
     checks.push(await networkFrontagePartialStartupCleanupInvariantCheck());
     checks.push(await failingCommandCheck(
       "network-frontage-invalid-mode",
@@ -705,7 +711,7 @@ export async function runSelfCheck(flags = {}) {
       const commands = record?.phases?.flatMap((phase) => phase.commands ?? []) ?? [];
       assertEqual(commands.some((command) => command.includes("run-adversarial-inputs.mjs") && command.includes("--model openclaw")), true, "adversarial HTTP endpoint uses gateway agent model name");
     }));
-    checks.push(await adversarialInputHelperExactFrontageCheck(tmp));
+    checks.push(await adversarialInputHelperExactFrontageCheck(tmp, scope));
     for (const [scenarioId, mode] of [
       ["agent-provider-random-disconnect", "disconnect-then-recover"],
       ["agent-provider-protocol-failure", "protocol-failure"]
@@ -747,7 +753,7 @@ export async function runSelfCheck(flags = {}) {
       assertEqual(commands.some((command) => command.includes("ocm start") && command.includes("--json")), true, "MCP gateway start command");
       assertEqual(record?.thresholds?.mcpProcessLeaks, 0, "MCP process leak threshold");
     }));
-    checks.push(await mcpToolCallSmokeRedactsGatewayTokenCheck(tmp));
+    checks.push(await mcpToolCallSmokeRedactsGatewayTokenCheck(tmp, scope));
     checks.push(await commandCheck(
       "mcp-runtime-role-patterns",
       "node -e \"const role=require('./process-roles/mcp-runtime.json'); if (role.commandPatterns.includes('mcp') || role.processPatterns.includes('mcp') || role.processPatterns.some((p)=>p.includes('modelcontextprotocol'))) process.exit(1);\""
@@ -854,7 +860,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(resourceConfiguredRoleMissingCheck());
     checks.push(await resourceRootCommandRoleBoundaryCheck());
     checks.push(await resourceRolePollutionCheck());
-    checks.push(await resourceGatewayPidLookupCheck(tmp));
+    checks.push(await resourceGatewayPidLookupCheck(tmp, scope));
     checks.push(await startupSurfaceDiagnosticsContractCheck());
     checks.push(await gatewaySessionSurfaceContractCheck());
     checks.push(await bundledPluginStartupSurfaceContractCheck());
@@ -867,7 +873,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(officialPluginInstallEvidenceInvariantCheck());
     checks.push(agentCliLocalTurnEvidenceInvariantCheck());
     checks.push(agentGatewayRpcTurnEvidenceInvariantCheck());
-    checks.push(await processSnapshotCheck(tmp));
+    checks.push(await processSnapshotCheck(tmp, scope));
     checks.push(roleThresholdEvaluationCheck());
     checks.push(thresholdPolicyCalibrationCheck());
     checks.push(await cleanupRetryCheck(tmp));
@@ -891,10 +897,10 @@ export async function runSelfCheck(flags = {}) {
     checks.push(adversarialInputEvaluationCheck());
     checks.push(agentColdWarmEvaluationCheck());
     checks.push(sourceReleaseCompareCheck());
-    checks.push(await concurrentAgentRunnerCheck(tmp));
+    checks.push(await concurrentAgentRunnerCheck(tmp, scope));
     checks.push(providerConcurrentEvaluationCheck());
     checks.push(agentAuthFailureEvaluationCheck());
-    checks.push(await soakLoopRunnerCheck(tmp));
+    checks.push(await soakLoopRunnerCheck(tmp, scope));
     checks.push(soakTrendEvaluationCheck());
     checks.push(mcpBridgeEvidenceEvaluationCheck());
     checks.push(toolRuntimeEvidenceEvaluationCheck());
@@ -902,7 +908,7 @@ export async function runSelfCheck(flags = {}) {
     checks.push(browserAutomationEvidenceEvaluationCheck());
     checks.push(mediaUnderstandingEvidenceEvaluationCheck());
     checks.push(networkOfflineEvidenceEvaluationCheck());
-    checks.push(await officialPluginInstallRunnerCheck(tmp));
+    checks.push(await officialPluginInstallRunnerCheck(tmp, scope));
     checks.push(await jsonCommandCheck(
       "dry-run-state-lifecycle-json",
       `node bin/kova.mjs run --target runtime:stable --scenario fresh-install --state missing-plugin-index --report-dir ${quoteShell(tmp)} --json`,
@@ -970,7 +976,7 @@ export async function runSelfCheck(flags = {}) {
     ));
     checks.push(await localBuildRuntimeCleanupCheck(tmp));
     checks.push(await localBuildRuntimeAlreadyAbsentCleanupCheck(tmp));
-    checks.push(await localBuildProfileEnvCheck(tmp));
+    checks.push(await localBuildProfileEnvCheck(tmp, scope));
     checks.push(await localBuildParallelSingleFlightCheck(tmp));
     checks.push(defaultGatewayResourceRoleCheck());
     checks.push(gatewayProcessResourceRoleCheck());
@@ -1062,13 +1068,14 @@ export async function runSelfCheck(flags = {}) {
     } else {
       process.env.KOVA_HOME = previousKovaHome;
     }
-    await rm(tmp, { recursive: true, force: true });
+    await cleanupSelfCheckWorkspace(scope, workspace);
   }
 
   const ok = checks.every((check) => check.status === "PASS");
   const result = {
     schemaVersion: "kova.selfcheck.v1",
     generatedAt: new Date().toISOString(),
+    scopeId: scope.id,
     ok,
     checks: checks.map(({ data, ...check }) => check)
   };
@@ -4654,7 +4661,7 @@ exit 2
     const log = await readFile(ocmLog, "utf8");
     assertEqual(report.targetCleanup?.status, "removed", "local-build target cleanup status");
     assertEqual(report.targetCleanup?.result?.attempts?.length, 2, "local-build target cleanup retry attempts");
-    if (!/runtime remove kova-local-\d+ --json/.test(log)) {
+    if (!/runtime remove kova-local-[a-z0-9-]+ --json/.test(log)) {
       throw new Error(`runtime remove was not called; log:\n${log}`);
     }
     return {
@@ -4740,7 +4747,7 @@ exit 2
       1,
       "failed local-build target setup executes once per matrix"
     );
-    if (!/runtime remove kova-local-\d+ --json/.test(log)) {
+    if (!/runtime remove kova-local-[a-z0-9-]+ --json/.test(log)) {
       throw new Error(`runtime remove was not called after failed build; log:\n${log}`);
     }
     return {
@@ -4760,7 +4767,7 @@ exit 2
   }
 }
 
-async function localBuildProfileEnvCheck(tmp) {
+async function localBuildProfileEnvCheck(tmp, scope) {
   const binDir = join(tmp, "mock-bin-local-build-profile");
   const buildProfileLog = join(tmp, "mock-local-build-profile.log");
   await mkdir(binDir, { recursive: true });
@@ -4771,15 +4778,11 @@ echo '{"ok":true}'
 `, "utf8");
   await chmod(ocmPath, 0o755);
 
-  const previousPath = process.env.PATH;
-  const previousLog = process.env.KOVA_MOCK_BUILD_PROFILE_LOG;
-  process.env.PATH = `${binDir}:${previousPath ?? ""}`;
-  process.env.KOVA_MOCK_BUILD_PROFILE_LOG = buildProfileLog;
   try {
     const results = await executeTargetSetup({
       targetPlan: {
         kind: "local-build",
-        runtimeName: "kova-local-profile-test",
+        runtimeName: scope.runtimeName,
         repoPath: "/tmp/openclaw"
       },
       profile: {
@@ -4787,8 +4790,12 @@ echo '{"ok":true}'
       },
       timeoutMs: 30000,
       resourceSampling: false,
+      commandEnv: {
+        PATH: `${binDir}:${process.env.PATH ?? ""}`,
+        KOVA_MOCK_BUILD_PROFILE_LOG: buildProfileLog
+      },
       targetSetup: { completed: false, failed: false, results: [], inFlight: null }
-    }, "kova-profile-test", tmp);
+    }, scope.envName, tmp);
     assertEqual(results.length, 1, "local build profile target setup result count");
     assertEqual(results[0]?.status, 0, "local build profile target setup status");
     assertEqual(
@@ -4810,11 +4817,6 @@ echo '{"ok":true}'
       durationMs: 0,
       message: error.message
     };
-  } finally {
-    restoreEnv({
-      PATH: previousPath,
-      KOVA_MOCK_BUILD_PROFILE_LOG: previousLog
-    });
   }
 }
 
@@ -8124,7 +8126,7 @@ function mockProviderScriptModesCheck() {
   }
 }
 
-async function concurrentAgentRunnerCheck(tmp) {
+async function concurrentAgentRunnerCheck(tmp, scope) {
   const fakeBin = join(tmp, "concurrent-agent-runner-bin");
   const fakeOcm = join(fakeBin, "ocm");
   await mkdir(fakeBin, { recursive: true });
@@ -8134,8 +8136,14 @@ async function concurrentAgentRunnerCheck(tmp) {
   ].join("\n"), "utf8");
   await chmod(fakeOcm, 0o755);
 
-  const command = `PATH=${quoteShell(fakeBin)}:$PATH node support/run-concurrent-agent-turns.mjs --env kova-self-check --count 2 --session-prefix kova-self-check-concurrent --message hi --expected-text KOVA_AGENT_OK --timeout 5`;
-  const result = await runCommand(command, { shell: "/bin/sh", timeoutMs: 10000 });
+  const command = `node support/run-concurrent-agent-turns.mjs --env ${quoteShell(scope.envName)} --count 2 --session-prefix ${quoteShell(scope.sessionPrefix)} --message hi --expected-text KOVA_AGENT_OK --timeout 5`;
+  const result = await runCommand(command, {
+    shell: "/bin/sh",
+    timeoutMs: 10000,
+    env: {
+      PATH: `${fakeBin}:${process.env.PATH ?? ""}`
+    }
+  });
   try {
     if (result.status !== 0) {
       throw new Error(`concurrent agent runner failed: ${result.stderr || result.stdout}`);
@@ -8163,7 +8171,7 @@ async function concurrentAgentRunnerCheck(tmp) {
   }
 }
 
-async function officialPluginInstallRunnerCheck(tmp) {
+async function officialPluginInstallRunnerCheck(tmp, scope) {
   const fakeBin = join(tmp, "official-plugin-runner-bin");
   const fakeOcm = join(fakeBin, "ocm");
   const artifactDir = join(tmp, "official-plugin-runner-artifacts");
@@ -8171,7 +8179,8 @@ async function officialPluginInstallRunnerCheck(tmp) {
   await writeFile(fakeOcm, [
     "#!/usr/bin/env node",
     "const text = process.argv.slice(2).join(' ');",
-    "if (text.includes('@kova-self-check -- plugins install @openclaw/discord')) {",
+    "const envName = process.env.KOVA_SELF_CHECK_ENV;",
+    "if (text.includes('@' + envName + ' -- plugins install @openclaw/discord')) {",
     "  if (process.env.KOVA_FAKE_OCM_SECURITY_BLOCK === '1') {",
     "    process.stderr.write('WARNING: Plugin \"discord\" contains dangerous code patterns: credential harvesting\\n');",
     "    process.exit(1);",
@@ -8179,19 +8188,19 @@ async function officialPluginInstallRunnerCheck(tmp) {
     "  process.stdout.write('installed @openclaw/discord\\n');",
     "  process.exit(0);",
     "}",
-    "if (text.includes('@kova-self-check -- plugins list')) {",
+    "if (text.includes('@' + envName + ' -- plugins list')) {",
     "  process.stdout.write('discord @openclaw/discord\\n');",
     "  process.exit(0);",
     "}",
-    "if (text.includes('@kova-self-check -- plugins registry --refresh --json')) {",
+    "if (text.includes('@' + envName + ' -- plugins registry --refresh --json')) {",
     "  process.stdout.write(JSON.stringify({ plugins: [{ id: 'discord' }] }) + '\\n');",
     "  process.exit(0);",
     "}",
-    "if (text.includes('@kova-self-check -- status')) {",
+    "if (text.includes('@' + envName + ' -- status')) {",
     "  process.stdout.write('status ok\\n');",
     "  process.exit(0);",
     "}",
-    "if (text.includes('logs kova-self-check --tail 400 --raw')) {",
+    "if (text.includes('logs ' + envName + ' --tail 400 --raw')) {",
     "  process.stdout.write('[plugins] diagnostic log line\\n');",
     "  process.exit(0);",
     "}",
@@ -8200,10 +8209,27 @@ async function officialPluginInstallRunnerCheck(tmp) {
   ].join("\n"), "utf8");
   await chmod(fakeOcm, 0o755);
 
-  const successCommand = `PATH=${quoteShell(fakeBin)}:$PATH node support/run-official-plugin-install.mjs --env kova-self-check --state states/official-plugins.json --artifact-dir ${quoteShell(artifactDir)} --timeout-ms 5000`;
-  const success = await runCommand(successCommand, { shell: "/bin/sh", timeoutMs: 10000, maxOutputChars: 1000000 });
-  const blockedCommand = `PATH=${quoteShell(fakeBin)}:$PATH KOVA_FAKE_OCM_SECURITY_BLOCK=1 node support/run-official-plugin-install.mjs --env kova-self-check --state states/official-plugins.json --artifact-dir ${quoteShell(join(tmp, "official-plugin-blocked-artifacts"))} --timeout-ms 5000`;
-  const blocked = await runCommand(blockedCommand, { shell: "/bin/sh", timeoutMs: 10000, maxOutputChars: 1000000 });
+  const commandEnv = {
+    PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
+    KOVA_SELF_CHECK_ENV: scope.envName
+  };
+  const successCommand = `node support/run-official-plugin-install.mjs --env ${quoteShell(scope.envName)} --state states/official-plugins.json --artifact-dir ${quoteShell(artifactDir)} --timeout-ms 5000`;
+  const success = await runCommand(successCommand, {
+    shell: "/bin/sh",
+    timeoutMs: 10000,
+    maxOutputChars: 1000000,
+    env: commandEnv
+  });
+  const blockedCommand = `node support/run-official-plugin-install.mjs --env ${quoteShell(scope.envName)} --state states/official-plugins.json --artifact-dir ${quoteShell(join(tmp, "official-plugin-blocked-artifacts"))} --timeout-ms 5000`;
+  const blocked = await runCommand(blockedCommand, {
+    shell: "/bin/sh",
+    timeoutMs: 10000,
+    maxOutputChars: 1000000,
+    env: {
+      ...commandEnv,
+      KOVA_FAKE_OCM_SECURITY_BLOCK: "1"
+    }
+  });
 
   try {
     if (success.status !== 0) {
@@ -8901,7 +8927,7 @@ function agentAuthFailureEvaluationCheck() {
   }
 }
 
-async function soakLoopRunnerCheck(tmp) {
+async function soakLoopRunnerCheck(tmp, scope) {
   const fakeBin = join(tmp, "soak-loop-runner-bin");
   const fakeOcm = join(fakeBin, "ocm");
   const gatewayPort = 39291;
@@ -8927,7 +8953,7 @@ async function soakLoopRunnerCheck(tmp) {
     server.listen(0, "127.0.0.1", resolve);
   });
   const frontagePort = server.address().port;
-  const command = "node support/run-soak-loop.mjs --env kova-self-check --duration-ms 50 --interval-ms 0 --timeout-ms 5000";
+  const command = `node support/run-soak-loop.mjs --env ${quoteShell(scope.envName)} --duration-ms 50 --interval-ms 0 --timeout-ms 5000`;
   const result = await runCommand(command, {
     shell: "/bin/sh",
     timeoutMs: 10000,
@@ -8972,7 +8998,7 @@ async function soakLoopRunnerCheck(tmp) {
   }
 }
 
-async function openAiCompatibleTurnFrontageCheck(tmp) {
+async function openAiCompatibleTurnFrontageCheck(tmp, scope) {
   const fakeBin = join(tmp, "openai-compatible-frontage-bin");
   const fakeOcm = join(fakeBin, "ocm");
   const home = join(tmp, "openai-compatible-frontage-home");
@@ -9022,7 +9048,7 @@ async function openAiCompatibleTurnFrontageCheck(tmp) {
     server.listen(0, "127.0.0.1", resolve);
   });
   const frontagePort = server.address().port;
-  const command = "node support/run-openai-compatible-turn.mjs --env kova-self-check --expected-text KOVA_AGENT_OK --timeout 5000";
+  const command = `node support/run-openai-compatible-turn.mjs --env ${quoteShell(scope.envName)} --expected-text KOVA_AGENT_OK --timeout 5000`;
   const result = await runCommand(command, {
     shell: "/bin/sh",
     timeoutMs: 10000,
@@ -9407,7 +9433,7 @@ function networkFrontageHelperEndpointCheck() {
   }
 }
 
-async function mcpToolCallSmokeRedactsGatewayTokenCheck(tmp) {
+async function mcpToolCallSmokeRedactsGatewayTokenCheck(tmp, scope) {
   const fakeBin = join(tmp, "mcp-tool-redaction-bin");
   const home = join(tmp, "mcp-tool-redaction-home");
   const artifactDir = join(tmp, "mcp-tool-redaction-artifacts");
@@ -9432,11 +9458,11 @@ if (args[0] === "env" && args[1] === "show") {
   console.log(JSON.stringify({ configPath: ${JSON.stringify(configPath)}, gatewayPort: 43123 }));
   process.exit(0);
 }
-if (args[0] === "@kova-self-check" && args[1] === "--" && args[2] === "status") {
+if (args[0] === ${JSON.stringify(`@${scope.envName}`)} && args[1] === "--" && args[2] === "status") {
   console.log("ready");
   process.exit(0);
 }
-if (args[0] === "@kova-self-check" && args[1] === "--" && args[2] === "mcp" && args[3] === "serve") {
+if (args[0] === ${JSON.stringify(`@${scope.envName}`)} && args[1] === "--" && args[2] === "mcp" && args[3] === "serve") {
   const lines = readline.createInterface({ input: process.stdin });
   lines.on("line", (line) => {
     if (!line.trim()) return;
@@ -9463,8 +9489,15 @@ if (args[0] === "@kova-self-check" && args[1] === "--" && args[2] === "mcp" && a
     await chmod(fakeOcm, 0o755);
 
     const result = await runCommand(
-      `PATH=${quoteShell(fakeBin)}:$PATH node support/mcp-tool-call-smoke.mjs --env kova-self-check --artifact-dir ${quoteShell(artifactDir)} --timeout-ms 5000`,
-      { shell: "/bin/sh", timeoutMs: 30000, maxOutputChars: 1000000 }
+      `node support/mcp-tool-call-smoke.mjs --env ${quoteShell(scope.envName)} --artifact-dir ${quoteShell(artifactDir)} --timeout-ms 5000`,
+      {
+        shell: "/bin/sh",
+        timeoutMs: 30000,
+        maxOutputChars: 1000000,
+        env: {
+          PATH: `${fakeBin}:${process.env.PATH ?? ""}`
+        }
+      }
     );
     if (result.status !== 0) {
       throw new Error(result.stderr.trim() || result.stdout.trim() || `exit ${result.status}`);
@@ -9493,8 +9526,7 @@ if (args[0] === "@kova-self-check" && args[1] === "--" && args[2] === "mcp" && a
   }
 }
 
-async function networkFrontageProductPreflightBlocksPendingCheck(tmp) {
-  const previous = snapshotEnv(["PATH", "SHELL"]);
+async function networkFrontageProductPreflightBlocksPendingCheck(tmp, scope) {
   const fakeBin = join(tmp, "network-frontage-pending-bin");
   const artifactDir = join(tmp, "network-frontage-pending-artifacts");
   const sentinel = join(tmp, "network-frontage-pending-ran");
@@ -9511,9 +9543,6 @@ echo "unexpected mock ocm command: $*" >&2
 exit 2
 `, "utf8");
     await chmod(fakeOcm, 0o755);
-    process.env.PATH = `${fakeBin}:${process.env.PATH ?? ""}`;
-    process.env.SHELL = "/bin/sh";
-
     const result = await runScenarioCommand(
       `node -e "require('node:fs').writeFileSync(process.argv[1], 'ran')" ${quoteShell(sentinel)}`,
       {
@@ -9522,9 +9551,13 @@ exit 2
           enabled: true,
           mode: "loopback-frontage",
           workerId: 7
+        },
+        commandEnv: {
+          PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
+          SHELL: "/bin/sh"
         }
       },
-      "kova-self-check",
+      scope.envName,
       artifactDir,
       { id: "agent-turn", measurementScope: "product" },
       0
@@ -9560,13 +9593,10 @@ exit 2
       durationMs: 0,
       message: error.message
     };
-  } finally {
-    restoreEnv(previous);
   }
 }
 
-async function networkFrontageBootstrapCommandsBypassPreflightCheck(tmp) {
-  const previous = snapshotEnv(["PATH", "SHELL"]);
+async function networkFrontageBootstrapCommandsBypassPreflightCheck(tmp, scope) {
   const fakeBin = join(tmp, "network-frontage-bootstrap-bin");
   const artifactDir = join(tmp, "network-frontage-bootstrap-artifacts");
   const commandLog = join(tmp, "network-frontage-bootstrap-commands.log");
@@ -9588,9 +9618,6 @@ echo "unexpected mock ocm command: $*" >&2
 exit 2
 `, "utf8");
     await chmod(fakeOcm, 0o755);
-    process.env.PATH = `${fakeBin}:${process.env.PATH ?? ""}`;
-    process.env.SHELL = "/bin/sh";
-
     const context = {
       timeoutMs: 5000,
       networkFrontage: {
@@ -9601,20 +9628,24 @@ exit 2
       networkFrontageAllocation: {
         status: "BLOCKED",
         reason: "preexisting frontage blocker"
+      },
+      commandEnv: {
+        PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
+        SHELL: "/bin/sh"
       }
     };
     const startResult = await runScenarioCommand(
-      "ocm start kova-self-check --json",
+      `ocm start ${quoteShell(scope.envName)} --json`,
       context,
-      "kova-self-check",
+      scope.envName,
       artifactDir,
       { id: "source", measurementScope: "product" },
       0
     );
     const serviceStartResult = await runScenarioCommand(
-      "ocm service start kova-self-check --json",
+      `ocm service start ${quoteShell(scope.envName)} --json`,
       context,
-      "kova-self-check",
+      scope.envName,
       artifactDir,
       { id: "restart", measurementScope: "product" },
       1
@@ -9622,8 +9653,12 @@ exit 2
     const log = await readFile(commandLog, "utf8");
     assertEqual(startResult.status, 0, "ocm start bypasses frontage preflight outside provision phase");
     assertEqual(serviceStartResult.status, 0, "ocm service start bypasses frontage preflight outside gateway-start phase");
-    assertEqual(log.includes("start kova-self-check --json"), true, "ocm start command spawned");
-    assertEqual(log.includes("service start kova-self-check --json"), true, "ocm service start command spawned");
+    assertEqual(log.includes(`start ${scope.envName} --json`), true, "ocm start command spawned");
+    assertEqual(
+      log.includes(`service start ${scope.envName} --json`),
+      true,
+      "ocm service start command spawned"
+    );
 
     return {
       id: "network-frontage-bootstrap-commands-bypass-preflight",
@@ -9639,12 +9674,10 @@ exit 2
       durationMs: 0,
       message: error.message
     };
-  } finally {
-    restoreEnv(previous);
   }
 }
 
-async function adversarialInputHelperExactFrontageCheck(tmp) {
+async function adversarialInputHelperExactFrontageCheck(tmp, scope) {
   let hitCount = 0;
   const server = createServer((request, response) => {
     hitCount += 1;
@@ -9669,7 +9702,7 @@ async function adversarialInputHelperExactFrontageCheck(tmp) {
     await writeFile(join(root, "openclaw.json"), JSON.stringify({
       gateway: {
         port: 9,
-        auth: { token: "kova-self-check-token" }
+        auth: { token: `${scope.id}-token` }
       }
     }), "utf8");
     const address = server.address();
@@ -9715,13 +9748,13 @@ function restoreEnv(values) {
   }
 }
 
-async function cronGatewayTokenEnvCheck(tmp) {
+async function cronGatewayTokenEnvCheck(tmp, scope) {
   const fakeBin = join(tmp, "cron-token-env-bin");
   const artifactDir = join(tmp, "cron-token-env-artifacts");
   const configPath = join(tmp, "cron-token-env-openclaw.json");
   const ocmLog = join(tmp, "cron-token-env-ocm.log");
   const envLog = join(tmp, "cron-token-env-seen.log");
-  const token = "kova-self-check-gateway-token";
+  const token = `${scope.id}-gateway-token`;
   await mkdir(fakeBin, { recursive: true });
   await mkdir(artifactDir, { recursive: true });
   await writeFile(configPath, JSON.stringify({ gateway: { port: 18789, auth: { token } } }), "utf8");
@@ -9752,11 +9785,21 @@ exit 2
 `, "utf8");
   await chmod(fakeOcm, 0o755);
 
-  const command = `PATH=${quoteShell(fakeBin)}:$PATH KOVA_EXPECTED_GATEWAY_TOKEN=${quoteShell(token)} KOVA_FAKE_CONFIG_JSON=${quoteShell(JSON.stringify(configPath))} KOVA_MOCK_OCM_LOG=${quoteShell(ocmLog)} KOVA_MOCK_ENV_LOG=${quoteShell(envLog)} KOVA_NETWORK_FRONTAGE_ENABLED=1 KOVA_NETWORK_FRONTAGE_HOST=127.0.1.17 KOVA_NETWORK_FRONTAGE_PORT=19876 node support/run-cron-runtime-smoke.mjs --env kova-self-check --artifact-dir ${quoteShell(artifactDir)} --timeout-ms 5000`;
+  const command = `node support/run-cron-runtime-smoke.mjs --env ${quoteShell(scope.envName)} --artifact-dir ${quoteShell(artifactDir)} --timeout-ms 5000`;
   const result = await runCommand(command, {
     shell: "/bin/sh",
     timeoutMs: 30000,
-    maxOutputChars: 1000000
+    maxOutputChars: 1000000,
+    env: {
+      PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
+      KOVA_EXPECTED_GATEWAY_TOKEN: token,
+      KOVA_FAKE_CONFIG_JSON: JSON.stringify(configPath),
+      KOVA_MOCK_OCM_LOG: ocmLog,
+      KOVA_MOCK_ENV_LOG: envLog,
+      KOVA_NETWORK_FRONTAGE_ENABLED: "1",
+      KOVA_NETWORK_FRONTAGE_HOST: "127.0.1.17",
+      KOVA_NETWORK_FRONTAGE_PORT: "19876"
+    }
   });
 
   try {
@@ -12173,7 +12216,7 @@ async function repeatedWorkAuditCheck() {
   };
 }
 
-async function rollingUpgradeResolverCheck(tmp) {
+async function rollingUpgradeResolverCheck(tmp, scope) {
   const dir = await mkdtemp(join(tmp, "rolling-upgrade-"));
   const timeFile = join(dir, "time.json");
   await writeFile(timeFile, `${JSON.stringify({
@@ -12204,8 +12247,15 @@ async function rollingUpgradeResolverCheck(tmp) {
     };
   }
   const result = await runCommand(
-    `PATH=${quoteShell(dir)}:$PATH node support/run-openclaw-release-age-upgrade.mjs --env kova-self-check --age month --now 2026-05-21T12:00:00.000Z --time-file ${quoteShell(timeFile)} --json`,
-    { shell: "/bin/sh", timeoutMs: 30000, maxOutputChars: 1000000 }
+    `node support/run-openclaw-release-age-upgrade.mjs --env ${quoteShell(scope.envName)} --age month --now 2026-05-21T12:00:00.000Z --time-file ${quoteShell(timeFile)} --json`,
+    {
+      shell: "/bin/sh",
+      timeoutMs: 30000,
+      maxOutputChars: 1000000,
+      env: {
+        PATH: `${dir}:${process.env.PATH ?? ""}`
+      }
+    }
   );
   let upgrade = null;
   try {
@@ -12232,7 +12282,7 @@ async function rollingUpgradeResolverCheck(tmp) {
   };
 }
 
-async function collectionPolicyResolverCheck(tmp) {
+async function collectionPolicyResolverCheck(tmp, scope) {
   const policy = resolveCollectionPolicy({
     kind: "scenario-phase",
     scenario: "fresh-install",
@@ -12377,7 +12427,7 @@ async function collectionPolicyResolverCheck(tmp) {
   });
   assertEqual(envStatePreparePolicy.mode, "skip-env", "collection intent, not command scope, drives env state prepare collection");
 
-  const skippedMetrics = await collectEnvMetrics("kova-self-check-skip-env", {
+  const skippedMetrics = await collectEnvMetrics(`${scope.envName}-skip`, {
     collectionPolicy: authPreparePolicy
   });
   assertEqual(skippedMetrics.service, null, "skipped env metrics avoid service collection");
@@ -12388,7 +12438,7 @@ async function collectionPolicyResolverCheck(tmp) {
   );
   assertEqual(skippedMetrics.collectors.length, ENV_COLLECTOR_IDS.length, "skipped env metrics receipt count");
 
-  const hostStatePrepareMetrics = await collectEnvMetrics("kova-self-check-host-state-prepare", {
+  const hostStatePrepareMetrics = await collectEnvMetrics(`${scope.envName}-host-prepare`, {
     collectionPolicy: hostStatePreparePolicy
   });
   assertEqual(hostStatePrepareMetrics.service, null, "host state prepare metrics avoid service collection");
@@ -12398,7 +12448,7 @@ async function collectionPolicyResolverCheck(tmp) {
     "host state prepare metrics records skipped collectors"
   );
 
-  const authSetupMetrics = await collectPostReadySelfCheckMetrics(tmp, authSetupPolicy);
+  const authSetupMetrics = await collectPostReadySelfCheckMetrics(tmp, scope, authSetupPolicy);
   assertEqual(authSetupMetrics.service?.gatewayState, "running", "auth setup service-only keeps service state");
   assertEqual(Boolean(authSetupMetrics.process), true, "auth setup service-only keeps process metrics");
   assertEqual(authSetupMetrics.logs, null, "auth setup service-only skips logs payload");
@@ -12415,7 +12465,7 @@ async function collectionPolicyResolverCheck(tmp) {
     "auth setup service-only records skipped timeline"
   );
 
-  const stateSetupMetrics = await collectPostReadySelfCheckMetrics(tmp, stateSetupPolicy);
+  const stateSetupMetrics = await collectPostReadySelfCheckMetrics(tmp, scope, stateSetupPolicy);
   assertEqual(stateSetupMetrics.service?.gatewayState, "running", "state setup service-only keeps service state");
   assertEqual(Boolean(stateSetupMetrics.process), true, "state setup service-only keeps process metrics");
   assertEqual(stateSetupMetrics.logs, null, "state setup service-only skips logs payload");
@@ -12427,7 +12477,7 @@ async function collectionPolicyResolverCheck(tmp) {
     "state setup service-only records skipped logs"
   );
 
-  const postReadyMetrics = await collectPostReadySelfCheckMetrics(tmp, postReadyPolicy);
+  const postReadyMetrics = await collectPostReadySelfCheckMetrics(tmp, scope, postReadyPolicy);
   assertEqual(postReadyMetrics.readiness?.attempts, 0, "post-ready metrics do not run readiness attempts");
   assertEqual(postReadyMetrics.healthSummary?.count, 2, "post-ready metrics keep health samples");
   assertEqual(postReadyMetrics.healthSummary?.failureCount, 0, "post-ready metrics health samples pass");
@@ -12442,7 +12492,7 @@ async function collectionPolicyResolverCheck(tmp) {
     "post-ready metrics records health collector"
   );
 
-  const frontagePostReadyMetrics = await collectPostReadySelfCheckMetrics(tmp, postReadyPolicy, {
+  const frontagePostReadyMetrics = await collectPostReadySelfCheckMetrics(tmp, scope, postReadyPolicy, {
     useNetworkFrontage: true
   });
   assertEqual(frontagePostReadyMetrics.service?.gatewayPort, 9, "frontage metrics preserve raw service gateway port");
@@ -12455,7 +12505,7 @@ async function collectionPolicyResolverCheck(tmp) {
   };
 }
 
-async function collectPostReadySelfCheckMetrics(tmp, collectionPolicy, options = {}) {
+async function collectPostReadySelfCheckMetrics(tmp, scope, collectionPolicy, options = {}) {
   const fakeBin = join(tmp, "post-ready-policy-bin");
   const fakeOcm = join(fakeBin, "ocm");
   await mkdir(fakeBin, { recursive: true });
@@ -12481,21 +12531,19 @@ async function collectPostReadySelfCheckMetrics(tmp, collectionPolicy, options =
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const port = server.address().port;
   const reportedGatewayPort = options.useNetworkFrontage === true ? 9 : port;
-  const previousPath = process.env.PATH;
-  const previousShell = process.env.SHELL;
-  const previousPort = process.env.KOVA_FAKE_PORT;
-  const previousChildPid = process.env.KOVA_FAKE_CHILD_PID;
-  process.env.PATH = `${fakeBin}:${previousPath}`;
-  process.env.SHELL = "/bin/sh";
-  process.env.KOVA_FAKE_PORT = String(reportedGatewayPort);
-  process.env.KOVA_FAKE_CHILD_PID = String(process.pid);
   try {
-    return await collectEnvMetrics("kova-self-check-post-ready", {
+    return await collectEnvMetrics(`${scope.envName}-post-ready`, {
       collectionPolicy,
       timeoutMs: 1000,
       healthSamples: 2,
       healthIntervalMs: 0,
       readinessTimeoutMs: 0,
+      commandEnv: {
+        PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
+        SHELL: "/bin/sh",
+        KOVA_FAKE_PORT: String(reportedGatewayPort),
+        KOVA_FAKE_CHILD_PID: String(process.pid)
+      },
       networkFrontageAllocation: options.useNetworkFrontage === true
         ? {
             status: "active",
@@ -12505,10 +12553,6 @@ async function collectPostReadySelfCheckMetrics(tmp, collectionPolicy, options =
         : null
     });
   } finally {
-    process.env.PATH = previousPath;
-    restoreOptionalEnv("SHELL", previousShell);
-    restoreOptionalEnv("KOVA_FAKE_PORT", previousPort);
-    restoreOptionalEnv("KOVA_FAKE_CHILD_PID", previousChildPid);
     await new Promise((resolve) => server.close(resolve));
   }
 }
@@ -13559,15 +13603,17 @@ async function agentGatewayRpcTurnSurfaceContractCheck() {
   }
 }
 
-async function resourceGatewayPidLookupCheck(tmp) {
+async function resourceGatewayPidLookupCheck(tmp, scope) {
   const binDir = join(tmp, "resource-gateway-pid-bin");
   const lookupLog = join(tmp, "resource-gateway-pid-lookups.log");
   const fakeOcm = join(binDir, "ocm");
   const fakeShell = join(binDir, "shell");
   await mkdir(binDir, { recursive: true });
+  const runningEnvName = `${scope.envName}-resource-running`;
+  const missingEnvName = `${scope.envName}-resource-missing`;
   await writeFile(fakeOcm, `#!/bin/sh
 printf '%s\\n' "$*" >> "$KOVA_MOCK_OCM_LOG"
-if [ "$3" = "kova-resource-running" ]; then
+if [ "$3" = ${quoteShell(runningEnvName)} ]; then
   printf '{"childPid":%s}\\n' "$KOVA_MOCK_GATEWAY_PID"
 else
   printf '{"childPid":null}\\n'
@@ -13579,42 +13625,43 @@ exec /bin/sh -c "$2"
   await chmod(fakeOcm, 0o755);
   await chmod(fakeShell, 0o755);
 
-  const previousPath = process.env.PATH;
-  const previousLog = process.env.KOVA_MOCK_OCM_LOG;
-  const previousPid = process.env.KOVA_MOCK_GATEWAY_PID;
-  const previousShell = process.env.SHELL;
-  process.env.PATH = `${binDir}:${previousPath ?? ""}`;
-  process.env.KOVA_MOCK_OCM_LOG = lookupLog;
-  process.env.KOVA_MOCK_GATEWAY_PID = String(process.pid);
-  process.env.SHELL = fakeShell;
+  const commandEnv = {
+    PATH: `${binDir}:${process.env.PATH ?? ""}`,
+    KOVA_MOCK_OCM_LOG: lookupLog,
+    KOVA_MOCK_GATEWAY_PID: String(process.pid),
+    SHELL: fakeShell
+  };
 
   try {
     const first = startResourceSampler(process.pid, {
-      envName: "kova-resource-running",
-      intervalMs: 250
+      envName: runningEnvName,
+      intervalMs: 250,
+      commandEnv
     });
     await first.stop();
     const second = startResourceSampler(process.pid, {
-      envName: "kova-resource-running",
-      intervalMs: 250
+      envName: runningEnvName,
+      intervalMs: 250,
+      commandEnv
     });
     await second.stop();
 
     const missing = startResourceSampler(process.pid, {
-      envName: "kova-resource-missing",
-      intervalMs: 250
+      envName: missingEnvName,
+      intervalMs: 250,
+      commandEnv
     });
     await sleep(600);
     const missingSummary = await missing.stop();
 
     const lookups = (await readFile(lookupLog, "utf8")).trim().split("\n").filter(Boolean);
     assertEqual(
-      lookups.filter((line) => line.includes("kova-resource-running")).length,
+      lookups.filter((line) => line.includes(runningEnvName)).length,
       1,
       "live gateway pid reused across samplers"
     );
     assertEqual(
-      lookups.filter((line) => line.includes("kova-resource-missing")).length,
+      lookups.filter((line) => line.includes(missingEnvName)).length,
       1,
       "missing gateway pid lookup backs off"
     );
@@ -13633,18 +13680,12 @@ exec /bin/sh -c "$2"
       durationMs: 600,
       message: error.message
     };
-  } finally {
-    restoreEnv({
-      PATH: previousPath,
-      KOVA_MOCK_OCM_LOG: previousLog,
-      KOVA_MOCK_GATEWAY_PID: previousPid,
-      SHELL: previousShell
-    });
   }
 }
 
-async function processSnapshotCheck(tmp) {
+async function processSnapshotCheck(tmp, scope) {
   const processRoles = await loadProcessRoles();
+  const rootCommand = `ocm @${scope.envName} -- agent --local --session-id ${scope.sessionPrefix} --message hi`;
   const child = runCommand("node -e 'setTimeout(() => {}, 1200)'", {
     timeoutMs: 5000,
     resourceSample: null
@@ -13652,14 +13693,14 @@ async function processSnapshotCheck(tmp) {
   await sleep(250);
   const before = captureProcessSnapshot({
     processRoles,
-    envName: "kova-self-check",
-    rootCommand: "ocm @kova-self-check -- agent --local --session-id kova-agent-self-check --message hi"
+    envName: scope.envName,
+    rootCommand
   });
   const result = await child;
   const after = captureProcessSnapshot({
     processRoles,
-    envName: "kova-self-check",
-    rootCommand: "ocm @kova-self-check -- agent --local --session-id kova-agent-self-check --message hi"
+    envName: scope.envName,
+    rootCommand
   });
   const leaks = diffProcessSnapshots(before, after, {
     roles: ["agent-cli", "agent-process", "mcp-runtime", "plugin-cli", "mock-provider", "browser-sidecar"]
@@ -13672,29 +13713,29 @@ async function processSnapshotCheck(tmp) {
       command: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --type=renderer"
     }, {
       processRoles,
-      envName: "kova-self-check",
-      rootCommand: "ocm @kova-self-check -- agent --local --session-id kova-agent-self-check --message hi"
+      envName: scope.envName,
+      rootCommand
     });
     const scopedBrowserRoles = classifySnapshotRolesForProcess({
-      command: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --user-data-dir=/tmp/kova-self-check/browser"
+      command: `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --user-data-dir=/tmp/${scope.id}/browser`
     }, {
       processRoles,
-      envName: "kova-self-check",
-      rootCommand: "ocm @kova-self-check -- agent --local --session-id kova-agent-self-check --message hi"
+      envName: scope.envName,
+      rootCommand
     });
     const gatewayBrowserRoles = classifySnapshotRolesForProcess({
       command: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --type=renderer"
     }, {
       processRoles,
       existingRoles: ["gateway-tree"],
-      envName: "kova-self-check"
+      envName: scope.envName
     });
     const scopedAgentRoles = classifySnapshotRolesForProcess({
-      command: "openclaw-agent --session-id kova-agent-self-check"
+      command: `openclaw-agent --session-id ${scope.sessionPrefix}`
     }, {
       processRoles,
-      envName: "kova-self-check",
-      rootCommand: "ocm @kova-self-check -- agent --local --session-id kova-agent-self-check --message hi"
+      envName: scope.envName,
+      rootCommand
     });
     assertEqual(result.status, 0, "snapshot command status");
     assertEqual(before.schemaVersion, "kova.processSnapshot.v1", "snapshot schema");

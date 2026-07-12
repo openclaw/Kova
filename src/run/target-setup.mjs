@@ -53,6 +53,7 @@ async function runTargetSetup(phase, context, envName, artifactDir) {
     tagCommandResult(await runCommand(phase.commands[0], {
       timeoutMs: context.timeoutMs,
       env: {
+        ...(context.commandEnv ?? {}),
         KOVA_ENV_NAME: envName,
         ...(context.profile?.localBuildProfile
           ? { OPENCLAW_OCM_RUNTIME_BUILD_PROFILE: context.profile.localBuildProfile }
@@ -62,6 +63,7 @@ async function runTargetSetup(phase, context, envName, artifactDir) {
         envName,
         intervalMs: context.resourceSampleIntervalMs,
         processRoles: context.processRoles ?? [],
+        commandEnv: context.commandEnv,
         artifactPath: join(collectorArtifactDirs(artifactDir).resourceSamples, "target-setup-1.jsonl")
       }
     }), phase)

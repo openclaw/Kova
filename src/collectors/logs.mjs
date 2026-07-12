@@ -9,8 +9,11 @@ export const LOG_METRICS_SCHEMA = "kova.logMetrics.v1";
 const PROVIDER_TIMEOUT_SIGNAL_PATTERN =
   /(?:\bprovider\b|\bmodel\b).*(?:\btimeouts?\b|\btimed out\b)|(?:\btimeouts?\b|\btimed out\b).*(?:\bprovider\b|\bmodel\b)/i;
 
-export async function collectLogMetrics(envName, timeoutMs, artifactDir) {
-  const result = await runCommand(ocmLogs(envName, { tail: 200 }), { timeoutMs });
+export async function collectLogMetrics(envName, timeoutMs, artifactDir, commandEnv) {
+  const result = await runCommand(ocmLogs(envName, { tail: 200 }), {
+    timeoutMs,
+    env: commandEnv
+  });
   const text = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
   const noLogsAvailable = result.status !== 0 && isNoLogsOutput(text);
   const timestamps = collectTimestamps(text);
