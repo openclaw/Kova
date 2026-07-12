@@ -4896,6 +4896,38 @@ async function reportPublicationCheck(tmp) {
       "failed report staging removed transaction files"
     );
 
+    const mixedPaths = buildReportOutputPaths(publicationRoot, "kova-260712-000000-mixed");
+    const oldCanonical = `${JSON.stringify({ runId: "old-generation" })}\n`;
+    await writeFile(
+      join(publicationRoot, `.${basename(mixedPaths.json)}.kova-backup`),
+      oldCanonical
+    );
+    await writeFile(mixedPaths.markdown, "new generation\n");
+    let mixedRecoveryRejected = false;
+    try {
+      await writeReportOutputs(publicationRoot, {
+        ...report,
+        runId: "kova-260712-000000-mixed",
+        outputPaths: {
+          ...mixedPaths,
+          summary: join(publicationRoot, "missing-stage-parent", "summary.json")
+        }
+      });
+    } catch {
+      mixedRecoveryRejected = true;
+    }
+    assertEqual(mixedRecoveryRejected, true, "post-recovery staging failure rejected");
+    assertEqual(
+      await fileExists(mixedPaths.markdown),
+      false,
+      "recovery removes unbacked files from an interrupted generation"
+    );
+    assertEqual(
+      await readFile(mixedPaths.json, "utf8"),
+      oldCanonical,
+      "recovery restores the prior canonical report"
+    );
+
     const outputPaths = buildReportOutputPaths(publicationRoot, "kova-260712-000001-aabbcc");
     const publishedReport = {
       ...report,
