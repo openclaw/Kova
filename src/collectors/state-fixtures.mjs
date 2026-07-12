@@ -10,9 +10,12 @@ export async function collectStateFixtureAccounting(state, envName, artifactDir,
     return null;
   }
 
-  const envInfo = normalizeResolvedEnvInfo(
-    await (options.resolveEnvInfo ?? resolveEnvInfo)(envName)
+  const requiresOpenClawHome = spec.files.some((fileSpec) =>
+    typeof fileSpec?.path === "string" && fileSpec.path.includes("{openclawHome}")
   );
+  const envInfo = requiresOpenClawHome
+    ? normalizeResolvedEnvInfo(await (options.resolveEnvInfo ?? resolveEnvInfo)(envName))
+    : null;
   const openclawHome = envInfo?.runDir ?? null;
   const files = [];
   for (const fileSpec of spec.files) {
@@ -29,7 +32,9 @@ export async function collectStateFixtureAccounting(state, envName, artifactDir,
     kind: spec.kind ?? null,
     collectedAt: new Date().toISOString(),
     openclawHome,
-    envResolution: envInfo?.error
+    envResolution: !requiresOpenClawHome
+      ? { status: "not-required", error: null, commandStatus: null }
+      : envInfo?.error
       ? {
         status: "error",
         error: envInfo.error,

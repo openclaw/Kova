@@ -282,7 +282,7 @@ function boundedFindCommand(roots, namePredicates, extraPredicates = "") {
   const suffix = extraPredicates ? ` ${extraPredicates}` : "";
   // -maxdepth is not portable across the BSD find versions used by macOS.
   // Prune at depth seven so files through the six-level contract remain visible.
-  return `{ for root in ${rootArguments}; do [ -d "$root" ] || continue; find "$root" \\( -path "$root/${depthPattern}" -prune \\) -o \\( -type f \\( ${namePredicates} \\)${suffix} -print \\) 2>/dev/null || :; done; }`;
+  return `{ for root in ${rootArguments}; do while [ "$root" != "/" ] && [ "\${root%/}" != "$root" ]; do root=\${root%/}; done; [ -d "$root" ] || continue; find "$root" \\( -path "$root/${depthPattern}" -prune \\) -o \\( -type f \\( ${namePredicates} \\)${suffix} -print \\) 2>/dev/null || :; done; }`;
 }
 
 async function retainTriggeredArtifacts({
