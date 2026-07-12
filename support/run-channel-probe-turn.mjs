@@ -1,8 +1,10 @@
 #!/usr/bin/env node
-import { existsSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { prepareWorkflowFixtures } from "./channel-conformance/fixtures.mjs";
+import { resetProviderScriptForCase } from "./channel-conformance/provider-script.mjs";
 import {
   openDirectGatewayRpcClient,
   parseSupportArgs,
@@ -11,7 +13,6 @@ import {
   waitForGatewayMethodOk
 } from "./openclaw-runtime.mjs";
 import { readChannelWorkflowCaseCatalogSync } from "./channel-workflow-catalog.mjs";
-import { channelWorkflowScript } from "./channel-workflow-provider-script.mjs";
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const args = parseSupportArgs(process.argv.slice(2));
@@ -22,7 +23,6 @@ const requestedCase = args.case ?? "text-final";
 const continueOnFailure = args["continue-on-failure"] === "true";
 const artifactPath = join(artifactDir, `channel-probe-turn-${safeArtifactSegment(requestedCase)}.json`);
 const providerRequestLogPath = join(artifactDir, "mock-openai", "requests.jsonl");
-const providerPortPath = join(artifactDir, "mock-openai", "port");
 const workflowCaseCatalog = readChannelWorkflowCaseCatalogSync(repoRoot);
 const selectedCases = selectWorkflowCases(workflowCaseCatalog, requestedCase);
 
@@ -149,12 +149,14 @@ async function runProbeCase(client, testCase) {
   let observation = null;
   let invariants = [];
   let ok = false;
-  const fixturePaths = mediaFixturePaths(testCase);
+  const fixtures = await prepareWorkflowFixtures(testCase, { envName });
   try {
-    await replaceMockProviderScriptForCase(testCase);
-    for (const fixturePath of fixturePaths) {
-      writeMediaFixture(fixturePath);
-    }
+    await resetProviderScriptForCase({
+      repoRoot,
+      artifactDir,
+      workflowCase: testCase,
+      fixtureReplacements: fixtures.replacements
+    });
     injectResult = await client.request("kova.channelProbe.inject", params, { timeoutMs });
     observation = injectResult?.observation ?? null;
     observation = await waitForProbeObservation(client, testCase, inboundEventId, observation);
@@ -173,9 +175,7 @@ async function runProbeCase(client, testCase) {
       invariant(`${testCase.id}:runner-error`, false, `${testCase.id} runner failed: ${error instanceof Error ? error.message : String(error)}`)
     ];
   } finally {
-    for (const fixturePath of fixturePaths) {
-      removeMediaFixture(fixturePath);
-    }
+    await fixtures.cleanup();
   }
   const finishedAtEpochMs = Date.now();
   return {
@@ -195,39 +195,6 @@ async function runProbeCase(client, testCase) {
     invariants,
     observation
   };
-}
-
-async function replaceMockProviderScriptForCase(testCase) {
-  const port = await readProviderPort();
-  const script = channelWorkflowScript([testCase.id], repoRoot);
-  const response = await fetch(`http://127.0.0.1:${port}/admin/script`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      ...script,
-      id: `kova-channel-workflow:${testCase.id}`
-    })
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`mock provider script reset failed for ${testCase.id}: ${response.status} ${text}`);
-  }
-}
-
-async function readProviderPort() {
-  try {
-    const raw = (await readFile(providerPortPath, "utf8")).trim();
-    const port = Number(raw);
-    if (Number.isInteger(port) && port > 0 && port <= 65535) {
-      return port;
-    }
-    throw new Error(`invalid mock provider port file ${providerPortPath}: ${raw}`);
-  } catch (error) {
-    if (error?.code === "ENOENT") {
-      throw new Error(`mock provider port file is missing: ${providerPortPath}`);
-    }
-    throw error;
-  }
 }
 
 async function runBotEchoProbe(client, testCase, botEcho, firstObservation) {
@@ -589,37 +556,6 @@ function isManagedOutboundMedia(mediaUrl, sourcePath) {
 
 function isSameExistingLocalMedia(record, sourcePath) {
   return record?.mediaUrl === sourcePath && record.mediaPathExists === true;
-}
-
-function mediaFixturePaths(testCase) {
-  const fixtures = objectOrEmpty(testCase.fixtures);
-  const paths = [];
-  if (typeof fixtures.mediaPath === "string" && fixtures.mediaPath.length > 0) {
-    paths.push(fixtures.mediaPath);
-  }
-  if (Array.isArray(fixtures.mediaPaths)) {
-    for (const fixturePath of fixtures.mediaPaths) {
-      if (typeof fixturePath === "string" && fixturePath.length > 0 && !paths.includes(fixturePath)) {
-        paths.push(fixturePath);
-      }
-    }
-  }
-  return paths;
-}
-
-function writeMediaFixture(path) {
-  writeFileSync(path, Buffer.from(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
-    "base64"
-  ));
-}
-
-function removeMediaFixture(path) {
-  try {
-    unlinkSync(path);
-  } catch {
-    // Best-effort cleanup for temporary local media fixtures.
-  }
 }
 
 function textEquals(actual, expected) {
