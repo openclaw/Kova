@@ -223,6 +223,17 @@ async function findReportBundlePath(report, inputPath) {
   const inputDir = dirname(inputPath);
   const inputBase = basename(inputPath, ".json");
   const runId = report.runId;
+  const contentAddressed = await findContentAddressedBundlePath(inputDir, [
+    typeof runId === "string"
+      ? safeBundlePrefix(artifactRunIdSegment(runId))
+      : null,
+    safeBundlePrefix(inputBase),
+    safeBundlePrefix(inputBase.replace(/-[^-]+$/, "")),
+  ].filter(Boolean));
+  if (contentAddressed) {
+    return contentAddressed;
+  }
+
   const inferred = [
     runId ? join(inputDir, `${runId}-bundle.tar.gz`) : null,
     join(inputDir, `${inputBase}-bundle.tar.gz`),
@@ -232,13 +243,7 @@ async function findReportBundlePath(report, inputPath) {
   for (const candidate of inferred) {
     if (await pathExists(candidate)) return candidate;
   }
-  return findContentAddressedBundlePath(inputDir, [
-    typeof runId === "string"
-      ? safeBundlePrefix(artifactRunIdSegment(runId))
-      : null,
-    safeBundlePrefix(inputBase),
-    safeBundlePrefix(inputBase.replace(/-[^-]+$/, "")),
-  ].filter(Boolean));
+  return null;
 }
 
 function safeBundlePrefix(value) {
