@@ -4,17 +4,21 @@ import { runCommand, quoteShell } from "../commands.mjs";
 
 const MAX_JSON_PARSE_BYTES = 40 * 1024 * 1024;
 
-export async function collectStateFixtureAccounting(state, envName, artifactDir) {
+export async function collectStateFixtureAccounting(state, envName, artifactDir, options = {}) {
   const spec = state?.fixtureAccounting;
   if (!spec || !Array.isArray(spec.files) || spec.files.length === 0) {
     return null;
   }
 
-  const envInfo = await resolveEnvInfo(envName);
+  const envInfo = await (options.resolveEnvInfo ?? resolveEnvInfo)(envName);
   const openclawHome = envInfo?.runDir ?? null;
   const files = [];
   for (const fileSpec of spec.files) {
-    files.push(await inspectFixtureFile(fileSpec, { artifactDir, openclawHome }));
+    files.push(await inspectFixtureFile(fileSpec, {
+      artifactDir,
+      openclawHome,
+      envResolutionError: envInfo?.error ?? null
+    }));
   }
 
   const accounting = {
@@ -23,9 +27,19 @@ export async function collectStateFixtureAccounting(state, envName, artifactDir)
     kind: spec.kind ?? null,
     collectedAt: new Date().toISOString(),
     openclawHome,
+    envResolution: envInfo?.error
+      ? {
+        status: "error",
+        error: envInfo.error,
+        commandStatus: envInfo.status ?? null
+      }
+      : { status: "ok", error: null, commandStatus: 0 },
     files,
-    findings: fixtureFindings(files),
+    findings: fixtureFindings(files, envInfo),
   };
+  accounting.status = accounting.findings.some((finding) => finding.severity === "error")
+    ? "error"
+    : "ok";
 
   const artifactPath = `${artifactDir}/state-fixture-accounting.json`;
   await mkdir(dirname(artifactPath), { recursive: true });
@@ -73,8 +87,9 @@ async function inspectFixtureFile(fileSpec, context) {
 
   if (!path) {
     summary.shape = {
-      kind: "unresolved-path",
+      kind: context.envResolutionError ? "environment-unavailable" : "unresolved-path",
       validOpenClawSessionStore: null,
+      error: context.envResolutionError,
     };
     return summary;
   }
@@ -82,7 +97,16 @@ async function inspectFixtureFile(fileSpec, context) {
   let stats;
   try {
     stats = await stat(path);
-  } catch {
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return summary;
+    }
+    summary.shape = {
+      kind: "stat-error",
+      validOpenClawSessionStore: null,
+      error: error instanceof Error ? error.message : String(error),
+      errorCode: error?.code ?? null,
+    };
     return summary;
   }
 
@@ -105,8 +129,19 @@ async function inspectFixtureFile(fileSpec, context) {
     return summary;
   }
 
+  let raw;
   try {
-    const raw = await readFile(path, "utf8");
+    raw = await readFile(path, "utf8");
+  } catch (error) {
+    summary.shape = {
+      kind: "read-error",
+      validOpenClawSessionStore: null,
+      error: error instanceof Error ? error.message : String(error),
+      errorCode: error?.code ?? null,
+    };
+    return summary;
+  }
+  try {
     summary.shape = classifyJsonShape(JSON.parse(raw), fileSpec.expectedShape);
   } catch (error) {
     summary.shape = {
@@ -174,25 +209,42 @@ function classifyJsonShape(value, expectedShape) {
   };
 }
 
-function fixtureFindings(files) {
+function fixtureFindings(files, envInfo = null) {
   const findings = [];
   const byId = new Map(files.map((file) => [file.id, file]));
+  if (envInfo?.error) {
+    findings.push({
+      severity: "error",
+      kind: "harness",
+      message: `OCM environment resolution failed (${envInfo.error})`,
+      commandStatus: envInfo.status ?? null,
+    });
+  }
   for (const file of files) {
-    if (file.expectedShape === "openclaw-session-store" && file.shape?.validOpenClawSessionStore === false) {
+    const inspectionFailed = ["environment-unavailable", "unresolved-path", "stat-error", "read-error"].includes(file.shape?.kind);
+    if (!inspectionFailed && file.expectedShape === "openclaw-session-store" && file.shape?.validOpenClawSessionStore === false) {
       findings.push({
         severity: "warning",
         fileId: file.id,
         message: `${file.id} is not a valid OpenClaw session store (${file.shape.kind})`,
       });
     }
-    if (file.expectedShape === "malformed-session-wrapper" && file.shape?.kind !== "malformed-session-wrapper") {
+    if (!inspectionFailed && file.expectedShape === "malformed-session-wrapper" && file.shape?.kind !== "malformed-session-wrapper") {
       findings.push({
         severity: "info",
         fileId: file.id,
         message: `${file.id} no longer has malformed wrapper shape (${file.shape?.kind ?? "unknown"})`,
       });
     }
-    if (!file.exists) {
+    if (file.shape?.kind === "stat-error" || file.shape?.kind === "read-error") {
+      findings.push({
+        severity: "error",
+        kind: "harness",
+        fileId: file.id,
+        message: `${file.id} could not be inspected (${file.shape.kind}: ${file.shape.errorCode ?? "unknown"})`,
+      });
+    }
+    if (!file.exists && file.shape?.kind === "missing") {
       findings.push({
         severity: "warning",
         fileId: file.id,
