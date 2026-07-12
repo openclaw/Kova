@@ -12618,6 +12618,12 @@ process.on("SIGUSR2", () => {
   const currentSignal = ++signalCount;
   if (currentSignal === 4) {
     setTimeout(() => {
+      fs.writeFileSync(path.join(home, "report.delayed.json"), "{\\"delayed\\":true}\\n");
+    }, 1000);
+    return;
+  }
+  if (currentSignal === 5) {
+    setTimeout(() => {
       fs.writeFileSync(path.join(home, "fresh.heapsnapshot"), "{\\"heap\\":\\"head\\"");
     }, 200);
     setTimeout(() => {
@@ -12724,6 +12730,10 @@ setInterval(() => {}, 1000);
     assertEqual(hung.heapSnapshot.commandStatus, 124, "hung OCM command times out");
     assertEqual(hung.heapSnapshot.timedOut, true, "hung OCM timeout is retained");
     assertEqual(hungElapsedMs < 2500, true, "hung OCM command honors the diagnostic deadline");
+    const delayedReport = await triggerDiagnosticSession("kova-self-check", child.pid, 2500, root, {
+      diagnosticReport: true
+    });
+    assertEqual(delayedReport.diagnosticReport.artifacts.length, 1, "minimum timeout discovers a report emitted after one second");
     const slowHeap = await triggerDiagnosticSession("kova-self-check", child.pid, 5000, root, {
       heapSnapshot: true
     });
