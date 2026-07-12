@@ -1,12 +1,9 @@
 import {
-  buildAuthCleanupPhase,
   buildAuthPreparePhase,
   buildAuthSetupPhase,
   scenarioAuthPolicy
 } from "./auth.mjs";
-import { runCleanupCommand } from "./cleanup.mjs";
 import { attachEvidenceLedger } from "./evidence-ledger.mjs";
-import { ocmEnvDestroy } from "./ocm/commands.mjs";
 import { runScenarioCommand } from "./run/command-executor.mjs";
 import { commandFailureRecordStatus } from "./command-results.mjs";
 import {
@@ -15,10 +12,6 @@ import {
 } from "./run/state-lifecycle.mjs";
 import { executeAuthPhase } from "./run/auth-phase.mjs";
 import { executeEvidenceSnapshotPhase } from "./run/evidence-snapshots.mjs";
-import {
-  attachPostCleanupEvidence,
-  collectPreCleanupEvidence
-} from "./run/finalize-record.mjs";
 import { appendChannelCapabilityEvidence } from "./run/channel-capability-results.mjs";
 import {
   buildScenarioPhase,
@@ -28,6 +21,7 @@ import {
 } from "./run/phase-plan.mjs";
 import { executeTargetSetup } from "./run/target-setup.mjs";
 import { envNameFor } from "./run/env-name.mjs";
+import { teardownScenario } from "./run/teardown.mjs";
 import { collectEnvMetrics } from "./metrics.mjs";
 import { collectorArtifactDirs, prepareCollectorArtifactDirs } from "./collectors/artifacts.mjs";
 import {
@@ -35,7 +29,7 @@ import {
 } from "./measurement-contract.mjs";
 import { metricOptions } from "./run/metric-options.mjs";
 import { artifactsDir } from "./paths.mjs";
-import { plannedNetworkFrontage, stopNetworkFrontage } from "./network-frontage.mjs";
+import { plannedNetworkFrontage } from "./network-frontage.mjs";
 import { assertKovaEnvName } from "./safety.mjs";
 import { join } from "node:path";
 export { createRunId } from "./run/run-id.mjs";
@@ -138,10 +132,6 @@ export async function executeScenario(scenario, context) {
 
     if (!scenarioFailed) {
       for (const phase of scenario.phases) {
-        if (phase.id === "cleanup") {
-          continue;
-        }
-
         context.onPhase?.(phase.title ?? phase.id);
         const plannedPhase = buildScenarioPhase(phase, context, envName, artifactDir);
         const results = [];
@@ -210,69 +200,10 @@ export async function executeScenario(scenario, context) {
       }
     }
   } finally {
-    await collectPreCleanupEvidence(record, scenario, context, envName, artifactDir, authPolicy);
-
-    const networkCleanup = await stopNetworkFrontage(context);
-    if (networkCleanup) {
-      record.phases.push({
-        id: "network-frontage-cleanup",
-        title: "Network Frontage Cleanup",
-        intent: "Stop the per-env loopback frontage proxy before destroying or retaining the Kova env.",
-        measurementScope: "cleanup",
-        driverKind: "kova",
-        commands: [networkCleanup.command],
-        evidence: ["network frontage proxy stopped"],
-        results: [networkCleanup]
-      });
-      if (networkCleanup.status !== 0 && record.status === "PASS") {
-        record.status = "BLOCKED";
-      }
-    }
-    const shouldRetain = shouldRetainEnv(context, record);
-    if (!shouldRetain) {
-      context.onPhase?.("cleanup");
-      const authCleanupPhase = await executeAuthPhase(
-        buildAuthCleanupPhase(authPolicy, artifactDir),
-        context,
-        envName,
-        artifactDir,
-        authPolicy
-      );
-      if (authCleanupPhase) {
-        record.phases.push(authCleanupPhase);
-        if (authCleanupPhase.results.some((result) => result.status !== 0) && record.status === "PASS") {
-          record.status = "BLOCKED";
-        }
-      }
-      const cleanupPhase = await executeStateLifecycleSteps(context, envName, scenario, "cleanup", context.state?.cleanup ?? [], artifactDir, null, authPolicy);
-      if (cleanupPhase) {
-        record.phases.push(cleanupPhase);
-        if (cleanupPhase.results.some((result) => result.status !== 0) && record.status === "PASS") {
-          record.status = "BLOCKED";
-        }
-      }
-    }
-    if (!shouldRetain) {
-      const cleanup = await runCleanupCommand(ocmEnvDestroy(envName), { timeoutMs: context.timeoutMs });
-      record.cleanup = classifyEnvDestroyCleanup(cleanup);
-      record.cleanupResult = cleanup;
-      if (record.cleanup === "destroy-failed" && record.status === "PASS") {
-        record.status = "BLOCKED";
-      }
-    } else {
-      record.cleanup = "retained";
-      record.retainedReason = context.keepEnv ? "keep-env" : "failure";
-    }
-    record.networkFrontage = context.networkFrontageAllocation ?? record.networkFrontage;
-
-    await attachPostCleanupEvidence(record, scenario, context, artifactDir);
+    await teardownScenario(record, scenario, context, envName, artifactDir, authPolicy);
   }
 
   return record;
-}
-
-function shouldRetainEnv(context, record) {
-  return context.keepEnv || (context.retainOnFailure && record.status !== "PASS");
 }
 
 function profilingSummary(context) {
@@ -295,19 +226,6 @@ function profilingSummary(context) {
       ? "instrumented run; CPU/RSS can include profiler and diagnostic overhead"
       : "normal user-path resource measurements"
   };
-}
-
-function classifyEnvDestroyCleanup(result) {
-  if (result.status === 0) {
-    return "destroyed";
-  }
-
-  const output = `${result.stdout}\n${result.stderr}`;
-  if (/\benvironment\b[\s\S]*\bdoes not exist\b/i.test(output) || /\bnot found\b/i.test(output)) {
-    return "already-absent";
-  }
-
-  return "destroy-failed";
 }
 
 function shouldApplyAuthAfterPhase(phase, authPolicy, record) {

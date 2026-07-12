@@ -1,5 +1,6 @@
 import { runCleanupCommand } from "../cleanup.mjs";
 import { ocmRuntimeRemoveJson } from "../ocm/commands.mjs";
+import { isMissingOcmResource } from "../ocm/missing-resource.mjs";
 
 export async function cleanupTargetRuntimeIfNeeded(targetPlan, records, options) {
   if (targetPlan.kind !== "local-build") {
@@ -25,7 +26,7 @@ export async function cleanupTargetRuntimeIfNeeded(targetPlan, records, options)
   }
 
   const result = await runCleanupCommand(command, { timeoutMs: options.timeoutMs });
-  const cleanupStatus = classifyTargetRuntimeCleanup(result);
+  const cleanupStatus = classifyTargetRuntimeCleanup(result, targetPlan.runtimeName);
   return {
     status: cleanupStatus.status,
     runtimeName: targetPlan.runtimeName,
@@ -42,13 +43,12 @@ export async function cleanupTargetRuntimeIfNeeded(targetPlan, records, options)
   };
 }
 
-function classifyTargetRuntimeCleanup(result) {
+function classifyTargetRuntimeCleanup(result, runtimeName) {
   if (result.status === 0) {
     return { status: "removed" };
   }
 
-  const output = `${result.stdout}\n${result.stderr}`;
-  if (/\bruntime\b[\s\S]*\bdoes not exist\b/i.test(output) || /\bnot found\b/i.test(output)) {
+  if (isMissingOcmResource(result, "runtime", runtimeName)) {
     return {
       status: "already-absent",
       reason: "target runtime was not present when cleanup ran"
