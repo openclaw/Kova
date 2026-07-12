@@ -1,8 +1,10 @@
+import { createHash } from "node:crypto";
 import { cp, mkdir, readdir, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, extname, join, resolve } from "node:path";
 import { runCommand } from "../commands.mjs";
 import { ocmEnvExecShell } from "../ocm/commands.mjs";
+import { positiveProcessId } from "../process-safety.mjs";
 
 export const OPENCLAW_DIAGNOSTICS_SCHEMA = "kova.openclawDiagnostics.v1";
 export const DIAGNOSTIC_ARTIFACTS_SCHEMA = "kova.diagnosticArtifacts.v1";
@@ -58,7 +60,7 @@ export async function collectDiagnosticMetrics(envName, timeoutMs, artifactDir, 
       if (!existsSync(file)) {
         continue;
       }
-      const target = join(diagnosticsDir, basename(file));
+      const target = join(diagnosticsDir, diagnosticArtifactName(file));
       await cp(file, target, { force: true });
       artifactBytes += await fileSize(target);
       artifacts.push(target);
@@ -81,9 +83,10 @@ export async function collectDiagnosticMetrics(envName, timeoutMs, artifactDir, 
 }
 
 export async function triggerHeapSnapshot(envName, pid, timeoutMs, artifactDir, commandEnv) {
+  const targetPid = positiveProcessId(pid, "heap snapshot pid");
   const command = ocmEnvExecShell(
     envName,
-    `kill -USR2 ${Number(pid)} 2>/dev/null || true; sleep 1; find "$OPENCLAW_HOME" -maxdepth 6 -type f -name "*.heapsnapshot" -print 2>/dev/null | head -25`
+    `kill -USR2 ${targetPid} 2>/dev/null || true; sleep 1; find "$OPENCLAW_HOME" -maxdepth 6 -type f -name "*.heapsnapshot" -print 2>/dev/null | head -25`
   );
   const result = await runCommand(command, {
     timeoutMs,
@@ -104,7 +107,7 @@ export async function triggerHeapSnapshot(envName, pid, timeoutMs, artifactDir, 
         continue;
       }
       await waitForStableFile(file, Math.min(timeoutMs, 5000));
-      const target = join(heapDir, basename(file));
+      const target = join(heapDir, diagnosticArtifactName(file));
       await cp(file, target, { force: true });
       artifactBytes += await fileSize(target);
       artifacts.push(target);
@@ -126,7 +129,8 @@ export async function triggerHeapSnapshot(envName, pid, timeoutMs, artifactDir, 
 }
 
 export async function triggerDiagnosticReport(envName, pid, timeoutMs, artifactDir, options = {}) {
-  const signalCommand = options.signalAlreadySent === true ? ":" : `kill -USR2 ${Number(pid)} 2>/dev/null || true`;
+  const targetPid = positiveProcessId(pid, "diagnostic report pid");
+  const signalCommand = options.signalAlreadySent === true ? ":" : `kill -USR2 ${targetPid} 2>/dev/null || true`;
   const command = ocmEnvExecShell(
     envName,
     `${signalCommand}; sleep 1; find "$OPENCLAW_HOME" -maxdepth 6 -type f \\( -name "report.*.json" -o -name "*diagnostic*.json" \\) -print 2>/dev/null | head -25`
@@ -151,7 +155,7 @@ export async function triggerDiagnosticReport(envName, pid, timeoutMs, artifactD
       if (!existsSync(file)) {
         continue;
       }
-      const target = join(reportDir, basename(file));
+      const target = join(reportDir, diagnosticArtifactName(file));
       await cp(file, target, { force: true });
       artifactBytes += await fileSize(target);
       artifacts.push(target);
@@ -170,6 +174,14 @@ export async function triggerDiagnosticReport(envName, pid, timeoutMs, artifactD
     artifacts,
     error: result.status === 0 ? null : firstOutputLine(result.stderr) || firstOutputLine(result.stdout) || "diagnostic report trigger unavailable"
   };
+}
+
+export function diagnosticArtifactName(path) {
+  const name = basename(path);
+  const extension = extname(name);
+  const stem = extension ? name.slice(0, -extension.length) : name;
+  const sourceHash = createHash("sha256").update(resolve(path)).digest("hex").slice(0, 12);
+  return `${stem}-${sourceHash}${extension}`;
 }
 
 async function collectLocalDiagnosticReports(artifactDir) {
