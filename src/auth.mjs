@@ -1077,13 +1077,7 @@ function startMockProviderCommand(dir, mockProvider = {}) {
     }
   }
   const scriptArgText = scriptArgs.map(quoteShell).join(" ");
-  const writePort = [
-    "node",
-    "-e",
-    quoteShell("const fs=require('fs'); const [logPath, portPath] = process.argv.slice(1); const line=fs.readFileSync(logPath,'utf8').split(/\\r?\\n/).find(Boolean); if (!line) process.exit(1); const startup=JSON.parse(line); if (!startup.port) process.exit(1); fs.writeFileSync(portPath, String(startup.port));"),
-    quoteShell(serverLog),
-    quoteShell(portFile)
-  ].join(" ");
+  const writePort = mockProviderPortCommand({ serverLog, pidFile, portFile });
   const cleanup = mockProviderCleanupCommand(dir);
   return [
     `mkdir -p ${quoteShell(dir)}`,
@@ -1110,11 +1104,23 @@ export function mockAiProviderServeCommand({ scriptPath, requestLog, serverLog, 
   const readPublishedPid = [
     "node",
     "-e",
-    quoteShell("const fs=require('fs'); const record=JSON.parse(fs.readFileSync(process.argv[1],'utf8')); process.stdout.write(String(record.pid));"),
-    publishedPid
+    quoteShell("const fs=require('fs'); const [pidPath,logPath]=process.argv.slice(1); const owner=JSON.parse(fs.readFileSync(pidPath,'utf8')); const line=fs.readFileSync(logPath,'utf8').split(/\\r?\\n/).find(Boolean); if(!line)process.exit(1); const startup=JSON.parse(line); const sameOwner=startup.owner?.schemaVersion===owner.schemaVersion&&startup.owner?.pid===owner.pid&&startup.owner?.token===owner.token; if(!sameOwner)process.exit(1); process.stdout.write(String(owner.pid));"),
+    publishedPid,
+    quoteShell(serverLog)
   ].join(" ");
   const supervisor = ["node", ...mockProviderSupervisorArgs(values)].map(quoteShell).join(" ");
   return `test -x ${bin} || { echo "Kova requires the local npm package mock-ai-provider; run npm install in the Kova repo" >&2; exit 127; }; ${supervisor} >/dev/null 2>&1 & supervisor_pid=$!; for i in $(seq 1 100); do if test -s ${publishedPid}; then published_pid=$(${readPublishedPid} 2>/dev/null || true); test "$published_pid" = "$supervisor_pid" && break; fi; kill -0 "$supervisor_pid" 2>/dev/null || break; sleep 0.05; done; published_pid=$(${readPublishedPid} 2>/dev/null || true); test "$published_pid" = "$supervisor_pid" || { kill "$supervisor_pid" 2>/dev/null || true; wait "$supervisor_pid"; status=$?; test "$status" -ne 0 && exit "$status"; echo "Kova mock provider supervisor did not publish its PID" >&2; exit 1; }`;
+}
+
+export function mockProviderPortCommand({ serverLog, pidFile, portFile }) {
+  return [
+    "node",
+    "-e",
+    quoteShell("const fs=require('fs'); const [logPath,pidPath,portPath]=process.argv.slice(1); const line=fs.readFileSync(logPath,'utf8').split(/\\r?\\n/).find(Boolean); if(!line)process.exit(1); const startup=JSON.parse(line); const owner=JSON.parse(fs.readFileSync(pidPath,'utf8')); const sameOwner=startup.owner?.schemaVersion===owner.schemaVersion&&startup.owner?.pid===owner.pid&&startup.owner?.token===owner.token; if(!sameOwner||!Number.isInteger(startup.port)||startup.port<=0)process.exit(1); fs.writeFileSync(portPath,String(startup.port));"),
+    quoteShell(serverLog),
+    quoteShell(pidFile),
+    quoteShell(portFile)
+  ].join(" ");
 }
 
 export function mockProviderCleanupCommand(dir) {

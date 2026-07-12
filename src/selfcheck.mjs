@@ -148,7 +148,8 @@ import {
   buildAuthCleanupPhase,
   buildAuthPreparePhase,
   mockAiProviderServeCommand,
-  mockProviderCleanupCommand
+  mockProviderCleanupCommand,
+  mockProviderPortCommand
 } from "./auth.mjs";
 import { diagnosticArtifactName, triggerDiagnosticReport, triggerHeapSnapshot } from "./collectors/diagnostics.mjs";
 import {
@@ -8342,13 +8343,11 @@ async function mockProviderBehaviorCheck(tmp) {
   const serverLogPath = join(dir, "server.log");
   const portPath = join(dir, "port");
   const pidPath = join(dir, "pid");
-  const writePort = [
-    "node",
-    "-e",
-    quoteShell("const fs=require('fs'); const [logPath, portPath] = process.argv.slice(1); const line=fs.readFileSync(logPath,'utf8').split(/\\r?\\n/).find(Boolean); if (!line) process.exit(1); const startup=JSON.parse(line); if (!startup.port) process.exit(1); fs.writeFileSync(portPath, String(startup.port));"),
-    quoteShell(serverLogPath),
-    quoteShell(portPath)
-  ].join(" ");
+  const writePort = mockProviderPortCommand({
+    serverLog: serverLogPath,
+    pidFile: pidPath,
+    portFile: portPath
+  });
   const command = [
     `node support/write-mock-ai-provider-script.mjs --output ${quoteShell(scriptPath)} --mode error-then-recover --error-status 503`,
     mockAiProviderServeCommand({ scriptPath, requestLog: requestLogPath, serverLog: serverLogPath, pidFile: pidPath }),
@@ -8622,6 +8621,20 @@ async function mockProviderProcessSafetyCheck(tmp) {
       "cleanup retains replacement owner generation"
     );
     await rm(pidFile, { force: true });
+
+    const portFile = join(dir, "port");
+    const writePort = mockProviderPortCommand({ serverLog, pidFile, portFile });
+    await writeFile(pidFile, `${JSON.stringify(inspectedOwner)}\n`, "utf8");
+    await writeFile(serverLog, `${JSON.stringify({ owner: replacementOwner, port: 31337 })}\n`, "utf8");
+    const stalePort = await runCommand(writePort, { timeoutMs: 10000 });
+    assertEqual(stalePort.status === 0, false, "stale server metadata is rejected");
+    await assertPathMissing(portFile, "stale server metadata does not publish a port");
+    await writeFile(serverLog, `${JSON.stringify({ owner: inspectedOwner, port: 31338 })}\n`, "utf8");
+    const currentPort = await runCommand(writePort, { timeoutMs: 10000 });
+    assertEqual(currentPort.status, 0, "matching server metadata publishes a port");
+    assertEqual(await readFile(portFile, "utf8"), "31338", "matching server metadata port");
+    await rm(pidFile, { force: true });
+    await rm(portFile, { force: true });
 
     await writeFile(pidFile, ownerText(12345), "utf8");
     let stopTimedOut = false;

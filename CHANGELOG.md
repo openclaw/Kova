@@ -7,7 +7,7 @@ All notable changes to Kova are documented in this file.
 ### Fixed
 
 - Hardened command execution with bounded streaming redaction, POSIX process-group cleanup, strict optional-log matching, and direct scenario command validation.
-- Hardened mock-provider and diagnostic process handling to migrate active legacy providers safely, avoid signaling unrelated processes, retain retryable PID state, and preserve colliding diagnostic artifacts.
+- Hardened mock-provider and diagnostic process handling to migrate active legacy providers safely, reject stale startup metadata, avoid signaling unrelated processes, retain retryable PID state, and preserve colliding diagnostic artifacts.
 - Fixed OpenClaw inventory discovery to recognize canonical JSON5 plugin manifests consistently across platforms while deterministically bounding scans.
 - Isolated concurrent self-check OCM identities, child environments, runtime names, and temp cleanup ownership.
 - Hardened performance baseline persistence, unstable-group detection, and repeated-work audit isolation.
