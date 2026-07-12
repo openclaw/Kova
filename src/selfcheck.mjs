@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { access, chmod, link, lstat, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
+import { access, chmod, link, lstat, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, truncate, utimes, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -12712,6 +12712,16 @@ setInterval(() => {}, 1000);
     assertEqual(reusedReport.files.some((path) => path.includes("report.stale-")), false, "report wrapper excludes pre-signal history");
     const wrapperInvocation = (await readFile(invocationLog, "utf8")).trim().split("\n").at(-1);
     assertEqual(wrapperInvocation.endsWith("env=preserved"), true, "report wrapper preserves command environment");
+    const oversizedSignalSentAtEpochMs = Date.now();
+    const oversizedReportPath = join(openclawHome, "report.oversized.json");
+    await writeFile(oversizedReportPath, "{");
+    await truncate(oversizedReportPath, (16 * 1024 * 1024) + 1);
+    const oversizedReport = await triggerDiagnosticReport("kova-self-check", child.pid, 3000, root, {
+      signalAlreadySent: true,
+      signalSentAtEpochMs: oversizedSignalSentAtEpochMs
+    });
+    assertEqual(oversizedReport.artifacts.length, 0, "oversized report is not retained");
+    assertEqual(oversizedReport.error.includes("exceeds"), true, "oversized report returns a structured validation error");
     const reportOnly = await triggerDiagnosticSession("kova-self-check", child.pid, 3500, root, {
       diagnosticReport: true
     });

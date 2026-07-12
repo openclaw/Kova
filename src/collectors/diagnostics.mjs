@@ -1,4 +1,4 @@
-import { mkdtemp, open as openFile, readFile, readdir, rm, stat, utimes } from "node:fs/promises";
+import { mkdtemp, open as openFile, readdir, rm, stat, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { quoteShell, runCommand } from "../commands.mjs";
@@ -10,6 +10,8 @@ export const DIAGNOSTIC_ARTIFACTS_SCHEMA = "kova.diagnosticArtifacts.v1";
 export const HEAP_SNAPSHOT_SCHEMA = "kova.heapSnapshot.v1";
 export const DIAGNOSTIC_REPORT_SCHEMA = "kova.diagnosticReport.v1";
 const MIN_DIAGNOSTIC_TIMEOUT_MS = 2500;
+const MAX_DIAGNOSTIC_REPORT_BYTES = 16 * 1024 * 1024;
+const DIAGNOSTIC_VALIDATION_CONCURRENCY = 2;
 
 export function collectOpenClawDiagnostics(logs) {
   const events = logs?.structuredEvents ?? [];
@@ -233,24 +235,29 @@ async function retainTriggeredArtifacts({ requested, artifactDir, files, destina
     return { artifacts: [], artifactBytes: 0, error: null };
   }
   const destinationDir = join(artifactDir, destination);
-  const outcomes = await Promise.all([...new Set(files)].map(async (file) => {
-    try {
-      const remainingMs = Math.max(0, deadlineEpochMs - Date.now());
-      await waitForStableFile(file, remainingMs, {
-        jsonValidation: destination === "heap" ? "envelope" : "full"
-      });
-      const copied = await copyCollectorArtifacts([file], destinationDir);
-      return copied.artifacts.length > 0
-        ? { ...copied, error: null }
-        : { ...copied, error: `diagnostic artifact disappeared before copy: ${file}` };
-    } catch (error) {
-      return {
-        artifacts: [],
-        artifactBytes: 0,
-        error: error instanceof Error ? error.message : String(error)
-      };
+  const outcomes = await mapWithConcurrency(
+    [...new Set(files)],
+    DIAGNOSTIC_VALIDATION_CONCURRENCY,
+    async (file) => {
+      try {
+        const remainingMs = Math.max(0, deadlineEpochMs - Date.now());
+        await waitForStableFile(file, remainingMs, {
+          jsonValidation: destination === "heap" ? "envelope" : "full",
+          maxBytes: destination === "heap" ? null : MAX_DIAGNOSTIC_REPORT_BYTES
+        });
+        const copied = await copyCollectorArtifacts([file], destinationDir);
+        return copied.artifacts.length > 0
+          ? { ...copied, error: null }
+          : { ...copied, error: `diagnostic artifact disappeared before copy: ${file}` };
+      } catch (error) {
+        return {
+          artifacts: [],
+          artifactBytes: 0,
+          error: error instanceof Error ? error.message : String(error)
+        };
+      }
     }
-  }));
+  );
   const artifacts = [...new Set(outcomes.flatMap((outcome) => outcome.artifacts))];
   const artifactBytes = outcomes.reduce((total, outcome) => total + outcome.artifactBytes, 0);
   const errors = outcomes.map((outcome) => outcome.error).filter(Boolean);
@@ -339,9 +346,12 @@ async function waitForStableFile(path, timeoutMs, options = {}) {
     const now = Date.now();
     const observedAt = Math.min(now, deadline);
     const state = await fileState(path);
+    if (typeof options.maxBytes === "number" && state.size > options.maxBytes) {
+      throw new Error(`diagnostic report exceeds ${options.maxBytes} byte validation limit: ${path}`);
+    }
     if (state.size > 0 && observedAt - state.mtimeMs >= 1000) {
       const valid = options.jsonValidation === "full"
-        ? await isValidJsonFile(path)
+        ? await isValidJsonFile(path, options.maxBytes)
         : (options.jsonValidation === "envelope" ? await hasJsonEnvelope(path) : true);
       if (valid) {
         return state.size;
@@ -356,12 +366,31 @@ async function waitForStableFile(path, timeoutMs, options = {}) {
   throw new Error(`diagnostic artifact did not stabilize before timeout: ${path}`);
 }
 
-async function isValidJsonFile(path) {
+async function isValidJsonFile(path, maxBytes) {
+  let file;
   try {
-    JSON.parse(await readFile(path, "utf8"));
+    file = await openFile(path, "r");
+    const { size } = await file.stat();
+    if (size <= 0 || size > maxBytes) {
+      return false;
+    }
+    const bytes = Buffer.alloc(size);
+    let offset = 0;
+    while (offset < size) {
+      const { bytesRead } = await file.read(bytes, offset, size - offset, offset);
+      if (bytesRead === 0) {
+        return false;
+      }
+      offset += bytesRead;
+    }
+    JSON.parse(bytes.toString("utf8"));
     return true;
   } catch {
     return false;
+  } finally {
+    if (file) {
+      await file.close().catch(() => {});
+    }
   }
 }
 
@@ -441,4 +470,24 @@ function firstOutputLine(value) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function mapWithConcurrency(items, concurrency, worker) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  async function runWorker() {
+    while (true) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= items.length) {
+        return;
+      }
+      results[index] = await worker(items[index]);
+    }
+  }
+  await Promise.all(Array.from(
+    { length: Math.min(concurrency, items.length) },
+    () => runWorker()
+  ));
+  return results;
 }
