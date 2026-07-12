@@ -206,7 +206,7 @@ function classifyCleanupEnv({
   const ageDays = Number.isFinite(timestamp)
     ? Math.max(0, Math.floor((Date.now() - timestamp) / DAY_MS))
     : null;
-  const serviceKnown = serviceInventoryOk && service !== undefined;
+  const serviceKnown = serviceInventoryOk && service !== undefined && service.issue == null;
   const active = serviceKnown && (
     service.running === true ||
     service.desiredRunning === true ||

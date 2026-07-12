@@ -19221,6 +19221,7 @@ case "$1:$2:$3" in
   {"name":"kova-protected","createdAt":"${old}","lastUsedAt":null,"protected":true},
   {"name":"kova-retained","createdAt":"${old}","lastUsedAt":null,"protected":false},
   {"name":"kova-active","createdAt":"${old}","lastUsedAt":null,"protected":false},
+  {"name":"kova-issue","createdAt":"${old}","lastUsedAt":null,"protected":false},
   {"name":"kova-unknown","createdAt":"${old}","lastUsedAt":null,"protected":false},
   {"name":"durable-user-env","createdAt":"${old}","lastUsedAt":null,"protected":false}
 ]
@@ -19234,7 +19235,8 @@ JSON
   {"envName":"kova-recent","installed":false,"desiredRunning":false,"running":false,"gatewayState":"stopped","childPid":null},
   {"envName":"kova-protected","installed":false,"desiredRunning":false,"running":false,"gatewayState":"stopped","childPid":null},
   {"envName":"kova-retained","installed":false,"desiredRunning":false,"running":false,"gatewayState":"stopped","childPid":null},
-  {"envName":"kova-active","installed":true,"desiredRunning":true,"running":true,"gatewayState":"healthy","childPid":123}
+  {"envName":"kova-active","installed":true,"desiredRunning":true,"running":true,"gatewayState":"healthy","childPid":123},
+  {"envName":"kova-issue","installed":false,"desiredRunning":false,"running":false,"gatewayState":"stopped","childPid":null,"issue":"status incomplete"}
 ]}
 JSON
     exit 0
@@ -19271,6 +19273,7 @@ exit 2
     assertEqual(plan.classifications.find((item) => item.name === "kova-protected")?.reasons.includes("protected"), true, "protected env skipped");
     assertEqual(plan.classifications.find((item) => item.name === "kova-retained")?.reasons.includes("retained-by-run"), true, "retained env skipped");
     assertEqual(plan.classifications.find((item) => item.name === "kova-active")?.reasons.includes("active-service"), true, "active env skipped");
+    assertEqual(plan.classifications.find((item) => item.name === "kova-issue")?.reasons.includes("unknown-service-state"), true, "service issue env skipped");
     assertEqual(plan.classifications.find((item) => item.name === "kova-unknown")?.reasons.includes("unknown-service-state"), true, "unknown service env skipped");
 
     const malformedReport = join(reports, "malformed.json");
@@ -19300,13 +19303,13 @@ exit 2
     const forced = await run("--execute --force");
     assertEqual(forced.status, 0, "forced cleanup exit");
     const forcedReceipt = JSON.parse(forced.stdout);
-    assertEqual(forcedReceipt.candidates.length, 6, "force overrides cleanup safeguards");
+    assertEqual(forcedReceipt.candidates.length, 7, "force overrides cleanup safeguards");
     assertEqual(
       forcedReceipt.results.every((result) => result.command.endsWith("--yes --force")),
       true,
       "force is forwarded to OCM destroy"
     );
-    assertEqual((await readFile(destroyLog, "utf8")).trim().split("\n").length, 6, "force destroys every Kova env");
+    assertEqual((await readFile(destroyLog, "utf8")).trim().split("\n").length, 7, "force destroys every Kova env");
 
     return {
       id: "cleanup-env-safety",
