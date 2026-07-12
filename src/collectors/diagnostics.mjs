@@ -13,7 +13,7 @@ const MIN_DIAGNOSTIC_TIMEOUT_MS = 2500;
 const DIAGNOSTIC_STABILITY_MS = 1000;
 const DIAGNOSTIC_COMMAND_EXIT_RESERVE_MS = 1250;
 const DIAGNOSTIC_RUNNER_EXIT_RESERVE_MS = 250;
-const DIAGNOSTIC_POLL_INTERVAL_MS = 250;
+const DIAGNOSTIC_POLL_INTERVAL_MS = 500;
 const MAX_DIAGNOSTIC_REPORT_BYTES = 16 * 1024 * 1024;
 const DIAGNOSTIC_SEARCH_MAX_DEPTH = 6;
 
@@ -145,32 +145,66 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
     requestDiagnosticReport ? '-name "*diagnostic*.json"' : null
   ].filter(Boolean).join(" -o ");
   const baselineArtifacts = boundedFindCommand(searchRoots, artifactNamePredicates);
-  const markerCommand = `marker=$(mktemp); baseline=$(mktemp); trap 'rm -f "$marker" "$baseline"' EXIT; touch "$marker"; ${baselineArtifacts} | sort -u > "$baseline"`;
-  const signalCommand = `kill -USR2 ${normalizedPid}`;
   const discoveredArtifacts = boundedFindCommand(
     searchRoots,
     artifactNamePredicates,
     '-newer "$marker"'
   );
-  const discoveredHeaps = boundedFindCommand(
-    searchRoots,
-    '-name "*.heapsnapshot"',
-    '-newer "$marker"'
-  );
-  const discoveredReports = boundedFindCommand(
-    searchRoots,
-    '-name "report.*.json" -o -name "*diagnostic*.json"',
-    '-newer "$marker"'
-  );
-  const excludeBaseline = (command) =>
-    `{ ${command} | grep -Fvx -f "$baseline" || :; }`;
-  const freshArtifacts = excludeBaseline(discoveredArtifacts);
-  const freshHeaps = excludeBaseline(discoveredHeaps);
-  const freshReports = excludeBaseline(discoveredReports);
-  const artifactOutputCommand = `${freshArtifacts} | sort | awk '/[.]heapsnapshot$/ { if (heap++ < 25) print; next } { if (report++ < 25) print }'`;
+  const fingerprintCommand = `node -e ${quoteShell([
+    'const fs=require("node:fs");',
+    'for(const path of fs.readFileSync(0,"utf8").split("\\n").filter(Boolean)){',
+    'try{',
+    'const value=fs.statSync(path,{bigint:true});',
+    'process.stdout.write(path+"\\t"+[value.dev,value.ino,value.size,value.mtimeNs,value.ctimeNs].join(":")+"\\n");',
+    '}catch{}',
+    '}'
+  ].join(""))}`;
+  const attributionCommand = `node -e ${quoteShell([
+    'const fs=require("node:fs"),pathModule=require("node:path");',
+    'const expectedPid=Number(process.argv[1]);',
+    `const maxReportBytes=${MAX_DIAGNOSTIC_REPORT_BYTES};`,
+    'for(const path of fs.readFileSync(0,"utf8").split("\\n").filter(Boolean)){',
+    'try{',
+    'const name=pathModule.basename(path);',
+    'const heap=name.toLowerCase().endsWith(".heapsnapshot");',
+    'const match=(heap?/^Heap\\.\\d{8}\\.\\d{6}\\.(\\d+)\\./i:/^report\\.\\d{8}\\.\\d{6}\\.(\\d+)\\./i).exec(name);',
+    'if(match&&Number(match[1])!==expectedPid)continue;',
+    'const stat=fs.statSync(path);',
+    'if(stat.size<=0)continue;',
+    'if(heap){',
+    'const fd=fs.openSync(path,"r");',
+    'try{',
+    'const size=Math.min(stat.size,4096),head=Buffer.alloc(size),tail=Buffer.alloc(size);',
+    'fs.readSync(fd,head,0,size,0);',
+    'fs.readSync(fd,tail,0,size,Math.max(0,stat.size-size));',
+    'if(!head.toString("utf8").trimStart().startsWith("{")||!tail.toString("utf8").trimEnd().endsWith("}"))continue;',
+    '}finally{fs.closeSync(fd);}',
+    '}else{',
+    'if(stat.size>maxReportBytes)continue;',
+    'const report=JSON.parse(fs.readFileSync(path,"utf8"));',
+    'const reportPid=Number(report?.header?.processId);',
+    'if(Number.isFinite(reportPid)&&reportPid!==expectedPid)continue;',
+    '}',
+    'process.stdout.write((heap?"heap":"report")+"\\t"+path+"\\n");',
+    '}catch{}',
+    '}'
+  ].join(""))} ${normalizedPid}`;
+  const sessionStateCommand = [
+    'marker=$(mktemp)',
+    'baseline=$(mktemp)',
+    'fresh=$(mktemp)',
+    'attributed=$(mktemp)',
+    'trap \'rm -f "$marker" "$baseline" "$fresh" "$attributed"\' EXIT',
+    'touch "$marker"',
+    `${baselineArtifacts} | ${fingerprintCommand} | sort -u > "$baseline"`,
+    `refresh_candidates() { ${discoveredArtifacts} | ${fingerprintCommand} | sort -u | grep -Fvx -f "$baseline" > "$fresh" || :; }`,
+    `refresh_attributed() { cut -f1 "$fresh" | ${attributionCommand} > "$attributed"; }`
+  ].join("; ");
+  const signalCommand = `kill -USR2 ${normalizedPid}`;
+  const artifactOutputCommand = `cut -f1 "$fresh" | sort | awk '/[.]heapsnapshot$/ { if (heap++ < 25) print; next } { if (report++ < 25) print }'`;
   const command = ocmEnvExecShell(
     envName,
-    `set -eu; ${markerCommand}; ${signalCommand}; attempts=0; while :; do heap_count=$(${freshHeaps} | wc -l | tr -d ' '); report_count=$(${freshReports} | wc -l | tr -d ' '); if ${readyConditions}; then break; fi; if [ "$attempts" -ge ${pollAttempts} ]; then break; fi; attempts=$((attempts + 1)); sleep ${DIAGNOSTIC_POLL_INTERVAL_MS / 1000}; done; ${artifactOutputCommand}`
+    `set -eu; ${sessionStateCommand}; ${signalCommand}; attempts=0; while :; do refresh_candidates; refresh_attributed; heap_count=$(awk -F '\\t' '$1 == "heap" { count++ } END { print count + 0 }' "$attributed"); report_count=$(awk -F '\\t' '$1 == "report" { count++ } END { print count + 0 }' "$attributed"); if ${readyConditions}; then break; fi; if [ "$attempts" -ge ${pollAttempts} ]; then break; fi; attempts=$((attempts + 1)); sleep ${DIAGNOSTIC_POLL_INTERVAL_MS / 1000}; done; ${artifactOutputCommand}`
   );
   const result = await runCommand(command, {
     // OCM invocation, polling, and artifact retention share one caller-owned deadline.
@@ -257,10 +291,10 @@ async function retainTriggeredArtifacts({
   deadlineEpochMs,
   expectedPid
 }) {
-  if (!requested || !artifactDir || files.length === 0) {
+  if (!requested || files.length === 0) {
     return { files: [], artifacts: [], artifactBytes: 0, error: null };
   }
-  const destinationDir = join(artifactDir, destination);
+  const destinationDir = artifactDir ? join(artifactDir, destination) : null;
   // Candidate lists are capped at 25 per class. Poll them together so a
   // corrupt artifact cannot monopolize workers until the shared deadline.
   const outcomes = await Promise.all(
@@ -273,6 +307,9 @@ async function retainTriggeredArtifacts({
         });
         if (!await diagnosticArtifactMatchesPid(file, destination, expectedPid)) {
           throw new Error(`diagnostic artifact belongs to another process: ${file}`);
+        }
+        if (!destinationDir) {
+          return { files: [file], artifacts: [], artifactBytes: 0, error: null };
         }
         const copied = await copyCollectorArtifacts([file], destinationDir, {
           deadlineEpochMs
