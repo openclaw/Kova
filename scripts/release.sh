@@ -48,6 +48,10 @@ remote_ref_commit() {
   git ls-remote "$remote" "$1" | awk 'NR==1 { print $1 }'
 }
 
+remote_tag_object() {
+  remote_ref_commit "refs/tags/${tag}"
+}
+
 remote_tag_commit() {
   git ls-remote "$remote" "refs/tags/${tag}^{}" "refs/tags/${tag}" | awk '
     $2 ~ /\^\{\}$/ { print $1; found=1; exit }
@@ -60,6 +64,23 @@ tag_signature_valid() {
   git -c gpg.format=ssh \
     -c gpg.ssh.allowedSignersFile="${repo_root}/.github/release-allowed-signers" \
     verify-tag "$1" >/dev/null 2>&1
+}
+
+remote_tag_signature_valid() {
+  local expected_object_sha="$1"
+  local temp_ref="refs/kova-release-check/${tag}"
+  local fetched_object_sha=""
+  local valid=0
+
+  git update-ref -d "$temp_ref" >/dev/null 2>&1 || true
+  if git fetch --quiet --force "$remote" "refs/tags/${tag}:${temp_ref}"; then
+    fetched_object_sha="$(git rev-parse "$temp_ref" 2>/dev/null || true)"
+    if [[ "$fetched_object_sha" == "$expected_object_sha" ]] && tag_signature_valid "$temp_ref"; then
+      valid=1
+    fi
+  fi
+  git update-ref -d "$temp_ref" >/dev/null 2>&1 || true
+  [[ "$valid" -eq 1 ]]
 }
 
 refresh_dirty_files() {
@@ -179,6 +200,8 @@ if is_release_commit; then
 fi
 
 local_tag_commit_sha="$(ref_commit "$tag")"
+local_tag_object_sha="$(git rev-parse "$tag" 2>/dev/null || true)"
+remote_tag_object_sha="$(remote_tag_object)"
 remote_tag_commit_sha="$(remote_tag_commit)"
 remote_main_sha="$(remote_ref_commit "refs/heads/main")"
 
@@ -211,6 +234,17 @@ fi
 if [[ -n "$remote_tag_commit_sha" && "$remote_tag_commit_sha" != "$head_sha" ]]; then
   echo "error: remote tag ${tag} already exists on ${remote} and does not point at HEAD" >&2
   exit 1
+fi
+
+if [[ -n "$remote_tag_object_sha" ]]; then
+  if ! remote_tag_signature_valid "$remote_tag_object_sha"; then
+    echo "error: remote tag ${tag} is not signed by a repository-authorized signer" >&2
+    exit 1
+  fi
+  if [[ -n "$local_tag_object_sha" && "$local_tag_object_sha" != "$remote_tag_object_sha" ]]; then
+    echo "error: local and remote tag objects differ for ${tag}; reconcile them before retrying" >&2
+    exit 1
+  fi
 fi
 
 need_update_version=0
