@@ -68,6 +68,10 @@ export async function releaseReportOutputLock(lockPath) {
   }
 }
 
+export function reportTransactionLockPath(canonicalPath) {
+  return `${reportTransactionPath(canonicalPath)}.lock`;
+}
+
 async function anyPathExists(paths) {
   for (const path of paths) {
     try {
@@ -83,13 +87,17 @@ async function anyPathExists(paths) {
 }
 
 async function replaceReportFileSet(entries, canonicalPath) {
-  const transactionPath = join(
+  const transactionPath = reportTransactionPath(canonicalPath);
+  return withFileLock(reportTransactionLockPath(canonicalPath), () => (
+    replaceReportFileSetLocked(entries, canonicalPath, transactionPath)
+  ));
+}
+
+function reportTransactionPath(canonicalPath) {
+  return join(
     dirname(canonicalPath),
     `.${basename(canonicalPath)}.kova-transaction`
   );
-  return withFileLock(`${transactionPath}.lock`, () => (
-    replaceReportFileSetLocked(entries, canonicalPath, transactionPath)
-  ));
 }
 
 async function replaceReportFileSetLocked(entries, canonicalPath, transactionPath) {

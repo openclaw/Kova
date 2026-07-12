@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { withFileLock } from "../file-lock.mjs";
 import { artifactsDir } from "../paths.mjs";
+import { reportTransactionLockPath } from "../run/report-output.mjs";
 import { artifactRunIdSegment, isCanonicalRunId } from "./artifact-names.mjs";
 import { renderPasteSummary } from "./report.mjs";
 
@@ -859,6 +860,13 @@ async function copyDurableFile(source, destination) {
 }
 
 async function snapshotReportSet(sourceJsonPath) {
+  return withFileLock(
+    reportTransactionLockPath(sourceJsonPath),
+    () => snapshotReportSetLocked(sourceJsonPath)
+  );
+}
+
+async function snapshotReportSetLocked(sourceJsonPath) {
   const markdownPath = siblingMarkdownPath(sourceJsonPath);
   for (let attempt = 0; attempt < 3; attempt += 1) {
     await requireRegularFile(sourceJsonPath, "report JSON");
