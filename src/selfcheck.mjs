@@ -3627,14 +3627,14 @@ async function stateLifecycleCommandIndexesCheck(tmp) {
       [
         {
           commands: [
-            "node -e 'process.stdout.write(\"first\")'",
-            "node -e 'process.stdout.write(\"second\")'"
+            "node --version",
+            "node --version"
           ],
           evidence: [],
           collectionIntent: "skip-env"
         },
         {
-          commands: ["node -e 'process.stdout.write(\"third\")'"],
+          commands: ["node --version"],
           evidence: [],
           collectionIntent: "skip-env"
         }
@@ -16667,14 +16667,15 @@ function expectedMockProviderFailureTimeoutLogCheck() {
 
 function optionalNoLogsCommandCheck() {
   try {
-    const result = normalizeOptionalCommandResult({
+    const result = {
       command: "ocm logs 'kova-empty-logs' --tail 250 --raw",
       status: 1,
       stdout: "",
       stderr: "ocm: no logs exist for env \"kova-empty-logs\" across stdout or stderr\n"
-    });
+    };
     assertEqual(isNoLogsOutput(result.stderr), true, "exact missing logs stderr is detected");
     assertEqual(isOptionalNoLogsResult(result), true, "empty stdout and exact stderr are optional");
+    normalizeOptionalCommandResult(result);
     assertEqual(result.status, 0, "missing logs are normalized to optional success");
     assertEqual(result.originalStatus, 1, "original log command status retained");
     assertEqual(result.optional, true, "optional marker set");
