@@ -41,14 +41,16 @@ export async function collectTimelineMetrics(artifactDir) {
   }
 
   const timeline = await loadTimeline(timelinePath);
+  const malformed = timeline.present === true && timeline.parseErrorCount > 0 && timeline.eventCount === 0;
   return {
     schemaVersion: TIMELINE_COLLECTOR_SCHEMA,
     commandStatus: 0,
-    statusLabel: timeline.available ? "PASS" : "INFO",
+    statusLabel: timeline.available ? "PASS" : (malformed || timeline.error ? "WARN" : "INFO"),
     durationMs: Date.now() - startedAt,
     available: timeline.available,
     eventCount: timeline.eventCount,
     parseErrorCount: timeline.parseErrorCount,
+    parseErrors: timeline.parseErrors,
     spanCount: timeline.spanCount,
     slowestSpans: timeline.slowestSpans,
     spanTotals: timeline.spanTotals,
@@ -64,8 +66,10 @@ export async function collectTimelineMetrics(artifactDir) {
     childProcesses: timeline.childProcesses,
     turnAttributionEvents: timeline.turnAttributionEvents,
     events: timeline.events,
-    artifacts: timeline.available ? [timelinePath] : [],
-    error: timeline.available ? null : (timeline.error ?? (timeline.missing ? "OpenClaw timeline not emitted" : null))
+    artifacts: timeline.present ? [timelinePath] : [],
+    error: timeline.available
+      ? null
+      : (timeline.error ?? (malformed ? "OpenClaw timeline was emitted but contained no valid events" : (timeline.missing ? "OpenClaw timeline not emitted" : null)))
   };
 }
 
@@ -74,6 +78,7 @@ export async function loadTimeline(path) {
     const text = await readFile(path, "utf8");
     return {
       ...parseTimelineText(text),
+      present: true,
       path
     };
   } catch (error) {
@@ -128,6 +133,7 @@ export function summarizeTimeline(events, parseErrors = []) {
 
   return {
     available: events.length > 0,
+    present: true,
     schemaVersion: SCHEMA_VERSION,
     eventCount: events.length,
     parseErrorCount: parseErrors.length,
@@ -158,6 +164,7 @@ export function summarizeTimeline(events, parseErrors = []) {
 function emptyTimeline(extra = {}) {
   return {
     available: false,
+    present: false,
     schemaVersion: SCHEMA_VERSION,
     eventCount: 0,
     parseErrorCount: 0,
@@ -512,7 +519,7 @@ function isTurnAttributionEvent(event) {
     event.name.startsWith("models.catalog.") ||
     event.name.startsWith("models.discovery") ||
     event.name.startsWith("channel.plugin.") ||
-    event.name.startsWith("reply.");
+    keySpanMatches("reply", event.name);
 }
 
 function compactAttributionEvent(event) {
@@ -604,6 +611,12 @@ function maxNullable(left, right) {
 }
 
 function numberOrNull(value) {
+  if (value === null || value === undefined || value === "" || typeof value === "boolean") {
+    return null;
+  }
+  if (typeof value !== "number" && typeof value !== "string") {
+    return null;
+  }
   const number = Number(value);
   return Number.isFinite(number) ? round(number) : null;
 }

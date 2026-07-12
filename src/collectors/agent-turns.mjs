@@ -8,6 +8,12 @@ const SOURCE_SPAN_GROUPS = [
     matches: (name) => name === "agent.prepare"
   },
   {
+    id: "pluginMetadataScan",
+    label: "plugins.metadata.scan",
+    bucket: "preProviderOpenClawMs",
+    matches: (name) => name === "plugins.metadata.scan"
+  },
+  {
     id: "modelCatalog",
     label: "models.catalog.*",
     bucket: "preProviderOpenClawMs",
@@ -148,12 +154,9 @@ export function summarizeSourceSpans(timelineSummary = null) {
     }
   }
 
-  const knownPreProviderMs = round(
-    categories.agentPrepare.totalDurationMs +
-    categories.modelCatalog.totalDurationMs +
-    categories.channelPlugin.totalDurationMs +
-    categories.runtimeDepsStage.totalDurationMs
-  );
+  const knownPreProviderMs = round(Object.values(categories)
+    .filter((category) => category.bucket === "preProviderOpenClawMs")
+    .reduce((sum, category) => sum + category.totalDurationMs, 0));
   const available = Object.values(categories).some((category) => category.count > 0) || timelineSummary?.available === true;
 
   return {
@@ -168,7 +171,8 @@ export function summarizeSourceSpans(timelineSummary = null) {
 }
 
 export function summarizeLogStages(logSummary = null) {
-  const stageTotals = logSummary?.embeddedRuns?.stageTotals ?? logSummary?.stageTotals ?? {};
+  const source = logSummary?.embeddedRuns ?? logSummary ?? {};
+  const stageTotals = source.stageTotals ?? {};
   const categories = Object.fromEntries(KNOWN_LOG_STAGE_GROUPS.map((group) => [group.id, emptyLogCategory(group)]));
   const allStages = Object.entries(stageTotals)
     .map(([name, summary]) => normalizeLogStage(name, summary))
@@ -186,13 +190,13 @@ export function summarizeLogStages(logSummary = null) {
   const knownPreProviderMs = round(Object.values(categories)
     .filter((category) => category.bucket === "preProviderOpenClawMs")
     .reduce((sum, category) => sum + category.totalDurationMs, 0));
-  const available = Object.values(categories).some((category) => category.count > 0) || logSummary?.embeddedRuns?.available === true;
+  const available = allStages.length > 0 || source.available === true;
 
   return {
     available,
     knownPreProviderMs,
-    eventCount: logSummary?.embeddedRuns?.eventCount ?? 0,
-    totalMaxMs: numberOrNull(logSummary?.embeddedRuns?.totalMaxMs),
+    eventCount: numberOrNull(source.eventCount) ?? 0,
+    totalMaxMs: numberOrNull(source.totalMaxMs),
     categories,
     allStages,
     mappedStageCount: Object.values(categories).reduce((sum, category) => sum + category.count, 0),
@@ -267,7 +271,7 @@ function firstProviderChunkEpochMs(attribution) {
 
 function timelinePoint(type, timestamp, epochMs) {
   const normalizedEpochMs = numberOrNull(epochMs);
-  if (timestamp === null && normalizedEpochMs === null) {
+  if (timestamp == null && normalizedEpochMs === null) {
     return null;
   }
   return {
@@ -431,6 +435,12 @@ function maxNumber(left, right) {
 }
 
 function numberOrNull(value) {
+  if (value === null || value === undefined || value === "" || typeof value === "boolean") {
+    return null;
+  }
+  if (typeof value !== "number" && typeof value !== "string") {
+    return null;
+  }
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
