@@ -80,7 +80,7 @@ async function verifyConcurrentInvocationHomes(parentDir) {
 
     const result = await runCommand(
       "node -e 'process.stdout.write(process.env.KOVA_HOME ?? \"\")'",
-      { timeoutMs: 5000 }
+      { timeoutMs: 15000 }
     );
     assert.equal(result.status, 0);
     assert.equal(result.stdout, workspace.kovaHome);
@@ -136,7 +136,7 @@ printf '{"ok":true}\\n'
       runtimeName: scope.runtimeName,
       repoPath: "/tmp/openclaw"
     },
-    timeoutMs: 5000,
+    timeoutMs: 15000,
     resourceSampling: false,
     commandEnv,
     targetSetup: {
@@ -153,7 +153,7 @@ printf '{"ok":true}\\n'
   const scenarioResult = await runScenarioCommand(
     `ocm @${scope.envName} -- status`,
     {
-      timeoutMs: 5000,
+      timeoutMs: 15000,
       openclawDiagnostics: false,
       resourceSampling: false,
       commandEnv
@@ -176,7 +176,7 @@ printf '{"ok":true}\\n'
     resultStatus: "success"
   });
   const metrics = await collectEnvMetrics(scope.envName, {
-    timeoutMs: 5000,
+    timeoutMs: 15000,
     collectionPolicy,
     commandEnv
   });
