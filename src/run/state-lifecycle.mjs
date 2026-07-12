@@ -40,6 +40,7 @@ export async function executeStateLifecycleSteps(context, envName, scenario, kin
       lifecycleKind: kind,
       lifecycleCommandScope: stateLifecycleCommandScope(commands),
       collectionIntent: stateLifecycleCollectionIntent(steps),
+      redactValues: authPolicy?.redactionValues ?? [],
       resultStatus: phaseResultStatus(results)
     }))
   };

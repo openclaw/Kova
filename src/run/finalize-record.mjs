@@ -13,7 +13,8 @@ import { metricOptions } from "./metric-options.mjs";
 export async function collectPreCleanupEvidence(record, scenario, context, envName, artifactDir, authPolicy) {
   record.finishedAt = new Date().toISOString();
   record.finalMetrics = await collectEnvMetrics(envName, metricOptions(context, scenario, null, artifactDir, {
-    kind: "final"
+    kind: "final",
+    redactValues: authPolicy.redactionValues
   }));
   record.stateFixtureAccounting = await collectStateFixtureAccounting(context.state, envName, artifactDir);
   record.providerEvidence = await collectProviderEvidence(artifactDir, { authPolicy });
@@ -22,7 +23,8 @@ export async function collectPreCleanupEvidence(record, scenario, context, envNa
   if (shouldCaptureFailureDiagnostics(record, context)) {
     record.failureDiagnostics = await collectEnvMetrics(envName, {
       ...metricOptions(context, scenario, null, artifactDir, {
-        kind: "failure-diagnostics"
+        kind: "failure-diagnostics",
+        redactValues: authPolicy.redactionValues
       }),
       readinessTimeoutMs: 0,
       heapSnapshot: true,

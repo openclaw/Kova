@@ -77,6 +77,7 @@ import { assertNetworkFrontageCommandSafe, networkFrontageCommandEnv, stopNetwor
 import { resolveGatewayEndpoint } from "../support/gateway-endpoint.mjs";
 import {
   boundedLogSnippet,
+  collectLogMetrics,
   countProviderTimeoutMentions,
   isExpectedKovaMockProviderFailureLine,
   summarizeEmbeddedRunTraces,
@@ -386,6 +387,7 @@ async function runScopedSelfCheck(flags, scope, workspace) {
     checks.push(await commandTimeoutContractCheck(tmp));
     checks.push(await commandOutputBudgetCheck());
     checks.push(logSnippetBudgetCheck());
+    checks.push(await logArtifactRedactionCheck(tmp));
     checks.push(expectedMockProviderFailureTimeoutLogCheck());
     checks.push(optionalNoLogsCommandCheck());
     checks.push(commandResultInterpretationCheck());
@@ -409,6 +411,7 @@ async function runScopedSelfCheck(flags, scope, workspace) {
     checks.push(provisioningBlockedStatusCheck());
     checks.push(cleanupProofRequiredCheck());
     checks.push(await openClawStateSnapshotCheck(tmp));
+    checks.push(await openClawStateSymlinkContainmentCheck(tmp));
     checks.push(await doctorUpgradeSnapshotEvidenceCheck(tmp));
     checks.push(upgradeStateSnapshotInvariantsCheck());
     checks.push(upgradeLogDerivedInvariantsCheck());
@@ -3347,6 +3350,59 @@ async function openClawStateSnapshotCheck(tmp) {
       id: "openclaw-state-snapshot",
       status: "FAIL",
       command: "capture bounded redacted OpenClaw state snapshot",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+async function openClawStateSymlinkContainmentCheck(tmp) {
+  const home = join(tmp, "snapshot-containment-home");
+  const outside = join(tmp, "snapshot-containment-outside");
+  try {
+    await mkdir(join(home, "config"), { recursive: true });
+    await mkdir(join(home, ".openclaw"), { recursive: true });
+    await mkdir(join(home, "plugins"), { recursive: true });
+    await mkdir(join(outside, "plugins", "escaped-plugin"), { recursive: true });
+    await writeFile(
+      join(outside, "settings.json"),
+      JSON.stringify({ schemaVersion: "KOVA_KNOWN_FILE_ESCAPE_CANARY" }),
+      "utf8"
+    );
+    await writeFile(
+      join(outside, "plugins", "escaped-plugin", "package.json"),
+      JSON.stringify({ name: "KOVA_PLUGIN_ESCAPE_CANARY" }),
+      "utf8"
+    );
+    await symlink(join(outside, "settings.json"), join(home, "settings.json"));
+    await symlink(join(outside, "plugins"), join(home, ".openclaw", "plugins"));
+    await symlink(
+      join(outside, "plugins", "escaped-plugin"),
+      join(home, "plugins", "escaped-plugin")
+    );
+
+    const snapshot = await captureOpenClawStateSnapshot({ home });
+    const serialized = JSON.stringify(snapshot);
+    assertEqual(serialized.includes("KOVA_KNOWN_FILE_ESCAPE_CANARY"), false, "known-file symlink escape is not read");
+    assertEqual(serialized.includes("KOVA_PLUGIN_ESCAPE_CANARY"), false, "plugin symlink escape is not read");
+    assertEqual(snapshot.files.some((file) => file.path === "settings.json"), false, "escaped known file is omitted");
+    assertEqual(snapshot.plugins.roots.some((root) => root.path === ".openclaw/plugins"), false, "escaped plugin root is omitted");
+    assertEqual(snapshot.plugins.pluginDirs.some((plugin) => plugin.path === "plugins/escaped-plugin"), false, "escaped plugin directory is omitted");
+    assertEqual(snapshot.budget.excludedPaths.includes("settings.json"), true, "escaped known file is recorded");
+    assertEqual(snapshot.budget.excludedPaths.includes(".openclaw/plugins"), true, "escaped plugin root is recorded");
+    assertEqual(snapshot.budget.excludedPaths.includes("plugins/escaped-plugin"), true, "escaped plugin directory is recorded");
+
+    return {
+      id: "openclaw-state-symlink-containment",
+      status: "PASS",
+      command: "reject OpenClaw state symlink escapes",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "openclaw-state-symlink-containment",
+      status: "FAIL",
+      command: "reject OpenClaw state symlink escapes",
       durationMs: 0,
       message: error.message
     };
@@ -17795,6 +17851,59 @@ function logSnippetBudgetCheck() {
       id: "log-snippet-budget",
       status: "FAIL",
       command: "evaluate log snippet truncation metadata",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+async function logArtifactRedactionCheck(tmp) {
+  const fakeBin = join(tmp, "log-redaction-bin");
+  const artifactDir = join(tmp, "log-redaction-artifacts");
+  const exactSecret = "kova-exact-secret-canary";
+  const canaries = [
+    "header-secret-canary",
+    "json-secret-canary",
+    "env-secret-canary",
+    "cli-secret-canary",
+    exactSecret
+  ];
+  try {
+    await mkdir(fakeBin, { recursive: true });
+    await writeFile(join(fakeBin, "ocm"), `#!/bin/sh
+cat <<'EOF'
+Authorization: Bearer header-secret-canary
+{"access_token":"json-secret-canary","message":"safe"}
+OPENAI_API_KEY=env-secret-canary
+command --token cli-secret-canary
+exact=${exactSecret}
+EOF
+`, "utf8");
+    await chmod(join(fakeBin, "ocm"), 0o755);
+
+    const metrics = await collectLogMetrics("kova-self-check", 5000, artifactDir, {
+      commandEnv: { PATH: `${fakeBin}:${process.env.PATH}` },
+      redactValues: [exactSecret]
+    });
+    const artifact = await readFile(join(artifactDir, "collectors", "gateway-tail.log"), "utf8");
+    const serialized = JSON.stringify(metrics);
+    for (const canary of canaries) {
+      assertEqual(artifact.includes(canary), false, `log artifact redacts ${canary}`);
+      assertEqual(serialized.includes(canary), false, `log metrics redact ${canary}`);
+    }
+    assertEqual(artifact.includes("[REDACTED]"), true, "log artifact contains redaction markers");
+
+    return {
+      id: "log-artifact-redaction",
+      status: "PASS",
+      command: "redact auth canaries before log artifact writes",
+      durationMs: metrics.durationMs
+    };
+  } catch (error) {
+    return {
+      id: "log-artifact-redaction",
+      status: "FAIL",
+      command: "redact auth canaries before log artifact writes",
       durationMs: 0,
       message: error.message
     };

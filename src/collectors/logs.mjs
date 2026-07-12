@@ -9,16 +9,19 @@ export const LOG_METRICS_SCHEMA = "kova.logMetrics.v1";
 const PROVIDER_TIMEOUT_SIGNAL_PATTERN =
   /(?:\bprovider\b|\bmodel\b).*(?:\btimeouts?\b|\btimed out\b)|(?:\btimeouts?\b|\btimed out\b).*(?:\bprovider\b|\bmodel\b)/i;
 
-export async function collectLogMetrics(envName, timeoutMs, artifactDir, commandEnv) {
+export async function collectLogMetrics(envName, timeoutMs, artifactDir, options = {}) {
   const result = await runCommand(ocmLogs(envName, { tail: 200 }), {
     timeoutMs,
-    env: commandEnv
+    env: options.commandEnv,
+    redactValues: options.redactValues
   });
-  const text = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+  const stdout = redactLogText(result.stdout);
+  const stderr = redactLogText(result.stderr);
+  const text = `${stdout}\n${stderr}`;
   const noLogsAvailable = isOptionalNoLogsResult(result);
   const timestamps = collectTimestamps(text);
-  const stdoutSnippet = boundedLogSnippet(result.stdout, 4000);
-  const stderrSnippet = boundedLogSnippet(result.stderr, 4000);
+  const stdoutSnippet = boundedLogSnippet(stdout, 4000);
+  const stderrSnippet = boundedLogSnippet(stderr, 4000);
   const artifacts = [];
   if (artifactDir) {
     await mkdir(join(artifactDir, "collectors"), { recursive: true });
@@ -65,6 +68,31 @@ export async function collectLogMetrics(envName, timeoutMs, artifactDir, command
     stdoutSnippet: stdoutSnippet.text,
     stderrSnippet: stderrSnippet.text
   };
+}
+
+export function redactLogText(value) {
+  return String(value ?? "")
+    .replace(
+      /^(\s*(?:authorization|proxy-authorization|x-api-key|api-key|cookie|set-cookie)\s*:\s*).+$/gim,
+      "$1[REDACTED]"
+    )
+    .replace(
+      /(["']?(?:api[_-]?key|access[_-]?token|auth[_-]?token|refresh[_-]?token|secret|password|cookie|authorization)["']?\s*[:=]\s*)(["'])(.*?)\2/gi,
+      "$1$2[REDACTED]$2"
+    )
+    .replace(
+      /\b([A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|COOKIE)[A-Z0-9_]*)(\s*=\s*)([^\s,;]+)/gi,
+      "$1$2[REDACTED]"
+    )
+    .replace(
+      /((?:^|\s)--(?:api-key|access-token|auth-token|refresh-token|token|secret|password|cookie)(?:=|\s+))(["'])[^"']+\2/gim,
+      "$1[REDACTED]"
+    )
+    .replace(
+      /((?:^|\s)--(?:api-key|access-token|auth-token|refresh-token|token|secret|password|cookie)(?:=|\s+))[^\s,"']+/gim,
+      "$1[REDACTED]"
+    )
+    .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [REDACTED]");
 }
 
 export function boundedLogSnippet(value, maxChars) {
