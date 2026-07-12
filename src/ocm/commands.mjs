@@ -42,6 +42,10 @@ export function ocmEnvDestroyPreviewJson(envName) {
   return `ocm env destroy ${quoteShell(envName)} --json`;
 }
 
+export function ocmEnvProtect(envName, protectedValue) {
+  return `ocm env protect ${quoteShell(envName)} ${protectedValue ? "on" : "off"} --json`;
+}
+
 export function ocmEnvExec(envName, args) {
   return `ocm env exec ${quoteShell(envName)} -- ${quoteArgs(args)}`;
 }

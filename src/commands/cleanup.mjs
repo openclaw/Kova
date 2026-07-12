@@ -32,15 +32,7 @@ async function cleanupEnvs(flags) {
   const olderThanDays = positiveIntegerFlag(flags, "older_than_days", 1);
   const cutoffMs = Date.now() - olderThanDays * DAY_MS;
   const force = flags.force === true;
-  const envList = await runCommand(ocmEnvListJson(), { timeoutMs: 30000 });
-  if (envList.status !== 0) {
-    throw new Error(`failed to list OCM envs: ${envList.stderr.trim() || envList.stdout.trim()}`);
-  }
-
-  const summaries = JSON.parse(envList.stdout);
-  if (!Array.isArray(summaries)) {
-    throw new Error("ocm env list --json returned unexpected data");
-  }
+  const summaries = await loadEnvSummaries();
 
   const serviceInventory = await loadServiceInventory();
   const retentionInventory = await loadRetentionInventory();
@@ -61,10 +53,14 @@ async function cleanupEnvs(flags) {
   // Destructive cleanup must require the literal boolean set by `--execute`.
   if (flags.execute === true) {
     for (const env of candidates) {
-      const { result, precondition, stage } = await destroyCleanupEnv(env.name, { force });
+      const { result, precondition, stage, code } = await destroyCleanupEnv(env.name, {
+        force,
+        cutoffMs
+      });
       results.push({
         env: env.name,
         stage,
+        code,
         precondition,
         command: result.command,
         status: result.status,
@@ -131,19 +127,29 @@ async function cleanupEnvs(flags) {
   }, flags));
 }
 
-async function destroyCleanupEnv(envName, { force }) {
+async function destroyCleanupEnv(envName, { force, cutoffMs }) {
   if (force) {
+    const result = await runCleanupCommand(
+      ocmEnvDestroy(envName, { force: true }),
+      { timeoutMs: 120000 }
+    );
     return {
-      result: await runCleanupCommand(ocmEnvDestroy(envName, { force: true }), { timeoutMs: 120000 }),
+      result,
       precondition: null,
-      stage: "destroy"
+      stage: "destroy",
+      code: cleanupResultCode(result)
     };
   }
 
   const preview = await runCommand(ocmEnvDestroyPreviewJson(envName), { timeoutMs: 30000 });
   const precondition = summarizeCleanupCommand(preview);
   if (preview.status !== 0) {
-    return { result: preview, precondition, stage: "precondition" };
+    return {
+      result: preview,
+      precondition,
+      stage: "precondition",
+      code: cleanupResultCode(preview)
+    };
   }
 
   let previewSummary;
@@ -153,7 +159,8 @@ async function destroyCleanupEnv(envName, { force }) {
     return {
       result: invalidPreconditionResult(preview, `invalid destroy preview JSON: ${error.message}`),
       precondition,
-      stage: "precondition"
+      stage: "precondition",
+      code: "invalid_preview"
     };
   }
 
@@ -162,7 +169,8 @@ async function destroyCleanupEnv(envName, { force }) {
     return {
       result: invalidPreconditionResult(preview, previewError),
       precondition,
-      stage: "precondition"
+      stage: "precondition",
+      code: "unsafe_preview"
     };
   }
 
@@ -171,15 +179,57 @@ async function destroyCleanupEnv(envName, { force }) {
     return {
       result: invalidPreconditionResult(preview, "destroy preview did not return a stateToken"),
       precondition,
-      stage: "precondition"
+      stage: "precondition",
+      code: "invalid_preview"
+    };
+  }
+
+  let fresh;
+  try {
+    fresh = await loadCleanupEnvClassification(envName, cutoffMs);
+  } catch (error) {
+    return {
+      result: invalidPreconditionResult(preview, `failed to refresh cleanup eligibility: ${error.message}`),
+      precondition,
+      stage: "precondition",
+      code: "eligibility_refresh_failed"
+    };
+  }
+  if (!fresh) {
+    return {
+      result: invalidPreconditionResult(preview, "environment no longer appears in OCM inventory"),
+      precondition,
+      stage: "precondition",
+      code: "environment_missing"
+    };
+  }
+  if (!fresh.eligible) {
+    return {
+      result: invalidPreconditionResult(
+        preview,
+        `environment is no longer eligible for cleanup: ${fresh.reasons.join(", ")}`
+      ),
+      precondition,
+      stage: "precondition",
+      code: "eligibility_changed"
     };
   }
 
   const result = await runCleanupCommand(
     ocmEnvDestroy(envName, { json: true, stateToken: stateRevision }),
-    { timeoutMs: 120000 }
+    {
+      timeoutMs: 120000,
+      // partial_apply means teardown began; a retry needs a fresh preview.
+      retryDelaysMs: [0]
+    }
   );
-  return { result, precondition, stage: "destroy" };
+  const code = cleanupResultCode(result);
+  return {
+    result,
+    precondition,
+    stage: code === "partial_apply" ? "partial-apply" : "destroy",
+    code
+  };
 }
 
 function validateDestroyPreview(summary) {
@@ -224,6 +274,45 @@ function invalidPreconditionResult(preview, message) {
     status: 1,
     stderr: [preview.stderr, message].filter(Boolean).join("\n")
   };
+}
+
+async function loadEnvSummaries() {
+  const result = await runCommand(ocmEnvListJson(), { timeoutMs: 30000 });
+  if (result.status !== 0) {
+    throw new Error(`failed to list OCM envs: ${result.stderr.trim() || result.stdout.trim()}`);
+  }
+  const summaries = JSON.parse(result.stdout);
+  if (!Array.isArray(summaries)) {
+    throw new Error("ocm env list --json returned unexpected data");
+  }
+  return summaries;
+}
+
+async function loadCleanupEnvClassification(envName, cutoffMs) {
+  const summaries = await loadEnvSummaries();
+  const summary = summaries.find((candidate) => candidate?.name === envName);
+  if (!summary) return null;
+
+  const serviceInventory = await loadServiceInventory();
+  const retentionInventory = await loadRetentionInventory();
+  return classifyCleanupEnv({
+    summary,
+    service: serviceInventory.byEnv.get(envName),
+    serviceInventoryOk: serviceInventory.ok,
+    retained: retentionInventory.envNames.has(envName),
+    retentionInventoryOk: retentionInventory.ok,
+    cutoffMs,
+    force: false
+  });
+}
+
+function cleanupResultCode(result) {
+  try {
+    const parsed = JSON.parse(result.stdout);
+    return typeof parsed?.code === "string" ? parsed.code : null;
+  } catch {
+    return null;
+  }
 }
 
 async function loadServiceInventory() {
