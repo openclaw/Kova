@@ -1,9 +1,9 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { cp, lstat, mkdir, mkdtemp, open, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
+import { withFileLock } from "../file-lock.mjs";
 import { artifactsDir } from "../paths.mjs";
 import { renderPasteSummary } from "./report.mjs";
 
@@ -18,34 +18,31 @@ export async function bundleReport(reportPath, options = {}) {
   const outputRoot = options.outputDir ? resolve(options.outputDir) : join(artifactsDir, "bundles");
   await mkdir(outputRoot, { recursive: true });
 
-  const bundleName = `${sanitize(runId)}-bundle`;
-  const outputPath = join(outputRoot, `${bundleName}.tar.gz`);
-  const checksumPath = `${outputPath}.sha256`;
+  const bundleName = `${safeRunIdSegment(runId)}-bundle`;
   const tmp = await mkdtemp(join(tmpdir(), "kova-artifact-bundle-"));
   const stage = join(tmp, bundleName);
+  const stagedArchivePath = join(tmp, `${bundleName}.tar.gz`);
 
   try {
     await mkdir(stage, { recursive: true });
     await cp(sourceJsonPath, join(stage, "report.json"));
 
     const markdownPath = siblingMarkdownPath(sourceJsonPath);
+    await requireRegularFile(markdownPath, "report Markdown");
     const included = {
       reportJson: true,
-      reportMarkdown: false,
+      reportMarkdown: true,
       pasteSummary: true,
       runArtifacts: false,
       artifactIndex: true
     };
 
-    if (existsSync(markdownPath)) {
-      await cp(markdownPath, join(stage, "report.md"));
-      included.reportMarkdown = true;
-    }
+    await cp(markdownPath, join(stage, "report.md"));
 
     await writeFile(join(stage, "paste-summary.txt"), renderPasteSummary(report), "utf8");
 
-    const runArtifactsPath = join(artifactsDir, runId);
-    if (existsSync(runArtifactsPath) && (await stat(runArtifactsPath)).isDirectory()) {
+    const runArtifactsPath = isCanonicalRunId(runId) ? join(artifactsDir, runId) : null;
+    if (runArtifactsPath && await directoryExists(runArtifactsPath)) {
       await cp(runArtifactsPath, join(stage, "artifacts"), { recursive: true });
       included.runArtifacts = true;
     }
@@ -60,8 +57,10 @@ export async function bundleReport(reportPath, options = {}) {
       platform: report.platform ?? null,
       source: {
         reportJsonPath: sourceJsonPath,
-        reportMarkdownPath: existsSync(markdownPath) ? markdownPath : null,
-        runArtifactsPath: existsSync(runArtifactsPath) ? runArtifactsPath : null
+        reportMarkdownPath: markdownPath,
+        runArtifactsPath: runArtifactsPath && await directoryExists(runArtifactsPath)
+          ? runArtifactsPath
+          : null
       },
       included
     };
@@ -69,7 +68,7 @@ export async function bundleReport(reportPath, options = {}) {
     const artifactIndex = await buildArtifactIndex(stage, bundleName);
     await writeFile(join(stage, "artifact-index.json"), `${JSON.stringify(artifactIndex, null, 2)}\n`, "utf8");
 
-    const tar = spawnSync("tar", ["-czf", outputPath, "-C", tmp, bundleName], {
+    const tar = spawnSync("tar", ["-czf", stagedArchivePath, "-C", tmp, bundleName], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"]
     });
@@ -77,9 +76,16 @@ export async function bundleReport(reportPath, options = {}) {
       throw new Error(tar.stderr || tar.stdout || "tar failed");
     }
 
-    const archive = await readFile(outputPath);
+    const archive = await readFile(stagedArchivePath);
     const sha256 = createHash("sha256").update(archive).digest("hex");
-    await writeFile(checksumPath, `${sha256}  ${basename(outputPath)}\n`, "utf8");
+    const outputPath = join(outputRoot, `${bundleName}-${sha256}.tar.gz`);
+    const checksumPath = `${outputPath}.sha256`;
+    await publishBundlePair({
+      archive,
+      outputPath,
+      checksumPath,
+      checksum: `${sha256}  ${basename(outputPath)}\n`
+    });
 
     return {
       schemaVersion: "kova.artifact.bundle.v1",
@@ -110,44 +116,26 @@ export async function retainGateArtifacts(reportPath, bundle, options = {}) {
 
   const outputRoot = options.outputDir
     ? resolve(options.outputDir)
-    : join(artifactsDir, "release-gates", sanitize(report.runId));
-  await mkdir(outputRoot, { recursive: true });
+    : join(artifactsDir, "release-gates", safeRunIdSegment(report.runId));
+  await mkdir(dirname(outputRoot), { recursive: true });
 
   const markdownPath = siblingMarkdownPath(sourceJsonPath);
-  const retainedJsonPath = join(outputRoot, "report.json");
-  const retainedMarkdownPath = join(outputRoot, "report.md");
-  const retainedPastePath = join(outputRoot, "paste-summary.txt");
-  await cp(sourceJsonPath, retainedJsonPath);
-  if (existsSync(markdownPath)) {
-    await cp(markdownPath, retainedMarkdownPath);
+  await requireRegularFile(markdownPath, "report Markdown");
+  if (bundle?.outputPath) {
+    await requireRegularFile(bundle.outputPath, "report bundle");
   }
-  await writeFile(retainedPastePath, renderPasteSummary(report), "utf8");
-
-  let retainedBundlePath = null;
-  let retainedChecksumPath = null;
-  if (bundle?.outputPath && existsSync(bundle.outputPath)) {
-    retainedBundlePath = join(outputRoot, basename(bundle.outputPath));
-    await cp(bundle.outputPath, retainedBundlePath);
-  }
-  if (bundle?.checksumPath && existsSync(bundle.checksumPath)) {
-    retainedChecksumPath = join(outputRoot, basename(bundle.checksumPath));
-    await cp(bundle.checksumPath, retainedChecksumPath);
+  if (bundle?.checksumPath) {
+    await requireRegularFile(bundle.checksumPath, "report bundle checksum");
   }
 
-  const receipt = {
-    schemaVersion: "kova.releaseGate.retainedArtifacts.v1",
-    generatedAt: new Date().toISOString(),
-    runId: report.runId,
-    verdict: report.gate?.verdict ?? null,
-    outputDir: outputRoot,
-    reportPath: retainedMarkdownPath,
-    jsonPath: retainedJsonPath,
-    pasteSummaryPath: retainedPastePath,
-    bundlePath: retainedBundlePath,
-    checksumPath: retainedChecksumPath
-  };
-  await writeFile(join(outputRoot, "retained-artifacts.json"), `${JSON.stringify(receipt, null, 2)}\n`, "utf8");
-  return receipt;
+  const lockPath = `${outputRoot}.lock`;
+  return withFileLock(lockPath, () => replaceRetainedArtifactTree({
+    outputRoot,
+    sourceJsonPath,
+    markdownPath,
+    report,
+    bundle
+  }));
 }
 
 function siblingMarkdownPath(path) {
@@ -156,8 +144,16 @@ function siblingMarkdownPath(path) {
   return join(dirname(path), `${base}.md`);
 }
 
-function sanitize(value) {
-  return String(value).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+function safeRunIdSegment(value) {
+  const runId = String(value);
+  if (isCanonicalRunId(runId)) {
+    return runId;
+  }
+  return `external-${createHash("sha256").update(runId).digest("hex").slice(0, 24)}`;
+}
+
+function isCanonicalRunId(value) {
+  return /^kova-\d{6}-\d{6}-[0-9a-f]{6}$/.test(value);
 }
 
 async function buildArtifactIndex(stage, bundleName) {
@@ -193,4 +189,174 @@ async function listFiles(root, dir) {
     });
   }
   return entries;
+}
+
+async function publishBundlePair({ archive, outputPath, checksumPath, checksum }) {
+  const entries = [
+    { path: outputPath, content: archive },
+    { path: checksumPath, content: checksum }
+  ];
+  const staged = entries.map((entry) => ({
+    ...entry,
+    stagedPath: `${entry.path}.${randomUUID()}.tmp`
+  }));
+  let archivePublished = false;
+  try {
+    for (const entry of staged) {
+      await writeDurableFile(entry.stagedPath, entry.content);
+    }
+    const outputExists = await pathExists(outputPath);
+    const checksumExists = await pathExists(checksumPath);
+    if (outputExists || checksumExists) {
+      const existing = await readFile(outputPath).catch(() => null);
+      const existingHash = existing ? createHash("sha256").update(existing).digest("hex") : null;
+      const expectedHash = createHash("sha256").update(archive).digest("hex");
+      const existingChecksum = await readFile(checksumPath, "utf8").catch(() => null);
+      if (existingHash !== expectedHash || (existingChecksum !== null && existingChecksum !== checksum)) {
+        throw new Error(`bundle destination collision: ${outputPath}`);
+      }
+      if (!checksumExists) {
+        await rename(staged[1].stagedPath, checksumPath);
+      }
+      return;
+    }
+    await rename(staged[0].stagedPath, outputPath);
+    archivePublished = true;
+    await rename(staged[1].stagedPath, checksumPath);
+  } catch (error) {
+    if (archivePublished) {
+      await rm(outputPath, { force: true });
+    }
+    throw error;
+  } finally {
+    await Promise.all(staged.map((entry) => rm(entry.stagedPath, { force: true })));
+  }
+}
+
+async function replaceRetainedArtifactTree({
+  outputRoot,
+  sourceJsonPath,
+  markdownPath,
+  report,
+  bundle
+}) {
+  const parent = dirname(outputRoot);
+  const transaction = randomUUID();
+  const stage = join(parent, `.${basename(outputRoot)}.${transaction}.tmp`);
+  const backup = join(parent, `.${basename(outputRoot)}.${transaction}.bak`);
+  let oldTreeBackedUp = false;
+  let newTreePublished = false;
+  let preserveBackup = false;
+
+  try {
+    await mkdir(stage, { recursive: false, mode: 0o700 });
+    await cp(sourceJsonPath, join(stage, "report.json"));
+    await cp(markdownPath, join(stage, "report.md"));
+    await writeFile(join(stage, "paste-summary.txt"), renderPasteSummary(report), "utf8");
+
+    const retainedBundlePath = bundle?.outputPath
+      ? join(outputRoot, basename(bundle.outputPath))
+      : null;
+    const retainedChecksumPath = bundle?.checksumPath
+      ? join(outputRoot, basename(bundle.checksumPath))
+      : null;
+    if (bundle?.outputPath) {
+      await cp(bundle.outputPath, join(stage, basename(bundle.outputPath)));
+    }
+    if (bundle?.checksumPath) {
+      await cp(bundle.checksumPath, join(stage, basename(bundle.checksumPath)));
+    }
+
+    const receipt = {
+      schemaVersion: "kova.releaseGate.retainedArtifacts.v1",
+      generatedAt: new Date().toISOString(),
+      runId: report.runId,
+      verdict: report.gate?.verdict ?? null,
+      outputDir: outputRoot,
+      reportPath: join(outputRoot, "report.md"),
+      jsonPath: join(outputRoot, "report.json"),
+      pasteSummaryPath: join(outputRoot, "paste-summary.txt"),
+      bundlePath: retainedBundlePath,
+      checksumPath: retainedChecksumPath
+    };
+    // The receipt is the retained tree's commit marker and is written only
+    // after every referenced artifact is present in the staging directory.
+    await writeFile(join(stage, "retained-artifacts.json"), `${JSON.stringify(receipt, null, 2)}\n`, "utf8");
+
+    if (await pathExists(outputRoot)) {
+      await rename(outputRoot, backup);
+      oldTreeBackedUp = true;
+    }
+    await rename(stage, outputRoot);
+    newTreePublished = true;
+    await rm(backup, { recursive: true, force: true });
+    oldTreeBackedUp = false;
+    return receipt;
+  } catch (error) {
+    const rollbackErrors = [];
+    if (newTreePublished) {
+      await rm(outputRoot, { recursive: true, force: true }).catch((rollbackError) => rollbackErrors.push(rollbackError));
+    }
+    if (oldTreeBackedUp) {
+      await rename(backup, outputRoot).catch((rollbackError) => rollbackErrors.push(rollbackError));
+    }
+    if (rollbackErrors.length > 0) {
+      preserveBackup = true;
+      throw new AggregateError([error, ...rollbackErrors], "retained artifact publication failed and rollback was incomplete");
+    }
+    throw error;
+  } finally {
+    await rm(stage, { recursive: true, force: true });
+    if (!preserveBackup) {
+      await rm(backup, { recursive: true, force: true });
+    }
+  }
+}
+
+async function writeDurableFile(path, content) {
+  const handle = await open(path, "wx", 0o600);
+  try {
+    await handle.writeFile(content);
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
+async function requireRegularFile(path, label) {
+  let info;
+  try {
+    info = await stat(path);
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      throw new Error(`${label} is missing: ${path}`);
+    }
+    throw error;
+  }
+  if (!info.isFile()) {
+    throw new Error(`${label} is not a regular file: ${path}`);
+  }
+}
+
+async function directoryExists(path) {
+  try {
+    return (await stat(path)).isDirectory();
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
+}
+
+async function pathExists(path) {
+  try {
+    await lstat(path);
+    return true;
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
 }
