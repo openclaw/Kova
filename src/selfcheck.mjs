@@ -17891,6 +17891,8 @@ async function logArtifactRedactionCheck(tmp) {
   const unquotedFieldTail = ["unquoted", "field", "tail", "canary"].join("-");
   const pemBodyCanary = ["pem", "body", "canary"].join("-");
   const privateKeyLabel = ["PRIVATE", "KEY"].join(" ");
+  const compoundCliCanary = ["compound", "cli", "canary"].join("-");
+  const clientSecretFlag = ["--client", "secret"].join("-");
   const canaries = [
     headerCanary,
     prefixedHeaderCanary,
@@ -17904,7 +17906,8 @@ async function logArtifactRedactionCheck(tmp) {
     escapedJsonTail,
     escapedCliTail,
     unquotedFieldTail,
-    pemBodyCanary
+    pemBodyCanary,
+    compoundCliCanary
   ];
   const fakeLogs = [
     `Authorization${": "}Bearer ${headerCanary}`,
@@ -17923,7 +17926,8 @@ async function logArtifactRedactionCheck(tmp) {
       `private_${["key"].join("")}: -----BEGIN ${privateKeyLabel}-----`,
       pemBodyCanary,
       `-----END ${privateKeyLabel}-----`
-    ].join("\n")
+    ].join("\n"),
+    `command ${clientSecretFlag} ${compoundCliCanary}`
   ].join("\n");
   try {
     await mkdir(fakeBin, { recursive: true });
