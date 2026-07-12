@@ -316,8 +316,8 @@ if [[ "$need_checks" -eq 1 ]]; then
 fi
 
 if [[ "$need_commit" -eq 1 ]]; then
-  run_step "Staging package.json" git add package.json
-  if git diff --cached --quiet --ignore-submodules -- package.json; then
+  run_step "Staging package metadata" git add package.json package-lock.json
+  if git diff --cached --quiet --ignore-submodules -- package.json package-lock.json; then
     echo "error: no staged version change remains for ${version}; cannot create release commit" >&2
     exit 1
   fi
