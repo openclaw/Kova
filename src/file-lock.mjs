@@ -179,8 +179,13 @@ function isAbandoned(snapshot, staleMs) {
       return true;
     }
     const ownerIdentity = snapshot.owner?.processIdentity;
+    if (!ownerIdentity) {
+      return snapshot.owner?.processIdentityUnavailable === true
+        ? false
+        : snapshot.ageMs >= staleMs;
+    }
     const currentIdentity = readProcessIdentity(pid);
-    return Boolean(ownerIdentity && currentIdentity && ownerIdentity !== currentIdentity);
+    return Boolean(currentIdentity && ownerIdentity !== currentIdentity);
   }
   return snapshot.ageMs >= staleMs;
 }
@@ -190,6 +195,7 @@ function lockMetadata(token) {
     token,
     pid: process.pid,
     processIdentity: CURRENT_PROCESS_IDENTITY,
+    processIdentityUnavailable: CURRENT_PROCESS_IDENTITY === null,
     createdAt: new Date().toISOString()
   };
 }
@@ -226,6 +232,7 @@ function readProcessIdentity(pid) {
   }
   const result = spawnSync("/bin/ps", ["-o", "lstart=", "-p", String(pid)], {
     encoding: "utf8",
+    env: { LANG: "C", LC_ALL: "C" },
     stdio: ["ignore", "pipe", "ignore"],
     timeout: 1_000
   });

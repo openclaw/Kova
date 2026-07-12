@@ -338,7 +338,7 @@ async function recoverRetainedArtifactTree(outputRoot, backup) {
   if (!await pathExists(backup)) {
     return;
   }
-  await assertManagedRetentionDirectory(backup, outputRoot, false);
+  await assertManagedRetentionDirectory(backup, outputRoot);
   if (!await pathExists(outputRoot)) {
     await rename(backup, outputRoot);
     return;
@@ -347,7 +347,7 @@ async function recoverRetainedArtifactTree(outputRoot, backup) {
   await rm(backup, { recursive: true });
 }
 
-async function assertManagedRetentionDirectory(path, expectedOutputRoot = path, allowEmpty = true) {
+async function assertManagedRetentionDirectory(path, expectedOutputRoot = path) {
   if (!await pathExists(path)) {
     return;
   }
@@ -357,10 +357,7 @@ async function assertManagedRetentionDirectory(path, expectedOutputRoot = path, 
   }
   const entries = await readdir(path);
   if (entries.length === 0) {
-    if (allowEmpty) {
-      return;
-    }
-    throw new Error(`retained artifact backup is incomplete: ${path}`);
+    return;
   }
   const receiptPath = join(path, "retained-artifacts.json");
   let receipt;
