@@ -50,7 +50,7 @@ export function evaluateGate(report, profile, options = {}) {
   }
 
   for (const required of policy.blocking) {
-    if (!records.some((record) => policyEntryMatchesRecord(required, record))) {
+    if (!records.some((record) => isExecutedRecord(record) && policyEntryMatchesRecord(required, record))) {
       missingRequired.push(required);
       cards.push({
         severity: partial ? "info" : "blocking",
