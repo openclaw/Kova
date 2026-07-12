@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { access, chmod, link, lstat, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, truncate, utimes, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -4929,6 +4930,17 @@ async function reportPublicationCheck(tmp) {
       firstChecksum,
       "concurrent identical bundle publication preserves checksum"
     );
+    const recoverableBundlePath = join(bundleRoot, "recoverable-bundle.tar.gz");
+    const recoverableChecksumPath = `${recoverableBundlePath}.sha256`;
+    const recoverableChecksum = `${createHash("sha256").update(firstArchive).digest("hex")}  recoverable-bundle.tar.gz\n`;
+    await writeFile(recoverableChecksumPath, recoverableChecksum);
+    await publishBundlePair({
+      archive: firstArchive,
+      outputPath: recoverableBundlePath,
+      checksumPath: recoverableChecksumPath,
+      checksum: recoverableChecksum
+    });
+    assertEqual(await fileExists(recoverableBundlePath), true, "checksum-only bundle state recovered");
 
     const retainedRoot = join(publicationRoot, "retained");
     const retained = await retainGateArtifacts(collisionReports[0], firstBundle, {
@@ -4971,6 +4983,13 @@ async function reportPublicationCheck(tmp) {
       "retention preserves unrelated destination data"
     );
     await rm(unmanagedPath);
+    const retainedBackup = join(publicationRoot, ".retained.bak");
+    await rename(retainedRoot, retainedBackup);
+    await retainGateArtifacts(collisionReports[0], firstBundle, {
+      outputDir: retainedRoot
+    });
+    assertEqual(await fileExists(retained.jsonPath), true, "interrupted retained tree swap recovered");
+    assertEqual(await fileExists(retainedBackup), false, "recovered retained tree backup removed");
 
     await rm(collisionReports[0].replace(/\.json$/, ".md"));
     let missingMarkdownRejected = false;
@@ -5022,6 +5041,23 @@ async function fileLockRecoveryCheck(tmp) {
       retryMs: 5
     });
     assertEqual(malformedAcquired, true, "malformed abandoned lock is reclaimed");
+
+    const reusedPidLock = join(tmp, "reused-pid-publication.lock");
+    await writeFile(reusedPidLock, `${JSON.stringify({
+      token: "reused-pid",
+      pid: process.pid,
+      createdAt: new Date(Date.now() - 60_000).toISOString()
+    })}\n`);
+    await utimes(reusedPidLock, old, old);
+    let reusedPidAcquired = false;
+    await withFileLock(reusedPidLock, async () => {
+      reusedPidAcquired = true;
+    }, {
+      staleMs: 1_000,
+      timeoutMs: 2_000,
+      retryMs: 5
+    });
+    assertEqual(reusedPidAcquired, true, "stale lock is reclaimed after PID reuse");
 
     const racedLock = join(tmp, "raced-publication.lock");
     await writeFile(racedLock, `${JSON.stringify({
