@@ -1,7 +1,7 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
-import { copyFile, mkdir, rm, stat } from "node:fs/promises";
-import { basename, extname, join } from "node:path";
+import { copyFile, mkdir, rename, rm, stat } from "node:fs/promises";
+import { basename, dirname, extname, join } from "node:path";
 import { pipeline } from "node:stream/promises";
 
 export const COLLECTOR_ARTIFACT_DIRS_SCHEMA = "kova.collectorArtifactDirs.v1";
@@ -82,32 +82,45 @@ export async function copyCollectorArtifacts(sources, destinationDir, options = 
 }
 
 async function copyArtifact(source, target, deadlineEpochMs) {
+  const temporaryTarget = join(
+    dirname(target),
+    `.kova-artifact-${randomUUID()}.tmp`
+  );
   const deadline = Number(deadlineEpochMs);
-  if (!Number.isFinite(deadline)) {
-    await copyFile(source, target);
-    return;
-  }
-  const remainingMs = Math.floor(deadline - Date.now());
-  if (remainingMs <= 0) {
-    throw new Error(`collector artifact copy exceeded deadline: ${source}`);
-  }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), remainingMs);
-  timeout.unref?.();
+  let controller;
+  let timeout;
   try {
-    await pipeline(
-      createReadStream(source),
-      createWriteStream(target),
-      { signal: controller.signal }
-    );
+    if (Number.isFinite(deadline)) {
+      const remainingMs = Math.floor(deadline - Date.now());
+      if (remainingMs <= 0) {
+        throw new Error(`collector artifact copy exceeded deadline: ${source}`);
+      }
+      controller = new AbortController();
+      timeout = setTimeout(() => controller.abort(), remainingMs);
+      timeout.unref?.();
+      await pipeline(
+        createReadStream(source),
+        createWriteStream(temporaryTarget, { flags: "wx" }),
+        { signal: controller.signal }
+      );
+      if (controller.signal.aborted || Date.now() >= deadline) {
+        throw new Error(`collector artifact copy exceeded deadline: ${source}`);
+      }
+    } else {
+      await copyFile(source, temporaryTarget);
+    }
+    // Keep an earlier valid artifact intact until its replacement is complete.
+    await rename(temporaryTarget, target);
   } catch (error) {
-    await rm(target, { force: true }).catch(() => {});
-    if (controller.signal.aborted) {
+    await rm(temporaryTarget, { force: true }).catch(() => {});
+    if (controller?.signal.aborted) {
       throw new Error(`collector artifact copy exceeded deadline: ${source}`);
     }
     throw error;
   } finally {
-    clearTimeout(timeout);
+    if (timeout) {
+      clearTimeout(timeout);
+    }
   }
 }
 
