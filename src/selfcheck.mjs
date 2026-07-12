@@ -8418,6 +8418,14 @@ async function mockProviderProcessSafetyCheck(tmp) {
       false,
       "expected provider arguments do not authenticate an unrelated process"
     );
+    assertEqual(
+      isOwnedMockProviderCommand(
+        `${expectedCommand} --script ${join(dir, "other", "script.json")}`,
+        { executablePath, scriptPath, requestLog }
+      ),
+      false,
+      "trailing provider arguments do not authenticate a different invocation"
+    );
 
     for (const invalidPid of ["0\n", "-1\n"]) {
       await writeFile(pidFile, invalidPid, "utf8");
