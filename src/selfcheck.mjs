@@ -136,7 +136,7 @@ import {
   runInSelfCheckScope
 } from "./selfcheck-scope.mjs";
 import { compareReports, renderCompareSummary } from "./reporting/compare.mjs";
-import { bundleReport, retainGateArtifacts } from "./reporting/artifacts.mjs";
+import { bundleReport, publishBundlePair, retainGateArtifacts } from "./reporting/artifacts.mjs";
 import { pickAffectedScenarios, scenarioMetricRows } from "./reporting/compare-aggregate.mjs";
 import { renderCompareAssessment } from "./reporting/render-compare.mjs";
 import { renderAssessment } from "./reporting/render-assessment.mjs";
@@ -187,6 +187,7 @@ import { scriptForMode as buildMockProviderScriptForMode } from "../support/chan
 import { projectInternalReport } from "./web-publish/from-internal-report.mjs";
 import { augmentWithDeltas, findImmediatePrior } from "./web-publish/projector.mjs";
 import { directoryCheck } from "./setup.mjs";
+import { withFileLock } from "./file-lock.mjs";
 
 export async function runSelfCheck(flags = {}) {
   return runInSelfCheckScope(
@@ -926,6 +927,7 @@ async function runScopedSelfCheck(flags, scope, workspace) {
     checks.push(embeddedRunLogParserCheck());
     checks.push(runtimeDepsWarmReuseEvaluationCheck());
     checks.push(await performanceBaselineCheck(tmp));
+    checks.push(await fileLockRecoveryCheck(tmp));
     checks.push(await reportPublicationCheck(tmp));
     checks.push(cleanupPublicationReceiptCheck());
     checks.push(markdownFailureCardsCheck());
@@ -4890,6 +4892,24 @@ async function reportPublicationCheck(tmp) {
     assertEqual(firstBundle.outputPath === secondBundle.outputPath, false, "colliding run IDs use distinct bundle paths");
     assertEqual(await fileExists(firstBundle.checksumPath), true, "first bundle checksum published");
     assertEqual(await fileExists(secondBundle.checksumPath), true, "second bundle checksum published");
+    const firstArchive = await readFile(firstBundle.outputPath);
+    const firstChecksum = await readFile(firstBundle.checksumPath, "utf8");
+    await rm(firstBundle.checksumPath);
+    await mkdir(firstBundle.checksumPath);
+    let invalidChecksumRejected = false;
+    try {
+      await publishBundlePair({
+        archive: firstArchive,
+        outputPath: firstBundle.outputPath,
+        checksumPath: firstBundle.checksumPath,
+        checksum: firstChecksum
+      });
+    } catch (error) {
+      invalidChecksumRejected = /not a regular file/.test(error.message);
+    }
+    assertEqual(invalidChecksumRejected, true, "bundle publication rejects invalid existing checksum");
+    await rm(firstBundle.checksumPath, { recursive: true });
+    await writeFile(firstBundle.checksumPath, firstChecksum);
 
     const retainedRoot = join(publicationRoot, "retained");
     const retained = await retainGateArtifacts(collisionReports[0], firstBundle, {
@@ -4945,6 +4965,60 @@ async function reportPublicationCheck(tmp) {
       id: "report-publication-integrity",
       status: "FAIL",
       command: "stage and retain synthetic report artifacts",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+async function fileLockRecoveryCheck(tmp) {
+  try {
+    const malformedLock = join(tmp, "malformed-publication.lock");
+    await writeFile(malformedLock, "{\n");
+    const old = new Date(Date.now() - 60_000);
+    await utimes(malformedLock, old, old);
+    let malformedAcquired = false;
+    await withFileLock(malformedLock, async () => {
+      malformedAcquired = true;
+    }, {
+      staleMs: 1_000,
+      timeoutMs: 2_000,
+      retryMs: 5
+    });
+    assertEqual(malformedAcquired, true, "malformed abandoned lock is reclaimed");
+
+    const racedLock = join(tmp, "raced-publication.lock");
+    await writeFile(racedLock, `${JSON.stringify({
+      token: "abandoned",
+      pid: 2_147_483_647,
+      createdAt: new Date().toISOString()
+    })}\n`);
+    let active = 0;
+    let maxActive = 0;
+    await Promise.all([0, 1].map(() => withFileLock(racedLock, async () => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await sleep(20);
+      active -= 1;
+    }, {
+      staleMs: 60_000,
+      timeoutMs: 2_000,
+      retryMs: 5
+    })));
+    assertEqual(maxActive, 1, "stale-lock contenders remain serialized");
+    assertEqual(await fileExists(racedLock), false, "owned lock removed after serialized callbacks");
+
+    return {
+      id: "file-lock-recovery",
+      status: "PASS",
+      command: "reclaim malformed and raced publication locks",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "file-lock-recovery",
+      status: "FAIL",
+      command: "reclaim malformed and raced publication locks",
       durationMs: 0,
       message: error.message
     };

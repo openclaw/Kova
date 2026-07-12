@@ -1,6 +1,6 @@
-import { randomUUID } from "node:crypto";
-import { mkdir, open, readFile, rm, stat } from "node:fs/promises";
-import { dirname } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { link, mkdir, open, readFile, readdir, rm, stat } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 
 const DEFAULT_STALE_MS = 10 * 60 * 1000;
 const DEFAULT_TIMEOUT_MS = 30 * 1000;
@@ -15,91 +15,177 @@ export async function withFileLock(lockPath, callback, options = {}) {
   const retryMs = options.retryMs ?? DEFAULT_RETRY_MS;
 
   while (true) {
+    if (await reclamationInProgress(lockPath, staleMs)) {
+      await waitForRetry(startedAt, timeoutMs, retryMs, lockPath);
+      continue;
+    }
     try {
-      await acquireLock(lockPath, token);
+      await writeExclusiveMetadata(lockPath, lockMetadata(token));
       break;
     } catch (error) {
       if (error?.code !== "EEXIST") {
         throw error;
       }
-      if (await removeAbandonedLock(lockPath, staleMs)) {
+      if (await reclaimAbandonedLock(lockPath, staleMs)) {
         continue;
       }
-      if (Date.now() - startedAt >= timeoutMs) {
-        throw new Error(`timed out waiting for Kova file lock: ${lockPath}`);
-      }
-      await sleep(retryMs);
+      await waitForRetry(startedAt, timeoutMs, retryMs, lockPath);
     }
   }
 
   try {
     return await callback();
   } finally {
-    await releaseOwnedLock(lockPath, token);
+    await removeOwnedFile(lockPath, token);
   }
 }
 
-async function acquireLock(lockPath, token) {
-  const handle = await open(lockPath, "wx", 0o600);
-  try {
-    await handle.writeFile(`${JSON.stringify({
-      token,
-      pid: process.pid,
-      createdAt: new Date().toISOString()
-    })}\n`, "utf8");
-    await handle.sync();
-  } finally {
-    await handle.close();
+async function reclaimAbandonedLock(lockPath, staleMs) {
+  const snapshot = await readSnapshot(lockPath);
+  if (!snapshot || !isAbandoned(snapshot, staleMs)) {
+    return false;
   }
-}
 
-async function removeAbandonedLock(lockPath, staleMs) {
-  let metadata;
+  const claimPath = `${lockPath}.reclaim-${snapshot.fingerprint}`;
+  const claimToken = randomUUID();
   try {
-    const [raw, info] = await Promise.all([
-      readFile(lockPath, "utf8"),
-      stat(lockPath)
-    ]);
-    metadata = {
-      owner: JSON.parse(raw),
-      ageMs: Date.now() - info.mtimeMs
-    };
+    await writeExclusiveMetadata(claimPath, lockMetadata(claimToken));
+  } catch (error) {
+    if (error?.code === "EEXIST") {
+      return false;
+    }
+    throw error;
+  }
+
+  try {
+    const current = await readSnapshot(lockPath);
+    if (!current) {
+      return true;
+    }
+    if (current.fingerprint !== snapshot.fingerprint || !isAbandoned(current, staleMs)) {
+      return false;
+    }
+    await rm(lockPath);
+    return true;
   } catch (error) {
     if (error?.code === "ENOENT") {
       return true;
     }
-    return false;
-  }
-
-  const ownerAlive = processIsAlive(metadata.owner?.pid);
-  if (ownerAlive || metadata.ageMs < staleMs) {
-    return false;
-  }
-  try {
-    await rm(lockPath);
-    return true;
-  } catch (error) {
-    return error?.code === "ENOENT";
+    throw error;
+  } finally {
+    await removeOwnedFile(claimPath, claimToken);
   }
 }
 
-async function releaseOwnedLock(lockPath, token) {
+async function reclamationInProgress(lockPath, staleMs) {
+  const directory = dirname(lockPath);
+  const prefix = `${basename(lockPath)}.reclaim-`;
+  let names;
   try {
-    const owner = JSON.parse(await readFile(lockPath, "utf8"));
-    if (owner?.token === token) {
-      await rm(lockPath);
-    }
+    names = await readdir(directory);
   } catch (error) {
-    if (error?.code !== "ENOENT") {
-      throw error;
+    if (error?.code === "ENOENT") {
+      return false;
     }
+    throw error;
   }
+
+  let active = false;
+  for (const name of names.filter((entry) => entry.startsWith(prefix))) {
+    const path = join(directory, name);
+    const snapshot = await readSnapshot(path);
+    if (!snapshot) {
+      continue;
+    }
+    if (isAbandoned(snapshot, staleMs)) {
+      await removeSnapshot(path, snapshot);
+      continue;
+    }
+    active = true;
+  }
+  return active;
+}
+
+async function writeExclusiveMetadata(path, metadata) {
+  const candidatePath = `${path}.candidate-${metadata.token}`;
+  const handle = await open(candidatePath, "wx", 0o600);
+  try {
+    await handle.writeFile(`${JSON.stringify(metadata)}\n`, "utf8");
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  try {
+    // Linking a fully written candidate makes the visible lock complete at
+    // creation time and preserves O_EXCL semantics across processes.
+    await link(candidatePath, path);
+  } finally {
+    await rm(candidatePath, { force: true });
+  }
+}
+
+async function readSnapshot(path) {
+  try {
+    const [raw, info] = await Promise.all([
+      readFile(path, "utf8"),
+      stat(path)
+    ]);
+    let owner = null;
+    try {
+      owner = JSON.parse(raw);
+    } catch {
+      // Malformed lock files remain blocking until their age proves abandonment.
+    }
+    return {
+      owner,
+      ageMs: Date.now() - info.mtimeMs,
+      fingerprint: createHash("sha256")
+        .update(`${info.dev}:${info.ino}:${info.size}:${info.mtimeMs}:${raw}`)
+        .digest("hex")
+    };
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function removeSnapshot(path, snapshot) {
+  const current = await readSnapshot(path);
+  if (current?.fingerprint === snapshot.fingerprint) {
+    await rm(path).catch((error) => {
+      if (error?.code !== "ENOENT") {
+        throw error;
+      }
+    });
+  }
+}
+
+async function removeOwnedFile(path, token) {
+  const snapshot = await readSnapshot(path);
+  if (snapshot?.owner?.token === token) {
+    await removeSnapshot(path, snapshot);
+  }
+}
+
+function isAbandoned(snapshot, staleMs) {
+  const pid = snapshot.owner?.pid;
+  if (Number.isInteger(pid) && pid > 0) {
+    return !processIsAlive(pid);
+  }
+  return snapshot.ageMs >= staleMs;
+}
+
+function lockMetadata(token) {
+  return {
+    token,
+    pid: process.pid,
+    createdAt: new Date().toISOString()
+  };
 }
 
 function processIsAlive(pid) {
-  if (!Number.isInteger(pid) || pid <= 0) {
-    return false;
-  }
   try {
     process.kill(pid, 0);
     return true;
@@ -108,6 +194,9 @@ function processIsAlive(pid) {
   }
 }
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+async function waitForRetry(startedAt, timeoutMs, retryMs, lockPath) {
+  if (Date.now() - startedAt >= timeoutMs) {
+    throw new Error(`timed out waiting for Kova file lock: ${lockPath}`);
+  }
+  await new Promise((resolve) => setTimeout(resolve, retryMs));
 }
