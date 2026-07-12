@@ -14,8 +14,13 @@ run_step() {
   shift
   local started_at="$SECONDS"
   log_step "$description"
-  "$@"
-  log_step "done: ${description} ($((SECONDS - started_at))s)"
+  if "$@"; then
+    log_step "done: ${description} ($((SECONDS - started_at))s)"
+  else
+    local command_status=$?
+    log_step "failed: ${description} ($((SECONDS - started_at))s)"
+    return "$command_status"
+  fi
 }
 
 usage() {
@@ -37,14 +42,12 @@ if [[ $# -ne 1 ]]; then
 fi
 
 new_version="$1"
-if [[ ! "$new_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-  echo "error: version must look like 1.2.3 or 1.0.0-beta.1" >&2
-  exit 1
-fi
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "${script_dir}/.." && pwd)"
 cd "$repo_root"
+
+"${script_dir}/validate-version.mjs" "$new_version"
 
 current_version="$(node -p 'require("./package.json").version')"
 if [[ -z "$current_version" ]]; then
@@ -57,23 +60,35 @@ if [[ "$current_version" == "$new_version" ]]; then
   exit 0
 fi
 
-export KOVA_NEW_VERSION="$new_version"
+backup_dir="$(mktemp -d)"
+cleanup() {
+  rm -rf "$backup_dir"
+}
+rollback() {
+  cp "$backup_dir/package.json" package.json
+  cp "$backup_dir/package-lock.json" package-lock.json
+}
+trap cleanup EXIT
+cp package.json "$backup_dir/package.json"
+cp package-lock.json "$backup_dir/package-lock.json"
 
-log_step "Updating package.json from ${current_version} to ${new_version}"
-node <<'EOF'
-const fs = require("node:fs");
-const path = "package.json";
-const pkg = JSON.parse(fs.readFileSync(path, "utf8"));
-pkg.version = process.env.KOVA_NEW_VERSION;
-fs.writeFileSync(path, `${JSON.stringify(pkg, null, 2)}\n`);
-EOF
+log_step "Updating package metadata from ${current_version} to ${new_version}"
+if ! npm version "$new_version" --no-git-tag-version --allow-same-version --ignore-scripts >/dev/null; then
+  rollback
+  exit 1
+fi
 
 updated_version="$(node -p 'require("./package.json").version')"
 if [[ "$updated_version" != "$new_version" ]]; then
+  rollback
   echo "error: package.json did not update cleanly" >&2
   exit 1
 fi
 
-run_step "Verifying version bump with npm run check" npm run check
+if ! run_step "Verifying version bump with npm run check" npm run check; then
+  rollback
+  echo "error: version verification failed; restored package metadata" >&2
+  exit 1
+fi
 
 echo "Updated Kova version: ${current_version} -> ${new_version}"

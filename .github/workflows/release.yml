@@ -1,21 +1,26 @@
 name: Release
 
 on:
-  release:
-    types:
-      - published
+  push:
+    tags:
+      - "v*"
 
-permissions:
-  contents: write
+env:
+  OCM_INSTALL_REF: 9cc465d48cc0e263ae8204ed4e32b0bdb5e0b58b
+  OCM_VERSION: v0.2.25
 
 jobs:
   build:
     name: Build release archive
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          fetch-depth: 0
+      - name: Verify signed release tag
+        run: git cat-file -p "${GITHUB_REF_NAME}" | grep -Eq -- '-----BEGIN (PGP|SSH) SIGNATURE-----'
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -23,6 +28,7 @@ jobs:
         run: |
           ./scripts/install-ocm-ci.sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/ocm" --version
       - name: Install dependencies
         run: npm ci
       - name: Run checks
@@ -37,7 +43,28 @@ jobs:
           "$tmp/bin/kova" setup --ci --json
           "$tmp/bin/kova" self-check
           rm -rf "$tmp"
-      - name: Upload release archive
+      - name: Stage release archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: kova-release-${{ github.ref_name }}
+          path: ./dist/*.tar.gz*
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download release archive
+        uses: actions/download-artifact@v4
+        with:
+          name: kova-release-${{ github.ref_name }}
+          path: ./dist
+      - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
           files: ./dist/*.tar.gz*
