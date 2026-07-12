@@ -198,7 +198,7 @@ export function evaluateRecord(record, scenario, options = {}) {
   const postReadyHealthP95Ms = health.postReadySamples?.p95Ms ?? null;
   const startupHealthFailures = health.startupSamples?.failureCount ?? 0;
   const postReadyHealthFailures = health.postReadySamples?.failureCount ?? 0;
-  const finalHealthFailures = health.final?.failureCount ?? 0;
+  const finalHealthFailures = health.final?.failureCount ?? null;
   const soakEvidence = collectSoakEvidence(allResults);
   const mcpBridgeEvidence = collectMcpBridgeEvidence(allResults);
   const cronRuntimeEvidence = collectCronRuntimeEvidence(allResults);
@@ -335,7 +335,11 @@ export function evaluateRecord(record, scenario, options = {}) {
     });
   }
 
-  if (typeof thresholds.finalHealthFailures === "number" && finalHealthFailures > thresholds.finalHealthFailures) {
+  if (
+    typeof thresholds.finalHealthFailures === "number" &&
+    typeof finalHealthFailures === "number" &&
+    finalHealthFailures > thresholds.finalHealthFailures
+  ) {
     violations.push({
       kind: "health",
       metric: "finalHealthFailures",

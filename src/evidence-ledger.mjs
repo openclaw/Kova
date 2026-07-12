@@ -1,4 +1,8 @@
 import { RECORD_STATUS } from "./statuses.mjs";
+import {
+  commandResultFailed,
+  commandResultPassed
+} from "./measurement-contract.mjs";
 
 export const EVIDENCE_LEDGER_SCHEMA = "kova.evidenceLedger.v1";
 
@@ -60,6 +64,9 @@ export function buildEvidenceLedger(record) {
   }
   for (const capability of record.channelCapabilityEvidence ?? []) {
     entries.push(channelCapabilityEntry(capability));
+  }
+  if (Object.hasOwn(record, "finalMetrics")) {
+    entries.push(finalMetricsEntry(record.finalMetrics));
   }
 
   return {
@@ -132,12 +139,49 @@ function invariantEntry(invariant) {
   };
 }
 
+function finalMetricsEntry(metrics) {
+  const evidence = finalMetricsEvidence(metrics);
+  return {
+    id: "collector:final-metrics",
+    category: "collector",
+    required: true,
+    status: evidence.status,
+    phaseId: "final",
+    commandIndex: null,
+    summary: "final service and health metrics were collected",
+    artifactPath: null,
+    reason: evidence.reason
+  };
+}
+
+function finalMetricsEvidence(metrics) {
+  if (!metrics) {
+    return { status: "missing", reason: "final metrics were not collected" };
+  }
+  if (metrics.error) {
+    return { status: "failed", reason: String(metrics.error) };
+  }
+  if (typeof metrics.service?.gatewayState !== "string") {
+    return { status: "missing", reason: "final service state was not collected" };
+  }
+  const healthSamples = Array.isArray(metrics.healthSamples) && metrics.healthSamples.length > 0;
+  const healthSummary = Number.isInteger(metrics.healthSummary?.count) && metrics.healthSummary.count > 0;
+  const healthResult = typeof metrics.health?.ok === "boolean";
+  if (!healthSamples && !healthSummary && !healthResult) {
+    return { status: "missing", reason: "final health evidence was not collected" };
+  }
+  return { status: "passed", reason: null };
+}
+
 function isBehaviorFailureCategory(category) {
   return category === "command" || category === "invariant" || category === "channel-capability";
 }
 
 function completenessForEntries(entries) {
-  return entries.some((entry) => entry.required && entry.status === "missing")
+  return entries.some((entry) =>
+    entry.required &&
+    (entry.status === "missing" || (entry.status === "failed" && !isBehaviorFailureCategory(entry.category)))
+  )
     ? "incomplete"
     : "complete";
 }
@@ -173,7 +217,10 @@ function commandStatus({ executed, result, blockingCommand }) {
   if (result.evidenceStatus) {
     return result.evidenceStatus;
   }
-  return result.status === 0 ? "passed" : "failed";
+  if (commandResultPassed(result)) {
+    return "passed";
+  }
+  return commandResultFailed(result) ? "failed" : "missing";
 }
 
 function commandReason({ executed, result, status, blockingCommand }) {
@@ -181,7 +228,9 @@ function commandReason({ executed, result, status, blockingCommand }) {
     return "dry-run command was planned but not executed";
   }
   if (status === "missing") {
-    return "command was planned but no result was recorded";
+    return result
+      ? "command result did not contain passing or failing evidence"
+      : "command was planned but no result was recorded";
   }
   if (status === "failed") {
     if (!result) {
@@ -190,7 +239,7 @@ function commandReason({ executed, result, status, blockingCommand }) {
     if (result?.timedOut) {
       return "command timed out";
     }
-    return `command exited ${result?.status ?? "unknown"}`;
+    return failedCommandReason(result);
   }
   return null;
 }
@@ -210,15 +259,11 @@ function firstFailedCommandInPhase(phase, results) {
   return null;
 }
 
-function commandResultFailed(result) {
-  return result && result.evidenceStatus !== "passed" && result.status !== 0;
-}
-
 function failedCommandReason(result) {
   if (result?.timedOut) {
     return "command timed out";
   }
-  return `command exited ${result?.status ?? "unknown"}`;
+  return `command exited ${result?.status ?? result?.exitCode ?? "unknown"}`;
 }
 
 function summarizeEntries(entries) {

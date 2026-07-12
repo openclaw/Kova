@@ -11,6 +11,10 @@ import {
   unionStrings,
   zeroCountInvariant
 } from "./shared.mjs";
+import {
+  commandResultFailed,
+  commandResultPassed
+} from "../measurement-contract.mjs";
 
 export function buildUpgradeLogDerivedInvariants(record) {
   if (record.status === "DRY-RUN" || record.status === "SKIPPED") {
@@ -63,7 +67,7 @@ function doctorOutputStatus(result) {
   if (!result) {
     return "missing";
   }
-  if (result.status !== 0) {
+  if (commandResultFailed(result)) {
     return "failed";
   }
   const output = `${result.stdout ?? ""}${result.stderr ?? ""}`.trim();
@@ -74,8 +78,8 @@ function doctorOutputReason(result) {
   if (!result) {
     return "doctor command result was not recorded";
   }
-  if (result.status !== 0) {
-    return `doctor command exited ${result.status}`;
+  if (commandResultFailed(result)) {
+    return `doctor command exited ${result.status ?? result.exitCode ?? "unknown"}`;
   }
   const output = `${result.stdout ?? ""}${result.stderr ?? ""}`.trim();
   return output.length > 0 ? null : "doctor command produced no captured output";
@@ -219,7 +223,7 @@ function failedCommandBeforeOrInPhase(record, phaseId) {
       break;
     }
     for (const [resultIndex, result] of (phase.results ?? []).entries()) {
-      if (!result || result.evidenceStatus === "passed" || result.status === 0) {
+      if (!result || commandResultPassed(result)) {
         continue;
       }
       const command = result.command ?? phase.commands?.[resultIndex] ?? "unknown command";
@@ -240,5 +244,7 @@ function shortCommand(command) {
 }
 
 function failedResultLabel(result) {
-  return result?.timedOut ? "command timed out" : `command exited ${result?.status ?? "unknown"}`;
+  return result?.timedOut
+    ? "command timed out"
+    : `command exited ${result?.status ?? result?.exitCode ?? "unknown"}`;
 }

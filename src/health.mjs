@@ -282,17 +282,25 @@ function summarizeFinalHealth(metrics) {
   const singleSampleFailureCount = typeof metrics?.health?.ok === "boolean"
     ? healthFailureCount([metrics.health])
     : null;
-  const failureCount = summary?.failureCount ?? healthSummaryFailureCount ?? singleSampleFailureCount;
+  const measuredFailureCount = summary?.failureCount ??
+    healthSummaryFailureCount ??
+    singleSampleFailureCount;
+  const collectionError = metrics?.error ?? null;
+  const gatewayState = metrics?.service?.gatewayState ?? null;
+  const evidenceComplete = metrics !== null &&
+    metrics !== undefined &&
+    collectionError == null &&
+    typeof gatewayState === "string" &&
+    measuredFailureCount !== null;
+  const failureCount = evidenceComplete ? measuredFailureCount : null;
   const maxMs = summary?.maxMs ?? metrics?.healthSummary?.maxMs ?? metrics?.health?.durationMs ?? null;
   const p95Ms = summary?.p95Ms ?? metrics?.healthSummary?.p95Ms ?? null;
-  const gatewayState = metrics?.service?.gatewayState ?? null;
-  const ok = Number.isFinite(failureCount)
-    ? (gatewayState === null ? failureCount === 0 : gatewayState === "running" && failureCount === 0)
-    : null;
+  const ok = evidenceComplete ? gatewayState === "running" && failureCount === 0 : null;
   return {
     scope: "final",
     gatewayState,
     ok,
+    collectionError: collectionError ?? null,
     healthOk: metrics?.health?.ok ?? null,
     failureCount,
     p95Ms,

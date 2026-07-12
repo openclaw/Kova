@@ -38,6 +38,8 @@ export function commandResultPassed(result) {
   if (!result) {
     return false;
   }
+  // Evidence-producing helpers own the result when they emit a status.
+  // Command exit fields are only the fallback for ordinary process results.
   if (typeof result.evidenceStatus === "string") {
     return result.evidenceStatus === "passed";
   }
@@ -52,8 +54,8 @@ export function commandResultFailed(result) {
   if (!result) {
     return false;
   }
-  if (commandResultPassed(result)) {
-    return false;
+  if (typeof result.evidenceStatus === "string") {
+    return result.evidenceStatus === "failed";
   }
   if (result.timedOut === true) {
     return true;

@@ -1,4 +1,8 @@
 import { collectRecordMetricObjects } from "./metrics.mjs";
+import {
+  commandResultFailed,
+  commandResultPassed
+} from "../measurement-contract.mjs";
 
 export function phaseCommandReceiptsOk(record) {
   return (record.phases ?? []).every((phase) => {
@@ -8,7 +12,7 @@ export function phaseCommandReceiptsOk(record) {
     }
     return Array.from({ length: commandCount }).every((_, index) => {
       const result = phase.results?.[index];
-      return (result?.status === 0 || result?.evidenceStatus === "passed") && result.durationMs !== undefined;
+      return commandResultPassed(result) && result.durationMs !== undefined;
     });
   });
 }
@@ -20,8 +24,8 @@ export function phaseCommandReceiptsReason(record) {
       if (!result) {
         return `${phase.id} command ${index + 1} receipt was not captured`;
       }
-      if (result.status !== 0 && result.evidenceStatus !== "passed") {
-        return `${phase.id} command ${index + 1} exited ${result.status}`;
+      if (commandResultFailed(result)) {
+        return `${phase.id} command ${index + 1} exited ${result.status ?? result.exitCode ?? "unknown"}`;
       }
       if (result.durationMs === undefined) {
         return `${phase.id} command ${index + 1} duration was not captured`;
@@ -391,7 +395,7 @@ export function findPhase(record, phaseId) {
 
 export function commandReceiptOk(record, predicate) {
   const result = findCommandResult(record, predicate);
-  return result?.status === 0 && result.durationMs !== undefined;
+  return commandResultPassed(result) && result.durationMs !== undefined;
 }
 
 export function commandReceiptReason(record, predicate) {
@@ -399,8 +403,8 @@ export function commandReceiptReason(record, predicate) {
   if (!result) {
     return "command receipt was not captured";
   }
-  if (result.status !== 0) {
-    return `command exited ${result.status}`;
+  if (commandResultFailed(result)) {
+    return `command exited ${result.status ?? result.exitCode ?? "unknown"}`;
   }
   if (result.durationMs === undefined) {
     return "command duration was not captured";
