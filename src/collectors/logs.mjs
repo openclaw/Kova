@@ -17,12 +17,12 @@ const SENSITIVE_CLI_TO_LINE_END_PATTERN = new RegExp(
   `((?:^|\\s)--${SENSITIVE_LOG_KEY}(?:=|\\s+)).*$`,
   "gim"
 );
-const SENSITIVE_VALUE_CONTINUATION_PATTERN = new RegExp(
-  `(["']?\\b${SENSITIVE_LOG_KEY}\\b["']?\\s*[:=]\\s*)([|>](?:[1-9][-+]?|[-+][1-9]?)?|\\\\)\\s*$`,
+const SENSITIVE_VALUE_LINE_PATTERN = new RegExp(
+  `(["']?\\b${SENSITIVE_LOG_KEY}\\b["']?\\s*[:=]\\s*)(.*)$`,
   "i"
 );
-const SENSITIVE_CLI_CONTINUATION_PATTERN = new RegExp(
-  `((?:^|\\s)--${SENSITIVE_LOG_KEY}(?:=|\\s+))([|>](?:[1-9][-+]?|[-+][1-9]?)?|\\\\)\\s*$`,
+const SENSITIVE_CLI_LINE_PATTERN = new RegExp(
+  `((?:^|\\s)--${SENSITIVE_LOG_KEY}(?:=|\\s+))(.*)$`,
   "i"
 );
 const PEM_PRIVATE_KEY_PATTERN =
@@ -133,19 +133,21 @@ function redactSensitiveContinuations(value) {
       blockIndent = null;
     }
 
-    const pattern = SENSITIVE_VALUE_CONTINUATION_PATTERN.test(line)
-      ? SENSITIVE_VALUE_CONTINUATION_PATTERN
-      : SENSITIVE_CLI_CONTINUATION_PATTERN.test(line)
-        ? SENSITIVE_CLI_CONTINUATION_PATTERN
+    const pattern = SENSITIVE_VALUE_LINE_PATTERN.test(line)
+      ? SENSITIVE_VALUE_LINE_PATTERN
+      : SENSITIVE_CLI_LINE_PATTERN.test(line)
+        ? SENSITIVE_CLI_LINE_PATTERN
         : null;
     if (!pattern) {
       continue;
     }
-    const marker = line.match(pattern)?.[2];
+    const marker = line.match(pattern)?.[2].trim();
     lines[index] = line.replace(pattern, "$1[REDACTED]");
-    if (marker === "\\") {
+    if (marker.endsWith("\\")) {
       redactNextValue = true;
     } else {
+      // Indented following lines can be YAML folding or wrapped command output.
+      // Treat them as part of the sensitive value until indentation returns.
       blockIndent = indent;
     }
   }
