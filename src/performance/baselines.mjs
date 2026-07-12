@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import { lstat, mkdir, open, readFile, readlink, rename, rm, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { chmod, lstat, mkdir, open, readFile, readlink, rename, rm, stat } from "node:fs/promises";
+import { userInfo } from "node:os";
 import { dirname, join, posix, resolve, win32 } from "node:path";
 import { withFileLock } from "../file-lock.mjs";
 import { baselinesDir } from "../paths.mjs";
@@ -113,9 +113,24 @@ export async function withBaselineStoreLock(path, callback) {
   // The canonical path stays stable across the first create and every later
   // replacement; inode-based keys would let old and new waiters split locks.
   const identity = createHash("sha256").update(resolve(writePath)).digest("hex");
-  const user = typeof process.getuid === "function" ? process.getuid() : "user";
-  const lockPath = join(tmpdir(), `kova-baseline-locks-${user}`, `${identity}.lock`);
+  const lockRoot = join(userInfo().homedir, ".kova", "locks", "baselines");
+  await ensurePrivateLockDirectory(lockRoot);
+  const lockPath = join(lockRoot, `${identity}.lock`);
   return withFileLock(lockPath, callback);
+}
+
+async function ensurePrivateLockDirectory(path) {
+  await mkdir(path, { recursive: true, mode: 0o700 });
+  const info = await lstat(path);
+  if (!info.isDirectory() || info.isSymbolicLink()) {
+    throw new Error(`Kova baseline lock path must be a real directory: ${path}`);
+  }
+  if (typeof process.getuid === "function" && info.uid !== process.getuid()) {
+    throw new Error(`Kova baseline lock directory is not owned by the current user: ${path}`);
+  }
+  if (process.platform !== "win32" && (info.mode & 0o077) !== 0) {
+    await chmod(path, 0o700);
+  }
 }
 
 function baselineSaveReceipt(path, output) {
