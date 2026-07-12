@@ -5347,7 +5347,7 @@ async function cpuProfileParserCheck(tmp) {
     await writeFile(secondPath, JSON.stringify(syntheticCpuProfile("second-only")));
     const aggregate = await summarizeCpuProfiles(
       [firstPath, secondPath],
-      { limit: 1, aggregateLimit: 10 }
+      { limit: 1 }
     );
     assertEqual(aggregate.profiles[0].topFunctions[0]?.functionName, "first-only", "first profile keeps its local top function");
     assertEqual(aggregate.profiles[1].topFunctions[0]?.functionName, "second-only", "second profile keeps its local top function");
@@ -5385,7 +5385,7 @@ async function heapProfileParserCheck(tmp) {
     await writeFile(secondPath, JSON.stringify(syntheticHeapProfile("second-only")));
     const aggregate = await summarizeHeapProfiles(
       [firstPath, secondPath],
-      { limit: 1, aggregateLimit: 10 }
+      { limit: 1 }
     );
     assertEqual(aggregate.profiles[0].topFunctions[0]?.functionName, "first-only", "first heap profile keeps its local top function");
     assertEqual(aggregate.profiles[1].topFunctions[0]?.functionName, "second-only", "second heap profile keeps its local top function");
@@ -12771,15 +12771,16 @@ process.on("SIGUSR2", () => {
     if (currentSignal === 3) {
       return;
     }
+    if (currentSignal === 2) {
+      fs.writeFileSync(path.join(home, "report.00-incomplete.json"), "{");
+      fs.writeFileSync(path.join(home, "report.01-incomplete.json"), "{");
+    }
     fs.writeFileSync(path.join(outputHome, "report.fresh.json"), "{");
     if (currentSignal === 1) {
       const excludedHome = path.join(outputHome, "depth-6");
       fs.mkdirSync(excludedHome, { recursive: true });
       fs.writeFileSync(path.join(excludedHome, "excluded.heapsnapshot"), "{\\"excluded\\":true}\\n");
       fs.writeFileSync(path.join(excludedHome, "report.excluded.json"), "{\\"excluded\\":true}\\n");
-    }
-    if (currentSignal === 2) {
-      fs.writeFileSync(path.join(home, "report.incomplete.json"), "{");
     }
   }, 400);
   setTimeout(() => {
