@@ -157,11 +157,12 @@ export async function maybeStartNetworkFrontage(context, envName, artifactDir) {
   try {
     allocation.loopbackAlias = await ensureLoopbackAlias(allocation.frontageHost, context);
     context.networkFrontageAllocation = allocation;
-    const proxy = await startProxy(allocation);
+    const proxy = startProxy(allocation);
     allocation.proxyPid = proxy.pid;
-    allocation.status = "active";
     context.networkFrontageProxy = proxy;
     context.networkFrontageAllocation = allocation;
+    await proxy.ready;
+    allocation.status = "active";
     allocation.validation = await validateFrontage(allocation);
     if (allocation.validation.status !== "PASS") {
       throw new Error(allocation.validation.error ?? "network frontage validation failed");
@@ -188,15 +189,7 @@ export async function stopNetworkFrontage(context) {
   let stderr = "";
   if (proxy) {
     try {
-      proxy.child.kill("SIGTERM");
-      await Promise.race([
-        proxy.closed,
-        new Promise((resolve) => setTimeout(resolve, 1500, "timeout"))
-      ]).then((value) => {
-        if (value === "timeout") {
-          proxy.child.kill("SIGKILL");
-        }
-      });
+      await stopProxyProcess(proxy);
     } catch (error) {
       status = 1;
       stderr = error.message;
@@ -309,8 +302,42 @@ function startProxy(allocation) {
   });
   child.stderr.pipe(log);
   const closed = new Promise((resolve) => child.once("close", (code, signal) => resolve({ code, signal })));
-  return waitForProxyReady(child, 1500)
-    .then((ready) => ({ child, pid: child.pid, closed, ready }));
+  child.once("close", () => log.end());
+  return {
+    child,
+    pid: child.pid,
+    closed,
+    ready: waitForProxyReady(child, 1500)
+  };
+}
+
+async function stopProxyProcess(proxy) {
+  if (proxy.child.exitCode !== null || proxy.child.signalCode !== null) {
+    await proxy.closed;
+    return;
+  }
+
+  proxy.child.kill("SIGTERM");
+  const termResult = await waitForClose(proxy.closed, 1500);
+  if (termResult !== "timeout") {
+    return;
+  }
+
+  proxy.child.kill("SIGKILL");
+  const killResult = await waitForClose(proxy.closed, 1500);
+  if (killResult === "timeout") {
+    throw new Error("network frontage proxy did not exit after SIGKILL");
+  }
+}
+
+function waitForClose(closed, timeoutMs) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, timeoutMs, "timeout");
+    closed.then((result) => {
+      clearTimeout(timer);
+      resolve(result);
+    });
+  });
 }
 
 async function validateFrontage(allocation) {
