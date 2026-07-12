@@ -37,7 +37,7 @@ async function cleanupEnvs(flags) {
     .filter((name) => /^kova-[a-z0-9-]+$/.test(name));
   const results = [];
 
-  if (flags.execute) {
+  if (flags.execute === true) {
     for (const env of envs) {
       results.push(await runCleanupCommand(ocmEnvDestroy(env), { timeoutMs: 120000 }));
     }
