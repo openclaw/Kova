@@ -12586,6 +12586,21 @@ async function collectorArtifactCollisionCheck(tmp) {
     }
     assertEqual(deadlineError?.message.includes("exceeded deadline"), true, "artifact copy honors its deadline");
     assertEqual((await readdir(expiredOutput)).length, 0, "expired artifact copy leaves no partial target");
+    const preservedOutput = join(root, "preserved");
+    const preserved = await copyCollectorArtifacts([left], preservedOutput);
+    await rm(left);
+    await mkdir(left);
+    let refreshError = null;
+    try {
+      await copyCollectorArtifacts([left], preservedOutput, {
+        deadlineEpochMs: Date.now() + 1000
+      });
+    } catch (error) {
+      refreshError = error;
+    }
+    assertEqual(refreshError === null, false, "failed artifact refresh reports its source error");
+    assertEqual(await readFile(preserved.artifacts[0], "utf8"), "left", "failed refresh preserves retained evidence");
+    assertEqual((await readdir(preservedOutput)).length, 1, "failed refresh removes only its temporary artifact");
     return {
       id: "collector-artifact-collision",
       status: "PASS",
