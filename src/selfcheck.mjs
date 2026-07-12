@@ -12582,6 +12582,9 @@ async function stateFixtureCollectorFailureCheck(tmp) {
     await mkdir(artifactDir, { recursive: true });
     const invalidJsonPath = join(artifactDir, "invalid.json");
     await writeFile(invalidJsonPath, "{invalid-json}\n");
+    const artifactOnlyDir = join(artifactDir, "artifact-only-output");
+    await mkdir(artifactOnlyDir, { recursive: true });
+    await writeFile(join(artifactOnlyDir, "artifact-only.json"), "{}\n");
     const accounting = await collectStateFixtureAccounting({
       id: "collector-failure-self-check",
       fixtureAccounting: {
@@ -12630,6 +12633,26 @@ async function stateFixtureCollectorFailureCheck(tmp) {
     });
     assertEqual(nullResolution.envResolution.status, "error", "null OCM resolution is harness failure");
     assertEqual(nullResolution.status, "error", "null OCM resolution fails accounting");
+    let artifactOnlyResolutionCalls = 0;
+    const artifactOnly = await collectStateFixtureAccounting({
+      id: "artifact-only-self-check",
+      fixtureAccounting: {
+        files: [{
+          id: "artifact-only",
+          path: "{artifactDir}/artifact-only.json",
+          expectedShape: "openclaw-session-store"
+        }]
+      }
+    }, "kova-self-check", artifactOnlyDir, {
+      resolveEnvInfo: async () => {
+        artifactOnlyResolutionCalls += 1;
+        return { error: "service-status-failed", status: 17 };
+      }
+    });
+    assertEqual(artifactOnlyResolutionCalls, 0, "artifact-only accounting skips OCM resolution");
+    assertEqual(artifactOnly.envResolution.status, "not-required", "artifact-only accounting records no environment dependency");
+    assertEqual(artifactOnly.status, "ok", "unrelated OCM availability cannot fail artifact-only accounting");
+    assertEqual(artifactOnly.files[0]?.exists, true, "artifact-only fixture remains inspectable");
     const unresolvedPath = await collectStateFixtureAccounting({
       id: "unresolved-path-self-check",
       fixtureAccounting: {
@@ -12780,7 +12803,7 @@ exec "$@"
 `);
     await chmod(join(binDir, "ocm"), 0o755);
     process.env.PATH = `${binDir}:${previousPath}`;
-    process.env.OPENCLAW_HOME = openclawHome;
+    process.env.OPENCLAW_HOME = `${openclawHome}/`;
     process.env.KOVA_FAKE_OCM_LOG = invocationLog;
     child = spawn(process.execPath, ["-e", `
 const fs = require("node:fs");
