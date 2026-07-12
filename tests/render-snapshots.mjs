@@ -33,8 +33,18 @@ const FAIL_REPORT = "tests/fixtures/reports/fail.json";
 const REPORT_PLATFORM = JSON.parse(
   readFileSync(join(repoRoot, PASS_REPORT), "utf8")
 ).platform;
+const RELEASE_PLATFORM_COVERAGE = JSON.parse(
+  readFileSync(join(repoRoot, "profiles/release.json"), "utf8")
+).gate.coverage.platforms;
 const HOST_PLATFORM = platformInfo();
 const HOST_PLATFORM_KEYS = [...platformCoverageKeys(HOST_PLATFORM)].sort();
+const RELEASE_PLATFORM_REQUIREMENTS = [
+  ...RELEASE_PLATFORM_COVERAGE.blocking,
+  ...RELEASE_PLATFORM_COVERAGE.warning
+].sort();
+const HOST_PLATFORM_GAPS = RELEASE_PLATFORM_REQUIREMENTS.filter(
+  (platformKey) => !HOST_PLATFORM_KEYS.includes(platformKey)
+);
 const HOST_PLATFORM_REPLACEMENTS = new Map([
   [HOST_PLATFORM.os, "<os>"],
   [HOST_PLATFORM.arch, "<arch>"],
@@ -108,13 +118,15 @@ function normalize(out, snapshotCase) {
 
 function normalizeJsonPlatform(out, snapshotCase) {
   if (snapshotCase.normalizeHostPlatform) {
-    return replaceCurrentPlatformKeys(
-      replaceExactPlatformBlock(out, HOST_PLATFORM, {
-        os: "<os>",
-        arch: "<arch>",
-        release: "<os-release>",
-        node: "<node>"
-      })
+    return replacePlatformGaps(
+      replaceCurrentPlatformKeys(
+        replaceExactPlatformBlock(out, HOST_PLATFORM, {
+          os: "<os>",
+          arch: "<arch>",
+          release: "<os-release>",
+          node: "<node>"
+        })
+      )
     );
   }
   return replaceExactPlatformBlock(out, snapshotCase.normalizeReportPlatform, {
@@ -161,6 +173,28 @@ function replaceCurrentPlatformKeys(out) {
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function replacePlatformGaps(out) {
+  return out.replace(
+    platformGapBlock(HOST_PLATFORM_GAPS),
+    platformGapBlock(["<platform-gaps-for-current-host>"])
+  );
+}
+
+function platformGapBlock(platforms) {
+  return [
+    '        "gaps": {',
+    '          "surfaces": [],',
+    '          "scenarios": [],',
+    '          "states": [],',
+    '          "traits": [],',
+    '          "platforms": [',
+    ...platforms.map((platformKey, index) =>
+      `            ${JSON.stringify(platformKey)}${index === platforms.length - 1 ? "" : ","}`
+    ),
+    "          ],"
+  ].join("\n");
 }
 
 function normalizePlanPlatformLine(out) {
@@ -219,6 +253,20 @@ function assertSnapshotNormalizers() {
     normalizeJsonPlatform(extraKeyJson, { normalizeHostPlatform: true })
       .includes(`"currentPlatformKeys": [\n      ${JSON.stringify(HOST_PLATFORM_KEYS[0])}`),
     true
+  );
+
+  const platformGaps = platformGapBlock(HOST_PLATFORM_GAPS);
+  strictEqual(
+    normalizeJsonPlatform(platformGaps, { normalizeHostPlatform: true })
+      .includes('"<platform-gaps-for-current-host>"'),
+    true
+  );
+  strictEqual(
+    normalizeJsonPlatform(
+      platformGaps.replace("          ],", '            "unexpected"\n          ],'),
+      { normalizeHostPlatform: true }
+    ).includes('"<platform-gaps-for-current-host>"'),
+    false
   );
 
   const fixtureJson = `{\n${platformBlock(REPORT_PLATFORM)}\n}`;
