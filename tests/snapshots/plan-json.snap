@@ -19958,9 +19958,7 @@
           "states": [],
           "traits": [],
           "platforms": [
-            "linux-arm64",
-            "linux-x64",
-            "wsl2"
+            "<platform-gaps-for-current-host>"
           ],
           "requirements": [],
           "stateSurfaces": []
