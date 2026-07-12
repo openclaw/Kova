@@ -19,7 +19,7 @@ export function isOwnedMockProviderCommand(command, expected) {
   const script = escapeRegExp(expected.scriptPath);
   const requestLog = escapeRegExp(expected.requestLog);
   const invocation = new RegExp(
-    `^(?:\\S*node\\s+)?${executable}\\s+serve\\s+--providers\\s+openai\\s+--script\\s+${script}\\s+--port\\s+0\\s+--request-log\\s+${requestLog}(?=\\s|$)`
+    `^(?:\\S*node\\s+)?${executable}\\s+serve\\s+--providers\\s+openai\\s+--script\\s+${script}\\s+--port\\s+0\\s+--request-log\\s+${requestLog}\\s*$`
   );
   return invocation.test(text);
 }
