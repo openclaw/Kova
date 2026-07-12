@@ -586,6 +586,7 @@ async function runScopedSelfCheck(flags, scope, workspace) {
       "unknown command: not-a-command"
     ));
     checks.push(await credentialStoreSelfCheck(tmp));
+    checks.push(await credentialStoreLegacyFallbackMigrationCheck(tmp));
     checks.push(await credentialStoreConcurrentWritersCheck(tmp));
     checks.push(await credentialStoreInterruptedTransactionCheck(tmp));
     checks.push(await setupDirectoryWriteProbeCheck(tmp));
@@ -22433,6 +22434,69 @@ async function credentialStoreSelfCheck(tmp) {
   } catch (error) {
     return {
       id: "credential-store",
+      status: "FAIL",
+      command,
+      durationMs: result.durationMs,
+      message: error.message
+    };
+  }
+}
+
+async function credentialStoreLegacyFallbackMigrationCheck(tmp) {
+  const home = join(tmp, "legacy-fallback-credentials-home");
+  const credentials = join(home, "credentials");
+  const providersPath = join(credentials, "providers.json");
+  const scriptPath = join(home, "load-store.mjs");
+  const legacyProviders = {
+    schemaVersion: "kova.credentials.providers.v1",
+    defaultProvider: "openai",
+    providers: {
+      openai: {
+        id: "openai",
+        method: "mock",
+        envVars: ["OPENAI_API_KEY"],
+        fallbackPolicy: "mock",
+        configuredAt: null
+      }
+    }
+  };
+  await mkdir(credentials, { recursive: true });
+  await writeFile(providersPath, `${JSON.stringify(legacyProviders, null, 2)}\n`, "utf8");
+  await writeFile(join(credentials, "live.env"), "", { encoding: "utf8", mode: 0o600 });
+  await writeFile(
+    scriptPath,
+    `import { loadCredentialStore } from ${JSON.stringify(new URL("./auth.mjs", import.meta.url).href)};\n` +
+      "console.log(JSON.stringify(await loadCredentialStore()));\n",
+    "utf8"
+  );
+
+  const command = `KOVA_HOME=${quoteShell(home)} node ${quoteShell(scriptPath)}`;
+  const result = await runCommand(command, { timeoutMs: 30000, maxOutputChars: 1000000 });
+  try {
+    if (result.status !== 0) {
+      throw new Error(result.stderr.trim() || result.stdout.trim() || `exit ${result.status}`);
+    }
+    const loaded = JSON.parse(result.stdout);
+    const persisted = JSON.parse(await readFile(providersPath, "utf8"));
+    assertEqual(
+      Object.hasOwn(loaded.providers.providers.openai, "fallbackPolicy"),
+      false,
+      "legacy fallback policy removed from loaded credentials"
+    );
+    assertEqual(
+      Object.hasOwn(persisted.providers.openai, "fallbackPolicy"),
+      false,
+      "legacy fallback policy removed from persisted credentials"
+    );
+    return {
+      id: "credential-store-legacy-fallback-migration",
+      status: "PASS",
+      command,
+      durationMs: result.durationMs
+    };
+  } catch (error) {
+    return {
+      id: "credential-store-legacy-fallback-migration",
       status: "FAIL",
       command,
       durationMs: result.durationMs,
