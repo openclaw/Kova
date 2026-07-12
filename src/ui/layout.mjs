@@ -3,7 +3,7 @@
 
 import { makeColor } from "./color.mjs";
 import { makeGlyphs } from "./glyphs.mjs";
-import { padEnd, visualWidth, repeat } from "./text.mjs";
+import { padEnd, visualWidth, repeat, truncate, wrap } from "./text.mjs";
 
 const SIDE_BY_SIDE_MIN_WIDTH = 120;
 
@@ -15,7 +15,11 @@ const SIDE_BY_SIDE_MIN_WIDTH = 120;
 export function heavyBand({ badgeText = "", status = "", title = "", meta = "", width, ui }) {
   const c = makeColor(ui);
   const g = makeGlyphs(ui);
-  const inner = Math.max(20, width - 2);
+  const frameWidth = positiveWidth(width);
+  if (frameWidth < 4) {
+    return truncate([badgeText, status, title, meta].filter(Boolean).join(" "), frameWidth);
+  }
+  const inner = frameWidth - 2;
 
   const top = c.head(g.tlHeavy + repeat(g.hHeavy, inner) + g.trHeavy);
   const bot = c.head(g.blHeavy + repeat(g.hHeavy, inner) + g.brHeavy);
@@ -32,7 +36,7 @@ export function heavyBand({ badgeText = "", status = "", title = "", meta = "", 
     content = "  " + [badgeText, statusColored, titleColored].filter(Boolean).join("  ");
     if (visualWidth(content) > inner) {
       const plain = "  " + [badgeText, status, title].filter(Boolean).join("  ");
-      content = plain.length > inner ? plain.slice(0, Math.max(0, inner - 1)) + "…" : plain;
+      content = truncate(plain, inner);
     }
   }
   const padded = padEnd(content, inner);
@@ -46,9 +50,11 @@ export function heavyBand({ badgeText = "", status = "", title = "", meta = "", 
 export function ruleSection(label, width, ui) {
   const c = makeColor(ui);
   const g = makeGlyphs(ui);
+  const lineWidth = positiveWidth(width);
+  if (lineWidth === 0) return "";
   const prefix = repeat(g.hLight, 3) + (label ? ` ${label} ` : "");
-  const remaining = Math.max(3, width - visualWidth(prefix));
-  return c.dim(prefix + repeat(g.hLight, remaining));
+  if (visualWidth(prefix) >= lineWidth) return c.dim(truncate(prefix, lineWidth));
+  return c.dim(prefix + repeat(g.hLight, lineWidth - visualWidth(prefix)));
 }
 
 // card({ title, lines, width, ui })
@@ -60,9 +66,17 @@ export function ruleSection(label, width, ui) {
 export function card({ title = "", lines = [], width, ui }) {
   const c = makeColor(ui);
   const g = makeGlyphs(ui);
-  const inner = Math.max(8, width - 2);
+  const frameWidth = positiveWidth(width);
+  if (frameWidth < 4) {
+    return [title, ...lines]
+      .flatMap((line) => wrap(String(line), frameWidth))
+      .join("\n");
+  }
+  const inner = frameWidth - 2;
 
-  const titleSegment = title ? `${g.hLight} ${title} ` : "";
+  const titleBudget = Math.max(0, inner - 3);
+  const titleText = titleBudget > 0 ? truncate(title, titleBudget) : "";
+  const titleSegment = titleText ? `${g.hLight} ${titleText} ` : "";
   const topFill = repeat(g.hLight, Math.max(0, inner - visualWidth(titleSegment)));
   const top = c.dim(g.tlLight + titleSegment + topFill + g.trLight);
   const bot = c.dim(g.blLight + repeat(g.hLight, inner) + g.brLight);
@@ -105,6 +119,11 @@ function colorStatus(c, status) {
   if (upper === "INCOMPLETE" || upper === "PARTIAL" || upper === "REGRESSION") return c.bold(c.warn(upper));
   if (upper === "BLOCKED") return c.bold(c.block(upper));
   return c.bold(upper);
+}
+
+function positiveWidth(width) {
+  const value = Number(width);
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
 }
 
 export { SIDE_BY_SIDE_MIN_WIDTH };

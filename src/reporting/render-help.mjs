@@ -244,7 +244,7 @@ const NOTES = [
 export function renderHelp(commandId, flags = {}, env = process.env, stream = process.stdout) {
   const ui = makeUi(flags, env, stream);
   const cmd = commandId ? COMMANDS.find((c) => c.id === commandId) : null;
-  return withMargin(cmd ? renderCommandHelp(cmd, ui) : renderTopLevelHelp(ui), ui.leftPad);
+  return withMargin(cmd ? renderCommandHelp(cmd, ui) : renderTopLevelHelp(ui), ui.leftPad, ui.width);
 }
 
 function renderTopLevelHelp(ui) {

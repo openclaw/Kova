@@ -13,9 +13,6 @@
 //     fresh-install          stable   5/5      PASS      —
 //     fresh-install          canary   5/5      FAIL      health.startup over by 1.1 s
 //
-// When `collapseSharedTargets` is true and a scenario has the same
-// verdict across all targets, the target column shows "both" / "all".
-
 import { renderTable } from "./tables.mjs";
 import { badge } from "./badges.mjs";
 import { visualWidth, truncate } from "./text.mjs";
@@ -88,7 +85,7 @@ function formatWorstCell(worst, c, termWidth) {
 
   // Prose note: label in cell, full reason on continuation line.
   const indent = "    ↳ ";
-  const budget = Math.max(40, termWidth - visualWidth(indent));
+  const budget = Math.max(1, termWidth - visualWidth(indent));
   const fit = visualWidth(note) > budget ? truncate(note, budget) : note;
   return { cell: color(label), after: c.dim(indent + fit) };
 }

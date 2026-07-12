@@ -30,7 +30,7 @@ export function renderBundleReceipt(receipt, flags = {}, env = process.env, stre
   for (const [label, value] of rows) {
     if (!value) continue;
     const head = `  ${c.dim(padEndPlain(label, labelCol))}  `;
-    const avail = Math.max(20, ui.width - visualWidth(head));
+    const avail = Math.max(1, ui.width - visualWidth(head));
     const wrapped = wrap(String(value), avail);
     sections.push(head + c.met(wrapped[0] ?? ""));
     for (const cont of wrapped.slice(1)) {
@@ -44,7 +44,7 @@ export function renderBundleReceipt(receipt, flags = {}, env = process.env, stre
   sections.push(`  ${c.dim(g.arrow)} kova report ${displayPath(receipt.outputPath) ?? ""}`);
   if (receipt.runId) sections.push(`  ${c.dim(g.arrow)} kova report ${receipt.runId}`);
 
-  return withMargin(sections.join("\n"), ui.leftPad);
+  return withMargin(sections.join("\n"), ui.leftPad, ui.width);
 }
 
 function formatBytes(n) {

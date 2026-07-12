@@ -26,7 +26,7 @@ export function renderPlan(planJson, flags = {}, env = process.env, stream = pro
 
   sections.push("");
   sections.push(renderNext(planJson, ui));
-  return withMargin(sections.join("\n"), ui.leftPad);
+  return withMargin(sections.join("\n"), ui.leftPad, ui.width);
 }
 
 function renderBand(planJson, ui) {
@@ -116,7 +116,7 @@ function renderChannelWorkflowCoverage(planJson, ui) {
     ],
     rows,
     gap: 2,
-    maxWidth: ui.width ? Math.max(40, ui.width - 2) : null
+    maxWidth: ui.width ? Math.max(1, ui.width - 2) : null
   });
   return [
     ruleSection("channel user flows", ui.width, ui),
@@ -149,7 +149,7 @@ function renderScenarioList(planJson, ui) {
     ],
     rows,
     gap: 2,
-    maxWidth: ui.width ? Math.max(40, ui.width - 2) : null,
+    maxWidth: ui.width ? Math.max(1, ui.width - 2) : null,
   });
   lines.push(indentBlock(table, 2));
 

@@ -5,15 +5,21 @@
 
 ─── commands ───────────────────────────────────────────────────────────────────
   ◆ kova version      Print Kova version and runtime info.
-  ◆ kova setup        Verify prerequisites, configure auth, and prepare directories.
-  ◆ kova self-check   Run the full Kova suite (dry-runs, parsers, gates, evaluators).
+  ◆ kova setup        Verify prerequisites, configure auth, and prepare
+  directories.
+  ◆ kova self-check   Run the full Kova suite (dry-runs, parsers, gates,
+  evaluators).
   ◆ kova plan         Show OpenClaw surfaces, scenarios, states, and metrics.
-  ◆ kova inventory    Discover OpenClaw coverage gaps and repeated Kova run work.
+  ◆ kova inventory    Discover OpenClaw coverage gaps and repeated Kova run
+  work.
   ◆ kova run          Run one OpenClaw scenario. Dry-run unless --execute.
-  ◆ kova matrix       Profile-driven multi-scenario plan / run with optional gate.
+  ◆ kova matrix       Profile-driven multi-scenario plan / run with optional
+  gate.
   ◆ kova reports      List recent stored reports and their run IDs.
-  ◆ kova report       Render a Kova report dashboard, summary, paste, compare, or bundle.
-  ◆ kova publish      Validate a web-payload release and write it into web/src/content/releases/.
+  ◆ kova report       Render a Kova report dashboard, summary, paste, compare,
+  or bundle.
+  ◆ kova publish      Validate a web-payload release and write it into
+  web/src/content/releases/.
   ◆ kova cleanup      Remove stale Kova-owned envs and run artifact dirs.
 
 ─── selectors ──────────────────────────────────────────────────────────────────
@@ -26,11 +32,14 @@
   • Kova uses OCM to create isolated OpenClaw envs and runtimes.
   • Reports describe OpenClaw behavior, not OCM behavior.
   • run/matrix run are dry-run unless --execute is passed.
-  • --repeat records independent samples and computes aggregate performance stats.
+  • --repeat records independent samples and computes aggregate performance
+  stats.
   • --auth defaults to mock so every disposable env has deliberate model auth.
   • --model pins the model id for live-auth runs.
-  • --deep-profile enables Node CPU/heap/trace + diagnostic report + denser sampling.
-  • Human-facing commands render dashboards by default; --plain renders compact text.
+  • --deep-profile enables Node CPU/heap/trace + diagnostic report + denser
+  sampling.
+  • Human-facing commands render dashboards by default; --plain renders compact
+  text.
   • Report commands accept either full JSON paths or run IDs from kova reports.
 
 ─── next ───────────────────────────────────────────────────────────────────────

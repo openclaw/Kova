@@ -104,7 +104,7 @@ export function renderError(error, flags = {}, env = process.env, stream = proce
       }
     }
   }
-  return withMargin(sections.join("\n"), ui.leftPad);
+  return withMargin(sections.join("\n"), ui.leftPad, ui.width);
 }
 
 function nearestCommand(input) {

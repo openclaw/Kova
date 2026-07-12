@@ -28,12 +28,13 @@ export function formatDuration(ms) {
   if (n < 1) return `${n.toFixed(2)} ms`;
   if (n < 1000) return `${Math.round(n)} ms`;
   const s = n / 1000;
-  if (s < 60) return `${s.toFixed(s < 10 ? 2 : 1)} s`;
-  const minutes = Math.floor(s / 60);
-  const seconds = Math.round(s - minutes * 60);
+  if (s < 59.95) return `${s.toFixed(s < 10 ? 2 : 1)} s`;
+  const roundedSeconds = Math.round(s);
+  const minutes = Math.floor(roundedSeconds / 60);
+  const seconds = roundedSeconds % 60;
   if (minutes < 60) return seconds === 0 ? `${minutes}m` : `${minutes}m ${String(seconds).padStart(2, "0")}s`;
   const hours = Math.floor(minutes / 60);
-  const rem = minutes - hours * 60;
+  const rem = minutes % 60;
   return `${hours}h ${String(rem).padStart(2, "0")}m`;
 }
 

@@ -78,7 +78,7 @@ export function renderSelfCheckReceipt(result, flags = {}, env = process.env, st
 
   sections.push("");
   sections.push(renderFooter(result, ui));
-  return withMargin(sections.join("\n"), ui.leftPad);
+  return withMargin(sections.join("\n"), ui.leftPad, ui.width);
 }
 
 function deriveVerdict(result) {
@@ -112,7 +112,7 @@ function renderFailures(failed, ui) {
       { key: "id",     header: c.dim("check"),  align: "left", minWidth: 22 },
       { key: "detail", header: c.dim("detail"), align: "left", minWidth: 24 },
     ],
-    rows, gap: 2,
+    rows, gap: 2, maxWidth: Math.max(1, ui.width - 2),
   }), 2));
   return lines.join("\n");
 }

@@ -6,6 +6,13 @@ import { makeColor } from "./color.mjs";
 const KIND_TO_BG = {
   SHIP: "ok",
   PASS: "ok",
+  OK: "ok",
+  READY: "ok",
+  GREEN: "ok",
+  CLEAN: "ok",
+  CLEANED: "ok",
+  DONE: "ok",
+  IMPROVED: "ok",
   DO_NOT_SHIP: "err",
   FAIL: "err",
   PARTIAL: "warn",

@@ -43,6 +43,7 @@ export function phasesBlock({ phases, compare = false, ui } = {}) {
       ],
       rows,
       gap: 2,
+      maxWidth: ui.width,
     });
   }
 
@@ -70,6 +71,7 @@ export function phasesBlock({ phases, compare = false, ui } = {}) {
     ],
     rows,
     gap: 2,
+    maxWidth: ui.width,
   });
 }
 
