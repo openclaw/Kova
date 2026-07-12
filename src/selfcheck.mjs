@@ -18511,6 +18511,16 @@ async function collectionPolicyResolverCheck(tmp, scope) {
     "post-ready metrics records health collector"
   );
 
+  const finalPolicy = resolveCollectionPolicy({ kind: "final" });
+  const finalMetrics = await collectPostReadySelfCheckMetrics(tmp, scope, finalPolicy);
+  assertEqual(finalMetrics.readiness?.attempts, 0, "final metrics avoid a zero-deadline readiness wait");
+  assertEqual(finalMetrics.healthSummary?.count, 2, "final metrics keep post-ready health samples");
+  assertEqual(
+    finalMetrics.collectors.some((collector) => collector.id === "health" && collector.status === "PASS"),
+    true,
+    "final metrics record health proof before cleanup"
+  );
+
   const frontagePostReadyMetrics = await collectPostReadySelfCheckMetrics(tmp, scope, postReadyPolicy, {
     useNetworkFrontage: true
   });

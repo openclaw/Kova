@@ -6,6 +6,7 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Collect final post-ready health samples when readiness has no wait budget so successful executed scenarios retain complete pre-cleanup evidence.
 - Made terminal reports width-safe for Unicode, narrow layouts, wrapped shell hints, duration rollover, and strict numeric samples.
 - Hardened command execution with bounded streaming redaction, POSIX process-group cleanup, strict optional-log matching, and direct scenario command validation.
 - Hardened artifact confidentiality by redacting credential-bearing logs before persistence and containing OpenClaw state collection against symlink escapes and hostile filesystem inputs.
