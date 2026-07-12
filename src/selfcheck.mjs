@@ -1150,6 +1150,23 @@ async function runScopedSelfCheck(flags, scope, workspace) {
           assertEqual((data.artifactIndex?.fileCount ?? 0) > 0, true, "artifact index file count");
         }
       ));
+      const publishBundle = await bundleReport(receiptCheck.data.jsonPath, { outputDir: tmp });
+      const publishRoot = join(tmp, "publish-content-addressed");
+      const publishOutDir = join(publishRoot, "src", "content", "releases");
+      checks.push(await jsonCommandCheck(
+        "publish-content-addressed-bundle",
+        `node bin/kova.mjs publish ${quoteShell(receiptCheck.data.jsonPath)} --ver 2026.7.12-selfcheck --release-date 2026-07-12 --sha selfcheck --out-dir ${quoteShell(publishOutDir)} --json`,
+        async () => {
+          const payload = JSON.parse(await readFile(join(publishOutDir, "2026.7.12-selfcheck.json"), "utf8"));
+          const bundleName = basename(publishBundle.outputPath);
+          assertEqual(payload.runs?.[0]?.bundle?.name, bundleName, "publish discovers content-addressed report bundle");
+          assertEqual(
+            await fileExists(join(publishRoot, "public", "bundles", bundleName)),
+            true,
+            "publish copies content-addressed report bundle"
+          );
+        }
+      ));
     }
 
   const ok = checks.every((check) => check.status === "PASS");
