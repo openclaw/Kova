@@ -1199,7 +1199,10 @@ export function evaluateRecord(record, scenario, options = {}) {
 
   if (violations.length > 0) {
     if (originalStatus === "PASS") {
-      record.status = "FAIL";
+      const targetViolation = violations.some(
+        (violation) => violation.failureDomain !== "kova-harness"
+      );
+      record.status = targetViolation ? "FAIL" : "BLOCKED";
     }
     record.violations = violations;
   } else {

@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { isNoLogsOutput } from "../command-results.mjs";
+import { isOptionalNoLogsResult } from "../command-results.mjs";
 import { runCommand } from "../commands.mjs";
 import { ocmLogs } from "../ocm/commands.mjs";
 
@@ -15,7 +15,7 @@ export async function collectLogMetrics(envName, timeoutMs, artifactDir, command
     env: commandEnv
   });
   const text = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
-  const noLogsAvailable = result.status !== 0 && isNoLogsOutput(text);
+  const noLogsAvailable = isOptionalNoLogsResult(result);
   const timestamps = collectTimestamps(text);
   const stdoutSnippet = boundedLogSnippet(result.stdout, 4000);
   const stderrSnippet = boundedLogSnippet(result.stderr, 4000);

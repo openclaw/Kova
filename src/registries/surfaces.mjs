@@ -128,8 +128,8 @@ function validateRoleThresholds(value, prefix, errors) {
       continue;
     }
     for (const key of ["peakRssMb", "peakProcessRssMb", "maxCpuPercent"]) {
-      if (thresholds[key] !== undefined && (typeof thresholds[key] !== "number" || thresholds[key] < 0)) {
-        errors.push(`${prefix}.${role}.${key} must be a non-negative number when set`);
+      if (thresholds[key] !== undefined && (!Number.isFinite(thresholds[key]) || thresholds[key] < 0)) {
+        errors.push(`${prefix}.${role}.${key} must be a finite non-negative number when set`);
       }
     }
   }

@@ -94,8 +94,8 @@ function validateThresholdMap(map, prefix, errors, options = {}) {
       validateThresholdMap(value, `${prefix}.${key}`, errors);
       continue;
     }
-    if (typeof value !== "number" || !Number.isFinite(value)) {
-      errors.push(`${prefix}.${key} must be a finite number`);
+    if (!Number.isFinite(value) || value < 0) {
+      errors.push(`${prefix}.${key} must be a finite non-negative number`);
     }
   }
 }

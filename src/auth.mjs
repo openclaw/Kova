@@ -1,6 +1,8 @@
-import { access, chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
+import { access, chmod, link, mkdir, open, readFile, readdir, rename, unlink } from "node:fs/promises";
 import { constants } from "node:fs";
-import { join } from "node:path";
+import { basename, isAbsolute, join } from "node:path";
 import { credentialsDir, liveEnvPath, providersPath, repoRoot } from "./paths.mjs";
 import { quoteShell } from "./commands.mjs";
 import { ocmAt, ocmEnvExec } from "./ocm/commands.mjs";
@@ -29,53 +31,64 @@ const mockProviderModes = new Set([
   "exec-tool-safety",
   "exec-tool-failure-only"
 ]);
+const credentialStoreLockPath = join(credentialsDir, ".store.lock");
+const credentialStoreTransactionPath = join(credentialsDir, ".store.transaction.json");
+const credentialStoreLockTimeoutMs = 20000;
+const credentialStoreLockOwnerPrefix = ".store.lock.owner-";
+const credentialStoreLockReaperPrefix = ".store.lock.reaping-";
 
 export async function ensureCredentialStore() {
-  await mkdir(credentialsDir, { recursive: true });
-  if (!(await pathExists(providersPath))) {
-    await writeFile(providersPath, `${JSON.stringify(defaultProvidersMetadata(), null, 2)}\n`, "utf8");
-  }
-  if (!(await pathExists(liveEnvPath))) {
-    await writeFile(liveEnvPath, "", { encoding: "utf8", mode: 0o600 });
-  }
-  await chmod(liveEnvPath, 0o600);
-  return credentialStoreSummary(await loadCredentialStore());
+  return withCredentialStoreLock(async () => {
+    await ensureCredentialStoreUnlocked();
+    return credentialStoreSummary(await loadCredentialStoreUnlocked());
+  });
 }
 
 export async function configureCredentialProvider(options = {}) {
-  await ensureCredentialStore();
-  const providerId = options.provider ?? defaultProviderId;
-  const method = options.method ?? "mock";
-  if (!credentialMethods.includes(method)) {
-    throw new Error(`unsupported auth method '${method}'; expected one of ${credentialMethods.join(", ")}`);
-  }
-
-  const metadata = await readProvidersMetadata();
-  const envVar = options.envVar ?? defaultEnvVarForProvider(providerId);
-  metadata.defaultProvider = providerId;
-  metadata.providers = {
-    ...(metadata.providers ?? {}),
-    [providerId]: {
-      id: providerId,
-      method,
-      envVars: method === "api-key" || method === "env-only" ? [envVar] : [],
-      externalCli: method === "external-cli" ? (options.externalCli ?? providerId) : null,
-      configuredAt: new Date().toISOString()
+  return withCredentialStoreLock(async () => {
+    await ensureCredentialStoreUnlocked();
+    const providerId = options.provider ?? defaultProviderId;
+    const method = options.method ?? "mock";
+    if (!credentialMethods.includes(method)) {
+      throw new Error(`unsupported auth method '${method}'; expected one of ${credentialMethods.join(", ")}`);
     }
-  };
 
-  if (method === "api-key") {
-    const value = options.value ?? process.env[envVar];
-    if (!value) {
-      throw new Error(`api-key setup requires --value <secret> or ${envVar} in the host environment`);
-    }
+    const metadata = await readProvidersMetadata();
     const liveEnv = await loadLiveEnv();
-    liveEnv[envVar] = value;
-    await writeLiveEnv(liveEnv);
-  }
+    const previousMetadata = structuredClone(metadata);
+    const previousLiveEnv = { ...liveEnv };
+    const envVar = options.envVar ?? defaultEnvVarForProvider(providerId);
+    const externalCli = method === "external-cli"
+      ? resolveExternalCliName(providerId, options.externalCli)
+      : null;
+    metadata.defaultProvider = providerId;
+    metadata.providers = {
+      ...(metadata.providers ?? {}),
+      [providerId]: {
+        id: providerId,
+        method,
+        envVars: method === "api-key" || method === "env-only" ? [envVar] : [],
+        externalCli,
+        configuredAt: new Date().toISOString()
+      }
+    };
 
-  await writeFile(providersPath, `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
-  return credentialStoreSummary(await loadCredentialStore());
+    if (method === "api-key") {
+      const value = options.value ?? process.env[envVar];
+      if (!value) {
+        throw new Error(`api-key setup requires --value <secret> or ${envVar} in the host environment`);
+      }
+      liveEnv[envVar] = value;
+    }
+
+    await writeCredentialStoreTransaction({
+      metadata,
+      liveEnv,
+      previousMetadata,
+      previousLiveEnv
+    });
+    return credentialStoreSummary({ providers: metadata, liveEnv });
+  });
 }
 
 export async function resolveRunAuthContext(flags = {}) {
@@ -323,6 +336,13 @@ export function authReportSummary(authContext) {
 }
 
 export async function loadCredentialStore() {
+  return withCredentialStoreLock(async () => {
+    await ensureCredentialStoreUnlocked();
+    return loadCredentialStoreUnlocked();
+  });
+}
+
+async function loadCredentialStoreUnlocked() {
   const providers = await readProvidersMetadata();
   const liveEnv = await loadLiveEnv();
   return {
@@ -371,6 +391,9 @@ function validateProvidersMetadata(metadata) {
   if (!metadata.providers || typeof metadata.providers !== "object" || Array.isArray(metadata.providers)) {
     throw new Error("providers.json providers must be an object");
   }
+  if (!metadata.defaultProvider || !metadata.providers[metadata.defaultProvider]) {
+    throw new Error("providers.json defaultProvider must reference a configured provider");
+  }
   for (const [id, provider] of Object.entries(metadata.providers)) {
     if (!provider || typeof provider !== "object" || Array.isArray(provider)) {
       throw new Error(`providers.${id} must be an object`);
@@ -387,6 +410,11 @@ function validateProvidersMetadata(metadata) {
     if (provider.envVars !== undefined && !Array.isArray(provider.envVars)) {
       throw new Error(`providers.${id}.envVars must be an array`);
     }
+    if (provider.method === "external-cli") {
+      resolveExternalCliName(id, provider.externalCli);
+    } else if (provider.externalCli !== undefined && provider.externalCli !== null) {
+      throw new Error(`providers.${id}.externalCli is only valid for method external-cli`);
+    }
   }
 }
 
@@ -401,12 +429,495 @@ async function loadLiveEnv() {
   }
 }
 
-async function writeLiveEnv(values) {
+async function writeProvidersMetadata(metadata) {
+  validateProvidersMetadata(metadata);
+  await atomicWriteFile(providersPath, `${JSON.stringify(metadata, null, 2)}\n`, 0o600);
+}
+
+async function writeCredentialStoreTransaction({
+  metadata,
+  liveEnv,
+  previousMetadata,
+  previousLiveEnv
+}) {
+  validateProvidersMetadata(metadata);
+  const transaction = {
+    schemaVersion: "kova.credentials.transaction.v1",
+    id: randomUUID(),
+    createdAt: new Date().toISOString(),
+    previous: credentialStoreState(previousMetadata, previousLiveEnv),
+    next: credentialStoreState(metadata, liveEnv)
+  };
+  let journalPublished = false;
+  try {
+    await atomicWriteFile(
+      credentialStoreTransactionPath,
+      `${JSON.stringify(transaction)}\n`,
+      0o600
+    );
+    journalPublished = true;
+    await syncDirectory(credentialsDir);
+    await commitCredentialStoreState(transaction.next);
+    await removeCredentialStoreTransaction();
+  } catch (error) {
+    if (!journalPublished) {
+      throw error;
+    }
+    let outcome;
+    try {
+      outcome = await recoverCredentialStoreTransaction();
+    } catch (recoveryError) {
+      throw new AggregateError(
+        [error, recoveryError],
+        "credential transaction failed and recovery also failed"
+      );
+    }
+    if (outcome === "committed") {
+      return;
+    }
+    throw error;
+  }
+}
+
+async function ensureCredentialStoreUnlocked() {
+  await mkdir(credentialsDir, { recursive: true });
+  await recoverCredentialStoreTransaction();
+  await removeAbandonedCredentialStoreTemps();
+  if (!(await pathExists(liveEnvPath))) {
+    await atomicWriteFile(liveEnvPath, "", 0o600);
+  } else {
+    await chmod(liveEnvPath, 0o600);
+  }
+  if (!(await pathExists(providersPath))) {
+    await writeProvidersMetadata(defaultProvidersMetadata());
+  }
+}
+
+function credentialStoreState(metadata, liveEnv) {
+  validateProvidersMetadata(metadata);
+  return {
+    providersText: `${JSON.stringify(metadata, null, 2)}\n`,
+    liveEnvText: serializeLiveEnv(liveEnv)
+  };
+}
+
+async function commitCredentialStoreState(state) {
+  validateCredentialStoreState(state);
+  let stagedLiveEnv;
+  let stagedProviders;
+  try {
+    stagedLiveEnv = await stageFile(liveEnvPath, state.liveEnvText, 0o600);
+    stagedProviders = await stageFile(providersPath, state.providersText, 0o600);
+    await commitStagedFile(stagedLiveEnv);
+    await commitStagedFile(stagedProviders);
+    await syncDirectory(credentialsDir);
+  } finally {
+    const stagedFiles = [stagedLiveEnv, stagedProviders].filter(Boolean);
+    await Promise.all(stagedFiles.map((staged) => discardStagedFile(staged)));
+  }
+}
+
+async function recoverCredentialStoreTransaction() {
+  let transaction;
+  try {
+    transaction = parseCredentialStoreTransaction(
+      await readFile(credentialStoreTransactionPath, "utf8")
+    );
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return "none";
+    }
+    throw error;
+  }
+
+  const [providersText, liveEnvText] = await Promise.all([
+    readFileIfExists(providersPath),
+    readFileIfExists(liveEnvPath)
+  ]);
+  const nextCommitted = providersText === transaction.next.providersText &&
+    liveEnvText === transaction.next.liveEnvText;
+  if (nextCommitted) {
+    await syncDirectory(credentialsDir);
+  } else {
+    await commitCredentialStoreState(transaction.previous);
+  }
+  await removeCredentialStoreTransaction();
+  return nextCommitted ? "committed" : "rolled-back";
+}
+
+function parseCredentialStoreTransaction(contents) {
+  const transaction = JSON.parse(contents);
+  if (transaction?.schemaVersion !== "kova.credentials.transaction.v1" ||
+      typeof transaction.id !== "string" ||
+      typeof transaction.createdAt !== "string") {
+    throw new Error("invalid credential transaction journal");
+  }
+  validateCredentialStoreState(transaction.previous);
+  validateCredentialStoreState(transaction.next);
+  return transaction;
+}
+
+function validateCredentialStoreState(state) {
+  if (!state || typeof state !== "object" ||
+      typeof state.providersText !== "string" ||
+      typeof state.liveEnvText !== "string") {
+    throw new Error("invalid credential transaction state");
+  }
+  validateProvidersMetadata(JSON.parse(state.providersText));
+  parseEnvFile(state.liveEnvText);
+}
+
+async function removeCredentialStoreTransaction() {
+  await unlink(credentialStoreTransactionPath);
+  await syncDirectory(credentialsDir);
+}
+
+async function removeAbandonedCredentialStoreTemps() {
+  const entries = await readdir(credentialsDir);
+  const prefixes = [
+    `${basename(credentialStoreTransactionPath)}.`,
+    `${basename(providersPath)}.`,
+    `${basename(liveEnvPath)}.`
+  ];
+  await Promise.all(entries
+    .filter((entry) => entry.endsWith(".tmp") && prefixes.some((prefix) => entry.startsWith(prefix)))
+    .map((entry) => unlink(join(credentialsDir, entry)).catch(() => {})));
+}
+
+async function readFileIfExists(path) {
+  try {
+    return await readFile(path, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function syncDirectory(path) {
+  let handle;
+  try {
+    handle = await open(path, "r");
+    await handle.sync();
+  } catch (error) {
+    if (process.platform !== "win32" ||
+        !["EPERM", "EISDIR", "EINVAL", "ENOTSUP"].includes(error.code)) {
+      throw error;
+    }
+  } finally {
+    await handle?.close();
+  }
+}
+
+async function atomicWriteFile(path, contents, mode) {
+  const staged = await stageFile(path, contents, mode);
+  try {
+    await commitStagedFile(staged);
+  } finally {
+    await discardStagedFile(staged);
+  }
+}
+
+async function stageFile(path, contents, mode) {
+  const temporaryPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
+  let handle;
+  try {
+    handle = await open(temporaryPath, "wx", mode);
+    await handle.writeFile(contents, "utf8");
+    await handle.sync();
+    await handle.close();
+    return { path, temporaryPath, committed: false };
+  } catch (error) {
+    await handle?.close().catch(() => {});
+    await unlink(temporaryPath).catch(() => {});
+    throw error;
+  }
+}
+
+async function commitStagedFile(staged) {
+  await rename(staged.temporaryPath, staged.path);
+  staged.committed = true;
+}
+
+async function discardStagedFile(staged) {
+  if (!staged.committed) {
+    await unlink(staged.temporaryPath).catch(() => {});
+  }
+}
+
+async function acquireCredentialStoreLock() {
+  const token = randomUUID();
+  const processStart = await processStartIdentity(process.pid);
+  const ownerPath = credentialStoreLockOwnerPath(process.pid, token);
+  let handle;
+  try {
+    handle = await open(ownerPath, "wx", 0o600);
+    await handle.writeFile(`${JSON.stringify({
+      pid: process.pid,
+      token,
+      processStart,
+      createdAt: new Date().toISOString()
+    })}\n`, "utf8");
+    await handle.sync();
+    await handle.close();
+    handle = null;
+    await link(ownerPath, credentialStoreLockPath);
+    return { token, ownerPath };
+  } catch (error) {
+    await handle?.close().catch(() => {});
+    await unlink(ownerPath).catch(() => {});
+    throw error;
+  }
+}
+
+async function withCredentialStoreLock(callback) {
+  await mkdir(credentialsDir, { recursive: true });
+  const startedAt = Date.now();
+  let lockHandle;
+  while (!lockHandle) {
+    try {
+      lockHandle = await acquireCredentialStoreLock();
+    } catch (error) {
+      if (error.code !== "EEXIST") {
+        throw error;
+      }
+      if (await removeStaleCredentialStoreLock()) {
+        continue;
+      }
+      if (Date.now() - startedAt >= credentialStoreLockTimeoutMs) {
+        throw new Error(`timed out waiting for credential store lock ${credentialStoreLockPath}`);
+      }
+      await delay(25);
+    }
+  }
+
+  try {
+    return await callback();
+  } finally {
+    await releaseCredentialStoreLock(lockHandle);
+  }
+}
+
+async function removeStaleCredentialStoreLock() {
+  let owner;
+  try {
+    owner = parseCredentialStoreLockOwner(await readFile(credentialStoreLockPath, "utf8"));
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return true;
+    }
+    return false;
+  }
+
+  if (!(await credentialStoreLockOwnerIsStale(owner))) {
+    return false;
+  }
+
+  const reaperPath = await claimStaleCredentialStoreLock(owner);
+  if (!reaperPath) {
+    return false;
+  }
+
+  try {
+    const currentOwner = parseCredentialStoreLockOwner(await readFile(credentialStoreLockPath, "utf8"));
+    if (currentOwner.token !== owner.token) {
+      return false;
+    }
+    await unlink(credentialStoreLockPath);
+    return true;
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return true;
+    }
+    throw error;
+  } finally {
+    await unlink(reaperPath).catch(() => {});
+  }
+}
+
+async function releaseCredentialStoreLock(lock) {
+  try {
+    const owner = parseCredentialStoreLockOwner(await readFile(credentialStoreLockPath, "utf8"));
+    if (owner.token !== lock.token) {
+      throw new Error("credential store lock ownership was lost");
+    }
+    await unlink(credentialStoreLockPath);
+    await unlink(lock.ownerPath);
+    return;
+  } catch (error) {
+    throw new Error(`credential store lock ownership was lost: ${error.message}`, { cause: error });
+  }
+}
+
+async function claimStaleCredentialStoreLock(owner) {
+  const ownerPath = credentialStoreLockOwnerPath(owner.pid, owner.token);
+  const reaperPath = await createCredentialStoreReaperPath(owner.token);
+  try {
+    await rename(ownerPath, reaperPath);
+    return reaperPath;
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  const prefix = `${credentialStoreLockReaperPrefix}${owner.token}-`;
+  const entries = await readdir(credentialsDir);
+  for (const name of entries.filter((entry) => entry.startsWith(prefix))) {
+    if (await credentialStoreReaperIsActive(name, prefix)) {
+      return null;
+    }
+    try {
+      await rename(join(credentialsDir, name), reaperPath);
+      return reaperPath;
+    } catch (error) {
+      if (error.code !== "ENOENT") {
+        throw error;
+      }
+    }
+  }
+  return null;
+}
+
+async function createCredentialStoreReaperPath(ownerToken) {
+  const processStart = await processStartIdentity(process.pid);
+  return join(
+    credentialsDir,
+    `${credentialStoreLockReaperPrefix}${ownerToken}-${process.pid}-${hashProcessStart(processStart)}-${randomUUID()}`
+  );
+}
+
+async function credentialStoreLockOwnerIsStale(owner) {
+  if (!(await processIsRunning(owner.pid))) {
+    return true;
+  }
+  if (!owner.processStart) {
+    return false;
+  }
+  const currentStart = await processStartIdentity(owner.pid);
+  return currentStart !== null && currentStart !== owner.processStart;
+}
+
+async function credentialStoreReaperIsActive(name, prefix) {
+  const match = name.slice(prefix.length).match(/^(\d+)-(unknown|[0-9a-f]{16})-/);
+  if (!match) {
+    return true;
+  }
+  const pid = Number(match[1]);
+  const expectedStartHash = match[2];
+  if (!Number.isSafeInteger(pid) || pid <= 0 || !(await processIsRunning(pid))) {
+    return false;
+  }
+  if (expectedStartHash === "unknown") {
+    return true;
+  }
+  const currentStart = await processStartIdentity(pid);
+  return currentStart === null || hashProcessStart(currentStart) === expectedStartHash;
+}
+
+function parseCredentialStoreLockOwner(contents) {
+  const owner = JSON.parse(contents);
+  if (!Number.isSafeInteger(owner.pid) || owner.pid <= 0 ||
+      typeof owner.token !== "string" || !/^[0-9a-f-]{36}$/i.test(owner.token) ||
+      !(owner.processStart === null || typeof owner.processStart === "string")) {
+    throw new Error("invalid credential store lock owner");
+  }
+  return owner;
+}
+
+async function processIsRunning(pid) {
+  try {
+    process.kill(pid, 0);
+  } catch (error) {
+    if (error.code !== "EPERM") {
+      return false;
+    }
+  }
+  if (process.platform !== "linux") {
+    return true;
+  }
+  try {
+    // kill(pid, 0) reports zombies as present, but they can never release a
+    // held lock. Check the Linux process state before treating the owner as live.
+    const statLine = await readFile(`/proc/${pid}/stat`, "utf8");
+    const commandEnd = statLine.lastIndexOf(")");
+    const state = statLine.slice(commandEnd + 1).trim().split(/\s+/, 1)[0];
+    return commandEnd <= 0 || state !== "Z";
+  } catch {
+    return true;
+  }
+}
+
+function credentialStoreLockOwnerPath(pid, token) {
+  return join(credentialsDir, `${credentialStoreLockOwnerPrefix}${pid}-${token}.json`);
+}
+
+function hashProcessStart(processStart) {
+  return processStart
+    ? createHash("sha256").update(processStart).digest("hex").slice(0, 16)
+    : "unknown";
+}
+
+async function processStartIdentity(pid) {
+  if (process.platform === "linux") {
+    try {
+      const [bootId, statLine] = await Promise.all([
+        readFile("/proc/sys/kernel/random/boot_id", "utf8"),
+        readFile(`/proc/${pid}/stat`, "utf8")
+      ]);
+      const commandEnd = statLine.lastIndexOf(")");
+      const fields = statLine.slice(commandEnd + 1).trim().split(/\s+/);
+      const startTicks = fields[19];
+      return commandEnd > 0 && startTicks
+        ? `linux:${bootId.trim()}:${startTicks}`
+        : null;
+    } catch {
+      return null;
+    }
+  }
+  const command = process.platform === "win32"
+    ? {
+        binary: windowsPowerShellPath(),
+        args: [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          `(Get-Process -Id ${pid} -ErrorAction Stop).StartTime.ToUniversalTime().Ticks`
+        ]
+      }
+    : {
+        binary: "/bin/ps",
+        args: ["-o", "lstart=", "-p", String(pid)]
+      };
+  return new Promise((resolve) => {
+    execFile(command.binary, command.args, {
+      encoding: "utf8",
+      timeout: 5000,
+      maxBuffer: 2000
+    }, (error, stdout) => {
+      resolve(error ? null : stdout.trim() || null);
+    });
+  });
+}
+
+function windowsPowerShellPath() {
+  const systemRoot = process.env.SystemRoot ?? process.env.windir;
+  if (!systemRoot || !isAbsolute(systemRoot)) {
+    throw new Error("Windows SystemRoot must be an absolute path");
+  }
+  return join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function serializeLiveEnv(values) {
   const text = Object.entries(values)
     .map(([key, value]) => `${key}=${escapeEnvValue(value)}`)
     .join("\n");
-  await writeFile(liveEnvPath, text ? `${text}\n` : "", { encoding: "utf8", mode: 0o600 });
-  await chmod(liveEnvPath, 0o600);
+  return text ? `${text}\n` : "";
 }
 
 function parseEnvFile(text) {

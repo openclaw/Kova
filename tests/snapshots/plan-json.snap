@@ -7912,7 +7912,7 @@
           "id": "text",
           "group": "durable-final",
           "catalogId": "durable-final:text",
-          "title": "durable-final:text",
+          "title": "Durable Final Text",
           "requiredLevel": "blocking",
           "proofModes": [
             "deterministic-shim",
@@ -7924,7 +7924,7 @@
           "id": "media",
           "group": "durable-final",
           "catalogId": "durable-final:media",
-          "title": "durable-final:media",
+          "title": "Durable Final Media",
           "requiredLevel": "blocking",
           "proofModes": [
             "deterministic-shim",
@@ -7936,7 +7936,7 @@
           "id": "payload",
           "group": "durable-final",
           "catalogId": "durable-final:payload",
-          "title": "durable-final:payload",
+          "title": "Durable Final Payload",
           "requiredLevel": "blocking",
           "proofModes": [
             "deterministic-shim"
@@ -7947,7 +7947,7 @@
           "id": "reply-to",
           "group": "durable-final",
           "catalogId": "durable-final:reply-to",
-          "title": "durable-final:reply-to",
+          "title": "Durable Final Reply Target",
           "requiredLevel": "blocking",
           "proofModes": [
             "deterministic-shim"
@@ -7958,7 +7958,7 @@
           "id": "thread",
           "group": "durable-final",
           "catalogId": "durable-final:thread",
-          "title": "durable-final:thread",
+          "title": "Durable Final Thread Target",
           "requiredLevel": "blocking",
           "proofModes": [
             "deterministic-shim"
@@ -7969,7 +7969,7 @@
           "id": "silent",
           "group": "durable-final",
           "catalogId": "durable-final:silent",
-          "title": "durable-final:silent",
+          "title": "Durable Final Silent Delivery",
           "requiredLevel": "warning",
           "proofModes": [
             "deterministic-shim"
@@ -7980,7 +7980,7 @@
           "id": "message-sending-hooks",
           "group": "durable-final",
           "catalogId": "durable-final:message-sending-hooks",
-          "title": "durable-final:message-sending-hooks",
+          "title": "Durable Final Message Sending Hooks",
           "requiredLevel": "warning",
           "proofModes": [
             "deterministic-shim"
@@ -7991,7 +7991,7 @@
           "id": "manual",
           "group": "ack",
           "catalogId": "ack:manual",
-          "title": "ack:manual",
+          "title": "Manual Ack",
           "requiredLevel": "warning",
           "proofModes": [
             "deterministic-shim"
@@ -8002,7 +8002,7 @@
           "id": "draft-preview",
           "group": "live-preview",
           "catalogId": "live-preview:draft-preview",
-          "title": "live-preview:draft-preview",
+          "title": "Live Draft Preview",
           "requiredLevel": "warning",
           "proofModes": [
             "deterministic-shim"
@@ -8013,7 +8013,7 @@
           "id": "preview-finalization",
           "group": "live-preview",
           "catalogId": "live-preview:preview-finalization",
-          "title": "live-preview:preview-finalization",
+          "title": "Live Preview Finalization",
           "requiredLevel": "warning",
           "proofModes": [
             "deterministic-shim"
@@ -8024,7 +8024,7 @@
           "id": "progress-updates",
           "group": "live-preview",
           "catalogId": "live-preview:progress-updates",
-          "title": "live-preview:progress-updates",
+          "title": "Live Progress Updates",
           "requiredLevel": "warning",
           "proofModes": [
             "deterministic-shim"
@@ -8035,7 +8035,7 @@
           "id": "final-edit",
           "group": "live-finalizer",
           "catalogId": "live-finalizer:final-edit",
-          "title": "live-finalizer:final-edit",
+          "title": "Live Final Edit",
           "requiredLevel": "warning",
           "proofModes": [
             "deterministic-shim"
@@ -8046,7 +8046,7 @@
           "id": "normal-fallback",
           "group": "live-finalizer",
           "catalogId": "live-finalizer:normal-fallback",
-          "title": "live-finalizer:normal-fallback",
+          "title": "Live Normal Fallback",
           "requiredLevel": "warning",
           "proofModes": [
             "deterministic-shim"
@@ -8057,7 +8057,7 @@
           "id": "discard-pending",
           "group": "live-finalizer",
           "catalogId": "live-finalizer:discard-pending",
-          "title": "live-finalizer:discard-pending",
+          "title": "Live Discard Pending",
           "requiredLevel": "warning",
           "proofModes": [
             "deterministic-shim"
@@ -9124,7 +9124,7 @@
           "id": "text",
           "group": "durable-final",
           "catalogId": "durable-final:text",
-          "title": "durable-final:text",
+          "title": "Durable Final Text",
           "requiredLevel": "blocking",
           "proofModes": [
             "deterministic-shim",
@@ -9136,7 +9136,7 @@
           "id": "media",
           "group": "durable-final",
           "catalogId": "durable-final:media",
-          "title": "durable-final:media",
+          "title": "Durable Final Media",
           "requiredLevel": "blocking",
           "proofModes": [
             "deterministic-shim",
@@ -9148,7 +9148,7 @@
           "id": "payload",
           "group": "durable-final",
           "catalogId": "durable-final:payload",
-          "title": "durable-final:payload",
+          "title": "Durable Final Payload",
           "requiredLevel": "blocking",
           "proofModes": [
             "deterministic-shim"
@@ -9159,7 +9159,7 @@
           "id": "reply-to",
           "group": "durable-final",
           "catalogId": "durable-final:reply-to",
-          "title": "durable-final:reply-to",
+          "title": "Durable Final Reply Target",
           "requiredLevel": "blocking",
           "proofModes": [
             "deterministic-shim"
@@ -9170,7 +9170,7 @@
           "id": "thread",
           "group": "durable-final",
           "catalogId": "durable-final:thread",
-          "title": "durable-final:thread",
+          "title": "Durable Final Thread Target",
           "requiredLevel": "blocking",
           "proofModes": [
             "deterministic-shim"
@@ -9181,7 +9181,7 @@
           "id": "silent",
           "group": "durable-final",
           "catalogId": "durable-final:silent",
-          "title": "durable-final:silent",
+          "title": "Durable Final Silent Delivery",
           "requiredLevel": "warning",
           "proofModes": [
             "deterministic-shim"
@@ -9192,7 +9192,7 @@
           "id": "message-sending-hooks",
           "group": "durable-final",
           "catalogId": "durable-final:message-sending-hooks",
-          "title": "durable-final:message-sending-hooks",
+          "title": "Durable Final Message Sending Hooks",
           "requiredLevel": "warning",
           "proofModes": [
             "deterministic-shim"
@@ -9203,7 +9203,7 @@
           "id": "batch",
           "group": "durable-final",
           "catalogId": "durable-final:batch",
-          "title": "durable-final:batch",
+          "title": "Durable Final Batch",
           "requiredLevel": "warning",
           "proofModes": [
             "deterministic-shim"
@@ -9214,7 +9214,7 @@
           "id": "after-receive-record",
           "group": "ack",
           "catalogId": "ack:after-receive-record",
-          "title": "ack:after-receive-record",
+          "title": "Ack After Receive Record",
           "requiredLevel": "warning",
           "proofModes": [
             "deterministic-shim"
@@ -9225,7 +9225,7 @@
           "id": "after-agent-dispatch",
           "group": "ack",
           "catalogId": "ack:after-agent-dispatch",
-          "title": "ack:after-agent-dispatch",
+          "title": "Ack After Agent Dispatch",
           "requiredLevel": "blocking",
           "proofModes": [
             "deterministic-shim"
@@ -9236,7 +9236,7 @@
           "id": "draft-preview",
           "group": "live-preview",
           "catalogId": "live-preview:draft-preview",
-          "title": "live-preview:draft-preview",
+          "title": "Live Draft Preview",
           "requiredLevel": "warning",
           "proofModes": [
             "deterministic-shim"
@@ -9247,7 +9247,7 @@
           "id": "preview-finalization",
           "group": "live-preview",
           "catalogId": "live-preview:preview-finalization",
-          "title": "live-preview:preview-finalization",
+          "title": "Live Preview Finalization",
           "requiredLevel": "warning",
           "proofModes": [
             "deterministic-shim"
@@ -9258,7 +9258,7 @@
           "id": "progress-updates",
           "group": "live-preview",
           "catalogId": "live-preview:progress-updates",
-          "title": "live-preview:progress-updates",
+          "title": "Live Progress Updates",
           "requiredLevel": "warning",
           "proofModes": [
             "deterministic-shim"
@@ -9269,7 +9269,7 @@
           "id": "final-edit",
           "group": "live-finalizer",
           "catalogId": "live-finalizer:final-edit",
-          "title": "live-finalizer:final-edit",
+          "title": "Live Final Edit",
           "requiredLevel": "warning",
           "proofModes": [
             "deterministic-shim"
@@ -9280,7 +9280,7 @@
           "id": "normal-fallback",
           "group": "live-finalizer",
           "catalogId": "live-finalizer:normal-fallback",
-          "title": "live-finalizer:normal-fallback",
+          "title": "Live Normal Fallback",
           "requiredLevel": "warning",
           "proofModes": [
             "deterministic-shim"
@@ -9291,7 +9291,7 @@
           "id": "preview-receipt",
           "group": "live-finalizer",
           "catalogId": "live-finalizer:preview-receipt",
-          "title": "live-finalizer:preview-receipt",
+          "title": "Live Preview Receipt",
           "requiredLevel": "warning",
           "proofModes": [
             "deterministic-shim"
@@ -9302,7 +9302,7 @@
           "id": "retain-on-ambiguous-failure",
           "group": "live-finalizer",
           "catalogId": "live-finalizer:retain-on-ambiguous-failure",
-          "title": "live-finalizer:retain-on-ambiguous-failure",
+          "title": "Live Retain On Ambiguous Failure",
           "requiredLevel": "warning",
           "proofModes": [
             "deterministic-shim"
@@ -9313,7 +9313,7 @@
           "id": "action-send",
           "group": "native-platform",
           "catalogId": "native-platform:action-send",
-          "title": "native-platform:action-send",
+          "title": "Message Tool Send Action",
           "requiredLevel": "blocking",
           "proofModes": [
             "deterministic-shim",
@@ -9325,7 +9325,7 @@
           "id": "action-poll",
           "group": "native-platform",
           "catalogId": "native-platform:action-poll",
-          "title": "native-platform:action-poll",
+          "title": "Message Tool Poll Action",
           "requiredLevel": "warning",
           "proofModes": [
             "deterministic-shim",
@@ -9337,7 +9337,7 @@
           "id": "action-react",
           "group": "native-platform",
           "catalogId": "native-platform:action-react",
-          "title": "native-platform:action-react",
+          "title": "Message Tool React Action",
           "requiredLevel": "warning",
           "proofModes": [
             "deterministic-shim",
@@ -9349,7 +9349,7 @@
           "id": "action-delete",
           "group": "native-platform",
           "catalogId": "native-platform:action-delete",
-          "title": "native-platform:action-delete",
+          "title": "Message Tool Delete Action",
           "requiredLevel": "warning",
           "proofModes": [
             "deterministic-shim",
@@ -9361,7 +9361,7 @@
           "id": "action-edit",
           "group": "native-platform",
           "catalogId": "native-platform:action-edit",
-          "title": "native-platform:action-edit",
+          "title": "Message Tool Edit Action",
           "requiredLevel": "warning",
           "proofModes": [
             "deterministic-shim",
@@ -9373,7 +9373,7 @@
           "id": "action-topic-create",
           "group": "native-platform",
           "catalogId": "native-platform:action-topic-create",
-          "title": "native-platform:action-topic-create",
+          "title": "Message Tool Topic Create Action",
           "requiredLevel": "warning",
           "proofModes": [
             "deterministic-shim",
@@ -9385,7 +9385,7 @@
           "id": "action-topic-edit",
           "group": "native-platform",
           "catalogId": "native-platform:action-topic-edit",
-          "title": "native-platform:action-topic-edit",
+          "title": "Message Tool Topic Edit Action",
           "requiredLevel": "warning",
           "proofModes": [
             "deterministic-shim",
@@ -9397,7 +9397,7 @@
           "id": "delivery-pin",
           "group": "native-platform",
           "catalogId": "native-platform:delivery-pin",
-          "title": "native-platform:delivery-pin",
+          "title": "Message Delivery Pin",
           "requiredLevel": "warning",
           "proofModes": [
             "deterministic-shim",
@@ -9409,7 +9409,7 @@
           "id": "presentation",
           "group": "native-platform",
           "catalogId": "native-platform:presentation",
-          "title": "native-platform:presentation",
+          "title": "Message Presentation",
           "requiredLevel": "warning",
           "proofModes": [
             "deterministic-shim",
@@ -11550,7 +11550,7 @@
       "thresholds": {
         "gatewayReadyMs": 45000,
         "healthMs": 5000,
-        "syncFsStallDetected": false
+        "syncFsStallDetected": 0
       },
       "phases": [
         {
@@ -11992,8 +11992,8 @@
         "gateway"
       ],
       "thresholds": {
-        "gatewaySurvives": true,
-        "diagnosticPresent": true,
+        "gatewaySurvives": 1,
+        "diagnosticPresent": 1,
         "statusAfterFailureMs": 10000
       },
       "phases": [
@@ -12141,18 +12141,6 @@
           ],
           "healthScope": "post-ready",
           "collectionIntent": "post-ready-health"
-        },
-        {
-          "id": "cleanup",
-          "title": "Cleanup",
-          "intent": "Destroy the disposable OpenClaw environment unless retained for debugging.",
-          "commands": [
-            "ocm env destroy {env} --yes"
-          ],
-          "evidence": [
-            "destroy result"
-          ],
-          "healthScope": "none"
         }
       ],
       "proves": [
@@ -13457,7 +13445,7 @@
       "thresholds": {
         "modelsListMs": 20000,
         "statusAfterModelsMs": 10000,
-        "gatewayResponsive": true
+        "gatewayResponsive": 1
       },
       "phases": [
         {

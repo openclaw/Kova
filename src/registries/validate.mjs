@@ -114,7 +114,13 @@ function validateScenarioContract(scenario, surface, refs, errors) {
       errors.push(`scenario '${scenario.id}' proves unknown surface requirement '${surface.id}.${requirement}'`);
     }
   }
-  validateThresholdMetrics(scenario.thresholds ?? {}, refs.metricIds, errors, `scenario '${scenario.id}' thresholds`);
+  validateThresholdMetrics(
+    scenario.thresholds ?? {},
+    refs.metricIds,
+    errors,
+    `scenario '${scenario.id}' thresholds`,
+    refs.processRoleIds
+  );
 }
 
 function validateSurfaceRequirements(surface, refs, errors) {
@@ -147,16 +153,36 @@ function validateMetricList(metrics, metricIds, errors, prefix) {
   }
 }
 
-function validateThresholdMetrics(thresholds, metricIds, errors, prefix) {
+function validateThresholdMetrics(thresholds, metricIds, errors, prefix, processRoleIds) {
   for (const [metric, value] of Object.entries(thresholds ?? {})) {
     if (metric === "roleThresholds") {
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        errors.push(`${prefix}.roleThresholds must be an object`);
+        continue;
+      }
       for (const [role, roleThresholds] of Object.entries(value ?? {})) {
-        validateThresholdMetrics(roleThresholds, metricIds, errors, `${prefix}.roleThresholds.${role}`);
+        if (processRoleIds && !processRoleIds.has(role)) {
+          errors.push(`${prefix}.roleThresholds references unknown process role '${role}'`);
+        }
+        if (!roleThresholds || typeof roleThresholds !== "object" || Array.isArray(roleThresholds)) {
+          errors.push(`${prefix}.roleThresholds.${role} must be an object`);
+          continue;
+        }
+        validateThresholdMetrics(
+          roleThresholds,
+          metricIds,
+          errors,
+          `${prefix}.roleThresholds.${role}`,
+          processRoleIds
+        );
       }
       continue;
     }
     if (!metricIds.has(metric)) {
       errors.push(`${prefix} references unknown metric '${metric}'`);
+    }
+    if (!Number.isFinite(value) || value < 0) {
+      errors.push(`${prefix}.${metric} must be a finite non-negative number`);
     }
   }
 }

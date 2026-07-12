@@ -6,6 +6,8 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Hardened command execution with bounded streaming redaction, POSIX process-group cleanup, strict optional-log matching, and direct scenario command validation.
+- Fixed OpenClaw inventory discovery to recognize canonical JSON5 plugin manifests consistently across platforms while deterministically bounding scans.
 - Isolated concurrent self-check OCM identities, child environments, runtime names, and temp cleanup ownership.
 - Hardened performance baseline persistence, unstable-group detection, and repeated-work audit isolation.
 - Fixed web reports to reset matrix deltas across missing samples, preserve scenario breach status, render blocked OG verdicts safely, revalidate mutable OG images, and normalize rounded minute durations.
@@ -15,3 +17,7 @@ All notable changes to Kova are documented in this file.
 - Hardened release validation against missing, malformed, misplaced, partial, or incomplete provider, health, snapshot, plugin-security, command-timing, and measurement evidence.
 - Hardened runtime teardown with collision-resistant local-build names, exact OCM missing-resource matching, awaited proxy shutdown, and independent cleanup stages.
 - Centralized disposable environment cleanup in Kova's lifecycle and removed stale scenario cleanup commands and unused raw selector substitutions.
+- Hardened registry and evaluation integrity for capability catalogs, workflow derivation, thresholds, and malformed harness evidence.
+- Fixed credential setup to validate provider/CLI pairings and recover concurrent or interrupted updates through a durable transaction journal and cross-process lock.
+- Replaced external CLI credential-file guessing with native Codex and Claude authentication status checks.
+- Hardened interactive setup with no-echo secret input, JSON-clean stdout, terminal-state restoration, and real directory write probes.

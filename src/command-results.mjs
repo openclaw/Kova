@@ -6,9 +6,18 @@ const structuredFailureStatuses = new Set([
   RECORD_STATUS.INCOMPLETE,
   RECORD_STATUS.BLOCKED
 ]);
+const noLogsStderrPattern = /^ocm: no logs exist for env "[^"\r\n]+" across stdout or stderr\n?$/;
 
 export function isNoLogsOutput(output) {
-  return /no logs exist for env\b/i.test(String(output ?? ""));
+  return noLogsStderrPattern.test(String(output ?? ""));
+}
+
+export function isOptionalNoLogsResult(result) {
+  return result?.status === 1 &&
+    result?.timedOut !== true &&
+    !result?.signal &&
+    result?.stdout === "" &&
+    isNoLogsOutput(result?.stderr);
 }
 
 export function normalizeOptionalCommandResult(result) {
@@ -16,8 +25,7 @@ export function normalizeOptionalCommandResult(result) {
     return result;
   }
 
-  const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
-  if (/^ocm\s+logs\s/.test(result.command ?? "") && isNoLogsOutput(output)) {
+  if (/^ocm\s+logs(?:\s|$)/.test(result.command ?? "") && isOptionalNoLogsResult(result)) {
     result.optional = true;
     result.originalStatus = result.status;
     result.status = 0;

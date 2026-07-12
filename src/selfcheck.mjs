@@ -1,10 +1,10 @@
 import { spawn } from "node:child_process";
-import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
+import { chmod, link, lstat, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveScriptStep } from "mock-ai-provider/dist/providers/openai/common/scripted-response.js";
-import { quoteShell, runCommand } from "./commands.mjs";
+import { createBoundedOutputAccumulator, quoteShell, runCommand } from "./commands.mjs";
 import { runCleanupCommand } from "./cleanup.mjs";
 import { applyEvidenceLedgerGating, attachEvidenceLedger } from "./evidence-ledger.mjs";
 import { attachCleanupEvidence } from "./evidence/record.mjs";
@@ -37,10 +37,15 @@ import {
 import {
   loadChannelCapabilities,
   validateChannelCapabilityCatalogReferences,
+  validateChannelProofPolicyReferences,
   validateChannelCapabilityWorkflowReferences,
   validateChannelCapabilityShape
 } from "./registries/channel-capabilities.mjs";
 import { loadChannelCapabilityCatalog, validateChannelCapabilityCatalogShape } from "./registries/channel-capability-catalog.mjs";
+import {
+  workflowCaseCatalogFromFamilies,
+  workflowInventoryFromFamilies
+} from "./registries/channel-workflow-families.mjs";
 import { loadChannelWorkflowInventory, validateChannelWorkflowInventoryReferences } from "./registries/channel-workflow-inventory.mjs";
 import {
   loadChannelWorkflowCaseCatalog,
@@ -59,7 +64,7 @@ import { validateScenarioShape } from "./registries/scenarios.mjs";
 import { validateStateShape } from "./registries/states.mjs";
 import { validateRegistryReferences } from "./registries/validate.mjs";
 import { isMissingOcmResource } from "./ocm/missing-resource.mjs";
-import { assertSafeScenarioCommand } from "./safety.mjs";
+import { assertSafeScenarioCommand, assertSingleTopLevelShellCommand } from "./safety.mjs";
 import { resolveTarget } from "./targets.mjs";
 import {
   measurementScopeForPhase,
@@ -97,7 +102,8 @@ import { captureOpenClawStateSnapshot } from "./collectors/openclaw-state.mjs";
 import { buildReportSummary, renderMarkdownReport, renderPasteSummary, renderReportSummary, summarizeRecords } from "./reporting/report.mjs";
 import { buildRepeatedWorkAudit } from "./audits/repeated-work.mjs";
 import { ENV_COLLECTOR_IDS, resolveCollectionPolicy } from "./collection-policy.mjs";
-import { channelPlatformsDir } from "./paths.mjs";
+import { classifyManifest, selectManifestCandidates } from "./inventory/openclaw.mjs";
+import { channelPlatformsDir, repoRoot } from "./paths.mjs";
 import {
   buildAgentCliLocalTurnEvidenceInvariants,
   buildAgentGatewayRpcTurnEvidenceInvariants,
@@ -112,6 +118,7 @@ import {
   commandFailureRecordStatus,
   interpretCommandResult,
   isNoLogsOutput,
+  isOptionalNoLogsResult,
   normalizeOptionalCommandResult
 } from "./command-results.mjs";
 import { createRunId } from "./run/run-id.mjs";
@@ -150,6 +157,7 @@ import { createSelfCheckProgress, renderSelfCheckReceipt } from "./reporting/ren
 import { scriptForMode as buildMockProviderScriptForMode } from "../support/channel-workflow-provider-script.mjs";
 import { projectInternalReport } from "./web-publish/from-internal-report.mjs";
 import { augmentWithDeltas, findImmediatePrior } from "./web-publish/projector.mjs";
+import { directoryCheck } from "./setup.mjs";
 
 export async function runSelfCheck(flags = {}) {
   return runInSelfCheckScope(
@@ -304,6 +312,10 @@ async function runScopedSelfCheck(flags, scope, workspace) {
       "kova setup requires --non-interactive or --ci when stdin is not a TTY"
     ));
     checks.push(await credentialStoreSelfCheck(tmp));
+    checks.push(await credentialStoreConcurrentWritersCheck(tmp));
+    checks.push(await credentialStoreInterruptedTransactionCheck(tmp));
+    checks.push(await setupDirectoryWriteProbeCheck(tmp));
+    checks.push(await setupTtySecretInputCheck(tmp));
     checks.push(await failingCommandCheck(
       "live-auth-requires-credentials",
       `KOVA_HOME=${quoteShell(join(tmp, "empty-auth-home"))} node bin/kova.mjs run --target runtime:stable --scenario fresh-install --auth live --json`,
@@ -316,6 +328,9 @@ async function runScopedSelfCheck(flags, scope, workspace) {
     ));
     checks.push(await setupNumericFlagsRejectedCheck(tmp));
     checks.push(await externalCliSetupCheck(tmp));
+    checks.push(await directCredentialProviderPairingCheck(tmp));
+    checks.push(await externalCliProviderPairingCheck(tmp));
+    checks.push(await claudeCliLoggedOutCheck(tmp));
     checks.push(await externalCliOpenClawConfigCheck(tmp));
     checks.push(await anthropicApiKeyOpenClawConfigCheck(tmp));
     checks.push(await mockAuthOpenClawConfigCheck(tmp));
@@ -328,13 +343,9 @@ async function runScopedSelfCheck(flags, scope, workspace) {
       `KOVA_HOME=${quoteShell(join(tmp, "custom-external-cli-home"))} node bin/kova.mjs setup --non-interactive --provider custom-openai --auth external-cli --json`,
       "external-cli auth is only supported for provider openai or anthropic"
     ));
-    checks.push(await failingCommandCheck(
-      "setup-external-cli-verifies-auth",
-      `HOME=${quoteShell(join(tmp, "no-codex-auth"))} KOVA_HOME=${quoteShell(join(tmp, "missing-external-cli-auth-home"))} node bin/kova.mjs setup --non-interactive --provider openai --auth external-cli --json`,
-      "external-cli codex is not usable"
-    ));
+    checks.push(await externalCliSetupRejectsUnauthenticatedCheck(tmp));
     checks.push(await externalCliRunAuthVerificationCheck(tmp));
-    checks.push(await commandTimeoutContractCheck());
+    checks.push(await commandTimeoutContractCheck(tmp));
     checks.push(await commandOutputBudgetCheck());
     checks.push(logSnippetBudgetCheck());
     checks.push(expectedMockProviderFailureTimeoutLogCheck());
@@ -441,6 +452,7 @@ async function runScopedSelfCheck(flags, scope, workspace) {
       }
     }));
     checks.push(await channelCapabilityRegistryCheck());
+    checks.push(inventoryManifestContractsCheck());
     checks.push(await inventoryPlanCheck(tmp));
     checks.push(await repeatedWorkAuditCheck());
     checks.push(await collectionPolicyResolverCheck(tmp, scope));
@@ -1342,6 +1354,80 @@ function evaluationViolationHelpersCheck() {
     assertEqual(violations.length, 6, "violation helper count");
     assertEqual(violations.some((violation) => violation.metric === "resourceByRole.gateway.peakRssMb"), true, "role RSS violation");
     assertEqual(violations.some((violation) => violation.phaseId === "turn"), true, "turn threshold violation");
+
+    const malformed = [];
+    checkDuration(
+      malformed,
+      [{ command: "openclaw status", durationMs: "51" }],
+      "statusMs",
+      50,
+      (command) => command.includes("status")
+    );
+    checkEvidenceThreshold(malformed, "media", "mediaDescribeMs", Number.NaN, 100, "Media describe");
+    checkAggregateThreshold(malformed, null, "agentTurnP95Ms", 200);
+    checkTurnThreshold(
+      malformed,
+      { phaseId: "turn", preProviderMs: undefined },
+      "preProviderMs",
+      300,
+      "pre-provider latency was malformed"
+    );
+    assertEqual(malformed.length, 4, "malformed helper payload count");
+    assertEqual(
+      malformed.every((violation) => violation.failureDomain === "kova-harness"),
+      true,
+      "malformed helper payloads are Kova harness blockers"
+    );
+
+    const malformedRecord = {
+      status: "PASS",
+      phases: [{
+        id: "status",
+        results: [{
+          command: "ocm @kova-self-check -- status",
+          status: 0,
+          durationMs: "51"
+        }]
+      }]
+    };
+    evaluateRecord(malformedRecord, { thresholds: { statusMs: 50 } });
+    assertEqual(malformedRecord.status, "BLOCKED", "malformed Kova evidence blocks the record");
+    assertEqual(
+      malformedRecord.violations.some((violation) => violation.failureDomain === "kova-harness"),
+      true,
+      "blocked record preserves malformed evidence reason"
+    );
+    const failedMalformedRecord = {
+      status: "FAIL",
+      phases: structuredClone(malformedRecord.phases)
+    };
+    evaluateRecord(failedMalformedRecord, { thresholds: { statusMs: 50 } });
+    assertEqual(
+      failedMalformedRecord.status,
+      "FAIL",
+      "malformed Kova evidence does not hide an established target failure"
+    );
+    const mixedRecord = {
+      status: "PASS",
+      phases: [{
+        id: "status",
+        results: [{
+          command: "ocm @kova-self-check -- status",
+          status: 0,
+          durationMs: 51
+        }, {
+          command: "ocm @kova-self-check -- status",
+          status: 0,
+          durationMs: "malformed"
+        }]
+      }]
+    };
+    evaluateRecord(mixedRecord, { thresholds: { statusMs: 50 } });
+    assertEqual(
+      mixedRecord.status,
+      "FAIL",
+      "confirmed target violations take precedence over malformed Kova evidence"
+    );
     return {
       id: "evaluation-violation-helpers",
       status: "PASS",
@@ -3546,14 +3632,14 @@ async function stateLifecycleCommandIndexesCheck(tmp) {
       [
         {
           commands: [
-            "node -e 'process.stdout.write(\"first\")'",
-            "node -e 'process.stdout.write(\"second\")'"
+            "node --version",
+            "node --version"
           ],
           evidence: [],
           collectionIntent: "skip-env"
         },
         {
-          commands: ["node -e 'process.stdout.write(\"third\")'"],
+          commands: ["node --version"],
           evidence: [],
           collectionIntent: "skip-env"
         }
@@ -4674,7 +4760,21 @@ async function gateDryRunCheck(tmp) {
 function safetyGuardCheck() {
   try {
     assertSafeScenarioCommand("ocm start kova-safe-test --runtime stable --json", {}, "kova-safe-test");
+    assertSafeScenarioCommand("ocm --version", {}, "kova-safe-test");
     assertSafeScenarioCommand("ocm env clone 'Team Env' kova-safe-test --json", { sourceEnv: "Team Env" }, "kova-safe-test");
+    assertSafeScenarioCommand("node support/run-soak-loop.mjs --env kova-safe-test", {}, "kova-safe-test");
+    assertSafeScenarioCommand(
+      "node support/expect-command-fails.mjs -- ocm @kova-safe-test -- agent --local --message hi",
+      {},
+      "kova-safe-test"
+    );
+    assertSafeScenarioCommand(
+      "rm -rf '/tmp/kova-self-check-artifacts/import'",
+      {},
+      "kova-safe-test",
+      "/tmp/kova-self-check-artifacts"
+    );
+    assertSingleTopLevelShellCommand("ocm env exec kova-safe-test -- sh -lc 'printf \"a;b|c&&d\" >&2'");
     const blockedCases = [
       "ocm env destroy Violet --yes",
       "ocm upgrade Violet --channel beta --json",
@@ -4699,6 +4799,80 @@ function safetyGuardCheck() {
       wrongSourceBlocked = /refusing to mutate non-Kova/.test(error.message);
     }
     assertEqual(wrongSourceBlocked, true, "unexpected source env clone blocked");
+    const compoundCases = [
+      "ocm logs kova-safe-test; ocm env destroy Violet --yes",
+      "true && ocm env destroy Violet --yes",
+      "true | ocm env destroy Violet --yes",
+      "sleep 10 & ocm env destroy Violet --yes",
+      "true\nocm env destroy Violet --yes"
+    ];
+    let compoundBlocked = 0;
+    for (const command of compoundCases) {
+      try {
+        assertSafeScenarioCommand(command, {}, "kova-safe-test");
+      } catch (error) {
+        if (/refusing (?:compound )?scenario command/.test(error.message)) {
+          compoundBlocked += 1;
+        }
+      }
+    }
+    assertEqual(compoundBlocked, compoundCases.length, "top-level compound commands blocked");
+    const shellEvaluationCases = [
+      "echo \"$(ocm env destroy Violet --yes)\"",
+      "echo `ocm env destroy Violet --yes`",
+      "cat <(ocm env destroy Violet --yes)",
+      "sh -c 'ocm env destroy Violet --yes'",
+      "env ocm env destroy Violet --yes",
+      "KOVA_MODE=test ocm env destroy Violet --yes",
+      "\"$OCM\" env destroy Violet --yes",
+      "/usr/local/bin/ocm env destroy Violet --yes",
+      "! ocm env destroy Violet --yes",
+      "(ocm env destroy Violet --yes)",
+      "> /tmp/kova-redirection ocm env destroy Violet --yes",
+      "timeout 30 ocm env destroy Violet --yes",
+      "node -e 'require(\"node:child_process\").execFileSync(\"ocm\", [\"env\", \"destroy\", \"Violet\", \"--yes\"])'",
+      "node /tmp/support/run-soak-loop.mjs --env kova-safe-test",
+      "node support/run-openclaw-release-age-upgrade.mjs --env Violet --age day --json",
+      "node support/run-openclaw-release-age-upgrade.mjs --env=Violet --age day --json",
+      "node support/run-doctor-repair.mjs --env kova-safe-test --env Violet",
+      "node support/expect-command-fails.mjs -- ocm env destroy Violet --yes",
+      "node support/assert-command-output.mjs --pattern done -- ocm logs Violet --tail 20 --raw",
+      "ocm env des\\\ntroy Violet --yes",
+      "ocm --json env destroy Violet --yes",
+      "ocm e?? d?????? Violet --yes",
+      "rm -rf \"/tmp/kova-self-check-artifacts/im\\port\""
+    ];
+    let shellEvaluationBlocked = 0;
+    for (const command of shellEvaluationCases) {
+      try {
+        assertSafeScenarioCommand(command, {}, "kova-safe-test");
+      } catch (error) {
+        if (/^refusing /.test(error.message)) {
+          shellEvaluationBlocked += 1;
+        }
+      }
+    }
+    assertEqual(shellEvaluationBlocked, shellEvaluationCases.length, "shell evaluation bypasses blocked");
+    const artifactCleanupCases = [
+      ["rm -rf relative/import", "relative"],
+      ["rm -rf ~/kova-self-check-artifacts/import", "/tmp/kova-self-check-artifacts"]
+    ];
+    for (const [command, artifactDir] of artifactCleanupCases) {
+      let blocked = false;
+      try {
+        assertSafeScenarioCommand(command, {}, "kova-safe-test", artifactDir);
+      } catch (error) {
+        blocked = /unapproved artifact cleanup/.test(error.message);
+      }
+      assertEqual(blocked, true, `unsafe artifact cleanup path blocked: ${command}`);
+    }
+    let obfuscatedMutationBlocked = false;
+    try {
+      assertSafeScenarioCommand("ocm e''nv des''troy Violet --yes", {}, "kova-safe-test");
+    } catch (error) {
+      obfuscatedMutationBlocked = /refusing to mutate non-Kova/.test(error.message);
+    }
+    assertEqual(obfuscatedMutationBlocked, true, "quoted OCM mutation words are canonicalized");
     return {
       id: "durable-env-mutation-guard",
       status: "PASS",
@@ -5396,12 +5570,12 @@ async function liveExternalCliDryRunCheck(tmp) {
   const kovaHome = join(tmp, "live-external-cli-kova-home");
   const fakeBin = join(tmp, "live-external-cli-bin");
   const reportDir = join(tmp, "live-external-cli-report");
-  await mkdir(join(home, ".codex"), { recursive: true });
+  await mkdir(home, { recursive: true });
   await mkdir(join(kovaHome, "credentials"), { recursive: true });
   await mkdir(fakeBin, { recursive: true });
-  await writeFile(join(home, ".codex", "auth.json"), "{\"tokens\":{\"access_token\":\"redacted\"}}\n", "utf8");
-  await writeFile(join(fakeBin, "codex"), "#!/bin/sh\necho codex-selfcheck\n", "utf8");
-  await chmod(join(fakeBin, "codex"), 0o755);
+  await writeExternalCliFixture(fakeBin, "codex", {
+    stderr: "native codex auth status"
+  });
   await writeFile(join(kovaHome, "credentials", "providers.json"), `${JSON.stringify({
     schemaVersion: "kova.credentials.providers.v1",
     defaultProvider: "openai",
@@ -5475,12 +5649,15 @@ async function liveAnthropicExternalCliDryRunCheck(tmp) {
   const kovaHome = join(tmp, "live-anthropic-cli-kova-home");
   const fakeBin = join(tmp, "live-anthropic-cli-bin");
   const reportDir = join(tmp, "live-anthropic-cli-report");
-  await mkdir(join(home, ".claude"), { recursive: true });
+  await mkdir(home, { recursive: true });
   await mkdir(join(kovaHome, "credentials"), { recursive: true });
   await mkdir(fakeBin, { recursive: true });
-  await writeFile(join(home, ".claude", ".credentials.json"), "{\"claudeAiOauth\":{\"accessToken\":\"redacted\"}}\n", "utf8");
-  await writeFile(join(fakeBin, "claude"), "#!/bin/sh\necho claude-selfcheck\n", "utf8");
-  await chmod(join(fakeBin, "claude"), 0o755);
+  await writeExternalCliFixture(fakeBin, "claude", {
+    statusPayload: {
+      loggedIn: true,
+      email: "must-not-leak@example.invalid"
+    }
+  });
   await writeFile(join(kovaHome, "credentials", "providers.json"), `${JSON.stringify({
     schemaVersion: "kova.credentials.providers.v1",
     defaultProvider: "anthropic",
@@ -9642,11 +9819,12 @@ if (args[0] === ${JSON.stringify(`@${scope.envName}`)} && args[1] === "--" && ar
 async function networkFrontageProductPreflightBlocksPendingCheck(tmp, scope) {
   const fakeBin = join(tmp, "network-frontage-pending-bin");
   const artifactDir = join(tmp, "network-frontage-pending-artifacts");
-  const sentinel = join(tmp, "network-frontage-pending-ran");
+  const sentinel = join(artifactDir, "import");
   const fakeOcm = join(fakeBin, "ocm");
   try {
     await mkdir(fakeBin, { recursive: true });
     await mkdir(artifactDir, { recursive: true });
+    await mkdir(sentinel, { recursive: true });
     await writeFile(fakeOcm, `#!/bin/sh
 if [ "$1:$2" = "service:status" ]; then
   printf '{"gatewayPort":43123,"gatewayState":"starting","running":false}\\n'
@@ -9657,7 +9835,7 @@ exit 2
 `, "utf8");
     await chmod(fakeOcm, 0o755);
     const result = await runScenarioCommand(
-      `node -e "require('node:fs').writeFileSync(process.argv[1], 'ran')" ${quoteShell(sentinel)}`,
+      `rm -rf ${quoteShell(sentinel)}`,
       {
         timeoutMs: 5000,
         networkFrontage: {
@@ -9679,9 +9857,10 @@ exit 2
     let commandRan = false;
     try {
       await stat(sentinel);
-      commandRan = true;
     } catch (error) {
-      if (error.code !== "ENOENT") {
+      if (error.code === "ENOENT") {
+        commandRan = true;
+      } else {
         throw error;
       }
     }
@@ -12343,12 +12522,60 @@ async function cleanupArtifactsCheck(tmp) {
   };
 }
 
+function inventoryManifestContractsCheck() {
+  const canonicalManifest = {
+    id: "discord",
+    channels: ["discord"],
+    configSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {}
+    }
+  };
+  assertEqual(
+    classifyManifest("/repo/extensions/discord/openclaw.plugin.json", canonicalManifest),
+    "plugin-manifest",
+    "POSIX canonical OpenClaw plugin classification"
+  );
+  assertEqual(
+    classifyManifest("C:\\repo\\extensions\\discord\\openclaw.plugin.json", canonicalManifest),
+    "plugin-manifest",
+    "Windows canonical OpenClaw plugin classification"
+  );
+  assertEqual(
+    classifyManifest("C:\\repo\\extensions\\dashboard\\manifest.json", { openclawExtension: true }),
+    "extension-manifest",
+    "Windows extension path classification"
+  );
+
+  const candidates = Array.from({ length: 302 }, (_, index) =>
+    `/repo/extensions/plugin-${String(index).padStart(3, "0")}/openclaw.plugin.json`
+  );
+  const forward = selectManifestCandidates(candidates);
+  const reversed = selectManifestCandidates([...candidates].reverse());
+  assertEqual(forward.length, 300, "manifest candidate cap");
+  assertEqual(
+    forward.join("\n"),
+    reversed.join("\n"),
+    "manifest candidate selection is discovery-order independent"
+  );
+  assertEqual(forward.at(0), candidates[0], "manifest candidate sort first item");
+  assertEqual(forward.at(-1), candidates[299], "manifest candidate sort capped last item");
+
+  return {
+    id: "inventory-manifest-contracts",
+    status: "PASS",
+    command: "inline self-check",
+    durationMs: 0
+  };
+}
+
 async function inventoryPlanCheck(tmp) {
   const binDir = join(tmp, "inventory-bin");
   const repoDir = join(tmp, "inventory-openclaw");
   const openclawBin = join(binDir, "openclaw");
   await mkdir(binDir, { recursive: true });
-  await mkdir(join(repoDir, "plugins", "bundled"), { recursive: true });
+  await mkdir(join(repoDir, "extensions", "discord"), { recursive: true });
   await mkdir(join(repoDir, "extensions", "dashboard"), { recursive: true });
   await mkdir(join(repoDir, "src", "channels", "message"), { recursive: true });
   await writeFile(openclawBin, `#!/bin/sh
@@ -12388,11 +12615,19 @@ esac
       "release:check": "node scripts/release-check.mjs"
     }
   }, null, 2)}\n`, "utf8");
-  await writeFile(join(repoDir, "plugins", "bundled", "plugin.json"), `${JSON.stringify({
-    name: "plugins",
-    description: "Bundled plugin manifest",
-    openclawPlugin: true
-  }, null, 2)}\n`, "utf8");
+  await writeFile(join(repoDir, "extensions", "discord", "openclaw.plugin.json"), `{
+  // OpenClaw accepts authored JSON5 plugin manifests.
+  id: "discord",
+  name: "Discord",
+  description: "OpenClaw-style channel plugin manifest",
+  channels: ["discord"],
+  configSchema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {},
+  },
+}
+`, "utf8");
   await writeFile(join(repoDir, "extensions", "dashboard", "manifest.json"), `${JSON.stringify({
     name: "dashboard",
     description: "Dashboard extension",
@@ -12454,7 +12689,14 @@ export const channelMessageReceiveAckPolicies = [
       assertEqual(data.capabilities?.some((capability) => capability.id === "cli:unknownx" && capability.matchStatus === "unmodeled"), true, "unknown command warning");
       assertEqual(data.capabilities?.some((capability) => capability.id === "script:release:check"), true, "product package scripts discovered");
       assertEqual(data.capabilities?.some((capability) => capability.id === "script:build"), false, "internal package scripts filtered");
-      assertEqual(data.capabilities?.some((capability) => capability.kind === "plugin-manifest"), true, "plugin manifest discovered");
+      assertEqual(
+        data.capabilities?.some((capability) =>
+          capability.kind === "plugin-manifest" &&
+          capability.path === "extensions/discord/openclaw.plugin.json"
+        ),
+        true,
+        "canonical OpenClaw plugin manifest discovered"
+      );
       assertEqual(data.capabilities?.some((capability) => capability.kind === "extension-manifest"), true, "extension manifest discovered");
       assertEqual((data.coverage?.warnings ?? []).some((warning) => warning.capability === "cli:unknownx"), true, "unmodeled warning emitted");
       assertEqual(data.coverage?.ok, false, "required unmodeled capability blocks inventory coverage");
@@ -14240,6 +14482,21 @@ function thresholdPolicyCalibrationCheck() {
       true,
       "profile calibrated role violation"
     );
+    const scenarioRolePolicy = resolveThresholdPolicy({
+      scenario: {
+        id: "scenario-role-policy",
+        thresholds: {
+          coldReadyMs: 100,
+          roleThresholds: {
+            gateway: { peakRssMb: 200 }
+          }
+        }
+      }
+    });
+    const scenarioSource = scenarioRolePolicy.report.sources.find((source) => source.kind === "scenario");
+    const scenarioRoleSource = scenarioRolePolicy.report.sources.find((source) => source.kind === "scenario-role");
+    assertEqual(JSON.stringify(scenarioSource?.thresholds), JSON.stringify(["coldReadyMs"]), "scenario scalar threshold provenance");
+    assertEqual(JSON.stringify(scenarioRoleSource?.roles), JSON.stringify(["gateway"]), "scenario role threshold provenance");
     return {
       id: "threshold-policy-calibration",
       status: "PASS",
@@ -14661,6 +14918,78 @@ function stateRegistryValidationCheck() {
     }
     assertEqual(rejectedMetric, true, "unknown scenario metric rejected");
 
+    for (const value of ["100", true, {}, Number.NaN, Number.POSITIVE_INFINITY, -1]) {
+      let rejectedThresholdValue = false;
+      try {
+        validateRegistryReferences({
+          scenarios: [{
+            id: "scenario",
+            surface: "known-surface",
+            proves: ["baseline"],
+            thresholds: { knownMetric: value },
+            states: [],
+            targetKinds: [],
+            processRoles: []
+          }],
+          states: [],
+          profiles: [],
+          surfaces: [{
+            id: "known-surface",
+            processRoles: [],
+            thresholds: {},
+            requirements: [{
+              id: "baseline",
+              states: [],
+              targetKinds: ["runtime"],
+              metrics: ["knownMetric"]
+            }]
+          }],
+          processRoles: [],
+          metrics: [{ id: "knownMetric" }]
+        });
+      } catch (error) {
+        rejectedThresholdValue = /must be a finite non-negative number/.test(error.message);
+      }
+      assertEqual(rejectedThresholdValue, true, `invalid threshold value ${String(value)} rejected`);
+    }
+
+    let rejectedScenarioRoleThreshold = false;
+    try {
+      validateRegistryReferences({
+        scenarios: [{
+          id: "scenario",
+          surface: "known-surface",
+          proves: ["baseline"],
+          thresholds: {
+            roleThresholds: {
+              gateway: { knownMetric: -1 }
+            }
+          },
+          states: [],
+          targetKinds: [],
+          processRoles: ["gateway"]
+        }],
+        states: [],
+        profiles: [],
+        surfaces: [{
+          id: "known-surface",
+          processRoles: ["gateway"],
+          thresholds: {},
+          requirements: [{
+            id: "baseline",
+            states: [],
+            targetKinds: ["runtime"],
+            metrics: ["knownMetric"]
+          }]
+        }],
+        processRoles: [{ id: "gateway" }],
+        metrics: [{ id: "knownMetric" }]
+      });
+    } catch (error) {
+      rejectedScenarioRoleThreshold = /roleThresholds\.gateway\.knownMetric must be a finite non-negative number/.test(error.message);
+    }
+    assertEqual(rejectedScenarioRoleThreshold, true, "invalid scenario role threshold rejected");
+
     let rejectedCalibration = false;
     try {
       validateRegistryReferences({
@@ -14992,6 +15321,11 @@ async function channelCapabilityRegistryCheck() {
     assertEqual(telegram.capabilities.every((capability) =>
       capability.catalogId === `${capability.group}:${capability.id}`
     ), true, "telegram capabilities reference OpenClaw catalog ids");
+    assertEqual(
+      telegram.capabilities.every((capability) => capability.title !== capability.catalogId),
+      true,
+      "channel capability titles resolve from the OpenClaw catalog"
+    );
     assertEqual(telegram.workflowCaseIds?.includes("source-visible-delivery.media.message-tool-only"), true, "telegram maps to shared source media workflow case");
     assertEqual(telegram.workflowCoverage?.schemaVersion, "kova.channelWorkflowCoverage.v1", "telegram exposes derived workflow coverage");
     assertEqual(telegram.workflowCoverage?.selectedCount, telegram.workflowCaseIds?.length, "telegram workflow coverage selected count matches selected case ids");
@@ -15142,6 +15476,83 @@ async function channelCapabilityRegistryCheck() {
       rejectedCatalogReference = /not defined in the OpenClaw channel capability catalog/.test(error.message);
     }
     assertEqual(rejectedCatalogReference, true, "channel capability must reference OpenClaw catalog");
+
+    let rejectedCatalogCollision = false;
+    try {
+      validateChannelCapabilityCatalogReferences([], [
+        {
+          id: "first-catalog",
+          capabilities: [{ id: "text", group: "durable-final" }]
+        },
+        {
+          id: "second-catalog",
+          capabilities: [{ id: "text", group: "durable-final" }]
+        }
+      ]);
+    } catch (error) {
+      rejectedCatalogCollision = /across catalogs 'first-catalog' and 'second-catalog'/.test(error.message);
+    }
+    assertEqual(rejectedCatalogCollision, true, "cross-catalog capability collisions are rejected");
+
+    for (const field of ["blockingCapabilities", "liveSmokeCapabilities"]) {
+      let rejectedProofPolicyReference = false;
+      try {
+        validateChannelProofPolicyReferences({
+          [field]: ["durable-final:imaginary"]
+        }, catalogs);
+      } catch (error) {
+        rejectedProofPolicyReference = new RegExp(`${field} references unknown channel capability`).test(error.message);
+      }
+      assertEqual(rejectedProofPolicyReference, true, `${field} must reference OpenClaw catalog capabilities`);
+    }
+
+    const duplicateFamily = {
+      id: "duplicate-family",
+      title: "Duplicate Family",
+      userAction: "user sends a message",
+      openclawSurface: "message delivery",
+      ownerArea: "channels",
+      sourceRefs: ["src/channels/message/types.ts#L1"],
+      contentKinds: ["text"],
+      routeKinds: ["direct"],
+      deliveryModes: ["final"],
+      lifecycles: ["success"],
+      atoms: [{ group: "durable-final", id: "text" }],
+      cases: [{
+        id: "duplicate.case",
+        workflow: "duplicate-family",
+        userAction: "user sends a message",
+        openclawSurface: "message delivery",
+        prompt: "reply with a short message",
+        providerScript: {},
+        expects: {},
+        matrix: {
+          content: "text",
+          route: "direct",
+          delivery: "final",
+          lifecycle: "success"
+        },
+        atoms: [{ group: "durable-final", id: "text" }]
+      }]
+    };
+    let rejectedDerivedInventory = false;
+    try {
+      workflowInventoryFromFamilies([duplicateFamily, duplicateFamily]);
+    } catch (error) {
+      rejectedDerivedInventory = /duplicate channel workflow inventory workflow/.test(error.message);
+    }
+    assertEqual(rejectedDerivedInventory, true, "derived workflow inventories validate duplicate family ids");
+
+    let rejectedDerivedCaseCatalog = false;
+    try {
+      workflowCaseCatalogFromFamilies([duplicateFamily, {
+        ...duplicateFamily,
+        id: "other-family"
+      }]);
+    } catch (error) {
+      rejectedDerivedCaseCatalog = /duplicate channel workflow case/.test(error.message);
+    }
+    assertEqual(rejectedDerivedCaseCatalog, true, "derived workflow case catalogs validate duplicate case ids");
 
     let rejectedWorkflowCaseReference = false;
     try {
@@ -15861,6 +16272,467 @@ async function credentialStoreSelfCheck(tmp) {
   }
 }
 
+async function credentialStoreConcurrentWritersCheck(tmp) {
+  const home = join(tmp, "concurrent-credentials-home");
+  const credentials = join(home, "credentials");
+  const staleLock = join(credentials, ".store.lock");
+  const staleOwnerId = "00000000-0000-4000-8000-000000000000";
+  const staleOwner = join(credentials, `.store.lock.owner-2147483647-${staleOwnerId}.json`);
+  await mkdir(credentials, { recursive: true });
+  await writeFile(staleOwner, `${JSON.stringify({
+    pid: 2147483647,
+    token: staleOwnerId,
+    processStart: null,
+    createdAt: new Date(0).toISOString()
+  })}\n`, "utf8");
+  await link(staleOwner, staleLock);
+  const commands = Array.from({ length: 12 }, (_, index) => {
+    const anthropic = index % 2 === 1;
+    return [
+      "setup",
+      "auth",
+      "--provider", anthropic ? "anthropic" : "openai",
+      "--method", "api-key",
+      "--env-var", anthropic ? "ANTHROPIC_API_KEY" : "OPENAI_API_KEY",
+      "--value", anthropic ? "anth-value" : "open-value",
+      "--json"
+    ];
+  });
+  const startedAt = Date.now();
+  try {
+    const results = await Promise.all(commands.map((args) => runNodeProcess(args, {
+      ...process.env,
+      KOVA_HOME: home
+    })));
+    const failed = results.filter((result) => result.status !== 0);
+    if (failed.length > 0) {
+      throw new Error(failed.map((result) => result.stderr || `exit ${result.status}`).join("\n"));
+    }
+
+    const providers = JSON.parse(await readFile(join(credentials, "providers.json"), "utf8"));
+    const liveEnv = await readFile(join(credentials, "live.env"), "utf8");
+    assertEqual(providers.providers?.openai?.method, "api-key", "concurrent OpenAI provider");
+    assertEqual(providers.providers?.anthropic?.method, "api-key", "concurrent Anthropic provider");
+    assertEqual(liveEnv.includes("OPENAI_API_KEY=open-value"), true, "concurrent OpenAI key");
+    assertEqual(liveEnv.includes("ANTHROPIC_API_KEY=anth-value"), true, "concurrent Anthropic key");
+    const leftovers = (await readdir(credentials)).filter((name) =>
+      name.startsWith(".store.") ||
+      name.endsWith(".tmp")
+    );
+    assertEqual(leftovers.length, 0, "credential transaction cleanup");
+    return {
+      id: "credential-store-concurrent-writers",
+      status: "PASS",
+      command: "12 concurrent kova setup auth writers",
+      durationMs: Date.now() - startedAt
+    };
+  } catch (error) {
+    return {
+      id: "credential-store-concurrent-writers",
+      status: "FAIL",
+      command: "12 concurrent kova setup auth writers",
+      durationMs: Date.now() - startedAt,
+      message: error.message
+    };
+  }
+}
+
+async function credentialStoreInterruptedTransactionCheck(tmp) {
+  const root = join(tmp, "credential-transaction-recovery");
+  const scriptPath = join(root, "load-store.mjs");
+  const previousProviders = {
+    schemaVersion: "kova.credentials.providers.v1",
+    defaultProvider: "openai",
+    providers: {
+      openai: {
+        id: "openai",
+        method: "mock",
+        envVars: ["OPENAI_API_KEY"],
+        configuredAt: null
+      }
+    }
+  };
+  const nextProviders = {
+    schemaVersion: "kova.credentials.providers.v1",
+    defaultProvider: "openai",
+    providers: {
+      openai: {
+        id: "openai",
+        method: "api-key",
+        envVars: ["OPENAI_API_KEY"],
+        externalCli: null,
+        configuredAt: "2026-07-11T00:00:00.000Z"
+      }
+    }
+  };
+  const previous = {
+    providersText: `${JSON.stringify(previousProviders, null, 2)}\n`,
+    liveEnvText: "OPENAI_API_KEY=placeholder\n"
+  };
+  const next = {
+    providersText: `${JSON.stringify(nextProviders, null, 2)}\n`,
+    liveEnvText: "OPENAI_API_KEY=example\n"
+  };
+  const journal = `${JSON.stringify({
+    schemaVersion: "kova.credentials.transaction.v1",
+    id: "00000000-0000-4000-8000-000000000000",
+    createdAt: "2026-07-11T00:00:00.000Z",
+    previous,
+    next
+  })}\n`;
+  await mkdir(root, { recursive: true });
+  await writeFile(
+    scriptPath,
+    `import { loadCredentialStore } from ${JSON.stringify(new URL("./auth.mjs", import.meta.url).href)};\n` +
+      `console.log(JSON.stringify(await loadCredentialStore()));\n`,
+    "utf8"
+  );
+
+  const cases = [
+    {
+      id: "partial-live-env",
+      providersText: previous.providersText,
+      liveEnvText: next.liveEnvText,
+      expected: previous
+    },
+    {
+      id: "partial-providers",
+      providersText: next.providersText,
+      liveEnvText: previous.liveEnvText,
+      expected: previous
+    },
+    {
+      id: "complete-before-journal-removal",
+      providersText: next.providersText,
+      liveEnvText: next.liveEnvText,
+      expected: next
+    }
+  ];
+  const startedAt = Date.now();
+  try {
+    for (const testCase of cases) {
+      const home = join(root, testCase.id);
+      const credentials = join(home, "credentials");
+      await mkdir(credentials, { recursive: true });
+      await writeFile(join(credentials, "providers.json"), testCase.providersText, "utf8");
+      await writeFile(join(credentials, "live.env"), testCase.liveEnvText, {
+        encoding: "utf8",
+        mode: 0o600
+      });
+      await writeFile(join(credentials, ".store.transaction.json"), journal, {
+        encoding: "utf8",
+        mode: 0o600
+      });
+
+      const result = await runCommand(
+        `KOVA_HOME=${quoteShell(home)} node ${quoteShell(scriptPath)}`,
+        { timeoutMs: 30000, maxOutputChars: 1000000 }
+      );
+      if (result.status !== 0) {
+        throw new Error(`${testCase.id}: ${result.stderr.trim() || result.stdout.trim()}`);
+      }
+      const loaded = JSON.parse(result.stdout);
+      assertEqual(
+        JSON.stringify(loaded.providers),
+        JSON.stringify(JSON.parse(testCase.expected.providersText)),
+        `${testCase.id} loaded providers`
+      );
+      assertEqual(
+        loaded.liveEnv.OPENAI_API_KEY,
+        testCase.expected.liveEnvText.includes("placeholder") ? "placeholder" : "example",
+        `${testCase.id} loaded live env`
+      );
+      assertEqual(
+        await readFile(join(credentials, "providers.json"), "utf8"),
+        testCase.expected.providersText,
+        `${testCase.id} recovered providers`
+      );
+      assertEqual(
+        await readFile(join(credentials, "live.env"), "utf8"),
+        testCase.expected.liveEnvText,
+        `${testCase.id} recovered live env`
+      );
+      const leftovers = (await readdir(credentials)).filter((name) =>
+        name.startsWith(".store.") || name.endsWith(".tmp")
+      );
+      assertEqual(leftovers.length, 0, `${testCase.id} transaction cleanup`);
+    }
+    return {
+      id: "credential-store-interrupted-transaction",
+      status: "PASS",
+      command: "recover partial and complete credential transaction journals",
+      durationMs: Date.now() - startedAt
+    };
+  } catch (error) {
+    return {
+      id: "credential-store-interrupted-transaction",
+      status: "FAIL",
+      command: "recover partial and complete credential transaction journals",
+      durationMs: Date.now() - startedAt,
+      message: error.message
+    };
+  }
+}
+
+async function setupDirectoryWriteProbeCheck(tmp) {
+  const path = join(tmp, "directory-write-probe");
+  const startedAt = Date.now();
+  if (process.platform === "win32" ||
+      (typeof process.getuid === "function" && process.getuid() === 0)) {
+    return {
+      id: "setup-directory-child-write-probe",
+      status: "PASS",
+      command: "directoryCheck against mode 0222 fixture",
+      durationMs: Date.now() - startedAt,
+      message: process.platform === "win32"
+        ? "skipped POSIX permission fixture on Windows"
+        : "skipped permission fixture as root"
+    };
+  }
+  await mkdir(path, { recursive: true });
+  await chmod(path, 0o222);
+  try {
+    const result = await directoryCheck("write-probe", path);
+    assertEqual(result.status, "FAIL", "directory child creation failure");
+    return {
+      id: "setup-directory-child-write-probe",
+      status: "PASS",
+      command: "directoryCheck against mode 0222 fixture",
+      durationMs: Date.now() - startedAt
+    };
+  } catch (error) {
+    return {
+      id: "setup-directory-child-write-probe",
+      status: "FAIL",
+      command: "directoryCheck against mode 0222 fixture",
+      durationMs: Date.now() - startedAt,
+      message: error.message
+    };
+  } finally {
+    await chmod(path, 0o700).catch(() => {});
+  }
+}
+
+async function setupTtySecretInputCheck(tmp) {
+  const expectPath = (await runCommand("command -v expect", { timeoutMs: 5000 })).stdout.trim();
+  const startedAt = Date.now();
+  if (!expectPath) {
+    return {
+      id: "setup-tty-secret-input",
+      status: "PASS",
+      command: "expect PTY setup flow",
+      durationMs: Date.now() - startedAt,
+      message: "expect unavailable; PTY proof skipped"
+    };
+  }
+
+  const dir = join(tmp, "setup-tty");
+  const fakeBin = join(dir, "bin");
+  const wrapperPath = join(dir, "run-setup.sh");
+  const expectScriptPath = join(dir, "drive-setup.exp");
+  const sentinel = "dummy";
+  await mkdir(fakeBin, { recursive: true });
+  await writeFile(join(fakeBin, "ocm"), `#!/bin/sh
+case "$1:$2" in
+  --version:) echo "ocm self-check"; exit 0 ;;
+  env:list|runtime:list) echo "[]"; exit 0 ;;
+esac
+exit 1
+`, "utf8");
+  await chmod(join(fakeBin, "ocm"), 0o755);
+  await writeFile(wrapperPath, `#!/bin/sh
+before="$(stty -g)"
+cd "$KOVA_REPO_ROOT" || exit 1
+node bin/kova.mjs setup --json >"$KOVA_TTY_STDOUT"
+status=$?
+after="$(stty -g)"
+printf '\\nKOVA_TTY_BEFORE=%s\\nKOVA_TTY_AFTER=%s\\n' "$before" "$after" >&2
+exit "$status"
+`, "utf8");
+  await chmod(wrapperPath, 0o755);
+  await writeFile(expectScriptPath, `#!/usr/bin/expect -f
+set timeout 20
+set wrapper [lindex $argv 0]
+set repo [lindex $argv 1]
+set home [lindex $argv 2]
+set fakebin [lindex $argv 3]
+set stdoutfile [lindex $argv 4]
+set transcript [lindex $argv 5]
+set sentinel [lindex $argv 6]
+set mode [lindex $argv 7]
+log_file -noappend $transcript
+spawn -noecho env "KOVA_HOME=$home" "PATH=$fakebin:$env(PATH)" "KOVA_TTY_STDOUT=$stdoutfile" "KOVA_REPO_ROOT=$repo" $wrapper
+expect -exact {Provider [openai]: }
+send -- "\\r"
+expect -exact {Auth method [mock]: }
+send -- "3\\r"
+expect -exact {Env var [OPENAI_API_KEY]: }
+send -- "\\r"
+expect -exact {Value for OPENAI_API_KEY (leave empty to read host env): }
+if {$mode eq "cancel"} {
+  send -- "\\003"
+} else {
+  send -- "$sentinel\\r"
+}
+expect eof
+set result [wait]
+exit [lindex $result 3]
+`, "utf8");
+  await chmod(expectScriptPath, 0o755);
+
+  try {
+    const success = await runSetupTtyCase({
+      expectPath,
+      expectScriptPath,
+      wrapperPath,
+      repo: repoRoot,
+      fakeBin,
+      home: join(dir, "success-home"),
+      stdoutPath: join(dir, "success.json"),
+      transcriptPath: join(dir, "success.log"),
+      sentinel,
+      mode: "success"
+    });
+    assertEqual(success.status, 0, "interactive setup exit");
+    assertTtySetupState(success.transcript, sentinel);
+    const setup = JSON.parse(success.stdout);
+    assertEqual(setup.ok, true, "interactive JSON setup");
+    assertEqual(setup.auth?.method, "api-key", "interactive auth method");
+    assertEqual(success.stdout.includes("Kova auth setup"), false, "interactive prompts excluded from stdout");
+    const liveEnv = await readFile(join(dir, "success-home", "credentials", "live.env"), "utf8");
+    assertEqual(liveEnv.includes(sentinel), true, "interactive secret persisted");
+
+    const cancelled = await runSetupTtyCase({
+      expectPath,
+      expectScriptPath,
+      wrapperPath,
+      repo: repoRoot,
+      fakeBin,
+      home: join(dir, "cancel-home"),
+      stdoutPath: join(dir, "cancel.json"),
+      transcriptPath: join(dir, "cancel.log"),
+      sentinel,
+      mode: "cancel"
+    });
+    assertEqual(cancelled.status !== 0, true, "cancelled setup exits nonzero");
+    assertEqual(cancelled.transcript.includes("secret input cancelled"), true, "cancelled setup reports cancellation");
+    assertTtySetupState(cancelled.transcript, sentinel);
+
+    return {
+      id: "setup-tty-secret-input",
+      status: "PASS",
+      command: "expect PTY setup success and Ctrl-C cancellation",
+      durationMs: Date.now() - startedAt
+    };
+  } catch (error) {
+    return {
+      id: "setup-tty-secret-input",
+      status: "FAIL",
+      command: "expect PTY setup success and Ctrl-C cancellation",
+      durationMs: Date.now() - startedAt,
+      message: error.message
+    };
+  }
+}
+
+async function runSetupTtyCase(options) {
+  await mkdir(options.home, { recursive: true });
+  const result = await runCommand([
+    quoteShell(options.expectPath),
+    quoteShell(options.expectScriptPath),
+    quoteShell(options.wrapperPath),
+    quoteShell(options.repo),
+    quoteShell(options.home),
+    quoteShell(options.fakeBin),
+    quoteShell(options.stdoutPath),
+    quoteShell(options.transcriptPath),
+    quoteShell(options.sentinel),
+    quoteShell(options.mode)
+  ].join(" "), { timeoutMs: 30000, maxOutputChars: 1000000 });
+  return {
+    ...result,
+    stdout: await readFile(options.stdoutPath, "utf8").catch(() => ""),
+    transcript: await readFile(options.transcriptPath, "utf8").catch(() => result.stdout)
+  };
+}
+
+function assertTtySetupState(transcript, sentinel) {
+  assertEqual(transcript.includes("Kova auth setup"), true, "interactive prompt transcript");
+  assertEqual(transcript.includes(sentinel), false, "secret echo suppression");
+  const before = transcript.match(/KOVA_TTY_BEFORE=([^\r\n]+)/)?.[1];
+  const after = transcript.match(/KOVA_TTY_AFTER=([^\r\n]+)/)?.[1];
+  assertString(before, "TTY state before setup");
+  assertEqual(after, before, "TTY state restored");
+}
+
+async function writeExternalCliFixture(directory, cli, options = {}) {
+  const expectedArgs = cli === "codex"
+    ? ["login", "status"]
+    : ["auth", "status"];
+  const lines = [
+    `const args = process.argv.slice(2);`
+  ];
+  if (cli === "claude") {
+    lines.push(
+      `if (JSON.stringify(args) === ${JSON.stringify(JSON.stringify(["auth", "status", "--help"]))}) {`,
+      `  process.exit(${options.helpStatus ?? 0});`,
+      `}`
+    );
+  }
+  lines.push(
+    `if (JSON.stringify(args) !== ${JSON.stringify(JSON.stringify(expectedArgs))}) {`,
+    `  process.exit(42);`,
+    `}`
+  );
+  if (options.stderr) {
+    lines.push(`console.error(${JSON.stringify(options.stderr)});`);
+  }
+  if (options.statusPayload) {
+    lines.push(`console.log(${JSON.stringify(JSON.stringify(options.statusPayload))});`);
+  }
+  lines.push(`process.exit(${options.status ?? 0});`);
+
+  const source = `${lines.join("\n")}\n`;
+  if (process.platform === "win32") {
+    const scriptName = `${cli}-fixture.mjs`;
+    await writeFile(join(directory, scriptName), source, "utf8");
+    await writeFile(
+      join(directory, `${cli}.cmd`),
+      `@echo off\r\nnode "%~dp0${scriptName}" %*\r\n`,
+      "utf8"
+    );
+    return;
+  }
+
+  const executable = join(directory, cli);
+  await writeFile(executable, `#!/usr/bin/env node\n${source}`, "utf8");
+  await chmod(executable, 0o755);
+}
+
+function runNodeProcess(args, env) {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, ["bin/kova.mjs", ...args], {
+      cwd: repoRoot,
+      env,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", (error) => {
+      resolve({ status: 127, stdout, stderr: error.message });
+    });
+    child.on("close", (status) => {
+      resolve({ status: status ?? 1, stdout, stderr });
+    });
+  });
+}
+
 async function setupNumericFlagsRejectedCheck(tmp) {
   const home = join(tmp, "numeric-auth-home");
   const command = `KOVA_HOME=${quoteShell(home)} node bin/kova.mjs setup --non-interactive --provider 2 --auth 3 --value kova-selfcheck-key --json`;
@@ -15894,12 +16766,11 @@ async function externalCliSetupCheck(tmp) {
   const home = join(tmp, "external-cli-home");
   const fakeBin = join(tmp, "fake-bin");
   const kovaHome = join(tmp, "external-cli-kova-home");
-  await mkdir(join(home, ".codex"), { recursive: true });
+  await mkdir(home, { recursive: true });
   await mkdir(fakeBin, { recursive: true });
-  const fakeCodex = join(fakeBin, "codex");
-  await writeFile(join(home, ".codex", "auth.json"), "{\"tokens\":{\"access_token\":\"redacted\"}}\n", "utf8");
-  await writeFile(fakeCodex, "#!/bin/sh\nexit 0\n", "utf8");
-  await chmod(fakeCodex, 0o755);
+  await writeExternalCliFixture(fakeBin, "codex", {
+    stderr: "authenticated by native status"
+  });
 
   const command = [
     `HOME=${quoteShell(home)}`,
@@ -15918,6 +16789,7 @@ async function externalCliSetupCheck(tmp) {
     assertEqual(data.auth?.method, "external-cli", "external cli method");
     assertEqual(data.auth?.externalCli, "codex", "external cli name");
     assertEqual(data.auth?.verification?.verified, true, "external cli verification");
+    assertEqual(data.auth?.verification?.authFiles?.length, 0, "external CLI verification avoids auth files");
     const credential = data.checks?.find((check) => check.id === "credentials");
     if (!credential || !credential.message.includes("external-cli codex verified")) {
       throw new Error(`credential check did not report verified external CLI: ${credential?.message ?? "missing"}`);
@@ -15937,6 +16809,152 @@ async function externalCliSetupCheck(tmp) {
       message: error.message
     };
   }
+}
+
+async function externalCliProviderPairingCheck(tmp) {
+  const directHome = join(tmp, "external-cli-mismatch-home");
+  const direct = await runCommand(
+    `KOVA_HOME=${quoteShell(directHome)} node bin/kova.mjs setup auth --provider openai --method external-cli --external-cli claude --json`,
+    { timeoutMs: 30000, maxOutputChars: 1000000 }
+  );
+  const persistedHome = join(tmp, "external-cli-persisted-mismatch-home");
+  const credentials = join(persistedHome, "credentials");
+  await mkdir(credentials, { recursive: true });
+  await writeFile(join(credentials, "providers.json"), `${JSON.stringify({
+    schemaVersion: "kova.credentials.providers.v1",
+    defaultProvider: "openai",
+    providers: {
+      openai: {
+        id: "openai",
+        method: "external-cli",
+        envVars: [],
+        externalCli: "claude",
+        configuredAt: new Date().toISOString()
+      }
+    }
+  }, null, 2)}\n`, "utf8");
+  await writeFile(join(credentials, "live.env"), "", { encoding: "utf8", mode: 0o600 });
+  const persisted = await runCommand(
+    `KOVA_HOME=${quoteShell(persistedHome)} node bin/kova.mjs run --target runtime:stable --scenario fresh-install --auth live --json`,
+    { timeoutMs: 30000, maxOutputChars: 1000000 }
+  );
+  const directOutput = `${direct.stdout}\n${direct.stderr}`;
+  const persistedOutput = `${persisted.stdout}\n${persisted.stderr}`;
+  const ok = direct.status !== 0 &&
+    directOutput.includes("provider openai uses external CLI codex") &&
+    persisted.status !== 0 &&
+    persistedOutput.includes("provider openai uses external CLI codex");
+  return {
+    id: "external-cli-provider-pairing",
+    status: ok ? "PASS" : "FAIL",
+    command: "reject direct and persisted OpenAI/Claude CLI mismatches",
+    durationMs: direct.durationMs + persisted.durationMs,
+    message: ok ? "" : `direct: ${directOutput.trim()}\npersisted: ${persistedOutput.trim()}`
+  };
+}
+
+async function directCredentialProviderPairingCheck(tmp) {
+  const home = join(tmp, "direct-credential-provider-home");
+  const scriptPath = join(tmp, "direct-credential-provider.mjs");
+  await writeFile(scriptPath, `import { configureCredentialProvider } from ${JSON.stringify(new URL("./auth.mjs", import.meta.url).href)};
+await configureCredentialProvider({ provider: "openai", method: "external-cli" });
+await configureCredentialProvider({ provider: "anthropic", method: "external-cli" });
+`, "utf8");
+  const command = `KOVA_HOME=${quoteShell(home)} node ${quoteShell(scriptPath)}`;
+  const result = await runCommand(command, { timeoutMs: 30000, maxOutputChars: 1000000 });
+  try {
+    if (result.status !== 0) {
+      throw new Error(result.stderr.trim() || result.stdout.trim() || `exit ${result.status}`);
+    }
+    const providers = JSON.parse(await readFile(join(home, "credentials", "providers.json"), "utf8"));
+    assertEqual(providers.providers?.openai?.externalCli, "codex", "direct OpenAI CLI pairing");
+    assertEqual(providers.providers?.anthropic?.externalCli, "claude", "direct Anthropic CLI pairing");
+    return {
+      id: "credential-provider-direct-pairing",
+      status: "PASS",
+      command,
+      durationMs: result.durationMs
+    };
+  } catch (error) {
+    return {
+      id: "credential-provider-direct-pairing",
+      status: "FAIL",
+      command,
+      durationMs: result.durationMs,
+      message: error.message
+    };
+  }
+}
+
+async function claudeCliLoggedOutCheck(tmp) {
+  const fakeBin = join(tmp, "logged-out-claude-bin");
+  const home = join(tmp, "logged-out-claude-home");
+  await mkdir(fakeBin, { recursive: true });
+  await writeExternalCliFixture(fakeBin, "claude", {
+    statusPayload: {
+      loggedIn: false,
+      email: "must-not-leak@example.invalid"
+    }
+  });
+  const command = [
+    `PATH=${quoteShell(`${fakeBin}:${process.env.PATH ?? ""}`)}`,
+    `KOVA_HOME=${quoteShell(home)}`,
+    "node bin/kova.mjs setup --non-interactive --provider anthropic --auth external-cli --json"
+  ].join(" ");
+  const result = await runCommand(command, { timeoutMs: 30000, maxOutputChars: 1000000 });
+  const output = `${result.stdout}\n${result.stderr}`;
+  await writeExternalCliFixture(fakeBin, "claude", {
+    helpStatus: 42
+  });
+  const unsupportedCommand = [
+    `PATH=${quoteShell(`${fakeBin}:${process.env.PATH ?? ""}`)}`,
+    `KOVA_HOME=${quoteShell(join(tmp, "unsupported-claude-home"))}`,
+    "node bin/kova.mjs setup --non-interactive --provider anthropic --auth external-cli --json"
+  ].join(" ");
+  const unsupported = await runCommand(unsupportedCommand, {
+    timeoutMs: 30000,
+    maxOutputChars: 1000000
+  });
+  const unsupportedOutput = `${unsupported.stdout}\n${unsupported.stderr}`;
+  const ok = result.status !== 0 &&
+    output.includes("external-cli claude is not usable") &&
+    !output.includes("must-not-leak@example.invalid") &&
+    unsupported.status !== 0 &&
+    unsupportedOutput.includes("update Claude Code");
+  return {
+    id: "claude-cli-native-logged-out-status",
+    status: ok ? "PASS" : "FAIL",
+    command: `${command}; ${unsupportedCommand}`,
+    durationMs: result.durationMs + unsupported.durationMs,
+    message: ok
+      ? ""
+      : `logged out: ${result.status}: ${output.trim()}\nunsupported: ${unsupported.status}: ${unsupportedOutput.trim()}`
+  };
+}
+
+async function externalCliSetupRejectsUnauthenticatedCheck(tmp) {
+  const fakeBin = join(tmp, "unauthenticated-codex-bin");
+  const home = join(tmp, "unauthenticated-codex-home");
+  await mkdir(fakeBin, { recursive: true });
+  await writeExternalCliFixture(fakeBin, "codex", {
+    status: 1
+  });
+  const command = [
+    `PATH=${quoteShell(`${fakeBin}:${process.env.PATH ?? ""}`)}`,
+    `KOVA_HOME=${quoteShell(home)}`,
+    "node bin/kova.mjs setup --non-interactive --provider openai --auth external-cli --json"
+  ].join(" ");
+  const result = await runCommand(command, { timeoutMs: 30000, maxOutputChars: 1000000 });
+  const output = `${result.stdout}\n${result.stderr}`;
+  return {
+    id: "setup-external-cli-verifies-auth",
+    status: result.status !== 0 && output.includes("external-cli codex is not usable") ? "PASS" : "FAIL",
+    command,
+    durationMs: result.durationMs,
+    message: result.status !== 0 && output.includes("external-cli codex is not usable")
+      ? ""
+      : `expected native auth status failure, got ${result.status}: ${output.trim()}`
+  };
 }
 
 async function externalCliOpenClawConfigCheck(tmp) {
@@ -16090,8 +17108,14 @@ async function claudeCliOpenClawConfigCheck(tmp) {
 async function externalCliRunAuthVerificationCheck(tmp) {
   const home = join(tmp, "stale-external-cli-home");
   const kovaHome = join(tmp, "stale-external-cli-kova-home");
+  const fakeBin = join(tmp, "stale-external-cli-bin");
   const credentials = join(kovaHome, "credentials");
+  await mkdir(fakeBin, { recursive: true });
   await mkdir(credentials, { recursive: true });
+  await writeExternalCliFixture(fakeBin, "codex", {
+    status: 1,
+    stderr: "stale auth rejected"
+  });
   await writeFile(join(credentials, "providers.json"), `${JSON.stringify({
     schemaVersion: "kova.credentials.providers.v1",
     defaultProvider: "openai",
@@ -16108,6 +17132,7 @@ async function externalCliRunAuthVerificationCheck(tmp) {
   await writeFile(join(credentials, "live.env"), "", { encoding: "utf8", mode: 0o600 });
   const command = [
     `HOME=${quoteShell(home)}`,
+    `PATH=${quoteShell(`${fakeBin}:${process.env.PATH ?? ""}`)}`,
     `KOVA_HOME=${quoteShell(kovaHome)}`,
     "node bin/kova.mjs run --target runtime:stable --scenario fresh-install --auth live --json"
   ].join(" ");
@@ -16124,7 +17149,7 @@ async function externalCliRunAuthVerificationCheck(tmp) {
   };
 }
 
-async function commandTimeoutContractCheck() {
+async function commandTimeoutContractCheck(tmp) {
   const command = "node -e 'setTimeout(() => console.log(\"default-timeout-ok\"), 20)'";
   try {
     const result = await runCommand(command, { maxOutputChars: 100000 });
@@ -16138,6 +17163,37 @@ async function commandTimeoutContractCheck() {
       invalidRejected = /timeoutMs must be a positive integer/.test(error.message);
     }
     assertEqual(invalidRejected, true, "invalid timeout rejected");
+    if (process.platform !== "win32") {
+      const pidPath = join(tmp, "timed-out-command.pid");
+      const stubbornTree = [
+        "trap '' TERM",
+        "sleep 30 & child=$!",
+        `printf '%s %s' "$$" "$child" > ${quoteShell(pidPath)}`,
+        "wait"
+      ].join("; ");
+      const timedOut = await runCommand(stubbornTree, {
+        timeoutMs: 500,
+        maxOutputChars: 1000
+      });
+      assertEqual(timedOut.status, 124, "timed out command status");
+      assertEqual(timedOut.timedOut, true, "timed out command marker");
+      const pids = (await readFile(pidPath, "utf8")).trim().split(/\s+/).map(Number);
+      assertEqual(pids.length, 2, "timed out process tree pids captured");
+      for (const pid of pids) {
+        let alive = true;
+        try {
+          process.kill(pid, 0);
+        } catch (error) {
+          if (error.code === "ESRCH") {
+            alive = false;
+          } else {
+            throw error;
+          }
+        }
+        assertEqual(alive, false, `timed out process ${pid} is closed`);
+      }
+      await assertShutdownSignalCleansProcessTree(tmp);
+    }
     return {
       id: "command-timeout-contract",
       status: "PASS",
@@ -16155,9 +17211,90 @@ async function commandTimeoutContractCheck() {
   }
 }
 
+async function assertShutdownSignalCleansProcessTree(tmp) {
+  const shutdownSignal = "SIGQUIT";
+  const expectedExitCode = 131;
+  const pidPath = join(tmp, "shutdown-forwarding-command.pid");
+  const commandsModuleUrl = new URL("./commands.mjs", import.meta.url).href;
+  const command = [
+    "trap '' TERM INT HUP QUIT",
+    "(trap '' TERM INT HUP QUIT; sleep 30) & child=$!",
+    `printf '%s %s' "$$" "$child" > ${quoteShell(pidPath)}`,
+    "wait"
+  ].join("; ");
+  const runnerCode = [
+    `import { runCommand } from ${JSON.stringify(commandsModuleUrl)};`,
+    `process.on(${JSON.stringify(shutdownSignal)}, () => {});`,
+    `await runCommand(${JSON.stringify(command)}, { timeoutMs: 60000 });`
+  ].join("\n");
+  const runner = spawn(process.execPath, ["--input-type=module", "-e", runnerCode], {
+    stdio: "ignore"
+  });
+  const closed = new Promise((resolve, reject) => {
+    runner.once("error", reject);
+    runner.once("close", (status, signal) => resolve({ status, signal }));
+  });
+  let pids = null;
+  try {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      try {
+        const raw = (await readFile(pidPath, "utf8")).trim();
+        if (/^\d+ \d+$/.test(raw)) {
+          pids = raw.split(" ").map(Number);
+          break;
+        }
+      } catch (error) {
+        if (error.code !== "ENOENT") {
+          throw error;
+        }
+      }
+      await sleep(25);
+    }
+    assertEqual(pids?.length, 2, "shutdown forwarding process tree pids captured");
+    runner.kill(shutdownSignal);
+    const result = await Promise.race([
+      closed,
+      sleep(5000).then(() => {
+        throw new Error("shutdown forwarding runner did not exit");
+      })
+    ]);
+    assertEqual(result.status, expectedExitCode, "shutdown forwarding returns the conventional signal exit code");
+    for (const pid of pids) {
+      let alive = true;
+      try {
+        process.kill(pid, 0);
+      } catch (error) {
+        if (error.code === "ESRCH") {
+          alive = false;
+        } else {
+          throw error;
+        }
+      }
+      assertEqual(alive, false, `shutdown-forwarded process ${pid} is closed`);
+    }
+  } finally {
+    if (runner.exitCode === null && runner.signalCode === null) {
+      runner.kill("SIGTERM");
+      await Promise.race([closed.catch(() => null), sleep(1500)]);
+      if (runner.exitCode === null && runner.signalCode === null) {
+        runner.kill("SIGKILL");
+      }
+    }
+    if (pids?.[0]) {
+      try {
+        process.kill(-pids[0], "SIGKILL");
+      } catch (error) {
+        if (error.code !== "ESRCH") {
+          throw error;
+        }
+      }
+    }
+  }
+}
+
 async function commandOutputBudgetCheck() {
   try {
-    const result = await runCommand("node -e 'process.stdout.write(\"x\".repeat(80)); process.stderr.write(\"y\".repeat(30));'", {
+    const result = await runCommand("node -e 'process.stdout.write(\"x\".repeat(1000000)); process.stderr.write(\"y\".repeat(100000));'", {
       timeoutMs: 10000,
       maxOutputChars: 20
     });
@@ -16165,8 +17302,20 @@ async function commandOutputBudgetCheck() {
     assertEqual(result.outputBudget?.schemaVersion, "kova.commandOutputBudget.v1", "command output budget schema");
     assertEqual(result.outputBudget?.stdout?.truncated, true, "stdout budget truncates");
     assertEqual(result.outputBudget?.stderr?.truncated, true, "stderr budget truncates");
-    assertEqual(result.outputBudget?.stdout?.omittedChars, 60, "stdout omitted chars");
-    assertEqual(result.outputBudget?.stderr?.omittedChars, 10, "stderr omitted chars");
+    assertEqual(result.outputBudget?.stdout?.omittedChars, 999980, "stdout omitted chars");
+    assertEqual(result.outputBudget?.stderr?.omittedChars, 99980, "stderr omitted chars");
+    const redactionValue = "kova-sensitive-marker";
+    const accumulator = createBoundedOutputAccumulator({
+      limit: 20,
+      redactValues: [redactionValue]
+    });
+    accumulator.write("prefix-kova-sensitive-");
+    accumulator.write("marker-suffix-that-is-truncated");
+    const redacted = accumulator.finish();
+    assertEqual(redacted.text.includes(redactionValue), false, "streaming accumulator redacts split secrets");
+    assertEqual(redacted.text.startsWith("prefix-[REDACTED]"), true, "streaming accumulator retains redaction marker");
+    assertEqual(redacted.truncated, true, "streaming redacted output remains bounded");
+    assertEqual(redacted.retainedChars, 20, "streaming redacted output cap");
     return {
       id: "command-output-budget",
       status: "PASS",
@@ -16317,16 +17466,57 @@ function expectedMockProviderFailureTimeoutLogCheck() {
 
 function optionalNoLogsCommandCheck() {
   try {
-    const result = normalizeOptionalCommandResult({
+    const result = {
       command: "ocm logs 'kova-empty-logs' --tail 250 --raw",
       status: 1,
       stdout: "",
-      stderr: "ocm: no logs exist for env \"kova-empty-logs\" across stdout or stderr"
-    });
-    assertEqual(isNoLogsOutput(`${result.stdout ?? ""}\n${result.stderr ?? ""}`), true, "missing logs output is detected");
+      stderr: "ocm: no logs exist for env \"kova-empty-logs\" across stdout or stderr\n"
+    };
+    assertEqual(isNoLogsOutput(result.stderr), true, "exact missing logs stderr is detected");
+    assertEqual(isOptionalNoLogsResult(result), true, "empty stdout and exact stderr are optional");
+    normalizeOptionalCommandResult(result);
     assertEqual(result.status, 0, "missing logs are normalized to optional success");
     assertEqual(result.originalStatus, 1, "original log command status retained");
     assertEqual(result.optional, true, "optional marker set");
+    for (const candidate of [
+      {
+        command: "ocm logs 'kova-empty-logs' --tail 250 --raw",
+        status: 1,
+        stdout: "unexpected output",
+        stderr: "ocm: no logs exist for env \"kova-empty-logs\" across stdout or stderr\n"
+      },
+      {
+        command: "ocm logs 'kova-empty-logs' --tail 250 --raw",
+        status: 1,
+        stdout: "",
+        stderr: "warning\nocm: no logs exist for env \"kova-empty-logs\" across stdout or stderr\n"
+      },
+      {
+        command: "ocm logs 'kova-empty-logs' --tail 250 --raw",
+        status: 1,
+        stdout: "",
+        stderr: "ocm: no logs exist for env \"kova-empty-logs\" across stdout or stderr\nextra"
+      },
+      {
+        command: "ocm logs 'kova-empty-logs' --tail 250 --raw",
+        status: 124,
+        timedOut: true,
+        stdout: "",
+        stderr: "ocm: no logs exist for env \"kova-empty-logs\" across stdout or stderr\n"
+      },
+      {
+        command: "ocm logs 'kova-empty-logs' --tail 250 --raw",
+        status: 1,
+        signal: "SIGTERM",
+        stdout: "",
+        stderr: "ocm: no logs exist for env \"kova-empty-logs\" across stdout or stderr\n"
+      }
+    ]) {
+      const originalStatus = candidate.status;
+      normalizeOptionalCommandResult(candidate);
+      assertEqual(candidate.status, originalStatus, "non-exact missing logs output retains its failure status");
+      assertEqual(candidate.optional, undefined, "non-exact missing logs output is not optional");
+    }
     return {
       id: "optional-no-logs-command",
       status: "PASS",
