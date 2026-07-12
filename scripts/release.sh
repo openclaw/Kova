@@ -210,22 +210,6 @@ if [[ -z "$remote_main_sha" ]]; then
   exit 1
 fi
 
-if [[ "$head_is_release_commit" -eq 1 ]]; then
-  release_base_sha="$(git rev-parse HEAD^)"
-  if [[ "$remote_main_sha" == "$release_base_sha" && "$remote_tag_commit_sha" == "$head_sha" ]]; then
-    echo "error: remote tag ${tag} exists while ${remote}/main is still at the release parent" >&2
-    echo "error: push main explicitly, then rerun the failed Release Build workflow for ${tag}" >&2
-    exit 1
-  fi
-  if [[ "$remote_main_sha" != "$release_base_sha" && "$remote_main_sha" != "$head_sha" ]]; then
-    echo "error: ${remote}/main moved since the release commit was created; reconcile before retrying" >&2
-    exit 1
-  fi
-elif [[ "$remote_main_sha" != "$head_sha" ]]; then
-  echo "error: local main is not current with ${remote}/main; pull or reconcile before releasing" >&2
-  exit 1
-fi
-
 if [[ -n "$local_tag_commit_sha" && "$local_tag_commit_sha" != "$head_sha" ]]; then
   echo "error: local tag ${tag} already exists and does not point at HEAD" >&2
   exit 1
@@ -251,6 +235,22 @@ if [[ -n "$remote_tag_object_sha" ]]; then
     local_tag_object_sha="$(git rev-parse --verify "refs/tags/${tag}")"
     local_tag_commit_sha="$(ref_commit "$tag")"
   fi
+fi
+
+if [[ "$head_is_release_commit" -eq 1 ]]; then
+  release_base_sha="$(git rev-parse HEAD^)"
+  if [[ "$remote_main_sha" == "$release_base_sha" && "$remote_tag_commit_sha" == "$head_sha" ]]; then
+    echo "error: remote tag ${tag} exists while ${remote}/main is still at the release parent" >&2
+    echo "error: push main explicitly, then rerun the failed Release Build workflow for ${tag}" >&2
+    exit 1
+  fi
+  if [[ "$remote_main_sha" != "$release_base_sha" && "$remote_main_sha" != "$head_sha" ]]; then
+    echo "error: ${remote}/main moved since the release commit was created; reconcile before retrying" >&2
+    exit 1
+  fi
+elif [[ "$remote_main_sha" != "$head_sha" ]]; then
+  echo "error: local main is not current with ${remote}/main; pull or reconcile before releasing" >&2
+  exit 1
 fi
 
 need_update_version=0
