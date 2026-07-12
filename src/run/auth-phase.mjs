@@ -3,7 +3,7 @@ import {
   phaseResultStatus,
   withPhaseContract
 } from "../measurement-contract.mjs";
-import { runScenarioCommand } from "./command-executor.mjs";
+import { runAuthCommand } from "./command-executor.mjs";
 import { metricOptions } from "./metric-options.mjs";
 
 export async function executeAuthPhase(phase, context, envName, artifactDir, authPolicy) {
@@ -13,7 +13,7 @@ export async function executeAuthPhase(phase, context, envName, artifactDir, aut
   const plannedPhase = withPhaseContract(phase);
   const results = [];
   for (const [commandIndex, command] of plannedPhase.commands.entries()) {
-    results.push(await runScenarioCommand(command, context, envName, artifactDir, plannedPhase, commandIndex, authPolicy));
+    results.push(await runAuthCommand(command, context, envName, artifactDir, plannedPhase, commandIndex, authPolicy));
   }
   return {
     ...plannedPhase,

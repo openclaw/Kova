@@ -53,7 +53,7 @@ import {
   validateChannelWorkflowCaseCatalogShape,
   validateChannelWorkflowCaseInventoryReferences
 } from "./registries/channel-workflow-cases.mjs";
-import { runScenarioCommand } from "./run/command-executor.mjs";
+import { runAuthCommand, runScenarioCommand } from "./run/command-executor.mjs";
 import { runEntries } from "./run/engine.mjs";
 import { executeStateLifecycleSteps } from "./run/state-lifecycle.mjs";
 import { executeTargetSetup } from "./run/target-setup.mjs";
@@ -143,7 +143,11 @@ import {
   ocmServiceStatusJson,
   ocmTargetSelector
 } from "./ocm/commands.mjs";
-import { mockAiProviderServeCommand } from "./auth.mjs";
+import {
+  buildAuthCleanupPhase,
+  buildAuthPreparePhase,
+  mockAiProviderServeCommand
+} from "./auth.mjs";
 import { envNameFor, maxOcmEnvNameLength } from "./run/env-name.mjs";
 import {
   checkAggregateThreshold,
@@ -910,6 +914,7 @@ async function runScopedSelfCheck(flags, scope, workspace) {
     checks.push(gatewaySessionPreProviderAttributionCheck());
     checks.push(agentCliPreProviderAttributionCheck());
     checks.push(await mockProviderBehaviorCheck(tmp));
+    checks.push(await authLifecycleCommandBoundaryCheck(tmp));
     checks.push(mockProviderScriptModesCheck());
     checks.push(providerFailureEvaluationCheck());
     checks.push(providerSpecificFailureEvaluationCheck());
@@ -8348,6 +8353,75 @@ async function mockProviderBehaviorCheck(tmp) {
       status: "FAIL",
       command,
       durationMs: result.durationMs,
+      message: error.message
+    };
+  }
+}
+
+async function authLifecycleCommandBoundaryCheck(tmp) {
+  const dir = join(tmp, "mock-provider-auth-lifecycle");
+  const authPolicy = {
+    mode: "mock",
+    mockProvider: { mode: "normal" },
+    commandEnv: {},
+    redactionValues: []
+  };
+  const context = {
+    timeoutMs: 15000,
+    resourceSampling: false,
+    networkFrontage: { enabled: true },
+    networkFrontageAllocation: { status: "stopped" }
+  };
+  const prepare = buildAuthPreparePhase(authPolicy, dir);
+  const cleanup = buildAuthCleanupPhase(authPolicy, dir);
+  let scenarioBoundaryRejected = false;
+  try {
+    assertSafeScenarioCommand(prepare.commands[0], {}, "kova-safe-test", dir);
+  } catch (error) {
+    scenarioBoundaryRejected = /^refusing /.test(error.message);
+  }
+
+  let start;
+  let stop;
+  try {
+    start = await runAuthCommand(
+      prepare.commands[0],
+      context,
+      "kova-safe-test",
+      dir,
+      prepare,
+      0,
+      authPolicy
+    );
+  } finally {
+    stop = await runAuthCommand(
+      cleanup.commands[0],
+      context,
+      "kova-safe-test",
+      dir,
+      cleanup,
+      0,
+      authPolicy
+    );
+  }
+
+  try {
+    assertEqual(scenarioBoundaryRejected, true, "generated auth lifecycle stays outside registry command policy");
+    assertEqual(start.status, 0, "generated auth prepare command runs through the auth executor");
+    assertEqual(stop.status, 0, "generated auth cleanup command runs through the auth executor");
+    assertEqual(context.networkFrontageAllocation.status, "stopped", "auth lifecycle cannot restart network frontage");
+    return {
+      id: "auth-lifecycle-command-boundary",
+      status: "PASS",
+      command: "run generated auth lifecycle through its trusted executor",
+      durationMs: start.durationMs + stop.durationMs
+    };
+  } catch (error) {
+    return {
+      id: "auth-lifecycle-command-boundary",
+      status: "FAIL",
+      command: "run generated auth lifecycle through its trusted executor",
+      durationMs: (start?.durationMs ?? 0) + (stop?.durationMs ?? 0),
       message: error.message
     };
   }
