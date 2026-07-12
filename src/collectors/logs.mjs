@@ -107,8 +107,7 @@ function redactSensitiveContinuations(value) {
     if (quotedContinuation !== null) {
       const closingIndex = findUnescapedQuote(line, quotedContinuation);
       if (line.trim() !== "") {
-        const suffix = closingIndex === -1 ? "" : line.slice(closingIndex + 1);
-        lines[index] = `${line.slice(0, indent)}[REDACTED]${suffix}`;
+        lines[index] = `${line.slice(0, indent)}[REDACTED]`;
       }
       if (closingIndex !== -1) {
         quotedContinuation = null;
