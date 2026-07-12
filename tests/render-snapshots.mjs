@@ -45,12 +45,18 @@ const RELEASE_PLATFORM_REQUIREMENTS = [
 const HOST_PLATFORM_GAPS = RELEASE_PLATFORM_REQUIREMENTS.filter(
   (platformKey) => !HOST_PLATFORM_KEYS.includes(platformKey)
 );
-const HOST_PLATFORM_PLACEHOLDERS = [
-  "<arch>",
-  "<os>",
-  "<os-arch>",
-  ...(HOST_PLATFORM_KEYS.includes("wsl2") ? ["<wsl2>"] : [])
-];
+const HOST_PLATFORM_REPLACEMENTS = new Map([
+  [HOST_PLATFORM.arch, "<arch>"],
+  [HOST_PLATFORM.os, "<os>"],
+  [`${HOST_PLATFORM.os}-${HOST_PLATFORM.arch}`, "<os-arch>"],
+  ...(HOST_PLATFORM_KEYS.includes("wsl2") ? [["wsl2", "<wsl2>"]] : [])
+]);
+// Raw platform keys sort differently by OS; snapshots use one semantic order.
+const PLATFORM_PLACEHOLDER_ORDER = ["<arch>", "<os>", "<os-arch>", "<wsl2>"];
+const HOST_PLATFORM_PLACEHOLDERS = canonicalPlatformPlaceholders(
+  HOST_PLATFORM_KEYS,
+  HOST_PLATFORM_REPLACEMENTS
+);
 
 const cases = [
   { name: "report-pass-compact", args: ["report", PASS_REPORT] },
@@ -153,20 +159,37 @@ function platformBlock(platform) {
 }
 
 function replaceCurrentPlatformKeys(out) {
-  const expectedItems = HOST_PLATFORM_KEYS.map((platformKey, index) =>
-    `\\1  ${escapeRegExp(JSON.stringify(platformKey))}${index === HOST_PLATFORM_KEYS.length - 1 ? "" : ","}`
+  return replaceExactCurrentPlatformKeys(
+    out,
+    HOST_PLATFORM_KEYS,
+    HOST_PLATFORM_REPLACEMENTS
+  );
+}
+
+function replaceExactCurrentPlatformKeys(out, expectedKeys, replacements) {
+  const expectedItems = expectedKeys.map((platformKey, index) =>
+    `\\1  ${escapeRegExp(JSON.stringify(platformKey))}${index === expectedKeys.length - 1 ? "" : ","}`
   ).join("\\n");
   const exactBlock = new RegExp(
     `^(\\s*)"currentPlatformKeys": \\[\\n${expectedItems}\\n\\1\\]`,
     "gm"
   );
+  const placeholders = canonicalPlatformPlaceholders(expectedKeys, replacements);
   return out.replace(exactBlock, (_, indent) => [
     `${indent}"currentPlatformKeys": [`,
-    ...HOST_PLATFORM_PLACEHOLDERS.map((platformKey, index) =>
-      `${indent}  ${JSON.stringify(platformKey)}${index === HOST_PLATFORM_PLACEHOLDERS.length - 1 ? "" : ","}`
+    ...placeholders.map((platformKey, index) =>
+      `${indent}  ${JSON.stringify(platformKey)}${index === placeholders.length - 1 ? "" : ","}`
     ),
     `${indent}]`
   ].join("\n"));
+}
+
+function canonicalPlatformPlaceholders(expectedKeys, replacements) {
+  return expectedKeys
+    .map((platformKey) => replacements.get(platformKey))
+    .sort((left, right) =>
+      PLATFORM_PLACEHOLDER_ORDER.indexOf(left) - PLATFORM_PLACEHOLDER_ORDER.indexOf(right)
+    );
 }
 
 function escapeRegExp(value) {
@@ -282,6 +305,40 @@ function assertSnapshotNormalizers() {
     true
   );
 
+  const darwinKeys = ["arm64", "darwin", "darwin-arm64"];
+  const linuxKeys = ["linux", "linux-x64", "x64"];
+  const canonicalKeysBlock = [
+    '    "currentPlatformKeys": [',
+    '      "<arch>",',
+    '      "<os>",',
+    '      "<os-arch>"',
+    "    ]"
+  ].join("\n");
+  strictEqual(
+    replaceExactCurrentPlatformKeys(
+      currentPlatformKeysBlock(darwinKeys),
+      darwinKeys,
+      new Map([
+        ["arm64", "<arch>"],
+        ["darwin", "<os>"],
+        ["darwin-arm64", "<os-arch>"]
+      ])
+    ),
+    canonicalKeysBlock
+  );
+  strictEqual(
+    replaceExactCurrentPlatformKeys(
+      currentPlatformKeysBlock(linuxKeys),
+      linuxKeys,
+      new Map([
+        ["linux", "<os>"],
+        ["linux-x64", "<os-arch>"],
+        ["x64", "<arch>"]
+      ])
+    ),
+    canonicalKeysBlock
+  );
+
   const platformGaps = platformGapBlock(HOST_PLATFORM_GAPS);
   strictEqual(
     normalizeJsonPlatform(platformGaps, { normalizeHostPlatform: true })
@@ -313,6 +370,16 @@ function assertSnapshotNormalizers() {
     normalizePlanPlatformLine(`${headline}  unexpected ${hostMeta}`),
     `${headline}  unexpected ${hostMeta}`
   );
+}
+
+function currentPlatformKeysBlock(platformKeys) {
+  return [
+    '    "currentPlatformKeys": [',
+    ...platformKeys.map((platformKey, index) =>
+      `      ${JSON.stringify(platformKey)}${index === platformKeys.length - 1 ? "" : ","}`
+    ),
+    "    ]"
+  ].join("\n");
 }
 
 function runCase(c) {
