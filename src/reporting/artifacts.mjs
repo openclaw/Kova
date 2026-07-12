@@ -544,7 +544,9 @@ async function syncDirectory(path) {
 }
 
 async function syncFile(path) {
-  const handle = await open(path, "r");
+  // Windows FlushFileBuffers requires a writable handle. These are staged
+  // copies owned by this transaction, so opening them read/write is safe.
+  const handle = await open(path, "r+");
   try {
     await handle.sync();
   } finally {
