@@ -1,5 +1,6 @@
 import { RECORD_STATUS } from "./statuses.mjs";
 import {
+  commandResultFailureReason,
   commandResultFailed,
   commandResultPassed
 } from "./measurement-contract.mjs";
@@ -244,10 +245,7 @@ function commandReason({ executed, result, status, blockingCommand }) {
     if (!result) {
       return `not executed because ${blockingCommand.id} in phase "${blockingCommand.phaseId}" failed: ${blockingCommand.summary} (${blockingCommand.reason})`;
     }
-    if (result?.timedOut) {
-      return "command timed out";
-    }
-    return failedCommandReason(result);
+    return commandResultFailureReason(result);
   }
   return null;
 }
@@ -261,17 +259,10 @@ function firstFailedCommandInPhase(phase, results) {
       id: result.evidenceId ?? phase.evidenceIds?.[index] ?? `command:${phase.id}:${index + 1}`,
       phaseId: phase.id,
       summary: result.evidenceSummary ?? phase.evidenceSummaries?.[index] ?? summarizeCommand(result.command),
-      reason: failedCommandReason(result)
+      reason: commandResultFailureReason(result)
     };
   }
   return null;
-}
-
-function failedCommandReason(result) {
-  if (result?.timedOut) {
-    return "command timed out";
-  }
-  return `command exited ${result?.status ?? result?.exitCode ?? "unknown"}`;
 }
 
 function summarizeEntries(entries) {

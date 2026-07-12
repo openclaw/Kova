@@ -76,6 +76,7 @@ import { isMissingOcmResource } from "./ocm/missing-resource.mjs";
 import { assertSafeScenarioCommand, assertSingleTopLevelShellCommand } from "./safety.mjs";
 import { resolveTarget } from "./targets.mjs";
 import {
+  commandResultFailureReason,
   commandResultFailed,
   commandResultPassed,
   measurementScopeForPhase,
@@ -3473,6 +3474,15 @@ function commandResultContractCheck() {
       commandResultFailed({ evidenceStatus: "failed", status: 0 }),
       true,
       "failed evidence overrides zero command status"
+    );
+    assertEqual(
+      commandResultFailureReason({
+        evidenceStatus: "failed",
+        evidenceReason: "snapshot payload was incomplete",
+        status: 0
+      }),
+      "command evidence failed: snapshot payload was incomplete",
+      "failed evidence reason overrides zero command exit"
     );
     assertEqual(
       commandResultPassed({ evidenceStatus: "missing", status: 0 }),

@@ -70,6 +70,21 @@ export function commandResultFailed(result) {
   return status === "FAIL" || status === "FAILED" || status === "ERROR";
 }
 
+export function commandResultFailureReason(result, subject = "command") {
+  if (result?.timedOut === true) {
+    return `${subject} timed out`;
+  }
+  if (result?.evidenceStatus === "failed") {
+    const evidenceReason = typeof result.evidenceReason === "string"
+      ? result.evidenceReason.trim()
+      : "";
+    return evidenceReason.length > 0
+      ? `${subject} evidence failed: ${evidenceReason}`
+      : `${subject} evidence failed`;
+  }
+  return `${subject} exited ${result?.status ?? result?.exitCode ?? "unknown"}`;
+}
+
 export function readinessThresholdForPhase(scenario, phase) {
   const thresholds = scenario?.thresholds ?? {};
   const defaultMs = thresholds.gatewayReadyMs ?? 30000;
