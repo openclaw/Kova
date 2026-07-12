@@ -658,7 +658,7 @@ async function createCredentialStoreReaperPath(ownerToken) {
 }
 
 async function credentialStoreLockOwnerIsStale(owner) {
-  if (!processIsRunning(owner.pid)) {
+  if (!(await processIsRunning(owner.pid))) {
     return true;
   }
   if (!owner.processStart) {
@@ -675,7 +675,7 @@ async function credentialStoreReaperIsActive(name, prefix) {
   }
   const pid = Number(match[1]);
   const expectedStartHash = match[2];
-  if (!Number.isSafeInteger(pid) || pid <= 0 || !processIsRunning(pid)) {
+  if (!Number.isSafeInteger(pid) || pid <= 0 || !(await processIsRunning(pid))) {
     return false;
   }
   if (expectedStartHash === "unknown") {
@@ -695,12 +695,26 @@ function parseCredentialStoreLockOwner(contents) {
   return owner;
 }
 
-function processIsRunning(pid) {
+async function processIsRunning(pid) {
   try {
     process.kill(pid, 0);
-    return true;
   } catch (error) {
-    return error.code === "EPERM";
+    if (error.code !== "EPERM") {
+      return false;
+    }
+  }
+  if (process.platform !== "linux") {
+    return true;
+  }
+  try {
+    // kill(pid, 0) reports zombies as present, but they can never release a
+    // held lock. Check the Linux process state before treating the owner as live.
+    const statLine = await readFile(`/proc/${pid}/stat`, "utf8");
+    const commandEnd = statLine.lastIndexOf(")");
+    const state = statLine.slice(commandEnd + 1).trim().split(/\s+/, 1)[0];
+    return commandEnd <= 0 || state !== "Z";
+  } catch {
+    return true;
   }
 }
 
