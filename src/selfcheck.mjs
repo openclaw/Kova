@@ -6043,6 +6043,12 @@ function agentTurnBreakdownCheck() {
     });
     assertEqual(partialEmbeddedStages.eventCount, 3, "embedded run metadata remains authoritative");
     assertEqual(partialEmbeddedStages.allStages[0]?.totalDurationMs, 42, "missing embedded stage totals fall back");
+    const whitespaceNumbers = buildAgentTurnBreakdown({
+      result: { durationMs: " " },
+      attribution: { firstByteLatencyMs: "\t" }
+    });
+    assertEqual(whitespaceNumbers.command.totalMs, null, "whitespace command duration is unavailable");
+    assertEqual(whitespaceNumbers.provider.firstByteLatencyMs, null, "whitespace provider latency is unavailable");
 
     const preProviderStall = syntheticTurn({
       startedAtEpochMs: 1000,
@@ -12417,6 +12423,20 @@ async function diagnosticsTimelineCheck() {
     assertEqual(timeline.providers.maxDurationMs, 1220, "provider duration");
     assertEqual(timeline.childProcesses.failedCount, 1, "child process failures");
     assertEqual(timeline.keySpans["gateway.startup"].maxDurationMs, 2450, "gateway startup key span");
+    const whitespaceNumbers = parseTimelineText(
+      `${JSON.stringify({
+        type: "provider.request",
+        name: "provider.request",
+        timestampEpochMs: " ",
+        durationMs: "\t"
+      })}\n`
+    );
+    assertEqual(whitespaceNumbers.events[0]?.durationMs, undefined, "whitespace timeline duration is unavailable");
+    assertEqual(
+      whitespaceNumbers.turnAttributionEvents[0]?.timestampEpochMs,
+      null,
+      "whitespace timeline timestamp is unavailable"
+    );
     return {
       id: "diagnostics-timeline-parser",
       status: "PASS",
@@ -12772,6 +12792,15 @@ const fs = require("node:fs");
 const path = require("node:path");
 const home = process.env.OPENCLAW_HOME;
 let signalCount = 0;
+function diagnosticStamp(signal) {
+  return "0101" + String(signal).padStart(2, "0");
+}
+function heapName(signal) {
+  return "Heap.20260712." + diagnosticStamp(signal) + "." + process.pid + ".0." + String(signal).padStart(3, "0") + ".heapsnapshot";
+}
+function reportName(signal) {
+  return "report.20260712." + diagnosticStamp(signal) + "." + process.pid + ".0." + String(signal).padStart(3, "0") + ".json";
+}
 process.on("SIGUSR2", () => {
   const currentSignal = ++signalCount;
   const outputHome = currentSignal === 1
@@ -12785,12 +12814,12 @@ process.on("SIGUSR2", () => {
       );
     }, 100);
     setTimeout(() => {
-      fs.writeFileSync(path.join(home, "report.delayed.json"), "{\\"delayed\\":true}\\n");
+      fs.writeFileSync(path.join(home, reportName(currentSignal)), "{\\"delayed\\":true}\\n");
     }, 700);
     return;
   }
   if (currentSignal === 5) {
-    const slowHeap = path.join(home, "fresh-slow.heapsnapshot");
+    const slowHeap = path.join(home, heapName(currentSignal));
     setTimeout(() => {
       fs.writeFileSync(slowHeap, "{\\"heap\\":\\"head\\"");
     }, 200);
@@ -12801,18 +12830,15 @@ process.on("SIGUSR2", () => {
   }
   if (currentSignal === 6) {
     setTimeout(() => {
-      fs.writeFileSync(path.join(home, "diagnostic.fixed.json"), "{\\"generation\\":1}\\n");
+      fs.writeFileSync(
+        path.join(home, "diagnostic.fixed.json"),
+        JSON.stringify({ header: { processId: process.pid }, generation: 1 }) + "\\n"
+      );
     }, 400);
     return;
   }
-  const heapPath = path.join(
-    outputHome,
-    currentSignal === 1 ? "fresh.heapsnapshot" : \`fresh-\${currentSignal}.heapsnapshot\`
-  );
-  const reportPath = path.join(
-    outputHome,
-    currentSignal === 1 ? "report.fresh.json" : \`report.fresh-\${currentSignal}.json\`
-  );
+  const heapPath = path.join(outputHome, heapName(currentSignal));
+  const reportPath = path.join(outputHome, reportName(currentSignal));
   setTimeout(() => {
     fs.mkdirSync(outputHome, { recursive: true });
     fs.writeFileSync(heapPath, "{\\"heap\\":");
@@ -12932,7 +12958,7 @@ setInterval(() => {}, 1000);
     });
     assertEqual(delayedReport.diagnosticReport.artifacts.length, 1, "minimum timeout discovers a delayed report");
     assertEqual(
-      delayedReport.diagnosticReport.files.some((path) => path.endsWith("report.delayed.json")),
+      delayedReport.diagnosticReport.files.some((path) => path.endsWith("0.004.json")),
       true,
       "unattributed report does not end diagnostic polling"
     );
