@@ -509,7 +509,7 @@ async function runOpenClawModelTurn({
     CommandAuthorized: true
   });
 
-  return await runtime.turn.runAssembled({
+  return await runtime.inbound.dispatchReply({
     cfg,
     channel: CHANNEL_ID,
     accountId: ACCOUNT_ID,
