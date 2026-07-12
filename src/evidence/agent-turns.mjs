@@ -457,8 +457,12 @@ function agentProviderProofOk(providerEvidence, turns, scenario, expectedTurnCou
   if (successfulTurns.length === 0) {
     return true;
   }
+  const attributedRequestCount = successfulTurns.reduce(
+    (total, turn) => validRequestCount(turn.requestCount, 1) ? total + turn.requestCount : Number.NaN,
+    0
+  );
   if (providerEvidence?.available !== true ||
-    !validRequestCount(providerEvidence.requestCount, successfulTurns.length)) {
+    !validRequestCount(providerEvidence.requestCount, attributedRequestCount)) {
     return false;
   }
   return successfulTurns.every((turn) =>
@@ -482,14 +486,18 @@ function agentProviderProofReason(providerEvidence, turns, scenario, expectedTur
   if (providerEvidence?.available !== true) {
     return providerEvidence?.error ?? "provider evidence was not available";
   }
-  if (!validRequestCount(providerEvidence.requestCount, successfulTurns.length)) {
-    return `provider request count ${providerEvidence.requestCount ?? "missing"} was not a finite count of at least ${successfulTurns.length}`;
-  }
   const missing = successfulTurns.find((turn) =>
     turn.missingProviderRequest === true || !validRequestCount(turn.requestCount, 1)
   );
   if (missing) {
     return `${missing.phaseId} had no attributed provider request`;
+  }
+  const attributedRequestCount = successfulTurns.reduce(
+    (total, turn) => total + turn.requestCount,
+    0
+  );
+  if (!validRequestCount(providerEvidence.requestCount, attributedRequestCount)) {
+    return `provider request count ${providerEvidence.requestCount ?? "missing"} was not a finite count of at least ${attributedRequestCount}`;
   }
   const late = successfulTurns.find((turn) => turn.providerAfterCommandEnd === true);
   if (late) {

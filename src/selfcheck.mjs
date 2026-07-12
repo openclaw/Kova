@@ -6117,6 +6117,27 @@ function gatewaySessionEvidenceInvariantCheck() {
       .find((invariant) => invariant.id === "gateway-session-provider-proof");
     assertEqual(partialStatusProof?.status, "missing", "gateway status evidence must cover every attributed request");
 
+    const aggregateUndercountRecord = JSON.parse(JSON.stringify(record));
+    for (const turn of aggregateUndercountRecord.measurements.agentTurns) {
+      turn.requestCount = 2;
+      turn.providerStatuses = [{ value: 200, count: 2 }];
+    }
+    aggregateUndercountRecord.providerEvidence.requestCount = 2;
+    const aggregateUndercountProof = buildGatewaySessionEvidenceInvariants(aggregateUndercountRecord, scenario)
+      .find((invariant) => invariant.id === "gateway-session-provider-proof");
+    assertEqual(aggregateUndercountProof?.status, "missing", "gateway aggregate count covers every attributed request");
+
+    const duplicateStatusRecord = JSON.parse(JSON.stringify(record));
+    duplicateStatusRecord.measurements.agentTurns[0].requestCount = 2;
+    duplicateStatusRecord.measurements.agentTurns[0].providerStatuses = [
+      { value: 200, count: 1 },
+      { value: 200, count: 1 }
+    ];
+    duplicateStatusRecord.providerEvidence.requestCount = 3;
+    const duplicateStatusProof = buildGatewaySessionEvidenceInvariants(duplicateStatusRecord, scenario)
+      .find((invariant) => invariant.id === "gateway-session-provider-proof");
+    assertEqual(duplicateStatusProof?.status, "missing", "duplicate gateway status buckets are incomplete evidence");
+
     const malformedTurnRecord = JSON.parse(JSON.stringify(record));
     malformedTurnRecord.measurements.agentTurns = { malformed: true };
     const malformedTurnProof = buildGatewaySessionEvidenceInvariants(malformedTurnRecord, scenario)
@@ -6649,6 +6670,27 @@ function agentCliLocalTurnEvidenceInvariantCheck() {
     const partialStatusProof = buildAgentCliLocalTurnEvidenceInvariants(partialStatusRecord, scenario)
       .find((invariant) => invariant.id === "agent-cli-provider-proof");
     assertEqual(partialStatusProof?.status, "missing", "agent status evidence must cover every attributed request");
+
+    const aggregateUndercountRecord = JSON.parse(JSON.stringify(record));
+    for (const turn of aggregateUndercountRecord.measurements.agentTurns) {
+      turn.requestCount = 2;
+      turn.providerStatuses = [{ value: 200, count: 2 }];
+    }
+    aggregateUndercountRecord.providerEvidence.requestCount = 2;
+    const aggregateUndercountProof = buildAgentCliLocalTurnEvidenceInvariants(aggregateUndercountRecord, scenario)
+      .find((invariant) => invariant.id === "agent-cli-provider-proof");
+    assertEqual(aggregateUndercountProof?.status, "missing", "agent aggregate count covers every attributed request");
+
+    const duplicateStatusRecord = JSON.parse(JSON.stringify(record));
+    duplicateStatusRecord.measurements.agentTurns[0].requestCount = 2;
+    duplicateStatusRecord.measurements.agentTurns[0].providerStatuses = [
+      { value: 200, count: 1 },
+      { value: 200, count: 1 }
+    ];
+    duplicateStatusRecord.providerEvidence.requestCount += 1;
+    const duplicateStatusProof = buildAgentCliLocalTurnEvidenceInvariants(duplicateStatusRecord, scenario)
+      .find((invariant) => invariant.id === "agent-cli-provider-proof");
+    assertEqual(duplicateStatusProof?.status, "missing", "duplicate agent status buckets are incomplete evidence");
 
     const recoveryScenario = {
       ...scenario,
