@@ -191,7 +191,7 @@ async function listFiles(root, dir) {
   return entries;
 }
 
-async function publishBundlePair({ archive, outputPath, checksumPath, checksum }) {
+export async function publishBundlePair({ archive, outputPath, checksumPath, checksum }) {
   const entries = [
     { path: outputPath, content: archive },
     { path: checksumPath, content: checksum }
@@ -208,10 +208,16 @@ async function publishBundlePair({ archive, outputPath, checksumPath, checksum }
     const outputExists = await pathExists(outputPath);
     const checksumExists = await pathExists(checksumPath);
     if (outputExists || checksumExists) {
-      const existing = await readFile(outputPath).catch(() => null);
+      if (outputExists) {
+        await requireRegularFile(outputPath, "existing report bundle");
+      }
+      if (checksumExists) {
+        await requireRegularFile(checksumPath, "existing report bundle checksum");
+      }
+      const existing = outputExists ? await readFile(outputPath) : null;
       const existingHash = existing ? createHash("sha256").update(existing).digest("hex") : null;
       const expectedHash = createHash("sha256").update(archive).digest("hex");
-      const existingChecksum = await readFile(checksumPath, "utf8").catch(() => null);
+      const existingChecksum = checksumExists ? await readFile(checksumPath, "utf8") : null;
       if (existingHash !== expectedHash || (existingChecksum !== null && existingChecksum !== checksum)) {
         throw new Error(`bundle destination collision: ${outputPath}`);
       }

@@ -110,7 +110,16 @@ export async function saveBaselineStore(path, store) {
 
 export async function withBaselineStoreLock(path, callback) {
   const writePath = await resolveBaselineWritePath(path);
-  const identity = createHash("sha256").update(resolve(writePath)).digest("hex");
+  const metadata = await stat(writePath).catch((error) => {
+    if (error.code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  });
+  const lockIdentity = metadata
+    ? `inode:${metadata.dev}:${metadata.ino}`
+    : `path:${resolve(writePath)}`;
+  const identity = createHash("sha256").update(lockIdentity).digest("hex");
   const user = typeof process.getuid === "function" ? process.getuid() : "user";
   const lockPath = join(tmpdir(), `kova-baseline-locks-${user}`, `${identity}.lock`);
   return withFileLock(lockPath, callback);
