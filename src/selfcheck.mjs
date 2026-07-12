@@ -3355,6 +3355,27 @@ function reportStatusPrecedenceCheck() {
     );
     assertEqual(skippedAssessment.includes("1 skipped of 2 samples"), true, "assessment reports skipped samples");
 
+    const plannedRecords = [{
+      ...baseRecord,
+      status: "PASS"
+    }, {
+      ...baseRecord,
+      status: "DRY-RUN"
+    }];
+    const plannedReport = {
+      ...report,
+      runId: "planned-status-run",
+      records: plannedRecords,
+      summary: summarizeRecords(plannedRecords)
+    };
+    const plannedAssessment = renderAssessment(
+      plannedReport,
+      { full: true, color: "never" },
+      process.env,
+      process.stdout
+    );
+    assertEqual(plannedAssessment.includes("1 planned of 2 samples"), true, "assessment reports mixed planned samples");
+
     const gate = evaluateGate(report, {
       id: "mixed-status-gate",
       gate: {
@@ -3464,6 +3485,11 @@ function reportAggregationIntegrityCheck() {
       metrics: []
     })));
     assertEqual(noMetricConfidence.label, "single-sample", "run confidence does not pool unrelated no-metric scenarios");
+    const mixedConfidence = runConfidence([
+      confidenceScenarios.find((scenario) => scenario.id === "stable-confidence"),
+      { id: "blocked-without-metrics", total: 1, metrics: [] }
+    ]);
+    assertEqual(mixedConfidence.label, "single-sample", "run confidence includes metric-less scenarios");
     return {
       id: "report-aggregation-integrity",
       status: "PASS",
