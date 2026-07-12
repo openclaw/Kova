@@ -8,8 +8,11 @@ const mockProviderOwnerSchema = "kova.mock-provider-owner.v1";
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function positiveProcessId(value, label = "pid") {
-  const text = typeof value === "string" ? value.trim() : value;
-  const pid = typeof text === "number" ? text : Number(text);
+  const text = typeof value === "string" ? value.trim() : null;
+  if (text !== null && !/^[1-9][0-9]*$/.test(text)) {
+    throw new Error(`${label} must be a positive integer, got ${JSON.stringify(value)}`);
+  }
+  const pid = typeof value === "number" ? value : text === null ? Number.NaN : Number(text);
   if (!Number.isSafeInteger(pid) || pid <= 0) {
     throw new Error(`${label} must be a positive integer, got ${JSON.stringify(value)}`);
   }

@@ -158,6 +158,7 @@ import {
   mockProviderOwnerRecord,
   mockProviderStopFile,
   mockProviderSupervisorArgs,
+  positiveProcessId,
   stopOwnedMockProvider
 } from "./process-safety.mjs";
 import { envNameFor, maxOcmEnvNameLength } from "./run/env-name.mjs";
@@ -8422,6 +8423,16 @@ async function mockProviderProcessSafetyCheck(tmp) {
   const ownerText = (pid, generation = ownerGeneration) => `${JSON.stringify(mockProviderOwnerRecord(pid, generation))}\n`;
 
   try {
+    assertEqual(positiveProcessId("12345\n"), 12345, "canonical decimal pid");
+    for (const invalidPid of ["", "0", "-1", "+1", "01", "1e2", "0x10", "1.0", "123x", "9007199254740992"]) {
+      let rejected = false;
+      try {
+        positiveProcessId(invalidPid);
+      } catch (error) {
+        rejected = error.message.includes("must be a positive integer");
+      }
+      assertEqual(rejected, true, `non-canonical pid ${JSON.stringify(invalidPid)} rejected`);
+    }
     assertEqual(
       isOwnedMockProviderSupervisorCommand(expectedCommand, stopOptions),
       true,
