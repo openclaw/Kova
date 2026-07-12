@@ -3,16 +3,24 @@ import { readFile } from "node:fs/promises";
 export async function summarizeHeapProfiles(paths, options = {}) {
   const summaries = [];
   const limit = Math.max(1, Number(options.limit ?? 10));
+  const aggregateLimit = normalizedAggregateLimit(options.aggregateLimit, limit);
+  const aggregateFunctions = new Map();
+  let aggregateTotalSelfSizeBytes = 0;
 
   for (const path of paths.slice(0, Math.max(1, Number(options.maxProfiles ?? 20)))) {
     try {
       const profile = JSON.parse(await readFile(path, "utf8"));
       const complete = summarizeHeapProfile(profile, { limit: Number.MAX_SAFE_INTEGER });
+      aggregateTotalSelfSizeBytes += complete.totalSelfSizeBytes;
+      mergeAggregateFunctions(
+        aggregateFunctions,
+        complete.topFunctions,
+        aggregateLimit
+      );
       summaries.push({
         path,
         ...complete,
-        topFunctions: complete.topFunctions.slice(0, limit),
-        aggregateFunctions: complete.topFunctions
+        topFunctions: complete.topFunctions.slice(0, limit)
       });
     } catch (error) {
       summaries.push({
@@ -27,8 +35,12 @@ export async function summarizeHeapProfiles(paths, options = {}) {
   return {
     profileCount: summaries.length,
     parseErrorCount: summaries.filter((summary) => summary.error).length,
-    topFunctions: mergeTopFunctions(summaries, limit),
-    profiles: summaries.map(({ aggregateFunctions: _aggregateFunctions, ...summary }) => summary)
+    topFunctions: renderAggregateFunctions(
+      aggregateFunctions,
+      aggregateTotalSelfSizeBytes,
+      limit
+    ),
+    profiles: summaries
   };
 }
 
@@ -68,29 +80,34 @@ function walkHeapNode(node, output) {
   }
 }
 
-function mergeTopFunctions(summaries, limit) {
-  const merged = new Map();
-  let totalSelfSizeBytes = 0;
-  for (const summary of summaries) {
-    if (typeof summary.totalSelfSizeBytes === "number") {
-      totalSelfSizeBytes += summary.totalSelfSizeBytes;
-    }
-    for (const item of summary.aggregateFunctions ?? []) {
-      const key = `${item.functionName}\n${item.url}\n${item.lineNumber ?? ""}\n${item.columnNumber ?? ""}`;
-      const existing = merged.get(key) ?? {
-        functionName: item.functionName,
-        url: item.url,
-        lineNumber: item.lineNumber,
-        columnNumber: item.columnNumber,
-        selfSizeBytes: 0,
-        profileCount: 0
-      };
-      existing.selfSizeBytes += item.selfSizeBytes ?? 0;
+function mergeAggregateFunctions(merged, items, aggregateLimit) {
+  const profileKeys = new Set();
+  for (const item of items) {
+    const key = `${item.functionName}\n${item.url}\n${item.lineNumber ?? ""}\n${item.columnNumber ?? ""}`;
+    const existing = merged.get(key) ?? {
+      functionName: item.functionName,
+      url: item.url,
+      lineNumber: item.lineNumber,
+      columnNumber: item.columnNumber,
+      selfSizeBytes: 0,
+      profileCount: 0
+    };
+    existing.selfSizeBytes += item.selfSizeBytes ?? 0;
+    if (!profileKeys.has(key)) {
       existing.profileCount += 1;
-      merged.set(key, existing);
+      profileKeys.add(key);
+    }
+    merged.set(key, existing);
+    // Full per-profile summaries are discarded after this merge. The capped
+    // candidate set prevents many large profiles from accumulating in memory.
+    if (merged.size > aggregateLimit * 2) {
+      trimAggregateFunctions(merged, aggregateLimit);
     }
   }
+  trimAggregateFunctions(merged, aggregateLimit);
+}
 
+function renderAggregateFunctions(merged, totalSelfSizeBytes, limit) {
   return [...merged.values()]
     .toSorted((left, right) => right.selfSizeBytes - left.selfSizeBytes)
     .slice(0, limit)
@@ -99,6 +116,26 @@ function mergeTopFunctions(summaries, limit) {
       selfSizeMb: roundMb(item.selfSizeBytes),
       selfPercent: totalSelfSizeBytes > 0 ? roundPercent((item.selfSizeBytes / totalSelfSizeBytes) * 100) : null
     }));
+}
+
+function trimAggregateFunctions(merged, limit) {
+  if (merged.size <= limit) {
+    return;
+  }
+  const retained = [...merged.entries()]
+    .toSorted((left, right) => right[1].selfSizeBytes - left[1].selfSizeBytes)
+    .slice(0, limit);
+  merged.clear();
+  for (const [key, item] of retained) {
+    merged.set(key, item);
+  }
+}
+
+function normalizedAggregateLimit(value, outputLimit) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0
+    ? Math.max(outputLimit, Math.floor(numeric))
+    : Math.max(100, outputLimit * 10);
 }
 
 function roundMb(bytes) {

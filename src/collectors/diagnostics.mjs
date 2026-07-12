@@ -225,20 +225,22 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
     ? null
     : firstOutputLine(result.stderr) || firstOutputLine(result.stdout) || "diagnostic trigger unavailable";
   const retentionDeadlineEpochMs = sessionDeadlineEpochMs;
-  const heapCopied = await retainTriggeredArtifacts({
-    requested: requestHeapSnapshot,
-    artifactDir,
-    files: heapFiles,
-    destination: "heap",
-    deadlineEpochMs: retentionDeadlineEpochMs
-  });
-  const reportCopied = await retainTriggeredArtifacts({
-    requested: requestDiagnosticReport,
-    artifactDir,
-    files: reportFiles,
-    destination: "diagnostic-reports",
-    deadlineEpochMs: retentionDeadlineEpochMs
-  });
+  const [heapCopied, reportCopied] = await Promise.all([
+    retainTriggeredArtifacts({
+      requested: requestHeapSnapshot,
+      artifactDir,
+      files: heapFiles,
+      destination: "heap",
+      deadlineEpochMs: retentionDeadlineEpochMs
+    }),
+    retainTriggeredArtifacts({
+      requested: requestDiagnosticReport,
+      artifactDir,
+      files: reportFiles,
+      destination: "diagnostic-reports",
+      deadlineEpochMs: retentionDeadlineEpochMs
+    })
+  ]);
   const heapError = triggerError ?? heapCopied.error ?? (
     requestHeapSnapshot && heapFiles.length === 0
       ? "heap snapshot was not emitted before the diagnostic trigger timeout"
