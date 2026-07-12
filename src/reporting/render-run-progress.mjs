@@ -96,7 +96,8 @@ export function createRunProgress({ flags = {}, env = process.env, stream = proc
       const fail = (statuses?.FAIL ?? 0) > 0;
       const blocked = (statuses?.BLOCKED ?? 0) > 0;
       const incomplete = (statuses?.INCOMPLETE ?? 0) > 0;
-      const tone = fail ? c.err : blocked || incomplete ? c.warn : c.ok;
+      const skipped = (statuses?.SKIPPED ?? 0) > 0;
+      const tone = fail ? c.err : blocked || incomplete || skipped ? c.warn : c.ok;
       const counts = formatCounts(statuses, c);
       footer.stop();
       stream.write(`${tag("FINISH", tone)} ${c.dim(`${total} ${total === 1 ? "entry" : "entries"} in ${dur}`)}${counts ? c.dim(`  ${g.sep}  `) + counts : ""}\n`);

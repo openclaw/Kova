@@ -668,16 +668,16 @@ function stableFindingId(finding) {
 }
 
 function normalizeFindingText(finding) {
-  const expected = String(finding?.expected ?? "");
-  const thresholded = /(?:<=|>=|<|>)\s*-?\d/.test(expected);
   const text = String(finding?.summary ?? finding?.message ?? "").toLowerCase();
-  const normalizedMeasurements = text.replace(
+  return text
+    .replace(
     /-?\d+(?:\.\d+)?(?=\s*(?:ms|s|sec|seconds?|kb|mb|gb|bytes?|%)(?:\b|$))/gi,
     "#"
-  );
-  return (thresholded
-    ? normalizedMeasurements.replace(/(?<![a-z0-9_])-?\d+(?:\.\d+)?(?![a-z0-9_])/g, "#")
-    : normalizedMeasurements)
+    )
+    .replace(
+      /\b(threshold|limit|budget|ceiling|minimum|maximum)(\s*(?:of|=|:)?\s*)-?\d+(?:\.\d+)?/gi,
+      "$1$2#"
+    )
     .replace(/\s+/g, " ")
     .trim();
 }
