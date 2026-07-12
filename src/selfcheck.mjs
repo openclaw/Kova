@@ -4898,6 +4898,22 @@ async function reportPublicationCheck(tmp) {
 
     const mixedPaths = buildReportOutputPaths(publicationRoot, "kova-260712-000000-mixed");
     const oldCanonical = `${JSON.stringify({ runId: "old-generation" })}\n`;
+    const missingSummaryPath = join(publicationRoot, "missing-stage-parent", "summary.json");
+    await writeFile(
+      join(publicationRoot, `.${basename(mixedPaths.json)}.kova-transaction`),
+      `${JSON.stringify({
+        schemaVersion: "kova.reportTransaction.v2",
+        canonical: basename(mixedPaths.json),
+        previousFiles: [{
+          name: basename(mixedPaths.json),
+          sha256: createHash("sha256").update(oldCanonical).digest("hex")
+        }],
+        files: [mixedPaths.markdown, missingSummaryPath, mixedPaths.json].map((path) => ({
+          name: basename(path),
+          sha256: "0".repeat(64)
+        }))
+      })}\n`
+    );
     await writeFile(
       join(publicationRoot, `.${basename(mixedPaths.json)}.kova-backup`),
       oldCanonical
@@ -4910,7 +4926,7 @@ async function reportPublicationCheck(tmp) {
         runId: "kova-260712-000000-mixed",
         outputPaths: {
           ...mixedPaths,
-          summary: join(publicationRoot, "missing-stage-parent", "summary.json")
+          summary: missingSummaryPath
         }
       });
     } catch {
@@ -4926,6 +4942,64 @@ async function reportPublicationCheck(tmp) {
       await readFile(mixedPaths.json, "utf8"),
       oldCanonical,
       "recovery restores the prior canonical report"
+    );
+
+    const midBackupPaths = buildReportOutputPaths(publicationRoot, "kova-260712-000000-mid-backup");
+    const oldMarkdown = "old generation\n";
+    const midBackupSummaryPath = join(
+      publicationRoot,
+      "missing-mid-backup-parent",
+      "summary.json"
+    );
+    await writeFile(
+      join(publicationRoot, `.${basename(midBackupPaths.json)}.kova-transaction`),
+      `${JSON.stringify({
+        schemaVersion: "kova.reportTransaction.v2",
+        canonical: basename(midBackupPaths.json),
+        previousFiles: [
+          {
+            name: basename(midBackupPaths.json),
+            sha256: createHash("sha256").update(oldCanonical).digest("hex")
+          },
+          {
+            name: basename(midBackupPaths.markdown),
+            sha256: createHash("sha256").update(oldMarkdown).digest("hex")
+          }
+        ],
+        files: [midBackupPaths.markdown, midBackupSummaryPath, midBackupPaths.json].map((path) => ({
+          name: basename(path),
+          sha256: "0".repeat(64)
+        }))
+      })}\n`
+    );
+    await writeFile(
+      join(publicationRoot, `.${basename(midBackupPaths.json)}.kova-backup`),
+      oldCanonical
+    );
+    await writeFile(midBackupPaths.markdown, oldMarkdown);
+    let midBackupRecoveryRejected = false;
+    try {
+      await writeReportOutputs(publicationRoot, {
+        ...report,
+        runId: "kova-260712-000000-mid-backup",
+        outputPaths: {
+          ...midBackupPaths,
+          summary: midBackupSummaryPath
+        }
+      });
+    } catch {
+      midBackupRecoveryRejected = true;
+    }
+    assertEqual(midBackupRecoveryRejected, true, "mid-backup staging failure rejected");
+    assertEqual(
+      await readFile(midBackupPaths.markdown, "utf8"),
+      oldMarkdown,
+      "recovery preserves an untouched prior companion"
+    );
+    assertEqual(
+      await readFile(midBackupPaths.json, "utf8"),
+      oldCanonical,
+      "mid-backup recovery restores the prior canonical report"
     );
 
     const outputPaths = buildReportOutputPaths(publicationRoot, "kova-260712-000001-aabbcc");
