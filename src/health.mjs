@@ -76,9 +76,18 @@ export function healthTotalFailures(health) {
     health?.unknownSamples?.failureCount,
     health?.final?.failureCount
   ];
-  return counts.every(validFailureCount)
-    ? counts.reduce((total, count) => total + count, 0)
-    : null;
+  return counts
+    .filter(validFailureCount)
+    .reduce((total, count) => total + count, 0);
+}
+
+export function healthTotalFailuresComplete(health) {
+  return [
+    health?.startupSamples?.failureCount,
+    health?.postReadySamples?.failureCount,
+    health?.unknownSamples?.failureCount,
+    health?.final?.failureCount
+  ].every(validFailureCount);
 }
 
 export function validHealthSummaryFailureCount(summary) {

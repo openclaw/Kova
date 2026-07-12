@@ -16,7 +16,11 @@ import { summarizeCpuProfiles } from "./collectors/node-profiles.mjs";
 import { summarizeHeapProfiles } from "./collectors/heap.mjs";
 import { collectEnvMetrics } from "./metrics.mjs";
 import { compactEvaluatedTimelineEvidence, evaluateRecord } from "./evaluator.mjs";
-import { buildHealthMeasurement, healthTotalFailures } from "./health.mjs";
+import {
+  buildHealthMeasurement,
+  healthTotalFailures,
+  healthTotalFailuresComplete
+} from "./health.mjs";
 import { evaluateWorkflowCase } from "../support/channel-conformance/evaluator.mjs";
 import { assertValidObservationSet } from "../support/channel-conformance/observation-schema.mjs";
 import { planWorkflowCases } from "../support/channel-conformance/planner.mjs";
@@ -3033,6 +3037,8 @@ function evidenceLedgerGatingCheck() {
     const health = buildHealthMeasurement(failedMetricsRecord);
     assertEqual(health.final.ok, null, "failed final metrics health is unknown");
     assertEqual(health.final.failureCount, null, "failed final metrics do not report zero failures");
+    assertEqual(healthTotalFailures(health), 0, "missing final metrics retain known health failure lower bound");
+    assertEqual(healthTotalFailuresComplete(health), false, "missing final metrics mark health total incomplete");
     attachEvidenceLedger(failedMetricsRecord);
     applyEvidenceLedgerGating(failedMetricsRecord);
     assertEqual(failedMetricsRecord.status, "INCOMPLETE", "failed final metrics gate pass as incomplete");
@@ -3097,6 +3103,22 @@ function evidenceLedgerGatingCheck() {
     attachEvidenceLedger(malformedSamplesRecord);
     applyEvidenceLedgerGating(malformedSamplesRecord);
     assertEqual(malformedSamplesRecord.status, "INCOMPLETE", "malformed final health samples gate pass");
+
+    const knownFailureRecord = {
+      ...failedMetricsRecord,
+      phases: [{
+        id: "post-ready",
+        healthScope: "post-ready",
+        commands: [],
+        results: [],
+        metrics: {
+          healthSamples: [{ ok: false, durationMs: 5 }]
+        }
+      }]
+    };
+    const knownFailureHealth = buildHealthMeasurement(knownFailureRecord);
+    assertEqual(healthTotalFailures(knownFailureHealth), 1, "missing final metrics retain observed health failures");
+    assertEqual(healthTotalFailuresComplete(knownFailureHealth), false, "observed lower bound remains incomplete");
 
     const failedPhaseRecord = {
       ...record,

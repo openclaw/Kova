@@ -1,7 +1,11 @@
 import { summarizeAgentTurnBreakdownForMarkdown } from "../collectors/agent-turns.mjs";
 import { agentCliPreProviderMarkdownRows } from "../collectors/agent-cli-attribution.mjs";
 import { gatewaySessionPreProviderMarkdownRows } from "../collectors/gateway-session-turn-attribution.mjs";
-import { healthTotalFailures, measurementMetricValue } from "../health.mjs";
+import {
+  healthTotalFailures,
+  healthTotalFailuresComplete,
+  measurementMetricValue
+} from "../health.mjs";
 import { RECORD_STATUS, findingSeverityForStatus } from "../statuses.mjs";
 import { firstFailedCommand, summarizeFailureReason } from "./failures.mjs";
 import { summarizeRecords } from "./records.mjs";
@@ -1741,6 +1745,9 @@ function compactRolePeaks(measurements) {
 function pushMeasurementBrief(lines, measurements, { compact }) {
   const readiness = measurements.health?.readiness ?? null;
   const totalHealthFailures = measurements.health ? healthTotalFailures(measurements.health) : null;
+  const totalHealthFailuresComplete = measurements.health
+    ? healthTotalFailuresComplete(measurements.health)
+    : false;
   const readinessReason = readiness?.reason ?? null;
   const readinessNotApplicable = readiness?.classification === "not-applicable";
   const noProcessSamples = !hasValue(measurements.resourceSampleCount);
@@ -1748,7 +1755,10 @@ function pushMeasurementBrief(lines, measurements, { compact }) {
   lines.push(`- startup: listening ${valueMs(readiness?.listeningReadyAtMs, readinessNotApplicable ? "n/a" : "unknown")}; health ${valueMs(readiness?.healthReadyAtMs, readinessNotApplicable ? "n/a" : "unknown")}; readiness ${readiness?.classification ?? "unknown"}${readinessReason ? ` (${readinessReason})` : ""}; gateway ${measurements.finalGatewayState ?? "unknown"}; restarts ${measurements.gatewayRestartCount ?? (readinessNotApplicable ? "n/a" : "unknown")}`);
   if (measurements.health) {
     const healthFallback = readinessNotApplicable ? "n/a" : "not-collected";
-    lines.push(`- health: startup p95 ${valueMs(measurements.health.startupSamples?.p95Ms, healthFallback)}; post-ready p95 ${valueMs(measurements.health.postReadySamples?.p95Ms, healthFallback)}; failures ${totalHealthFailures ?? healthFallback}; final failures ${measurements.health.final?.failureCount ?? healthFallback}${healthSlowestText(measurements)}`);
+    const totalFailuresText = totalHealthFailuresComplete
+      ? String(totalHealthFailures)
+      : `at least ${totalHealthFailures}`;
+    lines.push(`- health: startup p95 ${valueMs(measurements.health.startupSamples?.p95Ms, healthFallback)}; post-ready p95 ${valueMs(measurements.health.postReadySamples?.p95Ms, healthFallback)}; failures ${totalFailuresText}; final failures ${measurements.health.final?.failureCount ?? healthFallback}${healthSlowestText(measurements)}`);
   } else {
     lines.push(`- health: n/a${readinessReason ? ` (${readinessReason})` : ""}`);
   }
