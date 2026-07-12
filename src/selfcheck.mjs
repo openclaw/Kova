@@ -1,10 +1,10 @@
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { access, chmod, cp, link, lstat, mkdir, mkdtemp, open, readFile, readdir, rename, rm, stat, symlink, truncate, utimes, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { gzipSync } from "node:zlib";
+import { gzipSync, gunzipSync } from "node:zlib";
 import { resolveScriptStep } from "mock-ai-provider/dist/providers/openai/common/scripted-response.js";
 import { createBoundedOutputAccumulator, quoteShell, runCommand } from "./commands.mjs";
 import { collectErrorFlags, parseFlags } from "./cli.mjs";
@@ -1634,12 +1634,7 @@ async function runScopedSelfCheck(flags, scope, workspace) {
       await writeFile(missingSidecarPath, missingSidecarArchive);
       unsafeArchives.push(missingSidecarPath);
 
-      let fifoBundlePath = null;
       if (process.platform !== "win32") {
-        fifoBundlePath = join(tmp, "explicit-bundle.fifo");
-        const fifoBundle = await runCommand(`mkfifo ${quoteShell(fifoBundlePath)}`);
-        assertEqual(fifoBundle.status, 0, "creates explicit bundle FIFO fixture");
-
         const fifoChecksumArchive = buildTarGzipFixture([
           {
             name: `${expectedBundleRoot}/manifest.json`,
@@ -1664,33 +1659,16 @@ async function runScopedSelfCheck(flags, scope, workspace) {
         assertEqual(fifoChecksum.status, 0, "creates checksum FIFO fixture");
         unsafeArchives.push(fifoChecksumPath);
       }
-      const reportWithHostileExplicitBundle = fifoBundlePath
-        ? {
-          ...report,
-          bundle: {
-            path: fifoBundlePath,
-            outputPath: mismatchedExplicitPath
-          },
-          outputPaths: {
-            ...report.outputPaths,
-            bundle: badSidecarPath,
-            bundlePath: missingSidecarPath
-          }
-        }
-        : {
-          ...report,
-          bundle: {
-            path: mismatchedExplicitPath,
-            outputPath: badSidecarPath
-          },
-          outputPaths: {
-            ...report.outputPaths,
-            bundle: missingSidecarPath
-          }
-        };
+      const reportForBundleDiscovery = structuredClone(report);
+      delete reportForBundleDiscovery.bundle;
+      delete reportForBundleDiscovery.bundlePath;
+      if (reportForBundleDiscovery.outputPaths) {
+        delete reportForBundleDiscovery.outputPaths.bundle;
+        delete reportForBundleDiscovery.outputPaths.bundlePath;
+      }
       await writeFile(
         misleadingReportPath,
-        `${JSON.stringify(reportWithHostileExplicitBundle, null, 2)}\n`
+        `${JSON.stringify(reportForBundleDiscovery, null, 2)}\n`
       );
       await writeFile(
         misleadingMarkdownPath,
@@ -1731,6 +1709,36 @@ async function runScopedSelfCheck(flags, scope, workspace) {
             "publish rejects option-like, traversal, aliased, and duplicate tar members"
           );
         }
+      ));
+      const invalidExplicitRoot = join(tmp, "publish-invalid-explicit");
+      const invalidExplicitReportPath = join(invalidExplicitRoot, "report.json");
+      const invalidExplicitBundlePath = join(invalidExplicitRoot, "invalid-bundle.tar.gz");
+      await mkdir(invalidExplicitRoot);
+      await writeFile(invalidExplicitBundlePath, "not a bundle\n");
+      const validExplicitBundlePath = join(
+        invalidExplicitRoot,
+        basename(publishBundle.outputPath)
+      );
+      await cp(publishBundle.outputPath, validExplicitBundlePath);
+      await cp(
+        publishBundle.checksumPath,
+        `${validExplicitBundlePath}.sha256`
+      );
+      await writeFile(
+        invalidExplicitReportPath,
+        `${JSON.stringify({
+          ...report,
+          bundle: {
+            outputPath: validExplicitBundlePath
+          },
+          bundlePath: invalidExplicitBundlePath
+        }, null, 2)}\n`
+      );
+      await writeFile(join(invalidExplicitRoot, "report.md"), "# invalid explicit bundle\n");
+      checks.push(await failingCommandCheck(
+        "publish-rejects-invalid-explicit-bundle",
+        `node bin/kova.mjs publish ${quoteShell(invalidExplicitReportPath)} --ver 2026.7.12-invalid-explicit --release-date 2026-07-12 --sha selfcheck --out-dir ${quoteShell(join(invalidExplicitRoot, "releases"))} --json`,
+        "explicitly referenced report bundle failed integrity verification"
       ));
     }
 
@@ -5467,6 +5475,7 @@ async function performanceBaselineCheck(tmp) {
 
 async function reportPublicationCheck(tmp) {
   const publicationRoot = join(tmp, "report-publication");
+  const globalFixturePaths = [];
   try {
     const report = syntheticPublicationReport();
     await mkdir(publicationRoot, { recursive: true });
@@ -5625,10 +5634,11 @@ async function reportPublicationCheck(tmp) {
       "mid-backup recovery restores the prior canonical report"
     );
 
-    const outputPaths = buildReportOutputPaths(publicationRoot, "kova-260712-000001-aabbcc");
+    const publishedRunId = createRunId();
+    const outputPaths = buildReportOutputPaths(publicationRoot, publishedRunId);
     const publishedReport = {
       ...report,
-      runId: "kova-260712-000001-aabbcc",
+      runId: publishedRunId,
       outputPaths
     };
     await writeReportOutputs(publicationRoot, publishedReport);
@@ -5641,6 +5651,13 @@ async function reportPublicationCheck(tmp) {
     );
     const committedJson = await readFile(outputPaths.json);
     const committedMarkdown = await readFile(outputPaths.markdown);
+    const longArtifactName = `${"l".repeat(120)}.json`;
+    const unicodeArtifactName = "sigma-\u03c3.json";
+    const publishedArtifactsDir = join(tmp, "published-artifacts");
+    const publishedArtifactRoot = join(publishedArtifactsDir, publishedReport.runId);
+    await mkdir(publishedArtifactRoot, { recursive: true });
+    await writeFile(join(publishedArtifactRoot, longArtifactName), "long artifact\n");
+    await writeFile(join(publishedArtifactRoot, unicodeArtifactName), "unicode artifact\n");
     let releaseTransientWriter;
     let markTransientWriterReady;
     const transientWriterRelease = new Promise((resolve) => {
@@ -5666,7 +5683,8 @@ async function reportPublicationCheck(tmp) {
     await transientWriterReady;
     let snapshotSettled = false;
     const serializedBundlePromise = bundleReport(outputPaths.json, {
-      outputDir: join(publicationRoot, "serialized-snapshot-bundles")
+      outputDir: join(publicationRoot, "serialized-snapshot-bundles"),
+      artifactsDir: publishedArtifactsDir
     }).finally(() => {
       snapshotSettled = true;
     });
@@ -5683,6 +5701,44 @@ async function reportPublicationCheck(tmp) {
       serializedBundle.runId,
       publishedReport.runId,
       "report snapshot excludes a rolled-back transient generation"
+    );
+    const serializedEntries = readUstarEntries(await readFile(serializedBundle.outputPath));
+    assertEqual(
+      serializedEntries.some((entry) => ["g", "x", "L", "K", "N"].includes(entry.type)),
+      false,
+      "generated bundle does not require tar extension headers"
+    );
+    const serializedIndexEntry = serializedEntries.find(
+      (entry) => entry.name === `${publishedReport.runId}-bundle/artifact-index.json`
+    );
+    const serializedIndex = JSON.parse(serializedIndexEntry.content.toString("utf8"));
+    for (const originalPath of [
+      `artifacts/${longArtifactName}`,
+      `artifacts/${unicodeArtifactName}`
+    ]) {
+      const indexed = serializedIndex.entries.find((entry) => entry.path === originalPath);
+      assertEqual(Boolean(indexed), true, `artifact index preserves ${originalPath}`);
+      assertEqual(
+        indexed.archivePath.startsWith("mapped/"),
+        true,
+        `artifact index maps non-USTAR path ${originalPath}`
+      );
+      assertEqual(
+        serializedEntries.some(
+          (entry) => entry.name === `${serializedIndex.bundleRoot}/${indexed.archivePath}`
+        ),
+        true,
+        `generated bundle contains mapped artifact ${originalPath}`
+      );
+    }
+    const overlappingBundle = await bundleReport(outputPaths.json, {
+      outputDir: join(publishedArtifactRoot, "bundle-output"),
+      artifactsDir: publishedArtifactsDir
+    });
+    assertEqual(
+      await fileExists(overlappingBundle.outputPath),
+      true,
+      "bundle staging remains outside an overlapping artifact source tree"
     );
     const markerlessBackupPath = join(
       publicationRoot,
@@ -5913,8 +5969,139 @@ async function reportPublicationCheck(tmp) {
     );
     await writeFile(orphanChecksumPath, "orphan\n");
     await writeFile(operatorChecksumPath, "operator copy\n");
+    const staleBundleTransaction = randomUUID();
+    const staleBundleStage = `${firstBundle.outputPath}.${staleBundleTransaction}.tmp`;
+    const staleBundleBuildTransaction = randomUUID();
+    const staleBundleBuild = join(
+      tmpdir(),
+      `kova-artifact-bundle-${staleBundleBuildTransaction}.tmp`
+    );
+    const unownedBundleBuild = join(
+      tmpdir(),
+      `kova-artifact-bundle-${randomUUID()}.tmp`
+    );
+    const malformedBundleBuildTransaction = randomUUID();
+    const malformedBundleBuild = join(
+      tmpdir(),
+      `kova-artifact-bundle-${malformedBundleBuildTransaction}.tmp`
+    );
+    const markerOnlyBundleBuildTransaction = randomUUID();
+    const markerOnlyBundleBuild = join(
+      tmpdir(),
+      `kova-artifact-bundle-${markerOnlyBundleBuildTransaction}.tmp`
+    );
+    globalFixturePaths.push(
+      staleBundleBuild,
+      `${staleBundleBuild}.owner`,
+      unownedBundleBuild,
+      malformedBundleBuild,
+      `${malformedBundleBuild}.owner`,
+      `${markerOnlyBundleBuild}.owner`
+    );
+    await writeFile(staleBundleStage, "stale staged archive\n");
+    await writeFile(`${staleBundleStage}.owner`, `${JSON.stringify({
+      schemaVersion: "kova.bundlePairStage.v1",
+      transaction: staleBundleTransaction,
+      outputPath: firstBundle.outputPath,
+      checksumPath: firstBundle.checksumPath
+    })}\n`);
+    await mkdir(staleBundleBuild);
+    await writeFile(join(staleBundleBuild, "stale.bin"), "stale bundle build\n");
+    await writeFile(`${staleBundleBuild}.owner`, `${JSON.stringify({
+      schemaVersion: "kova.bundleBuildStage.v1",
+      transaction: staleBundleBuildTransaction,
+      outputRoot: bundleRoot,
+      bundleName: firstLogicalBundleName
+    })}\n`);
+    await mkdir(unownedBundleBuild);
+    await writeFile(join(unownedBundleBuild, "operator.bin"), "preserve me\n");
+    await mkdir(malformedBundleBuild);
+    await writeFile(join(malformedBundleBuild, "operator.bin"), "preserve malformed owner\n");
+    await writeFile(`${malformedBundleBuild}.owner`, `${JSON.stringify({
+      schemaVersion: "kova.bundleBuildStage.v1",
+      transaction: malformedBundleBuildTransaction,
+      outputRoot: {},
+      bundleName: firstLogicalBundleName
+    })}\n`);
+    await writeFile(`${markerOnlyBundleBuild}.owner`, `${JSON.stringify({
+      schemaVersion: "kova.bundleBuildStage.v1",
+      transaction: markerOnlyBundleBuildTransaction,
+      outputRoot: bundleRoot,
+      bundleName: firstLogicalBundleName
+    })}\n`);
+    let symlinkOwnedBundleBuild = null;
+    let symlinkOwnedBundleMarker = null;
+    let symlinkOwnedBundleTarget = null;
+    if (process.platform !== "win32") {
+      const transaction = randomUUID();
+      symlinkOwnedBundleBuild = join(
+        tmpdir(),
+        `kova-artifact-bundle-${transaction}.tmp`
+      );
+      symlinkOwnedBundleMarker = `${symlinkOwnedBundleBuild}.owner`;
+      symlinkOwnedBundleTarget = join(tmp, "operator-stage-owner.json");
+      globalFixturePaths.push(
+        symlinkOwnedBundleBuild,
+        symlinkOwnedBundleMarker
+      );
+      await mkdir(symlinkOwnedBundleBuild);
+      await writeFile(
+        join(symlinkOwnedBundleBuild, "operator.bin"),
+        "preserve symlink-owned stage\n"
+      );
+      await writeFile(symlinkOwnedBundleTarget, `${JSON.stringify({
+        schemaVersion: "kova.bundleBuildStage.v1",
+        transaction,
+        outputRoot: bundleRoot,
+        bundleName: firstLogicalBundleName
+      })}\n`);
+      await symlink(symlinkOwnedBundleTarget, symlinkOwnedBundleMarker);
+    }
     await bundleReport(collisionReports[0], { outputDir: bundleRoot });
     assertEqual(await fileExists(orphanChecksumPath), false, "logical bundle retry removes orphan checksum");
+    assertEqual(
+      await fileExists(staleBundleStage),
+      false,
+      "logical bundle retry removes a crashed staged archive"
+    );
+    assertEqual(
+      await fileExists(staleBundleBuild),
+      false,
+      "logical bundle retry removes a crashed build directory"
+    );
+    assertEqual(
+      await fileExists(`${markerOnlyBundleBuild}.owner`),
+      false,
+      "logical bundle retry removes a marker created before its staging directory"
+    );
+    assertEqual(
+      await readFile(join(unownedBundleBuild, "operator.bin"), "utf8"),
+      "preserve me\n",
+      "logical bundle retry preserves an unowned matching directory"
+    );
+    assertEqual(
+      await readFile(join(malformedBundleBuild, "operator.bin"), "utf8"),
+      "preserve malformed owner\n",
+      "logical bundle retry ignores malformed owner marker fields"
+    );
+    if (symlinkOwnedBundleBuild) {
+      assertEqual(
+        await readFile(join(symlinkOwnedBundleBuild, "operator.bin"), "utf8"),
+        "preserve symlink-owned stage\n",
+        "logical bundle retry ignores a symlinked owner marker"
+      );
+      assertEqual(
+        (await lstat(symlinkOwnedBundleMarker)).isSymbolicLink(),
+        true,
+        "symlinked owner marker is preserved"
+      );
+      await rm(symlinkOwnedBundleBuild, { recursive: true });
+      await rm(symlinkOwnedBundleMarker);
+      await rm(symlinkOwnedBundleTarget);
+    }
+    await rm(unownedBundleBuild, { recursive: true });
+    await rm(malformedBundleBuild, { recursive: true });
+    await rm(`${malformedBundleBuild}.owner`);
     assertEqual(
       await fileExists(operatorChecksumPath),
       true,
@@ -6122,10 +6309,58 @@ async function reportPublicationCheck(tmp) {
         symlinkMarkdownRejected = /not a regular file/.test(error.message);
       }
       assertEqual(symlinkMarkdownRejected, true, "bundle rejects symlinked Markdown");
+      const symlinkBundlePath = join(collisionRoot, "linked-bundle.tar.gz");
+      const symlinkBundleChecksumPath = `${symlinkBundlePath}.sha256`;
+      await symlink(firstBundle.outputPath, symlinkBundlePath);
+      await writeFile(
+        symlinkBundleChecksumPath,
+        `${createHash("sha256").update(firstArchive).digest("hex")}  ${basename(symlinkBundlePath)}\n`
+      );
+      let symlinkBundleRejected = false;
+      try {
+        await retainGateArtifacts(collisionReports[0], {
+          runId: "a/b",
+          outputPath: symlinkBundlePath,
+          checksumPath: symlinkBundleChecksumPath
+        }, {
+          outputDir: join(publicationRoot, "symlink-bundle-retained")
+        });
+      } catch (error) {
+        symlinkBundleRejected = /not a regular file/.test(error.message);
+      }
+      assertEqual(symlinkBundleRejected, true, "retention rejects a symlinked bundle");
     }
 
     const emptyRetainedRoot = join(publicationRoot, "empty-retained");
     const emptyRetainedBackup = join(publicationRoot, ".empty-retained.bak");
+    const staleRetainedTransaction = "30000000-0000-4000-8000-000000000002";
+    const staleRetainedStage = join(
+      publicationRoot,
+      `.empty-retained.${staleRetainedTransaction}.tmp`
+    );
+    const unownedRetainedStage = join(
+      publicationRoot,
+      ".empty-retained.30000000-0000-4000-8000-000000000005.tmp"
+    );
+    const markerOnlyRetainedTransaction = "30000000-0000-4000-8000-000000000006";
+    const markerOnlyRetainedStage = join(
+      publicationRoot,
+      `.empty-retained.${markerOnlyRetainedTransaction}.tmp`
+    );
+    await mkdir(staleRetainedStage);
+    await writeFile(join(staleRetainedStage, "stale.bin"), "stale retained stage\n");
+    await writeFile(`${staleRetainedStage}.owner`, `${JSON.stringify({
+      schemaVersion: "kova.retainedArtifactStage.v1",
+      transaction: staleRetainedTransaction,
+      outputRoot: emptyRetainedRoot
+    })}\n`);
+    await mkdir(unownedRetainedStage);
+    await writeFile(join(unownedRetainedStage, "operator.bin"), "preserve me\n");
+    await writeFile(`${markerOnlyRetainedStage}.owner`, `${JSON.stringify({
+      schemaVersion: "kova.retainedArtifactStage.v1",
+      transaction: markerOnlyRetainedTransaction,
+      outputRoot: emptyRetainedRoot
+    })}\n`);
     const emptyRetainedClaimId = "10000000-0000-4000-8000-000000000001";
     await mkdir(emptyRetainedBackup);
     await writeFile(`${emptyRetainedBackup}.owner`, `${JSON.stringify({
@@ -6143,6 +6378,22 @@ async function reportPublicationCheck(tmp) {
     });
     assertEqual(await fileExists(emptyRetainedRoot), true, "empty retained tree backup recovered");
     assertEqual(await fileExists(emptyRetainedBackup), false, "empty retained tree backup removed");
+    assertEqual(
+      await fileExists(staleRetainedStage),
+      false,
+      "retention retry removes a crashed staging directory"
+    );
+    assertEqual(
+      await fileExists(`${markerOnlyRetainedStage}.owner`),
+      false,
+      "retention retry removes a marker created before its staging directory"
+    );
+    assertEqual(
+      await readFile(join(unownedRetainedStage, "operator.bin"), "utf8"),
+      "preserve me\n",
+      "retention retry preserves an unowned matching directory"
+    );
+    await rm(unownedRetainedStage, { recursive: true });
 
     const restoredEmptyRoot = join(publicationRoot, "restored-empty-retained");
     const restoredEmptyBackup = join(publicationRoot, ".restored-empty-retained.bak");
@@ -6462,6 +6713,10 @@ async function reportPublicationCheck(tmp) {
       durationMs: 0,
       message: error.message
     };
+  } finally {
+    for (const path of globalFixturePaths) {
+      await rm(path, { recursive: true, force: true });
+    }
   }
 }
 
@@ -7151,6 +7406,35 @@ function buildTarGzipFixture(entries) {
   }
   blocks.push(Buffer.alloc(1024));
   return gzipSync(Buffer.concat(blocks));
+}
+
+function readUstarEntries(archive) {
+  const tar = gunzipSync(archive);
+  const entries = [];
+  for (let offset = 0; offset + 512 <= tar.length;) {
+    const header = tar.subarray(offset, offset + 512);
+    if (header.every((byte) => byte === 0)) {
+      break;
+    }
+    const name = readTarString(header, 0, 100);
+    const prefix = readTarString(header, 345, 155);
+    const sizeText = readTarString(header, 124, 12).trim();
+    const size = sizeText ? Number.parseInt(sizeText, 8) : 0;
+    const contentStart = offset + 512;
+    entries.push({
+      name: prefix ? `${prefix}/${name}` : name,
+      type: String.fromCharCode(header[156] || 0x30),
+      content: tar.subarray(contentStart, contentStart + size)
+    });
+    offset = contentStart + Math.ceil(size / 512) * 512;
+  }
+  return entries;
+}
+
+function readTarString(buffer, offset, length) {
+  const value = buffer.subarray(offset, offset + length);
+  const terminator = value.indexOf(0);
+  return value.subarray(0, terminator === -1 ? value.length : terminator).toString("utf8");
 }
 
 function writeTarOctal(buffer, offset, length, value) {
