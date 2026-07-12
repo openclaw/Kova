@@ -70,6 +70,9 @@ function doctorOutputStatus(result) {
   if (commandResultFailed(result)) {
     return "failed";
   }
+  if (!commandResultPassed(result)) {
+    return "missing";
+  }
   const output = `${result.stdout ?? ""}${result.stderr ?? ""}`.trim();
   return output.length > 0 ? "passed" : "missing";
 }
@@ -80,6 +83,9 @@ function doctorOutputReason(result) {
   }
   if (commandResultFailed(result)) {
     return `doctor command exited ${result.status ?? result.exitCode ?? "unknown"}`;
+  }
+  if (!commandResultPassed(result)) {
+    return "doctor command result status was not recorded";
   }
   const output = `${result.stdout ?? ""}${result.stderr ?? ""}`.trim();
   return output.length > 0 ? null : "doctor command produced no captured output";
@@ -223,7 +229,7 @@ function failedCommandBeforeOrInPhase(record, phaseId) {
       break;
     }
     for (const [resultIndex, result] of (phase.results ?? []).entries()) {
-      if (!result || commandResultPassed(result)) {
+      if (!result || !commandResultFailed(result)) {
         continue;
       }
       const command = result.command ?? phase.commands?.[resultIndex] ?? "unknown command";
