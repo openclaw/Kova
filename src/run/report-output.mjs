@@ -196,8 +196,11 @@ async function recoverReportFileSet(entries, canonicalPath, transactionPath) {
     ...backupEntries.filter((entry) => entry.path !== canonicalPath),
     ...backupEntries.filter((entry) => entry.path === canonicalPath)
   ];
+  // Outputs without backups were absent from the prior generation. Remove
+  // every transaction path so an interrupted publish cannot leave them mixed
+  // with the restored canonical report.
+  await Promise.all(entries.map((entry) => rm(entry.path, { force: true })));
   for (const entry of restoreOrder) {
-    await rm(entry.path, { force: true });
     await rename(entry.backupPath, entry.path);
   }
   await syncDirectories(entries);
