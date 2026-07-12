@@ -185,8 +185,12 @@ async function recoverReportFileSet(entries, canonicalPath) {
     return;
   }
 
-  await Promise.all(entries.map((entry) => rm(entry.path, { force: true })));
-  for (const entry of backupEntries) {
+  const restoreOrder = [
+    ...backupEntries.filter((entry) => entry.path !== canonicalPath),
+    ...backupEntries.filter((entry) => entry.path === canonicalPath)
+  ];
+  for (const entry of restoreOrder) {
+    await rm(entry.path, { force: true });
     await rename(entry.backupPath, entry.path);
   }
   await syncDirectories(entries);

@@ -4645,6 +4645,24 @@ async function performanceBaselineCheck(tmp) {
       })
     ));
     assertEqual(aliasMaxActive, 1, "case aliases share one baseline lock");
+    if (symlinkSupported) {
+      const canonicalBaselineDir = join(tmp, "canonical-baseline-dir");
+      const aliasedBaselineDir = join(tmp, "aliased-baseline-dir");
+      await mkdir(canonicalBaselineDir);
+      await symlink(canonicalBaselineDir, aliasedBaselineDir);
+      aliasActive = 0;
+      aliasMaxActive = 0;
+      await Promise.all([
+        join(canonicalBaselineDir, "baselines.json"),
+        join(aliasedBaselineDir, "baselines.json")
+      ].map((path) => withBaselineStoreLock(path, async () => {
+        aliasActive += 1;
+        aliasMaxActive = Math.max(aliasMaxActive, aliasActive);
+        await sleep(20);
+        aliasActive -= 1;
+      })));
+      assertEqual(aliasMaxActive, 1, "symlinked parent aliases share one baseline lock");
+    }
     const otherTargetComparison = comparePerformanceToBaseline(baselineReport, loadedStore, {
       targetPlan: { kind: "local-build", value: "/tmp/other-openclaw" }
     });
@@ -4899,6 +4917,16 @@ async function reportPublicationCheck(tmp) {
       false,
       "recovered report backups removed"
     );
+    await rename(
+      outputPaths.json,
+      join(publicationRoot, `.${basename(outputPaths.json)}.kova-backup`)
+    );
+    await writeReportOutputs(publicationRoot, publishedReport);
+    assertEqual(
+      (await readFile(outputPaths.markdown, "utf8")).length > 0,
+      true,
+      "partial report backup recovery preserves untouched files"
+    );
 
     const collisionRoot = join(publicationRoot, "collisions");
     await mkdir(collisionRoot, { recursive: true });
@@ -5065,6 +5093,12 @@ async function reportPublicationCheck(tmp) {
     );
     await rm(unmanagedPath);
     const retainedBackup = join(publicationRoot, ".retained.bak");
+    await rename(retainedRoot, retainedBackup);
+    await mkdir(retainedRoot);
+    await retainGateArtifacts(collisionReports[0], firstBundle, {
+      outputDir: retainedRoot
+    });
+    assertEqual(await fileExists(retained.jsonPath), true, "empty retained tree recovered from backup");
     await rename(retainedRoot, retainedBackup);
     await mkdir(retainedRoot);
     await writeFile(
