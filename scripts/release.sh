@@ -108,7 +108,7 @@ only_version_files_dirty() {
         ;;
     esac
   done
-  return 0
+  "${script_dir}/validate-version-metadata.mjs" "$version"
 }
 
 is_release_commit() {
