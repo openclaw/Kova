@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { access, chmod, cp, link, lstat, mkdir, mkdtemp, open, readFile, readdir, rename, rm, stat, symlink, truncate, utimes, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, join, win32 } from "node:path";
 import { gzipSync, gunzipSync } from "node:zlib";
 import { resolveScriptStep } from "mock-ai-provider/dist/providers/openai/common/scripted-response.js";
 import { createBoundedOutputAccumulator, quoteShell, runCommand } from "./commands.mjs";
@@ -141,6 +141,7 @@ import {
 import { compareReports, renderCompareSummary } from "./reporting/compare.mjs";
 import {
   bundleReport,
+  pathIsAtOrBelow,
   publishBundlePair,
   retainedArtifactTreeDigest,
   retainGateArtifacts
@@ -5848,6 +5849,15 @@ async function reportPublicationCheck(tmp) {
       artifactRootOutputRejected,
       true,
       "bundle output cannot replace the run artifact root"
+    );
+    assertEqual(
+      pathIsAtOrBelow(
+        "D:\\kova\\bundles",
+        "C:\\kova\\artifacts",
+        win32
+      ),
+      false,
+      "cross-volume bundle output is outside the artifact source tree"
     );
     if (process.platform !== "win32") {
       const artifactRootAlias = join(tmp, "published-artifact-root-alias");
