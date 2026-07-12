@@ -207,7 +207,7 @@ function formatResourceIdentity(identity) {
 function renderRollup(comparison, ui) {
   const rows = rollupScenarios(comparison).map((r) => ({
     id: r.id,
-    passed: Math.max(0, (r.totalSamples ?? 0) - (r.failedSamples ?? 0)) || undefined,
+    passed: r.passedSamples ?? 0,
     total: r.totalSamples || undefined,
     verdict: r.verdict,
     delta: formatScenarioDelta(r),
@@ -220,7 +220,6 @@ function renderRollup(comparison, ui) {
 
 function formatScenarioDelta(r) {
   if (r.regressionCount > 0) return `+${r.regressionCount}`;
-  if (r.verdict === "IMPROVED") return "-0";
   return "";
 }
 

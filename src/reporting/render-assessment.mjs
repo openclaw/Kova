@@ -110,33 +110,35 @@ function renderHeader(summary, scenarios, ui) {
   const verdict = String(summary.decision?.verdict ?? "UNKNOWN").toUpperCase();
   const shipLabel = deriveVerdictBadge(verdict, summary);
   const conf = runConfidence(scenarios);
-  const failed = scenarios.filter((s) => s.verdict === "FAIL" || s.verdict === "BLOCKED").length;
+  const failed = scenarios.filter((s) => s.verdict === "FAIL").length;
+  const blocked = scenarios.filter((s) => s.verdict === "BLOCKED").length;
   const incomplete = scenarios.filter((s) => s.verdict === "INCOMPLETE").length;
   const dryRun = scenarios.filter((s) => s.verdict === "DRY-RUN").length;
   const totalScn = scenarios.length;
   const sampleTotal = scenarios.reduce((a, s) => a + (s.total ?? 0), 0);
-  const sampleFailed = scenarios
-    .filter((s) => s.verdict === "FAIL" || s.verdict === "BLOCKED")
-    .reduce((a, s) => a + Math.max(0, (s.total ?? 0) - (s.passed ?? 0)), 0);
-  const sampleIncomplete = scenarios
-    .filter((s) => s.verdict === "INCOMPLETE")
-    .reduce((a, s) => a + Math.max(0, (s.total ?? 0) - (s.passed ?? 0)), 0);
+  const sampleFailed = scenarios.reduce((a, s) => a + (s.statuses?.FAIL ?? 0), 0);
+  const sampleBlocked = scenarios.reduce((a, s) => a + (s.statuses?.BLOCKED ?? 0), 0);
+  const sampleIncomplete = scenarios.reduce((a, s) => a + (s.statuses?.INCOMPLETE ?? 0), 0);
   // Pluralize against the count actually referenced in each clause so
   // "1 scenario failed" reads correctly while "3 scenarios passed" still works.
   const scopeText = failed > 0
-    ? `${failed} ${pluralize(failed, "scenario")} failed${totalScn > failed ? ` of ${totalScn}` : ""}`
-    : incomplete > 0
-      ? `${incomplete} ${pluralize(incomplete, "scenario")} incomplete${totalScn > incomplete ? ` of ${totalScn}` : ""}`
-      : dryRun > 0
-        ? `${dryRun} ${pluralize(dryRun, "scenario")} planned${totalScn > dryRun ? ` of ${totalScn}` : ""}`
-        : `${totalScn} ${pluralize(totalScn, "scenario")} passed`;
+    ? `${failed} ${pluralize(failed, "scenario")} failed${blocked > 0 ? `, ${blocked} blocked` : ""}${totalScn > failed + blocked ? ` of ${totalScn}` : ""}`
+    : blocked > 0
+      ? `${blocked} ${pluralize(blocked, "scenario")} blocked${totalScn > blocked ? ` of ${totalScn}` : ""}`
+      : incomplete > 0
+        ? `${incomplete} ${pluralize(incomplete, "scenario")} incomplete${totalScn > incomplete ? ` of ${totalScn}` : ""}`
+        : dryRun > 0
+          ? `${dryRun} ${pluralize(dryRun, "scenario")} planned${totalScn > dryRun ? ` of ${totalScn}` : ""}`
+          : `${totalScn} ${pluralize(totalScn, "scenario")} passed`;
   const samplesText = sampleFailed > 0
-    ? `${sampleFailed}/${sampleTotal} ${pluralize(sampleTotal, "sample")} failed`
-    : sampleIncomplete > 0
-      ? `${sampleIncomplete}/${sampleTotal} ${pluralize(sampleTotal, "sample")} incomplete`
-      : dryRun > 0
-        ? `${sampleTotal} ${pluralize(sampleTotal, "sample")} planned`
-        : `${sampleTotal} ${pluralize(sampleTotal, "sample")}`;
+    ? `${sampleFailed} failed${sampleBlocked > 0 ? `, ${sampleBlocked} blocked` : ""} of ${sampleTotal} ${pluralize(sampleTotal, "sample")}`
+    : sampleBlocked > 0
+      ? `${sampleBlocked}/${sampleTotal} ${pluralize(sampleTotal, "sample")} blocked`
+      : sampleIncomplete > 0
+        ? `${sampleIncomplete}/${sampleTotal} ${pluralize(sampleTotal, "sample")} incomplete`
+        : dryRun > 0
+          ? `${sampleTotal} ${pluralize(sampleTotal, "sample")} planned`
+          : `${sampleTotal} ${pluralize(sampleTotal, "sample")}`;
 
   const headline = buildVerdictHeadline({
     scope: scopeText,

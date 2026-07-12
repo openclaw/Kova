@@ -105,7 +105,7 @@ function renderFooter(plan, ui) {
   // footer; the JSON form carries timestamps when callers need them.
   const { c, g } = ui;
   const lines = [ruleSection("next", ui.width, ui), ""];
-  lines.push(`  ${c.dim(g.arrow)} kova inventory --json`);
+  lines.push(`  ${c.dim(g.arrow)} kova inventory plan --json`);
   lines.push(`  ${c.dim(g.arrow)} kova plan`);
   return lines.join("\n");
 }

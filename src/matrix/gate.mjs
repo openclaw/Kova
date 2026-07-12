@@ -104,15 +104,16 @@ export function evaluateGate(report, profile, options = {}) {
   const openClawBlockingFailures = blockingCards.filter((card) => card.kind === "openclaw-failure");
   const incompleteProof = blockingCards.some((card) => card.kind === "incomplete-proof");
   const incomplete = missingRequired.length > 0 || incompleteProof;
-  const verdict = blockedByHarness
-    ? "BLOCKED"
-    : openClawBlockingFailures.length > 0
-      ? "DO_NOT_SHIP"
-      : blockingCards.length > 0
-        ? "DO_NOT_SHIP"
-        : incomplete
-          ? "PARTIAL"
-          : "SHIP";
+  const productBlockingFailures = blockingCards.filter((card) =>
+    !["not-executed", "blocked", "incomplete-proof", "skipped", "dry-run"].includes(card.kind)
+  );
+  const verdict = openClawBlockingFailures.length > 0 || productBlockingFailures.length > 0
+    ? "DO_NOT_SHIP"
+    : blockedByHarness
+      ? "BLOCKED"
+      : incomplete
+        ? "PARTIAL"
+        : "SHIP";
   const subsystems = summarizeSubsystems(cards);
   const fixerSummaries = buildFixerSummaries(subsystems);
 

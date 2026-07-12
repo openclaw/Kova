@@ -14,6 +14,7 @@
 // scenario-aggregate.metricDirection.
 
 import { METRIC_LABELS, METRIC_UNITS, HEADLINE_METRICS, metricDirection } from "./scenario-aggregate.mjs";
+import { worseRecordStatus } from "../statuses.mjs";
 
 const VERDICT_RANK = { FAIL: 0, BLOCKED: 0, REGRESSED: 1, NEW: 2, MISSING: 2, IMPROVED: 3, UNCHANGED: 4, OK: 5 };
 
@@ -36,6 +37,7 @@ export function rollupScenarios(comparison) {
         worst: null,
         totalSamples: 0,
         failedSamples: 0,
+        passedSamples: 0,
       });
     }
     const acc = byId.get(id);
@@ -45,8 +47,14 @@ export function rollupScenarios(comparison) {
       acc.resourceContractMismatchCount += 1;
     }
     acc.verdict = pickWorseVerdict(acc.verdict, s.status);
+    acc.baselineStatus = worseRecordStatus(acc.baselineStatus, s.baselineStatus);
+    acc.currentStatus = worseRecordStatus(acc.currentStatus, s.currentStatus);
     acc.totalSamples += s.currentSampleCount ?? 0;
-    acc.failedSamples += s.currentStatuses?.FAIL ?? 0;
+    acc.failedSamples +=
+      (s.currentStatuses?.FAIL ?? 0) +
+      (s.currentStatuses?.BLOCKED ?? 0) +
+      (s.currentStatuses?.INCOMPLETE ?? 0);
+    acc.passedSamples += s.currentStatuses?.PASS ?? 0;
     // Surface worst regression as the "worst metric" headline.
     const worst = pickWorstRegression(s.regressions);
     if (worst && (!acc.worst || worstSeverity(worst) > worstSeverity(acc.worst))) {

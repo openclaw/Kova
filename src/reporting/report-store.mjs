@@ -129,8 +129,8 @@ function reportStatus(report) {
     return report.gate.verdict;
   }
   const statuses = report.summary?.statuses ?? {};
-  if ((statuses.BLOCKED ?? 0) > 0) return "BLOCKED";
   if ((statuses.FAIL ?? 0) > 0) return "FAIL";
+  if ((statuses.BLOCKED ?? 0) > 0) return "BLOCKED";
   if ((statuses.INCOMPLETE ?? 0) > 0) return "INCOMPLETE";
   if ((statuses["DRY-RUN"] ?? 0) > 0) return "DRY-RUN";
   if ((statuses.PASS ?? 0) > 0) return "PASS";

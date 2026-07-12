@@ -158,12 +158,17 @@ import {
   retainedArtifactTreeDigest,
   retainGateArtifacts
 } from "./reporting/artifacts.mjs";
-import { pickAffectedScenarios, scenarioMetricRows } from "./reporting/compare-aggregate.mjs";
+import { pickAffectedScenarios, rollupScenarios, scenarioMetricRows } from "./reporting/compare-aggregate.mjs";
 import { renderCompareAssessment } from "./reporting/render-compare.mjs";
 import { renderAssessment } from "./reporting/render-assessment.mjs";
 import { renderCleanupArtifacts, renderCleanupEnvs } from "./reporting/render-cleanup.mjs";
+import { renderBundleReceipt } from "./reporting/render-bundle.mjs";
+import { renderHelp } from "./reporting/render-help.mjs";
+import { renderInventoryPlan } from "./reporting/render-inventory.mjs";
+import { renderMatrixPlan } from "./reporting/render-matrix-plan.mjs";
+import { renderPlan } from "./reporting/render-plan.mjs";
 import { renderRunReceipt } from "./reporting/render-run-receipt.mjs";
-import { aggregateScenarios } from "./reporting/scenario-aggregate.mjs";
+import { aggregateScenarios, runConfidence } from "./reporting/scenario-aggregate.mjs";
 import { summarizePerformanceReceipt } from "./run/options.mjs";
 import { saveBaselineUpdate } from "./run/report-finalization.mjs";
 import {
@@ -621,6 +626,9 @@ async function runScopedSelfCheck(flags, scope, workspace) {
     checks.push(envNameLengthCheck());
     checks.push(evaluationViolationHelpersCheck());
     checks.push(statusFoundationCheck());
+    checks.push(reportStatusPrecedenceCheck());
+    checks.push(reportAggregationIntegrityCheck());
+    checks.push(renderedCommandGuidanceCheck());
     checks.push(evidenceLedgerGatingCheck());
     checks.push(channelCapabilityReportSummaryCheck());
     checks.push(channelCapabilityResultIngestionCheck());
@@ -1279,6 +1287,7 @@ async function runScopedSelfCheck(flags, scope, workspace) {
     checks.push(gatewayProcessResourceRoleCheck());
     checks.push(compareRepeatAggregationCheck());
     checks.push(compareMetricOrderingCheck());
+    checks.push(compareIdentityAndRollupCheck());
     checks.push(compareGatewayRssDedupeCheck());
     checks.push(resourceContractCompareCheck());
     checks.push(await reportCompareExitStatusCheck(tmp));
@@ -2785,6 +2794,120 @@ function compareMetricOrderingCheck() {
   }
 }
 
+function compareIdentityAndRollupCheck() {
+  try {
+    const findingRecord = (violations) => ({
+      scenario: "finding-identity",
+      surface: "finding-identity",
+      title: "Finding Identity",
+      state: { id: "fresh" },
+      status: "FAIL",
+      likelyOwner: "OpenClaw",
+      phases: [],
+      measurements: {},
+      violations
+    });
+    const repeatedFailure = {
+      kind: "threshold",
+      metric: "agentTurnMs",
+      message: "agent turn latency exceeded the configured threshold at 1200 ms"
+    };
+    const distinctFailure = {
+      kind: "threshold",
+      metric: "agentTurnMs",
+      message: "agent turn returned duplicate visible output after 1300 ms"
+    };
+    const baseline = syntheticPerformanceReport({
+      runId: "finding-baseline",
+      platform: { os: "darwin", arch: "arm64", release: "test", node: "v24.0.0" },
+      target: "runtime:stable",
+      records: [findingRecord([repeatedFailure])]
+    });
+    const current = syntheticPerformanceReport({
+      runId: "finding-current",
+      platform: baseline.platform,
+      target: "runtime:stable",
+      records: [findingRecord([repeatedFailure, repeatedFailure, distinctFailure])]
+    });
+    const comparison = compareReports(baseline, current);
+    assertEqual(comparison.findingChanges.unchangedCount, 1, "finding compare preserves one matching occurrence");
+    assertEqual(comparison.findingChanges.new.length, 2, "finding compare preserves repeated and distinct additions");
+    assertEqual(
+      comparison.findingChanges.new.some((finding) => finding.summary.includes("duplicate visible output")),
+      true,
+      "finding compare uses semantic message identity"
+    );
+
+    const rollupInput = {
+      scenarios: [{
+        scenario: "rollup-status",
+        status: "OK",
+        baselineStatus: "PASS",
+        currentStatus: "BLOCKED",
+        currentSampleCount: 1,
+        currentStatuses: { BLOCKED: 1 },
+        regressions: []
+      }, {
+        scenario: "rollup-status",
+        status: "REGRESSED",
+        baselineStatus: "BLOCKED",
+        currentStatus: "FAIL",
+        currentSampleCount: 1,
+        currentStatuses: { FAIL: 1 },
+        regressions: [{ kind: "status", message: "status regressed" }]
+      }]
+    };
+    for (const scenarios of [rollupInput.scenarios, [...rollupInput.scenarios].reverse()]) {
+      const rollup = rollupScenarios({ scenarios })[0];
+      assertEqual(rollup.baselineStatus, "BLOCKED", "rollup retains worst baseline status");
+      assertEqual(rollup.currentStatus, "FAIL", "rollup retains worst current status");
+      assertEqual(rollup.failedSamples, 2, "rollup counts all non-passing samples");
+      assertEqual(rollup.passedSamples, 0, "rollup counts passed samples explicitly");
+    }
+
+    const improved = {
+      baseline: { target: "runtime:old", runId: "old" },
+      current: { target: "runtime:new", runId: "new" },
+      regressionCount: 0,
+      improvementCount: 1,
+      scenarios: [{
+        scenario: "rollup-status",
+        status: "IMPROVED",
+        baselineStatus: "FAIL",
+        currentStatus: "PASS",
+        baselineSampleCount: 1,
+        currentSampleCount: 1,
+        currentStatuses: { PASS: 1 },
+        regressions: [],
+        metrics: {}
+      }],
+      statusChanges: { changes: [], improvements: [], regressions: [] },
+      findingChanges: { new: [], resolved: [], unchangedCount: 0 }
+    };
+    const rendered = renderCompareAssessment(
+      improved,
+      { color: "never" },
+      process.env,
+      process.stdout
+    );
+    assertEqual(rendered.includes("-0"), false, "improved compare avoids negative zero");
+    return {
+      id: "compare-identity-rollup",
+      status: "PASS",
+      command: "evaluate finding identity and status rollups",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "compare-identity-rollup",
+      status: "FAIL",
+      command: "evaluate finding identity and status rollups",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
 function compareGatewayRssDedupeCheck() {
   try {
     const baseline = syntheticPerformanceReport({
@@ -3140,6 +3263,230 @@ function statusFoundationCheck() {
       id: "status-foundation",
       status: "FAIL",
       command: "evaluate INCOMPLETE status handling",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function reportStatusPrecedenceCheck() {
+  try {
+    const baseRecord = {
+      scenario: "mixed-status",
+      surface: "mixed-status",
+      title: "Mixed Status",
+      state: { id: "fresh" },
+      likelyOwner: "OpenClaw",
+      phases: [],
+      measurements: {}
+    };
+    const records = [{
+      ...baseRecord,
+      status: "BLOCKED",
+      blockedReason: "test harness unavailable"
+    }, {
+      ...baseRecord,
+      status: "FAIL",
+      violations: [{ message: "OpenClaw behavior failed" }]
+    }];
+    const report = {
+      schemaVersion: "kova.report.v1",
+      runId: "mixed-status-run",
+      mode: "execution",
+      target: "runtime:stable",
+      records,
+      summary: summarizeRecords(records)
+    };
+    const scenarios = aggregateScenarios(report);
+    assertEqual(scenarios[0]?.verdict, "FAIL", "scenario FAIL outranks BLOCKED");
+    assertEqual(scenarios[0]?.statuses?.FAIL, 1, "scenario retains failed sample count");
+    assertEqual(scenarios[0]?.statuses?.BLOCKED, 1, "scenario retains blocked sample count");
+    assertEqual(buildReportSummary(report).decision.verdict, "FAIL", "report FAIL outranks BLOCKED");
+
+    const assessment = renderAssessment(report, { full: true, color: "never" }, process.env, process.stdout);
+    assertEqual(assessment.includes("1 scenario failed"), true, "mixed assessment reports failed scenario");
+    assertEqual(assessment.includes("1 failed, 1 blocked of 2 samples"), true, "mixed assessment preserves blocked sample");
+
+    const receipt = renderRunReceipt({ report }, { color: "never" }, process.env, process.stdout);
+    assertEqual(receipt.includes("1 failed, 1 blocked of 2"), true, "mixed receipt preserves blocked count");
+
+    const blockedReport = {
+      ...report,
+      runId: "blocked-status-run",
+      records: [records[0]],
+      summary: summarizeRecords([records[0]])
+    };
+    assertEqual(buildReportSummary(blockedReport).decision.verdict, "BLOCKED", "blocked-only report verdict");
+    const blockedAssessment = renderAssessment(
+      blockedReport,
+      { full: true, color: "never" },
+      process.env,
+      process.stdout
+    );
+    assertEqual(blockedAssessment.includes("1 scenario blocked"), true, "blocked assessment uses blocked language");
+    assertEqual(blockedAssessment.includes("scenario failed"), false, "blocked assessment avoids failed language");
+    const blockedReceipt = renderRunReceipt(
+      { report: blockedReport },
+      { color: "never" },
+      process.env,
+      process.stdout
+    );
+    assertEqual(blockedReceipt.includes("1 blocked of 1"), true, "blocked receipt headline");
+    assertEqual(blockedReceipt.includes("Blocked"), true, "blocked receipt KPI");
+
+    const gate = evaluateGate(report, {
+      id: "mixed-status-gate",
+      gate: {
+        id: "mixed-status-gate",
+        blocking: [{ scenario: "mixed-status", state: "fresh" }]
+      }
+    });
+    assertEqual(gate.verdict, "DO_NOT_SHIP", "gate FAIL outranks harness BLOCKED");
+    return {
+      id: "report-status-precedence",
+      status: "PASS",
+      command: "evaluate mixed fail and blocked report semantics",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "report-status-precedence",
+      status: "FAIL",
+      command: "evaluate mixed fail and blocked report semantics",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function reportAggregationIntegrityCheck() {
+  try {
+    const record = (actual, roleActual) => ({
+      scenario: "aggregate-worst",
+      surface: "aggregate-worst",
+      title: "Aggregate Worst",
+      state: { id: "fresh" },
+      status: "FAIL",
+      likelyOwner: "OpenClaw",
+      phases: [],
+      measurements: { peakRssMb: actual },
+      violations: [{
+        kind: "threshold",
+        metric: "peakRssMb",
+        expected: "<= 100",
+        actual,
+        message: `peak RSS ${actual} MB exceeded threshold 100 MB`
+      }, {
+        kind: "threshold",
+        metric: "resourceByRole.gateway.peakRssMb",
+        expected: "<= 100",
+        actual: roleActual,
+        message: `gateway role RSS ${roleActual} MB exceeded threshold 100 MB`
+      }]
+    });
+    const records = [record(150, 180), record(600, 700)];
+    for (const ordered of [records, [...records].reverse()]) {
+      const scenario = aggregateScenarios({ records: ordered })[0];
+      const roleMetric = scenario.metrics.find((metric) => metric.key === "peakRssMb#gateway");
+      const parentMetric = scenario.metrics.find((metric) => metric.key === "peakRssMb");
+      assertEqual(roleMetric?.value, 700, "role aggregation keeps worst violation");
+      assertEqual(parentMetric?.stats?.n, 2, "metric aggregation retains sample count");
+      assertEqual(scenario.worst?.note.includes("700"), true, "scenario worst evaluates every violation");
+    }
+
+    const confidenceRecords = [
+      ...[100, 100, 100].map((agentTurnMs) => ({
+        scenario: "stable-confidence",
+        title: "Stable Confidence",
+        status: "PASS",
+        phases: [],
+        measurements: { agentTurnMs }
+      })),
+      {
+        scenario: "sparse-confidence",
+        title: "Sparse Confidence",
+        status: "PASS",
+        phases: [],
+        measurements: { agentTurnMs: 100 }
+      }
+    ];
+    const confidenceScenarios = aggregateScenarios({ records: confidenceRecords });
+    const sparseMetric = confidenceScenarios
+      .find((scenario) => scenario.id === "sparse-confidence")
+      ?.metrics.find((metric) => metric.key === "agentTurnMs");
+    assertEqual(sparseMetric?.stats?.n, 1, "single-sample metric retains its own n");
+    assertEqual(runConfidence(confidenceScenarios).bucket, "single-sample", "run confidence uses weakest metric confidence");
+    return {
+      id: "report-aggregation-integrity",
+      status: "PASS",
+      command: "evaluate worst-case metrics and per-metric confidence",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "report-aggregation-integrity",
+      status: "FAIL",
+      command: "evaluate worst-case metrics and per-metric confidence",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function renderedCommandGuidanceCheck() {
+  try {
+    const flags = { color: "never" };
+    const plan = renderPlan({
+      scenarios: [{ id: "fresh-install", states: [], phases: [] }],
+      states: [],
+      profiles: [],
+      surfaces: []
+    }, flags, process.env, process.stdout);
+    assertEqual(
+      plan.includes("kova run --target runtime:stable --scenario fresh-install"),
+      true,
+      "plan run hint includes required target"
+    );
+
+    const inventory = renderInventoryPlan({
+      coverage: { ok: true, discoveredCount: 0, matchedCount: 0, modeledSurfaceCount: 0, warnings: [] },
+      sources: []
+    }, flags, process.env, process.stdout);
+    assertEqual(inventory.includes("kova inventory plan --json"), true, "inventory hint uses plan subcommand");
+
+    const bundle = renderBundleReceipt({
+      runId: "kova-guidance-check",
+      outputPath: "/tmp/kova-guidance-check.tar.gz",
+      checksumPath: "/tmp/kova-guidance-check.tar.gz.sha256",
+      included: []
+    }, flags, process.env, process.stdout);
+    assertEqual(bundle.includes("kova report kova-guidance-check"), true, "bundle hint uses report run id");
+    assertEqual(bundle.includes("kova report /tmp/kova-guidance-check.tar.gz"), false, "bundle hint avoids archive input");
+
+    const matrix = renderMatrixPlan({
+      profile: { id: "smoke" },
+      target: "runtime:stable",
+      entries: Array.from({ length: 22 }, (_, index) => ({
+        scenario: { id: `scenario-${index}`, title: `Scenario ${index}` },
+        state: { id: "fresh" }
+      }))
+    }, flags, process.env, process.stdout);
+    assertEqual(matrix.includes("+ 2 more entries"), true, "matrix plan pluralizes entries");
+    assertEqual(matrix.includes("entryies"), false, "matrix plan avoids invalid plural");
+
+    const help = renderHelp("setup", flags, process.env, process.stdout);
+    assertEqual(help.includes("--method <method>"), true, "setup help documents auth method flag");
+    return {
+      id: "rendered-command-guidance",
+      status: "PASS",
+      command: "validate rendered CLI follow-up commands",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "rendered-command-guidance",
+      status: "FAIL",
+      command: "validate rendered CLI follow-up commands",
       durationMs: 0,
       message: error.message
     };
@@ -15943,10 +16290,43 @@ function sourceReleaseCompareCheck() {
     assertEqual(missingTimelineComparison.ok, false, "source missing timeline should fail comparison");
     assertEqual(missingTimelineComparison.sourceRelease?.blockingCount, 1, "source missing timeline blocking count");
     assertEqual(
-      renderCompareSummary(missingTimelineComparison).includes("source-build report did not include OpenClaw timeline diagnostics"),
+      renderCompareSummary(missingTimelineComparison).includes("source-build report omitted OpenClaw timeline diagnostics"),
       true,
       "compare summary includes source timeline blocker"
     );
+
+    const repeatedSource = syntheticCompareReport({
+      runId: "source-repeated",
+      target: "local-build:/tmp/openclaw",
+      timelineAvailable: true,
+      preProviderMs: 4000,
+      slowestSpanMs: 3200
+    });
+    repeatedSource.records.push({
+      ...structuredClone(repeatedSource.records[0]),
+      status: "FAIL",
+      measurements: {
+        ...repeatedSource.records[0].measurements,
+        openclawTimelineAvailable: false,
+        openclawTimelineEventCount: 0,
+        openclawSlowestSpanName: null,
+        openclawSlowestSpanMs: null,
+        coldPreProviderMs: 6000,
+        agentPreProviderMs: 6000
+      }
+    });
+    repeatedSource.summary = { statuses: { PASS: 1, FAIL: 1 } };
+    for (const records of [repeatedSource.records, [...repeatedSource.records].reverse()]) {
+      const orderedSource = { ...repeatedSource, records };
+      const repeatedComparison = compareReports(releaseReport, orderedSource);
+      const source = repeatedComparison.sourceRelease?.pairs?.[0]?.source;
+      assertEqual(repeatedComparison.sourceRelease?.blockingCount, 1, "repeated source missing timeline blocks");
+      assertEqual(source?.sampleCount, 2, "source diagnostics retain repeated samples");
+      assertEqual(source?.status, "FAIL", "source diagnostics retain worst status");
+      assertEqual(source?.timelineMissingCount, 1, "source diagnostics count missing timelines");
+      assertEqual(source?.agentPreProviderMs, 5000, "source diagnostics use repeated-sample median");
+      assertEqual(source?.slowestSpanMs, 3200, "source diagnostics retain worst slow span");
+    }
 
     const failingReport = syntheticCompareReport({
       runId: "gateway-rss-failing",

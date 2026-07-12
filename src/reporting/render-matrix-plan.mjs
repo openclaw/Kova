@@ -95,7 +95,10 @@ function renderEntries(planJson, ui) {
   lines.push(indentBlock(table, 2));
 
   const more = entries.length - top.length;
-  if (more > 0) lines.push(`  ${c.dim(`+ ${more} more entry${more === 1 ? "" : "ies"} (use --json for full list)`)}`);
+  if (more > 0) {
+    const noun = more === 1 ? "entry" : "entries";
+    lines.push(`  ${c.dim(`+ ${more} more ${noun} (use --json for full list)`)}`);
+  }
   return lines.join("\n");
 }
 
