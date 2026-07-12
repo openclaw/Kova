@@ -6,6 +6,7 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Remove the stale channel-recovery reference that caused every packaged channel workflow probe to fail before evaluating OpenClaw behavior.
 - Run installed self-checks from the packaged Kova root and smoke them outside the source checkout so releases cannot borrow missing files from a developer tree.
 - Collect final post-ready health samples when readiness has no wait budget so successful executed scenarios retain complete pre-cleanup evidence.
 - Made terminal reports width-safe for Unicode, narrow layouts, wrapped shell hints, duration rollover, and strict numeric samples.
