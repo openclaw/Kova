@@ -6103,6 +6103,7 @@ async function fileLockRecoveryCheck(tmp) {
     const old = new Date(Date.now() - 60_000);
     await utimes(malformedLock, old, old);
     let malformedProtected = false;
+    let malformedTimeoutMessage = "";
     try {
       await withFileLock(malformedLock, async () => {}, {
         staleMs: 1,
@@ -6110,9 +6111,17 @@ async function fileLockRecoveryCheck(tmp) {
         retryMs: 2
       });
     } catch (error) {
+      malformedTimeoutMessage = error.message;
       malformedProtected = /timed out waiting for Kova file lock/.test(error.message);
     }
     assertEqual(malformedProtected, true, "malformed lock without domain identity is preserved");
+    assertEqual(
+      /owner metadata invalid; ageMs=\d+, fingerprint=[a-f0-9]{64}/.test(
+        malformedTimeoutMessage
+      ),
+      true,
+      "malformed lock timeout pins the observed lock generation"
+    );
     await rm(malformedLock);
 
     const incompleteLock = join(tmp, "incomplete-publication.lock");
@@ -6164,16 +6173,22 @@ async function fileLockRecoveryCheck(tmp) {
     assertEqual(foreignDomainProtected, true, "foreign execution-domain lock is not reclaimed locally");
     await rm(foreignDomainLock);
 
-    const foreignHostLock = join(tmp, "foreign-host-publication.lock");
+    const foreignHostLock = join(
+      tmp,
+      `foreign-host-${"p".repeat(180)}.lock`
+    );
+    const hostileHost =
+      `kova-foreign-host.invalid\n\u001b[31m\u009b\u2028\u202e${"x".repeat(300)}`;
     await writeFile(foreignHostLock, `${JSON.stringify({
       pid: 2_147_483_647,
       executionDomainIdentity: {
-        host: "kova-foreign-host.invalid",
+        host: hostileHost,
         boot: "foreign-boot",
         pidNamespace: null
       }
     })}\n`);
     let foreignHostProtected = false;
+    let foreignHostTimeoutMessage = "";
     try {
       await withFileLock(foreignHostLock, async () => {}, {
         staleMs: 1,
@@ -6181,9 +6196,47 @@ async function fileLockRecoveryCheck(tmp) {
         retryMs: 2
       });
     } catch (error) {
+      foreignHostTimeoutMessage = error.message;
       foreignHostProtected = /timed out waiting for Kova file lock/.test(error.message);
     }
     assertEqual(foreignHostProtected, true, "foreign-host lock is not reclaimed locally");
+    assertEqual(
+      foreignHostTimeoutMessage.includes(
+        'host="kova-foreign-host.invalid\\u000a\\u001b[31m\\u009b\\u2028\\u202e'
+      ),
+      true,
+      "foreign-host timeout identifies the escaped lock owner"
+    );
+    assertEqual(
+      foreignHostTimeoutMessage.includes("\n") ||
+        foreignHostTimeoutMessage.includes("\u001b") ||
+        foreignHostTimeoutMessage.includes("\u009b") ||
+        foreignHostTimeoutMessage.includes("\u2028") ||
+        foreignHostTimeoutMessage.includes("\u202e") ||
+        foreignHostTimeoutMessage.includes("x".repeat(200)),
+      false,
+      "foreign-host timeout bounds and escapes untrusted owner metadata"
+    );
+    assertEqual(
+      foreignHostTimeoutMessage.includes(JSON.stringify(foreignHostLock)),
+      true,
+      "foreign-host timeout preserves the complete escaped lock path"
+    );
+    assertEqual(
+      foreignHostTimeoutMessage.includes(
+        "quiescing all Kova writers"
+      ) &&
+        foreignHostTimeoutMessage.includes(
+          "confirm its owner and fingerprint still match this timeout"
+        ),
+      true,
+      "foreign-host timeout gives scoped manual recovery guidance"
+    );
+    assertEqual(
+      /fingerprint=[a-f0-9]{64}/.test(foreignHostTimeoutMessage),
+      true,
+      "foreign-host timeout pins the observed lock generation"
+    );
     await rm(foreignHostLock);
 
     const sameHostForeignMachineLock = join(tmp, "same-host-foreign-machine.lock");
