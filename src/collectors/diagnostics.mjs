@@ -13,7 +13,7 @@ const MIN_DIAGNOSTIC_TIMEOUT_MS = 2500;
 const DIAGNOSTIC_STABILITY_MS = 1000;
 const DIAGNOSTIC_COMMAND_EXIT_RESERVE_MS = 1250;
 const DIAGNOSTIC_RUNNER_EXIT_RESERVE_MS = 250;
-const DIAGNOSTIC_POLL_INTERVAL_MS = 500;
+const DIAGNOSTIC_POLL_INTERVAL_MS = 750;
 const MAX_DIAGNOSTIC_REPORT_BYTES = 16 * 1024 * 1024;
 const DIAGNOSTIC_SEARCH_MAX_DEPTH = 6;
 
@@ -144,12 +144,7 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
     requestDiagnosticReport ? '-name "report.*.json"' : null,
     requestDiagnosticReport ? '-name "*diagnostic*.json"' : null
   ].filter(Boolean).join(" -o ");
-  const baselineArtifacts = boundedFindCommand(searchRoots, artifactNamePredicates);
-  const discoveredArtifacts = boundedFindCommand(
-    searchRoots,
-    artifactNamePredicates,
-    '-newer "$marker"'
-  );
+  const discoveredArtifacts = boundedFindCommand(searchRoots, artifactNamePredicates);
   const fingerprintCommand = `node -e ${quoteShell([
     'const fs=require("node:fs");',
     'for(const path of fs.readFileSync(0,"utf8").split("\\n").filter(Boolean)){',
@@ -168,10 +163,13 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
     'const name=pathModule.basename(path);',
     'const heap=name.toLowerCase().endsWith(".heapsnapshot");',
     'const match=(heap?/^Heap\\.\\d{8}\\.\\d{6}\\.(\\d+)\\./i:/^report\\.\\d{8}\\.\\d{6}\\.(\\d+)\\./i).exec(name);',
-    'if(match&&Number(match[1])!==expectedPid)continue;',
+    'const namePid=match?Number(match[1]):null;',
+    'if(Number.isFinite(namePid)&&namePid!==expectedPid)continue;',
+    'const nameAttributed=namePid===expectedPid;',
     'const stat=fs.statSync(path);',
     'if(stat.size<=0)continue;',
     'if(heap){',
+    'if(!nameAttributed)continue;',
     'const fd=fs.openSync(path,"r");',
     'try{',
     'const size=Math.min(stat.size,4096),head=Buffer.alloc(size),tail=Buffer.alloc(size);',
@@ -184,19 +182,18 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
     'const report=JSON.parse(fs.readFileSync(path,"utf8"));',
     'const reportPid=Number(report?.header?.processId);',
     'if(Number.isFinite(reportPid)&&reportPid!==expectedPid)continue;',
+    'if(!nameAttributed&&reportPid!==expectedPid)continue;',
     '}',
     'process.stdout.write((heap?"heap":"report")+"\\t"+path+"\\n");',
     '}catch{}',
     '}'
   ].join(""))} ${normalizedPid}`;
   const sessionStateCommand = [
-    'marker=$(mktemp)',
     'baseline=$(mktemp)',
     'fresh=$(mktemp)',
     'attributed=$(mktemp)',
-    'trap \'rm -f "$marker" "$baseline" "$fresh" "$attributed"\' EXIT',
-    'touch "$marker"',
-    `${baselineArtifacts} | ${fingerprintCommand} | sort -u > "$baseline"`,
+    'trap \'rm -f "$baseline" "$fresh" "$attributed"\' EXIT',
+    `${discoveredArtifacts} | ${fingerprintCommand} | sort -u > "$baseline"`,
     `refresh_candidates() { ${discoveredArtifacts} | ${fingerprintCommand} | sort -u | grep -Fvx -f "$baseline" > "$fresh" || :; }`,
     `refresh_attributed() { cut -f1 "$fresh" | ${attributionCommand} > "$attributed"; }`
   ].join("; ");
@@ -346,16 +343,19 @@ async function diagnosticArtifactMatchesPid(path, destination, expectedPid) {
   const standardName = destination === "heap"
     ? /^Heap\.\d{8}\.\d{6}\.(\d+)\./i.exec(name)
     : /^report\.\d{8}\.\d{6}\.(\d+)\./i.exec(name);
-  if (standardName && Number(standardName[1]) !== expectedPid) {
+  const namePid = standardName ? Number(standardName[1]) : null;
+  if (Number.isFinite(namePid) && namePid !== expectedPid) {
     return false;
   }
+  const nameAttributed = namePid === expectedPid;
   if (destination === "heap") {
-    return true;
+    return nameAttributed;
   }
   try {
     const report = JSON.parse(await readFileBounded(path, MAX_DIAGNOSTIC_REPORT_BYTES));
     const reportPid = Number(report?.header?.processId);
-    return !Number.isFinite(reportPid) || reportPid === expectedPid;
+    return (nameAttributed || reportPid === expectedPid)
+      && (!Number.isFinite(reportPid) || reportPid === expectedPid);
   } catch {
     return false;
   }
