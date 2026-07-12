@@ -97,6 +97,7 @@
 
 ─── next ───────────────────────────────────────────────────────────────────────
 
-  → kova run --target runtime:stable --scenario adversarial-input-openai-compatible
+  → kova run --target runtime:stable --scenario \
+    adversarial-input-openai-compatible
   → kova matrix plan --profile smoke --target runtime:stable
   → kova plan --json
