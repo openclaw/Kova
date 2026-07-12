@@ -17,7 +17,7 @@ import { assertSafeScenarioCommand } from "../safety.mjs";
 import { safeSegment } from "./phase-commands.mjs";
 
 export async function runScenarioCommand(command, context, envName, artifactDir, phase, commandIndex, authPolicy = null) {
-  assertSafeScenarioCommand(command, context, envName);
+  assertSafeScenarioCommand(command, context, envName, artifactDir);
   const phaseId = phase.id;
   const measurementScope = measurementScopeForPhase(phase);
   if (measurementScope === "product") {
