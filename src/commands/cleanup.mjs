@@ -5,6 +5,7 @@ import { runCommand } from "../commands.mjs";
 import { artifactsDir, reportsDir } from "../paths.mjs";
 import {
   ocmEnvDestroy,
+  ocmEnvDestroyPreviewJson,
   ocmEnvListJson,
   ocmServiceStatusAllJson
 } from "../ocm/commands.mjs";
@@ -60,9 +61,11 @@ async function cleanupEnvs(flags) {
   // Destructive cleanup must require the literal boolean set by `--execute`.
   if (flags.execute === true) {
     for (const env of candidates) {
-      const result = await runCleanupCommand(ocmEnvDestroy(env.name, { force }), { timeoutMs: 120000 });
+      const { result, precondition, stage } = await destroyCleanupEnv(env.name, { force });
       results.push({
         env: env.name,
+        stage,
+        precondition,
         command: result.command,
         status: result.status,
         durationMs: result.durationMs,
@@ -123,6 +126,66 @@ async function cleanupEnvs(flags) {
     force,
     olderThanDays
   }, flags));
+}
+
+async function destroyCleanupEnv(envName, { force }) {
+  if (force) {
+    return {
+      result: await runCleanupCommand(ocmEnvDestroy(envName, { force: true }), { timeoutMs: 120000 }),
+      precondition: null,
+      stage: "destroy"
+    };
+  }
+
+  const preview = await runCommand(ocmEnvDestroyPreviewJson(envName), { timeoutMs: 30000 });
+  const precondition = summarizeCleanupCommand(preview);
+  if (preview.status !== 0) {
+    return { result: preview, precondition, stage: "precondition" };
+  }
+
+  let stateRevision;
+  try {
+    const parsed = JSON.parse(preview.stdout);
+    stateRevision = parsed?.stateToken;
+  } catch (error) {
+    return {
+      result: invalidPreconditionResult(preview, `invalid destroy preview JSON: ${error.message}`),
+      precondition,
+      stage: "precondition"
+    };
+  }
+  if (typeof stateRevision !== "string" || stateRevision.length === 0) {
+    return {
+      result: invalidPreconditionResult(preview, "destroy preview did not return a stateToken"),
+      precondition,
+      stage: "precondition"
+    };
+  }
+
+  const result = await runCleanupCommand(
+    ocmEnvDestroy(envName, { json: true, stateToken: stateRevision }),
+    { timeoutMs: 120000 }
+  );
+  return { result, precondition, stage: "destroy" };
+}
+
+function summarizeCleanupCommand(result) {
+  return {
+    command: result.command,
+    status: result.status,
+    durationMs: result.durationMs,
+    timedOut: result.timedOut,
+    stdout: result.stdout,
+    stderr: result.stderr
+  };
+}
+
+function invalidPreconditionResult(preview, message) {
+  return {
+    ...preview,
+    status: 1,
+    stderr: [preview.stderr, message].filter(Boolean).join("\n")
+  };
 }
 
 async function loadServiceInventory() {

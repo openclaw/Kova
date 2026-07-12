@@ -173,6 +173,7 @@ import {
 import {
   ocmAt,
   ocmEnvDestroy,
+  ocmEnvDestroyPreviewJson,
   ocmEnvExec,
   ocmEnvExecShell,
   ocmLogs,
@@ -1848,6 +1849,12 @@ function ocmCommandBuildersCheck() {
     assertEqual(ocmServiceStatusJson("Team Env"), "ocm service status 'Team Env' --json", "quoted service status");
     assertEqual(ocmLogs("Team Env", { tail: 25, raw: true }), "ocm logs 'Team Env' --tail '25' --raw", "quoted logs");
     assertEqual(ocmEnvDestroy("Team Env"), "ocm env destroy 'Team Env' --yes", "quoted env destroy");
+    assertEqual(ocmEnvDestroyPreviewJson("Team Env"), "ocm env destroy 'Team Env' --json", "quoted env destroy preview");
+    assertEqual(
+      ocmEnvDestroy("Team Env", { json: true, stateToken: "v1:r1" }),
+      "ocm env destroy 'Team Env' --json --yes --if-state-token 'v1:r1'",
+      "quoted guarded env destroy"
+    );
     assertEqual(ocmAt("Team Env", ["status"]), "ocm @'Team Env' -- 'status'", "quoted at command");
     assertEqual(
       ocmEnvExec("Team Env", ["node", "support/script.mjs", "--name", "O'Hara"]),
@@ -19242,6 +19249,14 @@ JSON
     exit 0
     ;;
   env:destroy:*)
+    if [ "$4" = "--json" ] && [ -z "$5" ]; then
+      printf '{"stateToken":"v1:%s"}\\n' "$3"
+      exit 0
+    fi
+    if [ "$KOVA_TOKEN_MISMATCH" = "1" ]; then
+      printf '{"code":"state_changed","removed":false,"stateToken":"v1:changed"}\\n'
+      exit 1
+    fi
     printf '%s\\n' "$3" >> "$KOVA_DESTROY_LOG"
     echo '{"destroyed":true}'
     exit 0
@@ -19257,8 +19272,8 @@ exit 2
     KOVA_HOME: home,
     KOVA_DESTROY_LOG: destroyLog
   };
-  const run = (args) => runCommand(`node bin/kova.mjs cleanup envs ${args} --json`, {
-    env,
+  const run = (args, envOverrides = {}) => runCommand(`node bin/kova.mjs cleanup envs ${args} --json`, {
+    env: { ...env, ...envOverrides },
     timeoutMs: 30000,
     maxOutputChars: 1000000
   });
@@ -19295,6 +19310,18 @@ exit 2
     assertEqual(JSON.parse(falseExecute.stdout).execute, false, "execute string does not authorize cleanup");
     assertEqual(await fileExists(destroyLog), false, "execute string did not destroy envs");
 
+    const stateChanged = await run("--execute", { KOVA_TOKEN_MISMATCH: "1" });
+    assertEqual(stateChanged.status, 0, "state-changed cleanup receipt exit");
+    const stateChangedReceipt = JSON.parse(stateChanged.stdout);
+    assertEqual(stateChangedReceipt.results[0]?.status, 1, "state token mismatch blocks destroy");
+    assertEqual(stateChangedReceipt.results[0]?.stage, "destroy", "state token mismatch occurs at guarded destroy");
+    assertEqual(
+      stateChangedReceipt.results[0]?.command.includes("--if-state-token 'v1:kova-stale'"),
+      true,
+      "cleanup applies the preview state token"
+    );
+    assertEqual(await fileExists(destroyLog), false, "state token mismatch performs no teardown");
+
     const execute = await run("--execute");
     assertEqual(execute.status, 0, "cleanup safety execute exit");
     assertEqual((await readFile(destroyLog, "utf8")).trim(), "kova-stale", "default cleanup destroys only eligible env");
@@ -19315,7 +19342,8 @@ exit 2
       id: "cleanup-env-safety",
       status: "PASS",
       command: "exercise cleanup env eligibility, execute guard, and force override",
-      durationMs: dry.durationMs + unknownRetention.durationMs + falseExecute.durationMs + execute.durationMs + forced.durationMs
+      durationMs: dry.durationMs + unknownRetention.durationMs + falseExecute.durationMs +
+        stateChanged.durationMs + execute.durationMs + forced.durationMs
     };
   } catch (error) {
     return {
