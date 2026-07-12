@@ -72,7 +72,8 @@ export async function runPublishCommand(flags) {
     : DEFAULT_OUT_DIR;
 
   const inputPath = await resolveInputPath(inputArg, flags);
-  const inputJson = JSON.parse(await readFile(inputPath, "utf8"));
+  const inputBytes = await readFile(inputPath);
+  const inputJson = JSON.parse(inputBytes.toString("utf8"));
   const kind = classifyInput(inputJson);
 
   if (kind === "unknown") {
@@ -90,7 +91,7 @@ export async function runPublishCommand(flags) {
     })
     : inputJson;
   const bundleProjection = kind === "internal-report"
-    ? await projectReportBundles(projected, inputJson, { inputPath, outDir })
+    ? await projectReportBundles(projected, inputJson, { inputPath, inputBytes, outDir })
     : { payload: projected, bundles: [] };
 
   // Augment with deltas/comparison against the prior release in the target dir.
@@ -202,8 +203,8 @@ async function resolveReportReferenceInDir(reference, reportDir) {
   throw new Error(`report '${reference}' was not found in ${displayPath(reportDir)}`);
 }
 
-async function projectReportBundles(payload, report, { inputPath, outDir }) {
-  const source = await findReportBundlePath(report, inputPath);
+async function projectReportBundles(payload, report, { inputPath, inputBytes, outDir }) {
+  const source = await findReportBundlePath(report, inputPath, inputBytes);
   if (!source) return { payload, bundles: [] };
 
   const publicBundlesDir = resolvePublicBundlesDir(outDir);
@@ -225,8 +226,11 @@ async function projectReportBundles(payload, report, { inputPath, outDir }) {
   };
 }
 
-async function findReportBundlePath(report, inputPath) {
+async function findReportBundlePath(report, inputPath, inputBytes) {
   const runId = typeof report.runId === "string" ? report.runId : null;
+  const expectedReportSha256 = createHash("sha256")
+    .update(inputBytes)
+    .digest("hex");
   const explicit = [...new Set([
     report.bundle?.path,
     report.bundle?.outputPath,
@@ -246,7 +250,11 @@ async function findReportBundlePath(report, inputPath) {
       invalidExplicit.push(path);
       continue;
     }
-    const archive = await readVerifiedBundle(path, runId);
+    const archive = await readVerifiedBundle(
+      path,
+      runId,
+      expectedReportSha256
+    );
     if (!archive) {
       invalidExplicit.push(path);
       continue;
@@ -275,24 +283,9 @@ async function findReportBundlePath(report, inputPath) {
       : null,
     safeBundlePrefix(inputBase),
     safeBundlePrefix(inputBase.replace(/-[^-]+$/, "")),
-  ].filter(Boolean), runId);
+  ].filter(Boolean), runId, expectedReportSha256);
   if (contentAddressed) {
     return contentAddressed;
-  }
-
-  const inferred = [
-    runId ? join(inputDir, `${runId}-bundle.tar.gz`) : null,
-    join(inputDir, `${inputBase}-bundle.tar.gz`),
-    join(inputDir, `${inputBase.replace(/-[^-]+$/, "")}-bundle.tar.gz`),
-  ].filter(Boolean);
-
-  for (const candidate of inferred) {
-    if (await pathExists(candidate)) {
-      const archive = await readVerifiedBundle(candidate, runId);
-      if (archive) {
-        return { path: candidate, archive };
-      }
-    }
   }
   return null;
 }
@@ -304,7 +297,12 @@ function safeBundlePrefix(value) {
   return `${value}-bundle-`;
 }
 
-async function findContentAddressedBundlePath(inputDir, prefixes, runId) {
+async function findContentAddressedBundlePath(
+  inputDir,
+  prefixes,
+  runId,
+  expectedReportSha256
+) {
   const entries = await readdir(inputDir, { withFileTypes: true });
   for (const prefix of new Set(prefixes)) {
     let best = null;
@@ -320,7 +318,11 @@ async function findContentAddressedBundlePath(inputDir, prefixes, runId) {
       if (!/^[a-f0-9]{64}$/.test(digest)) continue;
 
       const path = join(inputDir, entry.name);
-      const archive = await readVerifiedBundle(path, runId);
+      const archive = await readVerifiedBundle(
+        path,
+        runId,
+        expectedReportSha256
+      );
       if (!archive) {
         continue;
       }
@@ -349,12 +351,13 @@ async function findContentAddressedBundlePath(inputDir, prefixes, runId) {
   return null;
 }
 
-async function readVerifiedBundle(path, runId, archive = null) {
+async function readVerifiedBundle(path, runId, expectedReportSha256, archive = null) {
   if (!runId) {
     return null;
   }
   const expectedManifest =
     `${artifactRunIdSegment(runId)}-bundle/manifest.json`;
+  const expectedReport = `${posix.dirname(expectedManifest)}/report.json`;
   try {
     const verifiedArchive = archive ?? (
       await readBoundedFile(
@@ -366,8 +369,15 @@ async function readVerifiedBundle(path, runId, archive = null) {
     if (!await contentAddressMatches(path, verifiedArchive)) {
       return null;
     }
-    const manifest = await readBundleManifest(verifiedArchive, expectedManifest);
-    return JSON.parse(manifest).runId === runId
+    const identity = await readBundleIdentity(
+      verifiedArchive,
+      expectedManifest,
+      expectedReport
+    );
+    return (
+      JSON.parse(identity.manifest).runId === runId &&
+      identity.reportSha256 === expectedReportSha256
+    )
       ? verifiedArchive
       : null;
   } catch {
@@ -378,7 +388,7 @@ async function readVerifiedBundle(path, runId, archive = null) {
 async function contentAddressMatches(path, archive) {
   const match = basename(path).match(/-bundle-([a-f0-9]{64})[.]tar[.]gz$/);
   if (!match) {
-    return true;
+    return false;
   }
   const digest = match[1];
   if (createHash("sha256").update(archive).digest("hex") !== digest) {
@@ -395,7 +405,7 @@ async function contentAddressMatches(path, archive) {
   return checksum === `${digest}  ${basename(path)}\n`;
 }
 
-async function readBundleManifest(archive, expectedManifest) {
+async function readBundleIdentity(archive, expectedManifest, expectedReport) {
   if (archive.length > MAX_BUNDLE_COMPRESSED_BYTES) {
     throw new Error("report bundle compressed archive exceeds the size limit");
   }
@@ -406,6 +416,7 @@ async function readBundleManifest(archive, expectedManifest) {
   let entryCount = 0;
   let declaredBytes = 0;
   let manifest = null;
+  let reportSha256 = null;
 
   extractor.on("entry", (header, stream, next) => {
     // Rejecting an entry destroys its tar-stream source too; consume that
@@ -449,9 +460,26 @@ async function readBundleManifest(archive, expectedManifest) {
       next(new Error("report bundle archive topology exceeds the size limit"));
       return;
     }
-    if (normalized.path !== expectedManifest) {
+    if (
+      normalized.path !== expectedManifest &&
+      normalized.path !== expectedReport
+    ) {
       stream.on("end", next);
       stream.resume();
+      return;
+    }
+    if (normalized.path === expectedReport) {
+      if (header.type !== "file" || reportSha256 !== null) {
+        stream.resume();
+        next(new Error("report bundle report must be one regular file"));
+        return;
+      }
+      const hash = createHash("sha256");
+      stream.on("data", (chunk) => hash.update(chunk));
+      stream.on("end", () => {
+        reportSha256 = hash.digest("hex");
+        next();
+      });
       return;
     }
     if (header.type !== "file" || manifest !== null) {
@@ -518,7 +546,10 @@ async function readBundleManifest(archive, expectedManifest) {
   if (manifest === null) {
     throw new Error("report bundle manifest is missing");
   }
-  return manifest;
+  if (reportSha256 === null) {
+    throw new Error("report bundle report is missing");
+  }
+  return { manifest, reportSha256 };
 }
 
 function archiveDestinationConflicts(
