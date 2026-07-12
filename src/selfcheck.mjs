@@ -29,7 +29,8 @@ import {
   resolveBaselinePath,
   reviewBaselineUpdate,
   saveBaselineStore,
-  updateBaselineStore
+  updateBaselineStore,
+  withBaselineStoreLock
 } from "./performance/baselines.mjs";
 import {
   buildPerformanceSummary,
@@ -4633,6 +4634,17 @@ async function performanceBaselineCheck(tmp) {
       2,
       "concurrent baseline updates preserve both entries"
     );
+    let aliasActive = 0;
+    let aliasMaxActive = 0;
+    await Promise.all(["Alias-Baseline.json", "alias-baseline.json"].map((name) =>
+      withBaselineStoreLock(join(tmp, name), async () => {
+        aliasActive += 1;
+        aliasMaxActive = Math.max(aliasMaxActive, aliasActive);
+        await sleep(20);
+        aliasActive -= 1;
+      })
+    ));
+    assertEqual(aliasMaxActive, 1, "case aliases share one baseline lock");
     const otherTargetComparison = comparePerformanceToBaseline(baselineReport, loadedStore, {
       targetPlan: { kind: "local-build", value: "/tmp/other-openclaw" }
     });
@@ -5088,6 +5100,24 @@ async function fileLockRecoveryCheck(tmp) {
       retryMs: 5
     });
     assertEqual(incompleteAcquired, true, "incomplete abandoned lock is reclaimed");
+
+    const foreignDomainLock = join(tmp, "foreign-domain-publication.lock");
+    await writeFile(foreignDomainLock, `${JSON.stringify({
+      pid: 2_147_483_647,
+      executionDomainIdentity: "other-host"
+    })}\n`);
+    let foreignDomainProtected = false;
+    try {
+      await withFileLock(foreignDomainLock, async () => {}, {
+        staleMs: 1,
+        timeoutMs: 25,
+        retryMs: 2
+      });
+    } catch (error) {
+      foreignDomainProtected = /timed out waiting for Kova file lock/.test(error.message);
+    }
+    assertEqual(foreignDomainProtected, true, "foreign execution-domain lock is not reclaimed locally");
+    await rm(foreignDomainLock);
 
     const reusedPidLock = join(tmp, "reused-pid-publication.lock");
     await writeFile(reusedPidLock, `${JSON.stringify({
