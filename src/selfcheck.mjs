@@ -955,8 +955,8 @@ async function runScopedSelfCheck(flags, scope, workspace) {
     checks.push(await scenarioCleanupOwnershipCheck());
     checks.push(scenarioHealthScopeValidationCheck());
     checks.push(scenarioStateCompatibilityCheck());
-    checks.push(await cpuProfileParserCheck());
-    checks.push(await heapProfileParserCheck());
+    checks.push(await cpuProfileParserCheck(tmp));
+    checks.push(await heapProfileParserCheck(tmp));
     checks.push(await providerEvidenceParserCheck());
     checks.push(agentTurnBreakdownCheck());
     checks.push(gatewaySessionHistoryTextExtractionCheck());
@@ -5332,13 +5332,27 @@ exit 2
   }
 }
 
-async function cpuProfileParserCheck() {
+async function cpuProfileParserCheck(tmp) {
   try {
     const summary = await summarizeCpuProfiles(["fixtures/diagnostics/sample.cpuprofile"], { limit: 3 });
     assertEqual(summary.profileCount, 1, "CPU profile count");
     assertEqual(summary.parseErrorCount, 0, "CPU profile parse errors");
     assertEqual(summary.topFunctions[0]?.functionName, "collectBundledPluginMetadata", "top CPU function");
     assertEqual(summary.topFunctions[0]?.selfMs, 7, "top CPU self ms");
+    const aggregateDir = join(tmp, "cpu-profile-aggregate");
+    const firstPath = join(aggregateDir, "first.cpuprofile");
+    const secondPath = join(aggregateDir, "second.cpuprofile");
+    await mkdir(aggregateDir, { recursive: true });
+    await writeFile(firstPath, JSON.stringify(syntheticCpuProfile("first-only")));
+    await writeFile(secondPath, JSON.stringify(syntheticCpuProfile("second-only")));
+    const aggregate = await summarizeCpuProfiles(
+      [firstPath, secondPath],
+      { limit: 1, aggregateLimit: 10 }
+    );
+    assertEqual(aggregate.profiles[0].topFunctions[0]?.functionName, "first-only", "first profile keeps its local top function");
+    assertEqual(aggregate.profiles[1].topFunctions[0]?.functionName, "second-only", "second profile keeps its local top function");
+    assertEqual(aggregate.topFunctions[0]?.functionName, "shared", "CPU aggregation includes functions below each profile limit");
+    assertEqual(aggregate.topFunctions[0]?.selfMs, 8, "CPU aggregation sums shared function time");
     return {
       id: "cpu-profile-parser",
       status: "PASS",
@@ -5356,13 +5370,27 @@ async function cpuProfileParserCheck() {
   }
 }
 
-async function heapProfileParserCheck() {
+async function heapProfileParserCheck(tmp) {
   try {
     const summary = await summarizeHeapProfiles(["fixtures/diagnostics/sample.heapprofile"], { limit: 3 });
     assertEqual(summary.profileCount, 1, "heap profile count");
     assertEqual(summary.parseErrorCount, 0, "heap profile parse errors");
     assertEqual(summary.topFunctions[0]?.functionName, "loadBundledPluginMetadata", "top heap function");
     assertEqual(summary.topFunctions[0]?.selfSizeMb, 7, "top heap size mb");
+    const aggregateDir = join(tmp, "heap-profile-aggregate");
+    const firstPath = join(aggregateDir, "first.heapprofile");
+    const secondPath = join(aggregateDir, "second.heapprofile");
+    await mkdir(aggregateDir, { recursive: true });
+    await writeFile(firstPath, JSON.stringify(syntheticHeapProfile("first-only")));
+    await writeFile(secondPath, JSON.stringify(syntheticHeapProfile("second-only")));
+    const aggregate = await summarizeHeapProfiles(
+      [firstPath, secondPath],
+      { limit: 1, aggregateLimit: 10 }
+    );
+    assertEqual(aggregate.profiles[0].topFunctions[0]?.functionName, "first-only", "first heap profile keeps its local top function");
+    assertEqual(aggregate.profiles[1].topFunctions[0]?.functionName, "second-only", "second heap profile keeps its local top function");
+    assertEqual(aggregate.topFunctions[0]?.functionName, "shared", "heap aggregation includes functions below each profile limit");
+    assertEqual(aggregate.topFunctions[0]?.selfSizeBytes, 120, "heap aggregation sums shared allocation size");
     return {
       id: "heap-profile-parser",
       status: "PASS",
@@ -5378,6 +5406,69 @@ async function heapProfileParserCheck() {
       message: error.message
     };
   }
+}
+
+function syntheticCpuProfile(uniqueFunctionName) {
+  return {
+    nodes: [
+      {
+        id: 1,
+        callFrame: {
+          functionName: "shared",
+          url: "file:///shared.js",
+          lineNumber: 1,
+          columnNumber: 1
+        }
+      },
+      {
+        id: 2,
+        callFrame: {
+          functionName: uniqueFunctionName,
+          url: `file:///${uniqueFunctionName}.js`,
+          lineNumber: 1,
+          columnNumber: 1
+        }
+      }
+    ],
+    samples: [1, 2],
+    timeDeltas: [4000, 6000]
+  };
+}
+
+function syntheticHeapProfile(uniqueFunctionName) {
+  return {
+    head: {
+      callFrame: {
+        functionName: "(root)",
+        url: "",
+        lineNumber: 0,
+        columnNumber: 0
+      },
+      selfSize: 0,
+      children: [
+        {
+          callFrame: {
+            functionName: "shared",
+            url: "file:///shared.js",
+            lineNumber: 1,
+            columnNumber: 1
+          },
+          selfSize: 60,
+          children: []
+        },
+        {
+          callFrame: {
+            functionName: uniqueFunctionName,
+            url: `file:///${uniqueFunctionName}.js`,
+            lineNumber: 1,
+            columnNumber: 1
+          },
+          selfSize: 100,
+          children: []
+        }
+      ]
+    }
+  };
 }
 
 async function providerEvidenceParserCheck() {
@@ -12590,6 +12681,7 @@ async function collectorArtifactCollisionCheck(tmp) {
     const contents = await Promise.all(copied.artifacts.map((path) => readFile(path, "utf8")));
     assertEqual(contents.toSorted().join(","), "left,right-side", "same-basename artifact contents survive");
     assertEqual(copied.artifactBytes, 14, "retained artifact bytes reflect unique targets");
+    assertEqual((await stat(copied.artifacts[0])).mode & 0o777, 0o600, "retained artifacts use private permissions");
     const longName = `${"x".repeat(250)}.json`;
     const longSource = join(root, "long", longName);
     await mkdir(join(root, "long"), { recursive: true });

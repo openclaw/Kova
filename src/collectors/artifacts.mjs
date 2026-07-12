@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
-import { copyFile, mkdir, rename, rm, stat } from "node:fs/promises";
+import { mkdir, rename, rm, stat } from "node:fs/promises";
 import { basename, dirname, extname, join } from "node:path";
 import { pipeline } from "node:stream/promises";
 
@@ -100,14 +100,17 @@ async function copyArtifact(source, target, deadlineEpochMs) {
       timeout.unref?.();
       await pipeline(
         createReadStream(source),
-        createWriteStream(temporaryTarget, { flags: "wx" }),
+        createWriteStream(temporaryTarget, { flags: "wx", mode: 0o600 }),
         { signal: controller.signal }
       );
       if (controller.signal.aborted || Date.now() >= deadline) {
         throw new Error(`collector artifact copy exceeded deadline: ${source}`);
       }
     } else {
-      await copyFile(source, temporaryTarget);
+      await pipeline(
+        createReadStream(source),
+        createWriteStream(temporaryTarget, { flags: "wx", mode: 0o600 })
+      );
     }
     // Keep an earlier valid artifact intact until its replacement is complete.
     await rename(temporaryTarget, target);
