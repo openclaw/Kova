@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { access, chmod, cp, link, lstat, mkdir, mkdtemp, open, readFile, readdir, rename, rm, stat, symlink, truncate, utimes, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
-import { basename, join, win32 } from "node:path";
+import { basename, join, relative, win32 } from "node:path";
 import { gzipSync, gunzipSync } from "node:zlib";
 import { resolveScriptStep } from "mock-ai-provider/dist/providers/openai/common/scripted-response.js";
 import { createBoundedOutputAccumulator, quoteShell, runCommand } from "./commands.mjs";
@@ -247,6 +247,14 @@ export async function runSelfCheck(flags = {}) {
   return runInSelfCheckScope(
     ({ scope, workspace }) => runScopedSelfCheck(flags, scope, workspace)
   );
+}
+
+function selfCheckPath(...parts) {
+  return join(repoRoot, ...parts);
+}
+
+async function readSelfCheckJson(...parts) {
+  return JSON.parse(await readFile(selfCheckPath(...parts), "utf8"));
 }
 
 async function runScopedSelfCheck(flags, scope, workspace) {
@@ -562,7 +570,7 @@ async function runScopedSelfCheck(flags, scope, workspace) {
         ["support/plugins/kova-basic", "kova-basic"],
         ["support/plugins/kova-missing-runtime-dep", "kova-missing-runtime-dep"]
       ]) {
-        const manifest = JSON.parse(await readFile(join(dir, "openclaw.plugin.json"), "utf8"));
+        const manifest = await readSelfCheckJson(dir, "openclaw.plugin.json");
         assertEqual(manifest.id, expectedId, `${expectedId} manifest id`);
         assertEqual(manifest.configSchema?.type, "object", `${expectedId} config schema`);
       }
@@ -4566,7 +4574,7 @@ function channelDeclaredCapabilityProofRowsCheck() {
 async function channelGeneratedMediaProviderScriptCheck() {
   try {
     const completionCaseId = "completion-handoff.image.generated-direct";
-    const completionScript = channelWorkflowScript([completionCaseId], process.cwd());
+    const completionScript = channelWorkflowScript([completionCaseId], repoRoot);
     const completionStepIds = completionScript.steps.map((step) => step.id);
     assertEqual(completionStepIds.includes(`${completionCaseId}:final`), false, "completion handoff provider script does not force a final before the OpenClaw completion delivery turn");
     assertEqual(completionStepIds.includes(`${completionCaseId}:completion-tool-calls`), true, "completion handoff provider script models the OpenClaw completion delivery turn");
@@ -4587,7 +4595,7 @@ async function channelGeneratedMediaProviderScriptCheck() {
     assertEqual(completionArgs.media, "/tmp/kova-completion-handoff-direct---abc.png", "completion handoff provider script preserves the generated media path from the OpenClaw completion event");
 
     const sourceCaseId = "source-visible-delivery.media.message-tool-only";
-    const sourceScript = channelWorkflowScript([sourceCaseId], process.cwd());
+    const sourceScript = channelWorkflowScript([sourceCaseId], repoRoot);
     const sourceStepIds = sourceScript.steps.map((step) => step.id);
     assertEqual(sourceStepIds.includes(`${sourceCaseId}:tool-calls`), true, "source media provider script sends media through message tool");
     assertEqual(sourceStepIds.includes(`${sourceCaseId}:final`), true, "source media provider script finalizes after message tool delivery");
@@ -6089,7 +6097,7 @@ function gateExecutedCoverageDimensionsCheck() {
 
 async function doctorUpgradeGatePolicyCheck() {
   try {
-    const profile = JSON.parse(await readFile("profiles/doctor-upgrade.json", "utf8"));
+    const profile = await readSelfCheckJson("profiles", "doctor-upgrade.json");
     const states = [
       "legacy-core-config-doctor-2026-4-24",
       "legacy-plugin-config-doctor-2026-5-22",
@@ -9498,7 +9506,10 @@ exit 2
 
 async function cpuProfileParserCheck(tmp) {
   try {
-    const summary = await summarizeCpuProfiles(["fixtures/diagnostics/sample.cpuprofile"], { limit: 3 });
+    const summary = await summarizeCpuProfiles(
+      [selfCheckPath("fixtures", "diagnostics", "sample.cpuprofile")],
+      { limit: 3 }
+    );
     assertEqual(summary.profileCount, 1, "CPU profile count");
     assertEqual(summary.parseErrorCount, 0, "CPU profile parse errors");
     assertEqual(summary.topFunctions[0]?.functionName, "collectBundledPluginMetadata", "top CPU function");
@@ -9536,7 +9547,10 @@ async function cpuProfileParserCheck(tmp) {
 
 async function heapProfileParserCheck(tmp) {
   try {
-    const summary = await summarizeHeapProfiles(["fixtures/diagnostics/sample.heapprofile"], { limit: 3 });
+    const summary = await summarizeHeapProfiles(
+      [selfCheckPath("fixtures", "diagnostics", "sample.heapprofile")],
+      { limit: 3 }
+    );
     assertEqual(summary.profileCount, 1, "heap profile count");
     assertEqual(summary.parseErrorCount, 0, "heap profile parse errors");
     assertEqual(summary.topFunctions[0]?.functionName, "loadBundledPluginMetadata", "top heap function");
@@ -9650,7 +9664,7 @@ async function providerEvidenceParserCheck() {
         path: "/health",
         status: 200
       }),
-      await readFile("fixtures/provider/mock-requests.jsonl", "utf8")
+      await readFile(selfCheckPath("fixtures", "provider", "mock-requests.jsonl"), "utf8")
     ].join("\n");
     const evidence = parseProviderRequestLog(text);
     assertEqual(evidence.requestCount, 2, "provider request count");
@@ -13210,10 +13224,10 @@ async function diagnosticArtifactIdentityCheck(tmp) {
 function mockProviderScriptModesCheck() {
   try {
     const scripts = new Map([
-      ["protocol-failure", buildMockProviderScriptForMode({ mode: "protocol-failure", marker: "KOVA_AGENT_OK", channelWorkflowCases: [] }, process.cwd())],
-      ["disconnect-then-recover", buildMockProviderScriptForMode({ mode: "disconnect-then-recover", marker: "KOVA_AGENT_OK", channelWorkflowCases: [] }, process.cwd())],
-      ["exec-tool-safety", buildMockProviderScriptForMode({ mode: "exec-tool-safety", marker: "KOVA_AGENT_OK", channelWorkflowCases: [] }, process.cwd())],
-      ["exec-tool-failure-only", buildMockProviderScriptForMode({ mode: "exec-tool-failure-only", marker: "KOVA_AGENT_OK", channelWorkflowCases: [] }, process.cwd())]
+      ["protocol-failure", buildMockProviderScriptForMode({ mode: "protocol-failure", marker: "KOVA_AGENT_OK", channelWorkflowCases: [] }, repoRoot)],
+      ["disconnect-then-recover", buildMockProviderScriptForMode({ mode: "disconnect-then-recover", marker: "KOVA_AGENT_OK", channelWorkflowCases: [] }, repoRoot)],
+      ["exec-tool-safety", buildMockProviderScriptForMode({ mode: "exec-tool-safety", marker: "KOVA_AGENT_OK", channelWorkflowCases: [] }, repoRoot)],
+      ["exec-tool-failure-only", buildMockProviderScriptForMode({ mode: "exec-tool-failure-only", marker: "KOVA_AGENT_OK", channelWorkflowCases: [] }, repoRoot)]
     ]);
 
     const protocolStep = scripts.get("protocol-failure")?.steps?.[0];
@@ -14983,7 +14997,7 @@ exit 2
 
 async function networkFrontagePartialStartupCleanupInvariantCheck() {
   try {
-    const source = await readFile("src/network-frontage.mjs", "utf8");
+    const source = await readFile(selfCheckPath("src", "network-frontage.mjs"), "utf8");
     const pattern = /const proxy = startProxy\(allocation\);[\s\S]+context\.networkFrontageProxy = proxy;[\s\S]+await proxy\.ready;/;
     assertEqual(pattern.test(source), true, "network frontage proxy registered before readiness wait");
     const blocker = createServer((request, response) => {
@@ -14993,7 +15007,7 @@ async function networkFrontagePartialStartupCleanupInvariantCheck() {
     await new Promise((resolve) => blocker.listen(0, "127.0.0.1", resolve));
     const blockedPort = blocker.address().port;
     const proxy = spawn(process.execPath, [
-      join(process.cwd(), "support", "network-frontage-proxy.mjs"),
+      selfCheckPath("support", "network-frontage-proxy.mjs"),
       "--listen-host", "127.0.0.1",
       "--listen-port", String(blockedPort),
       "--target-host", "127.0.0.1",
@@ -15010,7 +15024,7 @@ async function networkFrontagePartialStartupCleanupInvariantCheck() {
       proxy.kill("SIGTERM");
       await new Promise((resolve) => blocker.close(resolve));
     }
-    const teardownSource = await readFile("src/run/teardown.mjs", "utf8");
+    const teardownSource = await readFile(selfCheckPath("src", "run", "teardown.mjs"), "utf8");
     const retentionPattern = /id: "network-frontage-cleanup"[\s\S]+const retainEnv = shouldRetainEnv\(context, record\)/;
     assertEqual(retentionPattern.test(teardownSource), true, "retain-on-failure is computed after network frontage cleanup can update status");
     const protectionPattern = /const retainEnv = shouldRetainEnv\(context, record\);[\s\S]+await protectRetainedEnv\(record, context, envName\);[\s\S]+record\.cleanup = "retained"/;
@@ -16662,7 +16676,7 @@ function syntheticCompareReport({ runId, target, timelineAvailable, preProviderM
 
 async function diagnosticsTimelineCheck() {
   try {
-    const text = await readFile("fixtures/diagnostics/timeline.jsonl", "utf8");
+    const text = await readFile(selfCheckPath("fixtures", "diagnostics", "timeline.jsonl"), "utf8");
     const timeline = parseTimelineText(text);
     assertEqual(timeline.available, true, "timeline available");
     assertEqual(timeline.eventCount, 8, "timeline event count");
@@ -16712,7 +16726,10 @@ async function diagnosticsTimelineCheck() {
 async function diagnosticsOpenSpanCheck() {
   let artifactDir = null;
   try {
-    const text = await readFile("fixtures/diagnostics/timeline-open-span.jsonl", "utf8");
+    const text = await readFile(
+      selfCheckPath("fixtures", "diagnostics", "timeline-open-span.jsonl"),
+      "utf8"
+    );
     const timeline = parseTimelineText(text);
     assertEqual(timeline.available, true, "open timeline available");
     assertEqual(timeline.openSpanCount, 1, "open span count");
@@ -19325,9 +19342,9 @@ async function resourceRolePollutionCheck() {
 
 async function bundledPluginStartupSurfaceContractCheck() {
   try {
-    const scenario = JSON.parse(await readFile("scenarios/bundled-plugin-startup.json", "utf8"));
-    const surface = JSON.parse(await readFile("surfaces/bundled-plugin-startup.json", "utf8"));
-    const releaseProfile = JSON.parse(await readFile("profiles/release.json", "utf8"));
+    const scenario = await readSelfCheckJson("scenarios", "bundled-plugin-startup.json");
+    const surface = await readSelfCheckJson("surfaces", "bundled-plugin-startup.json");
+    const releaseProfile = await readSelfCheckJson("profiles", "release.json");
     const startPhase = scenario.phases.find((phase) =>
       (phase.commands ?? []).some((command) => /^ocm service start /.test(command))
     );
@@ -19379,7 +19396,7 @@ async function startupSurfaceDiagnosticsContractCheck() {
       "bundled-runtime-deps": [...startupSpans, "runtimeDeps.stage"]
     };
     for (const [surfaceId, expectedSpans] of Object.entries(surfaceSpans)) {
-      const surface = JSON.parse(await readFile(`surfaces/${surfaceId}.json`, "utf8"));
+      const surface = await readSelfCheckJson("surfaces", `${surfaceId}.json`);
       const actualSpans = surface.diagnostics?.expectedSpans ?? [];
       assertEqual(actualSpans.length, expectedSpans.length, `${surfaceId} diagnostic span count`);
       for (const span of expectedSpans) {
@@ -19414,13 +19431,13 @@ async function releaseResourceCalibrationCheck() {
       bundledPluginSurface,
       releaseProfile
     ] = await Promise.all([
-      readFile("scenarios/fresh-install.json", "utf8").then(JSON.parse),
-      readFile("scenarios/gateway-performance.json", "utf8").then(JSON.parse),
-      readFile("surfaces/fresh-install.json", "utf8").then(JSON.parse),
-      readFile("surfaces/gateway-performance.json", "utf8").then(JSON.parse),
-      readFile("surfaces/bundled-runtime-deps.json", "utf8").then(JSON.parse),
-      readFile("surfaces/bundled-plugin-startup.json", "utf8").then(JSON.parse),
-      readFile("profiles/release.json", "utf8").then(JSON.parse)
+      readSelfCheckJson("scenarios", "fresh-install.json"),
+      readSelfCheckJson("scenarios", "gateway-performance.json"),
+      readSelfCheckJson("surfaces", "fresh-install.json"),
+      readSelfCheckJson("surfaces", "gateway-performance.json"),
+      readSelfCheckJson("surfaces", "bundled-runtime-deps.json"),
+      readSelfCheckJson("surfaces", "bundled-plugin-startup.json"),
+      readSelfCheckJson("profiles", "release.json")
     ]);
 
     const contracts = [
@@ -19489,7 +19506,7 @@ async function releaseResourceCalibrationCheck() {
 
 async function gatewaySessionSurfaceContractCheck() {
   try {
-    const surface = JSON.parse(await readFile("surfaces/gateway-session-send-turn.json", "utf8"));
+    const surface = await readSelfCheckJson("surfaces", "gateway-session-send-turn.json");
     const expectedSpans = surface.diagnostics?.expectedSpans ?? [];
     const staleSpans = ["agent.turn", "agent.prepare", "models.catalog", "provider.request", "agent.cleanup", "gateway.chat_send", "auto_reply", "reply"];
     for (const span of staleSpans) {
@@ -19516,8 +19533,8 @@ async function gatewaySessionSurfaceContractCheck() {
 
 async function releaseRuntimeStartupSurfaceContractCheck() {
   try {
-    const scenario = JSON.parse(await readFile("scenarios/release-runtime-startup.json", "utf8"));
-    const surface = JSON.parse(await readFile("surfaces/release-runtime-startup.json", "utf8"));
+    const scenario = await readSelfCheckJson("scenarios", "release-runtime-startup.json");
+    const surface = await readSelfCheckJson("surfaces", "release-runtime-startup.json");
     const expectedSpans = surface.diagnostics?.expectedSpans ?? [];
     const staleSpans = ["gateway.startup", "plugins.runtimeDeps", "health.ready"];
     for (const span of staleSpans) {
@@ -19547,7 +19564,7 @@ async function releaseRuntimeStartupSurfaceContractCheck() {
 
 async function officialPluginInstallSurfaceContractCheck() {
   try {
-    const surface = JSON.parse(await readFile("surfaces/official-plugin-install.json", "utf8"));
+    const surface = await readSelfCheckJson("surfaces", "official-plugin-install.json");
     const expectedSpans = surface.diagnostics?.expectedSpans ?? [];
     const staleSpans = ["plugins.install", "plugins.registry.refresh", "plugins.security.scan"];
     for (const span of staleSpans) {
@@ -19575,7 +19592,7 @@ async function officialPluginInstallSurfaceContractCheck() {
 
 async function agentCliLocalTurnSurfaceContractCheck() {
   try {
-    const surface = JSON.parse(await readFile("surfaces/agent-cli-local-turn.json", "utf8"));
+    const surface = await readSelfCheckJson("surfaces", "agent-cli-local-turn.json");
     const expectedSpans = surface.diagnostics?.expectedSpans ?? [];
     const staleSpans = [
       "agent.turn",
@@ -19610,7 +19627,7 @@ async function agentCliLocalTurnSurfaceContractCheck() {
 
 async function agentGatewayRpcTurnSurfaceContractCheck() {
   try {
-    const surface = JSON.parse(await readFile("surfaces/agent-gateway-rpc-turn.json", "utf8"));
+    const surface = await readSelfCheckJson("surfaces", "agent-gateway-rpc-turn.json");
     const expectedSpans = surface.diagnostics?.expectedSpans ?? [];
     const staleSpans = [
       "agent.turn",
@@ -21227,7 +21244,7 @@ function scenarioCloneFirstValidationCheck() {
 
 async function scenarioCleanupOwnershipCheck() {
   try {
-    const freshInstall = JSON.parse(await readFile("scenarios/fresh-install.json", "utf8"));
+    const freshInstall = await readSelfCheckJson("scenarios", "fresh-install.json");
     assertEqual(
       freshInstall.phases.some((phase) => phase.id === "cleanup"),
       false,
@@ -22322,7 +22339,10 @@ async function commandCheck(id, command) {
 }
 
 async function syntaxCheck() {
-  const files = ["bin/kova.mjs", ...(await listModuleFiles("src"))];
+  const files = [
+    selfCheckPath("bin", "kova.mjs"),
+    ...(await listModuleFiles(selfCheckPath("src")))
+  ];
   const workerCount = Math.min(8, files.length);
   const failures = [];
   const startedAt = Date.now();
@@ -22335,7 +22355,7 @@ async function syntaxCheck() {
       const result = await runCommand(`node --check ${quoteShell(file)}`, { timeoutMs: 30000 });
       if (result.status !== 0) {
         failures.push({
-          file,
+          file: relative(repoRoot, file),
           message: result.stderr.trim() || result.stdout.trim() || `exit ${result.status}`
         });
       }

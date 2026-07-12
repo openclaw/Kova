@@ -42,9 +42,12 @@ jobs:
         run: |
           tmp="$(mktemp -d)"
           ./install.sh --archive ./dist/kova.tar.gz --prefix "$tmp/kova" --bin-dir "$tmp/bin" --require-ocm
-          "$tmp/bin/kova" version
-          "$tmp/bin/kova" setup --ci --json
-          "$tmp/bin/kova" self-check
+          (
+            cd "$tmp"
+            "$tmp/bin/kova" version
+            "$tmp/bin/kova" setup --ci --json
+            "$tmp/bin/kova" self-check
+          )
           rm -rf "$tmp"
       - name: Stage release archive
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
