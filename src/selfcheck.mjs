@@ -402,7 +402,9 @@ async function runScopedSelfCheck(flags, scope, workspace) {
       assertEqual(visualWidth("👨‍👩‍👧‍👦"), 2, "emoji grapheme width");
       assertEqual(truncateText("👨‍👩‍👧‍👦 family", 3), "👨‍👩‍👧‍👦…", "truncate preserves grapheme");
       assertEqual(wrap("界界界", 4).every((line) => visualWidth(line) <= 4), true, "wrap respects cell width");
-      assertEqual(wrap("界", 1), ["…"], "wrap replaces graphemes wider than the line");
+      const narrowWideGrapheme = wrap("界", 1);
+      assertEqual(narrowWideGrapheme.length, 1, "wide grapheme wrap line count");
+      assertEqual(narrowWideGrapheme[0], "…", "wrap replaces graphemes wider than the line");
 
       assertEqual(formatDuration(59_950), "1m", "duration carries seconds into minutes");
       assertEqual(formatDuration(3_599_600), "1h 00m", "duration carries minutes into hours");
