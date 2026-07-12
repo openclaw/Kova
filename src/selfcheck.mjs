@@ -189,7 +189,12 @@ import { scriptForMode as buildMockProviderScriptForMode } from "../support/chan
 import { projectInternalReport } from "./web-publish/from-internal-report.mjs";
 import { augmentWithDeltas, findImmediatePrior } from "./web-publish/projector.mjs";
 import { directoryCheck } from "./setup.mjs";
-import { withFileLock } from "./file-lock.mjs";
+import {
+  classifyExecutionDomain,
+  currentExecutionDomainIdentity,
+  normalizeMachineIdentity,
+  withFileLock
+} from "./file-lock.mjs";
 
 export async function runSelfCheck(flags = {}) {
   return runInSelfCheckScope(
@@ -5457,32 +5462,197 @@ async function reportPublicationCheck(tmp) {
 
 async function fileLockRecoveryCheck(tmp) {
   try {
+    assertEqual(normalizeMachineIdentity("uninitialized"), "", "placeholder machine ID rejected");
+    assertEqual(normalizeMachineIdentity("0".repeat(32)), "", "zero machine ID rejected");
+    assertEqual(normalizeMachineIdentity("f".repeat(32)), "", "all-F machine ID rejected");
+    assertEqual(
+      normalizeMachineIdentity("A".repeat(32)),
+      "a".repeat(32),
+      "valid machine UUID normalized"
+    );
+    assertEqual(
+      classifyExecutionDomain(
+        {
+          host: "host-a",
+          hardwareMachine: "machine-a",
+          installationMachine: "install-a",
+          boot: "boot-a",
+          pidNamespace: null
+        },
+        {
+          host: "host-a",
+          hardwareMachine: "machine-a",
+          installationMachine: "install-a",
+          boot: "boot-b",
+          pidNamespace: "pid:[1]"
+        }
+      ),
+      "rebooted",
+      "proven machine reboot is reclaimable"
+    );
+    assertEqual(
+      classifyExecutionDomain(
+        {
+          host: "host-a",
+          hardwareMachine: null,
+          installationMachine: "install-a",
+          boot: "boot-a",
+          pidNamespace: null
+        },
+        {
+          host: "host-a",
+          hardwareMachine: null,
+          installationMachine: "install-a",
+          boot: "boot-b",
+          pidNamespace: null
+        }
+      ),
+      "unknown",
+      "clonable installation identity cannot prove a reboot"
+    );
+    assertEqual(
+      classifyExecutionDomain(
+        {
+          host: "host-a",
+          hardwareMachine: null,
+          installationMachine: "install-a",
+          boot: "boot-a",
+          pidNamespace: "pid:[1]"
+        },
+        {
+          host: "host-a",
+          hardwareMachine: "machine-a",
+          installationMachine: null,
+          boot: "boot-a",
+          pidNamespace: "pid:[1]"
+        }
+      ),
+      "local",
+      "same-boot identity-source transition remains local"
+    );
+    assertEqual(
+      classifyExecutionDomain(
+        {
+          host: "host-a",
+          hardwareMachine: "machine-a",
+          installationMachine: null,
+          boot: "boot-a",
+          pidNamespace: null
+        },
+        {
+          host: "host-b",
+          hardwareMachine: "machine-a",
+          installationMachine: null,
+          boot: "boot-b",
+          pidNamespace: null
+        }
+      ),
+      "foreign",
+      "conflicting hosts defeat a cloned machine identity"
+    );
+    assertEqual(
+      classifyExecutionDomain(
+        { hardwareMachine: null, installationMachine: null, boot: "boot-a", pidNamespace: null },
+        { hardwareMachine: null, installationMachine: null, boot: "boot-a", pidNamespace: "pid:[1]" }
+      ),
+      "unknown",
+      "missing PID namespace identity fails closed"
+    );
+    assertEqual(
+      classifyExecutionDomain(
+        { hardwareMachine: "machine-a", boot: "boot-a", pidNamespace: "pid:[1]" },
+        { hardwareMachine: "machine-b", boot: "boot-a", pidNamespace: "pid:[1]" }
+      ),
+      "foreign",
+      "different machine identities remain foreign"
+    );
+    assertEqual(
+      classifyExecutionDomain(
+        {
+          host: "host-a",
+          hardwareMachine: "machine-a",
+          installationMachine: "install-a",
+          boot: {},
+          pidNamespace: null
+        },
+        {
+          host: "host-a",
+          hardwareMachine: "machine-a",
+          installationMachine: "install-a",
+          boot: "boot-a",
+          pidNamespace: null
+        }
+      ),
+      "unknown",
+      "malformed execution-domain fields fail closed"
+    );
+    for (const field of ["host", "pidNamespace"]) {
+      assertEqual(
+        classifyExecutionDomain(
+          {
+            host: "host-a",
+            hardwareMachine: "machine-a",
+            installationMachine: "install-a",
+            boot: "boot-a",
+            pidNamespace: null,
+            [field]: {}
+          },
+          {
+            host: "host-a",
+            hardwareMachine: "machine-a",
+            installationMachine: "install-a",
+            boot: "boot-a",
+            pidNamespace: null
+          }
+        ),
+        "unknown",
+        `malformed ${field} fails closed`
+      );
+    }
+    assertEqual(
+      classifyExecutionDomain(null, currentExecutionDomainIdentity()),
+      "unknown",
+      "missing owner execution domain fails closed"
+    );
+    assertEqual(
+      classifyExecutionDomain(currentExecutionDomainIdentity(), null),
+      "unknown",
+      "missing current execution domain fails closed"
+    );
+    const localExecutionDomain = currentExecutionDomainIdentity();
+    assertEqual(Boolean(localExecutionDomain), true, "current execution domain is available");
     const malformedLock = join(tmp, "malformed-publication.lock");
     await writeFile(malformedLock, "{\n");
     const old = new Date(Date.now() - 60_000);
     await utimes(malformedLock, old, old);
-    let malformedAcquired = false;
-    await withFileLock(malformedLock, async () => {
-      malformedAcquired = true;
-    }, {
-      staleMs: 1_000,
-      timeoutMs: 2_000,
-      retryMs: 5
-    });
-    assertEqual(malformedAcquired, true, "malformed abandoned lock is reclaimed");
+    let malformedProtected = false;
+    try {
+      await withFileLock(malformedLock, async () => {}, {
+        staleMs: 1,
+        timeoutMs: 25,
+        retryMs: 2
+      });
+    } catch (error) {
+      malformedProtected = /timed out waiting for Kova file lock/.test(error.message);
+    }
+    assertEqual(malformedProtected, true, "malformed lock without domain identity is preserved");
+    await rm(malformedLock);
 
     const incompleteLock = join(tmp, "incomplete-publication.lock");
     await writeFile(incompleteLock, `${JSON.stringify({ pid: process.pid })}\n`);
     await utimes(incompleteLock, old, old);
-    let incompleteAcquired = false;
-    await withFileLock(incompleteLock, async () => {
-      incompleteAcquired = true;
-    }, {
-      staleMs: 1_000,
-      timeoutMs: 2_000,
-      retryMs: 5
-    });
-    assertEqual(incompleteAcquired, true, "incomplete abandoned lock is reclaimed");
+    let incompleteProtected = false;
+    try {
+      await withFileLock(incompleteLock, async () => {}, {
+        staleMs: 1,
+        timeoutMs: 25,
+        retryMs: 2
+      });
+    } catch (error) {
+      incompleteProtected = /timed out waiting for Kova file lock/.test(error.message);
+    }
+    assertEqual(incompleteProtected, true, "incomplete lock without domain identity is preserved");
+    await rm(incompleteLock);
 
     const foreignDomainLock = join(tmp, "foreign-domain-publication.lock");
     await writeFile(foreignDomainLock, `${JSON.stringify({
@@ -5524,11 +5694,40 @@ async function fileLockRecoveryCheck(tmp) {
     assertEqual(foreignHostProtected, true, "foreign-host lock is not reclaimed locally");
     await rm(foreignHostLock);
 
+    const sameHostForeignMachineLock = join(tmp, "same-host-foreign-machine.lock");
+    await writeFile(sameHostForeignMachineLock, `${JSON.stringify({
+      pid: 2_147_483_647,
+      executionDomainIdentity: {
+        host: "shared-hostname",
+        hardwareMachine: "foreign-machine",
+        installationMachine: "foreign-installation",
+        boot: "foreign-boot",
+        pidNamespace: null
+      }
+    })}\n`);
+    let sameHostForeignMachineProtected = false;
+    try {
+      await withFileLock(sameHostForeignMachineLock, async () => {}, {
+        staleMs: 1,
+        timeoutMs: 25,
+        retryMs: 2
+      });
+    } catch (error) {
+      sameHostForeignMachineProtected = /timed out waiting for Kova file lock/.test(error.message);
+    }
+    assertEqual(
+      sameHostForeignMachineProtected,
+      true,
+      "same-hostname foreign-machine lock is not reclaimed locally"
+    );
+    await rm(sameHostForeignMachineLock);
+
     const reusedPidLock = join(tmp, "reused-pid-publication.lock");
     await writeFile(reusedPidLock, `${JSON.stringify({
-      token: "reused-pid",
+      token: "x",
       pid: process.pid,
       processIdentity: "ps:reused-process",
+      executionDomainIdentity: localExecutionDomain,
       createdAt: new Date(Date.now() - 60_000).toISOString()
     })}\n`);
     await utimes(reusedPidLock, old, old);
@@ -5544,8 +5743,9 @@ async function fileLockRecoveryCheck(tmp) {
 
     const racedLock = join(tmp, "raced-publication.lock");
     await writeFile(racedLock, `${JSON.stringify({
-      token: "abandoned",
+      token: "y",
       pid: 2_147_483_647,
+      executionDomainIdentity: localExecutionDomain,
       createdAt: new Date().toISOString()
     })}\n`);
     let active = 0;
@@ -5581,14 +5781,14 @@ async function fileLockRecoveryCheck(tmp) {
     return {
       id: "file-lock-recovery",
       status: "PASS",
-      command: "reclaim malformed and raced publication locks",
+      command: "validate and reclaim publication locks",
       durationMs: 0
     };
   } catch (error) {
     return {
       id: "file-lock-recovery",
       status: "FAIL",
-      command: "reclaim malformed and raced publication locks",
+      command: "validate and reclaim publication locks",
       durationMs: 0,
       message: error.message
     };
