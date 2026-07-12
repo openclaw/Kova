@@ -12632,6 +12632,7 @@ async function diagnosticTriggerValidationCheck(tmp) {
     await mkdir(binDir, { recursive: true });
     await mkdir(openclawHome, { recursive: true });
     await writeFile(join(openclawHome, "stale.heapsnapshot"), "stale");
+    await writeFile(join(openclawHome, "report.stale.json"), "{}\n");
     await writeFile(join(binDir, "ocm"), `#!/bin/sh
 printf '%s env=%s\\n' "$*" "\${KOVA_FAKE_WRAPPER_ENV:-}" >> "$KOVA_FAKE_OCM_LOG"
 if [ "\${KOVA_FAKE_OCM_HANG:-}" = "1" ]; then exec sleep 10; fi
@@ -12684,6 +12685,7 @@ setInterval(() => {}, 1000);
       stdio: ["ignore", "pipe", "pipe"]
     });
     await waitForChildReady(child);
+    const combinedSignalSentAtEpochMs = Date.now();
     const triggered = await triggerDiagnosticSession("kova-self-check", child.pid, 3000, root, {
       heapSnapshot: true,
       diagnosticReport: true
@@ -12700,10 +12702,12 @@ setInterval(() => {}, 1000);
     ));
     const reusedReport = await triggerDiagnosticReport("kova-self-check", child.pid, 3000, root, {
       signalAlreadySent: true,
+      signalSentAtEpochMs: combinedSignalSentAtEpochMs,
       commandEnv: { KOVA_FAKE_WRAPPER_ENV: "preserved" }
     });
     assertEqual(reusedReport.commandStatus, 0, "report wrapper reuses the existing signal");
     assertEqual(reusedReport.artifacts.length, 1, "report wrapper retains the existing report");
+    assertEqual(reusedReport.files.some((path) => path.endsWith("report.stale.json")), false, "report wrapper excludes pre-signal history");
     const wrapperInvocation = (await readFile(invocationLog, "utf8")).trim().split("\n").at(-1);
     assertEqual(wrapperInvocation.endsWith("env=preserved"), true, "report wrapper preserves command environment");
     const reportOnly = await triggerDiagnosticSession("kova-self-check", child.pid, 3500, root, {
