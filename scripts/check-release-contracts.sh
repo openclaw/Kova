@@ -44,6 +44,36 @@ else
   test_version="0.0.0-release-contract"
 fi
 
+fresh_repo="$(make_repo fresh-release)"
+fresh_bin="${tmp}/fresh-release/bin"
+real_npm="$(command -v npm)"
+mkdir -p "$fresh_bin"
+cat > "${fresh_bin}/npm" <<'EOF'
+#!/bin/sh
+case "$1:$2" in
+  version:*)
+    exec "$KOVA_REAL_NPM" "$@"
+    ;;
+  run:check:full)
+    exit 0
+    ;;
+esac
+exec "$KOVA_REAL_NPM" "$@"
+EOF
+chmod +x "${fresh_bin}/npm"
+(
+  cd "$fresh_repo"
+  PATH="${fresh_bin}:$PATH" KOVA_REAL_NPM="$real_npm" scripts/release.sh "$test_version" --skip-checks >/dev/null
+  test "$(git diff-tree --no-commit-id --name-only -r HEAD | sort -u)" = $'package-lock.json\npackage.json'
+  test "$(node -p 'require("./package.json").version')" = "$test_version"
+  test "$(node -p 'require("./package-lock.json").version')" = "$test_version"
+  test "$(node -p 'require("./package-lock.json").packages[""].version')" = "$test_version"
+  test -z "$(git status --porcelain=v1)"
+  test "$(git rev-parse HEAD)" = "$(git ls-remote origin refs/heads/main | awk '{ print $1 }')"
+  test "$(git rev-parse HEAD)" = "$(git ls-remote origin "refs/tags/v${test_version}^{}" | awk '{ print $1 }')"
+  scripts/release.sh "$test_version" --skip-checks >/dev/null
+)
+
 stale_repo="$(make_repo stale-main)"
 git clone --quiet "${tmp}/stale-main/remote.git" "${tmp}/stale-main/upstream"
 git -C "${tmp}/stale-main/upstream" config user.name "Kova upstream"
