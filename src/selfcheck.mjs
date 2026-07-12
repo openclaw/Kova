@@ -911,6 +911,8 @@ export async function runSelfCheck(flags = {}) {
     checks.push(gatePlatformCoverageCheck());
     checks.push(gateNonReleaseOutcomeCheck());
     checks.push(gateRequirementCoverageCheck());
+    checks.push(gateScenarioWildcardCheck());
+    checks.push(gateExecutedCoverageDimensionsCheck());
     checks.push(await doctorUpgradeGatePolicyCheck());
     checks.push(gateSubsystemSummaryCheck());
     checks.push(safetyGuardCheck());
@@ -3503,6 +3505,143 @@ function gateRequirementCoverageCheck() {
       id: "gate-requirement-coverage",
       status: "FAIL",
       command: "evaluate synthetic release gate requirement coverage",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function gateScenarioWildcardCheck() {
+  try {
+    const passingGate = evaluateGate({
+      mode: "execution",
+      controls: { include: [], exclude: [] },
+      records: [{
+        scenario: "doctor-repair-upgrade",
+        surface: "upgrade-existing-user",
+        state: { id: "legacy-core-config", traits: ["legacy-config"] },
+        status: "PASS",
+        title: "Doctor Repair Upgrade",
+        likelyOwner: "OpenClaw",
+        phases: []
+      }]
+    }, {
+      id: "doctor-upgrade",
+      gate: {
+        id: "doctor-upgrade-gate",
+        blocking: [{ scenario: "doctor-repair-upgrade" }]
+      }
+    });
+    assertEqual(passingGate.verdict, "SHIP", "scenario-only blocking entry matches stateful record");
+    assertEqual(passingGate.missingRequiredCount, 0, "scenario-only blocking entry is not missing");
+
+    const warningGate = evaluateGate({
+      mode: "execution",
+      controls: { include: [], exclude: [] },
+      records: [{
+        scenario: "agent-provider-timeout",
+        surface: "agent-cli-local-turn",
+        state: { id: "mock-openai-provider", traits: ["mock-provider"] },
+        status: "FAIL",
+        title: "Agent Provider Timeout",
+        likelyOwner: "OpenClaw",
+        phases: []
+      }]
+    }, {
+      id: "provider-warning",
+      gate: {
+        id: "provider-warning-gate",
+        blocking: [],
+        warning: [{ scenario: "agent-provider-timeout" }]
+      }
+    });
+    assertEqual(warningGate.verdict, "SHIP", "scenario-only warning entry matches stateful failure");
+    assertEqual(warningGate.warningCount, 1, "scenario-only warning classifies stateful failure");
+    assertEqual(warningGate.blockingCount, 0, "scenario-only warning does not become blocking");
+
+    return {
+      id: "gate-scenario-wildcard-state",
+      status: "PASS",
+      command: "evaluate scenario-only gate entries against stateful records",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "gate-scenario-wildcard-state",
+      status: "FAIL",
+      command: "evaluate scenario-only gate entries against stateful records",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function gateExecutedCoverageDimensionsCheck() {
+  try {
+    const profile = {
+      id: "release",
+      gate: {
+        id: "executed-coverage-gate",
+        coverage: {
+          platforms: { blocking: ["darwin-arm64"] },
+          requirements: { blocking: ["release-runtime-startup:baseline"] }
+        },
+        blocking: [{ scenario: "release-runtime-startup", state: "fresh" }]
+      }
+    };
+    const resolvedCoverage = {
+      obligations: [{
+        surface: "release-runtime-startup",
+        requirement: "baseline",
+        scenario: "release-runtime-startup",
+        state: "fresh",
+        stateTraits: ["fresh-user"],
+        status: "planned"
+      }]
+    };
+    const emptyGate = evaluateGate({
+      mode: "execution",
+      controls: { include: [], exclude: [] },
+      platform: { os: "darwin", arch: "arm64" },
+      records: []
+    }, profile, { resolvedCoverage });
+    const missingDimensions = new Set(emptyGate.cards
+      .filter((card) => card.kind === "missing-required-coverage")
+      .map((card) => card.coverage));
+    assertEqual(
+      [...missingDimensions].sort().join(","),
+      ["platform", "requirement", "scenario", "state", "state-surface", "surface", "trait"].sort().join(","),
+      "gate checks every coverage dimension against executed records"
+    );
+
+    const completeGate = evaluateGate({
+      mode: "execution",
+      controls: { include: [], exclude: [] },
+      platform: { os: "darwin", arch: "arm64" },
+      records: [{
+        scenario: "release-runtime-startup",
+        surface: "release-runtime-startup",
+        state: { id: "fresh", traits: ["fresh-user"] },
+        status: "PASS",
+        title: "Release Runtime Startup",
+        likelyOwner: "OpenClaw",
+        phases: []
+      }]
+    }, profile, { resolvedCoverage });
+    assertEqual(completeGate.verdict, "SHIP", "executed record satisfies all seven coverage dimensions");
+    assertEqual(completeGate.missingRequiredCount, 0, "complete executed coverage has no gaps");
+
+    return {
+      id: "gate-executed-coverage-dimensions",
+      status: "PASS",
+      command: "evaluate all gate coverage dimensions from executed records",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "gate-executed-coverage-dimensions",
+      status: "FAIL",
+      command: "evaluate all gate coverage dimensions from executed records",
       durationMs: 0,
       message: error.message
     };
