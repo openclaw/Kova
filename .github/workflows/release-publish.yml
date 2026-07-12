@@ -69,7 +69,7 @@ jobs:
             sha256sum -c "kova-${package_version}.tar.gz.sha256"
             sha256sum -c kova.tar.gz.sha256
           )
-          archive_version="$(tar -xOf dist/kova.tar.gz --wildcards '*/package.json' | node -e 'let input=""; process.stdin.on("data", chunk => input += chunk); process.stdin.on("end", () => console.log(JSON.parse(input).version));')"
+          archive_version="$(tar -xOf dist/kova.tar.gz "kova-${package_version}/package.json" | node -e 'let input=""; process.stdin.on("data", chunk => input += chunk); process.stdin.on("end", () => console.log(JSON.parse(input).version));')"
           test "$archive_version" = "$package_version"
           printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
       - name: Publish release
