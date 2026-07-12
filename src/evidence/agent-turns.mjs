@@ -559,7 +559,7 @@ function recoverableStatuslessProviderRequestCount(providerErrors) {
     if ((error?.kind === "provider-error" || error?.kind === "provider-disconnect") &&
       typeof error.requestId === "string" &&
       error.requestId.length > 0 &&
-      (error.status === null || error.status === undefined)) {
+      error.status === null) {
       requestIds.add(error.requestId);
     }
   }

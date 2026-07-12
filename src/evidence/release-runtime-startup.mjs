@@ -12,6 +12,7 @@ import {
   parseJsonObject,
   requiredProofsOk,
   requiredProofsReason,
+  validRequestCount,
   zeroCountInvariant
 } from "./shared.mjs";
 
@@ -177,8 +178,9 @@ function releaseStartupBindingReason(service, provision) {
 function releaseStartupHealthMissing(record, health) {
   return !health?.readiness ||
     !Number.isFinite(health.readiness.healthReadyAtMs) ||
-    (health.postReadySamples?.count ?? 0) <= 0 ||
-    !Number.isFinite(health.final?.failureCount) ||
+    !validRequestCount(health.postReadySamples?.count, 1) ||
+    !validRequestCount(health.postReadySamples?.failureCount) ||
+    !validRequestCount(health.final?.failureCount) ||
     record.measurements?.finalGatewayState === undefined;
 }
 
