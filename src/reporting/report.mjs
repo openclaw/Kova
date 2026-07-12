@@ -458,7 +458,7 @@ function tableCell(value) {
 }
 
 function formatResourceRoleSection(records = [], rawRecords = records) {
-  const roles = summarizeResourceRoles(records).slice(0, 8);
+  const roles = summarizeResourceRoles(rawRecords).slice(0, 8);
   if (roles.length === 0) {
     return [];
   }
@@ -472,7 +472,7 @@ function formatResourceRoleSection(records = [], rawRecords = records) {
   }
   for (const role of roles) {
     lines.push(
-      `- ${role.role}: RSS ${role.peakRssMb ?? "unknown"} MB (${formatResourcePeakSource(role.rssSource)}); ` +
+      `- ${markdownInline(role.role)}: RSS ${role.peakRssMb ?? "unknown"} MB (${formatResourcePeakSource(role.rssSource)}); ` +
       `CPU ${role.maxCpuPercent ?? "unknown"}% (${formatResourcePeakSource(role.cpuSource)})`
     );
   }
@@ -518,7 +518,7 @@ function formatResourcePeakSource(source) {
   if (!source) {
     return "source unknown";
   }
-  return `scenario ${source.scenario}${source.state ? `/${source.state}` : ""}`;
+  return `scenario ${markdownInline(source.scenario)}${source.state ? `/${markdownInline(source.state)}` : ""}`;
 }
 
 function formatChannelWorkflowResourceSection(records = []) {

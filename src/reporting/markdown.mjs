@@ -1,4 +1,4 @@
-export function markdownSafeValue(value, fieldName = null) {
+export function markdownSafeValue(value) {
   if (typeof value === "string") {
     return markdownInline(value, "");
   }
@@ -7,10 +7,7 @@ export function markdownSafeValue(value, fieldName = null) {
   }
   if (value && typeof value === "object") {
     return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [
-        fieldName === "resourceByRole" ? markdownInline(key, "") : key,
-        markdownSafeValue(item, key)
-      ])
+      Object.entries(value).map(([key, item]) => [key, markdownSafeValue(item)])
     );
   }
   return value;

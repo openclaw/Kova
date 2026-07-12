@@ -19796,6 +19796,31 @@ function resourcePeakProvenanceCheck() {
     assertEqual(roleKeyRendered.match(/worker\\_name/g)?.length, 1, "role array values and map keys share one identity");
     assertEqual(roleKeyRendered.includes("\n## forged"), false, "resource role keys cannot forge headings");
     assertEqual(roleKeyRendered.includes("<script>"), false, "resource role keys cannot inject raw HTML");
+    const distinctRoleRendered = renderMarkdownReport({
+      generatedAt: "2026-05-01T00:00:00.000Z",
+      runId: "self-check-distinct-resource-role-keys",
+      mode: "execution",
+      target: "runtime:stable",
+      platform: { os: "test", release: "test", arch: "test", node: "test" },
+      summary: { total: 1, statuses: { PASS: 1 } },
+      records: [{
+        ...baseRecord,
+        scenario: "distinct-role-keys",
+        measurements: {
+          resourceByRole: {
+            "worker\nname": { peakRssMb: 900, maxCpuPercent: 10 },
+            "worker name": { peakRssMb: 100, maxCpuPercent: 800 }
+          }
+        }
+      }]
+    });
+    assertEqual(
+      distinctRoleRendered.match(/- worker name: RSS/g)?.length,
+      2,
+      "roles remain distinct even when their escaped labels match"
+    );
+    assertEqual(distinctRoleRendered.includes("RSS 900 MB"), true, "first colliding role retains its RSS peak");
+    assertEqual(distinctRoleRendered.includes("CPU 800%"), true, "second colliding role retains its CPU peak");
     return {
       id: "resource-peak-provenance",
       status: "PASS",
