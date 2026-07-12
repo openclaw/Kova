@@ -72,7 +72,11 @@ async function cleanupEnvs(flags) {
       });
     }
   }
-  if (flags.execute === true && results.some((result) => result.status !== 0)) {
+  const inventoryBlocked = !force && (!serviceInventory.ok || !retentionInventory.ok);
+  if (
+    flags.execute === true &&
+    (inventoryBlocked || results.some((result) => result.status !== 0))
+  ) {
     process.exitCode = 1;
   }
 
