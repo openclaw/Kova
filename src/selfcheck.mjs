@@ -19499,16 +19499,6 @@ exit 2
   }
 }
 
-async function fileExists(path) {
-  try {
-    await stat(path);
-    return true;
-  } catch (error) {
-    if (error?.code === "ENOENT") return false;
-    throw error;
-  }
-}
-
 function markdownFailureCardsCheck() {
   try {
     const rendered = renderMarkdownReport({
