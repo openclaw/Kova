@@ -264,7 +264,9 @@ async function retainTriggeredArtifacts({ requested, artifactDir, files, destina
           jsonValidation: destination === "heap" ? "envelope" : "full",
           maxBytes: destination === "heap" ? null : MAX_DIAGNOSTIC_REPORT_BYTES
         });
-        const copied = await copyCollectorArtifacts([file], destinationDir);
+        const copied = await copyCollectorArtifacts([file], destinationDir, {
+          deadlineEpochMs
+        });
         return copied.artifacts.length > 0
           ? { ...copied, error: null }
           : { ...copied, error: `diagnostic artifact disappeared before copy: ${file}` };

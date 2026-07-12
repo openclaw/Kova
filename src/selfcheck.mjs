@@ -12574,6 +12574,18 @@ async function collectorArtifactCollisionCheck(tmp) {
       "retained UTF-8 basename respects filesystem byte limit"
     );
     assertEqual(basename(utf8Copied.artifacts[0]).includes("\u{fffd}"), false, "retained basename preserves UTF-8 boundaries");
+    const expiredOutput = join(root, "expired");
+    let deadlineError = null;
+    try {
+      await copyCollectorArtifacts([left], expiredOutput, {
+        deadlineEpochMs: Date.now() + 10,
+        beforeCopy: () => sleep(25)
+      });
+    } catch (error) {
+      deadlineError = error;
+    }
+    assertEqual(deadlineError?.message.includes("exceeded deadline"), true, "artifact copy honors its deadline");
+    assertEqual((await readdir(expiredOutput)).length, 0, "expired artifact copy leaves no partial target");
     return {
       id: "collector-artifact-collision",
       status: "PASS",
