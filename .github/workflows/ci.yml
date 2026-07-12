@@ -33,7 +33,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Run check suite
-        run: npm run check
+        run: npm run check:full
       - name: Smoke package install
         run: |
           npm run pack:release

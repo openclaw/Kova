@@ -68,4 +68,19 @@ if unsigned_output="$(cd "$unsigned_repo" && scripts/release.sh "$test_version" 
 fi
 grep -q "existing tag v${test_version} is not signed" <<<"$unsigned_output"
 
+partial_repo="$(make_repo partial-remote)"
+(
+  cd "$partial_repo"
+  npm version "$test_version" --no-git-tag-version --ignore-scripts >/dev/null
+  git add package.json package-lock.json
+  git commit --quiet -m "chore: bump version to ${test_version}"
+  git -c tag.gpgSign=false tag -a "v${test_version}" -m "v${test_version}"
+  git push --quiet origin "v${test_version}"
+)
+if partial_output="$(cd "$partial_repo" && scripts/release.sh "$test_version" --skip-checks 2>&1)"; then
+  echo "error: partial remote release state unexpectedly passed validation" >&2
+  exit 1
+fi
+grep -q "remote tag v${test_version} exists while origin/main is still at the release parent" <<<"$partial_output"
+
 echo "release contract checks passed"

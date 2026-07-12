@@ -57,7 +57,9 @@ remote_tag_commit() {
 }
 
 tag_signature_valid() {
-  git verify-tag "$1" >/dev/null 2>&1
+  git -c gpg.format=ssh \
+    -c gpg.ssh.allowedSignersFile="${repo_root}/.github/release-allowed-signers" \
+    verify-tag "$1" >/dev/null 2>&1
 }
 
 refresh_dirty_files() {
@@ -187,6 +189,11 @@ fi
 
 if [[ "$head_is_release_commit" -eq 1 ]]; then
   release_base_sha="$(git rev-parse HEAD^)"
+  if [[ "$remote_main_sha" == "$release_base_sha" && "$remote_tag_commit_sha" == "$head_sha" ]]; then
+    echo "error: remote tag ${tag} exists while ${remote}/main is still at the release parent" >&2
+    echo "error: push main explicitly, then rerun the failed Release Build workflow for ${tag}" >&2
+    exit 1
+  fi
   if [[ "$remote_main_sha" != "$release_base_sha" && "$remote_main_sha" != "$head_sha" ]]; then
     echo "error: ${remote}/main moved since the release commit was created; reconcile before retrying" >&2
     exit 1
@@ -264,7 +271,7 @@ else
 fi
 
 if [[ "$need_checks" -eq 1 ]]; then
-  run_step "Running Kova self-check" npm run check
+  run_step "Running Kova check suite" npm run check:full
   run_step "Building release archive" "${script_dir}/package-release.sh" --output-dir ./dist
 fi
 
