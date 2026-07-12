@@ -74,6 +74,23 @@ chmod +x "${fresh_bin}/npm"
   scripts/release.sh "$test_version" --skip-checks >/dev/null
 )
 
+prebumped_repo="$(make_repo prebumped-manifest)"
+(
+  cd "$prebumped_repo"
+  node - "$test_version" <<'NODE'
+  const fs = require("node:fs");
+  const path = "package.json";
+  const manifest = JSON.parse(fs.readFileSync(path, "utf8"));
+  manifest.version = process.argv[2];
+  fs.writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
+NODE
+  PATH="${fresh_bin}:$PATH" KOVA_REAL_NPM="$real_npm" scripts/release.sh "$test_version" --skip-checks >/dev/null
+  test "$(git diff-tree --no-commit-id --name-only -r HEAD | sort -u)" = $'package-lock.json\npackage.json'
+  test "$(node -p 'require("./package-lock.json").version')" = "$test_version"
+  test "$(node -p 'require("./package-lock.json").packages[""].version')" = "$test_version"
+  test -z "$(git status --porcelain=v1)"
+)
+
 stale_repo="$(make_repo stale-main)"
 git clone --quiet "${tmp}/stale-main/remote.git" "${tmp}/stale-main/upstream"
 git -C "${tmp}/stale-main/upstream" config user.name "Kova upstream"
