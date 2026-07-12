@@ -1,6 +1,6 @@
 import { runCommand } from "./commands.mjs";
 import { ocmServiceStatusJson } from "./ocm/commands.mjs";
-import { collectDiagnosticMetrics, collectOpenClawDiagnostics, triggerDiagnosticReport, triggerHeapSnapshot } from "./collectors/diagnostics.mjs";
+import { collectDiagnosticMetrics, collectOpenClawDiagnostics, triggerDiagnosticSession } from "./collectors/diagnostics.mjs";
 import { collectHealthSamples, collectReadinessMetrics, summarizeHealthSamples } from "./collectors/readiness.mjs";
 import { collectLogMetrics } from "./collectors/logs.mjs";
 import { collectNodeProfileMetrics } from "./collectors/node-profiles.mjs";
@@ -161,26 +161,30 @@ export async function collectEnvMetrics(envName, options = {}) {
 
   await collectLogAndTimelineMetrics(metrics, collectors, envName, timeoutMs, options, collectionPolicy);
 
-  if (!collectorEnabled(collectionPolicy, "heap-snapshot")) {
+  const heapSnapshotEnabled = collectorEnabled(collectionPolicy, "heap-snapshot");
+  const diagnosticReportEnabled = collectorEnabled(collectionPolicy, "diagnostic-report");
+  if (!heapSnapshotEnabled) {
     recordSkippedCollector(collectors, "heap-snapshot", collectionPolicy.reason);
-  } else if (options.heapSnapshot === true && serviceJson.childPid) {
-    metrics.heapSnapshot = await triggerHeapSnapshot(
-      envName,
-      serviceJson.childPid,
-      timeoutMs,
-      options.artifactDir,
-      options.commandEnv
-    );
-    recordCollector(collectors, "heap-snapshot", metrics.heapSnapshot, metrics.heapSnapshot.artifacts);
   }
-  if (!collectorEnabled(collectionPolicy, "diagnostic-report")) {
+  if (!diagnosticReportEnabled) {
     recordSkippedCollector(collectors, "diagnostic-report", collectionPolicy.reason);
-  } else if (options.diagnosticReport === true && serviceJson.childPid) {
-    metrics.diagnosticReport = await triggerDiagnosticReport(envName, serviceJson.childPid, timeoutMs, options.artifactDir, {
-      signalAlreadySent: options.heapSnapshot === true,
+  }
+  const requestHeapSnapshot = heapSnapshotEnabled && options.heapSnapshot === true;
+  const requestDiagnosticReport = diagnosticReportEnabled && options.diagnosticReport === true;
+  if ((requestHeapSnapshot || requestDiagnosticReport) && serviceJson.childPid) {
+    const triggered = await triggerDiagnosticSession(envName, serviceJson.childPid, timeoutMs, options.artifactDir, {
+      heapSnapshot: requestHeapSnapshot,
+      diagnosticReport: requestDiagnosticReport,
       commandEnv: options.commandEnv
     });
-    recordCollector(collectors, "diagnostic-report", metrics.diagnosticReport, metrics.diagnosticReport.artifacts);
+    if (requestHeapSnapshot) {
+      metrics.heapSnapshot = triggered.heapSnapshot;
+      recordCollector(collectors, "heap-snapshot", metrics.heapSnapshot, metrics.heapSnapshot.artifacts);
+    }
+    if (requestDiagnosticReport) {
+      metrics.diagnosticReport = triggered.diagnosticReport;
+      recordCollector(collectors, "diagnostic-report", metrics.diagnosticReport, metrics.diagnosticReport.artifacts);
+    }
   }
   await collectDiagnosticArtifactMetrics(metrics, collectors, envName, timeoutMs, options, collectionPolicy);
 

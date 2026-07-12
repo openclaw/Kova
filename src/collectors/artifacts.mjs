@@ -1,5 +1,6 @@
-import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { createHash } from "node:crypto";
+import { copyFile, mkdir, stat } from "node:fs/promises";
+import { basename, extname, join } from "node:path";
 
 export const COLLECTOR_ARTIFACT_DIRS_SCHEMA = "kova.collectorArtifactDirs.v1";
 
@@ -39,4 +40,48 @@ export async function prepareCollectorArtifactDirs(runArtifactDir, options = {})
     await mkdir(dir, { recursive: true });
   }
   return dirs;
+}
+
+export async function copyCollectorArtifacts(sources, destinationDir, options = {}) {
+  await mkdir(destinationDir, { recursive: true });
+  const artifacts = [];
+  const seenTargets = new Set();
+  const limit = Math.max(0, Number(options.limit ?? sources.length));
+
+  for (const source of [...new Set(sources)].slice(0, limit)) {
+    if (options.beforeCopy) {
+      await options.beforeCopy(source);
+    }
+    const target = join(destinationDir, collisionSafeArtifactName(source));
+    if (seenTargets.has(target)) {
+      continue;
+    }
+    try {
+      await copyFile(source, target);
+      artifacts.push(target);
+      seenTargets.add(target);
+    } catch (error) {
+      if (error.code !== "ENOENT") {
+        throw error;
+      }
+    }
+  }
+
+  const artifactBytes = (await Promise.all(artifacts.map(async (path) => {
+    try {
+      return (await stat(path)).size;
+    } catch {
+      return 0;
+    }
+  }))).reduce((total, size) => total + size, 0);
+
+  return { artifacts, artifactBytes };
+}
+
+function collisionSafeArtifactName(source) {
+  const name = basename(source);
+  const extension = extname(name);
+  const stem = extension ? name.slice(0, -extension.length) : name;
+  const digest = createHash("sha256").update(source).digest("hex").slice(0, 12);
+  return `${stem}-${digest}${extension}`;
 }

@@ -43,7 +43,20 @@ export function startResourceSampler(rootPid, options = {}) {
   };
 
   function sample() {
-    const allProcesses = listProcesses(options.redactValues ?? []);
+    const processResult = (options.processLister ?? listProcesses)(options.redactValues ?? []);
+    if (!processResult.ok) {
+      samples.push({
+        timestamp: new Date().toISOString(),
+        elapsedMs: Date.now() - startedAt,
+        rootPid,
+        gatewayPid,
+        collectionStatus: "error",
+        collectionError: processResult.error,
+        processes: []
+      });
+      return;
+    }
+    const allProcesses = processResult.processes;
     if (options.envName) {
       const knownGatewayPid = gatewayPid ?? gatewayPidsByEnv.get(options.envName) ?? null;
       gatewayPid = liveGatewayPid(options.envName, gatewayPid, allProcesses);
@@ -96,12 +109,18 @@ export function startResourceSampler(rootPid, options = {}) {
       elapsedMs: Date.now() - startedAt,
       rootPid,
       gatewayPid,
+      collectionStatus: "ok",
+      collectionError: null,
       processes: tracked
     });
   }
 }
 
 export function summarizeResourceSamples(samples) {
+  const usableSamples = samples.filter((sample) =>
+    sample?.collectionStatus !== "error" && Array.isArray(sample?.processes)
+  );
+  const failedSamples = samples.filter((sample) => sample?.collectionStatus === "error");
   let peakTotalRssMb = null;
   let maxTotalCpuPercent = null;
   let peakCommandTreeRssMb = null;
@@ -111,7 +130,7 @@ export function summarizeResourceSamples(samples) {
   const byPid = new Map();
   const byRole = new Map();
 
-  for (const sample of samples) {
+  for (const sample of usableSamples) {
     const totalRssMb = roundNumber(sample.processes.reduce((total, process) => total + process.rssMb, 0));
     const totalCpuPercent = roundNumber(sample.processes.reduce((total, process) => total + process.cpuPercent, 0));
     const commandTreeRssMb = roleRss(sample.processes, "command-tree");
@@ -165,7 +184,7 @@ export function summarizeResourceSamples(samples) {
     peakRssMb: roundNumber(process.peakRssMb),
     maxCpuPercent: roundNumber(process.maxCpuPercent)
   }));
-  const trend = summarizeResourceTrend(samples);
+  const trend = summarizeResourceTrend(usableSamples);
   const roleSummaries = Object.fromEntries([...byRole.entries()]
     .toSorted(([left], [right]) => left.localeCompare(right))
     .map(([role, summary]) => [role, finalizeRoleSummary(summary)]));
@@ -174,7 +193,11 @@ export function summarizeResourceSamples(samples) {
   return {
     schemaVersion: RESOURCE_SAMPLES_SCHEMA,
     sampleCount: samples.length,
-    intervalMs: sampleInterval(samples),
+    successfulSampleCount: usableSamples.length,
+    failedSampleCount: failedSamples.length,
+    available: usableSamples.length > 0,
+    errors: [...new Set(failedSamples.map((sample) => sample.collectionError).filter(Boolean))].slice(0, 5),
+    intervalMs: sampleInterval(usableSamples),
     peakTotalRssMb,
     maxTotalCpuPercent,
     peakCommandTreeRssMb,
@@ -237,8 +260,9 @@ function roleRss(processes, role) {
 export function captureProcessSnapshot(options = {}) {
   const roleMatchers = compileRoleMatchers(options.processRoles ?? []);
   const envName = options.envName ?? null;
-  const allProcesses = listProcesses();
-  const gatewayPid = envName
+  const processResult = (options.processLister ?? listProcesses)(options.redactValues ?? []);
+  const allProcesses = processResult.processes;
+  const gatewayPid = processResult.ok && envName
     ? liveGatewayPid(envName, null, allProcesses) ?? lookupGatewayPid(envName, options.commandEnv)
     : null;
   const gatewayTreePids = gatewayPid === null ? new Set() : collectProcessTreePids(allProcesses, gatewayPid);
@@ -279,6 +303,8 @@ export function captureProcessSnapshot(options = {}) {
     schemaVersion: PROCESS_SNAPSHOT_SCHEMA,
     capturedAt: new Date().toISOString(),
     envName,
+    collectionStatus: processResult.ok ? "ok" : "error",
+    collectionError: processResult.error,
     gatewayPid,
     processCount: included.length,
     roleCounts: summarizeRoleCounts(included),
@@ -423,7 +449,12 @@ function listProcesses(redactValues = []) {
     timeout: 2000
   });
   if (result.status !== 0) {
-    return [];
+    return {
+      ok: false,
+      status: result.status,
+      error: result.error?.message ?? `ps exited with status ${result.status ?? "unknown"}`,
+      processes: []
+    };
   }
 
   const processes = [];
@@ -441,13 +472,20 @@ function listProcesses(redactValues = []) {
       command: redactProcessCommand(match[5], redactValues)
     });
   }
-  return processes;
+  return {
+    ok: true,
+    status: 0,
+    error: null,
+    processes
+  };
 }
 
 function redactProcessCommand(command, redactValues = []) {
   let text = String(command)
     .replace(/\b([A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD)[A-Z0-9_]*)=('[^']*'|"[^"]*"|\S+)/gi, "$1=[redacted]")
-    .replace(/(^|\s)(--(?:api-key|password|token))(?:=|\s+)(('[^']*')|("[^"]*")|\S+)/gi, "$1$2 [redacted]")
+    .replace(/(^|\s)(--(?:api-key|password|token|client-secret|client_secret|access-token|refresh-token|credential))(?:=|\s+)(('[^']*')|("[^"]*")|\S+)/gi, "$1$2 [redacted]")
+    .replace(/\b(authorization\s*:\s*)(?:bearer|basic)\s+('[^']*'|"[^"]*"|\S+)/gi, "$1[redacted]")
+    .replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^/\s:@]+:[^/\s@]+@/gi, "$1[redacted]@")
     .replace(/\bsk-[A-Za-z0-9_-]{12,}\b/g, "sk-[redacted]")
     .replace(/\b(xox[baprs]-[A-Za-z0-9-]{10,})\b/g, "[redacted-slack-token]");
   for (const value of redactValues) {

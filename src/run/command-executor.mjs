@@ -31,7 +31,9 @@ export async function runScenarioCommand(command, context, envName, artifactDir,
   const snapshotOptions = {
     envName,
     processRoles: context.processRoles ?? [],
-    rootCommand: command
+    rootCommand: command,
+    commandEnv: context.commandEnv,
+    redactValues: authPolicy?.redactionValues ?? context.auth?.redactionValues ?? []
   };
   const snapshotBase = join(collectorArtifactDirs(artifactDir).processSnapshots, `${safeSegment(phaseId)}-${commandIndex + 1}`);
   const beforeSnapshot = agentCommand ? captureProcessSnapshot(snapshotOptions) : null;

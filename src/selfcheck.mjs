@@ -73,6 +73,8 @@ import {
   tagCommandResult
 } from "./measurement-contract.mjs";
 import { collectTimelineMetrics, parseTimelineText } from "./collectors/timeline.mjs";
+import { copyCollectorArtifacts } from "./collectors/artifacts.mjs";
+import { triggerDiagnosticSession } from "./collectors/diagnostics.mjs";
 import { assertNetworkFrontageCommandSafe, networkFrontageCommandEnv, stopNetworkFrontage, waitForProxyReady, waitForTcp } from "./network-frontage.mjs";
 import { resolveGatewayEndpoint } from "../support/gateway-endpoint.mjs";
 import {
@@ -101,6 +103,7 @@ import {
 } from "./collectors/provider.mjs";
 import { captureProcessSnapshot, classifyRegistryRolesForProcess, classifySnapshotRolesForProcess, diffProcessSnapshots, startResourceSampler, summarizeResourceSamples } from "./collectors/resources.mjs";
 import { captureOpenClawStateSnapshot } from "./collectors/openclaw-state.mjs";
+import { collectStateFixtureAccounting } from "./collectors/state-fixtures.mjs";
 import { buildReportSummary, renderMarkdownReport, renderPasteSummary, renderReportSummary, summarizeRecords } from "./reporting/report.mjs";
 import { buildRepeatedWorkAudit } from "./audits/repeated-work.mjs";
 import { ENV_COLLECTOR_IDS, resolveCollectionPolicy } from "./collection-policy.mjs";
@@ -904,8 +907,12 @@ async function runScopedSelfCheck(flags, scope, workspace) {
     checks.push(await cleanupArtifactsCheck(tmp));
     checks.push(await mockProviderProcessSafetyCheck(tmp));
     checks.push(await diagnosticArtifactIdentityCheck(tmp));
+    checks.push(await stateFixtureCollectorFailureCheck(tmp));
     checks.push(await diagnosticsTimelineCheck());
     checks.push(await diagnosticsOpenSpanCheck());
+    checks.push(await malformedTimelineCheck(tmp));
+    checks.push(await collectorArtifactCollisionCheck(tmp));
+    checks.push(await diagnosticTriggerValidationCheck(tmp));
     checks.push(diagnosticsTimelineEvaluationCheck());
     checks.push(runtimeDepsLogParserCheck());
     checks.push(embeddedRunLogParserCheck());
@@ -922,6 +929,7 @@ async function runScopedSelfCheck(flags, scope, workspace) {
     checks.push(await resourceRootCommandRoleBoundaryCheck());
     checks.push(await resourceRolePollutionCheck());
     checks.push(await resourceGatewayPidLookupCheck(tmp, scope));
+    checks.push(await resourceSamplerFailureCheck());
     checks.push(await startupSurfaceDiagnosticsContractCheck());
     checks.push(await gatewaySessionSurfaceContractCheck());
     checks.push(await bundledPluginStartupSurfaceContractCheck());
@@ -12376,6 +12384,261 @@ async function diagnosticsOpenSpanCheck() {
   }
 }
 
+async function malformedTimelineCheck(tmp) {
+  const artifactDir = join(tmp, "malformed-timeline");
+  try {
+    await mkdir(join(artifactDir, "openclaw"), { recursive: true });
+    await writeFile(join(artifactDir, "openclaw", "timeline.jsonl"), "{not-json}\n[]\n");
+    const timeline = await collectTimelineMetrics(artifactDir);
+    assertEqual(timeline.available, false, "malformed timeline has no valid events");
+    assertEqual(timeline.parseErrorCount, 2, "malformed timeline parse errors retained");
+    assertEqual(timeline.parseErrors.length, 2, "malformed timeline parse error details retained");
+    assertEqual(timeline.artifacts.length, 1, "malformed timeline artifact retained");
+    assertEqual(timeline.statusLabel, "WARN", "malformed timeline is warning-classified");
+    assertEqual(timeline.error.includes("contained no valid events"), true, "malformed timeline is not reported missing");
+    return {
+      id: "malformed-timeline-evidence",
+      status: "PASS",
+      command: "collect malformed timeline evidence",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "malformed-timeline-evidence",
+      status: "FAIL",
+      command: "collect malformed timeline evidence",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+async function stateFixtureCollectorFailureCheck(tmp) {
+  const artifactDir = join(tmp, "state-fixture-collector");
+  try {
+    await mkdir(artifactDir, { recursive: true });
+    const invalidJsonPath = join(artifactDir, "invalid.json");
+    await writeFile(invalidJsonPath, "{invalid-json}\n");
+    const accounting = await collectStateFixtureAccounting({
+      id: "collector-failure-self-check",
+      fixtureAccounting: {
+        kind: "session-store",
+        files: [
+          {
+            id: "unresolved-home",
+            path: "{openclawHome}/sessions.json",
+            expectedShape: "openclaw-session-store"
+          },
+          {
+            id: "invalid-json",
+            path: "{artifactDir}/invalid.json",
+            expectedShape: "openclaw-session-store"
+          }
+        ]
+      }
+    }, "kova-self-check", artifactDir, {
+      resolveEnvInfo: async () => ({
+        error: "service-status-failed",
+        status: 17
+      })
+    });
+    assertEqual(accounting.envResolution.status, "error", "OCM resolution failure retained");
+    assertEqual(accounting.envResolution.commandStatus, 17, "OCM resolution status retained");
+    assertEqual(accounting.files[0]?.shape?.kind, "environment-unavailable", "OCM failure is not a missing fixture");
+    assertEqual(accounting.files[1]?.shape?.kind, "invalid-json", "malformed fixture remains distinct");
+    assertEqual(accounting.findings.some((finding) => finding.kind === "harness"), true, "OCM failure creates harness finding");
+    assertEqual(
+      accounting.findings.some((finding) => finding.fileId === "unresolved-home" && finding.message.includes("missing")),
+      false,
+      "OCM failure creates no missing-fixture warning"
+    );
+    assertEqual((await stat(accounting.artifactPath)).isFile(), true, "malformed fixture accounting artifact retained");
+    return {
+      id: "state-fixture-collector-failures",
+      status: "PASS",
+      command: "classify OCM and malformed fixture failures",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "state-fixture-collector-failures",
+      status: "FAIL",
+      command: "classify OCM and malformed fixture failures",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+async function collectorArtifactCollisionCheck(tmp) {
+  const root = join(tmp, "collector-artifact-collision");
+  const left = join(root, "left", "report.json");
+  const right = join(root, "right", "report.json");
+  const output = join(root, "retained");
+  try {
+    await mkdir(join(root, "left"), { recursive: true });
+    await mkdir(join(root, "right"), { recursive: true });
+    await writeFile(left, "left");
+    await writeFile(right, "right-side");
+    const copied = await copyCollectorArtifacts([left, right], output);
+    assertEqual(copied.artifacts.length, 2, "same-basename artifacts retained separately");
+    assertEqual(new Set(copied.artifacts).size, 2, "retained artifact paths are unique");
+    const contents = await Promise.all(copied.artifacts.map((path) => readFile(path, "utf8")));
+    assertEqual(contents.toSorted().join(","), "left,right-side", "same-basename artifact contents survive");
+    assertEqual(copied.artifactBytes, 14, "retained artifact bytes reflect unique targets");
+    return {
+      id: "collector-artifact-collision",
+      status: "PASS",
+      command: "retain same-basename collector artifacts",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "collector-artifact-collision",
+      status: "FAIL",
+      command: "retain same-basename collector artifacts",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+async function diagnosticTriggerValidationCheck(tmp) {
+  const root = join(tmp, "diagnostic-trigger");
+  const binDir = join(root, "bin");
+  const openclawHome = join(root, "openclaw-home");
+  const invocationLog = join(root, "ocm.log");
+  const previousPath = process.env.PATH;
+  const previousOpenClawHome = process.env.OPENCLAW_HOME;
+  const previousOcmLog = process.env.KOVA_FAKE_OCM_LOG;
+  let child = null;
+  try {
+    await mkdir(binDir, { recursive: true });
+    await mkdir(openclawHome, { recursive: true });
+    await writeFile(join(openclawHome, "stale.heapsnapshot"), "stale");
+    await writeFile(join(binDir, "ocm"), `#!/bin/sh
+printf '%s\\n' "$*" >> "$KOVA_FAKE_OCM_LOG"
+while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do shift; done
+[ "$#" -gt 0 ] || exit 2
+shift
+exec "$@"
+`);
+    await chmod(join(binDir, "ocm"), 0o755);
+    process.env.PATH = `${binDir}:${previousPath}`;
+    process.env.OPENCLAW_HOME = openclawHome;
+    process.env.KOVA_FAKE_OCM_LOG = invocationLog;
+    child = spawn(process.execPath, ["-e", `
+const fs = require("node:fs");
+const path = require("node:path");
+const home = process.env.OPENCLAW_HOME;
+process.on("SIGUSR2", () => {
+  fs.writeFileSync(path.join(home, "fresh.heapsnapshot"), "fresh-heap");
+  fs.writeFileSync(path.join(home, "report.fresh.json"), "{\\"fresh\\":true}\\n");
+});
+process.stdout.write("ready\\n");
+setInterval(() => {}, 1000);
+`], {
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    await waitForChildReady(child);
+    const triggered = await triggerDiagnosticSession("kova-self-check", child.pid, 5000, root, {
+      heapSnapshot: true,
+      diagnosticReport: true
+    });
+    assertEqual(triggered.heapSnapshot.commandStatus, 0, "heap snapshot signal succeeds");
+    assertEqual(triggered.diagnosticReport.commandStatus, 0, "diagnostic report signal succeeds");
+    assertEqual(triggered.heapSnapshot.fileCount, 1, "only fresh heap snapshot retained");
+    assertEqual(triggered.diagnosticReport.fileCount, 1, "only fresh diagnostic report retained");
+    assertEqual(triggered.heapSnapshot.files.some((path) => path.endsWith("stale.heapsnapshot")), false, "stale heap snapshot excluded");
+    assertEqual((await readFile(invocationLog, "utf8")).trim().split("\n").length, 1, "one OCM session triggers both artifacts");
+    const failed = await triggerDiagnosticSession("kova-self-check", 99999999, 5000, root, {
+      heapSnapshot: true,
+      diagnosticReport: true
+    });
+    assertEqual(failed.heapSnapshot.commandStatus === 0, false, "failed signal retains nonzero status");
+    assertEqual(failed.heapSnapshot.fileCount, 0, "failed signal retains no stale heap files");
+    assertEqual(failed.diagnosticReport.fileCount, 0, "failed signal retains no stale report files");
+    const invalid = await triggerDiagnosticSession("kova-self-check", 0, 1000, root, {
+      heapSnapshot: true,
+      diagnosticReport: true
+    });
+    assertEqual(invalid.heapSnapshot.commandStatus, 1, "invalid heap snapshot pid fails before OCM");
+    assertEqual(invalid.heapSnapshot.error.includes("invalid diagnostic target pid"), true, "invalid pid error retained");
+    return {
+      id: "diagnostic-trigger-validation",
+      status: "PASS",
+      command: "capture fresh diagnostics through one trigger session",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "diagnostic-trigger-validation",
+      status: "FAIL",
+      command: "capture fresh diagnostics through one trigger session",
+      durationMs: 0,
+      message: error.message
+    };
+  } finally {
+    child?.kill("SIGTERM");
+    restoreEnv({
+      PATH: previousPath,
+      OPENCLAW_HOME: previousOpenClawHome,
+      KOVA_FAKE_OCM_LOG: previousOcmLog
+    });
+  }
+}
+
+function waitForChildReady(child) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("diagnostic fixture process did not become ready")), 3000);
+    child.once("exit", (code, signal) => {
+      clearTimeout(timeout);
+      reject(new Error(`diagnostic fixture process exited early (${code ?? signal})`));
+    });
+    child.stdout.once("data", () => {
+      clearTimeout(timeout);
+      resolve();
+    });
+  });
+}
+
+async function resourceSamplerFailureCheck() {
+  try {
+    const sampler = startResourceSampler(12345, {
+      intervalMs: 250,
+      processLister: () => ({
+        ok: false,
+        status: 1,
+        error: "synthetic ps failure",
+        processes: []
+      })
+    });
+    await sleep(275);
+    const summary = await sampler.stop();
+    assertEqual(summary.available, false, "failed resource samples are unavailable");
+    assertEqual(summary.successfulSampleCount, 0, "failed resource samples are excluded");
+    assertEqual(summary.failedSampleCount >= 2, true, "failed resource sample count retained");
+    assertEqual(summary.peakTotalRssMb, null, "failed resource samples do not synthesize zero RSS");
+    assertEqual(summary.maxTotalCpuPercent, null, "failed resource samples do not synthesize zero CPU");
+    assertEqual(summary.errors[0], "synthetic ps failure", "resource collection error retained");
+    return {
+      id: "resource-sampler-failure",
+      status: "PASS",
+      command: "summarize failed process-list observations",
+      durationMs: 275
+    };
+  } catch (error) {
+    return {
+      id: "resource-sampler-failure",
+      status: "FAIL",
+      command: "summarize failed process-list observations",
+      durationMs: 275,
+      message: error.message
+    };
+  }
+}
+
 function diagnosticsTimelineEvaluationCheck() {
   try {
     const missingTimelineRecord = {
@@ -14751,21 +15014,33 @@ exec /bin/sh -c "$2"
 async function processSnapshotCheck(tmp, scope) {
   const processRoles = await loadProcessRoles();
   const rootCommand = `ocm @${scope.envName} -- agent --local --session-id ${scope.sessionPrefix} --message hi`;
-  const child = runCommand("node -e 'setTimeout(() => {}, 1200)'", {
+  const commandEnv = { KOVA_HOME: join(tmp, "kova-home") };
+  const customValue = `${scope.id}-custom-redaction-value`;
+  const flagValue = `${scope.id}-client-redaction-value`;
+  const headerValue = `${scope.id}-header-redaction-value`;
+  const urlValue = `${scope.id}-url-redaction-value`;
+  const child = runCommand(
+    `node -e 'setTimeout(() => {}, 1200)' openclaw-agent ${scope.envName} --client-secret ${flagValue} --header 'Authorization: Bearer ${headerValue}' https://user:${urlValue}@example.test ${customValue}`,
+    {
     timeoutMs: 5000,
     resourceSample: null
-  });
+    }
+  );
   await sleep(250);
   const before = captureProcessSnapshot({
     processRoles,
     envName: scope.envName,
-    rootCommand
+    rootCommand,
+    commandEnv,
+    redactValues: [customValue]
   });
   const result = await child;
   const after = captureProcessSnapshot({
     processRoles,
     envName: scope.envName,
-    rootCommand
+    rootCommand,
+    commandEnv,
+    redactValues: [customValue]
   });
   const leaks = diffProcessSnapshots(before, after, {
     roles: ["agent-cli", "agent-process", "mcp-runtime", "plugin-cli", "mock-provider", "browser-sidecar"]
@@ -14810,6 +15085,13 @@ async function processSnapshotCheck(tmp, scope) {
     assertEqual(scopedBrowserRoles.includes("browser-sidecar"), true, "scoped browser process retained");
     assertEqual(gatewayBrowserRoles.includes("browser-sidecar"), true, "gateway child browser process retained");
     assertEqual(scopedAgentRoles.includes("agent-cli"), true, "scoped agent process retained");
+    const retainedCommands = before.processes.map((process) => process.command).join("\n");
+    for (const value of [customValue, flagValue, headerValue, urlValue]) {
+      assertEqual(retainedCommands.includes(value), false, `process snapshot redacts ${value}`);
+    }
+    assertEqual(retainedCommands.includes("--client-secret [redacted]"), true, "process snapshot redacts client-secret flag");
+    assertEqual(retainedCommands.includes("Authorization: [redacted]"), true, "process snapshot redacts authorization header");
+    assertEqual(retainedCommands.includes("https://[redacted]@example.test"), true, "process snapshot redacts credential URL");
     return {
       id: "process-snapshot-leak-contract",
       status: "PASS",
