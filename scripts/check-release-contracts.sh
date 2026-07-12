@@ -12,7 +12,7 @@ make_repo() {
   local repo="${root}/repo"
   local remote="${root}/remote.git"
 
-  git init --bare --quiet "$remote"
+  git init --bare --quiet --initial-branch=main "$remote"
   git init --quiet --initial-branch=main "$repo"
   mkdir -p "${repo}/scripts"
   cp "${repo_root}/package.json" "${repo}/package.json"
@@ -30,6 +30,13 @@ make_repo() {
   printf '%s\n' "$repo"
 }
 
+current_version="$(node -p 'require("./package.json").version')"
+if [[ "$current_version" == "0.0.0-release-contract" ]]; then
+  test_version="0.0.1-release-contract"
+else
+  test_version="0.0.0-release-contract"
+fi
+
 stale_repo="$(make_repo stale-main)"
 git clone --quiet "${tmp}/stale-main/remote.git" "${tmp}/stale-main/upstream"
 git -C "${tmp}/stale-main/upstream" config user.name "Kova upstream"
@@ -39,7 +46,7 @@ git -C "${tmp}/stale-main/upstream" add upstream-change
 git -C "${tmp}/stale-main/upstream" commit --quiet -m "test: advance remote"
 git -C "${tmp}/stale-main/upstream" push --quiet
 stale_before="$(git -C "$stale_repo" status --porcelain=v1)"
-if stale_output="$(cd "$stale_repo" && scripts/release.sh 0.1.1 --skip-checks 2>&1)"; then
+if stale_output="$(cd "$stale_repo" && scripts/release.sh "$test_version" --skip-checks 2>&1)"; then
   echo "error: stale local main unexpectedly passed release validation" >&2
   exit 1
 fi
@@ -49,16 +56,16 @@ test "$(git -C "$stale_repo" status --porcelain=v1)" = "$stale_before"
 unsigned_repo="$(make_repo unsigned-tag)"
 (
   cd "$unsigned_repo"
-  npm version 0.1.1 --no-git-tag-version --ignore-scripts >/dev/null
+  npm version "$test_version" --no-git-tag-version --ignore-scripts >/dev/null
   git add package.json package-lock.json
-  git commit --quiet -m "chore: bump version to 0.1.1"
+  git commit --quiet -m "chore: bump version to ${test_version}"
   git push --quiet origin main
-  git -c tag.gpgSign=false tag -a v0.1.1 -m v0.1.1
+  git -c tag.gpgSign=false tag -a "v${test_version}" -m "v${test_version}"
 )
-if unsigned_output="$(cd "$unsigned_repo" && scripts/release.sh 0.1.1 --skip-checks 2>&1)"; then
+if unsigned_output="$(cd "$unsigned_repo" && scripts/release.sh "$test_version" --skip-checks 2>&1)"; then
   echo "error: unsigned release tag unexpectedly passed validation" >&2
   exit 1
 fi
-grep -q "existing tag v0.1.1 is not signed" <<<"$unsigned_output"
+grep -q "existing tag v${test_version} is not signed" <<<"$unsigned_output"
 
 echo "release contract checks passed"

@@ -22,6 +22,8 @@ const temporaryArchivePath = join(distDir, `.${appName}.${process.pid}.tar.gz`);
 const temporaryChecksumPath = `${temporaryArchivePath}.sha256`;
 const temporaryLatestArchivePath = join(distDir, `.kova.${process.pid}.tar.gz`);
 const temporaryLatestChecksumPath = `${temporaryLatestArchivePath}.sha256`;
+const metadataPath = join(distDir, "release-metadata.json");
+const temporaryMetadataPath = join(distDir, `.release-metadata.${process.pid}.json`);
 
 try {
   await mkdir(appDir, { recursive: true });
@@ -73,11 +75,17 @@ try {
   await writeFile(temporaryChecksumPath, `${sha256}  ${appName}.tar.gz\n`, "utf8");
   await cp(temporaryArchivePath, temporaryLatestArchivePath);
   await writeFile(temporaryLatestChecksumPath, `${sha256}  kova.tar.gz\n`, "utf8");
+  await writeFile(temporaryMetadataPath, `${JSON.stringify({
+    schemaVersion: "kova.releaseMetadata.v1",
+    tag: process.env.GITHUB_REF_NAME ?? `v${version}`,
+    sha: process.env.GITHUB_SHA ?? gitHead()
+  }, null, 2)}\n`, "utf8");
 
   await rename(temporaryArchivePath, archivePath);
   await rename(temporaryChecksumPath, checksumPath);
   await rename(temporaryLatestArchivePath, latestArchivePath);
   await rename(temporaryLatestChecksumPath, latestChecksumPath);
+  await rename(temporaryMetadataPath, metadataPath);
 
   console.log(JSON.stringify({
     schemaVersion: "kova.releaseArtifact.v1",
@@ -86,6 +94,7 @@ try {
     checksumPath,
     latestArchivePath,
     latestChecksumPath,
+    metadataPath,
     sha256,
     bytes: archive.length
   }, null, 2));
@@ -95,6 +104,7 @@ try {
   await rm(temporaryChecksumPath, { force: true });
   await rm(temporaryLatestArchivePath, { force: true });
   await rm(temporaryLatestChecksumPath, { force: true });
+  await rm(temporaryMetadataPath, { force: true });
 }
 
 async function copyRequired(path) {
@@ -126,4 +136,16 @@ function parseOutputDir() {
     }
   }
   return resolve(repoRoot, outputDir);
+}
+
+function gitHead() {
+  const git = spawnSync("git", ["rev-parse", "HEAD"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  if (git.status !== 0) {
+    throw new Error(git.stderr || git.stdout || "git rev-parse HEAD failed");
+  }
+  return git.stdout.trim();
 }
