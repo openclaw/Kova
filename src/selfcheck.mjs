@@ -3334,6 +3334,27 @@ function reportStatusPrecedenceCheck() {
     assertEqual(blockedReceipt.includes("1 blocked of 1"), true, "blocked receipt headline");
     assertEqual(blockedReceipt.includes("Blocked"), true, "blocked receipt KPI");
 
+    const skippedRecords = [{
+      ...baseRecord,
+      status: "PASS"
+    }, {
+      ...baseRecord,
+      status: "SKIPPED"
+    }];
+    const skippedReport = {
+      ...report,
+      runId: "skipped-status-run",
+      records: skippedRecords,
+      summary: summarizeRecords(skippedRecords)
+    };
+    const skippedAssessment = renderAssessment(
+      skippedReport,
+      { full: true, color: "never" },
+      process.env,
+      process.stdout
+    );
+    assertEqual(skippedAssessment.includes("1 skipped of 2 samples"), true, "assessment reports skipped samples");
+
     const gate = evaluateGate(report, {
       id: "mixed-status-gate",
       gate: {
