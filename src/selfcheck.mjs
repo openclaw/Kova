@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
+import { chmod, link, lstat, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { join } from "node:path";
 import { resolveScriptStep } from "mock-ai-provider/dist/providers/openai/common/scripted-response.js";
@@ -16101,14 +16101,16 @@ async function credentialStoreConcurrentWritersCheck(tmp) {
   const home = join(tmp, "concurrent-credentials-home");
   const credentials = join(home, "credentials");
   const staleLock = join(credentials, ".store.lock");
-  const staleMarker = join(staleLock, "owner-dummy.json");
+  const staleOwnerId = "00000000-0000-4000-8000-000000000000";
+  const staleOwner = join(credentials, `.store.lock.owner-2147483647-${staleOwnerId}.json`);
   await mkdir(credentials, { recursive: true });
-  await mkdir(staleLock);
-  await writeFile(staleMarker, `${JSON.stringify({
+  await writeFile(staleOwner, `${JSON.stringify({
     pid: 2147483647,
-    token: "dummy",
+    token: staleOwnerId,
+    processStart: null,
     createdAt: new Date(0).toISOString()
   })}\n`, "utf8");
+  await link(staleOwner, staleLock);
   const commands = Array.from({ length: 12 }, (_, index) => {
     const anthropic = index % 2 === 1;
     return [
@@ -16139,7 +16141,7 @@ async function credentialStoreConcurrentWritersCheck(tmp) {
     assertEqual(liveEnv.includes("OPENAI_API_KEY=open-value"), true, "concurrent OpenAI key");
     assertEqual(liveEnv.includes("ANTHROPIC_API_KEY=anth-value"), true, "concurrent Anthropic key");
     const leftovers = (await readdir(credentials)).filter((name) =>
-      name === ".store.lock" ||
+      name.startsWith(".store.lock") ||
       name.endsWith(".tmp")
     );
     assertEqual(leftovers.length, 0, "credential transaction cleanup");
