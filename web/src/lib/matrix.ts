@@ -11,7 +11,13 @@
 
 import { scenarioSampleSummary, stableReleases } from "./releases";
 import { scenarioHistories, type ScenarioHistory, type TrendPoint } from "./scenarios";
-import type { Release, Scenario } from "../content.config";
+import {
+  chronologicalDeltas,
+  headlineMetric,
+} from "./matrix-core";
+import type { Scenario } from "../content.config";
+
+export { pctDelta } from "./matrix-core";
 
 export interface MatrixRelease {
   ver: string;
@@ -72,30 +78,27 @@ function rowFromHistory(h: ScenarioHistory, releases: MatrixRelease[]): MatrixRo
   const cells: MatrixCell[] = [];
   let breaches = 0;
   let blocks = 0;
-  let lastSeenValue: number | null = null;
   let latest: TrendPoint | null = null;
+  const deltas = chronologicalDeltas(
+    releases.map((release) => byVer.get(release.ver)?.value ?? null),
+  );
 
-  for (const rel of releases) {
+  for (const [index, rel] of releases.entries()) {
     const p = byVer.get(rel.ver);
     if (!p) {
       cells.push({ value: null, state: null, threshold: 0, deltaPct: null, blocked: false });
       continue;
     }
     if (p.value != null) latest = p;
-    let deltaPct: number | null = null;
-    if (p.value != null && lastSeenValue != null && lastSeenValue !== 0) {
-      deltaPct = ((p.value - lastSeenValue) / lastSeenValue) * 100;
-    }
     cells.push({
       value: p.value,
       state: p.state,
       threshold: p.threshold,
-      deltaPct,
+      deltaPct: deltas[index] ?? null,
       blocked: p.value == null,
     });
     if (p.state === "fail") breaches++;
     if (p.value == null) blocks++;
-    if (p.value != null) lastSeenValue = p.value;
   }
 
   return {
@@ -171,12 +174,6 @@ function compareScenarioOrder(a: ScenarioHistory, b: ScenarioHistory, rank: Map<
   return a.id.localeCompare(b.id);
 }
 
-function headlineMetric(r: Release, metrics: string[]): { value: number | null; breach: boolean } | null {
-  const hit = r.headline?.find((h) => metrics.includes(h.metric ?? ""));
-  if (!hit) return null;
-  return { value: hit.value, breach: false };
-}
-
 function scenarioMetric(s: Scenario | undefined, unit: "s" | "ms"): { value: number | null; breach: boolean } | null {
   if (!s) return null;
   const divisor = unit === "s" && s.unit === "ms" ? 1000 : 1;
@@ -184,10 +181,4 @@ function scenarioMetric(s: Scenario | undefined, unit: "s" | "ms"): { value: num
     value: s.value == null ? null : s.value / divisor,
     breach: s.state === "fail",
   };
-}
-
-/** Returns Δ% between two consecutive non-null values in a sequence. */
-export function pctDelta(curr: number | null, prev: number | null): number | null {
-  if (curr == null || prev == null || prev === 0) return null;
-  return ((curr - prev) / prev) * 100;
 }
