@@ -13443,6 +13443,15 @@ function healthFailureThresholdPolicyCheck() {
       null,
       "fractional health failure counts are rejected"
     );
+    assertEqual(
+      healthTotalFailures({
+        postReadySamples: { failureCount: 0 },
+        unknownSamples: { failureCount: 0 },
+        final: { failureCount: 0 }
+      }),
+      null,
+      "missing health failure counts do not fabricate a zero total"
+    );
     return {
       id: "health-failure-threshold-policy",
       status: "PASS",
