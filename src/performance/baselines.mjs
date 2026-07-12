@@ -1,5 +1,6 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { randomUUID } from "node:crypto";
+import { lstat, mkdir, open, readFile, readlink, rename, rm, stat } from "node:fs/promises";
+import { dirname, join, posix, resolve, win32 } from "node:path";
 import { baselinesDir } from "../paths.mjs";
 import {
   DEFAULT_REGRESSION_THRESHOLDS,
@@ -29,7 +30,8 @@ export function resolveBaselinePath(value) {
   if (value === true || value === "default") {
     return defaultBaselinePath();
   }
-  return String(value).startsWith("/") ? String(value) : join(process.cwd(), String(value));
+  const path = String(value);
+  return posix.isAbsolute(path) || win32.isAbsolute(path) ? path : join(process.cwd(), path);
 }
 
 export async function loadBaselineStore(path) {
@@ -59,20 +61,81 @@ export async function saveBaselineStore(path, store) {
   if (!path) {
     return null;
   }
-  await mkdir(dirname(path), { recursive: true });
+  const writePath = await resolveBaselineWritePath(path);
+  const directory = dirname(writePath);
+  await mkdir(directory, { recursive: true });
   const output = {
     schemaVersion: BASELINE_SCHEMA,
     createdAt: store.createdAt ?? new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     entries: store.entries ?? {}
   };
-  await writeFile(path, `${JSON.stringify(output, null, 2)}\n`, "utf8");
+  const payload = `${JSON.stringify(output, null, 2)}\n`;
+  const existingMetadata = await stat(writePath).catch((error) => {
+    if (error.code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  });
+  if (existingMetadata) {
+    // Existing stores keep their inode so ACLs, hard links, and platform security
+    // descriptors survive, including in directories where only the file is writable.
+    const destination = await open(writePath, "w");
+    try {
+      await destination.writeFile(payload, "utf8");
+      await destination.sync();
+    } finally {
+      await destination.close();
+    }
+    return baselineSaveReceipt(path, output);
+  }
+
+  const tempPath = join(directory, `.kova-baseline-${randomUUID()}.tmp`);
+  let tempFile = null;
+  try {
+    tempFile = await open(tempPath, "wx", 0o600);
+    await tempFile.writeFile(payload, "utf8");
+    await tempFile.sync();
+    await tempFile.close();
+    tempFile = null;
+    await rename(tempPath, writePath);
+  } finally {
+    await tempFile?.close().catch(() => {});
+    await rm(tempPath, { force: true });
+  }
+  return baselineSaveReceipt(path, output);
+}
+
+function baselineSaveReceipt(path, output) {
   return {
     schemaVersion: "kova.baselineSave.v1",
     path,
     entryCount: Object.keys(output.entries).length,
     updatedAt: output.updatedAt
   };
+}
+
+async function resolveBaselineWritePath(path) {
+  let current = path;
+  const visited = new Set();
+  while (true) {
+    if (visited.has(current)) {
+      throw Object.assign(new Error(`baseline symlink cycle: ${path}`), { code: "ELOOP" });
+    }
+    visited.add(current);
+    try {
+      const entry = await lstat(current);
+      if (!entry.isSymbolicLink()) {
+        return current;
+      }
+      current = resolve(dirname(current), await readlink(current));
+    } catch (error) {
+      if (error.code === "ENOENT") {
+        return current;
+      }
+      throw error;
+    }
+  }
 }
 
 export function updateBaselineStore(store, report, options = {}) {
@@ -192,17 +255,17 @@ export function reviewBaselineUpdate(report, options = {}) {
   }
 
   const unstableGroups = groups.filter(hasUnstableMetric);
-  if ((performance?.unstableGroupCount ?? unstableGroups.length) > 0) {
+  if (unstableGroups.length > 0) {
     blockers.push({
       kind: "unstable-performance",
-      count: performance?.unstableGroupCount ?? unstableGroups.length,
+      count: unstableGroups.length,
       examples: unstableGroups.slice(0, 5).map((group) => ({
         scenario: group.scenario ?? null,
         surface: group.surface ?? null,
         state: group.state ?? null,
         unstableMetrics: unstableMetricIds(group)
       })),
-      message: `baseline updates require stable performance samples (${performance?.unstableGroupCount ?? unstableGroups.length} unstable groups)`
+      message: `baseline updates require stable performance samples (${unstableGroups.length} unstable groups)`
     });
   }
 
