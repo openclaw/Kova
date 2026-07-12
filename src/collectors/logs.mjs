@@ -18,7 +18,7 @@ const SENSITIVE_CLI_TO_LINE_END_PATTERN = new RegExp(
   "gim"
 );
 const PEM_PRIVATE_KEY_PATTERN =
-  /-----BEGIN ([A-Z0-9 ]*PRIVATE KEY)-----[\s\S]*?-----END \1-----/g;
+  /-----BEGIN ([A-Z0-9 ]*PRIVATE KEY)-----[\s\S]*?(?:-----END \1-----|$)/g;
 
 export async function collectLogMetrics(envName, timeoutMs, artifactDir, options = {}) {
   const result = await runCommand(ocmLogs(envName, { tail: 200 }), {
@@ -26,11 +26,12 @@ export async function collectLogMetrics(envName, timeoutMs, artifactDir, options
     env: options.commandEnv,
     redactValues: options.redactValues
   });
+  const rawText = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
   const stdout = redactLogText(result.stdout);
   const stderr = redactLogText(result.stderr);
   const text = `${stdout}\n${stderr}`;
   const noLogsAvailable = isOptionalNoLogsResult(result);
-  const timestamps = collectTimestamps(text);
+  const timestamps = collectTimestamps(rawText);
   const stdoutSnippet = boundedLogSnippet(stdout, 4000);
   const stderrSnippet = boundedLogSnippet(stderr, 4000);
   const artifacts = [];
@@ -51,19 +52,19 @@ export async function collectLogMetrics(envName, timeoutMs, artifactDir, options
     firstTimestamp: timestamps.first,
     lastTimestamp: timestamps.last,
     observedWindowMs: timestamps.windowMs,
-    missingDependencyErrors: countPattern(text, /cannot find (module|package)|missing dependenc|missing runtime dep/i),
-    pluginLoadFailures: countPattern(text, /\[plugins\].*failed to load|plugin.*failed to load|\[plugins\].*plugin service failed|plugin service failed/i),
-    runtimeDependencyMentions: countPattern(text, /runtime dep|runtime dependency|runtime-deps/i),
-    metadataScanMentions: countPattern(text, /collectBundledPluginMetadata|bundled plugin metadata|manifest read|readdirSync/i),
-    configNormalizationMentions: countPattern(text, /config normal/i),
-    gatewayRestartMentions: countPattern(text, /gateway.*restart|restart.*gateway|service restart|restarting/i),
-    listeningMentions: countPattern(text, /listening|server started|gateway ready|ready on|websocket/i),
-    providerLoadMentions: countPattern(text, /provider.*load|load.*provider|provider registry|auth provider/i),
-    modelCatalogMentions: countPattern(text, /model catalog|models list|loading models|available models/i),
-    providerTimeoutMentions: countProviderTimeoutMentions(text),
-    eventLoopDelayMentions: countPattern(text, /event loop|event-loop|blocked loop|loop delay/i),
-    v8DiagnosticMentions: countPattern(text, /v8|diagnostic report|heapsnapshot|heap snapshot/i),
-    errorMentions: countPattern(text, /\berror\b|exception|unhandled/i),
+    missingDependencyErrors: countPattern(rawText, /cannot find (module|package)|missing dependenc|missing runtime dep/i),
+    pluginLoadFailures: countPattern(rawText, /\[plugins\].*failed to load|plugin.*failed to load|\[plugins\].*plugin service failed|plugin service failed/i),
+    runtimeDependencyMentions: countPattern(rawText, /runtime dep|runtime dependency|runtime-deps/i),
+    metadataScanMentions: countPattern(rawText, /collectBundledPluginMetadata|bundled plugin metadata|manifest read|readdirSync/i),
+    configNormalizationMentions: countPattern(rawText, /config normal/i),
+    gatewayRestartMentions: countPattern(rawText, /gateway.*restart|restart.*gateway|service restart|restarting/i),
+    listeningMentions: countPattern(rawText, /listening|server started|gateway ready|ready on|websocket/i),
+    providerLoadMentions: countPattern(rawText, /provider.*load|load.*provider|provider registry|auth provider/i),
+    modelCatalogMentions: countPattern(rawText, /model catalog|models list|loading models|available models/i),
+    providerTimeoutMentions: countProviderTimeoutMentions(rawText),
+    eventLoopDelayMentions: countPattern(rawText, /event loop|event-loop|blocked loop|loop delay/i),
+    v8DiagnosticMentions: countPattern(rawText, /v8|diagnostic report|heapsnapshot|heap snapshot/i),
+    errorMentions: countPattern(rawText, /\berror\b|exception|unhandled/i),
     runtimeDeps: summarizeRuntimeDepsLogs(text),
     embeddedRuns: summarizeEmbeddedRunTraces(text),
     livenessWarnings: summarizeLivenessWarnings(text),
