@@ -80,9 +80,10 @@ whether Kova removed the generated temporary OCM runtime after execution, or why
 it retained that runtime.
 
 Report bundles include `artifact-index.json` at the archive root. The index
-lists every file staged into the bundle with relative path, byte size, and
-SHA-256 digest so agents can inspect evidence coverage without scraping raw log
-output or unpacking blindly.
+lists every file staged into the bundle with its original relative `path`,
+portable `archivePath`, byte size, and SHA-256 digest. Kova maps names that
+USTAR cannot represent to deterministic archive paths while preserving the
+original evidence name in the index.
 
 `outputPaths` records the Markdown, full JSON, and compact summary JSON paths
 for the report itself. The matrix receipt also includes bundle and checksum
