@@ -33,12 +33,14 @@ export async function teardownScenario(record, scenario, context, envName, artif
   if (retainEnv) {
     record.cleanup = "retained";
     record.retainedReason = context.keepEnv ? "keep-env" : "failure";
-  } else {
-    context.onPhase?.("cleanup");
   }
 
   record.networkFrontage = context.networkFrontageAllocation ?? record.networkFrontage;
   const afterRetention = await runGuardedTeardownStages([
+    {
+      id: "cleanup-phase-notification",
+      run: () => retainEnv ? null : context.onPhase?.("cleanup")
+    },
     {
       id: "auth-cleanup",
       run: () => retainEnv ? null : cleanupAuth(record, context, envName, artifactDir, authPolicy)
