@@ -66,7 +66,7 @@ import { runAuthCommand, runScenarioCommand } from "./run/command-executor.mjs";
 import { runEntries } from "./run/engine.mjs";
 import { executeStateLifecycleSteps } from "./run/state-lifecycle.mjs";
 import { executeTargetSetup } from "./run/target-setup.mjs";
-import { runGuardedTeardownStages } from "./run/teardown.mjs";
+import { classifyRetentionProtection, runGuardedTeardownStages } from "./run/teardown.mjs";
 import { runWithTargetRuntimeCleanup } from "./run/target-cleanup.mjs";
 import { loadProcessRoles } from "./registries/process-roles.mjs";
 import { validateProfileShape } from "./registries/profiles.mjs";
@@ -2111,7 +2111,7 @@ function localBuildRuntimeNameCheck() {
 
 function ocmMissingResourceCheck() {
   try {
-    const result = (stderr) => ({ stdout: "", stderr });
+    const result = (stderr, status = 1) => ({ status, stdout: "", stderr });
     assertEqual(
       isMissingOcmResource(result('ocm: runtime "kova-local-test" does not exist'), "runtime", "kova-local-test"),
       true,
@@ -2131,6 +2131,24 @@ function ocmMissingResourceCheck() {
       isMissingOcmResource(result('ocm: runtime "different" does not exist'), "runtime", "kova-local-test"),
       false,
       "different missing runtime"
+    );
+    assertEqual(
+      classifyRetentionProtection(
+        result('ocm: environment "kova-test" does not exist'),
+        "kova-test"
+      ),
+      "already-absent",
+      "missing retained env preserves the original scenario failure"
+    );
+    assertEqual(
+      classifyRetentionProtection(result("", 0), "kova-test"),
+      "protected",
+      "successful retained env protection"
+    );
+    assertEqual(
+      classifyRetentionProtection(result("permission denied"), "kova-test"),
+      "failed",
+      "unexpected retained env protection failure"
     );
     return {
       id: "ocm-missing-resource-classification",
@@ -15025,9 +15043,9 @@ async function networkFrontagePartialStartupCleanupInvariantCheck() {
       await new Promise((resolve) => blocker.close(resolve));
     }
     const teardownSource = await readFile(selfCheckPath("src", "run", "teardown.mjs"), "utf8");
-    const retentionPattern = /id: "network-frontage-cleanup"[\s\S]+const retainEnv = shouldRetainEnv\(context, record\)/;
+    const retentionPattern = /id: "network-frontage-cleanup"[\s\S]+let retainEnv = shouldRetainEnv\(context, record\)/;
     assertEqual(retentionPattern.test(teardownSource), true, "retain-on-failure is computed after network frontage cleanup can update status");
-    const protectionPattern = /const retainEnv = shouldRetainEnv\(context, record\);[\s\S]+await protectRetainedEnv\(record, context, envName\);[\s\S]+record\.cleanup = "retained"/;
+    const protectionPattern = /let retainEnv = shouldRetainEnv\(context, record\);[\s\S]+retainEnv = await protectRetainedEnv\(record, context, envName\);[\s\S]+if \(retainEnv\)[\s\S]+record\.cleanup = "retained"/;
     assertEqual(protectionPattern.test(teardownSource), true, "retained env is protected before retention is published");
     assertEqual(
       ocmEnvProtect("kova-retained", true),

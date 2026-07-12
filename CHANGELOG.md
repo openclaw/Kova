@@ -6,6 +6,7 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Preserve the original scenario failure when `--retain-on-failure` runs before an OCM environment exists.
 - Wait for asynchronous channel-probe and provider evidence to go quiet before resetting the next case's mock script.
 - Give every channel-probe invocation a unique synthetic conversation target so stale records and late async completions cannot satisfy or consume a later rerun.
 - Isolate channel-probe observations by inbound event and target, and preserve every media item when fallback delivery receives a batch.
