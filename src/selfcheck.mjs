@@ -74,7 +74,7 @@ import {
 } from "./measurement-contract.mjs";
 import { collectTimelineMetrics, parseTimelineText } from "./collectors/timeline.mjs";
 import { copyCollectorArtifacts } from "./collectors/artifacts.mjs";
-import { triggerDiagnosticSession } from "./collectors/diagnostics.mjs";
+import { triggerDiagnosticReport, triggerDiagnosticSession } from "./collectors/diagnostics.mjs";
 import { assertNetworkFrontageCommandSafe, networkFrontageCommandEnv, stopNetworkFrontage, waitForProxyReady, waitForTcp } from "./network-frontage.mjs";
 import { resolveGatewayEndpoint } from "../support/gateway-endpoint.mjs";
 import {
@@ -12560,7 +12560,7 @@ async function diagnosticTriggerValidationCheck(tmp) {
     await mkdir(openclawHome, { recursive: true });
     await writeFile(join(openclawHome, "stale.heapsnapshot"), "stale");
     await writeFile(join(binDir, "ocm"), `#!/bin/sh
-printf '%s\\n' "$*" >> "$KOVA_FAKE_OCM_LOG"
+printf '%s env=%s\\n' "$*" "\${KOVA_FAKE_WRAPPER_ENV:-}" >> "$KOVA_FAKE_OCM_LOG"
 if [ "\${KOVA_FAKE_OCM_HANG:-}" = "1" ]; then exec sleep 10; fi
 while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do shift; done
 [ "$#" -gt 0 ] || exit 2
@@ -12622,6 +12622,14 @@ setInterval(() => {}, 1000);
     assertEqual(triggered.heapSnapshot.files.some((path) => path.endsWith("stale.heapsnapshot")), false, "stale heap snapshot excluded");
     assertEqual((await readFile(invocationLog, "utf8")).trim().split("\n").length, 1, "one OCM session triggers both artifacts");
     JSON.parse(await readFile(triggered.diagnosticReport.artifacts[0], "utf8"));
+    const reusedReport = await triggerDiagnosticReport("kova-self-check", child.pid, 3000, root, {
+      signalAlreadySent: true,
+      commandEnv: { KOVA_FAKE_WRAPPER_ENV: "preserved" }
+    });
+    assertEqual(reusedReport.commandStatus, 0, "report wrapper reuses the existing signal");
+    assertEqual(reusedReport.artifacts.length, 1, "report wrapper retains the existing report");
+    const wrapperInvocation = (await readFile(invocationLog, "utf8")).trim().split("\n").at(-1);
+    assertEqual(wrapperInvocation.endsWith("env=preserved"), true, "report wrapper preserves command environment");
     const reportOnly = await triggerDiagnosticSession("kova-self-check", child.pid, 3500, root, {
       diagnosticReport: true
     });
