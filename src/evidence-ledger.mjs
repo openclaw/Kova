@@ -3,7 +3,10 @@ import {
   commandResultFailed,
   commandResultPassed
 } from "./measurement-contract.mjs";
-import { validHealthSummaryFailureCount } from "./health.mjs";
+import {
+  validHealthSamples,
+  validHealthSummaryFailureCount
+} from "./health.mjs";
 
 export const EVIDENCE_LEDGER_SCHEMA = "kova.evidenceLedger.v1";
 
@@ -168,7 +171,7 @@ function finalMetricsEvidence(metrics) {
   if (typeof metrics.service?.gatewayState !== "string") {
     return { status: "missing", reason: "final service state was not collected" };
   }
-  const healthSamples = Array.isArray(metrics.healthSamples) && metrics.healthSamples.length > 0;
+  const healthSamples = validHealthSamples(metrics.healthSamples);
   const healthSummary = validHealthSummaryFailureCount(metrics.healthSummary) !== null;
   const healthResult = typeof metrics.health?.ok === "boolean";
   if (!healthSamples && !healthSummary && !healthResult) {
