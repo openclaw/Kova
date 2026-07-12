@@ -5054,6 +5054,10 @@ async function reportPublicationCheck(tmp) {
     const emptyRetainedRoot = join(publicationRoot, "empty-retained");
     const emptyRetainedBackup = join(publicationRoot, ".empty-retained.bak");
     await mkdir(emptyRetainedBackup);
+    await writeFile(`${emptyRetainedBackup}.owner`, `${JSON.stringify({
+      schemaVersion: "kova.retainedArtifactBackup.v1",
+      outputRoot: emptyRetainedRoot
+    })}\n`);
     await retainGateArtifacts(collisionReports[0], firstBundle, {
       outputDir: emptyRetainedRoot
     });
@@ -5102,12 +5106,36 @@ async function reportPublicationCheck(tmp) {
     );
     await rm(unmanagedPath);
     const retainedBackup = join(publicationRoot, ".retained.bak");
+    await mkdir(retainedBackup);
+    await writeFile(join(retainedBackup, "operator-backup.txt"), "preserve me\n");
+    let unverifiedBackupRejected = false;
+    try {
+      await retainGateArtifacts(collisionReports[0], firstBundle, {
+        outputDir: retainedRoot
+      });
+    } catch (error) {
+      unverifiedBackupRejected = /backup is not Kova-managed/.test(error.message);
+    }
+    assertEqual(unverifiedBackupRejected, true, "retention rejects an unverified backup directory");
+    assertEqual(
+      await readFile(join(retainedBackup, "operator-backup.txt"), "utf8"),
+      "preserve me\n",
+      "retention preserves an unverified backup directory"
+    );
+    await rm(retainedBackup, { recursive: true });
+    const retainedBackupMarker = `${retainedBackup}.owner`;
+    const writeRetainedBackupMarker = () => writeFile(retainedBackupMarker, `${JSON.stringify({
+      schemaVersion: "kova.retainedArtifactBackup.v1",
+      outputRoot: retainedRoot
+    })}\n`);
+    await writeRetainedBackupMarker();
     await rename(retainedRoot, retainedBackup);
     await mkdir(retainedRoot);
     await retainGateArtifacts(collisionReports[0], firstBundle, {
       outputDir: retainedRoot
     });
     assertEqual(await fileExists(retained.jsonPath), true, "empty retained tree recovered from backup");
+    await writeRetainedBackupMarker();
     await rename(retainedRoot, retainedBackup);
     await mkdir(retainedRoot);
     await writeFile(

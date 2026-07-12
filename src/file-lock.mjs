@@ -176,10 +176,29 @@ async function removeOwnedFile(path, token) {
 
 function isAbandoned(snapshot, staleMs) {
   const ownerDomain = snapshot.owner?.executionDomainIdentity;
-  if (ownerDomain && CURRENT_EXECUTION_DOMAIN && ownerDomain !== CURRENT_EXECUTION_DOMAIN) {
-    // A local PID probe says nothing about an owner on another host or PID
-    // namespace. Preserve mutual exclusion rather than reclaiming unsafely.
-    return false;
+  if (ownerDomain && CURRENT_EXECUTION_DOMAIN) {
+    if (typeof ownerDomain !== "object") {
+      return false;
+    }
+    if (ownerDomain.host !== CURRENT_EXECUTION_DOMAIN.host) {
+      return false;
+    }
+    if (
+      ownerDomain.boot &&
+      CURRENT_EXECUTION_DOMAIN.boot &&
+      ownerDomain.boot !== CURRENT_EXECUTION_DOMAIN.boot
+    ) {
+      return true;
+    }
+    if (
+      ownerDomain.pidNamespace &&
+      CURRENT_EXECUTION_DOMAIN.pidNamespace &&
+      ownerDomain.pidNamespace !== CURRENT_EXECUTION_DOMAIN.pidNamespace
+    ) {
+      // A local PID probe says nothing about an owner in another active PID
+      // namespace. Preserve mutual exclusion rather than reclaiming unsafely.
+      return false;
+    }
   }
   const pid = snapshot.owner?.pid;
   if (Number.isInteger(pid) && pid > 0) {
@@ -210,19 +229,17 @@ function lockMetadata(token) {
 }
 
 function readExecutionDomainIdentity() {
+  const host = hostname() || null;
   if (process.platform === "linux") {
     try {
       const bootId = readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim();
       const pidNamespace = readlinkSync("/proc/self/ns/pid");
-      if (bootId && pidNamespace) {
-        return `linux:${bootId}:${pidNamespace}`;
-      }
+      return { host, boot: bootId || null, pidNamespace: pidNamespace || null };
     } catch {
       // Fall through to the host identity when procfs is unavailable.
     }
   }
-  const host = hostname();
-  return host ? `${process.platform}:${host}` : null;
+  return host ? { host, boot: null, pidNamespace: null } : null;
 }
 
 function readProcessIdentity(pid) {

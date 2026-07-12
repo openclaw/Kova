@@ -285,11 +285,12 @@ async function replaceRetainedArtifactTree({
   const transaction = randomUUID();
   const stage = join(parent, `.${basename(outputRoot)}.${transaction}.tmp`);
   const backup = join(parent, `.${basename(outputRoot)}.bak`);
+  const backupMarker = `${backup}.owner`;
   let oldTreeBackedUp = false;
   let newTreePublished = false;
 
   try {
-    await recoverRetainedArtifactTree(outputRoot, backup);
+    await recoverRetainedArtifactTree(outputRoot, backup, backupMarker);
     await assertManagedRetentionDirectory(outputRoot);
     await mkdir(stage, { recursive: false, mode: 0o700 });
     await writeDurableFile(join(stage, "report.json"), sourceJson);
@@ -332,6 +333,11 @@ async function replaceRetainedArtifactTree({
     await syncDirectory(stage);
 
     if (await pathExists(outputRoot)) {
+      await writeDurableFile(backupMarker, `${JSON.stringify({
+        schemaVersion: "kova.retainedArtifactBackup.v1",
+        outputRoot
+      })}\n`);
+      await syncDirectory(parent);
       await rename(outputRoot, backup);
       oldTreeBackedUp = true;
       await syncDirectory(parent);
@@ -344,6 +350,7 @@ async function replaceRetainedArtifactTree({
     oldTreeBackedUp = false;
     newTreePublished = false;
     await rm(backup, { recursive: true, force: true })
+      .then(() => rm(backupMarker, { force: true }))
       .then(() => syncDirectory(parent))
       .catch(() => {});
     return receipt;
@@ -356,6 +363,7 @@ async function replaceRetainedArtifactTree({
     }
     if (oldTreeBackedUp) {
       await rename(backup, outputRoot)
+        .then(() => rm(backupMarker, { force: true }))
         .then(() => syncDirectory(parent))
         .catch((rollbackError) => rollbackErrors.push(rollbackError));
     }
@@ -365,16 +373,22 @@ async function replaceRetainedArtifactTree({
     throw error;
   } finally {
     await rm(stage, { recursive: true, force: true });
+    if (!await pathExists(backup)) {
+      await removeOwnedBackupMarker(backupMarker, outputRoot);
+    }
   }
 }
 
-async function recoverRetainedArtifactTree(outputRoot, backup) {
+async function recoverRetainedArtifactTree(outputRoot, backup, backupMarker) {
   if (!await pathExists(backup)) {
+    await removeOwnedBackupMarker(backupMarker, outputRoot);
     return;
   }
+  await requireOwnedBackupMarker(backupMarker, outputRoot);
   if (!await pathExists(outputRoot)) {
     await assertManagedRetentionDirectory(backup, outputRoot);
     await rename(backup, outputRoot);
+    await rm(backupMarker, { force: true });
     await syncDirectory(dirname(outputRoot));
     return;
   }
@@ -382,6 +396,7 @@ async function recoverRetainedArtifactTree(outputRoot, backup) {
   try {
     await assertManagedRetentionDirectory(outputRoot, outputRoot, true);
     await rm(backup, { recursive: true });
+    await rm(backupMarker, { force: true });
     await syncDirectory(dirname(outputRoot));
     return;
   } catch {
@@ -391,7 +406,36 @@ async function recoverRetainedArtifactTree(outputRoot, backup) {
   await assertManagedRetentionDirectory(backup, outputRoot);
   await rm(outputRoot, { recursive: true });
   await rename(backup, outputRoot);
+  await rm(backupMarker, { force: true });
   await syncDirectory(dirname(outputRoot));
+}
+
+async function requireOwnedBackupMarker(path, outputRoot) {
+  let marker;
+  try {
+    const info = await lstat(path);
+    if (!info.isFile()) {
+      throw new Error("not a regular file");
+    }
+    marker = JSON.parse(await readFile(path, "utf8"));
+  } catch {
+    throw new Error(`retained artifact backup is not Kova-managed: ${path}`);
+  }
+  if (
+    marker?.schemaVersion !== "kova.retainedArtifactBackup.v1" ||
+    resolve(marker.outputRoot ?? "") !== resolve(outputRoot)
+  ) {
+    throw new Error(`retained artifact backup is not Kova-managed: ${path}`);
+  }
+}
+
+async function removeOwnedBackupMarker(path, outputRoot) {
+  if (!await pathExists(path)) {
+    return;
+  }
+  await requireOwnedBackupMarker(path, outputRoot);
+  await rm(path, { force: true });
+  await syncDirectory(dirname(path));
 }
 
 async function assertManagedRetentionDirectory(path, expectedOutputRoot = path, requireComplete = false) {
@@ -481,6 +525,15 @@ async function syncDirectory(path) {
   if (process.platform === "win32") {
     return;
   }
+  const handle = await open(path, "r");
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
+async function syncFile(path) {
   const handle = await open(path, "r");
   try {
     await handle.sync();
