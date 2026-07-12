@@ -171,8 +171,9 @@ export function summarizeSourceSpans(timelineSummary = null) {
 }
 
 export function summarizeLogStages(logSummary = null) {
-  const source = logSummary?.embeddedRuns ?? logSummary ?? {};
-  const stageTotals = source.stageTotals ?? {};
+  const embeddedRuns = logSummary?.embeddedRuns;
+  const source = embeddedRuns ?? logSummary ?? {};
+  const stageTotals = embeddedRuns?.stageTotals ?? logSummary?.stageTotals ?? {};
   const categories = Object.fromEntries(KNOWN_LOG_STAGE_GROUPS.map((group) => [group.id, emptyLogCategory(group)]));
   const allStages = Object.entries(stageTotals)
     .map(([name, summary]) => normalizeLogStage(name, summary))
