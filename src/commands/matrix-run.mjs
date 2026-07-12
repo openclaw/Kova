@@ -64,7 +64,7 @@ export async function runMatrixRun(flags) {
     target: targetSelector,
     profile: profile.id,
   });
-  const runEntry = async (entry) => {
+  const runEntry = async (entry, onRecord) => {
     const context = buildRunContext({
       flags,
       registry,
@@ -89,7 +89,8 @@ export async function runMatrixRun(flags) {
       context,
       repeat: controls.repeat,
       progress,
-      skipReason: entry.skipReason
+      skipReason: entry.skipReason,
+      onRecord
     });
   };
 
@@ -97,9 +98,9 @@ export async function runMatrixRun(flags) {
     execute: flags.execute === true,
     timeoutMs: positiveIntegerFlag(flags, "timeout_ms", 120000),
     retainOnError: flags.keep_env === true || flags.retain_on_failure === true
-  }, () => runEntries({
+  }, (onRecord) => runEntries({
     entries,
-    runEntry,
+    runEntry: (entry) => runEntry(entry, onRecord),
     execute: flags.execute === true,
     controls
   }));

@@ -8496,6 +8496,26 @@ exit 2
     assertEqual(retainedError?.message, "retained run failure", "retained target preserves original error");
     assertEqual(await fileExists(removeLog), false, "retention flags keep target runtime after exception");
 
+    let partialRetainedError;
+    try {
+      await runWithTargetRuntimeCleanup(targetPlan, {
+        execute: true,
+        timeoutMs: 30000,
+        retainOnError: false
+      }, async (onRecord) => {
+        onRecord({ cleanup: "retained" });
+        throw new Error("failure after retained record");
+      });
+    } catch (error) {
+      partialRetainedError = error;
+    }
+    assertEqual(
+      partialRetainedError?.message,
+      "failure after retained record",
+      "partial retained record preserves original error"
+    );
+    assertEqual(await fileExists(removeLog), false, "partial retained record keeps target runtime");
+
     process.env.KOVA_MOCK_REMOVE_FAIL = "1";
     let combinedError;
     try {
@@ -19253,7 +19273,7 @@ JSON
       if [ "$KOVA_PREVIEW_ACTIVE" = "1" ]; then
         printf '{"stateToken":"v1:%s","serviceInstalled":true,"serviceLoaded":true,"serviceRunning":true,"blockers":[],"steps":[{"kind":"service"},{"kind":"processes"}]}\\n' "$3"
       else
-        printf '{"stateToken":"v1:%s","serviceInstalled":false,"serviceLoaded":false,"serviceRunning":false,"blockers":[],"steps":[]}\\n' "$3"
+        printf '{"stateToken":"v1:%s","serviceInstalled":true,"serviceLoaded":false,"serviceRunning":false,"blockers":[],"steps":[{"kind":"service"}]}\\n' "$3"
       fi
       exit 0
     fi
