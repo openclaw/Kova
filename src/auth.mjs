@@ -1,8 +1,19 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { access, chmod, mkdir, open, readFile, readdir, rename, rmdir, stat, unlink } from "node:fs/promises";
-import { constants } from "node:fs";
-import { isAbsolute, join } from "node:path";
+import {
+  closeSync,
+  constants,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  rmdirSync,
+  statSync,
+  unlinkSync,
+  writeFileSync
+} from "node:fs";
+import { basename, isAbsolute, join } from "node:path";
 import { credentialsDir, liveEnvPath, providersPath, repoRoot } from "./paths.mjs";
 import { quoteShell } from "./commands.mjs";
 import { ocmAt, ocmEnvExec } from "./ocm/commands.mjs";
@@ -517,30 +528,32 @@ async function discardStagedFile(staged) {
 
 async function acquireCredentialStoreLock() {
   const token = randomUUID();
-  const markerPath = join(credentialStoreLockPath, `owner-${token}.json`);
+  const markerPath = join(credentialStoreLockPath, `owner-${process.pid}-${token}.json`);
   const processStart = await processStartIdentity(process.pid);
-  let directoryCreated = false;
-  let handle;
+  let directoryIdentity;
+  let descriptor;
   try {
-    await mkdir(credentialStoreLockPath, { mode: 0o700 });
-    directoryCreated = true;
-    handle = await open(markerPath, "wx", 0o600);
-    await handle.writeFile(`${JSON.stringify({
+    mkdirSync(credentialStoreLockPath, { mode: 0o700 });
+    directoryIdentity = lockDirectoryIdentity(statSync(credentialStoreLockPath));
+    descriptor = openSync(markerPath, "wx", 0o600);
+    writeFileSync(descriptor, `${JSON.stringify({
       pid: process.pid,
       token,
       processStart,
       createdAt: new Date().toISOString()
     })}\n`, "utf8");
-    await handle.sync();
-    await handle.close();
-    handle = null;
+    fsyncSync(descriptor);
+    closeSync(descriptor);
+    descriptor = undefined;
+    assertCredentialStoreLockPublished(markerPath, token, directoryIdentity);
     return { token, markerPath };
   } catch (error) {
-    await handle?.close().catch(() => {});
-    if (directoryCreated) {
-      await unlink(markerPath).catch(() => {});
-      await rmdir(credentialStoreLockPath).catch(() => {});
+    if (descriptor !== undefined) {
+      try {
+        closeSync(descriptor);
+      } catch {}
     }
+    cleanupUnpublishedCredentialStoreLock(markerPath, directoryIdentity);
     throw error;
   }
 }
@@ -703,7 +716,10 @@ async function credentialStoreLockMarkerIsStale(markerPath, metadata) {
       return false;
     }
   } catch {
-    // Malformed acquisition debris is recoverable after the bounded grace period.
+    const ownerPid = Number(basename(markerPath).match(/^owner-(\d+)-/)?.[1]);
+    if (Number.isInteger(ownerPid) && ownerPid > 0) {
+      return !processIsRunning(ownerPid) || lockAgeMs(metadata) >= staleCredentialStoreLockMs;
+    }
   }
   return lockAgeMs(metadata) >= staleCredentialStoreLockMs;
 }
@@ -715,6 +731,35 @@ function processIsRunning(pid) {
   } catch (error) {
     return error.code === "EPERM";
   }
+}
+
+function assertCredentialStoreLockPublished(markerPath, token, expectedDirectoryIdentity) {
+  const currentIdentity = lockDirectoryIdentity(statSync(credentialStoreLockPath));
+  const owner = JSON.parse(readFileSync(markerPath, "utf8"));
+  if (currentIdentity !== expectedDirectoryIdentity || owner.token !== token) {
+    throw new Error("credential store lock publication lost ownership");
+  }
+}
+
+function cleanupUnpublishedCredentialStoreLock(markerPath, expectedDirectoryIdentity) {
+  if (!expectedDirectoryIdentity) {
+    return;
+  }
+  try {
+    if (lockDirectoryIdentity(statSync(credentialStoreLockPath)) !== expectedDirectoryIdentity) {
+      return;
+    }
+    try {
+      unlinkSync(markerPath);
+    } catch {}
+    try {
+      rmdirSync(credentialStoreLockPath);
+    } catch {}
+  } catch {}
+}
+
+function lockDirectoryIdentity(metadata) {
+  return `${metadata.dev}:${metadata.ino}:${metadata.birthtimeMs}`;
 }
 
 async function processStartIdentity(pid) {
