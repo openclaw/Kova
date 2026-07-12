@@ -21,3 +21,4 @@ All notable changes to Kova are documented in this file.
 - Fixed credential setup to validate provider/CLI pairings and recover concurrent or interrupted updates through a durable transaction journal and cross-process lock.
 - Replaced external CLI credential-file guessing with native Codex and Claude authentication status checks.
 - Hardened interactive setup with no-echo secret input, JSON-clean stdout, terminal-state restoration, and real directory write probes.
+- Hardened CLI option and error contracts, release versioning and provenance checks, release archive packaging, pinned CI dependencies, and Crabbox hydration state.
