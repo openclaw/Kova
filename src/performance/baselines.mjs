@@ -1,6 +1,8 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { lstat, mkdir, open, readFile, readlink, rename, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, join, posix, resolve, win32 } from "node:path";
+import { withFileLock } from "../file-lock.mjs";
 import { baselinesDir } from "../paths.mjs";
 import {
   DEFAULT_REGRESSION_THRESHOLDS,
@@ -104,6 +106,14 @@ export async function saveBaselineStore(path, store) {
     await rm(tempPath, { force: true });
   }
   return baselineSaveReceipt(path, output);
+}
+
+export async function withBaselineStoreLock(path, callback) {
+  const writePath = await resolveBaselineWritePath(path);
+  const identity = createHash("sha256").update(resolve(writePath)).digest("hex");
+  const user = typeof process.getuid === "function" ? process.getuid() : "user";
+  const lockPath = join(tmpdir(), `kova-baseline-locks-${user}`, `${identity}.lock`);
+  return withFileLock(lockPath, callback);
 }
 
 function baselineSaveReceipt(path, output) {

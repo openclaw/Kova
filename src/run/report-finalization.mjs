@@ -3,7 +3,8 @@ import {
   loadBaselineStore,
   reviewBaselineUpdate,
   saveBaselineStore,
-  updateBaselineStore
+  updateBaselineStore,
+  withBaselineStoreLock
 } from "../performance/baselines.mjs";
 import { platformInfo } from "../platform.mjs";
 import { summarizeRecords } from "../reporting/report.mjs";
@@ -69,16 +70,21 @@ export async function saveBaselineUpdate(report, options) {
   if (!options.saveBaselinePath) {
     return report;
   }
-  const existingStore = await loadBaselineStore(options.saveBaselinePath);
   const review = reviewBaselineUpdate(report, { reviewedGood: options.reviewedGood === true });
-  const updatedStore = updateBaselineStore(existingStore, report, {
-    targetPlan: options.targetPlan,
-    reviewedGood: options.reviewedGood === true
+  const saved = await withBaselineStoreLock(options.saveBaselinePath, async () => {
+    // The lock owns the entire read-modify-write sequence so separate Kova
+    // processes cannot commit stores derived from the same stale snapshot.
+    const existingStore = await loadBaselineStore(options.saveBaselinePath);
+    const updatedStore = updateBaselineStore(existingStore, report, {
+      targetPlan: options.targetPlan,
+      reviewedGood: options.reviewedGood === true
+    });
+    return saveBaselineStore(options.saveBaselinePath, updatedStore);
   });
   report.baseline = {
     ...(report.baseline ?? {}),
     review,
-    saved: await saveBaselineStore(options.saveBaselinePath, updatedStore)
+    saved
   };
   return report;
 }
