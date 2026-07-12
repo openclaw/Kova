@@ -6,6 +6,7 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Made terminal reports width-safe for Unicode, narrow layouts, wrapped shell hints, duration rollover, and strict numeric samples.
 - Hardened command execution with bounded streaming redaction, POSIX process-group cleanup, strict optional-log matching, and direct scenario command validation.
 - Hardened artifact confidentiality by redacting credential-bearing logs before persistence and containing OpenClaw state collection against symlink escapes and hostile filesystem inputs.
 - Hardened mock-provider and diagnostic process handling to reject non-decimal PID state, migrate active legacy providers safely, reject stale startup metadata, avoid signaling unrelated processes, retain retryable PID state, and preserve colliding diagnostic artifacts.
