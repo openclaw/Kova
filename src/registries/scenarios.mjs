@@ -143,6 +143,9 @@ function validatePhases(phases, errors) {
       if (phaseIds.has(phase.id)) {
         errors.push(`duplicate phase id '${phase.id}'`);
       }
+      if (phase.id === "cleanup") {
+        errors.push("phase id 'cleanup' is reserved for Kova lifecycle cleanup");
+      }
       phaseIds.add(phase.id);
     }
 
@@ -263,9 +266,7 @@ export function materializeCommands(commands, values) {
   return commands.map((command) =>
     command
       .replaceAll("{env}", values.env)
-      .replaceAll("{target}", values.target)
       .replaceAll("{targetRepo}", values.targetRepo ?? "")
-      .replaceAll("{from}", values.from)
       .replaceAll("{sourceEnv}", values.sourceEnv)
       .replaceAll("{artifactDir}", values.artifactDir ?? "")
       .replaceAll("{kovaRoot}", values.kovaRoot ?? "")

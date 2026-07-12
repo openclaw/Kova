@@ -23,9 +23,7 @@ export function materializeLifecycleStepCommands(step, context, envName, artifac
 export function commandValues(context, envName, artifactDir = "") {
   return {
     env: quoteShell(envName),
-    target: context.target,
     targetRepo: quoteShell(context.targetPlan.repoPath ?? ""),
-    from: context.from ?? "",
     sourceEnv: quoteShell(context.sourceEnv ?? ""),
     artifactDir: artifactDir ? quoteShell(artifactDir) : "",
     kovaRoot: quoteShell(repoRoot),
