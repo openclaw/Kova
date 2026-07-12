@@ -114,7 +114,10 @@ only_version_files_dirty() {
 is_release_commit() {
   [[ "$(git log -1 --pretty=%s 2>/dev/null || true)" == "$release_commit_message" ]] || return 1
   [[ "$(git diff-tree --no-commit-id --name-only -r HEAD | sort -u)" == $'package-lock.json\npackage.json' ]] || return 1
-  [[ "$(git show HEAD:package.json | node -e 'let input=""; process.stdin.on("data", chunk => input += chunk); process.stdin.on("end", () => console.log(JSON.parse(input).version));')" == "$version" ]]
+  if ! "${script_dir}/validate-version-metadata.mjs" "$version" --commit HEAD; then
+    echo "error: release commit contains changes outside the expected version bump" >&2
+    exit 1
+  fi
 }
 
 log_resume_state() {

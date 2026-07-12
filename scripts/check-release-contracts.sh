@@ -125,6 +125,30 @@ grep -q "package-lock.json contains changes outside version fields" <<<"$poisone
 test "$(git -C "$poisoned_lockfile_repo" rev-parse HEAD)" = "$poisoned_lockfile_head"
 test "$(git -C "$poisoned_lockfile_repo" ls-remote origin refs/heads/main | awk '{ print $1 }')" = "$poisoned_lockfile_head"
 
+poisoned_commit_repo="$(make_repo poisoned-release-commit)"
+(
+  cd "$poisoned_commit_repo"
+  npm version "$test_version" --no-git-tag-version --ignore-scripts >/dev/null
+  node - <<'NODE'
+const fs = require("node:fs");
+const path = "package-lock.json";
+const value = JSON.parse(fs.readFileSync(path, "utf8"));
+value.packages["node_modules/json5"].integrity = "sha512-forged";
+fs.writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
+NODE
+  git add package.json package-lock.json
+  git commit --quiet -m "chore: bump version to ${test_version}"
+)
+poisoned_commit_head="$(git -C "$poisoned_commit_repo" rev-parse HEAD)"
+if poisoned_commit_output="$(cd "$poisoned_commit_repo" && scripts/release.sh "$test_version" --skip-checks 2>&1)"; then
+  echo "error: poisoned release commit unexpectedly passed release validation" >&2
+  exit 1
+fi
+grep -q "package-lock.json contains changes outside version fields" <<<"$poisoned_commit_output"
+test "$(git -C "$poisoned_commit_repo" rev-parse HEAD)" = "$poisoned_commit_head"
+test "$(git -C "$poisoned_commit_repo" ls-remote origin refs/heads/main | awk '{ print $1 }')" = "$(git -C "$poisoned_commit_repo" rev-parse HEAD^)"
+test -z "$(git -C "$poisoned_commit_repo" tag --list "v${test_version}")"
+
 stale_repo="$(make_repo stale-main)"
 git clone --quiet "${tmp}/stale-main/remote.git" "${tmp}/stale-main/upstream"
 git -C "${tmp}/stale-main/upstream" config user.name "Kova upstream"
