@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -23,6 +23,7 @@ import { declaredCapabilityProofRows } from "../support/channel-conformance/capa
 import {
   comparePerformanceToBaseline,
   loadBaselineStore,
+  resolveBaselinePath,
   reviewBaselineUpdate,
   saveBaselineStore,
   updateBaselineStore
@@ -3645,6 +3646,9 @@ async function performanceBaselineCheck(tmp) {
     baselineReport.performance = buildPerformanceSummary(baselineReport.records, { repeat: 3 });
 
     const baselinePath = join(tmp, "baselines.json");
+    assertEqual(resolveBaselinePath("/tmp/kova-baselines.json"), "/tmp/kova-baselines.json", "POSIX absolute baseline path");
+    assertEqual(resolveBaselinePath("C:\\kova\\baselines.json"), "C:\\kova\\baselines.json", "Windows drive baseline path");
+    assertEqual(resolveBaselinePath("\\\\server\\share\\baselines.json"), "\\\\server\\share\\baselines.json", "Windows UNC baseline path");
     const unreviewed = reviewBaselineUpdate(baselineReport, { reviewedGood: false });
     assertEqual(unreviewed.ok, false, "baseline update requires review");
     assertEqual(unreviewed.blockers.some((blocker) => blocker.kind === "review-required"), true, "baseline review-required blocker");
@@ -3694,6 +3698,90 @@ async function performanceBaselineCheck(tmp) {
     const storedAggregate = Object.values(loadedStore.entries)[0]?.aggregate;
     assertEqual(storedAggregate?.resourceMeasurementScope, RESOURCE_MEASUREMENT_SCOPE, "baseline stores resource scope");
     assertEqual(storedAggregate?.resourceHeadlineContract, RESOURCE_HEADLINE_CONTRACT, "baseline stores resource contract");
+    const sharedBaselinePath = join(tmp, "shared-baselines.json");
+    const linkedBaselinePath = join(tmp, "linked-baselines.json");
+    let symlinkSupported = true;
+    try {
+      await symlink("shared-baselines.json", linkedBaselinePath);
+    } catch (error) {
+      if (process.platform === "win32" && (error.code === "EPERM" || error.code === "EACCES")) {
+        symlinkSupported = false;
+      } else {
+        throw error;
+      }
+    }
+    if (symlinkSupported) {
+      await saveBaselineStore(linkedBaselinePath, savedStore);
+      assertEqual((await lstat(linkedBaselinePath)).isSymbolicLink(), true, "baseline save preserves symlink");
+      assertEqual(
+        Object.keys((await loadBaselineStore(sharedBaselinePath)).entries).length,
+        1,
+        "baseline save updates symlink target"
+      );
+      const chainedBaselinePath = join(tmp, "chained-baselines.json");
+      const missingBaselinePath = join(tmp, "missing-baselines.json");
+      await rm(sharedBaselinePath);
+      await symlink("missing-baselines.json", sharedBaselinePath);
+      await symlink("shared-baselines.json", chainedBaselinePath);
+      await saveBaselineStore(chainedBaselinePath, savedStore);
+      assertEqual((await lstat(chainedBaselinePath)).isSymbolicLink(), true, "baseline save preserves symlink chain head");
+      assertEqual((await lstat(sharedBaselinePath)).isSymbolicLink(), true, "baseline save preserves symlink chain");
+      assertEqual(
+        Object.keys((await loadBaselineStore(missingBaselinePath)).entries).length,
+        1,
+        "baseline save follows dangling symlink chain"
+      );
+    }
+    if (process.platform !== "win32") {
+      await chmod(baselinePath, 0o600);
+      await saveBaselineStore(baselinePath, savedStore);
+      assertEqual((await stat(baselinePath)).mode & 0o777, 0o600, "baseline save preserves file permissions");
+      await chmod(baselinePath, 0o200);
+      await saveBaselineStore(baselinePath, savedStore);
+      await chmod(baselinePath, 0o600);
+      assertEqual(
+        Object.keys((await loadBaselineStore(baselinePath)).entries).length,
+        1,
+        "baseline save supports write-only files"
+      );
+      const lockedDirectory = join(tmp, "locked-baseline-dir");
+      const lockedBaselinePath = join(lockedDirectory, "baselines.json");
+      await mkdir(lockedDirectory);
+      await writeFile(lockedBaselinePath, "{}\n");
+      await chmod(lockedBaselinePath, 0o600);
+      await chmod(lockedDirectory, 0o500);
+      try {
+        await saveBaselineStore(lockedBaselinePath, savedStore);
+      } finally {
+        await chmod(lockedDirectory, 0o700);
+      }
+      assertEqual(
+        Object.keys((await loadBaselineStore(lockedBaselinePath)).entries).length,
+        1,
+        "existing baseline saves without directory create permission"
+      );
+    }
+    const longBaselinePath = join(tmp, `${"b".repeat(240)}.json`);
+    await saveBaselineStore(longBaselinePath, savedStore);
+    assertEqual(
+      Object.keys((await loadBaselineStore(longBaselinePath)).entries).length,
+      1,
+      "baseline save supports long destination names"
+    );
+    const failedSavePath = join(tmp, "baseline-save-target");
+    await mkdir(failedSavePath);
+    let failedSaveRejected = false;
+    try {
+      await saveBaselineStore(failedSavePath, savedStore);
+    } catch {
+      failedSaveRejected = true;
+    }
+    assertEqual(failedSaveRejected, true, "failed baseline replacement is rejected");
+    assertEqual(
+      (await readdir(tmp)).some((entry) => entry.startsWith(".kova-baseline-") && entry.endsWith(".tmp")),
+      false,
+      "failed baseline replacement removes temporary file"
+    );
     const otherTargetComparison = comparePerformanceToBaseline(baselineReport, loadedStore, {
       targetPlan: { kind: "local-build", value: "/tmp/other-openclaw" }
     });
@@ -3711,6 +3799,17 @@ async function performanceBaselineCheck(tmp) {
     const parallelReview = reviewBaselineUpdate(parallelReport, { reviewedGood: true });
     assertEqual(parallelReview.ok, false, "parallel report rejected for baseline");
     assertEqual(parallelReview.blockers.some((blocker) => blocker.kind === "parallel-performance"), true, "parallel-performance blocker");
+
+    const staleStableCountReport = structuredClone(baselineReport);
+    staleStableCountReport.performance.unstableGroupCount = 0;
+    staleStableCountReport.performance.groups[0].metrics.readinessHealthReadyMs.classification = "unstable";
+    const staleStableCountReview = reviewBaselineUpdate(staleStableCountReport, { reviewedGood: true });
+    assertEqual(staleStableCountReview.ok, false, "derived unstable group rejects baseline despite stale count");
+    assertEqual(
+      staleStableCountReview.blockers.find((blocker) => blocker.kind === "unstable-performance")?.count,
+      1,
+      "derived unstable group count is authoritative"
+    );
 
     const currentReport = syntheticPerformanceReport({
       runId: "current",
@@ -11097,6 +11196,7 @@ export const channelMessageReceiveAckPolicies = [
 
 async function repeatedWorkAuditCheck() {
   const audit = await buildRepeatedWorkAudit();
+  const freshAudit = await buildRepeatedWorkAudit();
   assertEqual(audit.schemaVersion, "kova.repeatedWorkAudit.v1", "repeated work audit schema");
   assertEqual(audit.scenarioCount > 0, true, "repeated work audit scenarios");
   assertEqual(audit.phaseCount > 0, true, "repeated work audit phases");
@@ -11142,6 +11242,9 @@ async function repeatedWorkAuditCheck() {
     0,
     "repeated work audit command receipt locks empty"
   );
+  audit.commandReceiptLocks.push({ scenario: "mutation-probe" });
+  assertEqual(audit.commandReceiptLocks === freshAudit.commandReceiptLocks, false, "repeated work audit receipt locks are fresh");
+  assertEqual(freshAudit.commandReceiptLocks.length, 0, "repeated work audit receipt locks do not leak mutations");
   return {
     id: "repeated-work-audit",
     status: "PASS"

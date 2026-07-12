@@ -2,8 +2,6 @@ import { loadRegistryContext } from "../registries/context.mjs";
 
 export const REPEATED_WORK_AUDIT_SCHEMA = "kova.repeatedWorkAudit.v1";
 
-const commandReceiptLocks = [];
-
 export async function buildRepeatedWorkAudit(options = {}) {
   const registry = options.registry ?? await loadRegistryContext();
   const phaseUses = collectPhaseUses(registry.scenarios);
@@ -19,7 +17,7 @@ export async function buildRepeatedWorkAudit(options = {}) {
     duplicatePhaseIds: duplicatePhaseIdAudit(phaseUses),
     healthScopes: countHealthScopes(phaseUses),
     explicitEvidenceCommands: explicitEvidenceCommandAudit(phaseUses),
-    commandReceiptLocks
+    commandReceiptLocks: []
   };
 }
 
