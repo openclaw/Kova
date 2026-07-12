@@ -19788,7 +19788,10 @@ function resourcePeakProvenanceCheck() {
           resourceTopRolesByRss: [{ role: "worker_name", peakRssMb: 500, maxCpuPercent: 50 }],
           resourceByRole: {
             worker_name: { peakRssMb: 500, maxCpuPercent: 50 },
-            "unsafe\n## forged\n<script>": { peakRssMb: 1, maxCpuPercent: 1 }
+            "unsafe\n## forged\n<script>": { peakRssMb: 4, maxCpuPercent: 4 },
+            "## forged": { peakRssMb: 3, maxCpuPercent: 3 },
+            "1) forged": { peakRssMb: 2, maxCpuPercent: 2 },
+            "---": { peakRssMb: 1, maxCpuPercent: 1 }
           }
         }
       }]
@@ -19796,6 +19799,9 @@ function resourcePeakProvenanceCheck() {
     assertEqual(roleKeyRendered.match(/worker\\_name/g)?.length, 1, "role array values and map keys share one identity");
     assertEqual(roleKeyRendered.includes("\n## forged"), false, "resource role keys cannot forge headings");
     assertEqual(roleKeyRendered.includes("<script>"), false, "resource role keys cannot inject raw HTML");
+    assertEqual(roleKeyRendered.includes("- \\## forged:"), true, "ATX heading role keys stay inline");
+    assertEqual(roleKeyRendered.includes("- 1\\) forged:"), true, "ordered-list role keys stay inline");
+    assertEqual(roleKeyRendered.includes("- \\---:"), true, "thematic-rule role keys stay inline");
     const distinctRoleRendered = renderMarkdownReport({
       generatedAt: "2026-05-01T00:00:00.000Z",
       runId: "self-check-distinct-resource-role-keys",

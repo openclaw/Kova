@@ -17,7 +17,10 @@ export function markdownInline(value, fallback = "unknown") {
   const text = normalizeInline(value, fallback);
   return escapeHtml(text)
     .replace(/([\\`*_[\]~|])/g, "\\$1")
-    .replace(/^([#+-]|\d+\.)\s/, "\\$1 ");
+    .replace(/^(#{1,6})(?=\s|$)/, "\\$1")
+    .replace(/^([+-])(?=\s)/, "\\$1")
+    .replace(/^(\d+)([.)])(?=\s)/, "$1\\$2")
+    .replace(/^(-{3,})(?=\s|$)/, "\\$1");
 }
 
 export function markdownCodeSpan(value, fallback = "unknown") {
