@@ -9702,7 +9702,7 @@ async function adversarialInputHelperExactFrontageCheck(tmp, scope) {
     await writeFile(join(root, "openclaw.json"), JSON.stringify({
       gateway: {
         port: 9,
-        auth: { token: `${scope.id}-token` }
+        auth: { token: "redacted" }
       }
     }), "utf8");
     const address = server.address();
@@ -9754,7 +9754,7 @@ async function cronGatewayTokenEnvCheck(tmp, scope) {
   const configPath = join(tmp, "cron-token-env-openclaw.json");
   const ocmLog = join(tmp, "cron-token-env-ocm.log");
   const envLog = join(tmp, "cron-token-env-seen.log");
-  const token = `${scope.id}-gateway-token`;
+  const token = "redacted";
   await mkdir(fakeBin, { recursive: true });
   await mkdir(artifactDir, { recursive: true });
   await writeFile(configPath, JSON.stringify({ gateway: { port: 18789, auth: { token } } }), "utf8");
