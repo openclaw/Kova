@@ -54,7 +54,7 @@ export async function configureCredentialProvider(options = {}) {
       throw new Error(`unsupported auth method '${method}'; expected one of ${credentialMethods.join(", ")}`);
     }
 
-    const metadata = await readProvidersMetadata();
+    const metadata = await readProvidersMetadataUnlocked();
     const liveEnv = await loadLiveEnv();
     const previousMetadata = structuredClone(metadata);
     const previousLiveEnv = { ...liveEnv };
@@ -344,7 +344,7 @@ export async function loadCredentialStore() {
 }
 
 async function loadCredentialStoreUnlocked() {
-  const providers = await readProvidersMetadata();
+  const providers = await readProvidersMetadataUnlocked();
   const liveEnv = await loadLiveEnv();
   return {
     schemaVersion: "kova.credentials.store.v1",
@@ -368,11 +368,16 @@ function defaultProvidersMetadata() {
   };
 }
 
-async function readProvidersMetadata() {
+async function readProvidersMetadataUnlocked() {
   try {
     const text = await readFile(providersPath, "utf8");
     const metadata = JSON.parse(text);
+    const migrated = removeLegacyFallbackPolicies(metadata);
     validateProvidersMetadata(metadata);
+    if (migrated) {
+      // Both callers hold the credential-store lock across this read and rewrite.
+      await writeProvidersMetadata(metadata);
+    }
     return metadata;
   } catch (error) {
     if (error.code === "ENOENT") {
@@ -380,6 +385,21 @@ async function readProvidersMetadata() {
     }
     throw error;
   }
+}
+
+function removeLegacyFallbackPolicies(metadata) {
+  if (!metadata?.providers || typeof metadata.providers !== "object" || Array.isArray(metadata.providers)) {
+    return false;
+  }
+  let migrated = false;
+  for (const provider of Object.values(metadata.providers)) {
+    if (provider && typeof provider === "object" && !Array.isArray(provider) &&
+        Object.hasOwn(provider, "fallbackPolicy")) {
+      delete provider.fallbackPolicy;
+      migrated = true;
+    }
+  }
+  return migrated;
 }
 
 function validateProvidersMetadata(metadata) {
