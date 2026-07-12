@@ -76,6 +76,9 @@ async function cleanupEnvs(flags) {
       });
     }
   }
+  if (flags.execute === true && results.some((result) => result.status !== 0)) {
+    process.exitCode = 1;
+  }
 
   if (flags.json) {
     console.log(JSON.stringify({
@@ -143,10 +146,9 @@ async function destroyCleanupEnv(envName, { force }) {
     return { result: preview, precondition, stage: "precondition" };
   }
 
-  let stateRevision;
+  let previewSummary;
   try {
-    const parsed = JSON.parse(preview.stdout);
-    stateRevision = parsed?.stateToken;
+    previewSummary = JSON.parse(preview.stdout);
   } catch (error) {
     return {
       result: invalidPreconditionResult(preview, `invalid destroy preview JSON: ${error.message}`),
@@ -154,6 +156,17 @@ async function destroyCleanupEnv(envName, { force }) {
       stage: "precondition"
     };
   }
+
+  const previewError = validateDestroyPreview(previewSummary);
+  if (previewError) {
+    return {
+      result: invalidPreconditionResult(preview, previewError),
+      precondition,
+      stage: "precondition"
+    };
+  }
+
+  const stateRevision = previewSummary.stateToken;
   if (typeof stateRevision !== "string" || stateRevision.length === 0) {
     return {
       result: invalidPreconditionResult(preview, "destroy preview did not return a stateToken"),
@@ -167,6 +180,31 @@ async function destroyCleanupEnv(envName, { force }) {
     { timeoutMs: 120000 }
   );
   return { result, precondition, stage: "destroy" };
+}
+
+function validateDestroyPreview(summary) {
+  if (summary == null || typeof summary !== "object" || Array.isArray(summary)) {
+    return "destroy preview did not return an object";
+  }
+  if (
+    typeof summary.serviceInstalled !== "boolean" ||
+    typeof summary.serviceLoaded !== "boolean" ||
+    typeof summary.serviceRunning !== "boolean" ||
+    !Array.isArray(summary.blockers) ||
+    !Array.isArray(summary.steps)
+  ) {
+    return "destroy preview did not return complete service, blocker, and teardown state";
+  }
+  if (summary.blockers.length > 0) {
+    return `destroy preview reported blockers: ${summary.blockers.join(", ")}`;
+  }
+  if (summary.serviceInstalled || summary.serviceLoaded || summary.serviceRunning) {
+    return "destroy preview reported an active service";
+  }
+  if (summary.steps.some((step) => step?.kind === "processes")) {
+    return "destroy preview reported live processes";
+  }
+  return null;
 }
 
 function summarizeCleanupCommand(result) {

@@ -19250,7 +19250,11 @@ JSON
     ;;
   env:destroy:*)
     if [ "$4" = "--json" ] && [ -z "$5" ]; then
-      printf '{"stateToken":"v1:%s"}\\n' "$3"
+      if [ "$KOVA_PREVIEW_ACTIVE" = "1" ]; then
+        printf '{"stateToken":"v1:%s","serviceInstalled":true,"serviceLoaded":true,"serviceRunning":true,"blockers":[],"steps":[{"kind":"service"},{"kind":"processes"}]}\\n' "$3"
+      else
+        printf '{"stateToken":"v1:%s","serviceInstalled":false,"serviceLoaded":false,"serviceRunning":false,"blockers":[],"steps":[]}\\n' "$3"
+      fi
       exit 0
     fi
     if [ "$KOVA_TOKEN_MISMATCH" = "1" ]; then
@@ -19311,7 +19315,7 @@ exit 2
     assertEqual(await fileExists(destroyLog), false, "execute string did not destroy envs");
 
     const stateChanged = await run("--execute", { KOVA_TOKEN_MISMATCH: "1" });
-    assertEqual(stateChanged.status, 0, "state-changed cleanup receipt exit");
+    assertEqual(stateChanged.status !== 0, true, "state-changed cleanup receipt exit");
     const stateChangedReceipt = JSON.parse(stateChanged.stdout);
     assertEqual(stateChangedReceipt.results[0]?.status, 1, "state token mismatch blocks destroy");
     assertEqual(stateChangedReceipt.results[0]?.stage, "destroy", "state token mismatch occurs at guarded destroy");
@@ -19321,6 +19325,13 @@ exit 2
       "cleanup applies the preview state token"
     );
     assertEqual(await fileExists(destroyLog), false, "state token mismatch performs no teardown");
+
+    const activePreview = await run("--execute", { KOVA_PREVIEW_ACTIVE: "1" });
+    assertEqual(activePreview.status !== 0, true, "active preview cleanup receipt exit");
+    const activePreviewReceipt = JSON.parse(activePreview.stdout);
+    assertEqual(activePreviewReceipt.results[0]?.status, 1, "active destroy preview blocks destroy");
+    assertEqual(activePreviewReceipt.results[0]?.stage, "precondition", "active preview fails precondition");
+    assertEqual(await fileExists(destroyLog), false, "active preview performs no teardown");
 
     const execute = await run("--execute");
     assertEqual(execute.status, 0, "cleanup safety execute exit");
@@ -19343,7 +19354,7 @@ exit 2
       status: "PASS",
       command: "exercise cleanup env eligibility, execute guard, and force override",
       durationMs: dry.durationMs + unknownRetention.durationMs + falseExecute.durationMs +
-        stateChanged.durationMs + execute.durationMs + forced.durationMs
+        stateChanged.durationMs + activePreview.durationMs + execute.durationMs + forced.durationMs
     };
   } catch (error) {
     return {
