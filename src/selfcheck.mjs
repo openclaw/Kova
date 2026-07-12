@@ -124,6 +124,7 @@ import { captureProcessSnapshot, classifyRegistryRolesForProcess, classifySnapsh
 import { captureOpenClawStateSnapshot } from "./collectors/openclaw-state.mjs";
 import { collectStateFixtureAccounting } from "./collectors/state-fixtures.mjs";
 import { buildReportSummary, renderMarkdownReport, renderPasteSummary, renderReportSummary, summarizeRecords } from "./reporting/report.mjs";
+import { markdownFence, markdownTableCodeSpan } from "./reporting/markdown.mjs";
 import { buildRepeatedWorkAudit } from "./audits/repeated-work.mjs";
 import { ENV_COLLECTOR_IDS, resolveCollectionPolicy } from "./collection-policy.mjs";
 import { classifyManifest, selectManifestCandidates } from "./inventory/openclaw.mjs";
@@ -967,6 +968,8 @@ async function runScopedSelfCheck(flags, scope, workspace) {
     checks.push(await reportPublicationCheck(tmp));
     checks.push(cleanupPublicationReceiptCheck());
     checks.push(markdownFailureCardsCheck());
+    checks.push(markdownRuntimeFieldSafetyCheck());
+    checks.push(resourcePeakProvenanceCheck());
     checks.push(reportRecommendedNextScenarioCheck());
     checks.push(readinessClassificationCheck());
     checks.push(healthReadinessModelCheck());
@@ -9553,7 +9556,7 @@ function agentTurnBreakdownCheck() {
       summary: { statuses: { PASS: 1 } }
     });
     assertEqual(rendered.includes("breakdown:"), true, "markdown includes agent turn breakdown");
-    assertEqual(rendered.includes("models.catalog.* 70ms"), true, "markdown includes source span evidence");
+    assertEqual(rendered.includes("models.catalog.\\* 70ms"), true, "markdown includes source span evidence");
     assertEqual(rendered.includes("Agent turn stats:"), true, "markdown includes agent turn stats");
     assertEqual(
       summarizeAgentTurnBreakdownForMarkdown(normal.breakdown).includes("unknown 15ms"),
@@ -19563,7 +19566,11 @@ function markdownFailureCardsCheck() {
     assertEqual(rendered.includes("gateway readiness exceeded threshold"), true, "finding summary");
     assertEqual(rendered.includes("gateway-runtime"), true, "finding owner");
     assertEqual(rendered.includes("## Resource Roles"), true, "markdown resource roles section");
-    assertEqual(rendered.includes("gateway: RSS 1100 MB; CPU 220%"), true, "markdown resource role summary");
+    assertEqual(
+      rendered.includes("gateway: RSS 1100 MB (scenario gateway-performance); CPU 220% (scenario gateway-performance)"),
+      true,
+      "markdown resource role summary"
+    );
     return {
       id: "markdown-failure-cards",
       status: "PASS",
@@ -19575,6 +19582,231 @@ function markdownFailureCardsCheck() {
       id: "markdown-failure-cards",
       status: "FAIL",
       command: "render synthetic failure Markdown",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function markdownRuntimeFieldSafetyCheck() {
+  try {
+    const attack = "visible\n## forged\n<script>alert(1)</script>\n```text\nbreak";
+    const report = {
+      generatedAt: "2026-05-01T00:00:00.000Z",
+      runId: "unsafe|run",
+      mode: "execution",
+      target: "runtime:unsafe|target",
+      platform: { os: attack, release: attack, arch: attack, node: attack },
+      summary: { total: 1, statuses: { FAIL: 1 } },
+      records: [{
+        scenario: attack,
+        title: attack,
+        status: "FAIL",
+        cleanup: attack,
+        target: "runtime:unsafe|target",
+        likelyOwner: attack,
+        phases: [{
+          id: "unsafe",
+          title: attack,
+          intent: attack,
+          commands: [attack],
+          evidence: [],
+          results: [{
+            command: attack,
+            status: 1,
+            timedOut: false,
+            durationMs: 1,
+            stdout: "",
+            stderr: attack
+          }]
+        }],
+        measurements: {},
+        violations: []
+      }]
+    };
+    const original = JSON.stringify(report);
+    const markdown = renderMarkdownReport(report);
+    const paste = renderPasteSummary(report);
+    const failedCommandIndex = markdown.indexOf("- Failed command:");
+    const markdownInline = markdown.slice(0, failedCommandIndex);
+    assertEqual(failedCommandIndex >= 0, true, "report includes code-formatted failed command");
+    assertEqual(markdown.includes("\n## forged"), false, "report rejects forged headings");
+    assertEqual(markdownInline.includes("<script>"), false, "report inline fields reject raw HTML");
+    assertEqual(markdownInline.includes("&lt;script&gt;"), true, "report retains escaped inline HTML text");
+    assertEqual(markdown.includes("| Run ID | `unsafe\\|run` |"), true, "report table code spans escape pipes");
+    const failureLine = markdown.split("\n").find((line) => line.startsWith("- Failure:"));
+    assertEqual(failureLine?.includes("visible"), true, "report summarizes raw multiline failure output");
+    assertEqual(failureLine?.includes("forged"), false, "report failure summary stays concise");
+    const stderrMarker = "- stderr:\n";
+    const stderrIndex = paste.indexOf(stderrMarker);
+    const pasteInline = paste.slice(0, stderrIndex);
+    const pasteStderr = paste.slice(stderrIndex + stderrMarker.length);
+    assertEqual(stderrIndex >= 0, true, "paste includes fenced stderr");
+    assertEqual(pasteInline.includes("\n## forged"), false, "paste inline fields reject forged headings");
+    assertEqual(pasteInline.includes("<script>"), false, "paste inline fields reject raw HTML");
+    assertEqual(pasteInline.includes("&lt;script&gt;"), true, "paste retains escaped inline HTML text");
+    assertEqual(pasteStderr.startsWith("````text\n"), true, "paste chooses a fence longer than stderr backticks");
+    assertEqual(pasteStderr.includes(attack), true, "paste preserves multiline stderr evidence");
+    assertEqual(pasteStderr.includes("\n````\n"), true, "paste closes the expanded stderr fence");
+    const backtickStress = markdownFence(
+      `${Array.from({ length: 30 }, () => "safe").join("\n")}\n${"` ".repeat(150_000)}`
+    );
+    assertEqual(backtickStress.startsWith("```text\n"), true, "fence sizing ignores omitted log lines");
+    assertEqual(backtickStress.split("\n").length, 32, "fence output remains capped at 30 evidence lines");
+    const tableCode = markdownTableCodeSpan("left\\|right");
+    const pipeIndex = tableCode.indexOf("|");
+    const precedingBackslashes = tableCode.slice(0, pipeIndex).match(/\\+$/)?.[0].length ?? 0;
+    assertEqual(precedingBackslashes, 3, "table code preserves a literal backslash while escaping its pipe");
+    assertEqual(JSON.stringify(report), original, "renderers do not mutate JSON report data");
+    return {
+      id: "markdown-runtime-field-safety",
+      status: "PASS",
+      command: "render hostile runtime-derived Markdown fields",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "markdown-runtime-field-safety",
+      status: "FAIL",
+      command: "render hostile runtime-derived Markdown fields",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function resourcePeakProvenanceCheck() {
+  try {
+    const baseRecord = {
+      title: "Resource peak provenance",
+      status: "PASS",
+      target: "runtime:stable",
+      likelyOwner: "gateway-runtime",
+      phases: [],
+      violations: []
+    };
+    const rendered = renderMarkdownReport({
+      generatedAt: "2026-05-01T00:00:00.000Z",
+      runId: "self-check-resource-peak-provenance",
+      mode: "execution",
+      target: "runtime:stable",
+      platform: { os: "test", release: "test", arch: "test", node: "test" },
+      summary: { total: 2, statuses: { PASS: 2 } },
+      records: [
+        {
+          ...baseRecord,
+          scenario: "rss-heavy",
+          state: { id: "first" },
+          measurements: {
+            resourceTopRolesByRss: [
+              { role: "gateway", peakRssMb: 900, maxCpuPercent: 20 },
+              { role: "agent", peakRssMb: 500, maxCpuPercent: 10 }
+            ],
+            resourceTopRolesByCpu: [
+              { role: "agent", peakRssMb: 100, maxCpuPercent: 80 },
+              { role: "gateway", peakRssMb: 200, maxCpuPercent: 40 }
+            ]
+          }
+        },
+        {
+          ...baseRecord,
+          scenario: "cpu-heavy",
+          state: { id: "second" },
+          measurements: {
+            resourceTopRolesByRss: [{ role: "gateway", peakRssMb: 700, maxCpuPercent: 30 }],
+            resourceTopRolesByCpu: [{ role: "gateway", peakRssMb: 300, maxCpuPercent: 220 }]
+          }
+        }
+      ]
+    });
+    const gateway = "- gateway: RSS 900 MB (scenario rss-heavy/first); CPU 220% (scenario cpu-heavy/second)";
+    const agent = "- agent: RSS 500 MB (scenario rss-heavy/first); CPU 80% (scenario rss-heavy/first)";
+    assertEqual(rendered.includes(gateway), true, "RSS and CPU retain independent peak sources");
+    assertEqual(rendered.includes(agent), true, "ranked lists retain independent metric values");
+    assertEqual(rendered.indexOf(gateway) < rendered.indexOf(agent), true, "RSS rank order is preserved");
+    const cpuOnlyRendered = renderMarkdownReport({
+      generatedAt: "2026-05-01T00:00:00.000Z",
+      runId: "self-check-cpu-only-role",
+      mode: "execution",
+      target: "runtime:stable",
+      platform: { os: "test", release: "test", arch: "test", node: "test" },
+      summary: { total: 1, statuses: { PASS: 1 } },
+      records: [{
+        ...baseRecord,
+        scenario: "split-rankings",
+        measurements: {
+          resourceTopRolesByRss: Array.from({ length: 8 }, (_, index) => ({
+            role: `rss-${index}`,
+            peakRssMb: 800 - index,
+            maxCpuPercent: index
+          })),
+          resourceTopRolesByCpu: [{ role: "cpu-only", peakRssMb: 10, maxCpuPercent: 999 }]
+        }
+      }]
+    });
+    assertEqual(cpuOnlyRendered.includes("- cpu-only: RSS 10 MB"), true, "CPU-only top role survives display limit");
+    const laterPeakRendered = renderMarkdownReport({
+      generatedAt: "2026-05-01T00:00:00.000Z",
+      runId: "self-check-later-global-peak",
+      mode: "execution",
+      target: "runtime:stable",
+      platform: { os: "test", release: "test", arch: "test", node: "test" },
+      summary: { total: 2, statuses: { PASS: 2 } },
+      records: [
+        {
+          ...baseRecord,
+          scenario: "early-roles",
+          measurements: {
+            resourceTopRolesByRss: Array.from({ length: 8 }, (_, index) => ({
+              role: `early-${index}`,
+              peakRssMb: 100 - index,
+              maxCpuPercent: 10 - index
+            }))
+          }
+        },
+        {
+          ...baseRecord,
+          scenario: "late-peak",
+          measurements: {
+            resourceTopRolesByRss: [{ role: "late-hot", peakRssMb: 2000, maxCpuPercent: 1500 }]
+          }
+        }
+      ]
+    });
+    assertEqual(laterPeakRendered.includes("- late-hot: RSS 2000 MB"), true, "later global peak survives display limit");
+    const roleKeyRendered = renderMarkdownReport({
+      generatedAt: "2026-05-01T00:00:00.000Z",
+      runId: "self-check-resource-role-keys",
+      mode: "execution",
+      target: "runtime:stable",
+      platform: { os: "test", release: "test", arch: "test", node: "test" },
+      summary: { total: 1, statuses: { PASS: 1 } },
+      records: [{
+        ...baseRecord,
+        scenario: "role-keys",
+        measurements: {
+          resourceTopRolesByRss: [{ role: "worker_name", peakRssMb: 500, maxCpuPercent: 50 }],
+          resourceByRole: {
+            worker_name: { peakRssMb: 500, maxCpuPercent: 50 },
+            "unsafe\n## forged\n<script>": { peakRssMb: 1, maxCpuPercent: 1 }
+          }
+        }
+      }]
+    });
+    assertEqual(roleKeyRendered.match(/worker\\_name/g)?.length, 1, "role array values and map keys share one identity");
+    assertEqual(roleKeyRendered.includes("\n## forged"), false, "resource role keys cannot forge headings");
+    assertEqual(roleKeyRendered.includes("<script>"), false, "resource role keys cannot inject raw HTML");
+    return {
+      id: "resource-peak-provenance",
+      status: "PASS",
+      command: "render divergent RSS and CPU peak sources",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "resource-peak-provenance",
+      status: "FAIL",
+      command: "render divergent RSS and CPU peak sources",
       durationMs: 0,
       message: error.message
     };

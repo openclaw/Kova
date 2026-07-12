@@ -9,6 +9,7 @@ import {
 } from "../health.mjs";
 import { RECORD_STATUS, findingSeverityForStatus } from "../statuses.mjs";
 import { firstFailedCommand, summarizeFailureReason } from "./failures.mjs";
+import { markdownCodeSpan, markdownFence, markdownInline, markdownSafeValue, markdownTableCodeSpan } from "./markdown.mjs";
 import { summarizeRecords } from "./records.mjs";
 
 export { summarizeRecords } from "./records.mjs";
@@ -16,7 +17,12 @@ export { summarizeRecords } from "./records.mjs";
 const SUMMARY_SCHEMA = "kova.report.summary.v1";
 
 export function renderMarkdownReport(report) {
-  const summary = buildReportSummary(report);
+  // Inline fields render from an escaped clone; code and fenced evidence retain
+  // the raw report so their context-specific formatters preserve exact text.
+  const rawReport = report;
+  const rawSummary = buildReportSummary(report);
+  const summary = markdownSafeValue(rawSummary);
+  report = markdownSafeValue(rawReport);
   const verdictBand = markdownVerdictBand(summary.decision.verdict);
   const platformLine = `${summary.platform?.os ?? "unknown"} ${summary.platform?.release ?? ""} (${summary.platform?.arch ?? "unknown"}) · ${summary.platform?.node ?? "unknown"}`.trim();
   const authMode = summary.run.auth?.requestedMode ?? summary.run.auth?.live?.method ?? "unknown";
@@ -44,10 +50,10 @@ export function renderMarkdownReport(report) {
     "",
     "| Field | Value |",
     "|---|---|",
-    `| Run ID | \`${tableCell(summary.runId)}\` |`,
+    `| Run ID | ${markdownTableCodeSpan(rawSummary.runId)} |`,
     `| Generated | ${tableCell(summary.generatedAt ?? "unknown")} |`,
     `| Mode | ${tableCell(summary.mode ?? "unknown")} |`,
-    `| Target | \`${tableCell(summary.target ?? "unknown")}\` |`,
+    `| Target | ${markdownTableCodeSpan(rawSummary.target ?? "unknown")} |`,
     `| Platform | ${tableCell(platformLine)} |`,
     `| Repeat / parallel | ${tableCell(`${summary.run.repeat ?? "unknown"} / ${summary.run.parallel ?? "unknown"}`)} |`,
     `| Auth | ${tableCell(authLine)} |`,
@@ -65,17 +71,17 @@ export function renderMarkdownReport(report) {
   ];
 
   if (report.gate) {
-    lines.push(...formatGateSection(report.gate));
+    lines.push(...formatGateSection(report.gate, rawReport.gate));
   }
 
   lines.push(...formatFindingsSection(summary.findings));
-  lines.push(...formatPerformanceSummaryTable(summary.groups, summary.performance));
+  lines.push(...formatPerformanceSummaryTable(summary.groups, summary.performance, rawSummary.performance));
   lines.push(...formatSampleSummaryTable(summary.samples));
-  lines.push(...formatResourceRoleSection(report.records));
+  lines.push(...formatResourceRoleSection(report.records, rawReport.records));
   lines.push(...formatChannelWorkflowResourceSection(report.records));
-  lines.push(...formatSelectedSampleDetails(report.records));
+  lines.push(...formatSelectedSampleDetails(report.records, rawReport.records));
   lines.push(...formatArtifactSection(summary.artifacts));
-  lines.push(...formatTargetCleanupSummary(report.targetCleanup));
+  lines.push(...formatTargetCleanupSummary(report.targetCleanup, rawReport.targetCleanup));
 
   return `${lines.join("\n")}\n`;
 }
@@ -186,10 +192,10 @@ function formatChannelCapabilityProofSection(proof) {
   return lines;
 }
 
-function formatPerformanceSummaryTable(groups = [], performance = null) {
+function formatPerformanceSummaryTable(groups = [], performance = null, rawPerformance = null) {
   const lines = ["## Performance Summary", ""];
   lines.push(`- Resource measurement scope: ${performance?.resourceMeasurementScope ?? "unknown"}`);
-  lines.push(`- Resource headline contract: \`${performance?.resourceHeadlineContract ?? "unknown"}\``);
+  lines.push(`- Resource headline contract: ${markdownCodeSpan(rawPerformance?.resourceHeadlineContract ?? "unknown")}`);
   if (groups.length === 0) {
     lines.push("- No aggregate performance groups were recorded.");
     lines.push("");
@@ -259,21 +265,24 @@ function formatSampleSummaryTable(samples = []) {
   return lines;
 }
 
-function formatSelectedSampleDetails(records = []) {
-  const selected = records.filter((record) =>
-    record.status !== "PASS" ||
-    (record.violations?.length ?? 0) > 0 ||
-    (record.measurements?.agentTurns?.length ?? 0) > 0 ||
-    record.measurements?.gatewaySessionPreProviderAttribution?.count > 0 ||
-    record.measurements?.agentCliPreProviderAttribution?.count > 0 ||
-    record.measurements?.officialPluginEvidence?.available === true
-  ).slice(0, 8);
+function formatSelectedSampleDetails(records = [], rawRecords = []) {
+  const selected = records
+    .map((record, index) => ({ record, rawRecord: rawRecords[index] ?? record }))
+    .filter(({ record }) =>
+      record.status !== "PASS" ||
+      (record.violations?.length ?? 0) > 0 ||
+      (record.measurements?.agentTurns?.length ?? 0) > 0 ||
+      record.measurements?.gatewaySessionPreProviderAttribution?.count > 0 ||
+      record.measurements?.agentCliPreProviderAttribution?.count > 0 ||
+      record.measurements?.officialPluginEvidence?.available === true
+    )
+    .slice(0, 8);
   if (selected.length === 0) {
     return [];
   }
 
   const lines = ["## Selected Sample Details", ""];
-  for (const record of selected) {
+  for (const { record, rawRecord } of selected) {
     const sample = record.repeat?.index ?? "?";
     lines.push(`### ${record.scenario ?? record.title} sample ${sample}`);
     lines.push("");
@@ -296,25 +305,28 @@ function formatSelectedSampleDetails(records = []) {
       }
     }
     const failed = firstFailedCommand(record, { includeCleanup: true });
+    const rawFailed = firstFailedCommand(rawRecord, { includeCleanup: true });
     if (failed) {
-      lines.push(`- Failed command: \`${shortCommand(failed.command)}\``);
-      lines.push(`- Failure: ${summarizeFailureReason(failed)}`);
+      lines.push(`- Failed command: ${markdownCodeSpan(shortCommand(rawFailed?.command ?? failed.command))}`);
+      lines.push(`- Failure: ${markdownInline(summarizeFailureReason(rawFailed ?? failed))}`);
     }
-    pushAgentTurnDetails(lines, record);
-    lines.push(...gatewaySessionPreProviderMarkdownRows(record.measurements?.agentTurns ?? []));
-    lines.push(...agentCliPreProviderMarkdownRows(record.measurements?.agentTurns ?? []));
+    pushAgentTurnDetails(lines, record, rawRecord);
+    lines.push(...gatewaySessionPreProviderMarkdownRows(rawRecord.measurements?.agentTurns ?? []));
+    lines.push(...agentCliPreProviderMarkdownRows(rawRecord.measurements?.agentTurns ?? []));
     lines.push("");
   }
   return lines;
 }
 
-function pushAgentTurnDetails(lines, record) {
+function pushAgentTurnDetails(lines, record, rawRecord) {
   const turns = record.measurements?.agentTurns ?? [];
+  const rawTurns = rawRecord.measurements?.agentTurns ?? [];
   if (turns.length === 0) {
     return;
   }
   lines.push("- Agent turns:");
-  for (const turn of turns.slice(0, 4)) {
+  for (const [index, turn] of turns.slice(0, 4).entries()) {
+    const rawTurn = rawTurns[index] ?? turn;
     const providerTiming = turn.providerAfterCommandEnd ? `; provider late ${turn.providerLateByMs} ms` : "";
     lines.push(`  - ${turn.label}: total ${valueMs(turn.totalTurnMs)}; pre-provider ${valueMs(turn.preProviderMs)}; provider ${valueMs(turn.providerFinalMs)}; post-provider ${valueMs(turn.postProviderMs)}; response ${turn.responseOk}${providerTiming}`);
     if (turn.gatewaySession) {
@@ -353,7 +365,9 @@ function pushAgentTurnDetails(lines, record) {
     if (turn.turnDiagnostics) {
       lines.push(`    - active window: metadata scans ${turn.metadataScanCount ?? "unknown"} (${valueMs(turn.metadataScanTotalMs)} total, max ${valueMs(turn.metadataScanMaxMs)}); event-loop samples ${turn.turnDiagnostics.eventLoop?.sampleCount ?? "unknown"} max ${valueMs(turn.eventLoopMaxMs)}`);
     }
-    const breakdown = summarizeAgentTurnBreakdownForMarkdown(turn.phaseBreakdown);
+    const breakdown = markdownSafeValue(
+      summarizeAgentTurnBreakdownForMarkdown(rawTurn.phaseBreakdown)
+    );
     if (breakdown) {
       lines.push(`    - breakdown: ${breakdown}`);
     }
@@ -403,12 +417,12 @@ function formatArtifactSection(artifacts = []) {
   return lines;
 }
 
-function formatTargetCleanupSummary(targetCleanup) {
+function formatTargetCleanupSummary(targetCleanup, rawTargetCleanup = targetCleanup) {
   if (!targetCleanup) {
     return [];
   }
   const lines = ["## Target Cleanup", ""];
-  lines.push(`- Runtime: \`${targetCleanup.runtimeName ?? "unknown"}\``);
+  lines.push(`- Runtime: ${markdownCodeSpan(rawTargetCleanup?.runtimeName ?? "unknown")}`);
   lines.push(`- Result: ${targetCleanup.status ?? "unknown"}`);
   if (targetCleanup.reason) {
     lines.push(`- Reason: ${targetCleanup.reason}`);
@@ -440,10 +454,10 @@ function formatResourceComparison(comparison = {}) {
 }
 
 function tableCell(value) {
-  return String(value ?? "unknown").replaceAll("|", "\\|").replace(/\s+/g, " ").trim();
+  return String(value ?? "unknown").replace(/\s+/g, " ").trim();
 }
 
-function formatResourceRoleSection(records = []) {
+function formatResourceRoleSection(records = [], rawRecords = records) {
   const roles = summarizeResourceRoles(records).slice(0, 8);
   if (roles.length === 0) {
     return [];
@@ -451,12 +465,16 @@ function formatResourceRoleSection(records = []) {
 
   const lines = ["## Resource Roles", ""];
   const identity = records.find((record) => record.measurements?.resourceHeadlineContract)?.measurements;
+  const rawIdentity = rawRecords.find((record) => record.measurements?.resourceHeadlineContract)?.measurements;
   if (identity) {
     lines.push(`- Measurement scope: ${identity.resourceMeasurementScope ?? "unknown"}`);
-    lines.push(`- Headline contract: \`${identity.resourceHeadlineContract}\``);
+    lines.push(`- Headline contract: ${markdownCodeSpan(rawIdentity?.resourceHeadlineContract ?? identity.resourceHeadlineContract)}`);
   }
   for (const role of roles) {
-    lines.push(`- ${role.role}: RSS ${role.peakRssMb ?? "unknown"} MB; CPU ${role.maxCpuPercent ?? "unknown"}%; scenario ${role.scenario}${role.state ? `/${role.state}` : ""}`);
+    lines.push(
+      `- ${role.role}: RSS ${role.peakRssMb ?? "unknown"} MB (${formatResourcePeakSource(role.rssSource)}); ` +
+      `CPU ${role.maxCpuPercent ?? "unknown"}% (${formatResourcePeakSource(role.cpuSource)})`
+    );
   }
   lines.push("");
   return lines;
@@ -465,32 +483,42 @@ function formatResourceRoleSection(records = []) {
 function summarizeResourceRoles(records = []) {
   const byRole = new Map();
   for (const record of records) {
-    for (const role of compactRolePeaks(record.measurements).slice(0, 8)) {
+    for (const role of compactRolePeaks(record.measurements)) {
       const existing = byRole.get(role.role) ?? {
         role: role.role,
         peakRssMb: null,
         maxCpuPercent: null,
-        scenario: record.scenario,
-        state: record.state?.id ?? null
+        rssSource: null,
+        cpuSource: null
       };
       const rss = role.peakRssMb ?? null;
       const cpu = role.maxCpuPercent ?? null;
       if (rss !== null && (existing.peakRssMb === null || rss > existing.peakRssMb)) {
         existing.peakRssMb = rss;
-        existing.scenario = record.scenario;
-        existing.state = record.state?.id ?? null;
+        existing.rssSource = resourcePeakSource(record);
       }
       if (cpu !== null && (existing.maxCpuPercent === null || cpu > existing.maxCpuPercent)) {
         existing.maxCpuPercent = cpu;
+        existing.cpuSource = resourcePeakSource(record);
       }
       byRole.set(role.role, existing);
     }
   }
-  return [...byRole.values()].toSorted((left, right) => {
-    const leftScore = Math.max(left.peakRssMb ?? 0, left.maxCpuPercent ?? 0);
-    const rightScore = Math.max(right.peakRssMb ?? 0, right.maxCpuPercent ?? 0);
-    return rightScore - leftScore;
-  });
+  return interleaveRankedRoles([...byRole.values()]);
+}
+
+function resourcePeakSource(record) {
+  return {
+    scenario: record.scenario ?? "unknown",
+    state: record.state?.id ?? null
+  };
+}
+
+function formatResourcePeakSource(source) {
+  if (!source) {
+    return "source unknown";
+  }
+  return `scenario ${source.scenario}${source.state ? `/${source.state}` : ""}`;
 }
 
 function formatChannelWorkflowResourceSection(records = []) {
@@ -1375,7 +1403,12 @@ function summarizePerformance(performance, baseline) {
 }
 
 export function renderPasteSummary(report) {
+  const rawReport = report;
+  const brief = markdownSafeValue(buildFailureBrief(report));
+  const recommended = markdownSafeValue(buildRecommendedNextScenario(report));
+  report = markdownSafeValue(report);
   const records = report.records ?? [];
+  const rawRecords = rawReport.records ?? [];
   const lines = [
     "Kova OpenClaw Runtime Findings",
     "",
@@ -1410,7 +1443,6 @@ export function renderPasteSummary(report) {
     lines.push("");
   }
 
-  const brief = buildFailureBrief(report);
   if (brief) {
     lines.push("Failure Brief");
     lines.push("");
@@ -1428,7 +1460,6 @@ export function renderPasteSummary(report) {
     lines.push(brief.fixerPrompt);
     lines.push("");
   }
-  const recommended = buildRecommendedNextScenario(report);
   if (recommended) {
     lines.push("Recommended next scenario");
     lines.push("");
@@ -1445,7 +1476,9 @@ export function renderPasteSummary(report) {
   }
 
   for (const record of recordsForPaste) {
+    const rawRecord = rawRecords[records.indexOf(record)] ?? record;
     const failed = firstFailedCommand(record, { includeCleanup: true });
+    const rawFailed = firstFailedCommand(rawRecord, { includeCleanup: true });
     lines.push(`Scenario: ${record.scenario}`);
     lines.push(`Result: ${record.status}`);
     lines.push(`Cleanup: ${record.cleanup ?? "not-run"}`);
@@ -1478,8 +1511,8 @@ export function renderPasteSummary(report) {
         lines.push(`- Failure domain: ${failureDomain}`);
       }
       lines.push(`- Likely area: ${failureDomain === "kova-harness" ? "Kova harness" : record.likelyOwner ?? "OpenClaw"}`);
-      const stderr = failed.stderr?.trim();
-      const stdout = failed.stdout?.trim();
+      const stderr = rawFailed?.stderr?.trim();
+      const stdout = rawFailed?.stdout?.trim();
       if (stderr) {
         lines.push("- stderr:");
         lines.push(fencedSnippet(stderr));
@@ -1725,22 +1758,70 @@ function compactPerformanceMetrics(metrics = {}) {
 
 function compactRolePeaks(measurements) {
   const byRole = new Map();
-  for (const role of measurements?.resourceTopRolesByRss ?? []) {
-    byRole.set(role.role, { ...byRole.get(role.role), ...role });
+  // RSS- and CPU-ranked rows describe independent peaks; never let one list
+  // overwrite the other's metric or rank.
+  for (const [rank, role] of (measurements?.resourceTopRolesByRss ?? []).entries()) {
+    const existing = byRole.get(role.role) ?? { role: role.role };
+    existing.peakRssMb = role.peakRssMb ?? existing.peakRssMb ?? null;
+    existing.maxCpuPercent ??= role.maxCpuPercent ?? null;
+    existing.rssRank = rank;
+    byRole.set(role.role, existing);
   }
-  for (const role of measurements?.resourceTopRolesByCpu ?? []) {
-    byRole.set(role.role, { ...byRole.get(role.role), ...role });
+  for (const [rank, role] of (measurements?.resourceTopRolesByCpu ?? []).entries()) {
+    const existing = byRole.get(role.role) ?? { role: role.role };
+    existing.peakRssMb ??= role.peakRssMb ?? null;
+    existing.maxCpuPercent = role.maxCpuPercent ?? existing.maxCpuPercent ?? null;
+    existing.cpuRank = rank;
+    byRole.set(role.role, existing);
   }
-  if (byRole.size === 0 && measurements?.resourceByRole) {
+  if (measurements?.resourceByRole) {
     for (const [role, summary] of Object.entries(measurements.resourceByRole)) {
-      byRole.set(role, { role, ...summary });
+      const existing = byRole.get(role) ?? { role };
+      existing.peakRssMb ??= summary.peakRssMb ?? null;
+      existing.maxCpuPercent ??= summary.maxCpuPercent ?? null;
+      byRole.set(role, existing);
     }
   }
-  return [...byRole.values()].toSorted((left, right) => {
-    const leftScore = Math.max(left.peakRssMb ?? 0, left.maxCpuPercent ?? 0);
-    const rightScore = Math.max(right.peakRssMb ?? 0, right.maxCpuPercent ?? 0);
-    return rightScore - leftScore;
+  return interleaveRankedRoles([...byRole.values()], {
+    rssRank: (role) => role.rssRank,
+    cpuRank: (role) => role.cpuRank
   });
+}
+
+function interleaveRankedRoles(roles, ranks = {}) {
+  const rssRoles = [...roles].toSorted((left, right) =>
+    compareRankedRole(left, right, ranks.rssRank, "peakRssMb")
+  );
+  const cpuRoles = [...roles].toSorted((left, right) =>
+    compareRankedRole(left, right, ranks.cpuRank, "maxCpuPercent")
+  );
+  const ordered = [];
+  const seen = new Set();
+  for (let rank = 0; rank < roles.length; rank += 1) {
+    appendRankedRole(ordered, seen, rssRoles[rank]);
+    appendRankedRole(ordered, seen, cpuRoles[rank]);
+  }
+  return ordered;
+}
+
+function compareRankedRole(left, right, explicitRank, metric) {
+  if (explicitRank) {
+    const leftRank = explicitRank(left) ?? Number.MAX_SAFE_INTEGER;
+    const rightRank = explicitRank(right) ?? Number.MAX_SAFE_INTEGER;
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
+    }
+  }
+  return (right[metric] ?? Number.NEGATIVE_INFINITY) - (left[metric] ?? Number.NEGATIVE_INFINITY) ||
+    String(left.role).localeCompare(String(right.role));
+}
+
+function appendRankedRole(roles, seen, role) {
+  if (!role || seen.has(role.role)) {
+    return;
+  }
+  seen.add(role.role);
+  roles.push(role);
 }
 
 function pushMeasurementBrief(lines, measurements, { compact }) {
@@ -1927,7 +2008,7 @@ function buildFixerPrompt({ report, primaryBlocker, why, measurements, evidence,
   return parts.join(" ");
 }
 
-function formatGateSection(gate) {
+function formatGateSection(gate, rawGate = gate) {
   const lines = [
     "## Release Gate",
     "",
@@ -1980,14 +2061,15 @@ function formatGateSection(gate) {
   if (visibleCards.length > 0) {
     lines.push("### Failure Cards");
     lines.push("");
-    for (const card of visibleCards) {
+    for (const [index, card] of visibleCards.entries()) {
+      const rawCard = (rawGate.cards ?? []).filter((item) => item.severity !== "info")[index] ?? card;
       lines.push(`- ${card.severity.toUpperCase()} ${card.scenario ?? "gate"}${card.state ? `/${card.state}` : ""}: ${card.summary}`);
       lines.push(`  - expected: ${card.expected}`);
       lines.push(`  - actual: ${card.actual}`);
       lines.push(`  - impact: ${card.impact}`);
       lines.push(`  - likely owner: ${card.likelyOwner}`);
       if (card.failedCommand) {
-        lines.push(`  - command: \`${card.failedCommand}\``);
+        lines.push(`  - command: ${markdownCodeSpan(rawCard.failedCommand ?? card.failedCommand)}`);
       }
     }
     lines.push("");
@@ -2000,7 +2082,7 @@ function formatGateSection(gate) {
 }
 
 function fencedSnippet(value) {
-  return ["```text", ...value.split("\n").slice(0, 30), "```"].join("\n");
+  return markdownFence(value);
 }
 
 function shortCommand(command) {

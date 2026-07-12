@@ -1,3 +1,5 @@
+import { markdownInline, markdownTableCodeSpan } from "../reporting/markdown.mjs";
+
 export function buildPreProviderAttribution({
   schemaVersion,
   label,
@@ -117,7 +119,7 @@ export function preProviderMarkdownRows({ title, turns, fieldName }) {
   }
 
   const lines = [
-    `- ${title}:`,
+    `- ${markdownInline(title)}:`,
     "  - Spans are selected by active turn timestamp window; timeline phase is descriptive, not a startup/turn classifier.",
     "",
     "  | turn | pre-provider | known | unattributed | provider | timeline |",
@@ -126,7 +128,7 @@ export function preProviderMarkdownRows({ title, turns, fieldName }) {
   for (const item of attributions) {
     const timeline = item.timelineArtifacts?.[0] ?? (item.timelineAvailable ? "available" : "missing");
     lines.push(
-      `  | ${item.label ?? "turn"} | ${formatMs(item.window?.durationMs)} | ${formatMs(item.knownAttributedMs)} | ${formatMs(item.unattributedMs)} | ${formatMs(item.provider?.totalDurationMs)} | ${timeline} |`
+      `  | ${markdownInline(item.label ?? "turn")} | ${formatMs(item.window?.durationMs)} | ${formatMs(item.knownAttributedMs)} | ${formatMs(item.unattributedMs)} | ${formatMs(item.provider?.totalDurationMs)} | ${markdownInline(timeline)} |`
     );
   }
 
@@ -139,7 +141,7 @@ export function preProviderMarkdownRows({ title, turns, fieldName }) {
     lines.push("  |---|---|---|---:|---:|---:|---:|");
     for (const span of spanRows.slice(0, 12)) {
       lines.push(
-        `  | ${span.turn} | \`${span.name}\` | ${formatPhases(span.phases)} | ${span.count} | ${span.errorCount} | ${formatMs(span.totalClippedDurationMs)} | ${formatMs(span.maxClippedDurationMs)} |`
+        `  | ${markdownInline(span.turn)} | ${markdownTableCodeSpan(span.name)} | ${formatPhases(span.phases)} | ${span.count} | ${span.errorCount} | ${formatMs(span.totalClippedDurationMs)} | ${formatMs(span.maxClippedDurationMs)} |`
       );
     }
   }
@@ -431,7 +433,7 @@ function formatPhases(phases) {
   }
   return phases
     .slice(0, 3)
-    .map((item) => `\`${item.phase}\`${item.count > 1 ? ` x${item.count}` : ""}`)
+    .map((item) => `${markdownTableCodeSpan(item.phase)}${item.count > 1 ? ` x${item.count}` : ""}`)
     .join(", ");
 }
 
