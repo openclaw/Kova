@@ -19250,7 +19250,13 @@ exit 2
     await rm(destroyLog, { force: true });
     const forced = await run("--execute --force");
     assertEqual(forced.status, 0, "forced cleanup exit");
-    assertEqual(JSON.parse(forced.stdout).candidates.length, 6, "force overrides cleanup safeguards");
+    const forcedReceipt = JSON.parse(forced.stdout);
+    assertEqual(forcedReceipt.candidates.length, 6, "force overrides cleanup safeguards");
+    assertEqual(
+      forcedReceipt.results.every((result) => result.command.endsWith("--yes --force")),
+      true,
+      "force is forwarded to OCM destroy"
+    );
     assertEqual((await readFile(destroyLog, "utf8")).trim().split("\n").length, 6, "force destroys every Kova env");
 
     return {

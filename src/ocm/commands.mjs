@@ -18,8 +18,8 @@ export function ocmTargetSelector(targetPlan, commandKind = "start") {
   throw new Error(`unsupported OCM target kind: ${targetPlan.kind}`);
 }
 
-export function ocmEnvDestroy(envName) {
-  return `ocm env destroy ${quoteShell(envName)} --yes`;
+export function ocmEnvDestroy(envName, options = {}) {
+  return `ocm env destroy ${quoteShell(envName)} --yes${options.force === true ? " --force" : ""}`;
 }
 
 export function ocmEnvExec(envName, args) {
