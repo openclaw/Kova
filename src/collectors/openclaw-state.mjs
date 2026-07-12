@@ -217,6 +217,12 @@ async function summarizePluginRoot(home, resolvedHome, rootRelPath, limits, snap
     return;
   }
 
+  const entries = await readdir(resolvedRoot, { withFileTypes: true }).catch(() => null);
+  if (!entries || !await directoryIdentityMatches(resolvedHome, rootPath, rootStats)) {
+    recordExcludedPath(snapshot, rootRelPath);
+    return;
+  }
+
   snapshot.plugins.roots.push({
     path: rootRelPath,
     present: true
@@ -233,10 +239,13 @@ async function summarizePluginRoot(home, resolvedHome, rootRelPath, limits, snap
     applyPluginInstallIndexSemantics(snapshot, installIndex);
   }
 
-  const entries = await readdir(resolvedRoot, { withFileTypes: true }).catch(() => []);
   let seen = 0;
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
     if (!entry.isDirectory() && !entry.isSymbolicLink()) {
+      continue;
+    }
+    if (entry.isDirectory() && EXCLUDED_DIRS.has(entry.name)) {
+      snapshot.budget.excludedPaths.push(`${rootRelPath}/${entry.name}`);
       continue;
     }
     if (seen >= limits.maxPluginDirs) {
@@ -247,10 +256,6 @@ async function summarizePluginRoot(home, resolvedHome, rootRelPath, limits, snap
     if (entry.isSymbolicLink()) {
       snapshot.budget.excludedPaths.push(`${rootRelPath}/${entry.name}`);
       snapshot.budget.omittedCount += 1;
-      continue;
-    }
-    if (EXCLUDED_DIRS.has(entry.name)) {
-      snapshot.budget.excludedPaths.push(`${rootRelPath}/${entry.name}`);
       continue;
     }
 
@@ -612,6 +617,17 @@ function typeOf(value) {
 async function existsContained(resolvedHome, path) {
   const resolvedPath = await realpath(path).catch(() => null);
   return resolvedPath !== null && isContainedPath(resolvedHome, resolvedPath);
+}
+
+async function directoryIdentityMatches(resolvedHome, path, expectedStats) {
+  const currentPath = await realpath(path).catch(() => null);
+  if (!currentPath || !isContainedPath(resolvedHome, currentPath)) {
+    return false;
+  }
+  const currentStats = await stat(currentPath).catch(() => null);
+  return currentStats?.isDirectory() === true &&
+    currentStats.dev === expectedStats.dev &&
+    currentStats.ino === expectedStats.ino;
 }
 
 async function openContainedFile(resolvedHome, path, displayPath, snapshot) {
