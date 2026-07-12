@@ -54,7 +54,7 @@ import {
   validateChannelWorkflowCaseCatalogShape,
   validateChannelWorkflowCaseInventoryReferences
 } from "./registries/channel-workflow-cases.mjs";
-import { runScenarioCommand } from "./run/command-executor.mjs";
+import { runAuthCommand, runScenarioCommand } from "./run/command-executor.mjs";
 import { runEntries } from "./run/engine.mjs";
 import { executeStateLifecycleSteps } from "./run/state-lifecycle.mjs";
 import { executeTargetSetup } from "./run/target-setup.mjs";
@@ -8771,6 +8771,44 @@ async function mockProviderProcessSafetyCheck(tmp) {
     assertEqual(cleanupCommand.includes(join(dir, "mock-openai", "script.json")), true, "auth cleanup pins script path");
     assertEqual(cleanupCommand.includes(join(dir, "mock-openai", "requests.jsonl")), true, "auth cleanup pins request log");
     assertEqual(cleanupCommand.includes(join(dir, "mock-openai", "server.log")), true, "auth cleanup pins server log");
+
+    const lifecycleDir = join(tmp, "mock-provider-auth-lifecycle");
+    const authPolicy = {
+      mode: "mock",
+      mockProvider: { mode: "normal" },
+      commandEnv: {},
+      redactionValues: []
+    };
+    const lifecycleContext = { timeoutMs: 15000, resourceSampling: false };
+    const lifecyclePrepare = buildAuthPreparePhase(authPolicy, lifecycleDir);
+    const lifecycleCleanup = buildAuthCleanupPhase(authPolicy, lifecycleDir);
+    let scenarioBoundaryRejected = false;
+    try {
+      assertSafeScenarioCommand(lifecyclePrepare.commands[0], {}, "kova-safe-test", lifecycleDir);
+    } catch (error) {
+      scenarioBoundaryRejected = /^refusing /.test(error.message);
+    }
+    assertEqual(scenarioBoundaryRejected, true, "generated auth lifecycle stays outside registry command policy");
+    const lifecycleStart = await runAuthCommand(
+      lifecyclePrepare.commands[0],
+      lifecycleContext,
+      "kova-safe-test",
+      lifecycleDir,
+      lifecyclePrepare,
+      0,
+      authPolicy
+    );
+    const lifecycleStop = await runAuthCommand(
+      lifecycleCleanup.commands[0],
+      lifecycleContext,
+      "kova-safe-test",
+      lifecycleDir,
+      lifecycleCleanup,
+      0,
+      authPolicy
+    );
+    assertEqual(lifecycleStart.status, 0, "generated auth prepare command runs through the auth executor");
+    assertEqual(lifecycleStop.status, 0, "generated auth cleanup command runs through the auth executor");
 
     const prepareDir = join(tmp, "mock-provider-startup-failure");
     const preparePhase = buildAuthPreparePhase(
