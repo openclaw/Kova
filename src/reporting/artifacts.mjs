@@ -284,6 +284,7 @@ async function replaceRetainedArtifactTree({
   const stage = join(parent, `.${basename(outputRoot)}.${transaction}.tmp`);
   const backup = join(parent, `.${basename(outputRoot)}.bak`);
   let oldTreeBackedUp = false;
+  let newTreePublished = false;
 
   try {
     await recoverRetainedArtifactTree(outputRoot, backup);
@@ -336,16 +337,23 @@ async function replaceRetainedArtifactTree({
       await syncDirectory(parent);
     }
     await rename(stage, outputRoot);
+    newTreePublished = true;
     await syncDirectory(parent);
     // Publication commits at the directory rename. Cleanup cannot safely
     // restore a backup once recursive deletion may have started.
     oldTreeBackedUp = false;
+    newTreePublished = false;
     await rm(backup, { recursive: true, force: true })
       .then(() => syncDirectory(parent))
       .catch(() => {});
     return receipt;
   } catch (error) {
     const rollbackErrors = [];
+    if (newTreePublished) {
+      await rm(outputRoot, { recursive: true, force: true })
+        .then(() => syncDirectory(parent))
+        .catch((rollbackError) => rollbackErrors.push(rollbackError));
+    }
     if (oldTreeBackedUp) {
       await rename(backup, outputRoot)
         .then(() => syncDirectory(parent))
@@ -393,6 +401,9 @@ async function assertManagedRetentionDirectory(path, expectedOutputRoot = path, 
   }
   const entries = await readdir(path);
   if (entries.length === 0) {
+    if (requireComplete) {
+      throw new Error(`retained artifact destination is incomplete: ${path}`);
+    }
     return;
   }
   const receiptPath = join(path, "retained-artifacts.json");

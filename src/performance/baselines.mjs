@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
-import { chmod, lstat, mkdir, open, readFile, readlink, rename, rm, stat } from "node:fs/promises";
-import { dirname, join, posix, resolve, win32 } from "node:path";
+import { chmod, lstat, mkdir, open, readFile, readlink, realpath, rename, rm, stat } from "node:fs/promises";
+import { userInfo } from "node:os";
+import { basename, dirname, join, posix, resolve, win32 } from "node:path";
 import { withFileLock } from "../file-lock.mjs";
-import { baselinesDir, kovaHome } from "../paths.mjs";
+import { baselinesDir } from "../paths.mjs";
 import {
   DEFAULT_REGRESSION_THRESHOLDS,
   PERFORMANCE_METRICS,
@@ -113,14 +114,37 @@ export async function withBaselineStoreLock(path, callback) {
   // replacement; inode-based keys would let old and new waiters split locks.
   // Folding case and Unicode only over-serializes distinct files on a
   // case-sensitive volume, while preventing aliases from splitting the lock.
-  const canonicalPath = resolve(writePath).normalize("NFC").toLowerCase();
+  const canonicalPath = (await canonicalizeBaselinePath(writePath))
+    .normalize("NFC")
+    .toLowerCase();
   const identity = createHash("sha256").update(canonicalPath).digest("hex");
-  // Baseline stores are per-user Kova state; following KOVA_HOME keeps every
-  // supported writer in one namespace and works in redirected sandboxes.
-  const lockRoot = join(kovaHome, "locks", "baselines");
+  const user = userInfo();
+  const lockRoot = process.platform === "win32"
+    ? join(process.env.LOCALAPPDATA || user.homedir, "Kova", "locks", "baselines")
+    : join("/tmp", `kova-baseline-locks-${user.uid}`);
   await ensurePrivateLockDirectory(lockRoot);
   const lockPath = join(lockRoot, `${identity}.lock`);
   return withFileLock(lockPath, callback);
+}
+
+async function canonicalizeBaselinePath(path) {
+  let current = dirname(resolve(path));
+  const suffix = [basename(path)];
+  while (true) {
+    try {
+      return join(await realpath(current), ...suffix);
+    } catch (error) {
+      if (error.code !== "ENOENT") {
+        throw error;
+      }
+      const parent = dirname(current);
+      if (parent === current) {
+        return resolve(path);
+      }
+      suffix.unshift(basename(current));
+      current = parent;
+    }
+  }
 }
 
 async function ensurePrivateLockDirectory(path) {
