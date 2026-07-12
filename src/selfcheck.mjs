@@ -36,10 +36,15 @@ import {
 import {
   loadChannelCapabilities,
   validateChannelCapabilityCatalogReferences,
+  validateChannelProofPolicyReferences,
   validateChannelCapabilityWorkflowReferences,
   validateChannelCapabilityShape
 } from "./registries/channel-capabilities.mjs";
 import { loadChannelCapabilityCatalog, validateChannelCapabilityCatalogShape } from "./registries/channel-capability-catalog.mjs";
+import {
+  workflowCaseCatalogFromFamilies,
+  workflowInventoryFromFamilies
+} from "./registries/channel-workflow-families.mjs";
 import { loadChannelWorkflowInventory, validateChannelWorkflowInventoryReferences } from "./registries/channel-workflow-inventory.mjs";
 import {
   loadChannelWorkflowCaseCatalog,
@@ -1343,6 +1348,49 @@ function evaluationViolationHelpersCheck() {
     assertEqual(violations.length, 6, "violation helper count");
     assertEqual(violations.some((violation) => violation.metric === "resourceByRole.gateway.peakRssMb"), true, "role RSS violation");
     assertEqual(violations.some((violation) => violation.phaseId === "turn"), true, "turn threshold violation");
+
+    const malformed = [];
+    checkDuration(
+      malformed,
+      [{ command: "openclaw status", durationMs: "51" }],
+      "statusMs",
+      50,
+      (command) => command.includes("status")
+    );
+    checkEvidenceThreshold(malformed, "media", "mediaDescribeMs", Number.NaN, 100, "Media describe");
+    checkAggregateThreshold(malformed, null, "agentTurnP95Ms", 200);
+    checkTurnThreshold(
+      malformed,
+      { phaseId: "turn", preProviderMs: undefined },
+      "preProviderMs",
+      300,
+      "pre-provider latency was malformed"
+    );
+    assertEqual(malformed.length, 4, "malformed helper payload count");
+    assertEqual(
+      malformed.every((violation) => violation.failureDomain === "kova-harness"),
+      true,
+      "malformed helper payloads are Kova harness blockers"
+    );
+
+    const malformedRecord = {
+      status: "PASS",
+      phases: [{
+        id: "status",
+        results: [{
+          command: "ocm @kova-self-check -- status",
+          status: 0,
+          durationMs: "51"
+        }]
+      }]
+    };
+    evaluateRecord(malformedRecord, { thresholds: { statusMs: 50 } });
+    assertEqual(malformedRecord.status, "BLOCKED", "malformed Kova evidence blocks the record");
+    assertEqual(
+      malformedRecord.violations.some((violation) => violation.failureDomain === "kova-harness"),
+      true,
+      "blocked record preserves malformed evidence reason"
+    );
     return {
       id: "evaluation-violation-helpers",
       status: "PASS",
@@ -14127,6 +14175,21 @@ function thresholdPolicyCalibrationCheck() {
       true,
       "profile calibrated role violation"
     );
+    const scenarioRolePolicy = resolveThresholdPolicy({
+      scenario: {
+        id: "scenario-role-policy",
+        thresholds: {
+          coldReadyMs: 100,
+          roleThresholds: {
+            gateway: { peakRssMb: 200 }
+          }
+        }
+      }
+    });
+    const scenarioSource = scenarioRolePolicy.report.sources.find((source) => source.kind === "scenario");
+    const scenarioRoleSource = scenarioRolePolicy.report.sources.find((source) => source.kind === "scenario-role");
+    assertEqual(JSON.stringify(scenarioSource?.thresholds), JSON.stringify(["coldReadyMs"]), "scenario scalar threshold provenance");
+    assertEqual(JSON.stringify(scenarioRoleSource?.roles), JSON.stringify(["gateway"]), "scenario role threshold provenance");
     return {
       id: "threshold-policy-calibration",
       status: "PASS",
@@ -14548,6 +14611,78 @@ function stateRegistryValidationCheck() {
     }
     assertEqual(rejectedMetric, true, "unknown scenario metric rejected");
 
+    for (const value of ["100", true, {}, Number.NaN, Number.POSITIVE_INFINITY, -1]) {
+      let rejectedThresholdValue = false;
+      try {
+        validateRegistryReferences({
+          scenarios: [{
+            id: "scenario",
+            surface: "known-surface",
+            proves: ["baseline"],
+            thresholds: { knownMetric: value },
+            states: [],
+            targetKinds: [],
+            processRoles: []
+          }],
+          states: [],
+          profiles: [],
+          surfaces: [{
+            id: "known-surface",
+            processRoles: [],
+            thresholds: {},
+            requirements: [{
+              id: "baseline",
+              states: [],
+              targetKinds: ["runtime"],
+              metrics: ["knownMetric"]
+            }]
+          }],
+          processRoles: [],
+          metrics: [{ id: "knownMetric" }]
+        });
+      } catch (error) {
+        rejectedThresholdValue = /must be a finite non-negative number/.test(error.message);
+      }
+      assertEqual(rejectedThresholdValue, true, `invalid threshold value ${String(value)} rejected`);
+    }
+
+    let rejectedScenarioRoleThreshold = false;
+    try {
+      validateRegistryReferences({
+        scenarios: [{
+          id: "scenario",
+          surface: "known-surface",
+          proves: ["baseline"],
+          thresholds: {
+            roleThresholds: {
+              gateway: { knownMetric: -1 }
+            }
+          },
+          states: [],
+          targetKinds: [],
+          processRoles: ["gateway"]
+        }],
+        states: [],
+        profiles: [],
+        surfaces: [{
+          id: "known-surface",
+          processRoles: ["gateway"],
+          thresholds: {},
+          requirements: [{
+            id: "baseline",
+            states: [],
+            targetKinds: ["runtime"],
+            metrics: ["knownMetric"]
+          }]
+        }],
+        processRoles: [{ id: "gateway" }],
+        metrics: [{ id: "knownMetric" }]
+      });
+    } catch (error) {
+      rejectedScenarioRoleThreshold = /roleThresholds\.gateway\.knownMetric must be a finite non-negative number/.test(error.message);
+    }
+    assertEqual(rejectedScenarioRoleThreshold, true, "invalid scenario role threshold rejected");
+
     let rejectedCalibration = false;
     try {
       validateRegistryReferences({
@@ -14879,6 +15014,11 @@ async function channelCapabilityRegistryCheck() {
     assertEqual(telegram.capabilities.every((capability) =>
       capability.catalogId === `${capability.group}:${capability.id}`
     ), true, "telegram capabilities reference OpenClaw catalog ids");
+    assertEqual(
+      telegram.capabilities.every((capability) => capability.title !== capability.catalogId),
+      true,
+      "channel capability titles resolve from the OpenClaw catalog"
+    );
     assertEqual(telegram.workflowCaseIds?.includes("source-visible-delivery.media.message-tool-only"), true, "telegram maps to shared source media workflow case");
     assertEqual(telegram.workflowCoverage?.schemaVersion, "kova.channelWorkflowCoverage.v1", "telegram exposes derived workflow coverage");
     assertEqual(telegram.workflowCoverage?.selectedCount, telegram.workflowCaseIds?.length, "telegram workflow coverage selected count matches selected case ids");
@@ -15029,6 +15169,83 @@ async function channelCapabilityRegistryCheck() {
       rejectedCatalogReference = /not defined in the OpenClaw channel capability catalog/.test(error.message);
     }
     assertEqual(rejectedCatalogReference, true, "channel capability must reference OpenClaw catalog");
+
+    let rejectedCatalogCollision = false;
+    try {
+      validateChannelCapabilityCatalogReferences([], [
+        {
+          id: "first-catalog",
+          capabilities: [{ id: "text", group: "durable-final" }]
+        },
+        {
+          id: "second-catalog",
+          capabilities: [{ id: "text", group: "durable-final" }]
+        }
+      ]);
+    } catch (error) {
+      rejectedCatalogCollision = /across catalogs 'first-catalog' and 'second-catalog'/.test(error.message);
+    }
+    assertEqual(rejectedCatalogCollision, true, "cross-catalog capability collisions are rejected");
+
+    for (const field of ["blockingCapabilities", "liveSmokeCapabilities"]) {
+      let rejectedProofPolicyReference = false;
+      try {
+        validateChannelProofPolicyReferences({
+          [field]: ["durable-final:imaginary"]
+        }, catalogs);
+      } catch (error) {
+        rejectedProofPolicyReference = new RegExp(`${field} references unknown channel capability`).test(error.message);
+      }
+      assertEqual(rejectedProofPolicyReference, true, `${field} must reference OpenClaw catalog capabilities`);
+    }
+
+    const duplicateFamily = {
+      id: "duplicate-family",
+      title: "Duplicate Family",
+      userAction: "user sends a message",
+      openclawSurface: "message delivery",
+      ownerArea: "channels",
+      sourceRefs: ["src/channels/message/types.ts#L1"],
+      contentKinds: ["text"],
+      routeKinds: ["direct"],
+      deliveryModes: ["final"],
+      lifecycles: ["success"],
+      atoms: [{ group: "durable-final", id: "text" }],
+      cases: [{
+        id: "duplicate.case",
+        workflow: "duplicate-family",
+        userAction: "user sends a message",
+        openclawSurface: "message delivery",
+        prompt: "reply with a short message",
+        providerScript: {},
+        expects: {},
+        matrix: {
+          content: "text",
+          route: "direct",
+          delivery: "final",
+          lifecycle: "success"
+        },
+        atoms: [{ group: "durable-final", id: "text" }]
+      }]
+    };
+    let rejectedDerivedInventory = false;
+    try {
+      workflowInventoryFromFamilies([duplicateFamily, duplicateFamily]);
+    } catch (error) {
+      rejectedDerivedInventory = /duplicate channel workflow inventory workflow/.test(error.message);
+    }
+    assertEqual(rejectedDerivedInventory, true, "derived workflow inventories validate duplicate family ids");
+
+    let rejectedDerivedCaseCatalog = false;
+    try {
+      workflowCaseCatalogFromFamilies([duplicateFamily, {
+        ...duplicateFamily,
+        id: "other-family"
+      }]);
+    } catch (error) {
+      rejectedDerivedCaseCatalog = /duplicate channel workflow case/.test(error.message);
+    }
+    assertEqual(rejectedDerivedCaseCatalog, true, "derived workflow case catalogs validate duplicate case ids");
 
     let rejectedWorkflowCaseReference = false;
     try {
