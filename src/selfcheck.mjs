@@ -19356,6 +19356,15 @@ exit 2
     );
     await rm(malformedReport);
 
+    const invalidShapeReport = join(reports, "invalid-shape.json");
+    await writeFile(invalidShapeReport, '{"records":"retained"}\n', "utf8");
+    const invalidShapeRetention = await run("");
+    assertEqual(invalidShapeRetention.status, 0, "invalid retention shape dry-run exit");
+    const invalidShapePlan = JSON.parse(invalidShapeRetention.stdout);
+    assertEqual(invalidShapePlan.retentionInventory?.ok, false, "invalid report shape fails retention inventory");
+    assertEqual(invalidShapePlan.candidates.length, 0, "invalid retention shape blocks cleanup");
+    await rm(invalidShapeReport);
+
     const falseExecute = await run("--execute=false");
     assertEqual(falseExecute.status, 0, "non-boolean execute exit");
     assertEqual(JSON.parse(falseExecute.stdout).execute, false, "execute string does not authorize cleanup");
