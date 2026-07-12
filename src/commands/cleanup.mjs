@@ -59,7 +59,7 @@ async function cleanupEnvs(flags) {
   // Destructive cleanup must require the literal boolean set by `--execute`.
   if (flags.execute === true) {
     for (const env of candidates) {
-      const result = await runCleanupCommand(ocmEnvDestroy(env.name), { timeoutMs: 120000 });
+      const result = await runCleanupCommand(ocmEnvDestroy(env.name, { force }), { timeoutMs: 120000 });
       results.push({
         env: env.name,
         command: result.command,
