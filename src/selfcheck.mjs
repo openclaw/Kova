@@ -17890,8 +17890,10 @@ async function logArtifactRedactionCheck(tmp) {
   const escapedCliTail = ["escaped", "cli", "tail", "canary"].join("-");
   const unquotedFieldTail = ["unquoted", "field", "tail", "canary"].join("-");
   const pemBodyCanary = ["pem", "body", "canary"].join("-");
+  const truncatedPemBodyCanary = ["truncated", "pem", "body", "canary"].join("-");
   const privateKeyLabel = ["PRIVATE", "KEY"].join(" ");
   const compoundCliCanary = ["compound", "cli", "canary"].join("-");
+  const timeoutTokenCanary = ["timeout", "token", "canary"].join("-");
   const clientSecretFlag = ["--client", "secret"].join("-");
   const canaries = [
     headerCanary,
@@ -17907,7 +17909,9 @@ async function logArtifactRedactionCheck(tmp) {
     escapedCliTail,
     unquotedFieldTail,
     pemBodyCanary,
-    compoundCliCanary
+    truncatedPemBodyCanary,
+    compoundCliCanary,
+    timeoutTokenCanary
   ];
   const fakeLogs = [
     `Authorization${": "}Bearer ${headerCanary}`,
@@ -17927,7 +17931,12 @@ async function logArtifactRedactionCheck(tmp) {
       pemBodyCanary,
       `-----END ${privateKeyLabel}-----`
     ].join("\n"),
-    `command ${clientSecretFlag} ${compoundCliCanary}`
+    `command ${clientSecretFlag} ${compoundCliCanary}`,
+    JSON.stringify({ [genericTokenKey]: timeoutTokenCanary, message: "provider timed out" }),
+    [
+      `-----BEGIN ${privateKeyLabel}-----`,
+      truncatedPemBodyCanary
+    ].join("\n")
   ].join("\n");
   try {
     await mkdir(fakeBin, { recursive: true });
@@ -17950,6 +17959,7 @@ printf '%s\n' "$KOVA_FAKE_LOGS"
       assertEqual(serialized.includes(canary), false, `log metrics redact ${canary}`);
     }
     assertEqual(artifact.includes("[REDACTED]"), true, "log artifact contains redaction markers");
+    assertEqual(metrics.providerTimeoutMentions, 1, "log metrics preserve signals after sensitive fields");
 
     return {
       id: "log-artifact-redaction",
