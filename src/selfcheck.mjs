@@ -17875,12 +17875,14 @@ async function logArtifactRedactionCheck(tmp) {
   const fakeBin = join(tmp, "log-redaction-bin");
   const artifactDir = join(tmp, "log-redaction-artifacts");
   const headerCanary = ["kova", "header", "canary"].join("-");
+  const prefixedHeaderCanary = ["kova", "prefixed", "header", "canary"].join("-");
   const jsonCanary = ["kova", "json", "canary"].join("-");
   const envCanary = ["kova", "env", "canary"].join("-");
   const cliCanary = ["kova", "cli", "canary"].join("-");
   const exactRedactionValue = ["kova", "exact", "canary"].join("-");
   const canaries = [
     headerCanary,
+    prefixedHeaderCanary,
     jsonCanary,
     envCanary,
     cliCanary,
@@ -17888,6 +17890,7 @@ async function logArtifactRedactionCheck(tmp) {
   ];
   const fakeLogs = [
     `Authorization${": "}Bearer ${headerCanary}`,
+    `INFO request x-api-key${": "}${prefixedHeaderCanary}`,
     JSON.stringify({ access_token: jsonCanary, message: "safe" }),
     `OPENAI_API_KEY${"="}${envCanary}`,
     `command --token ${cliCanary}`,
