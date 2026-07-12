@@ -149,7 +149,7 @@
           "startupP95Ms": 200,
           "postReadyP95Ms": 20,
           "finalFailures": 0,
-          "totalFailures": 0,
+          "totalFailures": null,
           "slowestSample": {
             "phaseId": "provision",
             "durationMs": 200
@@ -257,7 +257,7 @@
           "startupP95Ms": 200,
           "postReadyP95Ms": 20,
           "finalFailures": 0,
-          "totalFailures": 0,
+          "totalFailures": null,
           "slowestSample": {
             "phaseId": "provision",
             "durationMs": 200

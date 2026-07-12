@@ -12141,18 +12141,6 @@
           ],
           "healthScope": "post-ready",
           "collectionIntent": "post-ready-health"
-        },
-        {
-          "id": "cleanup",
-          "title": "Cleanup",
-          "intent": "Destroy the disposable OpenClaw environment unless retained for debugging.",
-          "commands": [
-            "ocm env destroy {env} --yes"
-          ],
-          "evidence": [
-            "destroy result"
-          ],
-          "healthScope": "none"
         }
       ],
       "proves": [
