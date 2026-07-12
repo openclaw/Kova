@@ -12613,17 +12613,32 @@ const path = require("node:path");
 const home = process.env.OPENCLAW_HOME;
 let signalCount = 0;
 process.on("SIGUSR2", () => {
-  signalCount += 1;
+  const currentSignal = ++signalCount;
+  if (currentSignal === 4) {
+    setTimeout(() => {
+      fs.writeFileSync(path.join(home, "fresh.heapsnapshot"), "{\\"heap\\":\\"head\\"");
+    }, 200);
+    setTimeout(() => {
+      fs.appendFileSync(path.join(home, "fresh.heapsnapshot"), ",\\"tail\\":true}\\n");
+    }, 2800);
+    return;
+  }
   setTimeout(() => {
-    fs.writeFileSync(path.join(home, "fresh.heapsnapshot"), "fresh-heap");
+    fs.writeFileSync(path.join(home, "fresh.heapsnapshot"), "{\\"heap\\":");
+    if (currentSignal === 3) {
+      return;
+    }
     fs.writeFileSync(path.join(home, "report.fresh.json"), "{");
-    if (signalCount === 2) {
+    if (currentSignal === 2) {
       fs.writeFileSync(path.join(home, "report.incomplete.json"), "{");
     }
-  }, 1400);
+  }, 400);
   setTimeout(() => {
-    fs.appendFileSync(path.join(home, "report.fresh.json"), "\\"fresh\\":true}\\n");
-  }, 1800);
+    fs.appendFileSync(path.join(home, "fresh.heapsnapshot"), "\\"fresh\\"}\\n");
+    if (currentSignal !== 3) {
+      fs.appendFileSync(path.join(home, "report.fresh.json"), "\\"fresh\\":true}\\n");
+    }
+  }, 800);
 });
 process.stdout.write("ready\\n");
 setInterval(() => {}, 1000);
@@ -12650,6 +12665,38 @@ setInterval(() => {}, 1000);
     assertEqual(reportOnly.diagnosticReport.artifacts.length, 1, "valid report survives sibling stabilization failure");
     assertEqual(reportOnly.diagnosticReport.error.includes("did not stabilize"), true, "partial report failure retained");
     JSON.parse(await readFile(reportOnly.diagnosticReport.artifacts[0], "utf8"));
+    const heapOnly = await triggerDiagnosticSession("kova-self-check", child.pid, 3000, root, {
+      heapSnapshot: true,
+      diagnosticReport: true
+    });
+    assertEqual(heapOnly.heapSnapshot.commandStatus, 0, "partial trigger keeps successful command status");
+    assertEqual(heapOnly.heapSnapshot.artifacts.length, 1, "emitted heap survives missing report");
+    assertEqual(heapOnly.diagnosticReport.commandStatus, 0, "missing report does not rewrite command status");
+    assertEqual(heapOnly.diagnosticReport.artifacts.length, 0, "missing report retains no artifact");
+    assertEqual(heapOnly.diagnosticReport.error.includes("was not emitted"), true, "missing sibling is reported");
+    const tooShort = await triggerDiagnosticSession("kova-self-check", child.pid, 1000, root, {
+      heapSnapshot: true
+    });
+    assertEqual(tooShort.heapSnapshot.commandStatus, 1, "unsupported short timeout fails before OCM");
+    assertEqual(tooShort.heapSnapshot.error.includes("at least 2500ms"), true, "minimum timeout is explicit");
+    const invocationCount = (await readFile(invocationLog, "utf8")).trim().split("\n").length;
+    const unrequested = await triggerDiagnosticSession("kova-self-check", child.pid, "3000", root);
+    assertEqual(unrequested.heapSnapshot.requested, false, "empty session requests no heap snapshot");
+    assertEqual(unrequested.diagnosticReport.requested, false, "empty session requests no diagnostic report");
+    assertEqual(
+      (await readFile(invocationLog, "utf8")).trim().split("\n").length,
+      invocationCount,
+      "empty session does not invoke OCM"
+    );
+    const slowHeap = await triggerDiagnosticSession("kova-self-check", child.pid, 5000, root, {
+      heapSnapshot: true
+    });
+    assertEqual(slowHeap.heapSnapshot.artifacts.length, 1, "slow-growing heap snapshot stabilizes");
+    assertEqual(
+      await readFile(slowHeap.heapSnapshot.artifacts[0], "utf8"),
+      '{"heap":"head","tail":true}\n',
+      "heap snapshot is copied only after the final write"
+    );
     const failed = await triggerDiagnosticSession("kova-self-check", 99999999, 5000, root, {
       heapSnapshot: true,
       diagnosticReport: true
