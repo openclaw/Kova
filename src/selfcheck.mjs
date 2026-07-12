@@ -7413,6 +7413,18 @@ function agentCliLocalTurnEvidenceInvariantCheck() {
     const transportProof = nonLocalInvariants.find((invariant) => invariant.id === "agent-cli-local-transport-proof");
     assertEqual(transportProof?.status, "failed", "non-local agent command fails local transport proof");
 
+    const fabricatedDisabledHealthRecord = JSON.parse(JSON.stringify(record));
+    fabricatedDisabledHealthRecord.measurements.health.final.failureCount = 0;
+    const fabricatedDisabledHealthProof = buildAgentCliLocalTurnEvidenceInvariants(
+      fabricatedDisabledHealthRecord,
+      scenario
+    ).find((invariant) => invariant.id === "agent-cli-no-service-health-proof");
+    assertEqual(
+      fabricatedDisabledHealthProof?.status,
+      "missing",
+      "disabled gateway health must remain explicit not-applicable evidence"
+    );
+
     return {
       id: "agent-cli-local-turn-evidence-invariants",
       status: "PASS",
@@ -7548,16 +7560,8 @@ function syntheticAgentCliLocalTurnRecord({
     },
     finalMetrics: {
       service: { gatewayState: "disabled", gatewayPort: 43111 },
-      health: { ok: false, durationMs: null },
-      healthSummary: {
-        count: 0,
-        okCount: 0,
-        failureCount: 0,
-        minMs: null,
-        p50Ms: null,
-        p95Ms: null,
-        maxMs: null
-      },
+      health: null,
+      healthSummary: null,
       logs: zeroLogMetrics(),
       timeline: syntheticTimelineMetrics()
     }

@@ -671,19 +671,37 @@ function agentTurnLatencyReason(turns, scenario, expectedTurnCount) {
 
 function agentCliNoServiceHealthOk(record) {
   const final = record.measurements?.health?.final;
-  const expectedGatewayState = agentCliRecordExpectsRunningGateway(record) ? "running" : "disabled";
+  const expectsRunningGateway = agentCliRecordExpectsRunningGateway(record);
+  const expectedGatewayState = expectsRunningGateway ? "running" : "disabled";
+  const finalHealthOk = expectsRunningGateway
+    ? final?.gatewayState === "running" && final?.failureCount === 0
+    : final?.gatewayState === "disabled" &&
+      final?.ok === null &&
+      final?.healthOk === null &&
+      final?.failureCount === null;
   return record.measurements?.finalGatewayState === expectedGatewayState &&
-    final?.failureCount === 0 &&
+    finalHealthOk &&
     findCommandResult(record, (result) => result.command?.includes(" -- status"))?.status === 0;
 }
 
 function agentCliNoServiceHealthReason(record) {
-  const expectedGatewayState = agentCliRecordExpectsRunningGateway(record) ? "running" : "disabled";
+  const expectsRunningGateway = agentCliRecordExpectsRunningGateway(record);
+  const expectedGatewayState = expectsRunningGateway ? "running" : "disabled";
+  const final = record.measurements?.health?.final;
   if (record.measurements?.finalGatewayState !== expectedGatewayState) {
     return `final gateway state was ${record.measurements?.finalGatewayState ?? "missing"}`;
   }
-  if (record.measurements?.health?.final?.failureCount !== 0) {
-    return `final health failures were ${record.measurements?.health?.final?.failureCount ?? "missing"}`;
+  if (final?.gatewayState !== expectedGatewayState) {
+    return `final health gateway state was ${final?.gatewayState ?? "missing"}`;
+  }
+  if (expectsRunningGateway && final?.failureCount !== 0) {
+    return `final health failures were ${final?.failureCount ?? "missing"}`;
+  }
+  if (
+    !expectsRunningGateway &&
+    (final?.ok !== null || final?.healthOk !== null || final?.failureCount !== null)
+  ) {
+    return "disabled gateway final health was not explicit not-applicable evidence";
   }
   if (findCommandResult(record, (result) => result.command?.includes(" -- status"))?.status !== 0) {
     return "post-agent status command did not pass";
