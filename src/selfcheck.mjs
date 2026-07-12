@@ -1,9 +1,10 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { access, chmod, cp, link, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, symlink, truncate, utimes, writeFile } from "node:fs/promises";
+import { access, chmod, cp, link, lstat, mkdir, mkdtemp, open, readFile, readdir, rename, rm, stat, symlink, truncate, utimes, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
+import { gzipSync } from "node:zlib";
 import { resolveScriptStep } from "mock-ai-provider/dist/providers/openai/common/scripted-response.js";
 import { createBoundedOutputAccumulator, quoteShell, runCommand } from "./commands.mjs";
 import { collectErrorFlags, parseFlags } from "./cli.mjs";
@@ -152,7 +153,11 @@ import { renderRunReceipt } from "./reporting/render-run-receipt.mjs";
 import { aggregateScenarios } from "./reporting/scenario-aggregate.mjs";
 import { summarizePerformanceReceipt } from "./run/options.mjs";
 import { saveBaselineUpdate } from "./run/report-finalization.mjs";
-import { buildReportOutputPaths, writeReportOutputs } from "./run/report-output.mjs";
+import {
+  buildReportOutputPaths,
+  reportTransactionLockPath,
+  writeReportOutputs
+} from "./run/report-output.mjs";
 import {
   ocmAt,
   ocmEnvDestroy,
@@ -1206,6 +1211,524 @@ async function runScopedSelfCheck(flags, scope, workspace) {
             await fileExists(join(externalPublishRoot, "public", "bundles", bundleName)),
             true,
             "publish copies noncanonical content-addressed report bundle"
+          );
+        }
+      ));
+
+      const misleadingRunId = "kova-260712-235959-deadbe";
+      const misleadingReportPath = join(tmp, `${misleadingRunId}.json`);
+      const misleadingMarkdownPath = join(tmp, `${misleadingRunId}.md`);
+      await writeFile(
+        misleadingReportPath,
+        `${JSON.stringify({ ...report, runId: misleadingRunId }, null, 2)}\n`
+      );
+      await writeFile(misleadingMarkdownPath, "# misleading report\n");
+      const misleadingBundle = await bundleReport(misleadingReportPath, { outputDir: tmp });
+      const expectedBundleRoot = `${report.runId}-bundle`;
+      const unsafeArchives = [];
+      const unsafeEntrySets = [
+        [{ name: "-unsafe/manifest.json", content: JSON.stringify({ runId: report.runId }) }],
+        [{
+          name: `${expectedBundleRoot}/../${expectedBundleRoot}/manifest.json`,
+          content: JSON.stringify({ runId: report.runId })
+        }],
+        [
+          {
+            name: `${expectedBundleRoot}/manifest.json`,
+            content: JSON.stringify({ runId: report.runId })
+          },
+          {
+            name: `${expectedBundleRoot}/./manifest.json`,
+            content: JSON.stringify({ runId: "wrong-run" })
+          }
+        ],
+        [
+          {
+            name: `${expectedBundleRoot}/manifest.json`,
+            content: JSON.stringify({ runId: report.runId })
+          },
+          {
+            name: `${expectedBundleRoot}/manifest.json`,
+            content: JSON.stringify({ runId: "wrong-run" })
+          }
+        ],
+        [{
+          name: `${expectedBundleRoot}/format\u00ad\u200b\u200c\u200d\u2060\ufeff/manifest.json`,
+          content: JSON.stringify({ runId: report.runId })
+        }],
+        [
+          {
+            name: `${expectedBundleRoot}/manifest.json`,
+            content: JSON.stringify({ runId: report.runId })
+          },
+          {
+            name: "package.json",
+            content: "{}"
+          }
+        ],
+        [{
+          name: `${expectedBundleRoot}/manifest.json/`,
+          content: JSON.stringify({ runId: report.runId })
+        }],
+        [{
+          name: `C:/${expectedBundleRoot}/manifest.json`,
+          content: JSON.stringify({ runId: report.runId })
+        }],
+        [{
+          name: `server:stream/${expectedBundleRoot}/manifest.json`,
+          content: JSON.stringify({ runId: report.runId })
+        }],
+        [{
+          name: `CON/${expectedBundleRoot}/manifest.json`,
+          content: JSON.stringify({ runId: report.runId })
+        }],
+        [{
+          name: `host\\share\\${expectedBundleRoot}\\manifest.json`,
+          content: JSON.stringify({ runId: report.runId })
+        }],
+        [
+          {
+            name: `${expectedBundleRoot}/manifest.json`,
+            content: "",
+            type: "5"
+          },
+          {
+            name: `${expectedBundleRoot}/manifest.json/payload.json`,
+            content: JSON.stringify({ runId: report.runId })
+          }
+        ],
+        [{
+          name: `${expectedBundleRoot}/manifest.json`,
+          content: "",
+          type: "2",
+          linkName: `${expectedBundleRoot}/other.json`
+        }],
+        [{
+          name: `${expectedBundleRoot}/manifest.json`,
+          content: "",
+          type: "1",
+          linkName: `${expectedBundleRoot}/other.json`
+        }],
+        [
+          {
+            name: "PaxHeader",
+            content: buildPaxRecord("size", String(512 * 1024 * 1024 + 1)),
+            type: "x"
+          },
+          {
+            name: `${expectedBundleRoot}/manifest.json`,
+            content: JSON.stringify({ runId: report.runId })
+          }
+        ],
+        [
+          {
+            name: "LongPath",
+            content: `${expectedBundleRoot}/manifest.json\0`,
+            type: "L"
+          },
+          {
+            name: "placeholder",
+            content: JSON.stringify({ runId: report.runId })
+          }
+        ],
+        [
+          {
+            name: "OldGnuLongPath",
+            content: `${expectedBundleRoot}/manifest.json\0`,
+            type: "N"
+          },
+          {
+            name: "placeholder",
+            content: JSON.stringify({ runId: report.runId })
+          }
+        ],
+        [
+          {
+            name: "LongLink",
+            content: `${expectedBundleRoot}/manifest.json\0`,
+            type: "K"
+          },
+          {
+            name: `${expectedBundleRoot}/manifest.json`,
+            content: JSON.stringify({ runId: report.runId })
+          }
+        ],
+        [
+          {
+            name: `${expectedBundleRoot}/manifest.json`,
+            content: JSON.stringify({ runId: report.runId })
+          },
+          {
+            name: "PaxHeader",
+            content: buildPaxRecord(
+              "path",
+              `${expectedBundleRoot}/./manifest.json`
+            ),
+            type: "x"
+          },
+          {
+            name: "placeholder",
+            content: JSON.stringify({ runId: "wrong-run" })
+          }
+        ],
+        [
+          {
+            name: `${expectedBundleRoot}/manifest.json`,
+            content: JSON.stringify({ runId: report.runId })
+          },
+          {
+            name: `${expectedBundleRoot.toUpperCase()}/MANIFEST.JSON`,
+            content: JSON.stringify({ runId: "wrong-run" })
+          }
+        ],
+        [
+          {
+            name: `${expectedBundleRoot}/manifest.json`,
+            content: JSON.stringify({ runId: report.runId })
+          },
+          {
+            name: `${expectedBundleRoot}/caf\u00e9.json`,
+            content: "{}"
+          },
+          {
+            name: `${expectedBundleRoot}/cafe\u0301.json`,
+            content: "{}"
+          }
+        ],
+        [
+          {
+            name: `${expectedBundleRoot}/manifest.json`,
+            content: JSON.stringify({ runId: report.runId })
+          },
+          {
+            name: `${expectedBundleRoot}/sigma-\u03c3.json`,
+            content: "{}"
+          },
+          {
+            name: `${expectedBundleRoot}/sigma-\u03c2.json`,
+            content: "{}"
+          }
+        ],
+        [
+          { pseudoTerminator: true, content: "" },
+          {
+            name: `${expectedBundleRoot}/manifest.json`,
+            content: JSON.stringify({ runId: report.runId })
+          }
+        ],
+        [
+          {
+            name: `${expectedBundleRoot}/manifest.json`,
+            content: JSON.stringify({ runId: report.runId })
+          },
+          {
+            name: `${expectedBundleRoot}/malformed-size.bin`,
+            content: "",
+            rawSizeField: Buffer.from([0, 0x2d, 0x31])
+          }
+        ],
+        [
+          {
+            name: `${expectedBundleRoot}/manifest.json`,
+            content: JSON.stringify({ runId: report.runId })
+          },
+          {
+            name: "invalid-name",
+            rawNameField: Buffer.from([0xff]),
+            content: "{}"
+          }
+        ],
+        [
+          {
+            name: `${expectedBundleRoot}/manifest.json`,
+            content: JSON.stringify({ runId: report.runId })
+          },
+          {
+            name: "invalid-prefix",
+            rawPrefixField: Buffer.from([0xff]),
+            content: "{}"
+          }
+        ],
+        [{
+          name: `${expectedBundleRoot}/manifest.json`,
+          content: Buffer.concat([
+            Buffer.from(`{"runId":"${report.runId}","note":"`),
+            Buffer.from([0xff]),
+            Buffer.from('"}')
+          ])
+        }],
+        [
+          {
+            name: `${expectedBundleRoot}/manifest.json`,
+            content: JSON.stringify({ runId: report.runId })
+          },
+          {
+            name: `${expectedBundleRoot}/manifest.json/payload.json`,
+            content: "{}"
+          }
+        ],
+        [
+          {
+            name: `${expectedBundleRoot}/manifest.json/payload.json`,
+            content: "{}"
+          },
+          {
+            name: `${expectedBundleRoot}/manifest.json`,
+            content: JSON.stringify({ runId: report.runId })
+          }
+        ],
+        [{
+          name: `${expectedBundleRoot}/oversized-directory`,
+          content: "x",
+          declaredSize: 1,
+          type: "5"
+        }],
+        [
+          {
+            name: "GlobalPaxHeader",
+            content: buildPaxRecord("path", "../escape"),
+            type: "g"
+          },
+          {
+            name: `${expectedBundleRoot}/safe.json`,
+            content: "{}"
+          }
+        ],
+        [
+          {
+            name: `${expectedBundleRoot}/manifest.json`,
+            content: JSON.stringify({ runId: report.runId })
+          },
+          {
+            name: `${expectedBundleRoot}/oversized.bin`,
+            content: "",
+            declaredSize: 512 * 1024 * 1024 + 1
+          }
+        ],
+        [{
+          name: `${expectedBundleRoot}/manifest.json`,
+          content: "x".repeat(64 * 1024 + 1)
+        }],
+        [
+          {
+            name: "PaxHeader",
+            content: buildPaxRecord(
+              "path",
+              `${expectedBundleRoot}/${"x".repeat(4 * 1024 + 1)}`
+            ),
+            type: "x"
+          },
+          {
+            name: "placeholder",
+            content: "{}"
+          }
+        ]
+      ];
+      unsafeEntrySets.push(
+        ...["<", ">", "\"", "|", "?", "*"].map((character) => [{
+          name: `${expectedBundleRoot}/forbidden-${character}.json`,
+          content: JSON.stringify({ runId: report.runId })
+        }]),
+        Array.from({ length: 10_001 }, (_, index) => ({
+          name: `${expectedBundleRoot}/many/${index}.json`,
+          content: "{}"
+        }))
+      );
+      for (const entries of unsafeEntrySets) {
+        const archive = buildTarGzipFixture(entries);
+        const digest = createHash("sha256").update(archive).digest("hex");
+        const path = join(tmp, `${report.runId}-bundle-${digest}.tar.gz`);
+        await writeFile(path, archive);
+        await writeFile(
+          `${path}.sha256`,
+          `${digest}  ${basename(path)}\n`
+        );
+        unsafeArchives.push(path);
+      }
+      const oversizedArchivePath = join(
+        tmp,
+        `${report.runId}-bundle-${"f".repeat(64)}.tar.gz`
+      );
+      await writeFile(oversizedArchivePath, "");
+      await truncate(oversizedArchivePath, 256 * 1024 * 1024 + 1);
+      await writeFile(
+        `${oversizedArchivePath}.sha256`,
+        `${"f".repeat(64)}  ${basename(oversizedArchivePath)}\n`
+      );
+      unsafeArchives.push(oversizedArchivePath);
+      const oversizedChecksumArchive = buildTarGzipFixture([{
+        name: `${expectedBundleRoot}/manifest.json`,
+        content: JSON.stringify({ runId: report.runId })
+      }]);
+      const oversizedChecksumDigest = createHash("sha256")
+        .update(oversizedChecksumArchive)
+        .digest("hex");
+      const oversizedChecksumPath = join(
+        tmp,
+        `${report.runId}-bundle-${oversizedChecksumDigest}.tar.gz`
+      );
+      await writeFile(oversizedChecksumPath, oversizedChecksumArchive);
+      await writeFile(`${oversizedChecksumPath}.sha256`, "x".repeat(8 * 1024 + 1));
+      unsafeArchives.push(oversizedChecksumPath);
+
+      const mismatchedExplicitArchive = buildTarGzipFixture([
+        {
+          name: `${expectedBundleRoot}/manifest.json`,
+          content: JSON.stringify({ runId: report.runId })
+        },
+        {
+          name: `${expectedBundleRoot}/mismatched-explicit.json`,
+          content: "{}"
+        }
+      ]);
+      const mismatchedExplicitDigest = "0".repeat(64);
+      const mismatchedExplicitPath = join(
+        tmp,
+        `${report.runId}-bundle-${mismatchedExplicitDigest}.tar.gz`
+      );
+      await writeFile(mismatchedExplicitPath, mismatchedExplicitArchive);
+      await writeFile(
+        `${mismatchedExplicitPath}.sha256`,
+        `${mismatchedExplicitDigest}  ${basename(mismatchedExplicitPath)}\n`
+      );
+      unsafeArchives.push(mismatchedExplicitPath);
+
+      const badSidecarArchive = buildTarGzipFixture([
+        {
+          name: `${expectedBundleRoot}/manifest.json`,
+          content: JSON.stringify({ runId: report.runId })
+        },
+        {
+          name: `${expectedBundleRoot}/bad-sidecar.json`,
+          content: "{}"
+        }
+      ]);
+      const badSidecarDigest = createHash("sha256")
+        .update(badSidecarArchive)
+        .digest("hex");
+      const badSidecarPath = join(
+        tmp,
+        `${report.runId}-bundle-${badSidecarDigest}.tar.gz`
+      );
+      await writeFile(badSidecarPath, badSidecarArchive);
+      await writeFile(`${badSidecarPath}.sha256`, "bad checksum\n");
+      unsafeArchives.push(badSidecarPath);
+
+      const missingSidecarArchive = buildTarGzipFixture([
+        {
+          name: `${expectedBundleRoot}/manifest.json`,
+          content: JSON.stringify({ runId: report.runId })
+        },
+        {
+          name: `${expectedBundleRoot}/missing-sidecar.json`,
+          content: "{}"
+        }
+      ]);
+      const missingSidecarDigest = createHash("sha256")
+        .update(missingSidecarArchive)
+        .digest("hex");
+      const missingSidecarPath = join(
+        tmp,
+        `${report.runId}-bundle-${missingSidecarDigest}.tar.gz`
+      );
+      await writeFile(missingSidecarPath, missingSidecarArchive);
+      unsafeArchives.push(missingSidecarPath);
+
+      let fifoBundlePath = null;
+      if (process.platform !== "win32") {
+        fifoBundlePath = join(tmp, "explicit-bundle.fifo");
+        const fifoBundle = await runCommand(`mkfifo ${quoteShell(fifoBundlePath)}`);
+        assertEqual(fifoBundle.status, 0, "creates explicit bundle FIFO fixture");
+
+        const fifoChecksumArchive = buildTarGzipFixture([
+          {
+            name: `${expectedBundleRoot}/manifest.json`,
+            content: JSON.stringify({ runId: report.runId })
+          },
+          {
+            name: `${expectedBundleRoot}/fifo-checksum.json`,
+            content: "{}"
+          }
+        ]);
+        const fifoChecksumDigest = createHash("sha256")
+          .update(fifoChecksumArchive)
+          .digest("hex");
+        const fifoChecksumPath = join(
+          tmp,
+          `${report.runId}-bundle-${fifoChecksumDigest}.tar.gz`
+        );
+        await writeFile(fifoChecksumPath, fifoChecksumArchive);
+        const fifoChecksum = await runCommand(
+          `mkfifo ${quoteShell(`${fifoChecksumPath}.sha256`)}`
+        );
+        assertEqual(fifoChecksum.status, 0, "creates checksum FIFO fixture");
+        unsafeArchives.push(fifoChecksumPath);
+      }
+      const reportWithHostileExplicitBundle = fifoBundlePath
+        ? {
+          ...report,
+          bundle: {
+            path: fifoBundlePath,
+            outputPath: mismatchedExplicitPath
+          },
+          outputPaths: {
+            ...report.outputPaths,
+            bundle: badSidecarPath,
+            bundlePath: missingSidecarPath
+          }
+        }
+        : {
+          ...report,
+          bundle: {
+            path: mismatchedExplicitPath,
+            outputPath: badSidecarPath
+          },
+          outputPaths: {
+            ...report.outputPaths,
+            bundle: missingSidecarPath
+          }
+        };
+      await writeFile(
+        misleadingReportPath,
+        `${JSON.stringify(reportWithHostileExplicitBundle, null, 2)}\n`
+      );
+      await writeFile(
+        misleadingMarkdownPath,
+        await readFile(receiptCheck.data.jsonPath.replace(/\.json$/, ".md"), "utf8")
+      );
+      const priorityPublishRoot = join(tmp, "publish-run-id-priority");
+      const priorityPublishOutDir = join(
+        priorityPublishRoot,
+        "src",
+        "content",
+        "releases"
+      );
+      checks.push(await jsonCommandCheck(
+        "publish-prefers-report-run-id-bundle",
+        `node bin/kova.mjs publish ${quoteShell(misleadingReportPath)} --ver 2026.7.12-run-id-priority --release-date 2026-07-12 --sha selfcheck --out-dir ${quoteShell(priorityPublishOutDir)} --json`,
+        async () => {
+          const payload = JSON.parse(
+            await readFile(
+              join(priorityPublishOutDir, "2026.7.12-run-id-priority.json"),
+              "utf8"
+            )
+          );
+          assertEqual(
+            payload.runs?.[0]?.bundle?.name,
+            basename(publishBundle.outputPath),
+            "publish prioritizes the report run ID bundle"
+          );
+          assertEqual(
+            payload.runs?.[0]?.bundle?.name === basename(misleadingBundle.outputPath),
+            false,
+            "publish rejects a newer filename-derived bundle from another run"
+          );
+          assertEqual(
+            unsafeArchives.some(
+              (path) => payload.runs?.[0]?.bundle?.name === basename(path)
+            ),
+            false,
+            "publish rejects option-like, traversal, aliased, and duplicate tar members"
           );
         }
       ));
@@ -5116,6 +5639,51 @@ async function reportPublicationCheck(tmp) {
       publishedReport.runId,
       "canonical report JSON published"
     );
+    const committedJson = await readFile(outputPaths.json);
+    const committedMarkdown = await readFile(outputPaths.markdown);
+    let releaseTransientWriter;
+    let markTransientWriterReady;
+    const transientWriterRelease = new Promise((resolve) => {
+      releaseTransientWriter = resolve;
+    });
+    const transientWriterReady = new Promise((resolve) => {
+      markTransientWriterReady = resolve;
+    });
+    const transientWriter = withFileLock(
+      reportTransactionLockPath(outputPaths.json),
+      async () => {
+        await writeFile(
+          outputPaths.json,
+          `${JSON.stringify({ ...publishedReport, runId: "transient-generation" })}\n`
+        );
+        await writeFile(outputPaths.markdown, "# transient generation\n");
+        markTransientWriterReady();
+        await transientWriterRelease;
+        await writeFile(outputPaths.json, committedJson);
+        await writeFile(outputPaths.markdown, committedMarkdown);
+      }
+    );
+    await transientWriterReady;
+    let snapshotSettled = false;
+    const serializedBundlePromise = bundleReport(outputPaths.json, {
+      outputDir: join(publicationRoot, "serialized-snapshot-bundles")
+    }).finally(() => {
+      snapshotSettled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    assertEqual(
+      snapshotSettled,
+      false,
+      "report snapshot waits for the writer transaction"
+    );
+    releaseTransientWriter();
+    await transientWriter;
+    const serializedBundle = await serializedBundlePromise;
+    assertEqual(
+      serializedBundle.runId,
+      publishedReport.runId,
+      "report snapshot excludes a rolled-back transient generation"
+    );
     const markerlessBackupPath = join(
       publicationRoot,
       `.${basename(outputPaths.json)}.kova-backup`
@@ -6098,6 +6666,135 @@ async function fileLockRecoveryCheck(tmp) {
     );
     const localExecutionDomain = currentExecutionDomainIdentity();
     assertEqual(Boolean(localExecutionDomain), true, "current execution domain is available");
+    const unsupportedLink = (code) => async () => {
+      const error = new Error(`simulated ${code}`);
+      error.code = code;
+      throw error;
+    };
+    for (const code of ["ENOTSUP", "EPERM"]) {
+      const fallbackLock = join(tmp, `fallback-${code.toLowerCase()}.lock`);
+      let callbackRuns = 0;
+      await withFileLock(
+        fallbackLock,
+        async () => {
+          callbackRuns += 1;
+        },
+        { linkFile: unsupportedLink(code) }
+      );
+      assertEqual(callbackRuns, 1, `${code} hard-link fallback acquires the lock`);
+      assertEqual(await fileExists(fallbackLock), false, `${code} fallback releases the lock`);
+    }
+    const fallbackContentionLock = join(tmp, "fallback-contention.lock");
+    let fallbackActive = 0;
+    let fallbackMaximum = 0;
+    await Promise.all([0, 1].map(() => withFileLock(
+      fallbackContentionLock,
+      async () => {
+        fallbackActive += 1;
+        fallbackMaximum = Math.max(fallbackMaximum, fallbackActive);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        fallbackActive -= 1;
+      },
+      {
+        linkFile: unsupportedLink("ENOTSUP"),
+        retryMs: 2,
+        timeoutMs: 1_000
+      }
+    )));
+    assertEqual(fallbackMaximum, 1, "hard-link fallback serializes contenders");
+
+    const closeRetryLock = join(tmp, "fallback-close-retry.lock");
+    let fallbackCloseAttempts = 0;
+    let fallbackCloseCallbackRuns = 0;
+    await withFileLock(
+      closeRetryLock,
+      async () => {
+        fallbackCloseCallbackRuns += 1;
+      },
+      {
+        linkFile: unsupportedLink("ENOTSUP"),
+        openFallbackFile: async (...args) => {
+          const handle = await open(...args);
+          return {
+            writeFile: (...writeArgs) => handle.writeFile(...writeArgs),
+            chmod: (...chmodArgs) => handle.chmod(...chmodArgs),
+            sync: (...syncArgs) => handle.sync(...syncArgs),
+            close: async () => {
+              fallbackCloseAttempts += 1;
+              if (fallbackCloseAttempts === 1) {
+                const error = new Error("simulated close failure");
+                error.code = "EIO";
+                throw error;
+              }
+              return handle.close();
+            }
+          };
+        }
+      }
+    );
+    assertEqual(
+      fallbackCloseCallbackRuns,
+      1,
+      "durable fallback lock proceeds after an initial close failure"
+    );
+    assertEqual(fallbackCloseAttempts, 2, "fallback lock retries close during release");
+    assertEqual(
+      await fileExists(closeRetryLock),
+      false,
+      "fallback lock releases only after the retained handle closes"
+    );
+
+    const tornFallbackLock = join(tmp, "fallback-write-failure.lock");
+    let fallbackWriteRejected = false;
+    try {
+      await withFileLock(
+        tornFallbackLock,
+        async () => {},
+        {
+          linkFile: unsupportedLink("ENOTSUP"),
+          openFallbackFile: async (...args) => {
+            const handle = await open(...args);
+            return {
+              writeFile: async () => {
+                await handle.writeFile("{", "utf8");
+                const error = new Error("simulated metadata write failure");
+                error.code = "EIO";
+                throw error;
+              },
+              chmod: (...chmodArgs) => handle.chmod(...chmodArgs),
+              sync: (...syncArgs) => handle.sync(...syncArgs),
+              close: (...closeArgs) => handle.close(...closeArgs)
+            };
+          }
+        }
+      );
+    } catch (error) {
+      fallbackWriteRejected = error?.code === "EIO";
+    }
+    assertEqual(fallbackWriteRejected, true, "fallback metadata write failure is reported");
+    let tornSuccessorProtected = false;
+    try {
+      await withFileLock(tornFallbackLock, async () => {}, {
+        linkFile: unsupportedLink("ENOTSUP"),
+        retryMs: 2,
+        staleMs: 1,
+        timeoutMs: 25
+      });
+    } catch (error) {
+      tornSuccessorProtected = /timed out waiting for Kova file lock/.test(error.message);
+    }
+    assertEqual(
+      tornSuccessorProtected,
+      true,
+      "successor cannot replace a torn fallback lock"
+    );
+    assertEqual(
+      await readFile(tornFallbackLock, "utf8"),
+      "{",
+      "failed fallback publication remains fail-closed"
+    );
+    await rm(tornFallbackLock);
+
     const malformedLock = join(tmp, "malformed-publication.lock");
     await writeFile(malformedLock, "{\n");
     const old = new Date(Date.now() - 60_000);
@@ -6106,6 +6803,7 @@ async function fileLockRecoveryCheck(tmp) {
     let malformedTimeoutMessage = "";
     try {
       await withFileLock(malformedLock, async () => {}, {
+        linkFile: unsupportedLink("ENOTSUP"),
         staleMs: 1,
         timeoutMs: 25,
         retryMs: 2
@@ -6121,6 +6819,11 @@ async function fileLockRecoveryCheck(tmp) {
       ),
       true,
       "malformed lock timeout pins the observed lock generation"
+    );
+    assertEqual(
+      await readFile(malformedLock, "utf8"),
+      "{\n",
+      "torn hard-link fallback remains fail-closed for manual recovery"
     );
     await rm(malformedLock);
 
@@ -6395,6 +7098,77 @@ async function fileExists(path) {
     }
     throw error;
   }
+}
+
+function buildTarGzipFixture(entries) {
+  const blocks = [];
+  for (const entry of entries) {
+    const content = Buffer.from(entry.content);
+    const header = Buffer.alloc(512);
+    if (entry.pseudoTerminator) {
+      header.write("000400\0 ", 148, 8, "ascii");
+      blocks.push(header);
+      continue;
+    }
+    if (Buffer.byteLength(entry.name) > 100) {
+      throw new Error(`tar fixture path is too long: ${entry.name}`);
+    }
+    header.write(entry.name, 0, 100, "utf8");
+    if (entry.rawNameField) {
+      header.fill(0, 0, 100);
+      entry.rawNameField.copy(header, 0);
+    }
+    writeTarOctal(header, 100, 8, 0o644);
+    writeTarOctal(header, 108, 8, 0);
+    writeTarOctal(header, 116, 8, 0);
+    writeTarOctal(header, 124, 12, entry.declaredSize ?? content.length);
+    if (entry.rawSizeField) {
+      header.fill(0, 124, 136);
+      entry.rawSizeField.copy(header, 124);
+    }
+    writeTarOctal(header, 136, 12, Math.floor(Date.now() / 1000));
+    header.fill(0x20, 148, 156);
+    header.write(entry.type ?? "0", 156, 1, "ascii");
+    if (entry.linkName) {
+      header.write(entry.linkName, 157, 100, "utf8");
+    }
+    header.write("ustar\0", 257, 6, "ascii");
+    header.write("00", 263, 2, "ascii");
+    header.write("kova", 265, 4, "ascii");
+    header.write("kova", 297, 4, "ascii");
+    if (entry.rawPrefixField) {
+      entry.rawPrefixField.copy(header, 345);
+    }
+    const checksum = header.reduce((sum, byte) => sum + byte, 0);
+    header.write(checksum.toString(8).padStart(6, "0"), 148, 6, "ascii");
+    header[154] = 0;
+    header[155] = 0x20;
+    blocks.push(header, content);
+    const remainder = content.length % 512;
+    if (remainder !== 0) {
+      blocks.push(Buffer.alloc(512 - remainder));
+    }
+  }
+  blocks.push(Buffer.alloc(1024));
+  return gzipSync(Buffer.concat(blocks));
+}
+
+function writeTarOctal(buffer, offset, length, value) {
+  buffer.write(
+    `${value.toString(8).padStart(length - 1, "0")}\0`,
+    offset,
+    length,
+    "ascii"
+  );
+}
+
+function buildPaxRecord(key, value) {
+  const body = ` ${key}=${value}\n`;
+  let length = Buffer.byteLength(body) + 1;
+  while (String(length).length + Buffer.byteLength(body) !== length) {
+    length = String(length).length + Buffer.byteLength(body);
+  }
+  return `${length}${body}`;
 }
 
 function syntheticPerformanceReport({ runId, platform, target, records }) {
