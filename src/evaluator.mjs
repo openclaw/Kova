@@ -1194,13 +1194,11 @@ export function evaluateRecord(record, scenario, options = {}) {
   record.thresholdPolicy = thresholdPolicy.report;
 
   if (violations.length > 0) {
-    const malformedKovaEvidence = violations.some(
-      (violation) => violation.failureDomain === "kova-harness"
-    );
-    if (malformedKovaEvidence && originalStatus === "PASS") {
-      record.status = "BLOCKED";
-    } else if (originalStatus === "PASS") {
-      record.status = "FAIL";
+    if (originalStatus === "PASS") {
+      const targetViolation = violations.some(
+        (violation) => violation.failureDomain !== "kova-harness"
+      );
+      record.status = targetViolation ? "FAIL" : "BLOCKED";
     }
     record.violations = violations;
   } else {
