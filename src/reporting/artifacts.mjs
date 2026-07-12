@@ -1200,19 +1200,25 @@ async function cleanupOrphanBundlePublications(outputRoot, bundleName) {
     if (checksumMatch) {
       const checksumPath = join(outputRoot, name);
       const archivePath = checksumPath.slice(0, -".sha256".length);
-      if (!await pathExists(archivePath)) {
-        await rm(checksumPath, { force: true });
-      }
+      await withFileLock(`${archivePath}.lock`, async () => {
+        if (!await pathExists(archivePath)) {
+          await rm(checksumPath, { force: true });
+        }
+      });
       continue;
     }
-    if (new RegExp(
-      `^${escapeRegExp(prefix)}[a-f0-9]{64}[.]tar[.]gz[.]` +
-      "[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}[.]tmp[.]owner$"
-    ).test(name)) {
-      await cleanupOwnedBundlePairStage(join(outputRoot, name), {
-        outputRoot,
-        bundleName
-      });
+    const stageMatch = name.match(new RegExp(
+      `^(${escapeRegExp(prefix)}[a-f0-9]{64}[.]tar[.]gz)[.]` +
+      "([a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})[.]tmp[.]owner$"
+    ));
+    if (stageMatch) {
+      const outputPath = join(outputRoot, stageMatch[1]);
+      await withFileLock(`${outputPath}.lock`, () => (
+        cleanupOwnedBundlePairStage(join(outputRoot, name), {
+          outputRoot,
+          bundleName
+        })
+      ));
     }
   }
   await syncDirectory(outputRoot);
