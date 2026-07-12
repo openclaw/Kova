@@ -6,6 +6,7 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Hardened command execution with bounded streaming redaction, POSIX process-group cleanup, strict optional-log matching, and direct scenario command validation.
 - Fixed OpenClaw inventory discovery to recognize canonical JSON5 plugin manifests consistently across platforms while deterministically bounding scans.
 - Isolated concurrent self-check OCM identities, child environments, runtime names, and temp cleanup ownership.
 - Hardened performance baseline persistence, unstable-group detection, and repeated-work audit isolation.
