@@ -119,6 +119,8 @@ function renderHeader(summary, scenarios, ui) {
   const sampleFailed = scenarios.reduce((a, s) => a + (s.statuses?.FAIL ?? 0), 0);
   const sampleBlocked = scenarios.reduce((a, s) => a + (s.statuses?.BLOCKED ?? 0), 0);
   const sampleIncomplete = scenarios.reduce((a, s) => a + (s.statuses?.INCOMPLETE ?? 0), 0);
+  const sampleSkipped = scenarios.reduce((a, s) => a + (s.statuses?.SKIPPED ?? 0), 0);
+  const sampleDryRun = scenarios.reduce((a, s) => a + (s.statuses?.["DRY-RUN"] ?? 0), 0);
   // Pluralize against the count actually referenced in each clause so
   // "1 scenario failed" reads correctly while "3 scenarios passed" still works.
   const scopeText = failed > 0
@@ -130,15 +132,17 @@ function renderHeader(summary, scenarios, ui) {
         : dryRun > 0
           ? `${dryRun} ${pluralize(dryRun, "scenario")} planned${totalScn > dryRun ? ` of ${totalScn}` : ""}`
           : `${totalScn} ${pluralize(totalScn, "scenario")} passed`;
-  const samplesText = sampleFailed > 0
-    ? `${sampleFailed} failed${sampleBlocked > 0 ? `, ${sampleBlocked} blocked` : ""} of ${sampleTotal} ${pluralize(sampleTotal, "sample")}`
-    : sampleBlocked > 0
-      ? `${sampleBlocked}/${sampleTotal} ${pluralize(sampleTotal, "sample")} blocked`
-      : sampleIncomplete > 0
-        ? `${sampleIncomplete}/${sampleTotal} ${pluralize(sampleTotal, "sample")} incomplete`
-        : dryRun > 0
-          ? `${sampleTotal} ${pluralize(sampleTotal, "sample")} planned`
-          : `${sampleTotal} ${pluralize(sampleTotal, "sample")}`;
+  const sampleIssues = [
+    sampleFailed > 0 ? `${sampleFailed} failed` : null,
+    sampleBlocked > 0 ? `${sampleBlocked} blocked` : null,
+    sampleIncomplete > 0 ? `${sampleIncomplete} incomplete` : null,
+    sampleSkipped > 0 ? `${sampleSkipped} skipped` : null
+  ].filter(Boolean);
+  const samplesText = sampleIssues.length > 0
+    ? `${sampleIssues.join(", ")} of ${sampleTotal} ${pluralize(sampleTotal, "sample")}`
+    : sampleDryRun > 0
+      ? `${sampleTotal} ${pluralize(sampleTotal, "sample")} planned`
+      : `${sampleTotal} ${pluralize(sampleTotal, "sample")}`;
 
   const headline = buildVerdictHeadline({
     scope: scopeText,
