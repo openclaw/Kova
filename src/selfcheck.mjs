@@ -4889,6 +4889,16 @@ async function reportPublicationCheck(tmp) {
       publishedReport.runId,
       "canonical report JSON published"
     );
+    for (const path of Object.values(outputPaths)) {
+      await rename(path, join(publicationRoot, `.${basename(path)}.kova-backup`));
+    }
+    await writeReportOutputs(publicationRoot, publishedReport);
+    assertEqual(await fileExists(outputPaths.markdown), true, "interrupted report swap recovered");
+    assertEqual(
+      (await readdir(publicationRoot)).some((entry) => entry.endsWith(".kova-backup")),
+      false,
+      "recovered report backups removed"
+    );
 
     const collisionRoot = join(publicationRoot, "collisions");
     await mkdir(collisionRoot, { recursive: true });
@@ -4953,6 +4963,31 @@ async function reportPublicationCheck(tmp) {
       checksum: recoverableChecksum
     });
     assertEqual(await fileExists(recoverableBundlePath), true, "checksum-only bundle state recovered");
+    let incompleteBundleRejected = false;
+    try {
+      await retainGateArtifacts(collisionReports[0], {
+        outputPath: firstBundle.outputPath
+      }, {
+        outputDir: join(publicationRoot, "incomplete-bundle-retained")
+      });
+    } catch (error) {
+      incompleteBundleRejected = /requires both archive and checksum/.test(error.message);
+    }
+    assertEqual(incompleteBundleRejected, true, "retention rejects incomplete bundle pair");
+    const mismatchedChecksumPath = join(publicationRoot, "mismatched.sha256");
+    await writeFile(mismatchedChecksumPath, `0${firstChecksum.slice(1)}`);
+    let mismatchedBundleRejected = false;
+    try {
+      await retainGateArtifacts(collisionReports[0], {
+        outputPath: firstBundle.outputPath,
+        checksumPath: mismatchedChecksumPath
+      }, {
+        outputDir: join(publicationRoot, "mismatched-bundle-retained")
+      });
+    } catch (error) {
+      mismatchedBundleRejected = /checksum does not match archive/.test(error.message);
+    }
+    assertEqual(mismatchedBundleRejected, true, "retention rejects mismatched bundle pair");
 
     const symlinkReportPath = join(collisionRoot, "symlink-report.json");
     const symlinkMarkdownPath = join(collisionRoot, "symlink-report.md");
@@ -5031,10 +5066,15 @@ async function reportPublicationCheck(tmp) {
     await rm(unmanagedPath);
     const retainedBackup = join(publicationRoot, ".retained.bak");
     await rename(retainedRoot, retainedBackup);
+    await mkdir(retainedRoot);
+    await writeFile(
+      join(retainedRoot, "retained-artifacts.json"),
+      `${JSON.stringify(retained, null, 2)}\n`
+    );
     await retainGateArtifacts(collisionReports[0], firstBundle, {
       outputDir: retainedRoot
     });
-    assertEqual(await fileExists(retained.jsonPath), true, "interrupted retained tree swap recovered");
+    assertEqual(await fileExists(retained.jsonPath), true, "incomplete retained tree recovered from backup");
     assertEqual(await fileExists(retainedBackup), false, "recovered retained tree backup removed");
 
     await rm(collisionReports[0].replace(/\.json$/, ".md"));
