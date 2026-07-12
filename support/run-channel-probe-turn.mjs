@@ -497,7 +497,9 @@ function mediaSourceExpectation(testCase) {
   if (expects.mediaSourcePolicy === "exact") {
     return {
       check: (records) => sources.every((source) =>
-        records.some((record) => isManagedOutboundMedia(record?.mediaUrl, source) || isSameExistingLocalMedia(record, source))
+        records.some((record) => recordMediaUrls(record).some((mediaUrl) =>
+          isManagedOutboundMedia(mediaUrl, source) || isSameExistingLocalMedia(record, mediaUrl, source)
+        ))
       ),
       summary: `${testCase.id} delivered every expected exact media source`
     };
@@ -554,8 +556,14 @@ function isManagedOutboundMedia(mediaUrl, sourcePath) {
   return outboundName === sourceName || (outboundName.startsWith(`${stem}---`) && outboundName.endsWith(extension));
 }
 
-function isSameExistingLocalMedia(record, sourcePath) {
-  return record?.mediaUrl === sourcePath && record.mediaPathExists === true;
+function isSameExistingLocalMedia(record, mediaUrl, sourcePath) {
+  return mediaUrl === sourcePath && record?.mediaPathExists === true;
+}
+
+function recordMediaUrls(record) {
+  return Array.isArray(record?.mediaUrls) && record.mediaUrls.length > 0
+    ? record.mediaUrls
+    : [record?.mediaUrl].filter((mediaUrl) => typeof mediaUrl === "string" && mediaUrl.length > 0);
 }
 
 function textEquals(actual, expected) {

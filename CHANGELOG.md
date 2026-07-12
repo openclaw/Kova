@@ -6,6 +6,7 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Isolate channel-probe observations by inbound event and target, and preserve every media item when fallback delivery receives a batch.
 - Stage channel-probe media fixtures inside the selected OCM environment so packaged message-tool delivery tests exercise sendable files instead of the runner checkout.
 - Use OpenClaw's canonical inbound dispatch API in the packaged channel probe after the deprecated channel turn aliases were removed.
 - Remove the stale channel-recovery reference that caused every packaged channel workflow probe to fail before evaluating OpenClaw behavior.

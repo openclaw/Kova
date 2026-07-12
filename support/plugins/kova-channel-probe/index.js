@@ -50,16 +50,18 @@ const messageAdapter = defineChannelMessageAdapter({
     media: async (ctx) => recordOutbound("media", ctx),
     payload: async (ctx) => recordOutbound("payload", ctx),
     lifecycle: {
-      afterSendSuccess: async ({ result }) => {
+      afterSendSuccess: async ({ result, to }) => {
         outboundRecords.push({
           kind: "after-send-success",
-          messageId: result?.receipt?.primaryPlatformMessageId ?? null
+          messageId: result?.receipt?.primaryPlatformMessageId ?? null,
+          to: to ?? null
         });
       },
-      afterCommit: async ({ receipt }) => {
+      afterCommit: async ({ receipt, to }) => {
         outboundRecords.push({
           kind: "after-commit",
-          messageId: receipt?.primaryPlatformMessageId ?? null
+          messageId: receipt?.primaryPlatformMessageId ?? null,
+          to: to ?? null
         });
       }
     }
@@ -368,15 +370,25 @@ function snapshotProbeObservation(observation) {
   const deliveryStart = Number.isInteger(offsets.delivery) ? offsets.delivery : 0;
   const ackStart = Number.isInteger(offsets.ack) ? offsets.ack : 0;
   const modelTurnStart = Number.isInteger(offsets.modelTurn) ? offsets.modelTurn : 0;
+  const inboundEventId = observation?.inboundEvent?.id;
+  const targetId = observation?.inboundEvent?.targetId;
   const observedAtEpochMs = Date.now();
   return {
     ...observation,
     observedAtEpochMs,
     durationMs: Math.max(0, observedAtEpochMs - observation.startedAtEpochMs),
-    outboundRecords: outboundRecords.slice(outboundStart),
-    deliveryRecords: deliveryRecords.slice(deliveryStart),
-    ackRecords: ackRecords.slice(ackStart),
-    modelTurnRecords: modelTurnRecords.slice(modelTurnStart)
+    outboundRecords: outboundRecords
+      .slice(outboundStart)
+      .filter((record) => record?.to === targetId),
+    deliveryRecords: deliveryRecords
+      .slice(deliveryStart)
+      .filter((record) => record?.targetId === targetId),
+    ackRecords: ackRecords
+      .slice(ackStart)
+      .filter((record) => record?.inboundEventId === inboundEventId),
+    modelTurnRecords: modelTurnRecords
+      .slice(modelTurnStart)
+      .filter((record) => record?.messageId === inboundEventId)
   };
 }
 
@@ -543,6 +555,7 @@ async function runOpenClawModelTurn({
       onDelivered: async (delivered, info, result) => {
         deliveryRecords.push({
           path: "durable-message-send-context",
+          targetId,
           kind: info?.kind ?? null,
           text: delivered?.text ?? null,
           mediaUrl: delivered?.mediaUrl ?? delivered?.mediaUrls?.[0] ?? null,
@@ -588,6 +601,7 @@ function resolveThreadedRoute(route, threadId) {
 }
 
 async function recordOutbound(kind, ctx) {
+  const mediaUrls = outboundMediaUrls(ctx);
   const messageId = `kova-${kind}-${outboundRecords.length + 1}`;
   const receipt = createReceipt(messageId, kind, {
     threadId: ctx.threadId == null ? undefined : String(ctx.threadId),
@@ -598,8 +612,9 @@ async function recordOutbound(kind, ctx) {
     messageId,
     to: ctx.to ?? null,
     text: ctx.text ?? null,
-    mediaUrl: ctx.mediaUrl ?? null,
-    mediaPathExists: typeof ctx.mediaUrl === "string" && existsSync(ctx.mediaUrl),
+    mediaUrl: mediaUrls[0] ?? null,
+    mediaUrls,
+    mediaPathExists: typeof mediaUrls[0] === "string" && existsSync(mediaUrls[0]),
     payload: ctx.payload ?? null,
     deliveryKind: ctx.deliveryKind ?? null,
     isError: ctx.payload?.isError === true || ctx.isError === true,
@@ -611,18 +626,32 @@ async function recordOutbound(kind, ctx) {
 }
 
 async function deliverAdapterPayload(payload, options = {}) {
-  const mediaUrl = firstMediaUrl(payload);
-  return await recordOutbound(mediaUrl ? "media" : payload?.channelData ? "payload" : "text", {
+  const mediaUrls = outboundMediaUrls({ payload });
+  const base = {
     to: options.targetId ?? TARGET_ID,
-    text: payload?.text ?? null,
-    mediaUrl,
     payload,
     isError: payload?.isError === true,
     silent: options.silent === true,
     threadId: options.threadId ?? null,
     replyToId: options.replyToId ?? null,
     deliveryKind: options.deliveryKind ?? null
-  });
+  };
+  if (mediaUrls.length === 0) {
+    return await recordOutbound(payload?.channelData ? "payload" : "text", {
+      ...base,
+      text: payload?.text ?? null
+    });
+  }
+  let result = null;
+  for (const [index, mediaUrl] of mediaUrls.entries()) {
+    result = await recordOutbound("media", {
+      ...base,
+      text: index === 0 ? (payload?.text ?? null) : null,
+      mediaUrl,
+      mediaUrls: [mediaUrl]
+    });
+  }
+  return result;
 }
 
 function recordUnhandledDeliveryPayload(payload, options = {}) {
@@ -656,6 +685,17 @@ function firstMediaUrl(payload) {
     return payload.mediaUrls.find((url) => typeof url === "string" && url.length > 0) ?? null;
   }
   return null;
+}
+
+function outboundMediaUrls(ctx) {
+  const values = Array.isArray(ctx?.mediaUrls)
+    ? ctx.mediaUrls
+    : [
+        ctx?.mediaUrl,
+        ctx?.payload?.mediaUrl,
+        ...(Array.isArray(ctx?.payload?.mediaUrls) ? ctx.payload.mediaUrls : [])
+      ];
+  return [...new Set(values.filter((value) => typeof value === "string" && value.length > 0))];
 }
 
 function createReceipt(id, kind = "text", options = {}) {
