@@ -144,9 +144,20 @@ import {
   ocmServiceStatusJson,
   ocmTargetSelector
 } from "./ocm/commands.mjs";
-import { buildAuthCleanupPhase, buildAuthPreparePhase, mockAiProviderServeCommand } from "./auth.mjs";
+import {
+  buildAuthCleanupPhase,
+  buildAuthPreparePhase,
+  mockAiProviderServeCommand,
+  mockProviderCleanupCommand
+} from "./auth.mjs";
 import { diagnosticArtifactName, triggerDiagnosticReport, triggerHeapSnapshot } from "./collectors/diagnostics.mjs";
-import { isOwnedMockProviderCommand, stopOwnedMockProvider } from "./process-safety.mjs";
+import {
+  isOwnedMockProviderSupervisorCommand,
+  mockProviderOwnerRecord,
+  mockProviderStopFile,
+  mockProviderSupervisorArgs,
+  stopOwnedMockProvider
+} from "./process-safety.mjs";
 import { envNameFor, maxOcmEnvNameLength } from "./run/env-name.mjs";
 import {
   checkAggregateThreshold,
@@ -8340,7 +8351,7 @@ async function mockProviderBehaviorCheck(tmp) {
   const command = [
     `node support/write-mock-ai-provider-script.mjs --output ${quoteShell(scriptPath)} --mode error-then-recover --error-status 503`,
     mockAiProviderServeCommand({ scriptPath, requestLog: requestLogPath, serverLog: serverLogPath, pidFile: pidPath }),
-    `trap 'test -s ${quoteShell(pidPath)} && kill "$(cat ${quoteShell(pidPath)})" 2>/dev/null || true' EXIT`,
+    `trap ${quoteShell(`${mockProviderCleanupCommand(dir)} >/dev/null 2>&1 || true`)} EXIT`,
     `for i in $(seq 1 100); do ${writePort} >/dev/null 2>&1 && test -s ${quoteShell(portPath)} && node -e 'fetch("http://127.0.0.1:"+process.argv[1]+"/health").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))' "$(cat ${quoteShell(portPath)})" && break; sleep 0.1; done`,
     `test -s ${quoteShell(portPath)} || { cat ${quoteShell(serverLogPath)} >&2; exit 1; }`,
     `port=$(cat ${quoteShell(portPath)})`,
@@ -8382,84 +8393,121 @@ async function mockProviderBehaviorCheck(tmp) {
 async function mockProviderProcessSafetyCheck(tmp) {
   const dir = join(tmp, "mock-provider-process-safety");
   await mkdir(dir, { recursive: true });
-  const executablePath = join(repoRoot, "node_modules/.bin/mock-ai-provider");
+  const supervisorPath = join(repoRoot, "support/mock-ai-provider-supervisor.mjs");
   const scriptPath = join(dir, "script.json");
   const requestLog = join(dir, "requests.jsonl");
+  const serverLog = join(dir, "server.log");
   const pidFile = join(dir, "pid");
-  const expectedCommand = [
-    "node",
-    executablePath,
-    "serve --providers openai",
-    `--script ${scriptPath}`,
-    "--port 0",
-    `--request-log ${requestLog}`
-  ].join(" ");
+  const stopOptions = {
+    pidFile,
+    supervisorPath,
+    scriptPath,
+    requestLog,
+    serverLog
+  };
+  const expectedCommand = ["node", ...mockProviderSupervisorArgs(stopOptions)].join(" ");
+  const ownerGeneration = "00000000-0000-4000-8000-000000000001";
+  const replacementGeneration = "00000000-0000-4000-8000-000000000002";
+  const ownerText = (pid, generation = ownerGeneration) => `${JSON.stringify(mockProviderOwnerRecord(pid, generation))}\n`;
 
   try {
     assertEqual(
-      isOwnedMockProviderCommand(expectedCommand, { executablePath, scriptPath, requestLog }),
+      isOwnedMockProviderSupervisorCommand(expectedCommand, stopOptions),
       true,
-      "exact mock provider process identity"
+      "exact mock provider supervisor identity"
     );
     assertEqual(
-      isOwnedMockProviderCommand(expectedCommand, {
-        executablePath,
-        scriptPath: join(dir, "other", "script.json"),
-        requestLog
+      isOwnedMockProviderSupervisorCommand(expectedCommand, {
+        ...stopOptions,
+        scriptPath: join(dir, "other", "script.json")
       }),
       false,
-      "same-basename mock provider script is not accepted"
+      "same-basename supervisor script is not accepted"
     );
     assertEqual(
-      isOwnedMockProviderCommand(
+      isOwnedMockProviderSupervisorCommand(
         `node unrelated.mjs ${expectedCommand}`,
-        { executablePath, scriptPath, requestLog }
+        stopOptions
       ),
       false,
-      "expected provider arguments do not authenticate an unrelated process"
+      "expected supervisor arguments do not authenticate an unrelated process"
     );
     assertEqual(
-      isOwnedMockProviderCommand(
-        `${expectedCommand} --script ${join(dir, "other", "script.json")}`,
-        { executablePath, scriptPath, requestLog }
+      isOwnedMockProviderSupervisorCommand(
+        `untrusted-node ${mockProviderSupervisorArgs(stopOptions).join(" ")}`,
+        stopOptions
       ),
       false,
-      "trailing provider arguments do not authenticate a different invocation"
+      "node-like executable name does not authenticate a supervisor"
+    );
+    assertEqual(
+      isOwnedMockProviderSupervisorCommand(
+        `${expectedCommand} --script ${join(dir, "other", "script.json")}`,
+        stopOptions
+      ),
+      false,
+      "trailing supervisor arguments do not authenticate a different invocation"
     );
 
-    for (const invalidPid of ["0\n", "-1\n"]) {
-      await writeFile(pidFile, invalidPid, "utf8");
+    const failedPidFile = join(dir, "pid-directory");
+    const failedScriptPath = join(dir, "failed-start-script.json");
+    const failedRequestLog = join(dir, "failed-start-requests.jsonl");
+    const failedServerLog = join(dir, "failed-start-server.log");
+    await mkdir(failedPidFile);
+    const writeFailedScript = await runCommand(
+      `node support/write-mock-ai-provider-script.mjs --output ${quoteShell(failedScriptPath)} --mode normal`,
+      { timeoutMs: 10000 }
+    );
+    assertEqual(writeFailedScript.status, 0, "partial-startup fixture script created");
+    const failedSupervisor = await runCommand(
+      mockAiProviderServeCommand({
+        scriptPath: failedScriptPath,
+        requestLog: failedRequestLog,
+        serverLog: failedServerLog,
+        pidFile: failedPidFile
+      }),
+      { timeoutMs: 10000 }
+    );
+    assertEqual(failedSupervisor.status === 0, false, "supervisor reports pid publication failure");
+    await sleep(200);
+    const failedProcessList = await runCommand("ps -ww -axo command=", { timeoutMs: 10000 });
+    assertEqual(
+      failedProcessList.stdout.includes(failedScriptPath),
+      false,
+      "pid publication failure stops the owned provider"
+    );
+
+    for (const invalidPid of [0, -1]) {
+      await writeFile(pidFile, `${JSON.stringify({
+        schemaVersion: "kova.mock-provider-owner.v1",
+        pid: invalidPid,
+        token: ownerGeneration
+      })}\n`, "utf8");
       let inspected = false;
-      let signaled = false;
+      let stopRequested = false;
       const result = await stopOwnedMockProvider({
-        pidFile,
-        executablePath,
-        scriptPath,
-        requestLog,
+        ...stopOptions,
         inspectProcess: async () => {
           inspected = true;
           return expectedCommand;
         },
-        signalProcess: () => {
-          signaled = true;
+        requestStop: async () => {
+          stopRequested = true;
         }
       });
-      assertEqual(result.status, "invalid-pid", `${invalidPid.trim()} pid status`);
-      assertEqual(inspected, false, `${invalidPid.trim()} pid is not inspected`);
-      assertEqual(signaled, false, `${invalidPid.trim()} pid is not signaled`);
-      await assertPathMissing(pidFile, `${invalidPid.trim()} pid file removed`);
+      assertEqual(result.status, "invalid-pid", `${invalidPid} pid status`);
+      assertEqual(inspected, false, `${invalidPid} pid is not inspected`);
+      assertEqual(stopRequested, false, `${invalidPid} pid does not request shutdown`);
+      await assertPathMissing(pidFile, `${invalidPid} pid file removed`);
     }
 
     const unrelated = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
       stdio: "ignore"
     });
     try {
-      await writeFile(pidFile, `${unrelated.pid}\n`, "utf8");
+      await writeFile(pidFile, ownerText(unrelated.pid), "utf8");
       const recycled = await stopOwnedMockProvider({
-        pidFile,
-        executablePath,
-        scriptPath,
-        requestLog
+        ...stopOptions
       });
       assertEqual(recycled.status, "identity-mismatch", "recycled pid identity status");
       process.kill(unrelated.pid, 0);
@@ -8469,73 +8517,89 @@ async function mockProviderProcessSafetyCheck(tmp) {
     }
 
     const absent = await stopOwnedMockProvider({
-      pidFile,
-      executablePath,
-      scriptPath,
-      requestLog
+      ...stopOptions
     });
     assertEqual(absent.status, "already-absent", "mock cleanup is idempotent");
 
-    await writeFile(pidFile, "12345\n", "utf8");
+    await writeFile(pidFile, ownerText(12345), "utf8");
     let delayedInspections = 0;
     const delayedStop = await stopOwnedMockProvider({
-      pidFile,
-      executablePath,
-      scriptPath,
-      requestLog,
+      ...stopOptions,
       inspectProcess: async () => {
         delayedInspections += 1;
         return delayedInspections < 3 ? expectedCommand : null;
       },
-      signalProcess: () => {},
+      requestStop: async () => {},
       wait: async () => {}
     });
     assertEqual(delayedStop.status, "stopped", "mock cleanup confirms delayed process exit");
     assertEqual(delayedInspections, 3, "mock cleanup polls until process exit");
     await assertPathMissing(pidFile, "confirmed stop removes pid file");
 
-    await writeFile(pidFile, "12345\n", "utf8");
+    const inspectedOwner = mockProviderOwnerRecord(12345, ownerGeneration);
+    const replacementOwner = mockProviderOwnerRecord(12346, replacementGeneration);
+    const replacementOwnerText = `${JSON.stringify(replacementOwner)}\n`;
+    await writeFile(pidFile, `${JSON.stringify(inspectedOwner)}\n`, "utf8");
+    let abaInspections = 0;
+    let requestedStopFile = null;
+    const replaced = await stopOwnedMockProvider({
+      ...stopOptions,
+      inspectProcess: async () => {
+        abaInspections += 1;
+        return abaInspections === 1 ? expectedCommand : null;
+      },
+      requestStop: async (stopFile) => {
+        requestedStopFile = stopFile;
+        await writeFile(pidFile, replacementOwnerText, "utf8");
+      }
+    });
+    assertEqual(replaced.status, "stopped", "replaced supervisor cleanup confirms inspected exit");
+    assertEqual(
+      requestedStopFile,
+      mockProviderStopFile(pidFile, inspectedOwner),
+      "stop request is bound to inspected owner generation"
+    );
+    assertEqual(
+      await readFile(pidFile, "utf8"),
+      replacementOwnerText,
+      "cleanup retains replacement owner generation"
+    );
+    await rm(pidFile, { force: true });
+
+    await writeFile(pidFile, ownerText(12345), "utf8");
     let stopTimedOut = false;
     try {
       await stopOwnedMockProvider({
-        pidFile,
-        executablePath,
-        scriptPath,
-        requestLog,
+        ...stopOptions,
         inspectProcess: async () => expectedCommand,
-        signalProcess: () => {},
+        requestStop: async () => {},
         stopTimeoutMs: 0
       });
     } catch (error) {
-      stopTimedOut = error.message === "mock provider 12345 did not stop within 0ms";
+      stopTimedOut = error.message === "mock provider supervisor 12345 did not stop within 0ms";
     }
     assertEqual(stopTimedOut, true, "mock cleanup reports stop timeout");
     await access(pidFile);
     await rm(pidFile, { force: true });
 
-    for (const failure of ["inspect", "signal"]) {
-      await writeFile(pidFile, "12345\n", "utf8");
+    for (const failure of ["inspect", "request"]) {
+      await writeFile(pidFile, ownerText(12345), "utf8");
       let rejected = false;
       try {
         await stopOwnedMockProvider({
-          pidFile,
-          executablePath,
-          scriptPath,
-          requestLog,
+          ...stopOptions,
           inspectProcess: async () => {
             if (failure === "inspect") {
               throw new Error("process inspection failed");
             }
             return expectedCommand;
           },
-          signalProcess: () => {
-            const error = new Error("signal denied");
-            error.code = "EPERM";
-            throw error;
+          requestStop: async () => {
+            throw new Error("stop request failed");
           }
         });
       } catch (error) {
-        rejected = error.message === (failure === "inspect" ? "process inspection failed" : "signal denied");
+        rejected = error.message === (failure === "inspect" ? "process inspection failed" : "stop request failed");
       }
       assertEqual(rejected, true, `${failure} failure is propagated`);
       await access(pidFile);
@@ -8545,9 +8609,10 @@ async function mockProviderProcessSafetyCheck(tmp) {
     const cleanupPhase = buildAuthCleanupPhase({ mode: "mock" }, dir);
     const cleanupCommand = cleanupPhase.commands[0];
     assertEqual(cleanupCommand.includes("stop-mock-ai-provider.mjs"), true, "auth cleanup uses guarded helper");
-    assertEqual(cleanupCommand.includes(executablePath), true, "auth cleanup pins executable path");
+    assertEqual(cleanupCommand.includes(supervisorPath), true, "auth cleanup pins supervisor path");
     assertEqual(cleanupCommand.includes(join(dir, "mock-openai", "script.json")), true, "auth cleanup pins script path");
     assertEqual(cleanupCommand.includes(join(dir, "mock-openai", "requests.jsonl")), true, "auth cleanup pins request log");
+    assertEqual(cleanupCommand.includes(join(dir, "mock-openai", "server.log")), true, "auth cleanup pins server log");
 
     const prepareDir = join(tmp, "mock-provider-startup-failure");
     const preparePhase = buildAuthPreparePhase(
@@ -8566,6 +8631,11 @@ async function mockProviderProcessSafetyCheck(tmp) {
       prepareCommand.includes("stop-mock-ai-provider.mjs") && prepareCommand.includes(" || exit $?; "),
       true,
       "stale provider cleanup failure aborts startup"
+    );
+    assertEqual(
+      prepareCommand.includes('kill "$supervisor_pid"'),
+      true,
+      "provider startup bounds supervisor pid publication"
     );
     const failedStartup = await runCommand(prepareCommand, { timeoutMs: 10000 });
     assertEqual(failedStartup.status === 0, false, "unhealthy mock provider startup fails");
