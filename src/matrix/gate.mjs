@@ -49,9 +49,8 @@ export function evaluateGate(report, profile, options = {}) {
     });
   }
 
-  const recordKeys = new Set(records.map(recordKey));
   for (const required of policy.blocking) {
-    if (!recordKeys.has(policyKey(required))) {
+    if (!records.some((record) => policyEntryMatchesRecord(required, record))) {
       missingRequired.push(required);
       cards.push({
         severity: partial ? "info" : "blocking",
@@ -165,7 +164,7 @@ function normalizeGatePolicy(profile, options = {}) {
   const entries = Array.isArray(profile?.entries) ? profile.entries : [];
   const warning = normalizePolicyEntries(gate.warning ?? []);
   const blocking = normalizePolicyEntries(gate.blocking ?? entries)
-    .filter((entry) => !warning.some((warningEntry) => policyKey(warningEntry) === policyKey(entry)));
+    .filter((entry) => !warning.some((warningEntry) => warningOverridesBlocking(warningEntry, entry)));
 
   return {
     id: typeof gate.id === "string" && gate.id ? gate.id : `${profile?.id ?? "matrix"}-gate`,
@@ -178,28 +177,83 @@ function normalizeGatePolicy(profile, options = {}) {
 function buildCoverageCards(report, policy, partial, options = {}) {
   const cards = [];
   const resolvedCoverage = options.resolvedCoverage ?? null;
-  const platformKeys = platformCoverageKeys(report.platform);
-  const requirementKeys = new Set((resolvedCoverage?.obligations ?? [])
-    .filter((obligation) => obligation.status === "planned")
+  const observed = observedCoverage(report, resolvedCoverage);
+
+  for (const [policyKey, kind] of [
+    ["surfaces", "surface"],
+    ["platforms", "platform"],
+    ["states", "state"],
+    ["traits", "trait"],
+    ["scenarios", "scenario"],
+    ["stateSurfaces", "state-surface"],
+    ["requirements", "requirement"]
+  ]) {
+    addCoverageCards(cards, {
+      kind,
+      expected: policy.coverage[policyKey],
+      observed: observed[policyKey],
+      partial,
+      statusText: `${observed[policyKey].size} ${kind} coverage item(s) executed`
+    });
+  }
+
+  return cards;
+}
+
+function observedCoverage(report, resolvedCoverage) {
+  const records = (report.records ?? []).filter(isExecutedRecord);
+  const surfaces = new Set();
+  const states = new Set();
+  const traits = new Set();
+  const scenarios = new Set();
+  const stateSurfaces = new Set();
+
+  for (const record of records) {
+    const surface = record.surface;
+    const state = record.state?.id;
+    if (surface) {
+      surfaces.add(surface);
+    }
+    if (state) {
+      states.add(state);
+    }
+    if (record.scenario) {
+      scenarios.add(record.scenario);
+    }
+    if (surface && state) {
+      stateSurfaces.add(`${surface}:${state}`);
+    }
+    for (const trait of record.state?.traits ?? []) {
+      traits.add(trait);
+    }
+  }
+
+  const requirements = new Set((resolvedCoverage?.obligations ?? [])
+    .filter((obligation) =>
+      obligation.status === "planned" &&
+      records.some((record) => obligationMatchesRecord(obligation, record))
+    )
     .map((obligation) => `${obligation.surface}:${obligation.requirement}`)
     .filter((value) => !value.endsWith(":null")));
 
-  addCoverageCards(cards, {
-    kind: "platform",
-    expected: policy.coverage.platforms,
-    observed: platformKeys,
-    partial,
-    statusText: report.platform ? `${report.platform.os}/${report.platform.arch}` : "unknown platform"
-  });
-  addCoverageCards(cards, {
-    kind: "requirement",
-    expected: policy.coverage.requirements,
-    observed: requirementKeys,
-    partial,
-    statusText: `${requirementKeys.size} requirement obligation(s) present`
-  });
+  return {
+    surfaces,
+    platforms: records.length > 0 ? platformCoverageKeys(report.platform) : new Set(),
+    states,
+    traits,
+    scenarios,
+    stateSurfaces,
+    requirements
+  };
+}
 
-  return cards;
+function isExecutedRecord(record) {
+  return record.status !== RECORD_STATUS.DRY_RUN && record.status !== RECORD_STATUS.SKIPPED;
+}
+
+function obligationMatchesRecord(obligation, record) {
+  return obligation.scenario === record.scenario &&
+    (obligation.state === null || obligation.state === undefined || obligation.state === record.state?.id);
 }
 
 function addCoverageCards(cards, { kind, expected, observed, partial, statusText }) {
@@ -241,10 +295,10 @@ function coverageCard({ severity, kind, value, partial, statusText }) {
 }
 
 function stateFromCoverage(kind, value) {
-  if (kind !== "state-surface") {
-    return null;
+  if (kind === "state") {
+    return value;
   }
-  return String(value).split(":")[1] ?? null;
+  return kind === "state-surface" ? String(value).split(":")[1] ?? null : null;
 }
 
 function normalizePolicyEntries(entries) {
@@ -260,8 +314,7 @@ function normalizePolicyEntries(entries) {
 }
 
 function severityForRecord(record, policy) {
-  const key = recordKey(record);
-  if (policy.warning.some((entry) => policyKey(entry) === key)) {
+  if (policy.warning.some((entry) => policyEntryMatchesRecord(entry, record))) {
     return "warning";
   }
   return "blocking";
@@ -514,12 +567,14 @@ function cardRank(card) {
   return severity + kind;
 }
 
-function recordKey(record) {
-  return `${record.scenario}:${record.state?.id ?? ""}`;
+function policyEntryMatchesRecord(entry, record) {
+  return entry.scenario === record.scenario &&
+    (!entry.state || entry.state === record.state?.id);
 }
 
-function policyKey(entry) {
-  return `${entry.scenario}:${entry.state ?? ""}`;
+function warningOverridesBlocking(warning, blocking) {
+  return warning.scenario === blocking.scenario &&
+    (!warning.state || warning.state === blocking.state);
 }
 
 function formatPolicyEntry(entry) {
