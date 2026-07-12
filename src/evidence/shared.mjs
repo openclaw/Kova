@@ -27,6 +27,9 @@ export function phaseCommandReceiptsReason(record) {
       if (commandResultFailed(result)) {
         return `${phase.id} command ${index + 1} exited ${result.status ?? result.exitCode ?? "unknown"}`;
       }
+      if (!commandResultPassed(result)) {
+        return `${phase.id} command ${index + 1} result status was not captured`;
+      }
       if (result.durationMs === undefined) {
         return `${phase.id} command ${index + 1} duration was not captured`;
       }
@@ -405,6 +408,9 @@ export function commandReceiptReason(record, predicate) {
   }
   if (commandResultFailed(result)) {
     return `command exited ${result.status ?? result.exitCode ?? "unknown"}`;
+  }
+  if (!commandResultPassed(result)) {
+    return "command result status was not captured";
   }
   if (result.durationMs === undefined) {
     return "command duration was not captured";
