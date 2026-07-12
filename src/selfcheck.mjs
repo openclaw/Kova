@@ -16,7 +16,7 @@ import { summarizeCpuProfiles } from "./collectors/node-profiles.mjs";
 import { summarizeHeapProfiles } from "./collectors/heap.mjs";
 import { collectEnvMetrics } from "./metrics.mjs";
 import { compactEvaluatedTimelineEvidence, evaluateRecord } from "./evaluator.mjs";
-import { healthTotalFailures } from "./health.mjs";
+import { buildHealthMeasurement, healthTotalFailures } from "./health.mjs";
 import { evaluateWorkflowCase } from "../support/channel-conformance/evaluator.mjs";
 import { assertValidObservationSet } from "../support/channel-conformance/observation-schema.mjs";
 import { planWorkflowCases } from "../support/channel-conformance/planner.mjs";
@@ -71,7 +71,10 @@ import { isMissingOcmResource } from "./ocm/missing-resource.mjs";
 import { assertSafeScenarioCommand, assertSingleTopLevelShellCommand } from "./safety.mjs";
 import { resolveTarget } from "./targets.mjs";
 import {
+  commandResultFailed,
+  commandResultPassed,
   measurementScopeForPhase,
+  phaseResultStatus,
   readinessThresholdForPhase,
   tagCommandResult
 } from "./measurement-contract.mjs";
@@ -82,6 +85,7 @@ import {
   triggerDiagnosticSession,
   triggerHeapSnapshot
 } from "./collectors/diagnostics.mjs";
+import { safeParseRelease } from "./web-payload-contract.mjs";
 import { assertNetworkFrontageCommandSafe, networkFrontageCommandEnv, stopNetworkFrontage, waitForProxyReady, waitForTcp } from "./network-frontage.mjs";
 import { resolveGatewayEndpoint } from "../support/gateway-endpoint.mjs";
 import {
@@ -228,6 +232,8 @@ async function runScopedSelfCheck(flags, scope, workspace) {
   const tmp = workspace.root;
 
   checks.push(await syntaxCheck());
+  checks.push(await webPayloadContractCheck(tmp));
+  checks.push(commandResultContractCheck());
     checks.push(await jsonCommandCheck("version-json", "node bin/kova.mjs version --json", (data) => {
       assertEqual(data.schemaVersion, "kova.version.v1", "version schema");
       assertString(data.version, "version");
@@ -2987,6 +2993,32 @@ function evidenceLedgerGatingCheck() {
     applyEvidenceLedgerGating(failedRecord);
     assertEqual(failedRecord.status, "FAIL", "failed required ledger entry gates pass");
 
+    const failedMetricsRecord = {
+      ...record,
+      status: "PASS",
+      incompleteReason: undefined,
+      incompleteEvidence: undefined,
+      phases: [],
+      finalMetrics: {
+        error: "service status unavailable",
+        service: null,
+        health: null,
+        healthSamples: []
+      }
+    };
+    const health = buildHealthMeasurement(failedMetricsRecord);
+    assertEqual(health.final.ok, null, "failed final metrics health is unknown");
+    assertEqual(health.final.failureCount, null, "failed final metrics do not report zero failures");
+    attachEvidenceLedger(failedMetricsRecord);
+    applyEvidenceLedgerGating(failedMetricsRecord);
+    assertEqual(failedMetricsRecord.status, "INCOMPLETE", "failed final metrics gate pass as incomplete");
+    assertEqual(failedMetricsRecord.evidenceLedger.completeness, "incomplete", "failed final metrics mark ledger incomplete");
+    assertEqual(
+      failedMetricsRecord.evidenceLedger.entries.find((entry) => entry.id === "collector:final-metrics")?.status,
+      "failed",
+      "failed final metrics ledger status"
+    );
+
     const failedPhaseRecord = {
       ...record,
       status: "FAIL",
@@ -3175,6 +3207,133 @@ function evidenceLedgerGatingCheck() {
       id: "evidence-ledger-gating",
       status: "FAIL",
       command: "evaluate evidence ledger status gating",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+async function webPayloadContractCheck(tmp) {
+  const inputPath = join(tmp, "web-payload-input.json");
+  const outDir = join(tmp, "web-payload-output");
+  const payload = {
+    ver: "2026.7.12-self-check",
+    releaseDate: "2026-07-12",
+    date: "2026-07-12",
+    sha: "self-check",
+    passed: true,
+    runCount: 1,
+    coldReadyDeltaPct: -12.5,
+    scenarios: [{
+      id: "release-runtime-startup",
+      value: -1,
+      unit: "ms",
+      threshold: 1000.5,
+      state: "pass",
+      spark: [-2, 0, 2]
+    }],
+    runs: [{
+      id: "self-check-run",
+      runtime: "npm:2026.7.12",
+      profile: "release",
+      startedAt: "2026-07-12T01:02:03Z",
+      durationMs: 0,
+      entryCount: 0,
+      state: "pass",
+      scenarios: [{
+        id: "release-runtime-startup",
+        state: "pass",
+        sampleCount: 0
+      }],
+      bundle: {
+        name: "self-check.tar.gz",
+        bytes: 0,
+        href: "/bundles/self-check.tar.gz"
+      }
+    }]
+  };
+
+  assertEqual(safeParseRelease(payload).ok, true, "valid web payload");
+  assertEqual(
+    safeParseRelease({ ...payload, coldReadyDeltaPercent: payload.coldReadyDeltaPct }).ok,
+    false,
+    "unknown web payload field rejected"
+  );
+  assertEqual(
+    safeParseRelease({
+      ...payload,
+      runs: [{ ...payload.runs[0], durationMs: -1 }]
+    }).ok,
+    false,
+    "negative duration rejected"
+  );
+  assertEqual(
+    safeParseRelease({
+      ...payload,
+      runs: [{ ...payload.runs[0], entryCount: 1.5 }]
+    }).ok,
+    false,
+    "fractional count rejected"
+  );
+  assertEqual(
+    safeParseRelease({
+      ...payload,
+      scenarios: [{ ...payload.scenarios[0], threshold: -1 }]
+    }).ok,
+    false,
+    "negative threshold rejected"
+  );
+
+  await writeFile(inputPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  const result = await runCommand(
+    `node bin/kova.mjs publish ${quoteShell(inputPath)} --out-dir ${quoteShell(outDir)} --no-augment --json`,
+    { timeoutMs: 30000, maxOutputChars: 1000000 }
+  );
+  if (result.status !== 0) {
+    throw new Error(result.stderr.trim() || result.stdout.trim() || `publish exited ${result.status}`);
+  }
+  const published = JSON.parse(await readFile(join(outDir, `${payload.ver}.json`), "utf8"));
+  assertEqual(published.releaseDate, "2026-07-12T00:00:00.000Z", "publish writes canonical release date");
+  assertEqual(published.runs[0].startedAt, "2026-07-12T01:02:03.000Z", "publish writes canonical run date");
+  return {
+    id: "web-payload-contract",
+    status: "PASS",
+    command: "validate and publish canonical web payload",
+    durationMs: result.durationMs
+  };
+}
+
+function commandResultContractCheck() {
+  try {
+    assertEqual(commandResultPassed({ exitCode: 0 }), true, "exitCode zero passes");
+    assertEqual(commandResultFailed({ exitCode: 2 }), true, "nonzero exitCode fails");
+    assertEqual(
+      commandResultFailed({ evidenceStatus: "failed", status: 0 }),
+      true,
+      "failed evidence overrides zero command status"
+    );
+    assertEqual(
+      commandResultPassed({ evidenceStatus: "missing", status: 0 }),
+      false,
+      "missing evidence does not pass"
+    );
+    assertEqual(
+      commandResultFailed({ evidenceStatus: "missing", status: 0 }),
+      false,
+      "missing evidence is incomplete rather than failed"
+    );
+    assertEqual(phaseResultStatus([{ exitCode: 0 }]), "success", "phase accepts exitCode result");
+    return {
+      id: "command-result-contract",
+      status: "PASS",
+      command: "evaluate shared command result classification",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "command-result-contract",
+      status: "FAIL",
+      command: "evaluate shared command result classification",
       durationMs: 0,
       message: error.message
     };
