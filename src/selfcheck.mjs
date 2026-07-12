@@ -3380,8 +3380,17 @@ async function openClawStateSymlinkContainmentCheck(tmp) {
       join(outside, "plugins", "escaped-plugin"),
       join(home, "plugins", "escaped-plugin")
     );
+    for (let index = 0; index < 4; index += 1) {
+      await symlink(
+        join(outside, "plugins", "escaped-plugin"),
+        join(home, "plugins", `escaped-plugin-${index}`)
+      );
+    }
 
-    const snapshot = await captureOpenClawStateSnapshot({ home });
+    const snapshot = await captureOpenClawStateSnapshot({
+      home,
+      limits: { maxPluginDirs: 2 }
+    });
     const serialized = JSON.stringify(snapshot);
     assertEqual(serialized.includes("KOVA_KNOWN_FILE_ESCAPE_CANARY"), false, "known-file symlink escape is not read");
     assertEqual(serialized.includes("KOVA_PLUGIN_ESCAPE_CANARY"), false, "plugin symlink escape is not read");
@@ -3391,6 +3400,11 @@ async function openClawStateSymlinkContainmentCheck(tmp) {
     assertEqual(snapshot.budget.excludedPaths.includes("settings.json"), true, "escaped known file is recorded");
     assertEqual(snapshot.budget.excludedPaths.includes(".openclaw/plugins"), true, "escaped plugin root is recorded");
     assertEqual(snapshot.budget.excludedPaths.includes("plugins/escaped-plugin"), true, "escaped plugin directory is recorded");
+    assertEqual(
+      snapshot.budget.excludedPaths.filter((path) => path.startsWith("plugins/escaped-plugin")).length,
+      2,
+      "escaped plugin exclusions respect the plugin directory budget"
+    );
 
     return {
       id: "openclaw-state-symlink-containment",

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { mkdir, open, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { mkdir, open, readdir, realpath, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 
 export const OPENCLAW_STATE_SNAPSHOT_SCHEMA = "kova.openclawStateSnapshot.v1";
@@ -236,16 +236,7 @@ async function summarizePluginRoot(home, resolvedHome, rootRelPath, limits, snap
   const entries = await readdir(resolvedRoot, { withFileTypes: true }).catch(() => []);
   let seen = 0;
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-    if (entry.isSymbolicLink()) {
-      snapshot.budget.excludedPaths.push(`${rootRelPath}/${entry.name}`);
-      snapshot.budget.omittedCount += 1;
-      continue;
-    }
-    if (!entry.isDirectory()) {
-      continue;
-    }
-    if (EXCLUDED_DIRS.has(entry.name)) {
-      snapshot.budget.excludedPaths.push(`${rootRelPath}/${entry.name}`);
+    if (!entry.isDirectory() && !entry.isSymbolicLink()) {
       continue;
     }
     if (seen >= limits.maxPluginDirs) {
@@ -253,6 +244,15 @@ async function summarizePluginRoot(home, resolvedHome, rootRelPath, limits, snap
       continue;
     }
     seen += 1;
+    if (entry.isSymbolicLink()) {
+      snapshot.budget.excludedPaths.push(`${rootRelPath}/${entry.name}`);
+      snapshot.budget.omittedCount += 1;
+      continue;
+    }
+    if (EXCLUDED_DIRS.has(entry.name)) {
+      snapshot.budget.excludedPaths.push(`${rootRelPath}/${entry.name}`);
+      continue;
+    }
 
     const relPath = `${rootRelPath}/${entry.name}`;
     const resolvedPluginRoot = await resolveContainedPath(
@@ -485,73 +485,69 @@ function summaryStringFingerprint(summary) {
 
 async function summarizeFile(home, resolvedHome, relPath, limits, snapshot) {
   const fullPath = join(home, relPath);
-  const resolvedPath = await resolveContainedPath(resolvedHome, fullPath, relPath, snapshot);
-  if (!resolvedPath) {
+  const opened = await openContainedFile(resolvedHome, fullPath, relPath, snapshot);
+  if (!opened) {
     return null;
   }
-  const stats = await stat(resolvedPath).catch(() => null);
-  if (!stats) {
-    return null;
-  }
-  if (!stats.isFile()) {
-    snapshot.budget.omittedCount += 1;
-    return null;
-  }
+  const { handle, stats } = opened;
+  try {
+    if (!stats.isFile()) {
+      snapshot.budget.omittedCount += 1;
+      return null;
+    }
 
-  const sample = await readFileSample(resolvedPath, stats.size, limits.maxFileBytes);
-  const summary = {
-    path: relPath,
-    name: basename(relPath),
-    bytes: stats.size,
-    sampledBytes: sample.bytes.length,
-    truncated: sample.truncated,
-    hashScope: sample.truncated ? "sample" : "full",
-    sha256: sha256(sample.bytes),
-    json: null
-  };
-
-  if (sample.truncated) {
-    summary.truncation = {
-      reason: "file exceeded snapshot maxFileBytes",
-      maxFileBytes: limits.maxFileBytes
+    const sample = await readFileSample(handle, stats.size, limits.maxFileBytes);
+    const summary = {
+      path: relPath,
+      name: basename(relPath),
+      bytes: stats.size,
+      sampledBytes: sample.bytes.length,
+      truncated: sample.truncated,
+      hashScope: sample.truncated ? "sample" : "full",
+      sha256: sha256(sample.bytes),
+      json: null
     };
-  }
 
-  if (relPath.endsWith(".json") && !sample.truncated) {
-    try {
-      const parsed = JSON.parse(sample.bytes.toString("utf8"));
-      const redaction = { secretKeyCount: 0 };
-      summary.json = summarizeJson(parsed, { limits, redaction });
-      snapshot.redaction.secretKeyCount += redaction.secretKeyCount;
-    } catch (error) {
-      summary.json = {
-        parseError: error.message
+    if (sample.truncated) {
+      summary.truncation = {
+        reason: "file exceeded snapshot maxFileBytes",
+        maxFileBytes: limits.maxFileBytes
       };
     }
-  }
 
-  return summary;
+    if (relPath.endsWith(".json") && !sample.truncated) {
+      try {
+        const parsed = JSON.parse(sample.bytes.toString("utf8"));
+        const redaction = { secretKeyCount: 0 };
+        summary.json = summarizeJson(parsed, { limits, redaction });
+        snapshot.redaction.secretKeyCount += redaction.secretKeyCount;
+      } catch (error) {
+        summary.json = {
+          parseError: error.message
+        };
+      }
+    }
+
+    return summary;
+  } finally {
+    await handle.close();
+  }
 }
 
-async function readFileSample(path, size, maxBytes) {
+async function readFileSample(handle, size, maxBytes) {
   if (size <= maxBytes) {
     return {
-      bytes: await readFile(path),
+      bytes: await handle.readFile(),
       truncated: false
     };
   }
 
-  const handle = await open(path, constants.O_RDONLY);
-  try {
-    const bytes = Buffer.alloc(maxBytes);
-    const { bytesRead } = await handle.read(bytes, 0, maxBytes, 0);
-    return {
-      bytes: bytes.subarray(0, bytesRead),
-      truncated: true
-    };
-  } finally {
-    await handle.close();
-  }
+  const bytes = Buffer.alloc(maxBytes);
+  const { bytesRead } = await handle.read(bytes, 0, maxBytes, 0);
+  return {
+    bytes: bytes.subarray(0, bytesRead),
+    truncated: true
+  };
 }
 
 function summarizeJson(value, context, key = null, depth = 0) {
@@ -618,6 +614,43 @@ async function existsContained(resolvedHome, path) {
   return resolvedPath !== null && isContainedPath(resolvedHome, resolvedPath);
 }
 
+async function openContainedFile(resolvedHome, path, displayPath, snapshot) {
+  const initialPath = await resolveContainedPath(resolvedHome, path, displayPath, snapshot);
+  if (!initialPath) {
+    return null;
+  }
+  const handle = await open(
+    initialPath,
+    constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0)
+  ).catch(() => null);
+  if (!handle) {
+    return null;
+  }
+  let transferred = false;
+  try {
+    const handleStats = await handle.stat();
+    const currentPath = await realpath(path).catch(() => null);
+    if (!currentPath || !isContainedPath(resolvedHome, currentPath)) {
+      recordExcludedPath(snapshot, displayPath);
+      return null;
+    }
+    const currentStats = await stat(currentPath).catch(() => null);
+    if (!currentStats || currentStats.dev !== handleStats.dev || currentStats.ino !== handleStats.ino) {
+      recordExcludedPath(snapshot, displayPath);
+      return null;
+    }
+    transferred = true;
+    return {
+      handle,
+      stats: handleStats
+    };
+  } finally {
+    if (!transferred) {
+      await handle.close();
+    }
+  }
+}
+
 async function resolveContainedPath(resolvedHome, path, displayPath, snapshot) {
   const resolvedPath = await realpath(path).catch(() => null);
   if (!resolvedPath) {
@@ -626,9 +659,15 @@ async function resolveContainedPath(resolvedHome, path, displayPath, snapshot) {
   if (isContainedPath(resolvedHome, resolvedPath)) {
     return resolvedPath;
   }
-  snapshot.budget.excludedPaths.push(displayPath);
-  snapshot.budget.omittedCount += 1;
+  recordExcludedPath(snapshot, displayPath);
   return null;
+}
+
+function recordExcludedPath(snapshot, path) {
+  if (!snapshot.budget.excludedPaths.includes(path)) {
+    snapshot.budget.excludedPaths.push(path);
+  }
+  snapshot.budget.omittedCount += 1;
 }
 
 function isContainedPath(root, candidate) {
