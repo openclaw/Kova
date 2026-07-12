@@ -17890,6 +17890,7 @@ async function logArtifactRedactionCheck(tmp) {
   const escapedCliTail = ["escaped", "cli", "tail", "canary"].join("-");
   const unquotedFieldTail = ["unquoted", "field", "tail", "canary"].join("-");
   const pemBodyCanary = ["pem", "body", "canary"].join("-");
+  const privateKeyLabel = ["PRIVATE", "KEY"].join(" ");
   const canaries = [
     headerCanary,
     prefixedHeaderCanary,
@@ -17919,9 +17920,9 @@ async function logArtifactRedactionCheck(tmp) {
     `command --token ${JSON.stringify(`prefix"${escapedCliTail}`)}`,
     `${databasePasswordKey.toLowerCase()}: kova ${unquotedFieldTail}`,
     [
-      `private_${["key"].join("")}: -----BEGIN PRIVATE KEY-----`,
+      `private_${["key"].join("")}: -----BEGIN ${privateKeyLabel}-----`,
       pemBodyCanary,
-      "-----END PRIVATE KEY-----"
+      `-----END ${privateKeyLabel}-----`
     ].join("\n")
   ].join("\n");
   try {
