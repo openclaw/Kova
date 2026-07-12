@@ -41,11 +41,16 @@ export async function collectTimelineMetrics(artifactDir) {
   }
 
   const timeline = await loadTimeline(timelinePath);
-  const malformed = timeline.present === true && timeline.parseErrorCount > 0 && timeline.eventCount === 0;
+  const hasParseErrors = timeline.present === true && timeline.parseErrorCount > 0;
+  const malformedError = hasParseErrors
+    ? (timeline.eventCount === 0
+        ? "OpenClaw timeline was emitted but contained no valid events"
+        : `OpenClaw timeline contained ${timeline.parseErrorCount} malformed record(s)`)
+    : null;
   return {
     schemaVersion: TIMELINE_COLLECTOR_SCHEMA,
     commandStatus: 0,
-    statusLabel: timeline.available ? "PASS" : (malformed || timeline.error ? "WARN" : "INFO"),
+    statusLabel: hasParseErrors || timeline.error ? "WARN" : (timeline.available ? "PASS" : "INFO"),
     durationMs: Date.now() - startedAt,
     available: timeline.available,
     eventCount: timeline.eventCount,
@@ -67,9 +72,7 @@ export async function collectTimelineMetrics(artifactDir) {
     turnAttributionEvents: timeline.turnAttributionEvents,
     events: timeline.events,
     artifacts: timeline.present ? [timelinePath] : [],
-    error: timeline.available
-      ? null
-      : (timeline.error ?? (malformed ? "OpenClaw timeline was emitted but contained no valid events" : (timeline.missing ? "OpenClaw timeline not emitted" : null)))
+    error: malformedError ?? timeline.error ?? (timeline.missing ? "OpenClaw timeline not emitted" : null)
   };
 }
 

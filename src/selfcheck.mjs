@@ -12434,6 +12434,16 @@ async function malformedTimelineCheck(tmp) {
     assertEqual(timeline.artifacts.length, 1, "malformed timeline artifact retained");
     assertEqual(timeline.statusLabel, "WARN", "malformed timeline is warning-classified");
     assertEqual(timeline.error.includes("contained no valid events"), true, "malformed timeline is not reported missing");
+    await writeFile(
+      join(artifactDir, "openclaw", "timeline.jsonl"),
+      '{"schemaVersion":"openclaw.diagnostics.v1","type":"span.end","timestamp":"2026-04-29T15:30:00.000Z","name":"gateway.startup","spanId":"1","durationMs":10}\n{not-json}\n'
+    );
+    const partial = await collectTimelineMetrics(artifactDir);
+    assertEqual(partial.available, true, "partially malformed timeline retains valid events");
+    assertEqual(partial.eventCount, 1, "partially malformed timeline counts valid events");
+    assertEqual(partial.parseErrorCount, 1, "partially malformed timeline retains parse failures");
+    assertEqual(partial.statusLabel, "WARN", "partial corruption takes precedence over availability");
+    assertEqual(partial.error.includes("1 malformed record"), true, "partial corruption is explained");
     return {
       id: "malformed-timeline-evidence",
       status: "PASS",
