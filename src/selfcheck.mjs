@@ -167,6 +167,7 @@ import { renderHelp } from "./reporting/render-help.mjs";
 import { renderInventoryPlan } from "./reporting/render-inventory.mjs";
 import { renderMatrixPlan } from "./reporting/render-matrix-plan.mjs";
 import { renderPlan } from "./reporting/render-plan.mjs";
+import { createRunProgress } from "./reporting/render-run-progress.mjs";
 import { renderRunReceipt } from "./reporting/render-run-receipt.mjs";
 import { aggregateScenarios, runConfidence } from "./reporting/scenario-aggregate.mjs";
 import { summarizePerformanceReceipt } from "./run/options.mjs";
@@ -2844,6 +2845,7 @@ function compareIdentityAndRollupCheck() {
       records: [findingRecord([{
         kind: "protocol",
         metric: "providerResponse",
+        expected: "<= 0",
         message: "provider returned HTTP 401"
       }])]
     });
@@ -2854,6 +2856,7 @@ function compareIdentityAndRollupCheck() {
       records: [findingRecord([{
         kind: "protocol",
         metric: "providerResponse",
+        expected: "<= 0",
         message: "provider returned HTTP 500"
       }])]
     });
@@ -2907,6 +2910,23 @@ function compareIdentityAndRollupCheck() {
     for (const scenarios of [mixedExecutionStates, [...mixedExecutionStates].reverse()]) {
       const rollup = rollupScenarios({ scenarios })[0];
       assertEqual(rollup.currentStatus, "DRY-RUN", "rollup dry-run outranks pass deterministically");
+    }
+    const mixedVerdictStates = [{
+      scenario: "mixed-verdict",
+      status: "BLOCKED",
+      currentSampleCount: 1,
+      currentStatuses: { BLOCKED: 1 },
+      regressions: []
+    }, {
+      scenario: "mixed-verdict",
+      status: "FAIL",
+      currentSampleCount: 1,
+      currentStatuses: { FAIL: 1 },
+      regressions: []
+    }];
+    for (const scenarios of [mixedVerdictStates, [...mixedVerdictStates].reverse()]) {
+      const rollup = rollupScenarios({ scenarios })[0];
+      assertEqual(rollup.verdict, "FAIL", "compare rollup FAIL outranks BLOCKED");
     }
 
     const improved = {
@@ -3419,6 +3439,26 @@ function reportStatusPrecedenceCheck() {
       process.stdout
     );
     assertEqual(plannedAssessment.includes("1 planned of 2 samples"), true, "assessment reports mixed planned samples");
+
+    const progressOutput = [];
+    const progress = createRunProgress({
+      flags: { color: "always" },
+      env: { TERM: "xterm-256color" },
+      stream: {
+        isTTY: true,
+        columns: 120,
+        write(value) {
+          progressOutput.push(String(value));
+          return true;
+        }
+      }
+    });
+    progress.runFinish({ total: 1, statuses: { SKIPPED: 1 } });
+    assertEqual(
+      progressOutput.join("").includes("\u001b[33m[FINISH]"),
+      true,
+      "skipped run finish uses warning tone"
+    );
 
     const gate = evaluateGate(report, {
       id: "mixed-status-gate",
