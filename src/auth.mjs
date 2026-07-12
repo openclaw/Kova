@@ -1,19 +1,8 @@
 import { execFile } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { access, chmod, mkdir, open, readFile, readdir, rename, rmdir, stat, unlink } from "node:fs/promises";
-import {
-  closeSync,
-  constants,
-  fsyncSync,
-  mkdirSync,
-  openSync,
-  readFileSync,
-  rmdirSync,
-  statSync,
-  unlinkSync,
-  writeFileSync
-} from "node:fs";
-import { basename, isAbsolute, join } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { access, chmod, link, mkdir, open, readFile, readdir, rename, unlink } from "node:fs/promises";
+import { constants } from "node:fs";
+import { isAbsolute, join } from "node:path";
 import { credentialsDir, liveEnvPath, providersPath, repoRoot } from "./paths.mjs";
 import { quoteShell } from "./commands.mjs";
 import { ocmAt, ocmEnvExec } from "./ocm/commands.mjs";
@@ -44,8 +33,8 @@ const mockProviderModes = new Set([
 ]);
 const credentialStoreLockPath = join(credentialsDir, ".store.lock");
 const credentialStoreLockTimeoutMs = 20000;
-const staleCredentialStoreLockMs = 15000;
-const credentialStoreRecoveryMarker = ".recovery";
+const credentialStoreLockOwnerPrefix = ".store.lock.owner-";
+const credentialStoreLockReaperPrefix = ".store.lock.reaping-";
 
 export async function ensureCredentialStore() {
   return withCredentialStoreLock(async () => {
@@ -528,32 +517,25 @@ async function discardStagedFile(staged) {
 
 async function acquireCredentialStoreLock() {
   const token = randomUUID();
-  const markerPath = join(credentialStoreLockPath, `owner-${process.pid}-${token}.json`);
   const processStart = await processStartIdentity(process.pid);
-  let directoryIdentity;
-  let descriptor;
+  const ownerPath = credentialStoreLockOwnerPath(process.pid, token);
+  let handle;
   try {
-    mkdirSync(credentialStoreLockPath, { mode: 0o700 });
-    directoryIdentity = lockDirectoryIdentity(statSync(credentialStoreLockPath));
-    descriptor = openSync(markerPath, "wx", 0o600);
-    writeFileSync(descriptor, `${JSON.stringify({
+    handle = await open(ownerPath, "wx", 0o600);
+    await handle.writeFile(`${JSON.stringify({
       pid: process.pid,
       token,
       processStart,
       createdAt: new Date().toISOString()
     })}\n`, "utf8");
-    fsyncSync(descriptor);
-    closeSync(descriptor);
-    descriptor = undefined;
-    assertCredentialStoreLockPublished(markerPath, token, directoryIdentity);
-    return { token, markerPath };
+    await handle.sync();
+    await handle.close();
+    handle = null;
+    await link(ownerPath, credentialStoreLockPath);
+    return { token, ownerPath };
   } catch (error) {
-    if (descriptor !== undefined) {
-      try {
-        closeSync(descriptor);
-      } catch {}
-    }
-    cleanupUnpublishedCredentialStoreLock(markerPath, directoryIdentity);
+    await handle?.close().catch(() => {});
+    await unlink(ownerPath).catch(() => {});
     throw error;
   }
 }
@@ -587,141 +569,130 @@ async function withCredentialStoreLock(callback) {
 }
 
 async function removeStaleCredentialStoreLock() {
-  let entries;
+  let owner;
   try {
-    entries = await readdir(credentialStoreLockPath, { withFileTypes: true });
+    owner = parseCredentialStoreLockOwner(await readFile(credentialStoreLockPath, "utf8"));
   } catch (error) {
     if (error.code === "ENOENT") {
       return true;
     }
-    throw error;
+    return false;
   }
 
-  if (entries.length === 0) {
-    let metadata;
-    try {
-      metadata = await stat(credentialStoreLockPath);
-    } catch (error) {
-      if (error.code === "ENOENT") {
-        return true;
-      }
-      throw error;
-    }
-    if (lockAgeMs(metadata) < staleCredentialStoreLockMs) {
+  if (!(await credentialStoreLockOwnerIsStale(owner))) {
+    return false;
+  }
+
+  const reaperPath = await claimStaleCredentialStoreLock(owner);
+  if (!reaperPath) {
+    return false;
+  }
+
+  try {
+    const currentOwner = parseCredentialStoreLockOwner(await readFile(credentialStoreLockPath, "utf8"));
+    if (currentOwner.token !== owner.token) {
       return false;
     }
-    return claimAndRemoveEmptyCredentialStoreLock();
-  }
-  if (entries.length !== 1 || !entries[0].isFile()) {
-    return false;
-  }
-  const markerName = entries[0].name;
-  if (markerName !== credentialStoreRecoveryMarker && !markerName.startsWith("owner-")) {
-    return false;
-  }
-  const markerPath = join(credentialStoreLockPath, markerName);
-  let metadata;
-  try {
-    metadata = await stat(markerPath);
-  } catch (error) {
-    if (error.code === "ENOENT") {
-      return true;
-    }
-    throw error;
-  }
-  if (!(await credentialStoreLockMarkerIsStale(markerPath, metadata))) {
-    return false;
-  }
-  return removeStaleCredentialStoreLockMarker(markerName);
-}
-
-async function releaseCredentialStoreLock(lock) {
-  try {
-    const owner = JSON.parse(await readFile(lock.markerPath, "utf8"));
-    if (owner.token === lock.token) {
-      await unlink(lock.markerPath);
-      await rmdir(credentialStoreLockPath);
-      return;
-    }
-  } catch (error) {
-    throw new Error(`credential store lock ownership was lost: ${error.message}`, { cause: error });
-  }
-  throw new Error("credential store lock ownership was lost");
-}
-
-async function removeStaleCredentialStoreLockMarker(markerName) {
-  const markerPath = join(credentialStoreLockPath, markerName);
-  try {
-    await unlink(markerPath);
-  } catch (error) {
-    if (error.code === "ENOENT") {
-      return false;
-    }
-    throw error;
-  }
-
-  try {
-    await rmdir(credentialStoreLockPath);
+    await unlink(credentialStoreLockPath);
     return true;
   } catch (error) {
     if (error.code === "ENOENT") {
       return true;
     }
-    if (error.code === "ENOTEMPTY" || error.code === "EEXIST") {
-      return false;
-    }
     throw error;
+  } finally {
+    await unlink(reaperPath).catch(() => {});
   }
 }
 
-async function claimAndRemoveEmptyCredentialStoreLock() {
-  const markerPath = join(credentialStoreLockPath, credentialStoreRecoveryMarker);
-  const processStart = await processStartIdentity(process.pid);
-  let handle;
+async function releaseCredentialStoreLock(lock) {
   try {
-    handle = await open(markerPath, "wx", 0o600);
-    await handle.writeFile(`${JSON.stringify({
-      pid: process.pid,
-      processStart,
-      createdAt: new Date().toISOString()
-    })}\n`, "utf8");
-    await handle.sync();
-    await handle.close();
-    handle = null;
+    const owner = parseCredentialStoreLockOwner(await readFile(credentialStoreLockPath, "utf8"));
+    if (owner.token !== lock.token) {
+      throw new Error("credential store lock ownership was lost");
+    }
+    await unlink(credentialStoreLockPath);
+    await unlink(lock.ownerPath);
+    return;
   } catch (error) {
-    await handle?.close().catch(() => {});
-    if (error.code === "EEXIST" || error.code === "ENOENT") {
-      return false;
-    }
-    throw error;
+    throw new Error(`credential store lock ownership was lost: ${error.message}`, { cause: error });
   }
-  return removeStaleCredentialStoreLockMarker(credentialStoreRecoveryMarker);
 }
 
-function lockAgeMs(metadata) {
-  return Date.now() - metadata.mtimeMs;
-}
-
-async function credentialStoreLockMarkerIsStale(markerPath, metadata) {
+async function claimStaleCredentialStoreLock(owner) {
+  const ownerPath = credentialStoreLockOwnerPath(owner.pid, owner.token);
+  const reaperPath = await createCredentialStoreReaperPath(owner.token);
   try {
-    const owner = JSON.parse(await readFile(markerPath, "utf8"));
-    if (Number.isInteger(owner.pid) && owner.pid > 0) {
-      if (!processIsRunning(owner.pid)) {
-        return true;
-      }
-      if (typeof owner.processStart === "string" && owner.processStart && lockAgeMs(metadata) >= 1000) {
-        const currentStart = await processStartIdentity(owner.pid);
-        return currentStart !== null && currentStart !== owner.processStart;
-      }
-      return false;
-    }
-  } catch {
-    const ownerPid = Number(basename(markerPath).match(/^owner-(\d+)-/)?.[1]);
-    if (Number.isInteger(ownerPid) && ownerPid > 0) {
-      return !processIsRunning(ownerPid) || lockAgeMs(metadata) >= staleCredentialStoreLockMs;
+    await rename(ownerPath, reaperPath);
+    return reaperPath;
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      throw error;
     }
   }
-  return lockAgeMs(metadata) >= staleCredentialStoreLockMs;
+
+  const prefix = `${credentialStoreLockReaperPrefix}${owner.token}-`;
+  const entries = await readdir(credentialsDir);
+  for (const name of entries.filter((entry) => entry.startsWith(prefix))) {
+    if (await credentialStoreReaperIsActive(name, prefix)) {
+      return null;
+    }
+    try {
+      await rename(join(credentialsDir, name), reaperPath);
+      return reaperPath;
+    } catch (error) {
+      if (error.code !== "ENOENT") {
+        throw error;
+      }
+    }
+  }
+  return null;
+}
+
+async function createCredentialStoreReaperPath(ownerToken) {
+  const processStart = await processStartIdentity(process.pid);
+  return join(
+    credentialsDir,
+    `${credentialStoreLockReaperPrefix}${ownerToken}-${process.pid}-${hashProcessStart(processStart)}-${randomUUID()}`
+  );
+}
+
+async function credentialStoreLockOwnerIsStale(owner) {
+  if (!processIsRunning(owner.pid)) {
+    return true;
+  }
+  if (!owner.processStart) {
+    return false;
+  }
+  const currentStart = await processStartIdentity(owner.pid);
+  return currentStart !== null && currentStart !== owner.processStart;
+}
+
+async function credentialStoreReaperIsActive(name, prefix) {
+  const match = name.slice(prefix.length).match(/^(\d+)-(unknown|[0-9a-f]{16})-/);
+  if (!match) {
+    return true;
+  }
+  const pid = Number(match[1]);
+  const expectedStartHash = match[2];
+  if (!Number.isSafeInteger(pid) || pid <= 0 || !processIsRunning(pid)) {
+    return false;
+  }
+  if (expectedStartHash === "unknown") {
+    return true;
+  }
+  const currentStart = await processStartIdentity(pid);
+  return currentStart === null || hashProcessStart(currentStart) === expectedStartHash;
+}
+
+function parseCredentialStoreLockOwner(contents) {
+  const owner = JSON.parse(contents);
+  if (!Number.isSafeInteger(owner.pid) || owner.pid <= 0 ||
+      typeof owner.token !== "string" || !/^[0-9a-f-]{36}$/i.test(owner.token) ||
+      !(owner.processStart === null || typeof owner.processStart === "string")) {
+    throw new Error("invalid credential store lock owner");
+  }
+  return owner;
 }
 
 function processIsRunning(pid) {
@@ -733,33 +704,14 @@ function processIsRunning(pid) {
   }
 }
 
-function assertCredentialStoreLockPublished(markerPath, token, expectedDirectoryIdentity) {
-  const currentIdentity = lockDirectoryIdentity(statSync(credentialStoreLockPath));
-  const owner = JSON.parse(readFileSync(markerPath, "utf8"));
-  if (currentIdentity !== expectedDirectoryIdentity || owner.token !== token) {
-    throw new Error("credential store lock publication lost ownership");
-  }
+function credentialStoreLockOwnerPath(pid, token) {
+  return join(credentialsDir, `${credentialStoreLockOwnerPrefix}${pid}-${token}.json`);
 }
 
-function cleanupUnpublishedCredentialStoreLock(markerPath, expectedDirectoryIdentity) {
-  if (!expectedDirectoryIdentity) {
-    return;
-  }
-  try {
-    if (lockDirectoryIdentity(statSync(credentialStoreLockPath)) !== expectedDirectoryIdentity) {
-      return;
-    }
-    try {
-      unlinkSync(markerPath);
-    } catch {}
-    try {
-      rmdirSync(credentialStoreLockPath);
-    } catch {}
-  } catch {}
-}
-
-function lockDirectoryIdentity(metadata) {
-  return `${metadata.dev}:${metadata.ino}:${metadata.birthtimeMs}`;
+function hashProcessStart(processStart) {
+  return processStart
+    ? createHash("sha256").update(processStart).digest("hex").slice(0, 16)
+    : "unknown";
 }
 
 async function processStartIdentity(pid) {
