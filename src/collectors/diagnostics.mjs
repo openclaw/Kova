@@ -33,12 +33,16 @@ export function collectOpenClawDiagnostics(logs) {
   };
 }
 
-export async function collectDiagnosticMetrics(envName, timeoutMs, artifactDir) {
+export async function collectDiagnosticMetrics(envName, timeoutMs, artifactDir, commandEnv) {
   const command = ocmEnvExecShell(
     envName,
     'find "$OPENCLAW_HOME" -maxdepth 6 -type f \\( -name "report.*.json" -o -name "*.heapsnapshot" -o -name "*heap*.json" -o -name "*diagnostic*.json" \\) -print 2>/dev/null | head -100'
   );
-  const result = await runCommand(command, { timeoutMs, maxOutputChars: 100000 });
+  const result = await runCommand(command, {
+    timeoutMs,
+    maxOutputChars: 100000,
+    env: commandEnv
+  });
   const files = result.status === 0
     ? result.stdout.split("\n").map((line) => line.trim()).filter(Boolean)
     : [];
@@ -76,12 +80,16 @@ export async function collectDiagnosticMetrics(envName, timeoutMs, artifactDir) 
   };
 }
 
-export async function triggerHeapSnapshot(envName, pid, timeoutMs, artifactDir) {
+export async function triggerHeapSnapshot(envName, pid, timeoutMs, artifactDir, commandEnv) {
   const command = ocmEnvExecShell(
     envName,
     `kill -USR2 ${Number(pid)} 2>/dev/null || true; sleep 1; find "$OPENCLAW_HOME" -maxdepth 6 -type f -name "*.heapsnapshot" -print 2>/dev/null | head -25`
   );
-  const result = await runCommand(command, { timeoutMs, maxOutputChars: 100000 });
+  const result = await runCommand(command, {
+    timeoutMs,
+    maxOutputChars: 100000,
+    env: commandEnv
+  });
   const files = result.status === 0
     ? result.stdout.split("\n").map((line) => line.trim()).filter(Boolean)
     : [];
@@ -123,7 +131,11 @@ export async function triggerDiagnosticReport(envName, pid, timeoutMs, artifactD
     envName,
     `${signalCommand}; sleep 1; find "$OPENCLAW_HOME" -maxdepth 6 -type f \\( -name "report.*.json" -o -name "*diagnostic*.json" \\) -print 2>/dev/null | head -25`
   );
-  const result = await runCommand(command, { timeoutMs, maxOutputChars: 100000 });
+  const result = await runCommand(command, {
+    timeoutMs,
+    maxOutputChars: 100000,
+    env: options.commandEnv
+  });
   const files = result.status === 0
     ? result.stdout.split("\n").map((line) => line.trim()).filter(Boolean)
     : [];

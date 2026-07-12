@@ -41,6 +41,7 @@ export async function runScenarioCommand(command, context, envName, artifactDir,
   const result = await runCommand(command, {
     timeoutMs: context.timeoutMs,
     env: {
+      ...(context.commandEnv ?? {}),
       ...diagnosticsEnv(context, envName, artifactDir),
       ...networkFrontageCommandEnv(context),
       ...(authPolicy?.commandEnv ?? {})
@@ -50,6 +51,7 @@ export async function runScenarioCommand(command, context, envName, artifactDir,
       envName,
       intervalMs: context.resourceSampleIntervalMs,
       processRoles: context.processRoles ?? [],
+      commandEnv: context.commandEnv,
       artifactPath: join(collectorArtifactDirs(artifactDir).resourceSamples, `${safeSegment(phaseId)}-${commandIndex + 1}.jsonl`)
     }
   });

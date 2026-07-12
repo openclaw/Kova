@@ -51,7 +51,7 @@ export function startResourceSampler(rootPid, options = {}) {
         nextGatewayLookupSample = samples.length;
       }
       if (gatewayPid === null && samples.length >= nextGatewayLookupSample) {
-        gatewayPid = lookupGatewayPid(options.envName);
+        gatewayPid = lookupGatewayPid(options.envName, options.commandEnv);
         nextGatewayLookupSample = samples.length + 5;
       }
     }
@@ -239,7 +239,7 @@ export function captureProcessSnapshot(options = {}) {
   const envName = options.envName ?? null;
   const allProcesses = listProcesses();
   const gatewayPid = envName
-    ? liveGatewayPid(envName, null, allProcesses) ?? lookupGatewayPid(envName)
+    ? liveGatewayPid(envName, null, allProcesses) ?? lookupGatewayPid(envName, options.commandEnv)
     : null;
   const gatewayTreePids = gatewayPid === null ? new Set() : collectProcessTreePids(allProcesses, gatewayPid);
   const scopeTokens = snapshotScopeTokens(options);
@@ -493,10 +493,12 @@ function liveGatewayPid(envName, currentPid, processes) {
   return null;
 }
 
-function lookupGatewayPid(envName) {
-  const result = spawnSync(process.env.SHELL || "/bin/sh", ["-lc", ocmServiceStatusJson(envName)], {
+function lookupGatewayPid(envName, commandEnv) {
+  const shell = commandEnv?.SHELL ?? process.env.SHELL ?? "/bin/sh";
+  const result = spawnSync(shell, ["-lc", ocmServiceStatusJson(envName)], {
     cwd: repoRoot,
     encoding: "utf8",
+    env: { ...process.env, ...(commandEnv ?? {}) },
     stdio: ["ignore", "pipe", "ignore"],
     timeout: 5000
   });

@@ -55,7 +55,10 @@ export async function collectEnvMetrics(envName, options = {}) {
     return metrics;
   }
 
-  const service = await runCommand(ocmServiceStatusJson(envName), { timeoutMs });
+  const service = await runCommand(ocmServiceStatusJson(envName), {
+    timeoutMs,
+    env: options.commandEnv
+  });
   metrics.serviceCommand = {
     status: service.status,
     durationMs: service.durationMs,
@@ -161,14 +164,21 @@ export async function collectEnvMetrics(envName, options = {}) {
   if (!collectorEnabled(collectionPolicy, "heap-snapshot")) {
     recordSkippedCollector(collectors, "heap-snapshot", collectionPolicy.reason);
   } else if (options.heapSnapshot === true && serviceJson.childPid) {
-    metrics.heapSnapshot = await triggerHeapSnapshot(envName, serviceJson.childPid, timeoutMs, options.artifactDir);
+    metrics.heapSnapshot = await triggerHeapSnapshot(
+      envName,
+      serviceJson.childPid,
+      timeoutMs,
+      options.artifactDir,
+      options.commandEnv
+    );
     recordCollector(collectors, "heap-snapshot", metrics.heapSnapshot, metrics.heapSnapshot.artifacts);
   }
   if (!collectorEnabled(collectionPolicy, "diagnostic-report")) {
     recordSkippedCollector(collectors, "diagnostic-report", collectionPolicy.reason);
   } else if (options.diagnosticReport === true && serviceJson.childPid) {
     metrics.diagnosticReport = await triggerDiagnosticReport(envName, serviceJson.childPid, timeoutMs, options.artifactDir, {
-      signalAlreadySent: options.heapSnapshot === true
+      signalAlreadySent: options.heapSnapshot === true,
+      commandEnv: options.commandEnv
     });
     recordCollector(collectors, "diagnostic-report", metrics.diagnosticReport, metrics.diagnosticReport.artifacts);
   }
@@ -286,7 +296,7 @@ function activeNetworkFrontageProbeEndpoint(allocation) {
 
 async function collectLogAndTimelineMetrics(metrics, collectors, envName, timeoutMs, options, collectionPolicy) {
   if (collectorEnabled(collectionPolicy, "logs")) {
-    metrics.logs = await collectLogMetrics(envName, timeoutMs, options.artifactDir);
+    metrics.logs = await collectLogMetrics(envName, timeoutMs, options.artifactDir, options.commandEnv);
     recordCollector(collectors, "logs", metrics.logs, metrics.logs.artifacts);
   } else {
     recordSkippedCollector(collectors, "logs", collectionPolicy.reason);
@@ -318,7 +328,12 @@ async function collectLogAndTimelineMetrics(metrics, collectors, envName, timeou
 
 async function collectDiagnosticArtifactMetrics(metrics, collectors, envName, timeoutMs, options, collectionPolicy) {
   if (collectorEnabled(collectionPolicy, "diagnostics")) {
-    metrics.diagnostics = await collectDiagnosticMetrics(envName, timeoutMs, options.artifactDir);
+    metrics.diagnostics = await collectDiagnosticMetrics(
+      envName,
+      timeoutMs,
+      options.artifactDir,
+      options.commandEnv
+    );
     recordCollector(collectors, "diagnostics", metrics.diagnostics, metrics.diagnostics.artifacts);
   } else {
     recordSkippedCollector(collectors, "diagnostics", collectionPolicy.reason);
