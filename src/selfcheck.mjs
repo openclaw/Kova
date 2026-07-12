@@ -17906,6 +17906,8 @@ async function logArtifactRedactionCheck(tmp) {
   const cliContinuationCanary = ["cli", "continuation", "canary"].join("-");
   const urlPasswordCanary = ["url", "password", "canary@"].join("-");
   const encodedUrlPasswordCanary = encodeURIComponent(urlPasswordCanary);
+  const dotenvMultilineCanary = ["dotenv", "multiline", "canary"].join("-");
+  const structuredJsonCanary = ["structured", "json", "canary"].join("-");
   const clientSecretFlag = ["--client", "secret"].join("-");
   const canaries = [
     headerCanary,
@@ -17928,7 +17930,9 @@ async function logArtifactRedactionCheck(tmp) {
     plainContinuationHeadCanary,
     plainContinuationTailCanary,
     cliContinuationCanary,
-    encodedUrlPasswordCanary
+    encodedUrlPasswordCanary,
+    dotenvMultilineCanary,
+    structuredJsonCanary
   ];
   const fakeLogs = [
     `Authorization${": "}Bearer ${headerCanary}`,
@@ -17957,7 +17961,13 @@ async function logArtifactRedactionCheck(tmp) {
     `${sessionTokenKey}: |2-\n  ${yamlContinuationCanary}`,
     `${sessionTokenKey}: ${plainContinuationHeadCanary}\n  ${plainContinuationTailCanary}`,
     `command --token ${"\\"}\n  ${cliContinuationCanary}`,
-    `postgresql://alice:${encodedUrlPasswordCanary}@db.example/kova`
+    `postgresql://alice:${encodedUrlPasswordCanary}@db.example/kova`,
+    `${databasePasswordKey}="first line\n${dotenvMultilineCanary}"`,
+    JSON.stringify({
+      [genericTokenKey]: structuredJsonCanary,
+      openclawDiagnostic: true,
+      category: "redaction-self-check"
+    })
   ].join("\n");
   try {
     await mkdir(fakeBin, { recursive: true });
@@ -17981,6 +17991,11 @@ printf '%s\n' "$KOVA_FAKE_LOGS"
     }
     assertEqual(artifact.includes("[REDACTED]"), true, "log artifact contains redaction markers");
     assertEqual(metrics.providerTimeoutMentions, 1, "log metrics preserve signals after sensitive fields");
+    assertEqual(
+      metrics.structuredEvents.some((event) => event.category === "redaction-self-check"),
+      true,
+      "log metrics preserve structured fields beside secrets"
+    );
 
     return {
       id: "log-artifact-redaction",

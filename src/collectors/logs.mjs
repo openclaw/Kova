@@ -9,14 +9,7 @@ export const LOG_METRICS_SCHEMA = "kova.logMetrics.v1";
 const PROVIDER_TIMEOUT_SIGNAL_PATTERN =
   /(?:\bprovider\b|\bmodel\b).*(?:\btimeouts?\b|\btimed out\b)|(?:\btimeouts?\b|\btimed out\b).*(?:\bprovider\b|\bmodel\b)/i;
 const SENSITIVE_LOG_KEY = String.raw`[a-z0-9_-]*(?:api[_-]?key|token|secret|password|cookie|credential|private[_-]?key|authorization)[a-z0-9_-]*`;
-const SENSITIVE_VALUE_TO_LINE_END_PATTERN = new RegExp(
-  `(["']?\\b${SENSITIVE_LOG_KEY}\\b["']?\\s*[:=]\\s*).*$`,
-  "gim"
-);
-const SENSITIVE_CLI_TO_LINE_END_PATTERN = new RegExp(
-  `((?:^|\\s)--${SENSITIVE_LOG_KEY}(?:=|\\s+)).*$`,
-  "gim"
-);
+const SENSITIVE_LOG_KEY_PATTERN = new RegExp(`^${SENSITIVE_LOG_KEY}$`, "i");
 const SENSITIVE_VALUE_LINE_PATTERN = new RegExp(
   `(["']?\\b${SENSITIVE_LOG_KEY}\\b["']?\\s*[:=]\\s*)(.*)$`,
   "i"
@@ -96,17 +89,9 @@ export function redactLogText(value) {
   const text = String(value ?? "").replace(PEM_PRIVATE_KEY_PATTERN, "[REDACTED]");
   return redactSensitiveContinuations(text)
     .replace(URL_USERINFO_PATTERN, "$1[REDACTED]@")
-    .replace(
-      SENSITIVE_VALUE_TO_LINE_END_PATTERN,
-      "$1[REDACTED]"
-    )
-    .replace(
-      SENSITIVE_CLI_TO_LINE_END_PATTERN,
-      "$1[REDACTED]"
-    )
     .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [REDACTED]")
     .replace(
-      /^((?:.*?)(?:authorization|proxy-authorization|x-api-key|api-key|cookie|set-cookie)\s*:\s*).+$/gim,
+      /^((?:.*\s)?(?:authorization|proxy-authorization|x-api-key|api-key|cookie|set-cookie)\s*:\s*).+$/gim,
       "$1[REDACTED]"
     );
 }
@@ -114,10 +99,22 @@ export function redactLogText(value) {
 function redactSensitiveContinuations(value) {
   const lines = String(value ?? "").split(/\r?\n/);
   let blockIndent = null;
+  let quotedContinuation = null;
   let redactNextValue = false;
 
   for (const [index, line] of lines.entries()) {
     const indent = line.match(/^[ \t]*/)?.[0].length ?? 0;
+    if (quotedContinuation !== null) {
+      const closingIndex = findUnescapedQuote(line, quotedContinuation);
+      if (line.trim() !== "") {
+        const suffix = closingIndex === -1 ? "" : line.slice(closingIndex + 1);
+        lines[index] = `${line.slice(0, indent)}[REDACTED]${suffix}`;
+      }
+      if (closingIndex !== -1) {
+        quotedContinuation = null;
+      }
+      continue;
+    }
     if (redactNextValue) {
       if (line.trim() === "") {
         continue;
@@ -136,6 +133,12 @@ function redactSensitiveContinuations(value) {
       blockIndent = null;
     }
 
+    const structuredLine = redactStructuredJsonLine(line);
+    if (structuredLine !== null) {
+      lines[index] = structuredLine;
+      continue;
+    }
+
     const pattern = SENSITIVE_VALUE_LINE_PATTERN.test(line)
       ? SENSITIVE_VALUE_LINE_PATTERN
       : SENSITIVE_CLI_LINE_PATTERN.test(line)
@@ -144,8 +147,12 @@ function redactSensitiveContinuations(value) {
     if (!pattern) {
       continue;
     }
-    const marker = line.match(pattern)?.[2].trim();
+    const marker = line.match(pattern)?.[2].trim() ?? "";
     lines[index] = line.replace(pattern, "$1[REDACTED]");
+    quotedContinuation = unclosedStartingQuote(marker);
+    if (quotedContinuation !== null) {
+      continue;
+    }
     if (marker.endsWith("\\")) {
       redactNextValue = true;
     } else {
@@ -156,6 +163,73 @@ function redactSensitiveContinuations(value) {
   }
 
   return lines.join("\n");
+}
+
+function redactStructuredJsonLine(line) {
+  const jsonStart = line.indexOf("{");
+  if (jsonStart === -1) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(line.slice(jsonStart));
+    const redacted = redactStructuredJsonValue(parsed);
+    return redacted.changed
+      ? `${line.slice(0, jsonStart)}${JSON.stringify(redacted.value)}`
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function redactStructuredJsonValue(value) {
+  if (Array.isArray(value)) {
+    let changed = false;
+    const items = value.map((item) => {
+      const redacted = redactStructuredJsonValue(item);
+      changed ||= redacted.changed;
+      return redacted.value;
+    });
+    return { value: items, changed };
+  }
+  if (!value || typeof value !== "object") {
+    return { value, changed: false };
+  }
+
+  let changed = false;
+  const entries = Object.entries(value).map(([key, item]) => {
+    if (SENSITIVE_LOG_KEY_PATTERN.test(key)) {
+      changed = true;
+      return [key, "[REDACTED]"];
+    }
+    const redacted = redactStructuredJsonValue(item);
+    changed ||= redacted.changed;
+    return [key, redacted.value];
+  });
+  return { value: Object.fromEntries(entries), changed };
+}
+
+function unclosedStartingQuote(value) {
+  const quote = value[0];
+  if (!["\"", "'", "`"].includes(quote)) {
+    return null;
+  }
+  return findUnescapedQuote(value, quote, 1) === -1 ? quote : null;
+}
+
+function findUnescapedQuote(value, quote, startIndex = 0) {
+  let escaped = false;
+  for (let index = startIndex; index < value.length; index += 1) {
+    const character = value[index];
+    if (character === quote && !escaped) {
+      return index;
+    }
+    if (character === "\\" && !escaped) {
+      escaped = true;
+    } else {
+      escaped = false;
+    }
+  }
+  return -1;
 }
 
 export function boundedLogSnippet(value, maxChars) {
