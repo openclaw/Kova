@@ -1434,6 +1434,33 @@ function evaluationViolationHelpersCheck() {
       "malformed helper payloads are Kova harness blockers"
     );
 
+    const optionalMeasurements = [];
+    checkTurnThreshold(
+      optionalMeasurements,
+      { phaseId: "turn", cleanupMs: null },
+      "cleanupMs",
+      5000,
+      "agent cleanup was unavailable",
+      { optionalMeasurement: true }
+    );
+    checkAggregateThreshold(
+      optionalMeasurements,
+      null,
+      "agentCleanupMaxMs",
+      5000,
+      { optionalMeasurement: true }
+    );
+    assertEqual(optionalMeasurements.length, 0, "missing optional measurements stay non-blocking");
+    checkTurnThreshold(
+      optionalMeasurements,
+      { phaseId: "turn", cleanupMs: -1 },
+      "cleanupMs",
+      5000,
+      "agent cleanup was malformed",
+      { optionalMeasurement: true }
+    );
+    assertEqual(optionalMeasurements.length, 1, "malformed optional measurements still block");
+
     const malformedRecord = {
       status: "PASS",
       phases: [{
@@ -6148,6 +6175,15 @@ function agentTurnBreakdownCheck() {
     assertEqual(record.measurements.agentTurnStats?.count, 1, "agent turn stats count");
     assertEqual(record.measurements.agentTurnP95Ms, 1000, "agent turn p95");
     assertEqual(record.measurements.agentPreProviderP95Ms, 200, "agent pre-provider p95");
+    const missingCleanupRecord = structuredClone(record);
+    missingCleanupRecord.status = "PASS";
+    evaluateRecord(missingCleanupRecord, {
+      id: "agent-cold-warm-message",
+      agent: { expectedText: "KOVA_AGENT_OK" },
+      thresholds: { agentCleanupMs: 5000 }
+    }, { surface: { thresholds: {} }, targetPlan: { kind: "local-build" } });
+    assertEqual(missingCleanupRecord.status, "PASS", "missing optional cleanup span stays pass");
+    assertEqual(missingCleanupRecord.measurements.agentCleanupMaxMs, null, "missing cleanup remains explicit null");
     const rendered = renderMarkdownReport({
       generatedAt: "2026-05-01T00:00:00.000Z",
       runId: "self-check-agent-turn-breakdown",
