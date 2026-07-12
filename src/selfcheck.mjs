@@ -5016,6 +5016,17 @@ async function reportPublicationCheck(tmp) {
       publishedReport.runId,
       "canonical report JSON published"
     );
+    const transactionTempPath = join(
+      publicationRoot,
+      `.${basename(outputPaths.json)}.kova-transaction.tmp`
+    );
+    await writeFile(transactionTempPath, "{\n");
+    await writeReportOutputs(publicationRoot, publishedReport);
+    assertEqual(
+      await fileExists(transactionTempPath),
+      false,
+      "retry removes a torn staged transaction marker"
+    );
     for (const path of Object.values(outputPaths)) {
       await rename(path, join(publicationRoot, `.${basename(path)}.kova-backup`));
     }
@@ -5339,6 +5350,28 @@ async function fileLockRecoveryCheck(tmp) {
     }
     assertEqual(foreignDomainProtected, true, "foreign execution-domain lock is not reclaimed locally");
     await rm(foreignDomainLock);
+
+    const foreignHostLock = join(tmp, "foreign-host-publication.lock");
+    await writeFile(foreignHostLock, `${JSON.stringify({
+      pid: 2_147_483_647,
+      executionDomainIdentity: {
+        host: "kova-foreign-host.invalid",
+        boot: "foreign-boot",
+        pidNamespace: null
+      }
+    })}\n`);
+    let foreignHostProtected = false;
+    try {
+      await withFileLock(foreignHostLock, async () => {}, {
+        staleMs: 1,
+        timeoutMs: 25,
+        retryMs: 2
+      });
+    } catch (error) {
+      foreignHostProtected = /timed out waiting for Kova file lock/.test(error.message);
+    }
+    assertEqual(foreignHostProtected, true, "foreign-host lock is not reclaimed locally");
+    await rm(foreignHostLock);
 
     const reusedPidLock = join(tmp, "reused-pid-publication.lock");
     await writeFile(reusedPidLock, `${JSON.stringify({

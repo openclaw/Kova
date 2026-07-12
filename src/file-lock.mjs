@@ -181,6 +181,15 @@ function isAbandoned(snapshot, staleMs) {
       return false;
     }
     if (
+      ownerDomain.host &&
+      CURRENT_EXECUTION_DOMAIN.host &&
+      ownerDomain.host !== CURRENT_EXECUTION_DOMAIN.host
+    ) {
+      // Boot IDs and PIDs are host-local. A foreign owner cannot be proven
+      // abandoned from this process, so preserve mutual exclusion.
+      return false;
+    }
+    if (
       ownerDomain.boot &&
       CURRENT_EXECUTION_DOMAIN.boot &&
       ownerDomain.boot !== CURRENT_EXECUTION_DOMAIN.boot

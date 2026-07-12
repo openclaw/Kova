@@ -104,11 +104,11 @@ async function replaceReportFileSet(entries, canonicalPath) {
     }
     // Hash the complete generation before moving the old files. Recovery must
     // not mistake a mixed set left by an incomplete rollback for a commit.
-    await writeDurableFile(
+    await writeDurableReportTransaction(
       transactionPath,
-      `${JSON.stringify(await buildReportTransaction(staged, canonicalPath), null, 2)}\n`
+      `${JSON.stringify(await buildReportTransaction(staged, canonicalPath), null, 2)}\n`,
+      staged
     );
-    await syncDirectories(staged);
 
     // Remove the canonical JSON first and publish it last. Report readers use
     // that file as the commit marker and never observe a newly partial set.
@@ -170,6 +170,7 @@ async function replaceReportFileSet(entries, canonicalPath) {
 }
 
 async function recoverReportFileSet(entries, canonicalPath, transactionPath) {
+  await rm(`${transactionPath}.tmp`, { force: true });
   const marker = await readReportTransaction(transactionPath, entries, canonicalPath);
   const backupEntries = [];
   for (const entry of entries) {
@@ -328,6 +329,17 @@ async function readReportTransaction(transactionPath, entries, canonicalPath) {
 
 async function fileSha256(path) {
   return createHash("sha256").update(await readFile(path)).digest("hex");
+}
+
+async function writeDurableReportTransaction(path, content, entries) {
+  const stagedPath = `${path}.tmp`;
+  try {
+    await writeDurableFile(stagedPath, content);
+    await rename(stagedPath, path);
+    await syncDirectories(entries);
+  } finally {
+    await rm(stagedPath, { force: true });
+  }
 }
 
 async function writeDurableFile(path, content) {
