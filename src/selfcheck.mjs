@@ -5134,9 +5134,19 @@ async function reportPublicationCheck(tmp) {
       bundleRoot,
       `${firstLogicalBundleName}-${"0".repeat(64)}.tar.gz.sha256`
     );
+    const operatorChecksumPath = join(
+      bundleRoot,
+      `${firstLogicalBundleName}-operator-copy.tar.gz.sha256`
+    );
     await writeFile(orphanChecksumPath, "orphan\n");
+    await writeFile(operatorChecksumPath, "operator copy\n");
     await bundleReport(collisionReports[0], { outputDir: bundleRoot });
     assertEqual(await fileExists(orphanChecksumPath), false, "logical bundle retry removes orphan checksum");
+    assertEqual(
+      await fileExists(operatorChecksumPath),
+      true,
+      "logical bundle retry preserves operator-named checksum"
+    );
     const firstArchive = await readFile(firstBundle.outputPath);
     const firstChecksum = await readFile(firstBundle.checksumPath, "utf8");
     const sameNameArchiveDir = join(publicationRoot, "same-name-archive");
