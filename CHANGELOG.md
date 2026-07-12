@@ -4,6 +4,8 @@ All notable changes to Kova are documented in this file.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-12
+
 ### Fixed
 
 - Preserve the original scenario failure when `--retain-on-failure` runs before an OCM environment exists.
