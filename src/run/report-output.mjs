@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
-import { lstat, mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, open, readFile, readdir, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
+import { withFileLock } from "../file-lock.mjs";
 import { buildReportSummary, renderMarkdownReport } from "../reporting/report.mjs";
 import { createRunId } from "./run-id.mjs";
 
@@ -82,17 +83,22 @@ async function anyPathExists(paths) {
 }
 
 async function replaceReportFileSet(entries, canonicalPath) {
-  const transaction = randomUUID();
   const transactionPath = join(
     dirname(canonicalPath),
     `.${basename(canonicalPath)}.kova-transaction`
   );
+  return withFileLock(`${transactionPath}.lock`, () => (
+    replaceReportFileSetLocked(entries, canonicalPath, transactionPath)
+  ));
+}
+
+async function replaceReportFileSetLocked(entries, canonicalPath, transactionPath) {
+  const transaction = randomUUID();
   const staged = entries.map((entry) => ({
     ...entry,
     stagedPath: join(dirname(entry.path), `.${transaction}-${basename(entry.path)}.tmp`),
     backupPath: join(dirname(entry.path), `.${basename(entry.path)}.kova-backup`)
   }));
-  const backups = [];
   const published = [];
   let preserveBackups = false;
   let committed = false;
@@ -105,7 +111,7 @@ async function replaceReportFileSet(entries, canonicalPath) {
     }
     // Hash the complete generation before moving the old files. Recovery must
     // not mistake a mixed set left by an incomplete rollback for a commit.
-    transactionMarker = await buildReportTransaction(staged, canonicalPath);
+    transactionMarker = await buildReportTransaction(staged, canonicalPath, transaction);
     await writeDurableReportTransaction(
       transactionPath,
       `${JSON.stringify(transactionMarker, null, 2)}\n`,
@@ -121,7 +127,6 @@ async function replaceReportFileSet(entries, canonicalPath) {
     for (const entry of backupOrder) {
       if (await pathExists(entry.path)) {
         await rename(entry.path, entry.backupPath);
-        backups.push(entry);
       }
     }
     await syncDirectories(staged);
@@ -144,16 +149,17 @@ async function replaceReportFileSet(entries, canonicalPath) {
     for (const entry of published.toReversed()) {
       await rm(entry.path, { force: true }).catch((rollbackError) => rollbackErrors.push(rollbackError));
     }
-    const companionBackups = backups
-      .filter((entry) => entry.path !== canonicalPath)
-      .toReversed();
-    for (const entry of companionBackups) {
-      await rename(entry.backupPath, entry.path).catch((rollbackError) => rollbackErrors.push(rollbackError));
-    }
-    const canonicalBackup = backups.find((entry) => entry.path === canonicalPath);
-    if (rollbackErrors.length === 0 && canonicalBackup) {
-      await rename(canonicalBackup.backupPath, canonicalBackup.path)
+    if (rollbackErrors.length === 0 && transactionMarker) {
+      await restorePreviousReportSet(staged, transactionMarker, canonicalPath)
         .catch((rollbackError) => rollbackErrors.push(rollbackError));
+      if (rollbackErrors.length === 0) {
+        await syncDirectories(staged)
+          .catch((rollbackError) => rollbackErrors.push(rollbackError));
+      }
+      if (rollbackErrors.length === 0) {
+        await rm(transactionPath, { force: true })
+          .catch((rollbackError) => rollbackErrors.push(rollbackError));
+      }
     }
     await syncDirectories(staged).catch((rollbackError) => rollbackErrors.push(rollbackError));
     if (rollbackErrors.length > 0) {
@@ -165,7 +171,7 @@ async function replaceReportFileSet(entries, canonicalPath) {
     await Promise.all(staged.map((entry) => rm(entry.stagedPath, { force: true }).catch(() => {})));
     if (committed) {
       await removeReportBackupsAndMarker(staged, transactionPath, transactionMarker).catch(() => {});
-    } else if (!preserveBackups) {
+    } else if (!preserveBackups && transactionMarker) {
       await removeReportBackupsAndMarker(staged, transactionPath, transactionMarker);
     }
   }
@@ -174,45 +180,33 @@ async function replaceReportFileSet(entries, canonicalPath) {
 async function recoverReportFileSet(entries, canonicalPath, transactionPath) {
   await rm(`${transactionPath}.tmp`, { force: true });
   const marker = await readReportTransaction(transactionPath, entries, canonicalPath);
-  const backupEntries = [];
-  for (const entry of entries) {
-    if (!await pathExists(entry.backupPath)) {
-      continue;
-    }
-    const info = await lstat(entry.backupPath);
-    if (!info.isFile()) {
-      throw new Error(`report backup is not a regular file: ${entry.backupPath}`);
-    }
-    backupEntries.push(entry);
-  }
-  if (!marker && backupEntries.length === 0) {
-    return;
-  }
-
-  if (marker && await currentReportMatchesTransaction(entries, marker)) {
-    await removeReportBackupsAndMarker(entries, transactionPath, marker);
+  if (!marker && !await reportBackupStateExists(entries)) {
     return;
   }
 
   if (!marker) {
-    throw new Error(`report backup is missing transaction marker: ${backupEntries[0].backupPath}`);
+    throw new Error(`report backup is missing transaction marker: ${entries[0].backupPath}`);
   }
-  await restorePreviousReportSet(entries, backupEntries, marker, canonicalPath);
+
+  if (await currentReportMatchesTransaction(entries, marker)) {
+    await removeReportBackupsAndMarker(entries, transactionPath, marker);
+    return;
+  }
+
+  await restorePreviousReportSet(entries, marker, canonicalPath);
   await syncDirectories(entries);
   await rm(transactionPath, { force: true });
   await syncDirectories(entries);
 }
 
-async function restorePreviousReportSet(entries, backupEntries, marker, canonicalPath) {
+async function restorePreviousReportSet(entries, marker, canonicalPath) {
+  const claimedBackups = await claimReportBackups(entries, marker, "restore");
   const previousFiles = new Map(marker.previousFiles.map((entry) => [entry.name, entry.sha256]));
-  const backedUpNames = new Set(backupEntries.map((entry) => basename(entry.path)));
+  const backedUpNames = new Set(claimedBackups.map((entry) => basename(entry.path)));
   for (const entry of entries) {
     const name = basename(entry.path);
     const previousHash = previousFiles.get(name);
     if (backedUpNames.has(name)) {
-      if (!previousHash || await fileSha256(entry.backupPath) !== previousHash) {
-        throw new Error(`report backup does not match transaction marker: ${entry.backupPath}`);
-      }
       continue;
     }
     if (!previousHash) {
@@ -225,49 +219,37 @@ async function restorePreviousReportSet(entries, backupEntries, marker, canonica
     }
   }
 
-  await restoreReportBackups(backupEntries, canonicalPath);
+  await restoreReportBackups(claimedBackups, canonicalPath);
 }
 
-async function restoreReportBackups(backupEntries, canonicalPath) {
+async function restoreReportBackups(claimedBackups, canonicalPath) {
   const restoreOrder = [
-    ...backupEntries.filter((entry) => entry.path !== canonicalPath),
-    ...backupEntries.filter((entry) => entry.path === canonicalPath)
+    ...claimedBackups.filter((entry) => entry.path !== canonicalPath),
+    ...claimedBackups.filter((entry) => entry.path === canonicalPath)
   ];
   for (const entry of restoreOrder) {
+    await validateClaimedReportBackup(entry);
     await rm(entry.path, { force: true });
-    await rename(entry.backupPath, entry.path);
+    await rename(entry.claimPath, entry.path);
+    await rmdir(entry.claimContainer);
   }
 }
 
 async function removeReportBackupsAndMarker(entries, transactionPath, marker) {
   // Keep the transaction marker durable until backup deletion is durable.
   // Otherwise recovery cannot distinguish a committed generation from a mix.
-  const previousFiles = new Map(
-    Array.isArray(marker?.previousFiles)
-      ? marker.previousFiles.map((entry) => [entry.name, entry.sha256])
-      : []
-  );
-  for (const entry of entries) {
-    if (!await pathExists(entry.backupPath)) {
-      continue;
-    }
-    const expectedHash = previousFiles.get(basename(entry.path));
-    const info = await lstat(entry.backupPath);
-    if (
-      !expectedHash ||
-      !info.isFile() ||
-      await fileSha256(entry.backupPath) !== expectedHash
-    ) {
-      throw new Error(`report backup does not match transaction marker: ${entry.backupPath}`);
-    }
+  const claimedBackups = await claimReportBackups(entries, marker, "cleanup");
+  for (const entry of claimedBackups) {
+    await validateClaimedReportBackup(entry);
+    await rm(entry.claimPath, { force: true });
+    await rmdir(entry.claimContainer);
   }
-  await Promise.all(entries.map((entry) => rm(entry.backupPath, { force: true })));
   await syncDirectories(entries);
   await rm(transactionPath, { force: true });
   await syncDirectories(entries);
 }
 
-async function buildReportTransaction(entries, canonicalPath) {
+async function buildReportTransaction(entries, canonicalPath, transaction) {
   const previousFiles = [];
   for (const entry of entries) {
     const info = await lstat(entry.path).catch((error) => {
@@ -288,7 +270,8 @@ async function buildReportTransaction(entries, canonicalPath) {
     });
   }
   return {
-    schemaVersion: "kova.reportTransaction.v2",
+    schemaVersion: "kova.reportTransaction.v3",
+    transaction,
     canonical: basename(canonicalPath),
     previousFiles,
     files: entries.map((entry) => ({
@@ -331,7 +314,10 @@ async function readReportTransaction(transactionPath, entries, canonicalPath) {
     : [];
   const uniquePreviousNames = new Set(previousNames);
   const valid = (
-    marker?.schemaVersion === "kova.reportTransaction.v2" &&
+    marker?.schemaVersion === "kova.reportTransaction.v3" &&
+    /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+      marker.transaction ?? ""
+    ) &&
     marker.canonical === basename(canonicalPath) &&
     Array.isArray(marker.previousFiles) &&
     markerNames.length === expectedNames.length &&
@@ -345,6 +331,120 @@ async function readReportTransaction(transactionPath, entries, canonicalPath) {
     throw new Error(`report transaction marker is invalid: ${transactionPath}`);
   }
   return marker;
+}
+
+async function claimReportBackups(entries, marker, mode) {
+  const previousFiles = new Map(marker.previousFiles.map((entry) => [entry.name, entry.sha256]));
+  const claimed = [];
+  for (const entry of entries) {
+    const claimContainer = reportBackupClaimContainer(entry, marker);
+    const claimPath = join(claimContainer, "backup");
+    const backupExists = await pathExists(entry.backupPath);
+    const containerExists = await pathExists(claimContainer);
+    if (!backupExists && !containerExists) {
+      continue;
+    }
+    if (!containerExists) {
+      await mkdir(claimContainer, { recursive: false, mode: 0o700 });
+      await syncDirectory(dirname(claimContainer));
+    }
+    await assertReportClaimContainer(claimContainer);
+    const claimExists = await pathExists(claimPath);
+    if (backupExists && claimExists) {
+      throw new Error(`report backup has a conflicting replacement: ${entry.backupPath}`);
+    }
+    if (!backupExists && !claimExists) {
+      const expectedHash = previousFiles.get(basename(entry.path));
+      const priorFileRestored = (
+        mode === "restore" &&
+        expectedHash &&
+        await regularFileMatches(entry.path, expectedHash)
+      );
+      if (mode !== "cleanup" && !priorFileRestored) {
+        throw new Error(`report backup claim is incomplete: ${claimContainer}`);
+      }
+      await assertEmptyReportClaimContainer(claimContainer);
+      await rmdir(claimContainer);
+      await syncDirectory(dirname(claimContainer));
+      continue;
+    }
+    if (backupExists) {
+      await rename(entry.backupPath, claimPath);
+      await syncDirectory(claimContainer);
+      await syncDirectory(dirname(entry.backupPath));
+    }
+    const expectedHash = previousFiles.get(basename(entry.path));
+    const info = await lstat(claimPath);
+    if (
+      !expectedHash ||
+      !info.isFile() ||
+      await fileSha256(claimPath) !== expectedHash
+    ) {
+      throw new Error(`report backup does not match transaction marker: ${claimPath}`);
+    }
+    claimed.push({ ...entry, claimContainer, claimPath, expectedHash });
+  }
+  return claimed;
+}
+
+async function regularFileMatches(path, expectedHash) {
+  const info = await lstat(path).catch(() => null);
+  return Boolean(info?.isFile() && await fileSha256(path) === expectedHash);
+}
+
+function reportBackupClaimContainer(entry, marker) {
+  return `${entry.backupPath}.claim-${marker.transaction}`;
+}
+
+async function assertReportClaimContainer(path) {
+  const info = await lstat(path);
+  if (!info.isDirectory()) {
+    throw new Error(`report backup claim is invalid: ${path}`);
+  }
+  const names = await readdir(path);
+  if (names.some((name) => name !== "backup")) {
+    throw new Error(`report backup claim is invalid: ${path}`);
+  }
+}
+
+async function assertEmptyReportClaimContainer(path) {
+  await assertReportClaimContainer(path);
+  if ((await readdir(path)).length !== 0) {
+    throw new Error(`report backup claim is not empty: ${path}`);
+  }
+}
+
+async function validateClaimedReportBackup(entry) {
+  // The 0700 claim container and report lock exclude peer Kova writers.
+  // Revalidate immediately before mutation; same-user hostile writers are outside the trust boundary.
+  await assertReportClaimContainer(entry.claimContainer);
+  if (!await regularFileMatches(entry.claimPath, entry.expectedHash)) {
+    throw new Error(`report backup does not match transaction marker: ${entry.claimPath}`);
+  }
+}
+
+async function reportBackupStateExists(entries) {
+  const directories = [...new Set(entries.map((entry) => dirname(entry.backupPath)))];
+  for (const entry of entries) {
+    if (await pathExists(entry.backupPath)) {
+      return true;
+    }
+  }
+  for (const directory of directories) {
+    const names = await readdir(directory).catch((error) => {
+      if (error?.code === "ENOENT") {
+        return [];
+      }
+      throw error;
+    });
+    if (entries.some((entry) => {
+      const prefix = `${basename(entry.backupPath)}.claim-`;
+      return names.some((name) => name.startsWith(prefix));
+    })) {
+      return true;
+    }
+  }
+  return false;
 }
 
 async function fileSha256(path) {
@@ -377,14 +477,19 @@ async function syncDirectories(entries) {
     return;
   }
   const directories = [...new Set(entries.map((entry) => dirname(entry.path)))];
-  await Promise.all(directories.map(async (directory) => {
-    const handle = await open(directory, "r");
-    try {
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
-  }));
+  await Promise.all(directories.map((directory) => syncDirectory(directory)));
+}
+
+async function syncDirectory(directory) {
+  if (process.platform === "win32") {
+    return;
+  }
+  const handle = await open(directory, "r");
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
 }
 
 async function pathExists(path) {
