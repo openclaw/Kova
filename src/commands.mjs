@@ -35,10 +35,11 @@ export function runCommand(command, options = {}) {
   const startedAtEpochMs = Date.now();
   const startedAt = new Date(startedAtEpochMs).toISOString();
   return new Promise((resolve) => {
-    const shell = options.shell ?? process.env.SHELL ?? "/bin/sh";
+    const scopedEnv = commandEnvStorage.getStore() ?? {};
+    const shell = options.shell ?? options.env?.SHELL ?? scopedEnv.SHELL ?? process.env.SHELL ?? "/bin/sh";
     const childEnv = {
       ...process.env,
-      ...(commandEnvStorage.getStore() ?? {}),
+      ...scopedEnv,
       ...(options.env ?? {})
     };
     if (options.shell !== undefined && options.env?.SHELL === undefined) {

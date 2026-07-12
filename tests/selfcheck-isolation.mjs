@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runCommand } from "../src/commands.mjs";
+import { runCommand, runWithCommandEnv } from "../src/commands.mjs";
 import {
   cleanupSelfCheckWorkspace,
   createSelfCheckScope,
@@ -18,6 +18,7 @@ import { resolveTarget } from "../src/targets.mjs";
 const root = await mkdtemp(join(tmpdir(), "kova-selfcheck-isolation-test-"));
 
 try {
+  await verifyScopedShell(root);
   await verifyConcurrentInvocationHomes(root);
 
   const scopes = [createSelfCheckScope(), createSelfCheckScope()];
@@ -54,6 +55,24 @@ try {
   console.log("PASS self-check concurrent isolation");
 } finally {
   await rm(root, { recursive: true, force: true });
+}
+
+async function verifyScopedShell(parentDir) {
+  const shellPath = join(parentDir, "scoped-shell");
+  const shellLog = join(parentDir, "scoped-shell.log");
+  await writeFile(shellPath, `#!/bin/sh
+printf '%s\\n' "$0" > "$KOVA_SHELL_LOG"
+exec /bin/sh "$@"
+`, "utf8");
+  await chmod(shellPath, 0o755);
+
+  const result = await runWithCommandEnv({
+    SHELL: shellPath,
+    KOVA_SHELL_LOG: shellLog
+  }, () => runCommand("printf scoped-shell", { timeoutMs: 15000 }));
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout, "scoped-shell");
+  assert.equal((await readFile(shellLog, "utf8")).trim(), shellPath);
 }
 
 async function verifyConcurrentInvocationHomes(parentDir) {
