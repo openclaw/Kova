@@ -471,11 +471,15 @@ export function scenarioConfidence(scenario) {
 // samples that produced it; unrelated large scenarios cannot inflate it.
 export function runConfidence(scenarios) {
   const confidences = (scenarios ?? [])
-    .flatMap((scenario) => (scenario.metrics ?? []).map(metricConfidence))
-    .filter(Boolean);
-  return weakestConfidence(confidences.length > 0
-    ? confidences
-    : (scenarios ?? []).map((scenario) => confidenceForSamples(scenario.total ?? 0, null)));
+    .flatMap((scenario) => {
+      const metricConfidences = (scenario.metrics ?? [])
+        .map(metricConfidence)
+        .filter(Boolean);
+      return metricConfidences.length > 0
+        ? metricConfidences
+        : [confidenceForSamples(scenario.total ?? 0, null)];
+    });
+  return weakestConfidence(confidences);
 }
 
 function roleViolationCandidate(violation, role) {

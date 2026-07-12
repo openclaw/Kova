@@ -136,13 +136,14 @@ function renderHeader(summary, scenarios, ui) {
     sampleFailed > 0 ? `${sampleFailed} failed` : null,
     sampleBlocked > 0 ? `${sampleBlocked} blocked` : null,
     sampleIncomplete > 0 ? `${sampleIncomplete} incomplete` : null,
-    sampleSkipped > 0 ? `${sampleSkipped} skipped` : null
+    sampleSkipped > 0 ? `${sampleSkipped} skipped` : null,
+    sampleDryRun > 0 && sampleDryRun !== sampleTotal ? `${sampleDryRun} planned` : null
   ].filter(Boolean);
-  const samplesText = sampleIssues.length > 0
+  const samplesText = sampleDryRun > 0 && sampleDryRun === sampleTotal
+    ? `${sampleTotal} ${pluralize(sampleTotal, "sample")} planned`
+    : sampleIssues.length > 0
     ? `${sampleIssues.join(", ")} of ${sampleTotal} ${pluralize(sampleTotal, "sample")}`
-    : sampleDryRun > 0
-      ? `${sampleTotal} ${pluralize(sampleTotal, "sample")} planned`
-      : `${sampleTotal} ${pluralize(sampleTotal, "sample")}`;
+    : `${sampleTotal} ${pluralize(sampleTotal, "sample")}`;
 
   const headline = buildVerdictHeadline({
     scope: scopeText,
