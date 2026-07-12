@@ -216,6 +216,7 @@ export function computeProviderTurnAttribution(result, providerEvidence) {
     .filter((request) => typeof request.respondedAtEpochMs === "number")
     .toSorted((left, right) => left.respondedAtEpochMs - right.respondedAtEpochMs)
     .at(-1) ?? null;
+  const hasIncompleteRequest = requests.some((request) => !Number.isFinite(request.respondedAtEpochMs));
   const firstProviderRequestAt = firstRequest?.receivedAtEpochMs;
   const lastProviderResponseAt = lastResponse?.respondedAtEpochMs;
   if (![commandStartedAt, commandFinishedAt, firstProviderRequestAt].every(Number.isFinite)) {
@@ -278,7 +279,7 @@ export function computeProviderTurnAttribution(result, providerEvidence) {
   const providerLateByMs = providerAfterCommandEnd
     ? Math.max(0, firstProviderRequestAt - commandFinishedAt)
     : null;
-  if (!Number.isFinite(lastProviderResponseAt)) {
+  if (hasIncompleteRequest || !Number.isFinite(lastProviderResponseAt)) {
     const totalTurnMs = Math.max(0, commandFinishedAt - commandStartedAt);
     const preProviderMs = providerAfterCommandEnd
       ? null
