@@ -19,6 +19,7 @@ All notable changes to Kova are documented in this file.
 - Made matrix gates honor scenario-wide policies and validate all seven coverage dimensions only from records that actually executed.
 - Stopped parallel matrix workers from scheduling new scenarios after a rejection, drained active workers before rethrowing, and made lifecycle command indexes phase-wide to prevent artifact overwrites.
 - Fixed web release projections to select same-day priors numerically, match headline deltas by scenario, metric, and unit, label comparisons with the measured metric, and median-aggregate repeated turn measurements.
+- Fixed report status precedence, repeated-sample diagnostics, finding identity, worst-case metrics, confidence labels, blocked outcomes, and rendered CLI guidance.
 - Hardened release validation against missing, malformed, misplaced, partial, or incomplete provider, health, snapshot, plugin-security, command-timing, and measurement evidence.
 - Hardened release publishing and run evidence contracts so invalid payloads are rejected and missing final metrics cannot be reported as healthy.
 - Hardened runtime teardown with collision-resistant local-build names, exact OCM missing-resource matching, awaited proxy shutdown, and independent cleanup stages.
