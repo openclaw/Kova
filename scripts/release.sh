@@ -269,9 +269,10 @@ if [[ "$current_version" == "$version" ]]; then
       echo "error: package.json is dirty for ${version}, but a release commit or tag already exists; clean up release state before retrying" >&2
       exit 1
     fi
+    need_update_version=1
     need_checks=1
     need_commit=1
-    log_resume_state "package.json already updated to ${version}"
+    log_resume_state "package metadata is partially or fully updated to ${version}"
   else
     if [[ "$head_is_release_commit" -ne 1 ]]; then
       echo "error: Kova is already on ${version}, but HEAD is not the expected release commit; clean up or finish that release state manually" >&2

@@ -55,7 +55,9 @@ if [[ -z "$current_version" ]]; then
   exit 1
 fi
 
-if [[ "$current_version" == "$new_version" ]]; then
+lockfile_version="$(node -p 'require("./package-lock.json").version')"
+lockfile_root_version="$(node -p 'require("./package-lock.json").packages[""].version')"
+if [[ "$current_version" == "$new_version" && "$lockfile_version" == "$new_version" && "$lockfile_root_version" == "$new_version" ]]; then
   echo "Kova is already on ${new_version}"
   exit 0
 fi
@@ -79,9 +81,11 @@ if ! npm version "$new_version" --no-git-tag-version --allow-same-version --igno
 fi
 
 updated_version="$(node -p 'require("./package.json").version')"
-if [[ "$updated_version" != "$new_version" ]]; then
+updated_lockfile_version="$(node -p 'require("./package-lock.json").version')"
+updated_lockfile_root_version="$(node -p 'require("./package-lock.json").packages[""].version')"
+if [[ "$updated_version" != "$new_version" || "$updated_lockfile_version" != "$new_version" || "$updated_lockfile_root_version" != "$new_version" ]]; then
   rollback
-  echo "error: package.json did not update cleanly" >&2
+  echo "error: package metadata did not update cleanly" >&2
   exit 1
 fi
 
