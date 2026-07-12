@@ -6138,11 +6138,13 @@ function gatewaySessionEvidenceInvariantCheck() {
       .find((invariant) => invariant.id === "gateway-session-provider-proof");
     assertEqual(duplicateStatusProof?.status, "missing", "duplicate gateway status buckets are incomplete evidence");
 
-    const malformedTurnRecord = JSON.parse(JSON.stringify(record));
-    malformedTurnRecord.measurements.agentTurns = { malformed: true };
-    const malformedTurnProof = buildGatewaySessionEvidenceInvariants(malformedTurnRecord, scenario)
-      .find((invariant) => invariant.id === "gateway-session-provider-proof");
-    assertEqual(malformedTurnProof?.status, "missing", "malformed agent turn evidence does not throw or pass");
+    for (const malformedTurns of [{ malformed: true }, [null]]) {
+      const malformedTurnRecord = JSON.parse(JSON.stringify(record));
+      malformedTurnRecord.measurements.agentTurns = malformedTurns;
+      const malformedTurnProof = buildGatewaySessionEvidenceInvariants(malformedTurnRecord, scenario)
+        .find((invariant) => invariant.id === "gateway-session-provider-proof");
+      assertEqual(malformedTurnProof?.status, "missing", "malformed agent turn evidence does not throw or pass");
+    }
 
     const missingFinalHealthRecord = JSON.parse(JSON.stringify(record));
     delete missingFinalHealthRecord.finalMetrics.health;
@@ -6746,11 +6748,13 @@ function agentCliLocalTurnEvidenceInvariantCheck() {
       assertEqual(malformedRecoveryProof?.status, "missing", "malformed recovery error status is rejected");
     }
 
-    const malformedTurnsRecord = JSON.parse(JSON.stringify(record));
-    malformedTurnsRecord.measurements.agentTurns = { malformed: true };
-    const malformedTurnsProof = buildAgentCliLocalTurnEvidenceInvariants(malformedTurnsRecord, scenario)
-      .find((invariant) => invariant.id === "agent-cli-provider-proof");
-    assertEqual(malformedTurnsProof?.status, "missing", "malformed provider turn array does not throw or pass");
+    for (const malformedTurns of [{ malformed: true }, [null]]) {
+      const malformedTurnsRecord = JSON.parse(JSON.stringify(record));
+      malformedTurnsRecord.measurements.agentTurns = malformedTurns;
+      const malformedTurnsProof = buildAgentCliLocalTurnEvidenceInvariants(malformedTurnsRecord, scenario)
+        .find((invariant) => invariant.id === "agent-cli-provider-proof");
+      assertEqual(malformedTurnsProof?.status, "missing", "malformed provider turn array does not throw or pass");
+    }
 
     const nonLocalRecord = syntheticAgentCliLocalTurnRecord({
       coldCommand: "ocm @kova -- agent --agent main --session-id kova-agent-cold-warm --message hi --json"
