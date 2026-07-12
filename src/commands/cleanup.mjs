@@ -89,7 +89,8 @@ async function cleanupEnvs(flags) {
         ok: retentionInventory.ok,
         error: retentionInventory.error
       },
-      envs,
+      envs: envs.map((env) => env.name),
+      classifications: envs,
       candidates: candidates.map((candidate) => candidate.name),
       results
     }, null, 2));
