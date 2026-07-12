@@ -1,11 +1,18 @@
 import { createHash, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { cp, lstat, mkdir, mkdtemp, open, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, cp, lstat, mkdir, mkdtemp, open, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { withFileLock } from "../file-lock.mjs";
 import { artifactsDir } from "../paths.mjs";
 import { renderPasteSummary } from "./report.mjs";
+
+const RESERVED_RETAINED_FILENAMES = new Set([
+  "paste-summary.txt",
+  "report.json",
+  "report.md",
+  "retained-artifacts.json"
+]);
 
 export async function bundleReport(reportPath, options = {}) {
   const sourceJsonPath = resolve(reportPath);
@@ -129,6 +136,20 @@ export async function retainGateArtifacts(reportPath, bundle, options = {}) {
     throw new Error("retained report bundle requires both archive and checksum");
   }
   if (hasBundle) {
+    if (bundle.runId !== report.runId) {
+      throw new Error(`retained report bundle run ID does not match report: ${bundle.runId ?? "missing"}`);
+    }
+    const retainedFilenames = [
+      basename(bundle.outputPath),
+      basename(bundle.checksumPath)
+    ];
+    const retainedFilenameKeys = retainedFilenames.map(portableRetentionFilenameKey);
+    if (new Set(retainedFilenameKeys).size !== retainedFilenameKeys.length) {
+      throw new Error("retained report bundle and checksum must use distinct filenames");
+    }
+    if (retainedFilenameKeys.some((name) => RESERVED_RETAINED_FILENAMES.has(name))) {
+      throw new Error("retained report bundle filenames conflict with reserved retained artifacts");
+    }
     await requireRegularFile(bundle.outputPath, "report bundle");
     await requireRegularFile(bundle.checksumPath, "report bundle checksum");
     await validateBundlePair(bundle.outputPath, bundle.checksumPath);
@@ -156,6 +177,17 @@ function safeRunIdSegment(value) {
     return runId;
   }
   return `external-${createHash("sha256").update(runId).digest("hex").slice(0, 24)}`;
+}
+
+function portableRetentionFilenameKey(value) {
+  if (
+    !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value) ||
+    value.endsWith(".") ||
+    /^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/i.test(value)
+  ) {
+    throw new Error("retained report bundle filenames must use portable filenames");
+  }
+  return value.toLowerCase();
 }
 
 function isCanonicalRunId(value) {
@@ -304,12 +336,10 @@ async function replaceRetainedArtifactTree({
       ? join(outputRoot, basename(bundle.checksumPath))
       : null;
     if (bundle?.outputPath) {
-      await cp(bundle.outputPath, join(stage, basename(bundle.outputPath)));
-      await syncFile(join(stage, basename(bundle.outputPath)));
+      await copyDurableFile(bundle.outputPath, join(stage, basename(bundle.outputPath)));
     }
     if (bundle?.checksumPath) {
-      await cp(bundle.checksumPath, join(stage, basename(bundle.checksumPath)));
-      await syncFile(join(stage, basename(bundle.checksumPath)));
+      await copyDurableFile(bundle.checksumPath, join(stage, basename(bundle.checksumPath)));
     }
 
     const receipt = {
@@ -561,6 +591,14 @@ async function syncFile(path) {
   } finally {
     await handle.close();
   }
+}
+
+async function copyDurableFile(source, destination) {
+  await cp(source, destination);
+  // The staged copy belongs to this transaction. Normalize its mode so a
+  // read-only source cannot prevent the durability sync.
+  await chmod(destination, 0o600);
+  await syncFile(destination);
 }
 
 async function snapshotReportSet(sourceJsonPath) {
