@@ -14,6 +14,7 @@ import {
   phaseMetrics,
   requiredProofsOk,
   requiredProofsReason,
+  validRequestCount,
   zeroCountInvariant
 } from "./shared.mjs";
 
@@ -224,9 +225,10 @@ function officialPluginHealthOk(record) {
   const finalHealth = record.measurements?.health?.final;
   return restartReadiness?.classification?.state === "ready" &&
     Number.isFinite(restartReadiness.healthReadyAtMs) &&
-    (postVerifyHealth?.count ?? 0) > 0 &&
-    (postVerifyHealth?.failureCount ?? 0) === 0 &&
-    Number.isFinite(finalHealth?.failureCount) &&
+    validRequestCount(postVerifyHealth?.count, 1) &&
+    validRequestCount(postVerifyHealth?.failureCount) &&
+    postVerifyHealth.failureCount === 0 &&
+    validRequestCount(finalHealth?.failureCount) &&
     finalHealth.failureCount === 0 &&
     record.measurements?.finalGatewayState === "running";
 }
@@ -236,8 +238,9 @@ function officialPluginHealthMissing(record) {
   const postVerifyHealth = phaseMetrics(record, "post-restart-verify")?.healthSummary;
   return !restartReadiness ||
     !Number.isFinite(restartReadiness.healthReadyAtMs) ||
-    (postVerifyHealth?.count ?? 0) <= 0 ||
-    !Number.isFinite(record.measurements?.health?.final?.failureCount) ||
+    !validRequestCount(postVerifyHealth?.count, 1) ||
+    !validRequestCount(postVerifyHealth?.failureCount) ||
+    !validRequestCount(record.measurements?.health?.final?.failureCount) ||
     record.measurements?.finalGatewayState === undefined;
 }
 
@@ -254,13 +257,16 @@ function officialPluginHealthReason(record) {
   if (!Number.isFinite(restartReadiness.healthReadyAtMs)) {
     return "restart health-ready timing was not collected";
   }
-  if ((postVerifyHealth?.count ?? 0) <= 0) {
+  if (!validRequestCount(postVerifyHealth?.count, 1)) {
     return "post-restart verification health samples were not collected";
   }
-  if ((postVerifyHealth?.failureCount ?? 0) !== 0) {
+  if (!validRequestCount(postVerifyHealth?.failureCount)) {
+    return "post-restart verification health failure count was not collected";
+  }
+  if (postVerifyHealth.failureCount !== 0) {
     return `post-restart verification health failures were ${postVerifyHealth.failureCount}`;
   }
-  if (!Number.isFinite(finalHealth?.failureCount)) {
+  if (!validRequestCount(finalHealth?.failureCount)) {
     return "final health failure count was not collected";
   }
   if (finalHealth.failureCount !== 0) {

@@ -486,9 +486,10 @@ export function requiredProofsReason(record, proofs) {
 export function gatewaySessionHealthOk(record, health) {
   return health?.readiness?.classification === "ready" &&
     Number.isFinite(health.readiness.healthReadyAtMs) &&
-    (health.postReadySamples?.count ?? 0) > 0 &&
-    (health.postReadySamples?.failureCount ?? 0) === 0 &&
-    Number.isFinite(health.final?.failureCount) &&
+    validRequestCount(health.postReadySamples?.count, 1) &&
+    validRequestCount(health.postReadySamples?.failureCount) &&
+    health.postReadySamples.failureCount === 0 &&
+    validRequestCount(health.final?.failureCount) &&
     health.final.failureCount === 0 &&
     record.measurements?.finalGatewayState === "running";
 }
@@ -503,13 +504,16 @@ export function gatewaySessionHealthReason(record, health) {
   if (!Number.isFinite(health.readiness.healthReadyAtMs)) {
     return "readiness health-ready timing was not collected";
   }
-  if ((health.postReadySamples?.count ?? 0) <= 0) {
+  if (!validRequestCount(health.postReadySamples?.count, 1)) {
     return "post-ready health samples were not collected";
   }
-  if ((health.postReadySamples?.failureCount ?? 0) !== 0) {
+  if (!validRequestCount(health.postReadySamples?.failureCount)) {
+    return "post-ready health failure count was not collected";
+  }
+  if (health.postReadySamples.failureCount !== 0) {
     return `post-ready health failures were ${health.postReadySamples.failureCount}`;
   }
-  if (!Number.isFinite(health.final?.failureCount)) {
+  if (!validRequestCount(health.final?.failureCount)) {
     return "final health failure count was not collected";
   }
   if (health.final.failureCount !== 0) {

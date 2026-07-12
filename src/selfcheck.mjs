@@ -5066,6 +5066,38 @@ async function providerEvidenceParserCheck() {
     assertEqual(incompleteAttribution.missingProviderRequest, false, "started provider request is not erased as missing");
     assertEqual(incompleteAttribution.providerFinalMs, null, "incomplete provider response has no final latency");
     assertEqual(incompleteAttribution.errors[0]?.kind, "provider-timeout", "incomplete provider error evidence is retained");
+    const partiallyCompleteAttribution = computeProviderTurnAttribution({
+      command: "ocm @kova -- agent --local --agent main --session-id kova --message hi --json",
+      startedAt: "2026-04-30T10:00:01.000Z",
+      startedAtEpochMs: 1777543201000,
+      finishedAt: "2026-04-30T10:00:07.000Z",
+      finishedAtEpochMs: 1777543207000
+    }, {
+      available: true,
+      requests: [
+        {
+          requestId: "req_complete",
+          receivedAt: "2026-04-30T10:00:04.000Z",
+          receivedAtEpochMs: 1777543204000,
+          respondedAt: "2026-04-30T10:00:05.000Z",
+          respondedAtEpochMs: 1777543205000,
+          route: "/v1/responses",
+          model: "gpt-5.5",
+          status: 200
+        },
+        {
+          requestId: "req_incomplete_after_complete",
+          receivedAt: "2026-04-30T10:00:05.500Z",
+          receivedAtEpochMs: 1777543205500,
+          route: "/v1/responses",
+          model: "gpt-5.5",
+          status: 200,
+          errorClass: "provider-timeout"
+        }
+      ]
+    });
+    assertEqual(partiallyCompleteAttribution.requestCount, 2, "mixed provider requests remain attributed");
+    assertEqual(partiallyCompleteAttribution.providerFinalMs, null, "one incomplete request invalidates provider final latency");
     const lateIncompleteAttribution = computeProviderTurnAttribution({
       command: "ocm @kova -- agent --local --agent main --session-id kova --message hi --json",
       startedAt: "2026-04-30T10:00:01.000Z",
@@ -6099,6 +6131,16 @@ function gatewaySessionEvidenceInvariantCheck() {
       .find((invariant) => invariant.id === "gateway-session-readiness-health-proof");
     assertEqual(missingFinalHealthProof?.status, "missing", "missing final health count is incomplete evidence");
 
+    const missingPostReadyFailureRecord = JSON.parse(JSON.stringify(record));
+    delete missingPostReadyFailureRecord.measurements.health.postReadySamples.failureCount;
+    const missingPostReadyFailureProof = buildGatewaySessionEvidenceInvariants(missingPostReadyFailureRecord, scenario)
+      .find((invariant) => invariant.id === "gateway-session-readiness-health-proof");
+    assertEqual(
+      missingPostReadyFailureProof?.status,
+      "missing",
+      "missing post-ready health failure count is incomplete evidence"
+    );
+
     return {
       id: "gateway-session-evidence-invariants",
       status: "PASS",
@@ -6499,6 +6541,22 @@ function officialPluginInstallEvidenceInvariantCheck() {
     const missingFinalHealthProof = buildOfficialPluginInstallEvidenceInvariants(missingFinalHealthRecord, scenario)
       .find((invariant) => invariant.id === "official-plugin-readiness-health-proof");
     assertEqual(missingFinalHealthProof?.status, "missing", "official plugin proof requires explicit final health failure count");
+
+    const missingPostVerifyFailureRecord = syntheticOfficialPluginInstallRecord();
+    delete missingPostVerifyFailureRecord.phases[3].metrics.healthSummary.failureCount;
+    evaluateRecord(missingPostVerifyFailureRecord, scenario, {
+      surface: { thresholds: {}, diagnostics: { expectedSpans: [] } },
+      targetPlan: { kind: "runtime" }
+    });
+    const missingPostVerifyFailureProof = buildOfficialPluginInstallEvidenceInvariants(
+      missingPostVerifyFailureRecord,
+      scenario
+    ).find((invariant) => invariant.id === "official-plugin-readiness-health-proof");
+    assertEqual(
+      missingPostVerifyFailureProof?.status,
+      "missing",
+      "official plugin proof requires explicit post-restart failure count"
+    );
 
     return {
       id: "official-plugin-install-evidence-invariants",
