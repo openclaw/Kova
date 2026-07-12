@@ -4967,6 +4967,15 @@ async function reportPublicationCheck(tmp) {
       assertEqual(symlinkMarkdownRejected, true, "bundle rejects symlinked Markdown");
     }
 
+    const emptyRetainedRoot = join(publicationRoot, "empty-retained");
+    const emptyRetainedBackup = join(publicationRoot, ".empty-retained.bak");
+    await mkdir(emptyRetainedBackup);
+    await retainGateArtifacts(collisionReports[0], firstBundle, {
+      outputDir: emptyRetainedRoot
+    });
+    assertEqual(await fileExists(emptyRetainedRoot), true, "empty retained tree backup recovered");
+    assertEqual(await fileExists(emptyRetainedBackup), false, "empty retained tree backup removed");
+
     const retainedRoot = join(publicationRoot, "retained");
     const retained = await retainGateArtifacts(collisionReports[0], firstBundle, {
       outputDir: retainedRoot
@@ -5066,6 +5075,19 @@ async function fileLockRecoveryCheck(tmp) {
       retryMs: 5
     });
     assertEqual(malformedAcquired, true, "malformed abandoned lock is reclaimed");
+
+    const incompleteLock = join(tmp, "incomplete-publication.lock");
+    await writeFile(incompleteLock, `${JSON.stringify({ pid: process.pid })}\n`);
+    await utimes(incompleteLock, old, old);
+    let incompleteAcquired = false;
+    await withFileLock(incompleteLock, async () => {
+      incompleteAcquired = true;
+    }, {
+      staleMs: 1_000,
+      timeoutMs: 2_000,
+      retryMs: 5
+    });
+    assertEqual(incompleteAcquired, true, "incomplete abandoned lock is reclaimed");
 
     const reusedPidLock = join(tmp, "reused-pid-publication.lock");
     await writeFile(reusedPidLock, `${JSON.stringify({
