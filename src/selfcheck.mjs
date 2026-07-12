@@ -17941,7 +17941,7 @@ async function logArtifactRedactionCheck(tmp) {
       `-----BEGIN ${privateKeyLabel}-----`,
       truncatedPemBodyCanary
     ].join("\n"),
-    `${sessionTokenKey}: |\n  ${yamlContinuationCanary}`,
+    `${sessionTokenKey}: |2-\n  ${yamlContinuationCanary}`,
     `command --token ${"\\"}\n  ${cliContinuationCanary}`
   ].join("\n");
   try {

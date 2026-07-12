@@ -18,11 +18,11 @@ const SENSITIVE_CLI_TO_LINE_END_PATTERN = new RegExp(
   "gim"
 );
 const SENSITIVE_VALUE_CONTINUATION_PATTERN = new RegExp(
-  `(["']?\\b${SENSITIVE_LOG_KEY}\\b["']?\\s*[:=]\\s*)([|>][-+]?|\\\\)\\s*$`,
+  `(["']?\\b${SENSITIVE_LOG_KEY}\\b["']?\\s*[:=]\\s*)([|>](?:[1-9][-+]?|[-+][1-9]?)?|\\\\)\\s*$`,
   "i"
 );
 const SENSITIVE_CLI_CONTINUATION_PATTERN = new RegExp(
-  `((?:^|\\s)--${SENSITIVE_LOG_KEY}(?:=|\\s+))([|>][-+]?|\\\\)\\s*$`,
+  `((?:^|\\s)--${SENSITIVE_LOG_KEY}(?:=|\\s+))([|>](?:[1-9][-+]?|[-+][1-9]?)?|\\\\)\\s*$`,
   "i"
 );
 const PEM_PRIVATE_KEY_PATTERN =
