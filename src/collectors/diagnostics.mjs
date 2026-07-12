@@ -123,14 +123,8 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
     };
   }
   const commandBudgetMs = normalizedTimeoutMs - DIAGNOSTIC_RUNNER_EXIT_RESERVE_MS;
-  const pollAttempts = Math.max(
-    1,
-    Math.floor(
-      (normalizedTimeoutMs - DIAGNOSTIC_COMMAND_EXIT_RESERVE_MS)
-      / DIAGNOSTIC_POLL_INTERVAL_MS
-    )
-  );
   const sessionDeadlineEpochMs = requestedAtEpochMs + normalizedTimeoutMs;
+  const discoveryDeadlineEpochMs = sessionDeadlineEpochMs - DIAGNOSTIC_COMMAND_EXIT_RESERVE_MS;
   const searchRoots = [
     '"$OPENCLAW_HOME"',
     artifactDir ? quoteShell(join(artifactDir, "node-profiles")) : null
@@ -203,7 +197,7 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
   const artifactOutputCommand = `{ cut -f2 "$attributed"; cut -f1 "$fresh"; } | awk '!seen[$0]++ { if (/[.]heapsnapshot$/) { if (heap++ < 25) print; next } if (report++ < 25) print }'`;
   const command = ocmEnvExecShell(
     envName,
-    `set -eu; ${sessionStateCommand}; ${signalCommand}; attempts=0; while :; do refresh_candidates; refresh_attributed; heap_count=$(awk -F '\\t' '$1 == "heap" { count++ } END { print count + 0 }' "$attributed"); report_count=$(awk -F '\\t' '$1 == "report" { count++ } END { print count + 0 }' "$attributed"); if ${readyConditions}; then break; fi; if [ "$attempts" -ge ${pollAttempts} ]; then break; fi; attempts=$((attempts + 1)); sleep ${DIAGNOSTIC_POLL_INTERVAL_MS / 1000}; done; ${artifactOutputCommand}`
+    `set -eu; ${sessionStateCommand}; ${signalCommand}; while :; do refresh_candidates; refresh_attributed; heap_count=$(awk -F '\\t' '$1 == "heap" { count++ } END { print count + 0 }' "$attributed"); report_count=$(awk -F '\\t' '$1 == "report" { count++ } END { print count + 0 }' "$attributed"); if ${readyConditions}; then break; fi; now_ms=$(node -e 'process.stdout.write(String(Date.now()))'); remaining_ms=$((${discoveryDeadlineEpochMs} - now_ms)); if [ "$remaining_ms" -le 0 ]; then break; fi; sleep_ms=$remaining_ms; if [ "$sleep_ms" -gt ${DIAGNOSTIC_POLL_INTERVAL_MS} ]; then sleep_ms=${DIAGNOSTIC_POLL_INTERVAL_MS}; fi; node -e 'setTimeout(() => {}, Number(process.argv[1]))' "$sleep_ms"; done; ${artifactOutputCommand}`
   );
   const result = await runCommand(command, {
     // OCM invocation, polling, and artifact retention share one caller-owned deadline.
