@@ -76,9 +76,21 @@ jobs:
               exit 2
               ;;
           esac
+          case "$job" in
+            ''|*[!A-Za-z0-9._-]*)
+              echo "Invalid crabbox_job" >&2
+              exit 2
+              ;;
+          esac
           mkdir -p "$HOME/.crabbox/actions"
           state="$HOME/.crabbox/actions/${CRABBOX_ID}.env"
           env_file="$HOME/.crabbox/actions/${CRABBOX_ID}.env.sh"
+          env_tmp="$(mktemp "$HOME/.crabbox/actions/.${CRABBOX_ID}.env.sh.XXXXXX")"
+          state_tmp="$(mktemp "$HOME/.crabbox/actions/.${CRABBOX_ID}.env.XXXXXX")"
+          cleanup_tmp() {
+            rm -f "$env_tmp" "$state_tmp"
+          }
+          trap cleanup_tmp EXIT
           {
             for key in CI GITHUB_ACTIONS GITHUB_WORKSPACE GITHUB_REPOSITORY GITHUB_RUN_ID GITHUB_RUN_NUMBER GITHUB_RUN_ATTEMPT GITHUB_REF GITHUB_REF_NAME GITHUB_SHA GITHUB_EVENT_NAME GITHUB_ACTOR RUNNER_OS RUNNER_ARCH RUNNER_TEMP RUNNER_TOOL_CACHE PATH; do
               value="${!key-}"
@@ -86,17 +98,16 @@ jobs:
                 printf 'export %s=%q\n' "$key" "$value"
               fi
             done
-          } > "${env_file}.tmp"
-          mv "${env_file}.tmp" "$env_file"
-          tmp="${state}.tmp"
+          } > "$env_tmp"
+          mv "$env_tmp" "$env_file"
           {
             echo "WORKSPACE=${GITHUB_WORKSPACE}"
             echo "RUN_ID=${GITHUB_RUN_ID}"
             echo "JOB=${job}"
             echo "ENV_FILE=${env_file}"
             echo "READY_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          } > "$tmp"
-          mv "$tmp" "$state"
+          } > "$state_tmp"
+          mv "$state_tmp" "$state"
 
       - name: Keep Crabbox job alive
         shell: bash
@@ -115,6 +126,7 @@ jobs:
           case "$minutes" in
             ''|*[!0-9]*) minutes=90 ;;
           esac
+          minutes=$((10#$minutes))
           stop="$HOME/.crabbox/actions/${CRABBOX_ID}.stop"
           deadline=$(( $(date +%s) + minutes * 60 ))
           while [ "$(date +%s)" -lt "$deadline" ]; do
