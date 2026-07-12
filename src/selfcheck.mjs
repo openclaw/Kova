@@ -12649,6 +12649,7 @@ async function diagnosticTriggerValidationCheck(tmp) {
     await writeFile(join(binDir, "ocm"), `#!/bin/sh
 printf '%s env=%s\\n' "$*" "\${KOVA_FAKE_WRAPPER_ENV:-}" >> "$KOVA_FAKE_OCM_LOG"
 if [ "\${KOVA_FAKE_OCM_HANG:-}" = "1" ]; then exec sleep 10; fi
+if [ -n "\${KOVA_FAKE_OCM_DELAY:-}" ]; then sleep "$KOVA_FAKE_OCM_DELAY"; fi
 while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do shift; done
 [ "$#" -gt 0 ] || exit 2
 shift
@@ -12733,6 +12734,8 @@ setInterval(() => {}, 1000);
     const oversizedReportPath = join(openclawHome, "report.oversized.json");
     await writeFile(oversizedReportPath, "{");
     await truncate(oversizedReportPath, (16 * 1024 * 1024) + 1);
+    const oversizedTimestamp = new Date(oversizedSignalSentAtEpochMs);
+    await utimes(oversizedReportPath, oversizedTimestamp, oversizedTimestamp);
     const oversizedReport = await triggerDiagnosticReport("kova-self-check", child.pid, 3000, root, {
       signalAlreadySent: true,
       signalSentAtEpochMs: oversizedSignalSentAtEpochMs
@@ -12748,7 +12751,8 @@ setInterval(() => {}, 1000);
     JSON.parse(await readFile(reportOnly.diagnosticReport.artifacts[0], "utf8"));
     const heapOnly = await triggerDiagnosticSession("kova-self-check", child.pid, 3000, root, {
       heapSnapshot: true,
-      diagnosticReport: true
+      diagnosticReport: true,
+      commandEnv: { KOVA_FAKE_OCM_DELAY: "0.6" }
     });
     assertEqual(heapOnly.heapSnapshot.commandStatus, 0, "partial trigger keeps successful command status");
     assertEqual(heapOnly.heapSnapshot.artifacts.length, 1, "emitted heap survives missing report");

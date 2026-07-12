@@ -12,7 +12,8 @@ export const HEAP_SNAPSHOT_SCHEMA = "kova.heapSnapshot.v1";
 export const DIAGNOSTIC_REPORT_SCHEMA = "kova.diagnosticReport.v1";
 const MIN_DIAGNOSTIC_TIMEOUT_MS = 2500;
 const DIAGNOSTIC_STABILITY_MS = 1000;
-const DIAGNOSTIC_COMMAND_EXIT_RESERVE_MS = 500;
+const DIAGNOSTIC_COMMAND_EXIT_RESERVE_MS = 1250;
+const DIAGNOSTIC_RUNNER_EXIT_RESERVE_MS = 250;
 const DIAGNOSTIC_POLL_INTERVAL_MS = 250;
 const MAX_DIAGNOSTIC_REPORT_BYTES = 16 * 1024 * 1024;
 const DIAGNOSTIC_VALIDATION_CONCURRENCY = 2;
@@ -132,18 +133,19 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
       diagnosticReport: diagnosticTriggerResult(DIAGNOSTIC_REPORT_SCHEMA, { requested: requestDiagnosticReport, error })
     };
   }
-  const retentionReserveMs = DIAGNOSTIC_STABILITY_MS - DIAGNOSTIC_COMMAND_EXIT_RESERVE_MS;
-  const commandBudgetMs = normalizedTimeoutMs - retentionReserveMs;
+  const commandBudgetMs = normalizedTimeoutMs - DIAGNOSTIC_RUNNER_EXIT_RESERVE_MS;
   const pollAttempts = Math.max(
     1,
     Math.floor(
-      (commandBudgetMs - DIAGNOSTIC_COMMAND_EXIT_RESERVE_MS)
+      (normalizedTimeoutMs - DIAGNOSTIC_COMMAND_EXIT_RESERVE_MS)
       / DIAGNOSTIC_POLL_INTERVAL_MS
     )
   );
   const sessionDeadlineEpochMs = requestedAtEpochMs + normalizedTimeoutMs;
   const signalMarker = signalAlreadySent
-    ? await createTimestampMarker(signalSentAtEpochMs)
+    // find -newer is strict, so include files created in the same millisecond
+    // and let the exact Node-side mtime filter reject older artifacts.
+    ? await createTimestampMarker(signalSentAtEpochMs - 1)
     : null;
   // The legacy report wrapper uses the caller's signal timestamp; new triggers
   // create their marker immediately before signaling.
@@ -164,7 +166,10 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
     requestDiagnosticReport ? '-name "report.*.json"' : null,
     requestDiagnosticReport ? '-name "*diagnostic*.json"' : null
   ].filter(Boolean).join(" -o ");
-  const artifactOutputCommand = `{ find ${searchRoots} -maxdepth 6 -type f \\( ${artifactNamePredicates} \\) -newer "$marker" -print 2>/dev/null || :; } | awk '/[.]heapsnapshot$/ { if (heap++ < 25) print; next } { if (report++ < 25) print }'`;
+  const discoveredArtifacts = `{ find ${searchRoots} -maxdepth 6 -type f \\( ${artifactNamePredicates} \\) -newer "$marker" -print 2>/dev/null || :; }`;
+  const artifactOutputCommand = signalAlreadySent
+    ? discoveredArtifacts
+    : `${discoveredArtifacts} | awk '/[.]heapsnapshot$/ { if (heap++ < 25) print; next } { if (report++ < 25) print }'`;
   const command = ocmEnvExecShell(
     envName,
     `set -eu; ${markerCommand}; ${signalCommand}; attempts=0; while :; do heap_count=$({ find ${searchRoots} -maxdepth 6 -type f -name "*.heapsnapshot" -newer "$marker" -print 2>/dev/null || :; } | wc -l | tr -d ' '); report_count=$({ find ${searchRoots} -maxdepth 6 -type f \\( -name "report.*.json" -o -name "*diagnostic*.json" \\) -newer "$marker" -print 2>/dev/null || :; } | wc -l | tr -d ' '); if ${readyConditions}; then break; fi; if [ "$attempts" -ge ${pollAttempts} ]; then break; fi; attempts=$((attempts + 1)); sleep ${DIAGNOSTIC_POLL_INTERVAL_MS / 1000}; done; ${artifactOutputCommand}`
@@ -180,18 +185,23 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
   } finally {
     await signalMarker?.cleanup();
   }
-  const files = result.status === 0
+  let files = result.status === 0
     ? result.stdout.split("\n").map((line) => line.trim()).filter(Boolean)
     : [];
   if (result.status === 0) {
+    if (signalAlreadySent) {
+      files = await filesModifiedAtOrAfter(files, signalSentAtEpochMs);
+    }
     files.push(...await collectLocalDiagnosticReports(
       artifactDir,
       signalAlreadySent ? signalSentAtEpochMs : requestedAtEpochMs
     ));
   }
   const uniqueFiles = [...new Set(files)];
-  const heapFiles = uniqueFiles.filter((file) => /\.heapsnapshot$/i.test(file));
-  const reportFiles = uniqueFiles.filter((file) => /report\..*\.json$|diagnostic.*\.json$/i.test(file));
+  const heapFiles = uniqueFiles.filter((file) => /\.heapsnapshot$/i.test(file)).slice(0, 25);
+  const reportFiles = uniqueFiles
+    .filter((file) => /report\..*\.json$|diagnostic.*\.json$/i.test(file))
+    .slice(0, 25);
   const triggerError = result.status === 0
     ? null
     : firstOutputLine(result.stderr) || firstOutputLine(result.stdout) || "diagnostic trigger unavailable";
@@ -309,6 +319,20 @@ async function collectLocalDiagnosticReports(artifactDir, modifiedAfterEpochMs =
     }
     throw error;
   }
+}
+
+async function filesModifiedAtOrAfter(paths, modifiedAfterEpochMs) {
+  const fresh = [];
+  for (const path of paths) {
+    try {
+      if ((await stat(path)).mtimeMs >= modifiedAfterEpochMs) {
+        fresh.push(path);
+      }
+    } catch {
+      // A concurrently removed artifact is not retained as trigger evidence.
+    }
+  }
+  return fresh;
 }
 
 async function createTimestampMarker(epochMs) {
