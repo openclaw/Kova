@@ -1,6 +1,6 @@
-import { readdir, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { runCommand } from "../commands.mjs";
+import { quoteShell, runCommand } from "../commands.mjs";
 import { ocmEnvExecShell } from "../ocm/commands.mjs";
 import { copyCollectorArtifacts } from "./artifacts.mjs";
 
@@ -91,12 +91,22 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
       diagnosticReport: diagnosticTriggerResult(DIAGNOSTIC_REPORT_SCHEMA, { requested: options.diagnosticReport === true, error })
     };
   }
+  const pollDurationSeconds = (Math.max(1, timeoutMs) / 1000).toFixed(3);
+  const commandExitMarginMs = Math.max(5000, Math.min(15000, Math.floor(timeoutMs * 0.1)));
+  const searchRoots = [
+    '"$OPENCLAW_HOME"',
+    artifactDir ? quoteShell(join(artifactDir, "node-profiles")) : null
+  ].filter(Boolean).join(" ");
+  const readyConditions = [
+    options.heapSnapshot === true ? '[ "$heap_count" -gt 0 ]' : null,
+    options.diagnosticReport === true ? '[ "$report_count" -gt 0 ]' : null
+  ].filter(Boolean).join(" && ") || "true";
   const command = ocmEnvExecShell(
     envName,
-    `set -eu; marker=$(mktemp); trap 'rm -f "$marker"' EXIT; touch "$marker"; sleep 1; kill -USR2 ${normalizedPid}; sleep 1; find "$OPENCLAW_HOME" -maxdepth 6 -type f \\( -name "*.heapsnapshot" -o -name "report.*.json" -o -name "*diagnostic*.json" \\) -newer "$marker" -print 2>/dev/null | head -50`
+    `set -eu; marker=$(mktemp); deadline_marker=$(mktemp); rm -f "$deadline_marker"; (sleep ${pollDurationSeconds}; touch "$deadline_marker") & watchdog=$!; trap 'kill "$watchdog" 2>/dev/null || :; rm -f "$marker" "$deadline_marker"' EXIT; touch "$marker"; kill -USR2 ${normalizedPid}; while :; do heap_count=$({ find ${searchRoots} -maxdepth 6 -type f -name "*.heapsnapshot" -newer "$marker" -print 2>/dev/null || :; } | wc -l | tr -d ' '); report_count=$({ find ${searchRoots} -maxdepth 6 -type f \\( -name "report.*.json" -o -name "*diagnostic*.json" \\) -newer "$marker" -print 2>/dev/null || :; } | wc -l | tr -d ' '); if ${readyConditions}; then break; fi; if [ -e "$deadline_marker" ]; then break; fi; sleep 0.25; done; kill "$watchdog" 2>/dev/null || :; { find ${searchRoots} -maxdepth 6 -type f \\( -name "*.heapsnapshot" -o -name "report.*.json" -o -name "*diagnostic*.json" \\) -newer "$marker" -print 2>/dev/null || :; } | head -50`
   );
   const result = await runCommand(command, {
-    timeoutMs,
+    timeoutMs: timeoutMs + commandExitMarginMs,
     maxOutputChars: 100000,
     env: options.commandEnv
   });
@@ -112,14 +122,30 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
   const triggerError = result.status === 0
     ? null
     : firstOutputLine(result.stderr) || firstOutputLine(result.stdout) || "diagnostic trigger unavailable";
-  const heapCopied = options.heapSnapshot === true && artifactDir && result.status === 0
-    ? await copyCollectorArtifacts(heapFiles, join(artifactDir, "heap"), {
-      beforeCopy: (file) => waitForStableFile(file, Math.min(timeoutMs, 5000))
-    })
-    : { artifacts: [], artifactBytes: 0 };
-  const reportCopied = options.diagnosticReport === true && artifactDir && result.status === 0
-    ? await copyCollectorArtifacts(reportFiles, join(artifactDir, "diagnostic-reports"))
-    : { artifacts: [], artifactBytes: 0 };
+  const heapCopied = await retainTriggeredArtifacts({
+    requested: options.heapSnapshot === true,
+    artifactDir,
+    files: heapFiles,
+    destination: "heap",
+    deadlineEpochMs: requestedAtEpochMs + Math.max(1, timeoutMs)
+  });
+  const reportCopied = await retainTriggeredArtifacts({
+    requested: options.diagnosticReport === true,
+    artifactDir,
+    files: reportFiles,
+    destination: "diagnostic-reports",
+    deadlineEpochMs: requestedAtEpochMs + Math.max(1, timeoutMs)
+  });
+  const heapError = triggerError ?? heapCopied.error ?? (
+    options.heapSnapshot === true && heapFiles.length === 0
+      ? "heap snapshot was not emitted before the diagnostic trigger timeout"
+      : null
+  );
+  const reportError = triggerError ?? reportCopied.error ?? (
+    options.diagnosticReport === true && reportFiles.length === 0
+      ? "diagnostic report was not emitted before the diagnostic trigger timeout"
+      : null
+  );
 
   return {
     heapSnapshot: diagnosticTriggerResult(HEAP_SNAPSHOT_SCHEMA, {
@@ -127,15 +153,48 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
       requested: options.heapSnapshot === true,
       files: heapFiles,
       copied: heapCopied,
-      error: triggerError
+      error: heapError
     }),
     diagnosticReport: diagnosticTriggerResult(DIAGNOSTIC_REPORT_SCHEMA, {
       result,
       requested: options.diagnosticReport === true,
       files: reportFiles,
       copied: reportCopied,
-      error: triggerError
+      error: reportError
     })
+  };
+}
+
+async function retainTriggeredArtifacts({ requested, artifactDir, files, destination, deadlineEpochMs }) {
+  if (!requested || !artifactDir || files.length === 0) {
+    return { artifacts: [], artifactBytes: 0, error: null };
+  }
+  const destinationDir = join(artifactDir, destination);
+  const outcomes = await Promise.all([...new Set(files)].map(async (file) => {
+    try {
+      const remainingMs = Math.max(0, deadlineEpochMs - Date.now());
+      await waitForStableFile(file, remainingMs, {
+        validateJson: destination === "diagnostic-reports"
+      });
+      const copied = await copyCollectorArtifacts([file], destinationDir);
+      return copied.artifacts.length > 0
+        ? { ...copied, error: null }
+        : { ...copied, error: `diagnostic artifact disappeared before copy: ${file}` };
+    } catch (error) {
+      return {
+        artifacts: [],
+        artifactBytes: 0,
+        error: error instanceof Error ? error.message : String(error)
+      };
+    }
+  }));
+  const artifacts = [...new Set(outcomes.flatMap((outcome) => outcome.artifacts))];
+  const artifactBytes = outcomes.reduce((total, outcome) => total + outcome.artifactBytes, 0);
+  const errors = outcomes.map((outcome) => outcome.error).filter(Boolean);
+  return {
+    artifacts,
+    artifactBytes,
+    error: errors.length > 0 ? errors.slice(0, 3).join("; ") : null
   };
 }
 
@@ -180,7 +239,7 @@ function diagnosticTriggerResult(schemaVersion, options = {}) {
   const requested = options.requested === true;
   return {
     schemaVersion,
-    commandStatus: requested ? (result.status ?? 1) : 0,
+    commandStatus: requested ? (result.status !== 0 ? (result.status ?? 1) : (options.error ? 1 : 0)) : 0,
     durationMs: result.durationMs ?? 0,
     timedOut: result.timedOut ?? false,
     requested,
@@ -197,26 +256,34 @@ function positiveIntegerPid(pid) {
   return Number.isInteger(value) && value > 0 ? value : null;
 }
 
-async function waitForStableFile(path, timeoutMs) {
+async function waitForStableFile(path, timeoutMs, options = {}) {
   const deadline = Date.now() + Math.max(0, timeoutMs);
   let lastSize = -1;
-  let stableCount = 0;
+  let lastChangedAt = Date.now();
 
   while (Date.now() <= deadline) {
     const size = await fileSize(path);
-    if (size > 0 && size === lastSize) {
-      stableCount += 1;
-      if (stableCount >= 2) {
+    if (size !== lastSize) {
+      lastSize = size;
+      lastChangedAt = Date.now();
+    } else if (size > 0 && Date.now() - lastChangedAt >= 1000) {
+      if (options.validateJson !== true || await isValidJsonFile(path)) {
         return size;
       }
-    } else {
-      stableCount = 0;
-      lastSize = size;
     }
     await sleep(250);
   }
 
-  return lastSize;
+  throw new Error(`diagnostic artifact did not stabilize before timeout: ${path}`);
+}
+
+async function isValidJsonFile(path) {
+  try {
+    JSON.parse(await readFile(path, "utf8"));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function fileSize(path) {

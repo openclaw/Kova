@@ -12453,6 +12453,38 @@ async function stateFixtureCollectorFailureCheck(tmp) {
       "OCM failure creates no missing-fixture warning"
     );
     assertEqual((await stat(accounting.artifactPath)).isFile(), true, "malformed fixture accounting artifact retained");
+    const nullResolution = await collectStateFixtureAccounting({
+      id: "null-resolution-self-check",
+      fixtureAccounting: {
+        files: [{
+          id: "unresolved-home",
+          path: "{openclawHome}/sessions.json",
+          expectedShape: "openclaw-session-store"
+        }]
+      }
+    }, "kova-self-check", join(artifactDir, "null-resolution"), {
+      resolveEnvInfo: async () => null
+    });
+    assertEqual(nullResolution.envResolution.status, "error", "null OCM resolution is harness failure");
+    assertEqual(nullResolution.status, "error", "null OCM resolution fails accounting");
+    const unresolvedPath = await collectStateFixtureAccounting({
+      id: "unresolved-path-self-check",
+      fixtureAccounting: {
+        files: [{
+          id: "unresolved-path",
+          path: "",
+          expectedShape: "openclaw-session-store"
+        }]
+      }
+    }, "kova-self-check", join(artifactDir, "unresolved-path"), {
+      resolveEnvInfo: async () => ({ runDir: artifactDir })
+    });
+    assertEqual(unresolvedPath.files[0]?.shape?.kind, "unresolved-path", "invalid fixture path remains distinct");
+    assertEqual(
+      unresolvedPath.findings.some((finding) => finding.fileId === "unresolved-path" && finding.kind === "harness"),
+      true,
+      "unresolved fixture path creates harness finding"
+    );
     return {
       id: "state-fixture-collector-failures",
       status: "PASS",
@@ -12531,9 +12563,19 @@ exec "$@"
 const fs = require("node:fs");
 const path = require("node:path");
 const home = process.env.OPENCLAW_HOME;
+let signalCount = 0;
 process.on("SIGUSR2", () => {
-  fs.writeFileSync(path.join(home, "fresh.heapsnapshot"), "fresh-heap");
-  fs.writeFileSync(path.join(home, "report.fresh.json"), "{\\"fresh\\":true}\\n");
+  signalCount += 1;
+  setTimeout(() => {
+    fs.writeFileSync(path.join(home, "fresh.heapsnapshot"), "fresh-heap");
+    fs.writeFileSync(path.join(home, "report.fresh.json"), "{");
+    if (signalCount === 2) {
+      fs.writeFileSync(path.join(home, "report.incomplete.json"), "{");
+    }
+  }, 1400);
+  setTimeout(() => {
+    fs.appendFileSync(path.join(home, "report.fresh.json"), "\\"fresh\\":true}\\n");
+  }, 1800);
 });
 process.stdout.write("ready\\n");
 setInterval(() => {}, 1000);
@@ -12542,7 +12584,7 @@ setInterval(() => {}, 1000);
       stdio: ["ignore", "pipe", "pipe"]
     });
     await waitForChildReady(child);
-    const triggered = await triggerDiagnosticSession("kova-self-check", child.pid, 5000, root, {
+    const triggered = await triggerDiagnosticSession("kova-self-check", child.pid, 3000, root, {
       heapSnapshot: true,
       diagnosticReport: true
     });
@@ -12552,6 +12594,14 @@ setInterval(() => {}, 1000);
     assertEqual(triggered.diagnosticReport.fileCount, 1, "only fresh diagnostic report retained");
     assertEqual(triggered.heapSnapshot.files.some((path) => path.endsWith("stale.heapsnapshot")), false, "stale heap snapshot excluded");
     assertEqual((await readFile(invocationLog, "utf8")).trim().split("\n").length, 1, "one OCM session triggers both artifacts");
+    JSON.parse(await readFile(triggered.diagnosticReport.artifacts[0], "utf8"));
+    const reportOnly = await triggerDiagnosticSession("kova-self-check", child.pid, 3500, root, {
+      diagnosticReport: true
+    });
+    assertEqual(reportOnly.diagnosticReport.commandStatus, 0, "partial diagnostic report stabilizes");
+    assertEqual(reportOnly.diagnosticReport.artifacts.length, 1, "valid report survives sibling stabilization failure");
+    assertEqual(reportOnly.diagnosticReport.error.includes("did not stabilize"), true, "partial report failure retained");
+    JSON.parse(await readFile(reportOnly.diagnosticReport.artifacts[0], "utf8"));
     const failed = await triggerDiagnosticSession("kova-self-check", 99999999, 5000, root, {
       heapSnapshot: true,
       diagnosticReport: true
