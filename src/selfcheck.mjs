@@ -12765,6 +12765,7 @@ async function diagnosticTriggerValidationCheck(tmp) {
     await Promise.all(Array.from({ length: 60 }, (_, index) =>
       writeFile(join(openclawHome, `report.stale-${index}.json`), "{}\n")
     ));
+    await writeFile(join(openclawHome, "diagnostic.fixed.json"), "{\"generation\":0}\n");
     const futureTimestamp = new Date(Date.now() + 60000);
     await utimes(join(openclawHome, "stale.heapsnapshot"), futureTimestamp, futureTimestamp);
     await utimes(join(openclawHome, "report.stale-0.json"), futureTimestamp, futureTimestamp);
@@ -12793,6 +12794,12 @@ process.on("SIGUSR2", () => {
     : home;
   if (currentSignal === 4) {
     setTimeout(() => {
+      fs.writeFileSync(
+        path.join(home, "report.20260712.010101.999999.0.004.json"),
+        "{\\"header\\":{\\"processId\\":999999}}\\n"
+      );
+    }, 100);
+    setTimeout(() => {
       fs.writeFileSync(path.join(home, "report.delayed.json"), "{\\"delayed\\":true}\\n");
     }, 1000);
     return;
@@ -12805,6 +12812,12 @@ process.on("SIGUSR2", () => {
     setTimeout(() => {
       fs.appendFileSync(slowHeap, ",\\"tail\\":true}\\n");
     }, 2800);
+    return;
+  }
+  if (currentSignal === 6) {
+    setTimeout(() => {
+      fs.writeFileSync(path.join(home, "diagnostic.fixed.json"), "{\\"generation\\":1}\\n");
+    }, 400);
     return;
   }
   const heapPath = path.join(
@@ -12929,6 +12942,11 @@ setInterval(() => {}, 1000);
       diagnosticReport: true
     });
     assertEqual(delayedReport.diagnosticReport.artifacts.length, 1, "minimum timeout discovers a report emitted after one second");
+    assertEqual(
+      delayedReport.diagnosticReport.files.some((path) => path.endsWith("report.delayed.json")),
+      true,
+      "unattributed report does not end diagnostic polling"
+    );
     const slowHeap = await triggerDiagnosticSession("kova-self-check", child.pid, 5000, root, {
       heapSnapshot: true
     });
@@ -12938,6 +12956,17 @@ setInterval(() => {}, 1000);
       '{"heap":"head","tail":true}\n',
       "heap snapshot is copied only after the final write"
     );
+    const fixedReport = await triggerDiagnosticSession("kova-self-check", child.pid, 3000, null, {
+      diagnosticReport: true
+    });
+    assertEqual(fixedReport.diagnosticReport.fileCount, 1, "validated sources remain visible without artifact copying");
+    assertEqual(fixedReport.diagnosticReport.artifacts.length, 0, "disabled artifact copying retains no copy");
+    assertEqual(
+      fixedReport.diagnosticReport.files[0].endsWith("diagnostic.fixed.json"),
+      true,
+      "rewritten fixed-path report differs from its baseline identity"
+    );
+    assertEqual(fixedReport.diagnosticReport.error, null, "rewritten fixed-path report succeeds");
     const failed = await triggerDiagnosticSession("kova-self-check", 99999999, 5000, root, {
       heapSnapshot: true,
       diagnosticReport: true
