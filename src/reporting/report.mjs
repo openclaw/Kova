@@ -669,6 +669,16 @@ function buildDecision(report, statuses, findings, blockingFindingCount, warning
       warningFindingCount
     };
   }
+  if ((statuses[RECORD_STATUS.FAIL] ?? 0) > 0) {
+    const primary = primaryFailFinding(findings) ?? findings[0] ?? null;
+    return {
+      verdict: RECORD_STATUS.FAIL,
+      ok: false,
+      reason: primary?.summary ?? "one or more scenarios failed",
+      blockingFindingCount,
+      warningFindingCount
+    };
+  }
   if ((statuses[RECORD_STATUS.BLOCKED] ?? 0) > 0) {
     const primary = findings.find((finding) => finding.severity === "blocked") ?? findings[0] ?? null;
     return {
@@ -685,16 +695,6 @@ function buildDecision(report, statuses, findings, blockingFindingCount, warning
       verdict: RECORD_STATUS.INCOMPLETE,
       ok: false,
       reason: primary?.summary ?? "one or more scenarios were missing required proof",
-      blockingFindingCount,
-      warningFindingCount
-    };
-  }
-  if ((statuses[RECORD_STATUS.FAIL] ?? 0) > 0) {
-    const primary = primaryFailFinding(findings) ?? findings[0] ?? null;
-    return {
-      verdict: RECORD_STATUS.FAIL,
-      ok: false,
-      reason: primary?.summary ?? "one or more scenarios failed",
       blockingFindingCount,
       warningFindingCount
     };

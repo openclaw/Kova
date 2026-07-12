@@ -1,7 +1,7 @@
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  KOVA  ·  report                                                             ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
-   [FAIL]   1 scenario failed · 1/1 sample failed · single-sample
+   [FAIL]   1 scenario failed · 1 failed of 1 sample · single-sample
 
   run kova-<runId> · target runtime:stable · <ts>
 

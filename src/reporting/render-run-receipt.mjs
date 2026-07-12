@@ -76,9 +76,11 @@ function buildRunHeadline(report) {
   const total = report.summary?.total ?? 0;
   const pass = statuses.PASS ?? 0;
   const fail = statuses.FAIL ?? 0;
+  const blocked = statuses.BLOCKED ?? 0;
   const dry = statuses["DRY-RUN"] ?? 0;
   if (report.mode === "dry-run") return `${dry || total} planned`;
-  if (fail > 0) return `${fail} failed of ${total}`;
+  if (fail > 0) return `${fail} failed${blocked > 0 ? `, ${blocked} blocked` : ""} of ${total}`;
+  if (blocked > 0) return `${blocked} blocked of ${total}`;
   if (pass === total && total > 0) return `${total} passed`;
   return `${pass}/${total} passed`;
 }
@@ -115,11 +117,29 @@ function renderKpiStrip(report, ui, opts = {}) {
     ? { label: "Dry-run", value: String(dry), hint: "planned", tone: "neutral", bar: { filled: dry, total: Math.max(total, dry) } }
     : { label: "Passed", value: String(pass), hint: "scenarios", tone: pass > 0 ? "ok" : "dim", bar: { filled: pass, total: Math.max(total, pass) } };
 
-  const failHint = blocked > 0 ? `+${blocked} blocked` : (skip > 0 ? `+${skip} skipped` : null);
-  const failItem = {
-    label: "Failed", value: String(fail), hint: failHint, tone: fail > 0 ? "err" : "dim",
-    bar: { filled: fail, total: Math.max(total, fail) },
-  };
+  const failItem = fail > 0
+    ? {
+      label: "Failed",
+      value: String(fail),
+      hint: blocked > 0 ? `+${blocked} blocked` : (skip > 0 ? `+${skip} skipped` : null),
+      tone: "err",
+      bar: { filled: fail, total: Math.max(total, fail) },
+    }
+    : blocked > 0
+      ? {
+        label: "Blocked",
+        value: String(blocked),
+        hint: skip > 0 ? `+${skip} skipped` : "incomplete",
+        tone: "warn",
+        bar: { filled: blocked, total: Math.max(total, blocked) },
+      }
+      : {
+        label: "Failed",
+        value: "0",
+        hint: skip > 0 ? `+${skip} skipped` : null,
+        tone: "dim",
+        bar: { filled: 0, total: Math.max(total, 1) },
+      };
 
   const perfHint = perf.unstableGroupCount > 0
     ? `${perf.unstableGroupCount} unstable`

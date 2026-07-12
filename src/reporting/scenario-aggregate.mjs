@@ -14,6 +14,7 @@
 
 import { measurementMetricValue } from "../health.mjs";
 import { commandResultFailed } from "../measurement-contract.mjs";
+import { recordStatusRank } from "../statuses.mjs";
 import { summarizeSamples, classifyConfidence } from "../ui/confidence.mjs";
 
 // Metrics we always surface (when present) as scenario headline metrics,
@@ -120,19 +121,10 @@ export function aggregateScenarios(report, findings = []) {
 
   const out = [];
   for (const [id, samples] of byScenario) {
-    const passed = samples.filter((s) => s.status === "PASS").length;
-    const failed = samples.filter((s) => s.status === "FAIL").length;
-    const blocked = samples.filter((s) => s.status === "BLOCKED").length;
-    const dryRun = samples.filter((s) => s.status === "DRY-RUN").length;
-    const verdict = blocked > 0
-      ? "BLOCKED"
-      : failed > 0
-        ? "FAIL"
-        : dryRun === samples.length
-          ? "DRY-RUN"
-          : passed === samples.length
-            ? "PASS"
-            : "INCOMPLETE";
+    const statuses = sampleStatusCounts(samples);
+    const passed = statuses.PASS ?? 0;
+    const dryRun = statuses["DRY-RUN"] ?? 0;
+    const verdict = worstScenarioStatus(samples, { passed, dryRun });
     const first = samples[0];
 
     out.push({
@@ -143,6 +135,7 @@ export function aggregateScenarios(report, findings = []) {
       verdict,
       total: samples.length,
       passed,
+      statuses,
       phases: aggregatePhases(samples),
       metrics: aggregateMetrics(samples),
       fixtureAccounting: aggregateFixtureAccounting(samples),
@@ -155,6 +148,14 @@ export function aggregateScenarios(report, findings = []) {
   // Failure-first: failed/blocked first, then incomplete, then pass
   out.sort((a, b) => verdictRank(a.verdict) - verdictRank(b.verdict));
   return out;
+}
+
+function sampleStatusCounts(samples) {
+  const counts = {};
+  for (const sample of samples) {
+    counts[sample.status] = (counts[sample.status] ?? 0) + 1;
+  }
+  return counts;
 }
 
 function aggregateFixtureAccounting(samples) {
@@ -178,13 +179,23 @@ function aggregateFixtureAccounting(samples) {
 }
 
 function verdictRank(v) {
-  switch (v) {
-    case "FAIL": return 0;
-    case "BLOCKED": return 1;
-    case "INCOMPLETE": return 2;
-    case "PASS": return 3;
-    default: return 4;
+  return -recordStatusRank(v);
+}
+
+function worstScenarioStatus(samples, { passed, dryRun }) {
+  if (samples.some((sample) => sample.status === "FAIL")) {
+    return "FAIL";
   }
+  if (samples.some((sample) => sample.status === "BLOCKED")) {
+    return "BLOCKED";
+  }
+  if (dryRun === samples.length) {
+    return "DRY-RUN";
+  }
+  if (passed === samples.length) {
+    return "PASS";
+  }
+  return "INCOMPLETE";
 }
 
 function aggregatePhases(samples) {
@@ -243,13 +254,10 @@ function aggregateMetrics(samples) {
         }
         if (!roleChildren.has(parentKey)) roleChildren.set(parentKey, new Map());
         const byRole = roleChildren.get(parentKey);
-        if (!byRole.has(role)) {
-          const actualNum = typeof v.actual === "number" ? v.actual : Number(v.actual);
-          byRole.set(role, {
-            role,
-            threshold: parseThreshold(v.expected),
-            actual: Number.isFinite(actualNum) ? actualNum : null,
-          });
+        const candidate = roleViolationCandidate(v, role);
+        const existing = byRole.get(role);
+        if (!existing || compareViolationCandidates(candidate, existing) > 0) {
+          byRole.set(role, candidate);
         }
         continue;
       }
@@ -296,7 +304,14 @@ function aggregateMetrics(samples) {
       unit: meta.unit,
       direction: meta.direction,
       value: stats && stats.n === 1 ? stats.median : null,
-      stats: stats && stats.n > 1 ? { median: stats.median, stdev: stats.stdev, p95: stats.p95, max: stats.max } : null,
+      stats: stats ? {
+        n: stats.n,
+        median: stats.median,
+        stdev: stats.stdev,
+        p95: stats.p95,
+        max: stats.max,
+        cv: stats.cv
+      } : null,
       threshold: meta.threshold,
       status: thresholdStatus,
     });
@@ -352,17 +367,24 @@ function parseThreshold(expected) {
 }
 
 function findWorstViolation(samples) {
+  let worst = null;
   for (const s of samples) {
-    const v = (s.violations ?? [])[0];
-    if (!v) {
-      continue;
-    }
-    const summary = summarizeViolation(v, s.measurements ?? {});
-    if (summary) {
-      return summary;
+    for (const violation of s.violations ?? []) {
+      const summary = summarizeViolation(violation, s.measurements ?? {});
+      if (!summary) {
+        continue;
+      }
+      const candidate = {
+        summary,
+        score: violationScore(violation, s.measurements ?? {}),
+        key: violationSortKey(violation)
+      };
+      if (!worst || compareViolationCandidates(candidate, worst) > 0) {
+        worst = candidate;
+      }
     }
   }
-  return null;
+  return worst?.summary ?? null;
 }
 
 // Surface one claim per scenario derived from its declared objective.
@@ -437,28 +459,106 @@ function groupFindingsByScenario(findings) {
 // Aggregate scenario-level confidence from all numeric headline metrics
 // (worst CV wins, so the verdict line reflects the noisiest signal).
 export function scenarioConfidence(scenario) {
-  let worst = null;
-  let n = 0;
-  for (const m of scenario.metrics ?? []) {
-    if (!m.stats) continue;
-    const cv = m.stats.stdev != null && m.stats.median ? Math.abs(m.stats.stdev / m.stats.median) : null;
-    if (cv != null && (worst == null || cv > worst)) worst = cv;
-  }
-  n = scenario.total ?? 1;
-  return classifyConfidence({ n, cv: worst });
+  return weakestConfidence((scenario.metrics ?? [])
+    .map(metricConfidence)
+    .filter(Boolean), scenario.total ?? 0);
 }
 
-// Run-wide confidence (worst CV across all scenarios).
+// Run-wide confidence keeps each variability estimate paired with the
+// samples that produced it; unrelated large scenarios cannot inflate it.
 export function runConfidence(scenarios) {
-  let n = 0;
-  let worst = null;
-  for (const sc of scenarios) {
-    n = Math.max(n, sc.total ?? 1);
-    for (const m of sc.metrics ?? []) {
-      if (!m.stats || m.stats.median == null || m.stats.stdev == null || m.stats.median === 0) continue;
-      const cv = Math.abs(m.stats.stdev / m.stats.median);
-      if (worst == null || cv > worst) worst = cv;
-    }
+  const confidences = (scenarios ?? [])
+    .flatMap((scenario) => (scenario.metrics ?? []).map(metricConfidence))
+    .filter(Boolean);
+  const fallbackSamples = (scenarios ?? []).reduce((total, scenario) => total + (scenario.total ?? 0), 0);
+  return weakestConfidence(confidences, fallbackSamples);
+}
+
+function roleViolationCandidate(violation, role) {
+  const actual = finiteNumber(violation.actual);
+  const threshold = parseThreshold(violation.expected);
+  return {
+    role,
+    threshold,
+    actual,
+    score: normalizedThresholdOverage(actual, threshold),
+    key: violationSortKey(violation)
+  };
+}
+
+function violationScore(violation, measurements) {
+  if (violation.kind !== "threshold") {
+    return 0;
   }
-  return classifyConfidence({ n, cv: worst });
+  const metricKey = violation.metric ?? null;
+  const actual = finiteNumber(metricKey
+    ? measurementMetricValue(measurements, metricKey) ?? violation.actual
+    : violation.actual);
+  return 1 + normalizedThresholdOverage(actual, parseThreshold(violation.expected));
+}
+
+function normalizedThresholdOverage(actual, threshold) {
+  if (actual === null || threshold === null) {
+    return 0;
+  }
+  return (actual - threshold) / Math.max(Math.abs(threshold), 1);
+}
+
+function compareViolationCandidates(left, right) {
+  const scoreDelta = left.score - right.score;
+  if (scoreDelta !== 0) {
+    return scoreDelta;
+  }
+  const actualDelta = (left.actual ?? Number.NEGATIVE_INFINITY) -
+    (right.actual ?? Number.NEGATIVE_INFINITY);
+  if (actualDelta !== 0) {
+    return actualDelta;
+  }
+  return right.key.localeCompare(left.key);
+}
+
+function violationSortKey(violation) {
+  return [
+    violation.metric ?? "",
+    violation.kind ?? "",
+    violation.message ?? "",
+    violation.expected ?? "",
+    violation.actual ?? ""
+  ].join("|");
+}
+
+function finiteNumber(value) {
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function metricConfidence(metric) {
+  const stats = metric?.stats;
+  if (!stats || !Number.isFinite(stats.n) || stats.n <= 0) {
+    return null;
+  }
+  return classifyConfidence({ n: stats.n, cv: stats.cv });
+}
+
+function weakestConfidence(confidences, fallbackSamples) {
+  if (confidences.length === 0) {
+    return classifyConfidence({ n: fallbackSamples, cv: null });
+  }
+  return confidences.reduce((worst, current) =>
+    confidenceRank(current) > confidenceRank(worst) ||
+      (confidenceRank(current) === confidenceRank(worst) &&
+        (current.percent ?? -1) > (worst.percent ?? -1))
+      ? current
+      : worst
+  );
+}
+
+function confidenceRank(confidence) {
+  const ranks = {
+    stable: 0,
+    moderate: 1,
+    noisy: 2,
+    "single-sample": 3
+  };
+  return ranks[confidence?.bucket] ?? 3;
 }

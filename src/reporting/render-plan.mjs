@@ -163,7 +163,7 @@ function renderNext(planJson, ui) {
   const scenarios = planJson.scenarios ?? [];
   const lines = [ruleSection("next", ui.width, ui), ""];
   const sample = scenarios[0]?.id;
-  if (sample) lines.push(`  ${c.dim(g.arrow)} kova run --scenario ${sample}`);
+  if (sample) lines.push(`  ${c.dim(g.arrow)} kova run --target runtime:stable --scenario ${sample}`);
   lines.push(`  ${c.dim(g.arrow)} kova matrix plan --profile smoke --target runtime:stable`);
   lines.push(`  ${c.dim(g.arrow)} kova plan --json`);
   return lines.join("\n");

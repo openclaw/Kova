@@ -26,3 +26,25 @@ export function findingSeverityForStatus(status) {
   }
   return "fail";
 }
+
+export function recordStatusRank(status) {
+  const ranks = {
+    [RECORD_STATUS.PASS]: 0,
+    [RECORD_STATUS.DRY_RUN]: 0,
+    [RECORD_STATUS.SKIPPED]: 1,
+    [RECORD_STATUS.INCOMPLETE]: 2,
+    [RECORD_STATUS.BLOCKED]: 3,
+    [RECORD_STATUS.FAIL]: 4
+  };
+  return ranks[status] ?? 2;
+}
+
+export function worseRecordStatus(left, right) {
+  if (left == null) {
+    return right ?? null;
+  }
+  if (right == null) {
+    return left;
+  }
+  return recordStatusRank(right) > recordStatusRank(left) ? right : left;
+}

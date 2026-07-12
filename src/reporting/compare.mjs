@@ -1,4 +1,5 @@
 import { measurementMetricValue } from "../health.mjs";
+import { recordStatusRank } from "../statuses.mjs";
 import { buildReportSummary } from "./report.mjs";
 
 const defaultThresholds = {
@@ -415,14 +416,6 @@ export function renderCompareSummary(comparison) {
   return lines.join("\n");
 }
 
-function indexRecords(records) {
-  const index = new Map();
-  for (const record of records) {
-    index.set(recordKey(record), record);
-  }
-  return index;
-}
-
 function groupRecords(records) {
   const groups = new Map();
   for (const record of records) {
@@ -605,16 +598,23 @@ function compareGroupStatuses(baselineGroups = [], currentGroups = []) {
 }
 
 function compareFindings(baselineFindings = [], currentFindings = []) {
-  const baselineByKey = new Map(baselineFindings.map((finding) => [findingKey(finding), finding]));
-  const currentByKey = new Map(currentFindings.map((finding) => [findingKey(finding), finding]));
+  const baselineByKey = groupFindingsByKey(baselineFindings);
+  const currentByKey = groupFindingsByKey(currentFindings);
+  const keys = new Set([...baselineByKey.keys(), ...currentByKey.keys()]);
+  const added = [];
+  const resolved = [];
+  let unchangedCount = 0;
+  for (const key of keys) {
+    const baseline = baselineByKey.get(key) ?? [];
+    const current = currentByKey.get(key) ?? [];
+    unchangedCount += Math.min(baseline.length, current.length);
+    added.push(...current.slice(baseline.length));
+    resolved.push(...baseline.slice(current.length));
+  }
   return {
-    new: [...currentByKey.entries()]
-      .filter(([key]) => !baselineByKey.has(key))
-      .map(([, finding]) => finding),
-    resolved: [...baselineByKey.entries()]
-      .filter(([key]) => !currentByKey.has(key))
-      .map(([, finding]) => finding),
-    unchangedCount: [...currentByKey.keys()].filter((key) => baselineByKey.has(key)).length
+    new: added,
+    resolved,
+    unchangedCount
   };
 }
 
@@ -637,14 +637,42 @@ function statusCountsText(statuses = {}) {
 }
 
 function findingKey(finding) {
+  const id = stableFindingId(finding);
   return [
+    id,
     finding.severity ?? "unknown",
     finding.kind ?? "finding",
     finding.scenario ?? "run",
     finding.state ?? "none",
     finding.metric ?? "none",
-    finding.command ?? (finding.metric ? "metric" : finding.id ?? "none")
+    finding.command ?? (finding.metric ? "metric" : "none"),
+    normalizeFindingText(finding.summary ?? finding.message ?? "")
   ].join("|");
+}
+
+function groupFindingsByKey(findings) {
+  const groups = new Map();
+  for (const finding of findings) {
+    const key = findingKey(finding);
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    groups.get(key).push(finding);
+  }
+  return groups;
+}
+
+function stableFindingId(finding) {
+  const id = typeof finding?.id === "string" ? finding.id : "";
+  return id && !/:\d+$/.test(id) ? id : "none";
+}
+
+function normalizeFindingText(value) {
+  return String(value)
+    .toLowerCase()
+    .replace(/\b-?\d+(?:\.\d+)?\b/g, "#")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function isBlockingFinding(finding) {
@@ -660,8 +688,8 @@ function compareSourceReleaseDiagnostics(leftReport, rightReport) {
 
   const sourceReport = leftLane === "source-build" ? leftReport : rightReport;
   const releaseReport = leftLane === "release-runtime" ? leftReport : rightReport;
-  const sourceRecords = indexRecords(sourceReport.records ?? []);
-  const releaseRecords = indexRecords(releaseReport.records ?? []);
+  const sourceRecords = groupRecords(sourceReport.records ?? []);
+  const releaseRecords = groupRecords(releaseReport.records ?? []);
   const keys = [...sourceRecords.keys()].filter((key) => releaseRecords.has(key)).sort();
   const findings = [];
   const pairs = [];
@@ -675,22 +703,22 @@ function compareSourceReleaseDiagnostics(leftReport, rightReport) {
   }
 
   for (const key of keys) {
-    const source = sourceRecords.get(key);
-    const release = releaseRecords.get(key);
+    const source = sourceRecords.get(key) ?? [];
+    const release = releaseRecords.get(key) ?? [];
     const pair = sourceReleasePair(key, source, release);
     pairs.push(pair);
     if (!pair.source.timelineAvailable) {
       findings.push({
         severity: "blocking",
         key,
-        message: `${key} source-build report did not include OpenClaw timeline diagnostics`
+        message: `${key} source-build report omitted OpenClaw timeline diagnostics for ${pair.source.timelineMissingCount}/${pair.source.sampleCount} sample(s)`
       });
     }
     if (!pair.release.timelineAvailable) {
       findings.push({
         severity: "info",
         key,
-        message: `${key} release-runtime report has no timeline; use outside-in timings for released packages`
+        message: `${key} release-runtime report omitted timeline diagnostics for ${pair.release.timelineMissingCount}/${pair.release.sampleCount} sample(s); use outside-in timings for released packages`
       });
     }
     if (typeof pair.source.agentPreProviderMs === "number" && typeof pair.release.agentPreProviderMs === "number") {
@@ -722,21 +750,50 @@ function compareSourceReleaseDiagnostics(leftReport, rightReport) {
   };
 }
 
-function sourceReleasePair(key, source, release) {
+function sourceReleasePair(key, sourceRecords, releaseRecords) {
+  const source = sourceRecords[0] ?? {};
+  const release = releaseRecords[0] ?? {};
   return {
     key,
     scenario: source.scenario ?? release.scenario ?? null,
     state: source.state?.id ?? release.state?.id ?? null,
     surface: source.surface ?? release.surface ?? source.measurements?.surface ?? release.measurements?.surface ?? null,
-    source: diagnosticRecordSummary(source),
-    release: diagnosticRecordSummary(release)
+    source: diagnosticGroupSummary(sourceRecords),
+    release: diagnosticGroupSummary(releaseRecords)
+  };
+}
+
+function diagnosticGroupSummary(records) {
+  const summaries = records.map(diagnosticRecordSummary);
+  const timelineAvailableCount = summaries.filter((summary) => summary.timelineAvailable).length;
+  return {
+    status: groupWorstStatus(records),
+    sampleCount: summaries.length,
+    timelineAvailable: summaries.length > 0 && timelineAvailableCount === summaries.length,
+    timelineAvailableCount,
+    timelineMissingCount: summaries.length - timelineAvailableCount,
+    timelineEventCount: medianField(summaries, "timelineEventCount"),
+    slowestSpanName: maximumFieldSummary(summaries, "slowestSpanMs")?.slowestSpanName ?? null,
+    slowestSpanMs: maximumField(summaries, "slowestSpanMs"),
+    openRequiredSpanCount: maximumField(summaries, "openRequiredSpanCount"),
+    agentTurnMs: medianField(summaries, "agentTurnMs"),
+    agentPreProviderMs: medianField(summaries, "agentPreProviderMs"),
+    providerFinalMs: medianField(summaries, "providerFinalMs"),
+    agentMetadataScanCount: maximumField(summaries, "agentMetadataScanCount"),
+    agentMetadataScanTotalMs: maximumField(summaries, "agentMetadataScanTotalMs"),
+    agentEventLoopMaxMs: maximumField(summaries, "agentEventLoopMaxMs"),
+    agentSessionPollCount: maximumField(summaries, "agentSessionPollCount"),
+    runtimeDepsStagingMs: maximumField(summaries, "runtimeDepsStagingMs"),
+    readinessHealthReadyMs: medianField(summaries, "readinessHealthReadyMs"),
+    startupHealthP95Ms: maximumField(summaries, "startupHealthP95Ms"),
+    postReadyHealthP95Ms: maximumField(summaries, "postReadyHealthP95Ms"),
+    peakRssMb: maximumField(summaries, "peakRssMb")
   };
 }
 
 function diagnosticRecordSummary(record) {
   const measurements = record?.measurements ?? {};
   return {
-    status: record?.status ?? null,
     timelineAvailable: measurements.openclawTimelineAvailable === true,
     timelineEventCount: measurements.openclawTimelineEventCount ?? null,
     slowestSpanName: measurements.openclawSlowestSpanName ?? null,
@@ -755,6 +812,34 @@ function diagnosticRecordSummary(record) {
     postReadyHealthP95Ms: measurementMetricValue(measurements, "postReadyHealthP95Ms"),
     peakRssMb: measurementMetricValue(measurements, "peakRssMb")
   };
+}
+
+function medianField(summaries, field) {
+  const values = numericFieldValues(summaries, field).sort((left, right) => left - right);
+  if (values.length === 0) {
+    return null;
+  }
+  const midpoint = Math.floor(values.length / 2);
+  return values.length % 2 === 0
+    ? (values[midpoint - 1] + values[midpoint]) / 2
+    : values[midpoint];
+}
+
+function maximumField(summaries, field) {
+  const values = numericFieldValues(summaries, field);
+  return values.length > 0 ? Math.max(...values) : null;
+}
+
+function maximumFieldSummary(summaries, field) {
+  return summaries
+    .filter((summary) => Number.isFinite(summary[field]))
+    .toSorted((left, right) => right[field] - left[field])[0] ?? null;
+}
+
+function numericFieldValues(summaries, field) {
+  return summaries
+    .map((summary) => summary[field])
+    .filter((value) => typeof value === "number" && Number.isFinite(value));
 }
 
 function targetLane(target) {
@@ -776,15 +861,7 @@ function targetKind(target) {
 }
 
 function statusRank(status) {
-  const ranks = {
-    PASS: 0,
-    "DRY-RUN": 0,
-    SKIPPED: 1,
-    INCOMPLETE: 2,
-    FAIL: 3,
-    BLOCKED: 4
-  };
-  return ranks[status] ?? 3;
+  return recordStatusRank(status);
 }
 
 function metricRegressions(baselineRecords, currentRecords, thresholds, options = {}) {
