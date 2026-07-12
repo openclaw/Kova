@@ -1,0 +1,79 @@
+name: Release Publish
+
+on:
+  workflow_run:
+    workflows:
+      - Release Build
+    types:
+      - completed
+
+jobs:
+  publish:
+    name: Publish GitHub release
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Check out trusted release policy
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Download validated build
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: kova-release
+          path: ./dist
+          github-token: ${{ github.token }}
+          run-id: ${{ github.event.workflow_run.id }}
+      - name: Verify release provenance
+        id: release
+        env:
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          readarray -t metadata < <(node - <<'NODE'
+          const fs = require("node:fs");
+          const data = JSON.parse(fs.readFileSync("dist/release-metadata.json", "utf8"));
+          if (!/^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(data.tag)) {
+            throw new Error("invalid release tag metadata");
+          }
+          if (!/^[0-9a-f]{40}$/.test(data.sha)) {
+            throw new Error("invalid release SHA metadata");
+          }
+          console.log(data.tag);
+          console.log(data.sha);
+          NODE
+          )
+          tag="${metadata[0]}"
+          artifact_sha="${metadata[1]}"
+          test "$artifact_sha" = "$EXPECTED_SHA"
+          git fetch --no-tags origin "refs/tags/${tag}:refs/tags/${tag}"
+          test "$(git rev-parse "${tag}^{commit}")" = "$EXPECTED_SHA"
+          git merge-base --is-ancestor "$EXPECTED_SHA" origin/main
+          git -c gpg.format=ssh \
+            -c gpg.ssh.allowedSignersFile=.github/release-allowed-signers \
+            verify-tag "$tag"
+          package_version="$(git show "${EXPECTED_SHA}:package.json" | node -e 'let input=""; process.stdin.on("data", chunk => input += chunk); process.stdin.on("end", () => console.log(JSON.parse(input).version));')"
+          test "$tag" = "v${package_version}"
+          test -f "dist/kova-${package_version}.tar.gz"
+          test -f "dist/kova-${package_version}.tar.gz.sha256"
+          (
+            cd dist
+            sha256sum -c "kova-${package_version}.tar.gz.sha256"
+            sha256sum -c kova.tar.gz.sha256
+          )
+          archive_version="$(tar -xOf dist/kova.tar.gz --wildcards '*/package.json' | node -e 'let input=""; process.stdin.on("data", chunk => input += chunk); process.stdin.on("end", () => console.log(JSON.parse(input).version));')"
+          test "$archive_version" = "$package_version"
+          printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
+      - name: Publish release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: ${{ steps.release.outputs.tag }}
+          generate_release_notes: true
+          files: ./dist/*.tar.gz*

@@ -1,4 +1,4 @@
-name: Release
+name: Release Build
 
 on:
   push:
@@ -19,8 +19,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Verify signed release tag
-        run: git cat-file -p "${GITHUB_REF_NAME}" | grep -Eq -- '-----BEGIN (PGP|SSH) SIGNATURE-----'
+      - name: Verify release ref
+        run: |
+          set -euo pipefail
+          package_version="$(node -p 'require("./package.json").version')"
+          test "${GITHUB_REF_NAME}" = "v${package_version}"
+          git -c gpg.format=ssh \
+            -c gpg.ssh.allowedSignersFile=.github/release-allowed-signers \
+            verify-tag "${GITHUB_REF_NAME}"
+          git merge-base --is-ancestor "${GITHUB_SHA}" origin/main
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -44,27 +51,10 @@ jobs:
           "$tmp/bin/kova" self-check
           rm -rf "$tmp"
       - name: Stage release archive
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: kova-release-${{ github.ref_name }}
-          path: ./dist/*.tar.gz*
+          name: kova-release
+          path: |
+            ./dist/*.tar.gz*
+            ./dist/release-metadata.json
           if-no-files-found: error
-
-  publish:
-    name: Publish GitHub release
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Download release archive
-        uses: actions/download-artifact@v4
-        with:
-          name: kova-release-${{ github.ref_name }}
-          path: ./dist
-      - name: Publish release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          generate_release_notes: true
-          files: ./dist/*.tar.gz*
