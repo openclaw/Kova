@@ -313,7 +313,6 @@ fi
 
 if [[ "$need_checks" -eq 1 ]]; then
   run_step "Running Kova check suite" npm run check:full
-  run_step "Building release archive" "${script_dir}/package-release.sh" --output-dir ./dist
 fi
 
 if [[ "$need_commit" -eq 1 ]]; then
@@ -326,6 +325,14 @@ if [[ "$need_commit" -eq 1 ]]; then
   head_sha="$(git rev-parse HEAD)"
 else
   log_skip "release commit already exists"
+fi
+
+if [[ "$skip_checks" -eq 0 && -z "$local_tag_commit_sha" ]]; then
+  run_step "Building release archive" "${script_dir}/package-release.sh" --output-dir ./dist
+elif [[ "$skip_checks" -eq 1 ]]; then
+  log_skip "release archive build is skipped"
+else
+  log_skip "release archive was validated before the existing tag was created"
 fi
 
 if [[ -z "$local_tag_commit_sha" ]]; then

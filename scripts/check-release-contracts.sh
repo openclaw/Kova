@@ -24,6 +24,13 @@ make_repo() {
   cp "${script_dir}/release.sh" "${repo}/scripts/release.sh"
   cp "${script_dir}/update-version.sh" "${repo}/scripts/update-version.sh"
   cp "${script_dir}/validate-version.mjs" "${repo}/scripts/validate-version.mjs"
+  cat > "${repo}/scripts/package-release.sh" <<'EOF'
+#!/bin/sh
+set -eu
+if [ -n "${KOVA_RELEASE_ARCHIVE_PROOF:-}" ]; then
+  git rev-parse HEAD > "$KOVA_RELEASE_ARCHIVE_PROOF"
+fi
+EOF
   chmod +x "${repo}/scripts/"*
   git -C "$repo" config user.name "Kova release contract"
   git -C "$repo" config user.email "kova-release-contract@example.invalid"
@@ -63,11 +70,13 @@ EOF
 chmod +x "${fresh_bin}/npm"
 (
   cd "$fresh_repo"
-  PATH="${fresh_bin}:$PATH" KOVA_REAL_NPM="$real_npm" scripts/release.sh "$test_version" --skip-checks >/dev/null
+  archive_proof="${tmp}/fresh-release-archive-head"
+  PATH="${fresh_bin}:$PATH" KOVA_REAL_NPM="$real_npm" KOVA_RELEASE_ARCHIVE_PROOF="$archive_proof" scripts/release.sh "$test_version" >/dev/null
   test "$(git diff-tree --no-commit-id --name-only -r HEAD | sort -u)" = $'package-lock.json\npackage.json'
   test "$(node -p 'require("./package.json").version')" = "$test_version"
   test "$(node -p 'require("./package-lock.json").version')" = "$test_version"
   test "$(node -p 'require("./package-lock.json").packages[""].version')" = "$test_version"
+  test "$(cat "$archive_proof")" = "$(git rev-parse HEAD)"
   test -z "$(git status --porcelain=v1)"
   test "$(git rev-parse HEAD)" = "$(git ls-remote origin refs/heads/main | awk '{ print $1 }')"
   test "$(git rev-parse HEAD)" = "$(git ls-remote origin "refs/tags/v${test_version}^{}" | awk '{ print $1 }')"
