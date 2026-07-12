@@ -96,6 +96,7 @@ import { captureOpenClawStateSnapshot } from "./collectors/openclaw-state.mjs";
 import { buildReportSummary, renderMarkdownReport, renderPasteSummary, renderReportSummary, summarizeRecords } from "./reporting/report.mjs";
 import { buildRepeatedWorkAudit } from "./audits/repeated-work.mjs";
 import { ENV_COLLECTOR_IDS, resolveCollectionPolicy } from "./collection-policy.mjs";
+import { classifyManifest, selectManifestCandidates } from "./inventory/openclaw.mjs";
 import { channelPlatformsDir } from "./paths.mjs";
 import {
   buildAgentCliLocalTurnEvidenceInvariants,
@@ -440,6 +441,7 @@ async function runScopedSelfCheck(flags, scope, workspace) {
       }
     }));
     checks.push(await channelCapabilityRegistryCheck());
+    checks.push(inventoryManifestContractsCheck());
     checks.push(await inventoryPlanCheck(tmp));
     checks.push(await repeatedWorkAuditCheck());
     checks.push(await collectionPolicyResolverCheck(tmp, scope));
@@ -12165,12 +12167,60 @@ async function cleanupArtifactsCheck(tmp) {
   };
 }
 
+function inventoryManifestContractsCheck() {
+  const canonicalManifest = {
+    id: "discord",
+    channels: ["discord"],
+    configSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {}
+    }
+  };
+  assertEqual(
+    classifyManifest("/repo/extensions/discord/openclaw.plugin.json", canonicalManifest),
+    "plugin-manifest",
+    "POSIX canonical OpenClaw plugin classification"
+  );
+  assertEqual(
+    classifyManifest("C:\\repo\\extensions\\discord\\openclaw.plugin.json", canonicalManifest),
+    "plugin-manifest",
+    "Windows canonical OpenClaw plugin classification"
+  );
+  assertEqual(
+    classifyManifest("C:\\repo\\extensions\\dashboard\\manifest.json", { openclawExtension: true }),
+    "extension-manifest",
+    "Windows extension path classification"
+  );
+
+  const candidates = Array.from({ length: 302 }, (_, index) =>
+    `/repo/extensions/plugin-${String(index).padStart(3, "0")}/openclaw.plugin.json`
+  );
+  const forward = selectManifestCandidates(candidates);
+  const reversed = selectManifestCandidates([...candidates].reverse());
+  assertEqual(forward.length, 300, "manifest candidate cap");
+  assertEqual(
+    forward.join("\n"),
+    reversed.join("\n"),
+    "manifest candidate selection is discovery-order independent"
+  );
+  assertEqual(forward.at(0), candidates[0], "manifest candidate sort first item");
+  assertEqual(forward.at(-1), candidates[299], "manifest candidate sort capped last item");
+
+  return {
+    id: "inventory-manifest-contracts",
+    status: "PASS",
+    command: "inline self-check",
+    durationMs: 0
+  };
+}
+
 async function inventoryPlanCheck(tmp) {
   const binDir = join(tmp, "inventory-bin");
   const repoDir = join(tmp, "inventory-openclaw");
   const openclawBin = join(binDir, "openclaw");
   await mkdir(binDir, { recursive: true });
-  await mkdir(join(repoDir, "plugins", "bundled"), { recursive: true });
+  await mkdir(join(repoDir, "extensions", "discord"), { recursive: true });
   await mkdir(join(repoDir, "extensions", "dashboard"), { recursive: true });
   await mkdir(join(repoDir, "src", "channels", "message"), { recursive: true });
   await writeFile(openclawBin, `#!/bin/sh
@@ -12210,11 +12260,19 @@ esac
       "release:check": "node scripts/release-check.mjs"
     }
   }, null, 2)}\n`, "utf8");
-  await writeFile(join(repoDir, "plugins", "bundled", "plugin.json"), `${JSON.stringify({
-    name: "plugins",
-    description: "Bundled plugin manifest",
-    openclawPlugin: true
-  }, null, 2)}\n`, "utf8");
+  await writeFile(join(repoDir, "extensions", "discord", "openclaw.plugin.json"), `{
+  // OpenClaw accepts authored JSON5 plugin manifests.
+  id: "discord",
+  name: "Discord",
+  description: "OpenClaw-style channel plugin manifest",
+  channels: ["discord"],
+  configSchema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {},
+  },
+}
+`, "utf8");
   await writeFile(join(repoDir, "extensions", "dashboard", "manifest.json"), `${JSON.stringify({
     name: "dashboard",
     description: "Dashboard extension",
@@ -12276,7 +12334,14 @@ export const channelMessageReceiveAckPolicies = [
       assertEqual(data.capabilities?.some((capability) => capability.id === "cli:unknownx" && capability.matchStatus === "unmodeled"), true, "unknown command warning");
       assertEqual(data.capabilities?.some((capability) => capability.id === "script:release:check"), true, "product package scripts discovered");
       assertEqual(data.capabilities?.some((capability) => capability.id === "script:build"), false, "internal package scripts filtered");
-      assertEqual(data.capabilities?.some((capability) => capability.kind === "plugin-manifest"), true, "plugin manifest discovered");
+      assertEqual(
+        data.capabilities?.some((capability) =>
+          capability.kind === "plugin-manifest" &&
+          capability.path === "extensions/discord/openclaw.plugin.json"
+        ),
+        true,
+        "canonical OpenClaw plugin manifest discovered"
+      );
       assertEqual(data.capabilities?.some((capability) => capability.kind === "extension-manifest"), true, "extension manifest discovered");
       assertEqual((data.coverage?.warnings ?? []).some((warning) => warning.capability === "cli:unknownx"), true, "unmodeled warning emitted");
       assertEqual(data.coverage?.ok, false, "required unmodeled capability blocks inventory coverage");
