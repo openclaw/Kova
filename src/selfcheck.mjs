@@ -512,6 +512,33 @@ async function runScopedSelfCheck(flags, scope, workspace) {
         true,
         "scenario rules stack metadata before overflow",
       );
+      const longArtifactReceipt = renderRunReceipt({
+        report: {
+          mode: "dry-run",
+          runId: "kova-terminal-width-check",
+          summary: { total: 0, statuses: {} },
+          records: [],
+        },
+        reportPath: `/outside/${"deep/".repeat(20)}report.md`,
+      }, { color: "never" }, process.env, { isTTY: false, columns: 80 });
+      const artifactLines = longArtifactReceipt.split("\n");
+      const artifactLabelIndex = artifactLines.findIndex((line) => line.includes("◆ markdown"));
+      assertEqual(artifactLabelIndex >= 0, true, "artifact receipt includes markdown label");
+      assertEqual(
+        artifactLines[artifactLabelIndex].includes("/outside/"),
+        true,
+        "artifact path begins beside its label",
+      );
+      assertEqual(
+        artifactLines[artifactLabelIndex + 1].startsWith(" ".repeat(16)),
+        true,
+        "artifact path continuations use a hanging indent",
+      );
+      assertEqual(
+        artifactLines.every((line) => visualWidth(line) <= 80),
+        true,
+        "artifact receipt stays within terminal width",
+      );
       assertEqual(
         card({
           title: "a card title much wider than its frame",

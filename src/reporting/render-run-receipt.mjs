@@ -7,7 +7,7 @@
 
 import {
   makeUi, ruleSection, renderKovaHeader, kpiStrip,
-  scenariosRollup, withMargin,
+  scenariosRollup, visualWidth, withMargin, wrap,
 } from "../ui/index.mjs";
 import { aggregateScenarios } from "./scenario-aggregate.mjs";
 import { displayPath } from "../paths.mjs";
@@ -201,16 +201,27 @@ function renderScenarios(report, ui, opts = {}) {
 
 function renderArtifacts({ reportPath, jsonPath, summaryPath, bundlePath, retainedGateArtifacts }, ui) {
   const { c, g } = ui;
-  const rel = (p) => displayPath(p);
   const lines = [ruleSection("artifacts", ui.width, ui)];
-  if (reportPath)   lines.push(`  ${c.head(g.diamond)} ${c.dim("markdown   ")} ${rel(reportPath)}`);
-  if (jsonPath)     lines.push(`  ${c.head(g.diamond)} ${c.dim("json       ")} ${rel(jsonPath)}`);
-  if (summaryPath)  lines.push(`  ${c.head(g.diamond)} ${c.dim("summary    ")} ${rel(summaryPath)}`);
-  if (bundlePath)   lines.push(`  ${c.head(g.diamond)} ${c.dim("bundle     ")} ${rel(bundlePath)}`);
+  if (reportPath) lines.push(renderArtifactPath("markdown", reportPath, c.head(g.diamond), ui));
+  if (jsonPath) lines.push(renderArtifactPath("json", jsonPath, c.head(g.diamond), ui));
+  if (summaryPath) lines.push(renderArtifactPath("summary", summaryPath, c.head(g.diamond), ui));
+  if (bundlePath) lines.push(renderArtifactPath("bundle", bundlePath, c.head(g.diamond), ui));
   if (retainedGateArtifacts?.outputDir) {
-    lines.push(`  ${c.warn(g.warn)} ${c.dim("retained   ")} ${rel(retainedGateArtifacts.outputDir)}`);
+    lines.push(renderArtifactPath("retained", retainedGateArtifacts.outputDir, c.warn(g.warn), ui));
   }
   return lines.join("\n");
+}
+
+function renderArtifactPath(label, path, glyph, ui) {
+  const labelCell = String(label).padEnd(11);
+  const prefix = `  ${glyph} ${ui.c.dim(labelCell)} `;
+  const available = Math.max(1, ui.width - visualWidth(prefix));
+  const pathLines = wrap(displayPath(path), available);
+  const continuation = " ".repeat(visualWidth(prefix));
+  return [
+    prefix + (pathLines[0] ?? ""),
+    ...pathLines.slice(1).map((line) => continuation + line),
+  ].join("\n");
 }
 
 function renderNext({ report, reportPath, jsonPath, bundlePath }, ui) {
