@@ -131,7 +131,11 @@ export async function collectEnvMetrics(envName, options = {}) {
       statusLabel: "INFO",
       error: null
     });
-    if (healthEnabled && serviceJson.childPid && readinessMode === "none") {
+    if (
+      healthEnabled &&
+      serviceJson.childPid &&
+      (readinessMode === "none" || readinessTimeoutMs <= 0)
+    ) {
       await collectPostReadyHealth(metrics, collectors, serviceJson.gatewayPort, {
         healthSampleCount,
         healthIntervalMs,
