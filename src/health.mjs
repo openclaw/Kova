@@ -124,6 +124,10 @@ export function validHealthSamples(samples) {
     );
 }
 
+export function validGatewayState(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 export function measurementMetricValue(measurements, metric) {
   if (!measurements) {
     return null;
@@ -331,9 +335,9 @@ function summarizeFinalHealth(metrics) {
   const evidenceComplete = metrics !== null &&
     metrics !== undefined &&
     collectionError == null &&
-    typeof gatewayState === "string" &&
+    validGatewayState(gatewayState) &&
     measuredFailureCount !== null;
-  const failureCount = evidenceComplete ? measuredFailureCount : null;
+  const failureCount = measuredFailureCount;
   const maxMs = summary?.maxMs ?? metrics?.healthSummary?.maxMs ?? metrics?.health?.durationMs ?? null;
   const p95Ms = summary?.p95Ms ?? metrics?.healthSummary?.p95Ms ?? null;
   const ok = evidenceComplete ? gatewayState === "running" && failureCount === 0 : null;
