@@ -64,7 +64,7 @@ export function renderAssessment(report, flags = {}, env = process.env, stream =
   const summary = buildReportSummary(report);
   const scenarios = aggregateScenarios(report, summary.findings);
   const isFull = !!flags.full;
-  return withMargin(renderFromSummary({ summary, scenarios, isFull }, ui), ui.leftPad);
+  return withMargin(renderFromSummary({ summary, scenarios, isFull }, ui), ui.leftPad, ui.width);
 }
 
 // Exposed for tests and downstream callers.

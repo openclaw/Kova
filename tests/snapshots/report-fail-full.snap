@@ -27,5 +27,6 @@
         fresh-install/fresh gateway peak RSS 950 MB (cap 800 MB)
 
 ─── next ───────────────────────────────────────────────────────────────────────
-  → node bin/kova.mjs run --target runtime:stable --scenario fresh-install --state fresh --execute --profile-on-failure --retain-on-failure --json
+  → node bin/kova.mjs run --target runtime:stable --scenario fresh-install \
+    --state fresh --execute --profile-on-failure --retain-on-failure --json
   → kova report bundle kova-<runId>

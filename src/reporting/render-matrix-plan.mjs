@@ -19,7 +19,7 @@ export function renderMatrixPlan(planJson, flags = {}, env = process.env, stream
 
   sections.push("");
   sections.push(renderNext(planJson, ui));
-  return withMargin(sections.join("\n"), ui.leftPad);
+  return withMargin(sections.join("\n"), ui.leftPad, ui.width);
 }
 
 function renderBand(planJson, ui) {
@@ -90,7 +90,7 @@ function renderEntries(planJson, ui) {
     ],
     rows,
     gap: 2,
-    maxWidth: ui.width ? Math.max(40, ui.width - 2) : null,
+    maxWidth: ui.width ? Math.max(1, ui.width - 2) : null,
   });
   lines.push(indentBlock(table, 2));
 

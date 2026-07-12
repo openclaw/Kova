@@ -37,7 +37,7 @@ const TOP_SKIPPED_RESOURCE_METRICS = 6;
 
 export function renderCompareAssessment(comparison, flags = {}, env = process.env, stream = process.stdout) {
   const ui = makeUi(flags, env, stream);
-  return withMargin(renderCompareFromComparison(comparison, ui, { full: !!flags.full }), ui.leftPad);
+  return withMargin(renderCompareFromComparison(comparison, ui, { full: !!flags.full }), ui.leftPad, ui.width);
 }
 
 export function renderCompareFromComparison(comparison, ui, opts = {}) {

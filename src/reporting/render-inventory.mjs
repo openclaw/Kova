@@ -22,7 +22,7 @@ export function renderInventoryPlan(plan, flags = {}, env = process.env, stream 
 
   sections.push("");
   sections.push(renderFooter(plan, ui));
-  return withMargin(sections.join("\n"), ui.leftPad);
+  return withMargin(sections.join("\n"), ui.leftPad, ui.width);
 }
 
 function renderBand(plan, ui) {
@@ -93,7 +93,7 @@ function renderWarnings(plan, ui, flags) {
 
   const lines = [ruleSection(heading, ui.width, ui)];
   for (const w of top) {
-    const wrapped = wrap(String(w.message ?? ""), Math.max(20, ui.width - 6));
+    const wrapped = wrap(String(w.message ?? ""), Math.max(1, ui.width - 6));
     lines.push(`  ${c.warn(g.warn)} ${c.dim(wrapped[0] ?? "")}`);
     for (const cont of wrapped.slice(1)) lines.push("    " + c.dim(cont));
   }

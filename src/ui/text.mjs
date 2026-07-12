@@ -1,14 +1,13 @@
 // ANSI-aware text utilities: width measurement, padding, truncation, wrapping.
 
+import cliTruncate from "cli-truncate";
+import stringWidth from "string-width";
+import wrapAnsi from "wrap-ansi";
 import { stripAnsi } from "./color.mjs";
 
 export function visualWidth(text) {
   if (text == null) return 0;
-  const stripped = stripAnsi(String(text));
-  // Count code points, not UTF-16 code units; box-drawing chars are width 1.
-  let width = 0;
-  for (const _ of stripped) width += 1;
-  return width;
+  return stringWidth(String(text));
 }
 
 export function padEnd(text, width, char = " ") {
@@ -24,13 +23,9 @@ export function padStart(text, width, char = " ") {
 }
 
 export function truncate(text, width, ellipsis = "…") {
-  const w = visualWidth(text);
-  if (w <= width) return text;
-  if (width <= 1) return ellipsis.slice(0, width);
-  // Walk visible chars while preserving ANSI; simple approach: strip, truncate,
-  // and discard color rather than try to interleave - the renderer can re-color.
-  const plain = stripAnsi(text);
-  return plain.slice(0, Math.max(0, width - 1)) + ellipsis;
+  const columns = normalizeColumns(width);
+  if (columns === 0) return "";
+  return cliTruncate(String(text), columns, { truncationCharacter: ellipsis });
 }
 
 export function repeat(char, n) {
@@ -38,25 +33,33 @@ export function repeat(char, n) {
   return char.repeat(n);
 }
 
-// Wrap a plain string at word boundaries to the given visual width.
-// ANSI-naive: callers should wrap before colorizing.
+// Wrap at word boundaries while preserving ANSI styling. Long words are hard
+// wrapped so no returned line exceeds the requested terminal-cell width.
 export function wrap(text, width) {
-  if (width <= 0) return [String(text)];
-  const out = [];
-  for (const para of String(text).split("\n")) {
-    if (para.length === 0) { out.push(""); continue; }
-    let line = "";
-    for (const word of para.split(/\s+/)) {
-      if (line.length === 0) { line = word; continue; }
-      if (line.length + 1 + word.length <= width) line += " " + word;
-      else { out.push(line); line = word; }
-    }
-    if (line) out.push(line);
+  const columns = normalizeColumns(width);
+  if (columns === 0) return [""];
+  const source = String(text);
+  const lines = wrapAnsi(source, columns, {
+    hard: true,
+    trim: true,
+    wordWrap: true,
+  }).split("\n");
+  if (
+    lines.length > 1
+    && visualWidth(lines[0]) === 0
+    && !stripAnsi(source).startsWith("\n")
+  ) {
+    lines.shift();
   }
-  return out;
+  return lines.map((line) => (visualWidth(line) <= columns ? line : truncate(line, columns)));
 }
 
 // Indent every line of a multi-line string with the given prefix.
 export function indent(text, prefix = "  ") {
   return String(text).split("\n").map((line) => prefix + line).join("\n");
+}
+
+function normalizeColumns(width) {
+  const columns = Number(width);
+  return Number.isFinite(columns) && columns > 0 ? Math.floor(columns) : 0;
 }

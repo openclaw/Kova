@@ -51,7 +51,7 @@ export function metricsTable({ rows, sampleCount = 1, compare = false, ui, gap =
         ? fewSampleColumns(c)
         : singleSampleColumns(c);
   const shaped = rows.map((r) => compare ? shapeCompareRow(r, ui) : shapeRow(r, sampleCount, ui));
-  const maxWidth = ui.width ? Math.max(20, ui.width - indent) : null;
+  const maxWidth = ui.width ? Math.max(1, ui.width - indent) : null;
   return renderTable({ columns: cols, rows: shaped, gap, maxWidth });
 }
 

@@ -25,6 +25,14 @@ import { padEnd, padStart, visualWidth, truncate, wrap } from "./text.mjs";
 // below the row, untouched by column alignment. Use it for a full-width
 // dim continuation line (e.g. a long reason that won't fit in any cell).
 export function renderTable({ columns, rows, gap = 2, maxWidth = null }) {
+  const structuralWidth = columns.reduce(
+    (total, col) => total + Math.max(col.minWidth ?? 0, visualWidth(String(col.header ?? ""))),
+    Math.max(0, columns.length - 1) * gap,
+  );
+  if (typeof maxWidth === "number" && maxWidth > 0 && maxWidth < structuralWidth) {
+    return renderCompactTable(columns, rows, Math.floor(maxWidth));
+  }
+
   const widths = columns.map((col) => {
     const header = col.header ?? "";
     const max = rows.reduce(
@@ -70,6 +78,41 @@ export function renderTable({ columns, rows, gap = 2, maxWidth = null }) {
     }
   }
 
+  return lines.join("\n");
+}
+
+function renderCompactTable(columns, rows, maxWidth) {
+  const lines = [];
+  for (const row of rows) {
+    for (const col of columns) {
+      const raw = row[col.key];
+      const isObj = raw != null && typeof raw === "object" && "text" in raw;
+      const text = String(isObj ? raw.text : (raw ?? ""));
+      if (text.length === 0) continue;
+      const color = isObj && typeof raw.color === "function" ? raw.color : (value) => value;
+      const label = String(col.header ?? col.key ?? "").trim();
+      const prefix = label ? `${label}: ` : "";
+      if (prefix && visualWidth(prefix) >= maxWidth) {
+        lines.push(truncate(label, maxWidth));
+        const valueIndent = " ".repeat(Math.min(2, Math.max(0, maxWidth - 1)));
+        const valueWidth = Math.max(1, maxWidth - visualWidth(valueIndent));
+        for (const line of wrap(text, valueWidth)) {
+          lines.push(truncate(valueIndent + color(line), maxWidth));
+        }
+        continue;
+      }
+      const available = Math.max(1, maxWidth - visualWidth(prefix));
+      const wrapped = wrap(text, available);
+      lines.push(truncate(prefix + color(wrapped[0] ?? ""), maxWidth));
+      const indent = " ".repeat(Math.min(visualWidth(prefix), Math.max(0, maxWidth - 1)));
+      for (const line of wrapped.slice(1)) {
+        lines.push(truncate(indent + color(line), maxWidth));
+      }
+    }
+    if (typeof row.__after === "string" && row.__after.length > 0) {
+      lines.push(...wrap(row.__after, maxWidth));
+    }
+  }
   return lines.join("\n");
 }
 

@@ -29,7 +29,7 @@ export function renderCleanupEnvs({ envs, results, execute, force = false, older
     kind: "envs",
     verdict
   }));
-  return withMargin(sections.join("\n"), ui.leftPad);
+  return withMargin(sections.join("\n"), ui.leftPad, ui.width);
 }
 
 export function renderCleanupArtifacts({ candidates, results, execute, artifactsDir, olderThanDays }, flags = {}, env = process.env, stream = process.stdout) {
@@ -58,7 +58,7 @@ export function renderCleanupArtifacts({ candidates, results, execute, artifacts
     artifactsDir,
     verdict
   }));
-  return withMargin(sections.join("\n"), ui.leftPad);
+  return withMargin(sections.join("\n"), ui.leftPad, ui.width);
 }
 
 function deriveEnvsVerdict({ envs, results, execute }) {
@@ -179,7 +179,7 @@ function renderEnvsTable({ envs, results, execute }, ui) {
       { key: "env",    header: c.dim("env"),    align: "left", minWidth: 24 },
       { key: "note",   header: c.dim("detail"), align: "left", minWidth: 10 },
     ],
-    rows, gap: 2,
+    rows, gap: 2, maxWidth: Math.max(1, ui.width - 2),
   }), 2));
   return lines.join("\n");
 }
@@ -204,7 +204,7 @@ function renderArtifactsTable({ candidates, results, execute }, ui) {
       { key: "name",   header: c.dim("artifact dir"), align: "left", minWidth: 32 },
       { key: "note",   header: c.dim("detail"), align: "left", minWidth: 10 },
     ],
-    rows, gap: 2,
+    rows, gap: 2, maxWidth: Math.max(1, ui.width - 2),
   }), 2));
   return lines.join("\n");
 }

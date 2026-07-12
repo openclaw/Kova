@@ -15,7 +15,7 @@
 
 import { heavyBand } from "./layout.mjs";
 import { badge } from "./badges.mjs";
-import { visualWidth, repeat } from "./text.mjs";
+import { visualWidth, repeat, truncate, wrap } from "./text.mjs";
 
 // renderKovaHeader({ surface, verdict, headline, meta, ui }) -> string
 //
@@ -55,20 +55,46 @@ function renderVerdictLine({ verdict, headline, meta, ui }) {
 
   const { c } = ui;
   const badgeText = verdictText ? badge(verdictText, verdictText, ui) : "";
-  const head = headlineText ? c.bold(headlineText) : "";
-  const left = [badgeText, head].filter(Boolean).join("   ");
-  const leftPadded = left ? `   ${left}` : "";
+  const outerIndent = Math.min(3, Math.max(0, ui.width - 1));
+  const prefix = badgeText ? `${repeat(" ", outerIndent)}${badgeText}` : repeat(" ", outerIndent);
+  const headlineIndent = badgeText ? visualWidth(prefix) + 3 : outerIndent;
+  const headlineWidth = Math.max(1, ui.width - headlineIndent);
+  const lines = [];
 
-  if (!metaText) return leftPadded;
-
-  const right = c.dim(metaText);
-  const leftW = visualWidth(leftPadded);
-  const rightW = visualWidth(right);
-  if (leftW === 0) return `   ${right}`;
-  if (leftW + 2 + rightW > ui.width) {
-    const indent = badgeText ? visualWidth(badgeText) + 6 : 3;
-    return `${leftPadded}\n${repeat(" ", indent)}${right}`;
+  const headlineFitsBesideBadge = !badgeText || headlineIndent < ui.width;
+  const headlineLines = headlineText
+    ? wrap(c.bold(headlineText), headlineFitsBesideBadge ? headlineWidth : Math.max(1, ui.width - outerIndent))
+    : [];
+  if (headlineLines.length > 0 && headlineFitsBesideBadge) {
+    lines.push(truncate(`${prefix}${badgeText ? "   " : ""}${headlineLines[0]}`, ui.width));
+    const continuationPrefix = repeat(" ", Math.min(headlineIndent, Math.max(0, ui.width - 1)));
+    for (const line of headlineLines.slice(1)) {
+      lines.push(truncate(continuationPrefix + line, ui.width));
+    }
+  } else {
+    if (badgeText) lines.push(truncate(prefix, ui.width));
+    const continuationPrefix = repeat(" ", outerIndent);
+    for (const line of headlineLines) {
+      lines.push(truncate(continuationPrefix + line, ui.width));
+    }
   }
-  const pad = Math.max(2, ui.width - leftW - rightW);
-  return leftPadded + repeat(" ", pad) + right;
+  if (metaText) {
+    const metaIndent = Math.min(headlineIndent, Math.max(0, ui.width - 1));
+    const metaWidth = Math.max(1, ui.width - metaIndent);
+    const metaLines = wrap(c.dim(metaText), metaWidth);
+    const canShareLastLine = lines.length > 0
+      && metaLines.length === 1
+      && visualWidth(lines.at(-1)) + 2 + visualWidth(metaLines[0]) <= ui.width;
+    if (canShareLastLine) {
+      const pad = ui.width - visualWidth(lines.at(-1)) - visualWidth(metaLines[0]);
+      lines[lines.length - 1] += repeat(" ", pad) + metaLines[0];
+    } else {
+      const continuationPrefix = repeat(" ", metaIndent);
+      for (const line of metaLines) {
+        lines.push(truncate(continuationPrefix + line, ui.width));
+      }
+    }
+  }
+
+  return lines.join("\n");
 }

@@ -13,9 +13,11 @@ export function detectCapabilities(env = process.env, stream = process.stdout) {
   const locale = (env.LC_ALL || env.LC_CTYPE || env.LANG || "").toLowerCase();
   const isUtf8 = locale.includes("utf-8") || locale.includes("utf8") || process.platform === "darwin";
   const colorDepthHint = forceColor !== null ? forceColor : (isTTY && !noColor ? 1 : 0);
-  const width = (stream && Number.isFinite(stream.columns) && stream.columns > 0)
-    ? stream.columns
-    : DEFAULT_WIDTH;
+  const streamWidth = stream && Number.isFinite(stream.columns) && stream.columns > 0
+    ? Math.floor(stream.columns)
+    : null;
+  const envWidth = positiveInteger(env.COLUMNS);
+  const width = streamWidth ?? envWidth ?? DEFAULT_WIDTH;
 
   return { isTTY, noColor, forceColor, isCI, isUtf8, colorDepthHint, width };
 }
@@ -30,6 +32,12 @@ function parseForceColor(raw) {
 function isCiEnv(env) {
   if (env.CI && env.CI !== "false" && env.CI !== "0") return true;
   return Boolean(env.GITHUB_ACTIONS || env.GITLAB_CI || env.CIRCLECI || env.BUILDKITE || env.TEAMCITY_VERSION);
+}
+
+function positiveInteger(value) {
+  if (value === undefined || value === null || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : null;
 }
 
 // Resolve UI options from CLI flags + environment.

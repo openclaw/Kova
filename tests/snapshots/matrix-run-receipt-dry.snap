@@ -2,7 +2,8 @@
 ║  KOVA  ·  matrix run                                                         ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
    [DRY-RUN]   12 planned
-               mode: dry-run · target: runtime:stable · runId: kova-<runId>
+               mode: dry-run · target: runtime:stable · runId:
+               kova-<runId>
 
   Entries 12   ·   Dry-run 12   ·   Failed 0   ·   Performance 12 groups
 

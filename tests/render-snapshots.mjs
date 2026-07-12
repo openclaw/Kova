@@ -99,7 +99,9 @@ function normalize(out, snapshotCase) {
     structured = normalizePlanPlatformLine(structured);
   }
   const normalized = structured
-    .replaceAll(SNAPSHOT_KOVA_HOME, "<kova-home>")
+    .replace(flexibleWrappedPath(SNAPSHOT_KOVA_HOME), (path) => (
+      path.replace(/\n\s*/g, "").replace(SNAPSHOT_KOVA_HOME, "<kova-home>")
+    ))
     .replaceAll(repoRoot, "<repo>")
     .replaceAll(home, "<home>")
     .replaceAll(HOST_PLATFORM.release, "<os-release>")
@@ -381,6 +383,14 @@ function currentPlatformKeysBlock(platformKeys) {
     ),
     "    ]"
   ].join("\n");
+}
+
+function flexibleWrappedPath(value) {
+  const root = [...value]
+    .map((char) => char.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("(?:\\n\\s*)?");
+  const suffix = "(?:(?:\\n\\s*)?/(?:(?:\\n\\s*)?[A-Za-z0-9_./-])*)?";
+  return new RegExp(root + suffix, "g");
 }
 
 function runCase(c) {

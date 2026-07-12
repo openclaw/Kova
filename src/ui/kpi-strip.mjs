@@ -19,7 +19,7 @@
 
 import { makeColor } from "./color.mjs";
 import { makeGlyphs } from "./glyphs.mjs";
-import { visualWidth, repeat } from "./text.mjs";
+import { visualWidth, repeat, wrap } from "./text.mjs";
 
 const SEP_SPACING = "   ";
 const BAR_WIDE = 10;
@@ -51,7 +51,14 @@ export function kpiStrip(items, ui) {
 
   // Final layout option: stack one per line, full detail.
   return list
-    .map((it) => "  " + renderItem(it, c, g, { includeLabel: true, includeHint: true, barWidth: BAR_WIDE }))
+    .flatMap((it) => {
+      const indent = Math.min(2, Math.max(0, width - 1));
+      const lines = wrap(
+        renderItem(it, c, g, { includeLabel: true, includeHint: true, barWidth: BAR_WIDE }),
+        Math.max(1, width - indent),
+      );
+      return lines.map((line) => repeat(" ", indent) + line);
+    })
     .join("\n");
 }
 

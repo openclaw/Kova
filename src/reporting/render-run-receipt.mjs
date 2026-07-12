@@ -30,7 +30,7 @@ export function renderRunReceipt({ report, reportPath, jsonPath, summaryPath }, 
 
   sections.push("");
   sections.push(renderNext({ report, reportPath, jsonPath }, ui));
-  return withMargin(sections.join("\n"), ui.leftPad);
+  return withMargin(sections.join("\n"), ui.leftPad, ui.width);
 }
 
 export function renderMatrixRunReceipt({ report, reportPath, jsonPath, summaryPath, bundlePath, retainedGateArtifacts }, flags = {}, env = process.env, stream = process.stdout) {
@@ -54,7 +54,7 @@ export function renderMatrixRunReceipt({ report, reportPath, jsonPath, summaryPa
 
   sections.push("");
   sections.push(renderNext({ report, reportPath, jsonPath, bundlePath }, ui));
-  return withMargin(sections.join("\n"), ui.leftPad);
+  return withMargin(sections.join("\n"), ui.leftPad, ui.width);
 }
 
 function renderBand(report, ui, { kind }) {

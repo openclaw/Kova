@@ -9,7 +9,7 @@
 
 import { makeColor } from "./color.mjs";
 import { makeGlyphs } from "./glyphs.mjs";
-import { visualWidth, repeat } from "./text.mjs";
+import { visualWidth, repeat, truncate } from "./text.mjs";
 import { badge } from "./badges.mjs";
 
 // scenarioRule({ id, verdict, samples, ui }) -> string
@@ -32,8 +32,13 @@ export function scenarioRule({ id, verdict = "", samples = null, note = "", ui }
 
   const prefixW = visualWidth(prefix);
   const rightW = visualWidth(right);
+  if (prefixW + rightW + 5 > width) {
+    const lines = [c.dim(truncate(prefix, width))];
+    if (right) lines.push(truncate(right, width));
+    return lines.join("\n");
+  }
   const trailingLen = 3;
-  const fillW = Math.max(3, width - prefixW - rightW - (right ? 2 : 0) - (right ? trailingLen : 0));
+  const fillW = Math.max(0, width - prefixW - rightW - (right ? 2 : 0) - (right ? trailingLen : 0));
   const fill = repeat(g.hLight, fillW);
   const trailing = repeat(g.hLight, trailingLen);
   if (!right) {

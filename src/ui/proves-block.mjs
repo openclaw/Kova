@@ -27,7 +27,7 @@ export function provesBlock({ claims, compare = false, ui, indent = 0 } = {}) {
   if (!claims || claims.length === 0) return "";
   const c = ui.c;
   const g = ui.g;
-  const width = Math.max(20, (ui.width ?? 80) - indent);
+  const width = Math.max(1, (ui.width ?? 80) - indent);
 
   const lines = [];
   for (const cl of claims) {
@@ -36,7 +36,7 @@ export function provesBlock({ claims, compare = false, ui, indent = 0 } = {}) {
       const glyph = colorize(c, sev, statusGlyph(g, sev));
       const prefix = `  ${glyph} `;
       const prefixW = 2 + 1 + 1; // 2 margin + 1 glyph + 1 space
-      const wrapped = wrap(cl.claim ?? "", Math.max(20, width - prefixW));
+      const wrapped = wrap(cl.claim ?? "", Math.max(1, width - prefixW));
       wrapped.forEach((line, i) => {
         lines.push((i === 0 ? prefix : repeat(" ", prefixW)) + line);
       });
@@ -54,7 +54,7 @@ export function provesBlock({ claims, compare = false, ui, indent = 0 } = {}) {
         : cl.change === "improved" ? "  (improved)".length : 0;
       const prefix = `  ${transition} `;
       const prefixW = 2 + transitionW + 1;
-      const wrapped = wrap(cl.claim ?? "", Math.max(20, width - prefixW - noteW));
+      const wrapped = wrap(cl.claim ?? "", Math.max(1, width - prefixW - noteW));
       wrapped.forEach((line, i) => {
         const isLast = i === wrapped.length - 1;
         const tail = isLast ? note : "";

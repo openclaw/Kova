@@ -25,7 +25,7 @@ export function findingsBlock({ findings, compare = false, ui, limit = null, ind
   if (!findings || findings.length === 0) return "";
   const c = ui.c;
   const g = ui.g;
-  const width = Math.max(20, (ui.width ?? 80) - indent);
+  const width = Math.max(1, (ui.width ?? 80) - indent);
   const top = limit ? findings.slice(0, limit) : findings;
 
   const lines = [];
@@ -62,11 +62,11 @@ export function findingsBlock({ findings, compare = false, ui, limit = null, ind
 
     const scope = formatScope(f);
     const evidence = (f.evidence ?? []).slice(0, 2).map(tightenSummary).join("; ");
-    const detail = [scope, evidence].filter(Boolean).join("  ");
+    const detail = [scope, evidence].filter(Boolean).join(" ");
     if (detail) {
-      const indent = 6;
-      const wrapped = wrap(detail, Math.max(20, width - indent));
-      for (const w of wrapped) lines.push(repeat(" ", indent) + c.dim(w));
+      const detailIndent = Math.min(6, Math.max(0, width - 1));
+      const wrapped = wrap(detail, Math.max(1, width - detailIndent));
+      for (const w of wrapped) lines.push(repeat(" ", detailIndent) + c.dim(w));
     }
   }
 
@@ -170,12 +170,12 @@ function commaNum(n) {
 // The owner suffix is glued to the last line when it fits there; otherwise
 // it gets its own continuation line.
 function wrapSummaryWithOwner(summary, ownerSuffix, available) {
-  const min = Math.max(20, available);
-  if (!ownerSuffix) return wrap(summary, min);
+  const width = Math.max(1, available);
+  if (!ownerSuffix) return wrap(summary, width);
 
-  const lines = wrap(summary, min);
+  const lines = wrap(summary, width);
   const last = lines[lines.length - 1];
-  if (visualWidth(last) + visualWidth(ownerSuffix) <= min) {
+  if (visualWidth(last) + visualWidth(ownerSuffix) <= width) {
     lines[lines.length - 1] = last + ownerSuffix;
   } else {
     lines.push(ownerSuffix.replace(/^\s+/, ""));

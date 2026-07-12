@@ -20,8 +20,7 @@ export const CONFIDENCE_BUCKETS = ["single-sample", "stable", "moderate", "noisy
 //   - p95 is null when n < 2; the renderer should pick the column variant.
 export function summarizeSamples(values) {
   const xs = (values ?? [])
-    .map((v) => Number(v))
-    .filter((v) => Number.isFinite(v));
+    .filter((value) => typeof value === "number" && Number.isFinite(value));
   const n = xs.length;
   if (n === 0) {
     return { n: 0, mean: null, median: null, stdev: null, p95: null, min: null, max: null, cv: null };
@@ -62,8 +61,8 @@ export function classifyConfidence({ n, cv } = {}) {
 // Returns the percentage of the threshold still unused. Negative when
 // the threshold is breached. Null when inputs are missing.
 export function headroomPercent({ value, threshold, direction = "lower-better" } = {}) {
-  const v = Number(value);
-  const t = Number(threshold);
+  const v = typeof value === "number" ? value : Number.NaN;
+  const t = typeof threshold === "number" ? threshold : Number.NaN;
   if (!Number.isFinite(v) || !Number.isFinite(t) || t === 0) return null;
   const raw = direction === "lower-better" ? (t - v) / t : (v - t) / t;
   return raw * 100;

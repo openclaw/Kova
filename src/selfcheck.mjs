@@ -172,6 +172,22 @@ import {
   writeReportOutputs
 } from "./run/report-output.mjs";
 import {
+  badge,
+  card,
+  detectCapabilities,
+  formatDuration,
+  makeUi,
+  renderKovaHeader,
+  renderTable,
+  resolveWidth,
+  scenarioRule,
+  summarizeSamples,
+  truncate as truncateText,
+  visualWidth,
+  withMargin,
+  wrap,
+} from "./ui/index.mjs";
+import {
   ocmAt,
   ocmEnvDestroy,
   ocmEnvDestroyPreviewJson,
@@ -375,6 +391,136 @@ async function runScopedSelfCheck(flags, scope, workspace) {
         rejected = /must be true or false/.test(error.message);
       }
       assertEqual(rejected, true, "invalid boolean value rejected");
+    }));
+    checks.push(await inlineCheck("terminal-ui-contracts", () => {
+      const samples = summarizeSamples([null, "", false, 0, 2, Number.NaN]);
+      assertEqual(samples.n, 2, "sample summary accepts finite numbers only");
+      assertEqual(samples.mean, 1, "sample summary preserves numeric zero");
+
+      assertEqual(visualWidth("e\u0301"), 1, "combining grapheme width");
+      assertEqual(visualWidth("界"), 2, "fullwidth cell width");
+      assertEqual(visualWidth("👨‍👩‍👧‍👦"), 2, "emoji grapheme width");
+      assertEqual(truncateText("👨‍👩‍👧‍👦 family", 3), "👨‍👩‍👧‍👦…", "truncate preserves grapheme");
+      assertEqual(wrap("界界界", 4).every((line) => visualWidth(line) <= 4), true, "wrap respects cell width");
+      assertEqual(wrap("界", 1), ["…"], "wrap replaces graphemes wider than the line");
+
+      assertEqual(formatDuration(59_950), "1m", "duration carries seconds into minutes");
+      assertEqual(formatDuration(3_599_600), "1h 00m", "duration carries minutes into hours");
+      assertEqual(resolveWidth(24).width, 24, "resolved width never exceeds narrow terminal");
+      assertEqual(resolveWidth(24, { width: 80 }).width, 24, "explicit width cannot exceed terminal");
+
+      assertEqual(detectCapabilities({ NO_COLOR: "" }, {}).noColor, false, "empty NO_COLOR is disabled");
+      assertEqual(detectCapabilities({ NO_COLOR: "0" }, {}).noColor, true, "non-empty NO_COLOR is enabled");
+
+      const ui = makeUi(
+        { color: "never" },
+        { LANG: "en_US.UTF-8" },
+        { isTTY: false, columns: 24 },
+      );
+      const header = renderKovaHeader({
+        surface: "report",
+        verdict: "OK",
+        headline: "a deliberately long headline with fullwidth 界 text",
+        meta: "target runtime:stable",
+        ui,
+      });
+      assertEqual(
+        header.split("\n").every((line) => visualWidth(line) <= ui.width),
+        true,
+        "header wraps within terminal width",
+      );
+      const command = withMargin(
+        "  → node bin/kova.mjs run --profile-on-failure --json",
+        0,
+        39,
+      );
+      assertEqual(
+        command.split("\n").every((line) => visualWidth(line) <= 39),
+        true,
+        "command continuations stay within terminal width",
+      );
+      assertEqual(command.includes("\\\n"), true, "wrapped commands use shell continuations");
+      assertEqual(
+        Array.from({ length: 11 }, (_, index) => index + 1).every((width) => (
+          withMargin("  → node bin/kova.mjs run --json", 0, width)
+            .split("\n")
+            .every((line) => visualWidth(line) <= width)
+        )),
+        true,
+        "sub-structural command hints never exceed terminal width",
+      );
+      assertEqual(
+        [12, 13, 14, 15].every((width) => (
+          withMargin("  → printf '%s' 'quoted value'", 0, width)
+            .split("\n")
+            .every((line) => visualWidth(line) <= width)
+        )),
+        true,
+        "quoted commands never bypass narrow width constraints",
+      );
+      const colorUi = makeUi(
+        { color: "always" },
+        { LANG: "en_US.UTF-8" },
+        { isTTY: true, columns: 39 },
+      );
+      const coloredCommand = withMargin(
+        `  ${colorUi.c.dim(colorUi.g.arrow)} node bin/kova.mjs run --profile-on-failure --json`,
+        0,
+        39,
+      );
+      assertEqual(coloredCommand.includes("\\\n"), true, "colorized command arrows preserve shell wrapping");
+      assertEqual(
+        withMargin("  → printf '%s' 'quoted value'", 0, 24).includes("eval "),
+        true,
+        "quoted commands use an exact shell expression",
+      );
+      const centeredExpression = withMargin("  → printf '%s' 'quoted value'", 4, 24);
+      assertEqual(
+        centeredExpression.includes("\\\n'"),
+        true,
+        "centered shell chunks stay adjacent across continuations",
+      );
+      assertEqual(
+        centeredExpression.split("\n").every((line) => visualWidth(line) <= 28),
+        true,
+        "centered commands include margin within terminal width",
+      );
+      const compactTable = renderTable({
+        columns: [
+          { key: "status", header: "status", align: "left", minWidth: 8 },
+          { key: "name", header: "artifact dir", align: "left", minWidth: 24 },
+          { key: "note", header: "detail", align: "left", minWidth: 10 },
+        ],
+        rows: [{ status: "REMOVED", name: "long-artifact-name", note: "done" }],
+        gap: 2,
+        maxWidth: 40,
+      });
+      assertEqual(
+        compactTable.split("\n").every((line) => visualWidth(line) <= 40),
+        true,
+        "tables compact when structural columns do not fit",
+      );
+      assertEqual(
+        scenarioRule({
+          id: "a-very-long-scenario-identifier-that-cannot-fit-inline",
+          verdict: "PASS",
+          samples: 12,
+          ui: colorUi,
+        }).split("\n").every((line) => visualWidth(line) <= 39),
+        true,
+        "scenario rules stack metadata before overflow",
+      );
+      assertEqual(
+        card({
+          title: "a card title much wider than its frame",
+          lines: ["body"],
+          width: 24,
+          ui: colorUi,
+        }).split("\n").every((line) => visualWidth(line) <= 24),
+        true,
+        "card titles stay within their frame",
+      );
+      assertEqual(badge("OK", "OK", { color: true }).includes("\u001b[42;30m"), true, "OK badge uses success tone");
     }));
     checks.push(await inlineCheck("external-plugin-fixture-manifests", async () => {
       for (const [dir, expectedId] of [
@@ -2833,15 +2979,16 @@ function fixtureAccountingRenderCheck() {
       findings: []
     };
     const rendered = renderAssessment(report, { full: true, color: "never" }, process.env, process.stdout);
+    const normalizedRendered = rendered.replace(/\s+/g, " ");
     assertEqual(rendered.includes("Fixture Accounting"), true, "fixture accounting section rendered");
     assertEqual(rendered.includes("sessions:"), true, "session accounting line rendered");
-    assertEqual(rendered.includes("store[80] source"), true, "source session store summarized");
-    assertEqual(rendered.includes("store[80] canonical"), true, "canonical session store summarized");
-    assertEqual(rendered.includes("store[80] legacy"), true, "legacy session store summarized");
+    assertEqual(normalizedRendered.includes("store[80] source"), true, "source session store summarized");
+    assertEqual(normalizedRendered.includes("store[80] canonical"), true, "canonical session store summarized");
+    assertEqual(normalizedRendered.includes("store[80] legacy"), true, "legacy session store summarized");
     assertEqual(rendered.includes("memory:"), true, "memory accounting line rendered");
-    assertEqual(rendered.includes("items[1200] source"), true, "source memory summarized");
-    assertEqual(rendered.includes("items[1200] canonical"), true, "canonical memory summarized");
-    assertEqual(rendered.includes("items[1200] legacy"), true, "legacy memory summarized");
+    assertEqual(normalizedRendered.includes("items[1200] source"), true, "source memory summarized");
+    assertEqual(normalizedRendered.includes("items[1200] canonical"), true, "canonical memory summarized");
+    assertEqual(normalizedRendered.includes("items[1200] legacy"), true, "legacy memory summarized");
     assertEqual(rendered.includes("sessionId"), false, "fixture payload keys not dumped");
     return {
       id: "fixture-accounting-render",
