@@ -40,7 +40,7 @@ jobs:
           readarray -t metadata < <(node - <<'NODE'
           const fs = require("node:fs");
           const data = JSON.parse(fs.readFileSync("dist/release-metadata.json", "utf8"));
-          if (!/^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(data.tag)) {
+          if (!/^v[0-9A-Za-z.+-]+$/.test(data.tag)) {
             throw new Error("invalid release tag metadata");
           }
           if (!/^[0-9a-f]{40}$/.test(data.sha)) {
@@ -52,6 +52,7 @@ jobs:
           )
           tag="${metadata[0]}"
           artifact_sha="${metadata[1]}"
+          scripts/validate-version.mjs "${tag#v}"
           test "$artifact_sha" = "$EXPECTED_SHA"
           git fetch --no-tags origin "refs/tags/${tag}:refs/tags/${tag}"
           test "$(git rev-parse "${tag}^{commit}")" = "$EXPECTED_SHA"
