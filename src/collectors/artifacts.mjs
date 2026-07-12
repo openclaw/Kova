@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
-import { copyFile, mkdir, stat } from "node:fs/promises";
+import { createReadStream, createWriteStream } from "node:fs";
+import { copyFile, mkdir, rm, stat } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
+import { pipeline } from "node:stream/promises";
 
 export const COLLECTOR_ARTIFACT_DIRS_SCHEMA = "kova.collectorArtifactDirs.v1";
 const MAX_ARTIFACT_NAME_BYTES = 255;
@@ -58,7 +60,7 @@ export async function copyCollectorArtifacts(sources, destinationDir, options = 
       continue;
     }
     try {
-      await copyFile(source, target);
+      await copyArtifact(source, target, options.deadlineEpochMs);
       artifacts.push(target);
       seenTargets.add(target);
     } catch (error) {
@@ -77,6 +79,36 @@ export async function copyCollectorArtifacts(sources, destinationDir, options = 
   }))).reduce((total, size) => total + size, 0);
 
   return { artifacts, artifactBytes };
+}
+
+async function copyArtifact(source, target, deadlineEpochMs) {
+  const deadline = Number(deadlineEpochMs);
+  if (!Number.isFinite(deadline)) {
+    await copyFile(source, target);
+    return;
+  }
+  const remainingMs = Math.floor(deadline - Date.now());
+  if (remainingMs <= 0) {
+    throw new Error(`collector artifact copy exceeded deadline: ${source}`);
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), remainingMs);
+  timeout.unref?.();
+  try {
+    await pipeline(
+      createReadStream(source),
+      createWriteStream(target),
+      { signal: controller.signal }
+    );
+  } catch (error) {
+    await rm(target, { force: true }).catch(() => {});
+    if (controller.signal.aborted) {
+      throw new Error(`collector artifact copy exceeded deadline: ${source}`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function collisionSafeArtifactName(source) {
