@@ -8382,7 +8382,7 @@ async function mockProviderBehaviorCheck(tmp) {
 async function mockProviderProcessSafetyCheck(tmp) {
   const dir = join(tmp, "mock-provider-process-safety");
   await mkdir(dir, { recursive: true });
-  const executablePath = join(process.cwd(), "node_modules/.bin/mock-ai-provider");
+  const executablePath = join(repoRoot, "node_modules/.bin/mock-ai-provider");
   const scriptPath = join(dir, "script.json");
   const requestLog = join(dir, "requests.jsonl");
   const pidFile = join(dir, "pid");
