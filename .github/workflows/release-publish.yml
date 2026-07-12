@@ -52,7 +52,8 @@ jobs:
           )
           tag="${metadata[0]}"
           artifact_sha="${metadata[1]}"
-          scripts/validate-version.mjs "${tag#v}"
+          version="${tag#v}"
+          scripts/validate-version.mjs "$version"
           test "$artifact_sha" = "$EXPECTED_SHA"
           git fetch --no-tags origin "refs/tags/${tag}:refs/tags/${tag}"
           test "$(git rev-parse "${tag}^{commit}")" = "$EXPECTED_SHA"
@@ -72,9 +73,15 @@ jobs:
           archive_version="$(tar -xOf dist/kova.tar.gz "kova-${package_version}/package.json" | node -e 'let input=""; process.stdin.on("data", chunk => input += chunk); process.stdin.on("end", () => console.log(JSON.parse(input).version));')"
           test "$archive_version" = "$package_version"
           printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
+          if [[ "$version" == *-* ]]; then
+            printf 'prerelease=true\n' >> "$GITHUB_OUTPUT"
+          else
+            printf 'prerelease=false\n' >> "$GITHUB_OUTPUT"
+          fi
       - name: Publish release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ steps.release.outputs.tag }}
+          prerelease: ${{ steps.release.outputs.prerelease }}
           generate_release_notes: true
           files: ./dist/*.tar.gz*
