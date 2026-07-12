@@ -17880,13 +17880,19 @@ async function logArtifactRedactionCheck(tmp) {
   const envCanary = ["kova", "env", "canary"].join("-");
   const cliCanary = ["kova", "cli", "canary"].join("-");
   const exactRedactionValue = ["kova", "exact", "canary"].join("-");
+  const genericJsonCanary = ["kova", "generic", "json", "canary"].join("-");
+  const quotedAssignmentTail = ["quoted", "tail", "canary"].join("-");
+  const punctuatedAssignmentTail = ["punctuated", "tail", "canary"].join("-");
   const canaries = [
     headerCanary,
     prefixedHeaderCanary,
     jsonCanary,
     envCanary,
     cliCanary,
-    exactRedactionValue
+    exactRedactionValue,
+    genericJsonCanary,
+    quotedAssignmentTail,
+    punctuatedAssignmentTail
   ];
   const fakeLogs = [
     `Authorization${": "}Bearer ${headerCanary}`,
@@ -17894,7 +17900,10 @@ async function logArtifactRedactionCheck(tmp) {
     JSON.stringify({ access_token: jsonCanary, message: "safe" }),
     `OPENAI_API_KEY${"="}${envCanary}`,
     `command --token ${cliCanary}`,
-    `exact=${exactRedactionValue}`
+    `exact=${exactRedactionValue}`,
+    JSON.stringify({ token: genericJsonCanary }),
+    `SESSION_TOKEN="kova ${quotedAssignmentTail}"`,
+    `DB_PASSWORD=kova,${punctuatedAssignmentTail};done`
   ].join("\n");
   try {
     await mkdir(fakeBin, { recursive: true });
