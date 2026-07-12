@@ -17,6 +17,7 @@ const DIAGNOSTIC_RUNNER_EXIT_RESERVE_MS = 250;
 const DIAGNOSTIC_POLL_INTERVAL_MS = 250;
 const MAX_DIAGNOSTIC_REPORT_BYTES = 16 * 1024 * 1024;
 const DIAGNOSTIC_VALIDATION_CONCURRENCY = 2;
+const DIAGNOSTIC_SEARCH_MAX_DEPTH = 6;
 
 export function collectOpenClawDiagnostics(logs) {
   const events = logs?.structuredEvents ?? [];
@@ -43,9 +44,13 @@ export function collectOpenClawDiagnostics(logs) {
 }
 
 export async function collectDiagnosticMetrics(envName, timeoutMs, artifactDir, commandEnv) {
+  const scanCommand = boundedFindCommand(
+    ['"$OPENCLAW_HOME"'],
+    '-name "report.*.json" -o -name "*.heapsnapshot" -o -name "*heap*.json" -o -name "*diagnostic*.json"'
+  );
   const command = ocmEnvExecShell(
     envName,
-    'find "$OPENCLAW_HOME" -maxdepth 6 -type f \\( -name "report.*.json" -o -name "*.heapsnapshot" -o -name "*heap*.json" -o -name "*diagnostic*.json" \\) -print 2>/dev/null | head -100'
+    `${scanCommand} | head -100`
   );
   const result = await runCommand(command, {
     timeoutMs,
@@ -166,13 +171,27 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
     requestDiagnosticReport ? '-name "report.*.json"' : null,
     requestDiagnosticReport ? '-name "*diagnostic*.json"' : null
   ].filter(Boolean).join(" -o ");
-  const discoveredArtifacts = `{ find ${searchRoots} -maxdepth 6 -type f \\( ${artifactNamePredicates} \\) -newer "$marker" -print 2>/dev/null || :; }`;
+  const discoveredArtifacts = boundedFindCommand(
+    searchRoots,
+    artifactNamePredicates,
+    '-newer "$marker"'
+  );
+  const discoveredHeaps = boundedFindCommand(
+    searchRoots,
+    '-name "*.heapsnapshot"',
+    '-newer "$marker"'
+  );
+  const discoveredReports = boundedFindCommand(
+    searchRoots,
+    '-name "report.*.json" -o -name "*diagnostic*.json"',
+    '-newer "$marker"'
+  );
   const artifactOutputCommand = signalAlreadySent
     ? discoveredArtifacts
     : `${discoveredArtifacts} | awk '/[.]heapsnapshot$/ { if (heap++ < 25) print; next } { if (report++ < 25) print }'`;
   const command = ocmEnvExecShell(
     envName,
-    `set -eu; ${markerCommand}; ${signalCommand}; attempts=0; while :; do heap_count=$({ find ${searchRoots} -maxdepth 6 -type f -name "*.heapsnapshot" -newer "$marker" -print 2>/dev/null || :; } | wc -l | tr -d ' '); report_count=$({ find ${searchRoots} -maxdepth 6 -type f \\( -name "report.*.json" -o -name "*diagnostic*.json" \\) -newer "$marker" -print 2>/dev/null || :; } | wc -l | tr -d ' '); if ${readyConditions}; then break; fi; if [ "$attempts" -ge ${pollAttempts} ]; then break; fi; attempts=$((attempts + 1)); sleep ${DIAGNOSTIC_POLL_INTERVAL_MS / 1000}; done; ${artifactOutputCommand}`
+    `set -eu; ${markerCommand}; ${signalCommand}; attempts=0; while :; do heap_count=$(${discoveredHeaps} | wc -l | tr -d ' '); report_count=$(${discoveredReports} | wc -l | tr -d ' '); if ${readyConditions}; then break; fi; if [ "$attempts" -ge ${pollAttempts} ]; then break; fi; attempts=$((attempts + 1)); sleep ${DIAGNOSTIC_POLL_INTERVAL_MS / 1000}; done; ${artifactOutputCommand}`
   );
   let result;
   try {
@@ -247,6 +266,18 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
       error: reportError
     })
   };
+}
+
+function boundedFindCommand(roots, namePredicates, extraPredicates = "") {
+  const rootArguments = Array.isArray(roots) ? roots.join(" ") : roots;
+  const depthPattern = Array.from(
+    { length: DIAGNOSTIC_SEARCH_MAX_DEPTH + 1 },
+    () => "*"
+  ).join("/");
+  const suffix = extraPredicates ? ` ${extraPredicates}` : "";
+  // -maxdepth is not portable across the BSD find versions used by macOS.
+  // Prune at depth seven so files through the six-level contract remain visible.
+  return `{ for root in ${rootArguments}; do [ -d "$root" ] || continue; find "$root" \\( -path "$root/${depthPattern}" -prune \\) -o \\( -type f \\( ${namePredicates} \\)${suffix} -print \\) 2>/dev/null || :; done; }`;
 }
 
 async function retainTriggeredArtifacts({ requested, artifactDir, files, destination, deadlineEpochMs }) {
