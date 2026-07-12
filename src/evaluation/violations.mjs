@@ -129,8 +129,17 @@ function resourceAttribution(role, summary) {
   };
 }
 
-export function checkAggregateThreshold(violations, actual, metric, threshold) {
+export function checkAggregateThreshold(
+  violations,
+  actual,
+  metric,
+  threshold,
+  { optionalMeasurement = false } = {}
+) {
   if (!activeFiniteThreshold(violations, metric, threshold)) {
+    return;
+  }
+  if (optionalMeasurement && actual === null) {
     return;
   }
   if (!finiteNonNegativeMeasurement(violations, metric, actual, "measurement") || actual <= threshold) {
@@ -165,8 +174,18 @@ export function checkBooleanThreshold(violations, kind, metric, actual, threshol
   }
 }
 
-export function checkTurnThreshold(violations, turn, metric, threshold, message) {
+export function checkTurnThreshold(
+  violations,
+  turn,
+  metric,
+  threshold,
+  message,
+  { optionalMeasurement = false } = {}
+) {
   if (!turn || !activeFiniteThreshold(violations, metric, threshold)) {
+    return;
+  }
+  if (optionalMeasurement && turn[metric] === null) {
     return;
   }
   if (

@@ -2257,7 +2257,16 @@ function checkAgentTurnThresholds(violations, turns, selected, thresholds, recor
     if (turn.expectedFailure !== true) {
       checkTurnThreshold(violations, turn, "providerFinalMs", thresholds.providerFinalMs, `${turn.label} provider work took ${turn.providerFinalMs}ms`);
     }
-    checkTurnThreshold(violations, turn, "cleanupMs", thresholds.agentCleanupMs, `${turn.label} agent cleanup took ${turn.cleanupMs}ms`);
+    // Cleanup is source-span evidence: gate it when present, while absence remains
+    // explicit null. Non-null malformed evidence still blocks in the helper.
+    checkTurnThreshold(
+      violations,
+      turn,
+      "cleanupMs",
+      thresholds.agentCleanupMs,
+      `${turn.label} agent cleanup took ${turn.cleanupMs}ms`,
+      { optionalMeasurement: true }
+    );
     if (typeof thresholds.preProviderDominanceRatio === "number" &&
       typeof turn.preProviderDominance === "number" &&
       turn.preProviderDominance > thresholds.preProviderDominanceRatio &&
@@ -2307,8 +2316,20 @@ function checkAgentTurnAggregateThresholds(violations, stats, thresholds) {
   checkAggregateThreshold(violations, stats.preProviderMs.max, "agentPreProviderMaxMs", thresholds.agentPreProviderMaxMs);
   checkAggregateThreshold(violations, stats.providerFinalMs.p95, "agentProviderFinalP95Ms", thresholds.agentProviderFinalP95Ms);
   checkAggregateThreshold(violations, stats.providerFinalMs.max, "agentProviderFinalMaxMs", thresholds.agentProviderFinalMaxMs);
-  checkAggregateThreshold(violations, stats.cleanupMs.p95, "agentCleanupP95Ms", thresholds.agentCleanupP95Ms);
-  checkAggregateThreshold(violations, stats.cleanupMs.max, "agentCleanupMaxMs", thresholds.agentCleanupMaxMs);
+  checkAggregateThreshold(
+    violations,
+    stats.cleanupMs.p95,
+    "agentCleanupP95Ms",
+    thresholds.agentCleanupP95Ms,
+    { optionalMeasurement: true }
+  );
+  checkAggregateThreshold(
+    violations,
+    stats.cleanupMs.max,
+    "agentCleanupMaxMs",
+    thresholds.agentCleanupMaxMs,
+    { optionalMeasurement: true }
+  );
 }
 
 function preProviderDominanceExceededAbsoluteGate(turn, thresholds) {
