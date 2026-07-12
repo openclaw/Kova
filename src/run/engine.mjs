@@ -2,7 +2,14 @@ import { buildDryRunRecord, buildSkippedRecord, executeScenario } from "../runne
 import { isNonPassingExecutionStatus } from "../statuses.mjs";
 import { positiveIntegerValue } from "./options.mjs";
 
-export async function runScenarioRepeats({ scenario, context, repeat, progress, skipReason = null }) {
+export async function runScenarioRepeats({
+  scenario,
+  context,
+  repeat,
+  progress,
+  skipReason = null,
+  onRecord
+}) {
   const total = positiveIntegerValue(repeat, "repeat");
   const records = [];
   for (let index = 1; index <= total; index += 1) {
@@ -17,6 +24,8 @@ export async function runScenarioRepeats({ scenario, context, repeat, progress, 
 
     if (skipReason) {
       const record = buildSkippedRecord(scenario, iterationContext, skipReason);
+      records.push(record);
+      onRecord?.(record);
       progress?.scenarioEnd?.({
         scenarioId: scenario.id,
         stateId: context.state?.id,
@@ -24,7 +33,6 @@ export async function runScenarioRepeats({ scenario, context, repeat, progress, 
         status: record.status,
         skipReason
       });
-      records.push(record);
       continue;
     }
 
@@ -37,6 +45,8 @@ export async function runScenarioRepeats({ scenario, context, repeat, progress, 
     const record = iterationContext.execute
       ? await executeScenario(scenario, iterationContext)
       : buildDryRunRecord(scenario, iterationContext);
+    records.push(record);
+    onRecord?.(record);
     progress?.scenarioEnd?.({
       scenarioId: scenario.id,
       stateId: context.state?.id,
@@ -44,7 +54,6 @@ export async function runScenarioRepeats({ scenario, context, repeat, progress, 
       status: record.status,
       skipReason: record.skipReason
     });
-    records.push(record);
   }
   return records;
 }

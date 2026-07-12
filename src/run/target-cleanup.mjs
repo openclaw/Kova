@@ -56,7 +56,7 @@ export async function runWithTargetRuntimeCleanup(targetPlan, options, run) {
   let records = [];
   let primaryError = null;
   try {
-    records = await run();
+    records = await run((record) => records.push(record));
   } catch (error) {
     primaryError = error;
   }

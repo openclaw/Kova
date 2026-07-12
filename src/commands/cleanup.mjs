@@ -198,7 +198,7 @@ function validateDestroyPreview(summary) {
   if (summary.blockers.length > 0) {
     return `destroy preview reported blockers: ${summary.blockers.join(", ")}`;
   }
-  if (summary.serviceInstalled || summary.serviceLoaded || summary.serviceRunning) {
+  if (summary.serviceLoaded || summary.serviceRunning) {
     return "destroy preview reported an active service";
   }
   if (summary.steps.some((step) => step?.kind === "processes")) {

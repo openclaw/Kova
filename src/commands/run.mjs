@@ -78,10 +78,16 @@ export async function runScenarioCommand(flags) {
     execute: context.execute,
     timeoutMs: context.timeoutMs,
     retainOnError: context.keepEnv || context.retainOnFailure
-  }, async () => {
+  }, async (onRecord) => {
     const runRecords = [];
     for (const scenario of scenarios) {
-      runRecords.push(...await runScenarioRepeats({ scenario, context, repeat, progress }));
+      runRecords.push(...await runScenarioRepeats({
+        scenario,
+        context,
+        repeat,
+        progress,
+        onRecord
+      }));
     }
     return runRecords;
   });
