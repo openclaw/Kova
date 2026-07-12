@@ -36,6 +36,9 @@ export const proveState = z.enum(["pass", "fail"]);
 const finiteNumber = z.number().finite();
 const nonnegativeNumber = finiteNumber.nonnegative();
 const nonnegativeInteger = z.number().int().nonnegative();
+const dateValue = z
+  .union([z.date(), z.string().trim().min(1)])
+  .pipe(z.coerce.date());
 
 /* ─── Per-scenario summary (top-level on a release) ───────────── */
 
@@ -111,7 +114,7 @@ export const runSchema = z.strictObject({
   id: z.string(),
   runtime: z.string(),
   profile: z.string(),
-  startedAt: z.coerce.date(),
+  startedAt: dateValue,
   durationMs: nonnegativeInteger,
   entryCount: nonnegativeInteger,
   state: stateEnum,
@@ -154,7 +157,7 @@ export const comparisonSchema = z.strictObject({
 
 export const releaseSchema = z.strictObject({
   ver: z.string(),
-  releaseDate: z.coerce.date(),
+  releaseDate: dateValue,
   date: z.string(),
   sha: z.string(),
   passed: z.boolean(),
