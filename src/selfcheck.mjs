@@ -12875,6 +12875,12 @@ process.on("SIGUSR2", () => {
     }, 400);
     return;
   }
+  if (currentSignal === 7) {
+    setTimeout(() => {
+      fs.writeFileSync(path.join(home, reportName(currentSignal)), "{\\"late\\":true}\\n");
+    }, 1200);
+    return;
+  }
   const heapPath = path.join(outputHome, heapName(currentSignal));
   const reportPath = path.join(outputHome, reportName(currentSignal));
   setTimeout(() => {
@@ -13020,6 +13026,14 @@ setInterval(() => {}, 1000);
       "rewritten fixed-path report differs from its baseline identity"
     );
     assertEqual(fixedReport.diagnosticReport.error, null, "rewritten fixed-path report succeeds");
+    const lateBudgetReport = await triggerDiagnosticSession("kova-self-check", child.pid, 3000, root, {
+      diagnosticReport: true
+    });
+    assertEqual(
+      lateBudgetReport.diagnosticReport.files.some((path) => path.endsWith("0.007.json")),
+      true,
+      "final partial polling interval discovers a late report"
+    );
     const failed = await triggerDiagnosticSession("kova-self-check", 99999999, 5000, root, {
       heapSnapshot: true,
       diagnosticReport: true
