@@ -39,9 +39,6 @@ export function buildPlannedPhases(scenario, context, envName, artifactDir, auth
   }
 
   for (const phase of scenario.phases) {
-    if (phase.id === "cleanup") {
-      continue;
-    }
     phases.push(buildScenarioPhase(phase, context, envName, artifactDir));
 
     if (phaseSupportsAuthSetup(phase, authPolicy) && !phases.some((planned) => planned.id === "auth-setup")) {
