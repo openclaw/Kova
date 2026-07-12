@@ -12,7 +12,7 @@
   "thresholds": {
     "modelsListMs": 20000,
     "statusAfterModelsMs": 10000,
-    "gatewayResponsive": true
+    "gatewayResponsive": 1
   },
   "phases": [
     {

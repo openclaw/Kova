@@ -46,7 +46,19 @@ function thresholdSources({ profile, surface, surfaceCalibration, scenario, deri
     sources.push({ kind: "profile-role", id: profile.id, roles: Object.keys(profile.calibration.roles).sort() });
   }
   if (scenario?.thresholds && Object.keys(scenario.thresholds).length > 0) {
-    sources.push({ kind: "scenario", id: scenario.id, thresholds: Object.keys(scenario.thresholds).sort() });
+    const thresholds = Object.keys(scenario.thresholds)
+      .filter((key) => key !== "roleThresholds")
+      .sort();
+    if (thresholds.length > 0) {
+      sources.push({ kind: "scenario", id: scenario.id, thresholds });
+    }
+  }
+  if (scenario?.thresholds?.roleThresholds && Object.keys(scenario.thresholds.roleThresholds).length > 0) {
+    sources.push({
+      kind: "scenario-role",
+      id: scenario.id,
+      roles: Object.keys(scenario.thresholds.roleThresholds).sort()
+    });
   }
   if (derived.length > 0) {
     sources.push({ kind: "derived", id: "health-sample-failures", thresholds: derived });

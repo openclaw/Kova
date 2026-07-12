@@ -11,8 +11,8 @@
     "gateway"
   ],
   "thresholds": {
-    "gatewaySurvives": true,
-    "diagnosticPresent": true,
+    "gatewaySurvives": 1,
+    "diagnosticPresent": 1,
     "statusAfterFailureMs": 10000
   },
   "phases": [
