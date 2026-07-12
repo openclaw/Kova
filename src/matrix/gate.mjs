@@ -109,15 +109,17 @@ export function evaluateGate(report, profile, options = {}) {
   const blockedByHarness = harnessBlockingCards.length > 0;
   const incomplete = missingRequired.length > 0 || blockedByHarness;
   const productBlockingFailures = blockingCards.filter((card) =>
-    !harnessBlockKinds.has(card.kind)
+    card.kind === "openclaw-failure" || card.kind === "performance-regression"
   );
   const verdict = productBlockingFailures.length > 0
     ? "DO_NOT_SHIP"
     : blockedByHarness
       ? "BLOCKED"
-      : incomplete
-        ? "PARTIAL"
-        : "SHIP";
+      : blockingCards.length > 0
+        ? "DO_NOT_SHIP"
+        : incomplete
+          ? "PARTIAL"
+          : "SHIP";
   const subsystems = summarizeSubsystems(cards);
   const fixerSummaries = buildFixerSummaries(subsystems);
 
