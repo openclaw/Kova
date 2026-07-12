@@ -74,7 +74,11 @@ import {
 } from "./measurement-contract.mjs";
 import { collectTimelineMetrics, parseTimelineText } from "./collectors/timeline.mjs";
 import { copyCollectorArtifacts } from "./collectors/artifacts.mjs";
-import { triggerDiagnosticReport, triggerDiagnosticSession } from "./collectors/diagnostics.mjs";
+import {
+  triggerDiagnosticReport,
+  triggerDiagnosticSession,
+  triggerHeapSnapshot
+} from "./collectors/diagnostics.mjs";
 import { assertNetworkFrontageCommandSafe, networkFrontageCommandEnv, stopNetworkFrontage, waitForProxyReady, waitForTcp } from "./network-frontage.mjs";
 import { resolveGatewayEndpoint } from "../support/gateway-endpoint.mjs";
 import {
@@ -156,7 +160,6 @@ import {
   mockProviderCleanupCommand,
   mockProviderPortCommand
 } from "./auth.mjs";
-import { diagnosticArtifactName, triggerDiagnosticReport, triggerHeapSnapshot } from "./collectors/diagnostics.mjs";
 import {
   isOwnedLegacyMockProviderCommand,
   isOwnedMockProviderSupervisorCommand,
@@ -8848,22 +8851,30 @@ async function diagnosticArtifactIdentityCheck(tmp) {
   try {
     const first = join(tmp, "diagnostics-a", "report.json");
     const second = join(tmp, "diagnostics-b", "report.json");
-    const firstName = diagnosticArtifactName(first);
-    const secondName = diagnosticArtifactName(second);
-    assertEqual(firstName, diagnosticArtifactName(first), "diagnostic artifact name is stable");
+    const retainedDir = join(tmp, "diagnostics-retained");
+    await mkdir(join(tmp, "diagnostics-a"), { recursive: true });
+    await mkdir(join(tmp, "diagnostics-b"), { recursive: true });
+    await writeFile(first, "first");
+    await writeFile(second, "second");
+    const firstCopy = await copyCollectorArtifacts([first], retainedDir);
+    const repeatedCopy = await copyCollectorArtifacts([first], retainedDir);
+    const secondCopy = await copyCollectorArtifacts([second], retainedDir);
+    const firstName = basename(firstCopy.artifacts[0]);
+    const secondName = basename(secondCopy.artifacts[0]);
+    assertEqual(firstName, basename(repeatedCopy.artifacts[0]), "diagnostic artifact name is stable");
     assertEqual(firstName === secondName, false, "same-basename diagnostics remain distinct");
     assertEqual(firstName.startsWith("report-"), true, "diagnostic artifact keeps source basename");
     assertEqual(firstName.endsWith(".json"), true, "diagnostic artifact keeps source extension");
 
-    for (const invalidPid of [0, -1]) {
+    for (const invalidPid of [0, -1, "1e3", "+123", "123.0", "1; kill -9 1"]) {
       for (const trigger of [triggerHeapSnapshot, triggerDiagnosticReport]) {
-        let rejected = false;
-        try {
-          await trigger("kova-invalid-pid", invalidPid, 1000, null);
-        } catch (error) {
-          rejected = error.message.includes("must be a positive integer");
-        }
-        assertEqual(rejected, true, `${trigger.name} rejects pid ${invalidPid}`);
+        const result = await trigger("kova-invalid-pid", invalidPid, 1000, null);
+        assertEqual(result.commandStatus, 1, `${trigger.name} rejects pid ${invalidPid}`);
+        assertEqual(
+          result.error.includes("must be a positive integer"),
+          true,
+          `${trigger.name} explains invalid pid ${invalidPid}`
+        );
       }
     }
 
