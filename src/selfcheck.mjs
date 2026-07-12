@@ -1852,7 +1852,7 @@ function ocmCommandBuildersCheck() {
     assertEqual(ocmEnvDestroy("Team Env"), "ocm env destroy 'Team Env' --yes", "quoted env destroy");
     assertEqual(ocmEnvDestroyPreviewJson("Team Env"), "ocm env destroy 'Team Env' --json", "quoted env destroy preview");
     assertEqual(
-      ocmEnvDestroy("Team Env", { json: true, stateToken: "v1:r1" }),
+      ocmEnvDestroy("Team Env", { json: true, stateRevision: "v1:r1" }),
       "ocm env destroy 'Team Env' --json --yes --if-state-token 'v1:r1'",
       "quoted guarded env destroy"
     );
@@ -19310,7 +19310,7 @@ JSON
       exit 0
     fi
     if [ "$KOVA_TOKEN_MISMATCH" = "1" ]; then
-      printf '{"code":"state_changed","removed":false,"stateToken":"v1:changed"}\\n'
+      printf '{"code":"state_changed","removed":false,"stateToken":"test-token-placeholder"}\\n'
       exit 1
     fi
     if [ "$KOVA_PARTIAL_APPLY" = "1" ]; then

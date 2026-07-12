@@ -221,7 +221,7 @@ async function destroyCleanupEnv(envName, { force, cutoffMs }) {
   }
 
   const result = await runCleanupCommand(
-    ocmEnvDestroy(envName, { json: true, stateToken: stateRevision }),
+    ocmEnvDestroy(envName, { json: true, stateRevision }),
     {
       timeoutMs: 120000,
       // partial_apply means teardown began; a retry needs a fresh preview.
