@@ -259,16 +259,43 @@ async function waitForProbeObservation(client, testCase, inboundEventId, initial
     return initialObservation;
   }
   const timeoutMs = asyncObservationTimeoutMs(testCase);
-  const startedAt = Date.now();
+  const expectationDeadline = Date.now() + timeoutMs;
+  const quietMs = asyncEvidenceQuietMs(testCase);
+  const hardDeadline = expectationDeadline + quietMs;
   let latest = initialObservation;
-  while (Date.now() - startedAt < timeoutMs) {
+  let latestEvidenceCounts = probeEvidenceCounts(latest);
+  let latestProviderRequestCount = await countJsonl(providerRequestLogPath);
+  let quietSince = null;
+  for (;;) {
     latest = await readLatestProbeObservation(client, inboundEventId, latest);
-    if (observationSatisfiesWait(testCase, latest)) {
+    const evidenceCounts = probeEvidenceCounts(latest);
+    const providerRequestCount = await countJsonl(providerRequestLogPath);
+    const evidenceChanged = evidenceCounts !== latestEvidenceCounts ||
+      providerRequestCount !== latestProviderRequestCount;
+    latestEvidenceCounts = evidenceCounts;
+    latestProviderRequestCount = providerRequestCount;
+    if (!observationSatisfiesWait(testCase, latest)) {
+      quietSince = null;
+    } else if (quietSince == null || evidenceChanged) {
+      // Async completion can keep consuming provider steps after its first visible
+      // send. Do not reset the next case's script until both paths are quiet.
+      quietSince = Date.now();
+      if (quietMs === 0) {
+        return latest;
+      }
+    } else if (Date.now() - quietSince >= quietMs) {
       return latest;
+    }
+    if (quietSince == null && Date.now() >= expectationDeadline) {
+      return latest;
+    }
+    if (quietSince != null && Date.now() >= hardDeadline) {
+      throw new Error(
+        `${testCase.id}: async evidence did not remain quiet for ${quietMs}ms before timeout`
+      );
     }
     await sleep(100);
   }
-  return await readLatestProbeObservation(client, inboundEventId, latest);
 }
 
 async function readLatestProbeObservation(client, inboundEventId, priorObservation) {
@@ -287,6 +314,26 @@ function requiresObservationWait(testCase) {
 function asyncObservationTimeoutMs(testCase) {
   const value = objectOrEmpty(testCase.expects).asyncCompletionTimeoutMs;
   return Number.isInteger(value) && value > 0 ? value : 15000;
+}
+
+function asyncEvidenceQuietMs(testCase) {
+  const value = objectOrEmpty(testCase.expects).quietMs;
+  if (Number.isInteger(value) && value >= 0) {
+    return value;
+  }
+  return Array.isArray(testCase.providerScript?.completionToolCalls) &&
+    testCase.providerScript.completionToolCalls.length > 0
+    ? 3000
+    : 1000;
+}
+
+function probeEvidenceCounts(observation) {
+  return [
+    observation?.outboundRecords?.length ?? 0,
+    observation?.deliveryRecords?.length ?? 0,
+    observation?.ackRecords?.length ?? 0,
+    observation?.modelTurnRecords?.length ?? 0
+  ].join(":");
 }
 
 function observationSatisfiesWait(testCase, observation) {
@@ -395,6 +442,7 @@ function normalizeWorkflowCase(entry) {
     requiredCapabilities: objectOrEmpty(entry.requiredCapabilities),
     expects,
     fixtures: objectOrEmpty(entry.fixtures),
+    providerScript: objectOrEmpty(entry.providerScript),
     providerRequests: objectOrEmpty(entry.providerRequests),
     atoms: Array.isArray(entry.atoms)
       ? entry.atoms.map(normalizeAtom).filter(Boolean)
