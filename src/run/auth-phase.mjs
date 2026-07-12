@@ -21,6 +21,7 @@ export async function executeAuthPhase(phase, context, envName, artifactDir, aut
     metrics: await collectEnvMetrics(envName, metricOptions(context, null, plannedPhase, artifactDir, {
       kind: "auth-phase",
       collectionIntent: phase.collectionIntent ?? null,
+      redactValues: authPolicy.redactionValues,
       resultStatus: phaseResultStatus(results)
     }))
   };

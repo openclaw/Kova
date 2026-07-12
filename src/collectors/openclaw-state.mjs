@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { access, mkdir, open, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { mkdir, open, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 
 export const OPENCLAW_STATE_SNAPSHOT_SCHEMA = "kova.openclawStateSnapshot.v1";
 
@@ -85,17 +85,18 @@ export async function captureOpenClawStateSnapshot(options = {}) {
     snapshot.budget.omittedCount += 1;
     return snapshot;
   }
+  const resolvedHome = await realpath(home);
 
   for (const relPath of KNOWN_FILES) {
-    const summary = await summarizeFile(home, relPath, limits, snapshot);
+    const summary = await summarizeFile(home, resolvedHome, relPath, limits, snapshot);
     if (summary) {
       snapshot.files.push(summary);
       applyKnownFileSemantics(snapshot, relPath, summary);
     }
   }
 
-  await summarizePluginRoot(home, "plugins", limits, snapshot);
-  await summarizePluginRoot(home, ".openclaw/plugins", limits, snapshot);
+  await summarizePluginRoot(home, resolvedHome, "plugins", limits, snapshot);
+  await summarizePluginRoot(home, resolvedHome, ".openclaw/plugins", limits, snapshot);
 
   snapshot.files.sort((a, b) => a.path.localeCompare(b.path));
   snapshot.plugins.roots.sort((a, b) => a.path.localeCompare(b.path));
@@ -205,9 +206,13 @@ async function homeSummary(home) {
   }
 }
 
-async function summarizePluginRoot(home, rootRelPath, limits, snapshot) {
+async function summarizePluginRoot(home, resolvedHome, rootRelPath, limits, snapshot) {
   const rootPath = join(home, rootRelPath);
-  const rootStats = await stat(rootPath).catch(() => null);
+  const resolvedRoot = await resolveContainedPath(resolvedHome, rootPath, rootRelPath, snapshot);
+  if (!resolvedRoot) {
+    return;
+  }
+  const rootStats = await stat(resolvedRoot).catch(() => null);
   if (!rootStats?.isDirectory()) {
     return;
   }
@@ -228,9 +233,14 @@ async function summarizePluginRoot(home, rootRelPath, limits, snapshot) {
     applyPluginInstallIndexSemantics(snapshot, installIndex);
   }
 
-  const entries = await readdir(rootPath, { withFileTypes: true }).catch(() => []);
+  const entries = await readdir(resolvedRoot, { withFileTypes: true }).catch(() => []);
   let seen = 0;
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    if (entry.isSymbolicLink()) {
+      snapshot.budget.excludedPaths.push(`${rootRelPath}/${entry.name}`);
+      snapshot.budget.omittedCount += 1;
+      continue;
+    }
     if (!entry.isDirectory()) {
       continue;
     }
@@ -245,17 +255,26 @@ async function summarizePluginRoot(home, rootRelPath, limits, snapshot) {
     seen += 1;
 
     const relPath = `${rootRelPath}/${entry.name}`;
+    const resolvedPluginRoot = await resolveContainedPath(
+      resolvedHome,
+      join(resolvedRoot, entry.name),
+      relPath,
+      snapshot
+    );
+    if (!resolvedPluginRoot) {
+      continue;
+    }
     const plugin = {
       path: relPath,
       name: entry.name,
-      nodeModulesPresent: await exists(join(home, relPath, "node_modules")),
+      nodeModulesPresent: await existsContained(resolvedHome, join(resolvedPluginRoot, "node_modules")),
       manifests: []
     };
     if (plugin.nodeModulesPresent) {
       snapshot.budget.excludedPaths.push(`${relPath}/node_modules`);
     }
     for (const manifestName of ["plugin.json", "manifest.json", "package.json"]) {
-      const manifest = await summarizeFile(home, `${relPath}/${manifestName}`, limits, snapshot);
+      const manifest = await summarizeFile(home, resolvedHome, `${relPath}/${manifestName}`, limits, snapshot);
       if (manifest) {
         snapshot.files.push(manifest);
         plugin.manifests.push({
@@ -464,9 +483,13 @@ function summaryStringFingerprint(summary) {
   return typeof summary.sha256 === "string" ? summary.sha256.slice(0, 16) : null;
 }
 
-async function summarizeFile(home, relPath, limits, snapshot) {
+async function summarizeFile(home, resolvedHome, relPath, limits, snapshot) {
   const fullPath = join(home, relPath);
-  const stats = await stat(fullPath).catch(() => null);
+  const resolvedPath = await resolveContainedPath(resolvedHome, fullPath, relPath, snapshot);
+  if (!resolvedPath) {
+    return null;
+  }
+  const stats = await stat(resolvedPath).catch(() => null);
   if (!stats) {
     return null;
   }
@@ -475,7 +498,7 @@ async function summarizeFile(home, relPath, limits, snapshot) {
     return null;
   }
 
-  const sample = await readFileSample(fullPath, stats.size, limits.maxFileBytes);
+  const sample = await readFileSample(resolvedPath, stats.size, limits.maxFileBytes);
   const summary = {
     path: relPath,
     name: basename(relPath),
@@ -590,13 +613,28 @@ function typeOf(value) {
   return typeof value;
 }
 
-async function exists(path) {
-  try {
-    await access(path);
-    return true;
-  } catch {
-    return false;
+async function existsContained(resolvedHome, path) {
+  const resolvedPath = await realpath(path).catch(() => null);
+  return resolvedPath !== null && isContainedPath(resolvedHome, resolvedPath);
+}
+
+async function resolveContainedPath(resolvedHome, path, displayPath, snapshot) {
+  const resolvedPath = await realpath(path).catch(() => null);
+  if (!resolvedPath) {
+    return null;
   }
+  if (isContainedPath(resolvedHome, resolvedPath)) {
+    return resolvedPath;
+  }
+  snapshot.budget.excludedPaths.push(displayPath);
+  snapshot.budget.omittedCount += 1;
+  return null;
+}
+
+function isContainedPath(root, candidate) {
+  const relPath = relative(root, candidate);
+  return relPath === "" ||
+    (!isAbsolute(relPath) && relPath !== ".." && !relPath.startsWith(`..${sep}`));
 }
 
 function sha256(value) {

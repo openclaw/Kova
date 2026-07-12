@@ -296,7 +296,10 @@ function activeNetworkFrontageProbeEndpoint(allocation) {
 
 async function collectLogAndTimelineMetrics(metrics, collectors, envName, timeoutMs, options, collectionPolicy) {
   if (collectorEnabled(collectionPolicy, "logs")) {
-    metrics.logs = await collectLogMetrics(envName, timeoutMs, options.artifactDir, options.commandEnv);
+    metrics.logs = await collectLogMetrics(envName, timeoutMs, options.artifactDir, {
+      commandEnv: options.commandEnv,
+      redactValues: options.redactValues
+    });
     recordCollector(collectors, "logs", metrics.logs, metrics.logs.artifacts);
   } else {
     recordSkippedCollector(collectors, "logs", collectionPolicy.reason);

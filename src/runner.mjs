@@ -152,6 +152,7 @@ export async function executeScenario(scenario, context) {
           results,
           metrics: await collectEnvMetrics(envName, metricOptions(context, scenario, plannedPhase, artifactDir, {
             kind: "scenario-phase",
+            redactValues: authPolicy.redactionValues,
             resultStatus: phaseResultStatus(results)
           }))
         });

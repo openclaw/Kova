@@ -44,6 +44,7 @@ export async function executeEvidenceSnapshotPhase(context, envName, scenario, a
     metrics: await collectEnvMetrics(envName, metricOptions(context, scenario, { id: afterPhaseId }, artifactDir, {
       kind: "evidence-snapshot",
       measurementPhase: phase,
+      redactValues: authPolicy.redactionValues,
       resultStatus: phaseResultStatus(results)
     }))
   };
