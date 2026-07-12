@@ -5015,7 +5015,8 @@ async function reportPublicationCheck(tmp) {
     }
     assertEqual(incompleteBundleRejected, true, "retention rejects incomplete bundle pair");
     const mismatchedChecksumPath = join(publicationRoot, "mismatched.sha256");
-    await writeFile(mismatchedChecksumPath, `0${firstChecksum.slice(1)}`);
+    const mismatchedChecksumPrefix = firstChecksum[0] === "0" ? "1" : "0";
+    await writeFile(mismatchedChecksumPath, `${mismatchedChecksumPrefix}${firstChecksum.slice(1)}`);
     let mismatchedBundleRejected = false;
     try {
       await retainGateArtifacts(collisionReports[0], {
