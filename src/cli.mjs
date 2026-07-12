@@ -8,7 +8,7 @@ const BOOLEAN_FLAGS = new Set([
   "keep_env", "retain_on_failure", "profile_on_failure",
   "deep_profile", "node_profile", "heap_snapshot",
   "ascii", "no_color", "no_progress", "reviewed_good", "version",
-  "dry_run", "no_augment",
+  "dry_run", "no_augment", "force",
 ]);
 
 export function parseFlags(argv) {
@@ -100,7 +100,7 @@ Usage:
   kova report compare <baseline-runId|baseline.json> <current-runId|current.json> [--thresholds <json>] [--fixer] [--json|--plain]
   kova report bundle <runId|report.json> [--output-dir <path>] [--json|--plain]
   kova publish <input.json|runId> [--ver <version>] [--release-date <date>] [--sha <sha>] [--report-dir <path>] [--out-dir <path>] [--no-augment] [--dry-run] [--json]
-  kova cleanup envs [--execute] [--json]
+  kova cleanup envs [--older-than-days <n>] [--execute] [--force] [--json]
   kova cleanup artifacts [--older-than-days <n>] [--execute] [--json]
 
 Selectors:

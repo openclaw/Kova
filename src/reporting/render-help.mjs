@@ -205,12 +205,13 @@ const COMMANDS = [
     id: "cleanup", title: "kova cleanup",
     blurb: "Remove stale Kova-owned envs and run artifact dirs.",
     usage: [
-      "kova cleanup envs [--execute] [--json|--plain]",
+      "kova cleanup envs [--older-than-days <n>] [--execute] [--force] [--json|--plain]",
       "kova cleanup artifacts [--older-than-days <n>] [--execute] [--json|--plain]",
     ],
     flags: [
       ["--execute", "actually destroy/remove (default dry-run)"],
-      ["--older-than-days <n>", "artifacts only (default 7)"],
+      ["--older-than-days <n>", "minimum env/artifact age (defaults: envs 1, artifacts 7)"],
+      ["--force", "envs only: override age, retained, active, and unknown-state safeguards"],
       ["--json|--plain", "machine output / plain text"],
     ],
     examples: [

@@ -49,6 +49,10 @@ export function ocmServiceStatusJson(envName) {
   return `ocm service status ${quoteShell(envName)} --json`;
 }
 
+export function ocmServiceStatusAllJson() {
+  return "ocm service status --all --json";
+}
+
 export function ocmEnvListJson() {
   return "ocm env list --json";
 }

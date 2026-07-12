@@ -943,6 +943,7 @@ async function runScopedSelfCheck(flags, scope, workspace) {
       assertEqual(data.execute, false, "cleanup execute flag");
       assertArray(data.envs, "cleanup envs");
     }));
+    checks.push(await cleanupEnvSafetyCheck(tmp));
     checks.push(await cleanupArtifactsCheck(tmp));
     checks.push(await mockProviderProcessSafetyCheck(tmp));
     checks.push(await diagnosticArtifactIdentityCheck(tmp));
@@ -19074,6 +19075,122 @@ async function cleanupRetryCheck(tmp) {
       durationMs: result.durationMs,
       message: error.message
     };
+  }
+}
+
+async function cleanupEnvSafetyCheck(tmp) {
+  const home = join(tmp, "cleanup-env-safety-home");
+  const binDir = join(tmp, "cleanup-env-safety-bin");
+  const reports = join(home, "reports");
+  const destroyLog = join(tmp, "cleanup-env-destroy.log");
+  const ocmPath = join(binDir, "ocm");
+  const old = "2020-01-01T00:00:00Z";
+  const recent = new Date().toISOString();
+  await mkdir(reports, { recursive: true });
+  await mkdir(binDir, { recursive: true });
+  await writeFile(join(reports, "retained.json"), `${JSON.stringify({
+    records: [{ envName: "kova-retained", cleanup: "retained" }]
+  })}\n`, "utf8");
+  await writeFile(ocmPath, `#!/bin/sh
+case "$1:$2:$3" in
+  env:list:--json)
+    cat <<'JSON'
+[
+  {"name":"kova-stale","createdAt":"${old}","lastUsedAt":null,"protected":false},
+  {"name":"kova-recent","createdAt":"${recent}","lastUsedAt":"${recent}","protected":false},
+  {"name":"kova-protected","createdAt":"${old}","lastUsedAt":null,"protected":true},
+  {"name":"kova-retained","createdAt":"${old}","lastUsedAt":null,"protected":false},
+  {"name":"kova-active","createdAt":"${old}","lastUsedAt":null,"protected":false},
+  {"name":"kova-unknown","createdAt":"${old}","lastUsedAt":null,"protected":false},
+  {"name":"durable-user-env","createdAt":"${old}","lastUsedAt":null,"protected":false}
+]
+JSON
+    exit 0
+    ;;
+  service:status:--all)
+    cat <<'JSON'
+{"services":[
+  {"envName":"kova-stale","installed":false,"desiredRunning":false,"running":false,"gatewayState":"stopped","childPid":null},
+  {"envName":"kova-recent","installed":false,"desiredRunning":false,"running":false,"gatewayState":"stopped","childPid":null},
+  {"envName":"kova-protected","installed":false,"desiredRunning":false,"running":false,"gatewayState":"stopped","childPid":null},
+  {"envName":"kova-retained","installed":false,"desiredRunning":false,"running":false,"gatewayState":"stopped","childPid":null},
+  {"envName":"kova-active","installed":true,"desiredRunning":true,"running":true,"gatewayState":"healthy","childPid":123}
+]}
+JSON
+    exit 0
+    ;;
+  env:destroy:*)
+    printf '%s\\n' "$3" >> "$KOVA_DESTROY_LOG"
+    echo '{"destroyed":true}'
+    exit 0
+    ;;
+esac
+echo "unhandled mock ocm command: $*" >&2
+exit 2
+`, "utf8");
+  await chmod(ocmPath, 0o755);
+
+  const env = {
+    PATH: `${binDir}:${process.env.PATH}`,
+    KOVA_HOME: home,
+    KOVA_DESTROY_LOG: destroyLog
+  };
+  const run = (args) => runCommand(`node bin/kova.mjs cleanup envs ${args} --json`, {
+    env,
+    timeoutMs: 30000,
+    maxOutputChars: 1000000
+  });
+
+  try {
+    const dry = await run("");
+    assertEqual(dry.status, 0, "cleanup safety dry-run exit");
+    const plan = JSON.parse(dry.stdout);
+    assertEqual(plan.candidates.join(","), "kova-stale", "only inactive stale env eligible");
+    assertEqual(plan.envs.find((item) => item.name === "kova-recent")?.reasons.includes("too-recent"), true, "recent env skipped");
+    assertEqual(plan.envs.find((item) => item.name === "kova-protected")?.reasons.includes("protected"), true, "protected env skipped");
+    assertEqual(plan.envs.find((item) => item.name === "kova-retained")?.reasons.includes("retained-by-run"), true, "retained env skipped");
+    assertEqual(plan.envs.find((item) => item.name === "kova-active")?.reasons.includes("active-service"), true, "active env skipped");
+    assertEqual(plan.envs.find((item) => item.name === "kova-unknown")?.reasons.includes("unknown-service-state"), true, "unknown service env skipped");
+
+    const falseExecute = await run("--execute=false");
+    assertEqual(falseExecute.status, 0, "non-boolean execute exit");
+    assertEqual(JSON.parse(falseExecute.stdout).execute, false, "execute string does not authorize cleanup");
+    assertEqual(await fileExists(destroyLog), false, "execute string did not destroy envs");
+
+    const execute = await run("--execute");
+    assertEqual(execute.status, 0, "cleanup safety execute exit");
+    assertEqual((await readFile(destroyLog, "utf8")).trim(), "kova-stale", "default cleanup destroys only eligible env");
+
+    await rm(destroyLog, { force: true });
+    const forced = await run("--execute --force");
+    assertEqual(forced.status, 0, "forced cleanup exit");
+    assertEqual(JSON.parse(forced.stdout).candidates.length, 6, "force overrides cleanup safeguards");
+    assertEqual((await readFile(destroyLog, "utf8")).trim().split("\n").length, 6, "force destroys every Kova env");
+
+    return {
+      id: "cleanup-env-safety",
+      status: "PASS",
+      command: "exercise cleanup env eligibility, execute guard, and force override",
+      durationMs: dry.durationMs + falseExecute.durationMs + execute.durationMs + forced.durationMs
+    };
+  } catch (error) {
+    return {
+      id: "cleanup-env-safety",
+      status: "FAIL",
+      command: "exercise cleanup env eligibility, execute guard, and force override",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+async function fileExists(path) {
+  try {
+    await stat(path);
+    return true;
+  } catch (error) {
+    if (error?.code === "ENOENT") return false;
+    throw error;
   }
 }
 
