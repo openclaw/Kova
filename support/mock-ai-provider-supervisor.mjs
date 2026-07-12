@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { randomUUID } from "node:crypto";
-import { access, appendFile, rm, writeFile } from "node:fs/promises";
+import { access, rename, rm, writeFile } from "node:fs/promises";
 import { createMockAiProviderServer } from "mock-ai-provider/dist/server/create-server.js";
 import { listen } from "mock-ai-provider/dist/server/listen.js";
 import {
@@ -15,14 +15,15 @@ const owner = mockProviderOwnerRecord(process.pid, randomUUID());
 try {
   await supervise(options, owner);
 } catch (error) {
-  await appendFile(options.serverLog, `${error.stack ?? error.message}\n`, "utf8").catch(() => {});
-  await cleanupControlFiles(options.pidFile, owner);
+  process.stderr.write(`${error.stack ?? error.message}\n`);
   process.exitCode = 1;
 }
 
 async function supervise({ scriptPath, requestLog, serverLog, pidFile }, owner) {
   const stopFile = mockProviderStopFile(pidFile, owner);
+  const startupLog = `${serverLog}.startup.${owner.pid}.${owner.token}`;
   await rm(stopFile, { force: true });
+  await rm(startupLog, { force: true });
 
   let server = null;
   let interval = null;
@@ -51,12 +52,9 @@ async function supervise({ scriptPath, requestLog, serverLog, pidFile }, owner) 
     const { port } = await listen(server, { port: 0, host: "127.0.0.1" });
     process.once("SIGINT", handleSignal);
     process.once("SIGTERM", handleSignal);
-    await writeFile(pidFile, `${JSON.stringify(owner)}\n`, {
-      encoding: "utf8",
-      flag: "wx"
-    });
-    await writeFile(serverLog, `${JSON.stringify({
+    await writeFile(startupLog, `${JSON.stringify({
       ok: true,
+      owner,
       providers: ["openai"],
       host: "127.0.0.1",
       port,
@@ -74,6 +72,11 @@ async function supervise({ scriptPath, requestLog, serverLog, pidFile }, owner) 
         apiKeyConfigured: false
       }
     })}\n`, "utf8");
+    await writeFile(pidFile, `${JSON.stringify(owner)}\n`, {
+      encoding: "utf8",
+      flag: "wx"
+    });
+    await rename(startupLog, serverLog);
 
     // Cleanup requests never signal a persisted PID; this process owns the
     // server handle and closes its active connections before exiting.
@@ -95,6 +98,7 @@ async function supervise({ scriptPath, requestLog, serverLog, pidFile }, owner) 
     clearInterval(interval);
     process.off("SIGINT", handleSignal);
     process.off("SIGTERM", handleSignal);
+    await removeControlFile(startupLog);
     await cleanupControlFiles(pidFile, owner);
   }
 }
