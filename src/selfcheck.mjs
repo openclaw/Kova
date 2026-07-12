@@ -8663,6 +8663,7 @@ async function gateDryRunCheck(tmp) {
     assertEqual(data.schemaVersion, "kova.matrix.run.receipt.v1", "gate receipt schema");
     assertEqual(data.gate?.verdict, "BLOCKED", "gate dry-run verdict");
     assertEqual(data.gate?.ok, false, "gate dry-run ok");
+    assertEqual(data.gate?.complete, false, "gate dry-run is incomplete");
     const report = JSON.parse(await readFile(data.jsonPath, "utf8"));
     assertEqual(report.gate?.cards?.some((card) => card.kind === "not-executed"), true, "gate not-executed card");
     const summary = renderReportSummary(report, { structured: true });
@@ -8672,6 +8673,25 @@ async function gateDryRunCheck(tmp) {
     const retained = JSON.parse(await readFile(`${data.retainedGateArtifacts.outputDir}/retained-artifacts.json`, "utf8"));
     assertEqual(retained.verdict, "BLOCKED", "retained artifact verdict");
     await rm(data.retainedGateArtifacts.outputDir, { recursive: true, force: true });
+
+    const skippedGate = evaluateGate({
+      mode: "execution",
+      records: [{
+        scenario: "release-runtime-startup",
+        state: { id: "fresh" },
+        status: "SKIPPED",
+        title: "Release Runtime Startup",
+        phases: []
+      }]
+    }, {
+      id: "skipped-gate",
+      gate: {
+        id: "skipped-gate",
+        blocking: [{ scenario: "release-runtime-startup", state: "fresh" }]
+      }
+    });
+    assertEqual(skippedGate.verdict, "BLOCKED", "required skipped gate verdict");
+    assertEqual(skippedGate.complete, false, "required skipped gate is incomplete");
     return {
       id: "gate-dry-run-blocked",
       status: "PASS",
