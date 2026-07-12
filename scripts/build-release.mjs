@@ -121,10 +121,11 @@ async function copyRequired(path) {
 async function writeReleasePackageJson() {
   const path = join(appDir, "package.json");
   const releasePackage = JSON.parse(await readFile(path, "utf8"));
+  // Release archives omit the source-only test harness, so their check must be self-contained.
   releasePackage.scripts = {
     kova: releasePackage.scripts.kova,
     plan: releasePackage.scripts.plan,
-    check: releasePackage.scripts.check,
+    check: "node bin/kova.mjs self-check",
     "check:changed": "npm run check",
     "test:changed": "npm run check"
   };
