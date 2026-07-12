@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { quoteShell, runCommand } from "../commands.mjs";
 import { ocmEnvExecShell } from "../ocm/commands.mjs";
+import { positiveProcessId } from "../process-safety.mjs";
 import { copyCollectorArtifacts } from "./artifacts.mjs";
 
 export const OPENCLAW_DIAGNOSTICS_SCHEMA = "kova.openclawDiagnostics.v1";
@@ -99,10 +100,13 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
       diagnosticReport: diagnosticTriggerResult(DIAGNOSTIC_REPORT_SCHEMA)
     };
   }
-  const normalizedPid = positiveIntegerPid(pid);
   const requestedAtEpochMs = Date.now();
-  if (normalizedPid === null) {
-    const error = `invalid diagnostic target pid: ${String(pid)}`;
+  let normalizedPid;
+  try {
+    normalizedPid = positiveProcessId(pid, "diagnostic target pid");
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    const error = `invalid diagnostic target pid: ${message}`;
     return {
       heapSnapshot: diagnosticTriggerResult(HEAP_SNAPSHOT_SCHEMA, { requested: requestHeapSnapshot, error }),
       diagnosticReport: diagnosticTriggerResult(DIAGNOSTIC_REPORT_SCHEMA, { requested: requestDiagnosticReport, error })
@@ -337,11 +341,6 @@ function diagnosticTriggerResult(schemaVersion, options = {}) {
     artifacts: requested ? copied.artifacts : [],
     error: requested ? options.error ?? null : null
   };
-}
-
-function positiveIntegerPid(pid) {
-  const value = Number(pid);
-  return Number.isInteger(value) && value > 0 ? value : null;
 }
 
 async function waitForStableFile(path, timeoutMs, options = {}) {
