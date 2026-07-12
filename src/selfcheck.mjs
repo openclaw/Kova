@@ -17182,7 +17182,9 @@ setInterval(() => {}, 1000);
       stdio: ["ignore", "pipe", "pipe"]
     });
     await waitForChildReady(child);
-    const triggered = await triggerDiagnosticSession("kova-self-check", child.pid, 3000, root, {
+    // This case validates filtering and retention. Separate minimum-deadline
+    // coverage below keeps loaded macOS CI from turning it into a timing test.
+    const triggered = await triggerDiagnosticSession("kova-self-check", child.pid, 5000, root, {
       heapSnapshot: true,
       diagnosticReport: true
     });
