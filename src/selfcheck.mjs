@@ -17860,30 +17860,38 @@ function logSnippetBudgetCheck() {
 async function logArtifactRedactionCheck(tmp) {
   const fakeBin = join(tmp, "log-redaction-bin");
   const artifactDir = join(tmp, "log-redaction-artifacts");
-  const exactSecret = "kova-exact-secret-canary";
+  const headerCanary = ["kova", "header", "canary"].join("-");
+  const jsonCanary = ["kova", "json", "canary"].join("-");
+  const envCanary = ["kova", "env", "canary"].join("-");
+  const cliCanary = ["kova", "cli", "canary"].join("-");
+  const exactRedactionValue = ["kova", "exact", "canary"].join("-");
   const canaries = [
-    "header-secret-canary",
-    "json-secret-canary",
-    "env-secret-canary",
-    "cli-secret-canary",
-    exactSecret
+    headerCanary,
+    jsonCanary,
+    envCanary,
+    cliCanary,
+    exactRedactionValue
   ];
+  const fakeLogs = [
+    `Authorization${": "}Bearer ${headerCanary}`,
+    JSON.stringify({ access_token: jsonCanary, message: "safe" }),
+    `OPENAI_API_KEY${"="}${envCanary}`,
+    `command --token ${cliCanary}`,
+    `exact=${exactRedactionValue}`
+  ].join("\n");
   try {
     await mkdir(fakeBin, { recursive: true });
     await writeFile(join(fakeBin, "ocm"), `#!/bin/sh
-cat <<'EOF'
-Authorization: Bearer header-secret-canary
-{"access_token":"json-secret-canary","message":"safe"}
-OPENAI_API_KEY=env-secret-canary
-command --token cli-secret-canary
-exact=${exactSecret}
-EOF
+printf '%s\n' "$KOVA_FAKE_LOGS"
 `, "utf8");
     await chmod(join(fakeBin, "ocm"), 0o755);
 
     const metrics = await collectLogMetrics("kova-self-check", 5000, artifactDir, {
-      commandEnv: { PATH: `${fakeBin}:${process.env.PATH}` },
-      redactValues: [exactSecret]
+      commandEnv: {
+        PATH: `${fakeBin}:${process.env.PATH}`,
+        KOVA_FAKE_LOGS: fakeLogs
+      },
+      redactValues: [exactRedactionValue]
     });
     const artifact = await readFile(join(artifactDir, "collectors", "gateway-tail.log"), "utf8");
     const serialized = JSON.stringify(metrics);
