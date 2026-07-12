@@ -9,7 +9,8 @@ import { renderPasteSummary } from "./report.mjs";
 
 export async function bundleReport(reportPath, options = {}) {
   const sourceJsonPath = resolve(reportPath);
-  const report = JSON.parse(await readFile(sourceJsonPath, "utf8"));
+  const snapshot = await snapshotReportSet(sourceJsonPath);
+  const report = JSON.parse(snapshot.json.toString("utf8"));
   const runId = report.runId;
   if (!runId) {
     throw new Error("report is missing runId");
@@ -25,10 +26,9 @@ export async function bundleReport(reportPath, options = {}) {
 
   try {
     await mkdir(stage, { recursive: true });
-    await cp(sourceJsonPath, join(stage, "report.json"));
+    await writeDurableFile(join(stage, "report.json"), snapshot.json);
 
-    const markdownPath = siblingMarkdownPath(sourceJsonPath);
-    await requireRegularFile(markdownPath, "report Markdown");
+    const markdownPath = snapshot.markdownPath;
     const included = {
       reportJson: true,
       reportMarkdown: true,
@@ -37,7 +37,7 @@ export async function bundleReport(reportPath, options = {}) {
       artifactIndex: true
     };
 
-    await cp(markdownPath, join(stage, "report.md"));
+    await writeDurableFile(join(stage, "report.md"), snapshot.markdown);
 
     await writeFile(join(stage, "paste-summary.txt"), renderPasteSummary(report), "utf8");
 
@@ -80,11 +80,14 @@ export async function bundleReport(reportPath, options = {}) {
     const sha256 = createHash("sha256").update(archive).digest("hex");
     const outputPath = join(outputRoot, `${bundleName}-${sha256}.tar.gz`);
     const checksumPath = `${outputPath}.sha256`;
-    await publishBundlePair({
-      archive,
-      outputPath,
-      checksumPath,
-      checksum: `${sha256}  ${basename(outputPath)}\n`
+    await withFileLock(join(outputRoot, `${bundleName}.publication.lock`), async () => {
+      await cleanupOrphanBundleChecksums(outputRoot, bundleName);
+      await publishBundlePair({
+        archive,
+        outputPath,
+        checksumPath,
+        checksum: `${sha256}  ${basename(outputPath)}\n`
+      });
     });
 
     return {
@@ -109,7 +112,8 @@ export async function bundleReport(reportPath, options = {}) {
 
 export async function retainGateArtifacts(reportPath, bundle, options = {}) {
   const sourceJsonPath = resolve(reportPath);
-  const report = JSON.parse(await readFile(sourceJsonPath, "utf8"));
+  const snapshot = await snapshotReportSet(sourceJsonPath);
+  const report = JSON.parse(snapshot.json.toString("utf8"));
   if (!report.runId) {
     throw new Error("report is missing runId");
   }
@@ -119,8 +123,6 @@ export async function retainGateArtifacts(reportPath, bundle, options = {}) {
     : join(artifactsDir, "release-gates", safeRunIdSegment(report.runId));
   await mkdir(dirname(outputRoot), { recursive: true });
 
-  const markdownPath = siblingMarkdownPath(sourceJsonPath);
-  await requireRegularFile(markdownPath, "report Markdown");
   const hasBundle = Boolean(bundle?.outputPath);
   const hasChecksum = Boolean(bundle?.checksumPath);
   if (hasBundle !== hasChecksum) {
@@ -135,8 +137,8 @@ export async function retainGateArtifacts(reportPath, bundle, options = {}) {
   const lockPath = `${outputRoot}.lock`;
   return withFileLock(lockPath, () => replaceRetainedArtifactTree({
     outputRoot,
-    sourceJsonPath,
-    markdownPath,
+    sourceJson: snapshot.json,
+    markdown: snapshot.markdown,
     report,
     bundle
   }));
@@ -274,8 +276,8 @@ async function publishBundlePairLocked({ archive, outputPath, checksumPath, chec
 
 async function replaceRetainedArtifactTree({
   outputRoot,
-  sourceJsonPath,
-  markdownPath,
+  sourceJson,
+  markdown,
   report,
   bundle
 }) {
@@ -290,10 +292,8 @@ async function replaceRetainedArtifactTree({
     await recoverRetainedArtifactTree(outputRoot, backup);
     await assertManagedRetentionDirectory(outputRoot);
     await mkdir(stage, { recursive: false, mode: 0o700 });
-    await cp(sourceJsonPath, join(stage, "report.json"));
-    await syncFile(join(stage, "report.json"));
-    await cp(markdownPath, join(stage, "report.md"));
-    await syncFile(join(stage, "report.md"));
+    await writeDurableFile(join(stage, "report.json"), sourceJson);
+    await writeDurableFile(join(stage, "report.md"), markdown);
     await writeDurableFile(join(stage, "paste-summary.txt"), renderPasteSummary(report));
 
     const retainedBundlePath = bundle?.outputPath
@@ -372,8 +372,8 @@ async function recoverRetainedArtifactTree(outputRoot, backup) {
   if (!await pathExists(backup)) {
     return;
   }
-  await assertManagedRetentionDirectory(backup, outputRoot);
   if (!await pathExists(outputRoot)) {
+    await assertManagedRetentionDirectory(backup, outputRoot);
     await rename(backup, outputRoot);
     await syncDirectory(dirname(outputRoot));
     return;
@@ -381,13 +381,16 @@ async function recoverRetainedArtifactTree(outputRoot, backup) {
   await assertManagedRetentionDirectory(outputRoot);
   try {
     await assertManagedRetentionDirectory(outputRoot, outputRoot, true);
-  } catch {
-    await rm(outputRoot, { recursive: true });
-    await rename(backup, outputRoot);
+    await rm(backup, { recursive: true });
     await syncDirectory(dirname(outputRoot));
     return;
+  } catch {
+    // The current tree is Kova-managed but incomplete; restore the prior
+    // committed tree only after proving the backup is valid.
   }
-  await rm(backup, { recursive: true });
+  await assertManagedRetentionDirectory(backup, outputRoot);
+  await rm(outputRoot, { recursive: true });
+  await rename(backup, outputRoot);
   await syncDirectory(dirname(outputRoot));
 }
 
@@ -474,15 +477,6 @@ async function writeDurableFile(path, content) {
   }
 }
 
-async function syncFile(path) {
-  const handle = await open(path, "r");
-  try {
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-}
-
 async function syncDirectory(path) {
   if (process.platform === "win32") {
     return;
@@ -493,6 +487,45 @@ async function syncDirectory(path) {
   } finally {
     await handle.close();
   }
+}
+
+async function snapshotReportSet(sourceJsonPath) {
+  const markdownPath = siblingMarkdownPath(sourceJsonPath);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await requireRegularFile(sourceJsonPath, "report JSON");
+    await requireRegularFile(markdownPath, "report Markdown");
+    const before = await lstat(sourceJsonPath);
+    const json = await readFile(sourceJsonPath);
+    const markdown = await readFile(markdownPath);
+    const committedJson = await readFile(sourceJsonPath);
+    const after = await lstat(sourceJsonPath);
+    if (
+      before.dev === after.dev &&
+      before.ino === after.ino &&
+      before.size === after.size &&
+      before.mtimeMs === after.mtimeMs &&
+      json.equals(committedJson)
+    ) {
+      return { json, markdown, markdownPath };
+    }
+  }
+  throw new Error(`report changed while publication snapshot was being captured: ${sourceJsonPath}`);
+}
+
+async function cleanupOrphanBundleChecksums(outputRoot, bundleName) {
+  const prefix = `${bundleName}-`;
+  const suffix = ".tar.gz.sha256";
+  for (const name of await readdir(outputRoot)) {
+    if (!name.startsWith(prefix) || !name.endsWith(suffix)) {
+      continue;
+    }
+    const checksumPath = join(outputRoot, name);
+    const archivePath = checksumPath.slice(0, -".sha256".length);
+    if (!await pathExists(archivePath)) {
+      await rm(checksumPath, { force: true });
+    }
+  }
+  await syncDirectory(outputRoot);
 }
 
 async function validateBundlePair(archivePath, checksumPath) {
