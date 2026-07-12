@@ -81,6 +81,21 @@ export function healthTotalFailures(health) {
     : null;
 }
 
+export function validHealthSummaryFailureCount(summary) {
+  const count = summary?.count;
+  const failureCount = summary?.failureCount;
+  if (
+    !Number.isInteger(count) ||
+    count <= 0 ||
+    !Number.isInteger(failureCount) ||
+    failureCount < 0 ||
+    failureCount > count
+  ) {
+    return null;
+  }
+  return failureCount;
+}
+
 export function measurementMetricValue(measurements, metric) {
   if (!measurements) {
     return null;
@@ -276,14 +291,12 @@ function emptyHealthSummary(scope) {
 function summarizeFinalHealth(metrics) {
   const samples = Array.isArray(metrics?.healthSamples) ? metrics.healthSamples : [];
   const summary = samples.length > 0 ? summarizeSamples(samples.map((sample) => ({ ...sample, phaseId: "final" })), "final") : null;
-  const healthSummaryFailureCount = validFailureCount(metrics?.healthSummary?.failureCount)
-    ? metrics.healthSummary.failureCount
-    : null;
   const singleSampleFailureCount = typeof metrics?.health?.ok === "boolean"
     ? healthFailureCount([metrics.health])
     : null;
+  const aggregateFailureCount = validHealthSummaryFailureCount(metrics?.healthSummary);
   const measuredFailureCount = summary?.failureCount ??
-    healthSummaryFailureCount ??
+    aggregateFailureCount ??
     singleSampleFailureCount;
   const collectionError = metrics?.error ?? null;
   const gatewayState = metrics?.service?.gatewayState ?? null;

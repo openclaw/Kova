@@ -3,6 +3,7 @@ import {
   commandResultFailed,
   commandResultPassed
 } from "./measurement-contract.mjs";
+import { validHealthSummaryFailureCount } from "./health.mjs";
 
 export const EVIDENCE_LEDGER_SCHEMA = "kova.evidenceLedger.v1";
 
@@ -65,7 +66,7 @@ export function buildEvidenceLedger(record) {
   for (const capability of record.channelCapabilityEvidence ?? []) {
     entries.push(channelCapabilityEntry(capability));
   }
-  if (Object.hasOwn(record, "finalMetrics")) {
+  if (record.status !== RECORD_STATUS.DRY_RUN && record.status !== RECORD_STATUS.SKIPPED) {
     entries.push(finalMetricsEntry(record.finalMetrics));
   }
 
@@ -165,7 +166,7 @@ function finalMetricsEvidence(metrics) {
     return { status: "missing", reason: "final service state was not collected" };
   }
   const healthSamples = Array.isArray(metrics.healthSamples) && metrics.healthSamples.length > 0;
-  const healthSummary = Number.isInteger(metrics.healthSummary?.count) && metrics.healthSummary.count > 0;
+  const healthSummary = validHealthSummaryFailureCount(metrics.healthSummary) !== null;
   const healthResult = typeof metrics.health?.ok === "boolean";
   if (!healthSamples && !healthSummary && !healthResult) {
     return { status: "missing", reason: "final health evidence was not collected" };
