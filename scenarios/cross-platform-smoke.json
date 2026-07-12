@@ -19,7 +19,7 @@
   "thresholds": {
     "gatewayReadyMs": 45000,
     "healthMs": 5000,
-    "syncFsStallDetected": false
+    "syncFsStallDetected": 0
   },
   "phases": [
     {
