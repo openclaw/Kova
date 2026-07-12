@@ -7,9 +7,12 @@ export async function summarizeHeapProfiles(paths, options = {}) {
   for (const path of paths.slice(0, Math.max(1, Number(options.maxProfiles ?? 20)))) {
     try {
       const profile = JSON.parse(await readFile(path, "utf8"));
+      const complete = summarizeHeapProfile(profile, { limit: Number.MAX_SAFE_INTEGER });
       summaries.push({
         path,
-        ...summarizeHeapProfile(profile, { limit })
+        ...complete,
+        topFunctions: complete.topFunctions.slice(0, limit),
+        aggregateFunctions: complete.topFunctions
       });
     } catch (error) {
       summaries.push({
@@ -25,7 +28,7 @@ export async function summarizeHeapProfiles(paths, options = {}) {
     profileCount: summaries.length,
     parseErrorCount: summaries.filter((summary) => summary.error).length,
     topFunctions: mergeTopFunctions(summaries, limit),
-    profiles: summaries
+    profiles: summaries.map(({ aggregateFunctions: _aggregateFunctions, ...summary }) => summary)
   };
 }
 
@@ -67,8 +70,12 @@ function walkHeapNode(node, output) {
 
 function mergeTopFunctions(summaries, limit) {
   const merged = new Map();
+  let totalSelfSizeBytes = 0;
   for (const summary of summaries) {
-    for (const item of summary.topFunctions ?? []) {
+    if (typeof summary.totalSelfSizeBytes === "number") {
+      totalSelfSizeBytes += summary.totalSelfSizeBytes;
+    }
+    for (const item of summary.aggregateFunctions ?? []) {
       const key = `${item.functionName}\n${item.url}\n${item.lineNumber ?? ""}\n${item.columnNumber ?? ""}`;
       const existing = merged.get(key) ?? {
         functionName: item.functionName,
@@ -84,14 +91,13 @@ function mergeTopFunctions(summaries, limit) {
     }
   }
 
-  const total = [...merged.values()].reduce((sum, item) => sum + item.selfSizeBytes, 0);
   return [...merged.values()]
     .toSorted((left, right) => right.selfSizeBytes - left.selfSizeBytes)
     .slice(0, limit)
     .map((item) => ({
       ...item,
       selfSizeMb: roundMb(item.selfSizeBytes),
-      selfPercent: total > 0 ? roundPercent((item.selfSizeBytes / total) * 100) : null
+      selfPercent: totalSelfSizeBytes > 0 ? roundPercent((item.selfSizeBytes / totalSelfSizeBytes) * 100) : null
     }));
 }
 
