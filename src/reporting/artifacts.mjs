@@ -558,15 +558,21 @@ async function snapshotReportSet(sourceJsonPath) {
     await requireRegularFile(sourceJsonPath, "report JSON");
     await requireRegularFile(markdownPath, "report Markdown");
     const before = await lstat(sourceJsonPath);
+    const markdownBefore = await lstat(markdownPath);
     const json = await readFile(sourceJsonPath);
     const markdown = await readFile(markdownPath);
     const committedJson = await readFile(sourceJsonPath);
     const after = await lstat(sourceJsonPath);
+    const markdownAfter = await lstat(markdownPath);
     if (
       before.dev === after.dev &&
       before.ino === after.ino &&
       before.size === after.size &&
       before.mtimeMs === after.mtimeMs &&
+      markdownBefore.dev === markdownAfter.dev &&
+      markdownBefore.ino === markdownAfter.ino &&
+      markdownBefore.size === markdownAfter.size &&
+      markdownBefore.mtimeMs === markdownAfter.mtimeMs &&
       json.equals(committedJson)
     ) {
       return { json, markdown, markdownPath };
