@@ -26,7 +26,6 @@ import { createHash, randomBytes } from "node:crypto";
 import { Transform } from "node:stream";
 import { createGunzip } from "node:zlib";
 import { extract as extractTar } from "tar-stream";
-import { caseFold } from "unicode-case-folding";
 
 import {
   parseRelease,
@@ -35,6 +34,18 @@ import {
 } from "../web-payload-contract.mjs";
 import { repoRoot, displayPath } from "../paths.mjs";
 import { artifactRunIdSegment } from "../reporting/artifact-names.mjs";
+import {
+  MAX_BUNDLE_ANCESTORS,
+  MAX_BUNDLE_CHECKSUM_BYTES,
+  MAX_BUNDLE_COMPRESSED_BYTES,
+  MAX_BUNDLE_DECLARED_BYTES,
+  MAX_BUNDLE_ENTRIES,
+  MAX_BUNDLE_MANIFEST_BYTES,
+  MAX_BUNDLE_NAME_BYTES,
+  MAX_BUNDLE_PHYSICAL_HEADERS,
+  MAX_BUNDLE_UNPACKED_BYTES,
+  normalizeArchiveMember
+} from "../reporting/bundle-contract.mjs";
 import { resolveReportReference } from "../reporting/report-store.mjs";
 import { projectInternalReport } from "../web-publish/from-internal-report.mjs";
 import {
@@ -45,16 +56,6 @@ import {
 } from "../web-publish/projector.mjs";
 
 const DEFAULT_OUT_DIR = join(repoRoot, "web", "src", "content", "releases");
-const MAX_BUNDLE_COMPRESSED_BYTES = 256 * 1024 * 1024;
-const MAX_BUNDLE_CHECKSUM_BYTES = 8 * 1024;
-const MAX_BUNDLE_UNPACKED_BYTES = 512 * 1024 * 1024;
-const MAX_BUNDLE_DECLARED_BYTES = 512 * 1024 * 1024;
-const MAX_BUNDLE_MANIFEST_BYTES = 64 * 1024;
-const MAX_BUNDLE_PHYSICAL_HEADERS = 10_000;
-const MAX_BUNDLE_ENTRIES = 10_000;
-const MAX_BUNDLE_NAME_BYTES = 4 * 1024;
-const MAX_BUNDLE_PATH_DEPTH = 64;
-const MAX_BUNDLE_ANCESTORS = 100_000;
 const TAR_EXTENSION_TYPES = new Set([0x4b, 0x4c, 0x4e, 0x67, 0x78]);
 const STRICT_UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
 const READ_ONLY_NONBLOCK =
@@ -730,47 +731,6 @@ function decodeTarStringField(field, label) {
   } catch {
     throw new Error(`${label} is not valid UTF-8`);
   }
-}
-
-function normalizeArchiveMember(name, type) {
-  if (
-    !name ||
-    !["file", "directory"].includes(type) ||
-    name.startsWith("/") ||
-    /[<>:"\\|?*]/.test(name) ||
-    /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(name)
-  ) {
-    return null;
-  }
-  const hasTrailingSlash = name.endsWith("/");
-  if (hasTrailingSlash && type !== "directory") {
-    return null;
-  }
-  const canonicalName = hasTrailingSlash ? name.slice(0, -1) : name;
-  const normalized = posix.normalize(canonicalName);
-  const segments = canonicalName.split("/");
-  if (
-    normalized !== canonicalName ||
-    segments.length === 0 ||
-    segments.length > MAX_BUNDLE_PATH_DEPTH ||
-    segments.some((segment) =>
-      !segment ||
-      segment === "." ||
-      segment === ".." ||
-      segment.startsWith("-") ||
-      /[. ]$/.test(segment) ||
-      /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:[.]|$)/i.test(segment)
-    )
-  ) {
-    return null;
-  }
-  const portableSegments = segments.map((segment) =>
-    caseFold(segment.normalize("NFC")).normalize("NFC"));
-  return {
-    path: normalized,
-    portablePath: portableSegments.join("/"),
-    portableSegments
-  };
 }
 
 async function readBoundedFile(path, maxBytes, label, encoding = null) {

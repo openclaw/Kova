@@ -5653,11 +5653,22 @@ async function reportPublicationCheck(tmp) {
     const committedMarkdown = await readFile(outputPaths.markdown);
     const longArtifactName = `${"l".repeat(120)}.json`;
     const unicodeArtifactName = "sigma-\u03c3.json";
+    const optionArtifactName = "-option.json";
+    const deepArtifactSegments = Array.from({ length: 64 }, (_, index) => `d${index}`);
+    const deepArtifactPath = join(...deepArtifactSegments, "deep.json");
     const publishedArtifactsDir = join(tmp, "published-artifacts");
     const publishedArtifactRoot = join(publishedArtifactsDir, publishedReport.runId);
     await mkdir(publishedArtifactRoot, { recursive: true });
     await writeFile(join(publishedArtifactRoot, longArtifactName), "long artifact\n");
     await writeFile(join(publishedArtifactRoot, unicodeArtifactName), "unicode artifact\n");
+    await writeFile(join(publishedArtifactRoot, optionArtifactName), "option artifact\n");
+    await mkdir(join(publishedArtifactRoot, ...deepArtifactSegments), { recursive: true });
+    await writeFile(join(publishedArtifactRoot, deepArtifactPath), "deep artifact\n");
+    const caseCollisionRoot = join(publishedArtifactRoot, "case-collision");
+    await mkdir(caseCollisionRoot);
+    await writeFile(join(caseCollisionRoot, "Case.json"), "upper\n");
+    await writeFile(join(caseCollisionRoot, "case.json"), "lower\n");
+    const caseCollisionNames = await readdir(caseCollisionRoot);
     let releaseTransientWriter;
     let markTransientWriterReady;
     const transientWriterRelease = new Promise((resolve) => {
@@ -5714,7 +5725,9 @@ async function reportPublicationCheck(tmp) {
     const serializedIndex = JSON.parse(serializedIndexEntry.content.toString("utf8"));
     for (const originalPath of [
       `artifacts/${longArtifactName}`,
-      `artifacts/${unicodeArtifactName}`
+      `artifacts/${unicodeArtifactName}`,
+      `artifacts/${optionArtifactName}`,
+      `artifacts/${deepArtifactPath.split("\\").join("/")}`
     ]) {
       const indexed = serializedIndex.entries.find((entry) => entry.path === originalPath);
       assertEqual(Boolean(indexed), true, `artifact index preserves ${originalPath}`);
@@ -5731,6 +5744,22 @@ async function reportPublicationCheck(tmp) {
         `generated bundle contains mapped artifact ${originalPath}`
       );
     }
+    if (caseCollisionNames.length === 2) {
+      const caseCollisionEntries = serializedIndex.entries.filter(
+        (entry) => entry.path.startsWith("artifacts/case-collision/")
+      );
+      assertEqual(caseCollisionEntries.length, 2, "case-distinct artifacts are indexed");
+      assertEqual(
+        new Set(caseCollisionEntries.map((entry) => entry.archivePath)).size,
+        2,
+        "case-folding archive collision is disambiguated"
+      );
+      assertEqual(
+        caseCollisionEntries.some((entry) => entry.archivePath.startsWith("mapped/")),
+        true,
+        "case-folding archive collision uses a mapped path"
+      );
+    }
     const overlappingBundle = await bundleReport(outputPaths.json, {
       outputDir: join(publishedArtifactRoot, "bundle-output"),
       artifactsDir: publishedArtifactsDir
@@ -5740,6 +5769,73 @@ async function reportPublicationCheck(tmp) {
       true,
       "bundle staging remains outside an overlapping artifact source tree"
     );
+    const overlappingEntries = readUstarEntries(
+      await readFile(overlappingBundle.outputPath)
+    );
+    const overlappingIndexEntry = overlappingEntries.find(
+      (entry) => entry.name === `${publishedReport.runId}-bundle/artifact-index.json`
+    );
+    const overlappingIndex = JSON.parse(
+      overlappingIndexEntry.content.toString("utf8")
+    );
+    assertEqual(
+      overlappingIndex.entries.some(
+        (entry) => entry.path.startsWith("artifacts/bundle-output/")
+      ),
+      false,
+      "overlapping bundle output is excluded from the artifact snapshot"
+    );
+    let artifactRootOutputRejected = false;
+    try {
+      await bundleReport(outputPaths.json, {
+        outputDir: publishedArtifactRoot,
+        artifactsDir: publishedArtifactsDir
+      });
+    } catch (error) {
+      artifactRootOutputRejected =
+        /cannot replace the run artifact root/.test(error.message);
+    }
+    assertEqual(
+      artifactRootOutputRejected,
+      true,
+      "bundle output cannot replace the run artifact root"
+    );
+    if (process.platform !== "win32") {
+      const artifactRootAlias = join(tmp, "published-artifact-root-alias");
+      await symlink(publishedArtifactRoot, artifactRootAlias);
+      const aliasedOutputName = "aliased-bundle-output";
+      const aliasedBundle = await bundleReport(outputPaths.json, {
+        outputDir: join(artifactRootAlias, aliasedOutputName),
+        artifactsDir: publishedArtifactsDir
+      });
+      const aliasedEntries = readUstarEntries(await readFile(aliasedBundle.outputPath));
+      const aliasedIndexEntry = aliasedEntries.find(
+        (entry) => entry.name === `${publishedReport.runId}-bundle/artifact-index.json`
+      );
+      const aliasedIndex = JSON.parse(aliasedIndexEntry.content.toString("utf8"));
+      assertEqual(
+        aliasedIndex.entries.some(
+          (entry) => entry.path.startsWith(`artifacts/${aliasedOutputName}/`)
+        ),
+        false,
+        "symlink-aliased bundle output is excluded from the artifact snapshot"
+      );
+      let aliasedArtifactRootRejected = false;
+      try {
+        await bundleReport(outputPaths.json, {
+          outputDir: artifactRootAlias,
+          artifactsDir: publishedArtifactsDir
+        });
+      } catch (error) {
+        aliasedArtifactRootRejected =
+          /cannot replace the run artifact root/.test(error.message);
+      }
+      assertEqual(
+        aliasedArtifactRootRejected,
+        true,
+        "symlink-aliased artifact root cannot be used as bundle output"
+      );
+    }
     const markerlessBackupPath = join(
       publicationRoot,
       `.${basename(outputPaths.json)}.kova-backup`

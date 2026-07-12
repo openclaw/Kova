@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { constants as fsConstants, createReadStream, createWriteStream } from "node:fs";
-import { cp, lstat, mkdir, open, readFile, readdir, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
+import { cp, lstat, mkdir, open, readFile, readdir, realpath, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import { pipeline } from "node:stream/promises";
@@ -10,6 +10,16 @@ import { withFileLock } from "../file-lock.mjs";
 import { artifactsDir } from "../paths.mjs";
 import { reportTransactionLockPath } from "../run/report-output.mjs";
 import { artifactRunIdSegment, isCanonicalRunId } from "./artifact-names.mjs";
+import {
+  MAX_BUNDLE_ANCESTORS,
+  MAX_BUNDLE_CHECKSUM_BYTES,
+  MAX_BUNDLE_COMPRESSED_BYTES,
+  MAX_BUNDLE_DECLARED_BYTES,
+  MAX_BUNDLE_ENTRIES,
+  MAX_BUNDLE_NAME_BYTES,
+  MAX_BUNDLE_UNPACKED_BYTES,
+  normalizeArchiveMember
+} from "./bundle-contract.mjs";
 import { renderPasteSummary } from "./report.mjs";
 
 const RESERVED_RETAINED_FILENAMES = new Set([
@@ -18,9 +28,6 @@ const RESERVED_RETAINED_FILENAMES = new Set([
   "report.md",
   "retained-artifacts.json"
 ]);
-const MAX_BUNDLE_ARCHIVE_BYTES = 256 * 1024 * 1024;
-const MAX_BUNDLE_CHECKSUM_BYTES = 8 * 1024;
-const MAX_USTAR_FILE_BYTES = 0o77777777777;
 const FILE_READ_CHUNK_BYTES = 1024 * 1024;
 const READ_ONLY_NONBLOCK =
   fsConstants.O_RDONLY |
@@ -84,7 +91,26 @@ export async function bundleReport(reportPath, options = {}) {
         ? join(sourceArtifactsRoot, runId)
         : null;
       if (runArtifactsPath && await directoryExists(runArtifactsPath)) {
-        await cp(runArtifactsPath, join(stage, "artifacts"), { recursive: true });
+        const [canonicalOutputRoot, canonicalRunArtifactsPath] = await Promise.all([
+          realpath(outputRoot),
+          realpath(runArtifactsPath)
+        ]);
+        if (canonicalOutputRoot === canonicalRunArtifactsPath) {
+          throw new Error("report bundle output directory cannot replace the run artifact root");
+        }
+        const excludesOutputRoot = pathIsAtOrBelow(
+          canonicalOutputRoot,
+          canonicalRunArtifactsPath
+        );
+        await cp(runArtifactsPath, join(stage, "artifacts"), {
+          recursive: true,
+          filter: excludesOutputRoot
+            ? async (source) => !pathIsAtOrBelow(
+              await realpath(source),
+              canonicalOutputRoot
+            )
+            : undefined
+        });
         included.runArtifacts = true;
       }
 
@@ -121,7 +147,7 @@ export async function bundleReport(reportPath, options = {}) {
       const archive = await readStableRegularFile(
         stagedArchivePath,
         "generated report bundle",
-        MAX_BUNDLE_ARCHIVE_BYTES
+        MAX_BUNDLE_COMPRESSED_BYTES
       );
       const sha256 = createHash("sha256").update(archive).digest("hex");
       const outputPath = join(outputRoot, `${bundleName}-${sha256}.tar.gz`);
@@ -228,7 +254,7 @@ function portableRetentionFilenameKey(value) {
 }
 
 async function buildArtifactIndex(stage, bundleName) {
-  const entries = await listFiles(stage, stage, bundleName);
+  const entries = await listBundleFiles(stage, bundleName);
   const totalBytes = entries.reduce((sum, entry) => sum + entry.bytes, 0);
   return {
     schemaVersion: "kova.artifact.index.v1",
@@ -240,27 +266,43 @@ async function buildArtifactIndex(stage, bundleName) {
   };
 }
 
-async function listFiles(root, dir, bundleName) {
+async function listBundleFiles(root, bundleName) {
+  const budget = {
+    entries: 0,
+    declaredBytes: 0,
+    unpackedBytes: 1024
+  };
+  const entries = await listFiles(root, root, budget);
+  return assignArchivePaths(entries, bundleName);
+}
+
+async function listFiles(root, dir, budget) {
   const names = await readdir(dir, { withFileTypes: true });
   const entries = [];
   for (const name of names.toSorted((left, right) => left.name.localeCompare(right.name))) {
     const path = join(dir, name.name);
     if (name.isDirectory()) {
-      entries.push(...await listFiles(root, path, bundleName));
+      entries.push(...await listFiles(root, path, budget));
       continue;
     }
     if (!name.isFile()) {
       throw new Error(`report bundle contains an unsupported filesystem entry: ${path}`);
     }
     const info = await lstat(path);
-    if (info.size > MAX_USTAR_FILE_BYTES) {
-      throw new Error(`report bundle file exceeds the portable USTAR size limit: ${path}`);
+    budget.entries += 1;
+    budget.declaredBytes += info.size;
+    budget.unpackedBytes += 512 + Math.ceil(info.size / 512) * 512;
+    if (
+      budget.entries > MAX_BUNDLE_ENTRIES ||
+      budget.declaredBytes > MAX_BUNDLE_DECLARED_BYTES ||
+      budget.unpackedBytes > MAX_BUNDLE_UNPACKED_BYTES
+    ) {
+      throw new Error(`report bundle content exceeds the publication size limit: ${path}`);
     }
     const metadata = await hashFile(path);
     const bundlePath = relative(root, path).split(sep).join("/");
     entries.push({
       path: bundlePath,
-      archivePath: archivePathFor(bundleName, bundlePath),
       bytes: metadata.bytes,
       sha256: metadata.sha256
     });
@@ -269,8 +311,7 @@ async function listFiles(root, dir, bundleName) {
 }
 
 async function writeUstarArchive(stage, bundleName, destination) {
-  const files = await listFiles(stage, stage, bundleName);
-  const archivePaths = new Set();
+  const files = await listBundleFiles(stage, bundleName);
   const pack = packTar();
   const output = pipeline(
     pack,
@@ -279,10 +320,6 @@ async function writeUstarArchive(stage, bundleName, destination) {
   );
   try {
     for (const file of files) {
-      if (archivePaths.has(file.archivePath)) {
-        throw new Error(`report bundle archive path collision: ${file.archivePath}`);
-      }
-      archivePaths.add(file.archivePath);
       const source = join(stage, ...file.path.split("/"));
       const entry = pack.entry({
         name: `${bundleName}/${file.archivePath}`,
@@ -314,13 +351,114 @@ async function hashFile(path) {
   return { bytes, sha256: hash.digest("hex") };
 }
 
-function archivePathFor(bundleName, bundlePath) {
-  // `mapped/` is owned by the archiver. Remap any future source path that
-  // enters that namespace so original and generated paths cannot collide.
-  if (!bundlePath.startsWith("mapped/") && isUstarPath(`${bundleName}/${bundlePath}`)) {
-    return bundlePath;
+function assignArchivePaths(entries, bundleName) {
+  const destinations = new Map();
+  const requiredDirectories = new Set();
+  const mappedProbe = normalizeArchiveMember(
+    `${bundleName}/mapped/reserved`,
+    "file"
+  );
+  for (const ancestor of archiveAncestors(mappedProbe.portableSegments)) {
+    requiredDirectories.add(ancestor);
   }
-  return `mapped/${createHash("sha256").update(bundlePath).digest("hex")}`;
+  return entries.map((entry) => {
+    const preferred = entry.path.startsWith("mapped/") ? null : entry.path;
+    const archivePath = claimArchivePath(
+      preferred,
+      entry.path,
+      bundleName,
+      destinations,
+      requiredDirectories
+    );
+    return { ...entry, archivePath };
+  });
+}
+
+function claimArchivePath(
+  preferred,
+  originalPath,
+  bundleName,
+  destinations,
+  requiredDirectories
+) {
+  if (
+    preferred &&
+    claimPortableArchivePath(
+      preferred,
+      bundleName,
+      destinations,
+      requiredDirectories
+    )
+  ) {
+    return preferred;
+  }
+  const digest = createHash("sha256").update(originalPath).digest("hex");
+  for (let suffix = 0; ; suffix += 1) {
+    const candidate = `mapped/${digest}${suffix === 0 ? "" : `-${suffix}`}`;
+    if (
+      claimPortableArchivePath(
+        candidate,
+        bundleName,
+        destinations,
+        requiredDirectories
+      )
+    ) {
+      return candidate;
+    }
+  }
+}
+
+function claimPortableArchivePath(
+  archivePath,
+  bundleName,
+  destinations,
+  requiredDirectories
+) {
+  const name = `${bundleName}/${archivePath}`;
+  const normalized = normalizeArchiveMember(name, "file");
+  if (
+    !normalized ||
+    Buffer.byteLength(name) > MAX_BUNDLE_NAME_BYTES ||
+    !isUstarPath(name) ||
+    archiveDestinationConflicts(destinations, requiredDirectories, normalized)
+  ) {
+    return false;
+  }
+  const newAncestors = archiveAncestors(normalized.portableSegments)
+    .filter((ancestor) => !requiredDirectories.has(ancestor));
+  if (
+    requiredDirectories.size + newAncestors.length >
+    MAX_BUNDLE_ANCESTORS
+  ) {
+    return false;
+  }
+  destinations.set(normalized.portablePath, "file");
+  for (const ancestor of newAncestors) {
+    requiredDirectories.add(ancestor);
+  }
+  return true;
+}
+
+function archiveDestinationConflicts(destinations, requiredDirectories, member) {
+  if (destinations.has(member.portablePath)) {
+    return true;
+  }
+  for (const ancestor of archiveAncestors(member.portableSegments)) {
+    if (destinations.get(ancestor) === "file") {
+      return true;
+    }
+  }
+  return requiredDirectories.has(member.portablePath);
+}
+
+function archiveAncestors(segments) {
+  const ancestors = [];
+  let ancestor = segments[0];
+  for (let index = 1; index < segments.length; index += 1) {
+    ancestors.push(ancestor);
+    ancestor += `/${segments[index]}`;
+  }
+  return ancestors;
 }
 
 function isUstarPath(path) {
@@ -392,7 +530,7 @@ async function publishBundlePairLocked({ archive, outputPath, checksumPath, chec
         ? await readStableRegularFile(
           outputPath,
           "existing report bundle",
-          MAX_BUNDLE_ARCHIVE_BYTES
+          MAX_BUNDLE_COMPRESSED_BYTES
         )
         : null;
       const existingHash = existing ? createHash("sha256").update(existing).digest("hex") : null;
@@ -1089,7 +1227,7 @@ async function readVerifiedBundlePair(archivePath, checksumPath) {
     readStableRegularFile(
       archivePath,
       "report bundle",
-      MAX_BUNDLE_ARCHIVE_BYTES
+      MAX_BUNDLE_COMPRESSED_BYTES
     ),
     readStableRegularFile(
       checksumPath,
@@ -1363,6 +1501,11 @@ function isOwnedByCurrentUser(info) {
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function pathIsAtOrBelow(path, root) {
+  const child = relative(resolve(root), resolve(path));
+  return child === "" || (child !== ".." && !child.startsWith(`..${sep}`));
 }
 
 async function requireRegularFile(path, label) {
