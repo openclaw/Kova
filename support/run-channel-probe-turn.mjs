@@ -124,12 +124,14 @@ function formatFailedCase(row) {
 }
 
 async function runProbeCase(client, testCase) {
-  const inboundEventId = `kova-probe-${testCase.id}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const invocationToken = `${Date.now().toString(36)}-${Math.random().toString(16).slice(2)}`;
+  const inboundEventId = `kova-probe-${testCase.id}-${invocationToken}`;
+  const targetId = targetIdForCase(testCase.id, invocationToken);
   const expects = objectOrEmpty(testCase.expects);
   const params = {
     inboundEventId,
     message: testCase.prompt,
-    targetId: targetIdForCase(testCase.id),
+    targetId,
     replyToId: expects.replyTo === "inbound-message" ? inboundEventId : null,
     threadId: typeof expects.threadId === "string" ? expects.threadId : undefined,
     silent: expects.silent === true,
@@ -138,7 +140,7 @@ async function runProbeCase(client, testCase) {
     requiredCapabilities: objectOrEmpty(testCase.requiredCapabilities),
     sourceReplyDeliveryMode: typeof testCase.sourceReplyDeliveryMode === "string" ? testCase.sourceReplyDeliveryMode : undefined,
     botLoopProtection: expects.noSelfTrigger === true
-      ? createBotEchoProtection(testCase, inboundEventId, targetIdForCase(testCase.id)).firstTurnProtection
+      ? createBotEchoProtection(testCase, inboundEventId, targetId).firstTurnProtection
       : undefined
   };
   const botEcho = expects.noSelfTrigger === true
@@ -721,13 +723,13 @@ async function countJsonl(path) {
   }
 }
 
-function targetIdForCase(caseId) {
+function targetIdForCase(caseId, invocationToken) {
   const safe = String(caseId ?? "case")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 72) || "case";
-  return `dm:kova-probe-user-${safe}`;
+    .slice(0, 56) || "case";
+  return `dm:kova-probe-user-${safe}-${invocationToken}`;
 }
 
 function objectOrEmpty(value) {
