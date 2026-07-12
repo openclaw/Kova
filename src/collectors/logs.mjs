@@ -91,8 +91,8 @@ export async function collectLogMetrics(envName, timeoutMs, artifactDir, options
 }
 
 export function redactLogText(value) {
-  return redactSensitiveContinuations(value)
-    .replace(PEM_PRIVATE_KEY_PATTERN, "[REDACTED]")
+  const text = String(value ?? "").replace(PEM_PRIVATE_KEY_PATTERN, "[REDACTED]");
+  return redactSensitiveContinuations(text)
     .replace(
       SENSITIVE_VALUE_TO_LINE_END_PATTERN,
       "$1[REDACTED]"
