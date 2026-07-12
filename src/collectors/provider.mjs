@@ -202,9 +202,7 @@ export function computeProviderTurnAttribution(result, providerEvidence) {
   }
   const commandStartedAt = result.startedAtEpochMs;
   const commandFinishedAt = result.finishedAtEpochMs;
-  const providerRequests = Array.isArray(providerEvidence?.requests)
-    ? providerEvidence.requests
-    : [];
+  const providerRequests = normalizedProviderRequests(providerEvidence?.requests);
   const requestsInCommand = providerEvidence?.available === true
     ? requestsWithinCommand(providerRequests, commandStartedAt, commandFinishedAt)
     : [];
@@ -337,6 +335,13 @@ export function computeProviderTurnAttribution(result, providerEvidence) {
     providerLateByMs,
     providerEvidenceAvailable: true
   };
+}
+
+function normalizedProviderRequests(value) {
+  return Array.isArray(value) &&
+    value.every((request) => request && typeof request === "object" && !Array.isArray(request))
+    ? value
+    : [];
 }
 
 function requestsWithinCommand(requests, commandStartedAt, commandFinishedAt) {
