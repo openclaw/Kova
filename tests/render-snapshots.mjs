@@ -45,14 +45,12 @@ const RELEASE_PLATFORM_REQUIREMENTS = [
 const HOST_PLATFORM_GAPS = RELEASE_PLATFORM_REQUIREMENTS.filter(
   (platformKey) => !HOST_PLATFORM_KEYS.includes(platformKey)
 );
-const HOST_PLATFORM_REPLACEMENTS = new Map([
-  [HOST_PLATFORM.os, "<os>"],
-  [HOST_PLATFORM.arch, "<arch>"],
-  [HOST_PLATFORM.release, "<os-release>"],
-  [HOST_PLATFORM.node, "<node>"],
-  [`${HOST_PLATFORM.os}-${HOST_PLATFORM.arch}`, "<os-arch>"],
-  ...(platformCoverageKeys(HOST_PLATFORM).has("wsl2") ? [["wsl2", "<wsl2>"]] : [])
-]);
+const HOST_PLATFORM_PLACEHOLDERS = [
+  "<arch>",
+  "<os>",
+  "<os-arch>",
+  ...(HOST_PLATFORM_KEYS.includes("wsl2") ? ["<wsl2>"] : [])
+];
 
 const cases = [
   { name: "report-pass-compact", args: ["report", PASS_REPORT] },
@@ -164,8 +162,8 @@ function replaceCurrentPlatformKeys(out) {
   );
   return out.replace(exactBlock, (_, indent) => [
     `${indent}"currentPlatformKeys": [`,
-    ...HOST_PLATFORM_KEYS.map((platformKey, index) =>
-      `${indent}  ${JSON.stringify(HOST_PLATFORM_REPLACEMENTS.get(platformKey))}${index === HOST_PLATFORM_KEYS.length - 1 ? "" : ","}`
+    ...HOST_PLATFORM_PLACEHOLDERS.map((platformKey, index) =>
+      `${indent}  ${JSON.stringify(platformKey)}${index === HOST_PLATFORM_PLACEHOLDERS.length - 1 ? "" : ","}`
     ),
     `${indent}]`
   ].join("\n"));
@@ -234,7 +232,16 @@ function assertSnapshotNormalizers() {
   const normalizedHostJson = normalizeJsonPlatform(hostJson, { normalizeHostPlatform: true });
   strictEqual(normalizedHostJson.includes('"os": "<os>"'), true);
   strictEqual(normalizedHostJson.includes('"release": "<os-release>"'), true);
-  strictEqual(normalizedHostJson.includes('"currentPlatformKeys": [\n      "<'), true);
+  strictEqual(
+    normalizedHostJson.includes([
+      '"currentPlatformKeys": [',
+      ...HOST_PLATFORM_PLACEHOLDERS.map((platformKey, index) =>
+        `      ${JSON.stringify(platformKey)}${index === HOST_PLATFORM_PLACEHOLDERS.length - 1 ? "" : ","}`
+      ),
+      "    ]"
+    ].join("\n")),
+    true
+  );
 
   const malformedJson = hostJson.replace(
     `    "os": ${JSON.stringify(HOST_PLATFORM.os)},`,
@@ -252,6 +259,26 @@ function assertSnapshotNormalizers() {
   strictEqual(
     normalizeJsonPlatform(extraKeyJson, { normalizeHostPlatform: true })
       .includes(`"currentPlatformKeys": [\n      ${JSON.stringify(HOST_PLATFORM_KEYS[0])}`),
+    true
+  );
+  const firstKeySuffix = HOST_PLATFORM_KEYS.length === 1 ? "" : ",";
+  const wrongKeyJson = hostJson.replace(
+    `      ${JSON.stringify(HOST_PLATFORM_KEYS[0])}${firstKeySuffix}`,
+    `      "unexpected"${firstKeySuffix}`
+  );
+  const normalizedWrongKeyJson = normalizeJsonPlatform(
+    wrongKeyJson,
+    { normalizeHostPlatform: true }
+  );
+  strictEqual(
+    normalizedWrongKeyJson.includes([
+      '"currentPlatformKeys": [',
+      `      "unexpected"${firstKeySuffix}`,
+      ...HOST_PLATFORM_KEYS.slice(1).map((platformKey, index) =>
+        `      ${JSON.stringify(platformKey)}${index === HOST_PLATFORM_KEYS.length - 2 ? "" : ","}`
+      ),
+      "    ]"
+    ].join("\n")),
     true
   );
 
