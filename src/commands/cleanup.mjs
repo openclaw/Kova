@@ -42,14 +42,15 @@ async function cleanupEnvs(flags) {
   }
 
   const serviceInventory = await loadServiceInventory();
-  const retainedEnvNames = await loadRetainedEnvNames();
+  const retentionInventory = await loadRetentionInventory();
   const envs = summaries
     .filter((summary) => /^kova-[a-z0-9-]+$/.test(summary?.name))
     .map((summary) => classifyCleanupEnv({
       summary,
       service: serviceInventory.byEnv.get(summary.name),
       serviceInventoryOk: serviceInventory.ok,
-      retained: retainedEnvNames.has(summary.name),
+      retained: retentionInventory.envNames.has(summary.name),
+      retentionInventoryOk: retentionInventory.ok,
       cutoffMs,
       force
     }));
@@ -83,6 +84,10 @@ async function cleanupEnvs(flags) {
       serviceInventory: {
         ok: serviceInventory.ok,
         error: serviceInventory.error
+      },
+      retentionInventory: {
+        ok: retentionInventory.ok,
+        error: retentionInventory.error
       },
       envs,
       candidates: candidates.map((candidate) => candidate.name),
@@ -148,18 +153,23 @@ async function loadServiceInventory() {
   }
 }
 
-async function loadRetainedEnvNames() {
+async function loadRetentionInventory() {
   let entries;
   try {
     entries = await readdir(reportsDir, { withFileTypes: true });
   } catch (error) {
     if (error.code === "ENOENT") {
-      return new Set();
+      return { ok: true, error: null, envNames: new Set() };
     }
-    throw error;
+    return {
+      ok: false,
+      error: `failed to read reports directory: ${error.message}`,
+      envNames: new Set()
+    };
   }
 
   const retained = new Set();
+  const errors = [];
   for (const entry of entries) {
     if (!entry.isFile() || !entry.name.endsWith(".json") || entry.name.endsWith(".summary.json")) {
       continue;
@@ -171,14 +181,26 @@ async function loadRetainedEnvNames() {
           retained.add(record.envName);
         }
       }
-    } catch {
-      // A malformed unrelated report must not make cleanup less conservative.
+    } catch (error) {
+      errors.push(`${entry.name}: ${error.message}`);
     }
   }
-  return retained;
+  return {
+    ok: errors.length === 0,
+    error: errors.length === 0 ? null : `failed to read retention evidence: ${errors.join("; ")}`,
+    envNames: retained
+  };
 }
 
-function classifyCleanupEnv({ summary, service, serviceInventoryOk, retained, cutoffMs, force }) {
+function classifyCleanupEnv({
+  summary,
+  service,
+  serviceInventoryOk,
+  retained,
+  retentionInventoryOk,
+  cutoffMs,
+  force
+}) {
   const timestamp = Date.parse(summary.lastUsedAt ?? summary.createdAt ?? "");
   const ageDays = Number.isFinite(timestamp)
     ? Math.max(0, Math.floor((Date.now() - timestamp) / DAY_MS))
@@ -195,6 +217,7 @@ function classifyCleanupEnv({ summary, service, serviceInventoryOk, retained, cu
   else if (timestamp > cutoffMs) reasons.push("too-recent");
   if (summary.protected === true) reasons.push("protected");
   if (retained) reasons.push("retained-by-run");
+  if (!retentionInventoryOk) reasons.push("unknown-retention-state");
   if (!serviceKnown) reasons.push("unknown-service-state");
   else if (active) reasons.push("active-service");
 

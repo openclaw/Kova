@@ -71,12 +71,32 @@ export async function runWithTargetRuntimeCleanup(targetPlan, options, run) {
     if (primaryError === null) {
       throw cleanupError;
     }
+    throw new AggregateError(
+      [primaryError, cleanupError],
+      `${primaryError.message}; target runtime cleanup also failed: ${cleanupError.message}`,
+      { cause: primaryError }
+    );
   }
 
   if (primaryError !== null) {
+    if (targetCleanup?.status === "remove-failed") {
+      const cleanupError = targetRuntimeCleanupError(targetCleanup);
+      throw new AggregateError(
+        [primaryError, cleanupError],
+        `${primaryError.message}; target runtime cleanup also failed: ${cleanupError.message}`,
+        { cause: primaryError }
+      );
+    }
     throw primaryError;
   }
   return { records, targetCleanup };
+}
+
+function targetRuntimeCleanupError(targetCleanup) {
+  const detail = targetCleanup.result?.stderr?.trim() ||
+    targetCleanup.result?.stdout?.trim() ||
+    `exit ${targetCleanup.result?.status ?? "unknown"}`;
+  return new Error(detail);
 }
 
 function classifyTargetRuntimeCleanup(result, runtimeName) {
