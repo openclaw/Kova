@@ -19,9 +19,14 @@
  * store, so CI can run `kova publish <runId> --ver <version>` after a run.
  */
 
-import { copyFile, mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
-import { join, isAbsolute, resolve, basename, dirname, sep } from "node:path";
+import { mkdir, open, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
+import { join, isAbsolute, resolve, basename, dirname, posix, sep } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
+import { Transform } from "node:stream";
+import { createGunzip } from "node:zlib";
+import { extract as extractTar } from "tar-stream";
+import { caseFold } from "unicode-case-folding";
 
 import {
   parseRelease,
@@ -40,6 +45,20 @@ import {
 } from "../web-publish/projector.mjs";
 
 const DEFAULT_OUT_DIR = join(repoRoot, "web", "src", "content", "releases");
+const MAX_BUNDLE_COMPRESSED_BYTES = 256 * 1024 * 1024;
+const MAX_BUNDLE_CHECKSUM_BYTES = 8 * 1024;
+const MAX_BUNDLE_UNPACKED_BYTES = 512 * 1024 * 1024;
+const MAX_BUNDLE_DECLARED_BYTES = 512 * 1024 * 1024;
+const MAX_BUNDLE_MANIFEST_BYTES = 64 * 1024;
+const MAX_BUNDLE_PHYSICAL_HEADERS = 10_000;
+const MAX_BUNDLE_ENTRIES = 10_000;
+const MAX_BUNDLE_NAME_BYTES = 4 * 1024;
+const MAX_BUNDLE_PATH_DEPTH = 64;
+const MAX_BUNDLE_ANCESTORS = 100_000;
+const TAR_EXTENSION_TYPES = new Set([0x4b, 0x4c, 0x4e, 0x67, 0x78]);
+const STRICT_UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
+const READ_ONLY_NONBLOCK =
+  fsConstants.O_RDONLY | (fsConstants.O_NONBLOCK ?? 0);
 
 export async function runPublishCommand(flags) {
   const [inputArg] = flags._;
@@ -186,11 +205,10 @@ async function projectReportBundles(payload, report, { inputPath, outDir }) {
   const source = await findReportBundlePath(report, inputPath);
   if (!source) return { payload, bundles: [] };
 
-  const bundleStat = await stat(source);
   const publicBundlesDir = resolvePublicBundlesDir(outDir);
-  const name = basename(source);
+  const name = basename(source.path);
   const href = `/bundles/${name}`;
-  const bundle = { name, bytes: bundleStat.size, href };
+  const bundle = { name, bytes: source.archive.length, href };
   const next = structuredClone(payload);
 
   if (Array.isArray(next.runs) && next.runs.length > 0) {
@@ -200,13 +218,14 @@ async function projectReportBundles(payload, report, { inputPath, outDir }) {
   return {
     payload: next,
     bundles: [{
-      source,
+      archive: source.archive,
       dest: join(publicBundlesDir, name),
     }],
   };
 }
 
 async function findReportBundlePath(report, inputPath) {
+  const runId = typeof report.runId === "string" ? report.runId : null;
   const explicit = [
     report.bundle?.path,
     report.bundle?.outputPath,
@@ -217,19 +236,23 @@ async function findReportBundlePath(report, inputPath) {
 
   for (const candidate of explicit) {
     const resolved = isAbsolute(candidate) ? candidate : resolve(dirname(inputPath), candidate);
-    if (await pathExists(resolved)) return resolved;
+    if (await pathExists(resolved)) {
+      const archive = await readVerifiedBundle(resolved, runId);
+      if (archive) {
+        return { path: resolved, archive };
+      }
+    }
   }
 
   const inputDir = dirname(inputPath);
   const inputBase = basename(inputPath, ".json");
-  const runId = report.runId;
   const contentAddressed = await findContentAddressedBundlePath(inputDir, [
     typeof runId === "string"
       ? safeBundlePrefix(artifactRunIdSegment(runId))
       : null,
     safeBundlePrefix(inputBase),
     safeBundlePrefix(inputBase.replace(/-[^-]+$/, "")),
-  ].filter(Boolean));
+  ].filter(Boolean), runId);
   if (contentAddressed) {
     return contentAddressed;
   }
@@ -241,7 +264,12 @@ async function findReportBundlePath(report, inputPath) {
   ].filter(Boolean);
 
   for (const candidate of inferred) {
-    if (await pathExists(candidate)) return candidate;
+    if (await pathExists(candidate)) {
+      const archive = await readVerifiedBundle(candidate, runId);
+      if (archive) {
+        return { path: candidate, archive };
+      }
+    }
   }
   return null;
 }
@@ -253,35 +281,502 @@ function safeBundlePrefix(value) {
   return `${value}-bundle-`;
 }
 
-async function findContentAddressedBundlePath(inputDir, prefixes) {
-  const candidates = [];
-  for (const entry of await readdir(inputDir, { withFileTypes: true })) {
-    if (!entry.isFile()) continue;
-    const prefix = prefixes.find((item) => entry.name.startsWith(item));
-    if (!prefix || !entry.name.endsWith(".tar.gz")) continue;
-    const digest = entry.name.slice(prefix.length, -".tar.gz".length);
-    if (!/^[a-f0-9]{64}$/.test(digest)) continue;
+async function findContentAddressedBundlePath(inputDir, prefixes, runId) {
+  const entries = await readdir(inputDir, { withFileTypes: true });
+  for (const prefix of new Set(prefixes)) {
+    let best = null;
+    for (const entry of entries) {
+      if (
+        !entry.isFile() ||
+        !entry.name.startsWith(prefix) ||
+        !entry.name.endsWith(".tar.gz")
+      ) {
+        continue;
+      }
+      const digest = entry.name.slice(prefix.length, -".tar.gz".length);
+      if (!/^[a-f0-9]{64}$/.test(digest)) continue;
 
-    const path = join(inputDir, entry.name);
-    const checksumPath = `${path}.sha256`;
-    if (!await pathExists(checksumPath)) continue;
-    const [archive, checksum, info] = await Promise.all([
-      readFile(path),
-      readFile(checksumPath, "utf8"),
-      stat(path),
-    ]);
-    const actualDigest = createHash("sha256").update(archive).digest("hex");
-    if (
-      actualDigest !== digest ||
-      checksum !== `${digest}  ${entry.name}\n`
-    ) {
-      continue;
+      const path = join(inputDir, entry.name);
+      const archive = await readVerifiedBundle(path, runId);
+      if (!archive) {
+        continue;
+      }
+      let info;
+      try {
+        info = await stat(path);
+      } catch {
+        continue;
+      }
+      const candidate = { path, archive, mtimeMs: info.mtimeMs };
+      if (
+        !best ||
+        candidate.mtimeMs > best.mtimeMs ||
+        (
+          candidate.mtimeMs === best.mtimeMs &&
+          candidate.path.localeCompare(best.path) < 0
+        )
+      ) {
+        best = candidate;
+      }
     }
-    candidates.push({ path, mtimeMs: info.mtimeMs });
+    if (best) {
+      return best;
+    }
   }
-  candidates.sort((left, right) =>
-    right.mtimeMs - left.mtimeMs || left.path.localeCompare(right.path));
-  return candidates[0]?.path ?? null;
+  return null;
+}
+
+async function readVerifiedBundle(path, runId, archive = null) {
+  if (!runId) {
+    return null;
+  }
+  const expectedManifest =
+    `${artifactRunIdSegment(runId)}-bundle/manifest.json`;
+  try {
+    const verifiedArchive = archive ?? (
+      await readBoundedFile(
+        path,
+        MAX_BUNDLE_COMPRESSED_BYTES,
+        "report bundle compressed archive"
+      )
+    ).content;
+    if (!await contentAddressMatches(path, verifiedArchive)) {
+      return null;
+    }
+    const manifest = await readBundleManifest(verifiedArchive, expectedManifest);
+    return JSON.parse(manifest).runId === runId
+      ? verifiedArchive
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+async function contentAddressMatches(path, archive) {
+  const match = basename(path).match(/-bundle-([a-f0-9]{64})[.]tar[.]gz$/);
+  if (!match) {
+    return true;
+  }
+  const digest = match[1];
+  if (createHash("sha256").update(archive).digest("hex") !== digest) {
+    return false;
+  }
+  const checksum = (
+    await readBoundedFile(
+      `${path}.sha256`,
+      MAX_BUNDLE_CHECKSUM_BYTES,
+      "report bundle checksum",
+      "utf8"
+    )
+  ).content;
+  return checksum === `${digest}  ${basename(path)}\n`;
+}
+
+async function readBundleManifest(archive, expectedManifest) {
+  if (archive.length > MAX_BUNDLE_COMPRESSED_BYTES) {
+    throw new Error("report bundle compressed archive exceeds the size limit");
+  }
+  const extractor = extractTar();
+  const destinations = new Map();
+  const requiredDirectories = new Set();
+  const expectedRoot = posix.dirname(expectedManifest);
+  let entryCount = 0;
+  let declaredBytes = 0;
+  let manifest = null;
+
+  extractor.on("entry", (header, stream, next) => {
+    // Rejecting an entry destroys its tar-stream source too; consume that
+    // paired error so the extractor's error remains the single failure path.
+    stream.on("error", () => {});
+    entryCount += 1;
+    const normalized = normalizeArchiveMember(header.name, header.type);
+    declaredBytes += header.size;
+    if (
+      entryCount > MAX_BUNDLE_ENTRIES ||
+      Buffer.byteLength(header.name) > MAX_BUNDLE_NAME_BYTES ||
+      declaredBytes > MAX_BUNDLE_DECLARED_BYTES ||
+      !normalized ||
+      (
+        normalized.path !== expectedRoot &&
+        !normalized.path.startsWith(`${expectedRoot}/`)
+      ) ||
+      !["file", "directory"].includes(header.type) ||
+      header.linkname ||
+      (header.type === "directory" && header.size !== 0) ||
+      archiveDestinationConflicts(
+        destinations,
+        requiredDirectories,
+        normalized,
+        header.type
+      )
+    ) {
+      stream.resume();
+      next(new Error("report bundle contains an unsafe archive entry"));
+      return;
+    }
+    if (
+      !recordArchiveDestination(
+        destinations,
+        requiredDirectories,
+        normalized,
+        header.type
+      )
+    ) {
+      stream.resume();
+      next(new Error("report bundle archive topology exceeds the size limit"));
+      return;
+    }
+    if (normalized.path !== expectedManifest) {
+      stream.on("end", next);
+      stream.resume();
+      return;
+    }
+    if (header.type !== "file" || manifest !== null) {
+      stream.resume();
+      next(new Error("report bundle manifest must be one regular file"));
+      return;
+    }
+    if (header.size > MAX_BUNDLE_MANIFEST_BYTES) {
+      stream.resume();
+      next(new Error("report bundle manifest exceeds the size limit"));
+      return;
+    }
+    const chunks = [];
+    let bytes = 0;
+    let oversized = false;
+    stream.on("data", (chunk) => {
+      bytes += chunk.length;
+      if (bytes > MAX_BUNDLE_MANIFEST_BYTES) {
+        oversized = true;
+        return;
+      }
+      chunks.push(chunk);
+    });
+    stream.on("end", () => {
+      if (oversized) {
+        next(new Error("report bundle manifest exceeds the size limit"));
+        return;
+      }
+      try {
+        manifest = STRICT_UTF8_DECODER.decode(Buffer.concat(chunks));
+        next();
+      } catch (error) {
+        next(error);
+      }
+    });
+  });
+
+  await new Promise((resolve, reject) => {
+    const gunzip = createGunzip();
+    const guard = createTarGuard();
+    let settled = false;
+    const fail = (error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      gunzip.destroy();
+      guard.destroy();
+      extractor.destroy(error);
+      reject(error);
+    };
+    gunzip.on("error", fail);
+    guard.on("error", fail);
+    extractor.on("error", fail);
+    extractor.on("finish", () => {
+      if (!settled) {
+        settled = true;
+        resolve();
+      }
+    });
+    gunzip.pipe(guard).pipe(extractor);
+    gunzip.end(archive);
+  });
+  if (manifest === null) {
+    throw new Error("report bundle manifest is missing");
+  }
+  return manifest;
+}
+
+function archiveDestinationConflicts(
+  destinations,
+  requiredDirectories,
+  member,
+  type
+) {
+  const { portablePath, portableSegments } = member;
+  if (destinations.has(portablePath)) {
+    return true;
+  }
+  let ancestor = portableSegments[0];
+  for (let index = 1; index < portableSegments.length; index += 1) {
+    if (destinations.has(ancestor) && destinations.get(ancestor) !== "directory") {
+      return true;
+    }
+    ancestor += `/${portableSegments[index]}`;
+  }
+  return type !== "directory" && requiredDirectories.has(portablePath);
+}
+
+function recordArchiveDestination(
+  destinations,
+  requiredDirectories,
+  member,
+  type
+) {
+  const { portablePath, portableSegments } = member;
+  const newAncestors = [];
+  let ancestor = portableSegments[0];
+  for (let index = 1; index < portableSegments.length; index += 1) {
+    if (!requiredDirectories.has(ancestor)) {
+      newAncestors.push(ancestor);
+    }
+    ancestor += `/${portableSegments[index]}`;
+  }
+  if (
+    requiredDirectories.size + newAncestors.length >
+    MAX_BUNDLE_ANCESTORS
+  ) {
+    return false;
+  }
+  destinations.set(portablePath, type);
+  for (const requiredDirectory of newAncestors) {
+    requiredDirectories.add(requiredDirectory);
+  }
+  return true;
+}
+
+function createTarGuard() {
+  let buffered = Buffer.alloc(0);
+  let remaining = 0;
+  let total = 0;
+  let physicalHeaders = 0;
+  let declaredBytes = 0;
+  let terminated = false;
+  return new Transform({
+    transform(chunk, _encoding, callback) {
+      total += chunk.length;
+      if (total > MAX_BUNDLE_UNPACKED_BYTES) {
+        callback(new Error("report bundle expanded archive exceeds the size limit"));
+        return;
+      }
+      buffered = Buffer.concat([buffered, chunk]);
+      try {
+        while (buffered.length > 0) {
+          if (remaining > 0) {
+            const consumed = Math.min(remaining, buffered.length);
+            buffered = buffered.subarray(consumed);
+            remaining -= consumed;
+            continue;
+          }
+          if (buffered.length < 512) {
+            break;
+          }
+          const header = buffered.subarray(0, 512);
+          buffered = buffered.subarray(512);
+          if (header.every((byte) => byte === 0)) {
+            terminated = true;
+            continue;
+          }
+          if (terminated) {
+            throw new Error("report bundle tar archive has data after its terminator");
+          }
+          physicalHeaders += 1;
+          if (physicalHeaders > MAX_BUNDLE_PHYSICAL_HEADERS) {
+            throw new Error("report bundle tar archive has too many headers");
+          }
+          if (TAR_EXTENSION_TYPES.has(header[156])) {
+            throw new Error("report bundle tar extension headers are unsupported");
+          }
+          validateTarHeader(header);
+          const size = decodeTarSize(header.subarray(124, 136));
+          declaredBytes += size;
+          if (declaredBytes > MAX_BUNDLE_DECLARED_BYTES) {
+            throw new Error("report bundle declared content exceeds the size limit");
+          }
+          remaining = Math.ceil(size / 512) * 512;
+        }
+      } catch (error) {
+        callback(error);
+        return;
+      }
+      this.push(chunk);
+      callback();
+    },
+    flush(callback) {
+      if (!terminated || remaining !== 0 || buffered.some((byte) => byte !== 0)) {
+        callback(new Error("report bundle tar archive is incomplete"));
+        return;
+      }
+      callback();
+    }
+  });
+}
+
+function decodeTarSize(field) {
+  if (field[0] & 0x80) {
+    if (field[0] !== 0x80) {
+      throw new Error("report bundle tar entry has an invalid binary size");
+    }
+    let value = 0n;
+    for (const byte of field.subarray(1)) {
+      value = value * 256n + BigInt(byte);
+    }
+    if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
+      throw new Error("report bundle tar entry size is too large");
+    }
+    return Number(value);
+  }
+  return decodeTarOctal(field, "report bundle tar entry size");
+}
+
+function validateTarHeader(header) {
+  const onlyChecksumIsNonzero =
+    header.subarray(0, 148).every((byte) => byte === 0) &&
+    header.subarray(156).every((byte) => byte === 0);
+  if (onlyChecksumIsNonzero) {
+    throw new Error("report bundle tar archive has a malformed terminator");
+  }
+  let actual = 8 * 0x20;
+  for (const byte of header.subarray(0, 148)) {
+    actual += byte;
+  }
+  for (const byte of header.subarray(156)) {
+    actual += byte;
+  }
+  const expected = decodeTarOctal(
+    header.subarray(148, 156),
+    "report bundle tar header checksum"
+  );
+  if (actual !== expected) {
+    throw new Error("report bundle tar header checksum is invalid");
+  }
+  validateTarPathEncoding(header);
+}
+
+function decodeTarOctal(field, label) {
+  let start = 0;
+  while (start < field.length && field[start] === 0x20) {
+    start += 1;
+  }
+  if (
+    field.subarray(start).every((byte) => byte === 0 || byte === 0x20)
+  ) {
+    return 0;
+  }
+  let end = start;
+  while (end < field.length && field[end] >= 0x30 && field[end] <= 0x37) {
+    end += 1;
+  }
+  if (
+    end === start ||
+    !field.subarray(end).every((byte) => byte === 0 || byte === 0x20)
+  ) {
+    throw new Error(`${label} is invalid`);
+  }
+  const octal = field.subarray(start, end).toString("ascii");
+  const value = Number.parseInt(octal, 8);
+  if (!Number.isSafeInteger(value)) {
+    throw new Error(`${label} is invalid`);
+  }
+  return value;
+}
+
+function validateTarPathEncoding(header) {
+  const name = decodeTarStringField(
+    header.subarray(0, 100),
+    "report bundle tar entry name"
+  );
+  const prefix = decodeTarStringField(
+    header.subarray(345, 500),
+    "report bundle tar entry prefix"
+  );
+  STRICT_UTF8_DECODER.decode(Buffer.from(prefix ? `${prefix}/${name}` : name));
+}
+
+function decodeTarStringField(field, label) {
+  const nul = field.indexOf(0);
+  const end = nul === -1 ? field.length : nul;
+  if (
+    nul !== -1 &&
+    field.subarray(nul).some((byte) => byte !== 0)
+  ) {
+    throw new Error(`${label} has data after its terminator`);
+  }
+  try {
+    return STRICT_UTF8_DECODER.decode(field.subarray(0, end));
+  } catch {
+    throw new Error(`${label} is not valid UTF-8`);
+  }
+}
+
+function normalizeArchiveMember(name, type) {
+  if (
+    !name ||
+    !["file", "directory"].includes(type) ||
+    name.startsWith("/") ||
+    /[<>:"\\|?*]/.test(name) ||
+    /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(name)
+  ) {
+    return null;
+  }
+  const hasTrailingSlash = name.endsWith("/");
+  if (hasTrailingSlash && type !== "directory") {
+    return null;
+  }
+  const canonicalName = hasTrailingSlash ? name.slice(0, -1) : name;
+  const normalized = posix.normalize(canonicalName);
+  const segments = canonicalName.split("/");
+  if (
+    normalized !== canonicalName ||
+    segments.length === 0 ||
+    segments.length > MAX_BUNDLE_PATH_DEPTH ||
+    segments.some((segment) =>
+      !segment ||
+      segment === "." ||
+      segment === ".." ||
+      segment.startsWith("-") ||
+      /[. ]$/.test(segment) ||
+      /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:[.]|$)/i.test(segment)
+    )
+  ) {
+    return null;
+  }
+  const portableSegments = segments.map((segment) =>
+    caseFold(segment.normalize("NFC")).normalize("NFC"));
+  return {
+    path: normalized,
+    portablePath: portableSegments.join("/"),
+    portableSegments
+  };
+}
+
+async function readBoundedFile(path, maxBytes, label, encoding = null) {
+  const handle = await open(path, READ_ONLY_NONBLOCK);
+  try {
+    const info = await handle.stat();
+    if (!info.isFile() || info.size > maxBytes) {
+      throw new Error(`${label} exceeds the size limit`);
+    }
+    const chunks = [];
+    let total = 0;
+    while (true) {
+      const chunk = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1 - total));
+      const { bytesRead } = await handle.read(chunk, 0, chunk.length, null);
+      if (bytesRead === 0) {
+        break;
+      }
+      total += bytesRead;
+      if (total > maxBytes) {
+        throw new Error(`${label} exceeds the size limit`);
+      }
+      chunks.push(chunk.subarray(0, bytesRead));
+    }
+    const bytes = Buffer.concat(chunks, total);
+    return { content: encoding ? bytes.toString(encoding) : bytes, info };
+  } finally {
+    await handle.close();
+  }
 }
 
 function resolvePublicBundlesDir(outDir) {
@@ -296,7 +791,16 @@ function resolvePublicBundlesDir(outDir) {
 async function copyProjectedBundles(bundles) {
   for (const bundle of bundles) {
     await mkdir(dirname(bundle.dest), { recursive: true });
-    await copyFile(bundle.source, bundle.dest);
+    const tmp = join(
+      dirname(bundle.dest),
+      `.${basename(bundle.dest)}.${randomBytes(6).toString("hex")}.tmp`
+    );
+    try {
+      await writeFile(tmp, bundle.archive);
+      await rename(tmp, bundle.dest);
+    } finally {
+      await rm(tmp, { force: true });
+    }
   }
 }
 
