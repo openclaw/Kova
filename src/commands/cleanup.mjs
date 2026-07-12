@@ -238,6 +238,7 @@ async function destroyCleanupEnv(envName, { force, cutoffMs }) {
 }
 
 function validateDestroyPreview(summary) {
+  const allowedStepKinds = new Set(["service", "processes", "worktree", "env", "snapshots"]);
   if (summary == null || typeof summary !== "object" || Array.isArray(summary)) {
     return "destroy preview did not return an object";
   }
@@ -245,8 +246,19 @@ function validateDestroyPreview(summary) {
     typeof summary.serviceInstalled !== "boolean" ||
     typeof summary.serviceLoaded !== "boolean" ||
     typeof summary.serviceRunning !== "boolean" ||
+    !Number.isSafeInteger(summary.processCount) ||
+    summary.processCount < 0 ||
     !Array.isArray(summary.blockers) ||
-    !Array.isArray(summary.steps)
+    !summary.blockers.every((blocker) => typeof blocker === "string") ||
+    !Array.isArray(summary.steps) ||
+    !summary.steps.every((step) =>
+      step !== null &&
+      typeof step === "object" &&
+      !Array.isArray(step) &&
+      allowedStepKinds.has(step.kind) &&
+      typeof step.description === "string" &&
+      step.description.length > 0
+    )
   ) {
     return "destroy preview did not return complete service, blocker, and teardown state";
   }
@@ -256,7 +268,7 @@ function validateDestroyPreview(summary) {
   if (summary.serviceLoaded || summary.serviceRunning) {
     return "destroy preview reported an active service";
   }
-  if (summary.steps.some((step) => step?.kind === "processes")) {
+  if (summary.processCount > 0 || summary.steps.some((step) => step.kind === "processes")) {
     return "destroy preview reported live processes";
   }
   return null;
@@ -335,10 +347,19 @@ async function loadServiceInventory() {
     if (!Array.isArray(parsed?.services)) {
       throw new Error("services array missing");
     }
+    const byEnv = new Map();
+    for (const service of parsed.services) {
+      const error = validateServiceInventoryRecord(service);
+      if (error) throw new Error(error);
+      if (byEnv.has(service.envName)) {
+        throw new Error(`duplicate service envName: ${service.envName}`);
+      }
+      byEnv.set(service.envName, service);
+    }
     return {
       ok: true,
       error: null,
-      byEnv: new Map(parsed.services.map((service) => [service.envName, service]))
+      byEnv
     };
   } catch (error) {
     return {
@@ -347,6 +368,34 @@ async function loadServiceInventory() {
       byEnv: new Map()
     };
   }
+}
+
+function validateServiceInventoryRecord(service) {
+  if (service === null || typeof service !== "object" || Array.isArray(service)) {
+    return "services array contains an invalid record";
+  }
+  if (typeof service.envName !== "string" || service.envName.length === 0) {
+    return "service record is missing envName";
+  }
+  if (
+    typeof service.installed !== "boolean" ||
+    typeof service.desiredRunning !== "boolean" ||
+    typeof service.running !== "boolean" ||
+    typeof service.gatewayState !== "string" ||
+    service.gatewayState.length === 0
+  ) {
+    return `service record for ${service.envName} is incomplete`;
+  }
+  if (
+    service.childPid !== null &&
+    (!Number.isSafeInteger(service.childPid) || service.childPid <= 0)
+  ) {
+    return `service record for ${service.envName} has invalid childPid`;
+  }
+  if (service.issue !== undefined && service.issue !== null && typeof service.issue !== "string") {
+    return `service record for ${service.envName} has invalid issue`;
+  }
+  return null;
 }
 
 async function loadRetentionInventory() {

@@ -19270,6 +19270,10 @@ JSON
     exit 0
     ;;
   service:status:--all)
+    if [ "$KOVA_INVALID_SERVICE_INVENTORY" = "1" ]; then
+      echo '{"services":[{"envName":"kova-stale","gatewayState":"stopped"}]}'
+      exit 0
+    fi
     cat <<'JSON'
 {"services":[
   {"envName":"kova-stale","installed":false,"desiredRunning":false,"running":false,"gatewayState":"stopped","childPid":null},
@@ -19290,10 +19294,14 @@ JSON
       if [ "$KOVA_REVALIDATE_RETAINED" = "1" ]; then
         printf '{"records":[{"envName":"%s","cleanup":"retained"}]}\\n' "$3" > "$KOVA_RETENTION_REPORT"
       fi
+      if [ "$KOVA_PREVIEW_MALFORMED" = "1" ]; then
+        printf '{"stateToken":"v1:%s","serviceInstalled":true,"serviceLoaded":false,"serviceRunning":false,"processCount":0,"blockers":[],"steps":[null]}\\n' "$3"
+        exit 0
+      fi
       if [ "$KOVA_PREVIEW_ACTIVE" = "1" ]; then
-        printf '{"stateToken":"v1:%s","serviceInstalled":true,"serviceLoaded":true,"serviceRunning":true,"blockers":[],"steps":[{"kind":"service"},{"kind":"processes"}]}\\n' "$3"
+        printf '{"stateToken":"v1:%s","serviceInstalled":true,"serviceLoaded":true,"serviceRunning":true,"processCount":1,"blockers":[],"steps":[{"kind":"service","description":"disable service"},{"kind":"processes","description":"terminate processes"}]}\\n' "$3"
       else
-        printf '{"stateToken":"v1:%s","serviceInstalled":true,"serviceLoaded":false,"serviceRunning":false,"blockers":[],"steps":[{"kind":"service"}]}\\n' "$3"
+        printf '{"stateToken":"v1:%s","serviceInstalled":true,"serviceLoaded":false,"serviceRunning":false,"processCount":0,"blockers":[],"steps":[{"kind":"service","description":"disable service"}]}\\n' "$3"
       fi
       exit 0
     fi
@@ -19365,6 +19373,12 @@ exit 2
     assertEqual(invalidShapePlan.candidates.length, 0, "invalid retention shape blocks cleanup");
     await rm(invalidShapeReport);
 
+    const invalidServiceInventory = await run("", { KOVA_INVALID_SERVICE_INVENTORY: "1" });
+    assertEqual(invalidServiceInventory.status, 0, "invalid service inventory dry-run exit");
+    const invalidServicePlan = JSON.parse(invalidServiceInventory.stdout);
+    assertEqual(invalidServicePlan.serviceInventory?.ok, false, "invalid service shape fails inventory");
+    assertEqual(invalidServicePlan.candidates.length, 0, "invalid service shape blocks cleanup");
+
     const falseExecute = await run("--execute=false");
     assertEqual(falseExecute.status, 0, "non-boolean execute exit");
     assertEqual(JSON.parse(falseExecute.stdout).execute, false, "execute string does not authorize cleanup");
@@ -19388,6 +19402,13 @@ exit 2
     assertEqual(activePreviewReceipt.results[0]?.status, 1, "active destroy preview blocks destroy");
     assertEqual(activePreviewReceipt.results[0]?.stage, "precondition", "active preview fails precondition");
     assertEqual(await fileExists(destroyLog), false, "active preview performs no teardown");
+
+    const malformedPreview = await run("--execute", { KOVA_PREVIEW_MALFORMED: "1" });
+    assertEqual(malformedPreview.status !== 0, true, "malformed preview cleanup receipt exit");
+    const malformedPreviewReceipt = JSON.parse(malformedPreview.stdout);
+    assertEqual(malformedPreviewReceipt.results[0]?.code, "unsafe_preview", "malformed preview is unsafe");
+    assertEqual(malformedPreviewReceipt.results[0]?.stage, "precondition", "malformed preview stops before apply");
+    assertEqual(await fileExists(destroyLog), false, "malformed preview performs no teardown");
 
     const recentlyUsed = await run("--execute", { KOVA_REVALIDATE_RECENT: "1" });
     assertEqual(recentlyUsed.status !== 0, true, "recent eligibility refresh exits nonzero");
@@ -19447,9 +19468,12 @@ exit 2
       id: "cleanup-env-safety",
       status: "PASS",
       command: "exercise cleanup env eligibility, execute guard, and force override",
-      durationMs: dry.durationMs + unknownRetention.durationMs + falseExecute.durationMs +
+      durationMs: dry.durationMs + unknownRetention.durationMs +
+        invalidShapeRetention.durationMs + invalidServiceInventory.durationMs +
+        falseExecute.durationMs +
         stateChanged.durationMs + activePreview.durationMs + recentlyUsed.durationMs +
-        newlyRetained.durationMs + partialApply.durationMs + forcedPartialApply.durationMs +
+        malformedPreview.durationMs + newlyRetained.durationMs +
+        partialApply.durationMs + forcedPartialApply.durationMs +
         execute.durationMs + forced.durationMs
     };
   } catch (error) {
