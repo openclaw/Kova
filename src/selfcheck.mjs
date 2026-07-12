@@ -136,12 +136,16 @@ import {
   runInSelfCheckScope
 } from "./selfcheck-scope.mjs";
 import { compareReports, renderCompareSummary } from "./reporting/compare.mjs";
+import { bundleReport, retainGateArtifacts } from "./reporting/artifacts.mjs";
 import { pickAffectedScenarios, scenarioMetricRows } from "./reporting/compare-aggregate.mjs";
 import { renderCompareAssessment } from "./reporting/render-compare.mjs";
 import { renderAssessment } from "./reporting/render-assessment.mjs";
+import { renderCleanupArtifacts, renderCleanupEnvs } from "./reporting/render-cleanup.mjs";
 import { renderRunReceipt } from "./reporting/render-run-receipt.mjs";
 import { aggregateScenarios } from "./reporting/scenario-aggregate.mjs";
 import { summarizePerformanceReceipt } from "./run/options.mjs";
+import { saveBaselineUpdate } from "./run/report-finalization.mjs";
+import { buildReportOutputPaths, writeReportOutputs } from "./run/report-output.mjs";
 import {
   ocmAt,
   ocmEnvDestroy,
@@ -922,6 +926,8 @@ async function runScopedSelfCheck(flags, scope, workspace) {
     checks.push(embeddedRunLogParserCheck());
     checks.push(runtimeDepsWarmReuseEvaluationCheck());
     checks.push(await performanceBaselineCheck(tmp));
+    checks.push(await reportPublicationCheck(tmp));
+    checks.push(cleanupPublicationReceiptCheck());
     checks.push(markdownFailureCardsCheck());
     checks.push(reportRecommendedNextScenarioCheck());
     checks.push(readinessClassificationCheck());
@@ -4602,6 +4608,28 @@ async function performanceBaselineCheck(tmp) {
       false,
       "failed baseline replacement removes temporary file"
     );
+    const concurrentBaselinePath = join(tmp, "concurrent-baselines.json");
+    const firstConcurrentReport = structuredClone(baselineReport);
+    firstConcurrentReport.runId = "concurrent-a";
+    const secondConcurrentReport = structuredClone(baselineReport);
+    secondConcurrentReport.runId = "concurrent-b";
+    await Promise.all([
+      saveBaselineUpdate(firstConcurrentReport, {
+        saveBaselinePath: concurrentBaselinePath,
+        targetPlan: { kind: "local-build", value: "/tmp/openclaw-a" },
+        reviewedGood: true
+      }),
+      saveBaselineUpdate(secondConcurrentReport, {
+        saveBaselinePath: concurrentBaselinePath,
+        targetPlan: { kind: "local-build", value: "/tmp/openclaw-b" },
+        reviewedGood: true
+      })
+    ]);
+    assertEqual(
+      Object.keys((await loadBaselineStore(concurrentBaselinePath)).entries).length,
+      2,
+      "concurrent baseline updates preserve both entries"
+    );
     const otherTargetComparison = comparePerformanceToBaseline(baselineReport, loadedStore, {
       targetPlan: { kind: "local-build", value: "/tmp/other-openclaw" }
     });
@@ -4800,6 +4828,183 @@ async function performanceBaselineCheck(tmp) {
       durationMs: 0,
       message: error.message
     };
+  }
+}
+
+async function reportPublicationCheck(tmp) {
+  const publicationRoot = join(tmp, "report-publication");
+  const report = JSON.parse(await readFile("tests/fixtures/reports/pass.json", "utf8"));
+  try {
+    await mkdir(publicationRoot, { recursive: true });
+    const failedPaths = buildReportOutputPaths(publicationRoot, "kova-260712-000000-aabbcc");
+    const invalidSummaryPath = join(publicationRoot, "s".repeat(250));
+    let partialWriteRejected = false;
+    try {
+      await writeReportOutputs(publicationRoot, {
+        ...report,
+        runId: "kova-260712-000000-aabbcc",
+        outputPaths: {
+          ...failedPaths,
+          summary: invalidSummaryPath
+        }
+      });
+    } catch {
+      partialWriteRejected = true;
+    }
+    assertEqual(partialWriteRejected, true, "report staging failure rejected");
+    assertEqual(await fileExists(failedPaths.markdown), false, "failed report did not publish Markdown");
+    assertEqual(await fileExists(failedPaths.json), false, "failed report did not publish canonical JSON");
+    assertEqual(
+      (await readdir(publicationRoot)).some((entry) => entry.endsWith(".tmp") || entry.endsWith(".bak")),
+      false,
+      "failed report staging removed transaction files"
+    );
+
+    const outputPaths = buildReportOutputPaths(publicationRoot, "kova-260712-000001-aabbcc");
+    const publishedReport = {
+      ...report,
+      runId: "kova-260712-000001-aabbcc",
+      outputPaths
+    };
+    await writeReportOutputs(publicationRoot, publishedReport);
+    assertEqual(await fileExists(outputPaths.markdown), true, "report Markdown published");
+    assertEqual(await fileExists(outputPaths.summary), true, "report summary published");
+    assertEqual(
+      JSON.parse(await readFile(outputPaths.json, "utf8")).runId,
+      publishedReport.runId,
+      "canonical report JSON published"
+    );
+
+    const collisionRoot = join(publicationRoot, "collisions");
+    await mkdir(collisionRoot, { recursive: true });
+    const collisionReports = [];
+    for (const [index, runId] of ["a/b", "a b"].entries()) {
+      const path = join(collisionRoot, `collision-${index}.json`);
+      await writeFile(path, `${JSON.stringify({ ...report, runId }, null, 2)}\n`);
+      await writeFile(path.replace(/\.json$/, ".md"), `report ${index}\n`);
+      collisionReports.push(path);
+    }
+    const bundleRoot = join(publicationRoot, "bundles");
+    const firstBundle = await bundleReport(collisionReports[0], { outputDir: bundleRoot });
+    const secondBundle = await bundleReport(collisionReports[1], { outputDir: bundleRoot });
+    assertEqual(firstBundle.outputPath === secondBundle.outputPath, false, "colliding run IDs use distinct bundle paths");
+    assertEqual(await fileExists(firstBundle.checksumPath), true, "first bundle checksum published");
+    assertEqual(await fileExists(secondBundle.checksumPath), true, "second bundle checksum published");
+
+    const retainedRoot = join(publicationRoot, "retained");
+    const retained = await retainGateArtifacts(collisionReports[0], firstBundle, {
+      outputDir: retainedRoot
+    });
+    const retainedBeforeFailure = await readFile(retained.jsonPath, "utf8");
+    const invalidBundle = join(publicationRoot, "invalid-bundle");
+    await mkdir(invalidBundle);
+    let retainedReplacementRejected = false;
+    try {
+      await retainGateArtifacts(collisionReports[0], {
+        outputPath: invalidBundle,
+        checksumPath: firstBundle.checksumPath
+      }, {
+        outputDir: retainedRoot
+      });
+    } catch {
+      retainedReplacementRejected = true;
+    }
+    assertEqual(retainedReplacementRejected, true, "invalid retained replacement rejected");
+    assertEqual(
+      await readFile(retained.jsonPath, "utf8"),
+      retainedBeforeFailure,
+      "failed retained replacement preserves prior tree"
+    );
+
+    await rm(collisionReports[0].replace(/\.json$/, ".md"));
+    let missingMarkdownRejected = false;
+    try {
+      await bundleReport(collisionReports[0], { outputDir: bundleRoot });
+    } catch (error) {
+      missingMarkdownRejected = /report Markdown is missing/.test(error.message);
+    }
+    assertEqual(missingMarkdownRejected, true, "bundle rejects missing Markdown");
+    missingMarkdownRejected = false;
+    try {
+      await retainGateArtifacts(collisionReports[0], firstBundle, {
+        outputDir: retainedRoot
+      });
+    } catch (error) {
+      missingMarkdownRejected = /report Markdown is missing/.test(error.message);
+    }
+    assertEqual(missingMarkdownRejected, true, "retention rejects missing Markdown");
+
+    return {
+      id: "report-publication-integrity",
+      status: "PASS",
+      command: "stage and retain synthetic report artifacts",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "report-publication-integrity",
+      status: "FAIL",
+      command: "stage and retain synthetic report artifacts",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function cleanupPublicationReceiptCheck() {
+  try {
+    const missingEnvResult = renderCleanupEnvs({
+      envs: ["kova-stale"],
+      results: [],
+      execute: true
+    }, { color: "never" });
+    assertEqual(missingEnvResult.includes("INCOMPLETE"), true, "missing env cleanup result is incomplete");
+    assertEqual(missingEnvResult.includes("Done."), false, "missing env cleanup result omits success footer");
+
+    const failedEnvResult = renderCleanupEnvs({
+      envs: ["kova-stale"],
+      results: [{ command: "ocm env destroy 'kova-stale'", status: 1 }],
+      execute: true
+    }, { color: "never" });
+    assertEqual(failedEnvResult.includes("PARTIAL"), true, "failed env cleanup is partial");
+    assertEqual(failedEnvResult.includes("Done."), false, "failed env cleanup omits success footer");
+
+    const missingArtifactResult = renderCleanupArtifacts({
+      candidates: [{ name: "kova-old", path: "/tmp/kova-old", ageDays: 8 }],
+      results: [],
+      execute: true,
+      artifactsDir: "/tmp",
+      olderThanDays: 7
+    }, { color: "never" });
+    assertEqual(missingArtifactResult.includes("INCOMPLETE"), true, "missing artifact cleanup result is incomplete");
+    assertEqual(missingArtifactResult.includes("Done."), false, "missing artifact cleanup result omits success footer");
+
+    return {
+      id: "cleanup-publication-receipts",
+      status: "PASS",
+      command: "render incomplete cleanup receipts",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "cleanup-publication-receipts",
+      status: "FAIL",
+      command: "render incomplete cleanup receipts",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+async function fileExists(path) {
+  try {
+    await stat(path);
+    return true;
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return false;
+    }
+    throw error;
   }
 }
 

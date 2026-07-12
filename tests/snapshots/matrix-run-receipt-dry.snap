@@ -14,7 +14,7 @@
   ◆ markdown    <kova-home>/reports/kova-<runId>-smoke.md
   ◆ json        <kova-home>/reports/kova-<runId>-smoke.json
   ◆ summary     <kova-home>/reports/kova-<runId>-smoke.summary.json
-  ◆ bundle      <kova-home>/reports/kova-<runId>-bundle.tar.gz
+  ◆ bundle      <kova-home>/reports/kova-<runId>-bundle-<sha256>.tar.gz
 
 ─── scenarios ──────────────────────────────────────────────────────────────────
 
