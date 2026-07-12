@@ -176,35 +176,12 @@ async function removeOwnedFile(path, token) {
 
 function isAbandoned(snapshot, staleMs) {
   const ownerDomain = snapshot.owner?.executionDomainIdentity;
-  if (ownerDomain && CURRENT_EXECUTION_DOMAIN) {
-    if (typeof ownerDomain !== "object") {
-      return false;
-    }
-    if (
-      ownerDomain.host &&
-      CURRENT_EXECUTION_DOMAIN.host &&
-      ownerDomain.host !== CURRENT_EXECUTION_DOMAIN.host
-    ) {
-      // Boot IDs and PIDs are host-local. A foreign owner cannot be proven
-      // abandoned from this process, so preserve mutual exclusion.
-      return false;
-    }
-    if (
-      ownerDomain.boot &&
-      CURRENT_EXECUTION_DOMAIN.boot &&
-      ownerDomain.boot !== CURRENT_EXECUTION_DOMAIN.boot
-    ) {
-      return true;
-    }
-    if (
-      ownerDomain.pidNamespace &&
-      CURRENT_EXECUTION_DOMAIN.pidNamespace &&
-      ownerDomain.pidNamespace !== CURRENT_EXECUTION_DOMAIN.pidNamespace
-    ) {
-      // A local PID probe says nothing about an owner in another active PID
-      // namespace. Preserve mutual exclusion rather than reclaiming unsafely.
-      return false;
-    }
+  const domainRelation = classifyExecutionDomain(ownerDomain, CURRENT_EXECUTION_DOMAIN);
+  if (domainRelation === "unknown" || domainRelation === "foreign") {
+    return false;
+  }
+  if (domainRelation === "rebooted") {
+    return true;
   }
   const pid = snapshot.owner?.pid;
   if (Number.isInteger(pid) && pid > 0) {
@@ -223,6 +200,74 @@ function isAbandoned(snapshot, staleMs) {
   return snapshot.ageMs >= staleMs;
 }
 
+export function currentExecutionDomainIdentity() {
+  return CURRENT_EXECUTION_DOMAIN
+    ? structuredClone(CURRENT_EXECUTION_DOMAIN)
+    : null;
+}
+
+export function classifyExecutionDomain(owner, current) {
+  if (
+    !owner ||
+    !current ||
+    typeof owner !== "object" ||
+    typeof current !== "object"
+  ) {
+    return "unknown";
+  }
+  for (const domain of [owner, current]) {
+    for (const field of [
+      "host",
+      "hardwareMachine",
+      "installationMachine",
+      "boot",
+      "pidNamespace"
+    ]) {
+      if (domain[field] !== undefined && domain[field] !== null && typeof domain[field] !== "string") {
+        return "unknown";
+      }
+    }
+  }
+  if (owner.host && current.host && owner.host !== current.host) {
+    return "foreign";
+  }
+  for (const field of ["hardwareMachine", "installationMachine"]) {
+    if (owner[field] && current[field] && owner[field] !== current[field]) {
+      return "foreign";
+    }
+  }
+  const hardwareMachineMatch = Boolean(
+    owner.hardwareMachine &&
+    current.hardwareMachine &&
+    owner.hardwareMachine === current.hardwareMachine
+  );
+  if (
+    hardwareMachineMatch &&
+    owner.boot &&
+    current.boot &&
+    owner.boot !== current.boot
+  ) {
+    return "rebooted";
+  }
+  if (
+    !hardwareMachineMatch &&
+    (!owner.boot || !current.boot || owner.boot !== current.boot)
+  ) {
+    // Matching current boot IDs are the only fallback proof when a stable
+    // machine identity is unavailable.
+    return "unknown";
+  }
+  const ownerNamespace = owner.pidNamespace ?? null;
+  const currentNamespace = current.pidNamespace ?? null;
+  if (Boolean(ownerNamespace) !== Boolean(currentNamespace)) {
+    return "unknown";
+  }
+  if (ownerNamespace && ownerNamespace !== currentNamespace) {
+    return "foreign";
+  }
+  return "local";
+}
+
 function lockMetadata(token) {
   return {
     token,
@@ -236,16 +281,119 @@ function lockMetadata(token) {
 
 function readExecutionDomainIdentity() {
   const host = hostname() || null;
+  const machineIdentities = readMachineIdentities();
   if (process.platform === "linux") {
     try {
       const bootId = readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim();
       const pidNamespace = readlinkSync("/proc/self/ns/pid");
-      return { host, boot: bootId || null, pidNamespace: pidNamespace || null };
+      return {
+        host,
+        hardwareMachine: machineIdentities.hardware,
+        installationMachine: machineIdentities.installation,
+        boot: bootId || null,
+        pidNamespace: pidNamespace || null
+      };
     } catch {
       // Fall through to the host identity when procfs is unavailable.
     }
   }
-  return host ? { host, boot: null, pidNamespace: null } : null;
+  return host || machineIdentities.hardware || machineIdentities.installation
+    ? {
+        host,
+        hardwareMachine: machineIdentities.hardware,
+        installationMachine: machineIdentities.installation,
+        boot: null,
+        pidNamespace: null
+      }
+    : null;
+}
+
+function readMachineIdentities() {
+  let hardware = "";
+  let installation = "";
+  if (process.platform === "linux") {
+    try {
+      hardware = normalizeMachineIdentity(
+        readFileSync("/sys/class/dmi/id/product_uuid", "utf8")
+      );
+    } catch {
+      // DMI is optional in containers and on some architectures.
+    }
+    for (const path of ["/etc/machine-id", "/var/lib/dbus/machine-id"]) {
+      try {
+        installation = normalizeMachineIdentity(readFileSync(path, "utf8"));
+        if (installation) {
+          break;
+        }
+      } catch {
+        // Try the next standard machine identity path.
+      }
+    }
+  } else if (process.platform === "darwin") {
+    const result = spawnSync("/usr/sbin/ioreg", [
+      "-rd1",
+      "-c",
+      "IOPlatformExpertDevice"
+    ], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 1_000
+    });
+    hardware = result.status === 0
+      ? normalizeMachineIdentity(
+          result.stdout.match(/"IOPlatformUUID"\s*=\s*"([^"]+)"/)?.[1] ?? ""
+        )
+      : "";
+  } else if (process.platform === "win32") {
+    const systemRoot = process.env.SystemRoot;
+    if (systemRoot) {
+      const powershell = join(
+        systemRoot,
+        "System32",
+        "WindowsPowerShell",
+        "v1.0",
+        "powershell.exe"
+      );
+      const result = spawnSync(powershell, [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "(Get-CimInstance Win32_ComputerSystemProduct).UUID"
+      ], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 2_000
+      });
+      hardware = result.status === 0
+        ? normalizeMachineIdentity(result.stdout)
+        : "";
+    }
+  }
+  return {
+    hardware: machineIdentityToken(hardware),
+    installation: machineIdentityToken(installation)
+  };
+}
+
+function machineIdentityToken(identity) {
+  return identity
+    ? `machine:${createHash("sha256").update(identity).digest("hex")}`
+    : null;
+}
+
+export function normalizeMachineIdentity(value) {
+  const compact = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replaceAll("-", "");
+  if (
+    !/^[0-9a-f]{32}$/.test(compact) ||
+    /^0+$/.test(compact) ||
+    /^f+$/.test(compact)
+  ) {
+    return "";
+  }
+  return compact;
 }
 
 function readProcessIdentity(pid) {
