@@ -4,6 +4,8 @@ import {
   nonNegativeNumber,
   numberOrNull,
   parseJsonObject,
+  providerResponseStatusValues,
+  validRequestCount,
   zeroCountInvariant
 } from "./shared.mjs";
 
@@ -16,7 +18,9 @@ export function buildGatewaySessionEvidenceInvariants(record, scenario = {}) {
   const expectedTurnCount = scenario.id === "gateway-session-send-turn" ? 2 : Math.max(1, turns.length);
   const health = record.measurements?.health ?? {};
   const providerEvidence = record.providerEvidence ?? {};
-  const agentTurns = record.measurements?.agentTurns ?? [];
+  const agentTurns = Array.isArray(record.measurements?.agentTurns)
+    ? record.measurements.agentTurns
+    : [];
   const providerArtifacts = Array.isArray(providerEvidence.artifacts) ? providerEvidence.artifacts : [];
   const missingDependencyErrors = record.measurements?.missingDependencyErrors;
   const pluginLoadFailures = record.measurements?.pluginLoadFailures;
@@ -201,33 +205,40 @@ function gatewaySessionLatencyReason(turns) {
 }
 
 function providerProofOk(providerEvidence, agentTurns, expectedTurnCount) {
-  if (providerEvidence?.available !== true || providerEvidence.requestCount < expectedTurnCount) {
+  if (providerEvidence?.available !== true ||
+    !validRequestCount(providerEvidence.requestCount, expectedTurnCount)) {
     return false;
   }
   const gatewayTurns = agentTurns.filter((turn) => turn.gatewaySession);
   if (gatewayTurns.length < expectedTurnCount) {
     return false;
   }
-  return gatewayTurns.every((turn) =>
-    turn.missingProviderRequest === false &&
-    (turn.requestCount ?? 0) > 0 &&
-    turn.providerAfterCommandEnd !== true &&
-    turn.providerStatuses.every((status) => !Number.isFinite(Number(status.value)) || Number(status.value) < 400)
-  );
+  return gatewayTurns.every((turn) => {
+    const statuses = providerResponseStatusValues(turn.providerStatuses, turn.requestCount);
+    return turn.missingProviderRequest === false &&
+      validRequestCount(turn.requestCount, 1) &&
+      turn.providerAfterCommandEnd !== true &&
+      nonNegativeNumber(turn.providerFinalMs) &&
+      statuses !== null &&
+      statuses.some((status) => status >= 200 && status < 300) &&
+      statuses.every((status) => status < 400);
+  });
 }
 
 function providerProofReason(providerEvidence, agentTurns, expectedTurnCount) {
   if (providerEvidence?.available !== true) {
     return providerEvidence?.error ?? "provider evidence was not available";
   }
-  if (providerEvidence.requestCount < expectedTurnCount) {
-    return `provider request count ${providerEvidence.requestCount ?? 0} was below required ${expectedTurnCount}`;
+  if (!validRequestCount(providerEvidence.requestCount, expectedTurnCount)) {
+    return `provider request count ${providerEvidence.requestCount ?? "missing"} was not a finite count of at least ${expectedTurnCount}`;
   }
   const gatewayTurns = agentTurns.filter((turn) => turn.gatewaySession);
   if (gatewayTurns.length < expectedTurnCount) {
     return `agent turn attribution count ${gatewayTurns.length} was below required ${expectedTurnCount}`;
   }
-  const missing = gatewayTurns.find((turn) => turn.missingProviderRequest === true || (turn.requestCount ?? 0) === 0);
+  const missing = gatewayTurns.find((turn) =>
+    turn.missingProviderRequest === true || !validRequestCount(turn.requestCount, 1)
+  );
   if (missing) {
     return `${missing.phaseId} had no attributed provider request`;
   }
@@ -235,9 +246,21 @@ function providerProofReason(providerEvidence, agentTurns, expectedTurnCount) {
   if (late) {
     return `${late.phaseId} provider request arrived after command window by ${late.providerLateByMs ?? "unknown"}ms`;
   }
-  const failedStatus = gatewayTurns.find((turn) =>
-    turn.providerStatuses.some((status) => Number.isFinite(Number(status.value)) && Number(status.value) >= 400)
+  const incomplete = gatewayTurns.find((turn) => !nonNegativeNumber(turn.providerFinalMs));
+  if (incomplete) {
+    return `${incomplete.phaseId} had no completed provider response timing`;
+  }
+  const missingStatus = gatewayTurns.find((turn) =>
+    providerResponseStatusValues(turn.providerStatuses, turn.requestCount) === null
   );
+  if (missingStatus) {
+    return `${missingStatus.phaseId} had no valid provider HTTP response status evidence`;
+  }
+  const failedStatus = gatewayTurns.find((turn) => {
+    const statuses = providerResponseStatusValues(turn.providerStatuses, turn.requestCount);
+    return !statuses.some((status) => status >= 200 && status < 300) ||
+      statuses.some((status) => status >= 400);
+  });
   if (failedStatus) {
     return `${failedStatus.phaseId} had provider HTTP error status evidence`;
   }

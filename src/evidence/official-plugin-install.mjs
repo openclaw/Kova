@@ -7,9 +7,9 @@ import {
   collectedLogsOk,
   collectedLogsProof,
   collectedLogsReason,
-  commandProof,
+  commandProofInPhase,
   collectorProof,
-  findCommandResult,
+  findCommandResultInPhase,
   nonNegativeNumber,
   phaseMetrics,
   requiredProofsOk,
@@ -27,6 +27,9 @@ export function buildOfficialPluginInstallEvidenceInvariants(record, scenario = 
   const missingDependencyErrors = record.measurements?.missingDependencyErrors;
   const pluginLoadFailures = record.measurements?.pluginLoadFailures;
   const logsProof = collectedLogsProof(record, "post-restart-verify");
+  const pluginsListResult = findCommandResultInPhase(record, "post-restart-verify", (result) =>
+    result.command?.includes(" -- plugins list")
+  );
 
   return [
     {
@@ -69,10 +72,10 @@ export function buildOfficialPluginInstallEvidenceInvariants(record, scenario = 
       id: "official-plugin-command-usability-proof",
       phaseId: "post-restart-verify",
       required: true,
-      status: nonNegativeNumber(record.measurements?.pluginsListMs) ? "passed" : "missing",
+      status: pluginsListResult?.status === 0 && nonNegativeNumber(pluginsListResult.durationMs) ? "passed" : "missing",
       summary: "post-install plugin list command completed with latency measurement",
       artifactPath: null,
-      reason: nonNegativeNumber(record.measurements?.pluginsListMs) ? null : "plugin list latency was not measured"
+      reason: officialPluginCommandUsabilityReason(pluginsListResult)
     },
     {
       id: "official-plugin-resource-proof",
@@ -128,12 +131,12 @@ function officialPluginCommandReceiptsReason(record) {
 
 function officialPluginRequiredProofs() {
   return [
-    commandProof("ocm start", (result) => result.command?.startsWith("ocm start ")),
-    commandProof("baseline plugins list", (result) => result.command?.includes(" -- plugins list")),
-    commandProof("official plugin install helper", (result) => result.command?.includes("run-official-plugin-install.mjs")),
-    commandProof("gateway restart helper", (result) => result.command?.includes("ensure-gateway-running.mjs")),
+    commandProofInPhase("ocm start", "provision", (result) => result.command?.startsWith("ocm start ")),
+    commandProofInPhase("baseline plugins list", "provision", (result) => result.command?.includes(" -- plugins list")),
+    commandProofInPhase("official plugin install helper", "install", (result) => result.command?.includes("run-official-plugin-install.mjs")),
+    commandProofInPhase("gateway restart helper", "restart", (result) => result.command?.includes("ensure-gateway-running.mjs")),
     collectorProof("service collector", "post-restart-verify", "service"),
-    commandProof("post-install plugins list", (result) => result.command?.includes(" -- plugins list")),
+    commandProofInPhase("post-install plugins list", "post-restart-verify", (result) => result.command?.includes(" -- plugins list")),
     collectorProof("logs collector", "post-restart-verify", "logs")
   ];
 }
@@ -183,15 +186,34 @@ function officialPluginSecurityStatus(evidence) {
   if (evidence?.available !== true) {
     return "missing";
   }
-  return (evidence.securityBlockCount ?? 0) === 0 ? "passed" : "failed";
+  if (!Number.isInteger(evidence.securityBlockCount) || evidence.securityBlockCount < 0) {
+    return "missing";
+  }
+  return evidence.securityBlockCount === 0 ? "passed" : "failed";
 }
 
 function officialPluginSecurityReason(evidence) {
   if (evidence?.available !== true) {
     return "official plugin install helper JSON was not captured";
   }
-  if ((evidence.securityBlockCount ?? 0) !== 0) {
+  if (!Number.isInteger(evidence.securityBlockCount) || evidence.securityBlockCount < 0) {
+    return "security block count was not collected";
+  }
+  if (evidence.securityBlockCount !== 0) {
     return `security block count was ${evidence.securityBlockCount}`;
+  }
+  return null;
+}
+
+function officialPluginCommandUsabilityReason(result) {
+  if (!result) {
+    return "post-install plugin list command receipt was not captured";
+  }
+  if (result.status !== 0) {
+    return `post-install plugin list command exited ${result.status}`;
+  }
+  if (!nonNegativeNumber(result.durationMs)) {
+    return "post-install plugin list latency was not measured";
   }
   return null;
 }
@@ -204,7 +226,8 @@ function officialPluginHealthOk(record) {
     Number.isFinite(restartReadiness.healthReadyAtMs) &&
     (postVerifyHealth?.count ?? 0) > 0 &&
     (postVerifyHealth?.failureCount ?? 0) === 0 &&
-    (finalHealth?.failureCount ?? 0) === 0 &&
+    Number.isFinite(finalHealth?.failureCount) &&
+    finalHealth.failureCount === 0 &&
     record.measurements?.finalGatewayState === "running";
 }
 
@@ -214,6 +237,7 @@ function officialPluginHealthMissing(record) {
   return !restartReadiness ||
     !Number.isFinite(restartReadiness.healthReadyAtMs) ||
     (postVerifyHealth?.count ?? 0) <= 0 ||
+    !Number.isFinite(record.measurements?.health?.final?.failureCount) ||
     record.measurements?.finalGatewayState === undefined;
 }
 
@@ -236,7 +260,10 @@ function officialPluginHealthReason(record) {
   if ((postVerifyHealth?.failureCount ?? 0) !== 0) {
     return `post-restart verification health failures were ${postVerifyHealth.failureCount}`;
   }
-  if ((finalHealth?.failureCount ?? 0) !== 0) {
+  if (!Number.isFinite(finalHealth?.failureCount)) {
+    return "final health failure count was not collected";
+  }
+  if (finalHealth.failureCount !== 0) {
     return `final health failures were ${finalHealth.failureCount}`;
   }
   if (record.measurements?.finalGatewayState !== "running") {

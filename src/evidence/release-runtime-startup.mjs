@@ -1,11 +1,11 @@
 import {
-  commandProof,
+  commandProofInPhase,
   collectorProof,
   collectedLogArtifactPath,
   collectedLogsOk,
   collectedLogsProof,
   collectedLogsReason,
-  findCommandResult,
+  findCommandResultInPhase,
   gatewaySessionHealthOk,
   gatewaySessionHealthReason,
   nonNegativeNumber,
@@ -23,8 +23,12 @@ export function buildReleaseRuntimeStartupEvidenceInvariants(record, scenario = 
   const health = record.measurements?.health ?? {};
   const service = releaseStartupBestServiceMetrics(record);
   const provision = releaseStartupProvisionProof(record);
-  const statusResult = findCommandResult(record, (result) => result.command === "ocm @{env} -- status" || result.command?.includes(" -- status"));
-  const pluginsListResult = findCommandResult(record, (result) => result.command === "ocm @{env} -- plugins list" || result.command?.includes(" -- plugins list"));
+  const statusResult = findCommandResultInPhase(record, "post-start", (result) =>
+    result.command === "ocm @{env} -- status" || result.command?.includes(" -- status")
+  );
+  const pluginsListResult = findCommandResultInPhase(record, "post-start", (result) =>
+    result.command === "ocm @{env} -- plugins list" || result.command?.includes(" -- plugins list")
+  );
   const logsProof = collectedLogsProof(record, "startup-logs");
   const missingDependencyErrors = record.measurements?.missingDependencyErrors;
   const pluginLoadFailures = record.measurements?.pluginLoadFailures;
@@ -61,10 +65,10 @@ export function buildReleaseRuntimeStartupEvidenceInvariants(record, scenario = 
       id: "release-runtime-command-usability-proof",
       phaseId: "post-start",
       required: true,
-      status: releaseStartupCommandUsabilityOk(statusResult, pluginsListResult, record.measurements) ? "passed" : "missing",
+      status: releaseStartupCommandUsabilityOk(statusResult, pluginsListResult) ? "passed" : "missing",
       summary: "status and plugin-list commands completed with latency measurements",
       artifactPath: null,
-      reason: releaseStartupCommandUsabilityReason(statusResult, pluginsListResult, record.measurements)
+      reason: releaseStartupCommandUsabilityReason(statusResult, pluginsListResult)
     },
     {
       id: "release-runtime-resource-proof",
@@ -112,16 +116,20 @@ export function buildReleaseRuntimeStartupEvidenceInvariants(record, scenario = 
 
 function releaseStartupRequiredProofs() {
   return [
-    commandProof("ocm start", (result) => result.command?.startsWith("ocm start ")),
+    commandProofInPhase("ocm start", "provision", (result) => result.command?.startsWith("ocm start ")),
     collectorProof("service collector", "post-start", "service"),
-    commandProof("ocm status", (result) => result.command === "ocm @{env} -- status" || result.command?.includes(" -- status")),
-    commandProof("ocm plugins list", (result) => result.command === "ocm @{env} -- plugins list" || result.command?.includes(" -- plugins list")),
+    commandProofInPhase("ocm status", "post-start", (result) =>
+      result.command === "ocm @{env} -- status" || result.command?.includes(" -- status")
+    ),
+    commandProofInPhase("ocm plugins list", "post-start", (result) =>
+      result.command === "ocm @{env} -- plugins list" || result.command?.includes(" -- plugins list")
+    ),
     collectorProof("logs collector", "startup-logs", "logs")
   ];
 }
 
 function releaseStartupProvisionProof(record) {
-  const result = findCommandResult(record, (candidate) => candidate.command?.startsWith("ocm start "));
+  const result = findCommandResultInPhase(record, "provision", (candidate) => candidate.command?.startsWith("ocm start "));
   return {
     result,
     payload: parseJsonObject(result?.stdout)
@@ -170,17 +178,18 @@ function releaseStartupHealthMissing(record, health) {
   return !health?.readiness ||
     !Number.isFinite(health.readiness.healthReadyAtMs) ||
     (health.postReadySamples?.count ?? 0) <= 0 ||
+    !Number.isFinite(health.final?.failureCount) ||
     record.measurements?.finalGatewayState === undefined;
 }
 
-function releaseStartupCommandUsabilityOk(statusResult, pluginsListResult, measurements) {
+function releaseStartupCommandUsabilityOk(statusResult, pluginsListResult) {
   return statusResult?.status === 0 &&
     pluginsListResult?.status === 0 &&
-    nonNegativeNumber(measurements?.statusMs) &&
-    nonNegativeNumber(measurements?.pluginsListMs);
+    nonNegativeNumber(statusResult.durationMs) &&
+    nonNegativeNumber(pluginsListResult.durationMs);
 }
 
-function releaseStartupCommandUsabilityReason(statusResult, pluginsListResult, measurements) {
+function releaseStartupCommandUsabilityReason(statusResult, pluginsListResult) {
   if (!statusResult) {
     return "OpenClaw status command receipt was not captured";
   }
@@ -193,10 +202,10 @@ function releaseStartupCommandUsabilityReason(statusResult, pluginsListResult, m
   if (pluginsListResult.status !== 0) {
     return `plugin list command exited ${pluginsListResult.status}`;
   }
-  if (!nonNegativeNumber(measurements?.statusMs)) {
+  if (!nonNegativeNumber(statusResult.durationMs)) {
     return "status command latency was not measured";
   }
-  if (!nonNegativeNumber(measurements?.pluginsListMs)) {
+  if (!nonNegativeNumber(pluginsListResult.durationMs)) {
     return "plugin list command latency was not measured";
   }
   return null;

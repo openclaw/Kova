@@ -3345,13 +3345,18 @@ function collectOfficialPluginEvidence(results) {
       installed: null,
       listed: null,
       registryRefreshed: null,
-      securityBlockCount: 0,
+      securityBlockCount: null,
       securityEvidence: null,
       failureEvidence: [],
       artifactPath: null,
       runs: []
     };
   }
+
+  const securityBlockCounts = runs.map((run) => run.securityBlockCount);
+  const securityBlockCount = securityBlockCounts.every((count) => Number.isInteger(count) && count >= 0)
+    ? securityBlockCounts.reduce((total, count) => total + count, 0)
+    : null;
 
   return {
     schemaVersion: "kova.officialPluginEvidence.v1",
@@ -3364,7 +3369,7 @@ function collectOfficialPluginEvidence(results) {
     installed: runs.every((run) => run.installed === true),
     listed: runs.every((run) => run.listed === true),
     registryRefreshed: runs.every((run) => run.registryRefreshed === true),
-    securityBlockCount: runs.reduce((total, run) => total + (run.securityBlockCount ?? (run.securityBlocked === true ? 1 : 0)), 0),
+    securityBlockCount,
     securityEvidence: runs.find((run) => run.securityBlocked === true)?.securityEvidence ?? null,
     failureEvidence: runs.flatMap((run) => run.failureEvidence ?? []),
     artifactPath: runs.find((run) => typeof run.artifactPath === "string" && run.artifactPath.length > 0)?.artifactPath ?? null,
