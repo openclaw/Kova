@@ -5119,6 +5119,18 @@ async function providerEvidenceParserCheck() {
     assertEqual(lateIncompleteAttribution.providerAfterCommandEnd, true, "late incomplete provider request is retained");
     assertEqual(lateIncompleteAttribution.preProviderMs, null, "late incomplete request has no pre-provider duration");
     assertEqual(lateIncompleteAttribution.preProviderDominates, null, "late incomplete request has no dominance ratio");
+    const malformedRequestAttribution = computeProviderTurnAttribution({
+      command: "ocm @kova -- agent --local --agent main --session-id kova --message hi --json",
+      startedAt: "2026-04-30T10:00:01.000Z",
+      startedAtEpochMs: 1777543201000,
+      finishedAt: "2026-04-30T10:00:07.000Z",
+      finishedAtEpochMs: 1777543207000
+    }, {
+      available: true,
+      requests: [null]
+    });
+    assertEqual(malformedRequestAttribution.requestCount, 0, "malformed provider request entries are rejected");
+    assertEqual(malformedRequestAttribution.missingProviderRequest, true, "malformed provider requests fail closed");
     assertEqual(evidence.usage?.available, true, "provider usage availability");
     assertEqual(evidence.usage?.totalTokens, 12, "provider usage total tokens");
     return {
@@ -6729,6 +6741,38 @@ function agentCliLocalTurnEvidenceInvariantCheck() {
       recoveryScenario
     ).find((invariant) => invariant.id === "agent-cli-provider-proof");
     assertEqual(statuslessRecoveryProof?.status, "passed", "typed statusless recovery error accounts for request");
+
+    const numericRecoveryRecord = JSON.parse(JSON.stringify(record));
+    numericRecoveryRecord.providerEvidence.requestCount = 3;
+    numericRecoveryRecord.measurements.agentTurns[0].requestCount = 2;
+    numericRecoveryRecord.measurements.agentTurns[0].providerStatuses = [
+      { value: 500, count: 1 },
+      { value: 200, count: 1 }
+    ];
+    numericRecoveryRecord.measurements.agentTurns[0].providerErrors = [{
+      kind: "http",
+      requestId: "cold-http-failure",
+      status: 500
+    }];
+    const numericRecoveryProof = buildAgentCliLocalTurnEvidenceInvariants(
+      numericRecoveryRecord,
+      recoveryScenario
+    ).find((invariant) => invariant.id === "agent-cli-provider-proof");
+    assertEqual(numericRecoveryProof?.status, "passed", "typed numeric recovery error accounts for failed request");
+
+    for (const malformedErrors of [
+      [null],
+      [{ kind: "http" }],
+      [{ kind: "http", requestId: "cold-http-failure", status: 400 }]
+    ]) {
+      const malformedErrorRecord = JSON.parse(JSON.stringify(numericRecoveryRecord));
+      malformedErrorRecord.measurements.agentTurns[0].providerErrors = malformedErrors;
+      const malformedErrorProof = buildAgentCliLocalTurnEvidenceInvariants(
+        malformedErrorRecord,
+        recoveryScenario
+      ).find((invariant) => invariant.id === "agent-cli-provider-proof");
+      assertEqual(malformedErrorProof?.status, "missing", "malformed recovery errors do not authorize failed requests");
+    }
 
     const omittedRecoveryStatusRecord = JSON.parse(JSON.stringify(statuslessRecoveryRecord));
     delete omittedRecoveryStatusRecord.measurements.agentTurns[0].providerErrors[0].status;

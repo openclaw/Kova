@@ -536,15 +536,30 @@ function successfulTurnProviderStatusesOk(turn, scenario) {
   if (!providerRecoveryScenarioAllowsFailedRequest(scenario)) {
     return false;
   }
+  const providerErrors = normalizedProviderErrors(turn.providerErrors);
+  if (providerErrors === null) {
+    return false;
+  }
   const recoverableErrors = new Set(["provider-error", "provider-disconnect", "http"]);
-  const providerErrors = Array.isArray(turn.providerErrors) ? turn.providerErrors : [];
-  const hasRecoverableError = providerErrors.some((error) => recoverableErrors.has(error.kind));
+  const failedStatuses = new Set(numericStatuses.filter((value) => value >= 400));
+  const hasRecoverableError = providerErrors.some((error) =>
+    recoverableErrors.has(error.kind) &&
+    typeof error.requestId === "string" &&
+    error.requestId.length > 0 &&
+    typeof error.status === "number" &&
+    failedStatuses.has(error.status)
+  );
   return hasSuccess && hasRecoverableError;
 }
 
 function successfulTurnProviderStatusValues(turn, scenario) {
-  const statuslessRequestCount = providerRecoveryScenarioAllowsFailedRequest(scenario)
-    ? recoverableStatuslessProviderRequestCount(turn.providerErrors)
+  const recoveryAllowed = providerRecoveryScenarioAllowsFailedRequest(scenario);
+  const providerErrors = recoveryAllowed ? normalizedProviderErrors(turn.providerErrors) : [];
+  if (providerErrors === null) {
+    return null;
+  }
+  const statuslessRequestCount = recoveryAllowed
+    ? recoverableStatuslessProviderRequestCount(providerErrors)
     : 0;
   return providerResponseStatusValues(
     turn.providerStatuses,
@@ -554,9 +569,6 @@ function successfulTurnProviderStatusValues(turn, scenario) {
 }
 
 function recoverableStatuslessProviderRequestCount(providerErrors) {
-  if (!Array.isArray(providerErrors)) {
-    return 0;
-  }
   const requestIds = new Set();
   for (const error of providerErrors) {
     if ((error?.kind === "provider-error" || error?.kind === "provider-disconnect") &&
@@ -567,6 +579,16 @@ function recoverableStatuslessProviderRequestCount(providerErrors) {
     }
   }
   return requestIds.size;
+}
+
+function normalizedProviderErrors(value) {
+  if (value === undefined || value === null) {
+    return [];
+  }
+  return Array.isArray(value) &&
+    value.every((error) => error && typeof error === "object" && !Array.isArray(error))
+    ? value
+    : null;
 }
 
 function providerRecoveryScenarioAllowsFailedRequest(scenario) {
