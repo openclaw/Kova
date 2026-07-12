@@ -34,7 +34,7 @@ export async function collectLogMetrics(envName, timeoutMs, artifactDir, options
   const stderr = redactLogText(result.stderr);
   const text = `${stdout}\n${stderr}`;
   const noLogsAvailable = isOptionalNoLogsResult(result);
-  const timestamps = collectTimestamps(rawText);
+  const timestamps = collectTimestamps(text);
   const stdoutSnippet = boundedLogSnippet(stdout, 4000);
   const stderrSnippet = boundedLogSnippet(stderr, 4000);
   const artifacts = [];

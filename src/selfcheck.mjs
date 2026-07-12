@@ -17908,6 +17908,7 @@ async function logArtifactRedactionCheck(tmp) {
   const encodedUrlPasswordCanary = encodeURIComponent(urlPasswordCanary);
   const dotenvMultilineCanary = ["dotenv", "multiline", "canary"].join("-");
   const structuredJsonCanary = ["structured", "json", "canary"].join("-");
+  const timestampCredentialCanary = ["2026-07-11", "T12:34:56Z"].join("");
   const clientSecretFlag = ["--client", "secret"].join("-");
   const canaries = [
     headerCanary,
@@ -17932,7 +17933,8 @@ async function logArtifactRedactionCheck(tmp) {
     cliContinuationCanary,
     encodedUrlPasswordCanary,
     dotenvMultilineCanary,
-    structuredJsonCanary
+    structuredJsonCanary,
+    timestampCredentialCanary
   ];
   const fakeLogs = [
     `Authorization${": "}Bearer ${headerCanary}`,
@@ -17959,6 +17961,7 @@ async function logArtifactRedactionCheck(tmp) {
     `command --token ${"\\"}\n  ${cliContinuationCanary}`,
     `postgresql://alice:${encodedUrlPasswordCanary}@db.example/kova`,
     `${databasePasswordKey}="first line\n${dotenvMultilineCanary}"`,
+    `${databasePasswordKey}=${timestampCredentialCanary}`,
     JSON.stringify({
       [genericTokenKey]: structuredJsonCanary,
       openclawDiagnostic: true,
