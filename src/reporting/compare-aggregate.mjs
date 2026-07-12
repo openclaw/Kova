@@ -16,7 +16,7 @@
 import { METRIC_LABELS, METRIC_UNITS, HEADLINE_METRICS, metricDirection } from "./scenario-aggregate.mjs";
 import { worseRecordStatus } from "../statuses.mjs";
 
-const VERDICT_RANK = { FAIL: 0, BLOCKED: 1, REGRESSED: 2, NEW: 3, MISSING: 3, IMPROVED: 4, UNCHANGED: 5, OK: 6 };
+const VERDICT_RANK = { FAIL: 0, REGRESSED: 1, BLOCKED: 2, NEW: 3, MISSING: 3, IMPROVED: 4, UNCHANGED: 5, OK: 6 };
 
 // rollupScenarios(comparison) -> [{ id, verdict, baselineStatus, currentStatus,
 //   regressionCount, totalMetrics, worst, samples }]

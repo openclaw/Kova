@@ -2888,6 +2888,33 @@ function compareIdentityAndRollupCheck() {
     const percentageComparison = compareReports(percentageBaseline, percentageCurrent);
     assertEqual(percentageComparison.findingChanges.new.length, 0, "percentage measurement remains same finding");
     assertEqual(percentageComparison.findingChanges.resolved.length, 0, "percentage measurement is not resolved");
+    const countBaseline = syntheticPerformanceReport({
+      runId: "count-baseline",
+      platform: baseline.platform,
+      target: "runtime:stable",
+      records: [findingRecord([{
+        kind: "threshold",
+        metric: "toolCallCount",
+        actual: 5,
+        expected: "<= 3",
+        message: "tool call count 5 exceeded limit 3"
+      }])]
+    });
+    const countCurrent = syntheticPerformanceReport({
+      runId: "count-current",
+      platform: baseline.platform,
+      target: "runtime:stable",
+      records: [findingRecord([{
+        kind: "threshold",
+        metric: "toolCallCount",
+        actual: 6,
+        expected: "<= 3",
+        message: "tool call count 6 exceeded limit 3"
+      }])]
+    });
+    const countComparison = compareReports(countBaseline, countCurrent);
+    assertEqual(countComparison.findingChanges.new.length, 0, "count measurement remains same finding");
+    assertEqual(countComparison.findingChanges.resolved.length, 0, "count measurement is not resolved");
 
     const rollupInput = {
       scenarios: [{
@@ -2952,6 +2979,28 @@ function compareIdentityAndRollupCheck() {
     for (const scenarios of [mixedVerdictStates, [...mixedVerdictStates].reverse()]) {
       const rollup = rollupScenarios({ scenarios })[0];
       assertEqual(rollup.verdict, "FAIL", "compare rollup FAIL outranks BLOCKED");
+    }
+    const blockedAndRegressedStates = [{
+      scenario: "blocked-and-regressed",
+      status: "BLOCKED",
+      baselineStatus: "BLOCKED",
+      currentStatus: "BLOCKED",
+      currentSampleCount: 1,
+      currentStatuses: { BLOCKED: 1 },
+      regressions: []
+    }, {
+      scenario: "blocked-and-regressed",
+      status: "REGRESSED",
+      baselineStatus: "PASS",
+      currentStatus: "FAIL",
+      currentSampleCount: 1,
+      currentStatuses: { FAIL: 1 },
+      regressions: [{ kind: "status", message: "status regressed from PASS to FAIL" }]
+    }];
+    for (const scenarios of [blockedAndRegressedStates, [...blockedAndRegressedStates].reverse()]) {
+      const rollup = rollupScenarios({ scenarios })[0];
+      assertEqual(rollup.verdict, "REGRESSED", "compare rollup regression outranks blocked evidence");
+      assertEqual(rollup.currentStatus, "FAIL", "compare rollup retains regressed failure status");
     }
 
     const improved = {

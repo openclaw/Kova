@@ -669,7 +669,13 @@ function stableFindingId(finding) {
 
 function normalizeFindingText(finding) {
   const text = String(finding?.summary ?? finding?.message ?? "").toLowerCase();
-  return text
+  const normalizedActual = typeof finding?.actual === "number" && Number.isFinite(finding.actual)
+    ? text.replace(
+      /(?<![a-z0-9_])-?\d+(?:\.\d+)?(?![a-z0-9_])/gi,
+      (value) => Number(value) === finding.actual ? "#" : value
+    )
+    : text;
+  return normalizedActual
     .replace(
       /-?\d+(?:\.\d+)?(?=\s*(?:(?:ms|s|sec|seconds?|kb|mb|gb|bytes?)\b|%))/gi,
       "#"
