@@ -12,6 +12,7 @@ import {
   zeroCountInvariant
 } from "./shared.mjs";
 import {
+  commandResultFailureReason,
   commandResultFailed,
   commandResultPassed
 } from "../measurement-contract.mjs";
@@ -82,7 +83,7 @@ function doctorOutputReason(result) {
     return "doctor command result was not recorded";
   }
   if (commandResultFailed(result)) {
-    return `doctor command exited ${result.status ?? result.exitCode ?? "unknown"}`;
+    return commandResultFailureReason(result, "doctor command");
   }
   if (!commandResultPassed(result)) {
     return "doctor command result status was not recorded";
@@ -250,7 +251,5 @@ function shortCommand(command) {
 }
 
 function failedResultLabel(result) {
-  return result?.timedOut
-    ? "command timed out"
-    : `command exited ${result?.status ?? result?.exitCode ?? "unknown"}`;
+  return commandResultFailureReason(result);
 }

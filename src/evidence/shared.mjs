@@ -1,5 +1,6 @@
 import { collectRecordMetricObjects } from "./metrics.mjs";
 import {
+  commandResultFailureReason,
   commandResultFailed,
   commandResultPassed
 } from "../measurement-contract.mjs";
@@ -25,7 +26,7 @@ export function phaseCommandReceiptsReason(record) {
         return `${phase.id} command ${index + 1} receipt was not captured`;
       }
       if (commandResultFailed(result)) {
-        return `${phase.id} command ${index + 1} exited ${result.status ?? result.exitCode ?? "unknown"}`;
+        return `${phase.id} command ${index + 1}: ${commandResultFailureReason(result)}`;
       }
       if (!commandResultPassed(result)) {
         return `${phase.id} command ${index + 1} result status was not captured`;
@@ -407,7 +408,7 @@ export function commandReceiptReason(record, predicate) {
     return "command receipt was not captured";
   }
   if (commandResultFailed(result)) {
-    return `command exited ${result.status ?? result.exitCode ?? "unknown"}`;
+    return commandResultFailureReason(result);
   }
   if (!commandResultPassed(result)) {
     return "command result status was not captured";
@@ -455,15 +456,18 @@ export function commandProofInPhase(label, phaseId, predicate) {
     label,
     (record) => {
       const result = findCommandResultInPhase(record, phaseId, predicate);
-      return result?.status === 0 && nonNegativeNumber(result.durationMs);
+      return commandResultPassed(result) && nonNegativeNumber(result.durationMs);
     },
     (record) => {
       const result = findCommandResultInPhase(record, phaseId, predicate);
       if (!result) {
         return `command receipt was not captured in ${phaseId}`;
       }
-      if (result.status !== 0) {
-        return `command exited ${result.status}`;
+      if (commandResultFailed(result)) {
+        return commandResultFailureReason(result);
+      }
+      if (!commandResultPassed(result)) {
+        return "command result status was not captured";
       }
       if (!nonNegativeNumber(result.durationMs)) {
         return "command duration was not a non-negative finite measurement";
