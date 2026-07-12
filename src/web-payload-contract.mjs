@@ -37,8 +37,12 @@ const finiteNumber = z.number().finite();
 const nonnegativeNumber = finiteNumber.nonnegative();
 const nonnegativeInteger = z.number().int().nonnegative();
 const dateValue = z
-  .union([z.date(), z.string().trim().min(1)])
-  .pipe(z.coerce.date());
+  .union([
+    z.date(),
+    z.iso.date(),
+    z.iso.datetime({ offset: true }),
+  ])
+  .transform((value) => value instanceof Date ? value : new Date(value));
 
 /* ─── Per-scenario summary (top-level on a release) ───────────── */
 
