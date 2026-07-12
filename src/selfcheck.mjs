@@ -12727,6 +12727,9 @@ async function diagnosticTriggerValidationCheck(tmp) {
     await Promise.all(Array.from({ length: 60 }, (_, index) =>
       writeFile(join(openclawHome, `report.stale-${index}.json`), "{}\n")
     ));
+    const futureTimestamp = new Date(Date.now() + 60000);
+    await utimes(join(openclawHome, "stale.heapsnapshot"), futureTimestamp, futureTimestamp);
+    await utimes(join(openclawHome, "report.stale-0.json"), futureTimestamp, futureTimestamp);
     await writeFile(join(binDir, "ocm"), `#!/bin/sh
 printf '%s env=%s\\n' "$*" "\${KOVA_FAKE_WRAPPER_ENV:-}" >> "$KOVA_FAKE_OCM_LOG"
 if [ "\${KOVA_FAKE_OCM_HANG:-}" = "1" ]; then exec sleep 10; fi
@@ -12757,36 +12760,56 @@ process.on("SIGUSR2", () => {
     return;
   }
   if (currentSignal === 5) {
+    const slowHeap = path.join(home, "fresh-slow.heapsnapshot");
     setTimeout(() => {
-      fs.writeFileSync(path.join(home, "fresh.heapsnapshot"), "{\\"heap\\":\\"head\\"");
+      fs.writeFileSync(slowHeap, "{\\"heap\\":\\"head\\"");
     }, 200);
     setTimeout(() => {
-      fs.appendFileSync(path.join(home, "fresh.heapsnapshot"), ",\\"tail\\":true}\\n");
+      fs.appendFileSync(slowHeap, ",\\"tail\\":true}\\n");
     }, 2800);
     return;
   }
+  const heapPath = path.join(
+    outputHome,
+    currentSignal === 1 ? "fresh.heapsnapshot" : \`fresh-\${currentSignal}.heapsnapshot\`
+  );
+  const reportPath = path.join(
+    outputHome,
+    currentSignal === 1 ? "report.fresh.json" : \`report.fresh-\${currentSignal}.json\`
+  );
   setTimeout(() => {
     fs.mkdirSync(outputHome, { recursive: true });
-    fs.writeFileSync(path.join(outputHome, "fresh.heapsnapshot"), "{\\"heap\\":");
+    fs.writeFileSync(heapPath, "{\\"heap\\":");
     if (currentSignal === 3) {
       return;
     }
     if (currentSignal === 2) {
       fs.writeFileSync(path.join(home, "report.00-incomplete.json"), "{");
       fs.writeFileSync(path.join(home, "report.01-incomplete.json"), "{");
+      const oversized = path.join(home, "report.02-oversized.json");
+      fs.writeFileSync(oversized, "{");
+      fs.truncateSync(oversized, (16 * 1024 * 1024) + 1);
     }
-    fs.writeFileSync(path.join(outputHome, "report.fresh.json"), "{");
+    fs.writeFileSync(reportPath, "{");
     if (currentSignal === 1) {
       const excludedHome = path.join(outputHome, "depth-6");
       fs.mkdirSync(excludedHome, { recursive: true });
       fs.writeFileSync(path.join(excludedHome, "excluded.heapsnapshot"), "{\\"excluded\\":true}\\n");
       fs.writeFileSync(path.join(excludedHome, "report.excluded.json"), "{\\"excluded\\":true}\\n");
+      fs.writeFileSync(
+        path.join(home, "Heap.20260712.010101.999999.0.001.heapsnapshot"),
+        "{\\"snapshot\\":{},\\"nodes\\":[]}\\n"
+      );
+      fs.writeFileSync(
+        path.join(home, "report.20260712.010101.999999.0.001.json"),
+        "{\\"header\\":{\\"processId\\":999999}}\\n"
+      );
     }
   }, 400);
   setTimeout(() => {
-    fs.appendFileSync(path.join(outputHome, "fresh.heapsnapshot"), "\\"fresh\\"}\\n");
+    fs.appendFileSync(heapPath, "\\"fresh\\"}\\n");
     if (currentSignal !== 3) {
-      fs.appendFileSync(path.join(outputHome, "report.fresh.json"), "\\"fresh\\":true}\\n");
+      fs.appendFileSync(reportPath, "\\"fresh\\":true}\\n");
     }
   }, 800);
 });
@@ -12797,7 +12820,6 @@ setInterval(() => {}, 1000);
       stdio: ["ignore", "pipe", "pipe"]
     });
     await waitForChildReady(child);
-    const combinedSignalSentAtEpochMs = Date.now();
     const triggered = await triggerDiagnosticSession("kova-self-check", child.pid, 3000, root, {
       heapSnapshot: true,
       diagnosticReport: true
@@ -12811,6 +12833,8 @@ setInterval(() => {}, 1000);
     assertEqual(triggered.heapSnapshot.files.some((path) => path.includes("excluded")), false, "diagnostic scan prunes files below depth six");
     assertEqual(triggered.diagnosticReport.files.some((path) => path.includes("excluded")), false, "report scan prunes files below depth six");
     assertEqual(triggered.heapSnapshot.files.some((path) => path.endsWith("stale.heapsnapshot")), false, "stale heap snapshot excluded");
+    assertEqual(triggered.heapSnapshot.files.some((path) => path.includes("999999")), false, "heap snapshot from another process excluded");
+    assertEqual(triggered.diagnosticReport.files.some((path) => path.includes("999999")), false, "diagnostic report from another process excluded");
     const firstInvocationLog = (await readFile(invocationLog, "utf8")).trim();
     assertEqual(firstInvocationLog.split("\n").length, 1, "one OCM session triggers both artifacts");
     assertEqual(firstInvocationLog.includes("-maxdepth"), false, "diagnostic scan avoids GNU-only find depth flags");
@@ -12818,34 +12842,16 @@ setInterval(() => {}, 1000);
     await Promise.all(Array.from({ length: 60 }, (_, index) =>
       writeFile(join(openclawHome, `historical-${index}.heapsnapshot`), "{}\n")
     ));
-    const reusedReport = await triggerDiagnosticReport("kova-self-check", child.pid, 2500, root, {
-      signalAlreadySent: true,
-      signalSentAtEpochMs: combinedSignalSentAtEpochMs,
-      commandEnv: { KOVA_FAKE_WRAPPER_ENV: "preserved" }
-    });
-    assertEqual(reusedReport.commandStatus, 0, "report wrapper reuses the existing signal");
-    assertEqual(reusedReport.artifacts.length, 1, "report wrapper retains the existing report");
-    assertEqual(reusedReport.files.some((path) => path.includes("report.stale-")), false, "report wrapper excludes pre-signal history");
-    const wrapperInvocation = (await readFile(invocationLog, "utf8")).trim().split("\n").at(-1);
-    assertEqual(wrapperInvocation.endsWith("env=preserved"), true, "report wrapper preserves command environment");
-    const oversizedSignalSentAtEpochMs = Date.now();
-    const oversizedReportPath = join(openclawHome, "report.oversized.json");
-    await writeFile(oversizedReportPath, "{");
-    await truncate(oversizedReportPath, (16 * 1024 * 1024) + 1);
-    const oversizedTimestamp = new Date(oversizedSignalSentAtEpochMs);
-    await utimes(oversizedReportPath, oversizedTimestamp, oversizedTimestamp);
-    const oversizedReport = await triggerDiagnosticReport("kova-self-check", child.pid, 3000, root, {
-      signalAlreadySent: true,
-      signalSentAtEpochMs: oversizedSignalSentAtEpochMs
-    });
-    assertEqual(oversizedReport.artifacts.length, 0, "oversized report is not retained");
-    assertEqual(oversizedReport.error.includes("exceeds"), true, "oversized report returns a structured validation error");
     const reportOnly = await triggerDiagnosticSession("kova-self-check", child.pid, 3500, root, {
-      diagnosticReport: true
+      diagnosticReport: true,
+      commandEnv: { KOVA_FAKE_WRAPPER_ENV: "preserved" }
     });
     assertEqual(reportOnly.diagnosticReport.commandStatus, 0, "partial diagnostic report stabilizes");
     assertEqual(reportOnly.diagnosticReport.artifacts.length, 1, "valid report survives sibling stabilization failure");
     assertEqual(reportOnly.diagnosticReport.error.includes("did not stabilize"), true, "partial report failure retained");
+    assertEqual(reportOnly.diagnosticReport.error.includes("exceeds"), true, "oversized report returns a structured validation error");
+    const wrapperInvocation = (await readFile(invocationLog, "utf8")).trim().split("\n").at(-1);
+    assertEqual(wrapperInvocation.endsWith("env=preserved"), true, "report wrapper preserves command environment");
     JSON.parse(await readFile(reportOnly.diagnosticReport.artifacts[0], "utf8"));
     const heapOnly = await triggerDiagnosticSession("kova-self-check", child.pid, 3000, root, {
       heapSnapshot: true,
