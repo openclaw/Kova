@@ -251,7 +251,6 @@ async function replaceRetainedArtifactTree({
   const stage = join(parent, `.${basename(outputRoot)}.${transaction}.tmp`);
   const backup = join(parent, `.${basename(outputRoot)}.${transaction}.bak`);
   let oldTreeBackedUp = false;
-  let newTreePublished = false;
   let preserveBackup = false;
 
   try {
@@ -294,15 +293,14 @@ async function replaceRetainedArtifactTree({
       oldTreeBackedUp = true;
     }
     await rename(stage, outputRoot);
-    newTreePublished = true;
-    await rm(backup, { recursive: true, force: true });
+    // Publication commits at the directory rename. Cleanup cannot safely
+    // restore a backup once recursive deletion may have started.
     oldTreeBackedUp = false;
+    preserveBackup = true;
+    await rm(backup, { recursive: true, force: true }).catch(() => {});
     return receipt;
   } catch (error) {
     const rollbackErrors = [];
-    if (newTreePublished) {
-      await rm(outputRoot, { recursive: true, force: true }).catch((rollbackError) => rollbackErrors.push(rollbackError));
-    }
     if (oldTreeBackedUp) {
       await rename(backup, outputRoot).catch((rollbackError) => rollbackErrors.push(rollbackError));
     }
