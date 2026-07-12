@@ -1,8 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
-import { spawnSync } from "node:child_process";
-import { chmod, cp, lstat, mkdir, mkdtemp, open, readFile, readdir, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
+import { constants as fsConstants, createReadStream, createWriteStream } from "node:fs";
+import { cp, lstat, mkdir, open, readFile, readdir, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, dirname, extname, join, relative, resolve } from "node:path";
+import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
+import { pipeline } from "node:stream/promises";
+import { createGzip } from "node:zlib";
+import { pack as packTar } from "tar-stream";
 import { withFileLock } from "../file-lock.mjs";
 import { artifactsDir } from "../paths.mjs";
 import { reportTransactionLockPath } from "../run/report-output.mjs";
@@ -15,6 +18,14 @@ const RESERVED_RETAINED_FILENAMES = new Set([
   "report.md",
   "retained-artifacts.json"
 ]);
+const MAX_BUNDLE_ARCHIVE_BYTES = 256 * 1024 * 1024;
+const MAX_BUNDLE_CHECKSUM_BYTES = 8 * 1024;
+const MAX_USTAR_FILE_BYTES = 0o77777777777;
+const FILE_READ_CHUNK_BYTES = 1024 * 1024;
+const READ_ONLY_NONBLOCK =
+  fsConstants.O_RDONLY |
+  (fsConstants.O_NONBLOCK ?? 0) |
+  (fsConstants.O_NOFOLLOW ?? 0);
 
 export async function bundleReport(reportPath, options = {}) {
   const sourceJsonPath = resolve(reportPath);
@@ -26,98 +37,126 @@ export async function bundleReport(reportPath, options = {}) {
   }
 
   const outputRoot = options.outputDir ? resolve(options.outputDir) : join(artifactsDir, "bundles");
+  const sourceArtifactsRoot = options.artifactsDir
+    ? resolve(options.artifactsDir)
+    : artifactsDir;
   await mkdir(outputRoot, { recursive: true });
 
   const bundleName = `${artifactRunIdSegment(runId)}-bundle`;
-  const tmp = await mkdtemp(join(tmpdir(), "kova-artifact-bundle-"));
-  const stage = join(tmp, bundleName);
-  const stagedArchivePath = join(tmp, `${bundleName}.tar.gz`);
+  const publicationLock = join(outputRoot, `${bundleName}.publication.lock`);
+  return withFileLock(publicationLock, async () => {
+    await cleanupBundleBuildStages(outputRoot, bundleName);
+    const transaction = randomUUID();
+    const tmp = join(tmpdir(), `kova-artifact-bundle-${transaction}.tmp`);
+    const stageOwner = `${tmp}.owner`;
+    const stage = join(tmp, bundleName);
+    const stagedArchivePath = join(tmp, `${bundleName}.tar.gz`);
+    let tmpCreated = false;
+    try {
+      await writeDurableMarker(stageOwner, `${JSON.stringify({
+        schemaVersion: "kova.bundleBuildStage.v1",
+        transaction,
+        outputRoot,
+        bundleName
+      })}\n`);
+      await mkdir(tmp, { mode: 0o700 });
+      tmpCreated = true;
+      await mkdir(stage, { recursive: true });
+      await writeDurableFile(join(stage, "report.json"), snapshot.json);
 
-  try {
-    await mkdir(stage, { recursive: true });
-    await writeDurableFile(join(stage, "report.json"), snapshot.json);
+      const markdownPath = snapshot.markdownPath;
+      const included = {
+        reportJson: true,
+        reportMarkdown: true,
+        pasteSummary: true,
+        runArtifacts: false,
+        artifactIndex: true
+      };
 
-    const markdownPath = snapshot.markdownPath;
-    const included = {
-      reportJson: true,
-      reportMarkdown: true,
-      pasteSummary: true,
-      runArtifacts: false,
-      artifactIndex: true
-    };
+      await writeDurableFile(join(stage, "report.md"), snapshot.markdown);
+      await writeFile(
+        join(stage, "paste-summary.txt"),
+        renderPasteSummary(report),
+        "utf8"
+      );
 
-    await writeDurableFile(join(stage, "report.md"), snapshot.markdown);
+      const runArtifactsPath = isCanonicalRunId(runId)
+        ? join(sourceArtifactsRoot, runId)
+        : null;
+      if (runArtifactsPath && await directoryExists(runArtifactsPath)) {
+        await cp(runArtifactsPath, join(stage, "artifacts"), { recursive: true });
+        included.runArtifacts = true;
+      }
 
-    await writeFile(join(stage, "paste-summary.txt"), renderPasteSummary(report), "utf8");
+      const manifest = {
+        schemaVersion: "kova.artifact.manifest.v1",
+        generatedAt: new Date().toISOString(),
+        runId,
+        mode: report.mode ?? null,
+        target: report.target ?? null,
+        profile: report.profile ?? null,
+        platform: report.platform ?? null,
+        source: {
+          reportJsonPath: sourceJsonPath,
+          reportMarkdownPath: markdownPath,
+          runArtifactsPath: runArtifactsPath && await directoryExists(runArtifactsPath)
+            ? runArtifactsPath
+            : null
+        },
+        included
+      };
+      await writeFile(
+        join(stage, "manifest.json"),
+        `${JSON.stringify(manifest, null, 2)}\n`,
+        "utf8"
+      );
+      const artifactIndex = await buildArtifactIndex(stage, bundleName);
+      await writeFile(
+        join(stage, "artifact-index.json"),
+        `${JSON.stringify(artifactIndex, null, 2)}\n`,
+        "utf8"
+      );
+      await writeUstarArchive(stage, bundleName, stagedArchivePath);
 
-    const runArtifactsPath = isCanonicalRunId(runId) ? join(artifactsDir, runId) : null;
-    if (runArtifactsPath && await directoryExists(runArtifactsPath)) {
-      await cp(runArtifactsPath, join(stage, "artifacts"), { recursive: true });
-      included.runArtifacts = true;
-    }
-
-    const manifest = {
-      schemaVersion: "kova.artifact.manifest.v1",
-      generatedAt: new Date().toISOString(),
-      runId,
-      mode: report.mode ?? null,
-      target: report.target ?? null,
-      profile: report.profile ?? null,
-      platform: report.platform ?? null,
-      source: {
-        reportJsonPath: sourceJsonPath,
-        reportMarkdownPath: markdownPath,
-        runArtifactsPath: runArtifactsPath && await directoryExists(runArtifactsPath)
-          ? runArtifactsPath
-          : null
-      },
-      included
-    };
-    await writeFile(join(stage, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
-    const artifactIndex = await buildArtifactIndex(stage, bundleName);
-    await writeFile(join(stage, "artifact-index.json"), `${JSON.stringify(artifactIndex, null, 2)}\n`, "utf8");
-
-    const tar = spawnSync("tar", ["--format=ustar", "-czf", stagedArchivePath, "-C", tmp, bundleName], {
-      encoding: "utf8",
-      env: { ...process.env, COPYFILE_DISABLE: "1" },
-      stdio: ["ignore", "pipe", "pipe"]
-    });
-    if (tar.status !== 0) {
-      throw new Error(tar.stderr || tar.stdout || "tar failed");
-    }
-
-    const archive = await readFile(stagedArchivePath);
-    const sha256 = createHash("sha256").update(archive).digest("hex");
-    const outputPath = join(outputRoot, `${bundleName}-${sha256}.tar.gz`);
-    const checksumPath = `${outputPath}.sha256`;
-    await withFileLock(join(outputRoot, `${bundleName}.publication.lock`), async () => {
-      await cleanupOrphanBundleChecksums(outputRoot, bundleName);
+      const archive = await readStableRegularFile(
+        stagedArchivePath,
+        "generated report bundle",
+        MAX_BUNDLE_ARCHIVE_BYTES
+      );
+      const sha256 = createHash("sha256").update(archive).digest("hex");
+      const outputPath = join(outputRoot, `${bundleName}-${sha256}.tar.gz`);
+      const checksumPath = `${outputPath}.sha256`;
+      await cleanupOrphanBundlePublications(outputRoot, bundleName);
       await publishBundlePair({
         archive,
         outputPath,
         checksumPath,
         checksum: `${sha256}  ${basename(outputPath)}\n`
       });
-    });
 
-    return {
-      schemaVersion: "kova.artifact.bundle.v1",
-      generatedAt: new Date().toISOString(),
-      runId,
-      outputPath,
-      checksumPath,
-      sha256,
-      bytes: archive.length,
-      artifactIndex: {
-        path: "artifact-index.json",
-        fileCount: artifactIndex.fileCount,
-        totalBytes: artifactIndex.totalBytes
-      },
-      included
-    };
-  } finally {
-    await rm(tmp, { recursive: true, force: true });
-  }
+      return {
+        schemaVersion: "kova.artifact.bundle.v1",
+        generatedAt: new Date().toISOString(),
+        runId,
+        outputPath,
+        checksumPath,
+        sha256,
+        bytes: archive.length,
+        artifactIndex: {
+          path: "artifact-index.json",
+          fileCount: artifactIndex.fileCount,
+          totalBytes: artifactIndex.totalBytes
+        },
+        included
+      };
+    } finally {
+      if (tmpCreated) {
+        await rm(tmp, { recursive: true, force: true });
+      }
+      await rm(stageOwner, { force: true });
+      await syncDirectory(tmpdir()).catch(() => {});
+    }
+  });
 }
 
 export async function retainGateArtifacts(reportPath, bundle, options = {}) {
@@ -153,19 +192,22 @@ export async function retainGateArtifacts(reportPath, bundle, options = {}) {
     if (retainedFilenameKeys.some((name) => RESERVED_RETAINED_FILENAMES.has(name))) {
       throw new Error("retained report bundle filenames conflict with reserved retained artifacts");
     }
-    await requireRegularFile(bundle.outputPath, "report bundle");
-    await requireRegularFile(bundle.checksumPath, "report bundle checksum");
-    await validateBundlePair(bundle.outputPath, bundle.checksumPath);
   }
 
   const lockPath = `${outputRoot}.lock`;
-  return withFileLock(lockPath, () => replaceRetainedArtifactTree({
-    outputRoot,
-    sourceJson: snapshot.json,
-    markdown: snapshot.markdown,
-    report,
-    bundle
-  }));
+  return withFileLock(lockPath, async () => {
+    const bundleSnapshot = hasBundle
+      ? await readVerifiedBundlePair(bundle.outputPath, bundle.checksumPath)
+      : null;
+    return replaceRetainedArtifactTree({
+      outputRoot,
+      sourceJson: snapshot.json,
+      markdown: snapshot.markdown,
+      report,
+      bundle,
+      bundleSnapshot
+    });
+  });
 }
 
 function siblingMarkdownPath(path) {
@@ -186,7 +228,7 @@ function portableRetentionFilenameKey(value) {
 }
 
 async function buildArtifactIndex(stage, bundleName) {
-  const entries = await listFiles(stage, stage);
+  const entries = await listFiles(stage, stage, bundleName);
   const totalBytes = entries.reduce((sum, entry) => sum + entry.bytes, 0);
   return {
     schemaVersion: "kova.artifact.index.v1",
@@ -198,52 +240,142 @@ async function buildArtifactIndex(stage, bundleName) {
   };
 }
 
-async function listFiles(root, dir) {
+async function listFiles(root, dir, bundleName) {
   const names = await readdir(dir, { withFileTypes: true });
   const entries = [];
   for (const name of names.toSorted((left, right) => left.name.localeCompare(right.name))) {
     const path = join(dir, name.name);
     if (name.isDirectory()) {
-      entries.push(...await listFiles(root, path));
+      entries.push(...await listFiles(root, path, bundleName));
       continue;
     }
     if (!name.isFile()) {
-      continue;
+      throw new Error(`report bundle contains an unsupported filesystem entry: ${path}`);
     }
-    const bytes = await readFile(path);
+    const info = await lstat(path);
+    if (info.size > MAX_USTAR_FILE_BYTES) {
+      throw new Error(`report bundle file exceeds the portable USTAR size limit: ${path}`);
+    }
+    const metadata = await hashFile(path);
+    const bundlePath = relative(root, path).split(sep).join("/");
     entries.push({
-      path: relative(root, path),
-      bytes: bytes.length,
-      sha256: createHash("sha256").update(bytes).digest("hex")
+      path: bundlePath,
+      archivePath: archivePathFor(bundleName, bundlePath),
+      bytes: metadata.bytes,
+      sha256: metadata.sha256
     });
   }
   return entries;
 }
 
+async function writeUstarArchive(stage, bundleName, destination) {
+  const files = await listFiles(stage, stage, bundleName);
+  const archivePaths = new Set();
+  const pack = packTar();
+  const output = pipeline(
+    pack,
+    createGzip({ level: 9 }),
+    createWriteStream(destination, { flags: "wx", mode: 0o600 })
+  );
+  try {
+    for (const file of files) {
+      if (archivePaths.has(file.archivePath)) {
+        throw new Error(`report bundle archive path collision: ${file.archivePath}`);
+      }
+      archivePaths.add(file.archivePath);
+      const source = join(stage, ...file.path.split("/"));
+      const entry = pack.entry({
+        name: `${bundleName}/${file.archivePath}`,
+        type: "file",
+        mode: 0o600,
+        uid: 0,
+        gid: 0,
+        size: file.bytes,
+        mtime: new Date(0)
+      });
+      await pipeline(createReadStream(source), entry);
+    }
+    pack.finalize();
+    await output;
+  } catch (error) {
+    pack.destroy(error);
+    await output.catch(() => {});
+    throw error;
+  }
+}
+
+async function hashFile(path) {
+  const hash = createHash("sha256");
+  let bytes = 0;
+  for await (const chunk of createReadStream(path)) {
+    bytes += chunk.length;
+    hash.update(chunk);
+  }
+  return { bytes, sha256: hash.digest("hex") };
+}
+
+function archivePathFor(bundleName, bundlePath) {
+  // `mapped/` is owned by the archiver. Remap any future source path that
+  // enters that namespace so original and generated paths cannot collide.
+  if (!bundlePath.startsWith("mapped/") && isUstarPath(`${bundleName}/${bundlePath}`)) {
+    return bundlePath;
+  }
+  return `mapped/${createHash("sha256").update(bundlePath).digest("hex")}`;
+}
+
+function isUstarPath(path) {
+  if (Buffer.byteLength(path) !== path.length) {
+    return false;
+  }
+  let name = path;
+  let prefix = "";
+  while (Buffer.byteLength(name) > 100) {
+    const separator = name.indexOf("/");
+    if (separator === -1) {
+      return false;
+    }
+    prefix += prefix ? `/${name.slice(0, separator)}` : name.slice(0, separator);
+    name = name.slice(separator + 1);
+  }
+  return Buffer.byteLength(name) <= 100 && Buffer.byteLength(prefix) <= 155;
+}
+
 export async function publishBundlePair({ archive, outputPath, checksumPath, checksum }) {
-  if (dirname(outputPath) !== dirname(checksumPath)) {
+  const resolvedOutputPath = resolve(outputPath);
+  const resolvedChecksumPath = resolve(checksumPath);
+  if (dirname(resolvedOutputPath) !== dirname(resolvedChecksumPath)) {
     throw new Error("report bundle and checksum must share one publication directory");
   }
-  return withFileLock(`${outputPath}.lock`, () => publishBundlePairLocked({
+  return withFileLock(`${resolvedOutputPath}.lock`, () => publishBundlePairLocked({
     archive,
-    outputPath,
-    checksumPath,
+    outputPath: resolvedOutputPath,
+    checksumPath: resolvedChecksumPath,
     checksum
   }));
 }
 
 async function publishBundlePairLocked({ archive, outputPath, checksumPath, checksum }) {
+  await cleanupBundlePairStages(outputPath, checksumPath);
+  const transaction = randomUUID();
   const entries = [
     { path: outputPath, content: archive },
     { path: checksumPath, content: checksum }
   ];
   const staged = entries.map((entry) => ({
     ...entry,
-    stagedPath: `${entry.path}.${randomUUID()}.tmp`
+    stagedPath: `${entry.path}.${transaction}.tmp`
   }));
+  const stageOwner = `${staged[0].stagedPath}.owner`;
   let archivePublished = false;
   let checksumPublished = false;
+  let publicationFailed = false;
   try {
+    await writeDurableMarker(stageOwner, `${JSON.stringify({
+      schemaVersion: "kova.bundlePairStage.v1",
+      transaction,
+      outputPath: resolve(outputPath),
+      checksumPath: resolve(checksumPath)
+    })}\n`);
     for (const entry of staged) {
       await writeDurableFile(entry.stagedPath, entry.content);
     }
@@ -256,10 +388,23 @@ async function publishBundlePairLocked({ archive, outputPath, checksumPath, chec
       if (checksumExists) {
         await requireRegularFile(checksumPath, "existing report bundle checksum");
       }
-      const existing = outputExists ? await readFile(outputPath) : null;
+      const existing = outputExists
+        ? await readStableRegularFile(
+          outputPath,
+          "existing report bundle",
+          MAX_BUNDLE_ARCHIVE_BYTES
+        )
+        : null;
       const existingHash = existing ? createHash("sha256").update(existing).digest("hex") : null;
       const expectedHash = createHash("sha256").update(archive).digest("hex");
-      const existingChecksum = checksumExists ? await readFile(checksumPath, "utf8") : null;
+      const existingChecksum = checksumExists
+        ? await readStableRegularFile(
+          checksumPath,
+          "existing report bundle checksum",
+          MAX_BUNDLE_CHECKSUM_BYTES,
+          "utf8"
+        )
+        : null;
       if (
         (existingHash !== null && existingHash !== expectedHash) ||
         (existingChecksum !== null && existingChecksum !== checksum)
@@ -284,6 +429,7 @@ async function publishBundlePairLocked({ archive, outputPath, checksumPath, chec
     archivePublished = true;
     await syncDirectory(dirname(outputPath));
   } catch (error) {
+    publicationFailed = true;
     if (archivePublished) {
       await rm(outputPath, { force: true });
     }
@@ -293,7 +439,20 @@ async function publishBundlePairLocked({ archive, outputPath, checksumPath, chec
     await syncDirectory(dirname(outputPath)).catch(() => {});
     throw error;
   } finally {
-    await Promise.all(staged.map((entry) => rm(entry.stagedPath, { force: true }).catch(() => {})));
+    const cleanupErrors = [];
+    for (const entry of staged) {
+      await rm(entry.stagedPath, { force: true })
+        .catch((error) => cleanupErrors.push(error));
+    }
+    if (cleanupErrors.length === 0) {
+      await rm(stageOwner, { force: true });
+      await syncDirectory(dirname(outputPath)).catch(() => {});
+    } else if (!publicationFailed) {
+      throw new AggregateError(
+        cleanupErrors,
+        "report bundle publication committed but staging cleanup was incomplete"
+      );
+    }
   }
 }
 
@@ -302,20 +461,30 @@ async function replaceRetainedArtifactTree({
   sourceJson,
   markdown,
   report,
-  bundle
+  bundle,
+  bundleSnapshot
 }) {
   const parent = dirname(outputRoot);
   const transaction = randomUUID();
   const stage = join(parent, `.${basename(outputRoot)}.${transaction}.tmp`);
+  const stageOwner = `${stage}.owner`;
   const backup = join(parent, `.${basename(outputRoot)}.bak`);
   const backupMarker = `${backup}.owner`;
   let oldTreeBackedUp = false;
   let newTreePublished = false;
+  let stageCreated = false;
 
   try {
+    await cleanupRetainedArtifactStages(outputRoot);
     await recoverRetainedArtifactTree(outputRoot, backup, backupMarker);
     await assertManagedRetentionDirectory(outputRoot);
+    await writeDurableMarker(stageOwner, `${JSON.stringify({
+      schemaVersion: "kova.retainedArtifactStage.v1",
+      transaction,
+      outputRoot
+    })}\n`);
     await mkdir(stage, { recursive: false, mode: 0o700 });
+    stageCreated = true;
     await writeDurableFile(join(stage, "report.json"), sourceJson);
     await writeDurableFile(join(stage, "report.md"), markdown);
     await writeDurableFile(join(stage, "paste-summary.txt"), renderPasteSummary(report));
@@ -326,11 +495,15 @@ async function replaceRetainedArtifactTree({
     const retainedChecksumPath = bundle?.checksumPath
       ? join(outputRoot, basename(bundle.checksumPath))
       : null;
-    if (bundle?.outputPath) {
-      await copyDurableFile(bundle.outputPath, join(stage, basename(bundle.outputPath)));
-    }
-    if (bundle?.checksumPath) {
-      await copyDurableFile(bundle.checksumPath, join(stage, basename(bundle.checksumPath)));
+    if (bundleSnapshot) {
+      await writeDurableFile(
+        join(stage, basename(bundle.outputPath)),
+        bundleSnapshot.archive
+      );
+      await writeDurableFile(
+        join(stage, basename(bundle.checksumPath)),
+        bundleSnapshot.checksum
+      );
     }
 
     const receipt = {
@@ -392,7 +565,10 @@ async function replaceRetainedArtifactTree({
     }
     throw error;
   } finally {
-    await rm(stage, { recursive: true, force: true });
+    if (stageCreated) {
+      await rm(stage, { recursive: true, force: true });
+    }
+    await rm(stageOwner, { force: true });
     await removeUnusedRetainedBackupMarker(backup, backupMarker, outputRoot);
   }
 }
@@ -841,25 +1017,6 @@ async function syncDirectory(path) {
   }
 }
 
-async function syncFile(path) {
-  // Windows FlushFileBuffers requires a writable handle. These are staged
-  // copies owned by this transaction, so opening them read/write is safe.
-  const handle = await open(path, "r+");
-  try {
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-}
-
-async function copyDurableFile(source, destination) {
-  await cp(source, destination);
-  // The staged copy belongs to this transaction. Normalize its mode so a
-  // read-only source cannot prevent the durability sync.
-  await chmod(destination, 0o600);
-  await syncFile(destination);
-}
-
 async function snapshotReportSet(sourceJsonPath) {
   return withFileLock(
     reportTransactionLockPath(sourceJsonPath),
@@ -896,36 +1053,316 @@ async function snapshotReportSetLocked(sourceJsonPath) {
   throw new Error(`report changed while publication snapshot was being captured: ${sourceJsonPath}`);
 }
 
-async function cleanupOrphanBundleChecksums(outputRoot, bundleName) {
+async function cleanupOrphanBundlePublications(outputRoot, bundleName) {
   const prefix = `${bundleName}-`;
-  const suffix = ".tar.gz.sha256";
   for (const name of await readdir(outputRoot)) {
-    if (!name.startsWith(prefix) || !name.endsWith(suffix)) {
+    const checksumMatch = name.match(
+      new RegExp(`^${escapeRegExp(prefix)}([a-f0-9]{64})[.]tar[.]gz[.]sha256$`)
+    );
+    if (checksumMatch) {
+      const checksumPath = join(outputRoot, name);
+      const archivePath = checksumPath.slice(0, -".sha256".length);
+      if (!await pathExists(archivePath)) {
+        await rm(checksumPath, { force: true });
+      }
       continue;
     }
-    const digest = name.slice(prefix.length, -suffix.length);
-    if (!/^[a-f0-9]{64}$/.test(digest)) {
-      continue;
-    }
-    const checksumPath = join(outputRoot, name);
-    const archivePath = checksumPath.slice(0, -".sha256".length);
-    if (!await pathExists(archivePath)) {
-      await rm(checksumPath, { force: true });
+    if (new RegExp(
+      `^${escapeRegExp(prefix)}[a-f0-9]{64}[.]tar[.]gz[.]` +
+      "[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}[.]tmp[.]owner$"
+    ).test(name)) {
+      await cleanupOwnedBundlePairStage(join(outputRoot, name), {
+        outputRoot,
+        bundleName
+      });
     }
   }
   await syncDirectory(outputRoot);
 }
 
 async function validateBundlePair(archivePath, checksumPath) {
+  await readVerifiedBundlePair(archivePath, checksumPath);
+}
+
+async function readVerifiedBundlePair(archivePath, checksumPath) {
   const [archive, checksum] = await Promise.all([
-    readFile(archivePath),
-    readFile(checksumPath, "utf8")
+    readStableRegularFile(
+      archivePath,
+      "report bundle",
+      MAX_BUNDLE_ARCHIVE_BYTES
+    ),
+    readStableRegularFile(
+      checksumPath,
+      "report bundle checksum",
+      MAX_BUNDLE_CHECKSUM_BYTES,
+      "utf8"
+    )
   ]);
   const sha256 = createHash("sha256").update(archive).digest("hex");
   const expected = `${sha256}  ${basename(archivePath)}\n`;
   if (checksum !== expected) {
     throw new Error(`report bundle checksum does not match archive: ${archivePath}`);
   }
+  return { archive, checksum };
+}
+
+async function readStableRegularFile(path, label, maxBytes, encoding = null) {
+  let pathInfo;
+  try {
+    pathInfo = await lstat(path);
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      throw new Error(`${label} is missing: ${path}`);
+    }
+    throw error;
+  }
+  if (!pathInfo.isFile()) {
+    throw new Error(`${label} is not a regular file: ${path}`);
+  }
+  let handle;
+  try {
+    handle = await open(path, READ_ONLY_NONBLOCK);
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      throw new Error(`${label} is missing: ${path}`);
+    }
+    throw error;
+  }
+  try {
+    const before = await handle.stat();
+    if (
+      !before.isFile() ||
+      pathInfo.dev !== before.dev ||
+      pathInfo.ino !== before.ino
+    ) {
+      throw new Error(`${label} changed before it was read: ${path}`);
+    }
+    if (before.size > maxBytes) {
+      throw new Error(`${label} exceeds the size limit: ${path}`);
+    }
+    const chunks = [];
+    let total = 0;
+    while (total <= maxBytes) {
+      const buffer = Buffer.allocUnsafe(
+        Math.min(FILE_READ_CHUNK_BYTES, maxBytes + 1 - total)
+      );
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
+      if (bytesRead === 0) {
+        break;
+      }
+      chunks.push(buffer.subarray(0, bytesRead));
+      total += bytesRead;
+    }
+    if (total > maxBytes) {
+      throw new Error(`${label} exceeds the size limit: ${path}`);
+    }
+    const bytes = Buffer.concat(chunks, total);
+    const after = await handle.stat();
+    if (
+      before.dev !== after.dev ||
+      before.ino !== after.ino ||
+      before.size !== after.size ||
+      before.mtimeMs !== after.mtimeMs ||
+      before.ctimeMs !== after.ctimeMs
+    ) {
+      throw new Error(`${label} changed while it was being read: ${path}`);
+    }
+    return encoding ? bytes.toString(encoding) : bytes;
+  } finally {
+    await handle.close();
+  }
+}
+
+async function cleanupBundleBuildStages(outputRoot, bundleName) {
+  const directory = tmpdir();
+  for (const name of await readdir(directory)) {
+    const match = name.match(
+      /^kova-artifact-bundle-([a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})[.]tmp[.]owner$/
+    );
+    if (!match) {
+      continue;
+    }
+    const ownerPath = join(directory, name);
+    const marker = await readOwnedStageMarker(ownerPath);
+    if (
+      marker?.schemaVersion !== "kova.bundleBuildStage.v1" ||
+      typeof marker.transaction !== "string" ||
+      typeof marker.outputRoot !== "string" ||
+      typeof marker.bundleName !== "string" ||
+      marker.transaction !== match[1] ||
+      resolve(marker.outputRoot) !== resolve(outputRoot) ||
+      marker.bundleName !== bundleName
+    ) {
+      continue;
+    }
+    const stage = ownerPath.slice(0, -".owner".length);
+    const info = await lstat(stage).catch(() => null);
+    if (info && !isOwnedByCurrentUser(info)) {
+      continue;
+    }
+    if (info && !info.isDirectory()) {
+      throw new Error(`report bundle staging path is not a directory: ${stage}`);
+    }
+    if (info) {
+      await rm(stage, { recursive: true });
+    }
+    await rm(ownerPath);
+  }
+  await syncDirectory(directory);
+}
+
+async function cleanupBundlePairStages(outputPath, checksumPath) {
+  const directory = dirname(outputPath);
+  const pattern = new RegExp(
+    `^${escapeRegExp(basename(outputPath))}[.]` +
+    "[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}[.]tmp[.]owner$"
+  );
+  for (const name of await readdir(directory)) {
+    if (pattern.test(name)) {
+      await cleanupOwnedBundlePairStage(join(directory, name), {
+        outputPath,
+        checksumPath
+      });
+    }
+  }
+  await syncDirectory(directory);
+}
+
+async function cleanupOwnedBundlePairStage(ownerPath, expected) {
+  const marker = await readOwnedStageMarker(ownerPath);
+  const transaction = marker?.transaction;
+  if (
+    marker?.schemaVersion !== "kova.bundlePairStage.v1" ||
+    typeof transaction !== "string" ||
+    typeof marker.outputPath !== "string" ||
+    typeof marker.checksumPath !== "string"
+  ) {
+    return;
+  }
+  const outputPath = resolve(marker.outputPath);
+  const checksumPath = resolve(marker.checksumPath);
+  const valid = (
+    /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+      transaction
+    ) &&
+    dirname(outputPath) === dirname(checksumPath) &&
+    ownerPath === `${outputPath}.${transaction}.tmp.owner` &&
+    (
+      expected.outputPath === undefined ||
+      outputPath === resolve(expected.outputPath)
+    ) &&
+    (
+      expected.checksumPath === undefined ||
+      checksumPath === resolve(expected.checksumPath)
+    ) &&
+    (
+      expected.outputRoot === undefined ||
+      dirname(outputPath) === resolve(expected.outputRoot)
+    ) &&
+    (
+      expected.bundleName === undefined ||
+      basename(outputPath).startsWith(`${expected.bundleName}-`)
+    )
+  );
+  if (!valid) {
+    return;
+  }
+  const stages = [
+    `${outputPath}.${transaction}.tmp`,
+    `${checksumPath}.${transaction}.tmp`
+  ];
+  const stageInfos = await Promise.all(
+    stages.map((stage) => lstat(stage).catch(() => null))
+  );
+  if (stageInfos.some((info) => info && !isOwnedByCurrentUser(info))) {
+    return;
+  }
+  for (const [index, stage] of stages.entries()) {
+    const info = stageInfos[index];
+    if (info && !info.isFile()) {
+      throw new Error(`report bundle staging path is not a regular file: ${stage}`);
+    }
+    if (info) {
+      await rm(stage);
+    }
+  }
+  await rm(ownerPath);
+  await syncDirectory(dirname(outputPath));
+}
+
+async function cleanupRetainedArtifactStages(outputRoot) {
+  const parent = dirname(outputRoot);
+  const prefix = `.${basename(outputRoot)}.`;
+  for (const name of await readdir(parent)) {
+    if (
+      !name.startsWith(prefix) ||
+      !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}[.]tmp[.]owner$/.test(
+        name.slice(prefix.length)
+      )
+    ) {
+      continue;
+    }
+    const ownerPath = join(parent, name);
+    const marker = await readOwnedStageMarker(ownerPath);
+    const transaction = marker?.transaction;
+    const stage = ownerPath.slice(0, -".owner".length);
+    if (
+      marker?.schemaVersion !== "kova.retainedArtifactStage.v1" ||
+      typeof marker.outputRoot !== "string" ||
+      typeof transaction !== "string" ||
+      resolve(marker.outputRoot) !== resolve(outputRoot) ||
+      !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+        transaction
+      ) ||
+      stage !== join(parent, `.${basename(outputRoot)}.${transaction}.tmp`)
+    ) {
+      continue;
+    }
+    const info = await lstat(stage).catch(() => null);
+    if (info && !isOwnedByCurrentUser(info)) {
+      continue;
+    }
+    if (info && !info.isDirectory()) {
+      throw new Error(`retained artifact staging path is not a directory: ${stage}`);
+    }
+    if (info) {
+      await rm(stage, { recursive: true });
+    }
+    await rm(ownerPath);
+  }
+  await syncDirectory(parent);
+}
+
+async function readOwnedStageMarker(path) {
+  try {
+    const info = await lstat(path);
+    if (
+      !info.isFile() ||
+      !isOwnedByCurrentUser(info)
+    ) {
+      return null;
+    }
+    const content = await readStableRegularFile(
+      path,
+      "Kova stage owner marker",
+      MAX_BUNDLE_CHECKSUM_BYTES,
+      "utf8"
+    );
+    const marker = JSON.parse(content);
+    return marker && typeof marker === "object" && !Array.isArray(marker)
+      ? marker
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function isOwnedByCurrentUser(info) {
+  return typeof process.getuid !== "function" || info.uid === process.getuid();
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 async function requireRegularFile(path, label) {
