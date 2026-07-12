@@ -40,7 +40,7 @@ function escapeXml(s: string): string {
     .replace(/'/g, "&apos;");
 }
 
-interface CardData {
+export interface CardData {
   /** Top-left eyebrow, e.g. "kova · OpenClaw performance". */
   eyebrow: string;
   /** Big headline, e.g. "OpenClaw 2026.5.16-beta.7". */
@@ -52,15 +52,15 @@ interface CardData {
   /** Short fact line at the bottom-left. */
   fact?: string;
   /** Right-side hero fact, e.g. worst metric. null = hide. */
-  hero?: { label: string; value: string; breach: boolean } | null;
+  hero?: { label: string; value: string; tone: "pass" | "fail" | "warn" } | null;
 }
 
 /** Build a 1200×630 OG card SVG from card data. Pure function. */
 export function cardSvg(d: CardData): string {
-  const eyebrow = escapeXml(d.eyebrow);
+  const eyebrow = escapeXml(d.eyebrow.toUpperCase());
   const headline = escapeXml(d.headline);
   const subhead = d.subhead ? escapeXml(d.subhead) : "";
-  const fact = d.fact ? escapeXml(d.fact) : "";
+  const fact = d.fact ? escapeXml(d.fact.toUpperCase()) : "";
 
   // Counts strip
   let countsBlock = "";
@@ -83,7 +83,7 @@ export function cardSvg(d: CardData): string {
   // Hero (right-side)
   let heroBlock = "";
   if (d.hero) {
-    const heroColor = d.hero.breach ? TOKENS.fail : TOKENS.pass;
+    const heroColor = TOKENS[d.hero.tone];
     heroBlock = `
       <g transform="translate(1120, 280)" text-anchor="end" font-family="ui-monospace, monospace">
         <text x="0" y="0" font-size="22" fill="${TOKENS.text3}" letter-spacing="2">${escapeXml(d.hero.label.toUpperCase())}</text>
@@ -106,13 +106,13 @@ export function cardSvg(d: CardData): string {
   <rect x="0" y="0" width="${W}" height="2" fill="${TOKENS.text1}" opacity="0.08" />
   ${brand}
   <text x="80" y="180" font-family="ui-monospace, monospace" font-size="22"
-        fill="${TOKENS.text3}" letter-spacing="3">${eyebrow.toUpperCase()}</text>
+        fill="${TOKENS.text3}" letter-spacing="3">${eyebrow}</text>
   <text x="80" y="280" font-family="ui-sans-serif, system-ui, sans-serif"
         font-size="80" font-weight="700" fill="${TOKENS.text1}">${headline}</text>
   ${subhead ? `<text x="80" y="335" font-family="ui-monospace, monospace" font-size="26" fill="${TOKENS.text2}">${subhead}</text>` : ""}
   ${countsBlock}
   ${heroBlock}
-  ${fact ? `<text x="80" y="580" font-family="ui-monospace, monospace" font-size="22" fill="${TOKENS.text3}" letter-spacing="2">${fact.toUpperCase()}</text>` : ""}
+  ${fact ? `<text x="80" y="580" font-family="ui-monospace, monospace" font-size="22" fill="${TOKENS.text3}" letter-spacing="2">${fact}</text>` : ""}
   <text x="${W - 80}" y="580" text-anchor="end" font-family="ui-monospace, monospace"
         font-size="22" fill="${TOKENS.text3}" letter-spacing="2">KOVA.OPENCLAW.DEV</text>
 </svg>`;
@@ -164,10 +164,14 @@ export function releaseCard(release: Release): CardData {
     hero = {
       label: primary.metric ?? primary.id,
       value: fmtMetricShort(primary.value, primary.unit),
-      breach: primary.state === "fail",
+      tone: primary.state === "fail" ? "fail" : primary.state === "block" ? "warn" : "pass",
     };
-  } else if (scenarios.length > 0 && counts && counts.fail === 0) {
-    hero = { label: "verdict", value: "clean", breach: false };
+  } else if (scenarios.length > 0 && counts) {
+    hero = counts.fail > 0
+      ? { label: "verdict", value: "regressions", tone: "fail" }
+      : counts.block > 0
+        ? { label: "verdict", value: "blocked", tone: "warn" }
+        : { label: "verdict", value: "clean", tone: "pass" };
   }
 
   return {

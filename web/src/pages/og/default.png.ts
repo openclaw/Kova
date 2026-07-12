@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
 import { cardSvg, defaultCard, svgToPng } from "../../lib/og-card";
+import { MUTABLE_IMAGE_CACHE_CONTROL } from "../../lib/http";
 
 export const GET: APIRoute = async () => {
   const png = svgToPng(cardSvg(defaultCard));
@@ -7,7 +8,7 @@ export const GET: APIRoute = async () => {
     status: 200,
     headers: {
       "Content-Type": "image/png",
-      "Cache-Control": "public, max-age=31536000, immutable",
+      "Cache-Control": MUTABLE_IMAGE_CACHE_CONTROL,
     },
   });
 };
