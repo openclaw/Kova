@@ -78,7 +78,14 @@ export function channelCapabilityCatalogMap(catalogs) {
   const map = new Map();
   for (const catalog of catalogs ?? []) {
     for (const capability of catalog.capabilities ?? []) {
-      map.set(`${capability.group}:${capability.id}`, { catalog, capability });
+      const key = `${capability.group}:${capability.id}`;
+      const existing = map.get(key);
+      if (existing) {
+        throw new Error(
+          `duplicate channel capability '${key}' across catalogs '${existing.catalog.id}' and '${catalog.id}'`
+        );
+      }
+      map.set(key, { catalog, capability });
     }
   }
   return map;
