@@ -8,11 +8,20 @@ export async function cleanupTargetRuntimeIfNeeded(targetPlan, records, options)
   }
 
   const command = ocmRuntimeRemoveJson(targetPlan.runtimeName);
-  if (!options.execute) {
+  if (options.execute !== true) {
     return {
       status: "planned",
       runtimeName: targetPlan.runtimeName,
       command
+    };
+  }
+
+  if (options.retainOnError === true) {
+    return {
+      status: "retained",
+      runtimeName: targetPlan.runtimeName,
+      command,
+      reason: "run failed and env retention was requested"
     };
   }
 
@@ -41,6 +50,33 @@ export async function cleanupTargetRuntimeIfNeeded(targetPlan, records, options)
       attempts: result.attempts ?? []
     }
   };
+}
+
+export async function runWithTargetRuntimeCleanup(targetPlan, options, run) {
+  let records = [];
+  let primaryError = null;
+  try {
+    records = await run();
+  } catch (error) {
+    primaryError = error;
+  }
+
+  let targetCleanup = null;
+  try {
+    targetCleanup = await cleanupTargetRuntimeIfNeeded(targetPlan, records, {
+      ...options,
+      retainOnError: primaryError !== null && options.retainOnError === true
+    });
+  } catch (cleanupError) {
+    if (primaryError === null) {
+      throw cleanupError;
+    }
+  }
+
+  if (primaryError !== null) {
+    throw primaryError;
+  }
+  return { records, targetCleanup };
 }
 
 function classifyTargetRuntimeCleanup(result, runtimeName) {

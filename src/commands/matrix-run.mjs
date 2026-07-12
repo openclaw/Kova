@@ -8,7 +8,7 @@ import {
   summarizePerformanceReceipt,
   validateBaselineExecutionFlags
 } from "../run/options.mjs";
-import { cleanupTargetRuntimeIfNeeded } from "../run/target-cleanup.mjs";
+import { runWithTargetRuntimeCleanup } from "../run/target-cleanup.mjs";
 import { evaluateGate, preflightGateRun } from "../matrix/gate.mjs";
 import { resolveMatrixPlan, validateMatrixScenarioRuns } from "../matrix/plan-resolution.mjs";
 import { profileSummary } from "../matrix/profile.mjs";
@@ -93,16 +93,16 @@ export async function runMatrixRun(flags) {
     });
   };
 
-  const records = await runEntries({
+  const { records, targetCleanup } = await runWithTargetRuntimeCleanup(targetPlan, {
+    execute: flags.execute === true,
+    timeoutMs: positiveIntegerFlag(flags, "timeout_ms", 120000),
+    retainOnError: flags.keep_env === true || flags.retain_on_failure === true
+  }, () => runEntries({
     entries,
     runEntry,
     execute: flags.execute === true,
     controls
-  });
-  const targetCleanup = await cleanupTargetRuntimeIfNeeded(targetPlan, records, {
-    execute: flags.execute === true,
-    timeoutMs: positiveIntegerFlag(flags, "timeout_ms", 120000)
-  });
+  }));
   const performance = buildPerformanceSummary(records, {
     repeat: controls.repeat,
     parallel: controls.parallel,

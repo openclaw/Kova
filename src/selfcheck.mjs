@@ -67,6 +67,7 @@ import { runEntries } from "./run/engine.mjs";
 import { executeStateLifecycleSteps } from "./run/state-lifecycle.mjs";
 import { executeTargetSetup } from "./run/target-setup.mjs";
 import { runGuardedTeardownStages } from "./run/teardown.mjs";
+import { runWithTargetRuntimeCleanup } from "./run/target-cleanup.mjs";
 import { loadProcessRoles } from "./registries/process-roles.mjs";
 import { validateProfileShape } from "./registries/profiles.mjs";
 import { validateScenarioShape } from "./registries/scenarios.mjs";
@@ -1089,6 +1090,7 @@ async function runScopedSelfCheck(flags, scope, workspace) {
     ));
     checks.push(await localBuildRuntimeCleanupCheck(tmp));
     checks.push(await localBuildRuntimeAlreadyAbsentCleanupCheck(tmp));
+    checks.push(await localBuildRuntimeExceptionCleanupCheck(tmp));
     checks.push(await localBuildProfileEnvCheck(tmp, scope));
     checks.push(await localBuildParallelSingleFlightCheck(tmp));
     checks.push(defaultGatewayResourceRoleCheck());
@@ -8417,6 +8419,89 @@ exit 2
       durationMs: result.durationMs,
       message: error.message
     };
+  }
+}
+
+async function localBuildRuntimeExceptionCleanupCheck(tmp) {
+  const binDir = join(tmp, "mock-bin-runtime-exception");
+  const removeLog = join(tmp, "mock-runtime-exception-remove.log");
+  const ocmPath = join(binDir, "ocm");
+  await mkdir(binDir, { recursive: true });
+  await writeFile(ocmPath, `#!/bin/sh
+case "$1:$2" in
+  runtime:remove)
+    printf '%s\\n' "$*" >> "$KOVA_MOCK_REMOVE_LOG"
+    echo '{"removed":true}'
+    exit 0
+    ;;
+esac
+echo "unhandled mock ocm command: $*" >&2
+exit 2
+`, "utf8");
+  await chmod(ocmPath, 0o755);
+
+  const previousPath = process.env.PATH;
+  const previousLog = process.env.KOVA_MOCK_REMOVE_LOG;
+  process.env.PATH = `${binDir}:${previousPath}`;
+  process.env.KOVA_MOCK_REMOVE_LOG = removeLog;
+  const targetPlan = {
+    kind: "local-build",
+    runtimeName: "kova-local-exception"
+  };
+
+  try {
+    let original;
+    try {
+      await runWithTargetRuntimeCleanup(targetPlan, {
+        execute: true,
+        timeoutMs: 30000,
+        retainOnError: false
+      }, async () => {
+        throw new Error("original run failure");
+      });
+    } catch (error) {
+      original = error;
+    }
+    assertEqual(original?.message, "original run failure", "target cleanup preserves original error");
+    assertEqual((await readFile(removeLog, "utf8")).trim().split("\n").length, 1, "target runtime removed exactly once");
+
+    await rm(removeLog, { force: true });
+    let retainedError;
+    try {
+      await runWithTargetRuntimeCleanup(targetPlan, {
+        execute: true,
+        timeoutMs: 30000,
+        retainOnError: true
+      }, async () => {
+        throw new Error("retained run failure");
+      });
+    } catch (error) {
+      retainedError = error;
+    }
+    assertEqual(retainedError?.message, "retained run failure", "retained target preserves original error");
+    assertEqual(await fileExists(removeLog), false, "retention flags keep target runtime after exception");
+
+    return {
+      id: "local-build-runtime-exception-cleanup",
+      status: "PASS",
+      command: "exercise exception-safe target runtime cleanup",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "local-build-runtime-exception-cleanup",
+      status: "FAIL",
+      command: "exercise exception-safe target runtime cleanup",
+      durationMs: 0,
+      message: error.message
+    };
+  } finally {
+    process.env.PATH = previousPath;
+    if (previousLog === undefined) {
+      delete process.env.KOVA_MOCK_REMOVE_LOG;
+    } else {
+      process.env.KOVA_MOCK_REMOVE_LOG = previousLog;
+    }
   }
 }
 

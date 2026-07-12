@@ -7,7 +7,7 @@ import {
   summarizePerformanceReceipt,
   validateBaselineExecutionFlags
 } from "../run/options.mjs";
-import { cleanupTargetRuntimeIfNeeded } from "../run/target-cleanup.mjs";
+import { runWithTargetRuntimeCleanup } from "../run/target-cleanup.mjs";
 import {
   loadBaselineStore,
   resolveBaselinePath,
@@ -67,7 +67,6 @@ export async function runScenarioCommand(flags) {
     controls: { networkFrontage },
     timeoutMs: resolveRunTimeout(scenarios, flags)
   });
-  const records = [];
   const progress = createRunProgress({ flags, mode: context.execute ? "execution" : "dry-run" });
   progress.runStart({
     scenarioCount: scenarios.length * repeat,
@@ -75,12 +74,16 @@ export async function runScenarioCommand(flags) {
     target: targetSelector,
   });
 
-  for (const scenario of scenarios) {
-    records.push(...await runScenarioRepeats({ scenario, context, repeat, progress }));
-  }
-  const targetCleanup = await cleanupTargetRuntimeIfNeeded(targetPlan, records, {
+  const { records, targetCleanup } = await runWithTargetRuntimeCleanup(targetPlan, {
     execute: context.execute,
-    timeoutMs: context.timeoutMs
+    timeoutMs: context.timeoutMs,
+    retainOnError: context.keepEnv || context.retainOnFailure
+  }, async () => {
+    const runRecords = [];
+    for (const scenario of scenarios) {
+      runRecords.push(...await runScenarioRepeats({ scenario, context, repeat, progress }));
+    }
+    return runRecords;
   });
   const performance = buildPerformanceSummary(records, { repeat, regressionThresholds });
 
