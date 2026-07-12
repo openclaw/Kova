@@ -1,6 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { chmod, lstat, mkdir, open, readFile, readlink, realpath, rename, rm, stat } from "node:fs/promises";
-import { userInfo } from "node:os";
+import { lstat, mkdir, open, readFile, readlink, realpath, rename, rm, stat } from "node:fs/promises";
 import { basename, dirname, join, posix, resolve, win32 } from "node:path";
 import { withFileLock } from "../file-lock.mjs";
 import { baselinesDir } from "../paths.mjs";
@@ -114,17 +113,20 @@ export async function withBaselineStoreLock(path, callback) {
   // replacement; inode-based keys would let old and new waiters split locks.
   // Folding case and Unicode only over-serializes distinct files on a
   // case-sensitive volume, while preventing aliases from splitting the lock.
-  const canonicalPath = (await canonicalizeBaselinePath(writePath))
+  const canonicalPath = await canonicalizeBaselinePath(writePath);
+  const canonicalName = basename(canonicalPath)
     .normalize("NFC")
     .toLowerCase();
-  const identity = createHash("sha256").update(canonicalPath).digest("hex");
-  const user = userInfo();
-  const lockRoot = process.platform === "win32"
-    ? join(process.env.LOCALAPPDATA || user.homedir, "Kova", "locks", "baselines")
-    : join("/tmp", `kova-baseline-locks-${user.uid}`);
-  await ensurePrivateLockDirectory(lockRoot);
-  const lockPath = join(lockRoot, `${identity}.lock`);
-  return withFileLock(lockPath, callback);
+  const identity = createHash("sha256")
+    .update(canonicalName)
+    .digest("hex");
+  const lockPath = join(
+    dirname(canonicalPath),
+    `.kova-baseline-${identity}.lock`
+  );
+  // The lock shares the baseline store's filesystem so every host and user
+  // participating in the same store observes one RMW serialization point.
+  return withFileLock(lockPath, callback, { fileMode: 0o644 });
 }
 
 async function canonicalizeBaselinePath(path) {
@@ -144,20 +146,6 @@ async function canonicalizeBaselinePath(path) {
       suffix.unshift(basename(current));
       current = parent;
     }
-  }
-}
-
-async function ensurePrivateLockDirectory(path) {
-  await mkdir(path, { recursive: true, mode: 0o700 });
-  const info = await lstat(path);
-  if (!info.isDirectory() || info.isSymbolicLink()) {
-    throw new Error(`Kova baseline lock path must be a real directory: ${path}`);
-  }
-  if (typeof process.getuid === "function" && info.uid !== process.getuid()) {
-    throw new Error(`Kova baseline lock directory is not owned by the current user: ${path}`);
-  }
-  if (process.platform !== "win32" && (info.mode & 0o077) !== 0) {
-    await chmod(path, 0o700);
   }
 }
 
