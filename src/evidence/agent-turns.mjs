@@ -10,6 +10,8 @@ import {
   nonNegativeNumber,
   phaseCommandReceiptsOk,
   phaseCommandReceiptsReason,
+  providerResponseStatusValues,
+  validRequestCount,
   zeroCountInvariant
 } from "./shared.mjs";
 
@@ -18,7 +20,9 @@ export function buildAgentGatewayRpcTurnEvidenceInvariants(record, scenario = {}
     return [];
   }
 
-  const turns = record.measurements?.agentTurns ?? [];
+  const turns = Array.isArray(record.measurements?.agentTurns)
+    ? record.measurements.agentTurns
+    : [];
   const expectedTurnCount = agentTurnExpectedCount(scenario, turns);
   const health = record.measurements?.health ?? {};
   const providerEvidence = record.providerEvidence ?? {};
@@ -243,7 +247,9 @@ export function buildAgentCliLocalTurnEvidenceInvariants(record, scenario = {}) 
     return [];
   }
 
-  const turns = record.measurements?.agentTurns ?? [];
+  const turns = Array.isArray(record.measurements?.agentTurns)
+    ? record.measurements.agentTurns
+    : [];
   const expectedTurnCount = agentTurnExpectedCount(scenario, turns);
   const providerEvidence = record.providerEvidence ?? {};
   const providerArtifacts = Array.isArray(providerEvidence.artifacts) ? providerEvidence.artifacts : [];
@@ -443,39 +449,61 @@ function agentTurnExpectedFailure(turn, scenario) {
 }
 
 function agentProviderProofOk(providerEvidence, turns, scenario, expectedTurnCount) {
-  const successfulTurns = turns.slice(0, expectedTurnCount).filter((turn) => !agentTurnExpectedFailure(turn, scenario));
+  const scopedTurns = turns.slice(0, expectedTurnCount);
+  if (scopedTurns.length < expectedTurnCount) {
+    return false;
+  }
+  const successfulTurns = scopedTurns.filter((turn) => !agentTurnExpectedFailure(turn, scenario));
   if (successfulTurns.length === 0) {
     return true;
   }
-  if (providerEvidence?.available !== true || providerEvidence.requestCount < successfulTurns.length) {
+  if (providerEvidence?.available !== true ||
+    !validRequestCount(providerEvidence.requestCount, successfulTurns.length)) {
     return false;
   }
   return successfulTurns.every((turn) =>
     turn.missingProviderRequest === false &&
-    (turn.requestCount ?? 0) > 0 &&
+    validRequestCount(turn.requestCount, 1) &&
     turn.providerAfterCommandEnd !== true &&
+    nonNegativeNumber(turn.providerFinalMs) &&
     successfulTurnProviderStatusesOk(turn, scenario)
   );
 }
 
 function agentProviderProofReason(providerEvidence, turns, scenario, expectedTurnCount) {
-  const successfulTurns = turns.slice(0, expectedTurnCount).filter((turn) => !agentTurnExpectedFailure(turn, scenario));
+  const scopedTurns = turns.slice(0, expectedTurnCount);
+  if (scopedTurns.length < expectedTurnCount) {
+    return `agent turn attribution count ${scopedTurns.length} was below required ${expectedTurnCount}`;
+  }
+  const successfulTurns = scopedTurns.filter((turn) => !agentTurnExpectedFailure(turn, scenario));
   if (successfulTurns.length === 0) {
     return null;
   }
   if (providerEvidence?.available !== true) {
     return providerEvidence?.error ?? "provider evidence was not available";
   }
-  if (providerEvidence.requestCount < successfulTurns.length) {
-    return `provider request count ${providerEvidence.requestCount ?? 0} was below required ${successfulTurns.length}`;
+  if (!validRequestCount(providerEvidence.requestCount, successfulTurns.length)) {
+    return `provider request count ${providerEvidence.requestCount ?? "missing"} was not a finite count of at least ${successfulTurns.length}`;
   }
-  const missing = successfulTurns.find((turn) => turn.missingProviderRequest === true || (turn.requestCount ?? 0) === 0);
+  const missing = successfulTurns.find((turn) =>
+    turn.missingProviderRequest === true || !validRequestCount(turn.requestCount, 1)
+  );
   if (missing) {
     return `${missing.phaseId} had no attributed provider request`;
   }
   const late = successfulTurns.find((turn) => turn.providerAfterCommandEnd === true);
   if (late) {
     return `${late.phaseId} provider request arrived after command window by ${late.providerLateByMs ?? "unknown"}ms`;
+  }
+  const incomplete = successfulTurns.find((turn) => !nonNegativeNumber(turn.providerFinalMs));
+  if (incomplete) {
+    return `${incomplete.phaseId} had no completed provider response timing`;
+  }
+  const missingStatus = successfulTurns.find((turn) =>
+    successfulTurnProviderStatusValues(turn, scenario) === null
+  );
+  if (missingStatus) {
+    return `${missingStatus.phaseId} had no valid provider HTTP response status evidence`;
   }
   const failedStatus = successfulTurns.find((turn) => !successfulTurnProviderStatusesOk(turn, scenario));
   if (failedStatus) {
@@ -485,19 +513,49 @@ function agentProviderProofReason(providerEvidence, turns, scenario, expectedTur
 }
 
 function successfulTurnProviderStatusesOk(turn, scenario) {
-  const numericStatuses = (turn.providerStatuses ?? [])
-    .map((status) => Number(status.value))
-    .filter((value) => Number.isFinite(value));
-  if (numericStatuses.every((value) => value < 400)) {
-    return true;
+  const numericStatuses = successfulTurnProviderStatusValues(turn, scenario);
+  if (numericStatuses === null) {
+    return false;
+  }
+  const hasSuccess = numericStatuses.some((value) => value >= 200 && value < 300);
+  const hasHttpFailure = numericStatuses.some((value) => value >= 400);
+  if (!hasHttpFailure) {
+    return hasSuccess;
   }
   if (!providerRecoveryScenarioAllowsFailedRequest(scenario)) {
     return false;
   }
-  const hasSuccess = numericStatuses.some((value) => value >= 200 && value < 300);
   const recoverableErrors = new Set(["provider-error", "provider-disconnect", "http"]);
-  const hasRecoverableError = (turn.providerErrors ?? []).some((error) => recoverableErrors.has(error.kind));
+  const providerErrors = Array.isArray(turn.providerErrors) ? turn.providerErrors : [];
+  const hasRecoverableError = providerErrors.some((error) => recoverableErrors.has(error.kind));
   return hasSuccess && hasRecoverableError;
+}
+
+function successfulTurnProviderStatusValues(turn, scenario) {
+  const statuslessRequestCount = providerRecoveryScenarioAllowsFailedRequest(scenario)
+    ? recoverableStatuslessProviderRequestCount(turn.providerErrors)
+    : 0;
+  return providerResponseStatusValues(
+    turn.providerStatuses,
+    turn.requestCount,
+    statuslessRequestCount
+  );
+}
+
+function recoverableStatuslessProviderRequestCount(providerErrors) {
+  if (!Array.isArray(providerErrors)) {
+    return 0;
+  }
+  const requestIds = new Set();
+  for (const error of providerErrors) {
+    if ((error?.kind === "provider-error" || error?.kind === "provider-disconnect") &&
+      typeof error.requestId === "string" &&
+      error.requestId.length > 0 &&
+      (error.status === null || error.status === undefined)) {
+      requestIds.add(error.requestId);
+    }
+  }
+  return requestIds.size;
 }
 
 function providerRecoveryScenarioAllowsFailedRequest(scenario) {

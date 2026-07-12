@@ -195,8 +195,17 @@ export function zeroCountInvariant({ id, summary, actual, metric, phaseId = "pos
 }
 
 export function compareSnapshotSetInvariant({ id, phaseId, summary, before, after, artifactPath }) {
-  const beforeValues = sortedUnique(before ?? []);
-  const afterValues = new Set(sortedUnique(after ?? []));
+  if (!validStringSetInput(before) || !validStringSetInput(after)) {
+    return missingSnapshotInvariant({
+      id,
+      phaseId,
+      summary,
+      artifactPath,
+      reason: snapshotInputsMissingReason(before, after, "set")
+    });
+  }
+  const beforeValues = sortedUnique(before);
+  const afterValues = new Set(sortedUnique(after));
   const missing = beforeValues.filter((value) => !afterValues.has(value));
   return {
     id,
@@ -220,6 +229,26 @@ export function compareSnapshotEqualityInvariant({ id, phaseId, summary, before,
       artifactPath,
       reason: null
     };
+  }
+  if (!optionalWhenMissing && (!validSnapshotValue(before) || !validSnapshotValue(after))) {
+    return missingSnapshotInvariant({
+      id,
+      phaseId,
+      summary,
+      artifactPath,
+      reason: snapshotInputsMissingReason(before, after, "value")
+    });
+  }
+  if (optionalWhenMissing &&
+    ((before !== null && before !== undefined && !validSnapshotValue(before)) ||
+      (after !== null && after !== undefined && !validSnapshotValue(after)))) {
+    return missingSnapshotInvariant({
+      id,
+      phaseId,
+      summary,
+      artifactPath,
+      reason: snapshotInputsMissingReason(before, after, "value")
+    });
   }
   const status = before === after ? "passed" : "failed";
   return {
@@ -247,8 +276,7 @@ export function parseJsonObject(text) {
 }
 
 export function numberOrNull(value) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 export function nonNegativeNumber(value) {
@@ -256,13 +284,52 @@ export function nonNegativeNumber(value) {
   return parsed !== null && parsed >= 0;
 }
 
+export function validRequestCount(value, minimum = 0) {
+  return Number.isInteger(value) && value >= minimum;
+}
+
+export function providerResponseStatusValues(statuses, requestCount, statuslessRequestCount = 0) {
+  if (!validRequestCount(requestCount, 1) ||
+    !validRequestCount(statuslessRequestCount) ||
+    statuslessRequestCount >= requestCount ||
+    !Array.isArray(statuses) ||
+    statuses.length === 0) {
+    return null;
+  }
+  const validStatuses = statuses.every((status) =>
+    Number.isInteger(status?.value) &&
+    status.value >= 100 &&
+    status.value <= 599 &&
+    Number.isInteger(status.count) &&
+    status.count > 0
+  );
+  const statusCount = validStatuses
+    ? statuses.reduce((total, status) => total + status.count, 0)
+    : null;
+  return statusCount + statuslessRequestCount === requestCount
+    ? statuses.map((status) => status.value)
+    : null;
+}
+
 export function unionStrings(...groups) {
-  return sortedUnique(groups.flatMap((group) => group ?? []));
+  if (groups.length === 0 || !groups.every(validStringSetInput)) {
+    return null;
+  }
+  return sortedUnique(groups.flat());
 }
 
 export function compareSnapshotCountInvariant({ id, phaseId, summary, before, after, artifactPath }) {
-  const beforeCount = Number.isFinite(before) ? before : 0;
-  const afterCount = Number.isFinite(after) ? after : 0;
+  if (!validSnapshotCount(before) || !validSnapshotCount(after)) {
+    return missingSnapshotInvariant({
+      id,
+      phaseId,
+      summary,
+      artifactPath,
+      reason: snapshotInputsMissingReason(before, after, "count")
+    });
+  }
+  const beforeCount = before;
+  const afterCount = after;
   const status = beforeCount <= afterCount ? "passed" : "failed";
   return {
     id,
@@ -371,6 +438,29 @@ export function commandProof(label, predicate) {
   ];
 }
 
+export function commandProofInPhase(label, phaseId, predicate) {
+  return [
+    label,
+    (record) => {
+      const result = findCommandResultInPhase(record, phaseId, predicate);
+      return result?.status === 0 && nonNegativeNumber(result.durationMs);
+    },
+    (record) => {
+      const result = findCommandResultInPhase(record, phaseId, predicate);
+      if (!result) {
+        return `command receipt was not captured in ${phaseId}`;
+      }
+      if (result.status !== 0) {
+        return `command exited ${result.status}`;
+      }
+      if (!nonNegativeNumber(result.durationMs)) {
+        return "command duration was not a non-negative finite measurement";
+      }
+      return null;
+    }
+  ];
+}
+
 export function collectorProof(label, phaseId, collectorId) {
   return [
     label,
@@ -398,7 +488,8 @@ export function gatewaySessionHealthOk(record, health) {
     Number.isFinite(health.readiness.healthReadyAtMs) &&
     (health.postReadySamples?.count ?? 0) > 0 &&
     (health.postReadySamples?.failureCount ?? 0) === 0 &&
-    (health.final?.failureCount ?? 0) === 0 &&
+    Number.isFinite(health.final?.failureCount) &&
+    health.final.failureCount === 0 &&
     record.measurements?.finalGatewayState === "running";
 }
 
@@ -418,11 +509,54 @@ export function gatewaySessionHealthReason(record, health) {
   if ((health.postReadySamples?.failureCount ?? 0) !== 0) {
     return `post-ready health failures were ${health.postReadySamples.failureCount}`;
   }
-  if ((health.final?.failureCount ?? 0) !== 0) {
+  if (!Number.isFinite(health.final?.failureCount)) {
+    return "final health failure count was not collected";
+  }
+  if (health.final.failureCount !== 0) {
     return `final health failures were ${health.final.failureCount}`;
   }
   if (record.measurements?.finalGatewayState !== "running") {
     return `final gateway state was ${record.measurements?.finalGatewayState ?? "missing"}`;
   }
   return null;
+}
+
+function missingSnapshotInvariant({ id, phaseId, summary, artifactPath, reason }) {
+  return {
+    id,
+    phaseId,
+    required: true,
+    status: "missing",
+    summary,
+    artifactPath,
+    reason
+  };
+}
+
+function snapshotInputsMissingReason(before, after, kind) {
+  const missing = [];
+  if ((kind === "set" && !validStringSetInput(before)) ||
+    (kind === "count" && !validSnapshotCount(before)) ||
+    (kind === "value" && !validSnapshotValue(before))) {
+    missing.push("before");
+  }
+  if ((kind === "set" && !validStringSetInput(after)) ||
+    (kind === "count" && !validSnapshotCount(after)) ||
+    (kind === "value" && !validSnapshotValue(after))) {
+    missing.push("after");
+  }
+  return `${missing.join(" and ")} ${kind} evidence was not collected`;
+}
+
+function validStringSetInput(value) {
+  return Array.isArray(value) &&
+    value.every((item) => typeof item === "string" && item.trim().length > 0);
+}
+
+function validSnapshotCount(value) {
+  return Number.isInteger(value) && value >= 0;
+}
+
+function validSnapshotValue(value) {
+  return typeof value === "string" && value.trim().length > 0;
 }

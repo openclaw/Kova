@@ -70,10 +70,15 @@ export function healthReadinessClassification(health) {
 }
 
 export function healthTotalFailures(health) {
-  return (health?.startupSamples?.failureCount ?? 0) +
-    (health?.postReadySamples?.failureCount ?? 0) +
-    (health?.unknownSamples?.failureCount ?? 0) +
-    (health?.final?.failureCount ?? 0);
+  const counts = [
+    health?.startupSamples?.failureCount,
+    health?.postReadySamples?.failureCount,
+    health?.unknownSamples?.failureCount,
+    health?.final?.failureCount
+  ];
+  return counts.every(validFailureCount)
+    ? counts.reduce((total, count) => total + count, 0)
+    : null;
 }
 
 export function measurementMetricValue(measurements, metric) {
@@ -271,12 +276,17 @@ function emptyHealthSummary(scope) {
 function summarizeFinalHealth(metrics) {
   const samples = Array.isArray(metrics?.healthSamples) ? metrics.healthSamples : [];
   const summary = samples.length > 0 ? summarizeSamples(samples.map((sample) => ({ ...sample, phaseId: "final" })), "final") : null;
-  const singleSampleFailureCount = healthFailureCount([metrics?.health]);
-  const failureCount = summary?.failureCount ?? metrics?.healthSummary?.failureCount ?? singleSampleFailureCount;
+  const healthSummaryFailureCount = validFailureCount(metrics?.healthSummary?.failureCount)
+    ? metrics.healthSummary.failureCount
+    : null;
+  const singleSampleFailureCount = typeof metrics?.health?.ok === "boolean"
+    ? healthFailureCount([metrics.health])
+    : null;
+  const failureCount = summary?.failureCount ?? healthSummaryFailureCount ?? singleSampleFailureCount;
   const maxMs = summary?.maxMs ?? metrics?.healthSummary?.maxMs ?? metrics?.health?.durationMs ?? null;
   const p95Ms = summary?.p95Ms ?? metrics?.healthSummary?.p95Ms ?? null;
   const gatewayState = metrics?.service?.gatewayState ?? null;
-  const ok = metrics
+  const ok = Number.isFinite(failureCount)
     ? (gatewayState === null ? failureCount === 0 : gatewayState === "running" && failureCount === 0)
     : null;
   return {
@@ -310,6 +320,10 @@ function selectSlowestSample(summaries) {
 
 function healthFailureCount(samples) {
   return samples.filter((sample) => sample && sample.ok === false).length;
+}
+
+function validFailureCount(value) {
+  return Number.isInteger(value) && value >= 0;
 }
 
 function sum(entries, key) {

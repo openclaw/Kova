@@ -202,12 +202,15 @@ export function computeProviderTurnAttribution(result, providerEvidence) {
   }
   const commandStartedAt = result.startedAtEpochMs;
   const commandFinishedAt = result.finishedAtEpochMs;
+  const providerRequests = Array.isArray(providerEvidence?.requests)
+    ? providerEvidence.requests
+    : [];
   const requestsInCommand = providerEvidence?.available === true
-    ? requestsWithinCommand(providerEvidence.requests ?? [], commandStartedAt, commandFinishedAt)
+    ? requestsWithinCommand(providerRequests, commandStartedAt, commandFinishedAt)
     : [];
   const requests = requestsInCommand.length > 0
     ? requestsInCommand
-    : requestsAfterCommandTimeout(providerEvidence?.requests ?? [], commandStartedAt, commandFinishedAt);
+    : requestsAfterCommandTimeout(providerRequests, commandStartedAt, commandFinishedAt);
   const firstRequest = requests[0] ?? null;
   const lastResponse = requests
     .filter((request) => typeof request.respondedAtEpochMs === "number")
@@ -215,7 +218,7 @@ export function computeProviderTurnAttribution(result, providerEvidence) {
     .at(-1) ?? null;
   const firstProviderRequestAt = firstRequest?.receivedAtEpochMs;
   const lastProviderResponseAt = lastResponse?.respondedAtEpochMs;
-  if (![commandStartedAt, commandFinishedAt, firstProviderRequestAt, lastProviderResponseAt].every((value) => typeof value === "number")) {
+  if (![commandStartedAt, commandFinishedAt, firstProviderRequestAt].every(Number.isFinite)) {
     return {
       schemaVersion: "kova.providerTurnAttribution.v1",
       command: result.command,
@@ -251,8 +254,6 @@ export function computeProviderTurnAttribution(result, providerEvidence) {
       providerEvidenceAvailable: providerEvidence?.available === true
     };
   }
-  const attributionWindowEnd = Math.max(commandFinishedAt, lastProviderResponseAt);
-  const attributionTotalMs = Math.max(0, attributionWindowEnd - commandStartedAt);
   const providerAfterCommandEnd = firstProviderRequestAt > commandFinishedAt;
   const firstByte = requests
     .filter((request) => typeof request.firstByteLatencyMs === "number")
@@ -260,6 +261,57 @@ export function computeProviderTurnAttribution(result, providerEvidence) {
   const firstChunk = requests
     .filter((request) => typeof request.firstChunkLatencyMs === "number")
     .toSorted((left, right) => left.firstChunkLatencyMs - right.firstChunkLatencyMs)[0] ?? null;
+  const requestSummary = {
+    requestCount: requests.length,
+    firstByteLatencyMs: firstByte?.firstByteLatencyMs ?? null,
+    firstChunkLatencyMs: firstChunk?.firstChunkLatencyMs ?? null,
+    routes: summarizeBy(requests, "route"),
+    models: summarizeBy(requests, "model"),
+    statuses: summarizeBy(requests, "status"),
+    modes: summarizeBy(requests, "mode"),
+    outcomes: summarizeBy(requests, "outcome"),
+    errorClasses: summarizeBy(requests, "errorClass"),
+    usage: summarizeUsage(requests),
+    errors: requestErrors(requests)
+  };
+  const providerRequestTiming = requestsInCommand.length > 0 ? "within-command" : "after-command-timeout";
+  const providerLateByMs = providerAfterCommandEnd
+    ? Math.max(0, firstProviderRequestAt - commandFinishedAt)
+    : null;
+  if (!Number.isFinite(lastProviderResponseAt)) {
+    const totalTurnMs = Math.max(0, commandFinishedAt - commandStartedAt);
+    const preProviderMs = providerAfterCommandEnd
+      ? null
+      : Math.max(0, firstProviderRequestAt - commandStartedAt);
+    return {
+      schemaVersion: "kova.providerTurnAttribution.v1",
+      command: result.command,
+      commandStartedAt: result.startedAt,
+      commandStartedAtEpochMs: commandStartedAt,
+      commandFinishedAt: result.finishedAt,
+      commandFinishedAtEpochMs: commandFinishedAt,
+      totalTurnMs,
+      preProviderMs,
+      providerFinalMs: null,
+      postProviderMs: null,
+      firstProviderRequestAt: firstRequest.receivedAt,
+      firstProviderRequestAtEpochMs: firstProviderRequestAt,
+      lastProviderResponseAt: null,
+      lastProviderResponseAtEpochMs: null,
+      ...requestSummary,
+      providerDominates: null,
+      preProviderDominates: preProviderMs === null
+        ? null
+        : dominanceRatio(preProviderMs, totalTurnMs),
+      missingProviderRequest: false,
+      providerRequestTiming,
+      providerAfterCommandEnd,
+      providerLateByMs,
+      providerEvidenceAvailable: true
+    };
+  }
+  const attributionWindowEnd = Math.max(commandFinishedAt, lastProviderResponseAt);
+  const attributionTotalMs = Math.max(0, attributionWindowEnd - commandStartedAt);
   return {
     schemaVersion: "kova.providerTurnAttribution.v1",
     command: result.command,
@@ -275,23 +327,13 @@ export function computeProviderTurnAttribution(result, providerEvidence) {
     firstProviderRequestAtEpochMs: firstProviderRequestAt,
     lastProviderResponseAt: lastResponse.respondedAt,
     lastProviderResponseAtEpochMs: lastProviderResponseAt,
-    requestCount: requests.length,
-    firstByteLatencyMs: firstByte?.firstByteLatencyMs ?? null,
-    firstChunkLatencyMs: firstChunk?.firstChunkLatencyMs ?? null,
-    routes: summarizeBy(requests, "route"),
-    models: summarizeBy(requests, "model"),
-    statuses: summarizeBy(requests, "status"),
-    modes: summarizeBy(requests, "mode"),
-    outcomes: summarizeBy(requests, "outcome"),
-    errorClasses: summarizeBy(requests, "errorClass"),
-    usage: summarizeUsage(requests),
-    errors: requestErrors(requests),
+    ...requestSummary,
     providerDominates: dominanceRatio(Math.max(0, lastProviderResponseAt - firstProviderRequestAt), attributionTotalMs),
     preProviderDominates: dominanceRatio(Math.max(0, firstProviderRequestAt - commandStartedAt), attributionTotalMs),
     missingProviderRequest: false,
-    providerRequestTiming: requestsInCommand.length > 0 ? "within-command" : "after-command-timeout",
+    providerRequestTiming,
     providerAfterCommandEnd,
-    providerLateByMs: providerAfterCommandEnd ? Math.max(0, firstProviderRequestAt - commandFinishedAt) : null,
+    providerLateByMs,
     providerEvidenceAvailable: true
   };
 }
