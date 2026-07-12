@@ -1401,6 +1401,27 @@ function evaluationViolationHelpersCheck() {
       "FAIL",
       "malformed Kova evidence does not hide an established target failure"
     );
+    const mixedRecord = {
+      status: "PASS",
+      phases: [{
+        id: "status",
+        results: [{
+          command: "ocm @kova-self-check -- status",
+          status: 0,
+          durationMs: 51
+        }, {
+          command: "ocm @kova-self-check -- status",
+          status: 0,
+          durationMs: "malformed"
+        }]
+      }]
+    };
+    evaluateRecord(mixedRecord, { thresholds: { statusMs: 50 } });
+    assertEqual(
+      mixedRecord.status,
+      "FAIL",
+      "confirmed target violations take precedence over malformed Kova evidence"
+    );
     return {
       id: "evaluation-violation-helpers",
       status: "PASS",
