@@ -1,5 +1,6 @@
 import { readFile, readdir } from "node:fs/promises";
 import { basename, join, relative } from "node:path";
+import JSON5 from "json5";
 import { quoteShell, runCommand } from "../commands.mjs";
 import { positiveIntegerFlag } from "../run/options.mjs";
 import { resolveFromCwd } from "../cli.mjs";
@@ -8,6 +9,8 @@ import { discoverOpenClawChannelCapabilityCatalogSource } from "./channel-capabi
 
 const inventorySchemaVersion = "kova.inventory.plan.v1";
 const manifestSearchDirs = ["apps", "extensions", "packages", "plugins", "src"];
+const manifestCandidateLimit = 300;
+const manifestCandidateCollectionLimit = manifestCandidateLimit + 1;
 const ignoredDirs = new Set([
   ".git",
   ".next",
@@ -326,13 +329,13 @@ async function discoverManifests(repoPath) {
   const candidates = [];
   const roots = manifestSearchDirs.map((dir) => join(repoPath, dir));
   for (const root of roots) {
-    await collectManifestCandidates(root, repoPath, candidates);
+    await collectManifestCandidates(root, candidates);
   }
 
   const capabilities = [];
-  for (const path of candidates.slice(0, 300)) {
+  for (const path of selectManifestCandidates(candidates)) {
     try {
-      const manifest = JSON.parse(await readFile(path, "utf8"));
+      const manifest = parseManifest(path, await readFile(path, "utf8"));
       const kind = classifyManifest(path, manifest);
       if (!kind) {
         continue;
@@ -351,7 +354,7 @@ async function discoverManifests(repoPath) {
         }
       });
     } catch {
-      // Non-JSON manifest-looking files are ignored; registry validation catches Kova contracts.
+      // Unparseable manifest-looking files are ignored; registry validation catches Kova contracts.
     }
   }
 
@@ -363,14 +366,14 @@ async function discoverManifests(repoPath) {
       roots: roots.map((root) => relative(repoPath, root)),
       candidateCount: candidates.length,
       capabilityCount: capabilities.length,
-      truncated: candidates.length > 300
+      truncated: candidates.length > manifestCandidateLimit
     },
     capabilities
   };
 }
 
-async function collectManifestCandidates(root, repoPath, candidates, depth = 0) {
-  if (depth > 8 || candidates.length > 300) {
+async function collectManifestCandidates(root, candidates, depth = 0) {
+  if (depth > 8 || candidates.length >= manifestCandidateCollectionLimit) {
     return;
   }
 
@@ -383,11 +386,15 @@ async function collectManifestCandidates(root, repoPath, candidates, depth = 0) 
     }
     throw error;
   }
+  entries.sort((left, right) => comparePaths(left.name, right.name));
 
   for (const entry of entries) {
+    if (candidates.length >= manifestCandidateCollectionLimit) {
+      return;
+    }
     if (entry.isDirectory()) {
       if (!ignoredDirs.has(entry.name)) {
-        await collectManifestCandidates(join(root, entry.name), repoPath, candidates, depth + 1);
+        await collectManifestCandidates(join(root, entry.name), candidates, depth + 1);
       }
       continue;
     }
@@ -395,15 +402,31 @@ async function collectManifestCandidates(root, repoPath, candidates, depth = 0) 
       continue;
     }
     const name = entry.name.toLowerCase();
-    if (name === "plugin.json" || name === "manifest.json" || name.endsWith(".manifest.json")) {
+    if (
+      name === "openclaw.plugin.json" ||
+      name === "plugin.json" ||
+      name === "manifest.json" ||
+      name.endsWith(".manifest.json")
+    ) {
       candidates.push(join(root, entry.name));
     }
   }
 }
 
-function classifyManifest(path, manifest) {
-  const lowerPath = path.toLowerCase();
-  if (manifest.openclawPlugin === true || manifest.plugin === true || lowerPath.endsWith("/plugin.json")) {
+export function selectManifestCandidates(candidates) {
+  return [...candidates]
+    .sort((left, right) => comparePaths(normalizePath(left), normalizePath(right)))
+    .slice(0, manifestCandidateLimit);
+}
+
+export function classifyManifest(path, manifest) {
+  const lowerPath = normalizePath(path).toLowerCase();
+  if (
+    manifest.openclawPlugin === true ||
+    manifest.plugin === true ||
+    lowerPath.endsWith("/openclaw.plugin.json") ||
+    lowerPath.endsWith("/plugin.json")
+  ) {
     return "plugin-manifest";
   }
   if (manifest.openclawExtension === true || manifest.extension === true || lowerPath.includes("/extensions/")) {
@@ -413,6 +436,31 @@ function classifyManifest(path, manifest) {
     return lowerPath.includes("plugin") ? "plugin-manifest" : "extension-manifest";
   }
   return null;
+}
+
+function parseManifest(path, raw) {
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    if (!normalizePath(path).toLowerCase().endsWith("/openclaw.plugin.json")) {
+      throw error;
+    }
+    return JSON5.parse(raw);
+  }
+}
+
+function normalizePath(path) {
+  return String(path).replaceAll("\\", "/");
+}
+
+function comparePaths(left, right) {
+  if (left < right) {
+    return -1;
+  }
+  if (left > right) {
+    return 1;
+  }
+  return 0;
 }
 
 function classifyCapability(capability, surfaces) {
