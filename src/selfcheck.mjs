@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { access, chmod, link, lstat, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, truncate, utimes, writeFile } from "node:fs/promises";
+import { access, chmod, link, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, symlink, truncate, utimes, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
