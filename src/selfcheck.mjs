@@ -18,6 +18,7 @@ import { collectEnvMetrics } from "./metrics.mjs";
 import { compactEvaluatedTimelineEvidence, evaluateRecord } from "./evaluator.mjs";
 import {
   buildHealthMeasurement,
+  healthKnownFailures,
   healthTotalFailures,
   healthTotalFailuresComplete
 } from "./health.mjs";
@@ -3037,7 +3038,8 @@ function evidenceLedgerGatingCheck() {
     const health = buildHealthMeasurement(failedMetricsRecord);
     assertEqual(health.final.ok, null, "failed final metrics health is unknown");
     assertEqual(health.final.failureCount, null, "failed final metrics do not report zero failures");
-    assertEqual(healthTotalFailures(health), 0, "missing final metrics retain known health failure lower bound");
+    assertEqual(healthTotalFailures(health), null, "missing final metrics keep exact health failure total unknown");
+    assertEqual(healthKnownFailures(health), 0, "missing final metrics retain known health failure lower bound");
     assertEqual(healthTotalFailuresComplete(health), false, "missing final metrics mark health total incomplete");
     attachEvidenceLedger(failedMetricsRecord);
     applyEvidenceLedgerGating(failedMetricsRecord);
@@ -3117,7 +3119,8 @@ function evidenceLedgerGatingCheck() {
       }]
     };
     const knownFailureHealth = buildHealthMeasurement(knownFailureRecord);
-    assertEqual(healthTotalFailures(knownFailureHealth), 1, "missing final metrics retain observed health failures");
+    assertEqual(healthTotalFailures(knownFailureHealth), null, "observed failures do not fabricate an exact total");
+    assertEqual(healthKnownFailures(knownFailureHealth), 1, "missing final metrics retain observed health failures");
     assertEqual(healthTotalFailuresComplete(knownFailureHealth), false, "observed lower bound remains incomplete");
 
     const failedPhaseRecord = {
