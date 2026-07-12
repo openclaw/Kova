@@ -3123,6 +3123,34 @@ function evidenceLedgerGatingCheck() {
     assertEqual(healthKnownFailures(knownFailureHealth), 1, "missing final metrics retain observed health failures");
     assertEqual(healthTotalFailuresComplete(knownFailureHealth), false, "observed lower bound remains incomplete");
 
+    const incompleteServiceFailureRecord = {
+      ...record,
+      status: "PASS",
+      phases: [],
+      finalMetrics: {
+        error: null,
+        service: { gatewayState: " " },
+        health: { ok: false, durationMs: 5 },
+        healthSamples: [{ ok: false, durationMs: 5 }],
+        healthSummary: { count: 1, failureCount: 1 }
+      }
+    };
+    const incompleteServiceHealth = buildHealthMeasurement(incompleteServiceFailureRecord);
+    assertEqual(incompleteServiceHealth.final.ok, null, "malformed service state keeps final health indeterminate");
+    assertEqual(incompleteServiceHealth.final.failureCount, 1, "malformed service state retains observed final failure");
+    evaluateRecord(incompleteServiceFailureRecord, { thresholds: { finalHealthFailures: 0 } });
+    assertEqual(
+      incompleteServiceFailureRecord.violations.some((violation) => violation.metric === "finalHealthFailures"),
+      true,
+      "observed final failure remains a threshold violation"
+    );
+    attachEvidenceLedger(incompleteServiceFailureRecord);
+    assertEqual(
+      incompleteServiceFailureRecord.evidenceLedger.entries.find((entry) => entry.id === "collector:final-metrics")?.status,
+      "missing",
+      "blank final gateway state is incomplete evidence"
+    );
+
     const failedPhaseRecord = {
       ...record,
       status: "FAIL",

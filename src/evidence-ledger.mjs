@@ -4,6 +4,7 @@ import {
   commandResultPassed
 } from "./measurement-contract.mjs";
 import {
+  validGatewayState,
   validHealthSamples,
   validHealthSummaryFailureCount
 } from "./health.mjs";
@@ -168,7 +169,7 @@ function finalMetricsEvidence(metrics) {
       reason: String(metrics.error) || "final metrics collection failed"
     };
   }
-  if (typeof metrics.service?.gatewayState !== "string") {
+  if (!validGatewayState(metrics.service?.gatewayState)) {
     return { status: "missing", reason: "final service state was not collected" };
   }
   const healthSamples = validHealthSamples(metrics.healthSamples);
