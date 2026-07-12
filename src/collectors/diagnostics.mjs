@@ -1,4 +1,5 @@
-import { open as openFile, readFile, readdir, stat } from "node:fs/promises";
+import { mkdtemp, open as openFile, readFile, readdir, rm, stat, utimes } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { quoteShell, runCommand } from "../commands.mjs";
 import { ocmEnvExecShell } from "../ocm/commands.mjs";
@@ -130,9 +131,14 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
   const commandExitReserveMs = Math.min(500, Math.max(250, Math.floor(commandBudgetMs * 0.1)));
   const pollAttempts = Math.max(1, Math.floor((commandBudgetMs - commandExitReserveMs) / 250));
   const sessionDeadlineEpochMs = requestedAtEpochMs + normalizedTimeoutMs;
-  // The legacy report wrapper can run after a heap-triggered signal, so only
-  // that explicit path uses the caller's signal timestamp instead of this marker.
-  const freshnessFilter = signalAlreadySent ? "" : '-newer "$marker"';
+  const signalMarker = signalAlreadySent
+    ? await createTimestampMarker(signalSentAtEpochMs)
+    : null;
+  // The legacy report wrapper uses the caller's signal timestamp; new triggers
+  // create their marker immediately before signaling.
+  const markerCommand = signalMarker
+    ? `marker=${quoteShell(signalMarker.path)}`
+    : 'marker=$(mktemp); trap \'rm -f "$marker"\' EXIT; touch "$marker"';
   const signalCommand = signalAlreadySent ? "sleep 1" : `kill -USR2 ${normalizedPid}`;
   const searchRoots = [
     '"$OPENCLAW_HOME"',
@@ -147,24 +153,26 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
     requestDiagnosticReport ? '-name "report.*.json"' : null,
     requestDiagnosticReport ? '-name "*diagnostic*.json"' : null
   ].filter(Boolean).join(" -o ");
-  const artifactOutputCommand = `{ find ${searchRoots} -maxdepth 6 -type f \\( ${artifactNamePredicates} \\) ${freshnessFilter} -print 2>/dev/null || :; } | awk '/[.]heapsnapshot$/ { if (heap++ < 25) print; next } { if (report++ < 25) print }'`;
+  const artifactOutputCommand = `{ find ${searchRoots} -maxdepth 6 -type f \\( ${artifactNamePredicates} \\) -newer "$marker" -print 2>/dev/null || :; } | awk '/[.]heapsnapshot$/ { if (heap++ < 25) print; next } { if (report++ < 25) print }'`;
   const command = ocmEnvExecShell(
     envName,
-    `set -eu; marker=$(mktemp); trap 'rm -f "$marker"' EXIT; touch "$marker"; ${signalCommand}; attempts=0; while :; do heap_count=$({ find ${searchRoots} -maxdepth 6 -type f -name "*.heapsnapshot" ${freshnessFilter} -print 2>/dev/null || :; } | wc -l | tr -d ' '); report_count=$({ find ${searchRoots} -maxdepth 6 -type f \\( -name "report.*.json" -o -name "*diagnostic*.json" \\) ${freshnessFilter} -print 2>/dev/null || :; } | wc -l | tr -d ' '); if ${readyConditions}; then break; fi; if [ "$attempts" -ge ${pollAttempts} ]; then break; fi; attempts=$((attempts + 1)); sleep 0.25; done; ${artifactOutputCommand}`
+    `set -eu; ${markerCommand}; ${signalCommand}; attempts=0; while :; do heap_count=$({ find ${searchRoots} -maxdepth 6 -type f -name "*.heapsnapshot" -newer "$marker" -print 2>/dev/null || :; } | wc -l | tr -d ' '); report_count=$({ find ${searchRoots} -maxdepth 6 -type f \\( -name "report.*.json" -o -name "*diagnostic*.json" \\) -newer "$marker" -print 2>/dev/null || :; } | wc -l | tr -d ' '); if ${readyConditions}; then break; fi; if [ "$attempts" -ge ${pollAttempts} ]; then break; fi; attempts=$((attempts + 1)); sleep 0.25; done; ${artifactOutputCommand}`
   );
-  const result = await runCommand(command, {
-    // OCM invocation, polling, and artifact retention share one caller-owned deadline.
-    timeoutMs: commandBudgetMs,
-    maxOutputChars: 100000,
-    env: options.commandEnv
-  });
-  let files = result.status === 0
+  let result;
+  try {
+    result = await runCommand(command, {
+      // OCM invocation, polling, and artifact retention share one caller-owned deadline.
+      timeoutMs: commandBudgetMs,
+      maxOutputChars: 100000,
+      env: options.commandEnv
+    });
+  } finally {
+    await signalMarker?.cleanup();
+  }
+  const files = result.status === 0
     ? result.stdout.split("\n").map((line) => line.trim()).filter(Boolean)
     : [];
   if (result.status === 0) {
-    if (signalAlreadySent) {
-      files = await filesModifiedAfter(files, signalSentAtEpochMs);
-    }
     files.push(...await collectLocalDiagnosticReports(
       artifactDir,
       signalAlreadySent ? signalSentAtEpochMs : requestedAtEpochMs
@@ -287,18 +295,17 @@ async function collectLocalDiagnosticReports(artifactDir, modifiedAfterEpochMs =
   }
 }
 
-async function filesModifiedAfter(paths, modifiedAfterEpochMs) {
-  const fresh = [];
-  for (const path of paths) {
-    try {
-      if ((await stat(path)).mtimeMs >= modifiedAfterEpochMs) {
-        fresh.push(path);
-      }
-    } catch {
-      // A concurrently removed artifact is not retained as trigger evidence.
-    }
-  }
-  return fresh;
+async function createTimestampMarker(epochMs) {
+  const directory = await mkdtemp(join(tmpdir(), "kova-diagnostic-marker-"));
+  const path = join(directory, "signal");
+  const handle = await openFile(path, "wx");
+  await handle.close();
+  const timestamp = new Date(epochMs);
+  await utimes(path, timestamp, timestamp);
+  return {
+    path,
+    cleanup: () => rm(directory, { recursive: true, force: true })
+  };
 }
 
 function diagnosticTriggerResult(schemaVersion, options = {}) {
