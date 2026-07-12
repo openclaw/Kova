@@ -232,26 +232,27 @@ async function forwardShutdownSignal(signal) {
       // Fall through to the forced pass.
     }
   }));
-  for (const child of children) {
+  const forcedChildren = forceKillActiveChildren();
+  await Promise.all(forcedChildren.map(async (child) => {
     try {
-      if (processTreeIsRunning(child)) {
-        signalProcessTree(child, "SIGKILL");
-      }
+      await waitForProcessTreeExit(child, shutdownTerminationGraceMs);
     } catch {
-      // Process exit is already committed; this is best-effort cleanup.
+      // The exit hook makes one final synchronous kill pass.
     }
-  }
+  }));
   process.exit(signalExitCode(signal));
 }
 
 function forceKillActiveChildren() {
-  for (const child of activeDetachedChildren) {
+  const children = [...activeDetachedChildren];
+  for (const child of children) {
     try {
       signalProcessTree(child, "SIGKILL");
     } catch {
       // Exit hooks cannot recover; only avoid leaving children when possible.
     }
   }
+  return children;
 }
 
 function signalExitCode(signal) {
