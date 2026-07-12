@@ -10,6 +10,9 @@ export const DIAGNOSTIC_ARTIFACTS_SCHEMA = "kova.diagnosticArtifacts.v1";
 export const HEAP_SNAPSHOT_SCHEMA = "kova.heapSnapshot.v1";
 export const DIAGNOSTIC_REPORT_SCHEMA = "kova.diagnosticReport.v1";
 const MIN_DIAGNOSTIC_TIMEOUT_MS = 2500;
+const DIAGNOSTIC_STABILITY_MS = 1000;
+const DIAGNOSTIC_COMMAND_EXIT_RESERVE_MS = 250;
+const DIAGNOSTIC_POLL_INTERVAL_MS = 250;
 const MAX_DIAGNOSTIC_REPORT_BYTES = 16 * 1024 * 1024;
 const DIAGNOSTIC_VALIDATION_CONCURRENCY = 2;
 
@@ -125,13 +128,15 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
       diagnosticReport: diagnosticTriggerResult(DIAGNOSTIC_REPORT_SCHEMA, { requested: requestDiagnosticReport, error })
     };
   }
-  const stabilizationReserveMs = Math.min(
-    2000,
-    Math.max(1500, Math.floor(normalizedTimeoutMs * 0.25))
+  const retentionReserveMs = DIAGNOSTIC_STABILITY_MS - DIAGNOSTIC_COMMAND_EXIT_RESERVE_MS;
+  const commandBudgetMs = normalizedTimeoutMs - retentionReserveMs;
+  const pollAttempts = Math.max(
+    1,
+    Math.floor(
+      (commandBudgetMs - DIAGNOSTIC_COMMAND_EXIT_RESERVE_MS)
+      / DIAGNOSTIC_POLL_INTERVAL_MS
+    )
   );
-  const commandBudgetMs = normalizedTimeoutMs - stabilizationReserveMs;
-  const commandExitReserveMs = Math.min(500, Math.max(250, Math.floor(commandBudgetMs * 0.1)));
-  const pollAttempts = Math.max(1, Math.floor((commandBudgetMs - commandExitReserveMs) / 250));
   const sessionDeadlineEpochMs = requestedAtEpochMs + normalizedTimeoutMs;
   const signalMarker = signalAlreadySent
     ? await createTimestampMarker(signalSentAtEpochMs)
@@ -158,7 +163,7 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
   const artifactOutputCommand = `{ find ${searchRoots} -maxdepth 6 -type f \\( ${artifactNamePredicates} \\) -newer "$marker" -print 2>/dev/null || :; } | awk '/[.]heapsnapshot$/ { if (heap++ < 25) print; next } { if (report++ < 25) print }'`;
   const command = ocmEnvExecShell(
     envName,
-    `set -eu; ${markerCommand}; ${signalCommand}; attempts=0; while :; do heap_count=$({ find ${searchRoots} -maxdepth 6 -type f -name "*.heapsnapshot" -newer "$marker" -print 2>/dev/null || :; } | wc -l | tr -d ' '); report_count=$({ find ${searchRoots} -maxdepth 6 -type f \\( -name "report.*.json" -o -name "*diagnostic*.json" \\) -newer "$marker" -print 2>/dev/null || :; } | wc -l | tr -d ' '); if ${readyConditions}; then break; fi; if [ "$attempts" -ge ${pollAttempts} ]; then break; fi; attempts=$((attempts + 1)); sleep 0.25; done; ${artifactOutputCommand}`
+    `set -eu; ${markerCommand}; ${signalCommand}; attempts=0; while :; do heap_count=$({ find ${searchRoots} -maxdepth 6 -type f -name "*.heapsnapshot" -newer "$marker" -print 2>/dev/null || :; } | wc -l | tr -d ' '); report_count=$({ find ${searchRoots} -maxdepth 6 -type f \\( -name "report.*.json" -o -name "*diagnostic*.json" \\) -newer "$marker" -print 2>/dev/null || :; } | wc -l | tr -d ' '); if ${readyConditions}; then break; fi; if [ "$attempts" -ge ${pollAttempts} ]; then break; fi; attempts=$((attempts + 1)); sleep ${DIAGNOSTIC_POLL_INTERVAL_MS / 1000}; done; ${artifactOutputCommand}`
   );
   let result;
   try {
@@ -349,7 +354,7 @@ async function waitForStableFile(path, timeoutMs, options = {}) {
     if (typeof options.maxBytes === "number" && state.size > options.maxBytes) {
       throw new Error(`diagnostic report exceeds ${options.maxBytes} byte validation limit: ${path}`);
     }
-    if (state.size > 0 && observedAt - state.mtimeMs >= 1000) {
+    if (state.size > 0 && observedAt - state.mtimeMs >= DIAGNOSTIC_STABILITY_MS) {
       const valid = options.jsonValidation === "full"
         ? await isValidJsonFile(path, options.maxBytes)
         : (options.jsonValidation === "envelope" ? await hasJsonEnvelope(path) : true);
