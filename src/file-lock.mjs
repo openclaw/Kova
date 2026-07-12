@@ -20,6 +20,9 @@ export async function withFileLock(lockPath, callback, options = {}) {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const retryMs = options.retryMs ?? DEFAULT_RETRY_MS;
   const fileMode = options.fileMode ?? 0o600;
+  const linkFile = options.linkFile ?? link;
+  const openFallbackFile = options.openFallbackFile ?? open;
+  let releaseAcquisitionHandle = null;
 
   while (true) {
     if (await reclamationInProgress(lockPath, staleMs)) {
@@ -27,13 +30,27 @@ export async function withFileLock(lockPath, callback, options = {}) {
       continue;
     }
     try {
-      await writeExclusiveMetadata(lockPath, lockMetadata(token), fileMode);
+      releaseAcquisitionHandle = await writeExclusiveMetadata(
+        lockPath,
+        lockMetadata(token),
+        fileMode,
+        linkFile,
+        openFallbackFile
+      );
       break;
     } catch (error) {
       if (error?.code !== "EEXIST") {
         throw error;
       }
-      if (await reclaimAbandonedLock(lockPath, staleMs, fileMode)) {
+      if (
+        await reclaimAbandonedLock(
+          lockPath,
+          staleMs,
+          fileMode,
+          linkFile,
+          openFallbackFile
+        )
+      ) {
         continue;
       }
       await waitForRetry(startedAt, timeoutMs, retryMs, lockPath);
@@ -43,11 +60,20 @@ export async function withFileLock(lockPath, callback, options = {}) {
   try {
     return await callback();
   } finally {
+    if (releaseAcquisitionHandle) {
+      await releaseAcquisitionHandle();
+    }
     await removeOwnedFile(lockPath, token);
   }
 }
 
-async function reclaimAbandonedLock(lockPath, staleMs, fileMode) {
+async function reclaimAbandonedLock(
+  lockPath,
+  staleMs,
+  fileMode,
+  linkFile,
+  openFallbackFile
+) {
   const snapshot = await readSnapshot(lockPath);
   if (!snapshot || !isAbandoned(snapshot, staleMs)) {
     return false;
@@ -55,8 +81,15 @@ async function reclaimAbandonedLock(lockPath, staleMs, fileMode) {
 
   const claimPath = `${lockPath}.reclaim-${snapshot.fingerprint}`;
   const claimToken = randomUUID();
+  let releaseClaimHandle = null;
   try {
-    await writeExclusiveMetadata(claimPath, lockMetadata(claimToken), fileMode);
+    releaseClaimHandle = await writeExclusiveMetadata(
+      claimPath,
+      lockMetadata(claimToken),
+      fileMode,
+      linkFile,
+      openFallbackFile
+    );
   } catch (error) {
     if (error?.code === "EEXIST") {
       return false;
@@ -80,6 +113,9 @@ async function reclaimAbandonedLock(lockPath, staleMs, fileMode) {
     }
     throw error;
   } finally {
+    if (releaseClaimHandle) {
+      await releaseClaimHandle();
+    }
     await removeOwnedFile(claimPath, claimToken);
   }
 }
@@ -119,14 +155,21 @@ async function reclamationInProgress(lockPath, staleMs) {
   return active;
 }
 
-async function writeExclusiveMetadata(path, metadata, fileMode) {
+async function writeExclusiveMetadata(
+  path,
+  metadata,
+  fileMode,
+  linkFile,
+  openFallbackFile
+) {
   const candidatePath = join(
     dirname(path),
     `.${basename(path)}.candidate-${metadata.token}`
   );
+  const content = `${JSON.stringify(metadata)}\n`;
   const handle = await open(candidatePath, "wx", fileMode);
   try {
-    await handle.writeFile(`${JSON.stringify(metadata)}\n`, "utf8");
+    await handle.writeFile(content, "utf8");
     await handle.chmod(fileMode);
     await handle.sync();
   } finally {
@@ -135,9 +178,60 @@ async function writeExclusiveMetadata(path, metadata, fileMode) {
   try {
     // Linking a fully written candidate makes the visible lock complete at
     // creation time and preserves O_EXCL semantics across processes.
-    await link(candidatePath, path);
+    await linkFile(candidatePath, path);
+  } catch (error) {
+    if (!linkIsUnsupported(error)) {
+      throw error;
+    }
+    // O_EXCL still preserves mutual exclusion on filesystems without hard
+    // links. Peers treat the brief incomplete-write window as fail-closed.
+    return await writeExclusiveMetadataWithoutLink(
+      path,
+      content,
+      fileMode,
+      openFallbackFile
+    );
   } finally {
     await rm(candidatePath, { force: true });
+  }
+  return null;
+}
+
+function linkIsUnsupported(error) {
+  return ["ENOSYS", "ENOTSUP", "EOPNOTSUPP", "EPERM"].includes(error?.code);
+}
+
+async function writeExclusiveMetadataWithoutLink(
+  path,
+  content,
+  fileMode,
+  openFallbackFile
+) {
+  const handle = await openFallbackFile(path, "wx", fileMode);
+  try {
+    await handle.writeFile(content, "utf8");
+    await handle.chmod(fileMode);
+    await handle.sync();
+  } catch (error) {
+    await handle.close().catch(() => {});
+    // A partial visible lock must remain fail-closed. Portable pathname APIs
+    // cannot prove ownership again before unlinking a possible replacement.
+    throw error;
+  }
+  try {
+    await handle.close();
+    return null;
+  } catch (error) {
+    if (error?.code === "EBADF") {
+      return null;
+    }
+    return async () => {
+      await handle.close().catch((closeError) => {
+        if (closeError?.code !== "EBADF") {
+          throw closeError;
+        }
+      });
+    };
   }
 }
 
