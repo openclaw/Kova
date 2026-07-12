@@ -1,7 +1,7 @@
 {
   "schemaVersion": "kova.web-payload.v1",
   "ver": "2026.4.30-internal",
-  "releaseDate": "2026-04-30",
+  "releaseDate": "<iso>",
   "sha": "local-build",
   "passed": true,
   "input": {

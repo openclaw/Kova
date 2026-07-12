@@ -126,7 +126,7 @@ export async function runPublishCommand(flags) {
   const receipt = {
     schemaVersion: WEB_PAYLOAD_SCHEMA_VERSION,
     ver: parsed.ver,
-    releaseDate: augmented.releaseDate,
+    releaseDate: parsed.releaseDate,
     sha: parsed.sha,
     passed: parsed.passed,
     input: { path: displayPath(inputPath), kind },
