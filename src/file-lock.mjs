@@ -172,7 +172,9 @@ async function removeOwnedFile(path, token) {
 function isAbandoned(snapshot, staleMs) {
   const pid = snapshot.owner?.pid;
   if (Number.isInteger(pid) && pid > 0) {
-    return !processIsAlive(pid);
+    // PID liveness is useful for fast crash recovery, but PID reuse must not
+    // wedge these short publication critical sections forever.
+    return !processIsAlive(pid) || snapshot.ageMs >= staleMs;
   }
   return snapshot.ageMs >= staleMs;
 }

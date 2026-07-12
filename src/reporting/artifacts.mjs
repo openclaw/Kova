@@ -210,6 +210,7 @@ async function publishBundlePairLocked({ archive, outputPath, checksumPath, chec
     stagedPath: `${entry.path}.${randomUUID()}.tmp`
   }));
   let archivePublished = false;
+  let checksumPublished = false;
   try {
     for (const entry of staged) {
       await writeDurableFile(entry.stagedPath, entry.content);
@@ -227,24 +228,35 @@ async function publishBundlePairLocked({ archive, outputPath, checksumPath, chec
       const existingHash = existing ? createHash("sha256").update(existing).digest("hex") : null;
       const expectedHash = createHash("sha256").update(archive).digest("hex");
       const existingChecksum = checksumExists ? await readFile(checksumPath, "utf8") : null;
-      if (existingHash !== expectedHash || (existingChecksum !== null && existingChecksum !== checksum)) {
+      if (
+        (existingHash !== null && existingHash !== expectedHash) ||
+        (existingChecksum !== null && existingChecksum !== checksum)
+      ) {
         throw new Error(`bundle destination collision: ${outputPath}`);
       }
-      if (!checksumExists) {
+      if (!checksumExists && outputExists) {
         await rename(staged[1].stagedPath, checksumPath);
+      } else if (!outputExists && checksumExists) {
+        await rename(staged[0].stagedPath, outputPath);
       }
       return;
     }
+    await rename(staged[1].stagedPath, checksumPath);
+    checksumPublished = true;
+    // The archive is the bundle commit marker. A checksum-only crash state is
+    // harmless and is completed by the recovery branch above.
     await rename(staged[0].stagedPath, outputPath);
     archivePublished = true;
-    await rename(staged[1].stagedPath, checksumPath);
   } catch (error) {
     if (archivePublished) {
       await rm(outputPath, { force: true });
     }
+    if (checksumPublished) {
+      await rm(checksumPath, { force: true });
+    }
     throw error;
   } finally {
-    await Promise.all(staged.map((entry) => rm(entry.stagedPath, { force: true })));
+    await Promise.all(staged.map((entry) => rm(entry.stagedPath, { force: true }).catch(() => {})));
   }
 }
 
@@ -258,11 +270,11 @@ async function replaceRetainedArtifactTree({
   const parent = dirname(outputRoot);
   const transaction = randomUUID();
   const stage = join(parent, `.${basename(outputRoot)}.${transaction}.tmp`);
-  const backup = join(parent, `.${basename(outputRoot)}.${transaction}.bak`);
+  const backup = join(parent, `.${basename(outputRoot)}.bak`);
   let oldTreeBackedUp = false;
-  let preserveBackup = false;
 
   try {
+    await recoverRetainedArtifactTree(outputRoot, backup);
     await assertManagedRetentionDirectory(outputRoot);
     await mkdir(stage, { recursive: false, mode: 0o700 });
     await cp(sourceJsonPath, join(stage, "report.json"));
@@ -306,7 +318,6 @@ async function replaceRetainedArtifactTree({
     // Publication commits at the directory rename. Cleanup cannot safely
     // restore a backup once recursive deletion may have started.
     oldTreeBackedUp = false;
-    preserveBackup = true;
     await rm(backup, { recursive: true, force: true }).catch(() => {});
     return receipt;
   } catch (error) {
@@ -315,19 +326,28 @@ async function replaceRetainedArtifactTree({
       await rename(backup, outputRoot).catch((rollbackError) => rollbackErrors.push(rollbackError));
     }
     if (rollbackErrors.length > 0) {
-      preserveBackup = true;
       throw new AggregateError([error, ...rollbackErrors], "retained artifact publication failed and rollback was incomplete");
     }
     throw error;
   } finally {
     await rm(stage, { recursive: true, force: true });
-    if (!preserveBackup) {
-      await rm(backup, { recursive: true, force: true });
-    }
   }
 }
 
-async function assertManagedRetentionDirectory(path) {
+async function recoverRetainedArtifactTree(outputRoot, backup) {
+  if (!await pathExists(backup)) {
+    return;
+  }
+  await assertManagedRetentionDirectory(backup, outputRoot, false);
+  if (!await pathExists(outputRoot)) {
+    await rename(backup, outputRoot);
+    return;
+  }
+  await assertManagedRetentionDirectory(outputRoot);
+  await rm(backup, { recursive: true });
+}
+
+async function assertManagedRetentionDirectory(path, expectedOutputRoot = path, allowEmpty = true) {
   if (!await pathExists(path)) {
     return;
   }
@@ -337,7 +357,10 @@ async function assertManagedRetentionDirectory(path) {
   }
   const entries = await readdir(path);
   if (entries.length === 0) {
-    return;
+    if (allowEmpty) {
+      return;
+    }
+    throw new Error(`retained artifact backup is incomplete: ${path}`);
   }
   const receiptPath = join(path, "retained-artifacts.json");
   let receipt;
@@ -348,10 +371,10 @@ async function assertManagedRetentionDirectory(path) {
   }
   if (
     receipt?.schemaVersion !== "kova.releaseGate.retainedArtifacts.v1" ||
-    resolve(receipt.outputDir ?? "") !== resolve(path) ||
-    resolve(receipt.reportPath ?? "") !== resolve(path, "report.md") ||
-    resolve(receipt.jsonPath ?? "") !== resolve(path, "report.json") ||
-    resolve(receipt.pasteSummaryPath ?? "") !== resolve(path, "paste-summary.txt")
+    resolve(receipt.outputDir ?? "") !== resolve(expectedOutputRoot) ||
+    resolve(receipt.reportPath ?? "") !== resolve(expectedOutputRoot, "report.md") ||
+    resolve(receipt.jsonPath ?? "") !== resolve(expectedOutputRoot, "report.json") ||
+    resolve(receipt.pasteSummaryPath ?? "") !== resolve(expectedOutputRoot, "paste-summary.txt")
   ) {
     throw new Error(`retained artifact destination must be empty or Kova-managed: ${path}`);
   }
@@ -366,13 +389,16 @@ async function assertManagedRetentionDirectory(path) {
       continue;
     }
     const resolvedArtifactPath = resolve(artifactPath);
-    if (dirname(resolvedArtifactPath) !== resolve(path)) {
+    if (dirname(resolvedArtifactPath) !== resolve(expectedOutputRoot)) {
       throw new Error(`retained artifact destination must be empty or Kova-managed: ${path}`);
     }
     managedEntries.add(basename(resolvedArtifactPath));
   }
-  if (entries.some((entry) => !managedEntries.has(entry))) {
-    throw new Error(`retained artifact destination contains unmanaged files: ${path}`);
+  for (const entry of entries) {
+    const info = await lstat(join(path, entry));
+    if (!managedEntries.has(entry) || !info.isFile()) {
+      throw new Error(`retained artifact destination contains unmanaged files: ${path}`);
+    }
   }
 }
 
