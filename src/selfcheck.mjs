@@ -19251,6 +19251,10 @@ async function cleanupEnvSafetyCheck(tmp) {
   await writeFile(ocmPath, `#!/bin/sh
 case "$1:$2:$3" in
   env:list:--json)
+    if [ "$KOVA_INVALID_ENV_INVENTORY" = "1" ]; then
+      echo '[{"name":"kova-stale","createdAt":"${old}","lastUsedAt":null}]'
+      exit 0
+    fi
     stale_last_used=null
     if [ -n "$KOVA_RECENT_MARKER" ] && [ -f "$KOVA_RECENT_MARKER" ]; then
       stale_last_used='"${recent}"'
@@ -19379,6 +19383,14 @@ exit 2
     assertEqual(invalidServicePlan.serviceInventory?.ok, false, "invalid service shape fails inventory");
     assertEqual(invalidServicePlan.candidates.length, 0, "invalid service shape blocks cleanup");
 
+    const invalidEnvInventory = await run("", { KOVA_INVALID_ENV_INVENTORY: "1" });
+    assertEqual(invalidEnvInventory.status !== 0, true, "invalid env inventory exits nonzero");
+    assertEqual(
+      `${invalidEnvInventory.stdout}\n${invalidEnvInventory.stderr}`.includes("missing protected state"),
+      true,
+      "invalid env protection state is rejected"
+    );
+
     const falseExecute = await run("--execute=false");
     assertEqual(falseExecute.status, 0, "non-boolean execute exit");
     assertEqual(JSON.parse(falseExecute.stdout).execute, false, "execute string does not authorize cleanup");
@@ -19470,7 +19482,7 @@ exit 2
       command: "exercise cleanup env eligibility, execute guard, and force override",
       durationMs: dry.durationMs + unknownRetention.durationMs +
         invalidShapeRetention.durationMs + invalidServiceInventory.durationMs +
-        falseExecute.durationMs +
+        invalidEnvInventory.durationMs + falseExecute.durationMs +
         stateChanged.durationMs + activePreview.durationMs + recentlyUsed.durationMs +
         malformedPreview.durationMs + newlyRetained.durationMs +
         partialApply.durationMs + forcedPartialApply.durationMs +
