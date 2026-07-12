@@ -3661,6 +3661,34 @@ function gateScenarioWildcardCheck() {
     assertEqual(passingGate.verdict, "SHIP", "scenario-only blocking entry matches stateful record");
     assertEqual(passingGate.missingRequiredCount, 0, "scenario-only blocking entry is not missing");
 
+    for (const status of ["DRY-RUN", "SKIPPED"]) {
+      const unexecutedGate = evaluateGate({
+        mode: "execution",
+        controls: { include: [], exclude: [] },
+        records: [{
+          scenario: "doctor-repair-upgrade",
+          surface: "upgrade-existing-user",
+          state: { id: "legacy-core-config", traits: ["legacy-config"] },
+          status,
+          title: "Doctor Repair Upgrade",
+          likelyOwner: "Kova",
+          phases: []
+        }]
+      }, {
+        id: "doctor-upgrade",
+        gate: {
+          id: "doctor-upgrade-gate",
+          blocking: [{ scenario: "doctor-repair-upgrade" }]
+        }
+      });
+      assertEqual(unexecutedGate.missingRequiredCount, 1, `scenario-only blocking entry ignores ${status} records`);
+      assertEqual(
+        unexecutedGate.cards.some((card) => card.kind === "missing-required-scenario"),
+        true,
+        `${status} record leaves required scenario missing`
+      );
+    }
+
     const warningGate = evaluateGate({
       mode: "execution",
       controls: { include: [], exclude: [] },
