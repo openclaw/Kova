@@ -50,7 +50,7 @@ export async function loadPriorReleases(dir) {
  * @returns {{ id: string; data: any } | null}
  */
 export function findImmediatePrior(releases, targetVer, targetDate) {
-  const t = new Date(targetDate).getTime();
+  const t = releaseDayValue(targetDate);
   if (!Number.isFinite(t)) return null;
   let best = null;
   let bestT = -Infinity;
@@ -58,14 +58,30 @@ export function findImmediatePrior(releases, targetVer, targetDate) {
     const ver = r.data?.ver ?? r.id;
     if (ver === targetVer) continue;
     if (!sameReleaseLane(ver, targetVer)) continue;
-    const d = r.data?.releaseDate ? new Date(r.data.releaseDate).getTime() : NaN;
-    if (!Number.isFinite(d) || d >= t) continue;
-    if (d > bestT) {
+    const d = releaseDayValue(r.data?.releaseDate);
+    const isEarlierVersionOnTargetDay = d === t && compareVersions(ver, targetVer) < 0;
+    if (!Number.isFinite(d) || d > t || (d === t && !isEarlierVersionOnTargetDay)) continue;
+    const bestVer = best?.data?.ver ?? best?.id;
+    if (d > bestT || (d === bestT && compareVersions(ver, bestVer) > 0)) {
       best = r;
       bestT = d;
     }
   }
   return best;
+}
+
+function releaseDayValue(value) {
+  if (!value) return NaN;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return NaN;
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+}
+
+function compareVersions(a, b) {
+  return String(a ?? "").localeCompare(String(b ?? ""), "en", {
+    numeric: true,
+    sensitivity: "base",
+  });
 }
 
 function isPreReleaseVersion(ver) {
@@ -109,6 +125,11 @@ export function augmentWithDeltas(payload, prior) {
   const priorScenarios = new Map(
     (prior.data.scenarios ?? []).map((s) => [s.id, s]),
   );
+  const priorHeadlines = new Map(
+    (prior.data.headline ?? [])
+      .filter((headline) => headline.scenarioId && headline.metric && headline.unit)
+      .map((headline) => [headlineIdentity(headline), headline]),
+  );
   const currScenarios = new Map(
     (next.scenarios ?? []).map((s) => [s.id, s]),
   );
@@ -123,9 +144,9 @@ export function augmentWithDeltas(payload, prior) {
   if (Array.isArray(next.headline)) {
     next.headline = next.headline.map((h) => {
       if (h.deltaPct != null && h.vsVer != null) return h;
-      if (!h.scenarioId) return h;
-      const ps = priorScenarios.get(h.scenarioId);
-      const dp = pctDelta(h.value ?? null, ps?.value ?? null);
+      if (!h.scenarioId || !h.metric || !h.unit) return h;
+      const priorHeadline = priorHeadlines.get(headlineIdentity(h));
+      const dp = pctDelta(h.value ?? null, priorHeadline?.value ?? null);
       if (dp == null) return h;
       return { ...h, vsVer: prior.data.ver, deltaPct: round1(dp) };
     });
@@ -142,7 +163,7 @@ export function augmentWithDeltas(payload, prior) {
       if (dp == null) continue;
       rows.push({
         scenarioId: id,
-        metric: cs.worstMetric?.name ?? id,
+        metric: cs.metric ?? id,
         before: ps.value,
         after: cs.value,
         unit: cs.unit,
@@ -156,6 +177,10 @@ export function augmentWithDeltas(payload, prior) {
   }
 
   return next;
+}
+
+function headlineIdentity(headline) {
+  return `${headline.scenarioId}\u0000${headline.metric}\u0000${headline.unit}`;
 }
 
 /**

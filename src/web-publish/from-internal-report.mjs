@@ -288,34 +288,33 @@ function projectMetricRows(scenario, records) {
 
 function projectTurnMetricRows(scenario, samples) {
   if (!isAgentTurnScenario(scenario.id) || samples.length === 0) return [];
-  const record = samples[0];
-  const measurements = record.measurements ?? {};
   const rows = [
-    directMetricRow(record, "agentTurnMs", "full turn", "agentTurnMs"),
-    directMetricRow(record, "coldAgentTurnMs", "cold turn", "coldAgentTurnMs"),
-    directMetricRow(record, "warmAgentTurnMs", "warm turn", "warmAgentTurnMs"),
-    directMetricRow(record, "agentPreProviderMs", "pre-provider", "preProviderMs"),
-    directMetricRow(record, "agentProviderFinalMs", "provider", "providerFinalMs"),
-    directMetricRow(record, "agentPostProviderMs", "post-provider", null),
+    aggregateDirectMetricRow(samples, "agentTurnMs", "full turn", "agentTurnMs"),
+    aggregateDirectMetricRow(samples, "coldAgentTurnMs", "cold turn", "coldAgentTurnMs"),
+    aggregateDirectMetricRow(samples, "warmAgentTurnMs", "warm turn", "warmAgentTurnMs"),
+    aggregateDirectMetricRow(samples, "agentPreProviderMs", "pre-provider", "preProviderMs"),
+    aggregateDirectMetricRow(samples, "agentProviderFinalMs", "provider", "providerFinalMs"),
+    aggregateDirectMetricRow(samples, "agentPostProviderMs", "post-provider", null),
   ].filter(Boolean);
 
   if (scenario.id === "gateway-session-send-turn" || scenario.surface === "gateway-session-send-turn") {
-    for (const turn of measurements.agentTurns ?? []) {
-      const label = turn.label ? `${turn.label} ` : "";
-      rows.push(...[
-        sessionTurnRow(`${label}send rpc`, turn.gatewaySession?.sendDurationMs),
-        sessionTurnRow(`${label}matched assistant`, turn.gatewaySession?.timeToMatchedAssistantMs),
-      ].filter(Boolean));
-    }
+    rows.push(...aggregateSessionTurnRows(samples));
   }
 
   return rows;
 }
 
-function directMetricRow(record, metricKey, name, thresholdKey) {
-  const value = numericOrNull(measurementMetricValue(record.measurements ?? {}, metricKey));
-  if (value == null) return null;
-  const threshold = thresholdKey ? numericOrNull(record.thresholds?.[thresholdKey]) : null;
+function aggregateDirectMetricRow(records, metricKey, name, thresholdKey) {
+  const values = records
+    .map((record) => measurementMetricValue(record.measurements ?? {}, metricKey))
+    .map(numericOrNull)
+    .filter((value) => value != null);
+  if (values.length === 0) return null;
+  const value = median(values);
+  const thresholds = thresholdKey
+    ? records.map((record) => numericOrNull(record.thresholds?.[thresholdKey])).filter((threshold) => threshold != null)
+    : [];
+  const threshold = median(thresholds);
   return pruneUndefined({
     name,
     value,
@@ -325,17 +324,31 @@ function directMetricRow(record, metricKey, name, thresholdKey) {
   });
 }
 
-function sessionTurnRow(name, value) {
-  const n = numericOrNull(value);
-  if (n == null) return null;
-  return {
+function aggregateSessionTurnRows(records) {
+  const valuesByName = new Map();
+  for (const record of records) {
+    for (const turn of record.measurements?.agentTurns ?? []) {
+      const label = turn.label ? `${turn.label} ` : "";
+      appendMetricSample(valuesByName, `${label}send rpc`, turn.gatewaySession?.sendDurationMs);
+      appendMetricSample(valuesByName, `${label}matched assistant`, turn.gatewaySession?.timeToMatchedAssistantMs);
+    }
+  }
+  return [...valuesByName].map(([name, values]) => ({
     name: `↳ ${name}`,
-    value: n,
+    value: median(values),
     unit: "ms",
     threshold: null,
     state: "pass",
     child: true,
-  };
+  }));
+}
+
+function appendMetricSample(samplesByName, name, value) {
+  const n = numericOrNull(value);
+  if (n == null) return;
+  const samples = samplesByName.get(name) ?? [];
+  samples.push(n);
+  samplesByName.set(name, samples);
 }
 
 function isAgentTurnScenario(scenarioId) {

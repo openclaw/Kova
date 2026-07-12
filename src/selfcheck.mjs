@@ -141,6 +141,8 @@ import {
 import { resolveThresholdPolicy } from "./evaluation/thresholds.mjs";
 import { createSelfCheckProgress, renderSelfCheckReceipt } from "./reporting/render-selfcheck.mjs";
 import { scriptForMode as buildMockProviderScriptForMode } from "../support/channel-workflow-provider-script.mjs";
+import { projectInternalReport } from "./web-publish/from-internal-report.mjs";
+import { augmentWithDeltas, findImmediatePrior } from "./web-publish/projector.mjs";
 
 export async function runSelfCheck(flags = {}) {
   const progress = createSelfCheckProgress({ flags });
@@ -174,6 +176,107 @@ export async function runSelfCheck(flags = {}) {
       const ids = Array.from({ length: 8 }, () => createRunId());
       assertEqual(new Set(ids).size, ids.length, "same-process run ids are unique");
       assertEqual(ids.every((id) => /^kova-\d{6}-\d{6}-[0-9a-f]{6}$/.test(id)), true, "run id format includes unique suffix");
+    }));
+    checks.push(await inlineCheck("web-publish-prior-version-order", () => {
+      const release = (ver, releaseDate = "2026-05-26") => ({
+        id: ver,
+        data: { ver, releaseDate },
+      });
+      const prior = findImmediatePrior([
+        release("2026.5.9"),
+        release("2026.5.10"),
+        release("2026.5.12"),
+        release("2026.5.99", "2026-05-25"),
+      ], "2026.5.11", "2026-05-26");
+      assertEqual(prior?.data?.ver, "2026.5.10", "same-day prior uses numeric version ordering");
+    }));
+    checks.push(await inlineCheck("web-publish-delta-identity", () => {
+      const augmented = augmentWithDeltas({
+        ver: "2026.5.27",
+        headline: [{
+          label: "agent turn",
+          value: 2,
+          unit: "s",
+          scenarioId: "gateway-session-send-turn",
+          metric: "agent.turn.s",
+        }],
+        scenarios: [{
+          id: "gateway-session-send-turn",
+          metric: "Session Send",
+          value: 2000,
+          unit: "ms",
+          worstMetric: { name: "pre-provider share", value: 90, unit: "%" },
+        }],
+      }, {
+        id: "2026.5.26",
+        data: {
+          ver: "2026.5.26",
+          headline: [
+            {
+              label: "pre-provider",
+              value: 99,
+              unit: "s",
+              scenarioId: "gateway-session-send-turn",
+              metric: "agent.pre_provider.s",
+            },
+            {
+              label: "agent turn",
+              value: 1.6,
+              unit: "s",
+              scenarioId: "gateway-session-send-turn",
+              metric: "agent.turn.s",
+            },
+          ],
+          scenarios: [{
+            id: "gateway-session-send-turn",
+            metric: "Session Send",
+            value: 1600,
+            unit: "ms",
+          }],
+        },
+      });
+      assertEqual(augmented.headline?.[0]?.deltaPct, 25, "headline delta uses matching headline identity");
+      assertEqual(augmented.comparison?.rows?.[0]?.metric, "Session Send", "comparison uses scenario metric");
+    }));
+    checks.push(await inlineCheck("web-publish-turn-median", () => {
+      const turnRecord = (repeat, agentTurnMs, sendDurationMs) => ({
+        scenario: "gateway-session-send-turn",
+        surface: "gateway-session-send-turn",
+        title: "Gateway Session Turns",
+        status: "PASS",
+        repeat: { index: repeat, total: 2 },
+        measurements: {
+          agentTurnMs,
+          coldAgentTurnMs: agentTurnMs,
+          agentTurns: [{
+            label: "cold",
+            gatewaySession: {
+              sendDurationMs,
+              timeToMatchedAssistantMs: sendDurationMs * 2,
+            },
+          }],
+        },
+        thresholds: {
+          agentTurnMs: 1000,
+          coldAgentTurnMs: 1000,
+        },
+      });
+      const projected = projectInternalReport({
+        schemaVersion: "kova.report.v1",
+        generatedAt: "2026-05-27T00:00:00.000Z",
+        runId: "web-publish-turn-median",
+        mode: "execution",
+        target: "npm:2026.5.27",
+        summary: { total: 2, statuses: { PASS: 2 } },
+        records: [
+          turnRecord(1, 100, 10),
+          turnRecord(2, 300, 30),
+        ],
+      });
+      const metrics = projected.runs?.[0]?.scenarios?.[0]?.metrics ?? [];
+      assertEqual(metrics.find((row) => row.name === "full turn")?.value, 200, "primary turn row median");
+      assertEqual(metrics.find((row) => row.name === "↳ cold send rpc")?.value, 20, "child turn row median");
+      assertEqual(metrics.find((row) => row.name === "↳ cold matched assistant")?.value, 40, "child assistant row median");
     }));
     checks.push(await inlineCheck("external-plugin-fixture-manifests", async () => {
       for (const [dir, expectedId] of [
