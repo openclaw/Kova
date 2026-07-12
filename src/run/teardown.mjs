@@ -1,7 +1,8 @@
 import { buildAuthCleanupPhase } from "../auth.mjs";
 import { runCleanupCommand } from "../cleanup.mjs";
+import { runCommand } from "../commands.mjs";
 import { isMissingOcmResource } from "../ocm/missing-resource.mjs";
-import { ocmEnvDestroy } from "../ocm/commands.mjs";
+import { ocmEnvDestroy, ocmEnvProtect } from "../ocm/commands.mjs";
 import { stopNetworkFrontage } from "../network-frontage.mjs";
 import { executeAuthPhase } from "./auth-phase.mjs";
 import {
@@ -31,6 +32,11 @@ export async function teardownScenario(record, scenario, context, envName, artif
 
   const retainEnv = shouldRetainEnv(context, record);
   if (retainEnv) {
+    const protection = await runGuardedTeardownStages([{
+      id: "retention-protection",
+      run: () => protectRetainedEnv(record, context, envName)
+    }], options);
+    errors.push(...protection.errors);
     record.cleanup = "retained";
     record.retainedReason = context.keepEnv ? "keep-env" : "failure";
   }
@@ -135,6 +141,17 @@ async function cleanupEnv(record, context, envName) {
   record.cleanupResult = cleanup;
   if (record.cleanup === "destroy-failed") {
     blockPassingRecord(record);
+  }
+}
+
+async function protectRetainedEnv(record, context, envName) {
+  const result = await runCommand(ocmEnvProtect(envName, true), {
+    timeoutMs: context.timeoutMs
+  });
+  record.retentionProtectionResult = result;
+  if (result.status !== 0) {
+    const detail = result.stderr.trim() || result.stdout.trim() || `exit ${result.status}`;
+    throw new Error(`failed to protect retained env ${envName}: ${detail}`);
   }
 }
 

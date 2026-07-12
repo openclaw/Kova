@@ -176,6 +176,7 @@ import {
   ocmEnvDestroyPreviewJson,
   ocmEnvExec,
   ocmEnvExecShell,
+  ocmEnvProtect,
   ocmLogs,
   ocmRuntimeBuildLocal,
   ocmRuntimeRemoveJson,
@@ -14234,6 +14235,13 @@ async function networkFrontagePartialStartupCleanupInvariantCheck() {
     const teardownSource = await readFile("src/run/teardown.mjs", "utf8");
     const retentionPattern = /id: "network-frontage-cleanup"[\s\S]+const retainEnv = shouldRetainEnv\(context, record\)/;
     assertEqual(retentionPattern.test(teardownSource), true, "retain-on-failure is computed after network frontage cleanup can update status");
+    const protectionPattern = /const retainEnv = shouldRetainEnv\(context, record\);[\s\S]+id: "retention-protection"[\s\S]+protectRetainedEnv\(record, context, envName\)[\s\S]+record\.cleanup = "retained"/;
+    assertEqual(protectionPattern.test(teardownSource), true, "retained env is protected before retention is published");
+    assertEqual(
+      ocmEnvProtect("kova-retained", true),
+      "ocm env protect 'kova-retained' on --json",
+      "retention protection command"
+    );
     let proxyClosed = false;
     let resolveProxyClosed;
     const context = {
@@ -19230,6 +19238,8 @@ async function cleanupEnvSafetyCheck(tmp) {
   const binDir = join(tmp, "cleanup-env-safety-bin");
   const reports = join(home, "reports");
   const destroyLog = join(tmp, "cleanup-env-destroy.log");
+  const recentMarker = join(tmp, "cleanup-env-recent.marker");
+  const retentionReport = join(reports, "late-retained.json");
   const ocmPath = join(binDir, "ocm");
   const old = "2020-01-01T00:00:00Z";
   const recent = new Date().toISOString();
@@ -19241,9 +19251,13 @@ async function cleanupEnvSafetyCheck(tmp) {
   await writeFile(ocmPath, `#!/bin/sh
 case "$1:$2:$3" in
   env:list:--json)
-    cat <<'JSON'
+    stale_last_used=null
+    if [ -n "$KOVA_RECENT_MARKER" ] && [ -f "$KOVA_RECENT_MARKER" ]; then
+      stale_last_used='"${recent}"'
+    fi
+    cat <<JSON
 [
-  {"name":"kova-stale","createdAt":"${old}","lastUsedAt":null,"protected":false},
+  {"name":"kova-stale","createdAt":"${old}","lastUsedAt":$stale_last_used,"protected":false},
   {"name":"kova-recent","createdAt":"${recent}","lastUsedAt":"${recent}","protected":false},
   {"name":"kova-protected","createdAt":"${old}","lastUsedAt":null,"protected":true},
   {"name":"kova-retained","createdAt":"${old}","lastUsedAt":null,"protected":false},
@@ -19270,6 +19284,12 @@ JSON
     ;;
   env:destroy:*)
     if [ "$4" = "--json" ] && [ -z "$5" ]; then
+      if [ "$KOVA_REVALIDATE_RECENT" = "1" ]; then
+        : > "$KOVA_RECENT_MARKER"
+      fi
+      if [ "$KOVA_REVALIDATE_RETAINED" = "1" ]; then
+        printf '{"records":[{"envName":"%s","cleanup":"retained"}]}\\n' "$3" > "$KOVA_RETENTION_REPORT"
+      fi
       if [ "$KOVA_PREVIEW_ACTIVE" = "1" ]; then
         printf '{"stateToken":"v1:%s","serviceInstalled":true,"serviceLoaded":true,"serviceRunning":true,"blockers":[],"steps":[{"kind":"service"},{"kind":"processes"}]}\\n' "$3"
       else
@@ -19279,6 +19299,11 @@ JSON
     fi
     if [ "$KOVA_TOKEN_MISMATCH" = "1" ]; then
       printf '{"code":"state_changed","removed":false,"stateToken":"v1:changed"}\\n'
+      exit 1
+    fi
+    if [ "$KOVA_PARTIAL_APPLY" = "1" ]; then
+      printf '%s\\n' "$3" >> "$KOVA_DESTROY_LOG"
+      printf '{"code":"partial_apply","removed":false,"serviceUninstalled":true,"processesTerminated":0,"stateToken":"v1:%s"}\\n' "$3"
       exit 1
     fi
     printf '%s\\n' "$3" >> "$KOVA_DESTROY_LOG"
@@ -19294,7 +19319,9 @@ exit 2
   const env = {
     PATH: `${binDir}:${process.env.PATH}`,
     KOVA_HOME: home,
-    KOVA_DESTROY_LOG: destroyLog
+    KOVA_DESTROY_LOG: destroyLog,
+    KOVA_RECENT_MARKER: recentMarker,
+    KOVA_RETENTION_REPORT: retentionReport
   };
   const run = (args, envOverrides = {}) => runCommand(`node bin/kova.mjs cleanup envs ${args} --json`, {
     env: { ...env, ...envOverrides },
@@ -19353,6 +19380,30 @@ exit 2
     assertEqual(activePreviewReceipt.results[0]?.stage, "precondition", "active preview fails precondition");
     assertEqual(await fileExists(destroyLog), false, "active preview performs no teardown");
 
+    const recentlyUsed = await run("--execute", { KOVA_REVALIDATE_RECENT: "1" });
+    assertEqual(recentlyUsed.status !== 0, true, "recent eligibility refresh exits nonzero");
+    const recentlyUsedReceipt = JSON.parse(recentlyUsed.stdout);
+    assertEqual(recentlyUsedReceipt.results[0]?.code, "eligibility_changed", "recent env fails refreshed eligibility");
+    assertEqual(recentlyUsedReceipt.results[0]?.stage, "precondition", "recent env stops before guarded destroy");
+    assertEqual(await fileExists(destroyLog), false, "recent eligibility refresh performs no teardown");
+    await rm(recentMarker, { force: true });
+
+    const newlyRetained = await run("--execute", { KOVA_REVALIDATE_RETAINED: "1" });
+    assertEqual(newlyRetained.status !== 0, true, "retention refresh exits nonzero");
+    const newlyRetainedReceipt = JSON.parse(newlyRetained.stdout);
+    assertEqual(newlyRetainedReceipt.results[0]?.code, "eligibility_changed", "new retention fails refreshed eligibility");
+    assertEqual(await fileExists(destroyLog), false, "retention refresh performs no teardown");
+    await rm(retentionReport, { force: true });
+
+    const partialApply = await run("--execute", { KOVA_PARTIAL_APPLY: "1" });
+    assertEqual(partialApply.status !== 0, true, "partial apply exits nonzero");
+    const partialApplyReceipt = JSON.parse(partialApply.stdout);
+    assertEqual(partialApplyReceipt.results[0]?.code, "partial_apply", "partial apply code preserved");
+    assertEqual(partialApplyReceipt.results[0]?.stage, "partial-apply", "partial apply has distinct stage");
+    assertEqual(partialApplyReceipt.results[0]?.attempts?.length, 1, "partial apply is not retried");
+    assertEqual((await readFile(destroyLog, "utf8")).trim(), "kova-stale", "partial apply executes once");
+    await rm(destroyLog, { force: true });
+
     const execute = await run("--execute");
     assertEqual(execute.status, 0, "cleanup safety execute exit");
     assertEqual((await readFile(destroyLog, "utf8")).trim(), "kova-stale", "default cleanup destroys only eligible env");
@@ -19374,7 +19425,8 @@ exit 2
       status: "PASS",
       command: "exercise cleanup env eligibility, execute guard, and force override",
       durationMs: dry.durationMs + unknownRetention.durationMs + falseExecute.durationMs +
-        stateChanged.durationMs + activePreview.durationMs + execute.durationMs + forced.durationMs
+        stateChanged.durationMs + activePreview.durationMs + recentlyUsed.durationMs +
+        newlyRetained.durationMs + partialApply.durationMs + execute.durationMs + forced.durationMs
     };
   } catch (error) {
     return {
