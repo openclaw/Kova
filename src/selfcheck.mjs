@@ -12591,6 +12591,7 @@ async function diagnosticTriggerValidationCheck(tmp) {
   const previousPath = process.env.PATH;
   const previousOpenClawHome = process.env.OPENCLAW_HOME;
   const previousOcmLog = process.env.KOVA_FAKE_OCM_LOG;
+  const previousOcmHang = process.env.KOVA_FAKE_OCM_HANG;
   let child = null;
   try {
     await mkdir(binDir, { recursive: true });
@@ -12598,6 +12599,7 @@ async function diagnosticTriggerValidationCheck(tmp) {
     await writeFile(join(openclawHome, "stale.heapsnapshot"), "stale");
     await writeFile(join(binDir, "ocm"), `#!/bin/sh
 printf '%s\\n' "$*" >> "$KOVA_FAKE_OCM_LOG"
+if [ "\${KOVA_FAKE_OCM_HANG:-}" = "1" ]; then exec sleep 10; fi
 while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do shift; done
 [ "$#" -gt 0 ] || exit 2
 shift
@@ -12688,6 +12690,16 @@ setInterval(() => {}, 1000);
       invocationCount,
       "empty session does not invoke OCM"
     );
+    process.env.KOVA_FAKE_OCM_HANG = "1";
+    const hungStartedAt = Date.now();
+    const hung = await triggerDiagnosticSession("kova-self-check", child.pid, 2500, root, {
+      heapSnapshot: true
+    });
+    const hungElapsedMs = Date.now() - hungStartedAt;
+    restoreEnv({ KOVA_FAKE_OCM_HANG: previousOcmHang });
+    assertEqual(hung.heapSnapshot.commandStatus, 124, "hung OCM command times out");
+    assertEqual(hung.heapSnapshot.timedOut, true, "hung OCM timeout is retained");
+    assertEqual(hungElapsedMs < 2500, true, "hung OCM command honors the diagnostic deadline");
     const slowHeap = await triggerDiagnosticSession("kova-self-check", child.pid, 5000, root, {
       heapSnapshot: true
     });
@@ -12729,7 +12741,8 @@ setInterval(() => {}, 1000);
     restoreEnv({
       PATH: previousPath,
       OPENCLAW_HOME: previousOpenClawHome,
-      KOVA_FAKE_OCM_LOG: previousOcmLog
+      KOVA_FAKE_OCM_LOG: previousOcmLog,
+      KOVA_FAKE_OCM_HANG: previousOcmHang
     });
   }
 }

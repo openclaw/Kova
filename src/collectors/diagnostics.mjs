@@ -112,8 +112,10 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
     2000,
     Math.max(1500, Math.floor(normalizedTimeoutMs * 0.25))
   );
-  const pollAttempts = Math.max(1, Math.ceil((normalizedTimeoutMs - stabilizationReserveMs) / 250));
-  const commandExitMarginMs = Math.max(5000, Math.min(15000, Math.floor(normalizedTimeoutMs * 0.1)));
+  const commandBudgetMs = normalizedTimeoutMs - stabilizationReserveMs;
+  const commandExitReserveMs = Math.min(500, Math.max(250, Math.floor(commandBudgetMs * 0.1)));
+  const pollAttempts = Math.max(1, Math.floor((commandBudgetMs - commandExitReserveMs) / 250));
+  const sessionDeadlineEpochMs = requestedAtEpochMs + normalizedTimeoutMs;
   const searchRoots = [
     '"$OPENCLAW_HOME"',
     artifactDir ? quoteShell(join(artifactDir, "node-profiles")) : null
@@ -127,7 +129,8 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
     `set -eu; marker=$(mktemp); trap 'rm -f "$marker"' EXIT; touch "$marker"; kill -USR2 ${normalizedPid}; attempts=0; while :; do heap_count=$({ find ${searchRoots} -maxdepth 6 -type f -name "*.heapsnapshot" -newer "$marker" -print 2>/dev/null || :; } | wc -l | tr -d ' '); report_count=$({ find ${searchRoots} -maxdepth 6 -type f \\( -name "report.*.json" -o -name "*diagnostic*.json" \\) -newer "$marker" -print 2>/dev/null || :; } | wc -l | tr -d ' '); if ${readyConditions}; then break; fi; if [ "$attempts" -ge ${pollAttempts} ]; then break; fi; attempts=$((attempts + 1)); sleep 0.25; done; { find ${searchRoots} -maxdepth 6 -type f \\( -name "*.heapsnapshot" -o -name "report.*.json" -o -name "*diagnostic*.json" \\) -newer "$marker" -print 2>/dev/null || :; } | head -50`
   );
   const result = await runCommand(command, {
-    timeoutMs: normalizedTimeoutMs + commandExitMarginMs,
+    // OCM invocation, polling, and artifact retention share one caller-owned deadline.
+    timeoutMs: commandBudgetMs,
     maxOutputChars: 100000,
     env: options.commandEnv
   });
@@ -143,11 +146,7 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
   const triggerError = result.status === 0
     ? null
     : firstOutputLine(result.stderr) || firstOutputLine(result.stdout) || "diagnostic trigger unavailable";
-  const remainingSessionBudgetMs = Math.max(
-    stabilizationReserveMs,
-    normalizedTimeoutMs - Math.max(0, result.durationMs ?? 0)
-  );
-  const retentionDeadlineEpochMs = Date.now() + remainingSessionBudgetMs;
+  const retentionDeadlineEpochMs = sessionDeadlineEpochMs;
   const heapCopied = await retainTriggeredArtifacts({
     requested: requestHeapSnapshot,
     artifactDir,
