@@ -79,7 +79,8 @@ export async function triggerDiagnosticReport(envName, pid, timeoutMs, artifactD
   return (await triggerDiagnosticSession(envName, pid, timeoutMs, artifactDir, {
     diagnosticReport: true,
     commandEnv: options.commandEnv,
-    signalAlreadySent: options.signalAlreadySent === true
+    signalAlreadySent: options.signalAlreadySent === true,
+    signalSentAtEpochMs: options.signalSentAtEpochMs
   })).diagnosticReport;
 }
 
@@ -109,6 +110,18 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
       diagnosticReport: diagnosticTriggerResult(DIAGNOSTIC_REPORT_SCHEMA, { requested: requestDiagnosticReport, error })
     };
   }
+  const signalAlreadySent = options.signalAlreadySent === true;
+  const signalSentAtEpochMs = Number(options.signalSentAtEpochMs);
+  if (
+    signalAlreadySent
+    && (!Number.isFinite(signalSentAtEpochMs) || signalSentAtEpochMs <= 0 || signalSentAtEpochMs > requestedAtEpochMs)
+  ) {
+    const error = "signalSentAtEpochMs is required when signalAlreadySent is true";
+    return {
+      heapSnapshot: diagnosticTriggerResult(HEAP_SNAPSHOT_SCHEMA, { requested: requestHeapSnapshot, error }),
+      diagnosticReport: diagnosticTriggerResult(DIAGNOSTIC_REPORT_SCHEMA, { requested: requestDiagnosticReport, error })
+    };
+  }
   const stabilizationReserveMs = Math.min(
     2000,
     Math.max(1500, Math.floor(normalizedTimeoutMs * 0.25))
@@ -117,11 +130,10 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
   const commandExitReserveMs = Math.min(500, Math.max(250, Math.floor(commandBudgetMs * 0.1)));
   const pollAttempts = Math.max(1, Math.floor((commandBudgetMs - commandExitReserveMs) / 250));
   const sessionDeadlineEpochMs = requestedAtEpochMs + normalizedTimeoutMs;
-  const signalAlreadySent = options.signalAlreadySent === true;
   // The legacy report wrapper can run after a heap-triggered signal, so only
-  // that explicit path may inspect artifacts older than this session marker.
+  // that explicit path uses the caller's signal timestamp instead of this marker.
   const freshnessFilter = signalAlreadySent ? "" : '-newer "$marker"';
-  const signalCommand = signalAlreadySent ? ":" : `kill -USR2 ${normalizedPid}`;
+  const signalCommand = signalAlreadySent ? "sleep 1" : `kill -USR2 ${normalizedPid}`;
   const searchRoots = [
     '"$OPENCLAW_HOME"',
     artifactDir ? quoteShell(join(artifactDir, "node-profiles")) : null
@@ -146,13 +158,16 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
     maxOutputChars: 100000,
     env: options.commandEnv
   });
-  const files = result.status === 0
+  let files = result.status === 0
     ? result.stdout.split("\n").map((line) => line.trim()).filter(Boolean)
     : [];
   if (result.status === 0) {
+    if (signalAlreadySent) {
+      files = await filesModifiedAfter(files, signalSentAtEpochMs);
+    }
     files.push(...await collectLocalDiagnosticReports(
       artifactDir,
-      signalAlreadySent ? null : requestedAtEpochMs
+      signalAlreadySent ? signalSentAtEpochMs : requestedAtEpochMs
     ));
   }
   const uniqueFiles = [...new Set(files)];
@@ -270,6 +285,20 @@ async function collectLocalDiagnosticReports(artifactDir, modifiedAfterEpochMs =
     }
     throw error;
   }
+}
+
+async function filesModifiedAfter(paths, modifiedAfterEpochMs) {
+  const fresh = [];
+  for (const path of paths) {
+    try {
+      if ((await stat(path)).mtimeMs >= modifiedAfterEpochMs) {
+        fresh.push(path);
+      }
+    } catch {
+      // A concurrently removed artifact is not retained as trigger evidence.
+    }
+  }
+  return fresh;
 }
 
 function diagnosticTriggerResult(schemaVersion, options = {}) {
