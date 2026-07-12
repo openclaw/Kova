@@ -11,6 +11,8 @@ All notable changes to Kova are documented in this file.
 - Hardened mock-provider and diagnostic process handling to reject non-decimal PID state, migrate active legacy providers safely, reject stale startup metadata, avoid signaling unrelated processes, retain retryable PID state, and preserve colliding diagnostic artifacts.
 - Fixed OpenClaw inventory discovery to recognize canonical JSON5 plugin manifests consistently across platforms while deterministically bounding scans.
 - Isolated concurrent self-check OCM identities, child environments, runtime names, and temp cleanup ownership.
+- Escape runtime-derived Markdown and paste fields without changing JSON report data.
+- Keep RSS and CPU role peaks independently attributed to their actual scenarios.
 - Hardened performance baseline persistence, unstable-group detection, and repeated-work audit isolation.
 - Fixed web reports to reset matrix deltas across missing samples, preserve scenario breach status, render blocked OG verdicts safely, revalidate mutable OG images, and normalize rounded minute durations.
 - Made matrix gates honor scenario-wide policies and validate all seven coverage dimensions only from records that actually executed.
