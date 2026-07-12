@@ -87,7 +87,11 @@ export async function collectLogMetrics(envName, timeoutMs, artifactDir, options
 
 export function redactLogText(value) {
   const text = String(value ?? "").replace(PEM_PRIVATE_KEY_PATTERN, "[REDACTED]");
-  return redactSensitiveContinuations(text)
+  return redactSensitiveText(text, { structuredJson: true });
+}
+
+function redactSensitiveText(value, options = {}) {
+  return redactSensitiveContinuations(value, options)
     .replace(URL_USERINFO_PATTERN, "$1[REDACTED]@")
     .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [REDACTED]")
     .replace(
@@ -96,7 +100,7 @@ export function redactLogText(value) {
     );
 }
 
-function redactSensitiveContinuations(value) {
+function redactSensitiveContinuations(value, options = {}) {
   const lines = String(value ?? "").split(/\r?\n/);
   let blockIndent = null;
   let quotedContinuation = null;
@@ -132,10 +136,12 @@ function redactSensitiveContinuations(value) {
       blockIndent = null;
     }
 
-    const structuredLine = redactStructuredJsonLine(line);
-    if (structuredLine !== null) {
-      lines[index] = structuredLine;
-      continue;
+    if (options.structuredJson) {
+      const structuredLine = redactStructuredJsonLine(line);
+      if (structuredLine !== null) {
+        lines[index] = structuredLine;
+        continue;
+      }
     }
 
     const pattern = SENSITIVE_VALUE_LINE_PATTERN.test(line)
@@ -189,6 +195,10 @@ function redactStructuredJsonValue(value) {
       return redacted.value;
     });
     return { value: items, changed };
+  }
+  if (typeof value === "string") {
+    const redacted = redactSensitiveText(value);
+    return { value: redacted, changed: redacted !== value };
   }
   if (!value || typeof value !== "object") {
     return { value, changed: false };

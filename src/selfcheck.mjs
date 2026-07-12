@@ -17908,6 +17908,7 @@ async function logArtifactRedactionCheck(tmp) {
   const encodedUrlPasswordCanary = encodeURIComponent(urlPasswordCanary);
   const dotenvMultilineCanary = ["dotenv", "multiline", "canary"].join("-");
   const structuredJsonCanary = ["structured", "json", "canary"].join("-");
+  const structuredEmbeddedCanary = ["structured", "embedded", "canary"].join("-");
   const timestampCredentialCanary = ["2026-07-11", "T12:34:56Z"].join("");
   const multilineSuffixCanary = ["multiline", "suffix", "canary"].join("-");
   const clientSecretFlag = ["--client", "secret"].join("-");
@@ -17935,6 +17936,7 @@ async function logArtifactRedactionCheck(tmp) {
     encodedUrlPasswordCanary,
     dotenvMultilineCanary,
     structuredJsonCanary,
+    structuredEmbeddedCanary,
     timestampCredentialCanary,
     multilineSuffixCanary
   ];
@@ -17966,6 +17968,7 @@ async function logArtifactRedactionCheck(tmp) {
     `${databasePasswordKey}=${timestampCredentialCanary}`,
     JSON.stringify({
       [genericTokenKey]: structuredJsonCanary,
+      command: `tool --${databasePasswordKey.toLowerCase()} ${structuredEmbeddedCanary}`,
       openclawDiagnostic: true,
       category: "redaction-self-check"
     }),
