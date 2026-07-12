@@ -12640,6 +12640,9 @@ const home = process.env.OPENCLAW_HOME;
 let signalCount = 0;
 process.on("SIGUSR2", () => {
   const currentSignal = ++signalCount;
+  const outputHome = currentSignal === 1
+    ? path.join(home, "depth-1", "depth-2", "depth-3", "depth-4", "depth-5")
+    : home;
   if (currentSignal === 4) {
     setTimeout(() => {
       fs.writeFileSync(path.join(home, "report.delayed.json"), "{\\"delayed\\":true}\\n");
@@ -12656,19 +12659,26 @@ process.on("SIGUSR2", () => {
     return;
   }
   setTimeout(() => {
-    fs.writeFileSync(path.join(home, "fresh.heapsnapshot"), "{\\"heap\\":");
+    fs.mkdirSync(outputHome, { recursive: true });
+    fs.writeFileSync(path.join(outputHome, "fresh.heapsnapshot"), "{\\"heap\\":");
     if (currentSignal === 3) {
       return;
     }
-    fs.writeFileSync(path.join(home, "report.fresh.json"), "{");
+    fs.writeFileSync(path.join(outputHome, "report.fresh.json"), "{");
+    if (currentSignal === 1) {
+      const excludedHome = path.join(outputHome, "depth-6");
+      fs.mkdirSync(excludedHome, { recursive: true });
+      fs.writeFileSync(path.join(excludedHome, "excluded.heapsnapshot"), "{\\"excluded\\":true}\\n");
+      fs.writeFileSync(path.join(excludedHome, "report.excluded.json"), "{\\"excluded\\":true}\\n");
+    }
     if (currentSignal === 2) {
       fs.writeFileSync(path.join(home, "report.incomplete.json"), "{");
     }
   }, 400);
   setTimeout(() => {
-    fs.appendFileSync(path.join(home, "fresh.heapsnapshot"), "\\"fresh\\"}\\n");
+    fs.appendFileSync(path.join(outputHome, "fresh.heapsnapshot"), "\\"fresh\\"}\\n");
     if (currentSignal !== 3) {
-      fs.appendFileSync(path.join(home, "report.fresh.json"), "\\"fresh\\":true}\\n");
+      fs.appendFileSync(path.join(outputHome, "report.fresh.json"), "\\"fresh\\":true}\\n");
     }
   }, 800);
 });
@@ -12688,8 +12698,14 @@ setInterval(() => {}, 1000);
     assertEqual(triggered.diagnosticReport.commandStatus, 0, "diagnostic report signal succeeds");
     assertEqual(triggered.heapSnapshot.fileCount, 1, "only fresh heap snapshot retained");
     assertEqual(triggered.diagnosticReport.fileCount, 1, "only fresh diagnostic report retained");
+    assertEqual(triggered.heapSnapshot.files[0].includes("depth-5"), true, "diagnostic scan includes files at depth six");
+    assertEqual(triggered.diagnosticReport.files[0].includes("depth-5"), true, "report scan includes files at depth six");
+    assertEqual(triggered.heapSnapshot.files.some((path) => path.includes("excluded")), false, "diagnostic scan prunes files below depth six");
+    assertEqual(triggered.diagnosticReport.files.some((path) => path.includes("excluded")), false, "report scan prunes files below depth six");
     assertEqual(triggered.heapSnapshot.files.some((path) => path.endsWith("stale.heapsnapshot")), false, "stale heap snapshot excluded");
-    assertEqual((await readFile(invocationLog, "utf8")).trim().split("\n").length, 1, "one OCM session triggers both artifacts");
+    const firstInvocationLog = (await readFile(invocationLog, "utf8")).trim();
+    assertEqual(firstInvocationLog.split("\n").length, 1, "one OCM session triggers both artifacts");
+    assertEqual(firstInvocationLog.includes("-maxdepth"), false, "diagnostic scan avoids GNU-only find depth flags");
     JSON.parse(await readFile(triggered.diagnosticReport.artifacts[0], "utf8"));
     await Promise.all(Array.from({ length: 60 }, (_, index) =>
       writeFile(join(openclawHome, `historical-${index}.heapsnapshot`), "{}\n")
