@@ -121,11 +121,15 @@ export async function retainGateArtifacts(reportPath, bundle, options = {}) {
 
   const markdownPath = siblingMarkdownPath(sourceJsonPath);
   await requireRegularFile(markdownPath, "report Markdown");
-  if (bundle?.outputPath) {
-    await requireRegularFile(bundle.outputPath, "report bundle");
+  const hasBundle = Boolean(bundle?.outputPath);
+  const hasChecksum = Boolean(bundle?.checksumPath);
+  if (hasBundle !== hasChecksum) {
+    throw new Error("retained report bundle requires both archive and checksum");
   }
-  if (bundle?.checksumPath) {
+  if (hasBundle) {
+    await requireRegularFile(bundle.outputPath, "report bundle");
     await requireRegularFile(bundle.checksumPath, "report bundle checksum");
+    await validateBundlePair(bundle.outputPath, bundle.checksumPath);
   }
 
   const lockPath = `${outputRoot}.lock`;
@@ -192,6 +196,9 @@ async function listFiles(root, dir) {
 }
 
 export async function publishBundlePair({ archive, outputPath, checksumPath, checksum }) {
+  if (dirname(outputPath) !== dirname(checksumPath)) {
+    throw new Error("report bundle and checksum must share one publication directory");
+  }
   return withFileLock(`${outputPath}.lock`, () => publishBundlePairLocked({
     archive,
     outputPath,
@@ -236,17 +243,21 @@ async function publishBundlePairLocked({ archive, outputPath, checksumPath, chec
       }
       if (!checksumExists && outputExists) {
         await rename(staged[1].stagedPath, checksumPath);
+        await syncDirectory(dirname(outputPath));
       } else if (!outputExists && checksumExists) {
         await rename(staged[0].stagedPath, outputPath);
+        await syncDirectory(dirname(outputPath));
       }
       return;
     }
     await rename(staged[1].stagedPath, checksumPath);
     checksumPublished = true;
+    await syncDirectory(dirname(outputPath));
     // The archive is the bundle commit marker. A checksum-only crash state is
     // harmless and is completed by the recovery branch above.
     await rename(staged[0].stagedPath, outputPath);
     archivePublished = true;
+    await syncDirectory(dirname(outputPath));
   } catch (error) {
     if (archivePublished) {
       await rm(outputPath, { force: true });
@@ -254,6 +265,7 @@ async function publishBundlePairLocked({ archive, outputPath, checksumPath, chec
     if (checksumPublished) {
       await rm(checksumPath, { force: true });
     }
+    await syncDirectory(dirname(outputPath)).catch(() => {});
     throw error;
   } finally {
     await Promise.all(staged.map((entry) => rm(entry.stagedPath, { force: true }).catch(() => {})));
@@ -278,8 +290,10 @@ async function replaceRetainedArtifactTree({
     await assertManagedRetentionDirectory(outputRoot);
     await mkdir(stage, { recursive: false, mode: 0o700 });
     await cp(sourceJsonPath, join(stage, "report.json"));
+    await syncFile(join(stage, "report.json"));
     await cp(markdownPath, join(stage, "report.md"));
-    await writeFile(join(stage, "paste-summary.txt"), renderPasteSummary(report), "utf8");
+    await syncFile(join(stage, "report.md"));
+    await writeDurableFile(join(stage, "paste-summary.txt"), renderPasteSummary(report));
 
     const retainedBundlePath = bundle?.outputPath
       ? join(outputRoot, basename(bundle.outputPath))
@@ -289,9 +303,11 @@ async function replaceRetainedArtifactTree({
       : null;
     if (bundle?.outputPath) {
       await cp(bundle.outputPath, join(stage, basename(bundle.outputPath)));
+      await syncFile(join(stage, basename(bundle.outputPath)));
     }
     if (bundle?.checksumPath) {
       await cp(bundle.checksumPath, join(stage, basename(bundle.checksumPath)));
+      await syncFile(join(stage, basename(bundle.checksumPath)));
     }
 
     const receipt = {
@@ -308,22 +324,32 @@ async function replaceRetainedArtifactTree({
     };
     // The receipt is the retained tree's commit marker and is written only
     // after every referenced artifact is present in the staging directory.
-    await writeFile(join(stage, "retained-artifacts.json"), `${JSON.stringify(receipt, null, 2)}\n`, "utf8");
+    await writeDurableFile(
+      join(stage, "retained-artifacts.json"),
+      `${JSON.stringify(receipt, null, 2)}\n`
+    );
+    await syncDirectory(stage);
 
     if (await pathExists(outputRoot)) {
       await rename(outputRoot, backup);
       oldTreeBackedUp = true;
+      await syncDirectory(parent);
     }
     await rename(stage, outputRoot);
+    await syncDirectory(parent);
     // Publication commits at the directory rename. Cleanup cannot safely
     // restore a backup once recursive deletion may have started.
     oldTreeBackedUp = false;
-    await rm(backup, { recursive: true, force: true }).catch(() => {});
+    await rm(backup, { recursive: true, force: true })
+      .then(() => syncDirectory(parent))
+      .catch(() => {});
     return receipt;
   } catch (error) {
     const rollbackErrors = [];
     if (oldTreeBackedUp) {
-      await rename(backup, outputRoot).catch((rollbackError) => rollbackErrors.push(rollbackError));
+      await rename(backup, outputRoot)
+        .then(() => syncDirectory(parent))
+        .catch((rollbackError) => rollbackErrors.push(rollbackError));
     }
     if (rollbackErrors.length > 0) {
       throw new AggregateError([error, ...rollbackErrors], "retained artifact publication failed and rollback was incomplete");
@@ -341,13 +367,23 @@ async function recoverRetainedArtifactTree(outputRoot, backup) {
   await assertManagedRetentionDirectory(backup, outputRoot);
   if (!await pathExists(outputRoot)) {
     await rename(backup, outputRoot);
+    await syncDirectory(dirname(outputRoot));
     return;
   }
   await assertManagedRetentionDirectory(outputRoot);
+  try {
+    await assertManagedRetentionDirectory(outputRoot, outputRoot, true);
+  } catch {
+    await rm(outputRoot, { recursive: true });
+    await rename(backup, outputRoot);
+    await syncDirectory(dirname(outputRoot));
+    return;
+  }
   await rm(backup, { recursive: true });
+  await syncDirectory(dirname(outputRoot));
 }
 
-async function assertManagedRetentionDirectory(path, expectedOutputRoot = path) {
+async function assertManagedRetentionDirectory(path, expectedOutputRoot = path, requireComplete = false) {
   if (!await pathExists(path)) {
     return;
   }
@@ -397,6 +433,24 @@ async function assertManagedRetentionDirectory(path, expectedOutputRoot = path) 
       throw new Error(`retained artifact destination contains unmanaged files: ${path}`);
     }
   }
+  if (requireComplete) {
+    for (const entry of managedEntries) {
+      if (!entries.includes(entry)) {
+        throw new Error(`retained artifact destination is incomplete: ${path}`);
+      }
+    }
+    const hasBundle = Boolean(receipt.bundlePath);
+    const hasChecksum = Boolean(receipt.checksumPath);
+    if (hasBundle !== hasChecksum) {
+      throw new Error(`retained artifact destination has an incomplete bundle pair: ${path}`);
+    }
+    if (hasBundle) {
+      await validateBundlePair(
+        join(path, basename(receipt.bundlePath)),
+        join(path, basename(receipt.checksumPath))
+      );
+    }
+  }
 }
 
 async function writeDurableFile(path, content) {
@@ -406,6 +460,39 @@ async function writeDurableFile(path, content) {
     await handle.sync();
   } finally {
     await handle.close();
+  }
+}
+
+async function syncFile(path) {
+  const handle = await open(path, "r");
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
+async function syncDirectory(path) {
+  if (process.platform === "win32") {
+    return;
+  }
+  const handle = await open(path, "r");
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
+async function validateBundlePair(archivePath, checksumPath) {
+  const [archive, checksum] = await Promise.all([
+    readFile(archivePath),
+    readFile(checksumPath, "utf8")
+  ]);
+  const sha256 = createHash("sha256").update(archive).digest("hex");
+  const expected = `${sha256}  ${basename(archivePath)}\n`;
+  if (checksum !== expected) {
+    throw new Error(`report bundle checksum does not match archive: ${archivePath}`);
   }
 }
 

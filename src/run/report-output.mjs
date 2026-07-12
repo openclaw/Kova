@@ -86,12 +86,14 @@ async function replaceReportFileSet(entries, canonicalPath) {
   const staged = entries.map((entry) => ({
     ...entry,
     stagedPath: join(dirname(entry.path), `.${transaction}-${basename(entry.path)}.tmp`),
-    backupPath: join(dirname(entry.path), `.${transaction}-${basename(entry.path)}.bak`)
+    backupPath: join(dirname(entry.path), `.${basename(entry.path)}.kova-backup`)
   }));
   const backups = [];
   const published = [];
   let preserveBackups = false;
+  let committed = false;
 
+  await recoverReportFileSet(staged, canonicalPath);
   try {
     for (const entry of staged) {
       await writeDurableFile(entry.stagedPath, entry.content);
@@ -109,15 +111,21 @@ async function replaceReportFileSet(entries, canonicalPath) {
         backups.push(entry);
       }
     }
+    await syncDirectories(staged);
 
     const publishOrder = [
       ...staged.filter((entry) => entry.path !== canonicalPath),
       ...staged.filter((entry) => entry.path === canonicalPath)
     ];
     for (const entry of publishOrder) {
+      if (entry.path === canonicalPath) {
+        await syncDirectories(staged);
+      }
       await rename(entry.stagedPath, entry.path);
       published.push(entry);
     }
+    await syncDirectories(staged);
+    committed = true;
   } catch (error) {
     const rollbackErrors = [];
     for (const entry of published.toReversed()) {
@@ -126,17 +134,62 @@ async function replaceReportFileSet(entries, canonicalPath) {
     for (const entry of backups.toReversed()) {
       await rename(entry.backupPath, entry.path).catch((rollbackError) => rollbackErrors.push(rollbackError));
     }
+    await syncDirectories(staged).catch((rollbackError) => rollbackErrors.push(rollbackError));
     if (rollbackErrors.length > 0) {
       preserveBackups = true;
       throw new AggregateError([error, ...rollbackErrors], "report publication failed and rollback was incomplete");
     }
     throw error;
   } finally {
-    await Promise.all(staged.map((entry) => rm(entry.stagedPath, { force: true })));
-    if (!preserveBackups) {
+    await Promise.all(staged.map((entry) => rm(entry.stagedPath, { force: true }).catch(() => {})));
+    if (committed) {
+      await Promise.all(staged.map((entry) => rm(entry.backupPath, { force: true }).catch(() => {})));
+      await syncDirectories(staged).catch(() => {});
+    } else if (!preserveBackups) {
       await Promise.all(staged.map((entry) => rm(entry.backupPath, { force: true })));
+      await syncDirectories(staged);
     }
   }
+}
+
+async function recoverReportFileSet(entries, canonicalPath) {
+  const backupEntries = [];
+  for (const entry of entries) {
+    if (!await pathExists(entry.backupPath)) {
+      continue;
+    }
+    const info = await lstat(entry.backupPath);
+    if (!info.isFile()) {
+      throw new Error(`report backup is not a regular file: ${entry.backupPath}`);
+    }
+    backupEntries.push(entry);
+  }
+  if (backupEntries.length === 0) {
+    return;
+  }
+
+  const canonicalExists = await pathExists(canonicalPath);
+  let currentComplete = canonicalExists;
+  if (currentComplete) {
+    for (const entry of entries) {
+      const info = await lstat(entry.path).catch(() => null);
+      if (!info?.isFile()) {
+        currentComplete = false;
+        break;
+      }
+    }
+  }
+  if (currentComplete) {
+    await Promise.all(backupEntries.map((entry) => rm(entry.backupPath, { force: true })));
+    await syncDirectories(entries);
+    return;
+  }
+
+  await Promise.all(entries.map((entry) => rm(entry.path, { force: true })));
+  for (const entry of backupEntries) {
+    await rename(entry.backupPath, entry.path);
+  }
+  await syncDirectories(entries);
 }
 
 async function writeDurableFile(path, content) {
@@ -147,6 +200,21 @@ async function writeDurableFile(path, content) {
   } finally {
     await handle.close();
   }
+}
+
+async function syncDirectories(entries) {
+  if (process.platform === "win32") {
+    return;
+  }
+  const directories = [...new Set(entries.map((entry) => dirname(entry.path)))];
+  await Promise.all(directories.map(async (directory) => {
+    const handle = await open(directory, "r");
+    try {
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+  }));
 }
 
 async function pathExists(path) {
