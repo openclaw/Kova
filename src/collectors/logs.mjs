@@ -17,6 +17,14 @@ const SENSITIVE_CLI_TO_LINE_END_PATTERN = new RegExp(
   `((?:^|\\s)--${SENSITIVE_LOG_KEY}(?:=|\\s+)).*$`,
   "gim"
 );
+const SENSITIVE_VALUE_CONTINUATION_PATTERN = new RegExp(
+  `(["']?\\b${SENSITIVE_LOG_KEY}\\b["']?\\s*[:=]\\s*)([|>][-+]?|\\\\)\\s*$`,
+  "i"
+);
+const SENSITIVE_CLI_CONTINUATION_PATTERN = new RegExp(
+  `((?:^|\\s)--${SENSITIVE_LOG_KEY}(?:=|\\s+))([|>][-+]?|\\\\)\\s*$`,
+  "i"
+);
 const PEM_PRIVATE_KEY_PATTERN =
   /-----BEGIN ([A-Z0-9 ]*PRIVATE KEY)-----[\s\S]*?(?:-----END \1-----|$)/g;
 
@@ -83,7 +91,7 @@ export async function collectLogMetrics(envName, timeoutMs, artifactDir, options
 }
 
 export function redactLogText(value) {
-  return String(value ?? "")
+  return redactSensitiveContinuations(value)
     .replace(PEM_PRIVATE_KEY_PATTERN, "[REDACTED]")
     .replace(
       SENSITIVE_VALUE_TO_LINE_END_PATTERN,
@@ -98,6 +106,51 @@ export function redactLogText(value) {
       /^((?:.*?)(?:authorization|proxy-authorization|x-api-key|api-key|cookie|set-cookie)\s*:\s*).+$/gim,
       "$1[REDACTED]"
     );
+}
+
+function redactSensitiveContinuations(value) {
+  const lines = String(value ?? "").split(/\r?\n/);
+  let blockIndent = null;
+  let redactNextValue = false;
+
+  for (const [index, line] of lines.entries()) {
+    const indent = line.match(/^[ \t]*/)?.[0].length ?? 0;
+    if (redactNextValue) {
+      if (line.trim() === "") {
+        continue;
+      }
+      redactNextValue = /\\\s*$/.test(line);
+      lines[index] = `${line.slice(0, indent)}[REDACTED]`;
+      continue;
+    }
+    if (blockIndent !== null) {
+      if (line.trim() === "" || indent > blockIndent) {
+        if (line.trim() !== "") {
+          lines[index] = `${line.slice(0, indent)}[REDACTED]`;
+        }
+        continue;
+      }
+      blockIndent = null;
+    }
+
+    const pattern = SENSITIVE_VALUE_CONTINUATION_PATTERN.test(line)
+      ? SENSITIVE_VALUE_CONTINUATION_PATTERN
+      : SENSITIVE_CLI_CONTINUATION_PATTERN.test(line)
+        ? SENSITIVE_CLI_CONTINUATION_PATTERN
+        : null;
+    if (!pattern) {
+      continue;
+    }
+    const marker = line.match(pattern)?.[2];
+    lines[index] = line.replace(pattern, "$1[REDACTED]");
+    if (marker === "\\") {
+      redactNextValue = true;
+    } else {
+      blockIndent = indent;
+    }
+  }
+
+  return lines.join("\n");
 }
 
 export function boundedLogSnippet(value, maxChars) {
