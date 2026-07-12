@@ -226,22 +226,44 @@ async function projectReportBundles(payload, report, { inputPath, outDir }) {
 
 async function findReportBundlePath(report, inputPath) {
   const runId = typeof report.runId === "string" ? report.runId : null;
-  const explicit = [
+  const explicit = [...new Set([
     report.bundle?.path,
     report.bundle?.outputPath,
     report.outputPaths?.bundle,
     report.outputPaths?.bundlePath,
     report.bundlePath,
-  ].filter((item) => typeof item === "string" && item.length > 0);
+  ]
+    .filter((item) => typeof item === "string" && item.length > 0)
+    .map((candidate) => (
+      isAbsolute(candidate) ? candidate : resolve(dirname(inputPath), candidate)
+    )))];
+  const invalidExplicit = [];
+  let verifiedExplicit = null;
 
-  for (const candidate of explicit) {
-    const resolved = isAbsolute(candidate) ? candidate : resolve(dirname(inputPath), candidate);
-    if (await pathExists(resolved)) {
-      const archive = await readVerifiedBundle(resolved, runId);
-      if (archive) {
-        return { path: resolved, archive };
-      }
+  for (const path of explicit) {
+    if (!await pathExists(path)) {
+      invalidExplicit.push(path);
+      continue;
     }
+    const archive = await readVerifiedBundle(path, runId);
+    if (!archive) {
+      invalidExplicit.push(path);
+      continue;
+    }
+    if (verifiedExplicit && !archive.equals(verifiedExplicit.archive)) {
+      invalidExplicit.push(path);
+      continue;
+    }
+    verifiedExplicit ??= { path, archive };
+  }
+  if (invalidExplicit.length > 0) {
+    throw new Error(
+      "kova publish: explicitly referenced report bundle failed integrity verification: " +
+      invalidExplicit.map((path) => displayPath(path)).join(", ")
+    );
+  }
+  if (verifiedExplicit) {
+    return verifiedExplicit;
   }
 
   const inputDir = dirname(inputPath);
