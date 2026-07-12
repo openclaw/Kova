@@ -32,11 +32,9 @@ export async function teardownScenario(record, scenario, context, envName, artif
 
   const retainEnv = shouldRetainEnv(context, record);
   if (retainEnv) {
-    const protection = await runGuardedTeardownStages([{
-      id: "retention-protection",
-      run: () => protectRetainedEnv(record, context, envName)
-    }], options);
-    errors.push(...protection.errors);
+    // The OCM protection is the destruction fence. Do not emit a retained
+    // record when that fence could not be established.
+    await protectRetainedEnv(record, context, envName);
     record.cleanup = "retained";
     record.retainedReason = context.keepEnv ? "keep-env" : "failure";
   }
