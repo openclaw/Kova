@@ -96,6 +96,7 @@ async function replaceReportFileSet(entries, canonicalPath) {
   const published = [];
   let preserveBackups = false;
   let committed = false;
+  let transactionMarker = null;
 
   await recoverReportFileSet(staged, canonicalPath, transactionPath);
   try {
@@ -104,9 +105,10 @@ async function replaceReportFileSet(entries, canonicalPath) {
     }
     // Hash the complete generation before moving the old files. Recovery must
     // not mistake a mixed set left by an incomplete rollback for a commit.
+    transactionMarker = await buildReportTransaction(staged, canonicalPath);
     await writeDurableReportTransaction(
       transactionPath,
-      `${JSON.stringify(await buildReportTransaction(staged, canonicalPath), null, 2)}\n`,
+      `${JSON.stringify(transactionMarker, null, 2)}\n`,
       staged
     );
 
@@ -162,9 +164,9 @@ async function replaceReportFileSet(entries, canonicalPath) {
   } finally {
     await Promise.all(staged.map((entry) => rm(entry.stagedPath, { force: true }).catch(() => {})));
     if (committed) {
-      await removeReportBackupsAndMarker(staged, transactionPath).catch(() => {});
+      await removeReportBackupsAndMarker(staged, transactionPath, transactionMarker).catch(() => {});
     } else if (!preserveBackups) {
-      await removeReportBackupsAndMarker(staged, transactionPath);
+      await removeReportBackupsAndMarker(staged, transactionPath, transactionMarker);
     }
   }
 }
@@ -188,7 +190,7 @@ async function recoverReportFileSet(entries, canonicalPath, transactionPath) {
   }
 
   if (marker && await currentReportMatchesTransaction(entries, marker)) {
-    await removeReportBackupsAndMarker(entries, transactionPath);
+    await removeReportBackupsAndMarker(entries, transactionPath, marker);
     return;
   }
 
@@ -237,9 +239,28 @@ async function restoreReportBackups(backupEntries, canonicalPath) {
   }
 }
 
-async function removeReportBackupsAndMarker(entries, transactionPath) {
+async function removeReportBackupsAndMarker(entries, transactionPath, marker) {
   // Keep the transaction marker durable until backup deletion is durable.
   // Otherwise recovery cannot distinguish a committed generation from a mix.
+  const previousFiles = new Map(
+    Array.isArray(marker?.previousFiles)
+      ? marker.previousFiles.map((entry) => [entry.name, entry.sha256])
+      : []
+  );
+  for (const entry of entries) {
+    if (!await pathExists(entry.backupPath)) {
+      continue;
+    }
+    const expectedHash = previousFiles.get(basename(entry.path));
+    const info = await lstat(entry.backupPath);
+    if (
+      !expectedHash ||
+      !info.isFile() ||
+      await fileSha256(entry.backupPath) !== expectedHash
+    ) {
+      throw new Error(`report backup does not match transaction marker: ${entry.backupPath}`);
+    }
+  }
   await Promise.all(entries.map((entry) => rm(entry.backupPath, { force: true })));
   await syncDirectories(entries);
   await rm(transactionPath, { force: true });

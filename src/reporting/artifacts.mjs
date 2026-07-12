@@ -352,9 +352,11 @@ async function replaceRetainedArtifactTree({
     await syncDirectory(stage);
 
     if (await pathExists(outputRoot)) {
+      const treeSha256 = await retainedArtifactTreeDigest(outputRoot);
       await writeDurableMarker(backupMarker, `${JSON.stringify({
-        schemaVersion: "kova.retainedArtifactBackup.v1",
-        outputRoot
+        schemaVersion: "kova.retainedArtifactBackup.v2",
+        outputRoot,
+        treeSha256
       })}\n`);
       await rename(outputRoot, backup);
       oldTreeBackedUp = true;
@@ -367,7 +369,7 @@ async function replaceRetainedArtifactTree({
     // restore a backup once recursive deletion may have started.
     oldTreeBackedUp = false;
     newTreePublished = false;
-    await removeRetainedBackup(backup, backupMarker, parent).catch(() => {});
+    await removeRetainedBackup(backup, backupMarker, outputRoot, parent).catch(() => {});
     return receipt;
   } catch (error) {
     const rollbackErrors = [];
@@ -397,9 +399,8 @@ async function recoverRetainedArtifactTree(outputRoot, backup, backupMarker) {
     await removeOwnedBackupMarker(backupMarker, outputRoot);
     return;
   }
-  await requireOwnedBackupMarker(backupMarker, outputRoot);
+  await requireRetainedBackup(backup, backupMarker, outputRoot);
   if (!await pathExists(outputRoot)) {
-    await assertManagedRetentionDirectory(backup, outputRoot);
     await restoreRetainedBackup(backup, outputRoot, backupMarker, dirname(outputRoot));
     return;
   }
@@ -413,15 +414,19 @@ async function recoverRetainedArtifactTree(outputRoot, backup, backupMarker) {
     // committed tree only after proving the backup is valid.
   }
   if (currentComplete) {
-    await removeRetainedBackup(backup, backupMarker, dirname(outputRoot));
+    await removeRetainedBackup(backup, backupMarker, outputRoot, dirname(outputRoot));
     return;
   }
-  await assertManagedRetentionDirectory(backup, outputRoot);
   await rm(outputRoot, { recursive: true });
   await restoreRetainedBackup(backup, outputRoot, backupMarker, dirname(outputRoot));
 }
 
-async function removeRetainedBackup(backup, backupMarker, parent) {
+async function removeRetainedBackup(backup, backupMarker, outputRoot, parent) {
+  if (!await pathExists(backup)) {
+    await removeOwnedBackupMarker(backupMarker, outputRoot);
+    return;
+  }
+  await requireRetainedBackup(backup, backupMarker, outputRoot);
   // The owner marker must outlive the backup directory on durable storage.
   // Recovery rejects a backup whose marker disappeared first.
   await rm(backup, { recursive: true, force: true });
@@ -431,6 +436,7 @@ async function removeRetainedBackup(backup, backupMarker, parent) {
 }
 
 async function restoreRetainedBackup(backup, outputRoot, backupMarker, parent) {
+  await requireRetainedBackup(backup, backupMarker, outputRoot);
   await rename(backup, outputRoot);
   await syncDirectory(parent);
   await rm(backupMarker, { force: true });
@@ -449,10 +455,24 @@ async function requireOwnedBackupMarker(path, outputRoot) {
     throw new Error(`retained artifact backup is not Kova-managed: ${path}`);
   }
   if (
-    marker?.schemaVersion !== "kova.retainedArtifactBackup.v1" ||
-    resolve(marker.outputRoot ?? "") !== resolve(outputRoot)
+    marker?.schemaVersion !== "kova.retainedArtifactBackup.v2" ||
+    resolve(marker.outputRoot ?? "") !== resolve(outputRoot) ||
+    !/^[a-f0-9]{64}$/.test(marker.treeSha256 ?? "")
   ) {
     throw new Error(`retained artifact backup is not Kova-managed: ${path}`);
+  }
+  return marker;
+}
+
+async function requireRetainedBackup(backup, backupMarker, outputRoot) {
+  const marker = await requireOwnedBackupMarker(backupMarker, outputRoot);
+  try {
+    await assertManagedRetentionDirectory(backup, outputRoot);
+    if (await retainedArtifactTreeDigest(backup) !== marker.treeSha256) {
+      throw new Error("tree digest mismatch");
+    }
+  } catch {
+    throw new Error(`retained artifact backup is not Kova-managed: ${backup}`);
   }
 }
 
@@ -536,6 +556,22 @@ async function assertManagedRetentionDirectory(path, expectedOutputRoot = path, 
       );
     }
   }
+}
+
+export async function retainedArtifactTreeDigest(path) {
+  const digest = createHash("sha256");
+  const entries = (await readdir(path)).toSorted();
+  for (const entry of entries) {
+    const entryPath = join(path, entry);
+    const info = await lstat(entryPath);
+    if (!info.isFile()) {
+      throw new Error(`retained artifact tree contains a non-file entry: ${entryPath}`);
+    }
+    const content = await readFile(entryPath);
+    digest.update(`${entry}\0${content.length}\0`);
+    digest.update(content);
+  }
+  return digest.digest("hex");
 }
 
 async function writeDurableFile(path, content) {
