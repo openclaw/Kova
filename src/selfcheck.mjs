@@ -12660,6 +12660,9 @@ setInterval(() => {}, 1000);
     assertEqual(triggered.heapSnapshot.files.some((path) => path.endsWith("stale.heapsnapshot")), false, "stale heap snapshot excluded");
     assertEqual((await readFile(invocationLog, "utf8")).trim().split("\n").length, 1, "one OCM session triggers both artifacts");
     JSON.parse(await readFile(triggered.diagnosticReport.artifacts[0], "utf8"));
+    await Promise.all(Array.from({ length: 60 }, (_, index) =>
+      writeFile(join(openclawHome, `historical-${index}.heapsnapshot`), "{}\n")
+    ));
     const reusedReport = await triggerDiagnosticReport("kova-self-check", child.pid, 3000, root, {
       signalAlreadySent: true,
       commandEnv: { KOVA_FAKE_WRAPPER_ENV: "preserved" }

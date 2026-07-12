@@ -130,9 +130,17 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
     requestHeapSnapshot ? '[ "$heap_count" -gt 0 ]' : null,
     requestDiagnosticReport ? '[ "$report_count" -gt 0 ]' : null
   ].filter(Boolean).join(" && ") || "true";
+  const artifactOutputCommands = [
+    requestHeapSnapshot
+      ? `{ find ${searchRoots} -maxdepth 6 -type f -name "*.heapsnapshot" ${freshnessFilter} -print 2>/dev/null || :; } | head -25`
+      : null,
+    requestDiagnosticReport
+      ? `{ find ${searchRoots} -maxdepth 6 -type f \\( -name "report.*.json" -o -name "*diagnostic*.json" \\) ${freshnessFilter} -print 2>/dev/null || :; } | head -25`
+      : null
+  ].filter(Boolean).join("; ");
   const command = ocmEnvExecShell(
     envName,
-    `set -eu; marker=$(mktemp); trap 'rm -f "$marker"' EXIT; touch "$marker"; ${signalCommand}; attempts=0; while :; do heap_count=$({ find ${searchRoots} -maxdepth 6 -type f -name "*.heapsnapshot" ${freshnessFilter} -print 2>/dev/null || :; } | wc -l | tr -d ' '); report_count=$({ find ${searchRoots} -maxdepth 6 -type f \\( -name "report.*.json" -o -name "*diagnostic*.json" \\) ${freshnessFilter} -print 2>/dev/null || :; } | wc -l | tr -d ' '); if ${readyConditions}; then break; fi; if [ "$attempts" -ge ${pollAttempts} ]; then break; fi; attempts=$((attempts + 1)); sleep 0.25; done; { find ${searchRoots} -maxdepth 6 -type f \\( -name "*.heapsnapshot" -o -name "report.*.json" -o -name "*diagnostic*.json" \\) ${freshnessFilter} -print 2>/dev/null || :; } | head -50`
+    `set -eu; marker=$(mktemp); trap 'rm -f "$marker"' EXIT; touch "$marker"; ${signalCommand}; attempts=0; while :; do heap_count=$({ find ${searchRoots} -maxdepth 6 -type f -name "*.heapsnapshot" ${freshnessFilter} -print 2>/dev/null || :; } | wc -l | tr -d ' '); report_count=$({ find ${searchRoots} -maxdepth 6 -type f \\( -name "report.*.json" -o -name "*diagnostic*.json" \\) ${freshnessFilter} -print 2>/dev/null || :; } | wc -l | tr -d ' '); if ${readyConditions}; then break; fi; if [ "$attempts" -ge ${pollAttempts} ]; then break; fi; attempts=$((attempts + 1)); sleep 0.25; done; ${artifactOutputCommands}`
   );
   const result = await runCommand(command, {
     // OCM invocation, polling, and artifact retention share one caller-owned deadline.
