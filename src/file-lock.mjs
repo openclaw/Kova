@@ -243,13 +243,21 @@ export function classifyExecutionDomain(owner, current) {
     current.hardwareMachine &&
     owner.hardwareMachine === current.hardwareMachine
   );
+  const ownerNamespace = owner.pidNamespace ?? null;
+  const currentNamespace = current.pidNamespace ?? null;
+  if (Boolean(ownerNamespace) !== Boolean(currentNamespace)) {
+    return "unknown";
+  }
+  if (ownerNamespace && ownerNamespace !== currentNamespace) {
+    return "foreign";
+  }
   if (
     hardwareMachineMatch &&
     owner.boot &&
     current.boot &&
     owner.boot !== current.boot
   ) {
-    return "rebooted";
+    return ownerNamespace ? "rebooted" : "unknown";
   }
   if (
     !hardwareMachineMatch &&
@@ -258,14 +266,6 @@ export function classifyExecutionDomain(owner, current) {
     // Matching current boot IDs are the only fallback proof when a stable
     // machine identity is unavailable.
     return "unknown";
-  }
-  const ownerNamespace = owner.pidNamespace ?? null;
-  const currentNamespace = current.pidNamespace ?? null;
-  if (Boolean(ownerNamespace) !== Boolean(currentNamespace)) {
-    return "unknown";
-  }
-  if (ownerNamespace && ownerNamespace !== currentNamespace) {
-    return "foreign";
   }
   return "local";
 }
