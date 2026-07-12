@@ -326,11 +326,25 @@ async function promptSecret(question, output = process.stdout) {
 
   const wasRaw = input.isRaw === true;
   const wasPaused = input.isPaused();
+  const signals = ["SIGINT", "SIGTERM", "SIGHUP"];
+  const hadSignalListeners = new Map(signals.map((signal) => [
+    signal,
+    process.listenerCount(signal) > 0
+  ]));
 
   return new Promise((resolve, reject) => {
     let value = "";
     let settled = false;
 
+    const restoreInputState = () => {
+      try {
+        input.setRawMode(wasRaw);
+      } finally {
+        if (wasPaused) {
+          input.pause();
+        }
+      }
+    };
     const finish = (error) => {
       if (settled) {
         return;
@@ -339,13 +353,14 @@ async function promptSecret(question, output = process.stdout) {
       input.off("data", onData);
       input.off("error", onError);
       input.off("end", onEnd);
+      process.off("exit", onExit);
+      for (const signal of signals) {
+        process.off(signal, onSignal);
+      }
       try {
-        input.setRawMode(wasRaw);
+        restoreInputState();
       } catch (restoreError) {
         error ??= restoreError;
-      }
-      if (wasPaused) {
-        input.pause();
       }
       output.write("\n");
       if (error) {
@@ -380,10 +395,26 @@ async function promptSecret(question, output = process.stdout) {
     };
     const onError = (error) => finish(error);
     const onEnd = () => finish(new Error("secret input ended before a value was submitted"));
+    const onExit = () => {
+      try {
+        restoreInputState();
+      } catch {}
+    };
+    const onSignal = (signal) => {
+      const preserveDefault = hadSignalListeners.get(signal) !== true;
+      finish(new Error(`secret input interrupted by ${signal}`));
+      if (preserveDefault) {
+        process.kill(process.pid, signal);
+      }
+    };
 
     input.on("data", onData);
     input.once("error", onError);
     input.once("end", onEnd);
+    process.once("exit", onExit);
+    for (const signal of signals) {
+      process.prependListener(signal, onSignal);
+    }
     try {
       input.setRawMode(true);
       input.resume();
