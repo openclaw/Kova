@@ -25,6 +25,17 @@ export function isOwnedMockProviderSupervisorCommand(command, expected) {
   return invocation.test(text);
 }
 
+export function isOwnedLegacyMockProviderCommand(command, expected) {
+  const text = String(command ?? "").trim();
+  const executable = escapeRegExp(expected.legacyExecutablePath);
+  const script = escapeRegExp(expected.scriptPath);
+  const requestLog = escapeRegExp(expected.requestLog);
+  const invocation = new RegExp(
+    `^(?:(?:node|\\S*[\\\\/]node)\\s+)?${executable}\\s+serve\\s+--providers\\s+openai\\s+--script\\s+${script}\\s+--port\\s+0\\s+--request-log\\s+${requestLog}\\s*$`
+  );
+  return invocation.test(text);
+}
+
 export function mockProviderSupervisorArgs(expected) {
   return [
     expected.supervisorPath,
@@ -52,17 +63,20 @@ export async function stopOwnedMockProvider(options) {
   const {
     pidFile,
     supervisorPath,
+    legacyExecutablePath,
     scriptPath,
     requestLog,
     serverLog,
     inspectProcess = readProcessCommand,
     requestStop = writeStopRequest,
+    signalProcess = process.kill,
     stopTimeoutMs = 5000,
     pollIntervalMs = 50,
     wait = sleep
   } = options;
   const expectedCommand = {
     supervisorPath,
+    legacyExecutablePath,
     scriptPath,
     requestLog,
     serverLog,
@@ -81,17 +95,50 @@ export async function stopOwnedMockProvider(options) {
   let result;
   let owner;
   let pid;
+  let legacy = false;
   try {
     owner = parseMockProviderOwner(rawOwner);
     pid = owner.pid;
   } catch {
-    result = { status: "invalid-pid", pid: null };
+    try {
+      pid = positiveProcessId(rawOwner, "legacy mock provider pid");
+      legacy = true;
+    } catch {
+      result = { status: "invalid-pid", pid: null };
+    }
   }
 
   if (!result) {
     const command = await inspectProcess(pid);
     if (command === null) {
-      result = { status: "not-running", pid };
+      result = { status: legacy ? "legacy-not-running" : "not-running", pid };
+    } else if (legacy) {
+      if (!isOwnedLegacyMockProviderCommand(command, expectedCommand)) {
+        throw new Error(`legacy mock provider pid ${pid} does not match the expected command; retaining ${pidFile}`);
+      }
+      try {
+        signalProcess(pid, "SIGTERM");
+      } catch (error) {
+        if (error.code === "ESRCH") {
+          result = { status: "legacy-not-running", pid };
+        } else {
+          throw error;
+        }
+      }
+      if (!result) {
+        const stopped = await waitForProcessExit({
+          pid,
+          isExpectedCommand: (currentCommand) => isOwnedLegacyMockProviderCommand(currentCommand, expectedCommand),
+          inspectProcess,
+          stopTimeoutMs,
+          pollIntervalMs,
+          wait
+        });
+        if (!stopped) {
+          throw new Error(`legacy mock provider ${pid} did not stop within ${stopTimeoutMs}ms`);
+        }
+        result = { status: "legacy-stopped", pid };
+      }
     } else if (!isOwnedMockProviderSupervisorCommand(command, expectedCommand)) {
       result = { status: "identity-mismatch", pid };
     } else {
@@ -99,7 +146,7 @@ export async function stopOwnedMockProvider(options) {
       await requestStop(stopFile);
       const stopped = await waitForProcessExit({
         pid,
-        expectedCommand,
+        isExpectedCommand: (currentCommand) => isOwnedMockProviderSupervisorCommand(currentCommand, expectedCommand),
         inspectProcess,
         stopTimeoutMs,
         pollIntervalMs,
@@ -182,7 +229,7 @@ export async function removeMockProviderOwnerFile(pidFile, expectedOwner) {
 async function waitForProcessExit(options) {
   const {
     pid,
-    expectedCommand,
+    isExpectedCommand,
     inspectProcess,
     stopTimeoutMs,
     pollIntervalMs,
@@ -192,7 +239,7 @@ async function waitForProcessExit(options) {
 
   while (true) {
     const command = await inspectProcess(pid);
-    if (command === null || !isOwnedMockProviderSupervisorCommand(command, expectedCommand)) {
+    if (command === null || !isExpectedCommand(command)) {
       return true;
     }
     if (Date.now() >= deadline) {
