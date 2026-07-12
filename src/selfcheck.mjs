@@ -5571,11 +5571,9 @@ async function liveExternalCliDryRunCheck(tmp) {
   await mkdir(home, { recursive: true });
   await mkdir(join(kovaHome, "credentials"), { recursive: true });
   await mkdir(fakeBin, { recursive: true });
-  await writeFile(join(fakeBin, "codex"), `#!/bin/sh
-test "$#" -eq 2 && test "$1" = "login" && test "$2" = "status" || exit 42
-echo "native codex auth status" >&2
-`, "utf8");
-  await chmod(join(fakeBin, "codex"), 0o755);
+  await writeExternalCliFixture(fakeBin, "codex", {
+    stderr: "native codex auth status"
+  });
   await writeFile(join(kovaHome, "credentials", "providers.json"), `${JSON.stringify({
     schemaVersion: "kova.credentials.providers.v1",
     defaultProvider: "openai",
@@ -5652,14 +5650,12 @@ async function liveAnthropicExternalCliDryRunCheck(tmp) {
   await mkdir(home, { recursive: true });
   await mkdir(join(kovaHome, "credentials"), { recursive: true });
   await mkdir(fakeBin, { recursive: true });
-  await writeFile(join(fakeBin, "claude"), `#!/bin/sh
-if test "$#" -eq 3 && test "$1" = "auth" && test "$2" = "status" && test "$3" = "--help"; then
-  exit 0
-fi
-test "$#" -eq 2 && test "$1" = "auth" && test "$2" = "status" || exit 42
-echo '{"loggedIn":true,"email":"must-not-leak@example.invalid"}'
-`, "utf8");
-  await chmod(join(fakeBin, "claude"), 0o755);
+  await writeExternalCliFixture(fakeBin, "claude", {
+    statusPayload: {
+      loggedIn: true,
+      email: "must-not-leak@example.invalid"
+    }
+  });
   await writeFile(join(kovaHome, "credentials", "providers.json"), `${JSON.stringify({
     schemaVersion: "kova.credentials.providers.v1",
     defaultProvider: "anthropic",
@@ -16353,6 +16349,50 @@ function assertTtySetupState(transcript, sentinel) {
   assertEqual(after, before, "TTY state restored");
 }
 
+async function writeExternalCliFixture(directory, cli, options = {}) {
+  const expectedArgs = cli === "codex"
+    ? ["login", "status"]
+    : ["auth", "status"];
+  const lines = [
+    `const args = process.argv.slice(2);`
+  ];
+  if (cli === "claude") {
+    lines.push(
+      `if (JSON.stringify(args) === ${JSON.stringify(JSON.stringify(["auth", "status", "--help"]))}) {`,
+      `  process.exit(${options.helpStatus ?? 0});`,
+      `}`
+    );
+  }
+  lines.push(
+    `if (JSON.stringify(args) !== ${JSON.stringify(JSON.stringify(expectedArgs))}) {`,
+    `  process.exit(42);`,
+    `}`
+  );
+  if (options.stderr) {
+    lines.push(`console.error(${JSON.stringify(options.stderr)});`);
+  }
+  if (options.statusPayload) {
+    lines.push(`console.log(${JSON.stringify(JSON.stringify(options.statusPayload))});`);
+  }
+  lines.push(`process.exit(${options.status ?? 0});`);
+
+  const source = `${lines.join("\n")}\n`;
+  if (process.platform === "win32") {
+    const scriptName = `${cli}-fixture.mjs`;
+    await writeFile(join(directory, scriptName), source, "utf8");
+    await writeFile(
+      join(directory, `${cli}.cmd`),
+      `@echo off\r\nnode "%~dp0${scriptName}" %*\r\n`,
+      "utf8"
+    );
+    return;
+  }
+
+  const executable = join(directory, cli);
+  await writeFile(executable, `#!/usr/bin/env node\n${source}`, "utf8");
+  await chmod(executable, 0o755);
+}
+
 function runNodeProcess(args, env) {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, ["bin/kova.mjs", ...args], {
@@ -16412,13 +16452,9 @@ async function externalCliSetupCheck(tmp) {
   const kovaHome = join(tmp, "external-cli-kova-home");
   await mkdir(home, { recursive: true });
   await mkdir(fakeBin, { recursive: true });
-  const fakeCodex = join(fakeBin, "codex");
-  await writeFile(fakeCodex, `#!/bin/sh
-test "$#" -eq 2 && test "$1" = "login" && test "$2" = "status" || exit 42
-echo "authenticated by native status" >&2
-exit 0
-`, "utf8");
-  await chmod(fakeCodex, 0o755);
+  await writeExternalCliFixture(fakeBin, "codex", {
+    stderr: "authenticated by native status"
+  });
 
   const command = [
     `HOME=${quoteShell(home)}`,
@@ -16538,15 +16574,12 @@ async function claudeCliLoggedOutCheck(tmp) {
   const fakeBin = join(tmp, "logged-out-claude-bin");
   const home = join(tmp, "logged-out-claude-home");
   await mkdir(fakeBin, { recursive: true });
-  await writeFile(join(fakeBin, "claude"), `#!/bin/sh
-if test "$#" -eq 3 && test "$1" = "auth" && test "$2" = "status" && test "$3" = "--help"; then
-  exit 0
-fi
-test "$#" -eq 2 && test "$1" = "auth" && test "$2" = "status" || exit 42
-echo '{"loggedIn":false,"email":"must-not-leak@example.invalid"}'
-exit 0
-`, "utf8");
-  await chmod(join(fakeBin, "claude"), 0o755);
+  await writeExternalCliFixture(fakeBin, "claude", {
+    statusPayload: {
+      loggedIn: false,
+      email: "must-not-leak@example.invalid"
+    }
+  });
   const command = [
     `PATH=${quoteShell(`${fakeBin}:${process.env.PATH ?? ""}`)}`,
     `KOVA_HOME=${quoteShell(home)}`,
@@ -16554,7 +16587,9 @@ exit 0
   ].join(" ");
   const result = await runCommand(command, { timeoutMs: 30000, maxOutputChars: 1000000 });
   const output = `${result.stdout}\n${result.stderr}`;
-  await writeFile(join(fakeBin, "claude"), "#!/bin/sh\nexit 42\n", "utf8");
+  await writeExternalCliFixture(fakeBin, "claude", {
+    helpStatus: 42
+  });
   const unsupportedCommand = [
     `PATH=${quoteShell(`${fakeBin}:${process.env.PATH ?? ""}`)}`,
     `KOVA_HOME=${quoteShell(join(tmp, "unsupported-claude-home"))}`,
@@ -16585,11 +16620,9 @@ async function externalCliSetupRejectsUnauthenticatedCheck(tmp) {
   const fakeBin = join(tmp, "unauthenticated-codex-bin");
   const home = join(tmp, "unauthenticated-codex-home");
   await mkdir(fakeBin, { recursive: true });
-  await writeFile(join(fakeBin, "codex"), `#!/bin/sh
-test "$#" -eq 2 && test "$1" = "login" && test "$2" = "status" || exit 42
-exit 1
-`, "utf8");
-  await chmod(join(fakeBin, "codex"), 0o755);
+  await writeExternalCliFixture(fakeBin, "codex", {
+    status: 1
+  });
   const command = [
     `PATH=${quoteShell(`${fakeBin}:${process.env.PATH ?? ""}`)}`,
     `KOVA_HOME=${quoteShell(home)}`,
@@ -16763,12 +16796,10 @@ async function externalCliRunAuthVerificationCheck(tmp) {
   const credentials = join(kovaHome, "credentials");
   await mkdir(fakeBin, { recursive: true });
   await mkdir(credentials, { recursive: true });
-  await writeFile(join(fakeBin, "codex"), `#!/bin/sh
-test "$#" -eq 2 && test "$1" = "login" && test "$2" = "status" || exit 42
-echo "stale auth rejected" >&2
-exit 1
-`, "utf8");
-  await chmod(join(fakeBin, "codex"), 0o755);
+  await writeExternalCliFixture(fakeBin, "codex", {
+    status: 1,
+    stderr: "stale auth rejected"
+  });
   await writeFile(join(credentials, "providers.json"), `${JSON.stringify({
     schemaVersion: "kova.credentials.providers.v1",
     defaultProvider: "openai",
