@@ -6,6 +6,9 @@ repo_root="$(cd -- "${script_dir}/.." && pwd)"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
+ssh-keygen -q -t ed25519 -N "" -f "${tmp}/release-signing-key"
+release_public_key="$(cat "${tmp}/release-signing-key.pub")"
+
 make_repo() {
   local name="$1"
   local root="${tmp}/${name}"
@@ -14,7 +17,8 @@ make_repo() {
 
   git init --bare --quiet --initial-branch=main "$remote"
   git init --quiet --initial-branch=main "$repo"
-  mkdir -p "${repo}/scripts"
+  mkdir -p "${repo}/.github" "${repo}/scripts"
+  printf 'release@openclaw.invalid namespaces="git" %s\n' "$release_public_key" > "${repo}/.github/release-allowed-signers"
   cp "${repo_root}/package.json" "${repo}/package.json"
   cp "${repo_root}/package-lock.json" "${repo}/package-lock.json"
   cp "${script_dir}/release.sh" "${repo}/scripts/release.sh"
@@ -23,6 +27,9 @@ make_repo() {
   chmod +x "${repo}/scripts/"*
   git -C "$repo" config user.name "Kova release contract"
   git -C "$repo" config user.email "kova-release-contract@example.invalid"
+  git -C "$repo" config gpg.format ssh
+  git -C "$repo" config user.signingkey "${tmp}/release-signing-key"
+  git -C "$repo" config gpg.ssh.allowedSignersFile "${repo}/.github/release-allowed-signers"
   git -C "$repo" add .
   git -C "$repo" commit --quiet -m "test: initial release state"
   git -C "$repo" remote add origin "$remote"
@@ -82,5 +89,19 @@ if partial_output="$(cd "$partial_repo" && scripts/release.sh "$test_version" --
   exit 1
 fi
 grep -q "remote tag v${test_version} exists while origin/main is still at the release parent" <<<"$partial_output"
+
+retry_repo="$(make_repo remote-tag-retry)"
+(
+  cd "$retry_repo"
+  npm version "$test_version" --no-git-tag-version --ignore-scripts >/dev/null
+  git add package.json package-lock.json
+  git commit --quiet -m "chore: bump version to ${test_version}"
+  git push --quiet origin main
+  git tag -s "v${test_version}" -m "v${test_version}"
+  git push --quiet origin "v${test_version}"
+  git tag -d "v${test_version}" >/dev/null
+)
+(cd "$retry_repo" && scripts/release.sh "$test_version" --skip-checks >/dev/null)
+test "$(git -C "$retry_repo" rev-parse "v${test_version}^{commit}")" = "$(git -C "$retry_repo" rev-parse HEAD)"
 
 echo "release contract checks passed"
