@@ -12664,7 +12664,7 @@ setInterval(() => {}, 1000);
     await Promise.all(Array.from({ length: 60 }, (_, index) =>
       writeFile(join(openclawHome, `historical-${index}.heapsnapshot`), "{}\n")
     ));
-    const reusedReport = await triggerDiagnosticReport("kova-self-check", child.pid, 3000, root, {
+    const reusedReport = await triggerDiagnosticReport("kova-self-check", child.pid, 2500, root, {
       signalAlreadySent: true,
       signalSentAtEpochMs: combinedSignalSentAtEpochMs,
       commandEnv: { KOVA_FAKE_WRAPPER_ENV: "preserved" }

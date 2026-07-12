@@ -141,7 +141,7 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
   const markerCommand = signalMarker
     ? `marker=${quoteShell(signalMarker.path)}`
     : 'marker=$(mktemp); trap \'rm -f "$marker"\' EXIT; touch "$marker"';
-  const signalCommand = signalAlreadySent ? "sleep 1" : `kill -USR2 ${normalizedPid}`;
+  const signalCommand = signalAlreadySent ? ":" : `kill -USR2 ${normalizedPid}`;
   const searchRoots = [
     '"$OPENCLAW_HOME"',
     artifactDir ? quoteShell(join(artifactDir, "node-profiles")) : null
