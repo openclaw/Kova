@@ -103,6 +103,12 @@ async function reclamationInProgress(lockPath, staleMs) {
     if (!snapshot) {
       continue;
     }
+    if (isLegacyReclaimCandidate(name, prefix)) {
+      if (snapshot.ageMs >= staleMs) {
+        await removeSnapshot(path, snapshot);
+      }
+      continue;
+    }
     if (isAbandoned(snapshot, staleMs)) {
       await removeSnapshot(path, snapshot);
       continue;
@@ -113,7 +119,10 @@ async function reclamationInProgress(lockPath, staleMs) {
 }
 
 async function writeExclusiveMetadata(path, metadata, fileMode) {
-  const candidatePath = `${path}.candidate-${metadata.token}`;
+  const candidatePath = join(
+    dirname(path),
+    `.${basename(path)}.candidate-${metadata.token}`
+  );
   const handle = await open(candidatePath, "wx", fileMode);
   try {
     await handle.writeFile(`${JSON.stringify(metadata)}\n`, "utf8");
@@ -129,6 +138,21 @@ async function writeExclusiveMetadata(path, metadata, fileMode) {
   } finally {
     await rm(candidatePath, { force: true });
   }
+}
+
+function isLegacyReclaimCandidate(name, prefix) {
+  const suffix = name.slice(prefix.length);
+  const separator = ".candidate-";
+  const separatorIndex = suffix.indexOf(separator);
+  if (separatorIndex === -1) {
+    return false;
+  }
+  const fingerprint = suffix.slice(0, separatorIndex);
+  const token = suffix.slice(separatorIndex + separator.length);
+  return (
+    /^[a-f0-9]{64}$/.test(fingerprint) &&
+    /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(token)
+  );
 }
 
 async function readSnapshot(path) {
