@@ -3043,6 +3043,21 @@ function evidenceLedgerGatingCheck() {
       "failed final metrics ledger status"
     );
 
+    const emptyErrorMetricsRecord = {
+      ...record,
+      status: "PASS",
+      incompleteReason: undefined,
+      incompleteEvidence: undefined,
+      phases: [],
+      finalMetrics: {
+        ...record.finalMetrics,
+        error: ""
+      }
+    };
+    attachEvidenceLedger(emptyErrorMetricsRecord);
+    applyEvidenceLedgerGating(emptyErrorMetricsRecord);
+    assertEqual(emptyErrorMetricsRecord.status, "INCOMPLETE", "empty final metrics error gates pass");
+
     const incompleteSummaryRecord = {
       ...record,
       status: "PASS",
@@ -3336,6 +3351,16 @@ async function webPayloadContractCheck(tmp) {
     safeParseRelease({ ...payload, releaseDate: 0 }).ok,
     false,
     "numeric release date rejected"
+  );
+  assertEqual(
+    safeParseRelease({ ...payload, releaseDate: "2026-02-30" }).ok,
+    false,
+    "invalid calendar release date rejected"
+  );
+  assertEqual(
+    safeParseRelease({ ...payload, releaseDate: "0" }).ok,
+    false,
+    "numeric string release date rejected"
   );
   assertEqual(
     safeParseRelease({
