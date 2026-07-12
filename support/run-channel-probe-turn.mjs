@@ -370,7 +370,7 @@ function evaluateCase(testCase, observation, injectResult) {
     invariant(`${testCase.id}:probe-injected`, injectResult?.ok === true && Boolean(observation), `${testCase.id} injected one inbound user event through the channel probe`),
     invariant(`${testCase.id}:no-probe-error`, !observation?.error, `${testCase.id} completed without probe or OpenClaw transport error`),
     invariant(`${testCase.id}:durable-handled`, unhandledDeliveries.length === 0, `${testCase.id} had every final durable delivery handled by OpenClaw; unhandled ${unhandledDeliveries.length}`),
-    invariant(`${testCase.id}:turn-dispatched`, observation?.dispatched === true || (recoveryExpectation.required && modelDispatchStarts.length > 0), `${testCase.id} dispatched through the OpenClaw runtime`),
+    invariant(`${testCase.id}:turn-dispatched`, observation?.dispatched === true, `${testCase.id} dispatched through the OpenClaw runtime`),
     finalDeliveryInvariant(testCase.id, visibleDeliveryPolicy, finalRecords.length),
     invariant(`${testCase.id}:expected-kind`, expectedKindMatches(expects.kind, finalRecords), `${testCase.id} produced the expected visible delivery kind`),
     invariant(`${testCase.id}:expected-text`, !expectedText || finalTexts.some((text) => textEquals(text, expectedText)), `${testCase.id} produced the expected visible text`),
