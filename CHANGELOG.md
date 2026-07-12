@@ -18,6 +18,6 @@ All notable changes to Kova are documented in this file.
 - Hardened runtime teardown with collision-resistant local-build names, exact OCM missing-resource matching, awaited proxy shutdown, and independent cleanup stages.
 - Centralized disposable environment cleanup in Kova's lifecycle and removed stale scenario cleanup commands and unused raw selector substitutions.
 - Hardened registry and evaluation integrity for capability catalogs, workflow derivation, thresholds, and malformed harness evidence.
-- Fixed credential setup to validate provider/CLI pairings and publish concurrent updates atomically under a recoverable cross-process lock.
+- Fixed credential setup to validate provider/CLI pairings and recover concurrent or interrupted updates through a durable transaction journal and cross-process lock.
 - Replaced external CLI credential-file guessing with native Codex and Claude authentication status checks.
 - Hardened interactive setup with no-echo secret input, JSON-clean stdout, terminal-state restoration, and real directory write probes.
