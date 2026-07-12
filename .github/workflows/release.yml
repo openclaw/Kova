@@ -39,7 +39,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Run checks
-        run: npm run check
+        run: npm run check:full
       - name: Package release archive
         run: ./scripts/package-release.sh --output-dir ./dist
       - name: Smoke install archive

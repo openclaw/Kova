@@ -85,7 +85,7 @@ if [[ "$updated_version" != "$new_version" ]]; then
   exit 1
 fi
 
-if ! run_step "Verifying version bump with npm run check" npm run check; then
+if ! run_step "Verifying version bump with npm run check:full" npm run check:full; then
   rollback
   echo "error: version verification failed; restored package metadata" >&2
   exit 1
