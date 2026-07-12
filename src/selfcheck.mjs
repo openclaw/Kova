@@ -51,12 +51,15 @@ import { runScenarioCommand } from "./run/command-executor.mjs";
 import { runEntries } from "./run/engine.mjs";
 import { executeStateLifecycleSteps } from "./run/state-lifecycle.mjs";
 import { executeTargetSetup } from "./run/target-setup.mjs";
+import { runGuardedTeardownStages } from "./run/teardown.mjs";
 import { loadProcessRoles } from "./registries/process-roles.mjs";
 import { validateProfileShape } from "./registries/profiles.mjs";
 import { validateScenarioShape } from "./registries/scenarios.mjs";
 import { validateStateShape } from "./registries/states.mjs";
 import { validateRegistryReferences } from "./registries/validate.mjs";
+import { isMissingOcmResource } from "./ocm/missing-resource.mjs";
 import { assertSafeScenarioCommand } from "./safety.mjs";
+import { resolveTarget } from "./targets.mjs";
 import {
   measurementScopeForPhase,
   readinessThresholdForPhase,
@@ -338,6 +341,9 @@ async function runScopedSelfCheck(flags, scope, workspace) {
     checks.push(commandResultInterpretationCheck());
     checks.push(missingCollectorProofCheck());
     checks.push(ocmCommandBuildersCheck());
+    checks.push(localBuildRuntimeNameCheck());
+    checks.push(ocmMissingResourceCheck());
+    checks.push(await guardedTeardownStagesCheck());
     checks.push(measurementPhaseOwnershipCheck());
     checks.push(envNameLengthCheck());
     checks.push(evaluationViolationHelpersCheck());
@@ -878,6 +884,7 @@ async function runScopedSelfCheck(flags, scope, workspace) {
     checks.push(await cleanupRetryCheck(tmp));
     checks.push(stateRegistryValidationCheck());
     checks.push(scenarioCloneFirstValidationCheck());
+    checks.push(await scenarioCleanupOwnershipCheck());
     checks.push(scenarioHealthScopeValidationCheck());
     checks.push(scenarioStateCompatibilityCheck());
     checks.push(await cpuProfileParserCheck());
@@ -1128,6 +1135,120 @@ function ocmCommandBuildersCheck() {
       id: "ocm-command-builders",
       status: "FAIL",
       command: "validate centralized OCM command builders",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function localBuildRuntimeNameCheck() {
+  try {
+    const first = resolveTarget("local-build:/tmp/openclaw", "target");
+    const second = resolveTarget("local-build:/tmp/openclaw", "target");
+    assertEqual(/^kova-local-[a-z0-9]+-[0-9a-f]{8}$/.test(first.runtimeName), true, "local-build runtime name shape");
+    assertEqual(first.runtimeName === second.runtimeName, false, "local-build runtime names are collision resistant");
+    return {
+      id: "local-build-runtime-name",
+      status: "PASS",
+      command: "resolve two local-build targets",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "local-build-runtime-name",
+      status: "FAIL",
+      command: "resolve two local-build targets",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function ocmMissingResourceCheck() {
+  try {
+    const result = (stderr) => ({ stdout: "", stderr });
+    assertEqual(
+      isMissingOcmResource(result('ocm: runtime "kova-local-test" does not exist'), "runtime", "kova-local-test"),
+      true,
+      "exact missing runtime"
+    );
+    assertEqual(
+      isMissingOcmResource(result('ocm: environment "kova-test" does not exist'), "environment", "kova-test"),
+      true,
+      "exact missing environment"
+    );
+    assertEqual(
+      isMissingOcmResource(result("OpenClaw release version was not found"), "runtime", "kova-local-test"),
+      false,
+      "unrelated not-found error"
+    );
+    assertEqual(
+      isMissingOcmResource(result('ocm: runtime "different" does not exist'), "runtime", "kova-local-test"),
+      false,
+      "different missing runtime"
+    );
+    return {
+      id: "ocm-missing-resource-classification",
+      status: "PASS",
+      command: "classify exact OCM missing-resource errors",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "ocm-missing-resource-classification",
+      status: "FAIL",
+      command: "classify exact OCM missing-resource errors",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+async function guardedTeardownStagesCheck() {
+  const attempted = [];
+  const observed = [];
+  const result = await runGuardedTeardownStages([
+    {
+      id: "first",
+      run() {
+        attempted.push("first");
+        throw new Error("first failed");
+      }
+    },
+    {
+      id: "second",
+      run() {
+        attempted.push("second");
+        return "ok";
+      }
+    },
+    {
+      id: "third",
+      run() {
+        attempted.push("third");
+        throw new Error("third failed");
+      }
+    }
+  ], {
+    onError(error) {
+      observed.push(error.stage);
+    }
+  });
+  try {
+    assertEqual(attempted.join(","), "first,second,third", "all teardown stages attempted");
+    assertEqual(result.errors.map((error) => error.stage).join(","), "first,third", "teardown errors aggregated");
+    assertEqual(observed.join(","), "first,third", "teardown errors observed as they occur");
+    return {
+      id: "guarded-teardown-stages",
+      status: "PASS",
+      command: "execute synthetic teardown stages",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "guarded-teardown-stages",
+      status: "FAIL",
+      command: "execute synthetic teardown stages",
       durationMs: 0,
       message: error.message
     };
@@ -4684,9 +4805,9 @@ async function localBuildRuntimeAlreadyAbsentCleanupCheck(tmp) {
 printf '%s\\n' "$*" >> "$KOVA_MOCK_OCM_LOG"
 case "$1:$2" in
   runtime:build-local) echo 'dependency install failed' >&2; exit 1 ;;
-  runtime:remove) echo 'ocm: runtime "kova-local-mock" does not exist' >&2; exit 1 ;;
+  runtime:remove) echo "ocm: runtime \\"$3\\" does not exist" >&2; exit 1 ;;
   service:status) echo '{"running":false,"desiredRunning":false,"childPid":null,"gatewayPort":null,"gatewayState":"stopped"}'; exit 0 ;;
-  env:destroy) echo 'ocm: environment "kova-mock" does not exist' >&2; exit 1 ;;
+  env:destroy) echo "ocm: environment \\"$3\\" does not exist" >&2; exit 1 ;;
 esac
 case "$1" in
   --version) echo 'mock-ocm'; exit 0 ;;
@@ -9829,8 +9950,8 @@ exit 2
 async function networkFrontagePartialStartupCleanupInvariantCheck() {
   try {
     const source = await readFile("src/network-frontage.mjs", "utf8");
-    const pattern = /allocation\.loopbackAlias = await ensureLoopbackAlias\(allocation\.frontageHost, context\);\s+context\.networkFrontageAllocation = allocation;\s+const proxy = await startProxy\(allocation\);/;
-    assertEqual(pattern.test(source), true, "partial network frontage allocation registered before proxy startup");
+    const pattern = /const proxy = startProxy\(allocation\);[\s\S]+context\.networkFrontageProxy = proxy;[\s\S]+await proxy\.ready;/;
+    assertEqual(pattern.test(source), true, "network frontage proxy registered before readiness wait");
     const blocker = createServer((request, response) => {
       response.writeHead(200, { "content-type": "text/plain" });
       response.end("not-kova-frontage");
@@ -9855,9 +9976,11 @@ async function networkFrontagePartialStartupCleanupInvariantCheck() {
       proxy.kill("SIGTERM");
       await new Promise((resolve) => blocker.close(resolve));
     }
-    const runnerSource = await readFile("src/runner.mjs", "utf8");
-    const retentionPattern = /const networkCleanup = await stopNetworkFrontage\(context\);[\s\S]+const shouldRetain = shouldRetainEnv\(context, record\);[\s\S]+if \(!shouldRetain\)/;
-    assertEqual(retentionPattern.test(runnerSource), true, "retain-on-failure is computed after network frontage cleanup can update status");
+    const teardownSource = await readFile("src/run/teardown.mjs", "utf8");
+    const retentionPattern = /id: "network-frontage-cleanup"[\s\S]+const retainEnv = shouldRetainEnv\(context, record\)/;
+    assertEqual(retentionPattern.test(teardownSource), true, "retain-on-failure is computed after network frontage cleanup can update status");
+    let proxyClosed = false;
+    let resolveProxyClosed;
     const context = {
       networkFrontageAllocation: {
         status: "active",
@@ -9866,12 +9989,24 @@ async function networkFrontagePartialStartupCleanupInvariantCheck() {
         loopbackAlias: { createdByKova: false }
       },
       networkFrontageProxy: {
-        child: { kill() {} },
-        closed: Promise.resolve()
+        child: {
+          exitCode: null,
+          signalCode: null,
+          kill() {
+            setTimeout(() => {
+              proxyClosed = true;
+              resolveProxyClosed();
+            }, 10);
+          }
+        },
+        closed: new Promise((resolve) => {
+          resolveProxyClosed = resolve;
+        })
       }
     };
     const result = await stopNetworkFrontage(context);
     assertEqual(result.status, 0, "synthetic network frontage cleanup status");
+    assertEqual(proxyClosed, true, "network frontage cleanup awaits proxy exit");
     assertEqual(context.networkFrontageAllocation.status, "stopped", "network frontage allocation top-level status is stopped after cleanup");
     assertEqual(context.networkFrontageAllocation.cleanup.status, "stopped", "network frontage cleanup status is stopped");
     return {
@@ -14521,6 +14656,56 @@ function scenarioCloneFirstValidationCheck() {
       id: "scenario-clone-first-validation",
       status: "FAIL",
       command: "validate source-env scenario contracts",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+async function scenarioCleanupOwnershipCheck() {
+  try {
+    const freshInstall = JSON.parse(await readFile("scenarios/fresh-install.json", "utf8"));
+    assertEqual(
+      freshInstall.phases.some((phase) => phase.id === "cleanup"),
+      false,
+      "scenario registry does not duplicate lifecycle cleanup"
+    );
+
+    let rejected = false;
+    try {
+      validateScenarioShape({
+        id: "scenario-owned-cleanup",
+        surface: "runtime-startup",
+        title: "Scenario Owned Cleanup",
+        objective: "Attempts to duplicate Kova lifecycle cleanup.",
+        tags: ["startup"],
+        proves: ["baseline"],
+        thresholds: {},
+        phases: [{
+          id: "cleanup",
+          title: "Cleanup",
+          intent: "Destroy the env from scenario data.",
+          healthScope: "none",
+          commands: ["ocm env destroy {env} --yes"],
+          evidence: ["destroy"]
+        }]
+      }, "scenario-owned-cleanup.json");
+    } catch (error) {
+      rejected = /reserved for Kova lifecycle cleanup/.test(error.message);
+    }
+    assertEqual(rejected, true, "scenario-owned cleanup phase rejected");
+
+    return {
+      id: "scenario-cleanup-ownership",
+      status: "PASS",
+      command: "validate central lifecycle cleanup ownership",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "scenario-cleanup-ownership",
+      status: "FAIL",
+      command: "validate central lifecycle cleanup ownership",
       durationMs: 0,
       message: error.message
     };
