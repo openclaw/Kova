@@ -3,11 +3,11 @@
 // `kova report --full <path>` still leaves <path> as a positional).
 // Use snake_case to match the post-replaceAll key form below.
 const BOOLEAN_FLAGS = new Set([
-  "full", "json", "plain", "fixer",
+  "full", "json", "plain", "fixer", "help",
   "execute", "ci", "non_interactive", "gate", "fail_fast", "allow_exhaustive",
   "keep_env", "retain_on_failure", "profile_on_failure",
   "deep_profile", "node_profile", "heap_snapshot",
-  "ascii", "no_color", "reviewed_good", "version",
+  "ascii", "no_color", "no_progress", "reviewed_good", "version",
   "dry_run", "no_augment",
 ]);
 
@@ -17,6 +17,11 @@ export function parseFlags(argv) {
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
 
+    if (token === "--") {
+      flags._.push(...argv.slice(index + 1));
+      break;
+    }
+
     if (!token.startsWith("--")) {
       flags._.push(token);
       continue;
@@ -25,13 +30,19 @@ export function parseFlags(argv) {
     const [rawKey, inlineValue] = token.slice(2).split("=", 2);
     const key = rawKey.replaceAll("-", "_");
 
-    if (inlineValue !== undefined) {
-      flags[key] = inlineValue;
+    if (BOOLEAN_FLAGS.has(key)) {
+      if (inlineValue === undefined || inlineValue === "true") {
+        flags[key] = true;
+      } else if (inlineValue === "false") {
+        flags[key] = false;
+      } else {
+        throw new Error(`--${rawKey} must be true or false`);
+      }
       continue;
     }
 
-    if (BOOLEAN_FLAGS.has(key)) {
-      flags[key] = true;
+    if (inlineValue !== undefined) {
+      flags[key] = inlineValue;
       continue;
     }
 
@@ -44,6 +55,25 @@ export function parseFlags(argv) {
     }
   }
 
+  return flags;
+}
+
+export function collectErrorFlags(argv) {
+  const flags = {};
+  for (const token of argv) {
+    if (token === "--") {
+      break;
+    }
+    if (!token.startsWith("--")) {
+      continue;
+    }
+    const [rawKey, inlineValue] = token.slice(2).split("=", 2);
+    const key = rawKey.replaceAll("-", "_");
+    if (!["json", "plain", "no_color"].includes(key)) {
+      continue;
+    }
+    flags[key] = inlineValue === undefined || inlineValue === "true";
+  }
   return flags;
 }
 

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveScriptStep } from "mock-ai-provider/dist/providers/openai/common/scripted-response.js";
 import { createBoundedOutputAccumulator, quoteShell, runCommand } from "./commands.mjs";
+import { collectErrorFlags, parseFlags } from "./cli.mjs";
 import { runCleanupCommand } from "./cleanup.mjs";
 import { applyEvidenceLedgerGating, attachEvidenceLedger } from "./evidence-ledger.mjs";
 import { attachCleanupEvidence } from "./evidence/record.mjs";
@@ -296,6 +297,22 @@ async function runScopedSelfCheck(flags, scope, workspace) {
       assertEqual(metrics.find((row) => row.name === "↳ cold send rpc")?.value, 20, "child turn row median");
       assertEqual(metrics.find((row) => row.name === "↳ cold matched assistant")?.value, 40, "child assistant row median");
     }));
+    checks.push(await inlineCheck("cli-flag-contract", () => {
+      assertEqual(parseFlags(["--execute"]).execute, true, "bare boolean flag");
+      assertEqual(parseFlags(["--execute=true"]).execute, true, "inline true boolean flag");
+      assertEqual(parseFlags(["--execute=false"]).execute, false, "inline false boolean flag");
+      assertEqual(parseFlags(["--no-progress"]).no_progress, true, "no-progress boolean flag");
+      assertEqual(parseFlags(["--", "--execute"])._.join(","), "--execute", "end-of-options delimiter");
+      assertEqual(collectErrorFlags(["bad", "--json"]).json, true, "JSON error flag");
+      assertEqual(collectErrorFlags(["bad", "--", "--json"]).json, undefined, "error flags stop at delimiter");
+      let rejected = false;
+      try {
+        parseFlags(["--execute=maybe"]);
+      } catch (error) {
+        rejected = /must be true or false/.test(error.message);
+      }
+      assertEqual(rejected, true, "invalid boolean value rejected");
+    }));
     checks.push(await inlineCheck("external-plugin-fixture-manifests", async () => {
       for (const [dir, expectedId] of [
         ["support/plugins/kova-basic", "kova-basic"],
@@ -310,6 +327,11 @@ async function runScopedSelfCheck(flags, scope, workspace) {
       "setup-non-tty-requires-mode",
       "node bin/kova.mjs setup --json",
       "kova setup requires --non-interactive or --ci when stdin is not a TTY"
+    ));
+    checks.push(await jsonFailureCommandCheck(
+      "unknown-command-json-error",
+      "node bin/kova.mjs not-a-command --json",
+      "unknown command: not-a-command"
     ));
     checks.push(await credentialStoreSelfCheck(tmp));
     checks.push(await credentialStoreConcurrentWritersCheck(tmp));
@@ -17607,6 +17629,31 @@ async function failingCommandCheck(id, command, expectedMessage) {
       ? ""
       : `expected failure containing ${JSON.stringify(expectedMessage)}, got status ${result.status}: ${output.trim()}`
   };
+}
+
+async function jsonFailureCommandCheck(id, command, expectedMessage) {
+  const result = await runCommand(command, { timeoutMs: 30000, maxOutputChars: 1000000 });
+  try {
+    const data = JSON.parse(result.stderr);
+    assertEqual(result.status !== 0, true, "JSON failure exits nonzero");
+    assertEqual(data.schemaVersion, "kova.error.v1", "JSON error schema");
+    assertEqual(data.ok, false, "JSON error status");
+    assertEqual(data.error?.message, expectedMessage, "JSON error message");
+    return {
+      id,
+      status: "PASS",
+      command,
+      durationMs: result.durationMs
+    };
+  } catch (error) {
+    return {
+      id,
+      status: "FAIL",
+      command,
+      durationMs: result.durationMs,
+      message: error.message
+    };
+  }
 }
 
 async function jsonCommandCheck(id, command, validate) {
