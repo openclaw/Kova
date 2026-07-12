@@ -131,8 +131,16 @@ async function replaceReportFileSet(entries, canonicalPath) {
     for (const entry of published.toReversed()) {
       await rm(entry.path, { force: true }).catch((rollbackError) => rollbackErrors.push(rollbackError));
     }
-    for (const entry of backups.toReversed()) {
+    const companionBackups = backups
+      .filter((entry) => entry.path !== canonicalPath)
+      .toReversed();
+    for (const entry of companionBackups) {
       await rename(entry.backupPath, entry.path).catch((rollbackError) => rollbackErrors.push(rollbackError));
+    }
+    const canonicalBackup = backups.find((entry) => entry.path === canonicalPath);
+    if (rollbackErrors.length === 0 && canonicalBackup) {
+      await rename(canonicalBackup.backupPath, canonicalBackup.path)
+        .catch((rollbackError) => rollbackErrors.push(rollbackError));
     }
     await syncDirectories(staged).catch((rollbackError) => rollbackErrors.push(rollbackError));
     if (rollbackErrors.length > 0) {
