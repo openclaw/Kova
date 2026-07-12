@@ -459,9 +459,12 @@ function groupFindingsByScenario(findings) {
 // Aggregate scenario-level confidence from all numeric headline metrics
 // (worst CV wins, so the verdict line reflects the noisiest signal).
 export function scenarioConfidence(scenario) {
-  return weakestConfidence((scenario.metrics ?? [])
+  const confidences = (scenario.metrics ?? [])
     .map(metricConfidence)
-    .filter(Boolean), scenario.total ?? 0);
+    .filter(Boolean);
+  return weakestConfidence(confidences.length > 0
+    ? confidences
+    : [confidenceForSamples(scenario.total ?? 0, null)]);
 }
 
 // Run-wide confidence keeps each variability estimate paired with the
@@ -470,8 +473,9 @@ export function runConfidence(scenarios) {
   const confidences = (scenarios ?? [])
     .flatMap((scenario) => (scenario.metrics ?? []).map(metricConfidence))
     .filter(Boolean);
-  const fallbackSamples = (scenarios ?? []).reduce((total, scenario) => total + (scenario.total ?? 0), 0);
-  return weakestConfidence(confidences, fallbackSamples);
+  return weakestConfidence(confidences.length > 0
+    ? confidences
+    : (scenarios ?? []).map((scenario) => confidenceForSamples(scenario.total ?? 0, null)));
 }
 
 function roleViolationCandidate(violation, role) {
@@ -481,38 +485,44 @@ function roleViolationCandidate(violation, role) {
     role,
     threshold,
     actual,
-    score: normalizedThresholdOverage(actual, threshold),
+    score: normalizedThresholdOverage(actual, threshold, thresholdDirection(violation.expected)),
     key: violationSortKey(violation)
   };
 }
 
 function violationScore(violation, measurements) {
-  if (violation.kind !== "threshold") {
+  const threshold = parseThreshold(violation.expected);
+  if (threshold === null) {
     return 0;
   }
   const metricKey = violation.metric ?? null;
   const actual = finiteNumber(metricKey
     ? measurementMetricValue(measurements, metricKey) ?? violation.actual
     : violation.actual);
-  return 1 + normalizedThresholdOverage(actual, parseThreshold(violation.expected));
+  return 1 + normalizedThresholdOverage(actual, threshold, thresholdDirection(violation.expected));
 }
 
-function normalizedThresholdOverage(actual, threshold) {
+function normalizedThresholdOverage(actual, threshold, direction) {
   if (actual === null || threshold === null) {
     return 0;
   }
-  return (actual - threshold) / Math.max(Math.abs(threshold), 1);
+  const distance = direction === "minimum"
+    ? threshold - actual
+    : actual - threshold;
+  return distance / Math.max(Math.abs(threshold), 1);
+}
+
+function thresholdDirection(expected) {
+  const value = String(expected ?? "");
+  return value.includes(">=") || /(^|\s)>\s/.test(value)
+    ? "minimum"
+    : "maximum";
 }
 
 function compareViolationCandidates(left, right) {
   const scoreDelta = left.score - right.score;
   if (scoreDelta !== 0) {
     return scoreDelta;
-  }
-  const actualDelta = (left.actual ?? Number.NEGATIVE_INFINITY) -
-    (right.actual ?? Number.NEGATIVE_INFINITY);
-  if (actualDelta !== 0) {
-    return actualDelta;
   }
   return right.key.localeCompare(left.key);
 }
@@ -537,17 +547,26 @@ function metricConfidence(metric) {
   if (!stats || !Number.isFinite(stats.n) || stats.n <= 0) {
     return null;
   }
-  return classifyConfidence({ n: stats.n, cv: stats.cv });
+  return confidenceForSamples(stats.n, stats.cv);
 }
 
-function weakestConfidence(confidences, fallbackSamples) {
+function confidenceForSamples(n, cv) {
+  return {
+    ...classifyConfidence({ n, cv }),
+    sampleCount: n
+  };
+}
+
+function weakestConfidence(confidences) {
   if (confidences.length === 0) {
-    return classifyConfidence({ n: fallbackSamples, cv: null });
+    return confidenceForSamples(0, null);
   }
   return confidences.reduce((worst, current) =>
     confidenceRank(current) > confidenceRank(worst) ||
       (confidenceRank(current) === confidenceRank(worst) &&
-        (current.percent ?? -1) > (worst.percent ?? -1))
+        ((current.percent ?? -1) > (worst.percent ?? -1) ||
+          ((current.percent ?? -1) === (worst.percent ?? -1) &&
+            current.sampleCount < worst.sampleCount)))
       ? current
       : worst
   );

@@ -3394,6 +3394,27 @@ function reportAggregationIntegrityCheck() {
       assertEqual(scenario.worst?.note.includes("700"), true, "scenario worst evaluates every violation");
     }
 
+    const lowerBoundRecords = [50, 90].map((actual) => ({
+      scenario: "aggregate-minimum",
+      surface: "aggregate-minimum",
+      title: "Aggregate Minimum",
+      state: { id: "fresh" },
+      status: "FAIL",
+      phases: [],
+      measurements: {},
+      violations: [{
+        kind: "soak",
+        metric: "soakDurationMs",
+        expected: ">= 100",
+        actual,
+        message: `soak duration ${actual}ms was below required 100ms`
+      }]
+    }));
+    for (const ordered of [lowerBoundRecords, [...lowerBoundRecords].reverse()]) {
+      const scenario = aggregateScenarios({ records: ordered })[0];
+      assertEqual(scenario.worst?.note.includes("50ms"), true, "minimum threshold keeps farthest underage");
+    }
+
     const confidenceRecords = [
       ...[100, 100, 100].map((agentTurnMs) => ({
         scenario: "stable-confidence",
@@ -3416,6 +3437,12 @@ function reportAggregationIntegrityCheck() {
       ?.metrics.find((metric) => metric.key === "agentTurnMs");
     assertEqual(sparseMetric?.stats?.n, 1, "single-sample metric retains its own n");
     assertEqual(runConfidence(confidenceScenarios).bucket, "single-sample", "run confidence uses weakest metric confidence");
+    const noMetricConfidence = runConfidence(Array.from({ length: 10 }, (_, index) => ({
+      id: `blocked-${index}`,
+      total: 1,
+      metrics: []
+    })));
+    assertEqual(noMetricConfidence.label, "single-sample", "run confidence does not pool unrelated no-metric scenarios");
     return {
       id: "report-aggregation-integrity",
       status: "PASS",
