@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { access, chmod, link, lstat, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { resolveScriptStep } from "mock-ai-provider/dist/providers/openai/common/scripted-response.js";
 import { createBoundedOutputAccumulator, quoteShell, runCommand } from "./commands.mjs";
 import { collectErrorFlags, parseFlags } from "./cli.mjs";
@@ -12541,6 +12541,28 @@ async function collectorArtifactCollisionCheck(tmp) {
     const contents = await Promise.all(copied.artifacts.map((path) => readFile(path, "utf8")));
     assertEqual(contents.toSorted().join(","), "left,right-side", "same-basename artifact contents survive");
     assertEqual(copied.artifactBytes, 14, "retained artifact bytes reflect unique targets");
+    const longName = `${"x".repeat(250)}.json`;
+    const longSource = join(root, "long", longName);
+    await mkdir(join(root, "long"), { recursive: true });
+    await writeFile(longSource, "long-name");
+    const longCopied = await copyCollectorArtifacts([longSource], output);
+    assertEqual(longCopied.artifacts.length, 1, "maximum-length source basename is retained");
+    assertEqual(
+      Buffer.byteLength(basename(longCopied.artifacts[0])) <= 255,
+      true,
+      "retained basename respects filesystem byte limit"
+    );
+    assertEqual(await readFile(longCopied.artifacts[0], "utf8"), "long-name", "maximum-length artifact content survives");
+    const utf8Name = `${"\u{1f642}".repeat(62)}.json`;
+    const utf8Source = join(root, "long", utf8Name);
+    await writeFile(utf8Source, "utf8-name");
+    const utf8Copied = await copyCollectorArtifacts([utf8Source], output);
+    assertEqual(
+      Buffer.byteLength(basename(utf8Copied.artifacts[0])) <= 255,
+      true,
+      "retained UTF-8 basename respects filesystem byte limit"
+    );
+    assertEqual(basename(utf8Copied.artifacts[0]).includes("\u{fffd}"), false, "retained basename preserves UTF-8 boundaries");
     return {
       id: "collector-artifact-collision",
       status: "PASS",
