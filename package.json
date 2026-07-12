@@ -10,8 +10,9 @@
   "scripts": {
     "kova": "node bin/kova.mjs",
     "plan": "node bin/kova.mjs plan",
-    "check": "node bin/kova.mjs self-check",
+    "check": "npm run test:selfcheck-isolation && node bin/kova.mjs self-check",
     "check:web-payload": "node scripts/check-web-payload.mjs",
+    "test:selfcheck-isolation": "node tests/selfcheck-isolation.mjs",
     "test:snapshots": "node tests/render-snapshots.mjs",
     "pack:release": "scripts/package-release.sh",
     "check:changed": "npm run check",
