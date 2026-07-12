@@ -5,7 +5,7 @@ import {
   renderTable, repeat, withMargin,
 } from "../ui/index.mjs";
 
-export function renderCleanupEnvs({ envs, results, execute }, flags = {}, env = process.env, stream = process.stdout) {
+export function renderCleanupEnvs({ envs, results, execute, force = false, olderThanDays = 1 }, flags = {}, env = process.env, stream = process.stdout) {
   const ui = makeUi(flags, env, stream);
   const sections = [];
   const verdict = deriveEnvsVerdict({ envs, results, execute });
@@ -13,7 +13,7 @@ export function renderCleanupEnvs({ envs, results, execute }, flags = {}, env = 
     surface: "cleanup envs",
     verdict: verdict.label,
     headline: buildEnvsHeadline({ envs, results, execute }),
-    meta: execute ? "mode: execute" : "mode: dry-run",
+    meta: `older-than: ${olderThanDays}d ${ui.g.sep} mode: ${execute ? "execute" : "dry-run"}${force ? ` ${ui.g.sep} forced` : ""}`,
     ui,
   }));
   sections.push("");
@@ -87,7 +87,7 @@ function deriveArtifactsVerdict({ candidates, results, execute }) {
 
 function buildEnvsHeadline({ envs, results, execute }) {
   const eligible = eligibleEnvCount(envs);
-  if (!execute) return envs.length === 0 ? "nothing to do" : `${eligible} would be removed`;
+  if (!execute) return envs.length === 0 ? "nothing to do" : `${eligible} would be removed · ${envs.length - eligible} skipped`;
   const removed = results.filter((r) => r.status === 0).length;
   const failed = results.filter((r) => r.status !== 0).length;
   const missing = missingEnvResultCount(envs, results);
@@ -123,7 +123,7 @@ function renderEnvsKpi({ envs, results, execute }, ui) {
     ? results.filter((r) => r.status !== 0).length + missingEnvResultCount(envs, results)
     : 0;
   return kpiStrip([
-    { label: "Stale envs", value: String(envs.length), hint: "matched", tone: "neutral" },
+    { label: "Kova envs", value: String(envs.length), hint: `${envs.length - eligible} skipped`, tone: "neutral" },
     {
       label: execute ? "Removed" : "Would remove",
       value: execute ? String(removed) : String(eligible),
@@ -154,15 +154,23 @@ function renderArtifactsKpi({ candidates, results, execute }, ui) {
 function renderEnvsTable({ envs, results, execute }, ui) {
   const { c, g } = ui;
   const lines = [ruleSection("envs", ui.width, ui)];
-  const byEnv = new Map(results.map((r) => [extractEnvFromCommand(r.command), r]));
-  const rows = envs.map((env) => {
+  const byEnv = new Map(results.map((r) => [r.env ?? extractEnvFromCommand(r.command), r]));
+  const rows = envs.map((item) => {
+    const env = typeof item === "string" ? item : item.name;
+    const eligible = typeof item === "string" || item.eligible;
     const result = byEnv.get(env);
     let status;
-    if (!execute) status = c.dim("DRY-RUN");
+    if (!eligible) status = c.dim("SKIP");
+    else if (!execute) status = c.dim("DRY-RUN");
     else if (!result) status = c.dim("SKIP");
     else if (result.status === 0) status = c.ok("REMOVED");
     else status = c.err("FAILED");
-    const note = result?.timedOut ? c.warn("timed out") : (result?.durationMs != null ? c.dim(`${result.durationMs}ms`) : c.dim("—"));
+    const detail = typeof item === "string" ? null : item.reasons.join(", ");
+    const note = detail
+      ? c.dim(detail)
+      : result?.timedOut
+        ? c.warn("timed out")
+        : (result?.durationMs != null ? c.dim(`${result.durationMs}ms`) : c.dim("eligible"));
     return { status, env: c.bold(env), note };
   });
   lines.push(indentBlock(renderTable({
