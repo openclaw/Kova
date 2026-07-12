@@ -3078,6 +3078,26 @@ function evidenceLedgerGatingCheck() {
     applyEvidenceLedgerGating(incompleteSummaryRecord);
     assertEqual(incompleteSummaryRecord.status, "INCOMPLETE", "count-only final health summary gates pass");
 
+    const malformedSamplesRecord = {
+      ...record,
+      status: "PASS",
+      incompleteReason: undefined,
+      incompleteEvidence: undefined,
+      phases: [],
+      finalMetrics: {
+        error: null,
+        service: { gatewayState: "running" },
+        health: null,
+        healthSamples: [{}],
+        healthSummary: null
+      }
+    };
+    const malformedSamplesHealth = buildHealthMeasurement(malformedSamplesRecord);
+    assertEqual(malformedSamplesHealth.final.ok, null, "malformed final health samples are unknown");
+    attachEvidenceLedger(malformedSamplesRecord);
+    applyEvidenceLedgerGating(malformedSamplesRecord);
+    assertEqual(malformedSamplesRecord.status, "INCOMPLETE", "malformed final health samples gate pass");
+
     const failedPhaseRecord = {
       ...record,
       status: "FAIL",
@@ -3379,7 +3399,9 @@ async function webPayloadContractCheck(tmp) {
   if (result.status !== 0) {
     throw new Error(result.stderr.trim() || result.stdout.trim() || `publish exited ${result.status}`);
   }
+  const receipt = JSON.parse(result.stdout);
   const published = JSON.parse(await readFile(join(outDir, `${payload.ver}.json`), "utf8"));
+  assertEqual(receipt.releaseDate, "2026-07-12T00:00:00.000Z", "publish receipt uses canonical release date");
   assertEqual(published.releaseDate, "2026-07-12T00:00:00.000Z", "publish writes canonical release date");
   assertEqual(published.runs[0].startedAt, "2026-07-12T01:02:03.000Z", "publish writes canonical run date");
   return {
