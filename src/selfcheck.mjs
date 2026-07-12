@@ -6435,6 +6435,23 @@ function releaseRuntimeStartupEvidenceInvariantCheck() {
       .find((invariant) => invariant.id === "release-runtime-readiness-health-proof");
     assertEqual(missingFinalHealthProof?.status, "missing", "release proof requires explicit final health failure count");
 
+    const incompleteHealthCounters = [
+      ["post-ready failure count", (health) => delete health.postReadySamples.failureCount],
+      ["fractional post-ready sample count", (health) => {
+        health.postReadySamples.count = 1.5;
+      }],
+      ["negative final failure count", (health) => {
+        health.final.failureCount = -1;
+      }]
+    ];
+    for (const [label, mutate] of incompleteHealthCounters) {
+      const incompleteHealthRecord = JSON.parse(JSON.stringify(record));
+      mutate(incompleteHealthRecord.measurements.health);
+      const incompleteHealthProof = buildReleaseRuntimeStartupEvidenceInvariants(incompleteHealthRecord, scenario)
+        .find((invariant) => invariant.id === "release-runtime-readiness-health-proof");
+      assertEqual(incompleteHealthProof?.status, "missing", `${label} is incomplete release health evidence`);
+    }
+
     for (const malformedMeasurement of [null, "", " ", false]) {
       const malformedResourceRecord = JSON.parse(JSON.stringify(record));
       malformedResourceRecord.measurements.resourceByRole.gateway.peakRssMb = malformedMeasurement;
@@ -6710,6 +6727,14 @@ function agentCliLocalTurnEvidenceInvariantCheck() {
       recoveryScenario
     ).find((invariant) => invariant.id === "agent-cli-provider-proof");
     assertEqual(statuslessRecoveryProof?.status, "passed", "typed statusless recovery error accounts for request");
+
+    const omittedRecoveryStatusRecord = JSON.parse(JSON.stringify(statuslessRecoveryRecord));
+    delete omittedRecoveryStatusRecord.measurements.agentTurns[0].providerErrors[0].status;
+    const omittedRecoveryStatusProof = buildAgentCliLocalTurnEvidenceInvariants(
+      omittedRecoveryStatusRecord,
+      recoveryScenario
+    ).find((invariant) => invariant.id === "agent-cli-provider-proof");
+    assertEqual(omittedRecoveryStatusProof?.status, "missing", "omitted recovery status is incomplete evidence");
 
     for (const malformedStatus of [false, "missing", { malformed: true }]) {
       const malformedRecoveryRecord = JSON.parse(JSON.stringify(statuslessRecoveryRecord));
