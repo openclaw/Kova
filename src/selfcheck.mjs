@@ -4867,10 +4867,7 @@ async function performanceBaselineCheck(tmp) {
 async function reportPublicationCheck(tmp) {
   const publicationRoot = join(tmp, "report-publication");
   try {
-    const report = JSON.parse(await readFile(
-      join(repoRoot, "tests", "fixtures", "reports", "pass.json"),
-      "utf8"
-    ));
+    const report = syntheticPublicationReport();
     await mkdir(publicationRoot, { recursive: true });
     const failedPaths = buildReportOutputPaths(publicationRoot, "kova-260712-000000-aabbcc");
     const invalidSummaryPath = join(publicationRoot, "s".repeat(250));
@@ -5510,6 +5507,33 @@ function syntheticPerformanceReport({ runId, platform, target, records }) {
     target,
     platform,
     records
+  };
+}
+
+function syntheticPublicationReport() {
+  return {
+    schemaVersion: "kova.report.v1",
+    generatedAt: "2026-07-12T00:00:00.000Z",
+    runId: "kova-260712-000000-aabbcc",
+    mode: "execution",
+    target: "runtime:stable",
+    platform: {
+      os: process.platform,
+      release: "self-check",
+      arch: process.arch,
+      node: process.version
+    },
+    records: [{
+      scenario: "fresh-install",
+      surface: "fresh-install",
+      title: "Fresh Install",
+      status: "PASS",
+      target: "runtime:stable",
+      state: { id: "fresh", title: "Fresh" },
+      repeat: { index: 1, total: 1 },
+      measurements: {},
+      phases: []
+    }]
   };
 }
 
