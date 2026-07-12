@@ -17954,10 +17954,6 @@ async function logArtifactRedactionCheck(tmp) {
     ].join("\n"),
     `command ${clientSecretFlag} ${compoundCliCanary}`,
     JSON.stringify({ [genericTokenKey]: timeoutTokenCanary, message: "provider timed out" }),
-    [
-      `-----BEGIN ${privateKeyLabel}-----`,
-      truncatedPemBodyCanary
-    ].join("\n"),
     `${sessionTokenKey}: |2-\n  ${yamlContinuationCanary}`,
     `${sessionTokenKey}: ${plainContinuationHeadCanary}\n  ${plainContinuationTailCanary}`,
     `command --token ${"\\"}\n  ${cliContinuationCanary}`,
@@ -17967,7 +17963,11 @@ async function logArtifactRedactionCheck(tmp) {
       [genericTokenKey]: structuredJsonCanary,
       openclawDiagnostic: true,
       category: "redaction-self-check"
-    })
+    }),
+    [
+      `-----BEGIN ${privateKeyLabel}-----`,
+      truncatedPemBodyCanary
+    ].join("\n")
   ].join("\n");
   try {
     await mkdir(fakeBin, { recursive: true });
