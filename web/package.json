@@ -7,7 +7,8 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "check": "astro check"
+    "check": "astro check",
+    "test": "node --experimental-strip-types --test tests/*.test.ts"
   },
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2",
@@ -15,6 +16,7 @@
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.9",
+    "@types/node": "^24.10.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   }
