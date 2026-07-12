@@ -73,7 +73,8 @@ jobs:
           archive_version="$(tar -xOf dist/kova.tar.gz "kova-${package_version}/package.json" | node -e 'let input=""; process.stdin.on("data", chunk => input += chunk); process.stdin.on("end", () => console.log(JSON.parse(input).version));')"
           test "$archive_version" = "$package_version"
           printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
-          if [[ "$version" == *-* ]]; then
+          version_without_build="${version%%+*}"
+          if [[ "$version_without_build" == *-* ]]; then
             printf 'prerelease=true\n' >> "$GITHUB_OUTPUT"
           else
             printf 'prerelease=false\n' >> "$GITHUB_OUTPUT"
