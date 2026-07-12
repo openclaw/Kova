@@ -102,7 +102,7 @@ import { buildReportSummary, renderMarkdownReport, renderPasteSummary, renderRep
 import { buildRepeatedWorkAudit } from "./audits/repeated-work.mjs";
 import { ENV_COLLECTOR_IDS, resolveCollectionPolicy } from "./collection-policy.mjs";
 import { classifyManifest, selectManifestCandidates } from "./inventory/openclaw.mjs";
-import { channelPlatformsDir } from "./paths.mjs";
+import { channelPlatformsDir, repoRoot } from "./paths.mjs";
 import {
   buildAgentCliLocalTurnEvidenceInvariants,
   buildAgentGatewayRpcTurnEvidenceInvariants,
@@ -156,6 +156,7 @@ import { createSelfCheckProgress, renderSelfCheckReceipt } from "./reporting/ren
 import { scriptForMode as buildMockProviderScriptForMode } from "../support/channel-workflow-provider-script.mjs";
 import { projectInternalReport } from "./web-publish/from-internal-report.mjs";
 import { augmentWithDeltas, findImmediatePrior } from "./web-publish/projector.mjs";
+import { directoryCheck } from "./setup.mjs";
 
 export async function runSelfCheck(flags = {}) {
   return runInSelfCheckScope(
@@ -310,6 +311,9 @@ async function runScopedSelfCheck(flags, scope, workspace) {
       "kova setup requires --non-interactive or --ci when stdin is not a TTY"
     ));
     checks.push(await credentialStoreSelfCheck(tmp));
+    checks.push(await credentialStoreConcurrentWritersCheck(tmp));
+    checks.push(await setupDirectoryWriteProbeCheck(tmp));
+    checks.push(await setupTtySecretInputCheck(tmp));
     checks.push(await failingCommandCheck(
       "live-auth-requires-credentials",
       `KOVA_HOME=${quoteShell(join(tmp, "empty-auth-home"))} node bin/kova.mjs run --target runtime:stable --scenario fresh-install --auth live --json`,
@@ -322,6 +326,9 @@ async function runScopedSelfCheck(flags, scope, workspace) {
     ));
     checks.push(await setupNumericFlagsRejectedCheck(tmp));
     checks.push(await externalCliSetupCheck(tmp));
+    checks.push(await directCredentialProviderPairingCheck(tmp));
+    checks.push(await externalCliProviderPairingCheck(tmp));
+    checks.push(await claudeCliLoggedOutCheck(tmp));
     checks.push(await externalCliOpenClawConfigCheck(tmp));
     checks.push(await anthropicApiKeyOpenClawConfigCheck(tmp));
     checks.push(await mockAuthOpenClawConfigCheck(tmp));
@@ -334,11 +341,7 @@ async function runScopedSelfCheck(flags, scope, workspace) {
       `KOVA_HOME=${quoteShell(join(tmp, "custom-external-cli-home"))} node bin/kova.mjs setup --non-interactive --provider custom-openai --auth external-cli --json`,
       "external-cli auth is only supported for provider openai or anthropic"
     ));
-    checks.push(await failingCommandCheck(
-      "setup-external-cli-verifies-auth",
-      `HOME=${quoteShell(join(tmp, "no-codex-auth"))} KOVA_HOME=${quoteShell(join(tmp, "missing-external-cli-auth-home"))} node bin/kova.mjs setup --non-interactive --provider openai --auth external-cli --json`,
-      "external-cli codex is not usable"
-    ));
+    checks.push(await externalCliSetupRejectsUnauthenticatedCheck(tmp));
     checks.push(await externalCliRunAuthVerificationCheck(tmp));
     checks.push(await commandTimeoutContractCheck(tmp));
     checks.push(await commandOutputBudgetCheck());
@@ -5565,11 +5568,13 @@ async function liveExternalCliDryRunCheck(tmp) {
   const kovaHome = join(tmp, "live-external-cli-kova-home");
   const fakeBin = join(tmp, "live-external-cli-bin");
   const reportDir = join(tmp, "live-external-cli-report");
-  await mkdir(join(home, ".codex"), { recursive: true });
+  await mkdir(home, { recursive: true });
   await mkdir(join(kovaHome, "credentials"), { recursive: true });
   await mkdir(fakeBin, { recursive: true });
-  await writeFile(join(home, ".codex", "auth.json"), "{\"tokens\":{\"access_token\":\"redacted\"}}\n", "utf8");
-  await writeFile(join(fakeBin, "codex"), "#!/bin/sh\necho codex-selfcheck\n", "utf8");
+  await writeFile(join(fakeBin, "codex"), `#!/bin/sh
+test "$#" -eq 2 && test "$1" = "login" && test "$2" = "status" || exit 42
+echo "native codex auth status" >&2
+`, "utf8");
   await chmod(join(fakeBin, "codex"), 0o755);
   await writeFile(join(kovaHome, "credentials", "providers.json"), `${JSON.stringify({
     schemaVersion: "kova.credentials.providers.v1",
@@ -5644,11 +5649,16 @@ async function liveAnthropicExternalCliDryRunCheck(tmp) {
   const kovaHome = join(tmp, "live-anthropic-cli-kova-home");
   const fakeBin = join(tmp, "live-anthropic-cli-bin");
   const reportDir = join(tmp, "live-anthropic-cli-report");
-  await mkdir(join(home, ".claude"), { recursive: true });
+  await mkdir(home, { recursive: true });
   await mkdir(join(kovaHome, "credentials"), { recursive: true });
   await mkdir(fakeBin, { recursive: true });
-  await writeFile(join(home, ".claude", ".credentials.json"), "{\"claudeAiOauth\":{\"accessToken\":\"redacted\"}}\n", "utf8");
-  await writeFile(join(fakeBin, "claude"), "#!/bin/sh\necho claude-selfcheck\n", "utf8");
+  await writeFile(join(fakeBin, "claude"), `#!/bin/sh
+if test "$#" -eq 3 && test "$1" = "auth" && test "$2" = "status" && test "$3" = "--help"; then
+  exit 0
+fi
+test "$#" -eq 2 && test "$1" = "auth" && test "$2" = "status" || exit 42
+echo '{"loggedIn":true,"email":"must-not-leak@example.invalid"}'
+`, "utf8");
   await chmod(join(fakeBin, "claude"), 0o755);
   await writeFile(join(kovaHome, "credentials", "providers.json"), `${JSON.stringify({
     schemaVersion: "kova.credentials.providers.v1",
@@ -16087,6 +16097,281 @@ async function credentialStoreSelfCheck(tmp) {
   }
 }
 
+async function credentialStoreConcurrentWritersCheck(tmp) {
+  const home = join(tmp, "concurrent-credentials-home");
+  const credentials = join(home, "credentials");
+  const staleLock = join(credentials, ".store.lock");
+  const staleMarker = join(staleLock, "owner-dummy.json");
+  await mkdir(credentials, { recursive: true });
+  await mkdir(staleLock);
+  await writeFile(staleMarker, `${JSON.stringify({
+    pid: 2147483647,
+    token: "dummy",
+    createdAt: new Date(0).toISOString()
+  })}\n`, "utf8");
+  const commands = Array.from({ length: 12 }, (_, index) => {
+    const anthropic = index % 2 === 1;
+    return [
+      "setup",
+      "auth",
+      "--provider", anthropic ? "anthropic" : "openai",
+      "--method", "api-key",
+      "--env-var", anthropic ? "ANTHROPIC_API_KEY" : "OPENAI_API_KEY",
+      "--value", anthropic ? "anth-value" : "open-value",
+      "--json"
+    ];
+  });
+  const startedAt = Date.now();
+  try {
+    const results = await Promise.all(commands.map((args) => runNodeProcess(args, {
+      ...process.env,
+      KOVA_HOME: home
+    })));
+    const failed = results.filter((result) => result.status !== 0);
+    if (failed.length > 0) {
+      throw new Error(failed.map((result) => result.stderr || `exit ${result.status}`).join("\n"));
+    }
+
+    const providers = JSON.parse(await readFile(join(credentials, "providers.json"), "utf8"));
+    const liveEnv = await readFile(join(credentials, "live.env"), "utf8");
+    assertEqual(providers.providers?.openai?.method, "api-key", "concurrent OpenAI provider");
+    assertEqual(providers.providers?.anthropic?.method, "api-key", "concurrent Anthropic provider");
+    assertEqual(liveEnv.includes("OPENAI_API_KEY=open-value"), true, "concurrent OpenAI key");
+    assertEqual(liveEnv.includes("ANTHROPIC_API_KEY=anth-value"), true, "concurrent Anthropic key");
+    const leftovers = (await readdir(credentials)).filter((name) =>
+      name === ".store.lock" ||
+      name.endsWith(".tmp")
+    );
+    assertEqual(leftovers.length, 0, "credential transaction cleanup");
+    return {
+      id: "credential-store-concurrent-writers",
+      status: "PASS",
+      command: "12 concurrent kova setup auth writers",
+      durationMs: Date.now() - startedAt
+    };
+  } catch (error) {
+    return {
+      id: "credential-store-concurrent-writers",
+      status: "FAIL",
+      command: "12 concurrent kova setup auth writers",
+      durationMs: Date.now() - startedAt,
+      message: error.message
+    };
+  }
+}
+
+async function setupDirectoryWriteProbeCheck(tmp) {
+  const path = join(tmp, "directory-write-probe");
+  const startedAt = Date.now();
+  if (typeof process.getuid === "function" && process.getuid() === 0) {
+    return {
+      id: "setup-directory-child-write-probe",
+      status: "PASS",
+      command: "directoryCheck against mode 0222 fixture",
+      durationMs: Date.now() - startedAt,
+      message: "skipped permission fixture as root"
+    };
+  }
+  await mkdir(path, { recursive: true });
+  await chmod(path, 0o222);
+  try {
+    const result = await directoryCheck("write-probe", path);
+    assertEqual(result.status, "FAIL", "directory child creation failure");
+    return {
+      id: "setup-directory-child-write-probe",
+      status: "PASS",
+      command: "directoryCheck against mode 0222 fixture",
+      durationMs: Date.now() - startedAt
+    };
+  } catch (error) {
+    return {
+      id: "setup-directory-child-write-probe",
+      status: "FAIL",
+      command: "directoryCheck against mode 0222 fixture",
+      durationMs: Date.now() - startedAt,
+      message: error.message
+    };
+  } finally {
+    await chmod(path, 0o700).catch(() => {});
+  }
+}
+
+async function setupTtySecretInputCheck(tmp) {
+  const expectPath = (await runCommand("command -v expect", { timeoutMs: 5000 })).stdout.trim();
+  const startedAt = Date.now();
+  if (!expectPath) {
+    return {
+      id: "setup-tty-secret-input",
+      status: "PASS",
+      command: "expect PTY setup flow",
+      durationMs: Date.now() - startedAt,
+      message: "expect unavailable; PTY proof skipped"
+    };
+  }
+
+  const dir = join(tmp, "setup-tty");
+  const fakeBin = join(dir, "bin");
+  const wrapperPath = join(dir, "run-setup.sh");
+  const expectScriptPath = join(dir, "drive-setup.exp");
+  const sentinel = "dummy";
+  await mkdir(fakeBin, { recursive: true });
+  await writeFile(join(fakeBin, "ocm"), `#!/bin/sh
+case "$1:$2" in
+  --version:) echo "ocm self-check"; exit 0 ;;
+  env:list|runtime:list) echo "[]"; exit 0 ;;
+esac
+exit 1
+`, "utf8");
+  await chmod(join(fakeBin, "ocm"), 0o755);
+  await writeFile(wrapperPath, `#!/bin/sh
+before="$(stty -g)"
+cd "$KOVA_REPO_ROOT" || exit 1
+node bin/kova.mjs setup --json >"$KOVA_TTY_STDOUT"
+status=$?
+after="$(stty -g)"
+printf '\\nKOVA_TTY_BEFORE=%s\\nKOVA_TTY_AFTER=%s\\n' "$before" "$after" >&2
+exit "$status"
+`, "utf8");
+  await chmod(wrapperPath, 0o755);
+  await writeFile(expectScriptPath, `#!/usr/bin/expect -f
+set timeout 20
+set wrapper [lindex $argv 0]
+set repo [lindex $argv 1]
+set home [lindex $argv 2]
+set fakebin [lindex $argv 3]
+set stdoutfile [lindex $argv 4]
+set transcript [lindex $argv 5]
+set sentinel [lindex $argv 6]
+set mode [lindex $argv 7]
+log_file -noappend $transcript
+spawn -noecho env "KOVA_HOME=$home" "PATH=$fakebin:$env(PATH)" "KOVA_TTY_STDOUT=$stdoutfile" "KOVA_REPO_ROOT=$repo" $wrapper
+expect -exact {Provider [openai]: }
+send -- "\\r"
+expect -exact {Auth method [mock]: }
+send -- "3\\r"
+expect -exact {Env var [OPENAI_API_KEY]: }
+send -- "\\r"
+expect -exact {Value for OPENAI_API_KEY (leave empty to read host env): }
+if {$mode eq "cancel"} {
+  send -- "\\003"
+} else {
+  send -- "$sentinel\\r"
+}
+expect eof
+set result [wait]
+exit [lindex $result 3]
+`, "utf8");
+  await chmod(expectScriptPath, 0o755);
+
+  try {
+    const success = await runSetupTtyCase({
+      expectPath,
+      expectScriptPath,
+      wrapperPath,
+      repo: repoRoot,
+      fakeBin,
+      home: join(dir, "success-home"),
+      stdoutPath: join(dir, "success.json"),
+      transcriptPath: join(dir, "success.log"),
+      sentinel,
+      mode: "success"
+    });
+    assertEqual(success.status, 0, "interactive setup exit");
+    assertTtySetupState(success.transcript, sentinel);
+    const setup = JSON.parse(success.stdout);
+    assertEqual(setup.ok, true, "interactive JSON setup");
+    assertEqual(setup.auth?.method, "api-key", "interactive auth method");
+    assertEqual(success.stdout.includes("Kova auth setup"), false, "interactive prompts excluded from stdout");
+    const liveEnv = await readFile(join(dir, "success-home", "credentials", "live.env"), "utf8");
+    assertEqual(liveEnv.includes(sentinel), true, "interactive secret persisted");
+
+    const cancelled = await runSetupTtyCase({
+      expectPath,
+      expectScriptPath,
+      wrapperPath,
+      repo: repoRoot,
+      fakeBin,
+      home: join(dir, "cancel-home"),
+      stdoutPath: join(dir, "cancel.json"),
+      transcriptPath: join(dir, "cancel.log"),
+      sentinel,
+      mode: "cancel"
+    });
+    assertEqual(cancelled.status !== 0, true, "cancelled setup exits nonzero");
+    assertEqual(cancelled.transcript.includes("secret input cancelled"), true, "cancelled setup reports cancellation");
+    assertTtySetupState(cancelled.transcript, sentinel);
+
+    return {
+      id: "setup-tty-secret-input",
+      status: "PASS",
+      command: "expect PTY setup success and Ctrl-C cancellation",
+      durationMs: Date.now() - startedAt
+    };
+  } catch (error) {
+    return {
+      id: "setup-tty-secret-input",
+      status: "FAIL",
+      command: "expect PTY setup success and Ctrl-C cancellation",
+      durationMs: Date.now() - startedAt,
+      message: error.message
+    };
+  }
+}
+
+async function runSetupTtyCase(options) {
+  await mkdir(options.home, { recursive: true });
+  const result = await runCommand([
+    quoteShell(options.expectPath),
+    quoteShell(options.expectScriptPath),
+    quoteShell(options.wrapperPath),
+    quoteShell(options.repo),
+    quoteShell(options.home),
+    quoteShell(options.fakeBin),
+    quoteShell(options.stdoutPath),
+    quoteShell(options.transcriptPath),
+    quoteShell(options.sentinel),
+    quoteShell(options.mode)
+  ].join(" "), { timeoutMs: 30000, maxOutputChars: 1000000 });
+  return {
+    ...result,
+    stdout: await readFile(options.stdoutPath, "utf8").catch(() => ""),
+    transcript: await readFile(options.transcriptPath, "utf8").catch(() => result.stdout)
+  };
+}
+
+function assertTtySetupState(transcript, sentinel) {
+  assertEqual(transcript.includes("Kova auth setup"), true, "interactive prompt transcript");
+  assertEqual(transcript.includes(sentinel), false, "secret echo suppression");
+  const before = transcript.match(/KOVA_TTY_BEFORE=([^\r\n]+)/)?.[1];
+  const after = transcript.match(/KOVA_TTY_AFTER=([^\r\n]+)/)?.[1];
+  assertString(before, "TTY state before setup");
+  assertEqual(after, before, "TTY state restored");
+}
+
+function runNodeProcess(args, env) {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, ["bin/kova.mjs", ...args], {
+      cwd: repoRoot,
+      env,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", (error) => {
+      resolve({ status: 127, stdout, stderr: error.message });
+    });
+    child.on("close", (status) => {
+      resolve({ status: status ?? 1, stdout, stderr });
+    });
+  });
+}
+
 async function setupNumericFlagsRejectedCheck(tmp) {
   const home = join(tmp, "numeric-auth-home");
   const command = `KOVA_HOME=${quoteShell(home)} node bin/kova.mjs setup --non-interactive --provider 2 --auth 3 --value kova-selfcheck-key --json`;
@@ -16120,11 +16405,14 @@ async function externalCliSetupCheck(tmp) {
   const home = join(tmp, "external-cli-home");
   const fakeBin = join(tmp, "fake-bin");
   const kovaHome = join(tmp, "external-cli-kova-home");
-  await mkdir(join(home, ".codex"), { recursive: true });
+  await mkdir(home, { recursive: true });
   await mkdir(fakeBin, { recursive: true });
   const fakeCodex = join(fakeBin, "codex");
-  await writeFile(join(home, ".codex", "auth.json"), "{\"tokens\":{\"access_token\":\"redacted\"}}\n", "utf8");
-  await writeFile(fakeCodex, "#!/bin/sh\nexit 0\n", "utf8");
+  await writeFile(fakeCodex, `#!/bin/sh
+test "$#" -eq 2 && test "$1" = "login" && test "$2" = "status" || exit 42
+echo "authenticated by native status" >&2
+exit 0
+`, "utf8");
   await chmod(fakeCodex, 0o755);
 
   const command = [
@@ -16144,6 +16432,7 @@ async function externalCliSetupCheck(tmp) {
     assertEqual(data.auth?.method, "external-cli", "external cli method");
     assertEqual(data.auth?.externalCli, "codex", "external cli name");
     assertEqual(data.auth?.verification?.verified, true, "external cli verification");
+    assertEqual(data.auth?.verification?.authFiles?.length, 0, "external CLI verification avoids auth files");
     const credential = data.checks?.find((check) => check.id === "credentials");
     if (!credential || !credential.message.includes("external-cli codex verified")) {
       throw new Error(`credential check did not report verified external CLI: ${credential?.message ?? "missing"}`);
@@ -16163,6 +16452,155 @@ async function externalCliSetupCheck(tmp) {
       message: error.message
     };
   }
+}
+
+async function externalCliProviderPairingCheck(tmp) {
+  const directHome = join(tmp, "external-cli-mismatch-home");
+  const direct = await runCommand(
+    `KOVA_HOME=${quoteShell(directHome)} node bin/kova.mjs setup auth --provider openai --method external-cli --external-cli claude --json`,
+    { timeoutMs: 30000, maxOutputChars: 1000000 }
+  );
+  const persistedHome = join(tmp, "external-cli-persisted-mismatch-home");
+  const credentials = join(persistedHome, "credentials");
+  await mkdir(credentials, { recursive: true });
+  await writeFile(join(credentials, "providers.json"), `${JSON.stringify({
+    schemaVersion: "kova.credentials.providers.v1",
+    defaultProvider: "openai",
+    providers: {
+      openai: {
+        id: "openai",
+        method: "external-cli",
+        envVars: [],
+        externalCli: "claude",
+        configuredAt: new Date().toISOString()
+      }
+    }
+  }, null, 2)}\n`, "utf8");
+  await writeFile(join(credentials, "live.env"), "", { encoding: "utf8", mode: 0o600 });
+  const persisted = await runCommand(
+    `KOVA_HOME=${quoteShell(persistedHome)} node bin/kova.mjs run --target runtime:stable --scenario fresh-install --auth live --json`,
+    { timeoutMs: 30000, maxOutputChars: 1000000 }
+  );
+  const directOutput = `${direct.stdout}\n${direct.stderr}`;
+  const persistedOutput = `${persisted.stdout}\n${persisted.stderr}`;
+  const ok = direct.status !== 0 &&
+    directOutput.includes("provider openai uses external CLI codex") &&
+    persisted.status !== 0 &&
+    persistedOutput.includes("provider openai uses external CLI codex");
+  return {
+    id: "external-cli-provider-pairing",
+    status: ok ? "PASS" : "FAIL",
+    command: "reject direct and persisted OpenAI/Claude CLI mismatches",
+    durationMs: direct.durationMs + persisted.durationMs,
+    message: ok ? "" : `direct: ${directOutput.trim()}\npersisted: ${persistedOutput.trim()}`
+  };
+}
+
+async function directCredentialProviderPairingCheck(tmp) {
+  const home = join(tmp, "direct-credential-provider-home");
+  const scriptPath = join(tmp, "direct-credential-provider.mjs");
+  await writeFile(scriptPath, `import { configureCredentialProvider } from ${JSON.stringify(new URL("./auth.mjs", import.meta.url).href)};
+await configureCredentialProvider({ provider: "openai", method: "external-cli" });
+await configureCredentialProvider({ provider: "anthropic", method: "external-cli" });
+`, "utf8");
+  const command = `KOVA_HOME=${quoteShell(home)} node ${quoteShell(scriptPath)}`;
+  const result = await runCommand(command, { timeoutMs: 30000, maxOutputChars: 1000000 });
+  try {
+    if (result.status !== 0) {
+      throw new Error(result.stderr.trim() || result.stdout.trim() || `exit ${result.status}`);
+    }
+    const providers = JSON.parse(await readFile(join(home, "credentials", "providers.json"), "utf8"));
+    assertEqual(providers.providers?.openai?.externalCli, "codex", "direct OpenAI CLI pairing");
+    assertEqual(providers.providers?.anthropic?.externalCli, "claude", "direct Anthropic CLI pairing");
+    return {
+      id: "credential-provider-direct-pairing",
+      status: "PASS",
+      command,
+      durationMs: result.durationMs
+    };
+  } catch (error) {
+    return {
+      id: "credential-provider-direct-pairing",
+      status: "FAIL",
+      command,
+      durationMs: result.durationMs,
+      message: error.message
+    };
+  }
+}
+
+async function claudeCliLoggedOutCheck(tmp) {
+  const fakeBin = join(tmp, "logged-out-claude-bin");
+  const home = join(tmp, "logged-out-claude-home");
+  await mkdir(fakeBin, { recursive: true });
+  await writeFile(join(fakeBin, "claude"), `#!/bin/sh
+if test "$#" -eq 3 && test "$1" = "auth" && test "$2" = "status" && test "$3" = "--help"; then
+  exit 0
+fi
+test "$#" -eq 2 && test "$1" = "auth" && test "$2" = "status" || exit 42
+echo '{"loggedIn":false,"email":"must-not-leak@example.invalid"}'
+exit 0
+`, "utf8");
+  await chmod(join(fakeBin, "claude"), 0o755);
+  const command = [
+    `PATH=${quoteShell(`${fakeBin}:${process.env.PATH ?? ""}`)}`,
+    `KOVA_HOME=${quoteShell(home)}`,
+    "node bin/kova.mjs setup --non-interactive --provider anthropic --auth external-cli --json"
+  ].join(" ");
+  const result = await runCommand(command, { timeoutMs: 30000, maxOutputChars: 1000000 });
+  const output = `${result.stdout}\n${result.stderr}`;
+  await writeFile(join(fakeBin, "claude"), "#!/bin/sh\nexit 42\n", "utf8");
+  const unsupportedCommand = [
+    `PATH=${quoteShell(`${fakeBin}:${process.env.PATH ?? ""}`)}`,
+    `KOVA_HOME=${quoteShell(join(tmp, "unsupported-claude-home"))}`,
+    "node bin/kova.mjs setup --non-interactive --provider anthropic --auth external-cli --json"
+  ].join(" ");
+  const unsupported = await runCommand(unsupportedCommand, {
+    timeoutMs: 30000,
+    maxOutputChars: 1000000
+  });
+  const unsupportedOutput = `${unsupported.stdout}\n${unsupported.stderr}`;
+  const ok = result.status !== 0 &&
+    output.includes("external-cli claude is not usable") &&
+    !output.includes("must-not-leak@example.invalid") &&
+    unsupported.status !== 0 &&
+    unsupportedOutput.includes("update Claude Code");
+  return {
+    id: "claude-cli-native-logged-out-status",
+    status: ok ? "PASS" : "FAIL",
+    command: `${command}; ${unsupportedCommand}`,
+    durationMs: result.durationMs + unsupported.durationMs,
+    message: ok
+      ? ""
+      : `logged out: ${result.status}: ${output.trim()}\nunsupported: ${unsupported.status}: ${unsupportedOutput.trim()}`
+  };
+}
+
+async function externalCliSetupRejectsUnauthenticatedCheck(tmp) {
+  const fakeBin = join(tmp, "unauthenticated-codex-bin");
+  const home = join(tmp, "unauthenticated-codex-home");
+  await mkdir(fakeBin, { recursive: true });
+  await writeFile(join(fakeBin, "codex"), `#!/bin/sh
+test "$#" -eq 2 && test "$1" = "login" && test "$2" = "status" || exit 42
+exit 1
+`, "utf8");
+  await chmod(join(fakeBin, "codex"), 0o755);
+  const command = [
+    `PATH=${quoteShell(`${fakeBin}:${process.env.PATH ?? ""}`)}`,
+    `KOVA_HOME=${quoteShell(home)}`,
+    "node bin/kova.mjs setup --non-interactive --provider openai --auth external-cli --json"
+  ].join(" ");
+  const result = await runCommand(command, { timeoutMs: 30000, maxOutputChars: 1000000 });
+  const output = `${result.stdout}\n${result.stderr}`;
+  return {
+    id: "setup-external-cli-verifies-auth",
+    status: result.status !== 0 && output.includes("external-cli codex is not usable") ? "PASS" : "FAIL",
+    command,
+    durationMs: result.durationMs,
+    message: result.status !== 0 && output.includes("external-cli codex is not usable")
+      ? ""
+      : `expected native auth status failure, got ${result.status}: ${output.trim()}`
+  };
 }
 
 async function externalCliOpenClawConfigCheck(tmp) {
@@ -16316,8 +16754,16 @@ async function claudeCliOpenClawConfigCheck(tmp) {
 async function externalCliRunAuthVerificationCheck(tmp) {
   const home = join(tmp, "stale-external-cli-home");
   const kovaHome = join(tmp, "stale-external-cli-kova-home");
+  const fakeBin = join(tmp, "stale-external-cli-bin");
   const credentials = join(kovaHome, "credentials");
+  await mkdir(fakeBin, { recursive: true });
   await mkdir(credentials, { recursive: true });
+  await writeFile(join(fakeBin, "codex"), `#!/bin/sh
+test "$#" -eq 2 && test "$1" = "login" && test "$2" = "status" || exit 42
+echo "stale auth rejected" >&2
+exit 1
+`, "utf8");
+  await chmod(join(fakeBin, "codex"), 0o755);
   await writeFile(join(credentials, "providers.json"), `${JSON.stringify({
     schemaVersion: "kova.credentials.providers.v1",
     defaultProvider: "openai",
@@ -16334,6 +16780,7 @@ async function externalCliRunAuthVerificationCheck(tmp) {
   await writeFile(join(credentials, "live.env"), "", { encoding: "utf8", mode: 0o600 });
   const command = [
     `HOME=${quoteShell(home)}`,
+    `PATH=${quoteShell(`${fakeBin}:${process.env.PATH ?? ""}`)}`,
     `KOVA_HOME=${quoteShell(kovaHome)}`,
     "node bin/kova.mjs run --target runtime:stable --scenario fresh-install --auth live --json"
   ].join(" ");
