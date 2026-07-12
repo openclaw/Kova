@@ -10,7 +10,9 @@ export async function collectStateFixtureAccounting(state, envName, artifactDir,
     return null;
   }
 
-  const envInfo = await (options.resolveEnvInfo ?? resolveEnvInfo)(envName);
+  const envInfo = normalizeResolvedEnvInfo(
+    await (options.resolveEnvInfo ?? resolveEnvInfo)(envName)
+  );
   const openclawHome = envInfo?.runDir ?? null;
   const files = [];
   for (const fileSpec of spec.files) {
@@ -60,12 +62,34 @@ async function resolveEnvInfo(envName) {
     };
   }
   try {
-    return JSON.parse(result.stdout);
+    const parsed = JSON.parse(result.stdout);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) ||
+      typeof parsed.runDir !== "string" || parsed.runDir.trim().length === 0) {
+      return {
+        error: "service-status-json-invalid",
+        status: 0,
+      };
+    }
+    return parsed;
   } catch {
     return {
       error: "service-status-json-invalid",
     };
   }
+}
+
+function normalizeResolvedEnvInfo(value) {
+  if (value?.error) {
+    return value;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value) ||
+    typeof value.runDir !== "string" || value.runDir.trim().length === 0) {
+    return {
+      error: "service-status-json-invalid",
+      status: null,
+    };
+  }
+  return value;
 }
 
 async function inspectFixtureFile(fileSpec, context) {
@@ -242,6 +266,14 @@ function fixtureFindings(files, envInfo = null) {
         kind: "harness",
         fileId: file.id,
         message: `${file.id} could not be inspected (${file.shape.kind}: ${file.shape.errorCode ?? "unknown"})`,
+      });
+    }
+    if (file.shape?.kind === "unresolved-path") {
+      findings.push({
+        severity: "error",
+        kind: "harness",
+        fileId: file.id,
+        message: `${file.id} path could not be resolved`,
       });
     }
     if (!file.exists && file.shape?.kind === "missing") {
