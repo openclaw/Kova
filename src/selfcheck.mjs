@@ -1145,7 +1145,7 @@ function localBuildRuntimeNameCheck() {
   try {
     const first = resolveTarget("local-build:/tmp/openclaw", "target");
     const second = resolveTarget("local-build:/tmp/openclaw", "target");
-    assertEqual(/^kova-local-[a-z0-9]+-[0-9a-f]{8}$/.test(first.runtimeName), true, "local-build runtime name shape");
+    assertEqual(/^kova-local-[a-z0-9]+-[a-z0-9]+-[0-9a-f]{8}$/.test(first.runtimeName), true, "local-build runtime name shape");
     assertEqual(first.runtimeName === second.runtimeName, false, "local-build runtime names are collision resistant");
     return {
       id: "local-build-runtime-name",
