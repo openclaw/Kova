@@ -1,9 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { chmod, lstat, mkdir, open, readFile, readlink, rename, rm, stat } from "node:fs/promises";
-import { userInfo } from "node:os";
 import { dirname, join, posix, resolve, win32 } from "node:path";
 import { withFileLock } from "../file-lock.mjs";
-import { baselinesDir } from "../paths.mjs";
+import { baselinesDir, kovaHome } from "../paths.mjs";
 import {
   DEFAULT_REGRESSION_THRESHOLDS,
   PERFORMANCE_METRICS,
@@ -112,8 +111,13 @@ export async function withBaselineStoreLock(path, callback) {
   const writePath = await resolveBaselineWritePath(path);
   // The canonical path stays stable across the first create and every later
   // replacement; inode-based keys would let old and new waiters split locks.
-  const identity = createHash("sha256").update(resolve(writePath)).digest("hex");
-  const lockRoot = join(userInfo().homedir, ".kova", "locks", "baselines");
+  // Folding case and Unicode only over-serializes distinct files on a
+  // case-sensitive volume, while preventing aliases from splitting the lock.
+  const canonicalPath = resolve(writePath).normalize("NFC").toLowerCase();
+  const identity = createHash("sha256").update(canonicalPath).digest("hex");
+  // Baseline stores are per-user Kova state; following KOVA_HOME keeps every
+  // supported writer in one namespace and works in redirected sandboxes.
+  const lockRoot = join(kovaHome, "locks", "baselines");
   await ensurePrivateLockDirectory(lockRoot);
   const lockPath = join(lockRoot, `${identity}.lock`);
   return withFileLock(lockPath, callback);

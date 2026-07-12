@@ -1,13 +1,15 @@
 import { createHash, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, readlinkSync } from "node:fs";
 import { link, mkdir, open, readFile, readdir, rm, stat } from "node:fs/promises";
+import { hostname } from "node:os";
 import { basename, dirname, join } from "node:path";
 
 const DEFAULT_STALE_MS = 10 * 60 * 1000;
 const DEFAULT_TIMEOUT_MS = 30 * 1000;
 const DEFAULT_RETRY_MS = 25;
 const CURRENT_PROCESS_IDENTITY = readProcessIdentity(process.pid);
+const CURRENT_EXECUTION_DOMAIN = readExecutionDomainIdentity();
 
 export async function withFileLock(lockPath, callback, options = {}) {
   await mkdir(dirname(lockPath), { recursive: true, mode: 0o700 });
@@ -173,6 +175,12 @@ async function removeOwnedFile(path, token) {
 }
 
 function isAbandoned(snapshot, staleMs) {
+  const ownerDomain = snapshot.owner?.executionDomainIdentity;
+  if (ownerDomain && CURRENT_EXECUTION_DOMAIN && ownerDomain !== CURRENT_EXECUTION_DOMAIN) {
+    // A local PID probe says nothing about an owner on another host or PID
+    // namespace. Preserve mutual exclusion rather than reclaiming unsafely.
+    return false;
+  }
   const pid = snapshot.owner?.pid;
   if (Number.isInteger(pid) && pid > 0) {
     if (!processIsAlive(pid)) {
@@ -196,8 +204,25 @@ function lockMetadata(token) {
     pid: process.pid,
     processIdentity: CURRENT_PROCESS_IDENTITY,
     processIdentityUnavailable: CURRENT_PROCESS_IDENTITY === null,
+    executionDomainIdentity: CURRENT_EXECUTION_DOMAIN,
     createdAt: new Date().toISOString()
   };
+}
+
+function readExecutionDomainIdentity() {
+  if (process.platform === "linux") {
+    try {
+      const bootId = readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim();
+      const pidNamespace = readlinkSync("/proc/self/ns/pid");
+      if (bootId && pidNamespace) {
+        return `linux:${bootId}:${pidNamespace}`;
+      }
+    } catch {
+      // Fall through to the host identity when procfs is unavailable.
+    }
+  }
+  const host = hostname();
+  return host ? `${process.platform}:${host}` : null;
 }
 
 function readProcessIdentity(pid) {
