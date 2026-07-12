@@ -3,15 +3,19 @@ import { readFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { isDeepStrictEqual } from "node:util";
 
-const [targetVersion] = process.argv.slice(2);
+const [targetVersion, mode, commitRef] = process.argv.slice(2);
 if (!targetVersion) {
   fail("target version is required");
 }
+if (mode && (mode !== "--commit" || !commitRef)) {
+  fail("usage: validate-version-metadata.mjs <version> [--commit <ref>]");
+}
 
-const basePackage = readHeadJson("package.json");
-const baseLockfile = readHeadJson("package-lock.json");
-const packageJson = await readJson("package.json");
-const lockfile = await readJson("package-lock.json");
+const baseRef = commitRef ? `${commitRef}^` : "HEAD";
+const basePackage = readGitJson(baseRef, "package.json");
+const baseLockfile = readGitJson(baseRef, "package-lock.json");
+const packageJson = commitRef ? readGitJson(commitRef, "package.json") : await readJson("package.json");
+const lockfile = commitRef ? readGitJson(commitRef, "package-lock.json") : await readJson("package-lock.json");
 
 if (packageJson.version !== targetVersion) {
   fail(`package.json version must be ${targetVersion}`);
@@ -29,9 +33,10 @@ if (!baseRootPackage || !rootPackage) {
   fail('package-lock.json must contain packages[""] metadata');
 }
 
-const allowedLockfileVersions = new Set([baseLockfile.version, targetVersion]);
+const allowedLockfileVersions = new Set(commitRef ? [targetVersion] : [baseLockfile.version, targetVersion]);
 if (!allowedLockfileVersions.has(lockfile.version) || !allowedLockfileVersions.has(rootPackage.version)) {
-  fail(`package-lock.json version fields must be ${baseLockfile.version} or ${targetVersion}`);
+  const expectedVersions = commitRef ? targetVersion : `${baseLockfile.version} or ${targetVersion}`;
+  fail(`package-lock.json version fields must be ${expectedVersions}`);
 }
 
 const normalizedLockfile = structuredClone(lockfile);
@@ -49,18 +54,18 @@ async function readJson(path) {
   }
 }
 
-function readHeadJson(path) {
-  const result = spawnSync("git", ["show", `HEAD:${path}`], {
+function readGitJson(ref, path) {
+  const result = spawnSync("git", ["show", `${ref}:${path}`], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"]
   });
   if (result.status !== 0) {
-    fail(`could not read HEAD:${path}`);
+    fail(`could not read ${ref}:${path}`);
   }
   try {
     return JSON.parse(result.stdout);
   } catch (error) {
-    fail(`could not parse HEAD:${path}: ${error.message}`);
+    fail(`could not parse ${ref}:${path}: ${error.message}`);
   }
 }
 
