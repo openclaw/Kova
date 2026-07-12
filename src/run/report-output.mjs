@@ -192,11 +192,10 @@ async function recoverReportFileSet(entries, canonicalPath, transactionPath) {
     return;
   }
 
-  if (marker) {
-    await restorePreviousReportSet(entries, backupEntries, marker, canonicalPath);
-  } else {
-    await restoreLegacyReportBackups(backupEntries, canonicalPath);
+  if (!marker) {
+    throw new Error(`report backup is missing transaction marker: ${backupEntries[0].backupPath}`);
   }
+  await restorePreviousReportSet(entries, backupEntries, marker, canonicalPath);
   await syncDirectories(entries);
   await rm(transactionPath, { force: true });
   await syncDirectories(entries);
@@ -224,10 +223,10 @@ async function restorePreviousReportSet(entries, backupEntries, marker, canonica
     }
   }
 
-  await restoreLegacyReportBackups(backupEntries, canonicalPath);
+  await restoreReportBackups(backupEntries, canonicalPath);
 }
 
-async function restoreLegacyReportBackups(backupEntries, canonicalPath) {
+async function restoreReportBackups(backupEntries, canonicalPath) {
   const restoreOrder = [
     ...backupEntries.filter((entry) => entry.path !== canonicalPath),
     ...backupEntries.filter((entry) => entry.path === canonicalPath)
