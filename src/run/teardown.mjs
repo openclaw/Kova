@@ -30,13 +30,15 @@ export async function teardownScenario(record, scenario, context, envName, artif
   ], options);
   errors.push(...beforeRetention.errors);
 
-  const retainEnv = shouldRetainEnv(context, record);
+  let retainEnv = shouldRetainEnv(context, record);
   if (retainEnv) {
     // The OCM protection is the destruction fence. Do not emit a retained
     // record when that fence could not be established.
-    await protectRetainedEnv(record, context, envName);
-    record.cleanup = "retained";
-    record.retainedReason = context.keepEnv ? "keep-env" : "failure";
+    retainEnv = await protectRetainedEnv(record, context, envName);
+    if (retainEnv) {
+      record.cleanup = "retained";
+      record.retainedReason = context.keepEnv ? "keep-env" : "failure";
+    }
   }
 
   record.networkFrontage = context.networkFrontageAllocation ?? record.networkFrontage;
@@ -147,10 +149,24 @@ async function protectRetainedEnv(record, context, envName) {
     timeoutMs: context.timeoutMs
   });
   record.retentionProtectionResult = result;
-  if (result.status !== 0) {
+  const outcome = classifyRetentionProtection(result, envName);
+  if (outcome === "already-absent") {
+    return false;
+  }
+  if (outcome === "failed") {
     const detail = result.stderr.trim() || result.stdout.trim() || `exit ${result.status}`;
     throw new Error(`failed to protect retained env ${envName}: ${detail}`);
   }
+  return true;
+}
+
+export function classifyRetentionProtection(result, envName) {
+  if (result.status === 0) {
+    return "protected";
+  }
+  return isMissingOcmResource(result, "environment", envName)
+    ? "already-absent"
+    : "failed";
 }
 
 function appendCleanupPhase(record, phase) {
