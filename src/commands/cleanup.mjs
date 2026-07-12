@@ -130,14 +130,19 @@ async function cleanupEnvs(flags) {
 async function destroyCleanupEnv(envName, { force, cutoffMs }) {
   if (force) {
     const result = await runCleanupCommand(
-      ocmEnvDestroy(envName, { force: true }),
-      { timeoutMs: 120000 }
+      ocmEnvDestroy(envName, { force: true, json: true }),
+      {
+        timeoutMs: 120000,
+        // Force bypasses blockers, but it does not make partial teardown retry-safe.
+        retryDelaysMs: [0]
+      }
     );
+    const code = cleanupResultCode(result);
     return {
       result,
       precondition: null,
-      stage: "destroy",
-      code: cleanupResultCode(result)
+      stage: code === "partial_apply" ? "partial-apply" : "destroy",
+      code
     };
   }
 

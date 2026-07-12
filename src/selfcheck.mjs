@@ -14235,7 +14235,7 @@ async function networkFrontagePartialStartupCleanupInvariantCheck() {
     const teardownSource = await readFile("src/run/teardown.mjs", "utf8");
     const retentionPattern = /id: "network-frontage-cleanup"[\s\S]+const retainEnv = shouldRetainEnv\(context, record\)/;
     assertEqual(retentionPattern.test(teardownSource), true, "retain-on-failure is computed after network frontage cleanup can update status");
-    const protectionPattern = /const retainEnv = shouldRetainEnv\(context, record\);[\s\S]+id: "retention-protection"[\s\S]+protectRetainedEnv\(record, context, envName\)[\s\S]+record\.cleanup = "retained"/;
+    const protectionPattern = /const retainEnv = shouldRetainEnv\(context, record\);[\s\S]+await protectRetainedEnv\(record, context, envName\);[\s\S]+record\.cleanup = "retained"/;
     assertEqual(protectionPattern.test(teardownSource), true, "retained env is protected before retention is published");
     assertEqual(
       ocmEnvProtect("kova-retained", true),
@@ -19404,6 +19404,20 @@ exit 2
     assertEqual((await readFile(destroyLog, "utf8")).trim(), "kova-stale", "partial apply executes once");
     await rm(destroyLog, { force: true });
 
+    const forcedPartialApply = await run("--execute --force", { KOVA_PARTIAL_APPLY: "1" });
+    assertEqual(forcedPartialApply.status !== 0, true, "forced partial apply exits nonzero");
+    const forcedPartialReceipt = JSON.parse(forcedPartialApply.stdout);
+    assertEqual(
+      forcedPartialReceipt.results.every((result) =>
+        result.code === "partial_apply" &&
+        result.stage === "partial-apply" &&
+        result.attempts?.length === 1
+      ),
+      true,
+      "forced partial apply is structured and never retried"
+    );
+    await rm(destroyLog, { force: true });
+
     const execute = await run("--execute");
     assertEqual(execute.status, 0, "cleanup safety execute exit");
     assertEqual((await readFile(destroyLog, "utf8")).trim(), "kova-stale", "default cleanup destroys only eligible env");
@@ -19426,7 +19440,8 @@ exit 2
       command: "exercise cleanup env eligibility, execute guard, and force override",
       durationMs: dry.durationMs + unknownRetention.durationMs + falseExecute.durationMs +
         stateChanged.durationMs + activePreview.durationMs + recentlyUsed.durationMs +
-        newlyRetained.durationMs + partialApply.durationMs + execute.durationMs + forced.durationMs
+        newlyRetained.durationMs + partialApply.durationMs + forcedPartialApply.durationMs +
+        execute.durationMs + forced.durationMs
     };
   } catch (error) {
     return {
