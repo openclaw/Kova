@@ -8432,6 +8432,10 @@ async function localBuildRuntimeExceptionCleanupCheck(tmp) {
 case "$1:$2" in
   runtime:remove)
     printf '%s\\n' "$*" >> "$KOVA_MOCK_REMOVE_LOG"
+    if [ "$KOVA_MOCK_REMOVE_FAIL" = "1" ]; then
+      echo "runtime removal failed" >&2
+      exit 2
+    fi
     echo '{"removed":true}'
     exit 0
     ;;
@@ -8443,6 +8447,7 @@ exit 2
 
   const previousPath = process.env.PATH;
   const previousLog = process.env.KOVA_MOCK_REMOVE_LOG;
+  const previousRemoveFail = process.env.KOVA_MOCK_REMOVE_FAIL;
   process.env.PATH = `${binDir}:${previousPath}`;
   process.env.KOVA_MOCK_REMOVE_LOG = removeLog;
   const targetPlan = {
@@ -8482,6 +8487,28 @@ exit 2
     assertEqual(retainedError?.message, "retained run failure", "retained target preserves original error");
     assertEqual(await fileExists(removeLog), false, "retention flags keep target runtime after exception");
 
+    process.env.KOVA_MOCK_REMOVE_FAIL = "1";
+    let combinedError;
+    try {
+      await runWithTargetRuntimeCleanup(targetPlan, {
+        execute: true,
+        timeoutMs: 30000,
+        retainOnError: false
+      }, async () => {
+        throw new Error("primary run failure");
+      });
+    } catch (error) {
+      combinedError = error;
+    }
+    assertEqual(combinedError instanceof AggregateError, true, "run and cleanup failures are aggregated");
+    assertEqual(
+      combinedError?.message,
+      "primary run failure; target runtime cleanup also failed: runtime removal failed",
+      "combined failure names the primary and cleanup errors"
+    );
+    assertEqual(combinedError?.errors?.[0]?.message, "primary run failure", "aggregate preserves primary error");
+    assertEqual(combinedError?.errors?.[1]?.message, "runtime removal failed", "aggregate exposes cleanup error");
+
     return {
       id: "local-build-runtime-exception-cleanup",
       status: "PASS",
@@ -8502,6 +8529,11 @@ exit 2
       delete process.env.KOVA_MOCK_REMOVE_LOG;
     } else {
       process.env.KOVA_MOCK_REMOVE_LOG = previousLog;
+    }
+    if (previousRemoveFail === undefined) {
+      delete process.env.KOVA_MOCK_REMOVE_FAIL;
+    } else {
+      process.env.KOVA_MOCK_REMOVE_FAIL = previousRemoveFail;
     }
   }
 }
@@ -19238,6 +19270,20 @@ exit 2
     assertEqual(plan.envs.find((item) => item.name === "kova-active")?.reasons.includes("active-service"), true, "active env skipped");
     assertEqual(plan.envs.find((item) => item.name === "kova-unknown")?.reasons.includes("unknown-service-state"), true, "unknown service env skipped");
 
+    const malformedReport = join(reports, "malformed.json");
+    await writeFile(malformedReport, "{not-json\n", "utf8");
+    const unknownRetention = await run("");
+    assertEqual(unknownRetention.status, 0, "unknown retention dry-run exit");
+    const unknownRetentionPlan = JSON.parse(unknownRetention.stdout);
+    assertEqual(unknownRetentionPlan.retentionInventory?.ok, false, "malformed report fails retention inventory");
+    assertEqual(unknownRetentionPlan.candidates.length, 0, "unknown retention state blocks cleanup");
+    assertEqual(
+      unknownRetentionPlan.envs.every((item) => item.reasons.includes("unknown-retention-state")),
+      true,
+      "unknown retention state is recorded for every env"
+    );
+    await rm(malformedReport);
+
     const falseExecute = await run("--execute=false");
     assertEqual(falseExecute.status, 0, "non-boolean execute exit");
     assertEqual(JSON.parse(falseExecute.stdout).execute, false, "execute string does not authorize cleanup");
@@ -19263,7 +19309,7 @@ exit 2
       id: "cleanup-env-safety",
       status: "PASS",
       command: "exercise cleanup env eligibility, execute guard, and force override",
-      durationMs: dry.durationMs + falseExecute.durationMs + execute.durationMs + forced.durationMs
+      durationMs: dry.durationMs + unknownRetention.durationMs + falseExecute.durationMs + execute.durationMs + forced.durationMs
     };
   } catch (error) {
     return {
