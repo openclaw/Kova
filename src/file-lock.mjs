@@ -18,6 +18,7 @@ export async function withFileLock(lockPath, callback, options = {}) {
   const staleMs = options.staleMs ?? DEFAULT_STALE_MS;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const retryMs = options.retryMs ?? DEFAULT_RETRY_MS;
+  const fileMode = options.fileMode ?? 0o600;
 
   while (true) {
     if (await reclamationInProgress(lockPath, staleMs)) {
@@ -25,13 +26,13 @@ export async function withFileLock(lockPath, callback, options = {}) {
       continue;
     }
     try {
-      await writeExclusiveMetadata(lockPath, lockMetadata(token));
+      await writeExclusiveMetadata(lockPath, lockMetadata(token), fileMode);
       break;
     } catch (error) {
       if (error?.code !== "EEXIST") {
         throw error;
       }
-      if (await reclaimAbandonedLock(lockPath, staleMs)) {
+      if (await reclaimAbandonedLock(lockPath, staleMs, fileMode)) {
         continue;
       }
       await waitForRetry(startedAt, timeoutMs, retryMs, lockPath);
@@ -45,7 +46,7 @@ export async function withFileLock(lockPath, callback, options = {}) {
   }
 }
 
-async function reclaimAbandonedLock(lockPath, staleMs) {
+async function reclaimAbandonedLock(lockPath, staleMs, fileMode) {
   const snapshot = await readSnapshot(lockPath);
   if (!snapshot || !isAbandoned(snapshot, staleMs)) {
     return false;
@@ -54,7 +55,7 @@ async function reclaimAbandonedLock(lockPath, staleMs) {
   const claimPath = `${lockPath}.reclaim-${snapshot.fingerprint}`;
   const claimToken = randomUUID();
   try {
-    await writeExclusiveMetadata(claimPath, lockMetadata(claimToken));
+    await writeExclusiveMetadata(claimPath, lockMetadata(claimToken), fileMode);
   } catch (error) {
     if (error?.code === "EEXIST") {
       return false;
@@ -111,11 +112,12 @@ async function reclamationInProgress(lockPath, staleMs) {
   return active;
 }
 
-async function writeExclusiveMetadata(path, metadata) {
+async function writeExclusiveMetadata(path, metadata, fileMode) {
   const candidatePath = `${path}.candidate-${metadata.token}`;
-  const handle = await open(candidatePath, "wx", 0o600);
+  const handle = await open(candidatePath, "wx", fileMode);
   try {
     await handle.writeFile(`${JSON.stringify(metadata)}\n`, "utf8");
+    await handle.chmod(fileMode);
     await handle.sync();
   } finally {
     await handle.close();

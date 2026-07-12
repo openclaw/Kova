@@ -4639,6 +4639,20 @@ async function performanceBaselineCheck(tmp) {
       2,
       "concurrent baseline updates preserve both entries"
     );
+    const colocatedBaselinePath = join(tmp, "colocated-baselines.json");
+    await withBaselineStoreLock(colocatedBaselinePath, async () => {
+      const lockNames = (await readdir(tmp))
+        .filter((name) => /^\.kova-baseline-[a-f0-9]{64}\.lock$/.test(name));
+      assertEqual(lockNames.length, 1, "baseline lock is colocated with its store");
+      if (process.platform !== "win32") {
+        const lockInfo = await stat(join(tmp, lockNames[0]));
+        assertEqual(
+          lockInfo.mode & 0o777,
+          0o644,
+          "shared baseline lock metadata is readable but owner-only writable"
+        );
+      }
+    });
     let aliasActive = 0;
     let aliasMaxActive = 0;
     await Promise.all(["Alias-Baseline.json", "alias-baseline.json"].map((name) =>
