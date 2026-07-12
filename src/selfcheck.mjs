@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveScriptStep } from "mock-ai-provider/dist/providers/openai/common/scripted-response.js";
 import { quoteShell, runCommand } from "./commands.mjs";
@@ -65,7 +66,7 @@ import {
   readinessThresholdForPhase,
   tagCommandResult
 } from "./measurement-contract.mjs";
-import { parseTimelineText } from "./collectors/timeline.mjs";
+import { collectTimelineMetrics, parseTimelineText } from "./collectors/timeline.mjs";
 import { assertNetworkFrontageCommandSafe, networkFrontageCommandEnv, stopNetworkFrontage, waitForProxyReady, waitForTcp } from "./network-frontage.mjs";
 import { resolveGatewayEndpoint } from "../support/gateway-endpoint.mjs";
 import {
@@ -11622,6 +11623,7 @@ async function diagnosticsTimelineCheck() {
 }
 
 async function diagnosticsOpenSpanCheck() {
+  let artifactDir = null;
   try {
     const text = await readFile("fixtures/diagnostics/timeline-open-span.jsonl", "utf8");
     const timeline = parseTimelineText(text);
@@ -11629,7 +11631,41 @@ async function diagnosticsOpenSpanCheck() {
     assertEqual(timeline.openSpanCount, 1, "open span count");
     assertEqual(timeline.openSpans[0]?.name, "runtimeDeps.stage", "open span name");
     assertEqual(timeline.openSpans[0]?.ageMs, 5000, "open span age");
+    assertEqual(timeline.openSpans[0]?.pid, 100, "open span pid");
     assertEqual(timeline.keySpans["runtimeDeps.stage"].openCount, 1, "key open span count");
+    const partialPidTimeline = parseTimelineText([
+      '{"type":"span.start","timestamp":"2026-04-29T15:30:00.000Z","name":"runtimeDeps.stage","spanId":"partial-pid","pid":100}',
+      '{"type":"span.end","timestamp":"2026-04-29T15:30:01.000Z","name":"runtimeDeps.stage","spanId":"partial-pid","durationMs":1000}'
+    ].join("\n"));
+    assertEqual(partialPidTimeline.openSpanCount, 0, "span pair tolerates PID omitted from one event");
+    const duplicatePartialPidTimeline = parseTimelineText([
+      '{"type":"span.start","timestamp":"2026-04-29T15:30:00.000Z","name":"runtimeDeps.stage","spanId":"partial-pid","pid":100}',
+      '{"type":"span.start","timestamp":"2026-04-29T15:30:01.000Z","name":"runtimeDeps.stage","spanId":"partial-pid","pid":200}',
+      '{"type":"span.end","timestamp":"2026-04-29T15:30:02.000Z","name":"runtimeDeps.stage","spanId":"partial-pid","durationMs":1000}'
+    ].join("\n"));
+    assertEqual(duplicatePartialPidTimeline.openSpanCount, 1, "PID-less terminal closes newest reused span");
+    assertEqual(duplicatePartialPidTimeline.openSpans[0]?.pid, 100, "prior reused span stays open");
+    const terminalBeforeReuseTimeline = parseTimelineText([
+      '{"type":"span.start","timestamp":"2026-04-29T15:30:00.000Z","name":"runtimeDeps.stage","spanId":"partial-pid","pid":100}',
+      '{"type":"span.end","timestamp":"2026-04-29T15:30:01.000Z","name":"runtimeDeps.stage","spanId":"partial-pid","durationMs":1000}',
+      '{"type":"span.start","timestamp":"2026-04-29T15:30:02.000Z","name":"runtimeDeps.stage","spanId":"partial-pid","pid":200}'
+    ].join("\n"));
+    assertEqual(terminalBeforeReuseTimeline.openSpanCount, 1, "earlier terminal cannot close later reused span");
+    assertEqual(terminalBeforeReuseTimeline.openSpans[0]?.pid, 200, "later reused span stays open");
+    const partialPidNoIdTimeline = parseTimelineText([
+      '{"type":"span.start","timestamp":"2026-04-29T15:30:00.000Z","name":"runtimeDeps.stage","pid":100}',
+      '{"type":"span.end","timestamp":"2026-04-29T15:30:01.000Z","name":"runtimeDeps.stage","durationMs":1000}'
+    ].join("\n"));
+    assertEqual(partialPidNoIdTimeline.openSpanCount, 0, "name fallback tolerates PID omitted from one event");
+    artifactDir = await mkdtemp(join(tmpdir(), "kova-timeline-"));
+    await mkdir(join(artifactDir, "openclaw"));
+    await writeFile(join(artifactDir, "openclaw", "timeline.jsonl"), [
+      '{"type":"span.end","timestamp":"2026-04-29T15:30:00.000Z","name":"gateway.startup","spanId":"ordinary","pid":100,"durationMs":100}',
+      '{"type":"span.end","timestamp":"2026-04-29T15:30:01.000Z","name":"gateway.startup","spanId":"ordinary","pid":200,"durationMs":100}'
+    ].join("\n"));
+    const collected = await collectTimelineMetrics(artifactDir);
+    assertEqual(collected.gatewayPids.join(","), "100,200", "collector gateway PID history");
+    assertEqual(collected.terminalGatewayPid, 200, "collector terminal gateway PID");
     return {
       id: "diagnostics-open-span-parser",
       status: "PASS",
@@ -11644,6 +11680,10 @@ async function diagnosticsOpenSpanCheck() {
       durationMs: 0,
       message: error.message
     };
+  } finally {
+    if (artifactDir) {
+      await rm(artifactDir, { recursive: true, force: true });
+    }
   }
 }
 
@@ -11838,6 +11878,11 @@ function diagnosticsTimelineEvaluationCheck() {
       2,
       "latest cumulative timeline events retained"
     );
+    assertEqual(
+      cumulativeTimelineRecord.finalMetrics.timeline.openSpansAll,
+      undefined,
+      "uncapped evaluation-only open spans compacted"
+    );
 
     const openSpanRecord = {
       scenario: "diagnostic-open-span",
@@ -11884,6 +11929,139 @@ function diagnosticsTimelineEvaluationCheck() {
       true,
       "brief evidence includes open required spans"
     );
+
+    const restartedTimeline = parseTimelineText([
+      '{"type":"mark","timestamp":"2026-04-29T15:30:00.000Z","name":"gateway.ready","pid":100}',
+      '{"type":"span.start","timestamp":"2026-04-29T15:30:01.000Z","name":"plugins.metadata.scan","spanId":"reused","pid":100}',
+      '{"type":"span.start","timestamp":"2026-04-29T15:30:02.000Z","name":"gateway.ready","spanId":"gateway-startup-33","pid":200}',
+      '{"type":"span.end","timestamp":"2026-04-29T15:30:03.000Z","name":"gateway.ready","spanId":"gateway-startup-33","pid":200,"durationMs":1000}',
+      '{"type":"span.start","timestamp":"2026-04-29T15:30:04.000Z","name":"plugins.metadata.scan","spanId":"reused","pid":200}',
+      '{"type":"span.end","timestamp":"2026-04-29T15:30:05.000Z","name":"plugins.metadata.scan","spanId":"reused","pid":200,"durationMs":1000}'
+    ].join("\n"));
+    assertEqual(restartedTimeline.openSpanCount, 1, "PID identity preserves prior interrupted span");
+    assertEqual(restartedTimeline.openSpans[0]?.pid, 100, "prior gateway PID preserved in compact evidence");
+    assertEqual(restartedTimeline.terminalGatewayPid, 200, "terminal gateway PID");
+
+    const restartedSpanRecord = {
+      scenario: "diagnostic-restarted-span",
+      status: "PASS",
+      phases: [
+        {
+          id: "before-restart",
+          metrics: {
+            timeline: parseTimelineText(restartedTimeline.events
+              .filter((event) => event.pid === 100)
+              .map((event) => JSON.stringify(event))
+              .join("\n"))
+          }
+        },
+        {
+          id: "warm-restart",
+          results: [{ command: "ocm service restart 'fixture'", status: 0 }]
+        }
+      ],
+      finalMetrics: {
+        service: { gatewayState: "running" },
+        logs: zeroLogMetrics(),
+        timeline: restartedTimeline
+      }
+    };
+    const pluginTimelineOptions = {
+      ...runtimeDepsTimelineOptions,
+      surface: {
+        id: "gateway-performance",
+        diagnostics: { expectedSpans: ["plugins.metadata.scan"] },
+        thresholds: {}
+      }
+    };
+    evaluateRecord(restartedSpanRecord, { thresholds: {} }, pluginTimelineOptions);
+    assertEqual(restartedSpanRecord.status, "PASS", "intentional restart interrupted span does not fail terminal gateway");
+    assertEqual(restartedSpanRecord.measurements.openclawOpenRequiredSpanCount, 0, "prior PID span is not terminal-open");
+    assertEqual(restartedSpanRecord.measurements.openclawInterruptedRestartSpanCount, 1, "restart interruption evidence count");
+    assertEqual(restartedSpanRecord.measurements.openclawInterruptedRestartSpans[0]?.pid, 100, "restart interruption evidence PID");
+
+    const terminalOpenTimeline = parseTimelineText([
+      ...restartedTimeline.events.map((event) => JSON.stringify(event)),
+      ...Array.from({ length: 30 }, (_, index) => JSON.stringify({
+        type: "span.start",
+        timestamp: `2026-04-29T15:31:${String(index).padStart(2, "0")}.000Z`,
+        name: "plugins.metadata.scan",
+        spanId: `terminal-open-${index}`,
+        pid: 200
+      }))
+    ].join("\n"));
+    const terminalOpenRecord = structuredClone(restartedSpanRecord);
+    terminalOpenRecord.status = "PASS";
+    terminalOpenRecord.measurements = undefined;
+    terminalOpenRecord.finalMetrics.timeline = terminalOpenTimeline;
+    evaluateRecord(terminalOpenRecord, { thresholds: {} }, pluginTimelineOptions);
+    assertEqual(terminalOpenRecord.status, "FAIL", "terminal gateway PID open span stays strict");
+    assertEqual(terminalOpenRecord.measurements.openclawOpenRequiredSpanCount, 30, "terminal PID required open span count");
+    assertEqual(terminalOpenRecord.measurements.openclawOpenSpanCount, 30, "uncapped terminal open span count");
+    assertEqual(terminalOpenRecord.measurements.openclawOpenSpans.length, 25, "terminal open span evidence cap");
+    assertEqual(terminalOpenRecord.measurements.openclawKeySpans["plugins.metadata.scan"].openCount, 30, "key span count stays uncapped");
+    assertEqual(terminalOpenRecord.measurements.openclawOpenSpans[0]?.pid, 200, "terminal PID evidence preserved");
+
+    const unexpectedRestartTimeline = parseTimelineText([
+      ...restartedTimeline.events.map((event) => JSON.stringify(event)),
+      '{"type":"span.start","timestamp":"2026-04-29T15:30:06.000Z","name":"plugins.metadata.scan","spanId":"unexpected-interrupted","pid":200}',
+      '{"type":"span.end","timestamp":"2026-04-29T15:30:07.000Z","name":"gateway.startup","spanId":"gateway-300","pid":300,"durationMs":100}'
+    ].join("\n"));
+    const unexpectedRestartRecord = structuredClone(restartedSpanRecord);
+    unexpectedRestartRecord.status = "PASS";
+    unexpectedRestartRecord.measurements = undefined;
+    unexpectedRestartRecord.finalMetrics.timeline = unexpectedRestartTimeline;
+    evaluateRecord(unexpectedRestartRecord, { thresholds: {} }, pluginTimelineOptions);
+    assertEqual(unexpectedRestartRecord.status, "FAIL", "unexpected later restart remains strict");
+    assertEqual(unexpectedRestartRecord.measurements.openclawOpenRequiredSpanCount, 2, "ambiguous restart chain fails closed");
+    assertEqual(
+      unexpectedRestartRecord.measurements.openclawOpenSpans.some((span) => span.pid === 200),
+      true,
+      "unexpected prior PID evidence preserved"
+    );
+
+    const manyInterruptedLines = Array.from({ length: 30 }, (_, index) =>
+      JSON.stringify({
+        type: "span.start",
+        timestamp: `2026-04-29T15:30:${String(index).padStart(2, "0")}.000Z`,
+        name: "plugins.metadata.scan",
+        spanId: `prior-${index}`,
+        pid: 100
+      })
+    );
+    const crowdedRestartTimeline = parseTimelineText([
+      '{"type":"mark","timestamp":"2026-04-29T15:29:59.000Z","name":"gateway.ready","pid":100}',
+      ...manyInterruptedLines,
+      '{"type":"span.end","timestamp":"2026-04-29T15:31:00.000Z","name":"gateway.startup","spanId":"gateway-200","pid":200,"durationMs":100}',
+      '{"type":"span.start","timestamp":"2026-04-29T15:31:01.000Z","name":"plugins.metadata.scan","spanId":"terminal-crowded","pid":200}'
+    ].join("\n"));
+    const crowdedRestartRecord = {
+      scenario: "diagnostic-crowded-restart",
+      status: "PASS",
+      phases: [
+        {
+          id: "before-restart",
+          metrics: { timeline: parseTimelineText([
+            '{"type":"mark","timestamp":"2026-04-29T15:29:59.000Z","name":"gateway.ready","pid":100}',
+            ...manyInterruptedLines
+          ].join("\n")) }
+        },
+        {
+          id: "warm-restart",
+          results: [{ command: "ocm service restart 'fixture'", status: 0 }],
+          metrics: { timeline: crowdedRestartTimeline }
+        }
+      ],
+      finalMetrics: {
+        service: { gatewayState: "running" },
+        logs: zeroLogMetrics(),
+        timeline: crowdedRestartTimeline
+      }
+    };
+    evaluateRecord(crowdedRestartRecord, { thresholds: {} }, pluginTimelineOptions);
+    assertEqual(crowdedRestartRecord.status, "FAIL", "terminal open span survives compact evidence cap");
+    assertEqual(crowdedRestartRecord.measurements.openclawOpenRequiredSpanCount, 1, "crowded terminal required span count");
+    assertEqual(crowdedRestartRecord.measurements.openclawInterruptedRestartSpanCount, 30, "all crowded restart spans classified");
 
     return {
       id: "diagnostics-timeline-evaluation",

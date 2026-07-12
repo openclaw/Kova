@@ -765,6 +765,25 @@ function buildFindings(report) {
         evidence: missing.length > 0 ? [`missing spans: ${missing.slice(0, 5).join(", ")}`] : ["missing expected diagnostic spans"]
       });
     }
+    const interruptedRestartSpanCount = record.measurements?.openclawInterruptedRestartSpanCount ?? 0;
+    if (interruptedRestartSpanCount > 0) {
+      const interrupted = record.measurements?.openclawInterruptedRestartSpans ?? [];
+      const first = interrupted[0];
+      findings.push({
+        id: `${record.scenario}:${state ?? "none"}:restart-interrupted-spans:${index + 1}`,
+        severity: "warning",
+        kind: "diagnostics",
+        scenario: record.scenario ?? null,
+        state,
+        sampleIndex: record.repeat?.index ?? index + 1,
+        ownerArea: record.likelyOwner ?? null,
+        metric: "openclawInterruptedRestartSpanCount",
+        summary: `${interruptedRestartSpanCount} OpenClaw diagnostics span(s) from a prior gateway PID were interrupted by an intentional restart`,
+        expected: "terminal gateway PID spans close normally",
+        actual: first ? `${first.name} pid ${first.pid}` : "prior gateway PID span",
+        evidence: interrupted.slice(0, 5).map((span) => `${span.name} pid ${span.pid}`)
+      });
+    }
     const proofFindings = ledgerFindings(record, index, state);
     findings.push(...proofFindings);
     const failed = firstFailedCommand(record, { includeCleanup: true });
@@ -1278,6 +1297,9 @@ function summarizeSampleMetrics(measurements) {
       openRequiredSpanCount: measurements.openclawOpenRequiredSpanCount ?? null,
       missingRequiredSpanCount: measurements.openclawMissingRequiredSpanCount ?? null,
       openSpans: measurements.openclawOpenSpans?.slice(0, 5) ?? [],
+      interruptedRestartSpanCount: measurements.openclawInterruptedRestartSpanCount ?? null,
+      interruptedRestartSpans: measurements.openclawInterruptedRestartSpans?.slice(0, 5) ?? [],
+      terminalGatewayPid: measurements.openclawTerminalGatewayPid ?? null,
       eventLoopMaxMs: measurements.openclawEventLoopMaxMs ?? null,
       providerRequestMaxMs: measurements.openclawProviderRequestMaxMs ?? null
     }
