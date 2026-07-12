@@ -1,5 +1,7 @@
-import { access, mkdir } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { access, mkdir, open, unlink } from "node:fs/promises";
 import { constants } from "node:fs";
+import { join } from "node:path";
 import { checkCommand, runCommand } from "./commands.mjs";
 import {
   externalCliVerificationSummary,
@@ -178,16 +180,17 @@ function setupAuthMethod(flags, defaultMethod) {
 }
 
 async function interactiveAuthSetup(flags) {
-  console.log("Kova auth setup");
-  console.log("");
-  console.log("Choose provider:");
-  console.log("  1. openai (default)");
-  console.log("  2. anthropic");
-  console.log("  3. custom-openai");
-  console.log("  4. skip");
+  const output = flags.json ? process.stderr : process.stdout;
+  writePromptLine(output, "Kova auth setup");
+  writePromptLine(output);
+  writePromptLine(output, "Choose provider:");
+  writePromptLine(output, "  1. openai (default)");
+  writePromptLine(output, "  2. anthropic");
+  writePromptLine(output, "  3. custom-openai");
+  writePromptLine(output, "  4. skip");
   const providerChoice = flags.provider
     ? String(flags.provider)
-    : (await prompt("Provider [openai]: ")).trim().toLowerCase();
+    : (await prompt("Provider [openai]: ", output)).trim().toLowerCase();
   const provider = providerFromChoice(providerChoice);
   if (provider === "skip") {
     return configureAuthFromFlags({
@@ -197,24 +200,24 @@ async function interactiveAuthSetup(flags) {
     }, { defaultMethod: "mock" });
   }
 
-  console.log("");
-  console.log("Choose auth method:");
-  console.log("  1. mock (default)");
-  console.log("  2. env-only");
-  console.log("  3. api-key");
-  console.log("  4. external-cli");
-  console.log("  5. oauth");
-  console.log("  6. skip");
-  const choice = (await prompt("Auth method [mock]: ")).trim().toLowerCase();
+  writePromptLine(output);
+  writePromptLine(output, "Choose auth method:");
+  writePromptLine(output, "  1. mock (default)");
+  writePromptLine(output, "  2. env-only");
+  writePromptLine(output, "  3. api-key");
+  writePromptLine(output, "  4. external-cli");
+  writePromptLine(output, "  5. oauth");
+  writePromptLine(output, "  6. skip");
+  const choice = (await prompt("Auth method [mock]: ", output)).trim().toLowerCase();
   const method = methodFromChoice(choice);
   const externalCli = method === "external-cli"
-    ? await promptExternalCli(provider)
+    ? externalCliForProvider(provider)
     : undefined;
   const envVar = method === "api-key" || method === "env-only"
-    ? (await prompt(`Env var [${defaultEnvVarForProvider(provider)}]: `)).trim() || defaultEnvVarForProvider(provider)
+    ? (await prompt(`Env var [${defaultEnvVarForProvider(provider)}]: `, output)).trim() || defaultEnvVarForProvider(provider)
     : undefined;
   const value = method === "api-key"
-    ? await promptSecret(`Value for ${envVar} (leave empty to read host env): `)
+    ? await promptSecret(`Value for ${envVar} (leave empty to read host env): `, output)
     : undefined;
   return configureAuthFromFlags({
     ...flags,
@@ -226,7 +229,7 @@ async function interactiveAuthSetup(flags) {
   }, { defaultMethod: "mock" });
 }
 
-async function promptExternalCli(provider) {
+function externalCliForProvider(provider) {
   const implied = impliedExternalCliForProvider(provider);
   if (implied) {
     return implied;
@@ -287,19 +290,108 @@ function normalizeProvider(value) {
   throw new Error(`unknown provider: ${value}`);
 }
 
-function prompt(question) {
-  return new Promise((resolve) => {
-    process.stdout.write(question);
-    process.stdin.resume();
-    process.stdin.once("data", (chunk) => {
+function prompt(question, output = process.stdout) {
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      process.stdin.off("data", onData);
+      process.stdin.off("error", onError);
+      process.stdin.off("end", onEnd);
       process.stdin.pause();
+    };
+    const onData = (chunk) => {
+      cleanup();
       resolve(chunk.toString("utf8").replace(/\r?\n$/, ""));
-    });
+    };
+    const onError = (error) => {
+      cleanup();
+      reject(error);
+    };
+    const onEnd = () => {
+      cleanup();
+      reject(new Error("input ended before a value was submitted"));
+    };
+    process.stdin.once("data", onData);
+    process.stdin.once("error", onError);
+    process.stdin.once("end", onEnd);
+    process.stdin.resume();
+    output.write(question);
   });
 }
 
-async function promptSecret(question) {
-  return prompt(question);
+async function promptSecret(question, output = process.stdout) {
+  const input = process.stdin;
+  if (!input.isTTY || typeof input.setRawMode !== "function") {
+    throw new Error("secret input requires a TTY");
+  }
+
+  const wasRaw = input.isRaw === true;
+  const wasPaused = input.isPaused();
+
+  return new Promise((resolve, reject) => {
+    let value = "";
+    let settled = false;
+
+    const finish = (error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      input.off("data", onData);
+      input.off("error", onError);
+      input.off("end", onEnd);
+      try {
+        input.setRawMode(wasRaw);
+      } catch (restoreError) {
+        error ??= restoreError;
+      }
+      if (wasPaused) {
+        input.pause();
+      }
+      output.write("\n");
+      if (error) {
+        reject(error);
+      } else {
+        resolve(value);
+      }
+    };
+
+    const onData = (chunk) => {
+      for (const character of chunk.toString("utf8")) {
+        if (character === "\r" || character === "\n") {
+          finish();
+          return;
+        }
+        if (character === "\u0003") {
+          finish(new Error("secret input cancelled"));
+          return;
+        }
+        if (character === "\u0004") {
+          finish(new Error("secret input ended before a value was submitted"));
+          return;
+        }
+        if (character === "\u007f" || character === "\b") {
+          value = [...value].slice(0, -1).join("");
+          continue;
+        }
+        if (character >= " ") {
+          value += character;
+        }
+      }
+    };
+    const onError = (error) => finish(error);
+    const onEnd = () => finish(new Error("secret input ended before a value was submitted"));
+
+    input.on("data", onData);
+    input.once("error", onError);
+    input.once("end", onEnd);
+    try {
+      input.setRawMode(true);
+      input.resume();
+      output.write(question);
+    } catch (error) {
+      finish(error);
+    }
+  });
 }
 
 function nodeVersionCheck() {
@@ -364,10 +456,16 @@ async function jsonCommandCheck(id, command, options) {
   }
 }
 
-async function directoryCheck(id, path) {
+export async function directoryCheck(id, path) {
+  const probePath = join(path, `.kova-write-probe-${process.pid}-${randomUUID()}`);
+  let probe;
   try {
     await mkdir(path, { recursive: true });
-    await access(path, constants.W_OK);
+    probe = await open(probePath, "wx", 0o600);
+    await probe.writeFile("kova-write-probe\n", "utf8");
+    await probe.close();
+    probe = null;
+    await unlink(probePath);
     return {
       id,
       required: true,
@@ -376,6 +474,8 @@ async function directoryCheck(id, path) {
       message: path
     };
   } catch (error) {
+    await probe?.close().catch(() => {});
+    await unlink(probePath).catch(() => {});
     return {
       id,
       required: true,
@@ -384,6 +484,10 @@ async function directoryCheck(id, path) {
       message: error.message
     };
   }
+}
+
+function writePromptLine(output, value = "") {
+  output.write(`${value}\n`);
 }
 
 async function mockProviderPackageCheck() {
