@@ -540,22 +540,20 @@ function successfulTurnProviderStatusesOk(turn, scenario) {
   if (providerErrors === null) {
     return false;
   }
-  const recoverableErrors = new Set(["provider-error", "provider-disconnect", "http"]);
-  const failedStatuses = new Set(numericStatuses.filter((value) => value >= 400));
-  const hasRecoverableError = providerErrors.some((error) =>
-    recoverableErrors.has(error.kind) &&
-    typeof error.requestId === "string" &&
-    error.requestId.length > 0 &&
-    typeof error.status === "number" &&
-    failedStatuses.has(error.status)
-  );
-  return hasSuccess && hasRecoverableError;
+  const recoveryCounts = recoverableProviderFailureCounts(providerErrors);
+  if (recoveryCounts === null) {
+    return false;
+  }
+  const failedStatuses = turn.providerStatuses.filter((status) => status.value >= 400);
+  const recoveryCoversFailures = recoveryCounts.size === failedStatuses.length &&
+    failedStatuses.every((status) => recoveryCounts.get(status.value) === status.count);
+  return hasSuccess && recoveryCoversFailures;
 }
 
 function successfulTurnProviderStatusValues(turn, scenario) {
   const recoveryAllowed = providerRecoveryScenarioAllowsFailedRequest(scenario);
   const providerErrors = recoveryAllowed ? normalizedProviderErrors(turn.providerErrors) : [];
-  if (providerErrors === null) {
+  if (providerErrors === null || !providerRecoveryErrorsValid(providerErrors)) {
     return null;
   }
   const statuslessRequestCount = recoveryAllowed
@@ -579,6 +577,49 @@ function recoverableStatuslessProviderRequestCount(providerErrors) {
     }
   }
   return requestIds.size;
+}
+
+function recoverableProviderFailureCounts(providerErrors) {
+  const recoverableKinds = new Set(["provider-error", "provider-disconnect", "http"]);
+  const requests = new Map();
+  for (const error of providerErrors) {
+    if (!recoverableKinds.has(error.kind)) {
+      continue;
+    }
+    if (typeof error.requestId !== "string" ||
+      error.requestId.length === 0 ||
+      !Number.isInteger(error.status) ||
+      error.status < 400 ||
+      error.status > 599) {
+      return null;
+    }
+    const priorStatus = requests.get(error.requestId);
+    if (priorStatus !== undefined && priorStatus !== error.status) {
+      return null;
+    }
+    requests.set(error.requestId, error.status);
+  }
+  const counts = new Map();
+  for (const status of requests.values()) {
+    counts.set(status, (counts.get(status) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function providerRecoveryErrorsValid(providerErrors) {
+  const recoverableKinds = new Set(["provider-error", "provider-disconnect", "http"]);
+  return providerErrors.every((error) => {
+    if (!recoverableKinds.has(error.kind)) {
+      return true;
+    }
+    if (typeof error.requestId !== "string" || error.requestId.length === 0) {
+      return false;
+    }
+    if (error.status === null) {
+      return error.kind === "provider-error" || error.kind === "provider-disconnect";
+    }
+    return Number.isInteger(error.status) && error.status >= 400 && error.status <= 599;
+  });
 }
 
 function normalizedProviderErrors(value) {

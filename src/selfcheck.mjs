@@ -6760,6 +6760,43 @@ function agentCliLocalTurnEvidenceInvariantCheck() {
     ).find((invariant) => invariant.id === "agent-cli-provider-proof");
     assertEqual(numericRecoveryProof?.status, "passed", "typed numeric recovery error accounts for failed request");
 
+    const partialRecoveryRecord = JSON.parse(JSON.stringify(numericRecoveryRecord));
+    partialRecoveryRecord.providerEvidence.requestCount = 4;
+    partialRecoveryRecord.measurements.agentTurns[0].requestCount = 3;
+    partialRecoveryRecord.measurements.agentTurns[0].providerStatuses = [
+      { value: 500, count: 2 },
+      { value: 200, count: 1 }
+    ];
+    const partialRecoveryProof = buildAgentCliLocalTurnEvidenceInvariants(
+      partialRecoveryRecord,
+      recoveryScenario
+    ).find((invariant) => invariant.id === "agent-cli-provider-proof");
+    assertEqual(partialRecoveryProof?.status, "missing", "every failed request requires distinct recovery evidence");
+
+    const duplicateRecoveryRecord = JSON.parse(JSON.stringify(partialRecoveryRecord));
+    duplicateRecoveryRecord.measurements.agentTurns[0].providerErrors.push({
+      kind: "provider-error",
+      requestId: "cold-http-failure",
+      status: 500
+    });
+    const duplicateRecoveryProof = buildAgentCliLocalTurnEvidenceInvariants(
+      duplicateRecoveryRecord,
+      recoveryScenario
+    ).find((invariant) => invariant.id === "agent-cli-provider-proof");
+    assertEqual(duplicateRecoveryProof?.status, "missing", "duplicate error records do not cover another failed request");
+
+    const completeRecoveryRecord = JSON.parse(JSON.stringify(partialRecoveryRecord));
+    completeRecoveryRecord.measurements.agentTurns[0].providerErrors.push({
+      kind: "http",
+      requestId: "cold-http-failure-2",
+      status: 500
+    });
+    const completeRecoveryProof = buildAgentCliLocalTurnEvidenceInvariants(
+      completeRecoveryRecord,
+      recoveryScenario
+    ).find((invariant) => invariant.id === "agent-cli-provider-proof");
+    assertEqual(completeRecoveryProof?.status, "passed", "distinct recovery errors cover every failed request");
+
     for (const malformedErrors of [
       [null],
       [{ kind: "http" }],
