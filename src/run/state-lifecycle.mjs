@@ -2,9 +2,6 @@ import { collectEnvMetrics } from "../metrics.mjs";
 import { phaseResultStatus } from "../measurement-contract.mjs";
 import { metricOptions } from "./metric-options.mjs";
 import {
-  materializeLifecycleStepCommands
-} from "./phase-commands.mjs";
-import {
   buildStateLifecyclePhase,
   stateLifecycleCollectionIntent,
   stateLifecycleCommandScope,
@@ -30,11 +27,8 @@ export async function executeStateLifecycleSteps(context, envName, scenario, kin
   const phase = buildStateLifecyclePhase(context, envName, scenario, kind, steps, artifactDir, phaseId);
   const commands = phase.commands;
 
-  for (const step of steps) {
-    const stepCommands = materializeLifecycleStepCommands(step, context, envName, artifactDir);
-    for (const [commandIndex, command] of stepCommands.entries()) {
-      results.push(await runScenarioCommand(command, context, envName, artifactDir, phase, commandIndex, authPolicy));
-    }
+  for (const [commandIndex, command] of commands.entries()) {
+    results.push(await runScenarioCommand(command, context, envName, artifactDir, phase, commandIndex, authPolicy));
   }
 
   return {

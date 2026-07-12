@@ -48,6 +48,7 @@ import {
   validateChannelWorkflowCaseInventoryReferences
 } from "./registries/channel-workflow-cases.mjs";
 import { runScenarioCommand } from "./run/command-executor.mjs";
+import { executeStateLifecycleSteps } from "./run/state-lifecycle.mjs";
 import { executeTargetSetup } from "./run/target-setup.mjs";
 import { loadProcessRoles } from "./registries/process-roles.mjs";
 import { validateProfileShape } from "./registries/profiles.mjs";
@@ -809,6 +810,7 @@ export async function runSelfCheck(flags = {}) {
         }
       }
     ));
+    checks.push(await stateLifecycleCommandIndexesCheck(tmp));
     checks.push(await jsonCommandCheck(
       "allowlisted-scenario-omitted-state-falls-back-json",
       `node bin/kova.mjs run --target runtime:stable --scenario official-plugin-install --report-dir ${quoteShell(tmp)} --json`,
@@ -3228,6 +3230,69 @@ function syntheticResourceSamples({ peakRssMb, maxCpuPercent, role }) {
     topByRss: [],
     topByCpu: []
   };
+}
+
+async function stateLifecycleCommandIndexesCheck(tmp) {
+  const artifactDir = join(tmp, "state-lifecycle-command-indexes");
+  try {
+    const phase = await executeStateLifecycleSteps(
+      {
+        target: "runtime:stable",
+        targetPlan: {
+          kind: "runtime",
+          value: "stable",
+          startSelector: "stable",
+          upgradeSelector: "stable"
+        },
+        state: { id: "multi-step-state" },
+        timeoutMs: 30000,
+        resourceSampleIntervalMs: 250,
+        processRoles: []
+      },
+      "kova-self-check",
+      {
+        id: "state-lifecycle-index-check",
+        surface: "fresh-install"
+      },
+      "prepare",
+      [
+        {
+          commands: [
+            "node -e 'process.stdout.write(\"first\")'",
+            "node -e 'process.stdout.write(\"second\")'"
+          ],
+          evidence: [],
+          collectionIntent: "skip-env"
+        },
+        {
+          commands: ["node -e 'process.stdout.write(\"third\")'"],
+          evidence: [],
+          collectionIntent: "skip-env"
+        }
+      ],
+      artifactDir
+    );
+    const artifactPaths = phase.results.map((result) => result.resourceSamples?.artifactPath);
+    assertEqual(phase.results.length, 3, "state lifecycle result count");
+    assertEqual(new Set(artifactPaths).size, 3, "state lifecycle command artifact paths are unique");
+    assertEqual(artifactPaths[0]?.endsWith("prepare-1.jsonl"), true, "first lifecycle command index");
+    assertEqual(artifactPaths[1]?.endsWith("prepare-2.jsonl"), true, "second lifecycle command index");
+    assertEqual(artifactPaths[2]?.endsWith("prepare-3.jsonl"), true, "third lifecycle command index");
+    return {
+      id: "state-lifecycle-command-indexes",
+      status: "PASS",
+      command: "execute multi-step state lifecycle with phase-wide command indexes",
+      durationMs: phase.results.reduce((total, result) => total + result.durationMs, 0)
+    };
+  } catch (error) {
+    return {
+      id: "state-lifecycle-command-indexes",
+      status: "FAIL",
+      command: "execute multi-step state lifecycle with phase-wide command indexes",
+      durationMs: 0,
+      message: error.message
+    };
+  }
 }
 
 function gatePartialFailureCheck() {
