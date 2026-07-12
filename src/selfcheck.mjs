@@ -17904,6 +17904,8 @@ async function logArtifactRedactionCheck(tmp) {
   const plainContinuationHeadCanary = ["plain", "continuation", "head", "canary"].join("-");
   const plainContinuationTailCanary = ["plain", "continuation", "tail", "canary"].join("-");
   const cliContinuationCanary = ["cli", "continuation", "canary"].join("-");
+  const urlPasswordCanary = ["url", "password", "canary@"].join("-");
+  const encodedUrlPasswordCanary = encodeURIComponent(urlPasswordCanary);
   const clientSecretFlag = ["--client", "secret"].join("-");
   const canaries = [
     headerCanary,
@@ -17925,7 +17927,8 @@ async function logArtifactRedactionCheck(tmp) {
     yamlContinuationCanary,
     plainContinuationHeadCanary,
     plainContinuationTailCanary,
-    cliContinuationCanary
+    cliContinuationCanary,
+    encodedUrlPasswordCanary
   ];
   const fakeLogs = [
     `Authorization${": "}Bearer ${headerCanary}`,
@@ -17953,7 +17956,8 @@ async function logArtifactRedactionCheck(tmp) {
     ].join("\n"),
     `${sessionTokenKey}: |2-\n  ${yamlContinuationCanary}`,
     `${sessionTokenKey}: ${plainContinuationHeadCanary}\n  ${plainContinuationTailCanary}`,
-    `command --token ${"\\"}\n  ${cliContinuationCanary}`
+    `command --token ${"\\"}\n  ${cliContinuationCanary}`,
+    `postgresql://alice:${encodedUrlPasswordCanary}@db.example/kova`
   ].join("\n");
   try {
     await mkdir(fakeBin, { recursive: true });
@@ -17967,7 +17971,7 @@ printf '%s\n' "$KOVA_FAKE_LOGS"
         PATH: `${fakeBin}:${process.env.PATH}`,
         KOVA_FAKE_LOGS: fakeLogs
       },
-      redactValues: [exactRedactionValue]
+      redactValues: [exactRedactionValue, urlPasswordCanary]
     });
     const artifact = await readFile(join(artifactDir, "collectors", "gateway-tail.log"), "utf8");
     const serialized = JSON.stringify(metrics);

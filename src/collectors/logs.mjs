@@ -27,6 +27,8 @@ const SENSITIVE_CLI_LINE_PATTERN = new RegExp(
 );
 const PEM_PRIVATE_KEY_PATTERN =
   /-----BEGIN ([A-Z0-9 ]*PRIVATE KEY)-----[\s\S]*?(?:-----END \1-----|$)/g;
+const URL_USERINFO_PATTERN =
+  /\b([a-z][a-z0-9+.-]*:\/\/)[^/\s?#@]*:[^/\s?#@]+@/gi;
 
 export async function collectLogMetrics(envName, timeoutMs, artifactDir, options = {}) {
   const result = await runCommand(ocmLogs(envName, { tail: 200 }), {
@@ -93,6 +95,7 @@ export async function collectLogMetrics(envName, timeoutMs, artifactDir, options
 export function redactLogText(value) {
   const text = String(value ?? "").replace(PEM_PRIVATE_KEY_PATTERN, "[REDACTED]");
   return redactSensitiveContinuations(text)
+    .replace(URL_USERINFO_PATTERN, "$1[REDACTED]@")
     .replace(
       SENSITIVE_VALUE_TO_LINE_END_PATTERN,
       "$1[REDACTED]"
