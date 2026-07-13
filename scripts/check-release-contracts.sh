@@ -6,6 +6,25 @@ repo_root="$(cd -- "${script_dir}/.." && pwd)"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
+release_workflow="${repo_root}/.github/workflows/release.yml"
+tag_fetch_line="$(
+  grep -nF '"refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"' "$release_workflow" |
+    cut -d: -f1
+)"
+tag_commit_line="$(
+  grep -nF 'test "$(git rev-parse "${GITHUB_REF_NAME}^{commit}")" = "${GITHUB_SHA}"' "$release_workflow" |
+    cut -d: -f1
+)"
+tag_verify_line="$(grep -nF 'verify-tag "${GITHUB_REF_NAME}"' "$release_workflow" | cut -d: -f1)"
+if [[ -z "$tag_fetch_line" ||
+  -z "$tag_commit_line" ||
+  -z "$tag_verify_line" ||
+  "$tag_fetch_line" -ge "$tag_commit_line" ||
+  "$tag_commit_line" -ge "$tag_verify_line" ]]; then
+  echo "error: release workflow must bind the fetched annotated tag to the event commit before verifying it" >&2
+  exit 1
+fi
+
 ssh-keygen -q -t ed25519 -N "" -f "${tmp}/release-signing-key"
 release_public_key="$(cat "${tmp}/release-signing-key.pub")"
 

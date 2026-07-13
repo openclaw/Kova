@@ -20,6 +20,9 @@ jobs:
           set -euo pipefail
           package_version="$(node -p 'require("./package.json").version')"
           test "${GITHUB_REF_NAME}" = "v${package_version}"
+          git fetch --force --no-tags origin \
+            "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
+          test "$(git rev-parse "${GITHUB_REF_NAME}^{commit}")" = "${GITHUB_SHA}"
           git -c gpg.format=ssh \
             -c gpg.ssh.allowedSignersFile=.github/release-allowed-signers \
             verify-tag "${GITHUB_REF_NAME}"
