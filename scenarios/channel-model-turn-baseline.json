@@ -23,7 +23,7 @@
     "gatewayReadyMs": 45000,
     "agentTurnMs": 45000,
     "preProviderMs": 10000,
-    "providerFinalMs": 3000,
+    "providerFinalMs": 6000,
     "peakRssMb": 1024,
     "providerTimeoutMentions": 8,
     "roleThresholds": {
