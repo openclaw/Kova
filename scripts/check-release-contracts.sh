@@ -4,7 +4,14 @@ set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "${script_dir}/.." && pwd)"
 tmp="$(mktemp -d)"
-trap 'rm -rf "$tmp"' EXIT
+agent_pid=""
+cleanup() {
+  if [[ -n "$agent_pid" ]]; then
+    kill "$agent_pid" >/dev/null 2>&1 || true
+  fi
+  rm -rf "$tmp"
+}
+trap cleanup EXIT
 
 release_workflow="${repo_root}/.github/workflows/release.yml"
 tag_fetch_line="$(
@@ -82,6 +89,13 @@ case "$1:$2" in
     exec "$KOVA_REAL_NPM" "$@"
     ;;
   run:check:full)
+    if [ -n "${KOVA_RELEASE_CHECK_COUNT:-}" ]; then
+      count=0
+      if [ -f "$KOVA_RELEASE_CHECK_COUNT" ]; then
+        count="$(cat "$KOVA_RELEASE_CHECK_COUNT")"
+      fi
+      printf '%s\n' "$((count + 1))" > "$KOVA_RELEASE_CHECK_COUNT"
+    fi
     exit 0
     ;;
 esac
@@ -91,7 +105,9 @@ chmod +x "${fresh_bin}/npm"
 (
   cd "$fresh_repo"
   archive_proof="${tmp}/fresh-release-archive-head"
-  PATH="${fresh_bin}:$PATH" KOVA_REAL_NPM="$real_npm" KOVA_RELEASE_ARCHIVE_PROOF="$archive_proof" scripts/release.sh "$test_version" >/dev/null
+  check_count="${tmp}/fresh-release-check-count"
+  PATH="${fresh_bin}:$PATH" KOVA_REAL_NPM="$real_npm" KOVA_RELEASE_ARCHIVE_PROOF="$archive_proof" KOVA_RELEASE_CHECK_COUNT="$check_count" scripts/release.sh "$test_version" >/dev/null
+  test "$(cat "$check_count")" = "1"
   test "$(git diff-tree --no-commit-id --name-only -r HEAD | sort -u)" = $'package-lock.json\npackage.json'
   test "$(node -p 'require("./package.json").version')" = "$test_version"
   test "$(node -p 'require("./package-lock.json").version')" = "$test_version"
@@ -102,6 +118,44 @@ chmod +x "${fresh_bin}/npm"
   test "$(git rev-parse HEAD)" = "$(git ls-remote origin "refs/tags/v${test_version}^{}" | awk '{ print $1 }')"
   scripts/release.sh "$test_version" --skip-checks >/dev/null
 )
+
+autokey_repo="$(make_repo auto-release-key)"
+autokey_home="${tmp}/auto-release-key/home"
+mkdir -p "${autokey_home}/.ssh"
+cp "${tmp}/release-signing-key" "${autokey_home}/.ssh/id_ed25519"
+cp "${tmp}/release-signing-key.pub" "${autokey_home}/.ssh/id_ed25519.pub"
+ssh-keygen -q -t ed25519 -N "" -f "${tmp}/unrelated-signing-key"
+git -C "$autokey_repo" config user.signingkey "${tmp}/unrelated-signing-key"
+(
+  cd "$autokey_repo"
+  HOME="$autokey_home" PATH="${fresh_bin}:$PATH" KOVA_REAL_NPM="$real_npm" \
+    scripts/release.sh "$test_version" --skip-checks >/dev/null
+  test "$(git rev-parse HEAD)" = "$(git ls-remote origin "refs/tags/v${test_version}^{}" | awk '{ print $1 }')"
+)
+
+tildekey_repo="$(make_repo tilde-release-key)"
+git -C "$tildekey_repo" config user.signingkey "~/.ssh/id_ed25519"
+(
+  cd "$tildekey_repo"
+  HOME="$autokey_home" PATH="${fresh_bin}:$PATH" KOVA_REAL_NPM="$real_npm" \
+    scripts/release.sh "$test_version" --skip-checks >/dev/null
+  test "$(git rev-parse HEAD)" = "$(git ls-remote origin "refs/tags/v${test_version}^{}" | awk '{ print $1 }')"
+)
+
+agentkey_repo="$(make_repo agent-release-key)"
+git -C "$agentkey_repo" config user.signingkey "key::${release_public_key}"
+agent_environment="$(ssh-agent -s)"
+eval "$agent_environment" >/dev/null
+agent_pid="$SSH_AGENT_PID"
+ssh-add "${tmp}/release-signing-key" >/dev/null
+(
+  cd "$agentkey_repo"
+  HOME="${tmp}/agent-release-key/home" PATH="${fresh_bin}:$PATH" KOVA_REAL_NPM="$real_npm" \
+    scripts/release.sh "$test_version" --skip-checks >/dev/null
+  test "$(git rev-parse HEAD)" = "$(git ls-remote origin "refs/tags/v${test_version}^{}" | awk '{ print $1 }')"
+)
+ssh-agent -k >/dev/null
+agent_pid=""
 
 prebumped_repo="$(make_repo prebumped-manifest)"
 (

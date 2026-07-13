@@ -9,20 +9,6 @@ log_step() {
   printf '[%s] %s\n' "$(timestamp)" "$*" >&2
 }
 
-run_step() {
-  local description="$1"
-  shift
-  local started_at="$SECONDS"
-  log_step "$description"
-  if "$@"; then
-    log_step "done: ${description} ($((SECONDS - started_at))s)"
-  else
-    local command_status=$?
-    log_step "failed: ${description} ($((SECONDS - started_at))s)"
-    return "$command_status"
-  fi
-}
-
 usage() {
   cat <<'EOF'
 Update the Kova package version safely.
@@ -86,12 +72,6 @@ updated_lockfile_root_version="$(node -p 'require("./package-lock.json").package
 if [[ "$updated_version" != "$new_version" || "$updated_lockfile_version" != "$new_version" || "$updated_lockfile_root_version" != "$new_version" ]]; then
   rollback
   echo "error: package metadata did not update cleanly" >&2
-  exit 1
-fi
-
-if ! run_step "Verifying version bump with npm run check:full" npm run check:full; then
-  rollback
-  echo "error: version verification failed; restored package metadata" >&2
   exit 1
 fi
 

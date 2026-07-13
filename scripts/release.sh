@@ -60,6 +60,114 @@ remote_tag_commit() {
   '
 }
 
+normalize_signing_key() {
+  case "$1" in
+    key::*|ssh-*|ecdsa-*|sk-*) printf '%s\n' "$1" ;;
+    "~/"*) printf '%s/%s\n' "$HOME" "${1:2}" ;;
+    *) printf '%s\n' "$1" ;;
+  esac
+}
+
+signing_key_public_line() {
+  local signing_key="$1"
+  local first_field
+  case "$signing_key" in
+    key::*)
+      printf '%s\n' "${signing_key#key::}"
+      return
+      ;;
+    ssh-*|ecdsa-*|sk-*)
+      printf '%s\n' "$signing_key"
+      return
+      ;;
+  esac
+
+  [[ -f "$signing_key" ]] || return 1
+  read -r first_field _ <"$signing_key" || return 1
+  case "$first_field" in
+    ssh-*|ecdsa-*|sk-*)
+      head -n1 "$signing_key"
+      return
+      ;;
+  esac
+  [[ -f "${signing_key}.pub" ]] || return 1
+  head -n1 "${signing_key}.pub"
+}
+
+key_is_authorized() {
+  local signing_key="$1"
+  local public_key key_type key_data
+  public_key="$(signing_key_public_line "$signing_key")" || return 1
+  read -r key_type key_data _ <<<"$public_key" || return 1
+  [[ -n "$key_type" && -n "$key_data" ]] || return 1
+  awk -v key_type="$key_type" -v key_data="$key_data" '
+    {
+      for (field = 1; field < NF; field += 1) {
+        if ($field == key_type && $(field + 1) == key_data) {
+          found = 1
+        }
+      }
+    }
+    END { exit found ? 0 : 1 }
+  ' "${repo_root}/.github/release-allowed-signers"
+}
+
+resolve_release_signing_key() {
+  local configured_key candidate default_key_command public_key
+  local -a discovered_keys=()
+
+  if [[ -n "${KOVA_RELEASE_SIGNING_KEY:-}" ]]; then
+    candidate="$(normalize_signing_key "$KOVA_RELEASE_SIGNING_KEY")"
+    if key_is_authorized "$candidate"; then
+      printf '%s\n' "$candidate"
+      return
+    fi
+    echo "error: KOVA_RELEASE_SIGNING_KEY is not an authorized release key" >&2
+    return 1
+  fi
+
+  configured_key="$(git config --get user.signingkey || true)"
+  configured_key="$(normalize_signing_key "$configured_key")"
+  if [[ -n "$configured_key" ]] && key_is_authorized "$configured_key"; then
+    printf '%s\n' "$configured_key"
+    return
+  fi
+
+  default_key_command="$(git config --get gpg.ssh.defaultKeyCommand || true)"
+  if [[ -n "$default_key_command" ]]; then
+    candidate="$(sh -c "$default_key_command" | head -n1)"
+    candidate="$(normalize_signing_key "$candidate")"
+    if key_is_authorized "$candidate"; then
+      printf '%s\n' "$candidate"
+      return
+    fi
+  fi
+
+  if [[ -d "${HOME}/.ssh" ]]; then
+    while IFS= read -r public_key; do
+      candidate="${public_key%.pub}"
+      if [[ ! -f "$candidate" ]]; then
+        candidate="$public_key"
+      fi
+      if key_is_authorized "$candidate"; then
+        discovered_keys+=("$candidate")
+      fi
+    done < <(find "${HOME}/.ssh" -maxdepth 1 -type f -name '*.pub' -print | sort)
+  fi
+
+  if [[ "${#discovered_keys[@]}" -eq 1 ]]; then
+    printf '%s\n' "${discovered_keys[0]}"
+    return
+  fi
+  if [[ "${#discovered_keys[@]}" -gt 1 ]]; then
+    echo "error: multiple authorized release keys found; set KOVA_RELEASE_SIGNING_KEY" >&2
+    return 1
+  fi
+  echo "error: no authorized release signing key found" >&2
+  echo "hint: set KOVA_RELEASE_SIGNING_KEY to the matching private key path" >&2
+  return 1
+}
+
 tag_signature_valid() {
   git -c gpg.format=ssh \
     -c gpg.ssh.allowedSignersFile="${repo_root}/.github/release-allowed-signers" \
@@ -339,8 +447,10 @@ else
 fi
 
 if [[ -z "$local_tag_commit_sha" ]]; then
+  release_signing_key="$(resolve_release_signing_key)"
+  log_step "Using repository-authorized release key"
   log_step "Creating signed tag ${tag}; git signing may prompt here"
-  if ! git tag -s "$tag" -m "$tag"; then
+  if ! git -c gpg.format=ssh -c user.signingkey="$release_signing_key" tag -s "$tag" -m "$tag"; then
     echo "error: failed to create signed tag ${tag}; make sure git tag signing is configured" >&2
     exit 1
   fi
