@@ -4,6 +4,11 @@ All notable changes to Kova are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Run the full release gate once per version bump and automatically select the local SSH key authorized by the repository release policy.
+- Move CI and release workflows off deprecated Node 20 action runtimes and pin their replacements.
+
 ## [0.1.1] - 2026-07-12
 
 ### Fixed
