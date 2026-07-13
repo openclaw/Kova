@@ -5146,7 +5146,7 @@
           "expects": {
             "visibleDeliveries": 1,
             "kind": "media",
-            "replyTo": "inbound-message",
+            "replyTo": "none",
             "threadId": "kova-model-turn-thread",
             "mediaSourcePolicy": "present-existing",
             "hooks": true,
