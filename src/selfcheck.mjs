@@ -3822,6 +3822,33 @@ function evidenceLedgerGatingCheck() {
       "absent final metrics ledger status"
     );
 
+    const disabledServiceRecord = {
+      ...record,
+      status: "PASS",
+      incompleteReason: undefined,
+      incompleteEvidence: undefined,
+      phases: [],
+      finalMetrics: {
+        error: null,
+        service: {
+          gatewayState: "disabled",
+          running: false,
+          desiredRunning: false
+        },
+        health: null,
+        healthSamples: [],
+        healthSummary: null
+      }
+    };
+    attachEvidenceLedger(disabledServiceRecord);
+    applyEvidenceLedgerGating(disabledServiceRecord);
+    assertEqual(disabledServiceRecord.status, "PASS", "intentionally disabled service needs no health samples");
+    assertEqual(
+      disabledServiceRecord.evidenceLedger.entries.find((entry) => entry.id === "collector:final-metrics")?.status,
+      "passed",
+      "disabled service final metrics ledger status"
+    );
+
     const failedMetricsRecord = {
       ...record,
       status: "PASS",
@@ -11797,6 +11824,20 @@ function agentGatewayRpcTurnEvidenceInvariantCheck() {
     const invariants = buildAgentGatewayRpcTurnEvidenceInvariants(record, scenario);
     assertEqual(invariants.length, 13, "agent Gateway RPC invariant count");
     assertEqual(invariants.every((invariant) => invariant.status === "passed"), true, "complete agent Gateway RPC evidence passes invariants");
+
+    const localRuntimeRecord = syntheticAgentGatewayRpcTurnRecord();
+    for (const phase of localRuntimeRecord.phases) {
+      if (phase.metrics?.service) {
+        phase.metrics.service.runtimeReleaseChannel = null;
+      }
+    }
+    evaluateRecord(localRuntimeRecord, scenario, {
+      surface: { resourcePrimaryRole: "agent-cli", thresholds: {}, diagnostics: { expectedSpans: [] } },
+      targetPlan: { kind: "runtime" }
+    });
+    const localRuntimeInvariants = buildAgentGatewayRpcTurnEvidenceInvariants(localRuntimeRecord, scenario);
+    const localRuntimeBinding = localRuntimeInvariants.find((invariant) => invariant.id === "agent-gateway-runtime-binding-proof");
+    assertEqual(localRuntimeBinding?.status, "passed", "local runtime without a release track retains binding proof");
 
     const localRecord = syntheticAgentGatewayRpcTurnRecord({
       turnCommand: "ocm @kova -- agent --local --agent main --session-id kova-agent-gateway-rpc --message hi --json"

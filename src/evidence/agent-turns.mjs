@@ -149,7 +149,7 @@ function agentGatewayRuntimeBindingOk(record) {
   const service = agentGatewayBestServiceMetrics(record);
   return typeof service?.runtimeReleaseVersion === "string" &&
     service.runtimeReleaseVersion.length > 0 &&
-    typeof service.runtimeReleaseChannel === "string" &&
+    (typeof service.runtimeReleaseChannel === "string" || service.runtimeReleaseChannel === null) &&
     nonNegativeNumber(service.gatewayPort);
 }
 
@@ -161,7 +161,7 @@ function agentGatewayRuntimeBindingReason(record) {
   if (typeof service.runtimeReleaseVersion !== "string" || service.runtimeReleaseVersion.length === 0) {
     return "runtime release version was not captured";
   }
-  if (typeof service.runtimeReleaseChannel !== "string") {
+  if (typeof service.runtimeReleaseChannel !== "string" && service.runtimeReleaseChannel !== null) {
     return "runtime release track was not captured";
   }
   if (!nonNegativeNumber(service.gatewayPort)) {

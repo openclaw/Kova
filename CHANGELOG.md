@@ -8,6 +8,7 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Accept complete no-service final evidence without fabricated health samples, and recognize explicit local runtime bindings without a release track.
 - Migrate credential stores written by older Kova builds by removing the retired provider fallback policy instead of rejecting every run.
 - Preserve the original scenario failure when `--retain-on-failure` runs before an OCM environment exists.
 - Wait for asynchronous channel-probe and provider evidence to go quiet before resetting the next case's mock script.

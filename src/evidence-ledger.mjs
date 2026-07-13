@@ -173,6 +173,13 @@ function finalMetricsEvidence(metrics) {
   if (!validGatewayState(metrics.service?.gatewayState)) {
     return { status: "missing", reason: "final service state was not collected" };
   }
+  if (
+    metrics.service.gatewayState === "disabled" &&
+    metrics.service.running === false &&
+    metrics.service.desiredRunning === false
+  ) {
+    return { status: "passed", reason: null };
+  }
   const healthSamples = validHealthSamples(metrics.healthSamples);
   const healthSummary = validHealthSummaryFailureCount(metrics.healthSummary) !== null;
   const healthResult = typeof metrics.health?.ok === "boolean";
