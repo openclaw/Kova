@@ -8,6 +8,7 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Calibrate the channel workflow provider window for its intentionally batched multi-request and asynchronous completion phases.
 - Validate asynchronous threaded completion handoffs by their preserved thread route without requiring a stale reply to the original inbound message.
 - Accept complete no-service final evidence without fabricated health samples, and recognize explicit local runtime bindings without a release track.
 - Migrate credential stores written by older Kova builds by removing the retired provider fallback policy instead of rejecting every run.
