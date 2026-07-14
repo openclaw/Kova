@@ -19656,10 +19656,11 @@ async function agentCliLocalTurnSurfaceContractCheck() {
   try {
     const surface = await readSelfCheckJson("surfaces", "agent-cli-local-turn.json");
     const releaseProfile = await readSelfCheckJson("profiles", "release.json");
+    const scenario = await readSelfCheckJson("scenarios", "agent-cold-warm-message.json");
     const policy = resolveThresholdPolicy({
       profile: releaseProfile,
       surface,
-      scenario: null
+      scenario
     });
     const expectedSpans = surface.diagnostics?.expectedSpans ?? [];
     const staleSpans = [
@@ -19679,6 +19680,8 @@ async function agentCliLocalTurnSurfaceContractCheck() {
     assertEqual(surface.thresholds?.peakRssMb, 1000, "agent CLI surface owns primary RSS cap");
     assertEqual(surface.roleThresholds?.["agent-cli"]?.peakRssMb, 1000, "agent CLI surface owns agent CLI RSS cap");
     assertEqual(surface.roleThresholds?.["agent-process"]?.peakRssMb, 1000, "agent CLI surface owns agent process RSS cap");
+    assertEqual(scenario.thresholds?.peakRssMb, 1000, "agent cold/warm scenario owns primary RSS cap");
+    assertEqual(policy.thresholds?.peakRssMb, 1000, "agent cold/warm resolved primary RSS cap");
     assertEqual(policy.roleThresholds?.["agent-cli"]?.peakRssMb, 1000, "agent CLI resolved agent CLI RSS cap");
     assertEqual(policy.roleThresholds?.["agent-process"]?.peakRssMb, 1000, "agent CLI resolved agent process RSS cap");
     return {
