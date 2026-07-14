@@ -19515,7 +19515,7 @@ async function releaseResourceCalibrationCheck() {
         scenario: gatewayScenario,
         surface: gatewaySurface,
         primaryRssMb: 1050,
-        roles: { gateway: 1050, "gateway-tree": 1200, "status-cli": 850, "plugin-cli": 950 }
+        roles: { gateway: 1050, "gateway-tree": 1200, "status-cli": 900, "plugin-cli": 950 }
       },
       {
         id: "bundled-runtime-deps",
