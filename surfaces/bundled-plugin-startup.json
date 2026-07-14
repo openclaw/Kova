@@ -21,7 +21,7 @@
       "maxCpuPercent": 250
     },
     "plugin-cli": {
-      "peakRssMb": 800,
+      "peakRssMb": 900,
       "maxCpuPercent": 250
     },
     "runtime-staging": {
