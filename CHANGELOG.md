@@ -6,6 +6,7 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Give release-shaped plugin and agent CLI probes measured RSS headroom while keeping their scenario-specific regression caps.
 - Run the full release gate once per version bump and automatically select the local SSH key authorized by the repository release policy.
 - Move CI and release workflows off deprecated Node 20 action runtimes and pin their replacements.
 

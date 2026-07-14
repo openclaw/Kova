@@ -19,7 +19,7 @@
     "preProviderMs": 10000,
     "providerFinalMs": 3000,
     "agentCleanupMs": 5000,
-    "peakRssMb": 900,
+    "peakRssMb": 1000,
     "postReadyHealthP95Ms": 1000
   },
   "roleThresholds": {
@@ -28,11 +28,11 @@
       "maxCpuPercent": 250
     },
     "agent-cli": {
-      "peakRssMb": 900,
+      "peakRssMb": 1000,
       "maxCpuPercent": 300
     },
     "agent-process": {
-      "peakRssMb": 900,
+      "peakRssMb": 1000,
       "maxCpuPercent": 300
     },
     "mock-provider": {

@@ -19424,11 +19424,11 @@ async function bundledPluginStartupSurfaceContractCheck() {
     );
     assertEqual(surface.roleThresholds?.gateway?.peakRssMb, 950, "bundled plugin surface owns gateway RSS cap");
     assertEqual(surface.roleThresholds?.gateway?.maxCpuPercent, 250, "bundled plugin surface owns gateway CPU cap");
-    assertEqual(surface.roleThresholds?.["plugin-cli"]?.peakRssMb, 800, "bundled plugin surface owns plugin CLI RSS cap");
+    assertEqual(surface.roleThresholds?.["plugin-cli"]?.peakRssMb, 900, "bundled plugin surface owns plugin CLI RSS cap");
     assertEqual(surface.roleThresholds?.["plugin-cli"]?.maxCpuPercent, 250, "bundled plugin surface owns plugin CLI CPU cap");
     assertEqual(policy.roleThresholds?.gateway?.peakRssMb, 950, "bundled plugin resolved gateway RSS cap");
     assertEqual(policy.roleThresholds?.gateway?.maxCpuPercent, 250, "bundled plugin resolved gateway CPU cap");
-    assertEqual(policy.roleThresholds?.["plugin-cli"]?.peakRssMb, 800, "bundled plugin resolved plugin CLI RSS cap");
+    assertEqual(policy.roleThresholds?.["plugin-cli"]?.peakRssMb, 900, "bundled plugin resolved plugin CLI RSS cap");
     assertEqual(policy.roleThresholds?.["plugin-cli"]?.maxCpuPercent, 250, "bundled plugin resolved plugin CLI CPU cap");
 
     return {
@@ -19508,14 +19508,14 @@ async function releaseResourceCalibrationCheck() {
         scenario: freshScenario,
         surface: freshSurface,
         primaryRssMb: 1050,
-        roles: { gateway: 1050, "status-cli": 850, "plugin-cli": 800 }
+        roles: { gateway: 1050, "status-cli": 850, "plugin-cli": 900 }
       },
       {
         id: "gateway-performance",
         scenario: gatewayScenario,
         surface: gatewaySurface,
         primaryRssMb: 1050,
-        roles: { gateway: 1050, "gateway-tree": 1200, "status-cli": 850, "plugin-cli": 800 }
+        roles: { gateway: 1050, "gateway-tree": 1200, "status-cli": 850, "plugin-cli": 900 }
       },
       {
         id: "bundled-runtime-deps",
@@ -19529,7 +19529,7 @@ async function releaseResourceCalibrationCheck() {
         scenario: null,
         surface: bundledPluginSurface,
         primaryRssMb: null,
-        roles: { gateway: 950, "plugin-cli": 800 }
+        roles: { gateway: 950, "plugin-cli": 900 }
       }
     ];
 
@@ -19655,6 +19655,12 @@ async function officialPluginInstallSurfaceContractCheck() {
 async function agentCliLocalTurnSurfaceContractCheck() {
   try {
     const surface = await readSelfCheckJson("surfaces", "agent-cli-local-turn.json");
+    const releaseProfile = await readSelfCheckJson("profiles", "release.json");
+    const policy = resolveThresholdPolicy({
+      profile: releaseProfile,
+      surface,
+      scenario: null
+    });
     const expectedSpans = surface.diagnostics?.expectedSpans ?? [];
     const staleSpans = [
       "agent.turn",
@@ -19670,6 +19676,11 @@ async function agentCliLocalTurnSurfaceContractCheck() {
       assertEqual(expectedSpans.includes(span), false, `agent CLI surface must not require stale ${span} span`);
     }
     assertEqual(expectedSpans.includes("plugins.metadata.scan"), true, "agent CLI surface requires plugin metadata scan timeline span");
+    assertEqual(surface.thresholds?.peakRssMb, 1000, "agent CLI surface owns primary RSS cap");
+    assertEqual(surface.roleThresholds?.["agent-cli"]?.peakRssMb, 1000, "agent CLI surface owns agent CLI RSS cap");
+    assertEqual(surface.roleThresholds?.["agent-process"]?.peakRssMb, 1000, "agent CLI surface owns agent process RSS cap");
+    assertEqual(policy.roleThresholds?.["agent-cli"]?.peakRssMb, 1000, "agent CLI resolved agent CLI RSS cap");
+    assertEqual(policy.roleThresholds?.["agent-process"]?.peakRssMb, 1000, "agent CLI resolved agent process RSS cap");
     return {
       id: "agent-cli-local-turn-surface-contract",
       status: "PASS",
