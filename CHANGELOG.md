@@ -6,6 +6,7 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Calibrate the gateway pressure scenario's plugin CLI RSS budget against repeated release-run evidence.
 - Keep the agent cold/warm scenario's RSS gate aligned with the calibrated agent CLI surface budget.
 - Give release-shaped plugin and agent CLI probes measured RSS headroom while keeping their scenario-specific regression caps.
 - Run the full release gate once per version bump and automatically select the local SSH key authorized by the repository release policy.
