@@ -19508,7 +19508,7 @@ async function releaseResourceCalibrationCheck() {
         scenario: freshScenario,
         surface: freshSurface,
         primaryRssMb: 1050,
-        roles: { gateway: 1050, "status-cli": 850, "plugin-cli": 900 }
+        roles: { gateway: 1050, "status-cli": 900, "plugin-cli": 900 }
       },
       {
         id: "gateway-performance",

@@ -6,6 +6,7 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Calibrate the fresh-install status CLI RSS budget against repeated release-run evidence.
 - Calibrate the gateway pressure scenario's status CLI RSS budget against repeated release-run evidence.
 - Calibrate the gateway pressure scenario's plugin CLI RSS budget against repeated release-run evidence.
 - Keep the agent cold/warm scenario's RSS gate aligned with the calibrated agent CLI surface budget.
