@@ -39,6 +39,8 @@ const modelRef = "openai/gpt-5.5";
 const imageModelRef = "openai/gpt-image-1";
 const videoModelRef = "openai/sora-2";
 const gatewayToken = "kova-mock-gateway-token";
+const imageModelConfig = asObject(config.agents?.defaults?.mediaModels?.image);
+const videoModelConfig = asObject(config.agents?.defaults?.mediaModels?.video);
 const cost = {
   input: 0,
   output: 0,
@@ -121,13 +123,16 @@ config.agents = {
         }
       }
     },
-    imageGenerationModel: {
-      ...(config.agents?.defaults?.imageGenerationModel || {}),
-      primary: imageModelRef
-    },
-    videoGenerationModel: {
-      ...(config.agents?.defaults?.videoGenerationModel || {}),
-      primary: videoModelRef
+    mediaModels: {
+      ...(config.agents?.defaults?.mediaModels || {}),
+      image: {
+        ...imageModelConfig,
+        primary: imageModelRef
+      },
+      video: {
+        ...videoModelConfig,
+        primary: videoModelRef
+      }
     }
   }
 };
@@ -231,6 +236,10 @@ function parseArgs(args) {
     skipHealthCheck: parsed.skiphealthcheck === true,
     gatewayHttpEndpoints: parsed.gatewayHttpEndpoints
   };
+}
+
+function asObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
 function requiredEnv(name) {
