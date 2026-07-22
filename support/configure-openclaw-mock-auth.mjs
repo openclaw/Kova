@@ -39,6 +39,19 @@ const modelRef = "openai/gpt-5.5";
 const imageModelRef = "openai/gpt-image-1";
 const videoModelRef = "openai/sora-2";
 const gatewayToken = "kova-mock-gateway-token";
+const existingAgents = asObject(config.agents);
+const existingAgentEntries = asObject(config.agents?.entries);
+const legacyAgentEntries = Object.fromEntries(
+  (Array.isArray(config.agents?.list) ? config.agents.list : []).flatMap((entry) => {
+    const normalized = asObject(entry);
+    const id = typeof normalized.id === "string" ? normalized.id.trim() : "";
+    if (!id) return [];
+    const agentConfig = { ...normalized };
+    delete agentConfig.id;
+    return [[id, agentConfig]];
+  })
+);
+const agentEntries = { ...legacyAgentEntries, ...existingAgentEntries };
 const imageModelConfig = asObject(config.agents?.defaults?.mediaModels?.image);
 const videoModelConfig = asObject(config.agents?.defaults?.mediaModels?.video);
 const cost = {
@@ -105,8 +118,11 @@ config.models = {
   }
 };
 
+const canonicalAgents = { ...existingAgents };
+delete canonicalAgents.list;
 config.agents = {
-  ...(config.agents || {}),
+  ...canonicalAgents,
+  entries: Object.keys(agentEntries).length > 0 ? agentEntries : { main: { default: true } },
   defaults: {
     ...(config.agents?.defaults || {}),
     model: {
