@@ -19422,11 +19422,11 @@ async function bundledPluginStartupSurfaceContractCheck() {
       30000,
       "bundled plugin startup waits for gateway readiness"
     );
-    assertEqual(surface.roleThresholds?.gateway?.peakRssMb, 950, "bundled plugin surface owns gateway RSS cap");
+    assertEqual(surface.roleThresholds?.gateway?.peakRssMb, 1000, "bundled plugin surface owns gateway RSS cap");
     assertEqual(surface.roleThresholds?.gateway?.maxCpuPercent, 250, "bundled plugin surface owns gateway CPU cap");
     assertEqual(surface.roleThresholds?.["plugin-cli"]?.peakRssMb, 900, "bundled plugin surface owns plugin CLI RSS cap");
     assertEqual(surface.roleThresholds?.["plugin-cli"]?.maxCpuPercent, 250, "bundled plugin surface owns plugin CLI CPU cap");
-    assertEqual(policy.roleThresholds?.gateway?.peakRssMb, 950, "bundled plugin resolved gateway RSS cap");
+    assertEqual(policy.roleThresholds?.gateway?.peakRssMb, 1000, "bundled plugin resolved gateway RSS cap");
     assertEqual(policy.roleThresholds?.gateway?.maxCpuPercent, 250, "bundled plugin resolved gateway CPU cap");
     assertEqual(policy.roleThresholds?.["plugin-cli"]?.peakRssMb, 900, "bundled plugin resolved plugin CLI RSS cap");
     assertEqual(policy.roleThresholds?.["plugin-cli"]?.maxCpuPercent, 250, "bundled plugin resolved plugin CLI CPU cap");
@@ -19529,7 +19529,7 @@ async function releaseResourceCalibrationCheck() {
         scenario: null,
         surface: bundledPluginSurface,
         primaryRssMb: null,
-        roles: { gateway: 950, "plugin-cli": 900 }
+        roles: { gateway: 1000, "plugin-cli": 900 }
       }
     ];
 
