@@ -6,7 +6,6 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
-- Upgrade the report site to Astro 7 and pin patched transitive URL, image, CSS, SVG, and build dependencies.
 - Calibrate the bundled-plugin restart overlap RSS budget against repeated OpenClaw main release runs.
 - Calibrate the fresh-install status CLI RSS budget against repeated release-run evidence.
 - Calibrate the gateway pressure scenario's status CLI RSS budget against repeated release-run evidence.
