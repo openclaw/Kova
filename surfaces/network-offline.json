@@ -9,7 +9,7 @@
     "agent-cli",
     "agent-process"
   ],
-  "resourcePrimaryRole": "agent-cli",
+  "resourcePrimaryRole": "agent-process",
   "thresholds": {
     "networkFailureObserved": 1,
     "networkStatusAfterFailureMs": 10000,

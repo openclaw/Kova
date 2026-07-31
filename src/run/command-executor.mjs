@@ -13,6 +13,8 @@ import {
   tagCommandResult
 } from "../measurement-contract.mjs";
 import { assertNetworkFrontageCommandSafe, maybeStartNetworkFrontage, networkFrontageCommandEnv } from "../network-frontage.mjs";
+import { repoRoot } from "../paths.mjs";
+import { resolveOwnedMockProviderPid } from "../process-safety.mjs";
 import { assertSafeScenarioCommand } from "../safety.mjs";
 import { safeSegment } from "./phase-commands.mjs";
 
@@ -52,6 +54,9 @@ async function runCommandWithContext(command, context, envName, artifactDir, pha
   if (beforeSnapshot) {
     await writeJsonArtifact(`${snapshotBase}-before.json`, beforeSnapshot);
   }
+  const trackedRolePids = context.resourceSampling === false
+    ? {}
+    : await resolveTrackedRolePids(artifactDir, authPolicy);
   const result = await runCommand(command, {
     timeoutMs: context.timeoutMs,
     env: {
@@ -66,6 +71,7 @@ async function runCommandWithContext(command, context, envName, artifactDir, pha
       intervalMs: context.resourceSampleIntervalMs,
       processRoles: context.processRoles ?? [],
       commandEnv: context.commandEnv,
+      trackedRolePids,
       artifactPath: join(collectorArtifactDirs(artifactDir).resourceSamples, `${safeSegment(phaseId)}-${commandIndex + 1}.jsonl`)
     }
   });
@@ -104,6 +110,21 @@ async function runCommandWithContext(command, context, envName, artifactDir, pha
     };
   }
   return result;
+}
+
+async function resolveTrackedRolePids(artifactDir, authPolicy) {
+  if (authPolicy?.mode !== "mock") {
+    return {};
+  }
+  const mockDir = join(artifactDir, "mock-openai");
+  const pid = await resolveOwnedMockProviderPid({
+    pidFile: join(mockDir, "pid"),
+    supervisorPath: join(repoRoot, "support/mock-ai-provider-supervisor.mjs"),
+    scriptPath: join(mockDir, "script.json"),
+    requestLog: join(mockDir, "requests.jsonl"),
+    serverLog: join(mockDir, "server.log")
+  });
+  return pid === null ? {} : { "mock-provider": pid };
 }
 
 async function ensureNetworkFrontageForProductCommand(command, context, envName, artifactDir, phase) {

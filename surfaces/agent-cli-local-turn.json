@@ -10,7 +10,7 @@
     "agent-process",
     "mock-provider"
   ],
-  "resourcePrimaryRole": "agent-cli",
+  "resourcePrimaryRole": "agent-process",
   "thresholds": {
     "agentTurnMs": 45000,
     "coldAgentTurnMs": 45000,
