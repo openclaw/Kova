@@ -57,7 +57,7 @@ kova.report.v1
   "performance": {
     "schemaVersion": "kova.performance.v1",
     "resourceMeasurementScope": "product",
-    "resourceHeadlineContract": "primary-role-product-scope-v2",
+    "resourceHeadlineContract": "primary-role-product-scope-v3",
     "repeat": 3,
     "groupCount": 1,
     "unstableGroupCount": 0,
@@ -96,9 +96,11 @@ failure cards.
 `performance` is present on run and matrix reports. It keeps individual scenario
 records untouched and adds aggregate stats grouped by scenario, surface, and
 state. Resource groups use `resourceMeasurementScope: "product"` and
-`resourceHeadlineContract: "primary-role-product-scope-v2"`; harness and cleanup
+`resourceHeadlineContract: "primary-role-product-scope-v3"`; harness and cleanup
 work remains visible as evidence but does not contribute to resource headlines
-or gates.
+or gates. Version 3 assigns command roles only where no process-specific role
+owns the process, tracks the validated mock-provider PID explicitly, and emits
+one primary-role threshold finding per metric.
 
 `baseline` is normally `null`. When `--baseline` is used, it contains the
 baseline store path and comparison results. When `--save-baseline` is used, it
@@ -580,7 +582,7 @@ continues comparing status and other non-resource metrics.
     "unstableGroupCount": 0,
     "profiledRunCount": 0,
     "resourceMeasurementScope": "product",
-    "resourceHeadlineContract": "primary-role-product-scope-v2",
+    "resourceHeadlineContract": "primary-role-product-scope-v3",
     "baselineRegressionCount": 0,
     "missingBaselineCount": 0,
     "skippedMetricCount": 0,
@@ -742,12 +744,12 @@ When a report contains failures, the structured summary also includes
     "missingBaselineCount": 0,
     "skippedMetricCount": 0,
     "resourceMeasurementScope": "product",
-    "resourceHeadlineContract": "primary-role-product-scope-v2",
+    "resourceHeadlineContract": "primary-role-product-scope-v3",
     "resourceContractMismatchCount": 0
   },
   "performance": {
     "resourceMeasurementScope": "product",
-    "resourceHeadlineContract": "primary-role-product-scope-v2",
+    "resourceHeadlineContract": "primary-role-product-scope-v3",
     "baselineRegressionCount": 0,
     "missingBaselineCount": 0,
     "skippedMetricCount": 0,
@@ -903,7 +905,7 @@ retained-artifacts.json
         },
         "current": {
           "measurementScope": "product",
-          "headlineContract": "primary-role-product-scope-v2"
+          "headlineContract": "primary-role-product-scope-v3"
         },
         "compatible": false
       },

@@ -16,6 +16,10 @@ export function startResourceSampler(rootPid, options = {}) {
   const startedAt = Date.now();
   const intervalMs = Math.max(250, Number(options.intervalMs ?? 1000));
   const roleMatchers = compileRoleMatchers(options.processRoles ?? []);
+  const trackedRolePids = new Map(
+    Object.entries(options.trackedRolePids ?? {})
+      .filter(([role, pid]) => typeof role === "string" && role.length > 0 && Number.isSafeInteger(pid) && pid > 0)
+  );
   const samples = [];
   let gatewayPid = null;
   let nextGatewayLookupSample = 0;
@@ -84,6 +88,11 @@ export function startResourceSampler(rootPid, options = {}) {
       }
       if (gatewayTreePids.has(process.pid)) {
         roles.add("gateway-tree");
+      }
+      for (const [role, pid] of trackedRolePids.entries()) {
+        if (process.pid === pid) {
+          roles.add(role);
+        }
       }
       if (roles.size > 0) {
         for (const role of matchingRegistryRoles(process, options.rootCommand, roleMatchers, roles)) {
@@ -372,18 +381,33 @@ function compilePatterns(patterns) {
 }
 
 function matchingRegistryRoles(process, rootCommand, roleMatchers, existingRoles = new Set()) {
-  const roles = [];
-  const isCommandTree = existingRoles.has("command-tree");
-  for (const role of roleMatchers) {
-    if (role.id === "command-tree" || role.id === "gateway" || role.id === "gateway-tree") {
-      continue;
-    }
-    if (matchesAny(role.processPatterns, process.command) || (isCommandTree && matchesAny(role.commandPatterns, rootCommand)) ||
-      matchesAny(role.commandPatterns, process.command)) {
-      roles.push(role.id);
-    }
+  const processRoles = matchingRegistryProcessRoles(process, roleMatchers);
+  if (processRoles.length > 0) {
+    return processRoles;
   }
-  return roles;
+
+  const commandRoles = roleMatchers
+    .filter((role) =>
+      role.id !== "command-tree" &&
+      role.id !== "gateway" &&
+      role.id !== "gateway-tree" &&
+      matchesAny(role.commandPatterns, process.command)
+    )
+    .map((role) => role.id);
+  if (commandRoles.length > 0 || !existingRoles.has("command-tree")) {
+    return commandRoles;
+  }
+
+  // Generic wrappers inherit the root command role; owned child processes keep
+  // their process-specific role instead of duplicating the whole command tree.
+  return roleMatchers
+    .filter((role) =>
+      role.id !== "command-tree" &&
+      role.id !== "gateway" &&
+      role.id !== "gateway-tree" &&
+      matchesAny(role.commandPatterns, rootCommand)
+    )
+    .map((role) => role.id);
 }
 
 function matchingRegistryProcessRoles(process, roleMatchers) {

@@ -41,14 +41,22 @@ export function checkEvidenceThreshold(violations, kind, metric, actual, thresho
   }
 }
 
-export function checkRoleThresholds(violations, byRole, roleThresholds) {
+export function checkRoleThresholds(violations, byRole, roleThresholds, options = {}) {
+  const skipPeakRssRoles = new Set(options.skipPeakRssRoles ?? []);
+  const skipMaxCpuRoles = new Set(options.skipMaxCpuRoles ?? []);
   for (const [role, thresholds] of Object.entries(roleThresholds)) {
     const summary = byRole?.[role];
     if (!summary) {
       continue;
     }
+    const peakRssThresholdActive = activeFiniteThreshold(
+      violations,
+      `resourceByRole.${role}.peakRssMb`,
+      thresholds.peakRssMb
+    );
     if (
-      activeFiniteThreshold(violations, `resourceByRole.${role}.peakRssMb`, thresholds.peakRssMb) &&
+      !skipPeakRssRoles.has(role) &&
+      peakRssThresholdActive &&
       finiteNonNegativeMeasurement(
         violations,
         `resourceByRole.${role}.peakRssMb`,
@@ -92,12 +100,14 @@ export function checkRoleThresholds(violations, byRole, roleThresholds) {
         message: `${role} peak process RSS ${peakProcessRssMb} MB exceeded threshold ${thresholds.peakProcessRssMb} MB`
       });
     }
+    const maxCpuThresholdActive = activeFiniteThreshold(
+      violations,
+      `resourceByRole.${role}.maxCpuPercent`,
+      thresholds.maxCpuPercent
+    );
     if (
-      activeFiniteThreshold(
-        violations,
-        `resourceByRole.${role}.maxCpuPercent`,
-        thresholds.maxCpuPercent
-      ) &&
+      !skipMaxCpuRoles.has(role) &&
+      maxCpuThresholdActive &&
       finiteNonNegativeMeasurement(
         violations,
         `resourceByRole.${role}.maxCpuPercent`,

@@ -220,6 +220,7 @@ import {
   mockProviderStopFile,
   mockProviderSupervisorArgs,
   positiveProcessId,
+  resolveOwnedMockProviderPid,
   stopOwnedMockProvider
 } from "./process-safety.mjs";
 import { envNameFor, maxOcmEnvNameLength } from "./run/env-name.mjs";
@@ -2673,13 +2674,13 @@ function gatewayProcessResourceRoleCheck() {
     );
     assertEqual(
       gatewayRecord.violations.some((violation) => violation.metric === "resourceByRole.gateway.peakRssMb"),
-      true,
-      "gateway role RSS threshold sees final process"
+      false,
+      "gateway role RSS threshold is not duplicated"
     );
     assertEqual(
       gatewayRecord.violations.some((violation) => violation.metric === "resourceByRole.gateway.maxCpuPercent"),
-      true,
-      "gateway role CPU threshold sees final process"
+      false,
+      "gateway role CPU threshold is not duplicated"
     );
 
     const pluginRecord = buildRecord();
@@ -13016,6 +13017,25 @@ async function mockProviderProcessSafetyCheck(tmp) {
       "trailing legacy arguments do not authenticate a different invocation"
     );
 
+    await writeFile(pidFile, ownerText(12345), "utf8");
+    assertEqual(
+      await resolveOwnedMockProviderPid({
+        ...stopOptions,
+        inspectProcess: async () => expectedCommand
+      }),
+      12345,
+      "resource sampler resolves the validated mock provider owner"
+    );
+    assertEqual(
+      await resolveOwnedMockProviderPid({
+        ...stopOptions,
+        inspectProcess: async () => "node unrelated.mjs"
+      }),
+      null,
+      "resource sampler rejects a recycled mock provider PID"
+    );
+    await rm(pidFile, { force: true });
+
     await writeFile(pidFile, "12345\n", "utf8");
     let legacyInspections = 0;
     let legacySignal = null;
@@ -19329,6 +19349,7 @@ function resourceConfiguredRoleMissingCheck() {
         resourcePrimaryRole: "mcp-runtime",
         thresholds: {},
         roleThresholds: {
+          "mcp-runtime": { peakRssMb: 400, maxCpuPercent: 60 },
           gateway: { peakRssMb: 850 },
           "tool-runtime": { peakRssMb: 500 }
         },
@@ -19350,6 +19371,16 @@ function resourceConfiguredRoleMissingCheck() {
       record.violations?.some((violation) => violation.metric === "peakRssMb"),
       false,
       "aggregate RSS is not reported as component RSS"
+    );
+    assertEqual(
+      record.violations?.some((violation) => violation.metric === "cpuPercentMax"),
+      false,
+      "aggregate CPU is not judged against the missing primary role"
+    );
+    assertEqual(
+      record.violations?.some((violation) => violation.metric === "resourceByRole.mcp-runtime.maxCpuPercent"),
+      false,
+      "missing primary role does not suppress or fabricate a role CPU measurement"
     );
     return {
       id: "resource-configured-role-missing",
@@ -19436,6 +19467,42 @@ async function resourceRolePollutionCheck() {
         existingRoles: ["command-tree"]
       }
     );
+    const openclawWrapperRoles = classifyRegistryRolesForProcess(
+      { command: "openclaw" },
+      {
+        processRoles,
+        rootCommand: "ocm @kova -- agent --local --message hi",
+        existingRoles: ["command-tree"]
+      }
+    );
+    const openclawSessionCliRoles = classifyRegistryRolesForProcess(
+      { command: "openclaw agent --session-id kova-agent" },
+      {
+        processRoles,
+        rootCommand: "ocm @kova -- agent --session-id kova-agent --message hi",
+        existingRoles: ["command-tree"]
+      }
+    );
+    const openclawMessageSessionRoles = classifyRegistryRolesForProcess(
+      { command: "openclaw agent --message session" },
+      {
+        processRoles,
+        rootCommand: "ocm @kova -- agent --message session",
+        existingRoles: ["command-tree"]
+      }
+    );
+    const openclawAgentSessionRoles = classifyRegistryRolesForProcess(
+      { command: "openclaw-agent --session-id kova-agent" },
+      {
+        processRoles,
+        rootCommand: "ocm @kova -- agent --session-id kova-agent --message hi",
+        existingRoles: ["command-tree"]
+      }
+    );
+    const trackedProvider = startResourceSampler(process.pid, {
+      trackedRolePids: { "mock-provider": process.pid }
+    });
+    const trackedProviderSummary = await trackedProvider.stop();
     const resourceSummary = summarizeResourceSamples([{
       timestamp: "2026-05-07T00:00:00.000Z",
       elapsedMs: 1000,
@@ -19465,8 +19532,21 @@ async function resourceRolePollutionCheck() {
     assertEqual(mockProviderRoles.includes("browser-sidecar"), false, "browser env name must not imply browser-sidecar");
     assertEqual(envNameRoles.includes("runtime-management"), false, "mcp-runtime env name must not imply runtime-management");
     assertEqual(envNameRoles.includes("model-cli"), false, "configure-openclaw fixture helper must not imply model-cli");
-    assertEqual(openclawAgentRoles.includes("agent-cli"), true, "openclaw-agent process must imply agent-cli");
+    assertEqual(openclawAgentRoles.includes("agent-cli"), false, "openclaw-agent process must not imply agent-cli");
     assertEqual(openclawAgentRoles.includes("agent-process"), true, "openclaw-agent process must imply agent-process");
+    assertEqual(openclawWrapperRoles.includes("agent-cli"), true, "generic OpenClaw wrapper inherits agent CLI command role");
+    assertEqual(openclawWrapperRoles.includes("agent-process"), false, "generic OpenClaw wrapper must not imply agent process");
+    assertEqual(openclawSessionCliRoles.includes("agent-cli"), true, "agent session-id CLI remains attributed to agent CLI");
+    assertEqual(openclawSessionCliRoles.includes("agent-process"), false, "session-id option must not imply agent process");
+    assertEqual(openclawMessageSessionRoles.includes("agent-cli"), true, "agent message CLI remains attributed to agent CLI");
+    assertEqual(openclawMessageSessionRoles.includes("agent-process"), false, "session message text must not imply agent process");
+    assertEqual(openclawAgentSessionRoles.includes("agent-cli"), false, "agent process pattern outranks session-id command text");
+    assertEqual(openclawAgentSessionRoles.includes("agent-process"), true, "agent process with session-id remains attributed");
+    assertEqual(
+      Boolean(trackedProviderSummary.byRole?.["mock-provider"]),
+      true,
+      "explicit mock provider owner PID is sampled outside command matching"
+    );
     assertEqual(resourceSummary.peakGatewayRssMb, 700, "gateway-session-client role must not inflate gateway RSS");
     assertEqual(resourceSummary.peakCommandTreeRssMb, 60, "gateway-session-client remains command-tree RSS");
     return {
@@ -19739,6 +19819,7 @@ async function officialPluginInstallSurfaceContractCheck() {
 async function agentCliLocalTurnSurfaceContractCheck() {
   try {
     const surface = await readSelfCheckJson("surfaces", "agent-cli-local-turn.json");
+    const networkOfflineSurface = await readSelfCheckJson("surfaces", "network-offline.json");
     const releaseProfile = await readSelfCheckJson("profiles", "release.json");
     const scenario = await readSelfCheckJson("scenarios", "agent-cold-warm-message.json");
     const policy = resolveThresholdPolicy({
@@ -19761,6 +19842,8 @@ async function agentCliLocalTurnSurfaceContractCheck() {
       assertEqual(expectedSpans.includes(span), false, `agent CLI surface must not require stale ${span} span`);
     }
     assertEqual(expectedSpans.includes("plugins.metadata.scan"), true, "agent CLI surface requires plugin metadata scan timeline span");
+    assertEqual(surface.resourcePrimaryRole, "agent-process", "local agent surface headlines the agent process");
+    assertEqual(networkOfflineSurface.resourcePrimaryRole, "agent-process", "offline agent surface headlines the agent process");
     assertEqual(surface.thresholds?.peakRssMb, 1000, "agent CLI surface owns primary RSS cap");
     assertEqual(surface.roleThresholds?.["agent-cli"]?.peakRssMb, 1000, "agent CLI surface owns agent CLI RSS cap");
     assertEqual(surface.roleThresholds?.["agent-process"]?.peakRssMb, 1000, "agent CLI surface owns agent process RSS cap");
@@ -19799,6 +19882,7 @@ async function agentGatewayRpcTurnSurfaceContractCheck() {
     for (const span of staleSpans) {
       assertEqual(expectedSpans.includes(span), false, `agent Gateway RPC surface must not require stale ${span} span`);
     }
+    assertEqual(surface.resourcePrimaryRole, "agent-cli", "Gateway RPC surface headlines the client process");
     assertEqual(expectedSpans.includes("gateway.ready"), true, "agent Gateway RPC surface requires gateway.ready timeline span");
     assertEqual(expectedSpans.includes("plugins.metadata.scan"), true, "agent Gateway RPC surface requires plugin metadata scan timeline span");
     return {
@@ -19971,7 +20055,8 @@ async function processSnapshotCheck(tmp, scope) {
     assertEqual(unrelatedBrowserRoles.includes("browser-sidecar"), false, "unrelated browser process excluded from snapshot role");
     assertEqual(scopedBrowserRoles.includes("browser-sidecar"), true, "scoped browser process retained");
     assertEqual(gatewayBrowserRoles.includes("browser-sidecar"), true, "gateway child browser process retained");
-    assertEqual(scopedAgentRoles.includes("agent-cli"), true, "scoped agent process retained");
+    assertEqual(scopedAgentRoles.includes("agent-cli"), false, "scoped agent process is not attributed to the CLI wrapper");
+    assertEqual(scopedAgentRoles.includes("agent-process"), true, "scoped agent process retained");
     const retainedCommands = before.processes.map((process) => process.command).join("\n");
     for (const value of [customValue, flagValue, headerValue, urlValue]) {
       assertEqual(retainedCommands.includes(value), false, `process snapshot redacts ${value}`);
@@ -19998,7 +20083,7 @@ async function processSnapshotCheck(tmp, scope) {
 
 function roleThresholdEvaluationCheck() {
   try {
-    const record = {
+    const sourceRecord = {
       scenario: "synthetic-role-threshold",
       title: "Synthetic Role Threshold",
       status: "PASS",
@@ -20041,6 +20126,7 @@ function roleThresholdEvaluationCheck() {
         logs: zeroLogMetrics()
       }
     };
+    const record = structuredClone(sourceRecord);
     evaluateRecord(record, { thresholds: {} }, {
       surface: {
         thresholds: {},
@@ -20069,6 +20155,78 @@ function roleThresholdEvaluationCheck() {
     const gatewayRow = reportScenarios[0]?.metrics?.find((metric) => metric.key === "peakRssMb#gateway");
     assertEqual(peakRow?.status, "FAIL", "parent RSS row inherits failed role child status");
     assertEqual(gatewayRow?.status, "FAIL", "gateway role child row fails");
+
+    const deduplicatedRecord = structuredClone(sourceRecord);
+    evaluateRecord(deduplicatedRecord, {
+      thresholds: {
+        peakRssMb: 100,
+        cpuPercentMax: 50
+      }
+    }, {
+      surface: {
+        resourcePrimaryRole: "gateway",
+        thresholds: {},
+        roleThresholds: {
+          gateway: { peakRssMb: 50, maxCpuPercent: 40 }
+        }
+      }
+    });
+    const deduplicatedMetrics = deduplicatedRecord.violations.map((violation) => violation.metric);
+    assertEqual(deduplicatedMetrics.includes("peakRssMb"), true, "primary RSS threshold remains active");
+    assertEqual(deduplicatedMetrics.includes("cpuPercentMax"), true, "primary CPU threshold remains active");
+    assertEqual(
+      deduplicatedRecord.violations.find((violation) => violation.metric === "peakRssMb")?.expected,
+      "<= 50",
+      "headline RSS enforces the stricter primary-role threshold"
+    );
+    assertEqual(
+      deduplicatedRecord.violations.find((violation) => violation.metric === "cpuPercentMax")?.expected,
+      "<= 40",
+      "headline CPU enforces the stricter primary-role threshold"
+    );
+    assertEqual(
+      deduplicatedMetrics.includes("resourceByRole.gateway.peakRssMb"),
+      false,
+      "primary RSS role threshold is not duplicated"
+    );
+    assertEqual(
+      deduplicatedMetrics.includes("resourceByRole.gateway.maxCpuPercent"),
+      false,
+      "primary CPU role threshold is not duplicated"
+    );
+
+    const malformedPrimaryRoleRecord = structuredClone(sourceRecord);
+    evaluateRecord(malformedPrimaryRoleRecord, {
+      thresholds: {
+        peakRssMb: 100,
+        cpuPercentMax: 50
+      }
+    }, {
+      surface: {
+        resourcePrimaryRole: "gateway",
+        thresholds: {},
+        roleThresholds: {
+          gateway: { peakRssMb: "invalid", maxCpuPercent: "invalid" }
+        }
+      }
+    });
+    const malformedPrimaryRoleViolations = malformedPrimaryRoleRecord.violations.filter(
+      (violation) => violation.failureDomain === "kova-harness"
+    );
+    assertEqual(
+      malformedPrimaryRoleViolations.some(
+        (violation) => violation.metric === "resourceByRole.gateway.peakRssMb"
+      ),
+      true,
+      "deduplicated primary RSS threshold remains validated"
+    );
+    assertEqual(
+      malformedPrimaryRoleViolations.some(
+        (violation) => violation.metric === "resourceByRole.gateway.maxCpuPercent"
+      ),
+      true,
+      "deduplicated primary CPU threshold remains validated"
+    );
     return {
       id: "resource-role-thresholds",
       status: "PASS",

@@ -57,6 +57,44 @@ export function mockProviderOwnerRecord(pid, token) {
   };
 }
 
+export async function resolveOwnedMockProviderPid(options) {
+  const {
+    pidFile,
+    supervisorPath,
+    scriptPath,
+    requestLog,
+    serverLog,
+    inspectProcess = readProcessCommand
+  } = options;
+  let rawOwner;
+  try {
+    rawOwner = await readFile(pidFile, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT" || error.code === "EISDIR") {
+      return null;
+    }
+    throw error;
+  }
+
+  let owner;
+  try {
+    owner = parseMockProviderOwner(rawOwner);
+  } catch {
+    return null;
+  }
+  const command = await inspectProcess(owner.pid);
+  if (command === null || !isOwnedMockProviderSupervisorCommand(command, {
+    pidFile,
+    supervisorPath,
+    scriptPath,
+    requestLog,
+    serverLog
+  })) {
+    return null;
+  }
+  return owner.pid;
+}
+
 export function mockProviderStopFile(pidFile, owner) {
   const pid = positiveProcessId(owner.pid, "mock provider pid");
   return `${pidFile}.stop.${pid}.${validOwnerToken(owner.token)}`;

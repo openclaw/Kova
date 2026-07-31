@@ -721,8 +721,9 @@ function agentCliRecordExpectsRunningGateway(record) {
 
 function agentCliResourceProofOk(measurements) {
   return commonResourceProofOk(measurements) &&
-    (nonNegativeNumber(measurements?.resourceByRole?.["agent-cli"]?.peakRssMb) ||
-      nonNegativeNumber(measurements?.resourceByRole?.["agent-process"]?.peakRssMb));
+    expectedAgentResourceRoles(measurements).every((role) =>
+      nonNegativeNumber(measurements?.resourceByRole?.[role]?.peakRssMb)
+    );
 }
 
 function agentCliResourceProofReason(measurements) {
@@ -730,9 +731,18 @@ function agentCliResourceProofReason(measurements) {
   if (commonReason) {
     return commonReason;
   }
-  if (!nonNegativeNumber(measurements?.resourceByRole?.["agent-cli"]?.peakRssMb) &&
-    !nonNegativeNumber(measurements?.resourceByRole?.["agent-process"]?.peakRssMb)) {
-    return "agent CLI role resource measurements were not captured";
+  const missingRoles = expectedAgentResourceRoles(measurements).filter((role) =>
+    !nonNegativeNumber(measurements?.resourceByRole?.[role]?.peakRssMb)
+  );
+  if (missingRoles.length > 0) {
+    return `agent resource measurements were not captured for ${missingRoles.join(", ")}`;
   }
   return null;
+}
+
+function expectedAgentResourceRoles(measurements) {
+  return [...new Set([
+    "agent-cli",
+    measurements?.resourcePrimaryRole
+  ].filter((role) => typeof role === "string" && role.length > 0))];
 }

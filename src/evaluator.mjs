@@ -113,6 +113,19 @@ export function evaluateRecord(record, scenario, options = {}) {
   const resourceGateKind = resourceGate.kind;
   const peakRssMb = resourceGate.peakRssMb;
   const cpuPercentMax = resourceGate.cpuPercentMax;
+  const primaryRoleOwnsResourceGate =
+    resourceGateKind === "role" && resourceGate.role === primaryResourceRole;
+  const primaryRoleThresholds = primaryRoleOwnsResourceGate
+    ? roleThresholds[primaryResourceRole] ?? {}
+    : {};
+  const peakRssThreshold = strictestPrimaryThreshold(
+    thresholds.peakRssMb,
+    primaryRoleThresholds.peakRssMb
+  );
+  const cpuPercentThreshold = strictestPrimaryThreshold(
+    thresholds.cpuPercentMax,
+    primaryRoleThresholds.maxCpuPercent
+  );
   const commandMissingDependencyErrors = countMissingDependencyErrors(allResults);
   const missingDependencyErrors = combineCommandAndLogCount(
     commandMissingDependencyErrors,
@@ -259,29 +272,38 @@ export function evaluateRecord(record, scenario, options = {}) {
     });
   }
 
-  if (typeof thresholds.peakRssMb === "number" && peakRssMb !== null && peakRssMb > thresholds.peakRssMb) {
+  if (peakRssThreshold !== null && peakRssMb !== null && peakRssMb > peakRssThreshold) {
     violations.push({
       kind: "threshold",
       metric: "peakRssMb",
       role: resourceGate.role ?? null,
       resourceGateKind,
       attribution: resourceGate.attribution,
-      expected: `<= ${thresholds.peakRssMb}`,
+      expected: `<= ${peakRssThreshold}`,
       actual: peakRssMb,
-      message: `${resourceRssLabel(primaryResourceRole, resourceGateKind)} ${peakRssMb} MB exceeded threshold ${thresholds.peakRssMb} MB${resourceBreakdownSuffix(resourceSummary, resourceGate)}`
+      message: `${resourceRssLabel(primaryResourceRole, resourceGateKind)} ${peakRssMb} MB exceeded threshold ${peakRssThreshold} MB${resourceBreakdownSuffix(resourceSummary, resourceGate)}`
     });
   }
 
-  if (typeof thresholds.cpuPercentMax === "number" && cpuPercentMax !== null && cpuPercentMax > thresholds.cpuPercentMax) {
+  if (cpuPercentThreshold !== null && cpuPercentMax !== null && cpuPercentMax > cpuPercentThreshold) {
     violations.push({
       kind: "threshold",
       metric: "cpuPercentMax",
-      expected: `<= ${thresholds.cpuPercentMax}`,
+      expected: `<= ${cpuPercentThreshold}`,
       actual: cpuPercentMax,
-      message: `max CPU ${cpuPercentMax}% exceeded threshold ${thresholds.cpuPercentMax}%`
+      message: `max CPU ${cpuPercentMax}% exceeded threshold ${cpuPercentThreshold}%`
     });
   }
-  checkRoleThresholds(violations, resourceSummary.byRole, roleThresholds);
+  checkRoleThresholds(violations, resourceSummary.byRole, roleThresholds, {
+    skipPeakRssRoles:
+      primaryRoleOwnsResourceGate && typeof thresholds.peakRssMb === "number"
+        ? [primaryResourceRole]
+        : [],
+    skipMaxCpuRoles:
+      primaryRoleOwnsResourceGate && typeof thresholds.cpuPercentMax === "number"
+        ? [primaryResourceRole]
+        : []
+  });
 
   const allowedMissingDependencyErrors =
     typeof thresholds.missingDependencyErrors === "number" ? thresholds.missingDependencyErrors : 0;
@@ -1214,6 +1236,15 @@ export function evaluateRecord(record, scenario, options = {}) {
   }
 
   return record;
+}
+
+function strictestPrimaryThreshold(headlineThreshold, roleThreshold) {
+  if (typeof headlineThreshold !== "number") {
+    return null;
+  }
+  return typeof roleThreshold === "number"
+    ? Math.min(headlineThreshold, roleThreshold)
+    : headlineThreshold;
 }
 
 function collectAgentTurns(record, providerEvidence, scenario, timelineSummary, logSummary) {
