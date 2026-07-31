@@ -6,6 +6,7 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Emit canonical OpenClaw plugin install records from plugin-index state fixtures so migration and metadata scenarios reach the intended runtime paths.
 - Calibrate the bundled-plugin restart overlap RSS budget against repeated OpenClaw main release runs.
 - Calibrate the fresh-install status CLI RSS budget against repeated release-run evidence.
 - Calibrate the gateway pressure scenario's status CLI RSS budget against repeated release-run evidence.

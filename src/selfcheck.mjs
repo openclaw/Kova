@@ -1236,6 +1236,7 @@ async function runScopedSelfCheck(flags, scope, workspace) {
       }
     ));
     checks.push(await stateLifecycleCommandIndexesCheck(tmp));
+    checks.push(await pluginInstallIndexFixturesCheck(tmp));
     checks.push(await jsonCommandCheck(
       "allowlisted-scenario-omitted-state-falls-back-json",
       `node bin/kova.mjs run --target runtime:stable --scenario official-plugin-install --report-dir ${quoteShell(tmp)} --json`,
@@ -5634,6 +5635,89 @@ async function stateLifecycleCommandIndexesCheck(tmp) {
       message: error.message
     };
   }
+}
+
+async function pluginInstallIndexFixturesCheck(tmp) {
+  const fixtures = [
+    {
+      id: "many-bundled-plugins",
+      expectedIds: Array.from({ length: 80 }, (_, index) => `kova-plugin-${index}`)
+    },
+    {
+      id: "plugin-index",
+      expectedIds: ["kova-index-alpha", "kova-index-beta", "kova-index-gamma"]
+    }
+  ];
+
+  return inlineCheck("plugin-install-index-fixtures", async () => {
+    for (const fixture of fixtures) {
+      const state = JSON.parse(await readFile(join(repoRoot, "states", `${fixture.id}.json`), "utf8"));
+      const commands = state.setup?.flatMap((step) => step.commands ?? []) ?? [];
+      assertEqual(commands.length, 1, `${fixture.id} setup command count`);
+
+      const prefix = "ocm env exec {env} -- node -e '";
+      const command = commands[0];
+      if (!command.startsWith(prefix) || !command.endsWith("'")) {
+        throw new Error(`${fixture.id} setup command is not an embedded Node script`);
+      }
+
+      const home = join(tmp, `${fixture.id}-home`);
+      const script = command.slice(prefix.length, -1);
+      const result = await runCommand(
+        `${quoteShell(process.execPath)} -e ${quoteShell(script)}`,
+        {
+          env: { OPENCLAW_HOME: home },
+          timeoutMs: 30000,
+          maxOutputChars: 100000
+        }
+      );
+      if (result.status !== 0) {
+        throw new Error(
+          `${fixture.id} setup failed: ${result.stderr.trim() || result.stdout.trim() || `exit ${result.status}`}`
+        );
+      }
+
+      for (const relativePath of ["plugins/installs.json", ".openclaw/plugins/installs.json"]) {
+        const index = JSON.parse(await readFile(join(home, relativePath), "utf8"));
+        assertEqual(Array.isArray(index.plugins), false, `${fixture.id} omits private plugins array`);
+        const records = index.installRecords;
+        if (!records || typeof records !== "object" || Array.isArray(records)) {
+          throw new Error(`${fixture.id} ${relativePath} has no installRecords object`);
+        }
+        assertEqual(
+          Object.keys(records).sort().join("\n"),
+          [...fixture.expectedIds].sort().join("\n"),
+          `${fixture.id} install record ids`
+        );
+        for (const id of fixture.expectedIds) {
+          const pluginDir = join(home, "fixture-plugins", id);
+          assertEqual(records[id]?.source, "path", `${fixture.id} ${id} source`);
+          assertEqual(records[id]?.sourcePath, pluginDir, `${fixture.id} ${id} source path`);
+          assertEqual(records[id]?.installPath, pluginDir, `${fixture.id} ${id} install path`);
+          assertEqual(records[id]?.version, "0.0.0", `${fixture.id} ${id} version`);
+          assertEqual(records[id]?.spec, undefined, `${fixture.id} ${id} has no package spec`);
+
+          const packageJson = JSON.parse(await readFile(join(pluginDir, "package.json"), "utf8"));
+          assertEqual(packageJson.name, `@kova/${id}`, `${fixture.id} ${id} package name`);
+          assertEqual(packageJson.version, "0.0.0", `${fixture.id} ${id} package version`);
+          assertEqual(
+            packageJson.openclaw?.extensions?.join("\n"),
+            "./index.js",
+            `${fixture.id} ${id} package entry`
+          );
+          const manifest = JSON.parse(
+            await readFile(join(pluginDir, "openclaw.plugin.json"), "utf8")
+          );
+          assertEqual(manifest.id, id, `${fixture.id} ${id} manifest id`);
+          assertEqual(
+            (await readFile(join(pluginDir, "index.js"), "utf8")).includes(`id: ${JSON.stringify(id)}`),
+            true,
+            `${fixture.id} ${id} runtime entry`
+          );
+        }
+      }
+    }
+  });
 }
 
 async function matrixWorkerRejectionCheck() {
