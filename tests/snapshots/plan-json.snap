@@ -16284,8 +16284,8 @@
     },
     {
       "id": "many-bundled-plugins",
-      "title": "Many Bundled Plugins Enabled",
-      "objective": "A pressure state for bundled plugin and provider metadata paths. It creates a plugin install index with many bundled-like entries so OpenClaw startup and metadata paths run under heavier registry pressure.",
+      "title": "Many Installed Plugins Enabled",
+      "objective": "A pressure state for plugin and provider metadata paths. It creates a canonical plugin install index with many synthetic entries so OpenClaw startup and metadata paths run under heavier registry pressure.",
       "tags": [
         "plugins",
         "providers",
@@ -16305,10 +16305,10 @@
             "clone"
           ],
           "commands": [
-            "ocm env exec {env} -- node -e 'const fs=require(\"fs\"), path=require(\"path\"); const home=process.env.OPENCLAW_HOME; const entries=Array.from({length:80},(_,i)=>({id:`kova-bundled-${i}`,name:`kova-bundled-${i}`,source:\"bundled\",enabled:true,version:\"0.0.0\",manifest:{id:`kova-bundled-${i}`,runtimeDependencies:[\"zod\",\"ws\",\"undici\",\"chokidar\"]}})); for (const rel of [\"plugins\",\".openclaw/plugins\"]) { const dir=path.join(home,rel); fs.mkdirSync(dir,{recursive:true}); fs.writeFileSync(path.join(dir,\"installs.json\"), JSON.stringify({schemaVersion:\"kova.fixture.plugins.v1\",plugins:entries}, null, 2)); }'"
+            "ocm env exec {env} -- node -e 'const fs=require(\"fs\"), path=require(\"path\"); const home=process.env.OPENCLAW_HOME; const ids=Array.from({length:80},(_,i)=>`kova-plugin-${i}`); const installRecords={}; for (const id of ids) { const pluginDir=path.join(home,\"fixture-plugins\",id); fs.mkdirSync(pluginDir,{recursive:true}); fs.writeFileSync(path.join(pluginDir,\"package.json\"),JSON.stringify({name:`@kova/${id}`,version:\"0.0.0\",type:\"module\",openclaw:{extensions:[\"./index.js\"]}},null,2)); fs.writeFileSync(path.join(pluginDir,\"openclaw.plugin.json\"),JSON.stringify({id,configSchema:{type:\"object\",additionalProperties:false,properties:{}}},null,2)); fs.writeFileSync(path.join(pluginDir,\"index.js\"),`export default { id: ${JSON.stringify(id)}, register() {} };\\n`); installRecords[id]={source:\"path\",sourcePath:pluginDir,installPath:pluginDir,version:\"0.0.0\"}; } for (const rel of [\"plugins\",\".openclaw/plugins\"]) { const dir=path.join(home,rel); fs.mkdirSync(dir,{recursive:true}); fs.writeFileSync(path.join(dir,\"installs.json\"), JSON.stringify({installRecords}, null, 2)); }'"
           ],
           "evidence": [
-            "large plugin install index written"
+            "canonical large plugin install index written"
           ],
           "collectionIntent": "service-only"
         }
@@ -16321,7 +16321,7 @@
       "riskArea": "plugin-metadata-scan",
       "ownerArea": "plugins",
       "setupEvidence": [
-        "large plugin install index written"
+        "canonical large plugin install index written"
       ],
       "cleanupGuarantees": [
         "disposable env cleanup removes state fixture files"
@@ -16813,7 +16813,7 @@
     {
       "id": "plugin-index",
       "title": "Existing Plugin Install Index",
-      "objective": "A user state with a real plugin install index already present, used to verify updates preserve and migrate plugin registry data.",
+      "objective": "A user state with a canonical plugin install index already present, used to verify updates preserve plugin registry data.",
       "tags": [
         "plugins",
         "migration",
@@ -16833,7 +16833,7 @@
             "clone"
           ],
           "commands": [
-            "ocm env exec {env} -- node -e 'const fs=require(\"fs\"), path=require(\"path\"); const home=process.env.OPENCLAW_HOME; const index={schemaVersion:\"kova.fixture.plugins.v1\",plugins:[{id:\"browser\",source:\"bundled\",enabled:true,version:\"bundled\"},{id:\"memory-core\",source:\"bundled\",enabled:true,version:\"bundled\"},{id:\"discord\",source:\"external\",enabled:true,version:\"0.0.0\",path:\"plugins/discord\"}]}; for (const rel of [\"plugins\",\".openclaw/plugins\"]) { const dir=path.join(home,rel); fs.mkdirSync(dir,{recursive:true}); fs.writeFileSync(path.join(dir,\"installs.json\"),JSON.stringify(index,null,2)); }'"
+            "ocm env exec {env} -- node -e 'const fs=require(\"fs\"), path=require(\"path\"); const home=process.env.OPENCLAW_HOME; const ids=[\"kova-index-alpha\",\"kova-index-beta\",\"kova-index-gamma\"]; const installRecords={}; for (const id of ids) { const pluginDir=path.join(home,\"fixture-plugins\",id); fs.mkdirSync(pluginDir,{recursive:true}); fs.writeFileSync(path.join(pluginDir,\"package.json\"),JSON.stringify({name:`@kova/${id}`,version:\"0.0.0\",type:\"module\",openclaw:{extensions:[\"./index.js\"]}},null,2)); fs.writeFileSync(path.join(pluginDir,\"openclaw.plugin.json\"),JSON.stringify({id,configSchema:{type:\"object\",additionalProperties:false,properties:{}}},null,2)); fs.writeFileSync(path.join(pluginDir,\"index.js\"),`export default { id: ${JSON.stringify(id)}, register() {} };\\n`); installRecords[id]={source:\"path\",sourcePath:pluginDir,installPath:pluginDir,version:\"0.0.0\"}; } for (const rel of [\"plugins\",\".openclaw/plugins\"]) { const dir=path.join(home,rel); fs.mkdirSync(dir,{recursive:true}); fs.writeFileSync(path.join(dir,\"installs.json\"),JSON.stringify({installRecords},null,2)); }'"
           ],
           "evidence": [
             "plugin install index exists in common locations"
