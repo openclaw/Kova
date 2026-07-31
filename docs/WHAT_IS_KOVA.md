@@ -87,7 +87,8 @@ Collectors produce the real evidence behind every verdict:
 - **resources** — continuous CPU and RSS samples by process role
 - **logs** — dependency errors, plugin failures, provider/auth signals
 - **timeline** — OpenClaw spans (`gateway.startup`, `config.normalize`,
-  `runtimeDeps.stage`, `agent.turn`, …)
+  `plugins.load`, `agent.turn`, …); legacy `runtimeDeps.stage` artifacts remain
+  parseable
 - **profiles & heap** — CPU and heap evidence on `--deep-profile`
 - **diagnostics** — structured OpenClaw evidence where emitted
 - **attribution** — per-turn agent CLI, gateway-session, and pre-provider

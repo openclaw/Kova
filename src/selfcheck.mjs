@@ -1178,6 +1178,8 @@ async function runScopedSelfCheck(flags, scope, workspace) {
     checks.push(await startupSurfaceDiagnosticsContractCheck());
     checks.push(await gatewaySessionSurfaceContractCheck());
     checks.push(await bundledPluginStartupSurfaceContractCheck());
+    checks.push(await legacyRuntimeDepsIsolationCheck());
+    checks.push(await currentProfileDiagnosticsContractCheck());
     checks.push(await releaseResourceCalibrationCheck());
     checks.push(await releaseRuntimeStartupSurfaceContractCheck());
     checks.push(await officialPluginInstallSurfaceContractCheck());
@@ -1334,7 +1336,7 @@ async function runScopedSelfCheck(flags, scope, workspace) {
         if (!data.bundlePath.startsWith(tmp)) {
           throw new Error(`matrix bundle path should use report dir: ${data.bundlePath}`);
         }
-        assertEqual(data.summary?.statuses?.["DRY-RUN"], 6, "filtered matrix dry-run count");
+        assertEqual(data.summary?.statuses?.["DRY-RUN"], 5, "filtered matrix dry-run count");
       }
     ));
     checks.push(await matrixWorkerRejectionCheck());
@@ -16843,7 +16845,7 @@ async function diagnosticsTimelineCheck() {
     const text = await readFile(selfCheckPath("fixtures", "diagnostics", "timeline.jsonl"), "utf8");
     const timeline = parseTimelineText(text);
     assertEqual(timeline.available, true, "timeline available");
-    assertEqual(timeline.eventCount, 8, "timeline event count");
+    assertEqual(timeline.eventCount, 9, "timeline event count");
     assertEqual(timeline.parseErrorCount, 0, "timeline parse errors");
     assertEqual(
       timeline.repeatedSpans.some((span) => span.name === "plugins.metadata.scan"),
@@ -16856,6 +16858,7 @@ async function diagnosticsTimelineCheck() {
     assertEqual(timeline.providers.maxDurationMs, 1220, "provider duration");
     assertEqual(timeline.childProcesses.failedCount, 1, "child process failures");
     assertEqual(timeline.keySpans["gateway.startup"].maxDurationMs, 2450, "gateway startup key span");
+    assertEqual(timeline.keySpans["plugins.load"].maxDurationMs, 820, "plugin load key span");
     const whitespaceNumbers = parseTimelineText(
       `${JSON.stringify({
         type: "provider.request",
@@ -19594,6 +19597,10 @@ async function bundledPluginStartupSurfaceContractCheck() {
     assertEqual(policy.roleThresholds?.gateway?.maxCpuPercent, 250, "bundled plugin resolved gateway CPU cap");
     assertEqual(policy.roleThresholds?.["plugin-cli"]?.peakRssMb, 900, "bundled plugin resolved plugin CLI RSS cap");
     assertEqual(policy.roleThresholds?.["plugin-cli"]?.maxCpuPercent, 250, "bundled plugin resolved plugin CLI CPU cap");
+    assertEqual(surface.diagnostics?.expectedSpans?.includes("plugins.load"), true, "bundled plugin startup requires plugin load span");
+    assertEqual(surface.diagnostics?.expectedSpans?.includes("runtimeDeps.stage"), false, "bundled plugin startup excludes retired runtime deps span");
+    assertEqual(surface.thresholds?.runtimeDepsStagingMs, undefined, "bundled plugin startup excludes retired staging threshold");
+    assertEqual(scenario.thresholds?.runtimeDepsStagingMs, undefined, "bundled plugin scenario excludes retired staging threshold");
 
     return {
       id: "bundled-plugin-startup-surface-contract",
@@ -19618,8 +19625,7 @@ async function startupSurfaceDiagnosticsContractCheck() {
     const surfaceSpans = {
       "fresh-install": startupSpans,
       "gateway-performance": startupSpans,
-      "bundled-plugin-startup": [...startupSpans, "runtimeDeps.stage"],
-      "bundled-runtime-deps": [...startupSpans, "runtimeDeps.stage"]
+      "bundled-plugin-startup": [...startupSpans, "plugins.load"]
     };
     for (const [surfaceId, expectedSpans] of Object.entries(surfaceSpans)) {
       const surface = await readSelfCheckJson("surfaces", `${surfaceId}.json`);
@@ -19646,6 +19652,133 @@ async function startupSurfaceDiagnosticsContractCheck() {
   }
 }
 
+async function legacyRuntimeDepsIsolationCheck() {
+  try {
+    const [legacyScenario, legacySurface, missingDepsSurface] = await Promise.all([
+      readSelfCheckJson("scenarios", "bundled-runtime-deps.json"),
+      readSelfCheckJson("surfaces", "bundled-runtime-deps.json"),
+      readSelfCheckJson("surfaces", "plugin-missing-runtime-deps.json")
+    ]);
+    const profileNames = (await readdir(selfCheckPath("profiles")))
+      .filter((name) => name.endsWith(".json"))
+      .sort();
+    const scheduledProfiles = [];
+    for (const profileName of profileNames) {
+      const profile = await readSelfCheckJson("profiles", profileName);
+      const referencesLegacyScenario =
+        (profile.entries ?? []).some((entry) => entry.scenario === "bundled-runtime-deps") ||
+        ["blocking", "warning"].some((level) =>
+          (profile.gate?.[level] ?? []).some((entry) => entry.scenario === "bundled-runtime-deps")
+        ) ||
+        ["blocking", "warning"].some((level) =>
+          (profile.gate?.coverage?.requirements?.[level] ?? [])
+            .some((requirement) => requirement.startsWith("bundled-runtime-deps:"))
+        ) ||
+        profile.calibration?.surfaces?.["bundled-runtime-deps"] !== undefined;
+      if (referencesLegacyScenario) {
+        scheduledProfiles.push(profile.id);
+      }
+    }
+
+    assertEqual(scheduledProfiles.length, 0, "legacy runtime deps scenario is absent from current profiles");
+    assertEqual(legacyScenario.tags?.includes("legacy"), true, "legacy runtime deps scenario is labeled legacy");
+    assertEqual(legacySurface.description?.startsWith("Legacy-only"), true, "legacy runtime deps surface is documented as legacy-only");
+    assertEqual(legacySurface.diagnostics?.expectedSpans?.includes("runtimeDeps.stage"), true, "legacy runtime deps surface retains historical span parsing");
+    assertEqual(missingDepsSurface.diagnostics?.expectedSpans?.length, 1, "missing dependency surface has one current diagnostic span");
+    assertEqual(missingDepsSurface.diagnostics?.expectedSpans?.[0], "plugins.load", "missing dependency surface requires plugin load span");
+    assertEqual(missingDepsSurface.processRoles?.includes("runtime-staging"), false, "missing dependency surface excludes retired staging role");
+
+    return {
+      id: "legacy-runtime-deps-isolation",
+      status: "PASS",
+      command: "validate legacy runtime dependency scenario isolation",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "legacy-runtime-deps-isolation",
+      status: "FAIL",
+      command: "validate legacy runtime dependency scenario isolation",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+async function currentProfileDiagnosticsContractCheck() {
+  try {
+    const retiredSpans = new Set(["runtimeDeps.stage", "plugins.runtimeDeps"]);
+    const activeScenarioIds = new Set();
+    const profileNames = (await readdir(selfCheckPath("profiles")))
+      .filter((name) => name.endsWith(".json"))
+      .sort();
+    for (const profileName of profileNames) {
+      const profile = await readSelfCheckJson("profiles", profileName);
+      for (const entry of profile.entries ?? []) {
+        activeScenarioIds.add(entry.scenario);
+      }
+      for (const level of ["blocking", "warning"]) {
+        for (const entry of profile.gate?.[level] ?? []) {
+          activeScenarioIds.add(entry.scenario);
+        }
+      }
+    }
+
+    const scenarioNames = (await readdir(selfCheckPath("scenarios")))
+      .filter((name) => name.endsWith(".json"))
+      .sort();
+    const scenarioSurfaces = new Map();
+    for (const scenarioName of scenarioNames) {
+      const scenario = await readSelfCheckJson("scenarios", scenarioName);
+      scenarioSurfaces.set(scenario.id, scenario.surface);
+    }
+
+    const activeSurfaceIds = new Set(
+      [...activeScenarioIds]
+        .map((scenarioId) => scenarioSurfaces.get(scenarioId))
+        .filter(Boolean)
+    );
+    const staleRequirements = [];
+    for (const surfaceId of [...activeSurfaceIds].sort()) {
+      const surface = await readSelfCheckJson("surfaces", `${surfaceId}.json`);
+      for (const span of surface.diagnostics?.expectedSpans ?? []) {
+        if (retiredSpans.has(span)) {
+          staleRequirements.push(`${surfaceId}:${span}`);
+        }
+      }
+    }
+
+    assertEqual(staleRequirements.join(","), "", "current profile surfaces exclude retired production spans");
+    for (const surfaceId of [
+      "browser-automation",
+      "release-update-recovery",
+      "upgrade-existing-user"
+    ]) {
+      const surface = await readSelfCheckJson("surfaces", `${surfaceId}.json`);
+      assertEqual(
+        surface.diagnostics?.expectedSpans?.includes("plugins.load"),
+        true,
+        `${surfaceId} requires current plugin load span`
+      );
+    }
+
+    return {
+      id: "current-profile-diagnostics-contract",
+      status: "PASS",
+      command: "validate current profile surfaces against production diagnostics spans",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "current-profile-diagnostics-contract",
+      status: "FAIL",
+      command: "validate current profile surfaces against production diagnostics spans",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
 async function releaseResourceCalibrationCheck() {
   try {
     const [
@@ -19653,7 +19786,6 @@ async function releaseResourceCalibrationCheck() {
       gatewayScenario,
       freshSurface,
       gatewaySurface,
-      bundledRuntimeSurface,
       bundledPluginSurface,
       releaseProfile
     ] = await Promise.all([
@@ -19661,7 +19793,6 @@ async function releaseResourceCalibrationCheck() {
       readSelfCheckJson("scenarios", "gateway-performance.json"),
       readSelfCheckJson("surfaces", "fresh-install.json"),
       readSelfCheckJson("surfaces", "gateway-performance.json"),
-      readSelfCheckJson("surfaces", "bundled-runtime-deps.json"),
       readSelfCheckJson("surfaces", "bundled-plugin-startup.json"),
       readSelfCheckJson("profiles", "release.json")
     ]);
@@ -19680,13 +19811,6 @@ async function releaseResourceCalibrationCheck() {
         surface: gatewaySurface,
         primaryRssMb: 1050,
         roles: { gateway: 1050, "gateway-tree": 1200, "status-cli": 900, "plugin-cli": 950 }
-      },
-      {
-        id: "bundled-runtime-deps",
-        scenario: null,
-        surface: bundledRuntimeSurface,
-        primaryRssMb: null,
-        roles: { gateway: 1050 }
       },
       {
         id: "bundled-plugin-startup",

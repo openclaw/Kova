@@ -50,7 +50,7 @@
       "upgrade.apply",
       "doctor.fix",
       "plugins.index.migrate",
-      "plugins.runtimeDeps"
+      "plugins.load"
     ]
   },
   "purposes": [

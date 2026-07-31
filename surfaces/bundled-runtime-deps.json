@@ -1,8 +1,8 @@
 {
   "id": "bundled-runtime-deps",
-  "title": "Bundled Runtime Dependencies",
+  "title": "Legacy Bundled Runtime Dependencies",
   "ownerArea": "plugins",
-  "description": "Validate cold and warm bundled plugin runtime dependency staging behavior.",
+  "description": "Legacy-only validation for releases that staged bundled plugin runtime dependencies during startup.",
   "processRoles": [
     "gateway",
     "command-tree",
@@ -40,9 +40,8 @@
     ]
   },
   "purposes": [
-    "plugin",
-    "regression",
-    "release"
+    "diagnostic",
+    "plugin"
   ],
   "requirements": [
     {

@@ -295,8 +295,8 @@ Current metrics include:
 - OpenClaw diagnostics timeline availability, event count, parse errors,
   slowest spans, repeated spans, open spans, key span summaries, event-loop max,
   provider request max, and child process failures
-- runtime dependency staging grouped by bundled plugin when OpenClaw emits
-  `runtimeDeps.stage` spans with `pluginId` attributes
+- legacy runtime dependency staging grouped by bundled plugin when historical
+  OpenClaw artifacts contain `runtimeDeps.stage` spans with `pluginId` attributes
 
 ## Agent Turn Evidence
 
@@ -509,8 +509,11 @@ Timeline-derived measurements include:
   span id, parent span id, plugin id, provider, and operation when available
 - `openclawKeySpans`: compact summaries for OpenClaw's required operational
   spans: `gateway.startup`, `gateway.ready`, `config.normalize`,
-  `plugins.metadata.scan`, `runtimeDeps.stage`, `providers.load`,
+  `plugins.metadata.scan`, `plugins.load`, `providers.load`,
   `models.catalog`, `agent.turn`, and `agent.cleanup`
+
+Historical `runtimeDeps.stage` spans remain available in `openclawKeySpans` for
+old report parsing, but current surfaces do not require them.
 
 Open required spans are failures for diagnostic source-build runs because they
 usually mean OpenClaw started a critical operation and never reported completion.

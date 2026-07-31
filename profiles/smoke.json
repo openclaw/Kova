@@ -21,10 +21,6 @@
       "state": "fresh"
     },
     {
-      "scenario": "bundled-runtime-deps",
-      "state": "missing-plugin-index"
-    },
-    {
       "scenario": "plugin-lifecycle",
       "state": "stale-runtime-deps"
     },

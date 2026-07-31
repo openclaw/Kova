@@ -78,14 +78,6 @@
       "timeoutMs": 360000
     },
     {
-      "scenario": "bundled-runtime-deps",
-      "state": "missing-plugin-index"
-    },
-    {
-      "scenario": "bundled-runtime-deps",
-      "state": "stale-runtime-deps"
-    },
-    {
       "scenario": "plugin-lifecycle",
       "state": "plugin-index"
     },

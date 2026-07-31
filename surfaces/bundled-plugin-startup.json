@@ -6,14 +6,11 @@
   "processRoles": [
     "gateway",
     "command-tree",
-    "plugin-cli",
-    "package-manager",
-    "runtime-staging"
+    "plugin-cli"
   ],
   "thresholds": {
     "gatewayReadyMs": 30000,
-    "gatewayReadyHardTimeoutMs": 120000,
-    "runtimeDepsStagingMs": 30000
+    "gatewayReadyHardTimeoutMs": 120000
   },
   "roleThresholds": {
     "gateway": {
@@ -23,14 +20,6 @@
     "plugin-cli": {
       "peakRssMb": 900,
       "maxCpuPercent": 250
-    },
-    "runtime-staging": {
-      "peakRssMb": 900,
-      "maxCpuPercent": 350
-    },
-    "package-manager": {
-      "peakRssMb": 900,
-      "maxCpuPercent": 350
     }
   },
   "diagnostics": {
@@ -39,7 +28,7 @@
       "gateway.ready",
       "config.normalize",
       "plugins.metadata.scan",
-      "runtimeDeps.stage"
+      "plugins.load"
     ]
   },
   "purposes": [
@@ -64,8 +53,7 @@
       "metrics": [
         "gatewayReadyMs",
         "pluginLoadFailures",
-        "missingDependencyErrors",
-        "runtimeDepsStagingMs"
+        "missingDependencyErrors"
       ]
     }
   ]

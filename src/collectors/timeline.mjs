@@ -9,6 +9,8 @@ export const KEY_OPENCLAW_SPANS = [
   "gateway.chat_send",
   "config.normalize",
   "plugins.metadata.scan",
+  "plugins.load",
+  // Historical releases emitted this span; keep old artifacts reportable.
   "runtimeDeps.stage",
   "providers.load",
   "models.catalog",
@@ -509,6 +511,7 @@ function isTurnAttributionEvent(event) {
     return false;
   }
   return event.name === "plugins.metadata.scan" ||
+    event.name === "plugins.load" ||
     event.name === "provider.request" ||
     event.name === "agent.prepare" ||
     event.name === "agent.turn" ||

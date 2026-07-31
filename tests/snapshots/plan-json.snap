@@ -282,7 +282,7 @@
           "browser.start",
           "browser.tabs",
           "browser.snapshot",
-          "runtimeDeps.stage"
+          "plugins.load"
         ]
       },
       "purposes": [
@@ -325,14 +325,11 @@
       "processRoles": [
         "gateway",
         "command-tree",
-        "plugin-cli",
-        "package-manager",
-        "runtime-staging"
+        "plugin-cli"
       ],
       "thresholds": {
         "gatewayReadyMs": 30000,
-        "gatewayReadyHardTimeoutMs": 120000,
-        "runtimeDepsStagingMs": 30000
+        "gatewayReadyHardTimeoutMs": 120000
       },
       "roleThresholds": {
         "gateway": {
@@ -342,14 +339,6 @@
         "plugin-cli": {
           "peakRssMb": 900,
           "maxCpuPercent": 250
-        },
-        "runtime-staging": {
-          "peakRssMb": 900,
-          "maxCpuPercent": 350
-        },
-        "package-manager": {
-          "peakRssMb": 900,
-          "maxCpuPercent": 350
         }
       },
       "diagnostics": {
@@ -358,7 +347,7 @@
           "gateway.ready",
           "config.normalize",
           "plugins.metadata.scan",
-          "runtimeDeps.stage"
+          "plugins.load"
         ]
       },
       "purposes": [
@@ -383,17 +372,16 @@
           "metrics": [
             "gatewayReadyMs",
             "pluginLoadFailures",
-            "missingDependencyErrors",
-            "runtimeDepsStagingMs"
+            "missingDependencyErrors"
           ]
         }
       ]
     },
     {
       "id": "bundled-runtime-deps",
-      "title": "Bundled Runtime Dependencies",
+      "title": "Legacy Bundled Runtime Dependencies",
       "ownerArea": "plugins",
-      "description": "Validate cold and warm bundled plugin runtime dependency staging behavior.",
+      "description": "Legacy-only validation for releases that staged bundled plugin runtime dependencies during startup.",
       "processRoles": [
         "gateway",
         "command-tree",
@@ -431,9 +419,8 @@
         ]
       },
       "purposes": [
-        "plugin",
-        "regression",
-        "release"
+        "diagnostic",
+        "plugin"
       ],
       "requirements": [
         {
@@ -1974,8 +1961,7 @@
       "processRoles": [
         "gateway",
         "command-tree",
-        "plugin-cli",
-        "runtime-staging"
+        "plugin-cli"
       ],
       "thresholds": {
         "gatewayReadyMs": 30000,
@@ -1989,17 +1975,12 @@
         "plugin-cli": {
           "peakRssMb": 600,
           "maxCpuPercent": 250
-        },
-        "runtime-staging": {
-          "peakRssMb": 900,
-          "maxCpuPercent": 350
         }
       },
       "diagnostics": {
         "timelineRequiredForSourceBuild": true,
         "expectedSpans": [
-          "plugins.load",
-          "plugins.runtimeDeps"
+          "plugins.load"
         ]
       },
       "purposes": [
@@ -2346,7 +2327,7 @@
           "upgrade.apply",
           "doctor.fix",
           "plugins.index.migrate",
-          "plugins.runtimeDeps"
+          "plugins.load"
         ]
       },
       "purposes": [
@@ -2700,7 +2681,7 @@
       "id": "upgrade-existing-user",
       "title": "Existing User Upgrade",
       "ownerArea": "upgrade",
-      "description": "Clone existing OpenClaw state, run the real upgrade path, and verify migrations, plugin indexes, runtime deps, gateway readiness, and diagnostics.",
+      "description": "Clone existing OpenClaw state, run the real upgrade path, and verify migrations, plugin indexes, plugin loading, gateway readiness, and diagnostics.",
       "processRoles": [
         "gateway",
         "command-tree",
@@ -2742,7 +2723,7 @@
           "upgrade.apply",
           "doctor.fix",
           "plugins.index.migrate",
-          "plugins.runtimeDeps"
+          "plugins.load"
         ]
       },
       "purposes": [
@@ -10840,7 +10821,7 @@
       "tags": [
         "plugins",
         "bundled",
-        "runtime-deps",
+        "plugin-load",
         "startup"
       ],
       "timeoutMs": 180000,
@@ -10849,8 +10830,7 @@
         "gatewayReadyHardTimeoutMs": 120000,
         "pluginsListMs": 10000,
         "missingDependencyErrors": 0,
-        "pluginLoadFailures": 0,
-        "runtimeDepsStagingMs": 30000
+        "pluginLoadFailures": 0
       },
       "phases": [
         {
@@ -10881,7 +10861,7 @@
             "gateway service started",
             "bundled plugin count",
             "readiness classification",
-            "dependency staging"
+            "plugin load diagnostics"
           ],
           "healthScope": "readiness"
         },
@@ -10905,14 +10885,14 @@
         {
           "id": "restart",
           "title": "Warm Restart Bundled Plugins",
-          "intent": "Restart after dependency staging should be warm and verify bundled plugin services remain healthy.",
+          "intent": "Restart and verify bundled plugins load again without degrading gateway health.",
           "commands": [
             "ocm service restart {env}"
           ],
           "evidence": [
             "warm readiness",
             "bundled plugin reload",
-            "runtime dependency reuse"
+            "plugin load diagnostics"
           ],
           "healthScope": "readiness"
         }
@@ -10924,11 +10904,12 @@
     {
       "id": "bundled-runtime-deps",
       "surface": "bundled-runtime-deps",
-      "title": "Bundled Runtime Dependency Integrity",
-      "objective": "Verify bundled plugin runtime dependencies stage correctly, remain reusable on warm starts, and do not produce missing dependency errors.",
+      "title": "Legacy Bundled Runtime Dependency Integrity",
+      "objective": "Validate historical releases that staged bundled plugin runtime dependencies during gateway startup.",
       "tags": [
         "plugins",
         "runtime-deps",
+        "legacy",
         "cold-start",
         "warm-start"
       ],
@@ -17210,7 +17191,7 @@
       "title": "Source-Built Diagnostics",
       "objective": "Run release-shaped local OpenClaw builds with timeline diagnostics enabled so Kova can attribute startup, plugin, provider, agent, event-loop, CPU, and heap behavior to OpenClaw phases.",
       "purpose": "diagnostic",
-      "entryCount": 8,
+      "entryCount": 7,
       "targetKinds": [
         "local-build"
       ],
@@ -17222,12 +17203,12 @@
         ]
       },
       "calibration": {
-        "surfaceCount": 8,
+        "surfaceCount": 7,
         "roleCount": 6
       },
       "gate": {
         "id": "openclaw-diagnostic",
-        "blockingCount": 8,
+        "blockingCount": 7,
         "warningCount": 0
       }
     },
@@ -17253,7 +17234,7 @@
       "title": "Exhaustive Matrix",
       "objective": "Maximum local OpenClaw coverage across install, upgrade, plugins, providers, config corruption, filesystem pressure, service recovery, and performance scenarios.",
       "purpose": "regression",
-      "entryCount": 75,
+      "entryCount": 73,
       "targetKinds": null,
       "diagnostics": null,
       "calibration": null,
@@ -17305,16 +17286,16 @@
       "title": "Release Matrix",
       "objective": "Broad OpenClaw release confidence across install, upgrade, bundled plugins, model/provider, UI, failure, soak, and platform smoke scenarios.",
       "purpose": "release",
-      "entryCount": 52,
+      "entryCount": 51,
       "targetKinds": null,
       "diagnostics": null,
       "calibration": {
-        "surfaceCount": 19,
+        "surfaceCount": 18,
         "roleCount": 18
       },
       "gate": {
         "id": "openclaw-release",
-        "blockingCount": 28,
+        "blockingCount": 27,
         "warningCount": 24
       }
     },
@@ -17339,7 +17320,7 @@
       "title": "Smoke Matrix",
       "objective": "Fast OpenClaw coverage across fresh install, plugin dependency, plugin lifecycle, and gateway performance states.",
       "purpose": "regression",
-      "entryCount": 12,
+      "entryCount": 11,
       "targetKinds": null,
       "diagnostics": null,
       "calibration": null,
@@ -17361,7 +17342,7 @@
       "title": "Web Release Metrics",
       "objective": "Generate public release-page metrics for startup, gateway responsiveness, session send latency, agent/channel/TUI turn latency, dashboard responsiveness, and runtime/plugin health without running the full release gate.",
       "purpose": "release",
-      "entryCount": 12,
+      "entryCount": 11,
       "targetKinds": null,
       "diagnostics": null,
       "calibration": null,
@@ -17428,7 +17409,7 @@
       },
       {
         "id": "bundled-runtime-deps",
-        "title": "Bundled Runtime Dependencies",
+        "title": "Legacy Bundled Runtime Dependencies",
         "ownerArea": "plugins",
         "scenarioCount": 1,
         "scenarios": [
@@ -18121,11 +18102,10 @@
       },
       {
         "id": "diagnostic",
-        "entryCount": 8,
+        "entryCount": 7,
         "surfaces": [
           "agent-cli-local-turn",
           "agent-gateway-rpc-turn",
-          "bundled-runtime-deps",
           "gateway-performance",
           "gateway-session-send-turn",
           "openai-compatible-turn",
@@ -18135,13 +18115,11 @@
         "states": [
           "fresh",
           "many-bundled-plugins",
-          "missing-plugin-index",
           "mock-openai-provider"
         ],
         "scenarios": [
           "agent-cold-warm-message",
           "agent-gateway-rpc-turn",
-          "bundled-runtime-deps",
           "gateway-performance",
           "gateway-session-send-turn",
           "openai-compatible-turn",
@@ -18151,7 +18129,6 @@
         "requirements": [
           "agent-cli-local-turn:baseline",
           "agent-gateway-rpc-turn:baseline",
-          "bundled-runtime-deps:baseline",
           "gateway-performance:baseline",
           "gateway-session-send-turn:baseline",
           "openai-compatible-turn:baseline",
@@ -18161,7 +18138,6 @@
         "stateSurfaces": [
           "agent-cli-local-turn:mock-openai-provider",
           "agent-gateway-rpc-turn:mock-openai-provider",
-          "bundled-runtime-deps:missing-plugin-index",
           "gateway-performance:many-bundled-plugins",
           "gateway-session-send-turn:mock-openai-provider",
           "openai-compatible-turn:mock-openai-provider",
@@ -18172,7 +18148,6 @@
           "surfaces": [
             "agent-cli-local-turn",
             "agent-gateway-rpc-turn",
-            "bundled-runtime-deps",
             "gateway-performance",
             "gateway-session-send-turn",
             "openai-compatible-turn",
@@ -18182,7 +18157,6 @@
           "scenarios": [
             "agent-cold-warm-message",
             "agent-gateway-rpc-turn",
-            "bundled-runtime-deps",
             "gateway-performance",
             "gateway-session-send-turn",
             "openai-compatible-turn",
@@ -18192,14 +18166,12 @@
           "states": [
             "fresh",
             "many-bundled-plugins",
-            "missing-plugin-index",
             "mock-openai-provider"
           ],
           "traits": [
             "agent-state",
             "baseline",
             "fresh-user",
-            "migration-state",
             "mock-provider",
             "performance-pressure",
             "plugin-pressure",
@@ -18209,7 +18181,6 @@
           "requirements": [
             "agent-cli-local-turn:baseline",
             "agent-gateway-rpc-turn:baseline",
-            "bundled-runtime-deps:baseline",
             "gateway-performance:baseline",
             "gateway-session-send-turn:baseline",
             "openai-compatible-turn:baseline",
@@ -18219,7 +18190,6 @@
           "stateSurfaces": [
             "agent-cli-local-turn:mock-openai-provider",
             "agent-gateway-rpc-turn:mock-openai-provider",
-            "bundled-runtime-deps:missing-plugin-index",
             "gateway-performance:many-bundled-plugins",
             "gateway-session-send-turn:mock-openai-provider",
             "openai-compatible-turn:mock-openai-provider",
@@ -18251,9 +18221,6 @@
           "fresh-user": [
             "fresh"
           ],
-          "migration-state": [
-            "missing-plugin-index"
-          ],
           "mock-provider": [
             "mock-openai-provider"
           ],
@@ -18261,8 +18228,7 @@
             "many-bundled-plugins"
           ],
           "plugin-pressure": [
-            "many-bundled-plugins",
-            "missing-plugin-index"
+            "many-bundled-plugins"
           ],
           "provider-pressure": [
             "many-bundled-plugins",
@@ -18275,9 +18241,6 @@
           ],
           "agent-gateway-rpc-turn": [
             "mock-openai-provider"
-          ],
-          "bundled-runtime-deps": [
-            "missing-plugin-index"
           ],
           "gateway-performance": [
             "many-bundled-plugins"
@@ -18309,9 +18272,6 @@
           "fresh-user": [
             "release-runtime-startup"
           ],
-          "migration-state": [
-            "bundled-runtime-deps"
-          ],
           "mock-provider": [
             "agent-cli-local-turn",
             "agent-gateway-rpc-turn",
@@ -18323,7 +18283,6 @@
             "gateway-performance"
           ],
           "plugin-pressure": [
-            "bundled-runtime-deps",
             "gateway-performance"
           ],
           "provider-pressure": [
@@ -18481,14 +18440,13 @@
       },
       {
         "id": "exhaustive",
-        "entryCount": 75,
+        "entryCount": 73,
         "surfaces": [
           "adversarial-input",
           "agent-cli-local-turn",
           "agent-gateway-rpc-turn",
           "browser-automation",
           "bundled-plugin-startup",
-          "bundled-runtime-deps",
           "channel-capability-preflight",
           "channel-discord-capability-conformance",
           "channel-model-turn-baseline",
@@ -18546,7 +18504,6 @@
           "malformed-large-session-store",
           "many-bundled-plugins",
           "mcp-tool-user",
-          "missing-plugin-index",
           "mock-openai-provider",
           "model-auth-configured",
           "model-auth-missing",
@@ -18558,7 +18515,6 @@
           "release-configured",
           "rolling-old-release-user",
           "slow-filesystem",
-          "stale-runtime-deps",
           "stale-service-state",
           "update-recovery-plugin-user"
         ],
@@ -18579,7 +18535,6 @@
           "agent-provider-timeout",
           "browser-automation-smoke",
           "bundled-plugin-startup",
-          "bundled-runtime-deps",
           "channel-capability-preflight",
           "channel-discord-capability-conformance",
           "channel-model-turn-baseline",
@@ -18624,7 +18579,6 @@
           "agent-gateway-rpc-turn:baseline",
           "browser-automation:baseline",
           "bundled-plugin-startup:baseline",
-          "bundled-runtime-deps:baseline",
           "channel-capability-preflight:preflight",
           "channel-discord-capability-conformance:discord-conformance",
           "channel-model-turn-baseline:baseline",
@@ -18672,8 +18626,6 @@
           "agent-gateway-rpc-turn:mock-openai-provider",
           "browser-automation:fresh",
           "bundled-plugin-startup:fresh",
-          "bundled-runtime-deps:missing-plugin-index",
-          "bundled-runtime-deps:stale-runtime-deps",
           "channel-capability-preflight:fresh",
           "channel-discord-capability-conformance:fresh",
           "channel-model-turn-baseline:mock-openai-provider",
@@ -18834,12 +18786,10 @@
             "malformed-large-session-store"
           ],
           "migration-state": [
-            "missing-plugin-index",
             "old-config-keys",
             "old-release-user",
             "plugin-index",
             "rolling-old-release-user",
-            "stale-runtime-deps",
             "update-recovery-plugin-user"
           ],
           "missing-auth": [
@@ -18880,11 +18830,9 @@
             "dirty-plugin-symlink-dev",
             "external-plugin",
             "many-bundled-plugins",
-            "missing-plugin-index",
             "official-plugins",
             "plugin-index",
             "slow-filesystem",
-            "stale-runtime-deps",
             "update-recovery-plugin-user"
           ],
           "provider-pressure": [
@@ -18899,8 +18847,7 @@
             "update-recovery-plugin-user"
           ],
           "runtime-deps": [
-            "broken-plugin-deps",
-            "stale-runtime-deps"
+            "broken-plugin-deps"
           ],
           "service-state": [
             "gateway-already-running",
@@ -18933,10 +18880,6 @@
           ],
           "bundled-plugin-startup": [
             "fresh"
-          ],
-          "bundled-runtime-deps": [
-            "missing-plugin-index",
-            "stale-runtime-deps"
           ],
           "channel-capability-preflight": [
             "fresh"
@@ -19167,7 +19110,6 @@
             "soak"
           ],
           "migration-state": [
-            "bundled-runtime-deps",
             "fresh-install",
             "plugin-lifecycle",
             "release-update-recovery",
@@ -19206,7 +19148,6 @@
             "cross-platform-smoke"
           ],
           "plugin-pressure": [
-            "bundled-runtime-deps",
             "cross-platform-smoke",
             "dirty-plugin-state",
             "failure-containment",
@@ -19232,7 +19173,6 @@
             "release-update-recovery"
           ],
           "runtime-deps": [
-            "bundled-runtime-deps",
             "failure-containment",
             "plugin-lifecycle"
           ],
@@ -19503,13 +19443,12 @@
       },
       {
         "id": "release",
-        "entryCount": 52,
+        "entryCount": 51,
         "surfaces": [
           "agent-cli-local-turn",
           "agent-gateway-rpc-turn",
           "browser-automation",
           "bundled-plugin-startup",
-          "bundled-runtime-deps",
           "channel-capability-preflight",
           "channel-discord-capability-conformance",
           "channel-model-turn-baseline",
@@ -19557,7 +19496,6 @@
           "large-workspace",
           "many-bundled-plugins",
           "mcp-tool-user",
-          "missing-plugin-index",
           "mock-openai-provider",
           "model-auth-missing",
           "official-plugins",
@@ -19583,7 +19521,6 @@
           "agent-provider-timeout",
           "browser-automation-smoke",
           "bundled-plugin-startup",
-          "bundled-runtime-deps",
           "channel-capability-preflight",
           "channel-discord-capability-conformance",
           "channel-model-turn-baseline",
@@ -19624,7 +19561,6 @@
           "agent-gateway-rpc-turn:baseline",
           "browser-automation:baseline",
           "bundled-plugin-startup:baseline",
-          "bundled-runtime-deps:baseline",
           "channel-capability-preflight:preflight",
           "channel-discord-capability-conformance:discord-conformance",
           "channel-model-turn-baseline:baseline",
@@ -19671,7 +19607,6 @@
           "agent-gateway-rpc-turn:mock-openai-provider",
           "browser-automation:fresh",
           "bundled-plugin-startup:fresh",
-          "bundled-runtime-deps:missing-plugin-index",
           "channel-capability-preflight:fresh",
           "channel-discord-capability-conformance:fresh",
           "channel-model-turn-baseline:mock-openai-provider",
@@ -19716,7 +19651,6 @@
             "agent-gateway-rpc-turn",
             "browser-automation",
             "bundled-plugin-startup",
-            "bundled-runtime-deps",
             "channel-capability-preflight",
             "channel-discord-capability-conformance",
             "channel-model-turn-baseline",
@@ -19769,7 +19703,6 @@
             "agent-provider-timeout",
             "browser-automation-smoke",
             "bundled-plugin-startup",
-            "bundled-runtime-deps",
             "channel-capability-preflight",
             "channel-discord-capability-conformance",
             "channel-model-turn-baseline",
@@ -19816,7 +19749,6 @@
             "large-workspace",
             "many-bundled-plugins",
             "mcp-tool-user",
-            "missing-plugin-index",
             "mock-openai-provider",
             "model-auth-missing",
             "official-plugins",
@@ -19860,7 +19792,6 @@
             "agent-gateway-rpc-turn:baseline",
             "browser-automation:baseline",
             "bundled-plugin-startup:baseline",
-            "bundled-runtime-deps:baseline",
             "channel-capability-preflight:preflight",
             "channel-discord-capability-conformance:discord-conformance",
             "channel-model-turn-baseline:baseline",
@@ -19907,7 +19838,6 @@
             "agent-gateway-rpc-turn:mock-openai-provider",
             "browser-automation:fresh",
             "bundled-plugin-startup:fresh",
-            "bundled-runtime-deps:missing-plugin-index",
             "channel-capability-preflight:fresh",
             "channel-discord-capability-conformance:fresh",
             "channel-model-turn-baseline:mock-openai-provider",
@@ -20010,7 +19940,6 @@
             "official-plugins"
           ],
           "migration-state": [
-            "missing-plugin-index",
             "old-release-user",
             "plugin-index",
             "update-recovery-plugin-user"
@@ -20044,7 +19973,6 @@
             "dirty-plugin-local-edits",
             "external-plugin",
             "many-bundled-plugins",
-            "missing-plugin-index",
             "official-plugins",
             "plugin-index",
             "slow-filesystem",
@@ -20079,9 +20007,6 @@
           ],
           "bundled-plugin-startup": [
             "fresh"
-          ],
-          "bundled-runtime-deps": [
-            "missing-plugin-index"
           ],
           "channel-capability-preflight": [
             "fresh"
@@ -20278,7 +20203,6 @@
             "tui"
           ],
           "migration-state": [
-            "bundled-runtime-deps",
             "plugin-lifecycle",
             "release-update-recovery",
             "upgrade-existing-user"
@@ -20314,7 +20238,6 @@
             "cross-platform-smoke"
           ],
           "plugin-pressure": [
-            "bundled-runtime-deps",
             "cross-platform-smoke",
             "dirty-plugin-state",
             "failure-containment",
@@ -20418,12 +20341,11 @@
       },
       {
         "id": "smoke",
-        "entryCount": 12,
+        "entryCount": 11,
         "surfaces": [
           "agent-cli-local-turn",
           "agent-gateway-rpc-turn",
           "bundled-plugin-startup",
-          "bundled-runtime-deps",
           "channel-capability-preflight",
           "channel-model-turn-baseline",
           "fresh-install",
@@ -20436,7 +20358,6 @@
         "states": [
           "fresh",
           "many-bundled-plugins",
-          "missing-plugin-index",
           "mock-openai-provider",
           "stale-runtime-deps"
         ],
@@ -20444,7 +20365,6 @@
           "agent-cold-warm-message",
           "agent-gateway-rpc-turn",
           "bundled-plugin-startup",
-          "bundled-runtime-deps",
           "channel-capability-preflight",
           "channel-model-turn-baseline",
           "fresh-install",
@@ -20458,7 +20378,6 @@
           "agent-cli-local-turn:baseline",
           "agent-gateway-rpc-turn:baseline",
           "bundled-plugin-startup:baseline",
-          "bundled-runtime-deps:baseline",
           "channel-capability-preflight:preflight",
           "channel-model-turn-baseline:baseline",
           "fresh-install:baseline",
@@ -20472,7 +20391,6 @@
           "agent-cli-local-turn:mock-openai-provider",
           "agent-gateway-rpc-turn:mock-openai-provider",
           "bundled-plugin-startup:fresh",
-          "bundled-runtime-deps:missing-plugin-index",
           "channel-capability-preflight:fresh",
           "channel-model-turn-baseline:mock-openai-provider",
           "fresh-install:fresh",
@@ -20516,7 +20434,6 @@
             "fresh"
           ],
           "migration-state": [
-            "missing-plugin-index",
             "stale-runtime-deps"
           ],
           "mock-provider": [
@@ -20527,7 +20444,6 @@
           ],
           "plugin-pressure": [
             "many-bundled-plugins",
-            "missing-plugin-index",
             "stale-runtime-deps"
           ],
           "provider-pressure": [
@@ -20547,9 +20463,6 @@
           ],
           "bundled-plugin-startup": [
             "fresh"
-          ],
-          "bundled-runtime-deps": [
-            "missing-plugin-index"
           ],
           "channel-capability-preflight": [
             "fresh"
@@ -20597,7 +20510,6 @@
             "release-runtime-startup"
           ],
           "migration-state": [
-            "bundled-runtime-deps",
             "plugin-lifecycle"
           ],
           "mock-provider": [
@@ -20611,7 +20523,6 @@
             "gateway-performance"
           ],
           "plugin-pressure": [
-            "bundled-runtime-deps",
             "gateway-performance",
             "plugin-lifecycle"
           ],
@@ -20825,11 +20736,10 @@
       },
       {
         "id": "web-release",
-        "entryCount": 12,
+        "entryCount": 11,
         "surfaces": [
           "agent-cli-local-turn",
           "bundled-plugin-startup",
-          "bundled-runtime-deps",
           "channel-model-turn-baseline",
           "dashboard",
           "fresh-install",
@@ -20843,14 +20753,12 @@
         "states": [
           "fresh",
           "many-bundled-plugins",
-          "missing-plugin-index",
           "mock-openai-provider",
           "plugin-index"
         ],
         "scenarios": [
           "agent-cold-warm-message",
           "bundled-plugin-startup",
-          "bundled-runtime-deps",
           "channel-model-turn-baseline",
           "dashboard-readiness",
           "fresh-install",
@@ -20864,7 +20772,6 @@
         "requirements": [
           "agent-cli-local-turn:baseline",
           "bundled-plugin-startup:baseline",
-          "bundled-runtime-deps:baseline",
           "channel-model-turn-baseline:baseline",
           "dashboard:baseline",
           "fresh-install:baseline",
@@ -20878,7 +20785,6 @@
         "stateSurfaces": [
           "agent-cli-local-turn:mock-openai-provider",
           "bundled-plugin-startup:fresh",
-          "bundled-runtime-deps:missing-plugin-index",
           "channel-model-turn-baseline:mock-openai-provider",
           "dashboard:fresh",
           "fresh-install:fresh",
@@ -20926,7 +20832,6 @@
             "fresh"
           ],
           "migration-state": [
-            "missing-plugin-index",
             "plugin-index"
           ],
           "mock-provider": [
@@ -20937,7 +20842,6 @@
           ],
           "plugin-pressure": [
             "many-bundled-plugins",
-            "missing-plugin-index",
             "plugin-index"
           ],
           "provider-pressure": [
@@ -20951,9 +20855,6 @@
           ],
           "bundled-plugin-startup": [
             "fresh"
-          ],
-          "bundled-runtime-deps": [
-            "missing-plugin-index"
           ],
           "channel-model-turn-baseline": [
             "mock-openai-provider"
@@ -21007,7 +20908,6 @@
             "release-runtime-startup"
           ],
           "migration-state": [
-            "bundled-runtime-deps",
             "plugin-lifecycle"
           ],
           "mock-provider": [
@@ -21021,7 +20921,6 @@
             "gateway-performance"
           ],
           "plugin-pressure": [
-            "bundled-runtime-deps",
             "gateway-performance",
             "plugin-lifecycle"
           ],

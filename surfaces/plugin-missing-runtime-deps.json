@@ -6,8 +6,7 @@
   "processRoles": [
     "gateway",
     "command-tree",
-    "plugin-cli",
-    "runtime-staging"
+    "plugin-cli"
   ],
   "thresholds": {
     "gatewayReadyMs": 30000,
@@ -21,17 +20,12 @@
     "plugin-cli": {
       "peakRssMb": 600,
       "maxCpuPercent": 250
-    },
-    "runtime-staging": {
-      "peakRssMb": 900,
-      "maxCpuPercent": 350
     }
   },
   "diagnostics": {
     "timelineRequiredForSourceBuild": true,
     "expectedSpans": [
-      "plugins.load",
-      "plugins.runtimeDeps"
+      "plugins.load"
     ]
   },
   "purposes": [
