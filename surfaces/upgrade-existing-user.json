@@ -2,7 +2,7 @@
   "id": "upgrade-existing-user",
   "title": "Existing User Upgrade",
   "ownerArea": "upgrade",
-  "description": "Clone existing OpenClaw state, run the real upgrade path, and verify migrations, plugin indexes, runtime deps, gateway readiness, and diagnostics.",
+  "description": "Clone existing OpenClaw state, run the real upgrade path, and verify migrations, plugin indexes, plugin loading, gateway readiness, and diagnostics.",
   "processRoles": [
     "gateway",
     "command-tree",
@@ -44,7 +44,7 @@
       "upgrade.apply",
       "doctor.fix",
       "plugins.index.migrate",
-      "plugins.runtimeDeps"
+      "plugins.load"
     ]
   },
   "purposes": [

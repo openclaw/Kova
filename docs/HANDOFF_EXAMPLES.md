@@ -16,7 +16,7 @@ Kova evidence:
 - Pre-provider: <ms>
 - Provider work: <ms>
 - Provider request count: <count>
-- Relevant spans: <agent.prepare/models.catalog/channel.plugin/runtimeDeps.stage/unknown>
+- Relevant spans: <agent.prepare/models.catalog/channel.plugin/plugins.load/unknown>
 - Resource role peaks: <gateway/agent-cli/plugin-cli>
 
 The provider was fast, but OpenClaw spent most of the turn before provider
@@ -94,21 +94,21 @@ deterministic on success, failure, timeout, and interrupt, and add coverage
 for the process role that leaked.
 ```
 
-## Startup Or Runtime Dependency Regression
+## Startup Or Plugin Load Regression
 
 ```text
-Investigate OpenClaw startup/runtime dependency performance.
+Investigate OpenClaw startup/plugin load performance.
 
 Kova evidence:
-- Scenario: <release-runtime-startup|bundled-runtime-deps|fresh-install>
+- Scenario: <release-runtime-startup|bundled-plugin-startup|fresh-install>
 - Time to listening: <ms>
 - Time to health ready: <ms>
-- Runtime deps staging: <ms>
+- Plugin load: <ms>
 - Missing dependency/plugin errors: <count>
-- Resource role peaks: <gateway/package-manager/runtime-staging>
+- Resource role peaks: <gateway/plugin-cli>
 - Timeline spans: <available/missing; slowest span>
 
-OpenClaw should not block startup on repeated dependency staging, plugin
-metadata scans, or config normalization. Find the slow phase and make repeated
-starts reuse cached state safely.
+OpenClaw should not block startup on repeated plugin discovery, plugin loading,
+or config normalization. Find the slow phase and make repeated starts reuse
+cached state safely.
 ```

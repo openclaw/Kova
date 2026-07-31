@@ -95,13 +95,6 @@
           "openclawSlowestSpanMs": 45000
         }
       },
-      "bundled-runtime-deps": {
-        "thresholds": {
-          "runtimeDepsStagingMs": 45000,
-          "warmRuntimeDepsRestageCount": 0,
-          "openclawSlowestSpanMs": 45000
-        }
-      },
       "gateway-performance": {
         "thresholds": {
           "gatewayReadyMs": 60000,
@@ -119,7 +112,6 @@
         "blocking": [
           "release-runtime-startup:baseline",
           "gateway-performance:baseline",
-          "bundled-runtime-deps:baseline",
           "agent-cli-local-turn:baseline",
           "agent-gateway-rpc-turn:baseline",
           "gateway-session-send-turn:baseline",
@@ -136,10 +128,6 @@
       {
         "scenario": "gateway-performance",
         "state": "many-bundled-plugins"
-      },
-      {
-        "scenario": "bundled-runtime-deps",
-        "state": "missing-plugin-index"
       },
       {
         "scenario": "agent-cold-warm-message",
@@ -172,11 +160,6 @@
     {
       "scenario": "gateway-performance",
       "state": "many-bundled-plugins",
-      "timeoutMs": 180000
-    },
-    {
-      "scenario": "bundled-runtime-deps",
-      "state": "missing-plugin-index",
       "timeoutMs": 180000
     },
     {

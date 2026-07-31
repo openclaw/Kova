@@ -267,8 +267,12 @@ plugins overall
   command: kova matrix run --profile release --target <target> --include tag:plugins --execute --json
 
 bundled plugin startup / missing runtime deps
-  scenarios: bundled-plugin-startup, bundled-runtime-deps, plugin-missing-runtime-deps
-  command: kova run --target <target> --scenario bundled-runtime-deps --execute --json
+  scenarios: bundled-plugin-startup, plugin-missing-runtime-deps
+  command: kova run --target <target> --scenario bundled-plugin-startup --execute --json
+
+legacy bundled runtime dependency staging
+  scenario: bundled-runtime-deps
+  command: kova run --target <historical-target> --scenario bundled-runtime-deps --execute --json
 
 external plugin lifecycle
   scenarios: plugin-external-install, plugin-lifecycle, plugin-update, plugin-remove

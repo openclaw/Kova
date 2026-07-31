@@ -12,7 +12,7 @@
     "title": "Smoke Matrix",
     "objective": "Fast OpenClaw coverage across fresh install, plugin dependency, plugin lifecycle, and gateway performance states.",
     "purpose": "regression",
-    "entryCount": 12,
+    "entryCount": 11,
     "targetKinds": null,
     "diagnostics": null,
     "calibration": null,
@@ -39,9 +39,9 @@
     "schemaVersion": "kova.resolvedCoverage.v1",
     "purpose": "regression",
     "targetKind": "runtime",
-    "total": 12,
+    "total": 11,
     "statuses": {
-      "planned": 12
+      "planned": 11
     },
     "obligations": [
       {
@@ -171,40 +171,6 @@
         ]
       },
       {
-        "surface": "bundled-runtime-deps",
-        "requirement": "baseline",
-        "scenario": "bundled-runtime-deps",
-        "state": "missing-plugin-index",
-        "stateTraits": [
-          "plugin-pressure",
-          "migration-state"
-        ],
-        "targetKind": "runtime",
-        "status": "planned",
-        "reason": null,
-        "requiredStates": [
-          "missing-plugin-index",
-          "stale-runtime-deps"
-        ],
-        "requiredStateTraits": [],
-        "requiredTargetKinds": [
-          "npm",
-          "release",
-          "runtime",
-          "local-build"
-        ],
-        "requiredMetrics": [
-          "coldReadyMs",
-          "warmReadyMs",
-          "runtimeDepsStagingMs",
-          "coldRuntimeDepsStagingMs",
-          "warmRuntimeDepsStagingMs",
-          "warmRuntimeDepsRestageCount",
-          "runtimeDepsWarmReuseOk",
-          "missingDependencyErrors"
-        ]
-      },
-      {
         "surface": "plugin-lifecycle",
         "requirement": "baseline",
         "scenario": "plugin-lifecycle",
@@ -263,8 +229,7 @@
         "requiredMetrics": [
           "gatewayReadyMs",
           "pluginLoadFailures",
-          "missingDependencyErrors",
-          "runtimeDepsStagingMs"
+          "missingDependencyErrors"
         ]
       },
       {
@@ -575,35 +540,6 @@
     },
     {
       "scenario": {
-        "id": "bundled-runtime-deps",
-        "surface": "bundled-runtime-deps",
-        "title": "Bundled Runtime Dependency Integrity",
-        "objective": "Verify bundled plugin runtime dependencies stage correctly, remain reusable on warm starts, and do not produce missing dependency errors.",
-        "tags": [
-          "plugins",
-          "runtime-deps",
-          "cold-start",
-          "warm-start"
-        ]
-      },
-      "state": {
-        "id": "missing-plugin-index",
-        "title": "Missing Plugin Install Index",
-        "objective": "A user state where plugin install index files are absent after provisioning, used to verify OpenClaw rebuilds or handles plugin metadata without expensive repeated scans.",
-        "tags": [
-          "plugins",
-          "migration",
-          "registry"
-        ]
-      },
-      "surface": "bundled-runtime-deps",
-      "timeoutMs": null,
-      "platforms": null,
-      "status": "SELECTED",
-      "skipReason": null
-    },
-    {
-      "scenario": {
         "id": "plugin-lifecycle",
         "surface": "plugin-lifecycle",
         "title": "OpenClaw Plugin Lifecycle",
@@ -640,7 +576,7 @@
         "tags": [
           "plugins",
           "bundled",
-          "runtime-deps",
+          "plugin-load",
           "startup"
         ]
       },

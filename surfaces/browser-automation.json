@@ -45,7 +45,7 @@
       "browser.start",
       "browser.tabs",
       "browser.snapshot",
-      "runtimeDeps.stage"
+      "plugins.load"
     ]
   },
   "purposes": [

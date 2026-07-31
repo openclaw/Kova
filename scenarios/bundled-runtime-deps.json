@@ -1,11 +1,12 @@
 {
   "id": "bundled-runtime-deps",
   "surface": "bundled-runtime-deps",
-  "title": "Bundled Runtime Dependency Integrity",
-  "objective": "Verify bundled plugin runtime dependencies stage correctly, remain reusable on warm starts, and do not produce missing dependency errors.",
+  "title": "Legacy Bundled Runtime Dependency Integrity",
+  "objective": "Validate historical releases that staged bundled plugin runtime dependencies during gateway startup.",
   "tags": [
     "plugins",
     "runtime-deps",
+    "legacy",
     "cold-start",
     "warm-start"
   ],

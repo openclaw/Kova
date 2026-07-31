@@ -6,7 +6,7 @@
   "tags": [
     "plugins",
     "bundled",
-    "runtime-deps",
+    "plugin-load",
     "startup"
   ],
   "timeoutMs": 180000,
@@ -15,8 +15,7 @@
     "gatewayReadyHardTimeoutMs": 120000,
     "pluginsListMs": 10000,
     "missingDependencyErrors": 0,
-    "pluginLoadFailures": 0,
-    "runtimeDepsStagingMs": 30000
+    "pluginLoadFailures": 0
   },
   "phases": [
     {
@@ -47,7 +46,7 @@
         "gateway service started",
         "bundled plugin count",
         "readiness classification",
-        "dependency staging"
+        "plugin load diagnostics"
       ],
       "healthScope": "readiness"
     },
@@ -71,14 +70,14 @@
     {
       "id": "restart",
       "title": "Warm Restart Bundled Plugins",
-      "intent": "Restart after dependency staging should be warm and verify bundled plugin services remain healthy.",
+      "intent": "Restart and verify bundled plugins load again without degrading gateway health.",
       "commands": [
         "ocm service restart {env}"
       ],
       "evidence": [
         "warm readiness",
         "bundled plugin reload",
-        "runtime dependency reuse"
+        "plugin load diagnostics"
       ],
       "healthScope": "readiness"
     }

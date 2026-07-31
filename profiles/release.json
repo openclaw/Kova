@@ -140,15 +140,6 @@
           "agentProcessLeaks": 0
         }
       },
-      "bundled-runtime-deps": {
-        "thresholds": {
-          "runtimeDepsStagingMs": 30000,
-          "warmRuntimeDepsRestageCount": 0,
-          "warmRuntimeDepsStagingMs": 1000,
-          "missingDependencyErrors": 0,
-          "pluginLoadFailures": 0
-        }
-      },
       "official-plugin-install": {
         "thresholds": {
           "pluginInstallMs": 120000,
@@ -293,7 +284,6 @@
           "release-runtime-startup:baseline",
           "fresh-install:baseline",
           "upgrade-existing-user:baseline",
-          "bundled-runtime-deps:baseline",
           "plugin-lifecycle:baseline",
           "plugin-external-install:baseline",
           "official-plugin-install:baseline",
@@ -368,10 +358,6 @@
       {
         "scenario": "upgrade-existing-user",
         "state": "old-release-user"
-      },
-      {
-        "scenario": "bundled-runtime-deps",
-        "state": "missing-plugin-index"
       },
       {
         "scenario": "plugin-lifecycle",
@@ -592,10 +578,6 @@
       "scenario": "upgrade-existing-user",
       "state": "old-release-user",
       "timeoutMs": 180000
-    },
-    {
-      "scenario": "bundled-runtime-deps",
-      "state": "missing-plugin-index"
     },
     {
       "scenario": "plugin-lifecycle",

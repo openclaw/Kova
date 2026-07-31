@@ -55,13 +55,12 @@ Each line is one JSON object:
   "envName": "kova-fresh-install-fresh-...",
   "pid": 12345,
   "phase": "startup",
-  "name": "runtimeDeps.stage",
+  "name": "plugins.load",
   "spanId": "span-1",
   "parentSpanId": "span-0",
   "durationMs": 1842,
   "attributes": {
-    "pluginId": "browser",
-    "dependencyCount": 12
+    "pluginCount": 32
   }
 }
 ```
@@ -91,13 +90,18 @@ Use stable names so Kova can compare runs:
 - `config.normalize`
 - `plugins.metadata.scan`
 - `plugins.load`
-- `runtimeDeps.stage`
 - `providers.load`
 - `models.catalog`
 - `agent.turn`
 - `agent.cleanup`
 - `mcp.runtime.start`
 - `mcp.runtime.stop`
+
+`runtimeDeps.stage` is a legacy span emitted by historical OpenClaw releases.
+Kova keeps parsing it for old reports and artifacts, but current surfaces and
+profiles must not require it. `plugins.runtimeDeps` is also retired and has no
+current production emitter; current plugin startup and upgrade surfaces use
+`plugins.load`.
 
 ## Event Loop Samples
 
@@ -156,7 +160,7 @@ Kova stores the complete timeline as an artifact. Human reports should show:
 - max event-loop delay
 - slowest provider request
 - slowest child process and failed child process count
-- runtime dependency staging grouped by plugin id when available
+- legacy runtime dependency staging grouped by plugin id when available
 
 Raw event dumps belong in JSON artifacts, not Markdown summaries.
 

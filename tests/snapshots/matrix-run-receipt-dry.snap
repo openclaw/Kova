@@ -1,11 +1,11 @@
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  KOVA  ·  matrix run                                                         ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
-   [DRY-RUN]   12 planned
+   [DRY-RUN]   11 planned
                mode: dry-run · target: runtime:stable · runId:
                kova-<runId>
 
-  Entries 12   ·   Dry-run 12   ·   Failed 0   ·   Performance 12 groups
+  Entries 11   ·   Dry-run 11   ·   Failed 0   ·   Performance 11 groups
 
 ─── resource contract ──────────────────────────────────────────────────────────
   Scope      product
@@ -24,7 +24,6 @@ channel-capability-preflight  runtime:stable      0/1  [DRY-RUN]  —
 channel-model-turn-baseline   runtime:stable      0/1  [DRY-RUN]  —
 release-runtime-startup       runtime:stable      0/1  [DRY-RUN]  —
 fresh-install                 runtime:stable      0/1  [DRY-RUN]  —
-bundled-runtime-deps          runtime:stable      0/1  [DRY-RUN]  —
 plugin-lifecycle              runtime:stable      0/1  [DRY-RUN]  —
 bundled-plugin-startup        runtime:stable      0/1  [DRY-RUN]  —
 gateway-performance           runtime:stable      0/1  [DRY-RUN]  —
