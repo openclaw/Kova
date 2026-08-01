@@ -7162,7 +7162,7 @@ async function reportPublicationCheck(tmp) {
       )
     );
     const rawTraceEntries = [
-      syntheticEntry("artifacts/node-profiles/node-trace-100.json"),
+      syntheticEntry("artifacts/scenario-run/node-profiles/node-trace-100.json"),
       syntheticEntry("artifacts/node-profiles/node-trace-200.log")
     ];
     const similarlyNamedEntries = [
@@ -7308,7 +7308,10 @@ async function reportPublicationCheck(tmp) {
     }
     assertEqual(
       omissionIndex.entries.some(
-        (entry) => /^artifacts\/node-profiles\/node-trace-[^/]+\.(?:json|log)$/.test(entry.path)
+        (entry) =>
+          /^artifacts\/(?:[^/]+\/)*node-profiles\/node-trace-[^/]+\.(?:json|log)$/.test(
+            entry.path
+          )
       ),
       false,
       "publication omits no arbitrary raw trace subset"

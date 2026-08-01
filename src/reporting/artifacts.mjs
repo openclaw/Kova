@@ -480,7 +480,9 @@ async function removePublicationOmissions(stage, omissions) {
 }
 
 function isRawNodeTracePublicationPath(path) {
-  return /^artifacts\/node-profiles\/node-trace-[^/]+\.(?:json|log)$/.test(path);
+  // Run artifacts group each scenario beneath artifacts/<run>/ before the
+  // node-profiles directory; direct roots remain valid for focused callers.
+  return /^artifacts\/(?:[^/]+\/)*node-profiles\/node-trace-[^/]+\.(?:json|log)$/.test(path);
 }
 
 function summarizePublicationOmissions(omissions) {
