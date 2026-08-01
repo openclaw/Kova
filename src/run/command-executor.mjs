@@ -61,7 +61,7 @@ async function runCommandWithContext(command, context, envName, artifactDir, pha
     timeoutMs: context.timeoutMs,
     env: {
       ...(context.commandEnv ?? {}),
-      ...diagnosticsEnv(context, envName, artifactDir),
+      ...buildDiagnosticsCommandEnv(context, envName, artifactDir, measurementScope),
       ...networkFrontageCommandEnv(context),
       ...(authPolicy?.commandEnv ?? {})
     },
@@ -179,7 +179,7 @@ function networkFrontageBlockedResult(command, allocation, stderr, phase) {
   return result;
 }
 
-function diagnosticsEnv(context, envName, artifactDir) {
+export function buildDiagnosticsCommandEnv(context, envName, artifactDir, measurementScope) {
   if (context.openclawDiagnostics === false) {
     return {};
   }
@@ -193,7 +193,7 @@ function diagnosticsEnv(context, envName, artifactDir) {
     OPENCLAW_DIAGNOSTICS_EVENT_LOOP: "1"
   };
 
-  if (context.nodeProfile === true) {
+  if (context.nodeProfile === true && measurementScope === "product") {
     const profileDir = artifactDirs.nodeProfiles;
     env.KOVA_NODE_PROFILE_DIR = profileDir;
     env.NODE_OPTIONS = mergeNodeOptions(process.env.NODE_OPTIONS, [

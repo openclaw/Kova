@@ -62,7 +62,11 @@ import {
   validateChannelWorkflowCaseCatalogShape,
   validateChannelWorkflowCaseInventoryReferences
 } from "./registries/channel-workflow-cases.mjs";
-import { runAuthCommand, runScenarioCommand } from "./run/command-executor.mjs";
+import {
+  buildDiagnosticsCommandEnv,
+  runAuthCommand,
+  runScenarioCommand
+} from "./run/command-executor.mjs";
 import { runEntries } from "./run/engine.mjs";
 import { executeStateLifecycleSteps } from "./run/state-lifecycle.mjs";
 import { executeTargetSetup } from "./run/target-setup.mjs";
@@ -634,6 +638,7 @@ async function runScopedSelfCheck(flags, scope, workspace) {
     checks.push(ocmMissingResourceCheck());
     checks.push(await guardedTeardownStagesCheck());
     checks.push(measurementPhaseOwnershipCheck());
+    checks.push(diagnosticProfilerMeasurementScopeCheck(tmp));
     checks.push(envNameLengthCheck());
     checks.push(evaluationViolationHelpersCheck());
     checks.push(statusFoundationCheck());
@@ -14676,6 +14681,89 @@ function networkFrontageProductGuardCheck() {
       id: "network-frontage-product-guard",
       status: "FAIL",
       command: "verify network frontage guard applies only to product commands",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function diagnosticProfilerMeasurementScopeCheck(tmp) {
+  try {
+    const context = {
+      runId: "self-check-profile-scope",
+      nodeProfile: true
+    };
+    const artifactDir = join(tmp, "diagnostic-profile-scope");
+    const product = buildDiagnosticsCommandEnv(
+      context,
+      "profile-product",
+      artifactDir,
+      "product"
+    );
+    const harness = buildDiagnosticsCommandEnv(
+      context,
+      "profile-harness",
+      artifactDir,
+      "harness"
+    );
+    const cleanup = buildDiagnosticsCommandEnv(
+      context,
+      "profile-cleanup",
+      artifactDir,
+      "cleanup"
+    );
+
+    assertEqual(
+      product.OPENCLAW_DIAGNOSTICS_TIMELINE_PATH.endsWith("timeline.jsonl"),
+      true,
+      "product diagnostics keep timeline output"
+    );
+    assertEqual(
+      harness.OPENCLAW_DIAGNOSTICS_TIMELINE_PATH.endsWith("timeline.jsonl"),
+      true,
+      "harness diagnostics keep timeline output"
+    );
+    assertEqual(
+      cleanup.OPENCLAW_DIAGNOSTICS_TIMELINE_PATH.endsWith("timeline.jsonl"),
+      true,
+      "cleanup diagnostics keep timeline output"
+    );
+    assertEqual(
+      product.NODE_OPTIONS.includes("--cpu-prof") &&
+        product.NODE_OPTIONS.includes("--heap-prof") &&
+        product.NODE_OPTIONS.includes("node.async_hooks"),
+      true,
+      "product diagnostics enable node profilers"
+    );
+    assertEqual(
+      typeof product.KOVA_NODE_PROFILE_DIR,
+      "string",
+      "product diagnostics expose node profile directory"
+    );
+    assertEqual(harness.NODE_OPTIONS, undefined, "harness diagnostics omit node profilers");
+    assertEqual(
+      harness.KOVA_NODE_PROFILE_DIR,
+      undefined,
+      "harness diagnostics omit node profile directory"
+    );
+    assertEqual(cleanup.NODE_OPTIONS, undefined, "cleanup diagnostics omit node profilers");
+    assertEqual(
+      cleanup.KOVA_NODE_PROFILE_DIR,
+      undefined,
+      "cleanup diagnostics omit node profile directory"
+    );
+
+    return {
+      id: "diagnostic-profiler-measurement-scope",
+      status: "PASS",
+      command: "verify node profilers apply only to product measurement phases",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "diagnostic-profiler-measurement-scope",
+      status: "FAIL",
+      command: "verify node profilers apply only to product measurement phases",
       durationMs: 0,
       message: error.message
     };
