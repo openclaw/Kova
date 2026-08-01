@@ -61,7 +61,7 @@ async function runCommandWithContext(command, context, envName, artifactDir, pha
     timeoutMs: context.timeoutMs,
     env: {
       ...(context.commandEnv ?? {}),
-      ...buildDiagnosticsCommandEnv(context, envName, artifactDir, measurementScope),
+      ...buildDiagnosticsCommandEnv(context, envName, artifactDir, measurementScope, command),
       ...networkFrontageCommandEnv(context),
       ...(authPolicy?.commandEnv ?? {})
     },
@@ -179,7 +179,13 @@ function networkFrontageBlockedResult(command, allocation, stderr, phase) {
   return result;
 }
 
-export function buildDiagnosticsCommandEnv(context, envName, artifactDir, measurementScope) {
+export function buildDiagnosticsCommandEnv(
+  context,
+  envName,
+  artifactDir,
+  measurementScope,
+  command = ""
+) {
   if (context.openclawDiagnostics === false) {
     return {};
   }
@@ -193,7 +199,11 @@ export function buildDiagnosticsCommandEnv(context, envName, artifactDir, measur
     OPENCLAW_DIAGNOSTICS_EVENT_LOOP: "1"
   };
 
-  if (context.nodeProfile === true && measurementScope === "product") {
+  if (
+    context.nodeProfile === true &&
+    measurementScope === "product" &&
+    !startsPersistentService(command)
+  ) {
     const profileDir = artifactDirs.nodeProfiles;
     env.KOVA_NODE_PROFILE_DIR = profileDir;
     env.NODE_OPTIONS = mergeNodeOptions(process.env.NODE_OPTIONS, [
@@ -212,6 +222,12 @@ export function buildDiagnosticsCommandEnv(context, envName, artifactDir, measur
   }
 
   return env;
+}
+
+function startsPersistentService(command) {
+  // Service lifecycle commands can propagate NODE_OPTIONS into the managed
+  // gateway, turning bounded command profiles into unbounded daemon traces.
+  return /\bocm\s+service\s+(?:install|start|restart)\b/.test(String(command ?? ""));
 }
 
 function mergeNodeOptions(existing, additions) {

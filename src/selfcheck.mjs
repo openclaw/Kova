@@ -14698,7 +14698,22 @@ function diagnosticProfilerMeasurementScopeCheck(tmp) {
       context,
       "profile-product",
       artifactDir,
-      "product"
+      "product",
+      "ocm @profile-product -- models list"
+    );
+    const serviceStart = buildDiagnosticsCommandEnv(
+      context,
+      "profile-service",
+      artifactDir,
+      "product",
+      "ocm service install profile-service --json || ocm service start profile-service --json"
+    );
+    const serviceRestart = buildDiagnosticsCommandEnv(
+      context,
+      "profile-service",
+      artifactDir,
+      "product",
+      "ocm service restart profile-service"
     );
     const harness = buildDiagnosticsCommandEnv(
       context,
@@ -14739,6 +14754,36 @@ function diagnosticProfilerMeasurementScopeCheck(tmp) {
       typeof product.KOVA_NODE_PROFILE_DIR,
       "string",
       "product diagnostics expose node profile directory"
+    );
+    assertEqual(
+      serviceStart.OPENCLAW_DIAGNOSTICS_TIMELINE_PATH.endsWith("timeline.jsonl"),
+      true,
+      "service start diagnostics keep timeline output"
+    );
+    assertEqual(
+      serviceRestart.OPENCLAW_DIAGNOSTICS_TIMELINE_PATH.endsWith("timeline.jsonl"),
+      true,
+      "service restart diagnostics keep timeline output"
+    );
+    assertEqual(
+      serviceStart.NODE_OPTIONS,
+      undefined,
+      "service start diagnostics omit node profilers"
+    );
+    assertEqual(
+      serviceStart.KOVA_NODE_PROFILE_DIR,
+      undefined,
+      "service start diagnostics omit node profile directory"
+    );
+    assertEqual(
+      serviceRestart.NODE_OPTIONS,
+      undefined,
+      "service restart diagnostics omit node profilers"
+    );
+    assertEqual(
+      serviceRestart.KOVA_NODE_PROFILE_DIR,
+      undefined,
+      "service restart diagnostics omit node profile directory"
     );
     assertEqual(harness.NODE_OPTIONS, undefined, "harness diagnostics omit node profilers");
     assertEqual(
