@@ -26,6 +26,13 @@ export function renderBundleReceipt(receipt, flags = {}, env = process.env, stre
     ["size",    formatBytes(receipt.bytes)],
     ["files",   String(receipt.artifactIndex?.fileCount ?? receipt.included?.length ?? 0)],
   ];
+  const omitted = receipt.publicationOmissions;
+  if ((omitted?.fileCount ?? 0) > 0) {
+    rows.push([
+      "omitted",
+      `${omitted.fileCount} file${omitted.fileCount === 1 ? "" : "s"}, ${formatBytes(omitted.totalBytes)}`
+    ]);
+  }
 
   for (const [label, value] of rows) {
     if (!value) continue;

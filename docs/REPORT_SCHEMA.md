@@ -83,7 +83,11 @@ Report bundles include `artifact-index.json` at the archive root. The index
 lists every file staged into the bundle with its original relative `path`,
 portable `archivePath`, byte size, and SHA-256 digest. Kova maps names that
 USTAR cannot represent to deterministic archive paths while preserving the
-original evidence name in the index.
+original evidence name in the index. `publicationOmissions` records omitted
+path, bytes, SHA-256, and reason when the complete raw
+`artifacts/node-profiles/node-trace-*.json` and `.log` class must be excluded
+to satisfy publication limits. CPU profiles, heap profiles, and similarly
+named files outside that exact class remain included.
 
 `outputPaths` records the Markdown, full JSON, and compact summary JSON paths
 for the report itself. The matrix receipt also includes bundle and checksum
@@ -960,6 +964,19 @@ table. Status transitions and non-resource metric regressions remain active.
   "outputPath": "/path/to/bundle.tar.gz",
   "checksumPath": "/path/to/bundle.tar.gz.sha256",
   "sha256": "...",
+  "publicationOmissions": {
+    "fileCount": 0,
+    "totalBytes": 0
+  },
+  "artifactIndex": {
+    "path": "artifact-index.json",
+    "fileCount": 5,
+    "totalBytes": 12345,
+    "publicationOmissions": {
+      "fileCount": 0,
+      "totalBytes": 0
+    }
+  },
   "included": {
     "reportJson": true,
     "reportMarkdown": true,
@@ -968,3 +985,8 @@ table. Status transitions and non-resource metric regressions remain active.
   }
 }
 ```
+
+Kova stages and preflights the complete artifact set before publication. It
+omits raw Node traces only when a bundle limit would otherwise be exceeded,
+never publishes an arbitrary subset of that class, and fails closed if the
+remaining mandatory artifacts still exceed a limit.

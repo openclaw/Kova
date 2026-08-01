@@ -33,6 +33,10 @@ const READ_ONLY_NONBLOCK =
   fsConstants.O_RDONLY |
   (fsConstants.O_NONBLOCK ?? 0) |
   (fsConstants.O_NOFOLLOW ?? 0);
+const RAW_NODE_TRACE_EXCLUSION_REASON =
+  "raw-node-trace-excluded-for-publication-limit";
+const BUNDLE_PUBLICATION_LIMIT_ERROR =
+  "ERR_KOVA_BUNDLE_PUBLICATION_LIMIT";
 
 export async function bundleReport(reportPath, options = {}) {
   const sourceJsonPath = resolve(reportPath);
@@ -114,7 +118,7 @@ export async function bundleReport(reportPath, options = {}) {
         included.runArtifacts = true;
       }
 
-      const manifest = {
+      const manifestBase = {
         schemaVersion: "kova.artifact.manifest.v1",
         generatedAt: new Date().toISOString(),
         runId,
@@ -131,24 +135,71 @@ export async function bundleReport(reportPath, options = {}) {
         },
         included
       };
-      await writeFile(
-        join(stage, "manifest.json"),
-        `${JSON.stringify(manifest, null, 2)}\n`,
-        "utf8"
+      const initialEntries = await listFiles(stage, stage);
+      const initialPlan = planBundlePublication(initialEntries, bundleName);
+      let omissions = await hashPublicationOmissions(
+        stage,
+        initialPlan.omissions
       );
-      const artifactIndex = await buildArtifactIndex(stage, bundleName);
-      await writeFile(
-        join(stage, "artifact-index.json"),
-        `${JSON.stringify(artifactIndex, null, 2)}\n`,
-        "utf8"
-      );
-      await writeUstarArchive(stage, bundleName, stagedArchivePath);
+      if (omissions.length > 0) {
+        await removePublicationOmissions(stage, omissions);
+      }
 
-      const archive = await readStableRegularFile(
-        stagedArchivePath,
-        "generated report bundle",
-        MAX_BUNDLE_COMPRESSED_BYTES
-      );
+      let artifactIndex;
+      try {
+        artifactIndex = await writeBundleMetadata(
+          stage,
+          bundleName,
+          manifestBase,
+          omissions
+        );
+      } catch (error) {
+        if (!isBundlePublicationLimitError(error) || omissions.length > 0) {
+          throw error;
+        }
+        omissions = await rawNodeTraceEntries(stage);
+        if (omissions.length === 0) {
+          throw error;
+        }
+        await removePublicationOmissions(stage, omissions);
+        artifactIndex = await writeBundleMetadata(
+          stage,
+          bundleName,
+          manifestBase,
+          omissions
+        );
+      }
+
+      let archive;
+      for (;;) {
+        await rm(stagedArchivePath, { force: true });
+        await writeUstarArchive(stage, bundleName, stagedArchivePath);
+        const archiveInfo = await lstat(stagedArchivePath);
+        if (archiveInfo.size <= MAX_BUNDLE_COMPRESSED_BYTES) {
+          archive = await readStableRegularFile(
+            stagedArchivePath,
+            "generated report bundle",
+            MAX_BUNDLE_COMPRESSED_BYTES
+          );
+          break;
+        }
+        if (omissions.length > 0) {
+          throw bundlePublicationLimitError(stagedArchivePath);
+        }
+        omissions = await rawNodeTraceEntries(stage);
+        if (omissions.length === 0) {
+          throw bundlePublicationLimitError(stagedArchivePath);
+        }
+        await removePublicationOmissions(stage, omissions);
+        artifactIndex = await writeBundleMetadata(
+          stage,
+          bundleName,
+          manifestBase,
+          omissions
+        );
+      }
+
+      const publicationOmissions = summarizePublicationOmissions(omissions);
       const sha256 = createHash("sha256").update(archive).digest("hex");
       const outputPath = join(outputRoot, `${bundleName}-${sha256}.tar.gz`);
       const checksumPath = `${outputPath}.sha256`;
@@ -168,10 +219,12 @@ export async function bundleReport(reportPath, options = {}) {
         checksumPath,
         sha256,
         bytes: archive.length,
+        publicationOmissions,
         artifactIndex: {
           path: "artifact-index.json",
           fileCount: artifactIndex.fileCount,
-          totalBytes: artifactIndex.totalBytes
+          totalBytes: artifactIndex.totalBytes,
+          publicationOmissions
         },
         included
       };
@@ -253,7 +306,32 @@ function portableRetentionFilenameKey(value) {
   return value.toLowerCase();
 }
 
-async function buildArtifactIndex(stage, bundleName) {
+async function writeBundleMetadata(
+  stage,
+  bundleName,
+  manifestBase,
+  omissions
+) {
+  await rm(join(stage, "manifest.json"), { force: true });
+  await rm(join(stage, "artifact-index.json"), { force: true });
+  const publicationOmissions = summarizePublicationOmissions(omissions);
+  await writeDurableFile(
+    join(stage, "manifest.json"),
+    `${JSON.stringify({
+      ...manifestBase,
+      publicationOmissions
+    }, null, 2)}\n`
+  );
+  const artifactIndex = await buildArtifactIndex(stage, bundleName, omissions);
+  await writeDurableFile(
+    join(stage, "artifact-index.json"),
+    `${JSON.stringify(artifactIndex, null, 2)}\n`
+  );
+  await listBundleFiles(stage, bundleName);
+  return artifactIndex;
+}
+
+async function buildArtifactIndex(stage, bundleName, omissions = []) {
   const entries = await listBundleFiles(stage, bundleName);
   const totalBytes = entries.reduce((sum, entry) => sum + entry.bytes, 0);
   return {
@@ -262,52 +340,168 @@ async function buildArtifactIndex(stage, bundleName) {
     bundleRoot: bundleName,
     fileCount: entries.length,
     totalBytes,
+    publicationOmissions: {
+      ...summarizePublicationOmissions(omissions),
+      entries: omissions
+    },
     entries
   };
 }
 
 async function listBundleFiles(root, bundleName) {
-  const budget = {
-    entries: 0,
-    declaredBytes: 0,
-    unpackedBytes: 1024
-  };
-  const entries = await listFiles(root, root, budget);
-  return assignArchivePaths(entries, bundleName);
+  const entries = await listFiles(root, root);
+  assertBundleEntriesWithinLimits(entries);
+  return assignArchivePaths(await hashBundleEntries(root, entries), bundleName);
 }
 
-async function listFiles(root, dir, budget) {
+async function listFiles(root, dir) {
   const names = await readdir(dir, { withFileTypes: true });
   const entries = [];
   for (const name of names.toSorted((left, right) => left.name.localeCompare(right.name))) {
     const path = join(dir, name.name);
     if (name.isDirectory()) {
-      entries.push(...await listFiles(root, path, budget));
+      entries.push(...await listFiles(root, path));
       continue;
     }
     if (!name.isFile()) {
       throw new Error(`report bundle contains an unsupported filesystem entry: ${path}`);
     }
     const info = await lstat(path);
+    const bundlePath = relative(root, path).split(sep).join("/");
+    entries.push({
+      path: bundlePath,
+      bytes: info.size
+    });
+  }
+  return entries;
+}
+
+async function hashBundleEntries(root, entries) {
+  const hashed = [];
+  for (const entry of entries) {
+    const metadata = await hashFile(join(root, ...entry.path.split("/")));
+    hashed.push({
+      ...entry,
+      bytes: metadata.bytes,
+      sha256: metadata.sha256
+    });
+  }
+  return hashed;
+}
+
+export function planBundlePublication(entries, bundleName) {
+  const ordered = entries.toSorted((left, right) =>
+    left.path.localeCompare(right.path));
+  try {
+    assertBundleEntriesWithinLimits(ordered);
+    assignArchivePaths(ordered, bundleName);
+    return { omissions: [] };
+  } catch (error) {
+    if (!isBundlePublicationLimitError(error)) {
+      throw error;
+    }
+  }
+
+  const omissions = ordered
+    .filter((entry) => isRawNodeTracePublicationPath(entry.path))
+    .map((entry) => ({
+      path: entry.path,
+      bytes: entry.bytes,
+      sha256: entry.sha256,
+      reason: RAW_NODE_TRACE_EXCLUSION_REASON
+    }));
+  if (omissions.length === 0) {
+    throw bundlePublicationLimitError(ordered.at(-1)?.path ?? bundleName);
+  }
+
+  const omittedPaths = new Set(omissions.map((entry) => entry.path));
+  const retained = ordered.filter((entry) => !omittedPaths.has(entry.path));
+  assertBundleEntriesWithinLimits(retained);
+  assignArchivePaths(retained, bundleName);
+  return { omissions };
+}
+
+function assertBundleEntriesWithinLimits(entries) {
+  const budget = {
+    entries: 0,
+    declaredBytes: 0,
+    unpackedBytes: 1024
+  };
+  for (const entry of entries) {
     budget.entries += 1;
-    budget.declaredBytes += info.size;
-    budget.unpackedBytes += 512 + Math.ceil(info.size / 512) * 512;
+    budget.declaredBytes += entry.bytes;
+    budget.unpackedBytes += 512 + Math.ceil(entry.bytes / 512) * 512;
     if (
       budget.entries > MAX_BUNDLE_ENTRIES ||
       budget.declaredBytes > MAX_BUNDLE_DECLARED_BYTES ||
       budget.unpackedBytes > MAX_BUNDLE_UNPACKED_BYTES
     ) {
-      throw new Error(`report bundle content exceeds the publication size limit: ${path}`);
+      throw bundlePublicationLimitError(entry.path);
     }
-    const metadata = await hashFile(path);
-    const bundlePath = relative(root, path).split(sep).join("/");
-    entries.push({
-      path: bundlePath,
+  }
+}
+
+async function rawNodeTraceEntries(stage) {
+  const entries = await listFiles(stage, stage);
+  return hashPublicationOmissions(
+    stage,
+    entries
+    .filter((entry) => isRawNodeTracePublicationPath(entry.path))
+    .map((entry) => ({
+      path: entry.path,
+      bytes: entry.bytes,
+      reason: RAW_NODE_TRACE_EXCLUSION_REASON
+    }))
+  );
+}
+
+async function hashPublicationOmissions(stage, omissions) {
+  const hashed = [];
+  for (const omission of omissions) {
+    const metadata = await hashFile(
+      join(stage, ...omission.path.split("/"))
+    );
+    hashed.push({
+      ...omission,
       bytes: metadata.bytes,
       sha256: metadata.sha256
     });
   }
-  return entries;
+  return hashed;
+}
+
+async function removePublicationOmissions(stage, omissions) {
+  for (const omission of omissions) {
+    if (!isRawNodeTracePublicationPath(omission.path)) {
+      throw new Error(`unsupported publication omission: ${omission.path}`);
+    }
+    await rm(join(stage, ...omission.path.split("/")));
+  }
+}
+
+function isRawNodeTracePublicationPath(path) {
+  // Run artifacts group each scenario beneath artifacts/<run>/ before the
+  // node-profiles directory; direct roots remain valid for focused callers.
+  return /^artifacts\/(?:[^/]+\/)*node-profiles\/node-trace-[^/]+\.(?:json|log)$/.test(path);
+}
+
+function summarizePublicationOmissions(omissions) {
+  return {
+    fileCount: omissions.length,
+    totalBytes: omissions.reduce((sum, entry) => sum + entry.bytes, 0)
+  };
+}
+
+function bundlePublicationLimitError(path) {
+  const error = new Error(
+    `report bundle content exceeds the publication size limit: ${path}`
+  );
+  error.code = BUNDLE_PUBLICATION_LIMIT_ERROR;
+  return error;
+}
+
+function isBundlePublicationLimitError(error) {
+  return error?.code === BUNDLE_PUBLICATION_LIMIT_ERROR;
 }
 
 async function writeUstarArchive(stage, bundleName, destination) {
