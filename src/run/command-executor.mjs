@@ -227,7 +227,12 @@ export function buildDiagnosticsCommandEnv(
 function startsPersistentService(command) {
   // Service lifecycle commands can propagate NODE_OPTIONS into the managed
   // gateway, turning bounded command profiles into unbounded daemon traces.
-  return /\bocm\s+service\s+(?:install|start|restart)\b/.test(String(command ?? ""));
+  const text = String(command ?? "");
+  return /\bocm\s+service\s+(?:install|start|restart)\b/.test(text) ||
+    (
+      /\bocm\s+start\b/.test(text) &&
+      !/(?:^|\s)--no-service(?:\s|$)/.test(text)
+    );
 }
 
 function mergeNodeOptions(existing, additions) {

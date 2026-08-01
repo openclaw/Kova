@@ -21,16 +21,19 @@ OPENCLAW_DIAGNOSTICS_TIMELINE_PATH=<artifact-dir>/openclaw/timeline.jsonl
 OPENCLAW_DIAGNOSTICS_EVENT_LOOP=1
 ```
 
-When `--deep-profile` is enabled, Kova also launches OpenClaw commands with
-Node/V8 diagnostic flags through `NODE_OPTIONS`:
+When `--deep-profile` is enabled, Kova also launches bounded product-scope
+OpenClaw commands with Node/V8 diagnostic flags through `NODE_OPTIONS`.
+Harness, cleanup, and persistent service-launch commands keep timeline
+diagnostics but do not inherit these profiler flags:
 
 ```sh
 --cpu-prof
 --heap-prof
 --trace-events-enabled
+--trace-event-categories=node.perf,node.async_hooks,v8
 --heapsnapshot-signal=SIGUSR2
 --report-on-signal
---report-signal=SIGUSR1
+--report-signal=SIGUSR2
 ```
 
 Kova stores the resulting raw profiles, trace events, diagnostic reports, and

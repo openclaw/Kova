@@ -158,10 +158,15 @@ import { compareReports, renderCompareSummary } from "./reporting/compare.mjs";
 import {
   bundleReport,
   pathIsAtOrBelow,
+  planBundlePublication,
   publishBundlePair,
   retainedArtifactTreeDigest,
   retainGateArtifacts
 } from "./reporting/artifacts.mjs";
+import {
+  MAX_BUNDLE_DECLARED_BYTES,
+  MAX_BUNDLE_ENTRIES
+} from "./reporting/bundle-contract.mjs";
 import { pickAffectedScenarios, rollupScenarios, scenarioMetricRows } from "./reporting/compare-aggregate.mjs";
 import { renderCompareAssessment } from "./reporting/render-compare.mjs";
 import { renderAssessment } from "./reporting/render-assessment.mjs";
@@ -7144,6 +7149,183 @@ async function reportPublicationCheck(tmp) {
         "symlink-aliased artifact root cannot be used as bundle output"
       );
     }
+    const syntheticEntry = (path, bytes = 0) => ({
+      path,
+      bytes,
+      sha256: "0".repeat(64)
+    });
+    const mandatoryEntryCount = MAX_BUNDLE_ENTRIES - 2;
+    const mandatoryEntries = Array.from(
+      { length: mandatoryEntryCount },
+      (_, index) => syntheticEntry(
+        `artifacts/mandatory/file-${String(index).padStart(5, "0")}.txt`
+      )
+    );
+    const rawTraceEntries = [
+      syntheticEntry("artifacts/node-profiles/node-trace-100.json"),
+      syntheticEntry("artifacts/node-profiles/node-trace-200.log")
+    ];
+    const similarlyNamedEntries = [
+      syntheticEntry("artifacts/node-profiles/node-trace-summary.txt"),
+      syntheticEntry("artifacts/other/node-trace-300.json")
+    ];
+    const plannedOmissions = planBundlePublication(
+      [...mandatoryEntries, ...rawTraceEntries, ...similarlyNamedEntries],
+      `${publishedReport.runId}-bundle`
+    ).omissions;
+    assertEqual(plannedOmissions.length, 2, "bundle planning omits the full raw trace class");
+    assertEqual(
+      plannedOmissions.every(
+        (entry) => entry.reason === "raw-node-trace-excluded-for-publication-limit"
+      ),
+      true,
+      "bundle planning records the publication-limit reason"
+    );
+    assertEqual(
+      planBundlePublication(
+        [...rawTraceEntries, ...similarlyNamedEntries],
+        `${publishedReport.runId}-bundle`
+      ).omissions.length,
+      0,
+      "bundle planning retains raw traces while the bundle fits"
+    );
+    let mandatoryOverflowRejected = false;
+    try {
+      planBundlePublication(
+        [
+          ...Array.from(
+            { length: MAX_BUNDLE_ENTRIES + 1 },
+            (_, index) => syntheticEntry(
+              `artifacts/mandatory-overflow/file-${String(index).padStart(5, "0")}.txt`
+            )
+          ),
+          ...rawTraceEntries
+        ],
+        `${publishedReport.runId}-bundle`
+      );
+    } catch (error) {
+      mandatoryOverflowRejected = /publication size limit/.test(error.message);
+    }
+    assertEqual(
+      mandatoryOverflowRejected,
+      true,
+      "bundle planning fails closed when mandatory artifacts remain over limit"
+    );
+
+    const omissionRunId = createRunId();
+    const omissionOutputPaths = buildReportOutputPaths(publicationRoot, omissionRunId);
+    await writeReportOutputs(publicationRoot, {
+      ...report,
+      runId: omissionRunId,
+      outputPaths: omissionOutputPaths
+    });
+    const omissionArtifactsDir = join(tmp, "publication-omission-artifacts");
+    const omissionArtifactRoot = join(omissionArtifactsDir, omissionRunId);
+    const omissionProfileRoot = join(omissionArtifactRoot, "node-profiles");
+    await mkdir(omissionProfileRoot, { recursive: true });
+    await mkdir(join(omissionArtifactRoot, "other"), { recursive: true });
+    const rawTraceJsonPath = join(omissionProfileRoot, "node-trace-100.json");
+    const rawTraceLogPath = join(omissionProfileRoot, "node-trace-200.log");
+    await writeFile(rawTraceJsonPath, "");
+    await truncate(rawTraceJsonPath, MAX_BUNDLE_DECLARED_BYTES);
+    await writeFile(rawTraceLogPath, "raw trace log\n");
+    await writeFile(join(omissionProfileRoot, "CPU.100.cpuprofile"), "cpu profile\n");
+    await writeFile(join(omissionProfileRoot, "Heap.100.heapprofile"), "heap profile\n");
+    await writeFile(join(omissionProfileRoot, "node-trace-summary.txt"), "summary\n");
+    await writeFile(
+      join(omissionArtifactRoot, "other", "node-trace-300.json"),
+      "unrelated trace\n"
+    );
+    const omissionBundle = await bundleReport(omissionOutputPaths.json, {
+      outputDir: join(publicationRoot, "omission-bundles"),
+      artifactsDir: omissionArtifactsDir
+    });
+    assertEqual(
+      (await stat(rawTraceJsonPath)).size,
+      MAX_BUNDLE_DECLARED_BYTES,
+      "bundle omission leaves the source trace untouched"
+    );
+    assertEqual(
+      await fileExists(rawTraceLogPath),
+      true,
+      "bundle omission leaves every source trace untouched"
+    );
+    assertEqual(
+      omissionBundle.publicationOmissions?.fileCount,
+      2,
+      "bundle receipt summarizes omitted raw traces"
+    );
+    assertEqual(
+      omissionBundle.publicationOmissions?.totalBytes,
+      MAX_BUNDLE_DECLARED_BYTES + Buffer.byteLength("raw trace log\n"),
+      "bundle receipt summarizes omitted trace bytes"
+    );
+    const omissionArchiveEntries = readUstarEntries(
+      await readFile(omissionBundle.outputPath)
+    );
+    const omissionIndex = JSON.parse(
+      omissionArchiveEntries.find(
+        (entry) => entry.name === `${omissionRunId}-bundle/artifact-index.json`
+      ).content.toString("utf8")
+    );
+    const omissionManifest = JSON.parse(
+      omissionArchiveEntries.find(
+        (entry) => entry.name === `${omissionRunId}-bundle/manifest.json`
+      ).content.toString("utf8")
+    );
+    assertEqual(
+      omissionIndex.publicationOmissions?.fileCount,
+      2,
+      "artifact index summarizes omitted raw traces"
+    );
+    assertEqual(
+      omissionIndex.publicationOmissions?.entries.every(
+        (entry) =>
+          typeof entry.path === "string" &&
+          typeof entry.bytes === "number" &&
+          /^[a-f0-9]{64}$/.test(entry.sha256) &&
+          entry.reason === "raw-node-trace-excluded-for-publication-limit"
+      ),
+      true,
+      "artifact index records every omission with integrity metadata"
+    );
+    assertEqual(
+      omissionManifest.publicationOmissions?.fileCount,
+      2,
+      "bundle manifest summarizes omitted raw traces"
+    );
+    for (const retainedPath of [
+      "artifacts/node-profiles/CPU.100.cpuprofile",
+      "artifacts/node-profiles/Heap.100.heapprofile",
+      "artifacts/node-profiles/node-trace-summary.txt",
+      "artifacts/other/node-trace-300.json"
+    ]) {
+      assertEqual(
+        omissionIndex.entries.some((entry) => entry.path === retainedPath),
+        true,
+        `publication keeps ${retainedPath}`
+      );
+    }
+    assertEqual(
+      omissionIndex.entries.some(
+        (entry) => /^artifacts\/node-profiles\/node-trace-[^/]+\.(?:json|log)$/.test(entry.path)
+      ),
+      false,
+      "publication omits no arbitrary raw trace subset"
+    );
+    const renderedOmissionReceipt = renderBundleReceipt(
+      omissionBundle,
+      { color: "never" },
+      process.env,
+      process.stdout
+    );
+    assertEqual(
+      renderedOmissionReceipt.includes("omitted") &&
+        renderedOmissionReceipt.includes("2 files"),
+      true,
+      "rendered bundle receipt summarizes publication omissions"
+    );
+
     const markerlessBackupPath = join(
       publicationRoot,
       `.${basename(outputPaths.json)}.kova-backup`
@@ -14715,6 +14897,20 @@ function diagnosticProfilerMeasurementScopeCheck(tmp) {
       "product",
       "ocm service restart profile-service"
     );
+    const gatewayStart = buildDiagnosticsCommandEnv(
+      context,
+      "profile-service",
+      artifactDir,
+      "product",
+      "ocm start profile-service"
+    );
+    const noServiceStart = buildDiagnosticsCommandEnv(
+      context,
+      "profile-product",
+      artifactDir,
+      "product",
+      "ocm start profile-product --no-service"
+    );
     const harness = buildDiagnosticsCommandEnv(
       context,
       "profile-harness",
@@ -14746,9 +14942,12 @@ function diagnosticProfilerMeasurementScopeCheck(tmp) {
     assertEqual(
       product.NODE_OPTIONS.includes("--cpu-prof") &&
         product.NODE_OPTIONS.includes("--heap-prof") &&
-        product.NODE_OPTIONS.includes("node.async_hooks"),
+        product.NODE_OPTIONS.includes("--trace-events-enabled") &&
+        product.NODE_OPTIONS.includes(
+          "--trace-event-categories=node.perf,node.async_hooks,v8"
+        ),
       true,
-      "product diagnostics enable node profilers"
+      "product diagnostics enable bounded node profilers"
     );
     assertEqual(
       typeof product.KOVA_NODE_PROFILE_DIR,
@@ -14784,6 +14983,22 @@ function diagnosticProfilerMeasurementScopeCheck(tmp) {
       serviceRestart.KOVA_NODE_PROFILE_DIR,
       undefined,
       "service restart diagnostics omit node profile directory"
+    );
+    assertEqual(gatewayStart.NODE_OPTIONS, undefined, "gateway start diagnostics omit node profilers");
+    assertEqual(
+      gatewayStart.KOVA_NODE_PROFILE_DIR,
+      undefined,
+      "gateway start diagnostics omit node profile directory"
+    );
+    assertEqual(
+      noServiceStart.NODE_OPTIONS.includes("--cpu-prof"),
+      true,
+      "no-service product start keeps node profilers"
+    );
+    assertEqual(
+      typeof noServiceStart.KOVA_NODE_PROFILE_DIR,
+      "string",
+      "no-service product start keeps node profile directory"
     );
     assertEqual(harness.NODE_OPTIONS, undefined, "harness diagnostics omit node profilers");
     assertEqual(

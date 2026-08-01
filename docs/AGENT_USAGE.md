@@ -104,7 +104,10 @@ node bin/kova.mjs matrix run --profile release \
 ```
 
 Matrix runs emit a bundle path in the JSON receipt. Bundles include
-`artifact-index.json` with relative paths, byte sizes, and SHA-256 hashes.
+`artifact-index.json` with relative paths, byte sizes, and SHA-256 hashes. If
+the full bundle would exceed publication limits, Kova excludes the complete
+`node-profiles/node-trace-*.json` and `.log` class from the published bundle,
+records every omission in the index, and leaves the source artifacts intact.
 
 The `exhaustive` profile requires `--allow-exhaustive`. Use plan or filtered
 dry-runs first.
