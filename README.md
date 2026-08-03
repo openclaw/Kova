@@ -19,7 +19,7 @@ agent, plugin, TUI, MCP, browser, and long-running behavior before a release.
 ## Install
 
 Kova requires Node.js 22 or newer. Real scenarios use
-[OCM](https://github.com/openclaw/ocm) to provision isolated OpenClaw
+[OCM](https://github.com/shakkernerd/ocm) to provision isolated OpenClaw
 environments; the installer can install it at the same time:
 
 ```sh
