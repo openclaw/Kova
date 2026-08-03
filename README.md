@@ -1,137 +1,160 @@
-# Kova
+# Kova 🧪 — Make OpenClaw prove it
+
+[![CI](https://img.shields.io/github/actions/workflow/status/openclaw/Kova/ci.yml?branch=main&style=flat-square&label=ci)](https://github.com/openclaw/Kova/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/openclaw/Kova?style=flat-square)](https://github.com/openclaw/Kova/releases/latest)
+[![Node.js](https://img.shields.io/badge/node-%E2%89%A522-339933?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+[![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-555?style=flat-square)](https://github.com/openclaw/Kova/actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/openclaw/Kova?style=flat-square)](LICENSE)
 
 ![Kova banner](docs/assets/readme-banner.jpg)
 
-**The OpenClaw runtime validation lab.**
-
-Kova proves OpenClaw works end-to-end on real machines: install, upgrade,
-gateway, sessions, plugins, agent turns, providers, dashboards, TUIs, MCP,
-browsers, soak — with **real execution evidence**, not synthetic confidence.
-
-> Can real users install, update, start, message, use plugins, and keep
-> running without OpenClaw getting slow, unhealthy, leaky, or broken?
+Kova runs release-shaped OpenClaw scenarios on real machines and records the
+evidence. It is for maintainers and agents validating install, upgrade, gateway,
+agent, plugin, TUI, MCP, browser, and long-running behavior before a release.
 
 <p align="center">
   <img src="docs/media/kova-report.png" alt="Kova report dashboard" width="900">
 </p>
 
-## What Kova Proves
+## Install
 
-| | |
+Kova requires Node.js 22 or newer. Real scenarios use
+[OCM](https://github.com/openclaw/ocm) to provision isolated OpenClaw
+environments; the installer can install it at the same time:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/openclaw/Kova/main/install.sh | KOVA_INSTALL_OCM=1 bash
+```
+
+This installs Kova under `~/.kova` and links `kova` into `~/.local/bin`.
+
+To run Kova from a source checkout instead:
+
+```sh
+git clone https://github.com/openclaw/Kova.git
+cd Kova
+npm ci
+```
+
+Use `node bin/kova.mjs` in place of `kova` in a source checkout.
+
+## Quick start
+
+Preview the smoke matrix without changing an OpenClaw environment:
+
+```sh
+kova matrix plan --profile smoke --target runtime:stable
+```
+
+The plan resolves the current scenarios, states, and evidence obligations for
+the selected target in a few seconds.
+
+## Run a real matrix
+
+Confirm the lab is healthy, then execute the matrix against an existing OCM
+runtime:
+
+```sh
+kova self-check
+kova matrix run --profile smoke --target runtime:stable --execute
+```
+
+Kova uses deterministic mock model auth by default. Run `kova setup` when a
+scenario needs live provider credentials.
+
+## How Kova works
+
+Kova evaluates a concrete product path rather than treating a successful
+command as proof:
+
+```text
+surface × user state × target runtime × platform → evidence → verdict
+```
+
+Surfaces, states, scenarios, profiles, process roles, and thresholds are
+declarative JSON contracts. OCM creates and controls the disposable lab;
+OpenClaw remains the product under test.
+
+### Targets
+
+| Selector | What Kova tests |
 |---|---|
-| 🚀 **Install & upgrade** | Fresh installs, release-track upgrades, version-to-version, durable-env clone → local-build, migrations. |
-| 🧩 **Every runtime path** | Gateway, sessions, plugins, agent (CLI + Gateway), dashboard, TUI, MCP, browser, OpenAI-compatible, soak. |
-| 💥 **Failure containment** | Timeouts, malformed providers, streaming stalls, network offline, missing auth, hostile-looking inputs, concurrent load, recovery. |
-| ⏱ **Honest agent latency** | Pre-provider · provider · post-provider, split per turn with timeline span evidence. |
-| 🧠 **Process attribution** | CPU and RSS across 21 named roles — never just "memory was high". |
-| 📈 **Baselines & regressions** | `--repeat N` with median / p95 / max / variance. Per-platform baselines. Gate refuses to ship without proof. |
-| 🔍 **Inventory audit** | Discovers OpenClaw CLI, scripts, plugins, entrypoints, and repeated Kova run work. |
-| 🛰 **Diagnostics contract** | Timeline spans, event-loop delay, CPU/heap profiles on `--deep-profile`. |
-| 🤖 **Agent-first I/O** | `kova.report.v1` JSON, summary, bundle, paste, compare. Verdict-led dashboard by default. |
+| `npm:<version>` | A published OpenClaw version |
+| `release:<name>` | A published release track such as `stable` or `beta` |
+| `runtime:<name>` | An existing OCM runtime |
+| `local-build:<path>` | A release-shaped build from an OpenClaw checkout |
 
-```text
-61 scenarios   ·   41 surfaces   ·   43 states   ·   12 profiles
-23 process roles   ·   15+ collectors
-```
+Profiles turn those targets into repeatable matrices. Start with `smoke`, use
+`release` for the ship gate, and use focused profiles for diagnostics, upgrades,
+plugins, soak, or adversarial behavior. See the [CLI reference](docs/CLI_REFERENCE.md)
+for the current commands, selectors, and profiles.
 
-## Quickstart
+## Evidence and reports
 
-```sh
-npm install
-node bin/kova.mjs setup
-node bin/kova.mjs self-check
-```
+Kova records readiness, health, command results, CPU and RSS by process role,
+OpenClaw diagnostic spans, provider timing, cleanup, and artifacts. Repeated runs
+produce median, p95, maximum, and variance measurements; reviewed baselines make
+regressions visible separately from functional failures.
 
-Run a release gate against a local OpenClaw build:
+Every human-facing command renders a dashboard by default. Use `--json` for the
+stable machine contract, `--plain` for compact text, or `--ascii` for
+Unicode-free output. Reports can be summarized, compared, or bundled for a
+fixer handoff:
 
 ```sh
-node bin/kova.mjs matrix run \
-  --profile release \
-  --target local-build:/path/to/openclaw \
-  --execute --gate
+kova reports
+kova report <run-id>
+kova report compare <baseline-run-id> <current-run-id> --json
+kova report bundle <run-id> --json
 ```
 
-Kova data lives in `~/.kova` (credentials, reports, artifacts, baselines).
-
-## The Commands You'll Use
-
-```sh
-kova plan                       # what Kova will do, by profile/scenario/state
-kova inventory plan             # find OpenClaw capabilities Kova doesn't cover yet
-kova inventory repeated-work    # find duplicated scenario commands and collector pressure
-kova run --scenario <id>        # one scenario, one target
-kova matrix run --profile <p>   # the release matrix (multi-target, --repeat N)
-kova reports                    # recent reports and short run IDs
-kova report <runId|run.json>    # the dashboard above
-kova report compare <a> <b>     # baseline vs current with regression deltas
-kova report bundle <run.json>   # portable evidence pack for handoff
-kova report paste <run.json>    # fixer-ready prompt
-kova help <command>             # per-command detail
-```
-
-Every command renders a dashboard by default. Add `--json` for machines,
-`--plain` for compact text, `--no-progress` to silence streaming, or `--ascii`
-for Unicode-free output. Color, width, `NO_COLOR`, and CI runners are
-auto-detected.
-
-## Targets
-
-```text
-npm:<version>              published OpenClaw release
-release:<name>             published release track (stable, beta, …)
-runtime:<name>             existing OCM runtime
-local-build:<repo-path>    local checkout built as a release-shaped runtime
-```
-
-## Profiles
-
-```text
-smoke                  fast confidence over core paths
-diagnostic             local-build with timeline + span expectations
-release                ship / no-ship gate coverage
-soak                   long-running pressure and stability
-adversarial            hostile input and failure-containment checks
-doctor-upgrade         doctor-guided upgrade repair checks
-release-upgrade        published release-track upgrade matrix
-local-build-upgrade    upgrade into a local build
-official-plugins       bundled + official plugin coverage
-rolling-upgrade        recent published release age upgrade checks
-web-release            web publish payload and report metrics
-exhaustive             the full sweep (--allow-exhaustive)
-```
+The JSON report uses the `kova.report.v1` schema. Its fields and gate outcomes
+are documented in the [report schema](docs/REPORT_SCHEMA.md).
 
 ## Safety
 
-Dry-run by default. Real execution requires `--execute`. Disposable envs are
-destroyed by default. Durable user envs are clone sources, never mutation
-targets. Exhaustive profiles require `--allow-exhaustive`. Keep a failing lab
-with `--retain-on-failure` when you need to look.
+`run` and `matrix run` are dry-run by default; real execution requires
+`--execute`. Disposable environments are removed after a run. Durable user
+environments are clone sources, never mutation targets, and exhaustive matrices
+also require `--allow-exhaustive`.
 
-## For Agents
+Use `--retain-on-failure` to keep a failed disposable lab for inspection. The
+[agent workflow](docs/AGENT_USAGE.md) covers authentication, baselines,
+existing-user tests, cleanup, and evidence handoff in depth.
+
+## For agents
+
+Agents should plan and consume reports through JSON:
 
 ```sh
 kova plan --json
-kova inventory plan --openclaw-bin openclaw --openclaw-repo /path/to/openclaw --json
-kova inventory repeated-work --json
-kova matrix plan --profile smoke  --target runtime:stable --json
-kova matrix run  --profile smoke  --target runtime:stable --execute --json
+kova matrix plan --profile smoke --target runtime:stable --json
+kova report summarize <run-id> --json
 ```
 
-`inventory plan --openclaw-repo` includes a source/catalog drift check for the
-OpenClaw message-channel capability catalog. Runtime scenarios do not read the
-OpenClaw source tree; they probe the selected release-shaped package.
+Repo-local `kova-operator` and `ocm-operator` skills live in `.agents/skills/`.
+Load `ocm-operator` before executing scenarios that create environments, clone
+state, build runtimes, upgrade installations, or inspect services.
 
-Repo-local agent skills ship in `.agents/skills/`:
+## Documentation
 
-- `kova-operator` — benchmark workflows, evidence rules, report handoff.
-- `ocm-operator` — safe env cloning, local runtime builds, service inspection.
+- [What Kova is](docs/WHAT_IS_KOVA.md) explains the model and evidence pipeline.
+- [CLI reference](docs/CLI_REFERENCE.md) lists commands, targets, profiles, and output controls.
+- [Agent usage](docs/AGENT_USAGE.md) is the operational workflow for real runs.
+- [Scenario hierarchy](docs/SCENARIO_HIERARCHY.md) defines ownership across runtime paths.
+- [Diagnostics contract](docs/DIAGNOSTICS_CONTRACT.md) describes OpenClaw timeline evidence.
+- [Report schema](docs/REPORT_SCHEMA.md) documents reports, comparisons, bundles, and gates.
 
-## Learn More
+## Development
 
-- [What Kova is](docs/WHAT_IS_KOVA.md) — the model, in one page.
-- [Scenario hierarchy](docs/SCENARIO_HIERARCHY.md) — surfaces, states, scenarios.
-- [Diagnostics contract](docs/DIAGNOSTICS_CONTRACT.md) — what OpenClaw emits and how Kova uses it.
-- [Report schema](docs/REPORT_SCHEMA.md) — the `kova.report.v1` JSON contract.
-- [Agent usage](docs/AGENT_USAGE.md) — the agent-first workflow.
+```sh
+npm ci
+npm run check:full
+npm run pack:release
+```
 
-Kova uses OCM as the harness. **OpenClaw is the product under test.**
+CI runs the full check suite and release-install smoke test on macOS and Linux.
+
+## License
+
+[MIT](LICENSE).
