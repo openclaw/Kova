@@ -254,7 +254,7 @@ function aggregateMetrics(samples) {
         }
         if (!roleChildren.has(parentKey)) roleChildren.set(parentKey, new Map());
         const byRole = roleChildren.get(parentKey);
-        const candidate = roleViolationCandidate(v, role);
+        const candidate = { ...roleViolationCandidate(v, role), status: "FAIL" };
         const existing = byRole.get(role);
         if (!existing || compareViolationCandidates(candidate, existing) > 0) {
           byRole.set(role, candidate);
@@ -272,6 +272,49 @@ function aggregateMetrics(samples) {
           status: "FAIL",
         });
       }
+    }
+  }
+
+  for (const sample of samples) {
+    for (const assessment of sample.performanceThresholdAssessment?.skipped ?? []) {
+      const key = assessment.measurementMetric ?? assessment.metric;
+      const roleMatch = assessment.metric?.match(/^resourceByRole\.([^.]+)\.(.+)$/);
+      if (roleMatch) {
+        const [, role, parentKey] = roleMatch;
+        if (!metrics.has(parentKey)) {
+          metrics.set(parentKey, {
+            label: metricLabel(parentKey, samples),
+            unit: METRIC_UNITS[parentKey] ?? null,
+            direction: "lower-better",
+            threshold: null,
+            status: "SKIPPED",
+          });
+        }
+        if (!roleChildren.has(parentKey)) roleChildren.set(parentKey, new Map());
+        const byRole = roleChildren.get(parentKey);
+        if (!byRole.has(role)) {
+          byRole.set(role, {
+            role,
+            threshold: assessment.threshold ?? null,
+            actual: assessment.actual ?? null,
+            status: "SKIPPED",
+            score: 0,
+            key: assessment.metric
+          });
+        }
+        continue;
+      }
+      const existing = metrics.get(key);
+      if (existing?.status === "FAIL") {
+        continue;
+      }
+      metrics.set(key, {
+        label: metricLabel(key, samples),
+        unit: METRIC_UNITS[key] ?? null,
+        direction: "lower-better",
+        threshold: assessment.threshold ?? existing?.threshold ?? null,
+        status: "SKIPPED",
+      });
     }
   }
 
@@ -294,10 +337,24 @@ function aggregateMetrics(samples) {
     const values = samples.map((s) => measurementMetricValue(s.measurements ?? {}, key)).filter((v) => v != null && Number.isFinite(Number(v)));
     if (values.length === 0 && !roleChildren.has(key)) continue;
     const stats = values.length > 0 ? summarizeSamples(values) : null;
-    const hasFailedRoleChild = roleChildren.has(key);
-    const thresholdStatus = meta.threshold !== null && stats?.max !== null && stats?.max !== undefined
-      ? stats.max > meta.threshold ? "FAIL" : "PASS"
-      : hasFailedRoleChild ? "FAIL" : meta.status;
+    const children = roleChildren.get(key);
+    const hasFailedRoleChild = [...(children?.values() ?? [])]
+      .some((child) => child.status === "FAIL");
+    const hasSkippedRoleChild = [...(children?.values() ?? [])]
+      .some((child) => child.status === "SKIPPED");
+    const thresholdStatus = hasFailedRoleChild || meta.status === "FAIL"
+      ? "FAIL"
+      : meta.status === "SKIPPED"
+        ? "SKIPPED"
+        : meta.threshold !== null && stats?.max !== null && stats?.max !== undefined
+          ? stats.max > meta.threshold
+            ? "FAIL"
+            : hasSkippedRoleChild
+              ? "SKIPPED"
+              : "PASS"
+          : hasSkippedRoleChild
+            ? "SKIPPED"
+            : meta.status;
     rows.push({
       key,
       label: meta.label,
@@ -318,7 +375,6 @@ function aggregateMetrics(samples) {
     // Emit per-role child rows directly after their parent. Each child
     // carries its own threshold + FAIL status so the row tells the full
     // story without forcing the reader to cross-reference findings.
-    const children = roleChildren.get(key);
     if (children) {
       for (const child of children.values()) {
         rows.push({
@@ -330,7 +386,7 @@ function aggregateMetrics(samples) {
           value: child.actual,
           stats: null,
           threshold: child.threshold,
-          status: "FAIL",
+          status: child.status,
           isChild: true,
         });
       }

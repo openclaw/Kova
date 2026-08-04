@@ -13,7 +13,11 @@ import {
   countProviderTimeoutMentions,
   summarizeRuntimeDepsLogs
 } from "./collectors/logs.mjs";
-import { buildHealthMeasurement, healthReadinessClassification } from "./health.mjs";
+import {
+  buildHealthMeasurement,
+  healthReadinessClassification,
+  measurementMetricValue
+} from "./health.mjs";
 import { resolveThresholdPolicy } from "./evaluation/thresholds.mjs";
 import {
   isAgentCliMessageCommand,
@@ -26,6 +30,14 @@ import {
   RESOURCE_HEADLINE_CONTRACT,
   RESOURCE_MEASUREMENT_SCOPE
 } from "./performance/stats.mjs";
+import {
+  commandMatchesPerformanceMetric,
+  INSTRUMENTED_PERFORMANCE_REASON,
+  instrumentedPerformanceThresholdAffected,
+  isInstrumentedPerformanceMetric,
+  measurementMetricForThreshold,
+  profilingAffectsPerformance
+} from "./performance/instrumentation.mjs";
 import {
   checkAggregateThreshold,
   checkBooleanThreshold,
@@ -229,34 +241,30 @@ export function evaluateRecord(record, scenario, options = {}) {
   const readinessHealthReadyMs = health.readiness?.healthReadyAtMs ?? null;
   const readinessFailures = countReadinessFailures(record);
   const readinessClassification = healthReadinessClassification(health);
-  const coldReadyMs = maxDurationWhere(allResults, isGatewayColdStartCommand);
-  const warmReadyMs = maxDurationWhere(allResults, (command) => command.startsWith("ocm service restart "));
-  const upgradeMs = maxDurationWhere(allResults, (command) => command.startsWith("ocm upgrade "));
-  const statusMs = maxDurationWhere(allResults, isPostAgentStatusCommand);
-  const pluginsListMs = maxDurationWhere(allResults, (command) => command.includes(" -- plugins list"));
+  const coldReadyMs = maxDurationWhere(allResults, isColdReadyCommand);
+  const warmReadyMs = maxDurationWhere(allResults, isWarmReadyCommand);
+  const upgradeMs = maxDurationWhere(allResults, isUpgradeCommand);
+  const statusMs = maxDurationWhere(allResults, isStatusCommand);
+  const pluginsListMs = maxDurationWhere(allResults, isPluginsListCommand);
   const pluginInstallMs = maxDurationWhere(allResults, (command) => command.includes("run-official-plugin-install.mjs") || command.includes(" -- plugins install"));
-  const modelsListMs = maxDurationWhere(allResults, (command) => command.includes(" -- models list"));
+  const modelsListMs = maxDurationWhere(allResults, isModelsListCommand);
   const doctorFixMs = maxDurationWhere(allResults, isDoctorFixCommand);
   const rssGrowthMb = maxNullable(resourceSummary.maxTotalRssGrowthMb);
   const gatewayRssGrowthMb = maxNullable(resourceSummary.maxGatewayRssGrowthMb);
 
-  checkDuration(violations, allResults, "statusMs", thresholds.statusMs, isPostAgentStatusCommand);
-  checkDuration(violations, allResults, "pluginsListMs", thresholds.pluginsListMs, (command) => command.includes(" -- plugins list"));
-  checkDuration(violations, allResults, "pluginUpdateDryRunMs", thresholds.pluginUpdateDryRunMs, (command) =>
-    command.includes(" -- plugins update") && command.includes("--dry-run")
-  );
-  checkDuration(violations, allResults, "modelsListMs", thresholds.modelsListMs, (command) => command.includes(" -- models list"));
+  checkDuration(violations, allResults, "statusMs", thresholds.statusMs, isStatusCommand);
+  checkDuration(violations, allResults, "pluginsListMs", thresholds.pluginsListMs, isPluginsListCommand);
+  checkDuration(violations, allResults, "pluginUpdateDryRunMs", thresholds.pluginUpdateDryRunMs, isPluginUpdateDryRunCommand);
+  checkDuration(violations, allResults, "modelsListMs", thresholds.modelsListMs, isModelsListCommand);
   checkDuration(
     violations,
     allResults,
     "coldReadyMs",
     thresholds.coldReadyMs ?? thresholds.gatewayReadyMs,
-    isGatewayColdStartCommand
+    isColdReadyCommand
   );
-  checkDuration(violations, allResults, "warmReadyMs", thresholds.warmReadyMs ?? thresholds.restartReadyMs, (command) =>
-    command.startsWith("ocm service restart ")
-  );
-  checkDuration(violations, allResults, "upgradeMs", thresholds.upgradeMs, (command) => command.startsWith("ocm upgrade "));
+  checkDuration(violations, allResults, "warmReadyMs", thresholds.warmReadyMs ?? thresholds.restartReadyMs, isWarmReadyCommand);
+  checkDuration(violations, allResults, "upgradeMs", thresholds.upgradeMs, isUpgradeCommand);
   checkDuration(violations, allResults, "doctorFixMs", thresholds.doctorFixMs, isDoctorFixCommand);
 
   if (resourceGateKind === "role-missing" && hasActivePrimaryResourceThreshold(thresholds, roleThresholds, primaryResourceRole)) {
@@ -1147,6 +1155,7 @@ export function evaluateRecord(record, scenario, options = {}) {
     profilingEnabled: record.profiling?.enabled === true,
     profilingResourceInterpretation: record.profiling?.interpretation ?? null,
     profilingBaselineEligible: record.profiling?.baselineEligible ?? null,
+    profilingAffectsPerformanceMeasurements: profilingAffectsPerformance(record.profiling),
     profilingAffectsResourceMeasurements: record.profiling?.affectsResourceMeasurements === true,
     resourceSampleCount: resourceSummary.sampleCount,
     resourceSampleArtifacts: resourceSummary.artifacts,
@@ -1222,20 +1231,181 @@ export function evaluateRecord(record, scenario, options = {}) {
     })
   };
   record.thresholdPolicy = thresholdPolicy.report;
+  const performanceAssessment = buildInstrumentedPerformanceAssessment({
+    record,
+    thresholds,
+    roleThresholds,
+    violations
+  });
+  const effectiveViolations = performanceAssessment
+    ? violations.filter((violation) => !isSkippedPerformanceViolation(record, violation))
+    : violations;
+  if (performanceAssessment) {
+    record.performanceThresholdAssessment = performanceAssessment;
+    record.measurements.performanceThresholdSkippedCount =
+      performanceAssessment.skippedCount;
+  } else {
+    delete record.performanceThresholdAssessment;
+    delete record.measurements.performanceThresholdSkippedCount;
+  }
 
-  if (violations.length > 0) {
+  if (effectiveViolations.length > 0) {
     if (originalStatus === "PASS") {
-      const targetViolation = violations.some(
+      const targetViolation = effectiveViolations.some(
         (violation) => violation.failureDomain !== "kova-harness"
       );
       record.status = targetViolation ? "FAIL" : "BLOCKED";
     }
-    record.violations = violations;
+    record.violations = effectiveViolations;
   } else {
     delete record.violations;
   }
 
   return record;
+}
+
+function buildInstrumentedPerformanceAssessment({
+  record,
+  thresholds,
+  roleThresholds,
+  violations
+}) {
+  if (!profilingAffectsPerformance(record.profiling)) {
+    return null;
+  }
+
+  const skipped = new Map();
+  for (const [metric, threshold] of Object.entries(thresholds ?? {})) {
+    if (!Number.isFinite(threshold) || !isInstrumentedPerformanceMetric(metric)) {
+      continue;
+    }
+    const measurementMetric = measurementMetricForThreshold(metric);
+    const actual = measurementMetricValue(record.measurements ?? {}, measurementMetric);
+    addSkippedPerformanceAssessment(skipped, {
+      metric,
+      measurementMetric,
+      threshold,
+      actual,
+      affected: instrumentedPerformanceThresholdAffected(record, {
+        metric,
+        actual
+      })
+    });
+  }
+
+  for (const [role, rolePolicy] of Object.entries(roleThresholds ?? {})) {
+    const roleMeasurements = record.measurements?.resourceByRole?.[role] ?? {};
+    for (const [metric, threshold] of Object.entries(rolePolicy ?? {})) {
+      if (!Number.isFinite(threshold) || !isInstrumentedPerformanceMetric(metric)) {
+        continue;
+      }
+      const actual = metric === "peakProcessRssMb"
+        ? roleMeasurements.peakRssProcess?.rssMb ?? null
+        : roleMeasurements[metric] ?? null;
+      addSkippedPerformanceAssessment(skipped, {
+        metric: `resourceByRole.${role}.${metric}`,
+        measurementMetric: metric,
+        role,
+        threshold,
+        actual,
+        affected: instrumentedPerformanceThresholdAffected(record, {
+          metric,
+          role,
+          actual
+        })
+      });
+    }
+  }
+
+  for (const violation of violations) {
+    if (!isSkippedPerformanceViolation(record, violation)) {
+      continue;
+    }
+    addSkippedPerformanceAssessment(skipped, {
+      metric: violation.metric,
+      measurementMetric: measurementMetricForThreshold(violation.metric),
+      role: violation.role ?? null,
+      threshold: thresholdFromExpected(violation.expected),
+      actual: violation.actual,
+      observedOverThreshold: true,
+      originalMessage: violation.message ?? null
+    });
+  }
+
+  const entries = [...skipped.values()].toSorted((left, right) =>
+    Number(right.observedOverThreshold) - Number(left.observedOverThreshold) ||
+    left.metric.localeCompare(right.metric)
+  );
+  const complete = entries.length === 0;
+  return {
+    schemaVersion: "kova.performanceThresholdAssessment.v1",
+    complete,
+    skippedCount: entries.length,
+    reason: complete ? null : INSTRUMENTED_PERFORMANCE_REASON,
+    rerun: complete
+      ? null
+      : "rerun without profiling for gateable performance evidence",
+    skipped: entries
+  };
+}
+
+function addSkippedPerformanceAssessment(target, assessment) {
+  if (assessment.affected === false) {
+    return;
+  }
+  const existing = target.get(assessment.metric);
+  const actual = finiteNumberOrNull(assessment.actual);
+  const threshold = finiteNumberOrNull(assessment.threshold);
+  const observedOverThreshold = assessment.observedOverThreshold === true;
+  const next = {
+    metric: assessment.metric,
+    measurementMetric: assessment.measurementMetric,
+    role: assessment.role ?? null,
+    status: "SKIPPED",
+    reason: INSTRUMENTED_PERFORMANCE_REASON,
+    threshold,
+    actual,
+    observedOverThreshold,
+    affectsRecordStatus: false,
+    message: assessment.originalMessage
+      ? `${assessment.originalMessage}; threshold not adjudicated because the run was instrumented`
+      : `${assessment.metric} was not adjudicated because the run was instrumented`
+  };
+  if (
+    !existing ||
+    Number(next.observedOverThreshold) > Number(existing.observedOverThreshold) ||
+    (
+      next.observedOverThreshold === existing.observedOverThreshold &&
+      (next.actual ?? Number.NEGATIVE_INFINITY) >
+        (existing.actual ?? Number.NEGATIVE_INFINITY)
+    )
+  ) {
+    target.set(assessment.metric, next);
+  }
+}
+
+function isSkippedPerformanceViolation(record, violation) {
+  return violation?.failureDomain !== "kova-harness" &&
+    Number.isFinite(violation?.actual) &&
+    isInstrumentedPerformanceMetric(violation?.metric) &&
+    instrumentedPerformanceThresholdAffected(record, {
+      metric: violation.metric,
+      role: violation.role,
+      actual: violation.actual,
+      command: violation.command
+    });
+}
+
+function thresholdFromExpected(expected) {
+  if (Number.isFinite(expected)) {
+    return expected;
+  }
+  const match = String(expected ?? "").match(/-?\d+(?:\.\d+)?/);
+  return match ? Number(match[0]) : null;
+}
+
+function finiteNumberOrNull(value) {
+  return Number.isFinite(value) ? value : null;
 }
 
 function strictestPrimaryThreshold(headlineThreshold, roleThreshold) {
@@ -1752,7 +1922,7 @@ function evaluateAgentFailureContainment({ turns, record, thresholds, gatewayExp
     : (typeof thresholds.providerFailureHealthFailures === "number" ? thresholds.providerFailureHealthFailures : 0);
   const finalGatewayState = record.finalMetrics?.service?.gatewayState ?? null;
   const statusCommands = collectResults(record).filter((result) =>
-    isPostAgentStatusCommand(result.command)
+    isStatusCommand(result.command)
   );
   const statusWorks = statusCommands.length === 0 ? null : statusCommands.some((result) => result.status === 0 && result.timedOut !== true);
 
@@ -1774,18 +1944,22 @@ function evaluateAgentFailureContainment({ turns, record, thresholds, gatewayExp
   };
 }
 
-function isPostAgentStatusCommand(command) {
-  return (
-    /\s--\sstatus\b|@\S+\s+--\s+status\b/.test(command) ||
-    command.includes(" -- status") ||
-    /\s--\s+gateway\s+status\b/.test(command) ||
-    /@\S+\s+--\s+gateway\s+status\b/.test(command)
-  );
-}
-
-function isDoctorFixCommand(command) {
-  return String(command ?? "").includes("run-doctor-repair.mjs") || String(command ?? "").includes(" doctor --fix");
-}
+const isColdReadyCommand = (command) =>
+  commandMatchesPerformanceMetric("coldReadyMs", command);
+const isWarmReadyCommand = (command) =>
+  commandMatchesPerformanceMetric("warmReadyMs", command);
+const isUpgradeCommand = (command) =>
+  commandMatchesPerformanceMetric("upgradeMs", command);
+const isStatusCommand = (command) =>
+  commandMatchesPerformanceMetric("statusMs", command);
+const isPluginsListCommand = (command) =>
+  commandMatchesPerformanceMetric("pluginsListMs", command);
+const isPluginUpdateDryRunCommand = (command) =>
+  commandMatchesPerformanceMetric("pluginUpdateDryRunMs", command);
+const isModelsListCommand = (command) =>
+  commandMatchesPerformanceMetric("modelsListMs", command);
+const isDoctorFixCommand = (command) =>
+  commandMatchesPerformanceMetric("doctorFixMs", command);
 
 function checkAgentFailureContainment(violations, containment) {
   if (containment.processLeaksOk !== true) {
@@ -3612,18 +3786,11 @@ function collectPhaseResultEntries(record, options = {}) {
 function recordExpectsGateway(record) {
   return collectResults(record).some((result) => {
     const command = result.command ?? "";
-    if (isGatewayColdStartCommand(command) || command.startsWith("ocm service restart ")) {
+    if (isColdReadyCommand(command) || isWarmReadyCommand(command)) {
       return true;
     }
     return false;
   });
-}
-
-function isGatewayColdStartCommand(command) {
-  if (command.startsWith("ocm service start ")) {
-    return true;
-  }
-  return command.startsWith("ocm start ") && !/(?:^|\s)--no-service(?:\s|$)/.test(command);
 }
 
 function collectGatewayProcessResources(record, options = {}) {

@@ -208,11 +208,10 @@ export async function executeScenario(scenario, context) {
 }
 
 function profilingSummary(context) {
-  const enabled = context.nodeProfile === true ||
-    context.deepProfile === true ||
+  const affectsPerformanceMeasurements = context.nodeProfile === true ||
     context.heapSnapshot === true ||
-    context.diagnosticReport === true ||
-    context.profileOnFailure === true;
+    context.diagnosticReport === true;
+  const enabled = affectsPerformanceMeasurements || context.profileOnFailure === true;
   return {
     schemaVersion: "kova.profiling.v1",
     enabled,
@@ -221,10 +220,13 @@ function profilingSummary(context) {
     heapSnapshot: context.heapSnapshot === true,
     diagnosticReport: context.diagnosticReport === true,
     profileOnFailure: context.profileOnFailure === true,
-    affectsResourceMeasurements: enabled,
+    affectsPerformanceMeasurements,
+    affectsResourceMeasurements: affectsPerformanceMeasurements,
     baselineEligible: !enabled,
-    interpretation: enabled
-      ? "instrumented run; CPU/RSS can include profiler and diagnostic overhead"
+    interpretation: affectsPerformanceMeasurements
+      ? "instrumented diagnostic run; CPU, RSS, and latency can include profiler overhead"
+      : context.profileOnFailure === true
+        ? "normal user-path resource measurements; failure-only diagnostics enabled"
       : "normal user-path resource measurements"
   };
 }

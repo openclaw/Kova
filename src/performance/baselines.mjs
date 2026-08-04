@@ -9,6 +9,11 @@ import {
   performanceIdentity,
   performanceRecordKey
 } from "./stats.mjs";
+import {
+  INSTRUMENTED_PERFORMANCE_REASON,
+  instrumentedPerformanceMetricSkipped,
+  profilingAffectsPerformance
+} from "./instrumentation.mjs";
 
 export const BASELINE_SCHEMA = "kova.baselines.v1";
 export const BASELINE_COMPARISON_SCHEMA = "kova.baselineComparison.v1";
@@ -377,16 +382,19 @@ export function comparePerformanceToBaseline(report, store, options = {}) {
   const regressions = [];
   const missing = [];
   const resourceContractMismatches = [];
+  const instrumentedPerformanceGroups = [];
   let skippedMetricCount = 0;
+  let instrumentedPerformanceGroupCount = 0;
 
   for (const group of report.performance?.groups ?? []) {
     const currentResourceMeasurementScope =
       group.resourceMeasurementScope ?? report.performance?.resourceMeasurementScope ?? null;
     const currentResourceHeadlineContract =
       group.resourceHeadlineContract ?? report.performance?.resourceHeadlineContract ?? null;
-    const representative = (report.records ?? []).find((record) =>
+    const groupRecords = (report.records ?? []).filter((record) =>
       record.scenario === group.scenario && record.state?.id === group.state && record.surface === group.surface
     );
+    const representative = groupRecords[0] ?? null;
     if (!representative) {
       continue;
     }
@@ -436,13 +444,48 @@ export function comparePerformanceToBaseline(report, store, options = {}) {
     };
     const baselineMetrics = baseline.aggregate?.metrics ?? {};
     const currentMetrics = group.metrics ?? {};
-    const skippedMetrics = resourceContractMatches
+    const hasInstrumentedRecords = groupRecords.some((record) =>
+      profilingAffectsPerformance(record.profiling)
+    );
+    const resourceSkippedMetrics = resourceContractMatches
       ? []
       : RESOURCE_PERFORMANCE_METRICS.filter((metric) =>
         numericMedian(baselineMetrics[metric]) !== null ||
         numericMedian(currentMetrics[metric]) !== null
       );
+    const instrumentedSkippedMetrics = hasInstrumentedRecords
+      ? PERFORMANCE_METRICS
+        .map((metric) => metric.id)
+        .filter((metric) =>
+          instrumentedPerformanceMetricSkipped(groupRecords, metric) &&
+          (
+            numericMedian(baselineMetrics[metric]) !== null ||
+            numericMedian(currentMetrics[metric]) !== null
+          )
+        )
+      : [];
+    const instrumentedPerformance = instrumentedSkippedMetrics.length > 0;
+    const skippedMetrics = [...new Set([
+      ...resourceSkippedMetrics,
+      ...instrumentedSkippedMetrics
+    ])];
+    const skippedReasons = Object.fromEntries(skippedMetrics.map((metric) => [
+      metric,
+      instrumentedSkippedMetrics.includes(metric)
+        ? INSTRUMENTED_PERFORMANCE_REASON
+        : "resource-contract-mismatch"
+    ]));
     skippedMetricCount += skippedMetrics.length;
+    if (instrumentedPerformance) {
+      instrumentedPerformanceGroupCount += 1;
+      instrumentedPerformanceGroups.push({
+        key,
+        scenario: group.scenario,
+        surface: group.surface,
+        state: group.state,
+        skippedMetrics: instrumentedSkippedMetrics
+      });
+    }
     if (!resourceContractMatches) {
       resourceContractMismatches.push({
         key,
@@ -454,7 +497,8 @@ export function comparePerformanceToBaseline(report, store, options = {}) {
       });
     }
     const metricComparisons = buildMetricComparisons(baselineMetrics, currentMetrics, {
-      skippedMetrics
+      skippedMetrics,
+      skippedReasons
     });
     const groupRegressions = metricRegressions(baselineMetrics, currentMetrics, thresholds, {
       skippedMetrics
@@ -471,9 +515,14 @@ export function comparePerformanceToBaseline(report, store, options = {}) {
       scenario: group.scenario,
       surface: group.surface,
       state: group.state,
-      status: groupRegressions.length > 0 ? "REGRESSED" : "OK",
+      status: groupRegressions.length > 0
+        ? "REGRESSED"
+        : instrumentedPerformance
+          ? "SKIPPED"
+          : "OK",
       baselineSource: baseline.source,
       resourceComparison,
+      instrumentedPerformance,
       skippedMetrics,
       metricComparisons,
       regressions: groupRegressions
@@ -491,8 +540,10 @@ export function comparePerformanceToBaseline(report, store, options = {}) {
     resourceMeasurementScope: report.performance?.resourceMeasurementScope ?? null,
     resourceHeadlineContract: report.performance?.resourceHeadlineContract ?? null,
     resourceContractMismatchCount: resourceContractMismatches.length,
+    instrumentedPerformanceGroupCount,
     skippedMetricCount,
     resourceContractMismatches,
+    instrumentedPerformanceGroups,
     groups,
     regressions,
     missing
@@ -554,6 +605,7 @@ function metricRegressions(baselineMetrics, currentMetrics, thresholds, options 
 function buildMetricComparisons(baselineMetrics, currentMetrics, options = {}) {
   const comparisons = {};
   const skippedMetrics = new Set(options.skippedMetrics ?? []);
+  const skippedReasons = options.skippedReasons ?? {};
   for (const metric of PERFORMANCE_METRICS) {
     const baselineMedian = numericMedian(baselineMetrics[metric.id]);
     const currentMedian = numericMedian(currentMetrics[metric.id]);
@@ -572,7 +624,7 @@ function buildMetricComparisons(baselineMetrics, currentMetrics, options = {}) {
       comparable,
       delta: comparable ? round(currentMedian - baselineMedian) : null,
       reason: skipped
-        ? "resource-contract-mismatch"
+        ? skippedReasons[metric.id] ?? "not-comparable"
         : (valuesAvailable ? null : "missing-metric")
     };
   }

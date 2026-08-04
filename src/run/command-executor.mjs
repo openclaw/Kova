@@ -14,6 +14,7 @@ import {
 } from "../measurement-contract.mjs";
 import { assertNetworkFrontageCommandSafe, maybeStartNetworkFrontage, networkFrontageCommandEnv } from "../network-frontage.mjs";
 import { repoRoot } from "../paths.mjs";
+import { commandReceivesNodeProfiler } from "../performance/instrumentation.mjs";
 import { resolveOwnedMockProviderPid } from "../process-safety.mjs";
 import { assertSafeScenarioCommand } from "../safety.mjs";
 import { safeSegment } from "./phase-commands.mjs";
@@ -199,11 +200,7 @@ export function buildDiagnosticsCommandEnv(
     OPENCLAW_DIAGNOSTICS_EVENT_LOOP: "1"
   };
 
-  if (
-    context.nodeProfile === true &&
-    measurementScope === "product" &&
-    !startsPersistentService(command)
-  ) {
+  if (commandReceivesNodeProfiler(context, measurementScope, command)) {
     const profileDir = artifactDirs.nodeProfiles;
     env.KOVA_NODE_PROFILE_DIR = profileDir;
     env.NODE_OPTIONS = mergeNodeOptions(process.env.NODE_OPTIONS, [
@@ -222,17 +219,6 @@ export function buildDiagnosticsCommandEnv(
   }
 
   return env;
-}
-
-function startsPersistentService(command) {
-  // Service lifecycle commands can propagate NODE_OPTIONS into the managed
-  // gateway, turning bounded command profiles into unbounded daemon traces.
-  const text = String(command ?? "");
-  return /\bocm\s+service\s+(?:install|start|restart)\b/.test(text) ||
-    (
-      /\bocm\s+start\b/.test(text) &&
-      !/(?:^|\s)--no-service(?:\s|$)/.test(text)
-    );
 }
 
 function mergeNodeOptions(existing, additions) {

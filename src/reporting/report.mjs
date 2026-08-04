@@ -203,10 +203,18 @@ function formatPerformanceSummaryTable(groups = [], performance = null, rawPerfo
   }
   if ((performance?.resourceContractMismatchCount ?? 0) > 0) {
     lines.push(`- Resource contract mismatches: ${performance.resourceContractMismatchCount}`);
-    lines.push(`- Skipped resource metrics: ${performance.skippedMetricCount ?? 0}`);
     for (const mismatch of performance.resourceContractMismatches?.slice(0, 4) ?? []) {
       lines.push(`- Resource baseline skipped: ${mismatch.scenario}/${mismatch.state ?? "none"} ${formatResourceComparison(mismatch.resourceComparison)}`);
     }
+  }
+  if ((performance?.instrumentedPerformanceGroupCount ?? 0) > 0) {
+    lines.push(`- Instrumented baseline groups: ${performance.instrumentedPerformanceGroupCount}`);
+    for (const group of performance.instrumentedPerformanceGroups?.slice(0, 4) ?? []) {
+      lines.push(`- Instrumented baseline skipped: ${group.scenario}/${group.state ?? "none"} ${(group.skippedMetrics ?? []).join(", ") || "performance metrics"}`);
+    }
+  }
+  if ((performance?.skippedMetricCount ?? 0) > 0) {
+    lines.push(`- Skipped baseline metrics: ${performance.skippedMetricCount}`);
   }
   lines.push("");
   lines.push("| Scenario | Samples | Status | Health Ready | Gateway RSS | Tracked RSS | CPU | Cold Turn | Warm Turn | Cold Pre-Provider |");
@@ -1393,8 +1401,12 @@ function summarizePerformance(performance, baseline) {
     baselineRegressionCount: baseline?.comparison?.regressionCount ?? null,
     missingBaselineCount: baseline?.comparison?.missingBaselineCount ?? null,
     resourceContractMismatchCount: baseline?.comparison?.resourceContractMismatchCount ?? null,
+    instrumentedPerformanceGroupCount:
+      baseline?.comparison?.instrumentedPerformanceGroupCount ?? null,
     skippedMetricCount: baseline?.comparison?.skippedMetricCount ?? null,
     resourceContractMismatches: baseline?.comparison?.resourceContractMismatches?.slice(0, 10) ?? [],
+    instrumentedPerformanceGroups:
+      baseline?.comparison?.instrumentedPerformanceGroups?.slice(0, 10) ?? [],
     baselineReviewOk: baseline?.review?.ok ?? null,
     baselineReviewBlockerCount: baseline?.review?.blockerCount ?? null,
     savedBaselinePath: baseline?.saved?.path ?? null,
@@ -1848,7 +1860,13 @@ function pushMeasurementBrief(lines, measurements, { compact }) {
   if (noProcessSamples && readinessNotApplicable) {
     lines.push(`- resources: scope ${measurements.resourceMeasurementScope ?? "unknown"}; contract ${measurements.resourceHeadlineContract ?? "unknown"}; n/a (${readinessReason ?? "no gateway process expected"})`);
   } else {
-    lines.push(`- resources: scope ${measurements.resourceMeasurementScope ?? "unknown"}; contract ${measurements.resourceHeadlineContract ?? "unknown"}; ${resourceHeadlineText(measurements)} ${valueMb(resourceHeadlineValue(measurements))}; tracked total ${valueMb(measurements.resourcePeakTrackedRssMb)}; max CPU ${valuePercent(measurements.cpuPercentMax)}; samples ${measurements.resourceSampleCount ?? "unknown"}; roles ${rolePeakText(measurements)}`);
+    const skippedThresholdCount = Number.isInteger(measurements.performanceThresholdSkippedCount)
+      ? ` ${measurements.performanceThresholdSkippedCount}`
+      : "";
+    const thresholdDisposition = measurements.profilingAffectsPerformanceMeasurements === true
+      ? `; performance thresholds skipped${skippedThresholdCount} (instrumented)`
+      : "";
+    lines.push(`- resources: scope ${measurements.resourceMeasurementScope ?? "unknown"}; contract ${measurements.resourceHeadlineContract ?? "unknown"}; ${resourceHeadlineText(measurements)} ${valueMb(resourceHeadlineValue(measurements))}; tracked total ${valueMb(measurements.resourcePeakTrackedRssMb)}; max CPU ${valuePercent(measurements.cpuPercentMax)}; samples ${measurements.resourceSampleCount ?? "unknown"}; roles ${rolePeakText(measurements)}${thresholdDisposition}`);
   }
   if (measurements.channelWorkflowResources?.available) {
     lines.push(`- channel workflow resources: ${formatChannelWorkflowResourceRows(measurements.channelWorkflowResourceTopByGatewayRss ?? [])}`);
@@ -2027,9 +2045,13 @@ function formatGateSection(gate, rawGate = gate) {
     lines.push(`- Regressions: ${gate.baseline.regressionCount}`);
     lines.push(`- Missing baselines: ${gate.baseline.missingBaselineCount}`);
     lines.push(`- Resource contract mismatches: ${gate.baseline.resourceContractMismatchCount ?? 0}`);
-    lines.push(`- Skipped resource metrics: ${gate.baseline.skippedMetricCount ?? 0}`);
+    lines.push(`- Instrumented baseline groups: ${gate.baseline.instrumentedPerformanceGroupCount ?? 0}`);
+    lines.push(`- Skipped baseline metrics: ${gate.baseline.skippedMetricCount ?? 0}`);
     for (const group of (gate.baseline.resourceContractMismatches ?? []).slice(0, 4)) {
       lines.push(`- Resource baseline skipped: ${group.scenario}/${group.state ?? "none"} ${formatResourceComparison(group.resourceComparison)}`);
+    }
+    for (const group of (gate.baseline.instrumentedPerformanceGroups ?? []).slice(0, 4)) {
+      lines.push(`- Instrumented baseline skipped: ${group.scenario}/${group.state ?? "none"} ${(group.skippedMetrics ?? []).join(", ") || "performance metrics"}`);
     }
     if (gate.baseline.regressedGroups?.length > 0) {
       for (const group of gate.baseline.regressedGroups.slice(0, 4)) {

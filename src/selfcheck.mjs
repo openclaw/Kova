@@ -44,6 +44,10 @@ import {
   RESOURCE_MEASUREMENT_SCOPE
 } from "./performance/stats.mjs";
 import {
+  isInstrumentedPerformanceMetric,
+  isProfilingArtifactMetric
+} from "./performance/instrumentation.mjs";
+import {
   loadChannelCapabilities,
   validateChannelCapabilityCatalogReferences,
   validateChannelProofPolicyReferences,
@@ -666,6 +670,7 @@ async function runScopedSelfCheck(flags, scope, workspace) {
     checks.push(upgradeStateSnapshotInvariantsCheck());
     checks.push(upgradeLogDerivedInvariantsCheck());
     checks.push(localBuildTargetSetupResourceExclusionCheck());
+    checks.push(instrumentedPerformanceThresholdPolicyCheck());
     checks.push(await jsonCommandCheck("plan-json", "node bin/kova.mjs plan --json", (data) => {
       assertEqual(data.schemaVersion, "kova.plan.v1", "plan schema");
       assertArrayNotEmpty(data.surfaces, "plan surfaces");
@@ -1037,7 +1042,15 @@ async function runScopedSelfCheck(flags, scope, workspace) {
     checks.push(await jsonCommandCheck("run-profiling-dry-run-json", `node bin/kova.mjs run --target runtime:stable --scenario fresh-install --node-profile --report-dir ${quoteShell(tmp)} --json`, async (data) => {
       const report = JSON.parse(await readFile(data.jsonPath, "utf8"));
       assertEqual(report.records?.[0]?.profiling?.enabled, true, "profiling marker");
+      assertEqual(report.records?.[0]?.profiling?.affectsPerformanceMeasurements, true, "profiling performance marker");
       assertEqual(report.performance?.profiledRunCount, 1, "profiled run count");
+    }));
+    checks.push(await jsonCommandCheck("run-profile-on-failure-dry-run-json", `node bin/kova.mjs run --target runtime:stable --scenario fresh-install --profile-on-failure --report-dir ${quoteShell(tmp)} --json`, async (data) => {
+      const report = JSON.parse(await readFile(data.jsonPath, "utf8"));
+      const profiling = report.records?.[0]?.profiling;
+      assertEqual(profiling?.enabled, true, "profile-on-failure marker");
+      assertEqual(profiling?.affectsPerformanceMeasurements, false, "profile-on-failure keeps normal performance measurements");
+      assertEqual(profiling?.baselineEligible, false, "profile-on-failure remains baseline ineligible");
     }));
     checks.push(await jsonCommandCheck("workspace-scan-dry-run-json", `node bin/kova.mjs run --target runtime:stable --scenario workspace-scan-pressure --state large-workspace --report-dir ${quoteShell(tmp)} --json`, async (data) => {
       const report = JSON.parse(await readFile(data.jsonPath, "utf8"));
@@ -2548,6 +2561,860 @@ function localBuildTargetSetupResourceExclusionCheck() {
   }
 }
 
+function instrumentedPerformanceThresholdPolicyCheck() {
+  try {
+    const scenario = {
+      id: "instrumented-performance-threshold-policy",
+      thresholds: {
+        statusMs: 100,
+        peakRssMb: 1000,
+        cpuPercentMax: 350
+      }
+    };
+    const options = {
+      surface: {
+        id: "agent-cli-local-turn",
+        thresholds: {},
+        resourcePrimaryRole: "agent-process",
+        roleThresholds: {}
+      },
+      targetPlan: { kind: "local-build" }
+    };
+    const instrumentedProfiling = {
+      enabled: true,
+      deepProfile: true,
+      nodeProfile: true,
+      heapSnapshot: true,
+      diagnosticReport: true,
+      profileOnFailure: false,
+      affectsPerformanceMeasurements: true,
+      affectsResourceMeasurements: true,
+      baselineEligible: false
+    };
+    const buildRecord = ({
+      profiling,
+      status = "PASS",
+      commandStatus = 0,
+      durationMs = 200,
+      resourceRole = "agent-process"
+    }) => ({
+      scenario: scenario.id,
+      surface: "agent-cli-local-turn",
+      title: "Instrumented Performance Threshold Policy",
+      state: { id: "mock-openai-provider" },
+      status,
+      profiling,
+      phases: [{
+        id: "scenario-command",
+        measurementScope: "product",
+        results: [{
+          command: "ocm @kova-self-check -- status",
+          status: commandStatus,
+          durationMs,
+          resourceSamples: syntheticResourceSamples({
+            peakRssMb: 1065,
+            maxCpuPercent: 420,
+            role: resourceRole,
+            processRoles: resourceRole === "gateway"
+              ? ["gateway"]
+              : [resourceRole, "command-tree"]
+          })
+        }]
+      }],
+      finalMetrics: {
+        service: { gatewayState: "disabled" },
+        logs: zeroLogMetrics()
+      }
+    });
+
+    const instrumented = buildRecord({ profiling: instrumentedProfiling });
+    evaluateRecord(instrumented, scenario, options);
+    assertEqual(instrumented.status, "PASS", "instrumented performance overages do not fail the record");
+    assertEqual(instrumented.violations, undefined, "instrumented performance overages are not fatal violations");
+    assertEqual(instrumented.measurements.peakRssMb, 1065, "instrumented RSS remains visible");
+    assertEqual(instrumented.measurements.cpuPercentMax, 420, "instrumented CPU remains visible");
+    assertEqual(
+      instrumented.performanceThresholdAssessment?.skipped.some(
+        (assessment) =>
+          assessment.metric === "peakRssMb" &&
+          assessment.observedOverThreshold === true
+      ),
+      true,
+      "instrumented RSS threshold is explicitly skipped"
+    );
+    assertEqual(
+      instrumented.performanceThresholdAssessment?.skipped.some(
+        (assessment) =>
+          assessment.metric === "statusMs" &&
+          assessment.observedOverThreshold === true
+      ),
+      true,
+      "instrumented latency threshold is explicitly skipped"
+    );
+
+    const heapOnly = buildRecord({
+      profiling: {
+        ...instrumentedProfiling,
+        deepProfile: false,
+        nodeProfile: false,
+        diagnosticReport: false
+      }
+    });
+    evaluateRecord(heapOnly, scenario, options);
+    assertEqual(heapOnly.status, "PASS", "heap-only performance overages remain diagnostic");
+    assertEqual(
+      heapOnly.performanceThresholdAssessment?.skipped.some(
+        (assessment) =>
+          assessment.metric === "peakRssMb" &&
+          assessment.observedOverThreshold === true
+      ),
+      true,
+      "heap-only RSS threshold is explicitly skipped"
+    );
+    const heapOnlyGate = evaluateGate({
+      mode: "execution",
+      controls: { include: [], exclude: [] },
+      records: [heapOnly]
+    }, {
+      id: "heap-only-performance-gate",
+      purpose: "release",
+      gate: {
+        blocking: [{ scenario: scenario.id, state: "mock-openai-provider" }]
+      }
+    });
+    assertEqual(heapOnlyGate.verdict, "PARTIAL", "heap-only evidence cannot ship");
+    assertEqual(heapOnlyGate.ok, false, "heap-only evidence is not gate-ok");
+
+    const normal = buildRecord({
+      profiling: {
+        enabled: false,
+        affectsPerformanceMeasurements: false,
+        affectsResourceMeasurements: false,
+        baselineEligible: true
+      }
+    });
+    evaluateRecord(normal, scenario, options);
+    assertEqual(normal.status, "FAIL", "normal performance overages remain fatal");
+    for (const metric of ["peakRssMb", "cpuPercentMax", "statusMs"]) {
+      assertEqual(
+        normal.violations.some((violation) => violation.metric === metric),
+        true,
+        `normal ${metric} violation remains`
+      );
+    }
+
+    const cleanGateway = buildRecord({
+      profiling: instrumentedProfiling,
+      resourceRole: "gateway"
+    });
+    evaluateRecord(cleanGateway, scenario, {
+      ...options,
+      surface: {
+        ...options.surface,
+        resourcePrimaryRole: "gateway"
+      }
+    });
+    assertEqual(cleanGateway.status, "FAIL", "unprofiled gateway resource overages remain fatal");
+    assertEqual(
+      cleanGateway.violations.some((violation) => violation.metric === "peakRssMb"),
+      true,
+      "gateway RSS remains gateable during a profiled run"
+    );
+    assertEqual(
+      cleanGateway.performanceThresholdAssessment?.skipped.some(
+        (assessment) => assessment.metric === "peakRssMb"
+      ),
+      false,
+      "gateway RSS is not mislabeled as instrumented"
+    );
+
+    const cleanStartup = buildRecord({
+      profiling: instrumentedProfiling,
+      durationMs: 200,
+      resourceRole: "gateway"
+    });
+    cleanStartup.phases[0].results[0].command = "ocm service start kova-self-check";
+    evaluateRecord(cleanStartup, {
+      id: "instrumented-clean-startup",
+      thresholds: { gatewayReadyMs: 100 }
+    }, {
+      ...options,
+      surface: {
+        ...options.surface,
+        resourcePrimaryRole: "gateway"
+      }
+    });
+    assertEqual(cleanStartup.status, "FAIL", "unprofiled gateway startup latency remains fatal");
+    assertEqual(
+      cleanStartup.violations.some((violation) => violation.metric === "coldReadyMs"),
+      true,
+      "gateway startup latency is not mislabeled as instrumented"
+    );
+
+    const functionalFailure = buildRecord({
+      profiling: instrumentedProfiling,
+      status: "FAIL",
+      commandStatus: 1
+    });
+    evaluateRecord(functionalFailure, scenario, options);
+    assertEqual(functionalFailure.status, "FAIL", "instrumentation never hides command failure");
+
+    const malformed = buildRecord({
+      profiling: instrumentedProfiling,
+      durationMs: "200"
+    });
+    evaluateRecord(malformed, scenario, options);
+    assertEqual(malformed.status, "BLOCKED", "instrumentation never hides malformed evidence");
+    assertEqual(
+      malformed.violations.some((violation) => violation.failureDomain === "kova-harness"),
+      true,
+      "malformed performance evidence remains a harness blocker"
+    );
+
+    const gateProfile = {
+      id: "instrumented-performance",
+      purpose: "release",
+      gate: {
+        id: "instrumented-performance-gate",
+        blocking: [{ scenario: scenario.id, state: "mock-openai-provider" }]
+      }
+    };
+    const gate = evaluateGate({
+      mode: "execution",
+      controls: { include: [], exclude: [] },
+      records: [instrumented]
+    }, gateProfile);
+    assertEqual(gate.verdict, "PARTIAL", "instrumented release evidence cannot ship");
+    assertEqual(gate.ok, false, "instrumented release evidence is not gate-ok");
+    assertEqual(gate.complete, false, "instrumented release evidence is incomplete");
+    assertEqual(gate.partial, true, "instrumented release evidence is explicitly partial");
+    assertEqual(
+      gate.cards.some((card) =>
+        card.kind === "instrumented-performance-thresholds" &&
+        card.required === true
+      ),
+      true,
+      "gate explains the instrumented performance gap"
+    );
+    const repeatedInstrumented = structuredClone(instrumented);
+    repeatedInstrumented.performanceThresholdAssessment.skipped =
+      repeatedInstrumented.performanceThresholdAssessment.skipped.toReversed();
+    const repeatedGate = evaluateGate({
+      mode: "execution",
+      controls: { include: [], exclude: [] },
+      records: [instrumented, repeatedInstrumented]
+    }, gateProfile);
+    const repeatedCards = repeatedGate.cards.filter(
+      (card) => card.kind === "instrumented-performance-thresholds"
+    );
+    assertEqual(repeatedCards.length, 2, "repeat records retain one instrumented card each");
+    assertEqual(
+      repeatedGate.instrumentedPerformanceIncompleteCount,
+      2,
+      "repeat instrumented cards remain independently required"
+    );
+    assertEqual(
+      repeatedCards.map((card) => card.measurements.firstMetric).join(","),
+      [
+        instrumented.performanceThresholdAssessment.skipped[0].metric,
+        repeatedInstrumented.performanceThresholdAssessment.skipped[0].metric
+      ].join(","),
+      "repeat cards retain their owning record assessment"
+    );
+    assertEqual(
+      isInstrumentedPerformanceMetric("agentMetadataScanCount"),
+      false,
+      "instrumentation never masks behavioral count thresholds"
+    );
+    assertEqual(
+      isInstrumentedPerformanceMetric("resourceSampleCount"),
+      false,
+      "instrumentation never masks resource evidence counts"
+    );
+    const profilingArtifactMetrics = [
+      "v8ReportCount",
+      "heapSnapshotCount",
+      "diagnosticArtifactBytes",
+      "nodeCpuProfileCount",
+      "nodeHeapProfileCount",
+      "nodeTraceEventCount",
+      "nodeProfileArtifactBytes",
+      "nodeProfileTopFunctionMs",
+      "heapSnapshotBytes"
+    ];
+    for (const metric of profilingArtifactMetrics) {
+      assertEqual(
+        isProfilingArtifactMetric(metric),
+        true,
+        `profiling artifact taxonomy includes ${metric}`
+      );
+      assertEqual(
+        isInstrumentedPerformanceMetric(metric),
+        false,
+        `profiling artifact threshold remains gateable for ${metric}`
+      );
+    }
+    for (const metric of [
+      "soakDurationMs",
+      "execTimeoutMs",
+      "mcpShutdownMs",
+      "agentCleanupMs",
+      "statusAfterFailureMs"
+    ]) {
+      assertEqual(
+        isInstrumentedPerformanceMetric(metric),
+        false,
+        `instrumentation never masks functional timing contract ${metric}`
+      );
+    }
+
+    const soakMinimum = {
+      scenario: "instrumented-soak-minimum",
+      surface: "soak",
+      title: "Instrumented Soak Minimum",
+      state: { id: "fresh" },
+      status: "PASS",
+      profiling: instrumentedProfiling,
+      phases: [{
+        id: "soak",
+        measurementScope: "product",
+        results: [{
+          command: "node support/run-soak-loop.mjs",
+          status: 0,
+          durationMs: 1000,
+          stdout: JSON.stringify({
+            schemaVersion: "kova.soakLoop.v1",
+            durationMs: 1000,
+            iterations: 1,
+            commandSummary: {
+              p95Ms: 10,
+              maxMs: 10,
+              failureCount: 0
+            },
+            healthSummary: {
+              p95Ms: 10,
+              maxMs: 10,
+              failureCount: 0
+            }
+          })
+        }]
+      }],
+      finalMetrics: {
+        service: { gatewayState: "disabled" },
+        logs: zeroLogMetrics()
+      }
+    };
+    evaluateRecord(soakMinimum, {
+      id: "instrumented-soak-minimum",
+      thresholds: { soakMinDurationMs: 15000 }
+    }, {
+      surface: { id: "soak", thresholds: {} },
+      targetPlan: { kind: "local-build" }
+    });
+    assertEqual(soakMinimum.status, "FAIL", "instrumentation never hides a short soak");
+    assertEqual(
+      soakMinimum.violations.some((violation) => violation.metric === "soakDurationMs"),
+      true,
+      "soak minimum remains a fatal functional contract"
+    );
+    assertEqual(
+      soakMinimum.performanceThresholdAssessment?.complete,
+      true,
+      "profiled records retain an explicit complete threshold assessment"
+    );
+    assertEqual(
+      soakMinimum.performanceThresholdAssessment?.skippedCount,
+      0,
+      "complete threshold assessments retain a zero skipped count"
+    );
+
+    const platform = {
+      os: process.platform,
+      arch: process.arch,
+      release: "self-check",
+      node: process.version
+    };
+    const target = "local-build:/tmp/openclaw";
+    const targetPlan = { kind: "local-build", value: "/tmp/openclaw" };
+    const baselineRecord = syntheticPerformanceRecord(1, {
+      peakRssMb: 500,
+      resourcePeakGatewayRssMb: 500,
+      cpuPercentMax: 25,
+      agentTurnMs: 2000
+    });
+    baselineRecord.repeat = { index: 1, total: 1 };
+    const baselineReport = syntheticPerformanceReport({
+      runId: "instrumented-baseline",
+      platform,
+      target,
+      records: [baselineRecord]
+    });
+    baselineReport.controls = { parallel: 1 };
+    baselineReport.performance = buildPerformanceSummary(baselineReport.records, {
+      repeat: 1,
+      parallel: 1
+    });
+    const store = updateBaselineStore({
+      schemaVersion: "kova.baselines.v1",
+      entries: {}
+    }, baselineReport, {
+      targetPlan,
+      reviewedGood: true
+    });
+    const currentRecord = structuredClone(baselineRecord);
+    currentRecord.measurements.peakRssMb = 1500;
+    currentRecord.measurements.resourcePeakGatewayRssMb = 500;
+    currentRecord.measurements.cpuPercentMax = 80;
+    currentRecord.measurements.agentTurnMs = 5000;
+    currentRecord.profiling = instrumentedProfiling;
+    currentRecord.phases = structuredClone(instrumented.phases);
+    currentRecord.performanceThresholdAssessment =
+      instrumented.performanceThresholdAssessment;
+    currentRecord.measurements.profilingAffectsPerformanceMeasurements = true;
+    currentRecord.measurements.performanceThresholdSkippedCount =
+      currentRecord.performanceThresholdAssessment.skippedCount;
+    const currentReport = syntheticPerformanceReport({
+      runId: "instrumented-current",
+      platform,
+      target,
+      records: [currentRecord]
+    });
+    currentReport.performance = buildPerformanceSummary(currentReport.records, {
+      repeat: 1,
+      parallel: 1
+    });
+    const baselineComparison = comparePerformanceToBaseline(currentReport, store, {
+      targetPlan,
+      regressionThresholds: {
+        rssRegressionPercent: 1,
+        cpuRegressionPercent: 1,
+        agentLatencyRegressionPercent: 1
+      }
+    });
+    assertEqual(baselineComparison.ok, true, "instrumented baseline values cannot regress a clean baseline");
+    assertEqual(baselineComparison.regressionCount, 0, "instrumented baseline comparison has no regressions");
+    assertEqual(
+      baselineComparison.groups[0]?.metricComparisons?.peakRssMb?.comparable,
+      false,
+      "instrumented baseline RSS is non-comparable"
+    );
+    assertEqual(
+      baselineComparison.groups[0]?.metricComparisons?.peakRssMb?.reason,
+      "instrumented-performance-measurement",
+      "instrumented baseline skip reason is explicit"
+    );
+    assertEqual(
+      baselineComparison.groups[0]?.metricComparisons?.resourcePeakGatewayRssMb?.comparable,
+      true,
+      "clean gateway RSS remains comparable during an instrumented run"
+    );
+    const baselineGateReport = structuredClone(currentReport);
+    baselineGateReport.records[0].performanceThresholdAssessment = {
+      schemaVersion: "kova.performanceThresholdAssessment.v1",
+      complete: true,
+      skippedCount: 0,
+      reason: null,
+      rerun: null,
+      skipped: []
+    };
+    baselineGateReport.records[0].measurements.performanceThresholdSkippedCount = 0;
+    baselineGateReport.baseline = { comparison: baselineComparison };
+    const baselineGate = evaluateGate(baselineGateReport, {
+      id: "instrumented-baseline-gate",
+      purpose: "release",
+      gate: {
+        blocking: [{
+          scenario: baselineGateReport.records[0].scenario,
+          state: baselineGateReport.records[0].state.id
+        }]
+      }
+    });
+    const baselineCards = baselineGate.cards.filter(
+      (card) => card.kind === "instrumented-performance-thresholds"
+    );
+    assertEqual(baselineCards.length, 1, "instrumented baseline emits one deduplicated card");
+    assertEqual(
+      baselineCards[0].measurements.skippedMetrics.join(","),
+      baselineComparison.instrumentedPerformanceGroups[0].skippedMetrics.join(","),
+      "instrumented baseline card retains comparison evidence"
+    );
+    assertEqual(
+      baselineGate.instrumentedPerformanceIncompleteCount,
+      1,
+      "required instrumented baseline evidence keeps the gate partial"
+    );
+
+    const artifactBaselineReport = structuredClone(baselineReport);
+    Object.assign(artifactBaselineReport.records[0].measurements, {
+      v8ReportCount: 0,
+      heapSnapshotCount: 0,
+      diagnosticArtifactBytes: 0,
+      nodeCpuProfileCount: 0,
+      nodeHeapProfileCount: 0,
+      nodeTraceEventCount: 0,
+      nodeProfileArtifactBytes: 0,
+      nodeProfileTopFunctionMs: null,
+      heapSnapshotBytes: 0
+    });
+    artifactBaselineReport.performance = buildPerformanceSummary(
+      artifactBaselineReport.records,
+      { repeat: 1, parallel: 1 }
+    );
+    const artifactCurrentReport = structuredClone(currentReport);
+    Object.assign(artifactCurrentReport.records[0].measurements, {
+      v8ReportCount: 0,
+      heapSnapshotCount: 0,
+      diagnosticArtifactBytes: 0,
+      nodeCpuProfileCount: 6,
+      nodeHeapProfileCount: 6,
+      nodeTraceEventCount: 6,
+      nodeProfileArtifactBytes: 169517767,
+      nodeProfileTopFunctionMs: 15285.75,
+      heapSnapshotBytes: 0
+    });
+    artifactCurrentReport.performance = buildPerformanceSummary(
+      artifactCurrentReport.records,
+      { repeat: 1, parallel: 1 }
+    );
+    const reportComparison = compareReports(
+      artifactBaselineReport,
+      artifactCurrentReport,
+      {
+        thresholds: {
+          peakRssMb: 1,
+          cpuPercentMax: 1,
+          agentTurnMs: 1
+        }
+      }
+    );
+    const comparedScenario = reportComparison.scenarios[0];
+    assertEqual(comparedScenario.regressions.length, 0, "cross-mode report compare has no false regression");
+    assertEqual(comparedScenario.metrics.peakRssMb.comparable, false, "cross-mode report RSS is non-comparable");
+    assertEqual(
+      reportComparison.performanceProfileMismatchCount,
+      1,
+      "cross-mode report comparison records one profile mismatch"
+    );
+    for (const metric of profilingArtifactMetrics) {
+      assertEqual(
+        comparedScenario.metrics[metric].comparable,
+        false,
+        `cross-mode report marks ${metric} non-comparable`
+      );
+      assertEqual(
+        comparedScenario.skippedMetrics.includes(metric),
+        true,
+        `cross-mode report records skipped ${metric}`
+      );
+    }
+    assertEqual(
+      comparedScenario.metrics.nodeProfileArtifactBytes.delta,
+      null,
+      "cross-mode report suppresses profile artifact deltas"
+    );
+    assertEqual(reportComparison.result, "INCONCLUSIVE", "cross-mode report comparison is inconclusive");
+    assertEqual(reportComparison.ok, false, "inconclusive report comparison is not successful");
+    assertEqual(reportComparison.complete, false, "inconclusive report comparison is incomplete");
+    assertEqual(
+      renderCompareSummary(reportComparison).includes("Result: INCONCLUSIVE"),
+      true,
+      "plain comparison renders the inconclusive result"
+    );
+    assertEqual(
+      renderCompareAssessment(
+        reportComparison,
+        { color: "never", full: true },
+        process.env,
+        process.stdout
+      ).includes("[INCONCLUSIVE]"),
+      true,
+      "default comparison renders the inconclusive result"
+    );
+
+    const reverseReportComparison = compareReports(
+      artifactCurrentReport,
+      artifactBaselineReport
+    );
+    assertEqual(
+      reverseReportComparison.scenarios[0].metrics.nodeProfileArtifactBytes.comparable,
+      false,
+      "reverse cross-mode report profile artifacts are non-comparable"
+    );
+    assertEqual(
+      reverseReportComparison.result,
+      "INCONCLUSIVE",
+      "reverse cross-mode report comparison is inconclusive"
+    );
+
+    const sameProfileArtifactBaseline = structuredClone(artifactCurrentReport);
+    sameProfileArtifactBaseline.records[0].measurements.nodeProfileArtifactBytes =
+      8 * 1024 * 1024;
+    sameProfileArtifactBaseline.performance = buildPerformanceSummary(
+      sameProfileArtifactBaseline.records,
+      { repeat: 1, parallel: 1 }
+    );
+    const sameProfileArtifactComparison = compareReports(
+      sameProfileArtifactBaseline,
+      artifactCurrentReport
+    );
+    assertEqual(
+      sameProfileArtifactComparison.scenarios[0].metrics.nodeProfileArtifactBytes.comparable,
+      true,
+      "same-profile report artifacts remain comparable"
+    );
+    assertEqual(
+      sameProfileArtifactComparison.scenarios[0].regressions.some(
+        (regression) => regression.metric === "nodeProfileArtifactBytes"
+      ),
+      true,
+      "same-profile report artifacts can regress"
+    );
+    assertEqual(
+      sameProfileArtifactComparison.result,
+      "REGRESSED",
+      "same-profile artifact growth remains a regression"
+    );
+
+    const failedBaselineReport = structuredClone(baselineReport);
+    failedBaselineReport.records[0].status = "FAIL";
+    failedBaselineReport.records[0].violations = [{
+      kind: "threshold",
+      metric: "peakRssMb",
+      expected: "<= 400",
+      actual: 500,
+      message: "primary RSS 500 MB exceeded threshold 400 MB"
+    }];
+    failedBaselineReport.performance = buildPerformanceSummary(
+      failedBaselineReport.records,
+      { repeat: 1, parallel: 1 }
+    );
+    const inconclusiveComparison = compareReports(
+      failedBaselineReport,
+      currentReport
+    );
+    assertEqual(
+      inconclusiveComparison.statusChanges.inconclusive.length,
+      1,
+      "instrumented evidence does not claim a prior performance failure improved"
+    );
+    assertEqual(
+      inconclusiveComparison.findingChanges.inconclusive.some(
+        (finding) => finding.metric === "peakRssMb"
+      ),
+      true,
+      "instrumented evidence does not claim a prior performance finding resolved"
+    );
+
+    const instrumentedFailedReport = structuredClone(currentReport);
+    instrumentedFailedReport.records[0].status = "FAIL";
+    instrumentedFailedReport.records[0].violations = [{
+      kind: "threshold",
+      metric: "peakRssMb",
+      expected: "<= 1000",
+      actual: 1500,
+      message: "primary RSS 1500 MB exceeded threshold 1000 MB"
+    }];
+    instrumentedFailedReport.performance = buildPerformanceSummary(
+      instrumentedFailedReport.records,
+      { repeat: 1, parallel: 1 }
+    );
+    const newInstrumentedFailure = compareReports(
+      baselineReport,
+      instrumentedFailedReport
+    );
+    assertEqual(
+      newInstrumentedFailure.regressionCount,
+      0,
+      "instrumented performance failure does not create a false regression"
+    );
+    assertEqual(
+      newInstrumentedFailure.statusChanges.inconclusive.length,
+      1,
+      "normal pass to instrumented performance failure is inconclusive"
+    );
+    assertEqual(
+      newInstrumentedFailure.findingChanges.inconclusive.some(
+        (finding) =>
+          finding.metric === "peakRssMb" &&
+          finding.comparisonDirection === "new"
+      ),
+      true,
+      "new instrumented performance finding is inconclusive"
+    );
+
+    const repairedAfterInstrumentedFailure = compareReports(
+      instrumentedFailedReport,
+      baselineReport
+    );
+    assertEqual(
+      repairedAfterInstrumentedFailure.statusChanges.inconclusive.length,
+      1,
+      "instrumented failure to normal pass is inconclusive"
+    );
+    assertEqual(
+      repairedAfterInstrumentedFailure.findingChanges.resolved.length,
+      0,
+      "normal evidence does not claim an instrumented finding resolved"
+    );
+
+    const instrumentedPassReport = structuredClone(currentReport);
+    instrumentedPassReport.records[0].measurements.peakRssMb = 500;
+    instrumentedPassReport.performance = buildPerformanceSummary(
+      instrumentedPassReport.records,
+      { repeat: 1, parallel: 1 }
+    );
+    const sameProfileComparison = compareReports(
+      instrumentedFailedReport,
+      instrumentedPassReport
+    );
+    assertEqual(
+      sameProfileComparison.statusChanges.improvements.length,
+      1,
+      "same-profile instrumented evidence can prove an improvement"
+    );
+    assertEqual(
+      sameProfileComparison.findingChanges.resolved.some(
+        (finding) => finding.metric === "peakRssMb"
+      ),
+      true,
+      "same-profile instrumented evidence can resolve a finding"
+    );
+
+    const doctorFailureRecord = structuredClone(baselineRecord);
+    doctorFailureRecord.status = "FAIL";
+    doctorFailureRecord.measurements.doctorFixMs = 500;
+    doctorFailureRecord.violations = [{
+      kind: "threshold",
+      metric: "doctorFixMs",
+      expected: "<= 100",
+      actual: 500,
+      message: "doctor repair took 500ms, over threshold 100ms"
+    }];
+    const doctorFailureReport = syntheticPerformanceReport({
+      runId: "normal-doctor-failure",
+      platform,
+      target,
+      records: [doctorFailureRecord]
+    });
+    const instrumentedDoctorRecord = structuredClone(doctorFailureRecord);
+    delete instrumentedDoctorRecord.violations;
+    instrumentedDoctorRecord.profiling = instrumentedProfiling;
+    instrumentedDoctorRecord.phases = [{
+      id: "doctor",
+      measurementScope: "product",
+      results: [{
+        command: "node support/run-doctor-repair.mjs",
+        status: 0,
+        timedOut: false,
+        durationMs: 500
+      }]
+    }];
+    instrumentedDoctorRecord.performanceThresholdAssessment = {
+      schemaVersion: "kova.performanceThresholdAssessment.v1",
+      complete: false,
+      skippedCount: 1,
+      reason: "instrumented-performance-measurement",
+      rerun: "rerun without profiling for gateable performance evidence",
+      skipped: [{
+        metric: "doctorFixMs",
+        measurementMetric: "doctorFixMs",
+        role: null,
+        status: "SKIPPED",
+        reason: "instrumented-performance-measurement",
+        threshold: 100,
+        actual: 500,
+        observedOverThreshold: true,
+        affectsRecordStatus: false,
+        message: "doctorFixMs was not adjudicated because the run was instrumented"
+      }]
+    };
+    const instrumentedDoctorReport = syntheticPerformanceReport({
+      runId: "instrumented-doctor-failure",
+      platform,
+      target,
+      records: [instrumentedDoctorRecord]
+    });
+    const findingOnlyInconclusive = compareReports(
+      doctorFailureReport,
+      instrumentedDoctorReport
+    );
+    assertEqual(
+      findingOnlyInconclusive.performanceProfileMismatchCount,
+      0,
+      "finding-only profiler mismatch does not require a headline metric mismatch"
+    );
+    assertEqual(
+      findingOnlyInconclusive.findingChanges.inconclusive.length,
+      1,
+      "finding-only profiler mismatch remains explicit"
+    );
+    assertEqual(
+      findingOnlyInconclusive.result,
+      "INCONCLUSIVE",
+      "finding-only profiler mismatch cannot return OK"
+    );
+    assertEqual(
+      findingOnlyInconclusive.complete,
+      false,
+      "finding-only profiler mismatch is incomplete"
+    );
+
+    const evidenceFailureRecord = structuredClone(instrumentedFailedReport.records[0]);
+    evidenceFailureRecord.evidenceLedger = {
+      schemaVersion: "kova.evidenceLedger.v1",
+      completeness: "complete",
+      summary: {},
+      entries: [{
+        id: "invariant:agent-cleanup",
+        category: "invariant",
+        required: true,
+        status: "failed",
+        summary: "agent cleanup invariant failed"
+      }]
+    };
+    const evidenceFailureReport = syntheticPerformanceReport({
+      runId: "instrumented-evidence-failure",
+      platform,
+      target,
+      records: [evidenceFailureRecord]
+    });
+    const evidenceFailureComparison = compareReports(
+      baselineReport,
+      evidenceFailureReport
+    );
+    assertEqual(
+      evidenceFailureComparison.scenarios[0]?.performanceComparison?.statusInconclusive,
+      false,
+      "independent evidence failure is not downgraded to profiler-inconclusive"
+    );
+    assertEqual(
+      evidenceFailureComparison.statusChanges.regressions.length,
+      1,
+      "independent evidence failure remains a status regression"
+    );
+    assertEqual(
+      evidenceFailureComparison.result,
+      "REGRESSED",
+      "independent evidence failure remains blocking"
+    );
+
+    return {
+      id: "instrumented-performance-threshold-policy",
+      status: "PASS",
+      command: "evaluate instrumented performance threshold policy",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "instrumented-performance-threshold-policy",
+      status: "FAIL",
+      command: "evaluate instrumented performance threshold policy",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
 function defaultGatewayResourceRoleCheck() {
   try {
     const record = {
@@ -3634,6 +4501,30 @@ function reportAggregationIntegrityCheck() {
       assertEqual(parentMetric?.stats?.n, 2, "metric aggregation retains sample count");
       assertEqual(scenario.worst?.note.includes("700"), true, "scenario worst evaluates every violation");
     }
+
+    const childFailureScenario = aggregateScenarios({
+      records: [{
+        scenario: "aggregate-child-failure",
+        surface: "aggregate-child-failure",
+        title: "Aggregate Child Failure",
+        state: { id: "fresh" },
+        status: "FAIL",
+        phases: [],
+        measurements: { peakRssMb: 50 },
+        violations: [{
+          kind: "threshold",
+          metric: "resourceByRole.gateway.peakRssMb",
+          expected: "<= 100",
+          actual: 150,
+          message: "gateway role RSS 150 MB exceeded threshold 100 MB"
+        }]
+      }]
+    })[0];
+    assertEqual(
+      childFailureScenario.metrics.find((metric) => metric.key === "peakRssMb")?.status,
+      "FAIL",
+      "failed role child keeps the parent metric failed"
+    );
 
     const lowerBoundRecords = [50, 90].map((actual) => ({
       scenario: "aggregate-minimum",
@@ -5566,7 +6457,22 @@ function upgradeLogDerivedInvariantsCheck() {
   }
 }
 
-function syntheticResourceSamples({ peakRssMb, maxCpuPercent, role }) {
+function syntheticResourceSamples({
+  peakRssMb,
+  maxCpuPercent,
+  role,
+  processRoles = null
+}) {
+  const peakProcess = processRoles
+    ? {
+        pid: 101,
+        roles: processRoles,
+        role: processRoles.join(","),
+        rssMb: peakRssMb,
+        cpuPercent: maxCpuPercent,
+        command: role
+      }
+    : null;
   return {
     sampleCount: 1,
     peakTotalRssMb: peakRssMb,
@@ -5577,7 +6483,9 @@ function syntheticResourceSamples({ peakRssMb, maxCpuPercent, role }) {
       [role]: {
         peakRssMb,
         maxCpuPercent,
-        peakProcessCount: 1
+        peakProcessCount: 1,
+        peakRssProcess: peakProcess,
+        peakCpuProcess: peakProcess
       }
     },
     topRolesByRss: [{ role, peakRssMb, maxCpuPercent }],
@@ -14895,6 +15803,11 @@ function diagnosticProfilerMeasurementScopeCheck(tmp) {
       runId: "self-check-profile-scope",
       nodeProfile: true
     };
+    const heapOnlyContext = {
+      runId: "self-check-heap-scope",
+      heapSnapshot: true,
+      affectsPerformanceMeasurements: true
+    };
     const artifactDir = join(tmp, "diagnostic-profile-scope");
     const product = buildDiagnosticsCommandEnv(
       context,
@@ -14943,6 +15856,13 @@ function diagnosticProfilerMeasurementScopeCheck(tmp) {
       artifactDir,
       "cleanup"
     );
+    const heapOnly = buildDiagnosticsCommandEnv(
+      heapOnlyContext,
+      "profile-heap",
+      artifactDir,
+      "product",
+      "ocm @profile-heap -- models list"
+    );
 
     assertEqual(
       product.OPENCLAW_DIAGNOSTICS_TIMELINE_PATH.endsWith("timeline.jsonl"),
@@ -14958,6 +15878,11 @@ function diagnosticProfilerMeasurementScopeCheck(tmp) {
       cleanup.OPENCLAW_DIAGNOSTICS_TIMELINE_PATH.endsWith("timeline.jsonl"),
       true,
       "cleanup diagnostics keep timeline output"
+    );
+    assertEqual(
+      heapOnly.NODE_OPTIONS,
+      undefined,
+      "heap-only diagnostics do not inject the Node profiler"
     );
     assertEqual(
       product.NODE_OPTIONS.includes("--cpu-prof") &&
@@ -24055,37 +24980,72 @@ async function anthropicApiKeyOpenClawConfigCheck(tmp) {
 }
 
 async function mockAuthOpenClawConfigCheck(tmp) {
-  const home = join(tmp, "mock-auth-config-home");
   const portFile = join(tmp, "mock-auth-port");
   await writeFile(portFile, "12345\n", "utf8");
-  const command = [
-    `OPENCLAW_HOME=${quoteShell(home)}`,
-    `node support/configure-openclaw-mock-auth.mjs --port-file ${quoteShell(portFile)} --skip-health-check --gateway-http-endpoint chatCompletions`
-  ].join(" ");
-  const result = await runCommand(command, { timeoutMs: 30000, maxOutputChars: 1000000 });
+  const contracts = [
+    { id: "canonical", home: join(tmp, "mock-auth-config-canonical") },
+    { id: "legacy-list", home: join(tmp, "mock-auth-config-legacy") }
+  ];
+  const commands = [];
+  let durationMs = 0;
   try {
-    if (result.status !== 0) {
-      throw new Error(result.stderr.trim() || result.stdout.trim() || `exit ${result.status}`);
+    for (const contract of contracts) {
+      const command = [
+        `KOVA_OPENCLAW_CONFIG_CONTRACT=${contract.id}`,
+        `OPENCLAW_HOME=${quoteShell(contract.home)}`,
+        `node support/configure-openclaw-mock-auth.mjs --port-file ${quoteShell(portFile)} --skip-health-check --gateway-http-endpoint chatCompletions`
+      ].join(" ");
+      commands.push(command);
+      const result = await runCommand(command, { timeoutMs: 30000, maxOutputChars: 1000000 });
+      durationMs += result.durationMs;
+      if (result.status !== 0) {
+        throw new Error(result.stderr.trim() || result.stdout.trim() || `exit ${result.status}`);
+      }
+      const config = JSON.parse(
+        await readFile(join(contract.home, ".openclaw", "openclaw.json"), "utf8")
+      );
+      assertEqual(config.models?.providers?.openai?.baseUrl, "http://127.0.0.1:12345/v1", "mock provider base URL");
+      assertEqual(config.agents?.defaults?.model?.primary, "openai/gpt-5.5", "mock default model");
+      assertEqual(config.gateway?.auth?.mode, "token", "mock gateway token mode");
+      assertEqual(config.gateway?.auth?.token, "kova-mock-gateway-token", "mock gateway auth token");
+      assertEqual(config.gateway?.remote?.token, "kova-mock-gateway-token", "mock gateway remote token");
+      assertEqual(config.gateway?.http?.endpoints?.chatCompletions?.enabled, true, "mock gateway chat completions endpoint enabled");
+      if (contract.id === "legacy-list") {
+        assertEqual(Array.isArray(config.agents?.list), true, "legacy mock config agent list");
+        assertEqual(config.agents?.entries, undefined, "legacy mock config omits agent entries");
+        assertEqual(
+          config.agents?.defaults?.imageGenerationModel?.primary,
+          "openai/gpt-image-1",
+          "legacy mock image model"
+        );
+        assertEqual(config.agents?.defaults?.mediaModels, undefined, "legacy mock config omits media models");
+      } else {
+        assertEqual(config.agents?.entries?.main?.default, true, "canonical mock config agent entry");
+        assertEqual(config.agents?.list, undefined, "canonical mock config omits agent list");
+        assertEqual(
+          config.agents?.defaults?.mediaModels?.image?.primary,
+          "openai/gpt-image-1",
+          "canonical mock image model"
+        );
+        assertEqual(
+          config.agents?.defaults?.imageGenerationModel,
+          undefined,
+          "canonical mock config omits legacy image model"
+        );
+      }
     }
-    const config = JSON.parse(await readFile(join(home, ".openclaw", "openclaw.json"), "utf8"));
-    assertEqual(config.models?.providers?.openai?.baseUrl, "http://127.0.0.1:12345/v1", "mock provider base URL");
-    assertEqual(config.agents?.defaults?.model?.primary, "openai/gpt-5.5", "mock default model");
-    assertEqual(config.gateway?.auth?.mode, "token", "mock gateway token mode");
-    assertEqual(config.gateway?.auth?.token, "kova-mock-gateway-token", "mock gateway auth token");
-    assertEqual(config.gateway?.remote?.token, "kova-mock-gateway-token", "mock gateway remote token");
-    assertEqual(config.gateway?.http?.endpoints?.chatCompletions?.enabled, true, "mock gateway chat completions endpoint enabled");
     return {
       id: "mock-auth-openclaw-config",
       status: "PASS",
-      command,
-      durationMs: result.durationMs
+      command: commands.join(" && "),
+      durationMs
     };
   } catch (error) {
     return {
       id: "mock-auth-openclaw-config",
       status: "FAIL",
-      command,
-      durationMs: result.durationMs,
+      command: commands.join(" && "),
+      durationMs,
       message: error.message
     };
   }
