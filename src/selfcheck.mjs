@@ -1251,6 +1251,7 @@ async function runScopedSelfCheck(flags, scope, workspace) {
       }
     ));
     checks.push(await stateLifecycleCommandIndexesCheck(tmp));
+    checks.push(await stateLifecycleFailureShortCircuitCheck(tmp));
     checks.push(await pluginInstallIndexFixturesCheck(tmp));
     checks.push(await jsonCommandCheck(
       "allowlisted-scenario-omitted-state-falls-back-json",
@@ -5646,6 +5647,63 @@ async function stateLifecycleCommandIndexesCheck(tmp) {
       id: "state-lifecycle-command-indexes",
       status: "FAIL",
       command: "execute multi-step state lifecycle with phase-wide command indexes",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+async function stateLifecycleFailureShortCircuitCheck(tmp) {
+  const artifactDir = join(tmp, "state-lifecycle-failure-short-circuit");
+  const markerPath = join(artifactDir, "unexpected-preparer");
+  try {
+    const phase = await executeStateLifecycleSteps(
+      {
+        target: "runtime:stable",
+        targetPlan: {
+          kind: "runtime",
+          value: "stable",
+          startSelector: "stable",
+          upgradeSelector: "stable"
+        },
+        state: { id: "failed-preflight-state" },
+        timeoutMs: 30000,
+        resourceSampleIntervalMs: 250,
+        processRoles: []
+      },
+      "kova-self-check",
+      {
+        id: "state-lifecycle-failure-short-circuit-check",
+        surface: "fresh-install"
+      },
+      "prepare",
+      [
+        {
+          commands: [
+            `node ${quoteShell(join(repoRoot, "support", "tui-smoke.mjs"))}`,
+            `node ${quoteShell(join(repoRoot, "scripts", "large-session-fixture.mjs"))} prepare --root ${quoteShell(markerPath)} --shape valid`
+          ],
+          evidence: [],
+          collectionIntent: "skip-env"
+        }
+      ],
+      artifactDir
+    );
+    assertEqual(phase.commands.length, 2, "state lifecycle planned command count");
+    assertEqual(phase.results.length, 1, "state lifecycle stops after failed preflight");
+    assertEqual(phase.results[0]?.status, 2, "state lifecycle preserves failed preflight status");
+    await assertPathMissing(markerPath, "state lifecycle skipped command marker");
+    return {
+      id: "state-lifecycle-failure-short-circuit",
+      status: "PASS",
+      command: "stop state lifecycle after a failed preflight",
+      durationMs: phase.results[0]?.durationMs ?? 0
+    };
+  } catch (error) {
+    return {
+      id: "state-lifecycle-failure-short-circuit",
+      status: "FAIL",
+      command: "stop state lifecycle after a failed preflight",
       durationMs: 0,
       message: error.message
     };

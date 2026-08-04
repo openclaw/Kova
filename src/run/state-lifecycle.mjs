@@ -28,7 +28,11 @@ export async function executeStateLifecycleSteps(context, envName, scenario, kin
   const commands = phase.commands;
 
   for (const [commandIndex, command] of commands.entries()) {
-    results.push(await runScenarioCommand(command, context, envName, artifactDir, phase, commandIndex, authPolicy));
+    const result = await runScenarioCommand(command, context, envName, artifactDir, phase, commandIndex, authPolicy);
+    results.push(result);
+    if (result.status !== 0) {
+      break;
+    }
   }
 
   return {
