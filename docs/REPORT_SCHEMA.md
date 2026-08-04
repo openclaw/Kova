@@ -398,6 +398,15 @@ metrics such as `coldPreProviderAttributedMs`,
 `coldPreProviderUnattributedMs`, `warmPreProviderAttributedMs`, and
 `warmPreProviderUnattributedMs`.
 
+Local agent CLI turns expose the same fields under
+`records[*].measurements.agentCliPreProviderAttribution`. Kova attributes
+OpenClaw spans in the `cli.startup`, `cli.command-startup`, and `agent.startup`
+phases, together with agent preparation, model discovery, plugin metadata, and
+channel capability spans. Overlapping startup spans are unioned before Kova
+calculates known and unattributed time. Span summaries retain stage breakdowns
+such as `config-ready`, `plugin-registry`, and `command-prepare` so the JSON
+evidence identifies the owning startup work.
+
 Aggregate fields are also exposed on `measurements` for comparison and
 performance summaries:
 

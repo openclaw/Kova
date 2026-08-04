@@ -23,7 +23,7 @@ export function buildAgentCliPreProviderAttribution({
     activeFinishedAtEpochMs,
     attribution,
     timelineSummary,
-    isAttributedSpanName: isAgentCliAttributedSpanName,
+    isAttributedSpan: isAgentCliAttributedSpan,
     missingEventsError: "timeline contains no agent CLI attribution events"
   });
 }
@@ -44,14 +44,18 @@ export function agentCliPreProviderMarkdownRows(turns) {
   });
 }
 
-function isAgentCliAttributedSpanName(name) {
-  const text = String(name ?? "");
-  return text === "agent.prepare" ||
-    text === "plugins.metadata.scan" ||
-    text === "runtimeDeps.stage" ||
-    text === "channel.capabilities" ||
-    text === "models.catalog" ||
-    text.startsWith("models.catalog.") ||
-    text.startsWith("models.discovery") ||
-    text.startsWith("channel.plugin.");
+function isAgentCliAttributedSpan(event) {
+  const name = String(event?.name ?? "");
+  const phase = String(event?.phase ?? "");
+  return phase === "cli.startup" ||
+    phase === "cli.command-startup" ||
+    phase === "agent.startup" ||
+    name === "agent.prepare" ||
+    name === "plugins.metadata.scan" ||
+    name === "runtimeDeps.stage" ||
+    name === "channel.capabilities" ||
+    name === "models.catalog" ||
+    name.startsWith("models.catalog.") ||
+    name.startsWith("models.discovery") ||
+    name.startsWith("channel.plugin.");
 }

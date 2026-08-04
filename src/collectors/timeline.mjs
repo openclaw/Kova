@@ -126,7 +126,8 @@ export function summarizeTimeline(events, parseErrors = []) {
   const providerRequests = events.filter((event) => event.type === "provider.request");
   const childProcesses = events.filter((event) => event.type === "childProcess.exit");
   const spanTotals = summarizeSpans(spanEvents);
-  const openSpansAll = summarizeOpenSpans(events);
+  const spanMatches = matchSpanStarts(events);
+  const openSpansAll = summarizeOpenSpans(spanMatches.unmatchedStarts, latestEventTimestamp(events));
   const openSpans = openSpansAll.slice(0, 25);
   const gatewayPids = gatewayProcessPids(events);
   const runtimeDeps = summarizeRuntimeDeps(spanEvents);
@@ -161,7 +162,7 @@ export function summarizeTimeline(events, parseErrors = []) {
     eventLoop: summarizeEventLoop(eventLoopSamples),
     providers: summarizeTimedCollection(providerRequests),
     childProcesses: summarizeChildProcesses(childProcesses),
-    turnAttributionEvents: events.filter(isTurnAttributionEvent).map(compactAttributionEvent),
+    turnAttributionEvents: selectTurnAttributionEvents(events, spanMatches.startByTerminal).map(compactAttributionEvent),
     events: events.slice(0, 200)
   };
 }
@@ -309,11 +310,11 @@ function summarizeRuntimeDeps(events) {
   };
 }
 
-function summarizeOpenSpans(events) {
+export function matchSpanStarts(events) {
   const starts = [];
   const matched = new Set();
   const buckets = new Map();
-  const latestTimestamp = latestEventTimestamp(events);
+  const startByTerminal = new Map();
 
   // Consume the append-only stream in order. Per-identity stacks keep matching
   // amortized linear while newest-first wildcard matching handles reused span IDs.
@@ -342,22 +343,30 @@ function summarizeOpenSpans(events) {
         popUnmatched(bucket.byPid.get(UNKNOWN_PID_KEY), matched);
     if (index !== null) {
       matched.add(index);
+      startByTerminal.set(event, starts[index]);
     }
   }
 
-  return starts.flatMap((start, index) => matched.has(index) ? [] : [{
-      type: start.type,
-      name: start.name,
-      spanId: start.spanId ?? null,
-      parentSpanId: start.parentSpanId ?? null,
-      timestamp: start.timestamp ?? null,
-      ageMs: spanAgeMs(start, latestTimestamp),
-      phase: start.phase ?? null,
-      provider: start.provider ?? start.attributes?.provider ?? null,
-      operation: start.operation ?? start.attributes?.operation ?? null,
-      pluginId: start.pluginId ?? start.attributes?.pluginId ?? null,
-      pid: start.pid ?? null
-    }]).toSorted((left, right) => (right.ageMs ?? -1) - (left.ageMs ?? -1));
+  return {
+    startByTerminal,
+    unmatchedStarts: starts.filter((_, index) => !matched.has(index))
+  };
+}
+
+function summarizeOpenSpans(starts, latestTimestamp) {
+  return starts.map((start) => ({
+    type: start.type,
+    name: start.name,
+    spanId: start.spanId ?? null,
+    parentSpanId: start.parentSpanId ?? null,
+    timestamp: start.timestamp ?? null,
+    ageMs: spanAgeMs(start, latestTimestamp),
+    phase: start.phase ?? null,
+    provider: start.provider ?? start.attributes?.provider ?? null,
+    operation: start.operation ?? start.attributes?.operation ?? null,
+    pluginId: start.pluginId ?? start.attributes?.pluginId ?? null,
+    pid: start.pid ?? null
+  })).toSorted((left, right) => (right.ageMs ?? -1) - (left.ageMs ?? -1));
 }
 
 const UNKNOWN_PID_KEY = "<unknown>";
@@ -489,6 +498,7 @@ function compactTimedEvent(event) {
     durationMs: event.durationMs ?? null,
     timestamp: event.timestamp ?? null,
     phase: event.phase ?? null,
+    stage: event.stage ?? event.attributes?.stage ?? null,
     provider: event.provider ?? event.attributes?.provider ?? null,
     operation: event.operation ?? event.attributes?.operation ?? null,
     pluginId: event.pluginId ?? event.attributes?.pluginId ?? null,
@@ -510,7 +520,10 @@ function isTurnAttributionEvent(event) {
   if (event.type !== "span.start" && event.type !== "span.end" && event.type !== "span.error") {
     return false;
   }
-  return event.name === "plugins.metadata.scan" ||
+  return event.phase === "cli.startup" ||
+    event.phase === "cli.command-startup" ||
+    event.phase === "agent.startup" ||
+    event.name === "plugins.metadata.scan" ||
     event.name === "plugins.load" ||
     event.name === "provider.request" ||
     event.name === "agent.prepare" ||
@@ -528,6 +541,20 @@ function isTurnAttributionEvent(event) {
     keySpanMatches("reply", event.name);
 }
 
+function selectTurnAttributionEvents(events, startByTerminal) {
+  return events.filter((event) => {
+    if (isTurnAttributionEvent(event)) {
+      return true;
+    }
+    if (event.type !== "span.end" && event.type !== "span.error") {
+      return false;
+    }
+    const start = startByTerminal.get(event);
+    // Terminal phase is optional, so attribution selection follows its matched start.
+    return Boolean(start && isTurnAttributionEvent(start));
+  });
+}
+
 function compactAttributionEvent(event) {
   return {
     type: event.type,
@@ -538,6 +565,7 @@ function compactAttributionEvent(event) {
     spanId: event.spanId ?? null,
     parentSpanId: event.parentSpanId ?? null,
     phase: event.phase ?? null,
+    stage: event.stage ?? event.attributes?.stage ?? null,
     pid: event.pid ?? null,
     provider: event.provider ?? event.attributes?.provider ?? null,
     operation: event.operation ?? event.attributes?.operation ?? null,

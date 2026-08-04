@@ -12668,7 +12668,7 @@ function gatewaySessionPreProviderAttributionCheck() {
       summary: { statuses: { PASS: 1 } }
     });
     assertEqual(rendered.includes("Gateway session pre-provider attribution:"), true, "markdown includes gateway session attribution table");
-    assertEqual(rendered.includes("Spans are selected by active turn timestamp window"), true, "markdown describes timestamp-window attribution");
+    assertEqual(rendered.includes("Spans are clipped to the active turn timestamp window"), true, "markdown describes timestamp-window attribution");
     assertEqual(rendered.includes("`agent-turn`"), true, "markdown includes metadata scan phase as descriptive context");
     assertEqual(rendered.includes("`reply.ensure_workspace`"), true, "markdown includes span table");
 
@@ -12694,6 +12694,12 @@ function agentCliPreProviderAttributionCheck() {
     const base = 1777536000000;
     const timelineText = [
       timelineEvent({ type: "span.start", name: "agent.turn", timestamp: base + 1000, spanId: "cold-turn" }),
+      timelineEvent({ type: "span.start", name: "cli.main.core-imports", phase: "cli.startup", timestamp: base + 1000, spanId: "cold-cli-main" }),
+      timelineEvent({ type: "span.end", name: "cli.main.core-imports", timestamp: base + 1040, spanId: "cold-cli-main", durationMs: 40 }),
+      timelineEvent({ type: "span.start", name: "cli.command-startup", phase: "cli.command-startup", timestamp: base + 1040, spanId: "cold-cli-command", attributes: { stage: "agent-action-imports" } }),
+      timelineEvent({ type: "span.end", name: "cli.command-startup", phase: "cli.command-startup", timestamp: base + 1080, spanId: "cold-cli-command", durationMs: 40, attributes: { stage: "agent-action-imports" } }),
+      timelineEvent({ type: "span.start", name: "agent.startup", phase: "agent.startup", timestamp: base + 1080, spanId: "cold-agent-startup", attributes: { stage: "command-prepare" } }),
+      timelineEvent({ type: "span.end", name: "agent.startup", phase: "agent.startup", timestamp: base + 1150, spanId: "cold-agent-startup", durationMs: 70, attributes: { stage: "command-prepare" } }),
       timelineEvent({ type: "span.start", name: "agent.prepare", timestamp: base + 1020, spanId: "cold-prepare" }),
       timelineEvent({ type: "span.end", name: "agent.prepare", timestamp: base + 1120, spanId: "cold-prepare", durationMs: 100 }),
       timelineEvent({ type: "span.start", name: "models.catalog.gateway", timestamp: base + 1080, spanId: "cold-models" }),
@@ -12711,7 +12717,12 @@ function agentCliPreProviderAttributionCheck() {
       timelineEvent({ type: "eventLoop.sample", name: "eventLoop.sample", timestamp: base + 11250, maxMs: 6 })
     ].join("\n");
     const parsed = parseTimelineText(timelineText);
-    assertEqual(parsed.turnAttributionEvents.length, 16, "agent CLI turn attribution events retained");
+    assertEqual(parsed.turnAttributionEvents.length, 22, "agent CLI turn attribution events retain startup phases");
+    assertEqual(
+      parsed.turnAttributionEvents.find((event) => event.spanId === "cold-cli-main" && event.type === "span.end")?.phase,
+      null,
+      "phase-less terminal paired to selected startup span is retained"
+    );
 
     const coldAttribution = buildAgentCliPreProviderAttribution({
       label: "cold",
@@ -12730,8 +12741,13 @@ function agentCliPreProviderAttributionCheck() {
       }
     });
     assertEqual(coldAttribution.available, true, "agent CLI cold attribution available");
-    assertEqual(coldAttribution.knownAttributedMs, 170, "agent CLI overlap-safe cold known attribution");
-    assertEqual(coldAttribution.unattributedMs, 30, "agent CLI cold unattributed remainder");
+    assertEqual(coldAttribution.knownAttributedMs, 190, "agent CLI overlap-safe cold known attribution");
+    assertEqual(coldAttribution.unattributedMs, 10, "agent CLI cold unattributed remainder");
+    assertEqual(coldAttribution.spanSummaries.find((span) => span.name === "cli.main.core-imports")?.phases?.[0]?.phase, "cli.startup", "agent CLI startup span attributed by phase");
+    assertEqual(coldAttribution.spanSummaries.find((span) => span.name === "cli.command-startup")?.phases?.[0]?.phase, "cli.command-startup", "command startup span attributed by phase");
+    assertEqual(coldAttribution.spanSummaries.find((span) => span.name === "agent.startup")?.phases?.[0]?.phase, "agent.startup", "agent startup span attributed by phase");
+    assertEqual(coldAttribution.spanSummaries.find((span) => span.name === "cli.command-startup")?.stages?.[0]?.stage, "agent-action-imports", "command startup stage retained");
+    assertEqual(coldAttribution.spanSummaries.find((span) => span.name === "agent.startup")?.stages?.[0]?.stage, "command-prepare", "agent startup stage retained");
     assertEqual(coldAttribution.spanSummaries.some((span) => span.name === "agent.turn"), false, "agent.turn parent span is not counted as pre-provider work");
     assertEqual(coldAttribution.spanSummaries.find((span) => span.name === "channel.plugin.load")?.errorCount, 1, "agent CLI error span summary");
 
@@ -12754,7 +12770,7 @@ function agentCliPreProviderAttributionCheck() {
     }, { surface: { thresholds: {} }, targetPlan: { kind: "runtime" } });
     assertEqual(record.measurements.agentCliPreProviderAttribution.count, 2, "record agent CLI attribution count");
     assertEqual(record.measurements.gatewaySessionPreProviderAttribution.count, 0, "record gateway session attribution stays empty for CLI turns");
-    assertEqual(record.measurements.coldPreProviderAttributedMs, 170, "record agent CLI cold attributed metric");
+    assertEqual(record.measurements.coldPreProviderAttributedMs, 190, "record agent CLI cold attributed metric");
     assertEqual(record.measurements.warmPreProviderAttributedMs, 80, "record agent CLI warm attributed metric");
     assertEqual(record.measurements.warmPreProviderUnattributedMs, 120, "record agent CLI warm unattributed metric");
     assertEqual(record.measurements.agentTurns[0].agentCliPreProviderAttribution.timelineArtifacts[0], "/tmp/kova/openclaw/timeline.jsonl", "record agent CLI timeline artifact");
@@ -12769,7 +12785,8 @@ function agentCliPreProviderAttributionCheck() {
       summary: { statuses: { PASS: 1 } }
     });
     assertEqual(rendered.includes("Agent CLI pre-provider attribution:"), true, "markdown includes agent CLI attribution table");
-    assertEqual(rendered.includes("`channel.plugin.load`"), true, "markdown includes agent CLI span table");
+    assertEqual(rendered.includes("`cli.startup`"), true, "markdown includes CLI startup attribution phase");
+    assertEqual(rendered.includes("`cli.command-startup`"), true, "markdown includes agent CLI startup span table");
 
     return {
       id: "agent-cli-pre-provider-attribution",
