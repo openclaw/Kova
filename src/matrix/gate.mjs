@@ -85,14 +85,32 @@ export function evaluateGate(report, profile, options = {}) {
 
   for (const record of records) {
     if (record.status === RECORD_STATUS.PASS) {
+      const assessmentCard = buildInstrumentedPerformanceCard(record, policy);
+      if (assessmentCard) {
+        cards.push(assessmentCard);
+      }
       continue;
     }
     const severity = severityForRecord(record, policy);
     cards.push(buildRecordCard(record, severity));
+    const assessmentCard = buildInstrumentedPerformanceCard(record, policy);
+    if (assessmentCard) {
+      cards.push(assessmentCard);
+    }
   }
 
   for (const regression of report.baseline?.comparison?.regressions ?? []) {
     cards.push(buildPerformanceRegressionCard(regression));
+  }
+  for (const group of report.baseline?.comparison?.instrumentedPerformanceGroups ?? []) {
+    const alreadyReported = cards.some((card) =>
+      card.kind === "instrumented-performance-thresholds" &&
+      card.scenario === group.scenario &&
+      card.state === (group.state ?? null)
+    );
+    if (!alreadyReported) {
+      cards.push(buildInstrumentedBaselineCard(group, policy));
+    }
   }
 
   const blockingCards = cards.filter((card) => card.severity === "blocking");
@@ -107,7 +125,13 @@ export function evaluateGate(report, profile, options = {}) {
   ]);
   const harnessBlockingCards = blockingCards.filter((card) => harnessBlockKinds.has(card.kind));
   const blockedByHarness = harnessBlockingCards.length > 0;
-  const incomplete = missingRequired.length > 0 || blockedByHarness;
+  const instrumentedPerformanceIncomplete = cards.filter((card) =>
+    card.kind === "instrumented-performance-thresholds" && card.required === true
+  );
+  const incomplete =
+    missingRequired.length > 0 ||
+    blockedByHarness ||
+    instrumentedPerformanceIncomplete.length > 0;
   const productBlockingFailures = blockingCards.filter((card) =>
     card.kind === "openclaw-failure" || card.kind === "performance-regression"
   );
@@ -133,8 +157,9 @@ export function evaluateGate(report, profile, options = {}) {
     outcome: outcomeForVerdict(verdict, purpose),
     ok: verdict === "SHIP",
     complete: !incomplete,
-    partial,
+    partial: partial || instrumentedPerformanceIncomplete.length > 0,
     missingRequiredCount: missingRequired.length,
+    instrumentedPerformanceIncompleteCount: instrumentedPerformanceIncomplete.length,
     blockingCount: blockingCards.length,
     warningCount: warningCards.length,
     infoCount: infoCards.length,
@@ -352,6 +377,45 @@ function buildRecordCard(record, severity) {
   };
 }
 
+function buildInstrumentedPerformanceCard(record, policy) {
+  const assessment = record.performanceThresholdAssessment;
+  if (!assessment || (assessment.skippedCount ?? 0) === 0) {
+    return null;
+  }
+  const first = assessment.skipped?.[0] ?? null;
+  const policySeverity = severityForRecord(record, policy);
+  const observed = first?.actual === null || first?.actual === undefined
+    ? first?.metric ?? "performance measurement"
+    : `${first.metric} ${first.actual}`;
+  const threshold = first?.threshold === null || first?.threshold === undefined
+    ? "configured performance threshold"
+    : `${first.metric} <= ${first.threshold}`;
+  return {
+    severity: "warning",
+    kind: "instrumented-performance-thresholds",
+    required: policySeverity === "blocking",
+    scenario: record.scenario,
+    state: record.state?.id ?? null,
+    status: "SKIPPED",
+    title: "Instrumented Performance Evidence",
+    summary: `${assessment.skippedCount} performance threshold(s) were not adjudicated because profiling can distort CPU, RSS, and latency.`,
+    expected: threshold,
+    actual: observed,
+    impact: policySeverity === "blocking"
+      ? "This run can reject functional failures, but it cannot approve the release until the scenario is rerun without profiling."
+      : "The advisory scenario retains diagnostic measurements without treating them as acceptance evidence.",
+    likelyOwner: "Kova",
+    failedCommand: null,
+    violations: [],
+    measurements: {
+      skippedCount: assessment.skippedCount,
+      firstMetric: first?.metric ?? null,
+      firstActual: first?.actual ?? null,
+      firstThreshold: first?.threshold ?? null
+    }
+  };
+}
+
 function buildPerformanceRegressionCard(regression) {
   return {
     severity: "blocking",
@@ -377,6 +441,34 @@ function buildPerformanceRegressionCard(regression) {
   };
 }
 
+function buildInstrumentedBaselineCard(group, policy) {
+  const policySeverity = severityForRecord({
+    scenario: group.scenario,
+    state: { id: group.state ?? null }
+  }, policy);
+  return {
+    severity: "warning",
+    kind: "instrumented-performance-thresholds",
+    required: policySeverity === "blocking",
+    scenario: group.scenario,
+    state: group.state ?? null,
+    status: "SKIPPED",
+    title: "Instrumented Baseline Evidence",
+    summary: `${group.skippedMetrics?.length ?? 0} baseline performance metric(s) were not comparable because the run was instrumented.`,
+    expected: "normal user-path performance evidence",
+    actual: (group.skippedMetrics ?? []).join(", ") || "instrumented metrics",
+    impact: policySeverity === "blocking"
+      ? "This run cannot approve the release until the scenario is rerun without profiling."
+      : "The advisory comparison retains raw values without making a regression claim.",
+    likelyOwner: "Kova",
+    failedCommand: null,
+    violations: [],
+    measurements: {
+      skippedMetrics: group.skippedMetrics ?? []
+    }
+  };
+}
+
 function summarizeBaselineComparison(comparison) {
   if (!comparison) {
     return null;
@@ -391,6 +483,8 @@ function summarizeBaselineComparison(comparison) {
     resourceMeasurementScope: comparison.resourceMeasurementScope ?? null,
     resourceHeadlineContract: comparison.resourceHeadlineContract ?? null,
     resourceContractMismatchCount: comparison.resourceContractMismatchCount ?? 0,
+    instrumentedPerformanceGroupCount:
+      comparison.instrumentedPerformanceGroupCount ?? 0,
     resourceContractMismatches: (comparison.groups ?? [])
       .filter((group) => group.resourceComparison?.compatible === false)
       .slice(0, 10)
@@ -401,6 +495,8 @@ function summarizeBaselineComparison(comparison) {
         resourceComparison: group.resourceComparison,
         skippedMetrics: group.skippedMetrics ?? []
       })),
+    instrumentedPerformanceGroups:
+      (comparison.instrumentedPerformanceGroups ?? []).slice(0, 10),
     regressedGroups: (comparison.groups ?? [])
       .filter((group) => group.status === "REGRESSED")
       .map((group) => ({

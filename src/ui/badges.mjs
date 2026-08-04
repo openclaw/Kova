@@ -17,6 +17,7 @@ const KIND_TO_BG = {
   FAIL: "err",
   PARTIAL: "warn",
   INCOMPLETE: "warn",
+  INCONCLUSIVE: "warn",
   REGRESSION: "warn",
   BLOCKED: "block",
   SKIPPED: "neutral",

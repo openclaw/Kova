@@ -16,7 +16,17 @@
 import { METRIC_LABELS, METRIC_UNITS, HEADLINE_METRICS, metricDirection } from "./scenario-aggregate.mjs";
 import { worseRecordStatus } from "../statuses.mjs";
 
-const VERDICT_RANK = { FAIL: 0, REGRESSED: 1, BLOCKED: 2, NEW: 3, MISSING: 3, IMPROVED: 4, UNCHANGED: 5, OK: 6 };
+const VERDICT_RANK = {
+  FAIL: 0,
+  REGRESSED: 1,
+  BLOCKED: 2,
+  INCONCLUSIVE: 3,
+  NEW: 4,
+  MISSING: 4,
+  IMPROVED: 5,
+  UNCHANGED: 6,
+  OK: 7
+};
 
 // rollupScenarios(comparison) -> [{ id, verdict, baselineStatus, currentStatus,
 //   regressionCount, totalMetrics, worst, samples }]
@@ -31,6 +41,7 @@ export function rollupScenarios(comparison) {
         states: [],
         regressionCount: 0,
         resourceContractMismatchCount: 0,
+        performanceProfileMismatchCount: 0,
         verdict: "UNCHANGED",
         baselineStatus: s.baselineStatus,
         currentStatus: s.currentStatus,
@@ -45,6 +56,12 @@ export function rollupScenarios(comparison) {
     acc.regressionCount += s.regressions?.length ?? 0;
     if (s.resourceComparison?.compatible === false) {
       acc.resourceContractMismatchCount += 1;
+    }
+    if (
+      s.performanceComparison?.compatible === false &&
+      (s.skippedMetrics?.length ?? 0) > 0
+    ) {
+      acc.performanceProfileMismatchCount += 1;
     }
     acc.verdict = pickWorseVerdict(acc.verdict, s.status);
     acc.baselineStatus = worseRecordStatus(acc.baselineStatus, s.baselineStatus);
@@ -71,7 +88,9 @@ export function pickAffectedScenarios(comparison) {
   return rollupScenarios(comparison).filter((r) =>
     r.regressionCount > 0 ||
     r.resourceContractMismatchCount > 0 ||
+    r.performanceProfileMismatchCount > 0 ||
     r.verdict === "REGRESSED" ||
+    r.verdict === "INCONCLUSIVE" ||
     r.verdict === "NEW" ||
     r.verdict === "MISSING"
   );
@@ -226,6 +245,7 @@ export function shapeFindingsForCompare(comparison) {
   for (const f of regressionFindings(comparison)) out.push(f);
   for (const f of fc.new ?? []) out.push(toFindingRow(f, "+"));
   for (const f of fc.resolved ?? []) out.push(toFindingRow(f, "-"));
+  for (const f of fc.inconclusive ?? []) out.push(toFindingRow(f, "?"));
   return out;
 }
 
@@ -298,6 +318,15 @@ function toFindingRow(f, sign) {
 
 // runVerdict(comparison) -> "FAIL" | "IMPROVED" | "UNCHANGED" | "PASS"
 export function runVerdict(comparison) {
+  if (
+    comparison?.result === "REGRESSED" ||
+    (comparison?.regressionCount ?? 0) > 0
+  ) {
+    return "FAIL";
+  }
+  if (comparison?.result === "INCONCLUSIVE" || comparison?.complete === false) {
+    return "INCONCLUSIVE";
+  }
   if (!comparison?.ok) return "FAIL";
   if ((comparison.improvementCount ?? 0) > 0) return "IMPROVED";
   return "UNCHANGED";

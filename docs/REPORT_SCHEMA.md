@@ -547,6 +547,27 @@ event-loop delay, agent turn latency, agent metadata scan count/time, active
 turn event-loop max, session poll count, startup health p95, post-ready health
 p95, and runtime dependency staging.
 
+When `profiling.affectsPerformanceMeasurements` is true, Kova still reports
+the observed CPU, RSS, latency, role, growth, and profiler values. Affected
+numeric performance thresholds are recorded under
+`performanceThresholdAssessment` with `status: "SKIPPED"` and
+`affectsRecordStatus: false`; they are not emitted as fatal violations.
+Affected evidence is limited to direct command durations whose process received
+profiler flags, local-agent timings owned by a profiled command tree, and
+resource values whose winning process belongs to that tree. Persistent gateway
+startup/readiness/health, count metrics, minimum-duration requirements, cleanup,
+containment, recovery, and safety contracts remain active.
+Command failures, timeouts, behavioral failures, safety checks, missing or
+malformed evidence, leaks, cleanup failures, and non-performance checks remain
+active. A required release-gate scenario with skipped instrumented thresholds
+produces `PARTIAL`, `ok: false`, and `complete: false`, so a diagnostic run can
+reject real failures but cannot approve a release.
+
+`--profile-on-failure` does not set
+`profiling.affectsPerformanceMeasurements`: passing runs collect normal
+user-path measurements and diagnostics are captured only after an initial
+failure. Those runs remain baseline-ineligible by policy.
+
 Baseline stores use schema `kova.baselines.v1`. Baseline read/write requires
 `--execute` so stored evidence comes from real OpenClaw runs, not dry-run plans.
 Baseline writes also require `--reviewed-good`; Kova rejects updates from
@@ -566,6 +587,13 @@ reported by metric with baseline median, current median, p95 values, threshold
 percent, and increase percent. Release gates treat baseline regressions as
 blocking performance regressions, so a functional pass can still become
 `DO_NOT_SHIP` when OpenClaw gets materially slower or heavier.
+
+Instrumented performance groups retain raw current and baseline values but use
+`comparable: false`, `delta: null`, and reason
+`instrumented-performance-measurement`. They cannot create baseline
+regressions; the release gate remains `PARTIAL` until normal user-path evidence
+is available. Reports expose these groups separately from resource-contract
+mismatches so Markdown and gate summaries cannot hide the skipped evidence.
 
 Resource baselines are comparable only when both `resourceMeasurementScope` and
 `resourceHeadlineContract` match. Kova skips RSS/CPU deltas from older or
@@ -952,6 +980,13 @@ RSS, CPU, and resource sample-count metrics require matching
 identity differs, median, max, and p95 rows retain their raw baseline/current
 values but use `comparable: false`, `delta: null`, and `SKIPPED` in the rendered
 table. Status transitions and non-resource metric regressions remain active.
+
+Profiler-affected metrics become non-comparable when the baseline and current
+profiling modes differ. The comparison uses `result: "INCONCLUSIVE"`,
+`complete: false`, and `ok: false`; previous or new affected failures are not
+reported as resolved, improved, or regressed. Same-profile instrumented reports
+remain comparable. Behavioral status changes and non-performance findings
+remain comparable.
 
 ## Artifact Bundle
 

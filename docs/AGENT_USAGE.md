@@ -180,8 +180,12 @@ are empty, performance groups are stable, and any gate or baseline comparison
 is not blocking.
 
 Do not save baselines from `--node-profile`, `--heap-snapshot`,
-`--deep-profile`, or `--profile-on-failure` runs. Those are diagnostic runs and
-their numbers can include profiler overhead.
+`--deep-profile`, or `--profile-on-failure` runs. Always-on instrumentation can
+distort CPU, RSS, and latency. `--profile-on-failure` keeps passing
+measurements normal, but baseline policy still excludes it because the run is
+configured for failure-only diagnostics. Cross-profile report comparisons are
+inconclusive for profiler-affected metrics; rerun without profiling before
+claiming a regression or improvement.
 
 ## Existing-User Testing
 

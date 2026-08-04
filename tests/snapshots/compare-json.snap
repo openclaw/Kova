@@ -102,9 +102,13 @@
     "nodeProfileTopFunctionMs": 5000
   },
   "sourceRelease": null,
+  "result": "REGRESSED",
   "ok": false,
+  "complete": true,
   "regressionCount": 3,
   "scenarioRegressionCount": 1,
+  "inconclusiveCount": 0,
+  "performanceProfileMismatchCount": 0,
   "skippedMetricCount": 5,
   "resourceContractMismatchCount": 1,
   "statusChanges": {
@@ -140,7 +144,8 @@
         "baselineLabel": "PASS:1",
         "currentLabel": "FAIL:1"
       }
-    ]
+    ],
+    "inconclusive": []
   },
   "findingChanges": {
     "new": [
@@ -183,6 +188,7 @@
       }
     ],
     "resolved": [],
+    "inconclusive": [],
     "unchangedCount": 0
   },
   "improvementCount": 0,
@@ -214,6 +220,10 @@
         "scopeCompatible": false,
         "headlineContractCompatible": false,
         "compatible": false
+      },
+      "performanceComparison": {
+        "compatible": true,
+        "statusInconclusive": false
       },
       "skippedMetrics": [
         "peakRssMb",
