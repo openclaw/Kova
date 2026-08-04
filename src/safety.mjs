@@ -10,6 +10,7 @@ const delegatedCommandNodeScripts = new Set([
 const allowedNodeScenarioScripts = new Set([
   "scripts/large-session-fixture.mjs",
   "support/agent-network-offline.mjs",
+  "support/assert-many-plugin-pressure-state.mjs",
   "support/assert-command-output.mjs",
   "support/browser-automation-smoke.mjs",
   "support/channel-conformance/run.mjs",

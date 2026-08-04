@@ -611,8 +611,8 @@
       },
       "state": {
         "id": "many-bundled-plugins",
-        "title": "Many Installed Plugins Enabled",
-        "objective": "A pressure state for plugin and provider metadata paths. It creates a canonical plugin install index with many synthetic entries so OpenClaw startup and metadata paths run under heavier registry pressure.",
+        "title": "Many Installed Plugins",
+        "objective": "A pressure state for plugin and provider metadata paths on OpenClaw 2026.6.1 or newer. It migrates many synthetic install records into canonical SQLite state and verifies they are visible before OpenClaw startup and metadata measurements run.",
         "tags": [
           "plugins",
           "providers",

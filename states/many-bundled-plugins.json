@@ -1,7 +1,7 @@
 {
   "id": "many-bundled-plugins",
-  "title": "Many Installed Plugins Enabled",
-  "objective": "A pressure state for plugin and provider metadata paths. It creates a canonical plugin install index with many synthetic entries so OpenClaw startup and metadata paths run under heavier registry pressure.",
+  "title": "Many Installed Plugins",
+  "objective": "A pressure state for plugin and provider metadata paths on OpenClaw 2026.6.1 or newer. It migrates many synthetic install records into canonical SQLite state and verifies they are visible before OpenClaw startup and metadata measurements run.",
   "tags": [
     "plugins",
     "providers",
@@ -9,22 +9,25 @@
   ],
   "setup": [
     {
-      "id": "write-many-plugin-index",
-      "title": "Write Many Plugin Index Entries",
-      "intent": "Create a large plugin install index in common OpenClaw plugin index locations.",
+      "id": "prepare-many-plugin-pressure",
+      "title": "Prepare Many Plugin Records",
+      "intent": "Confirm the target supports the shipped registry migration commands, create synthetic plugin packages, migrate their records into canonical state, and verify the measured runtime sees every plugin.",
       "afterPhases": [
+        "env-create",
         "provision",
-        "cold-start",
         "baseline",
         "gateway",
         "start",
         "clone"
       ],
       "commands": [
-        "ocm env exec {env} -- node -e 'const fs=require(\"fs\"), path=require(\"path\"); const home=process.env.OPENCLAW_HOME; const ids=Array.from({length:80},(_,i)=>`kova-plugin-${i}`); const installRecords={}; for (const id of ids) { const pluginDir=path.join(home,\"fixture-plugins\",id); fs.mkdirSync(pluginDir,{recursive:true}); fs.writeFileSync(path.join(pluginDir,\"package.json\"),JSON.stringify({name:`@kova/${id}`,version:\"0.0.0\",type:\"module\",openclaw:{extensions:[\"./index.js\"]}},null,2)); fs.writeFileSync(path.join(pluginDir,\"openclaw.plugin.json\"),JSON.stringify({id,configSchema:{type:\"object\",additionalProperties:false,properties:{}}},null,2)); fs.writeFileSync(path.join(pluginDir,\"index.js\"),`export default { id: ${JSON.stringify(id)}, register() {} };\\n`); installRecords[id]={source:\"path\",sourcePath:pluginDir,installPath:pluginDir,version:\"0.0.0\"}; } for (const rel of [\"plugins\",\".openclaw/plugins\"]) { const dir=path.join(home,rel); fs.mkdirSync(dir,{recursive:true}); fs.writeFileSync(path.join(dir,\"installs.json\"), JSON.stringify({installRecords}, null, 2)); }'"
+        "node {kovaRoot}/support/assert-many-plugin-pressure-state.mjs --env {env} --expected-count 80 --minimum-openclaw-version 2026.6.1 --version-only",
+        "ocm env exec {env} -- node {kovaRoot}/support/prepare-many-plugin-pressure-state.mjs --expected-count 80",
+        "node {kovaRoot}/support/assert-many-plugin-pressure-state.mjs --env {env} --expected-count 80 --minimum-openclaw-version 2026.6.1"
       ],
       "evidence": [
-        "canonical large plugin install index written"
+        "80 synthetic install records migrated into canonical SQLite state",
+        "OpenClaw 2026.6.1 or newer exposes 80 synthetic plugins through the refreshed registry and plugin list"
       ],
       "collectionIntent": "service-only"
     }
@@ -37,7 +40,8 @@
   "riskArea": "plugin-metadata-scan",
   "ownerArea": "plugins",
   "setupEvidence": [
-    "canonical large plugin install index written"
+    "80 synthetic install records migrated into canonical SQLite state",
+    "OpenClaw 2026.6.1 or newer exposes 80 synthetic plugins through the refreshed registry and plugin list"
   ],
   "cleanupGuarantees": [
     "disposable env cleanup removes state fixture files"
