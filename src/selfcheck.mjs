@@ -9401,6 +9401,7 @@ function safetyGuardCheck() {
       "timeout 30 ocm env destroy Violet --yes",
       "node -e 'require(\"node:child_process\").execFileSync(\"ocm\", [\"env\", \"destroy\", \"Violet\", \"--yes\"])'",
       "node /tmp/support/run-soak-loop.mjs --env kova-safe-test",
+      "node support/prepare-many-plugin-pressure-state.mjs --expected-count 80",
       "node support/run-openclaw-release-age-upgrade.mjs --env Violet --age day --json",
       "node support/run-openclaw-release-age-upgrade.mjs --env=Violet --age day --json",
       "node support/run-doctor-repair.mjs --env kova-safe-test --env Violet",

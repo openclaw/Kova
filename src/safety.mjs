@@ -20,7 +20,6 @@ const allowedNodeScenarioScripts = new Set([
   "support/mcp-bridge-smoke.mjs",
   "support/mcp-tool-call-smoke.mjs",
   "support/media-understanding-timeout.mjs",
-  "support/prepare-many-plugin-pressure-state.mjs",
   "support/restore-first-ocm-upgrade-snapshot.mjs",
   "support/run-adversarial-inputs.mjs",
   "support/run-channel-adapter-conformance.mjs",
