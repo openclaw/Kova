@@ -68,6 +68,7 @@ import {
   runScenarioCommand
 } from "./run/command-executor.mjs";
 import { runEntries } from "./run/engine.mjs";
+import { materializeLifecycleStepCommands } from "./run/phase-commands.mjs";
 import { executeStateLifecycleSteps } from "./run/state-lifecycle.mjs";
 import { executeTargetSetup } from "./run/target-setup.mjs";
 import { classifyCommandFailure } from "./runner.mjs";
@@ -5660,17 +5661,39 @@ async function pluginInstallIndexFixturesCheck(tmp) {
     const manyPluginStep = manyPluginState.setup?.[0];
     assertEqual(manyPluginStep?.afterPhases?.includes("env-create"), true, "many-plugin setup precedes startup");
     assertEqual(manyPluginStep?.afterPhases?.includes("cold-start"), false, "many-plugin setup does not follow cold start");
-    assertEqual(manyPluginStep?.commands?.length, 2, "many-plugin setup command count");
+    assertEqual(manyPluginStep?.commands?.length, 3, "many-plugin setup command count");
     assertEqual(
       manyPluginStep.commands[0],
-      "node {kovaRoot}/support/assert-many-plugin-pressure-state.mjs --env {env} --expected-count 80 --minimum-openclaw-version 2026.6.1 --version-only && ocm env exec {env} -- node {kovaRoot}/support/prepare-many-plugin-pressure-state.mjs --expected-count 80",
-      "many-plugin prepare command"
+      "node {kovaRoot}/support/assert-many-plugin-pressure-state.mjs --env {env} --expected-count 80 --minimum-openclaw-version 2026.6.1 --version-only",
+      "many-plugin version preflight command"
     );
     assertEqual(
       manyPluginStep.commands[1],
+      "ocm env exec {env} -- node {kovaRoot}/support/prepare-many-plugin-pressure-state.mjs --expected-count 80",
+      "many-plugin prepare command"
+    );
+    assertEqual(
+      manyPluginStep.commands[2],
       "node {kovaRoot}/support/assert-many-plugin-pressure-state.mjs --env {env} --expected-count 80 --minimum-openclaw-version 2026.6.1",
       "many-plugin assertion command"
     );
+    const safetyArtifactDir = join(tmp, "many-bundled-plugins-safety");
+    const materializedCommands = materializeLifecycleStepCommands(
+      manyPluginStep,
+      {
+        sourceEnv: "",
+        targetPlan: {
+          repoPath: "",
+          startSelector: "stable",
+          upgradeSelector: "stable"
+        }
+      },
+      "kova-safe-test",
+      safetyArtifactDir
+    );
+    for (const command of materializedCommands) {
+      assertSafeScenarioCommand(command, {}, "kova-safe-test", safetyArtifactDir);
+    }
 
     const manyPluginHome = join(tmp, "many-bundled-plugins-home");
     const prepareResult = await runCommand(
