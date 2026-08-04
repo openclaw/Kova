@@ -19,6 +19,7 @@ const root = await mkdtemp(join(tmpdir(), "kova-selfcheck-isolation-test-"));
 
 try {
   await verifyScopedShell(root);
+  await verifyTargetSetupBuildTimeoutBudget(root);
   await verifyConcurrentInvocationHomes(root);
 
   const scopes = [createSelfCheckScope(), createSelfCheckScope()];
@@ -73,6 +74,38 @@ exec /bin/sh "$@"
   assert.equal(result.status, 0);
   assert.equal(result.stdout, "scoped-shell");
   assert.equal((await readFile(shellLog, "utf8")).trim(), shellPath);
+}
+
+async function verifyTargetSetupBuildTimeoutBudget(parentDir) {
+  const shellPath = join(parentDir, "slow-build-shell");
+  await writeFile(shellPath, `#!/bin/sh
+sleep 0.05
+exit 0
+`, "utf8");
+  await chmod(shellPath, 0o755);
+
+  const results = await executeTargetSetup({
+    targetPlan: {
+      kind: "local-build",
+      runtimeName: "kova-local-build-timeout",
+      repoPath: "/tmp/openclaw"
+    },
+    timeoutMs: 10,
+    resourceSampling: false,
+    commandEnv: {
+      SHELL: shellPath
+    },
+    targetSetup: {
+      completed: false,
+      failed: false,
+      results: [],
+      inFlight: null
+    }
+  }, "kova-build-timeout", parentDir);
+
+  assert.equal(results.length, 1);
+  assert.equal(results[0].status, 0);
+  assert.equal(results[0].timedOut, false);
 }
 
 async function verifyConcurrentInvocationHomes(parentDir) {
