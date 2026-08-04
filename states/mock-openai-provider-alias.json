@@ -1,0 +1,56 @@
+{
+  "id": "mock-openai-provider-alias",
+  "title": "Mock OpenAI Provider Alias",
+  "objective": "A local OpenAI-compatible provider configured through the x-ai provider alias so OpenClaw exercises manifest-owned provider policy resolution without external model dependencies.",
+  "tags": [
+    "agent",
+    "models",
+    "providers",
+    "mock",
+    "latency",
+    "alias"
+  ],
+  "setup": [
+    {
+      "id": "configure-provider-alias",
+      "title": "Configure Provider Alias",
+      "intent": "Rewrite the mock provider config to use x-ai after Kova creates the disposable OpenClaw environment.",
+      "afterPhase": "provision",
+      "commands": [
+        "ocm env exec {env} -- node {kovaRoot}/support/configure-openclaw-mock-auth.mjs --port-file {artifactDir}/mock-openai/port --provider-id x-ai"
+      ],
+      "evidence": [
+        "OpenClaw config points x-ai at the mock provider",
+        "default agent model is x-ai/gpt-5.5"
+      ],
+      "collectionIntent": "service-only"
+    }
+  ],
+  "auth": {
+    "mode": "mock",
+    "reason": "Use the run-level mock provider auth contract before rewriting the provider key to x-ai."
+  },
+  "traits": [
+    "mock-provider",
+    "provider-pressure",
+    "agent-state",
+    "performance-pressure"
+  ],
+  "riskArea": "agent-provider-policy-latency",
+  "ownerArea": "agent-runtime",
+  "setupEvidence": [
+    "mock provider port",
+    "mock provider request log",
+    "mock provider health",
+    "OpenClaw config points x-ai to the mock provider",
+    "default agent model is x-ai/gpt-5.5"
+  ],
+  "cleanupGuarantees": [
+    "run-level mock provider cleanup stops fixture process",
+    "disposable env cleanup removes alias provider config"
+  ],
+  "source": {
+    "kind": "provider-compatible-mock-server",
+    "command": "mock-ai-provider serve --providers openai"
+  }
+}

@@ -7,6 +7,7 @@ if (!options.portFile) {
   throw new Error("--port-file is required");
 }
 const configContract = resolveConfigContract(process.env.KOVA_OPENCLAW_CONFIG_CONTRACT);
+const providerId = resolveProviderId(options.providerId);
 
 const port = fs.readFileSync(options.portFile, "utf8").trim();
 if (!/^\d+$/.test(port)) {
@@ -36,9 +37,9 @@ try {
   config = {};
 }
 
-const modelRef = "openai/gpt-5.5";
-const imageModelRef = "openai/gpt-image-1";
-const videoModelRef = "openai/sora-2";
+const modelRef = `${providerId}/gpt-5.5`;
+const imageModelRef = `${providerId}/gpt-image-1`;
+const videoModelRef = `${providerId}/sora-2`;
 const gatewayToken = "kova-mock-gateway-token";
 const existingAgents = asObject(config.agents);
 const existingAgentEntries = asObject(config.agents?.entries);
@@ -68,8 +69,8 @@ config.models = {
   mode: "merge",
   providers: {
     ...(config.models?.providers || {}),
-    openai: {
-      ...(config.models?.providers?.openai || {}),
+    [providerId]: {
+      ...(config.models?.providers?.[providerId] || {}),
       baseUrl: `http://127.0.0.1:${port}/v1`,
       apiKey: {
         source: "env",
@@ -78,7 +79,7 @@ config.models = {
       },
       api: "openai-responses",
       request: {
-        ...(config.models?.providers?.openai?.request || {}),
+        ...(config.models?.providers?.[providerId]?.request || {}),
         allowPrivateNetwork: true
       },
       models: [
@@ -280,6 +281,7 @@ function parseArgs(args) {
   }
   return {
     portFile: parsed.portfile,
+    providerId: parsed.providerid,
     skipHealthCheck: parsed.skiphealthcheck === true,
     gatewayHttpEndpoints: parsed.gatewayHttpEndpoints
   };
@@ -297,6 +299,14 @@ function resolveConfigContract(value) {
     );
   }
   return contract;
+}
+
+function resolveProviderId(value) {
+  const providerId = value?.trim() || "openai";
+  if (!/^[a-z0-9][a-z0-9._-]*$/.test(providerId)) {
+    throw new Error(`invalid --provider-id: ${JSON.stringify(value)}`);
+  }
+  return providerId;
 }
 
 function requiredEnv(name) {

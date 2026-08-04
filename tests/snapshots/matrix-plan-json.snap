@@ -281,7 +281,8 @@
         "reason": null,
         "requiredStates": [
           "agent-auth-missing",
-          "mock-openai-provider"
+          "mock-openai-provider",
+          "mock-openai-provider-alias"
         ],
         "requiredStateTraits": [],
         "requiredTargetKinds": [
