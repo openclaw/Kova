@@ -25188,17 +25188,57 @@ async function mockAuthOpenClawConfigCheck(tmp) {
   const portFile = join(tmp, "mock-auth-port");
   await writeFile(portFile, "12345\n", "utf8");
   const contracts = [
-    { id: "canonical", home: join(tmp, "mock-auth-config-canonical") },
-    { id: "legacy-list", home: join(tmp, "mock-auth-config-legacy") }
+    {
+      id: "canonical",
+      configContract: "canonical",
+      home: join(tmp, "mock-auth-config-canonical"),
+      providerId: "openai"
+    },
+    {
+      id: "legacy-list",
+      configContract: "legacy-list",
+      home: join(tmp, "mock-auth-config-legacy"),
+      providerId: "openai"
+    },
+    {
+      id: "canonical-provider-alias",
+      configContract: "canonical",
+      home: join(tmp, "mock-auth-config-provider-alias"),
+      providerId: "x-ai"
+    }
   ];
   const commands = [];
   let durationMs = 0;
   try {
     for (const contract of contracts) {
+      if (contract.providerId === "x-ai") {
+        const stateDir = join(contract.home, ".openclaw");
+        await mkdir(stateDir, { recursive: true });
+        await writeFile(
+          join(stateDir, "openclaw.json"),
+          `${JSON.stringify({
+            models: {
+              providers: {
+                openai: {
+                  request: {
+                    openaiOnly: true
+                  }
+                },
+                "x-ai": {
+                  request: {
+                    aliasOnly: true
+                  }
+                }
+              }
+            }
+          }, null, 2)}\n`,
+          "utf8"
+        );
+      }
       const command = [
-        `KOVA_OPENCLAW_CONFIG_CONTRACT=${contract.id}`,
+        `KOVA_OPENCLAW_CONFIG_CONTRACT=${contract.configContract}`,
         `OPENCLAW_HOME=${quoteShell(contract.home)}`,
-        `node support/configure-openclaw-mock-auth.mjs --port-file ${quoteShell(portFile)} --skip-health-check --gateway-http-endpoint chatCompletions`
+        `node support/configure-openclaw-mock-auth.mjs --port-file ${quoteShell(portFile)} --provider-id ${contract.providerId} --skip-health-check --gateway-http-endpoint chatCompletions`
       ].join(" ");
       commands.push(command);
       const result = await runCommand(command, { timeoutMs: 30000, maxOutputChars: 1000000 });
@@ -25209,19 +25249,28 @@ async function mockAuthOpenClawConfigCheck(tmp) {
       const config = JSON.parse(
         await readFile(join(contract.home, ".openclaw", "openclaw.json"), "utf8")
       );
-      assertEqual(config.models?.providers?.openai?.baseUrl, "http://127.0.0.1:12345/v1", "mock provider base URL");
-      assertEqual(config.agents?.defaults?.model?.primary, "openai/gpt-5.5", "mock default model");
+      const provider = config.models?.providers?.[contract.providerId];
+      assertEqual(provider?.baseUrl, "http://127.0.0.1:12345/v1", `${contract.id} mock provider base URL`);
+      assertEqual(
+        config.agents?.defaults?.model?.primary,
+        `${contract.providerId}/gpt-5.5`,
+        `${contract.id} mock default model`
+      );
       assertEqual(config.gateway?.auth?.mode, "token", "mock gateway token mode");
       assertEqual(config.gateway?.auth?.token, "kova-mock-gateway-token", "mock gateway auth token");
       assertEqual(config.gateway?.remote?.token, "kova-mock-gateway-token", "mock gateway remote token");
       assertEqual(config.gateway?.http?.endpoints?.chatCompletions?.enabled, true, "mock gateway chat completions endpoint enabled");
+      if (contract.providerId === "x-ai") {
+        assertEqual(provider?.request?.aliasOnly, true, "provider alias request settings");
+        assertEqual(provider?.request?.openaiOnly, undefined, "provider alias excludes OpenAI request settings");
+      }
       if (contract.id === "legacy-list") {
         assertEqual(Array.isArray(config.agents?.list), true, "legacy mock config agent list");
         assertEqual(config.agents?.entries, undefined, "legacy mock config omits agent entries");
         assertEqual(
           config.agents?.defaults?.imageGenerationModel?.primary,
-          "openai/gpt-image-1",
-          "legacy mock image model"
+          `${contract.providerId}/gpt-image-1`,
+          `${contract.id} mock image model`
         );
         assertEqual(config.agents?.defaults?.mediaModels, undefined, "legacy mock config omits media models");
       } else {
@@ -25229,8 +25278,13 @@ async function mockAuthOpenClawConfigCheck(tmp) {
         assertEqual(config.agents?.list, undefined, "canonical mock config omits agent list");
         assertEqual(
           config.agents?.defaults?.mediaModels?.image?.primary,
-          "openai/gpt-image-1",
-          "canonical mock image model"
+          `${contract.providerId}/gpt-image-1`,
+          `${contract.id} mock image model`
+        );
+        assertEqual(
+          config.agents?.defaults?.mediaModels?.video?.primary,
+          `${contract.providerId}/sora-2`,
+          `${contract.id} mock video model`
         );
         assertEqual(
           config.agents?.defaults?.imageGenerationModel,
