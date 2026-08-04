@@ -6,7 +6,6 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
-- Attribute OpenClaw CLI and agent startup spans in local agent pre-provider timing, retaining stage identity instead of reporting measured work as unknown.
 - Route version bumps through pull requests, gate signed tags on exact-main CI, avoid repeating the full suite during tag builds, and skip ClawSweeper token creation for ordinary comments.
 - Keep agent CLI, agent runtime, and mock-provider resource roles disjoint so RSS gates report the owning process once.
 - Emit canonical OpenClaw plugin install records from plugin-index state fixtures so migration and metadata scenarios reach the intended runtime paths.

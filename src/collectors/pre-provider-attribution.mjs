@@ -1,4 +1,5 @@
 import { markdownInline, markdownTableCodeSpan } from "../reporting/markdown.mjs";
+import { matchSpanStarts } from "./timeline.mjs";
 
 export function buildPreProviderAttribution({
   schemaVersion,
@@ -149,22 +150,20 @@ export function preProviderMarkdownRows({ title, turns, fieldName }) {
 }
 
 export function attributedSpanIntervals(events, isAttributedSpan) {
-  const startsById = new Map();
+  const { startByTerminal } = matchSpanStarts(events ?? []);
   const intervals = [];
 
   for (const event of events ?? []) {
-    if (event?.type === "span.start" && isAttributedSpan(event)) {
-      const key = spanKey(event);
-      if (key) {
-        startsById.set(key, event);
-      }
+    if (event?.type !== "span.end" && event?.type !== "span.error") {
       continue;
     }
-    if ((event?.type === "span.end" || event?.type === "span.error") && isAttributedSpan(event)) {
-      const terminal = spanIntervalFromTerminal(event, startsById.get(spanKey(event)));
-      if (terminal) {
-        intervals.push(terminal);
-      }
+    const startEvent = startByTerminal.get(event);
+    if (!isAttributedSpan(event) && !(startEvent && isAttributedSpan(startEvent))) {
+      continue;
+    }
+    const terminal = spanIntervalFromTerminal(event, startEvent);
+    if (terminal) {
+      intervals.push(terminal);
     }
   }
 
@@ -370,12 +369,6 @@ function timelineArtifacts(timelineSummary) {
     ...(timelineSummary?.artifacts ?? []),
     ...(timelineSummary?.timelineArtifacts ?? [])
   ].filter(Boolean));
-}
-
-function spanKey(event) {
-  return event?.spanId === undefined || event?.spanId === null || String(event.spanId).length === 0
-    ? null
-    : String(event.spanId);
 }
 
 function eventEpochMs(event) {

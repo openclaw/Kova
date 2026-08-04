@@ -12695,7 +12695,7 @@ function agentCliPreProviderAttributionCheck() {
     const timelineText = [
       timelineEvent({ type: "span.start", name: "agent.turn", timestamp: base + 1000, spanId: "cold-turn" }),
       timelineEvent({ type: "span.start", name: "cli.main.core-imports", phase: "cli.startup", timestamp: base + 1000, spanId: "cold-cli-main" }),
-      timelineEvent({ type: "span.end", name: "cli.main.core-imports", phase: "cli.startup", timestamp: base + 1040, spanId: "cold-cli-main", durationMs: 40 }),
+      timelineEvent({ type: "span.end", name: "cli.main.core-imports", timestamp: base + 1040, spanId: "cold-cli-main", durationMs: 40 }),
       timelineEvent({ type: "span.start", name: "cli.command-startup", phase: "cli.command-startup", timestamp: base + 1040, spanId: "cold-cli-command", attributes: { stage: "agent-action-imports" } }),
       timelineEvent({ type: "span.end", name: "cli.command-startup", phase: "cli.command-startup", timestamp: base + 1080, spanId: "cold-cli-command", durationMs: 40, attributes: { stage: "agent-action-imports" } }),
       timelineEvent({ type: "span.start", name: "agent.startup", phase: "agent.startup", timestamp: base + 1080, spanId: "cold-agent-startup", attributes: { stage: "command-prepare" } }),
@@ -12718,6 +12718,11 @@ function agentCliPreProviderAttributionCheck() {
     ].join("\n");
     const parsed = parseTimelineText(timelineText);
     assertEqual(parsed.turnAttributionEvents.length, 22, "agent CLI turn attribution events retain startup phases");
+    assertEqual(
+      parsed.turnAttributionEvents.find((event) => event.spanId === "cold-cli-main" && event.type === "span.end")?.phase,
+      null,
+      "phase-less terminal paired to selected startup span is retained"
+    );
 
     const coldAttribution = buildAgentCliPreProviderAttribution({
       label: "cold",
