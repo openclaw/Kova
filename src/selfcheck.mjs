@@ -5651,86 +5651,167 @@ async function stateLifecycleCommandIndexesCheck(tmp) {
 }
 
 async function pluginInstallIndexFixturesCheck(tmp) {
-  const fixtures = [
-    {
-      id: "many-bundled-plugins",
-      expectedIds: Array.from({ length: 80 }, (_, index) => `kova-plugin-${index}`)
-    },
-    {
-      id: "plugin-index",
-      expectedIds: ["kova-index-alpha", "kova-index-beta", "kova-index-gamma"]
-    }
-  ];
-
   return inlineCheck("plugin-install-index-fixtures", async () => {
-    for (const fixture of fixtures) {
-      const state = JSON.parse(await readFile(join(repoRoot, "states", `${fixture.id}.json`), "utf8"));
-      const commands = state.setup?.flatMap((step) => step.commands ?? []) ?? [];
-      assertEqual(commands.length, 1, `${fixture.id} setup command count`);
+    const manyPluginIds = Array.from({ length: 80 }, (_, index) => `kova-plugin-${index}`);
+    const manyPluginState = JSON.parse(
+      await readFile(join(repoRoot, "states", "many-bundled-plugins.json"), "utf8")
+    );
+    const manyPluginStep = manyPluginState.setup?.[0];
+    assertEqual(manyPluginStep?.afterPhases?.includes("env-create"), true, "many-plugin setup precedes startup");
+    assertEqual(manyPluginStep?.afterPhases?.includes("cold-start"), false, "many-plugin setup does not follow cold start");
+    assertEqual(manyPluginStep?.commands?.length, 2, "many-plugin setup command count");
+    assertEqual(
+      manyPluginStep.commands[0],
+      "ocm env exec {env} -- node {kovaRoot}/support/prepare-many-plugin-pressure-state.mjs --expected-count 80",
+      "many-plugin prepare command"
+    );
+    assertEqual(
+      manyPluginStep.commands[1],
+      "node {kovaRoot}/support/assert-many-plugin-pressure-state.mjs --env {env} --expected-count 80",
+      "many-plugin assertion command"
+    );
 
-      const prefix = "ocm env exec {env} -- node -e '";
-      const command = commands[0];
-      if (!command.startsWith(prefix) || !command.endsWith("'")) {
-        throw new Error(`${fixture.id} setup command is not an embedded Node script`);
+    const manyPluginHome = join(tmp, "many-bundled-plugins-home");
+    const prepareResult = await runCommand(
+      `${quoteShell(process.execPath)} ${quoteShell(join(repoRoot, "support", "prepare-many-plugin-pressure-state.mjs"))} --expected-count 80`,
+      {
+        env: { OPENCLAW_STATE_DIR: manyPluginHome },
+        timeoutMs: 30000,
+        maxOutputChars: 100000
       }
-
-      const home = join(tmp, `${fixture.id}-home`);
-      const script = command.slice(prefix.length, -1);
-      const result = await runCommand(
-        `${quoteShell(process.execPath)} -e ${quoteShell(script)}`,
-        {
-          env: { OPENCLAW_HOME: home },
-          timeoutMs: 30000,
-          maxOutputChars: 100000
-        }
+    );
+    if (prepareResult.status !== 0) {
+      throw new Error(
+        `many-bundled-plugins setup failed: ${prepareResult.stderr.trim() || prepareResult.stdout.trim() || `exit ${prepareResult.status}`}`
       );
-      if (result.status !== 0) {
-        throw new Error(
-          `${fixture.id} setup failed: ${result.stderr.trim() || result.stdout.trim() || `exit ${result.status}`}`
-        );
-      }
+    }
+    await assertPluginFixtureFiles(
+      manyPluginHome,
+      "plugins/installs.json",
+      "many-bundled-plugins",
+      manyPluginIds
+    );
+    await assertManyPluginPressureHelper(tmp, manyPluginIds);
 
-      for (const relativePath of ["plugins/installs.json", ".openclaw/plugins/installs.json"]) {
-        const index = JSON.parse(await readFile(join(home, relativePath), "utf8"));
-        assertEqual(Array.isArray(index.plugins), false, `${fixture.id} omits private plugins array`);
-        const records = index.installRecords;
-        if (!records || typeof records !== "object" || Array.isArray(records)) {
-          throw new Error(`${fixture.id} ${relativePath} has no installRecords object`);
-        }
-        assertEqual(
-          Object.keys(records).sort().join("\n"),
-          [...fixture.expectedIds].sort().join("\n"),
-          `${fixture.id} install record ids`
-        );
-        for (const id of fixture.expectedIds) {
-          const pluginDir = join(home, "fixture-plugins", id);
-          assertEqual(records[id]?.source, "path", `${fixture.id} ${id} source`);
-          assertEqual(records[id]?.sourcePath, pluginDir, `${fixture.id} ${id} source path`);
-          assertEqual(records[id]?.installPath, pluginDir, `${fixture.id} ${id} install path`);
-          assertEqual(records[id]?.version, "0.0.0", `${fixture.id} ${id} version`);
-          assertEqual(records[id]?.spec, undefined, `${fixture.id} ${id} has no package spec`);
+    const pluginIndexState = JSON.parse(
+      await readFile(join(repoRoot, "states", "plugin-index.json"), "utf8")
+    );
+    const pluginIndexCommands = pluginIndexState.setup?.flatMap((step) => step.commands ?? []) ?? [];
+    assertEqual(pluginIndexCommands.length, 1, "plugin-index setup command count");
+    const prefix = "ocm env exec {env} -- node -e '";
+    const command = pluginIndexCommands[0];
+    if (!command.startsWith(prefix) || !command.endsWith("'")) {
+      throw new Error("plugin-index setup command is not an embedded Node script");
+    }
 
-          const packageJson = JSON.parse(await readFile(join(pluginDir, "package.json"), "utf8"));
-          assertEqual(packageJson.name, `@kova/${id}`, `${fixture.id} ${id} package name`);
-          assertEqual(packageJson.version, "0.0.0", `${fixture.id} ${id} package version`);
-          assertEqual(
-            packageJson.openclaw?.extensions?.join("\n"),
-            "./index.js",
-            `${fixture.id} ${id} package entry`
-          );
-          const manifest = JSON.parse(
-            await readFile(join(pluginDir, "openclaw.plugin.json"), "utf8")
-          );
-          assertEqual(manifest.id, id, `${fixture.id} ${id} manifest id`);
-          assertEqual(
-            (await readFile(join(pluginDir, "index.js"), "utf8")).includes(`id: ${JSON.stringify(id)}`),
-            true,
-            `${fixture.id} ${id} runtime entry`
-          );
-        }
+    const pluginIndexHome = join(tmp, "plugin-index-home");
+    const pluginIndexResult = await runCommand(
+      `${quoteShell(process.execPath)} -e ${quoteShell(command.slice(prefix.length, -1))}`,
+      {
+        env: { OPENCLAW_HOME: pluginIndexHome },
+        timeoutMs: 30000,
+        maxOutputChars: 100000
       }
+    );
+    if (pluginIndexResult.status !== 0) {
+      throw new Error(
+        `plugin-index setup failed: ${pluginIndexResult.stderr.trim() || pluginIndexResult.stdout.trim() || `exit ${pluginIndexResult.status}`}`
+      );
+    }
+    for (const relativePath of ["plugins/installs.json", ".openclaw/plugins/installs.json"]) {
+      await assertPluginFixtureFiles(
+        pluginIndexHome,
+        relativePath,
+        "plugin-index",
+        ["kova-index-alpha", "kova-index-beta", "kova-index-gamma"]
+      );
     }
   });
+}
+
+async function assertPluginFixtureFiles(home, relativePath, fixtureId, expectedIds) {
+  const index = JSON.parse(await readFile(join(home, relativePath), "utf8"));
+  assertEqual(Array.isArray(index.plugins), false, `${fixtureId} omits private plugins array`);
+  const records = index.installRecords;
+  if (!records || typeof records !== "object" || Array.isArray(records)) {
+    throw new Error(`${fixtureId} ${relativePath} has no installRecords object`);
+  }
+  assertEqual(
+    Object.keys(records).sort().join("\n"),
+    [...expectedIds].sort().join("\n"),
+    `${fixtureId} install record ids`
+  );
+  for (const id of expectedIds) {
+    const pluginDir = join(home, "fixture-plugins", id);
+    assertEqual(records[id]?.source, "path", `${fixtureId} ${id} source`);
+    assertEqual(records[id]?.sourcePath, pluginDir, `${fixtureId} ${id} source path`);
+    assertEqual(records[id]?.installPath, pluginDir, `${fixtureId} ${id} install path`);
+    assertEqual(records[id]?.version, "0.0.0", `${fixtureId} ${id} version`);
+    assertEqual(records[id]?.spec, undefined, `${fixtureId} ${id} has no package spec`);
+
+    const packageJson = JSON.parse(await readFile(join(pluginDir, "package.json"), "utf8"));
+    assertEqual(packageJson.name, `@kova/${id}`, `${fixtureId} ${id} package name`);
+    assertEqual(packageJson.version, "0.0.0", `${fixtureId} ${id} package version`);
+    assertEqual(
+      packageJson.openclaw?.extensions?.join("\n"),
+      "./index.js",
+      `${fixtureId} ${id} package entry`
+    );
+    const manifest = JSON.parse(await readFile(join(pluginDir, "openclaw.plugin.json"), "utf8"));
+    assertEqual(manifest.id, id, `${fixtureId} ${id} manifest id`);
+    assertEqual(
+      (await readFile(join(pluginDir, "index.js"), "utf8")).includes(`id: ${JSON.stringify(id)}`),
+      true,
+      `${fixtureId} ${id} runtime entry`
+    );
+  }
+}
+
+async function assertManyPluginPressureHelper(tmp, expectedIds) {
+  const binDir = join(tmp, "many-plugin-pressure-bin");
+  const fakeOcm = join(binDir, "ocm");
+  await mkdir(binDir, { recursive: true });
+  await writeFile(
+    fakeOcm,
+    [
+      "#!/usr/bin/env node",
+      `const ids = ${JSON.stringify(expectedIds)};`,
+      'const command = process.argv.slice(2).join(" ");',
+      'if (command === "@kova-self-check -- doctor --fix --non-interactive") {',
+      '  console.log("doctor repair complete");',
+      "  process.exit(0);",
+      "}",
+      'if (command === "@kova-self-check -- plugins registry --refresh --json") {',
+      "  console.log(JSON.stringify({ refreshed: true, registry: { installRecords: Object.fromEntries(ids.map((id) => [id, { source: \"path\" }])), plugins: ids.map((pluginId) => ({ pluginId })) } }));",
+      "  process.exit(0);",
+      "}",
+      'if (command === "@kova-self-check -- plugins list --json") {',
+      "  console.log(JSON.stringify({ plugins: ids.map((id) => ({ id })) }));",
+      "  process.exit(0);",
+      "}",
+      'console.error(`unexpected fake ocm command: ${command}`);',
+      "process.exit(1);"
+    ].join("\n")
+  );
+  await chmod(fakeOcm, 0o755);
+
+  const result = await runCommand(
+    `${quoteShell(process.execPath)} ${quoteShell(join(repoRoot, "support", "assert-many-plugin-pressure-state.mjs"))} --env kova-self-check --expected-count 80`,
+    {
+      env: { PATH: `${binDir}:${process.env.PATH ?? ""}` },
+      timeoutMs: 30000,
+      maxOutputChars: 100000
+    }
+  );
+  if (result.status !== 0) {
+    throw new Error(
+      `many-plugin assertion helper failed: ${result.stderr.trim() || result.stdout.trim() || `exit ${result.status}`}`
+    );
+  }
+  const payload = JSON.parse(result.stdout);
+  assertEqual(payload.canonicalInstallRecordCount, 80, "many-plugin canonical record count");
+  assertEqual(payload.registryPluginCount, 80, "many-plugin registry count");
+  assertEqual(payload.listedPluginCount, 80, "many-plugin listed count");
 }
 
 async function matrixWorkerRejectionCheck() {
