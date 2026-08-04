@@ -25,14 +25,15 @@ run_step() {
 
 usage() {
   cat <<'EOF'
-Prepare or resume a signed Kova release from the current main branch.
+Prepare or finish a signed Kova release through a pull request.
 
 Usage:
-  scripts/release.sh <version> [--remote <name>] [--skip-checks]
+  scripts/release.sh <version> [--remote <name>]
 
-Examples:
-  scripts/release.sh 0.2.0
-  scripts/release.sh 1.0.0-beta.1 --remote upstream
+Run the same command twice:
+  1. From current main, create the release branch and pull request.
+  2. After squash-merging that pull request, update main and rerun to verify
+     exact-SHA CI, sign the tag, and push it.
 EOF
 }
 
@@ -40,12 +41,13 @@ package_version() {
   node -p 'require("./package.json").version'
 }
 
-ref_commit() {
-  git rev-list -n1 "$1" 2>/dev/null || true
+version_at_ref() {
+  git show "$1:package.json" |
+    node -e 'let input=""; process.stdin.on("data", chunk => input += chunk); process.stdin.on("end", () => console.log(JSON.parse(input).version));'
 }
 
 remote_ref_commit() {
-  git ls-remote "$remote" "$1" | awk 'NR==1 { print $1 }'
+  git ls-remote "$remote" "$1" | awk 'NR == 1 { print $1 }'
 }
 
 remote_tag_object() {
@@ -63,7 +65,7 @@ remote_tag_commit() {
 normalize_signing_key() {
   case "$1" in
     key::*|ssh-*|ecdsa-*|sk-*) printf '%s\n' "$1" ;;
-    "~/"*) printf '%s/%s\n' "$HOME" "${1:2}" ;;
+    \~/*) printf '%s/%s\n' "$HOME" "${1:2}" ;;
     *) printf '%s\n' "$1" ;;
   esac
 }
@@ -191,64 +193,294 @@ remote_tag_signature_valid() {
   [[ "$valid" -eq 1 ]]
 }
 
-refresh_dirty_files() {
-  dirty_files=()
-  while IFS= read -r file; do
-    [[ -n "$file" ]] || continue
-    dirty_files+=("$file")
-  done < <(
-    {
-      git diff --name-only --ignore-submodules --
-      git diff --cached --name-only --ignore-submodules --
-    } | sort -u
-  )
+tracked_dirty_files() {
+  {
+    git diff --name-only --ignore-submodules --
+    git diff --cached --name-only --ignore-submodules --
+  } | sort -u
 }
 
-only_version_files_dirty() {
-  local file
-  [[ "${#dirty_files[@]}" -gt 0 ]] || return 1
-  for file in "${dirty_files[@]}"; do
-    case "$file" in
-      package.json|package-lock.json)
-        ;;
-      *)
-        return 1
-        ;;
-    esac
-  done
-  "${script_dir}/validate-version-metadata.mjs" "$version"
-}
-
-is_release_commit() {
-  [[ "$(git log -1 --pretty=%s 2>/dev/null || true)" == "$release_commit_message" ]] || return 1
-  [[ "$(git diff-tree --no-commit-id --name-only -r HEAD | sort -u)" == $'package-lock.json\npackage.json' ]] || return 1
-  if ! "${script_dir}/validate-version-metadata.mjs" "$version" --commit HEAD; then
-    echo "error: release commit contains changes outside the expected version bump" >&2
+require_clean_checkout() {
+  local dirty
+  dirty="$(tracked_dirty_files)"
+  if [[ -n "$dirty" ]]; then
+    echo "error: tracked changes are present; commit or stash them before running scripts/release.sh" >&2
+    printf '%s\n' "$dirty" >&2
     exit 1
   fi
 }
 
-log_resume_state() {
-  log_step "resume state: $*"
+release_commit_is_version_only() {
+  local changed
+  changed="$(git diff-tree --no-commit-id --name-only -r HEAD | sort -u)"
+  [[ "$changed" == $'package-lock.json\npackage.json' ]] || return 1
+  "${script_dir}/validate-version-metadata.mjs" "$version" --commit HEAD
 }
 
-log_skip() {
-  log_step "skip: $*"
+release_commit_subject_matches() {
+  local subject="$1"
+  local suffix
+  if [[ "$subject" == "$release_commit_message" ]]; then
+    return 0
+  fi
+  suffix="${subject#"$release_commit_message"}"
+  [[ "$suffix" =~ ^\ \(#[0-9]+\)$ ]]
+}
+
+release_branch_is_version_only() {
+  local remote_main_sha release_base_sha commit_count changed
+  remote_main_sha="$(remote_ref_commit "refs/heads/main")"
+  [[ -n "$remote_main_sha" ]] || {
+    echo "error: could not resolve ${remote}/main" >&2
+    return 1
+  }
+  git fetch --quiet "$remote" main
+  release_base_sha="$(git merge-base HEAD "$remote_main_sha")"
+  commit_count="$(git rev-list --count "${release_base_sha}..HEAD")"
+  changed="$(git diff --name-only "${release_base_sha}..HEAD" | sort -u)"
+  if [[ "$commit_count" != "1" || "$changed" != $'package-lock.json\npackage.json' ]]; then
+    echo "error: ${release_branch} must contain exactly one version-only commit" >&2
+    return 1
+  fi
+  release_commit_subject_matches "$(git log -1 --pretty=%s)" &&
+    release_commit_is_version_only
+}
+
+github() {
+  if [[ -n "${KOVA_GH_BIN:-}" ]]; then
+    "$KOVA_GH_BIN" "$@"
+  elif command -v ghx >/dev/null 2>&1; then
+    ghx --no-cache "$@"
+  elif command -v gh >/dev/null 2>&1; then
+    gh "$@"
+  else
+    echo "error: ghx or gh is required for release pull requests and CI verification" >&2
+    return 1
+  fi
+}
+
+github_repository() {
+  local remote_url repository
+  if [[ -n "${KOVA_GITHUB_REPOSITORY:-}" ]]; then
+    repository="$KOVA_GITHUB_REPOSITORY"
+  else
+    remote_url="$(git remote get-url "$remote")"
+    case "$remote_url" in
+      https://github.com/*)
+        repository="${remote_url#https://github.com/}"
+        ;;
+      git@github.com:*)
+        repository="${remote_url#git@github.com:}"
+        ;;
+      ssh://git@github.com/*)
+        repository="${remote_url#ssh://git@github.com/}"
+        ;;
+      *)
+        echo "error: cannot derive a GitHub repository from remote ${remote}; set KOVA_GITHUB_REPOSITORY" >&2
+        return 1
+        ;;
+    esac
+    repository="${repository%.git}"
+  fi
+  if [[ ! "$repository" =~ ^[^/[:space:]]+/[^/[:space:]]+$ ]]; then
+    echo "error: invalid GitHub repository: ${repository}" >&2
+    return 1
+  fi
+  printf '%s\n' "$repository"
+}
+
+release_pr_details() {
+  local repository="$1"
+  local response
+  response="$(
+    github pr view "$release_branch" \
+      --repo "$repository" \
+      --json url,state,baseRefName,body \
+      2>/dev/null || true
+  )"
+  [[ -n "$response" ]] || return 1
+  PR_JSON="$response" node <<'NODE'
+const value = JSON.parse(process.env.PR_JSON);
+console.log([
+  value.url || "",
+  value.state || "",
+  value.baseRefName || "",
+  typeof value.body === "string" && value.body.trim() ? "body-ok" : "body-empty",
+].join("\t"));
+NODE
+}
+
+ensure_release_pr() {
+  local repository details pr_url pr_state pr_base pr_body_state body_file
+  repository="$(github_repository)"
+  details="$(release_pr_details "$repository" || true)"
+  if [[ -n "$details" ]]; then
+    IFS=$'\t' read -r pr_url pr_state pr_base pr_body_state <<<"$details"
+    if [[ "$pr_state" != "OPEN" || "$pr_base" != "main" ]]; then
+      echo "error: existing pull request for ${release_branch} is ${pr_state:-unknown} with base ${pr_base:-unknown}" >&2
+      return 1
+    fi
+    if [[ "$pr_body_state" != "body-ok" ]]; then
+      echo "error: existing pull request for ${release_branch} has an empty body" >&2
+      return 1
+    fi
+    printf '%s\n' "$pr_url"
+    return
+  fi
+
+  body_file="$(mktemp "${TMPDIR:-/tmp}/kova-release-pr.XXXXXX")"
+  cat >"$body_file" <<EOF
+## What Problem This Solves
+
+Prepares the version metadata for ${tag} through the normal review and CI path.
+
+## Why This Change Was Made
+
+This pull request contains only the package version bump. Squash-merge it so the exact merge commit can pass the main-branch CI gate before the signed release tag is created.
+
+## User Impact
+
+No runtime behavior changes. Release metadata is reviewed and validated before publication.
+
+## Evidence
+
+- Version metadata is limited to \`package.json\` and \`package-lock.json\`.
+- Pull-request CI is the validation gate.
+- After merge, rerun \`scripts/release.sh ${version} --remote ${remote}\`.
+EOF
+  if ! pr_url="$(
+    github pr create \
+      --repo "$repository" \
+      --base main \
+      --head "$release_branch" \
+      --title "$release_commit_message" \
+      --body-file "$body_file"
+  )" || [[ -z "$pr_url" ]]; then
+    rm -f "$body_file"
+    echo "error: failed to create the release pull request" >&2
+    return 1
+  fi
+  rm -f "$body_file"
+
+  details="$(release_pr_details "$repository" || true)"
+  if [[ -z "$details" ]]; then
+    echo "error: created release pull request could not be read back" >&2
+    return 1
+  fi
+  IFS=$'\t' read -r pr_url pr_state pr_base pr_body_state <<<"$details"
+  if [[ "$pr_state" != "OPEN" || "$pr_base" != "main" || "$pr_body_state" != "body-ok" ]]; then
+    echo "error: created release pull request failed live verification" >&2
+    return 1
+  fi
+  printf '%s\n' "$pr_url"
+}
+
+verify_exact_main_ci() {
+  local head_sha="$1"
+  local repository runs_json result state run_id run_url
+  repository="$(github_repository)"
+  if ! runs_json="$(
+    github run list \
+      --repo "$repository" \
+      --workflow ci.yml \
+      --branch main \
+      --event push \
+      --commit "$head_sha" \
+      --limit 20 \
+      --json databaseId,headSha,status,conclusion,url
+  )"; then
+    echo "error: could not query CI for ${head_sha}" >&2
+    return 1
+  fi
+  result="$(
+    CI_RUNS_JSON="$runs_json" node - "$head_sha" <<'NODE'
+const headSha = process.argv[2];
+const runs = JSON.parse(process.env.CI_RUNS_JSON || "[]");
+const run = runs.find((candidate) => candidate.headSha === headSha);
+if (!run) {
+  console.log("missing\t\t");
+} else if (run.status !== "completed") {
+  console.log(`pending\t${run.databaseId || ""}\t${run.url || ""}`);
+} else if (run.conclusion !== "success") {
+  console.log(`failed\t${run.databaseId || ""}\t${run.url || ""}`);
+} else {
+  console.log(`success\t${run.databaseId || ""}\t${run.url || ""}`);
+}
+NODE
+  )"
+  IFS=$'\t' read -r state run_id run_url <<<"$result"
+  case "$state" in
+    success)
+      log_step "Exact-SHA CI passed in run ${run_id}"
+      ;;
+    pending)
+      echo "error: CI run ${run_id} for ${head_sha} is still in progress" >&2
+      [[ -n "$run_url" ]] && echo "run: ${run_url}" >&2
+      return 1
+      ;;
+    failed)
+      echo "error: CI run ${run_id} for ${head_sha} did not succeed" >&2
+      [[ -n "$run_url" ]] && echo "run: ${run_url}" >&2
+      return 1
+      ;;
+    *)
+      echo "error: no main-branch CI push run exists for exact commit ${head_sha}" >&2
+      echo "hint: wait for CI to start and finish, then rerun this command" >&2
+      return 1
+      ;;
+  esac
+}
+
+verify_existing_remote_tag() {
+  local remote_main_sha remote_tag_commit_sha remote_tag_object_sha local_tag_object_sha tagged_version
+  remote_tag_commit_sha="$(remote_tag_commit)"
+  [[ -n "$remote_tag_commit_sha" ]] || return 1
+  remote_tag_object_sha="$(remote_tag_object)"
+  if ! remote_tag_signature_valid "$remote_tag_object_sha"; then
+    echo "error: remote tag ${tag} is not signed by a repository-authorized signer" >&2
+    exit 1
+  fi
+
+  local_tag_object_sha="$(git rev-parse --verify "refs/tags/${tag}" 2>/dev/null || true)"
+  if [[ -n "$local_tag_object_sha" && "$local_tag_object_sha" != "$remote_tag_object_sha" ]]; then
+    echo "error: local and remote tag objects differ for ${tag}" >&2
+    exit 1
+  fi
+  if [[ -z "$local_tag_object_sha" ]]; then
+    run_step "Adopting verified remote tag ${tag}" \
+      git fetch --quiet --force --no-tags "$remote" "refs/tags/${tag}:refs/tags/${tag}"
+  fi
+
+  tagged_version="$(version_at_ref "$tag")"
+  if [[ "$tagged_version" != "$version" ]]; then
+    echo "error: remote tag ${tag} contains package version ${tagged_version:-unknown}" >&2
+    exit 1
+  fi
+  remote_main_sha="$(remote_ref_commit "refs/heads/main")"
+  run_step "Fetching ${remote}/main for ancestry verification" git fetch --quiet "$remote" main
+  if ! git merge-base --is-ancestor "$remote_tag_commit_sha" "$remote_main_sha"; then
+    echo "error: remote tag ${tag} is not reachable from ${remote}/main" >&2
+    exit 1
+  fi
+
+  cat <<EOF
+Release tag ${tag} is already published from verified commit ${remote_tag_commit_sha}.
+The tag-triggered workflows own archive validation and publication.
+EOF
 }
 
 version=""
 remote="origin"
-skip_checks=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --remote)
       shift
-      [[ $# -gt 0 ]] || { echo "error: --remote requires a value" >&2; exit 1; }
+      [[ $# -gt 0 ]] || {
+        echo "error: --remote requires a value" >&2
+        exit 1
+      }
       remote="$1"
-      ;;
-    --skip-checks)
-      skip_checks=1
       ;;
     --help|-h)
       usage
@@ -282,214 +514,131 @@ cd "$repo_root"
 
 "${script_dir}/validate-version.mjs" "$version"
 
-branch="$(git symbolic-ref --quiet --short HEAD || true)"
-if [[ "$branch" != "main" ]]; then
-  echo "error: releases must be prepared from the main branch (current: ${branch:-detached})" >&2
-  exit 1
-fi
-
 if ! git remote get-url "$remote" >/dev/null 2>&1; then
   echo "error: git remote not found: $remote" >&2
   exit 1
 fi
 
 tag="v${version}"
-release_commit_message="chore: bump version to ${version}"
-current_version="$(package_version)"
+release_branch="release/${tag}"
+release_commit_message="chore(release): bump version to ${version}"
+branch="$(git symbolic-ref --quiet --short HEAD || true)"
 
+if verify_existing_remote_tag; then
+  exit 0
+fi
+
+current_version="$(package_version)"
 if [[ -z "$current_version" ]]; then
   echo "error: could not read Kova version from package.json" >&2
   exit 1
 fi
+"${script_dir}/validate-version-metadata.mjs" "$current_version"
 
-refresh_dirty_files
-
-head_sha="$(git rev-parse HEAD)"
-head_is_release_commit=0
-if is_release_commit; then
-  head_is_release_commit=1
-fi
-
-local_tag_commit_sha="$(ref_commit "$tag")"
-local_tag_object_sha="$(git rev-parse --verify "refs/tags/${tag}" 2>/dev/null || true)"
-remote_tag_object_sha="$(remote_tag_object)"
-remote_tag_commit_sha="$(remote_tag_commit)"
-remote_main_sha="$(remote_ref_commit "refs/heads/main")"
-
-if [[ -z "$remote_main_sha" ]]; then
-  echo "error: could not resolve ${remote}/main" >&2
-  exit 1
-fi
-
-if [[ -n "$local_tag_commit_sha" && "$local_tag_commit_sha" != "$head_sha" ]]; then
-  echo "error: local tag ${tag} already exists and does not point at HEAD" >&2
-  exit 1
-fi
-
-if [[ -n "$remote_tag_commit_sha" && "$remote_tag_commit_sha" != "$head_sha" ]]; then
-  echo "error: remote tag ${tag} already exists on ${remote} and does not point at HEAD" >&2
-  exit 1
-fi
-
-if [[ -n "$remote_tag_object_sha" ]]; then
-  if ! remote_tag_signature_valid "$remote_tag_object_sha"; then
-    echo "error: remote tag ${tag} is not signed by a repository-authorized signer" >&2
-    exit 1
-  fi
-  if [[ -n "$local_tag_object_sha" && "$local_tag_object_sha" != "$remote_tag_object_sha" ]]; then
-    echo "error: local and remote tag objects differ for ${tag}; reconcile them before retrying" >&2
-    exit 1
-  fi
-  if [[ -z "$local_tag_object_sha" ]]; then
-    run_step "Adopting verified remote tag ${tag}" \
-      git fetch --quiet --force --no-tags "$remote" "refs/tags/${tag}:refs/tags/${tag}"
-    local_tag_object_sha="$(git rev-parse --verify "refs/tags/${tag}")"
-    local_tag_commit_sha="$(ref_commit "$tag")"
-  fi
-fi
-
-if [[ "$head_is_release_commit" -eq 1 ]]; then
-  release_base_sha="$(git rev-parse HEAD^)"
-  if [[ "$remote_main_sha" == "$release_base_sha" && "$remote_tag_commit_sha" == "$head_sha" ]]; then
-    echo "error: remote tag ${tag} exists while ${remote}/main is still at the release parent" >&2
-    echo "error: push main explicitly, then rerun the failed Release Build workflow for ${tag}" >&2
-    exit 1
-  fi
-  if [[ "$remote_main_sha" != "$release_base_sha" && "$remote_main_sha" != "$head_sha" ]]; then
-    echo "error: ${remote}/main moved since the release commit was created; reconcile before retrying" >&2
-    exit 1
-  fi
-elif [[ "$remote_main_sha" != "$head_sha" ]]; then
-  echo "error: local main is not current with ${remote}/main; pull or reconcile before releasing" >&2
-  exit 1
-fi
-
-need_update_version=0
-need_checks=0
-need_commit=0
-
-log_step "Preparing release ${tag} from branch ${branch} using remote ${remote}"
-
-if [[ "$current_version" == "$version" ]]; then
-  if [[ "${#dirty_files[@]}" -gt 0 ]]; then
-    if ! only_version_files_dirty; then
-      echo "error: tracked changes are present; commit or stash them before running scripts/release.sh" >&2
+case "$branch" in
+  main)
+    require_clean_checkout
+    remote_main_sha="$(remote_ref_commit "refs/heads/main")"
+    head_sha="$(git rev-parse HEAD)"
+    if [[ -z "$remote_main_sha" || "$head_sha" != "$remote_main_sha" ]]; then
+      echo "error: local main must exactly match ${remote}/main before release work" >&2
       exit 1
     fi
-    if [[ "$head_is_release_commit" -eq 1 || -n "$local_tag_commit_sha" || -n "$remote_tag_commit_sha" ]]; then
-      echo "error: package.json is dirty for ${version}, but a release commit or tag already exists; clean up release state before retrying" >&2
+
+    if [[ "$current_version" == "$version" ]]; then
+      if ! release_commit_subject_matches "$(git log -1 --pretty=%s)" ||
+        ! release_commit_is_version_only; then
+        echo "error: ${version} is on main, but HEAD is not the expected squash-merged release commit" >&2
+        exit 1
+      fi
+      verify_exact_main_ci "$head_sha"
+
+      local_tag_object_sha="$(git rev-parse --verify "refs/tags/${tag}" 2>/dev/null || true)"
+      if [[ -n "$local_tag_object_sha" ]]; then
+        log_step "Using existing local tag ${tag}"
+      else
+        release_signing_key="$(resolve_release_signing_key)"
+        log_step "Using repository-authorized release key"
+        log_step "Creating signed tag ${tag}; git signing may prompt here"
+        git -c gpg.format=ssh -c user.signingkey="$release_signing_key" tag -s "$tag" -m "$tag"
+      fi
+      if [[ "$(git rev-list -n1 "$tag")" != "$head_sha" ]]; then
+        echo "error: local tag ${tag} does not point at the release commit" >&2
+        exit 1
+      fi
+      if ! tag_signature_valid "$tag"; then
+        echo "error: local tag ${tag} is not signed by a repository-authorized signer" >&2
+        exit 1
+      fi
+      run_step "Pushing signed tag ${tag}" git push "$remote" "$tag"
+      cat <<EOF
+Release tag ${tag} pushed from ${head_sha}.
+The tag-triggered workflows will validate the archive and publish the release.
+EOF
+      exit 0
+    fi
+
+    if git show-ref --verify --quiet "refs/heads/${release_branch}"; then
+      echo "error: local branch ${release_branch} already exists; switch to it and rerun" >&2
       exit 1
     fi
-    need_update_version=1
-    need_checks=1
-    need_commit=1
-    log_resume_state "package metadata is partially or fully updated to ${version}"
-  else
-    if [[ "$head_is_release_commit" -ne 1 ]]; then
-      echo "error: Kova is already on ${version}, but HEAD is not the expected release commit; clean up or finish that release state manually" >&2
-      exit 1
-    fi
-    log_resume_state "release commit already exists at ${head_sha:0:7}"
-  fi
-else
-  if [[ "${#dirty_files[@]}" -gt 0 ]]; then
-    echo "error: tracked changes are present; commit or stash them before running scripts/release.sh" >&2
+    run_step "Creating ${release_branch}" git switch -c "$release_branch"
+    ;;
+  "$release_branch")
+    ;;
+  *)
+    echo "error: run from main or ${release_branch} (current: ${branch:-detached})" >&2
+    exit 1
+    ;;
+esac
+
+dirty="$(tracked_dirty_files)"
+if [[ -n "$dirty" && "$dirty" != $'package-lock.json\npackage.json' ]]; then
+  echo "error: release branches may contain only package.json and package-lock.json changes" >&2
+  printf '%s\n' "$dirty" >&2
+  exit 1
+fi
+
+if [[ "$current_version" != "$version" ]]; then
+  if [[ -n "$dirty" ]]; then
+    echo "error: package metadata is already dirty but does not contain ${version}" >&2
     exit 1
   fi
-  if [[ -n "$local_tag_commit_sha" || -n "$remote_tag_commit_sha" ]]; then
-    echo "error: release tag ${tag} already exists, but package.json is still on ${current_version}" >&2
-    exit 1
-  fi
-  need_update_version=1
-  need_checks=1
-  need_commit=1
+  run_step "Updating package metadata to ${version}" "${script_dir}/update-version.sh" "$version"
+fi
+"${script_dir}/validate-version-metadata.mjs" "$version"
+
+release_commit_ready=0
+if [[ "$(git log -1 --pretty=%s)" == "$release_commit_message" ]] &&
+  release_commit_is_version_only &&
+  [[ -z "$(tracked_dirty_files)" ]]; then
+  release_commit_ready=1
 fi
 
-if [[ "$skip_checks" -eq 0 ]]; then
-  if [[ "$need_checks" -eq 1 ]]; then
-    log_step "Local checks are enabled"
-  else
-    log_skip "local checks already passed before this resume point"
-  fi
-else
-  log_step "Local checks are skipped"
-  need_checks=0
-fi
-
-if [[ "$need_update_version" -eq 1 ]]; then
-  run_step "Updating package.json to ${version}" "${script_dir}/update-version.sh" "$version"
-else
-  log_skip "package.json is already set to ${version}"
-fi
-
-if [[ "$need_checks" -eq 1 ]]; then
-  run_step "Running Kova check suite" npm run check:full
-fi
-
-if [[ "$need_commit" -eq 1 ]]; then
+if [[ "$release_commit_ready" -eq 0 ]]; then
   run_step "Staging package metadata" git add package.json package-lock.json
-  if git diff --cached --quiet --ignore-submodules -- package.json package-lock.json; then
-    echo "error: no staged version change remains for ${version}; cannot create release commit" >&2
+  if git diff --cached --quiet -- package.json package-lock.json; then
+    echo "error: no version changes remain to commit" >&2
     exit 1
   fi
   run_step "Creating release commit" git commit -m "$release_commit_message"
-  head_sha="$(git rev-parse HEAD)"
+elif [[ -n "$(tracked_dirty_files)" ]]; then
+  echo "error: release commit exists but package metadata is still dirty" >&2
+  exit 1
 else
-  log_skip "release commit already exists"
+  log_step "Release commit already exists"
 fi
 
-if [[ "$skip_checks" -eq 0 && -z "$local_tag_commit_sha" ]]; then
-  run_step "Building release archive" "${script_dir}/package-release.sh" --output-dir ./dist
-elif [[ "$skip_checks" -eq 1 ]]; then
-  log_skip "release archive build is skipped"
-else
-  log_skip "release archive was validated before the existing tag was created"
-fi
-
-if [[ -z "$local_tag_commit_sha" ]]; then
-  release_signing_key="$(resolve_release_signing_key)"
-  log_step "Using repository-authorized release key"
-  log_step "Creating signed tag ${tag}; git signing may prompt here"
-  if ! git -c gpg.format=ssh -c user.signingkey="$release_signing_key" tag -s "$tag" -m "$tag"; then
-    echo "error: failed to create signed tag ${tag}; make sure git tag signing is configured" >&2
-    exit 1
-  fi
-  if ! tag_signature_valid "$tag"; then
-    git tag -d "$tag" >/dev/null 2>&1 || true
-    echo "error: created tag ${tag} was not signed; configure git tag signing before retrying" >&2
-    exit 1
-  fi
-  log_step "done: Creating signed tag ${tag}"
-  local_tag_commit_sha="$(ref_commit "$tag")"
-else
-  if ! tag_signature_valid "$tag"; then
-    echo "error: existing tag ${tag} is not signed" >&2
-    exit 1
-  fi
-  log_skip "local tag ${tag} already exists"
-fi
-
-remote_main_sha="$(remote_ref_commit "refs/heads/main")"
-remote_tag_commit_sha="$(remote_tag_commit)"
-
-push_targets=()
-if [[ "$remote_main_sha" != "$head_sha" ]]; then
-  push_targets+=("main")
-fi
-if [[ "$remote_tag_commit_sha" != "$head_sha" ]]; then
-  push_targets+=("$tag")
-fi
-
-if [[ "${#push_targets[@]}" -gt 0 ]]; then
-  run_step "Atomically pushing ${push_targets[*]} to ${remote}" git push --atomic "$remote" "${push_targets[@]}"
-else
-  log_skip "main and ${tag} are already pushed to ${remote}"
-fi
+release_branch_is_version_only
+run_step "Pushing ${release_branch}" git push --set-upstream "$remote" "$release_branch"
+pr_url="$(ensure_release_pr)"
 
 cat <<EOF
-Release prep complete for ${tag}.
+Release pull request ready: ${pr_url}
 
 Next:
-  1. The tag-triggered release workflow will build and smoke-test the archive
-  2. GitHub Releases will be published only after those checks pass
+  1. Squash-merge ${release_branch} into main.
+  2. Update local main to the merged commit.
+  3. Wait for the exact main-branch CI run to pass.
+  4. Rerun: scripts/release.sh ${version} --remote ${remote}
 EOF

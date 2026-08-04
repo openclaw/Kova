@@ -10,12 +10,15 @@ jobs:
     name: Build release archive
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: read
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
       - name: Verify release ref
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           package_version="$(node -p 'require("./package.json").version')"
@@ -27,6 +30,23 @@ jobs:
             -c gpg.ssh.allowedSignersFile=.github/release-allowed-signers \
             verify-tag "${GITHUB_REF_NAME}"
           git merge-base --is-ancestor "${GITHUB_SHA}" origin/main
+          ci_runs="$(
+            gh run list \
+              --workflow ci.yml \
+              --branch main \
+              --event push \
+              --commit "$GITHUB_SHA" \
+              --limit 20 \
+              --json headSha,status,conclusion,databaseId
+          )"
+          CI_RUNS_JSON="$ci_runs" node <<'NODE'
+          const runs = JSON.parse(process.env.CI_RUNS_JSON || "[]");
+          const run = runs.find((candidate) => candidate.headSha === process.env.GITHUB_SHA);
+          if (!run || run.status !== "completed" || run.conclusion !== "success") {
+            throw new Error(`exact-SHA main CI has not passed for ${process.env.GITHUB_SHA}`);
+          }
+          console.log(`verified exact-SHA CI run ${run.databaseId}`);
+          NODE
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 24
@@ -37,8 +57,6 @@ jobs:
           "$HOME/.local/bin/ocm" --version
       - name: Install dependencies
         run: npm ci
-      - name: Run checks
-        run: npm run check:full
       - name: Package release archive
         run: ./scripts/package-release.sh --output-dir ./dist
       - name: Smoke install archive
