@@ -2649,6 +2649,39 @@ function instrumentedPerformanceThresholdPolicyCheck() {
       "instrumented latency threshold is explicitly skipped"
     );
 
+    const heapOnly = buildRecord({
+      profiling: {
+        ...instrumentedProfiling,
+        deepProfile: false,
+        nodeProfile: false,
+        diagnosticReport: false
+      }
+    });
+    evaluateRecord(heapOnly, scenario, options);
+    assertEqual(heapOnly.status, "PASS", "heap-only performance overages remain diagnostic");
+    assertEqual(
+      heapOnly.performanceThresholdAssessment?.skipped.some(
+        (assessment) =>
+          assessment.metric === "peakRssMb" &&
+          assessment.observedOverThreshold === true
+      ),
+      true,
+      "heap-only RSS threshold is explicitly skipped"
+    );
+    const heapOnlyGate = evaluateGate({
+      mode: "execution",
+      controls: { include: [], exclude: [] },
+      records: [heapOnly]
+    }, {
+      id: "heap-only-performance-gate",
+      purpose: "release",
+      gate: {
+        blocking: [{ scenario: scenario.id, state: "mock-openai-provider" }]
+      }
+    });
+    assertEqual(heapOnlyGate.verdict, "PARTIAL", "heap-only evidence cannot ship");
+    assertEqual(heapOnlyGate.ok, false, "heap-only evidence is not gate-ok");
+
     const normal = buildRecord({
       profiling: {
         enabled: false,
@@ -15625,6 +15658,11 @@ function diagnosticProfilerMeasurementScopeCheck(tmp) {
       runId: "self-check-profile-scope",
       nodeProfile: true
     };
+    const heapOnlyContext = {
+      runId: "self-check-heap-scope",
+      heapSnapshot: true,
+      affectsPerformanceMeasurements: true
+    };
     const artifactDir = join(tmp, "diagnostic-profile-scope");
     const product = buildDiagnosticsCommandEnv(
       context,
@@ -15673,6 +15711,13 @@ function diagnosticProfilerMeasurementScopeCheck(tmp) {
       artifactDir,
       "cleanup"
     );
+    const heapOnly = buildDiagnosticsCommandEnv(
+      heapOnlyContext,
+      "profile-heap",
+      artifactDir,
+      "product",
+      "ocm @profile-heap -- models list"
+    );
 
     assertEqual(
       product.OPENCLAW_DIAGNOSTICS_TIMELINE_PATH.endsWith("timeline.jsonl"),
@@ -15688,6 +15733,11 @@ function diagnosticProfilerMeasurementScopeCheck(tmp) {
       cleanup.OPENCLAW_DIAGNOSTICS_TIMELINE_PATH.endsWith("timeline.jsonl"),
       true,
       "cleanup diagnostics keep timeline output"
+    );
+    assertEqual(
+      heapOnly.NODE_OPTIONS,
+      undefined,
+      "heap-only diagnostics do not inject the Node profiler"
     );
     assertEqual(
       product.NODE_OPTIONS.includes("--cpu-prof") &&

@@ -14,7 +14,7 @@ import {
 } from "../measurement-contract.mjs";
 import { assertNetworkFrontageCommandSafe, maybeStartNetworkFrontage, networkFrontageCommandEnv } from "../network-frontage.mjs";
 import { repoRoot } from "../paths.mjs";
-import { commandProfilingAffectsPerformance } from "../performance/instrumentation.mjs";
+import { commandReceivesNodeProfiler } from "../performance/instrumentation.mjs";
 import { resolveOwnedMockProviderPid } from "../process-safety.mjs";
 import { assertSafeScenarioCommand } from "../safety.mjs";
 import { safeSegment } from "./phase-commands.mjs";
@@ -200,7 +200,7 @@ export function buildDiagnosticsCommandEnv(
     OPENCLAW_DIAGNOSTICS_EVENT_LOOP: "1"
   };
 
-  if (commandProfilingAffectsPerformance(context, measurementScope, command)) {
+  if (commandReceivesNodeProfiler(context, measurementScope, command)) {
     const profileDir = artifactDirs.nodeProfiles;
     env.KOVA_NODE_PROFILE_DIR = profileDir;
     env.NODE_OPTIONS = mergeNodeOptions(process.env.NODE_OPTIONS, [

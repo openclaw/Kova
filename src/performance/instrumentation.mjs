@@ -93,11 +93,25 @@ export function commandProfilingAffectsPerformance(
   measurementScope,
   command = ""
 ) {
-  if (profiling?.nodeProfile !== true || measurementScope !== "product") {
+  return profilingAffectsPerformance(profiling) &&
+    commandCanCarryProfilerEffects(measurementScope, command);
+}
+
+export function commandReceivesNodeProfiler(
+  profiling,
+  measurementScope,
+  command = ""
+) {
+  return profiling?.nodeProfile === true &&
+    commandCanCarryProfilerEffects(measurementScope, command);
+}
+
+function commandCanCarryProfilerEffects(measurementScope, command) {
+  if (measurementScope !== "product") {
     return false;
   }
   // Persistent service commands must not pass profiler flags into the managed
-  // gateway; otherwise a bounded diagnostic run creates unbounded daemon traces.
+  // gateway, and their measurements remain independent of bounded captures.
   const text = String(command ?? "");
   return !(
     /\bocm\s+service\s+(?:install|start|restart)\b/.test(text) ||

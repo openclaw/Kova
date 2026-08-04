@@ -556,11 +556,11 @@ Every such record carries this assessment. When no configured threshold is
 affected, it records `complete: true`, `skippedCount: 0`, and empty skipped
 evidence so consumers can distinguish a completed assessment from missing
 producer output.
-Affected evidence is limited to direct command durations whose process received
-profiler flags, local-agent timings owned by a profiled command tree, and
-resource values whose winning process belongs to that tree. Persistent gateway
-startup/readiness/health, count metrics, minimum-duration requirements, cleanup,
-containment, recovery, and safety contracts remain active.
+Affected evidence is limited to direct command durations from diagnostic
+product command trees, local-agent timings owned by those command trees, and
+resource values whose winning process belongs to those trees. Persistent
+gateway startup/readiness/health, count metrics, minimum-duration requirements,
+cleanup, containment, recovery, and safety contracts remain active.
 Command failures, timeouts, behavioral failures, safety checks, missing or
 malformed evidence, leaks, cleanup failures, and non-performance checks remain
 active. A required release-gate scenario with skipped instrumented thresholds
