@@ -4,6 +4,8 @@ import { collectorArtifactDirs } from "../collectors/artifacts.mjs";
 import { tagCommandResult } from "../measurement-contract.mjs";
 import { buildTargetSetupPhase } from "./phase-plan.mjs";
 
+const localBuildSetupTimeoutMs = 10 * 60_000;
+
 export async function executeTargetSetup(context, envName, artifactDir) {
   const phase = buildTargetSetupPhase(context, envName);
   if (!phase) {
@@ -51,7 +53,9 @@ export async function executeTargetSetup(context, envName, artifactDir) {
 async function runTargetSetup(phase, context, envName, artifactDir) {
   return [
     tagCommandResult(await runCommand(phase.commands[0], {
-      timeoutMs: context.timeoutMs,
+      // Packaging and dependency installation outlive scenario command budgets
+      // on ordinary hosts, but matrices still share this one bounded build.
+      timeoutMs: localBuildSetupTimeoutMs,
       env: {
         ...(context.commandEnv ?? {}),
         KOVA_ENV_NAME: envName,
