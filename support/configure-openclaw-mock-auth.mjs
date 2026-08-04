@@ -6,6 +6,7 @@ const options = parseArgs(process.argv.slice(2));
 if (!options.portFile) {
   throw new Error("--port-file is required");
 }
+const configContract = resolveConfigContract(process.env.KOVA_OPENCLAW_CONFIG_CONTRACT);
 
 const port = fs.readFileSync(options.portFile, "utf8").trim();
 if (!/^\d+$/.test(port)) {
@@ -52,6 +53,7 @@ const legacyAgentEntries = Object.fromEntries(
   })
 );
 const agentEntries = { ...legacyAgentEntries, ...existingAgentEntries };
+const existingAgentDefaults = asObject(config.agents?.defaults);
 const imageModelConfig = asObject(config.agents?.defaults?.mediaModels?.image);
 const videoModelConfig = asObject(config.agents?.defaults?.mediaModels?.video);
 const cost = {
@@ -118,40 +120,69 @@ config.models = {
   }
 };
 
-const canonicalAgents = { ...existingAgents };
-delete canonicalAgents.list;
-config.agents = {
-  ...canonicalAgents,
-  entries: Object.keys(agentEntries).length > 0 ? agentEntries : { main: { default: true } },
-  defaults: {
-    ...(config.agents?.defaults || {}),
-    model: {
-      ...(config.agents?.defaults?.model || {}),
-      primary: modelRef
-    },
-    models: {
-      ...(config.agents?.defaults?.models || {}),
-      [modelRef]: {
-        params: {
-          ...(config.agents?.defaults?.models?.[modelRef]?.params || {}),
-          transport: "sse",
-          openaiWsWarmup: false
-        }
-      }
-    },
-    mediaModels: {
-      ...(config.agents?.defaults?.mediaModels || {}),
-      image: {
-        ...imageModelConfig,
-        primary: imageModelRef
-      },
-      video: {
-        ...videoModelConfig,
-        primary: videoModelRef
+const commonAgentDefaults = {
+  ...existingAgentDefaults,
+  model: {
+    ...asObject(existingAgentDefaults.model),
+    primary: modelRef
+  },
+  models: {
+    ...asObject(existingAgentDefaults.models),
+    [modelRef]: {
+      params: {
+        ...asObject(asObject(existingAgentDefaults.models)[modelRef]?.params),
+        transport: "sse",
+        openaiWsWarmup: false
       }
     }
   }
 };
+
+if (configContract === "legacy-list") {
+  const legacyAgents = { ...existingAgents };
+  const legacyDefaults = { ...commonAgentDefaults };
+  delete legacyAgents.entries;
+  delete legacyDefaults.mediaModels;
+  config.agents = {
+    ...legacyAgents,
+    list: Object.entries(agentEntries).map(([id, entry]) => ({ id, ...asObject(entry) })),
+    defaults: {
+      ...legacyDefaults,
+      imageGenerationModel: {
+        ...asObject(existingAgentDefaults.imageGenerationModel),
+        primary: imageModelRef
+      },
+      videoGenerationModel: {
+        ...asObject(existingAgentDefaults.videoGenerationModel),
+        primary: videoModelRef
+      }
+    }
+  };
+} else {
+  const canonicalAgents = { ...existingAgents };
+  const canonicalDefaults = { ...commonAgentDefaults };
+  delete canonicalAgents.list;
+  delete canonicalDefaults.imageGenerationModel;
+  delete canonicalDefaults.videoGenerationModel;
+  config.agents = {
+    ...canonicalAgents,
+    entries: Object.keys(agentEntries).length > 0 ? agentEntries : { main: { default: true } },
+    defaults: {
+      ...canonicalDefaults,
+      mediaModels: {
+        ...asObject(existingAgentDefaults.mediaModels),
+        image: {
+          ...imageModelConfig,
+          primary: imageModelRef
+        },
+        video: {
+          ...videoModelConfig,
+          primary: videoModelRef
+        }
+      }
+    }
+  };
+}
 
 config.gateway = {
   ...(config.gateway || {}),
@@ -256,6 +287,16 @@ function parseArgs(args) {
 
 function asObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function resolveConfigContract(value) {
+  const contract = value?.trim() || "canonical";
+  if (contract !== "canonical" && contract !== "legacy-list") {
+    throw new Error(
+      `unsupported KOVA_OPENCLAW_CONFIG_CONTRACT: ${contract}; expected canonical or legacy-list`
+    );
+  }
+  return contract;
 }
 
 function requiredEnv(name) {

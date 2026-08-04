@@ -24785,37 +24785,72 @@ async function anthropicApiKeyOpenClawConfigCheck(tmp) {
 }
 
 async function mockAuthOpenClawConfigCheck(tmp) {
-  const home = join(tmp, "mock-auth-config-home");
   const portFile = join(tmp, "mock-auth-port");
   await writeFile(portFile, "12345\n", "utf8");
-  const command = [
-    `OPENCLAW_HOME=${quoteShell(home)}`,
-    `node support/configure-openclaw-mock-auth.mjs --port-file ${quoteShell(portFile)} --skip-health-check --gateway-http-endpoint chatCompletions`
-  ].join(" ");
-  const result = await runCommand(command, { timeoutMs: 30000, maxOutputChars: 1000000 });
+  const contracts = [
+    { id: "canonical", home: join(tmp, "mock-auth-config-canonical") },
+    { id: "legacy-list", home: join(tmp, "mock-auth-config-legacy") }
+  ];
+  const commands = [];
+  let durationMs = 0;
   try {
-    if (result.status !== 0) {
-      throw new Error(result.stderr.trim() || result.stdout.trim() || `exit ${result.status}`);
+    for (const contract of contracts) {
+      const command = [
+        `KOVA_OPENCLAW_CONFIG_CONTRACT=${contract.id}`,
+        `OPENCLAW_HOME=${quoteShell(contract.home)}`,
+        `node support/configure-openclaw-mock-auth.mjs --port-file ${quoteShell(portFile)} --skip-health-check --gateway-http-endpoint chatCompletions`
+      ].join(" ");
+      commands.push(command);
+      const result = await runCommand(command, { timeoutMs: 30000, maxOutputChars: 1000000 });
+      durationMs += result.durationMs;
+      if (result.status !== 0) {
+        throw new Error(result.stderr.trim() || result.stdout.trim() || `exit ${result.status}`);
+      }
+      const config = JSON.parse(
+        await readFile(join(contract.home, ".openclaw", "openclaw.json"), "utf8")
+      );
+      assertEqual(config.models?.providers?.openai?.baseUrl, "http://127.0.0.1:12345/v1", "mock provider base URL");
+      assertEqual(config.agents?.defaults?.model?.primary, "openai/gpt-5.5", "mock default model");
+      assertEqual(config.gateway?.auth?.mode, "token", "mock gateway token mode");
+      assertEqual(config.gateway?.auth?.token, "kova-mock-gateway-token", "mock gateway auth token");
+      assertEqual(config.gateway?.remote?.token, "kova-mock-gateway-token", "mock gateway remote token");
+      assertEqual(config.gateway?.http?.endpoints?.chatCompletions?.enabled, true, "mock gateway chat completions endpoint enabled");
+      if (contract.id === "legacy-list") {
+        assertEqual(Array.isArray(config.agents?.list), true, "legacy mock config agent list");
+        assertEqual(config.agents?.entries, undefined, "legacy mock config omits agent entries");
+        assertEqual(
+          config.agents?.defaults?.imageGenerationModel?.primary,
+          "openai/gpt-image-1",
+          "legacy mock image model"
+        );
+        assertEqual(config.agents?.defaults?.mediaModels, undefined, "legacy mock config omits media models");
+      } else {
+        assertEqual(config.agents?.entries?.main?.default, true, "canonical mock config agent entry");
+        assertEqual(config.agents?.list, undefined, "canonical mock config omits agent list");
+        assertEqual(
+          config.agents?.defaults?.mediaModels?.image?.primary,
+          "openai/gpt-image-1",
+          "canonical mock image model"
+        );
+        assertEqual(
+          config.agents?.defaults?.imageGenerationModel,
+          undefined,
+          "canonical mock config omits legacy image model"
+        );
+      }
     }
-    const config = JSON.parse(await readFile(join(home, ".openclaw", "openclaw.json"), "utf8"));
-    assertEqual(config.models?.providers?.openai?.baseUrl, "http://127.0.0.1:12345/v1", "mock provider base URL");
-    assertEqual(config.agents?.defaults?.model?.primary, "openai/gpt-5.5", "mock default model");
-    assertEqual(config.gateway?.auth?.mode, "token", "mock gateway token mode");
-    assertEqual(config.gateway?.auth?.token, "kova-mock-gateway-token", "mock gateway auth token");
-    assertEqual(config.gateway?.remote?.token, "kova-mock-gateway-token", "mock gateway remote token");
-    assertEqual(config.gateway?.http?.endpoints?.chatCompletions?.enabled, true, "mock gateway chat completions endpoint enabled");
     return {
       id: "mock-auth-openclaw-config",
       status: "PASS",
-      command,
-      durationMs: result.durationMs
+      command: commands.join(" && "),
+      durationMs
     };
   } catch (error) {
     return {
       id: "mock-auth-openclaw-config",
       status: "FAIL",
-      command,
-      durationMs: result.durationMs,
+      command: commands.join(" && "),
+      durationMs,
       message: error.message
     };
   }
