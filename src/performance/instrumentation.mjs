@@ -46,6 +46,17 @@ const resourceMetricIds = new Set([
   "resourcePeakTrackedRssMb",
   "resourceCpuPercentMaxTracked"
 ]);
+const profilingArtifactMetricIds = new Set([
+  "v8ReportCount",
+  "heapSnapshotCount",
+  "diagnosticArtifactBytes",
+  "nodeCpuProfileCount",
+  "nodeHeapProfileCount",
+  "nodeTraceEventCount",
+  "nodeProfileArtifactBytes",
+  "nodeProfileTopFunctionMs",
+  "heapSnapshotBytes"
+]);
 const commandMetricMatchers = new Map([
   ["statusMs", isStatusCommand],
   ["pluginsListMs", (command) => command.includes(" -- plugins list")],
@@ -86,6 +97,10 @@ export function isInstrumentedPerformanceMetric(metric) {
 
 export function isResourcePerformanceMetric(metric) {
   return resourceMetricIds.has(normalizeMetric(metric));
+}
+
+export function isProfilingArtifactMetric(metric) {
+  return profilingArtifactMetricIds.has(normalizeMetric(metric));
 }
 
 export function commandProfilingAffectsPerformance(

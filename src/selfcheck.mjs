@@ -43,7 +43,10 @@ import {
   RESOURCE_HEADLINE_CONTRACT,
   RESOURCE_MEASUREMENT_SCOPE
 } from "./performance/stats.mjs";
-import { isInstrumentedPerformanceMetric } from "./performance/instrumentation.mjs";
+import {
+  isInstrumentedPerformanceMetric,
+  isProfilingArtifactMetric
+} from "./performance/instrumentation.mjs";
 import {
   loadChannelCapabilities,
   validateChannelCapabilityCatalogReferences,
@@ -2828,6 +2831,29 @@ function instrumentedPerformanceThresholdPolicyCheck() {
       false,
       "instrumentation never masks resource evidence counts"
     );
+    const profilingArtifactMetrics = [
+      "v8ReportCount",
+      "heapSnapshotCount",
+      "diagnosticArtifactBytes",
+      "nodeCpuProfileCount",
+      "nodeHeapProfileCount",
+      "nodeTraceEventCount",
+      "nodeProfileArtifactBytes",
+      "nodeProfileTopFunctionMs",
+      "heapSnapshotBytes"
+    ];
+    for (const metric of profilingArtifactMetrics) {
+      assertEqual(
+        isProfilingArtifactMetric(metric),
+        true,
+        `profiling artifact taxonomy includes ${metric}`
+      );
+      assertEqual(
+        isInstrumentedPerformanceMetric(metric),
+        false,
+        `profiling artifact threshold remains gateable for ${metric}`
+      );
+    }
     for (const metric of [
       "soakDurationMs",
       "execTimeoutMs",
@@ -3018,16 +3044,74 @@ function instrumentedPerformanceThresholdPolicyCheck() {
       "required instrumented baseline evidence keeps the gate partial"
     );
 
-    const reportComparison = compareReports(baselineReport, currentReport, {
-      thresholds: {
-        peakRssMb: 1,
-        cpuPercentMax: 1,
-        agentTurnMs: 1
-      }
+    const artifactBaselineReport = structuredClone(baselineReport);
+    Object.assign(artifactBaselineReport.records[0].measurements, {
+      v8ReportCount: 0,
+      heapSnapshotCount: 0,
+      diagnosticArtifactBytes: 0,
+      nodeCpuProfileCount: 0,
+      nodeHeapProfileCount: 0,
+      nodeTraceEventCount: 0,
+      nodeProfileArtifactBytes: 0,
+      nodeProfileTopFunctionMs: null,
+      heapSnapshotBytes: 0
     });
+    artifactBaselineReport.performance = buildPerformanceSummary(
+      artifactBaselineReport.records,
+      { repeat: 1, parallel: 1 }
+    );
+    const artifactCurrentReport = structuredClone(currentReport);
+    Object.assign(artifactCurrentReport.records[0].measurements, {
+      v8ReportCount: 0,
+      heapSnapshotCount: 0,
+      diagnosticArtifactBytes: 0,
+      nodeCpuProfileCount: 6,
+      nodeHeapProfileCount: 6,
+      nodeTraceEventCount: 6,
+      nodeProfileArtifactBytes: 169517767,
+      nodeProfileTopFunctionMs: 15285.75,
+      heapSnapshotBytes: 0
+    });
+    artifactCurrentReport.performance = buildPerformanceSummary(
+      artifactCurrentReport.records,
+      { repeat: 1, parallel: 1 }
+    );
+    const reportComparison = compareReports(
+      artifactBaselineReport,
+      artifactCurrentReport,
+      {
+        thresholds: {
+          peakRssMb: 1,
+          cpuPercentMax: 1,
+          agentTurnMs: 1
+        }
+      }
+    );
     const comparedScenario = reportComparison.scenarios[0];
     assertEqual(comparedScenario.regressions.length, 0, "cross-mode report compare has no false regression");
     assertEqual(comparedScenario.metrics.peakRssMb.comparable, false, "cross-mode report RSS is non-comparable");
+    assertEqual(
+      reportComparison.performanceProfileMismatchCount,
+      1,
+      "cross-mode report comparison records one profile mismatch"
+    );
+    for (const metric of profilingArtifactMetrics) {
+      assertEqual(
+        comparedScenario.metrics[metric].comparable,
+        false,
+        `cross-mode report marks ${metric} non-comparable`
+      );
+      assertEqual(
+        comparedScenario.skippedMetrics.includes(metric),
+        true,
+        `cross-mode report records skipped ${metric}`
+      );
+    }
+    assertEqual(
+      comparedScenario.metrics.nodeProfileArtifactBytes.delta,
+      null,
+      "cross-mode report suppresses profile artifact deltas"
+    );
     assertEqual(reportComparison.result, "INCONCLUSIVE", "cross-mode report comparison is inconclusive");
     assertEqual(reportComparison.ok, false, "inconclusive report comparison is not successful");
     assertEqual(reportComparison.complete, false, "inconclusive report comparison is incomplete");
@@ -3045,6 +3129,50 @@ function instrumentedPerformanceThresholdPolicyCheck() {
       ).includes("[INCONCLUSIVE]"),
       true,
       "default comparison renders the inconclusive result"
+    );
+
+    const reverseReportComparison = compareReports(
+      artifactCurrentReport,
+      artifactBaselineReport
+    );
+    assertEqual(
+      reverseReportComparison.scenarios[0].metrics.nodeProfileArtifactBytes.comparable,
+      false,
+      "reverse cross-mode report profile artifacts are non-comparable"
+    );
+    assertEqual(
+      reverseReportComparison.result,
+      "INCONCLUSIVE",
+      "reverse cross-mode report comparison is inconclusive"
+    );
+
+    const sameProfileArtifactBaseline = structuredClone(artifactCurrentReport);
+    sameProfileArtifactBaseline.records[0].measurements.nodeProfileArtifactBytes =
+      8 * 1024 * 1024;
+    sameProfileArtifactBaseline.performance = buildPerformanceSummary(
+      sameProfileArtifactBaseline.records,
+      { repeat: 1, parallel: 1 }
+    );
+    const sameProfileArtifactComparison = compareReports(
+      sameProfileArtifactBaseline,
+      artifactCurrentReport
+    );
+    assertEqual(
+      sameProfileArtifactComparison.scenarios[0].metrics.nodeProfileArtifactBytes.comparable,
+      true,
+      "same-profile report artifacts remain comparable"
+    );
+    assertEqual(
+      sameProfileArtifactComparison.scenarios[0].regressions.some(
+        (regression) => regression.metric === "nodeProfileArtifactBytes"
+      ),
+      true,
+      "same-profile report artifacts can regress"
+    );
+    assertEqual(
+      sameProfileArtifactComparison.result,
+      "REGRESSED",
+      "same-profile artifact growth remains a regression"
     );
 
     const failedBaselineReport = structuredClone(baselineReport);

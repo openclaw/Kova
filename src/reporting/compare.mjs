@@ -2,6 +2,7 @@ import { measurementMetricValue } from "../health.mjs";
 import {
   instrumentedPerformanceMetricSkipped,
   isInstrumentedPerformanceMetric,
+  isProfilingArtifactMetric,
   performanceProfilesComparable
 } from "../performance/instrumentation.mjs";
 import { recordStatusRank } from "../statuses.mjs";
@@ -197,6 +198,7 @@ export function compareReports(baseline, current, options = {}) {
     const skippedPerformanceMetrics = performanceComparison.compatible
       ? new Set()
       : new Set(COMPARE_METRICS.filter((metric) =>
+        isProfilingArtifactMetric(metric) ||
         instrumentedPerformanceMetricSkipped(baselineGroup, metric) ||
         instrumentedPerformanceMetricSkipped(currentGroup, metric)
       ));
