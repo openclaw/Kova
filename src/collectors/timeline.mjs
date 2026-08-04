@@ -489,6 +489,7 @@ function compactTimedEvent(event) {
     durationMs: event.durationMs ?? null,
     timestamp: event.timestamp ?? null,
     phase: event.phase ?? null,
+    stage: event.stage ?? event.attributes?.stage ?? null,
     provider: event.provider ?? event.attributes?.provider ?? null,
     operation: event.operation ?? event.attributes?.operation ?? null,
     pluginId: event.pluginId ?? event.attributes?.pluginId ?? null,
@@ -510,7 +511,10 @@ function isTurnAttributionEvent(event) {
   if (event.type !== "span.start" && event.type !== "span.end" && event.type !== "span.error") {
     return false;
   }
-  return event.name === "plugins.metadata.scan" ||
+  return event.phase === "cli.startup" ||
+    event.phase === "cli.command-startup" ||
+    event.phase === "agent.startup" ||
+    event.name === "plugins.metadata.scan" ||
     event.name === "plugins.load" ||
     event.name === "provider.request" ||
     event.name === "agent.prepare" ||
@@ -538,6 +542,7 @@ function compactAttributionEvent(event) {
     spanId: event.spanId ?? null,
     parentSpanId: event.parentSpanId ?? null,
     phase: event.phase ?? null,
+    stage: event.stage ?? event.attributes?.stage ?? null,
     pid: event.pid ?? null,
     provider: event.provider ?? event.attributes?.provider ?? null,
     operation: event.operation ?? event.attributes?.operation ?? null,

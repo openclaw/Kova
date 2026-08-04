@@ -24,7 +24,7 @@ export function buildGatewaySessionPreProviderAttribution({
     activeFinishedAtEpochMs,
     attribution,
     timelineSummary,
-    isAttributedSpanName: isGatewaySessionAttributedSpanName,
+    isAttributedSpan: isGatewaySessionAttributedSpan,
     shouldIncludeSpan: includeGatewaySessionSpanInWindow,
     missingEventsError: "timeline contains no Gateway session turn attribution events"
   });
@@ -47,15 +47,15 @@ export function gatewaySessionPreProviderMarkdownRows(turns) {
 }
 
 export function attributedSpanIntervals(events) {
-  return collectAttributedSpanIntervals(events, isGatewaySessionAttributedSpanName);
+  return collectAttributedSpanIntervals(events, isGatewaySessionAttributedSpan);
 }
 
-function isGatewaySessionAttributedSpanName(name) {
-  const text = String(name ?? "");
-  return text === "plugins.metadata.scan" ||
-    text.startsWith("gateway.chat_send") ||
-    text.startsWith("auto_reply") ||
-    text.startsWith("reply.");
+function isGatewaySessionAttributedSpan(event) {
+  const name = String(event?.name ?? "");
+  return name === "plugins.metadata.scan" ||
+    name.startsWith("gateway.chat_send") ||
+    name.startsWith("auto_reply") ||
+    name.startsWith("reply.");
 }
 
 function includeGatewaySessionSpanInWindow(span, { windowStartEpochMs, windowEndEpochMs }) {

@@ -8,7 +8,7 @@ export function buildPreProviderAttribution({
   activeFinishedAtEpochMs,
   attribution,
   timelineSummary,
-  isAttributedSpanName,
+  isAttributedSpan,
   shouldIncludeSpan,
   missingEventsError
 }) {
@@ -74,7 +74,7 @@ export function buildPreProviderAttribution({
     };
   }
 
-  const intervals = attributedSpanIntervals(events, isAttributedSpanName)
+  const intervals = attributedSpanIntervals(events, isAttributedSpan)
     .filter((span) => shouldIncludeSpan ? shouldIncludeSpan(span, { windowStartEpochMs, windowEndEpochMs }) : true)
     .map((span) => clipSpanToWindow(span, windowStartEpochMs, windowEndEpochMs))
     .filter(Boolean);
@@ -120,7 +120,7 @@ export function preProviderMarkdownRows({ title, turns, fieldName }) {
 
   const lines = [
     `- ${markdownInline(title)}:`,
-    "  - Spans are selected by active turn timestamp window; timeline phase is descriptive, not a startup/turn classifier.",
+    "  - Spans are clipped to the active turn timestamp window; collector-specific name and phase rules select attributed work.",
     "",
     "  | turn | pre-provider | known | unattributed | provider | timeline |",
     "  |---|---:|---:|---:|---:|---|"
@@ -148,19 +148,19 @@ export function preProviderMarkdownRows({ title, turns, fieldName }) {
   return lines;
 }
 
-export function attributedSpanIntervals(events, isAttributedSpanName) {
+export function attributedSpanIntervals(events, isAttributedSpan) {
   const startsById = new Map();
   const intervals = [];
 
   for (const event of events ?? []) {
-    if (event?.type === "span.start" && isAttributedSpanName(event.name)) {
+    if (event?.type === "span.start" && isAttributedSpan(event)) {
       const key = spanKey(event);
       if (key) {
         startsById.set(key, event);
       }
       continue;
     }
-    if ((event?.type === "span.end" || event?.type === "span.error") && isAttributedSpanName(event.name)) {
+    if ((event?.type === "span.end" || event?.type === "span.error") && isAttributedSpan(event)) {
       const terminal = spanIntervalFromTerminal(event, startsById.get(spanKey(event)));
       if (terminal) {
         intervals.push(terminal);
@@ -188,6 +188,7 @@ function spanIntervalFromTerminal(event, startEvent) {
     rawDurationMs: durationMs,
     spanId: event.spanId ?? null,
     phase: event.phase ?? startEvent?.phase ?? null,
+    stage: event.stage ?? startEvent?.stage ?? null,
     errorName: event.errorName ?? null,
     errorMessage: event.errorMessage ?? null
   };
@@ -218,7 +219,8 @@ function summarizeAttributedSpans(intervals) {
       maxClippedDurationMs: null,
       totalRawDurationMs: 0,
       maxRawDurationMs: null,
-      phases: []
+      phases: [],
+      stages: []
     };
     current.count += 1;
     if (interval.type === "span.error") {
@@ -230,7 +232,8 @@ function summarizeAttributedSpans(intervals) {
       current.totalRawDurationMs = round(current.totalRawDurationMs + interval.rawDurationMs);
       current.maxRawDurationMs = maxNullable(current.maxRawDurationMs, interval.rawDurationMs);
     }
-    current.phases = mergePhaseSummary(current.phases, interval.phase, interval.clippedDurationMs);
+    current.phases = mergeDimensionSummary(current.phases, "phase", interval.phase, interval.clippedDurationMs);
+    current.stages = mergeDimensionSummary(current.stages, "stage", interval.stage, interval.clippedDurationMs);
     byName.set(interval.name, current);
   }
   return [...byName.values()].toSorted((left, right) =>
@@ -239,24 +242,24 @@ function summarizeAttributedSpans(intervals) {
   );
 }
 
-function mergePhaseSummary(phases, phase, clippedDurationMs) {
-  const label = String(phase ?? "unknown");
-  const existing = phases.find((item) => item.phase === label);
+function mergeDimensionSummary(items, field, value, clippedDurationMs) {
+  const label = String(value ?? "unknown");
+  const existing = items.find((item) => item[field] === label);
   if (existing) {
     existing.count += 1;
     existing.totalClippedDurationMs = round(existing.totalClippedDurationMs + clippedDurationMs);
-    return phases;
+    return items;
   }
   return [
-    ...phases,
+    ...items,
     {
-      phase: label,
+      [field]: label,
       count: 1,
       totalClippedDurationMs: round(clippedDurationMs)
     }
   ].toSorted((left, right) =>
     (right.totalClippedDurationMs - left.totalClippedDurationMs) ||
-    left.phase.localeCompare(right.phase)
+    left[field].localeCompare(right[field])
   );
 }
 
