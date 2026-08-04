@@ -552,6 +552,10 @@ the observed CPU, RSS, latency, role, growth, and profiler values. Affected
 numeric performance thresholds are recorded under
 `performanceThresholdAssessment` with `status: "SKIPPED"` and
 `affectsRecordStatus: false`; they are not emitted as fatal violations.
+Every such record carries this assessment. When no configured threshold is
+affected, it records `complete: true`, `skippedCount: 0`, and empty skipped
+evidence so consumers can distinguish a completed assessment from missing
+producer output.
 Affected evidence is limited to direct command durations whose process received
 profiler flags, local-agent timings owned by a profiled command tree, and
 resource values whose winning process belongs to that tree. Persistent gateway

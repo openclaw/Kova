@@ -1332,19 +1332,19 @@ function buildInstrumentedPerformanceAssessment({
     });
   }
 
-  if (skipped.size === 0) {
-    return null;
-  }
   const entries = [...skipped.values()].toSorted((left, right) =>
     Number(right.observedOverThreshold) - Number(left.observedOverThreshold) ||
     left.metric.localeCompare(right.metric)
   );
+  const complete = entries.length === 0;
   return {
     schemaVersion: "kova.performanceThresholdAssessment.v1",
-    complete: false,
+    complete,
     skippedCount: entries.length,
-    reason: INSTRUMENTED_PERFORMANCE_REASON,
-    rerun: "rerun without profiling for gateable performance evidence",
+    reason: complete ? null : INSTRUMENTED_PERFORMANCE_REASON,
+    rerun: complete
+      ? null
+      : "rerun without profiling for gateable performance evidence",
     skipped: entries
   };
 }

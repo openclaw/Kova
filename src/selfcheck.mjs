@@ -2735,18 +2735,19 @@ function instrumentedPerformanceThresholdPolicyCheck() {
       "malformed performance evidence remains a harness blocker"
     );
 
-    const gate = evaluateGate({
-      mode: "execution",
-      controls: { include: [], exclude: [] },
-      records: [instrumented]
-    }, {
+    const gateProfile = {
       id: "instrumented-performance",
       purpose: "release",
       gate: {
         id: "instrumented-performance-gate",
         blocking: [{ scenario: scenario.id, state: "mock-openai-provider" }]
       }
-    });
+    };
+    const gate = evaluateGate({
+      mode: "execution",
+      controls: { include: [], exclude: [] },
+      records: [instrumented]
+    }, gateProfile);
     assertEqual(gate.verdict, "PARTIAL", "instrumented release evidence cannot ship");
     assertEqual(gate.ok, false, "instrumented release evidence is not gate-ok");
     assertEqual(gate.complete, false, "instrumented release evidence is incomplete");
@@ -2758,6 +2759,31 @@ function instrumentedPerformanceThresholdPolicyCheck() {
       ),
       true,
       "gate explains the instrumented performance gap"
+    );
+    const repeatedInstrumented = structuredClone(instrumented);
+    repeatedInstrumented.performanceThresholdAssessment.skipped =
+      repeatedInstrumented.performanceThresholdAssessment.skipped.toReversed();
+    const repeatedGate = evaluateGate({
+      mode: "execution",
+      controls: { include: [], exclude: [] },
+      records: [instrumented, repeatedInstrumented]
+    }, gateProfile);
+    const repeatedCards = repeatedGate.cards.filter(
+      (card) => card.kind === "instrumented-performance-thresholds"
+    );
+    assertEqual(repeatedCards.length, 2, "repeat records retain one instrumented card each");
+    assertEqual(
+      repeatedGate.instrumentedPerformanceIncompleteCount,
+      2,
+      "repeat instrumented cards remain independently required"
+    );
+    assertEqual(
+      repeatedCards.map((card) => card.measurements.firstMetric).join(","),
+      [
+        instrumented.performanceThresholdAssessment.skipped[0].metric,
+        repeatedInstrumented.performanceThresholdAssessment.skipped[0].metric
+      ].join(","),
+      "repeat cards retain their owning record assessment"
     );
     assertEqual(
       isInstrumentedPerformanceMetric("agentMetadataScanCount"),
@@ -2832,6 +2858,16 @@ function instrumentedPerformanceThresholdPolicyCheck() {
       true,
       "soak minimum remains a fatal functional contract"
     );
+    assertEqual(
+      soakMinimum.performanceThresholdAssessment?.complete,
+      true,
+      "profiled records retain an explicit complete threshold assessment"
+    );
+    assertEqual(
+      soakMinimum.performanceThresholdAssessment?.skippedCount,
+      0,
+      "complete threshold assessments retain a zero skipped count"
+    );
 
     const platform = {
       os: process.platform,
@@ -2875,6 +2911,9 @@ function instrumentedPerformanceThresholdPolicyCheck() {
     currentRecord.phases = structuredClone(instrumented.phases);
     currentRecord.performanceThresholdAssessment =
       instrumented.performanceThresholdAssessment;
+    currentRecord.measurements.profilingAffectsPerformanceMeasurements = true;
+    currentRecord.measurements.performanceThresholdSkippedCount =
+      currentRecord.performanceThresholdAssessment.skippedCount;
     const currentReport = syntheticPerformanceReport({
       runId: "instrumented-current",
       platform,
@@ -2909,6 +2948,41 @@ function instrumentedPerformanceThresholdPolicyCheck() {
       baselineComparison.groups[0]?.metricComparisons?.resourcePeakGatewayRssMb?.comparable,
       true,
       "clean gateway RSS remains comparable during an instrumented run"
+    );
+    const baselineGateReport = structuredClone(currentReport);
+    baselineGateReport.records[0].performanceThresholdAssessment = {
+      schemaVersion: "kova.performanceThresholdAssessment.v1",
+      complete: true,
+      skippedCount: 0,
+      reason: null,
+      rerun: null,
+      skipped: []
+    };
+    baselineGateReport.records[0].measurements.performanceThresholdSkippedCount = 0;
+    baselineGateReport.baseline = { comparison: baselineComparison };
+    const baselineGate = evaluateGate(baselineGateReport, {
+      id: "instrumented-baseline-gate",
+      purpose: "release",
+      gate: {
+        blocking: [{
+          scenario: baselineGateReport.records[0].scenario,
+          state: baselineGateReport.records[0].state.id
+        }]
+      }
+    });
+    const baselineCards = baselineGate.cards.filter(
+      (card) => card.kind === "instrumented-performance-thresholds"
+    );
+    assertEqual(baselineCards.length, 1, "instrumented baseline emits one deduplicated card");
+    assertEqual(
+      baselineCards[0].measurements.skippedMetrics.join(","),
+      baselineComparison.instrumentedPerformanceGroups[0].skippedMetrics.join(","),
+      "instrumented baseline card retains comparison evidence"
+    );
+    assertEqual(
+      baselineGate.instrumentedPerformanceIncompleteCount,
+      1,
+      "required instrumented baseline evidence keeps the gate partial"
     );
 
     const reportComparison = compareReports(baselineReport, currentReport, {
