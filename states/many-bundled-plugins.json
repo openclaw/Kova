@@ -1,7 +1,7 @@
 {
   "id": "many-bundled-plugins",
   "title": "Many Installed Plugins",
-  "objective": "A pressure state for plugin and provider metadata paths. It migrates many synthetic install records into canonical SQLite state and verifies they are visible before OpenClaw startup and metadata measurements run.",
+  "objective": "A pressure state for plugin and provider metadata paths on OpenClaw 2026.6.1 or newer. It migrates many synthetic install records into canonical SQLite state and verifies they are visible before OpenClaw startup and metadata measurements run.",
   "tags": [
     "plugins",
     "providers",
@@ -11,7 +11,7 @@
     {
       "id": "prepare-many-plugin-pressure",
       "title": "Prepare Many Plugin Records",
-      "intent": "Create synthetic plugin packages, migrate their records into canonical state, and verify the measured runtime sees every plugin.",
+      "intent": "Confirm the target supports the shipped registry migration commands, create synthetic plugin packages, migrate their records into canonical state, and verify the measured runtime sees every plugin.",
       "afterPhases": [
         "env-create",
         "provision",
@@ -21,12 +21,12 @@
         "clone"
       ],
       "commands": [
-        "ocm env exec {env} -- node {kovaRoot}/support/prepare-many-plugin-pressure-state.mjs --expected-count 80",
-        "node {kovaRoot}/support/assert-many-plugin-pressure-state.mjs --env {env} --expected-count 80"
+        "node {kovaRoot}/support/assert-many-plugin-pressure-state.mjs --env {env} --expected-count 80 --minimum-openclaw-version 2026.6.1 --version-only && ocm env exec {env} -- node {kovaRoot}/support/prepare-many-plugin-pressure-state.mjs --expected-count 80",
+        "node {kovaRoot}/support/assert-many-plugin-pressure-state.mjs --env {env} --expected-count 80 --minimum-openclaw-version 2026.6.1"
       ],
       "evidence": [
         "80 synthetic install records migrated into canonical SQLite state",
-        "80 synthetic plugins visible through the refreshed registry and plugin list"
+        "OpenClaw 2026.6.1 or newer exposes 80 synthetic plugins through the refreshed registry and plugin list"
       ],
       "collectionIntent": "service-only"
     }
@@ -40,7 +40,7 @@
   "ownerArea": "plugins",
   "setupEvidence": [
     "80 synthetic install records migrated into canonical SQLite state",
-    "80 synthetic plugins visible through the refreshed registry and plugin list"
+    "OpenClaw 2026.6.1 or newer exposes 80 synthetic plugins through the refreshed registry and plugin list"
   ],
   "cleanupGuarantees": [
     "disposable env cleanup removes state fixture files"

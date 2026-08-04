@@ -70,6 +70,7 @@ import {
 import { runEntries } from "./run/engine.mjs";
 import { executeStateLifecycleSteps } from "./run/state-lifecycle.mjs";
 import { executeTargetSetup } from "./run/target-setup.mjs";
+import { classifyCommandFailure } from "./runner.mjs";
 import { classifyRetentionProtection, runGuardedTeardownStages } from "./run/teardown.mjs";
 import { runWithTargetRuntimeCleanup } from "./run/target-cleanup.mjs";
 import { loadProcessRoles } from "./registries/process-roles.mjs";
@@ -5662,12 +5663,12 @@ async function pluginInstallIndexFixturesCheck(tmp) {
     assertEqual(manyPluginStep?.commands?.length, 2, "many-plugin setup command count");
     assertEqual(
       manyPluginStep.commands[0],
-      "ocm env exec {env} -- node {kovaRoot}/support/prepare-many-plugin-pressure-state.mjs --expected-count 80",
+      "node {kovaRoot}/support/assert-many-plugin-pressure-state.mjs --env {env} --expected-count 80 --minimum-openclaw-version 2026.6.1 --version-only && ocm env exec {env} -- node {kovaRoot}/support/prepare-many-plugin-pressure-state.mjs --expected-count 80",
       "many-plugin prepare command"
     );
     assertEqual(
       manyPluginStep.commands[1],
-      "node {kovaRoot}/support/assert-many-plugin-pressure-state.mjs --env {env} --expected-count 80",
+      "node {kovaRoot}/support/assert-many-plugin-pressure-state.mjs --env {env} --expected-count 80 --minimum-openclaw-version 2026.6.1",
       "many-plugin assertion command"
     );
 
@@ -5777,6 +5778,10 @@ async function assertManyPluginPressureHelper(tmp, expectedIds) {
       "#!/usr/bin/env node",
       `const ids = ${JSON.stringify(expectedIds)};`,
       'const command = process.argv.slice(2).join(" ");',
+      'if (command === "@kova-self-check -- --version") {',
+      '  console.log("OpenClaw 2026.6.1 (selfcheck)");',
+      "  process.exit(0);",
+      "}",
       'if (command === "@kova-self-check -- doctor --fix --non-interactive") {',
       '  console.log("doctor repair complete");',
       "  process.exit(0);",
@@ -5795,8 +5800,23 @@ async function assertManyPluginPressureHelper(tmp, expectedIds) {
   );
   await chmod(fakeOcm, 0o755);
 
+  const versionOnly = await runCommand(
+    `${quoteShell(process.execPath)} ${quoteShell(join(repoRoot, "support", "assert-many-plugin-pressure-state.mjs"))} --env kova-self-check --expected-count 80 --minimum-openclaw-version 2026.6.1 --version-only`,
+    {
+      env: { PATH: `${binDir}:${process.env.PATH ?? ""}` },
+      timeoutMs: 30000,
+      maxOutputChars: 100000
+    }
+  );
+  assertEqual(versionOnly.status, 0, "many-plugin release preflight succeeds at the floor");
+  const versionPayload = JSON.parse(versionOnly.stdout);
+  assertEqual(versionPayload.ok, true, "many-plugin release preflight accepts the floor");
+  assertEqual(versionPayload.doctorStatus, null, "many-plugin release preflight skips doctor");
+  assertEqual(versionPayload.registryStatus, null, "many-plugin release preflight skips registry");
+  assertEqual(versionPayload.listStatus, null, "many-plugin release preflight skips plugin list");
+
   const result = await runCommand(
-    `${quoteShell(process.execPath)} ${quoteShell(join(repoRoot, "support", "assert-many-plugin-pressure-state.mjs"))} --env kova-self-check --expected-count 80`,
+    `${quoteShell(process.execPath)} ${quoteShell(join(repoRoot, "support", "assert-many-plugin-pressure-state.mjs"))} --env kova-self-check --expected-count 80 --minimum-openclaw-version 2026.6.1`,
     {
       env: { PATH: `${binDir}:${process.env.PATH ?? ""}` },
       timeoutMs: 30000,
@@ -5809,9 +5829,31 @@ async function assertManyPluginPressureHelper(tmp, expectedIds) {
     );
   }
   const payload = JSON.parse(result.stdout);
+  assertEqual(payload.ok, true, "many-plugin assertion succeeds at the minimum release");
+  assertEqual(payload.openclawVersion, "2026.6.1", "many-plugin target version");
+  assertEqual(payload.minimumOpenClawVersion, "2026.6.1", "many-plugin minimum target version");
   assertEqual(payload.canonicalInstallRecordCount, 80, "many-plugin canonical record count");
   assertEqual(payload.registryPluginCount, 80, "many-plugin registry count");
   assertEqual(payload.listedPluginCount, 80, "many-plugin listed count");
+
+  const belowFloor = await runCommand(
+    `${quoteShell(process.execPath)} ${quoteShell(join(repoRoot, "support", "assert-many-plugin-pressure-state.mjs"))} --env kova-self-check --expected-count 80 --minimum-openclaw-version 2026.6.2`,
+    {
+      env: { PATH: `${binDir}:${process.env.PATH ?? ""}` },
+      timeoutMs: 30000,
+      maxOutputChars: 100000
+    }
+  );
+  assertEqual(belowFloor.status, 1, "many-plugin unsupported release exits nonzero");
+  const blocked = JSON.parse(belowFloor.stdout);
+  assertEqual(blocked.ok, false, "many-plugin unsupported release is not accepted");
+  assertEqual(blocked.failureDomain, "kova-harness", "many-plugin release floor is harness-owned");
+  assertEqual(blocked.recordStatus, "BLOCKED", "many-plugin unsupported release blocks the record");
+  assertEqual(blocked.openclawVersion, "2026.6.1", "many-plugin blocked target version");
+  assertEqual(blocked.minimumOpenClawVersion, "2026.6.2", "many-plugin blocked minimum version");
+  assertEqual(blocked.doctorStatus, null, "many-plugin unsupported release skips doctor");
+  assertEqual(blocked.registryStatus, null, "many-plugin unsupported release skips registry refresh");
+  assertEqual(blocked.listStatus, null, "many-plugin unsupported release skips plugin list");
 }
 
 async function matrixWorkerRejectionCheck() {
@@ -24784,6 +24826,7 @@ function commandResultInterpretationCheck() {
     assertEqual(interpreted.interpretation.structured, true, "structured helper result detected");
     assertEqual(interpreted.interpretation.failureDomain, "kova-harness", "failure domain preserved");
     assertEqual(commandFailureRecordStatus(interpreted), "BLOCKED", "structured record status honored");
+    assertEqual(classifyCommandFailure(interpreted), "BLOCKED", "runner honors structured lifecycle status");
     const summary = buildReportSummary({
       schemaVersion: "kova.report.v1",
       mode: "execution",

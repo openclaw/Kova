@@ -1,11 +1,92 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 
+const DEFAULT_MINIMUM_OPENCLAW_VERSION = "2026.6.1";
 const options = parseArgs(process.argv.slice(2));
 const expectedIds = Array.from(
   { length: options.expectedCount },
   (_, index) => `kova-plugin-${index}`
 );
+
+const version = await runProcess("ocm", [`@${options.env}`, "--", "--version"]);
+const openclawVersion = parseOpenClawVersion(`${version.stdout}\n${version.stderr}`);
+
+if (version.status !== 0) {
+  finish({
+    ok: false,
+    failureDomain: "openclaw",
+    recordStatus: "FAIL",
+    error: failureSummary("OpenClaw version", version),
+    versionStatus: version.status,
+    openclawVersion,
+    minimumOpenClawVersion: options.minimumOpenClawVersion,
+    doctorStatus: null,
+    registryStatus: null,
+    listStatus: null
+  });
+}
+
+if (!openclawVersion) {
+  finish({
+    ok: false,
+    failureDomain: "kova-harness",
+    recordStatus: "BLOCKED",
+    error: "could not determine the target OpenClaw version",
+    versionStatus: version.status,
+    openclawVersion: null,
+    minimumOpenClawVersion: options.minimumOpenClawVersion,
+    doctorStatus: null,
+    registryStatus: null,
+    listStatus: null
+  });
+}
+
+if (compareCalendarVersions(openclawVersion, options.minimumOpenClawVersion) < 0) {
+  finish({
+    ok: false,
+    failureDomain: "kova-harness",
+    recordStatus: "BLOCKED",
+    error: `many-bundled-plugins requires OpenClaw >= ${options.minimumOpenClawVersion}; target reports ${openclawVersion}`,
+    versionStatus: version.status,
+    openclawVersion,
+    minimumOpenClawVersion: options.minimumOpenClawVersion,
+    doctorStatus: null,
+    registryStatus: null,
+    listStatus: null
+  });
+}
+
+if (options.versionOnly) {
+  console.log(
+    JSON.stringify(
+      {
+        schemaVersion: "kova.manyPluginPressure.assertion.v1",
+        ok: true,
+        failureDomain: null,
+        recordStatus: null,
+        error: null,
+        env: options.env,
+        expectedCount: options.expectedCount,
+        versionStatus: version.status,
+        openclawVersion,
+        minimumOpenClawVersion: options.minimumOpenClawVersion,
+        doctorStatus: null,
+        registryStatus: null,
+        listStatus: null,
+        canonicalInstallRecordCount: 0,
+        registryPluginCount: 0,
+        listedPluginCount: 0,
+        missingInstallRecords: [],
+        missingRegistryPlugins: [],
+        missingListedPlugins: [],
+        errors: []
+      },
+      null,
+      2
+    )
+  );
+  process.exit(0);
+}
 
 const doctor = await runProcess("ocm", [
   `@${options.env}`,
@@ -45,13 +126,27 @@ const ok =
   missingInstallRecords.length === 0 &&
   missingRegistryPlugins.length === 0 &&
   missingListedPlugins.length === 0;
+const errors = ok
+  ? []
+  : [
+      failureSummary("doctor", doctor),
+      failureSummary("registry refresh", registry),
+      failureSummary("plugin list", list)
+    ].filter(Boolean);
 
 console.log(
   JSON.stringify(
     {
       schemaVersion: "kova.manyPluginPressure.assertion.v1",
+      ok,
+      failureDomain: ok ? null : "openclaw",
+      recordStatus: ok ? null : "FAIL",
+      error: errors[0] ?? null,
       env: options.env,
       expectedCount: options.expectedCount,
+      versionStatus: version.status,
+      openclawVersion,
+      minimumOpenClawVersion: options.minimumOpenClawVersion,
       doctorStatus: doctor.status,
       registryStatus: registry.status,
       listStatus: list.status,
@@ -61,13 +156,7 @@ console.log(
       missingInstallRecords,
       missingRegistryPlugins,
       missingListedPlugins,
-      errors: ok
-        ? []
-        : [
-            failureSummary("doctor", doctor),
-            failureSummary("registry refresh", registry),
-            failureSummary("plugin list", list)
-          ].filter(Boolean)
+      errors
     },
     null,
     2
@@ -79,7 +168,9 @@ process.exit(ok ? 0 : 1);
 function parseArgs(args) {
   const options = {
     env: null,
-    expectedCount: 80
+    expectedCount: 80,
+    minimumOpenClawVersion: DEFAULT_MINIMUM_OPENCLAW_VERSION,
+    versionOnly: false
   };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -91,6 +182,15 @@ function parseArgs(args) {
     if (arg === "--expected-count") {
       options.expectedCount = Number.parseInt(args[index + 1], 10);
       index += 1;
+      continue;
+    }
+    if (arg === "--minimum-openclaw-version") {
+      options.minimumOpenClawVersion = args[index + 1];
+      index += 1;
+      continue;
+    }
+    if (arg === "--version-only") {
+      options.versionOnly = true;
       continue;
     }
     throw new Error(`unexpected argument: ${arg}`);
@@ -105,7 +205,33 @@ function parseArgs(args) {
   ) {
     throw new Error("--expected-count must be an integer between 1 and 500");
   }
+  if (!parseCalendarVersion(options.minimumOpenClawVersion)) {
+    throw new Error("--minimum-openclaw-version must use YYYY.M.D");
+  }
   return options;
+}
+
+function finish(result) {
+  console.log(
+    JSON.stringify(
+      {
+        schemaVersion: "kova.manyPluginPressure.assertion.v1",
+        env: options.env,
+        expectedCount: options.expectedCount,
+        canonicalInstallRecordCount: 0,
+        registryPluginCount: 0,
+        listedPluginCount: 0,
+        missingInstallRecords: [],
+        missingRegistryPlugins: [],
+        missingListedPlugins: [],
+        errors: result.error ? [result.error] : [],
+        ...result
+      },
+      null,
+      2
+    )
+  );
+  process.exit(1);
 }
 
 function runProcess(command, args) {
@@ -160,6 +286,30 @@ function missingIds(expected, actual) {
 function countExpected(expected, actual) {
   const actualIds = new Set(actual);
   return expected.filter((id) => actualIds.has(id)).length;
+}
+
+function parseOpenClawVersion(value) {
+  const match = String(value ?? "").match(/\b(\d{4}\.\d{1,2}\.\d{1,2})(?:[-+][0-9A-Za-z.-]+)?\b/);
+  return match?.[1] ?? null;
+}
+
+function parseCalendarVersion(value) {
+  const match = String(value ?? "").match(/^(\d{4})\.(\d{1,2})\.(\d{1,2})$/);
+  return match ? match.slice(1).map((part) => Number.parseInt(part, 10)) : null;
+}
+
+function compareCalendarVersions(left, right) {
+  const leftParts = parseCalendarVersion(left);
+  const rightParts = parseCalendarVersion(right);
+  if (!leftParts || !rightParts) {
+    throw new Error(`cannot compare OpenClaw versions ${JSON.stringify(left)} and ${JSON.stringify(right)}`);
+  }
+  for (let index = 0; index < leftParts.length; index += 1) {
+    if (leftParts[index] !== rightParts[index]) {
+      return leftParts[index] - rightParts[index];
+    }
+  }
+  return 0;
 }
 
 function failureSummary(label, result) {

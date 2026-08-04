@@ -125,7 +125,7 @@ export async function executeScenario(scenario, context) {
         record.phases.push(preparePhase);
         if (preparePhase.results.some((result) => result.status !== 0)) {
           scenarioFailed = true;
-          record.status = "FAIL";
+          record.status = classifyLifecycleFailure(preparePhase.results);
         }
       }
     }
@@ -178,7 +178,7 @@ export async function executeScenario(scenario, context) {
           record.phases.push(statePhase);
           if (statePhase.results.some((result) => result.status !== 0)) {
             scenarioFailed = true;
-            record.status = "FAIL";
+            record.status = classifyLifecycleFailure(statePhase.results);
           }
         }
 
@@ -278,7 +278,12 @@ function summarizeOfficialPlugins(plugins) {
   }));
 }
 
-function classifyCommandFailure(result) {
+function classifyLifecycleFailure(results) {
+  const failed = results.find((result) => result.status !== 0);
+  return failed ? classifyCommandFailure(failed) : "FAIL";
+}
+
+export function classifyCommandFailure(result) {
   if (result.harnessBlocker) {
     return "BLOCKED";
   }

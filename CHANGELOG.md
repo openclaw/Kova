@@ -9,7 +9,7 @@ All notable changes to Kova are documented in this file.
 - Route version bumps through pull requests, gate signed tags on exact-main CI, avoid repeating the full suite during tag builds, and skip ClawSweeper token creation for ordinary comments.
 - Keep agent CLI, agent runtime, and mock-provider resource roles disjoint so RSS gates report the owning process once.
 - Emit canonical OpenClaw plugin install records from plugin-index state fixtures so migration and metadata scenarios reach the intended runtime paths.
-- Make the many-plugin pressure state prepare 80 synthetic plugins only inside its disposable environment, migrate them before cold startup, and verify canonical registry and plugin-list visibility.
+- Make the many-plugin pressure state prepare 80 synthetic plugins only inside its disposable environment, require OpenClaw 2026.6.1 or newer, migrate them before cold startup, and verify canonical registry and plugin-list visibility.
 - Calibrate the bundled-plugin restart overlap RSS budget against repeated OpenClaw main release runs.
 - Calibrate the fresh-install status CLI RSS budget against repeated release-run evidence.
 - Calibrate the gateway pressure scenario's status CLI RSS budget against repeated release-run evidence.
