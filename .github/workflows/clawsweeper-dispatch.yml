@@ -18,7 +18,21 @@ concurrency:
 jobs:
   dispatch:
     runs-on: ubuntu-latest
-    if: ${{ !(endsWith(github.actor, '[bot]') && (github.event.action == 'labeled' || github.event.action == 'unlabeled')) }}
+    if: >-
+      ${{
+        !(endsWith(github.actor, '[bot]') && (github.event.action == 'labeled' || github.event.action == 'unlabeled')) &&
+        (
+          github.event_name != 'issue_comment' ||
+          contains(github.event.comment.body, '@clawsweeper') ||
+          contains(github.event.comment.body, '@openclaw-clawsweeper') ||
+          contains(github.event.comment.body, '/clawsweeper') ||
+          contains(github.event.comment.body, '/review') ||
+          contains(github.event.comment.body, '/autoclose') ||
+          contains(github.event.comment.body, '/automerge') ||
+          contains(github.event.comment.body, '/auto-merge') ||
+          contains(github.event.comment.body, '/auto merge')
+        )
+      }}
     env:
       HAS_CLAWSWEEPER_APP_PRIVATE_KEY: ${{ secrets.CLAWSWEEPER_APP_PRIVATE_KEY != '' }}
       CLAWSWEEPER_APP_CLIENT_ID: Iv23liOECG0slfuhz093
@@ -27,17 +41,6 @@ jobs:
       - name: Debounce bursty metadata events
         if: ${{ github.event.action == 'labeled' || github.event.action == 'unlabeled' }}
         run: sleep 20
-
-      - name: Create ClawSweeper dispatch token
-        id: token
-        if: ${{ env.HAS_CLAWSWEEPER_APP_PRIVATE_KEY == 'true' }}
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          client-id: ${{ env.CLAWSWEEPER_APP_CLIENT_ID }}
-          private-key: ${{ secrets.CLAWSWEEPER_APP_PRIVATE_KEY }}
-          owner: openclaw
-          repositories: clawsweeper
-          permission-contents: write
 
       - name: Pre-filter ClawSweeper comment
         id: comment_filter
@@ -51,6 +54,24 @@ jobs:
           else
             echo "is_command=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Create ClawSweeper dispatch token
+        id: token
+        if: >-
+          ${{
+            env.HAS_CLAWSWEEPER_APP_PRIVATE_KEY == 'true' &&
+            (
+              github.event_name != 'issue_comment' ||
+              steps.comment_filter.outputs.is_command == 'true'
+            )
+          }}
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ env.CLAWSWEEPER_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CLAWSWEEPER_APP_PRIVATE_KEY }}
+          owner: openclaw
+          repositories: clawsweeper
+          permission-contents: write
 
       - name: Create target comment token
         id: target_token
