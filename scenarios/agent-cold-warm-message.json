@@ -2,7 +2,7 @@
   "id": "agent-cold-warm-message",
   "surface": "agent-cli-local-turn",
   "title": "Agent CLI Local Cold/Warm Message",
-  "objective": "Send cold and warm simple messages through short-lived `openclaw agent --local` CLI processes, verify mock-provider responses, and attribute latency before, during, and after provider work.",
+  "objective": "After config readiness completes, send process-cold and warm simple messages through short-lived `openclaw agent --local` CLI processes, verify mock-provider responses, and attribute latency before, during, and after provider work.",
   "tags": [
     "agent",
     "message",
@@ -48,9 +48,24 @@
       "collectionIntent": "service-only"
     },
     {
+      "id": "config-preflight",
+      "title": "Prepare Config Readiness",
+      "intent": "Complete one-time config and state migrations before measuring steady-state local agent process startup.",
+      "commands": [
+        "ocm @{env} -- config validate --json"
+      ],
+      "evidence": [
+        "config valid",
+        "one-time config and state migrations completed before measured agent turns"
+      ],
+      "healthScope": "none",
+      "measurementScope": "harness",
+      "collectionIntent": "skip-env"
+    },
+    {
       "id": "cold-agent-turn",
-      "title": "Cold Agent Turn",
-      "intent": "Send the first simple message through OpenClaw's real local embedded agent CLI command in a fresh session.",
+      "title": "Process-Cold Agent Turn",
+      "intent": "Send the first measured simple message through a fresh OpenClaw local embedded agent CLI process after config readiness has completed.",
       "commands": [
         "ocm @{env} -- agent --local --agent main --session-id kova-agent-cold-warm --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 120 --json"
       ],
