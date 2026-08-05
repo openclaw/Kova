@@ -21473,6 +21473,10 @@ async function agentCliLocalTurnSurfaceContractCheck() {
     assertEqual(policy.thresholds?.peakRssMb, 1000, "agent cold/warm resolved primary RSS cap");
     assertEqual(policy.roleThresholds?.["agent-cli"]?.peakRssMb, 1000, "agent CLI resolved agent CLI RSS cap");
     assertEqual(policy.roleThresholds?.["agent-process"]?.peakRssMb, 1000, "agent CLI resolved agent process RSS cap");
+    const configPreflight = scenario.phases?.find((phase) => phase.id === "config-preflight");
+    assertEqual(configPreflight?.commands?.[0], "ocm @{env} -- config validate --json", "agent CLI config preflight command");
+    assertEqual(configPreflight?.measurementScope, "harness", "agent CLI config preflight stays outside product measurements");
+    assertEqual(configPreflight?.collectionIntent, "skip-env", "agent CLI config preflight avoids extra environment collection");
     return {
       id: "agent-cli-local-turn-surface-contract",
       status: "PASS",
