@@ -292,7 +292,13 @@ export function attachProxyLogStream(log, stderr) {
   const onError = (error) => {
     console.error(`network frontage proxy log stream error: ${error?.message ?? error}`);
   };
-  log.on("error", onError);
+  log.on("error", (error) => {
+    onError(error);
+    if (stderr) {
+      stderr.unpipe(log);
+      stderr.resume();
+    }
+  });
   if (stderr) {
     stderr.on("error", onError);
     stderr.pipe(log);

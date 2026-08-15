@@ -38,6 +38,21 @@ export async function runProxyLogStreamChecks(parentDir) {
     assert.equal(stderr.listenerCount("error") >= 1, true, "stderr error handler attached");
     assert.equal(uncaught.length, 0, "unwritable proxy log does not crash the parent");
     assert.equal(logged.some((line) => line.includes("network frontage proxy log stream error")), true, "log stream error is reported");
+    assert.equal(stderr.isPaused(), false, "stderr keeps flowing after log error");
+    assert.notEqual(stderr.readableFlowing, false, "stderr remains flowing after log error");
+    const postReadyChunk = Buffer.alloc(8 * 1024, 0x78);
+    for (let i = 0; i < 16; i += 1) {
+      stderr.write(postReadyChunk);
+    }
+    assert.equal(stderr.isPaused(), false, "post-ready stderr writes do not pause the source");
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("stderr did not finish after log error")), 200);
+      stderr.once("finish", () => {
+        clearTimeout(timer);
+        resolve();
+      });
+      stderr.end();
+    });
 
     const writableLogPath = join(parentDir, "writable-proxy.log");
     await writeFile(writableLogPath, "", "utf8");
