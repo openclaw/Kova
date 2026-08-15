@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createWriteStream } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import net from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { PassThrough } from "node:stream";
@@ -79,6 +80,51 @@ export async function runProxyLogStreamChecks(parentDir) {
 
   const source = await readFile(new URL("../src/network-frontage.mjs", import.meta.url), "utf8");
   assert.match(source, /attachProxyLogStream\(log,\s*child\.stderr\)/, "startProxy attaches log stream error handlers");
+
+  const childLogPath = join(parentDir, "start-proxy.log");
+  await mkdir(childLogPath);
+  const listenPort = await freePort();
+  const targetPort = await freePort();
+  const proxy = frontage.startProxy({
+    frontageHost: "127.0.0.1",
+    frontagePort: listenPort,
+    gatewayHost: "127.0.0.1",
+    gatewayPort: targetPort,
+    proxyLogPath: childLogPath
+  });
+  const later = [];
+  proxy.child.stderr.on("data", (chunk) => {
+    later.push(chunk.toString("utf8"));
+  });
+  const ready = await proxy.ready;
+  assert.equal(ready.event, "listening");
+  assert.equal(typeof proxy.pid, "number");
+  try {
+    await fetch(`http://127.0.0.1:${listenPort}/health`, { signal: AbortSignal.timeout(500) });
+  } catch {
+    // target is intentionally down; proxy should emit target-error and keep running
+  }
+  proxy.child.kill("SIGTERM");
+  const closed = await proxy.closed;
+  assert.equal(closed.signal === "SIGTERM" || closed.code === 0, true, "real proxy child exits after SIGTERM");
+  assert.equal(later.some((line) => line.includes("target-error") || line.includes("shutdown")), true, "post-ready proxy stderr still drains");
+}
+
+function freePort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.listen(0, "127.0.0.1", () => {
+      const port = server.address().port;
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(port);
+      });
+    });
+    server.once("error", reject);
+  });
 }
 
 function captureUncaughtException(start) {

@@ -305,7 +305,7 @@ export function attachProxyLogStream(log, stderr) {
   }
 }
 
-function startProxy(allocation) {
+export function startProxy(allocation) {
   const childArgs = [
     join(repoRoot, "support", "network-frontage-proxy.mjs"),
     "--listen-host", allocation.frontageHost,
