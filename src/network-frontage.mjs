@@ -288,6 +288,17 @@ export function summarizeNetworkFrontage(records = [], controls = null) {
   };
 }
 
+export function attachProxyLogStream(log, stderr) {
+  const onError = (error) => {
+    console.error(`network frontage proxy log stream error: ${error?.message ?? error}`);
+  };
+  log.on("error", onError);
+  if (stderr) {
+    stderr.on("error", onError);
+    stderr.pipe(log);
+  }
+}
+
 function startProxy(allocation) {
   const childArgs = [
     join(repoRoot, "support", "network-frontage-proxy.mjs"),
@@ -300,7 +311,7 @@ function startProxy(allocation) {
   const child = spawn(process.execPath, childArgs, {
     stdio: ["ignore", "ignore", "pipe"]
   });
-  child.stderr.pipe(log);
+  attachProxyLogStream(log, child.stderr);
   const closed = new Promise((resolve) => child.once("close", (code, signal) => resolve({ code, signal })));
   child.once("close", () => log.end());
   return {
