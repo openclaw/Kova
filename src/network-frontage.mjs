@@ -405,6 +405,7 @@ export function waitForProxyReady(child, timeoutMs) {
     const cleanup = () => {
       clearTimeout(timer);
       child.stderr.off("data", onData);
+      child.stderr.off("error", onStderrError);
       child.off("error", onError);
       child.off("close", onClose);
     };
@@ -421,6 +422,9 @@ export function waitForProxyReady(child, timeoutMs) {
       resolve(event);
     };
     const onError = (error) => {
+      rejectOnce(error);
+    };
+    const onStderrError = (error) => {
       rejectOnce(error);
     };
     const onClose = (code, signal) => {
@@ -453,6 +457,7 @@ export function waitForProxyReady(child, timeoutMs) {
     };
 
     child.stderr.on("data", onData);
+    child.stderr.once("error", onStderrError);
     child.once("error", onError);
     child.once("close", onClose);
   });

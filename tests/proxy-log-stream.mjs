@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import { createWriteStream } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
@@ -63,6 +64,16 @@ export async function runProxyLogStreamChecks(parentDir) {
     brokenStderr.destroy(Object.assign(new Error("broken pipe"), { code: "EPIPE" }));
     await waitMs(80);
     assert.equal(uncaught.length, 0, "stderr pipe error does not crash the parent");
+
+    const readinessChild = new EventEmitter();
+    readinessChild.stderr = new PassThrough();
+    const readinessLog = new PassThrough();
+    frontage.attachProxyLogStream(readinessLog, readinessChild.stderr);
+    const readiness = frontage.waitForProxyReady(readinessChild, 500);
+    const readinessError = Object.assign(new Error("stderr read failed"), { code: "EIO" });
+    readinessChild.stderr.destroy(readinessError);
+    await assert.rejects(readiness, (error) => error === readinessError, "readiness preserves the original stderr error");
+    readinessLog.destroy();
     try {
       log.destroy();
     } catch {
