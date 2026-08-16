@@ -16664,6 +16664,11 @@ async function networkFrontagePartialStartupCleanupInvariantCheck() {
     const source = await readFile(selfCheckPath("src", "network-frontage.mjs"), "utf8");
     const pattern = /const proxy = startProxy\(allocation\);[\s\S]+context\.networkFrontageProxy = proxy;[\s\S]+await proxy\.ready;/;
     assertEqual(pattern.test(source), true, "network frontage proxy registered before readiness wait");
+    assertEqual(
+      /attachProxyLogStream\(log,\s*child\.stderr\)/.test(source),
+      true,
+      "proxy log and stderr stream errors are handled"
+    );
     const blocker = createServer((request, response) => {
       response.writeHead(200, { "content-type": "text/plain" });
       response.end("not-kova-frontage");

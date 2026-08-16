@@ -288,7 +288,24 @@ export function summarizeNetworkFrontage(records = [], controls = null) {
   };
 }
 
-function startProxy(allocation) {
+export function attachProxyLogStream(log, stderr) {
+  const onError = (error) => {
+    console.error(`network frontage proxy log stream error: ${error?.message ?? error}`);
+  };
+  log.on("error", (error) => {
+    onError(error);
+    if (stderr) {
+      stderr.unpipe(log);
+      stderr.resume();
+    }
+  });
+  if (stderr) {
+    stderr.on("error", onError);
+    stderr.pipe(log);
+  }
+}
+
+export function startProxy(allocation) {
   const childArgs = [
     join(repoRoot, "support", "network-frontage-proxy.mjs"),
     "--listen-host", allocation.frontageHost,
@@ -300,7 +317,7 @@ function startProxy(allocation) {
   const child = spawn(process.execPath, childArgs, {
     stdio: ["ignore", "ignore", "pipe"]
   });
-  child.stderr.pipe(log);
+  attachProxyLogStream(log, child.stderr);
   const closed = new Promise((resolve) => child.once("close", (code, signal) => resolve({ code, signal })));
   child.once("close", () => log.end());
   return {
@@ -388,6 +405,7 @@ export function waitForProxyReady(child, timeoutMs) {
     const cleanup = () => {
       clearTimeout(timer);
       child.stderr.off("data", onData);
+      child.stderr.off("error", onStderrError);
       child.off("error", onError);
       child.off("close", onClose);
     };
@@ -404,6 +422,9 @@ export function waitForProxyReady(child, timeoutMs) {
       resolve(event);
     };
     const onError = (error) => {
+      rejectOnce(error);
+    };
+    const onStderrError = (error) => {
       rejectOnce(error);
     };
     const onClose = (code, signal) => {
@@ -436,6 +457,7 @@ export function waitForProxyReady(child, timeoutMs) {
     };
 
     child.stderr.on("data", onData);
+    child.stderr.once("error", onStderrError);
     child.once("error", onError);
     child.once("close", onClose);
   });
