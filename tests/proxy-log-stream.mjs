@@ -92,22 +92,64 @@ export async function runProxyLogStreamChecks(parentDir) {
     gatewayPort: targetPort,
     proxyLogPath: childLogPath
   });
-  const later = [];
-  proxy.child.stderr.on("data", (chunk) => {
-    later.push(chunk.toString("utf8"));
-  });
-  const ready = await proxy.ready;
-  assert.equal(ready.event, "listening");
-  assert.equal(typeof proxy.pid, "number");
   try {
-    await fetch(`http://127.0.0.1:${listenPort}/health`, { signal: AbortSignal.timeout(500) });
-  } catch {
-    // target is intentionally down; proxy should emit target-error and keep running
+    const ready = await proxy.ready;
+    assert.equal(ready.event, "listening");
+    assert.equal(typeof proxy.pid, "number");
+    assert.equal(proxy.child.stderr.readableFlowing, true, "failed log sink leaves proxy stderr flowing without a test consumer");
+    await requestMissingTarget(listenPort);
+    assert.equal(proxy.child.stderr.readableFlowing, true, "post-ready proxy diagnostics keep draining after the log failure");
+  } finally {
+    proxy.child.kill("SIGTERM");
   }
-  proxy.child.kill("SIGTERM");
   const closed = await proxy.closed;
   assert.equal(closed.signal === "SIGTERM" || closed.code === 0, true, "real proxy child exits after SIGTERM");
-  assert.equal(later.some((line) => line.includes("target-error") || line.includes("shutdown")), true, "post-ready proxy stderr still drains");
+
+  const healthyLogPath = join(parentDir, "healthy-start-proxy.log");
+  const healthyListenPort = await freePort();
+  const healthyTargetPort = await freePort();
+  const healthyProxy = frontage.startProxy({
+    frontageHost: "127.0.0.1",
+    frontagePort: healthyListenPort,
+    gatewayHost: "127.0.0.1",
+    gatewayPort: healthyTargetPort,
+    proxyLogPath: healthyLogPath
+  });
+  try {
+    const ready = await healthyProxy.ready;
+    assert.equal(ready.event, "listening");
+    await requestMissingTarget(healthyListenPort);
+  } finally {
+    healthyProxy.child.kill("SIGTERM");
+  }
+  const healthyClosed = await healthyProxy.closed;
+  assert.equal(healthyClosed.signal === "SIGTERM" || healthyClosed.code === 0, true, "healthy-log proxy exits after SIGTERM");
+  const healthyLog = await waitForLogEvents(healthyLogPath, ["listening", "target-error", "shutdown"]);
+  assert.match(healthyLog, /"event":"listening"/, "healthy proxy log records readiness");
+  assert.match(healthyLog, /"event":"target-error"/, "healthy proxy log remains open for later diagnostics");
+  assert.match(healthyLog, /"event":"shutdown"/, "healthy proxy log records shutdown");
+}
+
+async function requestMissingTarget(port) {
+  try {
+    await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(500) });
+  } catch {
+    // The target is intentionally down; the proxy should report the failure and keep running.
+  }
+}
+
+async function waitForLogEvents(path, events) {
+  const deadline = Date.now() + 2000;
+  for (;;) {
+    const content = await readFile(path, "utf8");
+    if (events.every((event) => content.includes(`"event":"${event}"`))) {
+      return content;
+    }
+    if (Date.now() >= deadline) {
+      assert.fail(`proxy log did not contain ${events.join(", ")} before timeout: ${content}`);
+    }
+    await waitMs(20);
+  }
 }
 
 function freePort() {
