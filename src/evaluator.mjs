@@ -105,11 +105,27 @@ export function evaluateRecord(record, scenario, options = {}) {
     profile: options.profile,
     surface: options.surface,
     scenario,
-    nodeVersion: options.nodeVersion
+    nodeVersion: options.targetRuntime === undefined
+      ? options.nodeVersion
+      : options.targetRuntime?.nodeVersion ?? null
   });
   const thresholds = thresholdPolicy.thresholds;
   const roleThresholds = thresholdPolicy.roleThresholds;
   const violations = [];
+  const targetRuntimeIssue = targetRuntimeEvidenceIssue(
+    thresholdPolicy.report.runtimeCalibration,
+    options.targetRuntime
+  );
+  if (targetRuntimeIssue !== null) {
+    violations.push({
+      kind: "evidence",
+      metric: "targetRuntime.nodeVersion",
+      expected: "Gateway runtime identity with matching OCM service PID and port",
+      actual: targetRuntimeIssue,
+      failureDomain: "kova-harness",
+      message: `Gateway runtime identity was not trusted: ${targetRuntimeIssue}`
+    });
+  }
   const allResults = collectResults(record);
   const measurementScopeSummary = summarizeMeasurementScopes(record);
   const measuredResults = collectResults(record, { productOnly: true });
@@ -1263,6 +1279,43 @@ export function evaluateRecord(record, scenario, options = {}) {
   }
 
   return record;
+}
+
+function targetRuntimeEvidenceIssue(runtimeCalibration, targetRuntime) {
+  if ((runtimeCalibration ?? []).length === 0 || targetRuntime === undefined) {
+    return null;
+  }
+  if (
+    !targetRuntime ||
+    !["ok", "compatibility-fallback"].includes(targetRuntime.collectionStatus)
+  ) {
+    return targetRuntime?.collectionStatus ?? "missing";
+  }
+  if (
+    typeof targetRuntime.nodeVersion !== "string" ||
+    !/^v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u.test(targetRuntime.nodeVersion)
+  ) {
+    return "invalid-node-version";
+  }
+  if (
+    !Number.isSafeInteger(targetRuntime.gatewayPid) ||
+    targetRuntime.gatewayPid <= 0 ||
+    !Number.isSafeInteger(targetRuntime.expectedGatewayPid) ||
+    targetRuntime.expectedGatewayPid <= 0 ||
+    !Number.isSafeInteger(targetRuntime.gatewayPort) ||
+    targetRuntime.gatewayPort <= 0 ||
+    !Number.isSafeInteger(targetRuntime.expectedGatewayPort) ||
+    targetRuntime.expectedGatewayPort <= 0
+  ) {
+    return "invalid-gateway-identity";
+  }
+  if (
+    targetRuntime.gatewayPid !== targetRuntime.expectedGatewayPid ||
+    targetRuntime.gatewayPort !== targetRuntime.expectedGatewayPort
+  ) {
+    return "identity-mismatch";
+  }
+  return null;
 }
 
 function buildInstrumentedPerformanceAssessment({

@@ -75,6 +75,7 @@ import { runEntries } from "./run/engine.mjs";
 import { materializeLifecycleStepCommands } from "./run/phase-commands.mjs";
 import { executeStateLifecycleSteps } from "./run/state-lifecycle.mjs";
 import { executeTargetSetup } from "./run/target-setup.mjs";
+import { collectTargetRuntime } from "./run/finalize-record.mjs";
 import { classifyCommandFailure } from "./runner.mjs";
 import { classifyRetentionProtection, runGuardedTeardownStages } from "./run/teardown.mjs";
 import { runWithTargetRuntimeCleanup } from "./run/target-cleanup.mjs";
@@ -1200,6 +1201,7 @@ async function runScopedSelfCheck(flags, scope, workspace) {
     checks.push(await resourceRolePollutionCheck());
     checks.push(await resourceGatewayPidLookupCheck(tmp, scope));
     checks.push(await resourceSamplerFailureCheck());
+    checks.push(await targetRuntimeEvidenceCheck());
     checks.push(await startupSurfaceDiagnosticsContractCheck());
     checks.push(await gatewaySessionSurfaceContractCheck());
     checks.push(await bundledPluginStartupSurfaceContractCheck());
@@ -21621,6 +21623,89 @@ exec /bin/sh -c "$2"
   }
 }
 
+async function targetRuntimeEvidenceCheck() {
+  try {
+    const commands = [];
+    const execute = async (command, options) => {
+      commands.push({ command, timeoutMs: options.timeoutMs });
+      return {
+        status: 0,
+        stdout: JSON.stringify({ nodeVersion: "v22.22.3", pid: 4242, port: 19000 })
+      };
+    };
+    const trusted = await collectTargetRuntime("Team Env", 4242, 19000, 5000, execute);
+    assertEqual(
+      commands[0]?.command,
+      "ocm @'Team Env' -- 'gateway' 'call' 'system.info' '--port' '19000' '--json'",
+      "target runtime queries the OCM-recorded local Gateway"
+    );
+    assertEqual(trusted.collectionStatus, "ok", "matching Gateway runtime identity is trusted");
+    assertEqual(trusted.nodeVersion, "v22.22.3", "Gateway-reported Node version is retained");
+
+    const mismatch = await collectTargetRuntime("Team Env", 4343, 19000, 5000, execute);
+    assertEqual(mismatch.collectionStatus, "identity-mismatch", "Gateway identity mismatch is untrusted");
+    assertEqual(mismatch.nodeVersion, null, "PID mismatch cannot select a Node baseline");
+
+    const malformed = await collectTargetRuntime("Team Env", 4242, 19000, 5000, async () => ({
+      status: 0,
+      stdout: JSON.stringify({ nodeVersion: "unknown", pid: 4242, port: 19000 })
+    }));
+    assertEqual(malformed.collectionStatus, "invalid-payload", "malformed Gateway runtime payload is untrusted");
+
+    const prerelease = await collectTargetRuntime("Team Env", 4242, 19000, 5000, async () => ({
+      status: 0,
+      stdout: JSON.stringify({ nodeVersion: "v24.0.0-rc.1", pid: 4242, port: 19000 })
+    }));
+    assertEqual(prerelease.collectionStatus, "ok", "valid Node prerelease version is trusted");
+
+    let compatibilityCommands = 0;
+    const compatible = await collectTargetRuntime("Team Env", 4242, 19000, 5000, async () => {
+      compatibilityCommands += 1;
+      return compatibilityCommands === 1
+        ? {
+            status: 1,
+            stdout: JSON.stringify({ error: { message: "unknown method: system.info" } })
+          }
+        : {
+            status: 0,
+            stdout: "OS  macOS 14.7 · node 22.22.3\n"
+          };
+    });
+    assertEqual(compatible.collectionStatus, "compatibility-fallback", "older Gateway uses its bound runtime version");
+    assertEqual(compatible.nodeVersion, "22.22.3", "older Gateway runtime major is retained");
+
+    const failed = await collectTargetRuntime("Team Env", 4242, 19000, 5000, async () => ({
+      status: 1,
+      stdout: "{\"token\":\"must-not-be-retained\"}"
+    }));
+    assertEqual(failed.collectionStatus, "command-failed", "failed Gateway runtime query is untrusted");
+    assertEqual(JSON.stringify(failed).includes("must-not-be-retained"), false, "runtime query failure output is not retained");
+
+    let missingPidCommands = 0;
+    const missingPid = await collectTargetRuntime("Team Env", null, 19000, 5000, async () => {
+      missingPidCommands += 1;
+      return { status: 0, stdout: "{}" };
+    });
+    assertEqual(missingPid.collectionStatus, "missing-service-identity", "missing OCM Gateway identity is untrusted");
+    assertEqual(missingPidCommands, 0, "missing OCM Gateway PID skips the RPC");
+
+    return {
+      id: "target-runtime-evidence",
+      status: "PASS",
+      command: "validate Gateway runtime identity collection",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "target-runtime-evidence",
+      status: "FAIL",
+      command: "validate Gateway runtime identity collection",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
 async function processSnapshotCheck(tmp, scope) {
   const processRoles = await loadProcessRoles();
   const rootCommand = `ocm @${scope.envName} -- agent --local --session-id ${scope.sessionPrefix} --message hi`;
@@ -21967,6 +22052,31 @@ function thresholdPolicyCalibrationCheck() {
       true,
       "profile calibrated role violation"
     );
+    const runtimeThresholdSurface = {
+      id: "runtime-major-threshold",
+      thresholds: {},
+      roleThresholds: {
+        gateway: {
+          peakRssMb: {
+            baselineByNodeMajor: { "22": 730, "24": 1085 },
+            maxRegressionPercent: 10,
+            absoluteCeilingMb: 1200
+          }
+        }
+      }
+    };
+    const runtimeOptions = (targetRuntime) => ({
+      targetRuntime,
+      surface: runtimeThresholdSurface
+    });
+    const trustedRuntime = (nodeVersion) => ({
+      collectionStatus: "ok",
+      nodeVersion,
+      gatewayPid: 4242,
+      expectedGatewayPid: 4242,
+      gatewayPort: 19000,
+      expectedGatewayPort: 19000
+    });
     const runtimeMismatch = structuredClone(record);
     runtimeMismatch.status = "PASS";
     delete runtimeMismatch.violations;
@@ -21977,24 +22087,57 @@ function thresholdPolicyCalibrationCheck() {
     runtimeResources.peakTotalRssMb = 805;
     runtimeResources.byRole.gateway.peakRssMb = 805;
     runtimeResources.topRolesByRss[0].peakRssMb = 805;
-    evaluateRecord(runtimeMismatch, { id: "runtime-major-threshold", thresholds: {} }, {
-      nodeVersion: "v22.22.3",
-      surface: {
-        id: "runtime-major-threshold",
-        thresholds: {},
-        roleThresholds: {
-          gateway: {
-            peakRssMb: {
-              baselineByNodeMajor: { "22": 730, "24": 1085 },
-              maxRegressionPercent: 10,
-              absoluteCeilingMb: 1200
-            }
-          }
-        }
-      }
-    });
+    evaluateRecord(
+      runtimeMismatch,
+      { id: "runtime-major-threshold", thresholds: {} },
+      runtimeOptions(trustedRuntime("v22.22.3"))
+    );
     assertEqual(runtimeMismatch.thresholdPolicy?.roleThresholds?.gateway?.peakRssMb, 803, "evaluator uses measured Node major instead of Kova runner major");
     assertEqual(runtimeMismatch.status, "FAIL", "measured Node 22 runtime applies its stricter RSS gate");
+
+    const untrustedRuntime = structuredClone(runtimeMismatch);
+    untrustedRuntime.status = "PASS";
+    delete untrustedRuntime.violations;
+    const unavailableRuntime = {
+      collectionStatus: "command-failed",
+      nodeVersion: null,
+      gatewayPid: null,
+      expectedGatewayPid: 4242,
+      gatewayPort: null,
+      expectedGatewayPort: 19000
+    };
+    evaluateRecord(
+      untrustedRuntime,
+      { id: "runtime-major-threshold", thresholds: {} },
+      runtimeOptions(unavailableRuntime)
+    );
+    assertEqual(untrustedRuntime.thresholdPolicy?.roleThresholds?.gateway?.peakRssMb, 1200, "untrusted runtime remains absolutely bounded");
+    assertEqual(untrustedRuntime.status, "BLOCKED", "untrusted runtime identity blocks calibrated RSS evidence");
+    assertEqual(
+      untrustedRuntime.violations.some((violation) =>
+        violation.metric === "targetRuntime.nodeVersion" &&
+        violation.failureDomain === "kova-harness"
+      ),
+      true,
+      "untrusted runtime identity is attributed to the Kova harness"
+    );
+    evaluateRecord(
+      untrustedRuntime,
+      { id: "runtime-major-threshold", thresholds: {} },
+      runtimeOptions(unavailableRuntime)
+    );
+    assertEqual(untrustedRuntime.status, "BLOCKED", "runtime identity blocker survives repeated evaluation");
+
+    const futureRuntime = structuredClone(untrustedRuntime);
+    futureRuntime.status = "PASS";
+    delete futureRuntime.violations;
+    evaluateRecord(
+      futureRuntime,
+      { id: "runtime-major-threshold", thresholds: {} },
+      runtimeOptions(trustedRuntime("v26.0.0"))
+    );
+    assertEqual(futureRuntime.status, "PASS", "trusted future Node major uses the bounded fallback");
+    assertEqual(futureRuntime.thresholdPolicy?.runtimeCalibration?.[0]?.baselineMb, null, "future Node major reports missing baseline");
     const scenarioRolePolicy = resolveThresholdPolicy({
       scenario: {
         id: "scenario-role-policy",
