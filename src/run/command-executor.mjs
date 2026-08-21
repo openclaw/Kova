@@ -200,6 +200,17 @@ export function buildDiagnosticsCommandEnv(
     OPENCLAW_DIAGNOSTICS_EVENT_LOOP: "1"
   };
 
+  const persistentServiceCommand = /\bocm\s+service\s+(?:install|start|restart)\b/.test(
+    String(command ?? "")
+  );
+  if (persistentServiceCommand && context.heapSnapshot === true) {
+    const profileDir = artifactDirs.nodeProfiles;
+    env.NODE_OPTIONS = mergeNodeOptions(process.env.NODE_OPTIONS, [
+      "--heapsnapshot-signal=SIGUSR2",
+      `--diagnostic-dir=${quoteNodeOptionValue(profileDir)}`
+    ]);
+  }
+
   if (commandReceivesNodeProfiler(context, measurementScope, command)) {
     const profileDir = artifactDirs.nodeProfiles;
     env.KOVA_NODE_PROFILE_DIR = profileDir;

@@ -16,7 +16,7 @@ export function metricOptions(context, scenario, phase, artifactDir, policyConte
     readinessThresholdMs,
     readinessTimeoutMs: readinessHardTimeoutForPhase(scenario, phase, readinessThresholdMs),
     readinessIntervalMs: context.readinessIntervalMs,
-    heapSnapshot: context.heapSnapshot === true && context.deepProfile !== true,
+    heapSnapshot: context.heapSnapshot === true,
     diagnosticReport: false,
     artifactDir,
     collectorArtifactDirs: collectorArtifactDirs(artifactDir),
