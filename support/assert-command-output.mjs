@@ -6,20 +6,21 @@ const options = parseArgs(separator >= 0 ? process.argv.slice(2, separator) : pr
 const command = separator >= 0 ? process.argv.slice(separator + 1) : [];
 
 if (command.length === 0) {
-  console.error("usage: assert-command-output.mjs --pattern <regex> [--expect-status <code>] [--retries <n>] [--delay-ms <n>] -- <command> [args...]");
+  console.error("usage: assert-command-output.mjs --contains <text> [--expect-status <code>] [--retries <n>] [--delay-ms <n>] -- <command> [args...]");
   process.exit(2);
 }
 
-const pattern = new RegExp(options.pattern, options.flags);
 let result;
 let combined = "";
-let match = null;
+let matchedLine = null;
 
 for (let attempt = 1; attempt <= options.retries; attempt += 1) {
   result = await runProcess(command[0], command.slice(1));
   combined = `${result.stdout}\n${result.stderr}`;
-  match = result.status === options.expectStatus ? combined.match(pattern) : null;
-  if (match) {
+  matchedLine = result.status === options.expectStatus
+    ? lineContaining(combined, options.expectedText)
+    : null;
+  if (matchedLine !== null) {
     break;
   }
   if (attempt < options.retries) {
@@ -27,45 +28,43 @@ for (let attempt = 1; attempt <= options.retries; attempt += 1) {
   }
 }
 
-if (!match) {
+if (matchedLine === null) {
   process.stdout.write(result?.stdout ?? "");
   process.stderr.write(result?.stderr ?? "");
   if (result?.status !== options.expectStatus) {
     console.error(`expected command status ${options.expectStatus}, got ${result?.status ?? "unknown"}`);
   } else {
-    console.error(`expected command output to match /${options.pattern}/${options.flags}`);
+    console.error(`expected command output to contain ${JSON.stringify(options.expectedText)}`);
   }
   process.exit(1);
 }
 
 console.log(JSON.stringify({
-  schemaVersion: "kova.commandOutputAssertion.v1",
+  schemaVersion: "kova.commandOutputAssertion.v2",
   command: command.join(" "),
   status: result.status,
-  pattern: options.pattern,
+  expectedText: options.expectedText,
   attempts: options.retries,
   matched: true,
-  matchedLine: lineContaining(combined, match[0])
+  matchedLine
 }, null, 2));
 
 function parseArgs(args) {
   const options = {
-    pattern: null,
-    flags: "i",
+    expectedText: null,
     expectStatus: 0,
     retries: 1,
     delayMs: 500
   };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
-    if (arg === "--pattern" || arg === "--flags" || arg === "--expect-status" || arg === "--retries" || arg === "--delay-ms") {
+    if (arg === "--contains" || arg === "--expect-status" || arg === "--retries" || arg === "--delay-ms") {
       const value = args[index + 1];
       if (!value) {
         throw new Error(`${arg} requires a value`);
       }
       index += 1;
-      if (arg === "--pattern") options.pattern = value;
-      if (arg === "--flags") options.flags = value;
+      if (arg === "--contains") options.expectedText = value;
       if (arg === "--expect-status") options.expectStatus = Number.parseInt(value, 10);
       if (arg === "--retries") options.retries = Number.parseInt(value, 10);
       if (arg === "--delay-ms") options.delayMs = Number.parseInt(value, 10);
@@ -73,7 +72,7 @@ function parseArgs(args) {
     }
     throw new Error(`unexpected argument: ${arg}`);
   }
-  if (!options.pattern) throw new Error("--pattern is required");
+  if (!options.expectedText) throw new Error("--contains is required");
   if (!Number.isInteger(options.expectStatus)) throw new Error("--expect-status must be an integer");
   if (!Number.isInteger(options.retries) || options.retries <= 0) throw new Error("--retries must be a positive integer");
   if (!Number.isInteger(options.delayMs) || options.delayMs < 0) throw new Error("--delay-ms must be a non-negative integer");
@@ -95,8 +94,11 @@ function runProcess(command, args) {
   });
 }
 
-function lineContaining(value, match) {
-  return String(value ?? "").split(/\r?\n/).find((line) => line.includes(match)) ?? match;
+function lineContaining(value, expectedText) {
+  const expected = expectedText.toLowerCase();
+  return String(value ?? "").split(/\r?\n/).find((line) => {
+    return line.toLowerCase().includes(expected);
+  }) ?? null;
 }
 
 function sleep(ms) {
