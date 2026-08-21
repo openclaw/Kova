@@ -1,7 +1,7 @@
 import { posix } from "node:path";
 import { caseFold } from "unicode-case-folding";
 
-export const MAX_BUNDLE_COMPRESSED_BYTES = 256 * 1024 * 1024;
+export const MAX_BUNDLE_COMPRESSED_BYTES = 1024 * 1024 * 1024;
 export const MAX_BUNDLE_CHECKSUM_BYTES = 8 * 1024;
 // Diagnostic branch: Gateway heap snapshots can exceed the publication contract.
 export const MAX_BUNDLE_UNPACKED_BYTES = 2 * 1024 * 1024 * 1024;
