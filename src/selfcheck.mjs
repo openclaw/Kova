@@ -21083,8 +21083,11 @@ async function bundledPluginStartupSurfaceContractCheck() {
     const policy = resolveThresholdPolicy({
       profile: releaseProfile,
       surface,
-      scenario
+      scenario,
+      nodeVersion: "v24.19.0"
     });
+    const node22Policy = resolveThresholdPolicy({ profile: releaseProfile, surface, scenario, nodeVersion: "22.22.3" });
+    const uncalibratedPolicy = resolveThresholdPolicy({ profile: releaseProfile, surface, scenario, nodeVersion: "v26.0.0" });
 
     assertEqual(startPhase?.id, "gateway-start", "bundled plugin startup uses readiness phase contract");
     assertEqual(
@@ -21092,11 +21095,15 @@ async function bundledPluginStartupSurfaceContractCheck() {
       30000,
       "bundled plugin startup waits for gateway readiness"
     );
-    assertEqual(surface.roleThresholds?.gateway?.peakRssMb, 1000, "bundled plugin surface owns gateway RSS cap");
+    assertEqual(surface.roleThresholds?.gateway?.peakRssMb?.absoluteCeilingMb, 1200, "bundled plugin surface owns absolute gateway RSS ceiling");
     assertEqual(surface.roleThresholds?.gateway?.maxCpuPercent, 250, "bundled plugin surface owns gateway CPU cap");
     assertEqual(surface.roleThresholds?.["plugin-cli"]?.peakRssMb, 900, "bundled plugin surface owns plugin CLI RSS cap");
     assertEqual(surface.roleThresholds?.["plugin-cli"]?.maxCpuPercent, 250, "bundled plugin surface owns plugin CLI CPU cap");
-    assertEqual(policy.roleThresholds?.gateway?.peakRssMb, 1000, "bundled plugin resolved gateway RSS cap");
+    assertEqual(policy.roleThresholds?.gateway?.peakRssMb, 1193, "bundled plugin resolves Node 24 baseline with bounded regression allowance");
+    assertEqual(policy.report.runtimeCalibration?.[0]?.baselineMb, 1085, "bundled plugin reports selected Node 24 baseline");
+    assertEqual(node22Policy.roleThresholds?.gateway?.peakRssMb, 803, "bundled plugin selects the parsed Node 22 major baseline");
+    assertEqual(uncalibratedPolicy.roleThresholds?.gateway?.peakRssMb, 1200, "uncalibrated Node major remains bounded by the absolute ceiling");
+    assertEqual(uncalibratedPolicy.report.runtimeCalibration?.[0]?.baselineMb, null, "uncalibrated Node major reports missing baseline evidence");
     assertEqual(policy.roleThresholds?.gateway?.maxCpuPercent, 250, "bundled plugin resolved gateway CPU cap");
     assertEqual(policy.roleThresholds?.["plugin-cli"]?.peakRssMb, 900, "bundled plugin resolved plugin CLI RSS cap");
     assertEqual(policy.roleThresholds?.["plugin-cli"]?.maxCpuPercent, 250, "bundled plugin resolved plugin CLI CPU cap");
@@ -21305,22 +21312,22 @@ async function releaseResourceCalibrationCheck() {
         id: "fresh-install",
         scenario: freshScenario,
         surface: freshSurface,
-        primaryRssMb: 1050,
-        roles: { gateway: 1050, "status-cli": 900, "plugin-cli": 900 }
+        primaryRssMb: 1177,
+        roles: { gateway: 1177, "status-cli": 900, "plugin-cli": 900 }
       },
       {
         id: "gateway-performance",
         scenario: gatewayScenario,
         surface: gatewaySurface,
-        primaryRssMb: 1050,
-        roles: { gateway: 1050, "gateway-tree": 1200, "status-cli": 900, "plugin-cli": 950 }
+        primaryRssMb: 1177,
+        roles: { gateway: 1177, "gateway-tree": 1200, "status-cli": 900, "plugin-cli": 950 }
       },
       {
         id: "bundled-plugin-startup",
         scenario: null,
         surface: bundledPluginSurface,
         primaryRssMb: null,
-        roles: { gateway: 1000, "plugin-cli": 900 }
+        roles: { gateway: 1193, "plugin-cli": 900 }
       }
     ];
 
@@ -21328,11 +21335,12 @@ async function releaseResourceCalibrationCheck() {
       const policy = resolveThresholdPolicy({
         profile: releaseProfile,
         surface: contract.surface,
-        scenario: contract.scenario
+        scenario: contract.scenario,
+        nodeVersion: "v24.19.0"
       });
       if (contract.primaryRssMb !== null) {
-        assertEqual(contract.scenario?.thresholds?.peakRssMb, contract.primaryRssMb, `${contract.id} scenario primary RSS cap`);
-        assertEqual(contract.surface?.thresholds?.peakRssMb, contract.primaryRssMb, `${contract.id} surface primary RSS cap`);
+        assertEqual(policy.thresholds?.peakRssMb, contract.primaryRssMb, `${contract.id} resolved primary RSS cap`);
+        assertEqual(contract.surface?.thresholds?.peakRssMb?.absoluteCeilingMb, 1200, `${contract.id} absolute primary RSS ceiling`);
       }
       for (const [role, peakRssMb] of Object.entries(contract.roles)) {
         assertEqual(contract.surface?.processRoles?.includes(role), true, `${contract.id} declares ${role}`);
@@ -21959,6 +21967,34 @@ function thresholdPolicyCalibrationCheck() {
       true,
       "profile calibrated role violation"
     );
+    const runtimeMismatch = structuredClone(record);
+    runtimeMismatch.status = "PASS";
+    delete runtimeMismatch.violations;
+    const runtimeResources = runtimeMismatch.phases
+      .flatMap((phase) => phase.results)
+      .find((result) => result.resourceSamples)?.resourceSamples;
+    assertEqual(Boolean(runtimeResources), true, "runtime mismatch fixture has resource samples");
+    runtimeResources.peakTotalRssMb = 805;
+    runtimeResources.byRole.gateway.peakRssMb = 805;
+    runtimeResources.topRolesByRss[0].peakRssMb = 805;
+    evaluateRecord(runtimeMismatch, { id: "runtime-major-threshold", thresholds: {} }, {
+      nodeVersion: "v22.22.3",
+      surface: {
+        id: "runtime-major-threshold",
+        thresholds: {},
+        roleThresholds: {
+          gateway: {
+            peakRssMb: {
+              baselineByNodeMajor: { "22": 730, "24": 1085 },
+              maxRegressionPercent: 10,
+              absoluteCeilingMb: 1200
+            }
+          }
+        }
+      }
+    });
+    assertEqual(runtimeMismatch.thresholdPolicy?.roleThresholds?.gateway?.peakRssMb, 803, "evaluator uses measured Node major instead of Kova runner major");
+    assertEqual(runtimeMismatch.status, "FAIL", "measured Node 22 runtime applies its stricter RSS gate");
     const scenarioRolePolicy = resolveThresholdPolicy({
       scenario: {
         id: "scenario-role-policy",

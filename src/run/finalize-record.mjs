@@ -6,19 +6,22 @@ import {
 } from "../evidence/record.mjs";
 import { compactEvaluatedTimelineEvidence, evaluateRecord } from "../evaluator.mjs";
 import { collectEnvMetrics, collectNodeProfileMetrics } from "../metrics.mjs";
+import { runCommand } from "../commands.mjs";
+import { ocmEnvExec } from "../ocm/commands.mjs";
 import { collectProviderEvidence } from "../collectors/provider.mjs";
 import { collectStateFixtureAccounting } from "../collectors/state-fixtures.mjs";
 import { metricOptions } from "./metric-options.mjs";
 
 export async function collectPreCleanupEvidence(record, scenario, context, envName, artifactDir, authPolicy) {
   record.finishedAt = new Date().toISOString();
+  record.targetRuntime = await collectTargetRuntime(envName, context.timeoutMs);
   record.finalMetrics = await collectEnvMetrics(envName, metricOptions(context, scenario, null, artifactDir, {
     kind: "final",
     redactValues: authPolicy.redactionValues
   }));
   record.stateFixtureAccounting = await collectStateFixtureAccounting(context.state, envName, artifactDir);
   record.providerEvidence = await collectProviderEvidence(artifactDir, { authPolicy });
-  evaluateRecord(record, scenario, evaluatorContext(context, scenario));
+  evaluateRecord(record, scenario, evaluatorContext(context, scenario, record));
 
   if (shouldCaptureFailureDiagnostics(record, context)) {
     record.failureDiagnostics = await collectEnvMetrics(envName, {
@@ -41,7 +44,7 @@ export async function attachPostCleanupEvidence(record, scenario, context, artif
     attachNodeProfileMeasurements(record);
   }
 
-  evaluateRecord(record, scenario, evaluatorContext(context, scenario));
+  evaluateRecord(record, scenario, evaluatorContext(context, scenario, record));
   attachEvidenceInvariants(record, scenario);
   attachCleanupEvidence(record);
   await attachEvidenceArtifactBudget(record, scenario);
@@ -82,10 +85,23 @@ function attachNodeProfileMeasurements(record) {
   record.measurements.nodeHeapTopFunctionUrl = topHeap?.url ?? record.measurements.nodeHeapTopFunctionUrl ?? null;
 }
 
-function evaluatorContext(context, scenario) {
+function evaluatorContext(context, scenario, record) {
   return {
     surface: context.surfacesById?.[scenario.surface] ?? null,
     targetPlan: context.targetPlan ?? null,
-    profile: context.profile ?? null
+    profile: context.profile ?? null,
+    nodeVersion: record.targetRuntime?.nodeVersion ?? null
+  };
+}
+
+async function collectTargetRuntime(envName, timeoutMs) {
+  const result = await runCommand(ocmEnvExec(envName, ["node", "--version"]), { timeoutMs });
+  const nodeVersion = result.status === 0 && /^v?\d+\.\d+\.\d+$/u.test(result.stdout.trim())
+    ? result.stdout.trim()
+    : null;
+  return {
+    schemaVersion: "kova.targetRuntime.v1",
+    nodeVersion,
+    collectionStatus: result.status
   };
 }

@@ -104,7 +104,8 @@ export function evaluateRecord(record, scenario, options = {}) {
   const thresholdPolicy = resolveThresholdPolicy({
     profile: options.profile,
     surface: options.surface,
-    scenario
+    scenario,
+    nodeVersion: options.nodeVersion
   });
   const thresholds = thresholdPolicy.thresholds;
   const roleThresholds = thresholdPolicy.roleThresholds;

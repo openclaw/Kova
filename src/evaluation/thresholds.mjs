@@ -1,17 +1,23 @@
-export function resolveThresholdPolicy({ profile = null, surface = null, scenario = null } = {}) {
+export function resolveThresholdPolicy({ profile = null, surface = null, scenario = null, nodeVersion = process.version } = {}) {
   const surfaceCalibration = profile?.calibration?.surfaces?.[surface?.id] ?? {};
   const configuredThresholds = mergeObjects(
     surface?.thresholds,
     surfaceCalibration.thresholds,
     scenario?.thresholds
   );
-  const { thresholds, derived } = applyDerivedThresholds(configuredThresholds);
-  const roleThresholds = mergeRoleThresholds(
+  const { thresholds: derivedThresholds, derived } = applyDerivedThresholds(configuredThresholds);
+  const configuredRoleThresholds = mergeRoleThresholds(
     profile?.calibration?.roles,
     surface?.roleThresholds,
     surfaceCalibration.roleThresholds,
     scenario?.thresholds?.roleThresholds
   );
+  const runtimeCalibration = [];
+  const thresholds = resolveRuntimeThresholds(derivedThresholds, nodeVersion, runtimeCalibration, "thresholds");
+  const roleThresholds = Object.fromEntries(Object.entries(configuredRoleThresholds).map(([role, values]) => [
+    role,
+    resolveRuntimeThresholds(values, nodeVersion, runtimeCalibration, `roleThresholds.${role}`)
+  ]));
 
   return {
     thresholds,
@@ -22,10 +28,41 @@ export function resolveThresholdPolicy({ profile = null, surface = null, scenari
       surfaceId: surface?.id ?? null,
       scenarioId: scenario?.id ?? null,
       sources: thresholdSources({ profile, surface, surfaceCalibration, scenario, derived }),
+      runtimeCalibration,
       thresholds,
       roleThresholds
     }
   };
+}
+
+function resolveRuntimeThresholds(thresholds, nodeVersion, report, prefix) {
+  return Object.fromEntries(Object.entries(thresholds ?? {}).map(([metric, value]) => {
+    if (metric !== "peakRssMb" || !isRuntimeRssThreshold(value)) {
+      return [metric, value];
+    }
+    const nodeMajor = /^v?(\d+)\./u.exec(String(nodeVersion))?.[1] ?? null;
+    const baselineMb = nodeMajor === null ? undefined : value.baselineByNodeMajor[nodeMajor];
+    const calibratedMb = typeof baselineMb === "number"
+      ? Math.floor(baselineMb * (1 + (value.maxRegressionPercent / 100)))
+      : value.absoluteCeilingMb;
+    const effectiveMb = Math.min(value.absoluteCeilingMb, calibratedMb);
+    report.push({
+      metric: `${prefix}.${metric}`,
+      nodeMajor,
+      baselineMb: baselineMb ?? null,
+      maxRegressionPercent: value.maxRegressionPercent,
+      absoluteCeilingMb: value.absoluteCeilingMb,
+      effectiveMb
+    });
+    return [metric, effectiveMb];
+  }));
+}
+
+function isRuntimeRssThreshold(value) {
+  return value && typeof value === "object" && !Array.isArray(value) &&
+    typeof value.absoluteCeilingMb === "number" &&
+    typeof value.maxRegressionPercent === "number" &&
+    value.baselineByNodeMajor && typeof value.baselineByNodeMajor === "object";
 }
 
 function thresholdSources({ profile, surface, surfaceCalibration, scenario, derived = [] }) {

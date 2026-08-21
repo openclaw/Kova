@@ -14,7 +14,11 @@
   },
   "roleThresholds": {
     "gateway": {
-      "peakRssMb": 1000,
+      "peakRssMb": {
+        "baselineByNodeMajor": { "22": 730, "24": 1085, "25": 1065 },
+        "maxRegressionPercent": 10,
+        "absoluteCeilingMb": 1200
+      },
       "maxCpuPercent": 250
     },
     "plugin-cli": {

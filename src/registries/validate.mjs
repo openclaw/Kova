@@ -181,8 +181,30 @@ function validateThresholdMetrics(thresholds, metricIds, errors, prefix, process
     if (!metricIds.has(metric)) {
       errors.push(`${prefix} references unknown metric '${metric}'`);
     }
+    if (metric === "peakRssMb" && value && typeof value === "object" && !Array.isArray(value)) {
+      validateRuntimeRssThreshold(value, `${prefix}.${metric}`, errors);
+      continue;
+    }
     if (!Number.isFinite(value) || value < 0) {
       errors.push(`${prefix}.${metric} must be a finite non-negative number`);
+    }
+  }
+}
+
+function validateRuntimeRssThreshold(value, prefix, errors) {
+  for (const key of ["absoluteCeilingMb", "maxRegressionPercent"]) {
+    if (!Number.isFinite(value[key]) || value[key] < 0) {
+      errors.push(`${prefix}.${key} must be a finite non-negative number`);
+    }
+  }
+  const baselines = value.baselineByNodeMajor;
+  if (!baselines || typeof baselines !== "object" || Array.isArray(baselines) || Object.keys(baselines).length === 0) {
+    errors.push(`${prefix}.baselineByNodeMajor must be a non-empty object`);
+    return;
+  }
+  for (const [major, baseline] of Object.entries(baselines)) {
+    if (!/^\d+$/u.test(major) || !Number.isFinite(baseline) || baseline < 0) {
+      errors.push(`${prefix}.baselineByNodeMajor.${major} must be a finite non-negative number`);
     }
   }
 }

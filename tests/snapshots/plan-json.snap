@@ -334,7 +334,15 @@
       },
       "roleThresholds": {
         "gateway": {
-          "peakRssMb": 1000,
+          "peakRssMb": {
+            "baselineByNodeMajor": {
+              "22": 730,
+              "24": 1085,
+              "25": 1065
+            },
+            "maxRegressionPercent": 10,
+            "absoluteCeilingMb": 1200
+          },
           "maxCpuPercent": 250
         },
         "plugin-cli": {
@@ -1053,11 +1061,27 @@
       "thresholds": {
         "gatewayReadyMs": 30000,
         "statusMs": 10000,
-        "peakRssMb": 1050
+        "peakRssMb": {
+          "baselineByNodeMajor": {
+            "22": 735,
+            "24": 1070,
+            "25": 1060
+          },
+          "maxRegressionPercent": 10,
+          "absoluteCeilingMb": 1200
+        }
       },
       "roleThresholds": {
         "gateway": {
-          "peakRssMb": 1050,
+          "peakRssMb": {
+            "baselineByNodeMajor": {
+              "22": 735,
+              "24": 1070,
+              "25": 1060
+            },
+            "maxRegressionPercent": 10,
+            "absoluteCeilingMb": 1200
+          },
           "maxCpuPercent": 250
         },
         "status-cli": {
@@ -1130,12 +1154,28 @@
       "thresholds": {
         "coldReadyMs": 30000,
         "warmReadyMs": 15000,
-        "peakRssMb": 1050,
+        "peakRssMb": {
+          "baselineByNodeMajor": {
+            "22": 735,
+            "24": 1070,
+            "25": 1060
+          },
+          "maxRegressionPercent": 10,
+          "absoluteCeilingMb": 1200
+        },
         "postReadyHealthP95Ms": 1000
       },
       "roleThresholds": {
         "gateway": {
-          "peakRssMb": 1050,
+          "peakRssMb": {
+            "baselineByNodeMajor": {
+              "22": 735,
+              "24": 1070,
+              "25": 1060
+            },
+            "maxRegressionPercent": 10,
+            "absoluteCeilingMb": 1200
+          },
           "maxCpuPercent": 250
         },
         "gateway-tree": {
@@ -12040,7 +12080,15 @@
         "statusMs": 10000,
         "pluginsListMs": 10000,
         "modelsListMs": 20000,
-        "peakRssMb": 1050
+        "peakRssMb": {
+          "baselineByNodeMajor": {
+            "22": 735,
+            "24": 1070,
+            "25": 1060
+          },
+          "maxRegressionPercent": 10,
+          "absoluteCeilingMb": 1200
+        }
       },
       "phases": [
         {
@@ -12154,7 +12202,15 @@
       "thresholds": {
         "coldReadyMs": 30000,
         "warmReadyMs": 15000,
-        "peakRssMb": 1050,
+        "peakRssMb": {
+          "baselineByNodeMajor": {
+            "22": 735,
+            "24": 1070,
+            "25": 1060
+          },
+          "maxRegressionPercent": 10,
+          "absoluteCeilingMb": 1200
+        },
         "eventLoopMaxMs": 500,
         "postReadyHealthP95Ms": 1000
       },

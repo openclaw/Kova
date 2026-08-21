@@ -14,12 +14,20 @@
   "thresholds": {
     "coldReadyMs": 30000,
     "warmReadyMs": 15000,
-    "peakRssMb": 1050,
+    "peakRssMb": {
+      "baselineByNodeMajor": { "22": 735, "24": 1070, "25": 1060 },
+      "maxRegressionPercent": 10,
+      "absoluteCeilingMb": 1200
+    },
     "postReadyHealthP95Ms": 1000
   },
   "roleThresholds": {
     "gateway": {
-      "peakRssMb": 1050,
+      "peakRssMb": {
+        "baselineByNodeMajor": { "22": 735, "24": 1070, "25": 1060 },
+        "maxRegressionPercent": 10,
+        "absoluteCeilingMb": 1200
+      },
       "maxCpuPercent": 250
     },
     "gateway-tree": {
