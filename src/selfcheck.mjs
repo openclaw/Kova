@@ -10437,7 +10437,7 @@ function safetyGuardCheck() {
       "node support/run-openclaw-release-age-upgrade.mjs --env=Violet --age day --json",
       "node support/run-doctor-repair.mjs --env kova-safe-test --env Violet",
       "node support/expect-command-fails.mjs -- ocm env destroy Violet --yes",
-      "node support/assert-command-output.mjs --pattern done -- ocm logs Violet --tail 20 --raw",
+      "node support/assert-command-output.mjs --contains done -- ocm logs Violet --tail 20 --raw",
       "ocm env des\\\ntroy Violet --yes",
       "ocm --json env destroy Violet --yes",
       "ocm e?? d?????? Violet --yes",
