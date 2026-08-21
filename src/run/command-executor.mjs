@@ -204,9 +204,9 @@ export function buildDiagnosticsCommandEnv(
     String(command ?? "")
   );
   if (persistentServiceCommand && context.heapSnapshot === true) {
+    env.NODE_DISABLE_COMPILE_CACHE = "1";
     const profileDir = artifactDirs.nodeProfiles;
     env.NODE_OPTIONS = mergeNodeOptions(process.env.NODE_OPTIONS, [
-      "--max-old-space-size=768",
       "--heapsnapshot-signal=SIGUSR2",
       `--diagnostic-dir=${quoteNodeOptionValue(profileDir)}`
     ]);
