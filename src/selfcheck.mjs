@@ -26200,7 +26200,7 @@ function commandResultInterpretationCheck() {
 function targetIdentityContractCheck() {
   try {
     const plan = resolveTarget("npm:2026.7.1-2", "target");
-    const integrity = "sha512-eGVhY3QtcHVibGljLXNhZmU=";
+    const integrity = `sha512-${Buffer.alloc(64, 0x5a).toString("base64")}`;
     const exact = targetIdentityFromRuntimeList(plan, [{
       sourceKind: "installed",
       sourceIntegrity: integrity,
@@ -26211,6 +26211,28 @@ function targetIdentityContractCheck() {
     assertEqual(exact?.requestedSelector, "npm:2026.7.1-2", "identity requested selector");
     assertEqual(exact?.resolvedVersion, "2026.7.1-2", "identity resolved version");
     assertEqual(exact?.npmIntegrity, integrity, "identity npm integrity");
+    assertEqual(
+      targetIdentityFromRuntimeList(plan, [{
+        sourceKind: "installed",
+        sourceIntegrity: "sha512-eGVhY3QtcHVibGljLXNhZmU=",
+        releaseVersion: "2026.7.1-2",
+        releaseSelectorKind: "version",
+        releaseSelectorValue: "2026.7.1-2"
+      }])?.npmIntegrity,
+      null,
+      "truncated integrity is version-only"
+    );
+    assertEqual(
+      targetIdentityFromRuntimeList(plan, [{
+        sourceKind: "installed",
+        sourceIntegrity: `${integrity.slice(0, -2)}A=`,
+        releaseVersion: "2026.7.1-2",
+        releaseSelectorKind: "version",
+        releaseSelectorValue: "2026.7.1-2"
+      }])?.npmIntegrity,
+      null,
+      "non-canonical integrity is version-only"
+    );
     assertEqual(targetIdentityFromRuntimeList(plan, [])?.npmIntegrity, null, "missing runtime is version-only");
     assertEqual(
       targetIdentityFromRuntimeList(resolveTarget("release:stable", "target"), []),

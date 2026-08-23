@@ -1,8 +1,21 @@
 import { runCommand } from "./commands.mjs";
+import { Buffer } from "node:buffer";
 
 const TARGET_IDENTITY_SCHEMA = "kova.target.identity.v1";
 const EXACT_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
-const NPM_INTEGRITY = /^sha512-[A-Za-z0-9+/]+={0,2}$/;
+const SHA512_SRI = /^sha512-([A-Za-z0-9+/]{86}==)$/;
+
+function isCanonicalSha512Integrity(value) {
+  if (typeof value !== "string") {
+    return false;
+  }
+  const match = SHA512_SRI.exec(value);
+  if (!match) {
+    return false;
+  }
+  const decoded = Buffer.from(match[1], "base64");
+  return decoded.length === 64 && decoded.toString("base64") === match[1];
+}
 
 export async function resolveTargetIdentity(targetPlan, options = {}) {
   const versionOnly = versionOnlyIdentity(targetPlan);
@@ -36,8 +49,7 @@ export function targetIdentityFromRuntimeList(targetPlan, runtimes) {
     runtime.releaseSelectorKind === "version" &&
     runtime.releaseSelectorValue === targetPlan.value &&
     runtime.sourceKind === "installed" &&
-    typeof runtime.sourceIntegrity === "string" &&
-    NPM_INTEGRITY.test(runtime.sourceIntegrity)
+    isCanonicalSha512Integrity(runtime.sourceIntegrity)
   ));
   if (matches.length !== 1) {
     return versionOnly;
