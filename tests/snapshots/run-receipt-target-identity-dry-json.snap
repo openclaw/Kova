@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "kova.run.receipt.v1",
+  "generatedAt": "<iso>",
+  "mode": "dry-run",
+  "runId": "kova-<runId>",
+  "targetIdentity": {
+    "schemaVersion": "kova.target.identity.v1",
+    "requestedSelector": "npm:1.2.3",
+    "resolvedVersion": "1.2.3",
+    "npmIntegrity": null,
+    "gitSha": null,
+    "buildDigest": null
+  },
+  "reportPath": "<kova-home>/reports/kova-<runId>.md",
+  "jsonPath": "<kova-home>/reports/kova-<runId>.json",
+  "summaryPath": "<kova-home>/reports/kova-<runId>.summary.json",
+  "networkFrontage": {
+    "schemaVersion": "kova.networkFrontage.v1",
+    "mode": "port",
+    "enabled": false,
+    "allocations": []
+  },
+  "performance": {
+    "schemaVersion": "kova.performance.v1",
+    "repeat": 1,
+    "parallel": null,
+    "parallelContaminated": false,
+    "groupCount": 1,
+    "unstableGroupCount": 0,
+    "profiledRunCount": 0,
+    "resourceMeasurementScope": "product",
+    "resourceHeadlineContract": "primary-role-product-scope-v3",
+    "baselineRegressionCount": null,
+    "missingBaselineCount": null,
+    "skippedMetricCount": null,
+    "resourceContractMismatchCount": null,
+    "baselineReviewOk": null,
+    "baselineReviewBlockerCount": null,
+    "savedBaselinePath": null
+  },
+  "summary": {
+    "total": 1,
+    "statuses": {
+      "DRY-RUN": 1
+    }
+  }
+}

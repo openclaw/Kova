@@ -124,6 +124,7 @@ export async function bundleReport(reportPath, options = {}) {
         runId,
         mode: report.mode ?? null,
         target: report.target ?? null,
+        targetIdentity: report.targetIdentity ?? null,
         profile: report.profile ?? null,
         platform: report.platform ?? null,
         source: {

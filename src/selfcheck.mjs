@@ -87,6 +87,7 @@ import { validateRegistryReferences } from "./registries/validate.mjs";
 import { isMissingOcmResource } from "./ocm/missing-resource.mjs";
 import { assertSafeScenarioCommand, assertSingleTopLevelShellCommand } from "./safety.mjs";
 import { resolveTarget } from "./targets.mjs";
+import { targetIdentityFromRuntimeList } from "./target-identity.mjs";
 import {
   commandResultFailureReason,
   commandResultFailed,
@@ -306,6 +307,7 @@ async function runScopedSelfCheck(flags, scope, workspace) {
       assertEqual(new Set(ids).size, ids.length, "same-process run ids are unique");
       assertEqual(ids.every((id) => /^kova-\d{6}-\d{6}-[0-9a-f]{6}$/.test(id)), true, "run id format includes unique suffix");
     }));
+    checks.push(targetIdentityContractCheck());
     checks.push(await inlineCheck("web-publish-prior-version-order", () => {
       const release = (ver, releaseDate = "2026-05-26") => ({
         id: ver,
@@ -1349,6 +1351,31 @@ async function runScopedSelfCheck(flags, scope, workspace) {
       }
     );
     checks.push(receiptCheck);
+    checks.push(await jsonCommandCheck(
+      "target-identity-dry-run-json",
+      `node bin/kova.mjs run --target npm:1.2.3 --scenario fresh-install --report-dir ${quoteShell(tmp)} --json`,
+      async (data) => {
+        const expected = {
+          schemaVersion: "kova.target.identity.v1",
+          requestedSelector: "npm:1.2.3",
+          resolvedVersion: "1.2.3",
+          npmIntegrity: null,
+          gitSha: null,
+          buildDigest: null
+        };
+        assertEqual(JSON.stringify(data.targetIdentity), JSON.stringify(expected), "run receipt target identity");
+        const report = JSON.parse(await readFile(data.jsonPath, "utf8"));
+        assertEqual(JSON.stringify(report.targetIdentity), JSON.stringify(expected), "report target identity");
+        const bundle = await bundleReport(data.jsonPath, { outputDir: tmp });
+        const entries = readUstarEntries(await readFile(bundle.outputPath));
+        const manifestEntry = entries.find((entry) => entry.name.endsWith("/manifest.json"));
+        if (!manifestEntry) {
+          throw new Error("bundle manifest missing");
+        }
+        const manifest = JSON.parse(manifestEntry.content.toString("utf8"));
+        assertEqual(JSON.stringify(manifest.targetIdentity), JSON.stringify(expected), "bundle target identity");
+      }
+    ));
     checks.push(await reportRunIdReferenceCheck(tmp));
 
     checks.push(await jsonCommandCheck(
@@ -26164,6 +26191,54 @@ function commandResultInterpretationCheck() {
       id: "command-result-interpretation",
       status: "FAIL",
       command: "evaluate structured helper failure interpretation",
+      durationMs: 0,
+      message: error.message
+    };
+  }
+}
+
+function targetIdentityContractCheck() {
+  try {
+    const plan = resolveTarget("npm:2026.7.1-2", "target");
+    const integrity = "sha512-eGVhY3QtcHVibGljLXNhZmU=";
+    const exact = targetIdentityFromRuntimeList(plan, [{
+      sourceKind: "installed",
+      sourceIntegrity: integrity,
+      releaseVersion: "2026.7.1-2",
+      releaseSelectorKind: "version",
+      releaseSelectorValue: "2026.7.1-2"
+    }]);
+    assertEqual(exact?.requestedSelector, "npm:2026.7.1-2", "identity requested selector");
+    assertEqual(exact?.resolvedVersion, "2026.7.1-2", "identity resolved version");
+    assertEqual(exact?.npmIntegrity, integrity, "identity npm integrity");
+    assertEqual(targetIdentityFromRuntimeList(plan, [])?.npmIntegrity, null, "missing runtime is version-only");
+    assertEqual(
+      targetIdentityFromRuntimeList(resolveTarget("release:stable", "target"), []),
+      null,
+      "moving selector has no target identity"
+    );
+    assertEqual(
+      targetIdentityFromRuntimeList(plan, [{
+        sourceKind: "installed",
+        sourceIntegrity: integrity,
+        releaseVersion: "2026.7.1-3",
+        releaseSelectorKind: "version",
+        releaseSelectorValue: "2026.7.1-3"
+      }])?.npmIntegrity,
+      null,
+      "different resolved version cannot bind target"
+    );
+    return {
+      id: "target-identity-contract",
+      status: "PASS",
+      command: "evaluate exact target identity binding",
+      durationMs: 0
+    };
+  } catch (error) {
+    return {
+      id: "target-identity-contract",
+      status: "FAIL",
+      command: "evaluate exact target identity binding",
       durationMs: 0,
       message: error.message
     };

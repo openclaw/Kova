@@ -78,6 +78,7 @@ const cases = [
   // which were previously pinned by snapshots.
   { name: "run-receipt-dry", args: ["run", "--target", "runtime:stable", "--scenario", "fresh-install"] },
   { name: "run-receipt-dry-json", args: ["run", "--target", "runtime:stable", "--scenario", "fresh-install", "--json"] },
+  { name: "run-receipt-target-identity-dry-json", args: ["run", "--target", "npm:1.2.3", "--scenario", "fresh-install", "--json"] },
   { name: "matrix-run-receipt-dry", args: ["matrix", "run", "--profile", "smoke", "--target", "runtime:stable"] },
   { name: "matrix-run-receipt-dry-json", args: ["matrix", "run", "--profile", "smoke", "--target", "runtime:stable", "--json"] },
   { name: "matrix-plan", args: ["matrix", "plan", "--profile", "smoke", "--target", "runtime:stable"] },

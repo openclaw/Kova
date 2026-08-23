@@ -25,6 +25,7 @@ import { allocateReportOutputPaths, releaseReportOutputLock, writeReportOutputs 
 import { attachBaselineComparison, buildRunReport, saveBaselineUpdate } from "../run/report-finalization.mjs";
 import { createRunProgress } from "../reporting/render-run-progress.mjs";
 import { renderMatrixRunReceipt } from "../reporting/render-run-receipt.mjs";
+import { resolveTargetIdentity } from "../target-identity.mjs";
 
 export async function runMatrixRun(flags) {
   validateBaselineExecutionFlags(flags);
@@ -109,12 +110,17 @@ export async function runMatrixRun(flags) {
     parallel: controls.parallel,
     regressionThresholds
   });
+  const targetIdentity = await resolveTargetIdentity(targetPlan, {
+    execute: flags.execute === true,
+    timeoutMs: positiveIntegerFlag(flags, "timeout_ms", 120000)
+  });
   const reportBase = buildRunReport({
     runId,
     outputPaths,
     mode: flags.execute === true ? "execution" : "dry-run",
     profile: profileSummary(profile),
     target: targetSelector,
+    targetIdentity,
     from: fromSelector,
     controls: {
       ...controls,
@@ -162,6 +168,7 @@ export async function runMatrixRun(flags) {
       generatedAt: new Date().toISOString(),
       mode: report.mode,
       runId,
+      ...(targetIdentity ? { targetIdentity } : {}),
       profile: profileSummary(profile),
       reportPath: outputPaths.markdown,
       jsonPath: outputPaths.json,

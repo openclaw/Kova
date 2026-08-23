@@ -22,6 +22,7 @@ import { runScenarioRepeats } from "../run/engine.mjs";
 import { allocateReportOutputPaths, releaseReportOutputLock, writeReportOutputs } from "../run/report-output.mjs";
 import { attachBaselineComparison, buildRunReport, saveBaselineUpdate } from "../run/report-finalization.mjs";
 import { resolveTarget } from "../targets.mjs";
+import { resolveTargetIdentity } from "../target-identity.mjs";
 import { createRunProgress } from "../reporting/render-run-progress.mjs";
 import { renderRunReceipt } from "../reporting/render-run-receipt.mjs";
 
@@ -92,12 +93,17 @@ export async function runScenarioCommand(flags) {
     return runRecords;
   });
   const performance = buildPerformanceSummary(records, { repeat, regressionThresholds });
+  const targetIdentity = await resolveTargetIdentity(targetPlan, {
+    execute: context.execute,
+    timeoutMs: context.timeoutMs
+  });
 
   const report = buildRunReport({
     runId,
     outputPaths,
     mode: context.execute ? "execution" : "dry-run",
     target: targetSelector,
+    targetIdentity,
     from: fromSelector,
     state: {
       id: state.id,
@@ -134,6 +140,7 @@ export async function runScenarioCommand(flags) {
       generatedAt: new Date().toISOString(),
       mode,
       runId,
+      ...(targetIdentity ? { targetIdentity } : {}),
       reportPath: outputPaths.markdown,
       jsonPath: outputPaths.json,
       summaryPath: outputPaths.summary,

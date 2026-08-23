@@ -24,6 +24,7 @@ kova.report.v1
   "mode": "dry-run",
   "profile": null,
   "target": "runtime:stable",
+  "targetIdentity": null,
   "from": null,
   "state": {
     "id": "fresh",
@@ -78,6 +79,28 @@ kova.report.v1
 `targetCleanup` is normally `null`. For `local-build:<repo>` targets, it records
 whether Kova removed the generated temporary OCM runtime after execution, or why
 it retained that runtime.
+
+`targetIdentity` is present for exact `npm:<semver>` targets. Dry runs and
+executions without one unambiguous installed OCM runtime emit a diagnostic
+version-only identity with `npmIntegrity: null`. An execution binds the exact
+candidate only when OCM reports the requested and resolved version together
+with its npm SHA-512 integrity:
+
+```json
+{
+  "schemaVersion": "kova.target.identity.v1",
+  "requestedSelector": "npm:2026.7.1-2",
+  "resolvedVersion": "2026.7.1-2",
+  "npmIntegrity": "sha512-...",
+  "gitSha": null,
+  "buildDigest": null
+}
+```
+
+Moving selectors do not produce this object. Consumers must treat an identity
+without `npmIntegrity`, `gitSha`, or `buildDigest` as version-only diagnostic
+metadata, never as exact candidate evidence. The report, JSON receipt, and
+artifact bundle manifest carry the same identity.
 
 Report bundles include `artifact-index.json` at the archive root. The index
 lists every file staged into the bundle with its original relative `path`,
@@ -622,6 +645,14 @@ continues comparing status and other non-resource metrics.
   "schemaVersion": "kova.run.receipt.v1",
   "mode": "dry-run",
   "runId": "kova-2026-04-29T000000Z",
+  "targetIdentity": {
+    "schemaVersion": "kova.target.identity.v1",
+    "requestedSelector": "npm:1.2.3",
+    "resolvedVersion": "1.2.3",
+    "npmIntegrity": null,
+    "gitSha": null,
+    "buildDigest": null
+  },
   "reportPath": "/path/to/report.md",
   "jsonPath": "/path/to/report.json",
   "performance": {
@@ -776,6 +807,14 @@ When a report contains failures, the structured summary also includes
   "schemaVersion": "kova.matrix.run.receipt.v1",
   "mode": "execution",
   "runId": "kova-2026-04-29T000000Z",
+  "targetIdentity": {
+    "schemaVersion": "kova.target.identity.v1",
+    "requestedSelector": "npm:2026.7.1-2",
+    "resolvedVersion": "2026.7.1-2",
+    "npmIntegrity": "sha512-...",
+    "gitSha": null,
+    "buildDigest": null
+  },
   "profile": {
     "id": "smoke",
     "title": "Smoke Matrix",
@@ -1038,3 +1077,6 @@ Kova stages and preflights the complete artifact set before publication. It
 omits raw Node traces only when a bundle limit would otherwise be exceeded,
 never publishes an arbitrary subset of that class, and fails closed if the
 remaining mandatory artifacts still exceed a limit.
+
+The bundle's `manifest.json` copies `targetIdentity` from the source report so
+an importer can bind the report, receipt, and bundle to the same candidate.
