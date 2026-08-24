@@ -712,7 +712,7 @@
         },
         "status-cli": {
           "peakRssMb": 500,
-          "maxCpuPercent": 200
+          "maxCpuPercent": 275
         }
       },
       "diagnostics": {
@@ -1086,7 +1086,7 @@
         },
         "status-cli": {
           "peakRssMb": 900,
-          "maxCpuPercent": 200
+          "maxCpuPercent": 275
         },
         "plugin-cli": {
           "peakRssMb": 900,
@@ -1184,7 +1184,7 @@
         },
         "status-cli": {
           "peakRssMb": 900,
-          "maxCpuPercent": 200
+          "maxCpuPercent": 275
         },
         "plugin-cli": {
           "peakRssMb": 950,
