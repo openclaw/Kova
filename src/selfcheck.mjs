@@ -21631,6 +21631,9 @@ async function targetRuntimeEvidenceCheck() {
     const commands = [];
     const execute = async (command, options) => {
       commands.push({ command, timeoutMs: options.timeoutMs });
+      if (command.includes("'--port'")) {
+        return { status: 1, stderr: 'OpenClaw does not recognize option "--port".' };
+      }
       return {
         status: 0,
         stdout: JSON.stringify({ nodeVersion: "v22.22.3", pid: 4242, port: 19000 })
@@ -21639,8 +21642,8 @@ async function targetRuntimeEvidenceCheck() {
     const trusted = await collectTargetRuntime("Team Env", 4242, 19000, 5000, execute);
     assertEqual(
       commands[0]?.command,
-      "ocm @'Team Env' -- 'gateway' 'call' 'system.info' '--port' '19000' '--json'",
-      "target runtime queries the OCM-recorded local Gateway"
+      "ocm @'Team Env' -- 'gateway' 'call' 'system.info' '--json'",
+      "target runtime uses supported RPC options in the selected OCM env"
     );
     assertEqual(trusted.collectionStatus, "ok", "matching Gateway runtime identity is trusted");
     assertEqual(trusted.nodeVersion, "v22.22.3", "Gateway-reported Node version is retained");
@@ -21648,6 +21651,10 @@ async function targetRuntimeEvidenceCheck() {
     const mismatch = await collectTargetRuntime("Team Env", 4343, 19000, 5000, execute);
     assertEqual(mismatch.collectionStatus, "identity-mismatch", "Gateway identity mismatch is untrusted");
     assertEqual(mismatch.nodeVersion, null, "PID mismatch cannot select a Node baseline");
+
+    const wrongPort = await collectTargetRuntime("Team Env", 4242, 19001, 5000, execute);
+    assertEqual(wrongPort.collectionStatus, "identity-mismatch", "Gateway port mismatch is untrusted");
+    assertEqual(wrongPort.nodeVersion, null, "port mismatch cannot select a Node baseline");
 
     const malformed = await collectTargetRuntime("Team Env", 4242, 19000, 5000, async () => ({
       status: 0,

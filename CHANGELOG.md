@@ -11,6 +11,7 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Avoid false blocked runtime-identity checks by using supported Gateway RPC options while still verifying the reported PID and port against OCM.
 - Keep profiled performance evidence diagnostic, exclude instrumented runs from normal baselines and release approval, and scope deep profiles to product commands. Thanks @vincentkoc. (#82, #89)
 - Allow local runtime packaging and dependency installation up to ten minutes instead of failing at the two-minute scenario timeout. Thanks @vincentkoc. (#88)
 - Recover local-agent startup attribution from timeline spans and isolate process-cold startup from warmup in agent cold/warm scenarios. Thanks @vincentkoc. (#86, #91)
