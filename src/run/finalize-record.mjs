@@ -126,13 +126,12 @@ export async function collectTargetRuntime(
     return evidence;
   }
 
+  // OCM supplies the env's connection settings; gateway call has no --port option.
   const result = await execute(
     ocmAt(envName, [
       "gateway",
       "call",
       "system.info",
-      "--port",
-      String(evidence.expectedGatewayPort),
       "--json"
     ]),
     { timeoutMs }
