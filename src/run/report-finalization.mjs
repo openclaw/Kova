@@ -8,6 +8,7 @@ import {
 } from "../performance/baselines.mjs";
 import { platformInfo } from "../platform.mjs";
 import { summarizeRecords } from "../reporting/report.mjs";
+import { reportTargetIdentity } from "../target-identity.mjs";
 
 const REPORT_SCHEMA_VERSION = "kova.report.v1";
 
@@ -28,6 +29,7 @@ export function buildRunReport({
   gate = null,
   platform = platformInfo()
 }) {
+  const targetIdentity = reportTargetIdentity(records);
   return {
     schemaVersion: REPORT_SCHEMA_VERSION,
     generatedAt: new Date().toISOString(),
@@ -36,6 +38,7 @@ export function buildRunReport({
     mode,
     ...(profile ? { profile } : {}),
     target,
+    ...(targetIdentity ? { targetIdentity } : {}),
     from,
     controls,
     auth,

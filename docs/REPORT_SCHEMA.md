@@ -79,6 +79,43 @@ kova.report.v1
 whether Kova removed the generated temporary OCM runtime after execution, or why
 it retained that runtime.
 
+`targetIdentity` is optional exact-candidate evidence for `npm:<semver>` targets:
+
+```json
+{
+  "schemaVersion": "kova.target.identity.v1",
+  "requestedSelector": "npm:2026.7.1-2",
+  "resolvedVersion": "2026.7.1-2",
+  "npmIntegrity": "sha512-<canonical base64 encoding of 64 digest bytes>",
+  "gitSha": null,
+  "buildDigest": null
+}
+```
+
+Kova captures this identity immediately after a successful target `ocm start`
+or `ocm upgrade`, using the runtime name in that operation's JSON receipt and
+`ocm runtime show <bound-name> --json`. The installed runtime must report the
+requested version and a canonical SHA-512 npm integrity. Global inventory,
+selector matches, and post-cleanup version probes never establish identity.
+The captured value survives later scenario failures, rollback, and cleanup.
+
+Dry runs, moving selectors, failed provisioning, missing metadata, and invalid
+digests omit `targetIdentity`; the requested `target` remains diagnostic only.
+Command results retain the captured identity (or `null` for an unattested target
+binding attempt), and scenario records emit it only when their target binding
+attempts agree. A report emits one identity only when every executed record has
+the same identity; skipped records do not contribute. Mixed or missing bindings
+omit the report-level field while preserving each record's evidence.
+
+Run and matrix JSON receipts and bundle `manifest.json` copy the report's
+optional identity verbatim. An identity proves which npm candidate was bound,
+not that the scenario passed or that OpenClaw reached readiness.
+
+With OCM installed, `node tests/report-identity-ocm.mjs artifacts/identity-proof`
+reproduces the failed-provisioning fixture and a successful binding through both
+run and matrix receipts. It uses an isolated OCM store, a loopback registry, and
+a tiny fixture package; this is report-path proof, not OpenClaw readiness proof.
+
 Report bundles include `artifact-index.json` at the archive root. The index
 lists every file staged into the bundle with its original relative `path`,
 portable `archivePath`, byte size, and SHA-256 digest. Kova maps names that

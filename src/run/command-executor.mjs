@@ -18,6 +18,7 @@ import { commandReceivesNodeProfiler } from "../performance/instrumentation.mjs"
 import { resolveOwnedMockProviderPid } from "../process-safety.mjs";
 import { assertSafeScenarioCommand } from "../safety.mjs";
 import { safeSegment } from "./phase-commands.mjs";
+import { captureTargetIdentity } from "../target-identity.mjs";
 
 export async function runScenarioCommand(command, context, envName, artifactDir, phase, commandIndex, authPolicy = null) {
   return runCommandWithContext(command, context, envName, artifactDir, phase, commandIndex, authPolicy, true);
@@ -75,6 +76,11 @@ async function runCommandWithContext(command, context, envName, artifactDir, pha
       trackedRolePids,
       artifactPath: join(collectorArtifactDirs(artifactDir).resourceSamples, `${safeSegment(phaseId)}-${commandIndex + 1}.jsonl`)
     }
+  });
+  await captureTargetIdentity(result, context.targetPlan, envName, {
+    timeoutMs: context.timeoutMs,
+    env: context.commandEnv,
+    redactValues: authPolicy?.redactionValues ?? context.auth?.redactionValues ?? []
   });
   normalizeOptionalCommandResult(result);
   tagCommandResult(result, phase);

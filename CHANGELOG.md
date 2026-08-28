@@ -10,6 +10,7 @@ All notable changes to Kova are documented in this file.
 
 ### Fixed
 
+- Bind exact npm target identity to successful OCM start/upgrade receipts before rollback or cleanup, and omit identity claims when provisioning fails. Thanks @pdurlej.
 - Restrict command-output assertions to literal marker matching and pin CI's token to read-only repository access.
 - Route version bumps through pull requests, gate signed tags on exact-main CI, avoid repeating the full suite during tag builds, and skip ClawSweeper token creation for ordinary comments.
 - Keep agent CLI, agent runtime, and mock-provider resource roles disjoint so RSS gates report the owning process once.
