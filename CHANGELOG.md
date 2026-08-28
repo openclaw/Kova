@@ -2,27 +2,31 @@
 
 All notable changes to Kova are documented in this file.
 
-## [Unreleased]
+## [0.1.2] - 2026-08-28
 
-### Changed
+### Highlights
 
-- Refresh CLI and website dependencies, GitHub Actions pins, and the checksum-verified OCM CI runtime to 0.2.33.
+- Reports and receipts can no longer claim an unrelated runtime's digest after failed provisioning: capture exact npm target identity only from successful runtime bindings, before rollback or cleanup. Thanks @pdurlej. (#98)
+- Refresh CLI and website dependencies, including Astro 7.2.9, and clear all three Dependabot alerts. (#97)
 
 ### Fixed
 
-- Bind exact npm target identity to successful OCM start/upgrade receipts before rollback or cleanup, and omit identity claims when provisioning fails. Thanks @pdurlej.
-- Restrict command-output assertions to literal marker matching and pin CI's token to read-only repository access.
-- Route version bumps through pull requests, gate signed tags on exact-main CI, avoid repeating the full suite during tag builds, and skip ClawSweeper token creation for ordinary comments.
-- Keep agent CLI, agent runtime, and mock-provider resource roles disjoint so RSS gates report the owning process once.
-- Emit canonical OpenClaw plugin install records from plugin-index state fixtures so migration and metadata scenarios reach the intended runtime paths.
-- Calibrate the bundled-plugin restart overlap RSS budget against repeated OpenClaw main release runs.
-- Calibrate the fresh-install status CLI RSS budget against repeated release-run evidence.
-- Calibrate the gateway pressure scenario's status CLI RSS budget against repeated release-run evidence.
-- Calibrate the gateway pressure scenario's plugin CLI RSS budget against repeated release-run evidence.
-- Keep the agent cold/warm scenario's RSS gate aligned with the calibrated agent CLI surface budget.
-- Give release-shaped plugin and agent CLI probes measured RSS headroom while keeping their scenario-specific regression caps.
-- Run the full release gate once per version bump and automatically select the local SSH key authorized by the repository release policy.
-- Move CI and release workflows off deprecated Node 20 action runtimes and pin their replacements.
+- Keep profiled performance evidence diagnostic, exclude instrumented runs from normal baselines and release approval, and scope deep profiles to product commands. Thanks @vincentkoc. (#82, #89)
+- Allow local runtime packaging and dependency installation up to ten minutes instead of failing at the two-minute scenario timeout. Thanks @vincentkoc. (#88)
+- Recover local-agent startup attribution from timeline spans and isolate process-cold startup from warmup in agent cold/warm scenarios. Thanks @vincentkoc. (#86, #91)
+- Attribute agent CLI, agent runtime, and mock-provider memory to distinct process roles so RSS gates count each process once. Thanks @vincentkoc. (#80)
+- Calibrate fresh-install, gateway pressure, bundled-plugin restart, and agent cold/warm memory budgets against repeated release-shaped runs, using the gateway's Node major while retaining scenario-specific regression caps. Thanks @vincentkoc and @RomneyDa. (#73, #74, #75, #77, #93)
+- Use canonical OpenClaw plugin install records and prepare many-plugin pressure fixtures before cold startup while preserving older-release compatibility. Thanks @vincentkoc. (#79, #87)
+- Stop requiring retired runtime dependency staging spans, and add mock-provider alias coverage. Thanks @vincentkoc. (#81, #90)
+- Handle proxy log stream errors without crashing the network frontage process. Thanks @SebTardif. (#92)
+
+### Internal
+
+- Route version bumps through pull requests, require passing CI for the exact main commit before signing tags, and select a repository-authorized SSH signing key automatically.
+- Keep the full release gate on the version-bump CI path and avoid repeating it during tag builds; retain packaged-install self-checks.
+- Restrict command-output assertions to literal markers, keep CI tokens read-only, and skip ClawSweeper token creation for ordinary comments.
+- Refresh pinned GitHub Actions off deprecated Node 20 runtimes and update the checksum-verified OCM CI runtime to 0.2.33.
+- Refresh the README and align the pull request template. Thanks @hannesrudolph. (#72, #83)
 
 ## [0.1.1] - 2026-07-12
 
