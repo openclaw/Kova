@@ -4,6 +4,10 @@ All notable changes to Kova are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Refresh CLI and website dependencies, GitHub Actions pins, and the checksum-verified OCM CI runtime to 0.2.33.
+
 ### Fixed
 
 - Restrict command-output assertions to literal marker matching and pin CI's token to read-only repository access.
