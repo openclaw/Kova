@@ -134,6 +134,7 @@ export async function runScenarioCommand(flags) {
       generatedAt: new Date().toISOString(),
       mode,
       runId,
+      ...(report.targetIdentity ? { targetIdentity: report.targetIdentity } : {}),
       reportPath: outputPaths.markdown,
       jsonPath: outputPaths.json,
       summaryPath: outputPaths.summary,

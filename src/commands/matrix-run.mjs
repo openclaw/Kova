@@ -162,6 +162,7 @@ export async function runMatrixRun(flags) {
       generatedAt: new Date().toISOString(),
       mode: report.mode,
       runId,
+      ...(report.targetIdentity ? { targetIdentity: report.targetIdentity } : {}),
       profile: profileSummary(profile),
       reportPath: outputPaths.markdown,
       jsonPath: outputPaths.json,

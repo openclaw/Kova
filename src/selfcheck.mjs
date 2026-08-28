@@ -87,6 +87,7 @@ import { validateRegistryReferences } from "./registries/validate.mjs";
 import { isMissingOcmResource } from "./ocm/missing-resource.mjs";
 import { assertSafeScenarioCommand, assertSingleTopLevelShellCommand } from "./safety.mjs";
 import { resolveTarget } from "./targets.mjs";
+import { checkTargetIdentityBinding, checkTargetIdentityOutputs } from "./selfcheck/target-identity.mjs";
 import {
   commandResultFailureReason,
   commandResultFailed,
@@ -291,6 +292,8 @@ async function runScopedSelfCheck(flags, scope, workspace) {
   checks.push(await syntaxCheck());
   checks.push(await webPayloadContractCheck(tmp));
   checks.push(commandResultContractCheck());
+  checks.push(await inlineCheck("target-identity-binding", checkTargetIdentityBinding));
+  checks.push(await inlineCheck("target-identity-outputs", () => checkTargetIdentityOutputs(tmp)));
     checks.push(await jsonCommandCheck("version-json", "node bin/kova.mjs version --json", (data) => {
       assertEqual(data.schemaVersion, "kova.version.v1", "version schema");
       assertString(data.version, "version");

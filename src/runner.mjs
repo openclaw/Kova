@@ -32,6 +32,7 @@ import { artifactsDir } from "./paths.mjs";
 import { plannedNetworkFrontage } from "./network-frontage.mjs";
 import { assertKovaEnvName } from "./safety.mjs";
 import { join } from "node:path";
+import { recordTargetIdentity } from "./target-identity.mjs";
 export { createRunId } from "./run/run-id.mjs";
 
 export function buildDryRunRecord(scenario, context) {
@@ -201,6 +202,8 @@ export async function executeScenario(scenario, context) {
       }
     }
   } finally {
+    const targetIdentity = recordTargetIdentity(record);
+    if (targetIdentity) record.targetIdentity = targetIdentity;
     await teardownScenario(record, scenario, context, envName, artifactDir, authPolicy);
   }
 
