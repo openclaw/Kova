@@ -33,7 +33,7 @@
     "json5": "2.2.3",
     "mock-ai-provider": "0.1.2",
     "string-width": "^8.2.2",
-    "tar-stream": "3.2.0",
+    "tar-stream": "3.2.1",
     "unicode-case-folding": "1.1.1",
     "wrap-ansi": "^10.0.0",
     "zod": "^4.4.3"
