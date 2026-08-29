@@ -294,7 +294,8 @@ async function readProcessCommand(pid) {
   try {
     const result = await execFileAsync("ps", ["-ww", "-p", String(pid), "-o", "command="], {
       encoding: "utf8",
-      maxBuffer: 1024 * 1024
+      maxBuffer: 1024 * 1024,
+      timeout: 2000
     });
     const command = result.stdout.trim();
     return command || null;
