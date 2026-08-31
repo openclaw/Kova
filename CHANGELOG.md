@@ -2,6 +2,8 @@
 
 All notable changes to Kova are documented in this file.
 
+## [0.1.4] - Unreleased
+
 ## [0.1.3] - 2026-08-30
 
 ### Fixed
