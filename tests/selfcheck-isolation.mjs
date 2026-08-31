@@ -14,11 +14,15 @@ import { collectEnvMetrics } from "../src/metrics.mjs";
 import { runScenarioCommand } from "../src/run/command-executor.mjs";
 import { executeTargetSetup } from "../src/run/target-setup.mjs";
 import { resolveTarget } from "../src/targets.mjs";
+import { runProcessCommandTimeoutChecks } from "./process-command-timeout.mjs";
 import { runProxyLogStreamChecks } from "./proxy-log-stream.mjs";
 
 const root = await mkdtemp(join(tmpdir(), "kova-selfcheck-isolation-test-"));
 
 try {
+  const processCommandRoot = join(root, "process-command-timeout");
+  await mkdir(processCommandRoot);
+  await runProcessCommandTimeoutChecks(processCommandRoot);
   const proxyLogRoot = join(root, "proxy-log-stream");
   await mkdir(proxyLogRoot);
   await runProxyLogStreamChecks(proxyLogRoot);

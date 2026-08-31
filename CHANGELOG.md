@@ -4,6 +4,10 @@ All notable changes to Kova are documented in this file.
 
 ## [0.1.3] - Unreleased
 
+### Fixed
+
+- Bound mock-provider process inspection to two seconds so a stuck `ps` cannot indefinitely block mock-auth runs or cleanup. Thanks @SebTardif. (#103)
+
 ## [0.1.2] - 2026-08-28
 
 ### Highlights
