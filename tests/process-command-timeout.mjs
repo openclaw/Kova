@@ -19,6 +19,7 @@ export async function runProcessCommandTimeoutChecks(parentDir) {
 
   const previousPath = process.env.PATH;
   process.env.PATH = `${binDir}${delimiter}${previousPath}`;
+  let hangProbeTimer;
   try {
     let settled = "pending";
     let inspectError = null;
@@ -43,7 +44,7 @@ export async function runProcessCommandTimeoutChecks(parentDir) {
     const outcome = await Promise.race([
       inspect.then(() => "completed").catch(() => "completed"),
       new Promise((resolveOutcome) => {
-        setTimeout(() => resolveOutcome("hung"), hangProbeMs);
+        hangProbeTimer = setTimeout(() => resolveOutcome("hung"), hangProbeMs);
       })
     ]);
 
@@ -55,6 +56,7 @@ export async function runProcessCommandTimeoutChecks(parentDir) {
       "timed-out ps must surface a child timeout"
     );
   } finally {
+    clearTimeout(hangProbeTimer);
     process.env.PATH = previousPath;
   }
 }
