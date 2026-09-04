@@ -4,6 +4,10 @@ All notable changes to Kova are documented in this file.
 
 ## [0.1.4] - Unreleased
 
+### Internal
+
+- Refresh compatible CLI and website dependencies, including Zod 4.5.4 and Astro 7.3.1, and update the pinned OCM CI runtime, pnpm hydration toolchain, and release action.
+
 ## [0.1.3] - 2026-08-30
 
 ### Fixed
