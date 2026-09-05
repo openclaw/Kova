@@ -2,7 +2,9 @@
 
 All notable changes to Kova are documented in this file.
 
-## [0.1.4] - Unreleased
+## [0.1.4] - 2026-09-05
+
+**Highlights:** Setup now recovers from an unresponsive OCM version probe, and fresh validation machines provision and hydrate reliably.
 
 ### Fixed
 
@@ -10,8 +12,8 @@ All notable changes to Kova are documented in this file.
 
 ### Internal
 
-- Update Crabbox hydration to pnpm 12.3.4 with a portable install step supported by local Actions hydration.
 - Restore AWS validation provisioning by sizing the root volume for the current 400 GB base image.
+- Update Crabbox hydration to pnpm 12.3.4 with a portable install step supported by local Actions hydration.
 - Refresh the transitive bare-path and bare-url patch releases used by archive dependencies.
 - Refresh compatible CLI and website dependencies, including Zod 4.5.4 and Astro 7.3.1, and update the pinned OCM CI runtime, pnpm hydration toolchain, and release action.
 
