@@ -2,6 +2,8 @@
 
 All notable changes to Kova are documented in this file.
 
+## [0.1.5] - Unreleased
+
 ## [0.1.4] - 2026-09-05
 
 **Highlights:** Setup now recovers from an unresponsive OCM version probe, and fresh validation machines provision and hydrate reliably.
