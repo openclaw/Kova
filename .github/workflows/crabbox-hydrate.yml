@@ -31,7 +31,7 @@ permissions:
 
 env:
   NODE_VERSION: "24"
-  PNPM_VERSION: "11.25.0"
+  PNPM_VERSION: "12.3.4"
 
 jobs:
   hydrate:
@@ -43,10 +43,6 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.ref }}
 
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -57,6 +53,9 @@ jobs:
           set -euo pipefail
           git fetch --no-tags --depth=50 origin "+refs/heads/main:refs/remotes/origin/main"
           npm ci
+          npm install --global --prefix "$RUNNER_TEMP/kova-pnpm" "pnpm@$PNPM_VERSION"
+          export PATH="$RUNNER_TEMP/kova-pnpm/bin:$PATH"
+          echo "$RUNNER_TEMP/kova-pnpm/bin" >> "$GITHUB_PATH"
           node --version
           npm --version
           pnpm --version
