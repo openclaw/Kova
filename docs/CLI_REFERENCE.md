@@ -62,6 +62,9 @@ runtime rather than an OpenClaw development command.
 
 ## Execution controls
 
+Setup bounds its OCM version probe to 30 seconds. A timed-out probe fails the
+required prerequisite check, reports the timeout, and makes setup exit nonzero.
+
 `run` and `matrix run` are dry-run unless `--execute` is present. Matrix runs
 also accept `--parallel`, `--repeat`, `--include`, `--exclude`, and `--gate`.
 Kova defaults to deterministic mock auth; use `--auth live` only after

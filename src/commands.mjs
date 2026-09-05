@@ -35,7 +35,9 @@ export function checkCommand(command, args, options = {}) {
   const result = spawnSync(command, args, {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
-    timeout: timeoutMs
+    timeout: timeoutMs,
+    // spawnSync keeps waiting if the child ignores the timeout signal.
+    killSignal: "SIGKILL"
   });
 
   return {
