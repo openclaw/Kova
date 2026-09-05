@@ -14,12 +14,16 @@ import { collectEnvMetrics } from "../src/metrics.mjs";
 import { runScenarioCommand } from "../src/run/command-executor.mjs";
 import { executeTargetSetup } from "../src/run/target-setup.mjs";
 import { resolveTarget } from "../src/targets.mjs";
+import { runCheckCommandTimeoutChecks } from "./check-command-timeout.mjs";
 import { runProcessCommandTimeoutChecks } from "./process-command-timeout.mjs";
 import { runProxyLogStreamChecks } from "./proxy-log-stream.mjs";
 
 const root = await mkdtemp(join(tmpdir(), "kova-selfcheck-isolation-test-"));
 
 try {
+  const checkCommandRoot = join(root, "check-command-timeout");
+  await mkdir(checkCommandRoot);
+  await runCheckCommandTimeoutChecks(checkCommandRoot);
   const processCommandRoot = join(root, "process-command-timeout");
   await mkdir(processCommandRoot);
   await runProcessCommandTimeoutChecks(processCommandRoot);
