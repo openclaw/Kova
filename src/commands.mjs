@@ -5,6 +5,7 @@ import { startResourceSampler } from "./collectors/resources.mjs";
 import { repoRoot } from "./paths.mjs";
 
 const defaultCommandTimeoutMs = 120000;
+const defaultCheckCommandTimeoutMs = 30000;
 const commandEnvStorage = new AsyncLocalStorage();
 const timeoutTerminationGraceMs = 3000;
 const shutdownTerminationGraceMs = 1000;
@@ -29,15 +30,21 @@ export function runWithCommandEnv(env, callback) {
   );
 }
 
-export function checkCommand(command, args) {
+export function checkCommand(command, args, options = {}) {
+  const timeoutMs = normalizeCheckCommandTimeoutMs(options.timeoutMs);
   const result = spawnSync(command, args, {
     encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"]
+    stdio: ["ignore", "pipe", "pipe"],
+    timeout: timeoutMs
   });
 
   return {
     command: [command, ...args].join(" "),
     status: result.status,
+    signal: result.signal ?? null,
+    error: result.error,
+    timedOut: result.error?.code === "ETIMEDOUT",
+    timeoutMs,
     stdout: result.stdout ?? "",
     stderr: result.stderr ?? ""
   };
@@ -370,6 +377,14 @@ function normalizeTimeoutMs(value) {
   const timeoutMs = value === undefined ? defaultCommandTimeoutMs : Number(value);
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1) {
     throw new Error(`runCommand timeoutMs must be a positive integer, got ${JSON.stringify(value)}`);
+  }
+  return timeoutMs;
+}
+
+function normalizeCheckCommandTimeoutMs(value) {
+  const timeoutMs = value === undefined ? defaultCheckCommandTimeoutMs : Number(value);
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1) {
+    throw new Error(`checkCommand timeoutMs must be a positive integer, got ${JSON.stringify(value)}`);
   }
   return timeoutMs;
 }

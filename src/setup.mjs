@@ -445,7 +445,9 @@ function commandAvailableCheck(command, args, options = {}) {
     required: options.required === true,
     status: result.status === 0 ? "PASS" : "FAIL",
     command: [command, ...args].join(" "),
-    message: result.status === 0 ? result.stdout.trim() : result.stderr.trim() || "not available"
+    message: result.timedOut
+      ? `timed out after ${result.timeoutMs}ms`
+      : result.status === 0 ? result.stdout.trim() : result.stderr.trim() || "not available"
   };
 }
 
