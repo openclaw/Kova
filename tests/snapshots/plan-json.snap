@@ -17422,7 +17422,7 @@
       "targetKinds": null,
       "diagnostics": null,
       "calibration": {
-        "surfaceCount": 18,
+        "surfaceCount": 19,
         "roleCount": 18
       },
       "gate": {
