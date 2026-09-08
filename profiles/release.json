@@ -78,6 +78,13 @@
       }
     },
     "surfaces": {
+      "fresh-install": {
+        "roleThresholds": {
+          "gateway": {
+            "maxCpuPercent": 300
+          }
+        }
+      },
       "release-runtime-startup": {
         "thresholds": {
           "gatewayReadyMs": 45000,

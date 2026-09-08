@@ -711,6 +711,8 @@ async function runScopedSelfCheck(flags, scope, workspace) {
       assertEqual(releaseProfile?.purpose, "release", "release profile purpose");
       assertEqual((releaseProfile?.calibration?.surfaceCount ?? 0) > 0, true, "release profile calibrated surfaces");
       assertEqual((releaseProfile?.calibration?.roleCount ?? 0) > 0, true, "release profile calibrated roles");
+      const freshSurface = data.surfaces.find((surface) => surface.id === "fresh-install");
+      assertEqual(freshSurface?.roleThresholds?.gateway?.maxCpuPercent, 250, "fresh install retains the default gateway CPU cap");
       const officialSurface = data.surfaces.find((surface) => surface.id === "official-plugin-install");
       assertEqual(Boolean(officialSurface), true, "official plugin surface present");
       assertArrayNotEmpty(officialSurface?.purposes, "official plugin surface purposes");
@@ -21302,15 +21304,27 @@ async function releaseResourceCalibrationCheck() {
       freshSurface,
       gatewaySurface,
       bundledPluginSurface,
-      releaseProfile
+      releaseProfile,
+      smokeProfile
     ] = await Promise.all([
       readSelfCheckJson("scenarios", "fresh-install.json"),
       readSelfCheckJson("scenarios", "gateway-performance.json"),
       readSelfCheckJson("surfaces", "fresh-install.json"),
       readSelfCheckJson("surfaces", "gateway-performance.json"),
       readSelfCheckJson("surfaces", "bundled-plugin-startup.json"),
-      readSelfCheckJson("profiles", "release.json")
+      readSelfCheckJson("profiles", "release.json"),
+      readSelfCheckJson("profiles", "smoke.json")
     ]);
+
+    for (const profile of [null, smokeProfile]) {
+      const policy = resolveThresholdPolicy({
+        profile,
+        surface: freshSurface,
+        scenario: freshScenario,
+        nodeVersion: "v24.19.0"
+      });
+      assertEqual(policy.roleThresholds?.gateway?.maxCpuPercent, 250, "non-release fresh install gateway CPU cap");
+    }
 
     const contracts = [
       {
@@ -21318,6 +21332,7 @@ async function releaseResourceCalibrationCheck() {
         scenario: freshScenario,
         surface: freshSurface,
         primaryRssMb: 1177,
+        gatewayCpuPercent: 300,
         roles: { gateway: 1177, "status-cli": 900, "plugin-cli": 900 }
       },
       {
@@ -21346,6 +21361,9 @@ async function releaseResourceCalibrationCheck() {
       if (contract.primaryRssMb !== null) {
         assertEqual(policy.thresholds?.peakRssMb, contract.primaryRssMb, `${contract.id} resolved primary RSS cap`);
         assertEqual(contract.surface?.thresholds?.peakRssMb?.absoluteCeilingMb, 1200, `${contract.id} absolute primary RSS ceiling`);
+      }
+      if (contract.gatewayCpuPercent !== undefined) {
+        assertEqual(policy.roleThresholds?.gateway?.maxCpuPercent, contract.gatewayCpuPercent, `${contract.id} release-profile gateway CPU cap`);
       }
       for (const [role, peakRssMb] of Object.entries(contract.roles)) {
         assertEqual(contract.surface?.processRoles?.includes(role), true, `${contract.id} declares ${role}`);
