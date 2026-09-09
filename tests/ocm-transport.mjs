@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -19,7 +20,7 @@ try {
   await writeFile(join(bin, "ocm"), "#!/bin/sh\nprintf ordinary-ocm\n", { mode: 0o755 });
   await writeFile(prefix, `
 import assert from "node:assert/strict";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, closeSync, writeSync } from "node:fs";
 import { spawn } from "node:child_process";
 const args = process.argv.slice(2);
 assert.equal(args.shift(), "/usr/bin/env");
@@ -31,8 +32,13 @@ while (args[0]?.includes("=") && !args[0].startsWith("/")) {
   const pair = args.shift(), index = pair.indexOf("=");
   env[pair.slice(0, index)] = pair.slice(index + 1);
 }
-appendFileSync(${JSON.stringify(log)}, JSON.stringify({ pid: process.pid, cwd, env, args }) + "\\n");
+appendFileSync(${JSON.stringify(log)}, JSON.stringify({ pid: process.pid, cwd, env, args, launchedAt: Date.now() }) + "\\n");
 if (args.includes("wait-for-timeout")) {
+  setInterval(() => {}, 1000);
+} else if (args.includes("close-stdout-and-wait")) {
+  writeSync(1, "complete-payload-without-exit");
+  closeSync(1);
+  appendFileSync(${JSON.stringify(log)}, JSON.stringify({ pid: process.pid, stdoutClosedAt: Date.now() }) + "\\n");
   setInterval(() => {}, 1000);
 } else if (args.includes("inherited-pipe")) {
   const holder = spawn(process.execPath, ["-e", "setTimeout(() => {}, 1800)"], { stdio: "inherit" });
@@ -109,6 +115,7 @@ if (args.includes("wait-for-timeout")) {
   assert.equal(JSON.parse((await readFile(ocmLog, "utf8")).trim().split("\n").at(-1)).cwd, alternateCwd);
   await verifyActiveSnapshot({ root, env, transport });
   await verifyExports({ root, home, env, log });
+  await verifyClosedStdoutDeadline({ root, env, log });
   await verifyStateWriters({ root, home, env, log });
   await verifyRuntimeHelper({ env });
   await verifyScenarioLifecycle({ root, env, ocmLog });
@@ -218,6 +225,115 @@ async function verifyExports({ root, home, env, log }) {
   await writeFile(join(candidate, "empty"), "");
   await exportOcmArtifact(envName, "empty", target, { ...options, maxBytes: 0 });
   assert.equal((await readFile(target)).length, 0);
+}
+
+async function verifyClosedStdoutDeadline({ root, env, log }) {
+  const target = join(root, "closed-stdout", "retained");
+  const previous = "previous-complete-artifact";
+  await mkdir(dirname(target));
+  await writeFile(target, previous);
+  const worker = spawn(process.execPath, ["--input-type=module", "-e", `
+    import { exportOcmArtifact } from ${JSON.stringify(join(repoRoot, "src/ocm/transport.mjs"))};
+    process.once("message", async ({ env, target }) => {
+      const deadlineEpochMs = Date.now() + 500;
+      process.send({ deadlineEpochMs });
+      let outcome;
+      try {
+        await exportOcmArtifact("closed-stdout", "close-stdout-and-wait", target, {
+          env, maxBytes: 64, deadlineEpochMs
+        });
+        outcome = { kind: "resolved" };
+      } catch (error) {
+        outcome = { kind: "rejected", message: error.message };
+      }
+      process.send({ outcome }, () => process.disconnect());
+    });
+  `], { detached: true, stdio: ["ignore", "ignore", "pipe", "ipc"] });
+  let deadlineEpochMs;
+  let outcome;
+  let stderr = "";
+  let timer;
+  let launch;
+  let closed;
+  let observed;
+  worker.stderr.on("data", (chunk) => { stderr = (stderr + chunk).slice(0, 2000); });
+  worker.on("message", (message) => {
+    deadlineEpochMs ??= message.deadlineEpochMs;
+    outcome ??= message.outcome;
+  });
+  const terminal = new Promise((done) => {
+    worker.once("error", (error) => done({ error: error.message }));
+    worker.once("close", (code, signal) => done({ code, signal }));
+  });
+  worker.send({ env, target });
+  try {
+    const result = await Promise.race([
+      terminal,
+      new Promise((done) => { timer = setTimeout(() => done({ watchdog: true }), 4000); })
+    ]);
+    const calls = (await readFile(log, "utf8")).trim().split("\n").map(JSON.parse);
+    launch = calls.findLast((call) => call.args?.includes("close-stdout-and-wait"));
+    closed = calls.findLast((call) => call.pid === launch?.pid && call.stdoutClosedAt);
+    observed = {
+      result, outcome, deadlineEpochMs, stderr,
+      launcherAlive: launch ? ownedChildAlive(launch.pid) : false,
+      retainedUnchanged: await readFile(target, "utf8") === previous,
+      files: await readdir(dirname(target))
+    };
+  } finally {
+    clearTimeout(timer);
+    // The outer watchdog can only fail this case. It cleans up this test's
+    // dedicated worker/exporter group even when the production await hangs.
+    if (worker.pid) {
+      try { process.kill(-worker.pid, "SIGKILL"); }
+      catch (error) { if (error.code !== "ESRCH") throw error; }
+    }
+    let cleanupTimer;
+    try {
+      const joined = await Promise.race([
+        terminal.then(() => true),
+        new Promise((done) => { cleanupTimer = setTimeout(() => done(false), 2000); })
+      ]);
+      assert.equal(joined, true, "outer test cleanup must join its worker");
+    } finally {
+      clearTimeout(cleanupTimer);
+    }
+    if (launch) {
+      const cleanupDeadline = Date.now() + 2000;
+      while (ownedChildAlive(launch.pid) && Date.now() < cleanupDeadline) {
+        await new Promise((done) => setTimeout(done, 20));
+      }
+      assert.equal(ownedChildAlive(launch.pid), false, "outer test cleanup must finish its exporter");
+    }
+  }
+  assert.ok(launch?.launchedAt < deadlineEpochMs, `launcher must start before deadline: ${stderr}`);
+  assert.ok(closed?.stdoutClosedAt >= launch.launchedAt && closed.stdoutClosedAt < deadlineEpochMs,
+    "the real launcher must successfully close stdout before the export deadline");
+  console.log(JSON.stringify({
+    case: "closed-stdout-deadline",
+    launchedBeforeDeadline: true,
+    stdoutClosedBeforeDeadline: true,
+    watchdogFired: observed.result.watchdog === true,
+    launcherAliveAtObservation: observed.launcherAlive,
+    retainedUnchanged: observed.retainedUnchanged,
+    temporaryFiles: observed.files.filter((file) => file.startsWith(".kova-export-")).length,
+    outerCleanupConfirmed: true
+  }));
+  assert.equal(observed.result.watchdog, undefined,
+    "export remained pending after stdout closed and its deadline expired");
+  assert.equal(observed.outcome?.kind, "rejected", JSON.stringify(observed));
+  assert.match(observed.outcome.message, /deadline expired/);
+  assert.equal(observed.launcherAlive, false, "export must join its launcher before rejecting");
+  assert.equal(observed.retainedUnchanged, true);
+  assert.deepEqual(observed.files, ["retained"]);
+}
+
+function ownedChildAlive(pid) {
+  try { process.kill(pid, 0); return true; }
+  catch (error) {
+    if (error.code === "ESRCH") return false;
+    throw error;
+  }
 }
 
 async function verifyStateWriters({ root, home, env, log }) {

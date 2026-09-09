@@ -162,7 +162,13 @@ export async function exportOcmArtifact(envName, path, target, options) {
     env: invocation.env,
     stdio: ["ignore", "pipe", "pipe"]
   });
-  const timeout = setTimeout(() => controller.abort(), remainingMs);
+  let timeout;
+  const deadline = new Promise((_, reject) => {
+    timeout = setTimeout(() => {
+      controller.abort();
+      reject(new Error("OCM artifact export deadline expired"));
+    }, Math.max(0, options.deadlineEpochMs - Date.now()));
+  });
   let bytes = 0;
   let stderr = "";
   let launcherTerminal = false;
@@ -197,7 +203,8 @@ export async function exportOcmArtifact(envName, path, target, options) {
   const copy = pipeline(child.stdout, bound, output, { signal: controller.signal });
   let failure;
   try {
-    await Promise.all([exited, copy]);
+    // EOF can finish the copy while the launcher remains alive.
+    await Promise.race([Promise.all([exited, copy]), deadline]);
     if (controller.signal.aborted || Date.now() >= options.deadlineEpochMs) throw new Error("OCM artifact export deadline expired");
     await options.validate?.(temporary);
     if (Date.now() >= options.deadlineEpochMs) throw new Error("OCM artifact export deadline expired");
