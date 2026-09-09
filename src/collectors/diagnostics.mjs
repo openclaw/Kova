@@ -3,7 +3,9 @@ import { join } from "node:path";
 import { quoteShell, runCommand } from "../commands.mjs";
 import { ocmEnvExecShell } from "../ocm/commands.mjs";
 import { positiveProcessId } from "../process-safety.mjs";
-import { copyCollectorArtifacts } from "./artifacts.mjs";
+import { collisionSafeArtifactName, copyCollectorArtifacts } from "./artifacts.mjs";
+import { exportOcmArtifact, resolveOcmTransport } from "../ocm/transport.mjs";
+import { MAX_OCM_PROFILE_BYTES, relativeOcmArtifactPath, retainOcmArtifacts } from "../ocm/diagnostics.mjs";
 
 export const OPENCLAW_DIAGNOSTICS_SCHEMA = "kova.openclawDiagnostics.v1";
 export const DIAGNOSTIC_ARTIFACTS_SCHEMA = "kova.diagnosticArtifacts.v1";
@@ -42,27 +44,40 @@ export function collectOpenClawDiagnostics(logs) {
 }
 
 export async function collectDiagnosticMetrics(envName, timeoutMs, artifactDir, commandEnv) {
+  const transported = resolveOcmTransport({ ...process.env, ...commandEnv });
+  const deadlineEpochMs = Date.now() + timeoutMs;
   const scanCommand = boundedFindCommand(
-    ['"$OPENCLAW_HOME"'],
+    [transported ? '"."' : '"$OPENCLAW_HOME"'],
     '-name "report.*.json" -o -name "*.heapsnapshot" -o -name "*heap*.json" -o -name "*diagnostic*.json"'
   );
   const command = ocmEnvExecShell(
     envName,
-    `${scanCommand} | head -100`
+    `${transported ? 'cd "$OPENCLAW_HOME"; ' : ""}${scanCommand} | head -100`
   );
   const result = await runCommand(command, {
     timeoutMs,
     maxOutputChars: 100000,
     env: commandEnv
   });
+  if (transported && result.outputBudget.truncated) throw new Error("OCM diagnostic discovery exceeded its output bound");
   const files = result.status === 0
     ? result.stdout.split("\n").map((line) => line.trim()).filter(Boolean)
     : [];
-  files.push(...await collectLocalDiagnosticReports(artifactDir));
+  const remoteCopied = transported && artifactDir
+    ? await retainOcmArtifacts(envName, files, join(artifactDir, "diagnostics"), {
+      env: commandEnv, deadlineEpochMs, limit: 25
+    })
+    : null;
+  const localFiles = transported ? [] : await collectLocalDiagnosticReports(artifactDir);
+  if (!transported) files.push(...localFiles);
   const uniqueFiles = [...new Set(files)];
   const copied = artifactDir
-    ? await copyCollectorArtifacts(uniqueFiles, join(artifactDir, "diagnostics"), { limit: 25 })
+    ? await copyCollectorArtifacts(transported ? localFiles : uniqueFiles, join(artifactDir, "diagnostics"), { limit: 25 })
     : { artifacts: [], artifactBytes: 0 };
+  if (remoteCopied) {
+    copied.artifacts.push(...remoteCopied.artifacts);
+    copied.artifactBytes += remoteCopied.artifactBytes;
+  }
 
   return {
     schemaVersion: DIAGNOSTIC_ARTIFACTS_SCHEMA,
@@ -94,6 +109,7 @@ export async function triggerDiagnosticReport(envName, pid, timeoutMs, artifactD
 }
 
 export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifactDir, options = {}) {
+  const transported = resolveOcmTransport({ ...process.env, ...options.commandEnv });
   const requestHeapSnapshot = options.heapSnapshot === true;
   const requestDiagnosticReport = options.diagnosticReport === true;
   if (!requestHeapSnapshot && !requestDiagnosticReport) {
@@ -127,7 +143,7 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
   const discoveryDeadlineEpochMs = sessionDeadlineEpochMs - DIAGNOSTIC_COMMAND_EXIT_RESERVE_MS;
   const searchRoots = [
     '"$OPENCLAW_HOME"',
-    artifactDir ? quoteShell(join(artifactDir, "node-profiles")) : null
+    artifactDir && !transported ? quoteShell(join(artifactDir, "node-profiles")) : null
   ].filter(Boolean).join(" ");
   const readyConditions = [
     requestHeapSnapshot ? '[ "$heap_count" -gt 0 ]' : null,
@@ -162,6 +178,7 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
     'const nameAttributed=namePid===expectedPid;',
     'const stat=fs.statSync(path);',
     'if(stat.size<=0)continue;',
+    transported ? `if(Date.now()-stat.mtimeMs<${DIAGNOSTIC_STABILITY_MS})continue;` : "",
     'if(heap){',
     'if(!nameAttributed)continue;',
     'const fd=fs.openSync(path,"r");',
@@ -224,7 +241,11 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
       files: heapFiles,
       destination: "heap",
       deadlineEpochMs: retentionDeadlineEpochMs,
-      expectedPid: normalizedPid
+      expectedPid: normalizedPid,
+      envName,
+      commandEnv: options.commandEnv,
+      location: options.ocmDiagnostics,
+      transported
     }),
     retainTriggeredArtifacts({
       requested: requestDiagnosticReport,
@@ -232,7 +253,11 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
       files: reportFiles,
       destination: "diagnostic-reports",
       deadlineEpochMs: retentionDeadlineEpochMs,
-      expectedPid: normalizedPid
+      expectedPid: normalizedPid,
+      envName,
+      commandEnv: options.commandEnv,
+      location: options.ocmDiagnostics,
+      transported
     })
   ]);
   const heapError = triggerError ?? heapCopied.error ?? (
@@ -282,7 +307,11 @@ async function retainTriggeredArtifacts({
   files,
   destination,
   deadlineEpochMs,
-  expectedPid
+  expectedPid,
+  envName,
+  commandEnv,
+  location,
+  transported
 }) {
   if (!requested || files.length === 0) {
     return { files: [], artifacts: [], artifactBytes: 0, error: null };
@@ -293,6 +322,22 @@ async function retainTriggeredArtifacts({
   const outcomes = await Promise.all(
     [...new Set(files)].map(async (file) => {
       try {
+        if (transported) {
+          if (!destinationDir || !location) throw new Error("OCM diagnostic export requires an owned destination and environment binding");
+          const path = relativeOcmArtifactPath(file, location.root);
+          const retained = await exportOcmArtifact(envName, path, join(destinationDir, collisionSafeArtifactName(path)), {
+            env: commandEnv,
+            maxBytes: destination === "heap" ? MAX_OCM_PROFILE_BYTES : MAX_DIAGNOSTIC_REPORT_BYTES,
+            deadlineEpochMs,
+            async validate(temporary) {
+              const complete = destination === "heap" ? await hasJsonEnvelope(temporary) : await isValidJsonFile(temporary, MAX_DIAGNOSTIC_REPORT_BYTES);
+              if (!complete || !await diagnosticArtifactMatchesPid(temporary, destination, expectedPid, file)) {
+                throw new Error(`diagnostic artifact is incomplete or belongs to another process: ${file}`);
+              }
+            }
+          });
+          return { files: [file], artifacts: [retained.path], artifactBytes: retained.bytes, error: null };
+        }
         const remainingMs = Math.max(0, deadlineEpochMs - Date.now());
         await waitForStableFile(file, remainingMs, {
           jsonValidation: destination === "heap" ? "envelope" : "full",
@@ -332,8 +377,8 @@ async function retainTriggeredArtifacts({
   };
 }
 
-async function diagnosticArtifactMatchesPid(path, destination, expectedPid) {
-  const name = path.split(/[\\/]/).at(-1) ?? "";
+async function diagnosticArtifactMatchesPid(path, destination, expectedPid, namePath = path) {
+  const name = namePath.split(/[\\/]/).at(-1) ?? "";
   const standardName = destination === "heap"
     ? /^Heap\.\d{8}\.\d{6}\.(\d+)\./i.exec(name)
     : /^report\.\d{8}\.\d{6}\.(\d+)\./i.exec(name);

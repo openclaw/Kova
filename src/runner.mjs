@@ -33,6 +33,7 @@ import { plannedNetworkFrontage } from "./network-frontage.mjs";
 import { assertKovaEnvName } from "./safety.mjs";
 import { join } from "node:path";
 import { recordTargetIdentity } from "./target-identity.mjs";
+import { resolveOcmTransport } from "./ocm/transport.mjs";
 export { createRunId } from "./run/run-id.mjs";
 
 export function buildDryRunRecord(scenario, context) {
@@ -72,6 +73,16 @@ export function buildSkippedRecord(scenario, context, reason) {
 }
 
 export async function executeScenario(scenario, context) {
+  if (resolveOcmTransport({ ...process.env, ...context.commandEnv })) {
+    const supportedScenarios = ["fresh-install", "gateway-performance", "bundled-plugin-startup", "agent-cold-warm-message"];
+    const supportedStates = ["fresh", "onboarded-user", "many-bundled-plugins", "mock-openai-provider"];
+    if (!supportedScenarios.includes(scenario.id) ||
+        (context.state && !supportedStates.includes(context.state.id)) ||
+        context.state?.fixtureAccounting || context.state?.snapshots?.length) {
+      throw new Error("cross-user OCM transport supports only the four performance scenarios and fresh, onboarded-user, many-bundled-plugins, or mock-openai-provider state");
+    }
+    context = { ...context, ocmDiagnostics: null };
+  }
   const envName = envNameFor(scenario.id, context.state?.id, context.runId, context.repeat);
   assertKovaEnvName(envName, "generated env");
   const artifactDir = join(artifactsDir, context.runId, envName);

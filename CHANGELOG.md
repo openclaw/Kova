@@ -4,6 +4,8 @@ All notable changes to Kova are documented in this file.
 
 ## Unreleased
 
+- Support cross-user OCM transport for the four performance scenarios, keeping candidate execution and diagnostic staging separate from Kova's mock provider, evaluator, and retained reports.
+
 ## 0.1.5 - 2026-09-07
 
 **Highlights:** Linux CPU validation now measures process lifetimes without mistaking serial work for parallel load or qualifying incomplete interval evidence.

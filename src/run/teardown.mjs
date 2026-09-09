@@ -1,6 +1,6 @@
 import { buildAuthCleanupPhase } from "../auth.mjs";
 import { runCleanupCommand } from "../cleanup.mjs";
-import { runCommand } from "../commands.mjs";
+import { quoteShell, runCommand } from "../commands.mjs";
 import { isMissingOcmResource } from "../ocm/missing-resource.mjs";
 import { ocmEnvDestroy, ocmEnvProtect } from "../ocm/commands.mjs";
 import { stopNetworkFrontage } from "../network-frontage.mjs";
@@ -10,6 +10,7 @@ import {
   collectPreCleanupEvidence
 } from "./finalize-record.mjs";
 import { executeStateLifecycleSteps } from "./state-lifecycle.mjs";
+import { collectStagedOcmDiagnostics } from "../ocm/diagnostics.mjs";
 
 export async function teardownScenario(record, scenario, context, envName, artifactDir, authPolicy) {
   const errors = [];
@@ -54,6 +55,10 @@ export async function teardownScenario(record, scenario, context, envName, artif
     {
       id: "state-cleanup",
       run: () => retainEnv ? null : cleanupState(record, scenario, context, envName, artifactDir, authPolicy)
+    },
+    {
+      id: "stop-and-export",
+      run: () => retainEnv ? null : stopAndExport(record, context, envName, artifactDir)
     },
     {
       id: "env-cleanup",
@@ -136,7 +141,7 @@ async function cleanupState(record, scenario, context, envName, artifactDir, aut
 }
 
 async function cleanupEnv(record, context, envName) {
-  const cleanup = await runCleanupCommand(ocmEnvDestroy(envName), { timeoutMs: context.timeoutMs });
+  const cleanup = await runCleanupCommand(ocmEnvDestroy(envName), { timeoutMs: context.timeoutMs, env: context.commandEnv });
   record.cleanup = classifyEnvDestroyCleanup(cleanup, envName);
   record.cleanupResult = cleanup;
   if (record.cleanup === "destroy-failed") {
@@ -146,7 +151,8 @@ async function cleanupEnv(record, context, envName) {
 
 async function protectRetainedEnv(record, context, envName) {
   const result = await runCommand(ocmEnvProtect(envName, true), {
-    timeoutMs: context.timeoutMs
+    timeoutMs: context.timeoutMs,
+    env: context.commandEnv
   });
   record.retentionProtectionResult = result;
   const outcome = classifyRetentionProtection(result, envName);
@@ -158,6 +164,28 @@ async function protectRetainedEnv(record, context, envName) {
     throw new Error(`failed to protect retained env ${envName}: ${detail}`);
   }
   return true;
+}
+
+async function stopAndExport(record, context, envName, artifactDir) {
+  if (!context.ocmDiagnostics) return;
+  const result = await runCommand(`ocm service stop ${quoteShell(envName)} --json`, {
+    timeoutMs: context.timeoutMs, env: context.commandEnv
+  });
+  record.phases.push({
+    id: "transport-stop",
+    title: "Stop Candidate Before Artifact Export",
+    measurementScope: "cleanup",
+    driverKind: "kova",
+    commands: [result.command],
+    results: [result]
+  });
+  if (result.status !== 0) blockPassingRecord(record);
+  await collectStagedOcmDiagnostics(envName, context.ocmDiagnostics, artifactDir, {
+    env: context.commandEnv, timeoutMs: Math.min(context.timeoutMs ?? 10000, 10000),
+    stopped: result.status === 0
+  });
+  // OCM's B-owned response is not proof of process absence. The outer
+  // privileged runner must quiesce the candidate UID even on a successful run.
 }
 
 export function classifyRetentionProtection(result, envName) {

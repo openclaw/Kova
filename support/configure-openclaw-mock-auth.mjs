@@ -3,15 +3,15 @@ import fs from "node:fs";
 import path from "node:path";
 
 const options = parseArgs(process.argv.slice(2));
-if (!options.portFile) {
-  throw new Error("--port-file is required");
+if (Boolean(options.portFile) === Boolean(options.port)) {
+  throw new Error("exactly one of --port-file or --port is required");
 }
 const configContract = resolveConfigContract(process.env.KOVA_OPENCLAW_CONFIG_CONTRACT);
 const providerId = resolveProviderId(options.providerId);
 
-const port = fs.readFileSync(options.portFile, "utf8").trim();
-if (!/^\d+$/.test(port)) {
-  throw new Error(`invalid mock provider port in ${options.portFile}`);
+const port = options.port ?? fs.readFileSync(options.portFile, "utf8").trim();
+if (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535) {
+  throw new Error("invalid mock provider port");
 }
 if (!options.skipHealthCheck) {
   await assertMockProviderReady(port);
@@ -280,6 +280,7 @@ function parseArgs(args) {
     }
   }
   return {
+    port: parsed.port,
     portFile: parsed.portfile,
     providerId: parsed.providerid,
     skipHealthCheck: parsed.skiphealthcheck === true,

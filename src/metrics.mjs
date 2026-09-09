@@ -6,6 +6,7 @@ import { collectLogMetrics } from "./collectors/logs.mjs";
 import { collectNodeProfileMetrics } from "./collectors/node-profiles.mjs";
 import { collectTimelineMetrics } from "./collectors/timeline.mjs";
 import { ENV_COLLECTOR_IDS, fullCollectionPolicy } from "./collection-policy.mjs";
+import { collectStagedOcmDiagnostics } from "./ocm/diagnostics.mjs";
 
 export { collectNodeProfileMetrics };
 
@@ -163,6 +164,12 @@ export async function collectEnvMetrics(envName, options = {}) {
     }
   }
 
+  if (options.ocmDiagnostics &&
+      (collectorEnabled(collectionPolicy, "timeline") || collectorEnabled(collectionPolicy, "node-profiles"))) {
+    await collectStagedOcmDiagnostics(envName, options.ocmDiagnostics, options.artifactDir, {
+      env: options.commandEnv, timeoutMs
+    });
+  }
   await collectLogAndTimelineMetrics(metrics, collectors, envName, timeoutMs, options, collectionPolicy);
 
   const heapSnapshotEnabled = collectorEnabled(collectionPolicy, "heap-snapshot");
@@ -179,6 +186,7 @@ export async function collectEnvMetrics(envName, options = {}) {
     const triggered = await triggerDiagnosticSession(envName, serviceJson.childPid, timeoutMs, options.artifactDir, {
       heapSnapshot: requestHeapSnapshot,
       diagnosticReport: requestDiagnosticReport,
+      ocmDiagnostics: options.ocmDiagnostics,
       commandEnv: options.commandEnv
     });
     if (requestHeapSnapshot) {

@@ -127,7 +127,7 @@ async function copyArtifact(source, target, deadlineEpochMs) {
   }
 }
 
-function collisionSafeArtifactName(source) {
+export function collisionSafeArtifactName(source) {
   const name = basename(source);
   const extension = extname(name);
   const stem = extension ? name.slice(0, -extension.length) : name;
