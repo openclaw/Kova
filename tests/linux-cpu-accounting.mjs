@@ -10,7 +10,8 @@ import { createLinuxCpuAccountant, readLinuxCpuSnapshot, LinuxCpuSnapshotChanged
 
 const clock = (seconds) => ({ hz: 100, ticks: seconds * 100, monotonicMs: seconds * 1000 });
 const processRow = (pid, ppid, cpuTicks, childCpuTicks = 0, startTicks = 0) => ({ pid, ppid, cpuTicks, childCpuTicks, startTicks, rssMb: 0, command: "synthetic", roles: [] });
-const cpu = (rows) => rows.reduce((total, row) => total + (row.cpuPercent ?? 0), 0);
+// Point estimates independently verify tick/debt conservation; gates consume bounds.
+const cpuEstimate = (rows) => rows.reduce((total, row) => total + (row.ownCpuPercent ?? 0) + (row.reapedCpuPercent ?? 0), 0);
 
 test("gateway discovery refreshes a census that predates gateway birth", async () => {
   let censusCount = 0;
@@ -29,40 +30,94 @@ test("gateway discovery refreshes a census that predates gateway birth", async (
   assert.equal(summary.byRole.gateway.peakRssMb, 2);
 });
 
+test("kernel tick quantization keeps a short final interval inconclusive, not a false resource failure", () => {
+  const durationMs = 109.519827;
+  const before = { user: 301.95, system: 25.95 };
+  const after = { user: 328.05, system: 26.05 };
+  const row = ({ user, system }) => ({ ...processRow(1, 0, Math.floor(user) + Math.floor(system)), roles: ["gateway"] });
+  const accountant = createLinuxCpuAccountant();
+  accountant.sample([row(before)], clock(1));
+  const processes = accountant.sample([row(after)], clock(1 + durationMs / 1000));
+  const summary = summarizeResourceSamples([{ collectionStatus: "ok", processes }]);
+  const role = summary.byRole.gateway;
+  const actual = (after.user - before.user + after.system - before.system) / durationMs * 1000;
+  assert.ok(role.maxCpuPercentLower <= actual, "lower bound cannot exceed actual sub-tick CPU");
+  assert.ok(role.maxCpuPercent >= actual, "upper bound must contain actual sub-tick CPU");
+  const violations = [];
+  checkCpuThreshold(violations, { kind: "resource", metric: "cpu", label: "CPU", value: role.maxCpuPercent,
+    lower: role.maxCpuPercentLower, threshold: 250 });
+  assert.equal(violations[0]?.kind, "evidence");
+  assert.equal(violations[0]?.failureDomain, "kova-harness");
+});
+
 test("serial parent and newborn child use the same CPU interval", () => {
   const accountant = createLinuxCpuAccountant();
   accountant.sample([processRow(1, 0, 0)], clock(0));
-  assert.equal(cpu(accountant.sample([processRow(1, 0, 100)], clock(1))), 100);
-  assert.equal(cpu(accountant.sample([processRow(1, 0, 100), processRow(2, 1, 10, 0, 100)], clock(1.1))), 100);
+  assert.equal(cpuEstimate(accountant.sample([processRow(1, 0, 100)], clock(1))), 100);
+  assert.equal(cpuEstimate(accountant.sample([processRow(1, 0, 100), processRow(2, 1, 10, 0, 100)], clock(1.1))), 100);
 });
 
-test("real parallel CPU above the unchanged 200% gate remains visible", () => {
+test("role bounds distinguish real parallel CPU from work below the unchanged gate", () => {
+  for (const [ticks, expectedKind] of [[150, "resource"], [75, undefined]]) {
+    const accountant = createLinuxCpuAccountant();
+    const parent = { ...processRow(1, 0, 0), roles: ["gateway"] };
+    const child = { ...processRow(2, 1, 0), roles: ["gateway"] };
+    accountant.sample([parent, child], clock(0));
+    const processes = accountant.sample([{ ...parent, cpuTicks: ticks }, { ...child, cpuTicks: ticks }], clock(1));
+    assert.equal(cpuEstimate(processes), 2 * ticks);
+    const summary = summarizeResourceSamples([{ collectionStatus: "ok", processes }]);
+    const role = summary.byRole.gateway;
+    assert.equal(role.maxCpuPercentLower, 2 * (ticks - 2));
+    assert.equal(role.maxCpuPercent, 2 * (ticks + 4));
+    const violations = [];
+    checkCpuThreshold(violations, { kind: "resource", metric: "cpu", label: "CPU", value: role.maxCpuPercent,
+      lower: role.maxCpuPercentLower, threshold: 200 });
+    assert.equal(violations[0]?.kind, expectedKind);
+  }
+});
+
+test("newborn and reaped bounds contain sub-tick work without charging the wait owner's own CPU", () => {
   const accountant = createLinuxCpuAccountant();
-  accountant.sample([processRow(1, 0, 0), processRow(2, 1, 0)], clock(0));
-  assert.equal(cpu(accountant.sample([processRow(1, 0, 150), processRow(2, 1, 150)], clock(1))), 300);
+  const owner = processRow(1, 0, 1000);
+  accountant.sample([owner], clock(0));
+  // Independent floors: the new child's 60.9 user + 20.9 system ticks expose 80.
+  const child = { ...processRow(2, 1, 80, 0, 0), roles: ["gateway"] };
+  const running = accountant.sample([owner, child], clock(1));
+  const born = running.find((entry) => entry.pid === 2);
+  assert.equal(born.ownCpuPercentLower, 80);
+  assert.equal(born.ownCpuPercentUpper, 82);
+  // It exits at 70.1 + 21.1 ticks; 9.4 new ticks remain after the prior sample.
+  const reaped = accountant.sample([{ ...owner, cpuTicks: 2000, childCpuTicks: 91 }], clock(2));
+  assert.ok(reaped[0].reapedCpuPercentUpper >= 9.4);
+  assert.equal(reaped[0].cpuPercent, 13);
+  const summary = summarizeResourceSamples([{ collectionStatus: "ok", processes: reaped }]);
+  assert.equal(summary.byRole.gateway.maxCpuPercentLower, 0);
+  assert.equal(summary.byRole.gateway.maxCpuPercent, 13);
+  assert.equal(summary.maxTotalCpuPercent, 13);
+  assert.equal(accountant.coverageComplete(), true);
 });
 
 test("wait accounting retains unseen short children and excludes already sampled work", () => {
   const accountant = createLinuxCpuAccountant({ accountingRootPid: 1 });
   accountant.sample([processRow(1, 0, 30)], clock(0));
-  assert.equal(cpu(accountant.sample([processRow(1, 0, 40), processRow(2, 1, 60, 0, 0)], clock(1))), 60);
+  assert.equal(cpuEstimate(accountant.sample([processRow(1, 0, 40), processRow(2, 1, 60, 0, 0)], clock(1))), 60);
   // The child did another 20 ticks before being reaped, and a new short child
   // did 10 ticks entirely between samples. Wrapper work remains harness-only.
-  assert.equal(cpu(accountant.sample([processRow(1, 0, 50, 90)], clock(2))), 30);
+  assert.equal(cpuEstimate(accountant.sample([processRow(1, 0, 50, 90)], clock(2))), 30);
 });
 
 test("nested reaping does not count a grandchild twice", () => {
   const accountant = createLinuxCpuAccountant({ accountingRootPid: 1 });
   accountant.sample([processRow(1, 0, 0)], clock(0));
   accountant.sample([processRow(1, 0, 0), processRow(2, 1, 50), processRow(3, 2, 10)], clock(1));
-  assert.equal(cpu(accountant.sample([processRow(1, 0, 0, 90)], clock(2))), 30);
+  assert.equal(cpuEstimate(accountant.sample([processRow(1, 0, 0, 90)], clock(2))), 30);
 });
 
 test("a recycled PID begins a new CPU identity", () => {
   const accountant = createLinuxCpuAccountant({ accountingRootPid: 1 });
   accountant.sample([processRow(1, 0, 0)], clock(0));
   accountant.sample([processRow(1, 0, 0), processRow(2, 1, 50)], clock(1));
-  assert.equal(cpu(accountant.sample([processRow(1, 0, 0, 60), processRow(2, 1, 20, 0, 100)], clock(2))), 30);
+  assert.equal(cpuEstimate(accountant.sample([processRow(1, 0, 0, 60), processRow(2, 1, 20, 0, 100)], clock(2))), 30);
 });
 
 test("counter regression and a missing historical baseline fail closed", () => {
@@ -80,9 +135,9 @@ test("late-discovered product CPU keeps interval bounds and incomplete coverage"
   accountant.sample([processRow(1, 0, 100)], clock(11));
   const gateway = { ...processRow(2, 1, 240, 0, 1020), roles: ["gateway"] };
   const measured = accountant.sample([processRow(1, 0, 100), gateway], clock(15));
-  assert.equal(measured.find((entry) => entry.pid === 2).cpuPercent, 60);
+  assert.equal(measured.find((entry) => entry.pid === 2).ownCpuPercent, 60);
   assert.equal(accountant.coverageComplete(), false);
-  const summary = summarizeResourceSamples([{ processes: measured, collectionStatus: "ok", cpuUncertaintyPercent: 0 }]);
+  const summary = summarizeResourceSamples([{ processes: measured, collectionStatus: "ok" }]);
   assert.equal(summary.byRole.gateway.maxCpuPercentLower, 0);
   assert.equal(summary.cpuCoverageComplete, false);
   const record = { status: "PASS", phases: [{ id: "status", measurementScope: "product", results: [{
@@ -100,8 +155,8 @@ test("late discovery cannot average a 225% CPU burst into a passing lifetime val
   accountant.sample([], clock(10));
   accountant.sample([], clock(11));
   const processes = accountant.sample([{ ...processRow(2, 0, 900, 0, 1020), roles: ["gateway"] }], clock(15));
-  const summary = summarizeResourceSamples([{ processes, collectionStatus: "ok", cpuUncertaintyPercent: 0 }]);
-  assert.equal(summary.byRole.gateway.maxCpuPercent, 225);
+  const summary = summarizeResourceSamples([{ processes, collectionStatus: "ok" }]);
+  assert.equal(summary.byRole.gateway.maxCpuPercent, 226);
   assert.equal(summary.byRole.gateway.maxCpuPercentLower, 0);
   const violations = [];
   checkCpuThreshold(violations, { kind: "resource", metric: "cpu", label: "CPU", value: summary.byRole.gateway.maxCpuPercent,
@@ -117,11 +172,11 @@ test("mixed discovery times do not import uncertain CPU into total or role lower
   accountant.sample([known], clock(11));
   const processes = accountant.sample([{ ...known, cpuTicks: 400 },
     { ...processRow(2, 0, 900, 0, 1020), roles: ["gateway"] }], clock(15));
-  const summary = summarizeResourceSamples([{ processes, collectionStatus: "ok", cpuUncertaintyPercent: 0 }]);
-  assert.equal(summary.maxTotalCpuPercent, 325);
-  assert.equal(summary.maxTotalCpuPercentLower, 100);
-  assert.equal(summary.byRole.gateway.maxCpuPercent, 325);
-  assert.equal(summary.byRole.gateway.maxCpuPercentLower, 100);
+  const summary = summarizeResourceSamples([{ processes, collectionStatus: "ok" }]);
+  assert.equal(summary.maxTotalCpuPercent, 327);
+  assert.equal(summary.maxTotalCpuPercentLower, 99.5);
+  assert.equal(summary.byRole.gateway.maxCpuPercent, 327);
+  assert.equal(summary.byRole.gateway.maxCpuPercentLower, 99.5);
   assert.equal(summary.cpuCoverageComplete, false);
 });
 
@@ -143,7 +198,7 @@ test("late discovery of a roleless wait owner does not invalidate product covera
   accountant.sample([known], clock(10));
   accountant.sample([known], clock(11));
   const processes = accountant.sample([{ ...known, cpuTicks: 100 }, processRow(2, 0, 0, 0, 1020)], clock(15));
-  const summary = summarizeResourceSamples([{ processes, collectionStatus: "ok", cpuUncertaintyPercent: 0 }]);
+  const summary = summarizeResourceSamples([{ processes, collectionStatus: "ok" }]);
   assert.equal(summary.cpuCoverageComplete, true);
   assert.deepEqual(summary.errors, []);
   assert.equal(accountant.coverageComplete(), true);
@@ -158,9 +213,9 @@ test("a discovery gap follows an identity when a product role is assigned later"
     accountant.sample([owner], clock(15));
     assert.equal(accountant.coverageComplete(), true);
     const processes = accountant.sample([{ ...owner, cpuTicks: 260, roles: ["gateway"] }], clock(16));
-    const summary = summarizeResourceSamples([{ processes, collectionStatus: "ok", cpuUncertaintyPercent: 0 }]);
-    assert.equal(summary.byRole.gateway.maxCpuPercent, 20);
-    assert.equal(summary.byRole.gateway.maxCpuPercentLower, 20, "the current interval is known despite the historical gap");
+    const summary = summarizeResourceSamples([{ processes, collectionStatus: "ok" }]);
+    assert.equal(summary.byRole.gateway.maxCpuPercent, 24);
+    assert.equal(summary.byRole.gateway.maxCpuPercentLower, 18, "the current interval is known despite the historical gap");
     assert.equal(summary.cpuCoverageComplete, false);
     assert.equal(accountant.coverageComplete(), false);
   }
@@ -179,7 +234,7 @@ test("reaping preserves a roleless child's discovery gap for a later product own
         assert.equal(accountant.coverageComplete(), true);
         processes = accountant.sample([{ ...owner, cpuTicks: 20, childCpuTicks: 260, roles: ["gateway"] }], clock(17));
       }
-      const summary = summarizeResourceSamples([{ processes, collectionStatus: "ok", cpuUncertaintyPercent: 0 }]);
+      const summary = summarizeResourceSamples([{ processes, collectionStatus: "ok" }]);
       assert.equal(summary.cpuCoverageComplete, false);
       assert.equal(accountant.coverageComplete(), false);
     }
@@ -211,8 +266,8 @@ test("retired Gateway CPU retains its role when an external supervisor reaps it"
   assert.deepEqual(retiring.find((entry) => entry.pid === 2).roles, ["gateway", "gateway-tree"]);
   const processes = accountant.sample([{ ...supervisor, childCpuTicks: 150 }], clock(2));
   assert.deepEqual(processes[0].reapedRoles, ["gateway", "gateway-tree"]);
-  const summary = summarizeResourceSamples([{ elapsedMs: 2000, collectionStatus: "ok", processes, cpuUncertaintyPercent: 0 }]);
-  assert.equal(summary.byRole.gateway.maxCpuPercent, 60);
+  const summary = summarizeResourceSamples([{ elapsedMs: 2000, collectionStatus: "ok", processes }]);
+  assert.equal(summary.byRole.gateway.maxCpuPercent, 64);
   assert.equal(summary.byRole.gateway.maxCpuPercentLower, 0);
   assert.equal(summary.byRole.gateway.peakCpuProcess.pid, 2);
   assert.equal(summary.byRole.gateway.peakCpuProcess.cpuWaitOwnerPid, 1);
@@ -223,7 +278,7 @@ test("counter scan brackets yield conservative bounds and never an invented CPU 
   const accountant = createLinuxCpuAccountant();
   accountant.sample([processRow(1, 0, 0)], { ...clock(0), finishedMs: 500 });
   const measured = accountant.sample([processRow(1, 0, 150)], { ...clock(1), finishedMs: 1500 });
-  assert.equal(cpu(measured), 300);
+  assert.equal(cpuEstimate(measured), 300);
   const ambiguous = [];
   checkCpuThreshold(ambiguous, { kind: "resource", metric: "cpu", label: "CPU", value: 300, lower: 0, threshold: 200 });
   assert.equal(ambiguous[0].failureDomain, "kova-harness");
@@ -268,9 +323,10 @@ test("process census latency stays outside the CPU counter uncertainty window", 
     now += 1000;
     cpuTicks = 100;
     const summary = await sampler.stop();
-    // The summary rounds the upper bound up and the lower bound down. With no
-    // scan uncertainty, they can therefore differ by at most one tenth.
-    assert.ok(summary.maxTotalCpuPercent - summary.maxTotalCpuPercentLower <= 0.1);
+    // 1100ms elapsed includes the census, not counter scan uncertainty. Only
+    // four upper ticks (own + waited) and two lower own ticks widen the bounds.
+    assert.equal(summary.maxTotalCpuPercent, 94.6);
+    assert.equal(summary.maxTotalCpuPercentLower, 89);
   } finally {
     mock.restoreAll();
     syncBuiltinESMExports();
@@ -360,8 +416,8 @@ test("a rejected census cannot alter CPU debt or the successful scan bracket", (
   const firstClock = { ...clock(0), finishedMs: 100 };
   accountant.sample([owner, gateway], firstClock);
   assert.throws(() => accountant.sample([{ ...owner, cpuTicks: 5 }], clock(1)), /Regressed/);
-  assert.equal(accountant.lastSuccessfulClock(), firstClock);
-  accountant.sample([owner, gateway], clock(2));
+  const measured = accountant.sample([owner, { ...gateway, cpuTicks: 138 }], clock(2));
+  assert.equal(measured.find((entry) => entry.pid === 2).ownCpuPercent, 20);
   assert.equal(accountant.coverageComplete(), true);
 });
 
@@ -412,13 +468,13 @@ test("a new Gateway introduces its existing wait owner without importing host CP
   const gateway = { ...processRow(3, 2, 50, 0, 1000), roles: ["gateway"] };
   const running = accountant.sample([command, owner, gateway], clock(11));
   assert.equal(running.find((entry) => entry.pid === 2).cpuPercent, 0);
-  assert.equal(running.find((entry) => entry.pid === 3).cpuPercent, 50);
+  assert.equal(running.find((entry) => entry.pid === 3).ownCpuPercent, 50);
   assert.ok(accountant.trackedProcessIds().has(2));
   const completed = accountant.sample([command, { ...owner, childCpuTicks: 9060 }], clock(12));
   const retired = completed.find((entry) => entry.pid === 2);
   assert.equal(retired.reapedCpuPercent, 10);
   assert.deepEqual(retired.reapedRoles, ["gateway"]);
   assert.equal(accountant.coverageComplete(), true);
-  const summary = summarizeResourceSamples([{ processes: completed, collectionStatus: "ok", cpuUncertaintyPercent: 0 }]);
+  const summary = summarizeResourceSamples([{ processes: completed, collectionStatus: "ok" }]);
   assert.equal(summary.cpuCoverageComplete, true, "an external owner's historical host CPU does not invalidate a fully sampled product child");
 });
