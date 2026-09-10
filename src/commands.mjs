@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { StringDecoder } from "node:string_decoder";
 import { startResourceSampler } from "./collectors/resources.mjs";
 import { repoRoot } from "./paths.mjs";
+import { ocmCommandEnvironment, ocmInvocation } from "./ocm/transport.mjs";
 
 const defaultCommandTimeoutMs = 120000;
 const defaultCheckCommandTimeoutMs = 30000;
@@ -33,7 +34,10 @@ export function runWithCommandEnv(env, callback) {
 
 export function checkCommand(command, args, options = {}) {
   const timeoutMs = normalizeCheckCommandTimeoutMs(options.timeoutMs);
-  const result = spawnSync(command, args, {
+  const env = { ...process.env, ...(commandEnvStorage.getStore() ?? {}), ...(options.env ?? {}) };
+  const invocation = command === "ocm" ? ocmInvocation(args, env) : { file: command, args, env };
+  const result = spawnSync(invocation.file, invocation.args, {
+    env: invocation.env,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     timeout: timeoutMs,
@@ -61,11 +65,11 @@ export function runCommand(command, options = {}) {
   return new Promise((resolve) => {
     const scopedEnv = commandEnvStorage.getStore() ?? {};
     const shell = options.shell ?? options.env?.SHELL ?? scopedEnv.SHELL ?? process.env.SHELL ?? "/bin/sh";
-    const childEnv = {
+    const childEnv = ocmCommandEnvironment({
       ...process.env,
       ...scopedEnv,
       ...(options.env ?? {})
-    };
+    });
     if (options.shell !== undefined && options.env?.SHELL === undefined) {
       childEnv.SHELL = options.shell;
     }
@@ -86,6 +90,7 @@ export function runCommand(command, options = {}) {
     const createSampler = () => options.resourceSample
       ? startResourceSampler(child.pid, {
         ...options.resourceSample,
+        commandEnv: childEnv,
         accountingRootPid: accountCpu ? child.pid : undefined,
         rootCommand: command,
         redactValues: options.redactValues ?? []
@@ -175,6 +180,9 @@ export function runCommand(command, options = {}) {
         stopTrackingChild();
       }
       const finishedAtEpochMs = timedOut ? Date.now() : accountedCompletion?.finishedAtEpochMs ?? Date.now();
+      if (childEnv.KOVA_OCM_TRANSPORT_JSON && (timedOut || signal)) {
+        stderr.write("\nCross-user candidate cleanup requires the outer runner's UID quiescence.");
+      }
       const stdoutResult = stdout.finish();
       const stderrResult = stderr.finish();
       settle({

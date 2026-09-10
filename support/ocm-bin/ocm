@@ -1,0 +1,2 @@
+#!/bin/sh
+exec "${KOVA_OCM_TRANSPORT_NODE:?}" "${KOVA_OCM_TRANSPORT_DISPATCH:?}" "$@"
