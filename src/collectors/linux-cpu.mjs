@@ -79,9 +79,6 @@ export function createLinuxCpuAccountant({ accountingRootPid } = {}) {
   let missingWaitOwner = false;
   let missingIntervalBaseline = false;
   return {
-    lastSuccessfulClock() {
-      return previousClock;
-    },
     trackedProcessIds() {
       return new Set([...previous.values()].map((entry) => entry.pid));
     },
@@ -105,6 +102,8 @@ export function createLinuxCpuAccountant({ accountingRootPid } = {}) {
       if (intervalTicks !== null && (!(intervalTicks > 0) || clock.hz !== previousClock.hz)) {
         throw new Error("Linux CPU sample clock did not advance");
       }
+      const outerIntervalTicks = previousClock === undefined ? null :
+        ((clock.finishedMs ?? clock.monotonicMs) - previousClock.monotonicMs) * clock.hz / 1000;
       // Once a child is reaped, Linux transfers its complete CPU lifetime to its
       // wait owner. Subtract the part already observed, including nested waits.
       for (const [key, process] of previous) {
@@ -136,6 +135,9 @@ export function createLinuxCpuAccountant({ accountingRootPid } = {}) {
         const before = previous.get(key);
         let ownCpuPercent = null;
         let reapedCpuPercent = null;
+        let ownCpuPercentLower = null;
+        let ownCpuPercentUpper = null;
+        let reapedCpuPercentUpper = null;
         let reapedRoles = [];
         let reapedProcesses = [];
         let cpuIntervalComplete = true;
@@ -164,13 +166,23 @@ export function createLinuxCpuAccountant({ accountingRootPid } = {}) {
           // still contain product work, including children missed by polling.
           ownCpuPercent = (process.pid === accountingRootPid ? 0 : ownTicks) / intervalTicks * 100;
           reapedCpuPercent = newlyReapedTicks / intervalTicks * 100;
+          // /proc independently floors utime/stime to USER_HZ ticks. A delta
+          // can differ by two ticks; scan endpoints also bound its duration.
+          // Reaped debt is a floored lifetime, so subtracting it remains an upper bound.
+          const ownUpperTicks = process.pid === accountingRootPid ? 0 : ownTicks + 2;
+          const ownLowerTicks = process.pid === accountingRootPid || !cpuIntervalComplete ? 0 :
+            Math.max(0, ownTicks - (before ? 2 : 0));
+          ownCpuPercentLower = ownLowerTicks / outerIntervalTicks * 100;
+          ownCpuPercentUpper = ownUpperTicks / intervalTicks * 100;
+          reapedCpuPercentUpper = (newlyReapedTicks + 2) / intervalTicks * 100;
         }
         const cpuHistoryComplete = before?.cpuHistoryComplete !== false &&
           !inheritedIncompleteHistory.has(key) && cpuIntervalComplete;
         current.set(key, { ...process, cpuHistoryComplete });
         if (!cpuHistoryComplete && process.roles.length) nextMissingIntervalBaseline = true;
-        measured.push({ ...process, ownCpuPercent, reapedCpuPercent, reapedRoles, reapedProcesses, cpuIntervalComplete, cpuHistoryComplete,
-          cpuPercent: ownCpuPercent === null ? null : ownCpuPercent + reapedCpuPercent });
+        measured.push({ ...process, ownCpuPercent, reapedCpuPercent, ownCpuPercentLower, ownCpuPercentUpper, reapedCpuPercentUpper, reapedRoles, reapedProcesses, cpuIntervalComplete, cpuHistoryComplete,
+          cpuPercent: ownCpuPercentUpper === null ? null :
+            (process.roles.length ? ownCpuPercentUpper : 0) + (reapedRoles.length ? reapedCpuPercentUpper : 0) });
       }
       for (const key of nextDebt.keys()) if (!current.has(key)) nextDebt.delete(key);
       reapDebt = nextDebt;
