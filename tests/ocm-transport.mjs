@@ -118,7 +118,9 @@ if (args.includes("wait-for-timeout")) {
   await verifyClosedStdoutDeadline({ root, env, log });
   await verifyStateWriters({ root, home, env, log });
   await verifyRuntimeHelper({ env });
-  await verifyScenarioLifecycle({ root, env, ocmLog });
+  const { verifyRuntimeBoundaries } = await import("./ocm-runtime-boundaries.mjs");
+  await verifyRuntimeBoundaries({ root, home, env, transport, binary });
+  await verifyScenarioLifecycle({ root, home, env, transport, ocmLog });
   console.log("PASS OCM transport command and nested-helper boundary");
 } finally {
   if (previousHome === undefined) delete process.env.KOVA_HOME;
@@ -388,45 +390,92 @@ async function verifyRuntimeHelper({ env }) {
   assert.deepEqual(JSON.parse(result.stdout), { cwdUnchanged: true, root: "/candidate-private/not-readable" });
 }
 
-async function verifyScenarioLifecycle({ env, ocmLog }) {
+async function verifyScenarioLifecycle({ home, env, transport, ocmLog }) {
   const { executeScenario } = await import("../src/runner.mjs");
   const { resolveTarget } = await import("../src/targets.mjs");
   const { loadProfile } = await import("../src/registries/profiles.mjs");
   const profile = await loadProfile("release");
-  for (const scenarioId of ["fresh-install", "gateway-performance", "bundled-plugin-startup", "agent-cold-warm-message"]) {
-    const scenario = JSON.parse(await readFile(join(repoRoot, "scenarios", `${scenarioId}.json`), "utf8"));
-    const stateId = scenarioId === "bundled-plugin-startup" ? "many-bundled-plugins" :
-      scenarioId === "gateway-performance" ? "onboarded-user" :
-      scenarioId === "agent-cold-warm-message" ? profile.entries.find((entry) => entry.scenario === scenarioId).state : "fresh";
-    if (scenarioId === "agent-cold-warm-message") assert.equal(stateId, "mock-openai-provider");
-    const state = JSON.parse(await readFile(join(repoRoot, "states", `${stateId}.json`), "utf8"));
-    const context = {
-      target: "runtime:fixture", targetPlan: resolveTarget("runtime:fixture", "target"),
-      state, runId: `transport-${scenarioId}`, timeoutMs: 15000,
-      resourceSampling: false, nodeProfile: true,
-      auth: { requestedMode: "skip", redactionValues: [] },
-      commandEnv: env
-    };
-    const record = await runWithCommandEnv(env, () => executeScenario(scenario, context));
-    for (const phase of record.phases) {
-      assert.equal((phase.results ?? []).every((result) => result.status === 0), true,
-        `${scenarioId}/${phase.id}: ${JSON.stringify(phase.results)}`);
+  const cases = [
+    ...["fresh-install", "gateway-performance", "bundled-plugin-startup", "agent-cold-warm-message"]
+      .map((scenarioId) => ({ scenarioId, mode: "immediate" })),
+    ...["delayed", "never", "malformed", "wrong-env", "status-failed", "stop-failed", "export-failed", "retained"]
+      .map((mode) => ({ scenarioId: "fresh-install", mode }))
+  ];
+  const failures = [];
+  for (const { scenarioId, mode } of cases) {
+    try {
+      const scenario = JSON.parse(await readFile(join(repoRoot, "scenarios", `${scenarioId}.json`), "utf8"));
+      const stateId = scenarioId === "bundled-plugin-startup" ? "many-bundled-plugins" :
+        scenarioId === "gateway-performance" ? "onboarded-user" :
+        scenarioId === "agent-cold-warm-message" ? profile.entries.find((entry) => entry.scenario === scenarioId).state : "fresh";
+      if (scenarioId === "agent-cold-warm-message") assert.equal(stateId, "mock-openai-provider");
+      const state = JSON.parse(await readFile(join(repoRoot, "states", `${stateId}.json`), "utf8"));
+      const context = {
+        target: "runtime:fixture", targetPlan: resolveTarget("runtime:fixture", "target"),
+        state, runId: `transport-${scenarioId}-${mode}`, timeoutMs: 15000,
+        resourceSampling: false, nodeProfile: true,
+        auth: { requestedMode: "skip", redactionValues: [] },
+        keepEnv: mode === "retained",
+        commandEnv: {
+          ...env,
+          KOVA_OCM_TRANSPORT_JSON: JSON.stringify({ ...transport, env: { ...transport.env, KOVA_TEST_SHUTDOWN: mode } })
+        }
+      };
+      const record = await runWithCommandEnv(context.commandEnv, () => executeScenario(scenario, context));
+      const events = (await readFile(ocmLog, "utf8")).trim().split("\n").map(JSON.parse).filter((item) => item.envName === record.envName);
+      const stop = events.findIndex((item) => item.args.slice(0, 2).join(" ") === "service stop");
+      const destroy = events.findIndex((item) => item.args.slice(0, 2).join(" ") === "env destroy");
+      if (mode === "retained") {
+        assert.equal(record.cleanup, "retained");
+        assert.equal(stop, -1);
+        assert.equal(destroy, -1);
+      } else if (["never", "malformed", "wrong-env", "status-failed", "stop-failed"].includes(mode)) {
+        assert.equal(destroy, -1, "unconfirmed shutdown must not fall through to env destroy");
+        assert.notEqual(record.status, "PASS");
+        assert.ok(record.teardownErrors?.some((error) => error.stage === "stop-and-export"), JSON.stringify(record.teardownErrors));
+        assert.notEqual(record.cleanup, "destroyed");
+        assert.ok(record.cleanupEvidence, "post-cleanup evidence must still run");
+        assert.ok(await stat(join(home, "envs", record.envName)));
+        const afterStop = events.slice(stop + 1);
+        assert.equal(afterStop.some((item) => item.args.slice(0, 3).join(" ") === "env artifact export"), false,
+          "unconfirmed shutdown must not export final artifacts");
+        if (mode === "never") {
+          const stopResult = record.phases.find((phase) => phase.id === "transport-stop").results[0];
+          assert.ok(Date.now() - stopResult.startedAtEpochMs < context.timeoutMs + 4000, "stop/status must share the existing deadline");
+        }
+      } else if (mode === "export-failed") {
+        assert.equal(record.cleanup, "destroyed", "confirmed shutdown must still allow cleanup after an export failure");
+        assert.ok(record.teardownErrors?.some((error) => error.stage === "stop-and-export"));
+        assert.notEqual(record.status, "PASS");
+      } else {
+        for (const phase of record.phases) {
+          assert.equal((phase.results ?? []).every((result) => result.status === 0), true,
+            `${scenarioId}/${phase.id}: ${JSON.stringify(phase.results)}`);
+        }
+        assert.equal(record.cleanup, "destroyed");
+        assert.equal(record.teardownErrors, undefined, JSON.stringify(record.teardownErrors));
+        if (stateId === "mock-openai-provider") {
+          assert.equal(record.auth.applied, true);
+          assert.equal(record.phases.some((phase) => phase.id === "auth-cleanup"), true);
+        }
+        const retainedProfiles = await Promise.all(record.postCleanupNodeProfiles.artifacts
+          .filter((path) => path.endsWith(".cpuprofile"))
+          .map(async (path) => JSON.parse(await readFile(path, "utf8"))));
+        assert.equal(retainedProfiles.filter((profile) => profile.testMarker === "exit-flush").length, 1,
+          "the complete exit-flushed profile must be exported before destroy");
+        const finalExport = events.findLastIndex((item) => item.args.slice(0, 3).join(" ") === "env artifact export");
+        assert.equal(stop >= 0 && finalExport > stop && destroy > finalExport, true, "stop, final export, destroy order");
+        if (mode === "delayed") {
+          const observations = events.slice(stop + 1, finalExport).filter((item) => item.args.slice(0, 2).join(" ") === "service status");
+          assert.ok(observations.length >= 3, "canonical status must observe the exact env's delayed shutdown");
+          assert.ok(observations.every((item) => item.args[2] === record.envName));
+        }
+      }
+      console.log(`PASS shutdown lifecycle: ${scenarioId}/${mode}`);
+    } catch (error) {
+      console.error(`FAIL shutdown lifecycle: ${scenarioId}/${mode}: ${error.message}`);
+      failures.push(error);
     }
-    assert.equal(record.cleanup, "destroyed");
-    assert.equal(record.teardownErrors, undefined, JSON.stringify(record.teardownErrors));
-    if (stateId === "mock-openai-provider") {
-      assert.equal(record.auth.applied, true);
-      assert.equal(record.phases.some((phase) => phase.id === "auth-cleanup"), true);
-    }
-    const retainedProfiles = await Promise.all(record.postCleanupNodeProfiles.artifacts
-      .filter((path) => path.endsWith(".cpuprofile"))
-      .map(async (path) => JSON.parse(await readFile(path, "utf8"))));
-    assert.equal(retainedProfiles.filter((profile) => profile.testMarker === "exit-flush").length, 1,
-      "the complete exit-flushed profile must be exported before destroy");
-    const events = (await readFile(ocmLog, "utf8")).trim().split("\n").map(JSON.parse).filter((item) => item.envName === record.envName);
-    const stop = events.findIndex((item) => item.args.slice(0, 2).join(" ") === "service stop");
-    const finalExport = events.findLastIndex((item) => item.args.slice(0, 3).join(" ") === "env artifact export");
-    const destroy = events.findIndex((item) => item.args.slice(0, 2).join(" ") === "env destroy");
-    assert.equal(stop >= 0 && finalExport > stop && destroy > finalExport, true, "stop, final export, destroy order");
   }
+  if (failures.length) throw new AggregateError(failures, `${failures.length} shutdown lifecycle failures`);
 }

@@ -23,6 +23,10 @@ if (args[0] === "env" && args[1] === "artifact") {
     process.exitCode = 9;
   } else {
     const source = join(root, path);
+    if (process.env.KOVA_TEST_SHUTDOWN === "export-failed" && path.endsWith("exit.cpuprofile")) {
+      console.error("fixture final export failed");
+      process.exit(9);
+    }
     const before = statSync(source, { bigint: true });
     if (process.env.KOVA_TEST_APPEND_DURING_EXPORT === "1" && path.endsWith("timeline.jsonl") &&
         !existsSync(join(root, ".stopped"))) {
@@ -51,21 +55,41 @@ if (args[0] === "env" && args[1] === "artifact") {
   mkdirSync(join(root, ".openclaw"), { recursive: true });
   console.log(JSON.stringify({ envName, defaultRuntime: "fixture" }));
 } else if (args[0] === "service") {
-  if (args[1] === "stop" && existsSync(join(root, ".kova-diagnostics"))) {
+  const mode = process.env.KOVA_TEST_SHUTDOWN ?? "immediate";
+  const requested = join(root, ".stop-requested");
+  if (args[1] === "stop") {
+    writeFileSync(requested, "0");
+    if (mode === "stop-failed") process.exit(7);
+  }
+  let running = false;
+  if (existsSync(requested) && !["immediate", "export-failed"].includes(mode)) {
+    const count = Number(readFileSync(requested, "utf8"));
+    if (args[1] === "status") {
+      if (mode === "malformed") { console.log("{"); process.exit(0); }
+      if (mode === "status-failed") process.exit(8);
+      writeFileSync(requested, String(count + 1));
+    }
+    running = args[1] === "stop" || mode === "never" || count < 2;
+    if (mode === "wrong-env") running = false;
+  }
+  if (existsSync(requested) && !running && existsSync(join(root, ".kova-diagnostics"))) {
     writeFileSync(join(root, ".stopped"), "");
     for (const dir of readdirSync(join(root, ".kova-diagnostics"))) {
       writeFileSync(join(root, ".kova-diagnostics", dir, "node-profiles", "exit.cpuprofile"),
         JSON.stringify({ nodes: [], samples: [], timeDeltas: [], startTime: 0, endTime: 1, testMarker: "exit-flush" }));
     }
   }
-  console.log(JSON.stringify({ gatewayState: "stopped", running: false, desiredRunning: false, childPid: null, gatewayPort: null }));
+  console.log(JSON.stringify({
+    envName: mode === "wrong-env" && existsSync(requested) ? "other-environment" : envName,
+    gatewayState: running ? "stopping" : "stopped", running, desiredRunning: false, childPid: null, gatewayPort: null
+  }));
 } else if (args[0] === "env" && args[1] === "destroy") {
   rmSync(root, { recursive: true, force: true });
   console.log("{}");
 } else if (args[0] === "env" && args[1] === "status") {
-  console.log(JSON.stringify({ root: "/candidate-private/not-readable", gatewayPort: 45678 }));
+  console.log(JSON.stringify({ root: process.env.KOVA_TEST_ROOT ?? "/candidate-private/not-readable", gatewayPort: Number(process.env.KOVA_TEST_PORT ?? 45678) }));
 } else if (args[0] === "env" && args[1] === "resolve") {
-  console.log(JSON.stringify({ binaryPath: "/candidate-private/not-readable/openclaw.mjs" }));
+  console.log(JSON.stringify({ binaryPath: process.env.KOVA_TEST_BINARY ?? "/candidate-private/not-readable/openclaw.mjs" }));
 } else if (args[0]?.startsWith("@")) {
   if (args.includes("--version")) {
     console.log("OpenClaw 2026.7.33");

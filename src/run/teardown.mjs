@@ -1,8 +1,9 @@
+import { setTimeout as delay } from "node:timers/promises";
 import { buildAuthCleanupPhase } from "../auth.mjs";
 import { runCleanupCommand } from "../cleanup.mjs";
 import { quoteShell, runCommand } from "../commands.mjs";
 import { isMissingOcmResource } from "../ocm/missing-resource.mjs";
-import { ocmEnvDestroy, ocmEnvProtect } from "../ocm/commands.mjs";
+import { ocmEnvDestroy, ocmEnvProtect, ocmServiceStatusJson } from "../ocm/commands.mjs";
 import { stopNetworkFrontage } from "../network-frontage.mjs";
 import { executeAuthPhase } from "./auth-phase.mjs";
 import {
@@ -43,6 +44,7 @@ export async function teardownScenario(record, scenario, context, envName, artif
   }
 
   record.networkFrontage = context.networkFrontageAllocation ?? record.networkFrontage;
+  let shutdownConfirmed = !context.ocmDiagnostics;
   const afterRetention = await runGuardedTeardownStages([
     {
       id: "cleanup-phase-notification",
@@ -58,11 +60,27 @@ export async function teardownScenario(record, scenario, context, envName, artif
     },
     {
       id: "stop-and-export",
-      run: () => retainEnv ? null : stopAndExport(record, context, envName, artifactDir)
+      run: async () => {
+        if (retainEnv || !context.ocmDiagnostics) return;
+        const deadlineEpochMs = await stopCandidate(record, context, envName);
+        shutdownConfirmed = true;
+        await collectStagedOcmDiagnostics(envName, context.ocmDiagnostics, artifactDir, {
+          env: context.commandEnv, stopped: true,
+          deadlineEpochMs: Math.min(deadlineEpochMs, Date.now() + 10000)
+        });
+      }
     },
     {
       id: "env-cleanup",
-      run: () => retainEnv ? null : cleanupEnv(record, context, envName)
+      run: () => {
+        if (retainEnv) return;
+        // Guarded stages continue after errors. Preserve unflushed candidate
+        // artifacts until the outer owner can quiesce the UID and clean up.
+        if (!shutdownConfirmed) {
+          throw new Error("environment destruction withheld: candidate shutdown unconfirmed; outer UID cleanup required");
+        }
+        return cleanupEnv(record, context, envName);
+      }
     },
     {
       id: "post-cleanup-evidence",
@@ -166,26 +184,44 @@ async function protectRetainedEnv(record, context, envName) {
   return true;
 }
 
-async function stopAndExport(record, context, envName, artifactDir) {
-  if (!context.ocmDiagnostics) return;
+async function stopCandidate(record, context, envName) {
+  const deadlineEpochMs = Date.now() + (context.timeoutMs ?? 120000);
   const result = await runCommand(`ocm service stop ${quoteShell(envName)} --json`, {
     timeoutMs: context.timeoutMs, env: context.commandEnv
   });
-  record.phases.push({
+  const phase = {
     id: "transport-stop",
     title: "Stop Candidate Before Artifact Export",
     measurementScope: "cleanup",
     driverKind: "kova",
     commands: [result.command],
     results: [result]
-  });
-  if (result.status !== 0) blockPassingRecord(record);
-  await collectStagedOcmDiagnostics(envName, context.ocmDiagnostics, artifactDir, {
-    env: context.commandEnv, timeoutMs: Math.min(context.timeoutMs ?? 10000, 10000),
-    stopped: result.status === 0
-  });
-  // OCM's B-owned response is not proof of process absence. The outer
-  // privileged runner must quiesce the candidate UID even on a successful run.
+  };
+  record.phases.push(phase);
+  if (result.status !== 0) throw new Error("OCM candidate stop command failed");
+  // Successful stop means accepted, not stopped. Observe only this env and
+  // charge both the action and observations to the original command budget.
+  // B's response orders diagnostics; outer UID quiescence is still required.
+  while (Date.now() < deadlineEpochMs) {
+    const status = await runCommand(ocmServiceStatusJson(envName), {
+      env: context.commandEnv, timeoutMs: Math.max(1, deadlineEpochMs - Date.now()),
+      maxOutputChars: 10000
+    });
+    phase.commands.push(status.command);
+    phase.results.push(status);
+    if (status.status !== 0 || status.outputBudget.truncated) {
+      throw new Error("OCM candidate shutdown observation failed");
+    }
+    const state = JSON.parse(status.stdout);
+    if (state?.envName !== envName || typeof state.running !== "boolean" ||
+        typeof state.desiredRunning !== "boolean") {
+      throw new Error("OCM shutdown observation did not identify the exact environment state");
+    }
+    if (Date.now() >= deadlineEpochMs) break;
+    if (!state.running && !state.desiredRunning) return deadlineEpochMs;
+    await delay(Math.min(100, Math.max(0, deadlineEpochMs - Date.now())));
+  }
+  throw new Error("OCM candidate shutdown was not confirmed before the command deadline");
 }
 
 export function classifyRetentionProtection(result, envName) {

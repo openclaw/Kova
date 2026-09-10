@@ -329,17 +329,17 @@ function formatGatewayRpcError(method, error) {
 }
 
 function readGatewayAuthToken({ root, envName }) {
-  const envToken = trimToNonEmptyString(process.env.OPENCLAW_GATEWAY_TOKEN);
   const configPath = process.env.OPENCLAW_CONFIG_PATH || join(root, ".openclaw", "openclaw.json");
+  const transported = readTransportedGatewayConfig({ root, envName }, configPath);
+  if (transported) {
+    return trimToNonEmptyString(transported.gateway?.auth?.token) ??
+      trimToNonEmptyString(transported.gateway?.remote?.token);
+  }
+  const envToken = trimToNonEmptyString(process.env.OPENCLAW_GATEWAY_TOKEN);
   let config;
   try {
-    config = JSON.parse(resolveOcmTransport()
-      ? readOcmArtifactSync(envName, relativeOcmArtifactPath(configPath, root), {
-        maxBytes: 1024 * 1024, timeoutMs: 10000
-      }).toString("utf8")
-      : readFileSync(configPath, "utf8"));
-  } catch (error) {
-    if (resolveOcmTransport() && !envToken) throw error;
+    config = JSON.parse(readFileSync(configPath, "utf8"));
+  } catch {
     return envToken;
   }
 
@@ -351,6 +351,19 @@ function readGatewayAuthToken({ root, envName }) {
     return envToken;
   }
   return trimToNonEmptyString(config?.gateway?.remote?.token);
+}
+
+export function readTransportedGatewayConfig({ root, envName }, configPath = join(root, ".openclaw", "openclaw.json")) {
+  if (!resolveOcmTransport()) return null;
+  if (!envName) throw new Error("cross-user Gateway config requires --env");
+  // Candidate paths are interpreted only by B's bounded export, never read as A.
+  const config = JSON.parse(readOcmArtifactSync(envName, relativeOcmArtifactPath(configPath, root), {
+    maxBytes: 1024 * 1024, timeoutMs: 10000
+  }).toString("utf8"));
+  if (!config || typeof config !== "object" || Array.isArray(config)) {
+    throw new Error("OCM Gateway config must be an object");
+  }
+  return config;
 }
 
 function trimToNonEmptyString(value) {

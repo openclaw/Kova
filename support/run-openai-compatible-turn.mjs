@@ -8,6 +8,7 @@ import {
   finishJson,
   parseSupportArgs,
   prepareOpenClawRuntimeFromOcmEnv,
+  readTransportedGatewayConfig,
   readTimeoutMs
 } from "./openclaw-runtime.mjs";
 import { resolveGatewayEndpoint } from "./gateway-endpoint.mjs";
@@ -21,9 +22,10 @@ try {
   const expectedText = args["expected-text"] ?? "KOVA_AGENT_OK";
   const timeoutMs = readTimeoutMs(args.timeout, 120000);
   const model = args.model ?? "openclaw";
-  const cfg = readConfig(runtimeContext.root);
+  const transported = readTransportedGatewayConfig(runtimeContext);
+  const cfg = transported ?? readConfig(runtimeContext.root);
   const gateway = resolveGatewayEndpoint(runtimeContext, cfg, { protocol: "http" });
-  const token = readGatewayToken(cfg);
+  const token = readGatewayToken(cfg, transported !== null);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error(`OpenAI-compatible request timed out after ${timeoutMs}ms`)), timeoutMs);
   const requestStartedAtEpochMs = Date.now();
@@ -84,13 +86,15 @@ function textEquals(actual, expected) {
   return typeof actual === "string" && typeof expected === "string" && actual.trim() === expected.trim();
 }
 
-function readGatewayToken(cfg) {
+function readGatewayToken(cfg, transported) {
   const candidates = [
-    process.env.OPENCLAW_GATEWAY_TOKEN,
+    transported ? undefined : process.env.OPENCLAW_GATEWAY_TOKEN,
     cfg?.gateway?.auth?.token,
     cfg?.gateway?.token
   ];
-  return candidates.find((value) => typeof value === "string" && value.trim().length > 0)?.trim() ?? "";
+  const token = candidates.find((value) => typeof value === "string" && value.trim().length > 0)?.trim() ?? "";
+  if (transported && !token) throw new Error("cross-user Gateway request requires a candidate auth token");
+  return token;
 }
 
 function readConfig(root) {
