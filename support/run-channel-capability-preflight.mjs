@@ -3,11 +3,14 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
+import { resolveOcmTransport } from "../src/ocm/transport.mjs";
 import {
   parseSupportArgs,
   prepareOpenClawRuntimeFromOcmEnv,
   readTimeoutMs
 } from "./openclaw-runtime.mjs";
+
+if (resolveOcmTransport()) throw new Error("cross-user channel preflight cannot import candidate modules");
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const args = parseSupportArgs(process.argv.slice(2));

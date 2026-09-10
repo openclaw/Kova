@@ -35,9 +35,9 @@ if (args[0] === "env" && args[1] === "artifact") {
 } else if (args[0] === "service") {
   console.log(JSON.stringify({ gatewayState: "stopped", running: false, desiredRunning: false, childPid: null, gatewayPort: null }));
 } else if (args[0] === "env" && args[1] === "status") {
-  console.log(JSON.stringify({ root: "/candidate-private/not-readable", gatewayPort: 45678 }));
+  console.log(JSON.stringify({ root: process.env.KOVA_TEST_ROOT ?? "/candidate-private/not-readable", gatewayPort: Number(process.env.KOVA_TEST_PORT ?? 45678) }));
 } else if (args[0] === "env" && args[1] === "resolve") {
-  console.log(JSON.stringify({ binaryPath: "/candidate-private/not-readable/openclaw.mjs" }));
+  console.log(JSON.stringify({ binaryPath: process.env.KOVA_TEST_BINARY ?? "/candidate-private/not-readable/openclaw.mjs" }));
 } else if (args[0]?.startsWith("@") && args.includes("--version")) {
   console.log("OpenClaw 2026.7.33");
 } else if (args[0]?.startsWith("@") && args[2] === "plugins") {

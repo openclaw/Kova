@@ -4,6 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
+import { resolveOcmTransport } from "../src/ocm/transport.mjs";
 import {
   parseSupportArgs,
   prepareOpenClawRuntimeFromOcmEnv,
@@ -11,6 +12,8 @@ import {
 } from "./openclaw-runtime.mjs";
 import { loadChannelCapabilities } from "../src/registries/channel-capabilities.mjs";
 import { loadChannelCapabilityCatalog } from "../src/registries/channel-capability-catalog.mjs";
+
+if (resolveOcmTransport()) throw new Error("cross-user channel conformance cannot import candidate modules");
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const args = parseSupportArgs(process.argv.slice(2));

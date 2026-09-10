@@ -100,6 +100,8 @@ if (args.includes("wait-for-timeout")) {
   await verifyConfigReads({ home, env, log });
   await verifyStateWriters({ env, home, log });
   await verifyRuntimeHelper({ env });
+  const { verifyRuntimeBoundaries } = await import("./ocm-runtime-boundaries.mjs");
+  await verifyRuntimeBoundaries({ root, home, env, transport, binary });
   console.log("PASS OCM command/config transport and pre-provision admission");
 } finally {
   if (previousHome === undefined) delete process.env.KOVA_HOME;
