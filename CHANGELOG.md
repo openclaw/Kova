@@ -4,7 +4,7 @@ All notable changes to Kova are documented in this file.
 
 ## Unreleased
 
-- Add structured OCM command and config transport; cross-user scenario execution remains blocked until diagnostic collection is integrated.
+- Support cross-user OCM transport for the four performance scenarios, keeping candidate execution and diagnostic staging separate from Kova's mock provider, evaluator, and retained reports.
 
 ## 0.1.5 - 2026-09-07
 

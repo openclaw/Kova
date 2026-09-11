@@ -74,7 +74,14 @@ export function buildSkippedRecord(scenario, context, reason) {
 
 export async function executeScenario(scenario, context) {
   if (resolveOcmTransport({ ...process.env, ...context.commandEnv })) {
-    throw new Error("cross-user scenario execution requires diagnostic collection integration");
+    const supportedScenarios = ["fresh-install", "gateway-performance", "bundled-plugin-startup", "agent-cold-warm-message"];
+    const supportedStates = ["fresh", "onboarded-user", "many-bundled-plugins", "mock-openai-provider"];
+    if (!supportedScenarios.includes(scenario.id) ||
+        (context.state && !supportedStates.includes(context.state.id)) ||
+        context.state?.fixtureAccounting || context.state?.snapshots?.length) {
+      throw new Error("cross-user OCM transport supports only the four performance scenarios and fresh, onboarded-user, many-bundled-plugins, or mock-openai-provider state");
+    }
+    context = { ...context, ocmDiagnostics: null };
   }
   const envName = envNameFor(scenario.id, context.state?.id, context.runId, context.repeat);
   assertKovaEnvName(envName, "generated env");

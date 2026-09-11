@@ -12,6 +12,7 @@ export function metricOptions(context, scenario, phase, artifactDir, policyConte
   return {
     timeoutMs: context.timeoutMs,
     commandEnv: context.commandEnv,
+    ocmDiagnostics: context.ocmDiagnostics,
     healthSamples: context.healthSamples,
     healthIntervalMs: context.healthIntervalMs,
     readinessThresholdMs,

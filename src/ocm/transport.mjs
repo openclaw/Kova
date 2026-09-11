@@ -1,6 +1,10 @@
-import { spawnSync } from "node:child_process";
-import { closeSync, openSync, readFileSync, readSync } from "node:fs";
-import { delimiter, isAbsolute, join } from "node:path";
+import { spawn, spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { closeSync, createWriteStream, openSync, readFileSync, readSync } from "node:fs";
+import { mkdir, rename, rm } from "node:fs/promises";
+import { delimiter, dirname, isAbsolute, join } from "node:path";
+import { Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { repoRoot } from "../paths.mjs";
 
 const transportVariable = "KOVA_OCM_TRANSPORT_JSON";
@@ -144,6 +148,96 @@ export function readOcmArtifactSync(envName, path, options) {
     throw new Error(`OCM artifact export failed: ${result.error?.message ?? result.stderr?.toString("utf8").slice(0, 1000) ?? result.status}`);
   }
   return result.stdout;
+}
+
+export async function exportOcmArtifact(envName, path, target, options) {
+  const env = { ...process.env, ...(options.env ?? {}) };
+  const invocation = ocmInvocation(artifactExportArgs(envName, path, options.maxBytes), env);
+  const remainingMs = Math.floor(options.deadlineEpochMs - Date.now());
+  if (!Number.isFinite(remainingMs) || remainingMs <= 0) throw new Error("OCM artifact export deadline expired");
+  await mkdir(dirname(target), { recursive: true, mode: 0o700 });
+  const temporary = join(dirname(target), `.kova-export-${randomUUID()}.tmp`);
+  const controller = new AbortController();
+  const child = spawn(invocation.file, invocation.args, {
+    env: invocation.env,
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  let timeout;
+  const deadline = new Promise((_, reject) => {
+    timeout = setTimeout(() => {
+      controller.abort();
+      reject(new Error("OCM artifact export deadline expired"));
+    }, Math.max(0, options.deadlineEpochMs - Date.now()));
+  });
+  let bytes = 0;
+  let stderr = "";
+  let launcherTerminal = false;
+  child.stderr.on("data", (chunk) => { stderr = (stderr + chunk.toString("utf8")).slice(0, 2000); });
+  const terminal = new Promise((resolve) => {
+    child.on("error", (error) => {
+      if (!child.pid) {
+        launcherTerminal = true;
+        resolve({ error });
+      } else {
+        controller.abort(error);
+      }
+    });
+    child.once("exit", (code, signal) => {
+      launcherTerminal = true;
+      resolve({ code, signal });
+    });
+  });
+  const exited = terminal.then(({ code, signal, error }) => {
+    if (error || code !== 0 || signal) {
+      throw new Error(`OCM artifact export failed (${signal ?? code}): ${error?.message ?? stderr}`);
+    }
+  });
+  const bound = new Transform({
+    transform(chunk, encoding, callback) {
+      bytes += chunk.length;
+      callback(bytes > options.maxBytes ? new Error(`OCM artifact exceeds ${options.maxBytes} bytes`) : null, chunk);
+    }
+  });
+  const output = createWriteStream(temporary, { flags: "wx", mode: 0o600 });
+  const fileClosed = new Promise((resolve) => output.once("close", resolve));
+  const copy = pipeline(child.stdout, bound, output, { signal: controller.signal });
+  let failure;
+  try {
+    // EOF can finish the copy while the launcher remains alive.
+    await Promise.race([Promise.all([exited, copy]), deadline]);
+    if (controller.signal.aborted || Date.now() >= options.deadlineEpochMs) throw new Error("OCM artifact export deadline expired");
+    await options.validate?.(temporary);
+    if (Date.now() >= options.deadlineEpochMs) throw new Error("OCM artifact export deadline expired");
+    await rename(temporary, target);
+    return { path: target, bytes };
+  } catch (error) {
+    failure = error;
+    if (controller.signal.aborted) {
+      failure = new Error("OCM artifact export deadline expired", { cause: error });
+    }
+    failure.message += "; candidate descendants remain unverified (outer UID quiescence required)";
+    throw failure;
+  } finally {
+    clearTimeout(timeout);
+    controller.abort();
+    if (!launcherTerminal) child.kill("SIGKILL");
+    child.stdout.destroy();
+    child.stderr.destroy();
+    output.destroy();
+    // Pipeline rejection alone does not mean an asynchronous file open has
+    // settled. Join the file close as well before unlinking its pathname.
+    const settled = Promise.allSettled([terminal, copy, fileClosed]);
+    let cleanupTimer;
+    const joined = await Promise.race([
+      settled.then(() => true),
+      new Promise((resolve) => { cleanupTimer = setTimeout(() => resolve(false), 2000); })
+    ]);
+    clearTimeout(cleanupTimer);
+    if (!joined) {
+      throw new Error(`OCM export cleanup incomplete: launcher terminal=${launcherTerminal}, file closed=${output.closed}; temporary file retained; outer candidate UID quiescence required`, { cause: failure });
+    }
+    await rm(temporary, { force: true });
+  }
 }
 
 function isRecord(value) {

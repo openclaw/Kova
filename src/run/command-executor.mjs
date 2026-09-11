@@ -4,7 +4,7 @@ import {
   attachCommandResultInterpretation,
   normalizeOptionalCommandResult
 } from "../command-results.mjs";
-import { runCommand } from "../commands.mjs";
+import { quoteShell, runCommand } from "../commands.mjs";
 import { collectorArtifactDirs } from "../collectors/artifacts.mjs";
 import { captureProcessSnapshot, diffProcessSnapshots } from "../collectors/resources.mjs";
 import {
@@ -19,6 +19,8 @@ import { resolveOwnedMockProviderPid } from "../process-safety.mjs";
 import { assertSafeScenarioCommand } from "../safety.mjs";
 import { safeSegment } from "./phase-commands.mjs";
 import { captureTargetIdentity } from "../target-identity.mjs";
+import { resolveOcmTransport } from "../ocm/transport.mjs";
+import { prepareOcmDiagnostics } from "../ocm/diagnostics.mjs";
 
 export async function runScenarioCommand(command, context, envName, artifactDir, phase, commandIndex, authPolicy = null) {
   return runCommandWithContext(command, context, envName, artifactDir, phase, commandIndex, authPolicy, true);
@@ -86,6 +88,13 @@ async function runCommandWithContext(command, context, envName, artifactDir, pha
   tagCommandResult(result, phase);
   if (result.status === 0) {
     try {
+      if (resolveOcmTransport({ ...process.env, ...context.commandEnv }) &&
+          command.startsWith(`ocm start ${quoteShell(envName)} `)) {
+        context.ocmDiagnostics = await prepareOcmDiagnostics(envName, context.runId, {
+          timeoutMs: context.timeoutMs,
+          env: context.commandEnv
+        });
+      }
       const allocation = await maybeStartNetworkFrontage(context, envName, artifactDir);
       if (allocation?.status === "active") {
         result.networkFrontage = allocation;
@@ -93,7 +102,7 @@ async function runCommandWithContext(command, context, envName, artifactDir, pha
     } catch (error) {
       result.status = 1;
       result.harnessBlocker = true;
-      result.stderr = `${result.stderr ?? ""}${result.stderr ? "\n" : ""}network frontage blocked: ${error.message}`;
+      result.stderr = `${result.stderr ?? ""}${result.stderr ? "\n" : ""}post-command harness setup blocked: ${error.message}`;
       result.networkFrontage = context.networkFrontageAllocation ?? null;
     }
   }
@@ -197,19 +206,22 @@ export function buildDiagnosticsCommandEnv(
     return {};
   }
   const artifactDirs = collectorArtifactDirs(artifactDir);
+  const transported = resolveOcmTransport({ ...process.env, ...context.commandEnv });
+  if (transported && !context.ocmDiagnostics) return {};
+  const timelinePath = transported ? context.ocmDiagnostics.timeline : join(artifactDirs.openclaw, "timeline.jsonl");
 
   const env = {
     OPENCLAW_DIAGNOSTICS: "timeline",
     OPENCLAW_DIAGNOSTICS_RUN_ID: context.runId,
     OPENCLAW_DIAGNOSTICS_ENV: envName,
-    OPENCLAW_DIAGNOSTICS_TIMELINE_PATH: join(artifactDirs.openclaw, "timeline.jsonl"),
+    OPENCLAW_DIAGNOSTICS_TIMELINE_PATH: timelinePath,
     OPENCLAW_DIAGNOSTICS_EVENT_LOOP: "1"
   };
 
   if (commandReceivesNodeProfiler(context, measurementScope, command)) {
-    const profileDir = artifactDirs.nodeProfiles;
+    const profileDir = transported ? context.ocmDiagnostics.nodeProfiles : artifactDirs.nodeProfiles;
     env.KOVA_NODE_PROFILE_DIR = profileDir;
-    env.NODE_OPTIONS = mergeNodeOptions(process.env.NODE_OPTIONS, [
+    env[transported ? "KOVA_OCM_COMMAND_NODE_OPTIONS" : "NODE_OPTIONS"] = mergeNodeOptions(transported ? transported.env.NODE_OPTIONS : process.env.NODE_OPTIONS, [
       "--cpu-prof",
       `--cpu-prof-dir=${quoteNodeOptionValue(profileDir)}`,
       "--heap-prof",
