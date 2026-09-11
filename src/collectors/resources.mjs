@@ -1,6 +1,5 @@
 import { spawnSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
-import { cpus } from "node:os";
 import { dirname } from "node:path";
 import { repoRoot } from "../paths.mjs";
 import { ocmServiceStatusJson } from "../ocm/commands.mjs";
@@ -26,7 +25,6 @@ export function startResourceSampler(rootPid, options = {}) {
   const samples = [];
   const cpuAccountant = process.platform === "linux" && !options.processLister
     ? createLinuxCpuAccountant({ accountingRootPid: options.accountingRootPid }) : null;
-  const cpuCount = cpuAccountant ? cpus().length : 0;
   let stopped;
   let gatewayPid = null;
   let nextGatewayLookupSample = 0;
@@ -147,7 +145,6 @@ export function startResourceSampler(rootPid, options = {}) {
 
     let measured = tracked;
     let cpuClock = null;
-    let cpuUncertaintyPercent = null;
     if (cpuAccountant) {
       try {
         // Process discovery is not part of the counter snapshot. Starting the
@@ -155,17 +152,8 @@ export function startResourceSampler(rootPid, options = {}) {
         cpuClock = readLinuxCpuClock();
         const counters = readLinuxCpuSnapshot(tracked, cpuAccountant.trackedProcessIds());
         cpuClock.finishedMs = performance.now();
-        const previousEnd = cpuAccountant.lastSuccessfulClock()?.finishedMs;
-        const previousStart = cpuAccountant.lastSuccessfulClock()?.monotonicMs;
-        const innerMs = previousEnd === undefined ? null : cpuClock.monotonicMs - previousEnd;
-        const scanMs = cpuClock.finishedMs - cpuClock.monotonicMs + (previousEnd === undefined ? 0 : previousEnd - previousStart);
-        cpuUncertaintyPercent = innerMs > 0 ? cpuCount * scanMs / innerMs * 100 : null;
         measured = cpuAccountant.sample(counters, cpuClock).map((entry) => ({ ...entry,
-          ...(entry.roles.length ? {} : { rssMb: 0, rssKb: 0, command: "[CPU wait owner for retired product processes]" }),
-          // A supervisor outside the product tree can own a retired Gateway's
-          // wait counters. Preserve those roles without charging its own work.
-          cpuPercent: entry.ownCpuPercent === null ? null :
-            (entry.roles.length ? entry.ownCpuPercent : 0) + (entry.reapedRoles.length ? entry.reapedCpuPercent : 0)
+          ...(entry.roles.length ? {} : { rssMb: 0, rssKb: 0, command: "[CPU wait owner for retired product processes]" })
         }));
       } catch (error) {
         if (error instanceof LinuxCpuSnapshotChangedError && attempt < 3) return sample(attempt + 1);
@@ -182,7 +170,7 @@ export function startResourceSampler(rootPid, options = {}) {
       collectionStatus: "ok",
       collectionError: null,
       cpuMeasurementContract: cpuAccountant ? "linux-process-interval-v1" : "ps-process-cpu-v1",
-      cpuClock, cpuUncertaintyPercent,
+      cpuClock,
       ...(cpuAccountant ? { collectionAttempts: attempt } : {}),
       processes: measured.filter((entry) => entry.roles.length || entry.reapedRoles?.length)
     });
@@ -220,9 +208,10 @@ export function summarizeResourceSamples(samples) {
 
     peakTotalRssMb = maxNullable(peakTotalRssMb, totalRssMb);
     maxTotalCpuPercent = maxNullable(maxTotalCpuPercent, totalCpuPercent);
-    if (sample.cpuUncertaintyPercent !== null && sample.cpuUncertaintyPercent !== undefined) {
-      const certain = sample.processes.reduce((sum, entry) => sum + (entry.roles.length && entry.cpuIntervalComplete !== false ? entry.ownCpuPercent ?? 0 : 0), 0);
-      maxTotalCpuPercentLower = maxNullable(maxTotalCpuPercentLower, Math.floor(Math.max(0, certain - sample.cpuUncertaintyPercent) * 10) / 10);
+    const boundedProcesses = sample.processes.filter((entry) => typeof entry.ownCpuPercentLower === "number");
+    if (boundedProcesses.length > 0) {
+      const lower = boundedProcesses.reduce((sum, entry) => sum + (entry.roles.length ? entry.ownCpuPercentLower : 0), 0);
+      maxTotalCpuPercentLower = maxNullable(maxTotalCpuPercentLower, Math.floor(lower * 10) / 10);
     }
     peakCommandTreeRssMb = maxNullable(peakCommandTreeRssMb, commandTreeRssMb);
     peakGatewayRssMb = maxNullable(peakGatewayRssMb, gatewayRssMb);
@@ -683,10 +672,10 @@ function updateRolePeaks(byRole, sample) {
       };
       const ownsRole = process.roles?.includes(role) ?? process.role.split(",").includes(role);
       if (ownsRole) total.rssMb += process.rssMb;
-      if (typeof process.ownCpuPercent === "number") {
-        total.cpuPercent = (total.cpuPercent ?? 0) + (ownsRole ? process.ownCpuPercent : 0) +
-          (process.reapedRoles.includes(role) ? process.reapedCpuPercent : 0);
-        total.cpuCertainPercent = (total.cpuCertainPercent ?? 0) + (ownsRole && process.cpuIntervalComplete !== false ? process.ownCpuPercent : 0);
+      if (typeof process.ownCpuPercentUpper === "number") {
+        total.cpuPercent = (total.cpuPercent ?? 0) + (ownsRole ? process.ownCpuPercentUpper : 0) +
+          (process.reapedRoles.includes(role) ? process.reapedCpuPercentUpper : 0);
+        total.cpuCertainPercent = (total.cpuCertainPercent ?? 0) + (ownsRole ? process.ownCpuPercentLower : 0);
       } else if (typeof process.cpuPercent === "number") total.cpuPercent = (total.cpuPercent ?? 0) + process.cpuPercent;
       total.processCount += 1;
       if (!total.topRssProcess || process.rssMb > total.topRssProcess.rssMb) {
@@ -694,7 +683,7 @@ function updateRolePeaks(byRole, sample) {
       }
       const retired = !ownsRole ? process.reapedProcesses?.find((entry) => entry.roles?.includes(role)) : null;
       const attributed = retired ? { ...process, ...retired, rssMb: 0, role: retired.roles.join(","),
-        cpuPercent: process.reapedCpuPercent, cpuAttribution: "reaped-role-upper-bound", cpuWaitOwnerPid: process.pid } : process;
+        cpuPercent: process.reapedCpuPercentUpper, cpuAttribution: "reaped-role-upper-bound", cpuWaitOwnerPid: process.pid } : process;
       if (!total.topCpuProcess || attributed.cpuPercent > total.topCpuProcess.cpuPercent) {
         total.topCpuProcess = attributed;
       }
@@ -723,7 +712,7 @@ function updateRolePeaks(byRole, sample) {
       existing.peakRssProcess = compactProcess(total.topRssProcess);
     }
     if (total.cpuCertainPercent !== null) {
-      const lower = Math.floor(Math.max(0, total.cpuCertainPercent - (sample.cpuUncertaintyPercent ?? 0)) * 10) / 10;
+      const lower = Math.floor(total.cpuCertainPercent * 10) / 10;
       existing.maxCpuPercentLower = Math.max(existing.maxCpuPercentLower ?? 0, lower);
     }
     if (cpuPercent !== null && (existing.maxCpuPercent === null || cpuPercent > existing.maxCpuPercent)) {
