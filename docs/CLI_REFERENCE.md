@@ -73,3 +73,41 @@ configuring credentials with `kova setup`.
 Kova stores credentials, reports, artifacts, and baselines under `~/.kova` by
 default. See [Agent Usage](AGENT_USAGE.md) for safe execution, cloned-user
 upgrades, baseline policy, cleanup, and report handoff.
+
+### Cross-user command transport
+
+`KOVA_OCM_TRANSPORT_JSON` configures an operator-owned argv transport for OCM
+commands and bounded config reads. Without it, Kova retains ordinary same-user
+behavior. This foundation does not yet support cross-user scenario execution:
+configured runs fail before provisioning or instrumentation until diagnostic
+collection is integrated. It is not an isolated benchmark runner.
+
+```json
+{
+  "prefix": ["/usr/bin/sudo", "-n", "-u", "candidate", "--"],
+  "binary": "/opt/ocm/ocm",
+  "env": {
+    "HOME": "/var/lib/performance-candidate",
+    "PATH": "/opt/runtime/bin:/opt/ocm:/usr/bin:/bin"
+  },
+  "cwd": "/var/lib/performance-candidate"
+}
+```
+
+The prefix and binary are structured argv, not shell expressions. `cwd`
+defaults to `env.HOME`; GNU `/usr/bin/env -C <cwd> -i` changes it after the
+prefix switches user, without entering the candidate home as the runner.
+Only configured environment values and explicit command metadata cross.
+HOME and PATH stay fixed; ambient runner `NODE_OPTIONS` are not forwarded.
+The mock port is passed as a validated value, and the two fixed config/pressure
+state writers run without exposing the private Kova checkout.
+
+OCM must support
+`ocm env artifact export ENV --path RELATIVE_ENV_HOME --max-bytes N`.
+Gateway config reads are limited to 1 MiB and a 10-second timeout. Candidate
+responses are data, never executable code, runner file paths, or signal targets.
+Node, Kova, helpers, OCM, and runner report ancestors must be immutable to the
+candidate. Custom unreviewed Kova cannot serve as the trusted evaluator.
+
+Killing the launcher does not prove candidate descendants are gone. The outer
+privileged runner must quiesce its known candidate UID on every outcome.

@@ -136,7 +136,7 @@ async function cleanupState(record, scenario, context, envName, artifactDir, aut
 }
 
 async function cleanupEnv(record, context, envName) {
-  const cleanup = await runCleanupCommand(ocmEnvDestroy(envName), { timeoutMs: context.timeoutMs });
+  const cleanup = await runCleanupCommand(ocmEnvDestroy(envName), { timeoutMs: context.timeoutMs, env: context.commandEnv });
   record.cleanup = classifyEnvDestroyCleanup(cleanup, envName);
   record.cleanupResult = cleanup;
   if (record.cleanup === "destroy-failed") {
@@ -146,7 +146,8 @@ async function cleanupEnv(record, context, envName) {
 
 async function protectRetainedEnv(record, context, envName) {
   const result = await runCommand(ocmEnvProtect(envName, true), {
-    timeoutMs: context.timeoutMs
+    timeoutMs: context.timeoutMs,
+    env: context.commandEnv
   });
   record.retentionProtectionResult = result;
   const outcome = classifyRetentionProtection(result, envName);

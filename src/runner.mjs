@@ -33,6 +33,7 @@ import { plannedNetworkFrontage } from "./network-frontage.mjs";
 import { assertKovaEnvName } from "./safety.mjs";
 import { join } from "node:path";
 import { recordTargetIdentity } from "./target-identity.mjs";
+import { resolveOcmTransport } from "./ocm/transport.mjs";
 export { createRunId } from "./run/run-id.mjs";
 
 export function buildDryRunRecord(scenario, context) {
@@ -72,6 +73,9 @@ export function buildSkippedRecord(scenario, context, reason) {
 }
 
 export async function executeScenario(scenario, context) {
+  if (resolveOcmTransport({ ...process.env, ...context.commandEnv })) {
+    throw new Error("cross-user scenario execution requires diagnostic collection integration");
+  }
   const envName = envNameFor(scenario.id, context.state?.id, context.runId, context.repeat);
   assertKovaEnvName(envName, "generated env");
   const artifactDir = join(artifactsDir, context.runId, envName);

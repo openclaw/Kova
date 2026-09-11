@@ -9,9 +9,11 @@ import {
   finishJson,
   parseSupportArgs,
   prepareOpenClawRuntimeFromOcmEnv,
+  readTransportedGatewayConfig,
   readTimeoutMs
 } from "./openclaw-runtime.mjs";
 import { resolveGatewayEndpoint } from "./gateway-endpoint.mjs";
+import { resolveOcmTransport } from "../src/ocm/transport.mjs";
 
 const startedAtEpochMs = Date.now();
 
@@ -44,10 +46,11 @@ try {
   const args = parseSupportArgs(process.argv.slice(2));
   const runtimeContext = prepareRuntimeContext(args);
   const timeoutMs = readTimeoutMs(args.timeout, 120000);
-  const cfg = readConfig(runtimeContext.root);
+  const transported = readTransportedGatewayConfig(runtimeContext);
+  const cfg = transported ?? readConfig(runtimeContext.root);
   const expectedText = args["expected-text"] ?? "KOVA_AGENT_OK";
   const model = args.model ?? "openclaw";
-  const token = readGatewayToken(cfg);
+  const token = readGatewayToken(cfg, transported !== null);
   const gateway = resolveGatewayEndpoint({ gatewayPort: runtimeContext.gatewayPort }, cfg, { protocol: "http" });
   const results = [];
 
@@ -113,6 +116,7 @@ function prepareRuntimeContext(args) {
   if (args.env) {
     return prepareOpenClawRuntimeFromOcmEnv(args.env);
   }
+  if (resolveOcmTransport()) throw new Error("cross-user Gateway request requires --env");
   const root = expandHome(args["openclaw-home"] ?? process.env.OPENCLAW_HOME ?? path.join(process.env.HOME ?? "", ".openclaw"));
   const cfg = readConfig(root);
   const port = Number(args["gateway-port"] ?? process.env.OPENCLAW_GATEWAY_PORT ?? cfg?.gateway?.port);
@@ -208,13 +212,15 @@ function textEquals(actual, expected) {
   return typeof actual === "string" && typeof expected === "string" && actual.trim() === expected.trim();
 }
 
-function readGatewayToken(cfg) {
+function readGatewayToken(cfg, transported) {
   const candidates = [
-    process.env.OPENCLAW_GATEWAY_TOKEN,
+    transported ? undefined : process.env.OPENCLAW_GATEWAY_TOKEN,
     cfg?.gateway?.auth?.token,
     cfg?.gateway?.token
   ];
-  return candidates.find((value) => typeof value === "string" && value.trim().length > 0)?.trim() ?? "";
+  const token = candidates.find((value) => typeof value === "string" && value.trim().length > 0)?.trim() ?? "";
+  if (transported && !token) throw new Error("cross-user Gateway request requires a candidate auth token");
+  return token;
 }
 
 function readConfig(root) {

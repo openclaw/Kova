@@ -11,6 +11,7 @@ export function metricOptions(context, scenario, phase, artifactDir, policyConte
   const measurementScope = measurementScopeForPhase(policyContext.measurementPhase ?? phase);
   return {
     timeoutMs: context.timeoutMs,
+    commandEnv: context.commandEnv,
     healthSamples: context.healthSamples,
     healthIntervalMs: context.healthIntervalMs,
     readinessThresholdMs,
