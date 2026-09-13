@@ -51,9 +51,10 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
-      - name: Install OCM
+      - name: Install validation tools
         run: |
           ./scripts/install-ocm-ci.sh
+          ./scripts/install-expect-ci.sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/ocm" --version
       - name: Install dependencies

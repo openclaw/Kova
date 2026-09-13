@@ -162,6 +162,9 @@ npm test --prefix web
 npm run build --prefix web
 ```
 
+Install `expect` locally to include setup's hidden-input and cancellation PTY
+checks in `self-check`; CI installs this prerequisite automatically.
+
 CI runs the full check suite and release-install smoke test on Node.js 22, 24,
 and 26 on Linux, and Node.js 24 on macOS. The website has a separate type-check,
 test, and production-build job. `.node-version` pins the development, website,
