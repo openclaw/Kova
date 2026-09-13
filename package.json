@@ -38,6 +38,6 @@
     "tar-stream": "3.2.1",
     "unicode-case-folding": "1.1.1",
     "wrap-ansi": "^10.0.1",
-    "zod": "^4.6.2"
+    "zod": "^4.6.4"
   }
 }
