@@ -11,19 +11,20 @@ if (command.length === 0) {
 }
 
 let result;
-let combined = "";
 let matchedLine = null;
+let attempts = 0;
 
-for (let attempt = 1; attempt <= options.retries; attempt += 1) {
+while (attempts < options.retries) {
+  attempts += 1;
   result = await runProcess(command[0], command.slice(1));
-  combined = `${result.stdout}\n${result.stderr}`;
+  const combined = `${result.stdout}\n${result.stderr}`;
   matchedLine = result.status === options.expectStatus
     ? lineContaining(combined, options.expectedText)
     : null;
   if (matchedLine !== null) {
     break;
   }
-  if (attempt < options.retries) {
+  if (attempts < options.retries) {
     await sleep(options.delayMs);
   }
 }
@@ -44,7 +45,7 @@ console.log(JSON.stringify({
   command: command.join(" "),
   status: result.status,
   expectedText: options.expectedText,
-  attempts: options.retries,
+  attempts,
   matched: true,
   matchedLine
 }, null, 2));
@@ -65,9 +66,9 @@ function parseArgs(args) {
       }
       index += 1;
       if (arg === "--contains") options.expectedText = value;
-      if (arg === "--expect-status") options.expectStatus = Number.parseInt(value, 10);
-      if (arg === "--retries") options.retries = Number.parseInt(value, 10);
-      if (arg === "--delay-ms") options.delayMs = Number.parseInt(value, 10);
+      if (arg === "--expect-status") options.expectStatus = parseInteger(value);
+      if (arg === "--retries") options.retries = parseInteger(value);
+      if (arg === "--delay-ms") options.delayMs = parseInteger(value);
       continue;
     }
     throw new Error(`unexpected argument: ${arg}`);
@@ -77,6 +78,10 @@ function parseArgs(args) {
   if (!Number.isInteger(options.retries) || options.retries <= 0) throw new Error("--retries must be a positive integer");
   if (!Number.isInteger(options.delayMs) || options.delayMs < 0) throw new Error("--delay-ms must be a non-negative integer");
   return options;
+}
+
+function parseInteger(value) {
+  return /^[+-]?\d+$/.test(value) ? Number(value) : NaN;
 }
 
 function lineContaining(value, expectedText) {
