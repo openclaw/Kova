@@ -4,6 +4,7 @@ All notable changes to Kova are documented in this file.
 
 ## Unreleased
 
+- Refresh Zod to 4.6.4 and the checksum-verified OCM validation runtime to 0.2.46.
 - Support cross-user OCM transport for the four performance scenarios, keeping candidate execution and diagnostic staging separate from Kova's mock provider, evaluator, and retained reports.
 - Report actual command-output assertion attempts and reject malformed numeric options instead of silently truncating them.
 - Reduce CLI startup work by loading command handlers and the self-check suite only when requested.
