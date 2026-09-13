@@ -153,7 +153,19 @@ npm run check:full
 npm run pack:release
 ```
 
-CI runs the full check suite and release-install smoke test on macOS and Linux.
+Check the website with the same commands used in CI:
+
+```sh
+npm ci --prefix web
+npm run check --prefix web
+npm test --prefix web
+npm run build --prefix web
+```
+
+CI runs the full check suite and release-install smoke test on Node.js 22, 24,
+and 26 on Linux, and Node.js 24 on macOS. The website has a separate type-check,
+test, and production-build job. `.node-version` pins the development, website,
+hydration, and release-build runtime without changing the Node.js 22 CLI floor.
 
 ## License
 

@@ -9,21 +9,33 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
-    name: Test (${{ matrix.os }})
+    name: Test (${{ matrix.os }}, Node ${{ matrix.node }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - ubuntu-latest
-          - macos-15
+        include:
+          - os: ubuntu-latest
+            node: 22.23.2
+          - os: ubuntu-latest
+            node: 24.21.0
+          - os: ubuntu-latest
+            node: 26.8.2
+          - os: macos-15
+            node: 24.21.0
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24
+          node-version: ${{ matrix.node }}
+          cache: npm
       - name: Install OCM
         run: |
           ./scripts/install-ocm-ci.sh
@@ -45,3 +57,27 @@ jobs:
             "$tmp/bin/kova" self-check
           )
           rm -rf "$tmp"
+
+  web:
+    name: Website
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm ci --prefix web
+      - name: Check website types
+        run: npm run check --prefix web
+      - name: Test website
+        run: npm test --prefix web
+      - name: Build website
+        run: npm run build --prefix web
