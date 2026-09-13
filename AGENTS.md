@@ -54,5 +54,5 @@ node bin/kova.mjs plan --json
 node bin/kova.mjs run --target npm:2026.4.27 --scenario fresh-install
 ```
 
-`kova run` is safe by default and currently writes dry-run reports. Real
-execution must remain explicit and cleanup-aware.
+`kova run` is dry-run by default. Real execution requires `--execute` and must
+remain cleanup-aware.
