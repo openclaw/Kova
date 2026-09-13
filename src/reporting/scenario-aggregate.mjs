@@ -497,11 +497,6 @@ function formatMetricNumber(value) {
   return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
-function formatThreshold(expected) {
-  const n = parseThreshold(expected);
-  return n == null ? null : formatMetricNumber(n);
-}
-
 function groupFindingsByScenario(findings) {
   const out = new Map();
   for (const f of findings ?? []) {

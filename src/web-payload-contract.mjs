@@ -7,7 +7,7 @@
  *   - Astro site (`web/src/content.config.ts`) for content-collection schema.
  *   - Kova CLI `kova publish <run-id>` projector for produce-side validation
  *     before writing into the web tree.
- *   - `kova check:contract` self-check which fails CI if the live release
+ *   - `npm run check:web-payload` which fails CI if the live release
  *     JSONs ever drift from this schema.
  *
  * One file = one contract. Both ends of the pipeline (CLI producer and
@@ -33,7 +33,7 @@ export const stateEnum = z.enum(["pass", "fail", "block"]);
 export const findingKind = z.enum(["fail", "warn", "info"]);
 export const proveState = z.enum(["pass", "fail"]);
 
-const finiteNumber = z.number().finite();
+const finiteNumber = z.number();
 const nonnegativeNumber = finiteNumber.nonnegative();
 const nonnegativeInteger = z.number().int().nonnegative();
 const dateValue = z

@@ -15,7 +15,7 @@
 // Inputs are already-shaped claims.
 
 import { statusGlyph } from "./glyphs.mjs";
-import { visualWidth, repeat, wrap } from "./text.mjs";
+import { repeat, wrap } from "./text.mjs";
 
 // provesBlock({ claims, compare, ui }) -> string
 //

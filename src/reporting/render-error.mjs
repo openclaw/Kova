@@ -1,7 +1,7 @@
 // Pretty error formatter for the top-level CLI catch.
 
 import {
-  makeUi, ruleSection, renderKovaHeader, repeat, withMargin,
+  makeUi, ruleSection, renderKovaHeader, withMargin,
 } from "../ui/index.mjs";
 import { listCommandIds } from "./render-help.mjs";
 

@@ -2,6 +2,7 @@ import {
   gatewaySessionHealthOk,
   gatewaySessionHealthReason,
   nonNegativeNumber,
+  normalizedAgentTurns,
   numberOrNull,
   parseJsonObject,
   providerResponseStatusValues,
@@ -120,13 +121,6 @@ function collectGatewaySessionTurnResults(record) {
     }
   }
   return turns;
-}
-
-function normalizedAgentTurns(value) {
-  return Array.isArray(value) &&
-    value.every((turn) => turn && typeof turn === "object" && !Array.isArray(turn))
-    ? value
-    : [];
 }
 
 function missingGatewaySessionPayloadReason(turns) {
