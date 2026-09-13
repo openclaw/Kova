@@ -49,10 +49,12 @@ jobs:
           NODE
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24
-      - name: Install OCM
+          node-version-file: .node-version
+          cache: npm
+      - name: Install validation tools
         run: |
           ./scripts/install-ocm-ci.sh
+          ./scripts/install-expect-ci.sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/ocm" --version
       - name: Install dependencies
