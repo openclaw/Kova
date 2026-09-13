@@ -51,6 +51,7 @@ jobs:
           npm run pack:release
           tmp="$(mktemp -d)"
           ./install.sh --archive ./dist/kova.tar.gz --prefix "$tmp/kova" --bin-dir "$tmp/bin" --require-ocm
+          node tests/release-documentation.mjs "$tmp/kova/app"
           (
             cd "$tmp"
             "$tmp/bin/kova" version

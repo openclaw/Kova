@@ -144,6 +144,7 @@ state, build runtimes, upgrade installations, or inspect services.
 - [Scenario hierarchy](docs/SCENARIO_HIERARCHY.md) defines ownership across runtime paths.
 - [Diagnostics contract](docs/DIAGNOSTICS_CONTRACT.md) describes OpenClaw timeline evidence.
 - [Report schema](docs/REPORT_SCHEMA.md) documents reports, comparisons, bundles, and gates.
+- [Changelog](CHANGELOG.md) records release changes.
 
 ## Development
 
@@ -152,6 +153,9 @@ npm ci
 npm run check:full
 npm run pack:release
 ```
+
+Release archives include tracked documentation and images. Add new documentation
+to Git before packaging so it is included without copying untracked local notes.
 
 Check the website with the same commands used in CI:
 
