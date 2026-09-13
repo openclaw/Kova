@@ -74,6 +74,19 @@ Kova stores credentials, reports, artifacts, and baselines under `~/.kova` by
 default. See [Agent Usage](AGENT_USAGE.md) for safe execution, cloned-user
 upgrades, baseline policy, cleanup, and report handoff.
 
+### Command-output assertions
+
+Scenarios can use `support/assert-command-output.mjs` to require a literal,
+case-insensitive output marker and an exit status. `--retries` is the maximum
+number of executions, including the first attempt; successful
+`kova.commandOutputAssertion.v2` receipts record the number actually executed in
+`attempts`. For example, a command that succeeds immediately with `--retries 3`
+reports `attempts: 1`.
+
+`--expect-status`, `--retries`, and `--delay-ms` accept decimal integers.
+Retries must be positive and delay must be non-negative. Malformed values such
+as `1junk` or `1.5` are rejected before executing the command.
+
 ### Cross-user performance runs
 
 `KOVA_OCM_TRANSPORT_JSON` configures an operator-owned argv transport for OCM.

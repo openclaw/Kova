@@ -5,6 +5,7 @@ All notable changes to Kova are documented in this file.
 ## Unreleased
 
 - Support cross-user OCM transport for the four performance scenarios, keeping candidate execution and diagnostic staging separate from Kova's mock provider, evaluator, and retained reports.
+- Report actual command-output assertion attempts and reject malformed numeric options instead of silently truncating them.
 - Reduce CLI startup work by loading command handlers and the self-check suite only when requested.
 - Refresh compatible CLI/website dependencies and pinned validation tools; add Node.js 22/26 and website CI coverage while retaining macOS/Linux release-install checks.
 
