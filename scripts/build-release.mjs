@@ -32,22 +32,12 @@ try {
     await copyRequired(path);
   }
 
-  for (const path of ["README.md", "LICENSE", "package.json", "package-lock.json"]) {
+  for (const path of ["README.md", "CHANGELOG.md", "LICENSE", "package.json", "package-lock.json"]) {
     await copyRequired(path);
   }
   await writeReleasePackageJson();
 
-  await mkdir(join(appDir, "docs"), { recursive: true });
-  for (const path of [
-    "docs/WHAT_IS_KOVA.md",
-    "docs/AGENT_USAGE.md",
-    "docs/HANDOFF_EXAMPLES.md",
-    "docs/SCENARIO_HIERARCHY.md",
-    "docs/CONTRACT_REGISTRY.md",
-    "docs/DIAGNOSTICS_CONTRACT.md",
-    "docs/OCM_OPERATOR_INTEGRATION.md",
-    "docs/REPORT_SCHEMA.md"
-  ]) {
+  for (const path of trackedDocumentationPaths()) {
     await copyRequired(path);
   }
 
@@ -154,13 +144,25 @@ function parseOutputDir() {
 }
 
 function gitHead() {
-  const git = spawnSync("git", ["rev-parse", "HEAD"], {
+  return gitOutput(["rev-parse", "HEAD"]).trim();
+}
+
+function trackedDocumentationPaths() {
+  const paths = gitOutput(["ls-files", "-z", "--", "docs"]).split("\0").filter(Boolean);
+  if (paths.length === 0) {
+    throw new Error("no tracked release documentation found");
+  }
+  return paths;
+}
+
+function gitOutput(args) {
+  const git = spawnSync("git", args, {
     cwd: repoRoot,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"]
   });
   if (git.status !== 0) {
-    throw new Error(git.stderr || git.stdout || "git rev-parse HEAD failed");
+    throw new Error(git.stderr || git.stdout || `git ${args.join(" ")} failed`);
   }
-  return git.stdout.trim();
+  return git.stdout;
 }

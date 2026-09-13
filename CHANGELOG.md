@@ -9,6 +9,7 @@ All notable changes to Kova are documented in this file.
 - Reduce CLI startup work by loading command handlers and the self-check suite only when requested.
 - Clarify contributor PR descriptions around the problem, user impact, risks, and evidence. Thanks @hannesrudolph.
 - Refresh compatible CLI/website dependencies and pinned validation tools; add Node.js 22/26 and website CI coverage while retaining macOS/Linux release-install checks.
+- Include tracked documentation, README images, and release notes in archives so installed documentation links work offline.
 
 ## 0.1.5 - 2026-09-07
 
