@@ -5,6 +5,7 @@ All notable changes to Kova are documented in this file.
 ## Unreleased
 
 - Support cross-user OCM transport for the four performance scenarios, keeping candidate execution and diagnostic staging separate from Kova's mock provider, evaluator, and retained reports.
+- Reduce CLI startup work by loading command handlers and the self-check suite only when requested.
 
 ## 0.1.5 - 2026-09-07
 
