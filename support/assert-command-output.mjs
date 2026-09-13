@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
+import { runProcess } from "./process.mjs";
 
 const separator = process.argv.indexOf("--");
 const options = parseArgs(separator >= 0 ? process.argv.slice(2, separator) : process.argv.slice(2));
@@ -77,21 +77,6 @@ function parseArgs(args) {
   if (!Number.isInteger(options.retries) || options.retries <= 0) throw new Error("--retries must be a positive integer");
   if (!Number.isInteger(options.delayMs) || options.delayMs < 0) throw new Error("--delay-ms must be a non-negative integer");
   return options;
-}
-
-function runProcess(command, args) {
-  return new Promise((resolve) => {
-    const child = spawn(command, args, {
-      stdio: ["ignore", "pipe", "pipe"],
-      env: process.env
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
-    child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
-    child.on("error", (error) => resolve({ status: 127, stdout, stderr: error.message }));
-    child.on("close", (status) => resolve({ status: status ?? 1, stdout, stderr }));
-  });
 }
 
 function lineContaining(value, expectedText) {

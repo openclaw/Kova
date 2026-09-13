@@ -62,6 +62,13 @@ export function commonResourceProofReason(measurements) {
   return null;
 }
 
+export function normalizedAgentTurns(value) {
+  return Array.isArray(value) &&
+    value.every((turn) => turn && typeof turn === "object" && !Array.isArray(turn))
+    ? value
+    : [];
+}
+
 export function commonTimelineProofOk(measurements) {
   return measurements?.openclawTimelineAvailable === true &&
     (measurements.openclawTimelineEventCount ?? 0) > 0 &&

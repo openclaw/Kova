@@ -12,7 +12,7 @@
 //   UPDATE_SNAPSHOTS=1 node tests/render-snapshots.mjs  # write/update snapshots
 
 import { strictEqual } from "node:assert";
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync, mkdirSync, existsSync, mkdtempSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

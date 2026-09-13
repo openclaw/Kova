@@ -8,6 +8,7 @@ import {
   gatewaySessionHealthOk,
   gatewaySessionHealthReason,
   nonNegativeNumber,
+  normalizedAgentTurns,
   phaseCommandReceiptsOk,
   phaseCommandReceiptsReason,
   providerResponseStatusValues,
@@ -358,13 +359,6 @@ export function buildAgentCliLocalTurnEvidenceInvariants(record, scenario = {}) 
       phaseId: "post-agent-health"
     })
   ];
-}
-
-function normalizedAgentTurns(value) {
-  return Array.isArray(value) &&
-    value.every((turn) => turn && typeof turn === "object" && !Array.isArray(turn))
-    ? value
-    : [];
 }
 
 function agentTurnExpectedCount(scenario, turns) {

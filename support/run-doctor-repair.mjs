@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
+import { runProcess } from "./process.mjs";
 
 const options = parseArgs(process.argv.slice(2));
 const startedAt = Date.now();
@@ -38,21 +38,6 @@ function parseArgs(args) {
     throw new Error(`--env must be a disposable Kova env, got ${JSON.stringify(options.env)}`);
   }
   return options;
-}
-
-function runProcess(command, args) {
-  return new Promise((resolve) => {
-    const child = spawn(command, args, {
-      stdio: ["ignore", "pipe", "pipe"],
-      env: process.env
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
-    child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
-    child.on("error", (error) => resolve({ status: 127, stdout, stderr: error.message }));
-    child.on("close", (status) => resolve({ status: status ?? 1, stdout, stderr }));
-  });
 }
 
 function countUnrepairedFindings(output, status) {

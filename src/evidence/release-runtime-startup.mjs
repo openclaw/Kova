@@ -1,5 +1,7 @@
 import {
   commandProofInPhase,
+  commonTimelineProofOk,
+  commonTimelineProofReason,
   collectorProof,
   collectedLogArtifactPath,
   collectedLogsOk,
@@ -84,10 +86,10 @@ export function buildReleaseRuntimeStartupEvidenceInvariants(record, scenario = 
       id: "release-runtime-diagnostic-timeline-proof",
       phaseId: "startup-logs",
       required: true,
-      status: releaseStartupTimelineOk(record.measurements) ? "passed" : "missing",
+      status: commonTimelineProofOk(record.measurements) ? "passed" : "missing",
       summary: "OpenClaw diagnostic timeline was captured and parsed without errors",
       artifactPath: record.measurements?.openclawTimelineArtifacts?.[0] ?? null,
-      reason: releaseStartupTimelineReason(record.measurements)
+      reason: commonTimelineProofReason(record.measurements)
     },
     {
       id: "release-runtime-startup-logs-captured",
@@ -230,30 +232,6 @@ function releaseStartupResourceReason(measurements) {
   }
   if (!nonNegativeNumber(measurements?.resourceByRole?.gateway?.peakRssMb)) {
     return "gateway role resource measurements were not captured";
-  }
-  return null;
-}
-
-function releaseStartupTimelineOk(measurements) {
-  return measurements?.openclawTimelineAvailable === true &&
-    (measurements.openclawTimelineEventCount ?? 0) > 0 &&
-    (measurements.openclawTimelineParseErrors ?? 0) === 0 &&
-    Array.isArray(measurements.openclawTimelineArtifacts) &&
-    measurements.openclawTimelineArtifacts.length > 0;
-}
-
-function releaseStartupTimelineReason(measurements) {
-  if (measurements?.openclawTimelineAvailable !== true) {
-    return "OpenClaw diagnostic timeline was not available";
-  }
-  if ((measurements.openclawTimelineEventCount ?? 0) <= 0) {
-    return "OpenClaw diagnostic timeline had no events";
-  }
-  if ((measurements.openclawTimelineParseErrors ?? 0) !== 0) {
-    return `OpenClaw diagnostic timeline parse errors were ${measurements.openclawTimelineParseErrors}`;
-  }
-  if (!Array.isArray(measurements.openclawTimelineArtifacts) || measurements.openclawTimelineArtifacts.length === 0) {
-    return "OpenClaw diagnostic timeline artifact path was not recorded";
   }
   return null;
 }

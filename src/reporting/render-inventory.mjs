@@ -2,7 +2,7 @@
 
 import {
   makeUi, ruleSection, renderKovaHeader, kpiStrip,
-  statusGlyph, visualWidth, repeat, wrap, withMargin,
+  wrap, withMargin,
 } from "../ui/index.mjs";
 
 const TOP_WARNINGS = 12;

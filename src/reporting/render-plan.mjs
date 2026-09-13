@@ -3,7 +3,7 @@
 
 import {
   makeUi, ruleSection, renderKovaHeader, kpiStrip,
-  renderTable, repeat, wrap, withMargin,
+  renderTable, repeat, withMargin,
 } from "../ui/index.mjs";
 
 const TOP_SCENARIOS = 12;
