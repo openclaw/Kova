@@ -2,15 +2,17 @@
 
 All notable changes to Kova are documented in this file.
 
-## Unreleased
+## 0.2.0 - 2026-09-13
 
-- Refresh Zod to 4.6.4 and the checksum-verified OCM validation runtime to 0.2.46.
+**Highlights:** Cross-user OCM transport for the performance scenarios, faster CLI startup, and offline documentation in release archives.
+
 - Support cross-user OCM transport for the four performance scenarios, keeping candidate execution and diagnostic staging separate from Kova's mock provider, evaluator, and retained reports.
-- Report actual command-output assertion attempts and reject malformed numeric options instead of silently truncating them.
 - Reduce CLI startup work by loading command handlers and the self-check suite only when requested.
-- Clarify contributor PR descriptions around the problem, user impact, risks, and evidence. Thanks @hannesrudolph.
-- Refresh compatible CLI/website dependencies and pinned validation tools; add Node.js 22/26 and website CI coverage while retaining macOS/Linux release-install checks.
 - Include tracked documentation, README images, and release notes in archives so installed documentation links work offline.
+- Report actual command-output assertion attempts and reject malformed numeric options instead of silently truncating them.
+- Clarify contributor PR descriptions around the problem, user impact, risks, and evidence. Thanks @hannesrudolph.
+- Refresh Zod to 4.6.4 and the checksum-verified OCM validation runtime to 0.2.46.
+- Refresh compatible CLI/website dependencies and pinned validation tools; add Node.js 22/26 and website CI coverage while retaining macOS/Linux release-install checks.
 
 ## 0.1.5 - 2026-09-07
 
