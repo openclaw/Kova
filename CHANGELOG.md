@@ -4,6 +4,9 @@ All notable changes to Kova are documented in this file.
 
 ## Unreleased
 
+- Clean up stale artifacts with current run IDs as well as legacy IDs, and return a failing exit status when any directory removal fails while continuing the remaining attempts.
+- Give the slow-growing diagnostic heap self-check enough discovery and stabilization time on loaded hosts while retaining the dedicated deadline checks.
+
 ## 0.2.0 - 2026-09-13
 
 **Highlights:** Cross-user OCM transport for the performance scenarios, faster CLI startup, and offline documentation in release archives.

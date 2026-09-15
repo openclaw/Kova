@@ -2,17 +2,27 @@ import { chmod, mkdir, readFile, rm, stat, utimes, writeFile } from "node:fs/pro
 import { join } from "node:path";
 import { runCleanupCommand } from "../cleanup.mjs";
 import { quoteShell, runCommand } from "../commands.mjs";
+import { createRunId } from "../run/run-id.mjs";
 import { assertEqual, fileExists } from "./harness.mjs";
 
 export async function cleanupArtifactsCheck(tmp) {
   const home = join(tmp, "artifact-cleanup-home");
   const staleDir = join(home, "artifacts", "kova-2000-01-01t000000z");
+  const currentRunId = createRunId();
+  const currentDir = join(home, "artifacts", currentRunId);
+  const recentDir = join(home, "artifacts", createRunId());
   const keepDir = join(home, "artifacts", "not-a-kova-run");
+  const lookalikeDir = join(home, "artifacts", `${currentRunId}-unrelated`);
   await mkdir(staleDir, { recursive: true });
+  await mkdir(currentDir, { recursive: true });
+  await mkdir(recentDir, { recursive: true });
   await mkdir(keepDir, { recursive: true });
+  await mkdir(lookalikeDir, { recursive: true });
   await writeFile(join(staleDir, "sample.txt"), "stale artifact\n", "utf8");
   const oldDate = new Date("2000-01-01T00:00:00.000Z");
   await utimes(staleDir, oldDate, oldDate);
+  await utimes(currentDir, oldDate, oldDate);
+  await utimes(lookalikeDir, oldDate, oldDate);
 
   const dryRun = await runCommand(
     `KOVA_HOME=${quoteShell(home)} node bin/kova.mjs cleanup artifacts --older-than-days 1 --json`,
@@ -30,8 +40,10 @@ export async function cleanupArtifactsCheck(tmp) {
   const dryRunJson = JSON.parse(dryRun.stdout);
   assertEqual(dryRunJson.schemaVersion, "kova.cleanup.artifacts.v1", "cleanup artifacts schema");
   assertEqual(dryRunJson.execute, false, "cleanup artifacts dry-run");
-  assertEqual(dryRunJson.candidates.length, 1, "cleanup artifacts candidate count");
-  assertEqual(dryRunJson.candidates[0].name, "kova-2000-01-01t000000z", "cleanup artifacts candidate name");
+  assertEqual(dryRunJson.candidates.length, 2, "cleanup artifacts candidate count");
+  assertEqual(dryRunJson.candidates.some((candidate) => candidate.name === "kova-2000-01-01t000000z"), true, "legacy cleanup candidate");
+  assertEqual(dryRunJson.candidates.some((candidate) => candidate.name === currentRunId), true, "current cleanup candidate");
+  assertEqual(await fileExists(currentDir), true, "dry-run preserves current artifact directory");
 
   const execute = await runCommand(
     `KOVA_HOME=${quoteShell(home)} node bin/kova.mjs cleanup artifacts --older-than-days 1 --execute --json`,
@@ -48,7 +60,7 @@ export async function cleanupArtifactsCheck(tmp) {
   }
   const executeJson = JSON.parse(execute.stdout);
   assertEqual(executeJson.execute, true, "cleanup artifacts execute");
-  assertEqual(executeJson.results.length, 1, "cleanup artifacts result count");
+  assertEqual(executeJson.results.length, 2, "cleanup artifacts result count");
   let staleStillExists = true;
   try {
     await stat(staleDir);
@@ -56,13 +68,55 @@ export async function cleanupArtifactsCheck(tmp) {
     staleStillExists = error.code !== "ENOENT";
   }
   assertEqual(staleStillExists, false, "stale artifact directory removed");
+  assertEqual(await fileExists(currentDir), false, "stale current artifact directory removed");
+  assertEqual(await fileExists(recentDir), true, "recent current artifact directory retained");
   assertEqual((await stat(keepDir)).isDirectory(), true, "non-kova artifact directory retained");
+  assertEqual(await fileExists(lookalikeDir), true, "lookalike artifact directory retained");
+
+  // Inject a filesystem failure so this check also works as root.
+  const failureModule = join(tmp, "artifact-cleanup-failure.mjs");
+  await writeFile(failureModule, `
+import fs from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
+const remove = fs.rm;
+fs.rm = async (path, options) => {
+  if (path === ${JSON.stringify(staleDir)}) {
+    throw Object.assign(new Error("synthetic cleanup permission denied"), { code: "EACCES" });
+  }
+  return remove(path, options);
+};
+syncBuiltinESMExports();
+`, "utf8");
+  const removableDir = join(home, "artifacts", "kova-2000-01-02t000000z");
+  await mkdir(staleDir);
+  await writeFile(join(staleDir, "sample.txt"), "retained after failed cleanup\n", "utf8");
+  await utimes(staleDir, oldDate, oldDate);
+  let failureDurationMs = 0;
+  for (const format of ["--json", "--plain", "--ascii"]) {
+    await mkdir(removableDir);
+    await utimes(removableDir, oldDate, oldDate);
+    const failed = await runCommand(
+      `KOVA_HOME=${quoteShell(home)} node --import ${quoteShell(failureModule)} bin/kova.mjs cleanup artifacts --older-than-days 1 --execute ${format}`,
+      { timeoutMs: 30000, maxOutputChars: 1000000 }
+    );
+    failureDurationMs += failed.durationMs;
+    assertEqual(failed.status, 1, `failed artifact cleanup exit status ${format}`);
+    assertEqual(await fileExists(join(staleDir, "sample.txt")), true, `failed artifact retained ${format}`);
+    assertEqual(await fileExists(removableDir), false, `other artifact removed ${format}`);
+    if (format === "--json") {
+      const receipt = JSON.parse(failed.stdout);
+      assertEqual(receipt.results.length, 2, "partial cleanup result count");
+      assertEqual(receipt.results.find((result) => result.path === staleDir)?.status, 1, "failed cleanup receipt status");
+      assertEqual(receipt.results.find((result) => result.path === staleDir)?.error, "synthetic cleanup permission denied", "failed cleanup receipt error");
+      assertEqual(receipt.results.find((result) => result.path === removableDir)?.status, 0, "successful cleanup receipt status");
+    }
+  }
 
   return {
     id: "cleanup-artifacts",
     status: "PASS",
     command: "node bin/kova.mjs cleanup artifacts --older-than-days 1 --execute --json",
-    durationMs: dryRun.durationMs + execute.durationMs
+    durationMs: dryRun.durationMs + execute.durationMs + failureDurationMs
   };
 }
 
