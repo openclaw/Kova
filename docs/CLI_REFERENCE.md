@@ -74,6 +74,13 @@ Kova stores credentials, reports, artifacts, and baselines under `~/.kova` by
 default. See [Agent Usage](AGENT_USAGE.md) for safe execution, cloned-user
 upgrades, baseline policy, cleanup, and report handoff.
 
+`cleanup artifacts` recognizes current run IDs (`kova-YYMMDD-HHMMSS-<hex>`)
+and legacy timestamp IDs. Directories must be older than `--older-than-days`
+to qualify. With `--execute`, cleanup attempts every eligible directory and
+exits nonzero if any removal fails, in every output format. The JSON receipt
+retains each directory's status and error so automation can identify incomplete
+cleanup.
+
 ### Command-output assertions
 
 Scenarios can use `support/assert-command-output.mjs` to require a literal,

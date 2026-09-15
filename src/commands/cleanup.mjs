@@ -10,6 +10,7 @@ import {
   ocmServiceStatusAllJson
 } from "../ocm/commands.mjs";
 import { positiveIntegerFlag } from "../run/options.mjs";
+import { isCanonicalRunId } from "../reporting/artifact-names.mjs";
 import { renderCleanupEnvs, renderCleanupArtifacts } from "../reporting/render-cleanup.mjs";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -555,7 +556,7 @@ async function cleanupArtifacts(flags) {
   }
 
   for (const entry of entries) {
-    if (!entry.isDirectory() || !/^kova-\d{4}-\d{2}-\d{2}t/i.test(entry.name)) {
+    if (!entry.isDirectory() || !(isCanonicalRunId(entry.name) || /^kova-\d{4}-\d{2}-\d{2}t/i.test(entry.name))) {
       continue;
     }
     const path = join(artifactsDir, entry.name);
@@ -592,6 +593,10 @@ async function cleanupArtifacts(flags) {
         });
       }
     }
+  }
+
+  if (results.some((result) => result.status !== 0)) {
+    process.exitCode = 1;
   }
 
   if (flags.json) {
