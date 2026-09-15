@@ -221,10 +221,12 @@ setInterval(() => {}, 1000);
       true,
       "unattributed report does not end diagnostic polling"
     );
-    const slowHeap = await triggerDiagnosticSession("kova-self-check", child.pid, 5000, root, {
+    // The final write is delayed by 2.8s, then discovery and a full stability
+    // interval still need time on loaded hosts. Deadline checks live above.
+    const slowHeap = await triggerDiagnosticSession("kova-self-check", child.pid, 10000, root, {
       heapSnapshot: true
     });
-    assertEqual(slowHeap.heapSnapshot.artifacts.length, 1, "slow-growing heap snapshot stabilizes");
+    assertEqual(slowHeap.heapSnapshot.artifacts.length, 1, `slow-growing heap snapshot stabilizes (${slowHeap.heapSnapshot.error ?? "no error"})`);
     assertEqual(
       await readFile(slowHeap.heapSnapshot.artifacts[0], "utf8"),
       '{"heap":"head","tail":true}\n',
