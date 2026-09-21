@@ -1091,7 +1091,15 @@ CPU in those margins. A range crossing a CPU threshold blocks qualification as
 inconclusive harness evidence instead of inventing a product failure. New children contribute their
 CPU since birth; reaped children contribute CPU not already observed in an
 earlier sample. Vanished process roles remain attached to their wait accounting,
-including a Gateway reaped by an external supervisor. Parent counters are read
+including a Gateway reaped by an external supervisor. Linux samples retain
+historical CPU membership in `roles` and record the current census membership in
+`currentRoles`. RSS sums, trends, process counts, and peak witnesses use current
+membership, so a process renamed from `openclaw` to `openclaw-agent` no longer
+adds its agent RSS to the CLI wrapper role. An empty `currentRoles` excludes RSS
+while preserving terminal CPU accounting. Older samples without `currentRoles`
+retain their recorded role attribution; this repair does not requalify old
+reports. Per-process lifetime summaries continue listing observed roles.
+Parent counters are read
 before child counters; a product process disappearing during that census
 discards the inconsistent scan before accounting. Collection attempts are
 recorded, and three unstable censuses produce a harness failure. Ambiguous reaped CPU is

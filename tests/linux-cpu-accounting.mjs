@@ -3,10 +3,11 @@ import childProcess from "node:child_process";
 import { syncBuiltinESMExports } from "node:module";
 import assert from "node:assert/strict";
 import test, { mock } from "node:test";
-import { startResourceSampler, summarizeResourceSamples } from "../src/collectors/resources.mjs";
-import { checkCpuThreshold } from "../src/evaluation/violations.mjs";
+import { classifyRegistryRolesForProcess, startResourceSampler, summarizeResourceSamples } from "../src/collectors/resources.mjs";
+import { checkCpuThreshold, checkRoleThresholds } from "../src/evaluation/violations.mjs";
 import { evaluateRecord } from "../src/evaluator.mjs";
 import { createLinuxCpuAccountant, readLinuxCpuSnapshot, LinuxCpuSnapshotChangedError } from "../src/collectors/linux-cpu.mjs";
+import { loadProcessRoles } from "../src/registries/process-roles.mjs";
 
 const clock = (seconds) => ({ hz: 100, ticks: seconds * 100, monotonicMs: seconds * 1000 });
 const processRow = (pid, ppid, cpuTicks, childCpuTicks = 0, startTicks = 0) => ({ pid, ppid, cpuTicks, childCpuTicks, startTicks, rssMb: 0, command: "synthetic", roles: [] });
@@ -73,6 +74,57 @@ test("role bounds distinguish real parallel CPU from work below the unchanged ga
     checkCpuThreshold(violations, { kind: "resource", metric: "cpu", label: "CPU", value: role.maxCpuPercent,
       lower: role.maxCpuPercentLower, threshold: 200 });
     assert.equal(violations[0]?.kind, expectedKind);
+  }
+});
+
+test("agent title changes move current RSS without losing historical CPU attribution", async () => {
+  const processRoles = await loadProcessRoles();
+  const surface = JSON.parse(fs.readFileSync(new URL("../surfaces/agent-cli-local-turn.json", import.meta.url), "utf8"));
+  const rootCommand = "ocm @kova -- agent --local --message hi";
+  const row = (pid, ppid, command, rssMb, cpuTicks = 0) => {
+    const roles = ["command-tree", ...classifyRegistryRolesForProcess({ command }, {
+      processRoles, rootCommand, existingRoles: ["command-tree"]
+    })];
+    return { ...processRow(pid, ppid, cpuTicks), command, rssMb, roles, role: roles.join(",") };
+  };
+  for (const [agentRssMb, expectedViolations] of [[932.9, []], [1001, ["resourceByRole.agent-process.peakRssMb"]]]) {
+    const accountant = createLinuxCpuAccountant();
+    const wrappers = [row(1, 0, rootCommand, 5.8), row(2, 1, "openclaw", 86.2)];
+    const before = accountant.sample([...wrappers, row(3, 2, "openclaw", 187.9)], clock(0));
+    const after = accountant.sample([...wrappers, row(3, 2, "openclaw-agent", agentRssMb, 100)], clock(1));
+    const sample = (processes, elapsedMs) => ({ processes, elapsedMs, collectionStatus: "ok", cpuMeasurementContract: "linux-process-interval-v1" });
+    const summary = summarizeResourceSamples([sample(before, 0), sample(after, 1000)]);
+    const violations = [];
+    checkRoleThresholds(violations, summary.byRole, surface.roleThresholds);
+    assert.deepEqual(violations.map((violation) => violation.metric), expectedViolations);
+    assert.equal(summary.byRole["agent-cli"].peakRssMb, 279.9);
+    assert.equal(summary.byRole["agent-process"].peakRssMb, agentRssMb);
+
+    const current = summarizeResourceSamples([sample(after, 1000)]);
+    assert.equal(current.byRole["agent-cli"].peakRssMb, 92);
+    assert.equal(current.byRole["agent-cli"].peakProcessCount, 2);
+    assert.equal(current.byRole["agent-cli"].peakRssProcess.pid, 2);
+    assert.equal(current.byRole["agent-process"].peakProcessCount, 1);
+    assert.deepEqual(current.byRole["agent-process"].peakRssProcess.roles, ["command-tree", "agent-process"]);
+    assert.deepEqual(current.peakRssSample.topProcess.roles, ["command-tree", "agent-process"]);
+    assert.equal(current.peakCommandTreeRssMb, agentRssMb + 92);
+    assert.equal(current.maxTotalCpuPercent, 112);
+    assert.equal(current.maxTotalCpuPercentLower, 98);
+    assert.equal(current.byRole["agent-cli"].maxCpuPercent, 112);
+    assert.equal(current.byRole["agent-cli"].maxCpuPercentLower, 98);
+    assert.equal(current.byRole["agent-process"].maxCpuPercent, 104);
+    assert.equal(current.byRole["agent-process"].maxCpuPercentLower, 98);
+
+    const reaped = accountant.sample([wrappers[0], { ...wrappers[1], childCpuTicks: 120 }], clock(2));
+    const terminal = summarizeResourceSamples([sample(reaped, 2000)]);
+    assert.equal(terminal.byRole["agent-cli"].maxCpuPercent, 28);
+    assert.equal(terminal.byRole["agent-cli"].maxCpuPercentLower, 0);
+    assert.equal(terminal.byRole["agent-process"].maxCpuPercent, 22);
+    assert.equal(terminal.byRole["agent-process"].maxCpuPercentLower, 0);
+    assert.equal(terminal.byRole["agent-process"].peakCpuProcess.pid, 3);
+    assert.equal(terminal.byRole["agent-process"].peakCpuProcess.cpuWaitOwnerPid, 2);
+    assert.equal(terminal.byRole["agent-process"].peakRssProcess, null);
+    assert.equal(accountant.coverageComplete(), true);
   }
 });
 
@@ -259,11 +311,19 @@ test("missing CPU counter coverage blocks qualification rather than passing as z
 test("retired Gateway CPU retains its role when an external supervisor reaps it", () => {
   const accountant = createLinuxCpuAccountant();
   const supervisor = processRow(1, 0, 0);
-  const gateway = { ...processRow(2, 1, 0), roles: ["gateway", "gateway-tree"] };
+  const gateway = { ...processRow(2, 1, 0), rssMb: 100, roles: ["gateway", "gateway-tree"] };
   accountant.sample([supervisor, gateway], clock(0));
   accountant.sample([supervisor, { ...gateway, cpuTicks: 100 }], clock(1));
-  const retiring = accountant.sample([supervisor, { ...gateway, cpuTicks: 120, roles: [] }], clock(1.5));
+  const retiring = accountant.sample([supervisor, { ...gateway, rssMb: 900, cpuTicks: 120, roles: [] }], clock(1.5));
   assert.deepEqual(retiring.find((entry) => entry.pid === 2).roles, ["gateway", "gateway-tree"]);
+  const retiringSummary = summarizeResourceSamples([{ elapsedMs: 1500, collectionStatus: "ok", processes: retiring }]);
+  assert.equal(retiringSummary.peakTotalRssMb, 0);
+  assert.equal(retiringSummary.peakGatewayRssMb, 0);
+  assert.equal(retiringSummary.byRole.gateway.peakRssMb, 0);
+  assert.equal(retiringSummary.byRole.gateway.peakProcessCount, 0);
+  assert.equal(retiringSummary.byRole.gateway.peakRssProcess, null);
+  assert.equal(retiringSummary.byRole.gateway.maxCpuPercentLower, 36);
+  assert.equal(retiringSummary.byRole.gateway.maxCpuPercent, 48);
   const processes = accountant.sample([{ ...supervisor, childCpuTicks: 150 }], clock(2));
   assert.deepEqual(processes[0].reapedRoles, ["gateway", "gateway-tree"]);
   const summary = summarizeResourceSamples([{ elapsedMs: 2000, collectionStatus: "ok", processes }]);

@@ -91,8 +91,11 @@ export function createLinuxCpuAccountant({ accountingRootPid } = {}) {
       let nextMissingWaitOwner = missingWaitOwner;
       let nextMissingIntervalBaseline = missingIntervalBaseline;
       processes = processes.map((entry) => {
+        // CPU history survives title changes and reaping; RSS belongs only to
+        // the roles assigned by this census.
+        const currentRoles = entry.roles ?? [];
         const roles = [...new Set([...(previous.get(identity(entry))?.roles ?? []), ...(entry.roles ?? [])])];
-        return { ...entry, roles, role: roles.join(",") };
+        return { ...entry, currentRoles, roles, role: roles.join(",") };
       });
       const current = new Map(processes.map((process) => [identity(process), process]));
       const inheritedIncompleteHistory = new Set();
