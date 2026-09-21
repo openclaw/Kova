@@ -153,7 +153,7 @@ export function startResourceSampler(rootPid, options = {}) {
         const counters = readLinuxCpuSnapshot(tracked, cpuAccountant.trackedProcessIds());
         cpuClock.finishedMs = performance.now();
         measured = cpuAccountant.sample(counters, cpuClock).map((entry) => ({ ...entry,
-          ...(entry.roles.length ? {} : { rssMb: 0, rssKb: 0, command: "[CPU wait owner for retired product processes]" })
+          ...(entry.currentRoles.length ? {} : { rssMb: 0, rssKb: 0, command: "[CPU wait owner for retired product processes]" })
         }));
       } catch (error) {
         if (error instanceof LinuxCpuSnapshotChangedError && attempt < 3) return sample(attempt + 1);
@@ -198,7 +198,7 @@ export function summarizeResourceSamples(samples) {
   const byRole = new Map();
 
   for (const sample of usableSamples) {
-    const totalRssMb = roundNumber(sample.processes.reduce((total, process) => total + process.rssMb, 0));
+    const totalRssMb = totalRss(sample.processes);
     const cpuProcesses = sample.processes.filter((process) => typeof process.cpuPercent === "number");
     const totalCpu = cpuProcesses.reduce((total, process) => total + process.cpuPercent, 0);
     const totalCpuPercent = cpuProcesses.length > 0 ? (sample.cpuMeasurementContract === "linux-process-interval-v1" ? Math.ceil(totalCpu * 10) / 10 : roundNumber(totalCpu)) : null;
@@ -220,7 +220,8 @@ export function summarizeResourceSamples(samples) {
         timestamp: sample.timestamp,
         elapsedMs: sample.elapsedMs,
         totalRssMb,
-        topProcess: sample.processes.toSorted((left, right) => right.rssMb - left.rssMb)[0] ?? null
+        topProcess: currentRssProcess(sample.processes.filter((process) => process.currentRoles?.length !== 0)
+          .toSorted((left, right) => right.rssMb - left.rssMb)[0] ?? null)
       };
     }
     if (totalCpuPercent !== null && (!peakCpuSample || totalCpuPercent > peakCpuSample.totalCpuPercent)) {
@@ -248,7 +249,7 @@ export function summarizeResourceSamples(samples) {
       existing.roles = mergeRoleArrays(existing.roles, process.roles ?? process.role.split(",").filter(Boolean));
       existing.role = existing.roles.join(",");
       existing.command = process.command;
-      existing.peakRssMb = Math.max(existing.peakRssMb, process.rssMb);
+      existing.peakRssMb = Math.max(existing.peakRssMb, process.currentRoles?.length === 0 ? 0 : process.rssMb);
       existing.maxCpuPercent = Math.max(existing.maxCpuPercent, process.cpuPercent);
       existing.lastSeenMs = sample.elapsedMs;
       byPid.set(processIdentity, existing);
@@ -330,13 +331,22 @@ function summarizeResourceTrend(samples) {
 }
 
 function totalRss(processes) {
-  return roundNumber(processes.reduce((total, process) => total + process.rssMb, 0));
+  return roundNumber(processes.reduce((total, process) => total + (process.currentRoles?.length === 0 ? 0 : process.rssMb), 0));
 }
 
 function roleRss(processes, role) {
   return roundNumber(processes
-    .filter((process) => process.roles?.includes(role) || process.role?.split(",").includes(role))
+    .filter((process) => currentProcessRoles(process).includes(role))
     .reduce((total, process) => total + process.rssMb, 0));
+}
+
+function currentProcessRoles(process) {
+  return process.currentRoles ?? process.roles ?? process.role?.split(",").filter(Boolean) ?? [];
+}
+
+function currentRssProcess(process) {
+  if (!process?.currentRoles) return process;
+  return { ...process, roles: process.currentRoles, role: process.currentRoles.join(",") };
 }
 
 export function captureProcessSnapshot(options = {}) {
@@ -671,16 +681,18 @@ function updateRolePeaks(byRole, sample) {
         topCpuProcess: null
       };
       const ownsRole = process.roles?.includes(role) ?? process.role.split(",").includes(role);
-      if (ownsRole) total.rssMb += process.rssMb;
+      if (currentProcessRoles(process).includes(role)) {
+        total.rssMb += process.rssMb;
+        total.processCount += 1;
+        if (!total.topRssProcess || process.rssMb > total.topRssProcess.rssMb) {
+          total.topRssProcess = currentRssProcess(process);
+        }
+      }
       if (typeof process.ownCpuPercentUpper === "number") {
         total.cpuPercent = (total.cpuPercent ?? 0) + (ownsRole ? process.ownCpuPercentUpper : 0) +
           (process.reapedRoles.includes(role) ? process.reapedCpuPercentUpper : 0);
         total.cpuCertainPercent = (total.cpuCertainPercent ?? 0) + (ownsRole ? process.ownCpuPercentLower : 0);
       } else if (typeof process.cpuPercent === "number") total.cpuPercent = (total.cpuPercent ?? 0) + process.cpuPercent;
-      total.processCount += 1;
-      if (!total.topRssProcess || process.rssMb > total.topRssProcess.rssMb) {
-        total.topRssProcess = process;
-      }
       const retired = !ownsRole ? process.reapedProcesses?.find((entry) => entry.roles?.includes(role)) : null;
       const attributed = retired ? { ...process, ...retired, rssMb: 0, role: retired.roles.join(","),
         cpuPercent: process.reapedCpuPercentUpper, cpuAttribution: "reaped-role-upper-bound", cpuWaitOwnerPid: process.pid } : process;

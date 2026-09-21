@@ -195,7 +195,8 @@ function sampleIntervalMs(samples) {
 }
 
 function sampleTotalRss(sample) {
-  return roundNumber((sample.processes ?? []).reduce((total, process) => total + (process.rssMb ?? 0), 0));
+  return roundNumber((sample.processes ?? []).reduce((total, process) => total +
+    (process.currentRoles?.length === 0 ? 0 : process.rssMb ?? 0), 0));
 }
 
 function sampleRoleRss(sample, role) {
@@ -209,8 +210,9 @@ function sampleTotalCpu(sample) {
 }
 
 function processHasRole(process, role) {
-  if (Array.isArray(process.roles)) {
-    return process.roles.includes(role);
+  const roles = process.currentRoles ?? process.roles;
+  if (Array.isArray(roles)) {
+    return roles.includes(role);
   }
   return String(process.role ?? "").split(",").includes(role);
 }

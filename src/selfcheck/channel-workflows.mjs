@@ -393,7 +393,11 @@ export async function channelWorkflowResourceAttributionCheck(tmp) {
       resourceSampleLine(1000, 210, 50, 5),
       resourceSampleLine(2000, 240, 60, 10),
       resourceSampleLine(5000, 720, 110, 70),
-      resourceSampleLine(7000, 805, 120, 82)
+      resourceSampleLine(7000, 805, 120, 82),
+      JSON.stringify({ elapsedMs: 8000, processes: [
+        { pid: 1, rssMb: 950, cpuPercent: 20, roles: ["gateway", "agent-process"], currentRoles: ["agent-process"] },
+        { pid: 2, rssMb: 2000, cpuPercent: 0, roles: ["gateway"], currentRoles: [] }
+      ] })
     ].join("\n") + "\n", "utf8");
 
     const record = {
@@ -417,7 +421,7 @@ export async function channelWorkflowResourceAttributionCheck(tmp) {
           durationMs: 9000,
           resourceSamples: {
             schemaVersion: "kova.resourceSamples.v1",
-            sampleCount: 4,
+            sampleCount: 5,
             artifactPath: resourceSampleArtifactPath
           }
         }]
@@ -438,6 +442,7 @@ export async function channelWorkflowResourceAttributionCheck(tmp) {
     assertEqual(resources?.caseCount, 2, "channel workflow resource case count");
     assertEqual(resources?.topByGatewayRss?.[0]?.caseId, "media-transformation.image-to-video", "highest gateway RSS is attributed to the media workflow");
     assertEqual(resources?.topByGatewayRss?.[0]?.peakGatewayRssMb, 805, "gateway RSS peak is captured from the workflow window");
+    assertEqual(resources?.topByTrackedRss?.[0]?.peakTrackedRssMb, 950, "current agent RSS remains tracked while CPU-only wait owners add no RSS");
     assertEqual(resources?.topByGatewayRss?.[0]?.userAction, "user sends an image and asks OpenClaw to make a video from it", "user action is preserved with resource attribution");
 
     return {
