@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import childProcess from "node:child_process";
 import { syncBuiltinESMExports } from "node:module";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import assert from "node:assert/strict";
 import test, { mock } from "node:test";
 import { classifyRegistryRolesForProcess, startResourceSampler, summarizeResourceSamples } from "../src/collectors/resources.mjs";
@@ -29,6 +31,70 @@ test("gateway discovery refreshes a census that predates gateway birth", async (
   const summary = await sampler.stop();
   assert.ok(censusCount >= 2);
   assert.equal(summary.byRole.gateway.peakRssMb, 2);
+});
+
+test("real Linux censuses move same-PID agent RSS while retaining CPU history", {
+  skip: process.platform !== "linux"
+}, async (t) => {
+  const processRoles = await loadProcessRoles();
+  const root = await fs.promises.mkdtemp(join(tmpdir(), "kova-title-census-"));
+  const artifactPath = join(root, "samples.jsonl");
+  const originalTitle = process.title;
+  let sampler;
+  try {
+    let completion;
+    try {
+      process.title = "openclaw";
+      sampler = startResourceSampler(process.pid, {
+        processRoles, rootCommand: "openclaw agent --local --message hi", artifactPath
+      });
+      process.title = "openclaw-agent";
+      // Both censuses finish synchronously, before artifact persistence yields.
+      completion = sampler.stop();
+    } finally {
+      process.title = originalTitle;
+    }
+    const summary = await completion;
+    assert.equal(summary.cpuMeasurementContract, "linux-process-interval-v1");
+    assert.equal(summary.cpuCoverageComplete, true, JSON.stringify(summary.errors));
+    const samples = (await fs.promises.readFile(artifactPath, "utf8")).trim().split("\n").map(JSON.parse);
+    assert.equal(samples.length, 2);
+    const [before, after] = samples.map((sample) => sample.processes.find((entry) => entry.pid === process.pid));
+    assert.ok(before && after, "both real censuses must retain the test process");
+    assert.equal(before.command, "openclaw");
+    assert.equal(after.command, "openclaw-agent");
+    assert.equal(after.startTicks, before.startTicks);
+    assert.ok(after.roles.includes("agent-cli") && after.roles.includes("agent-process"));
+    assert.ok(after.rssMb > 0);
+
+    const terminal = summarizeResourceSamples([samples[1]]);
+    const cli = terminal.byRole["agent-cli"];
+    const agent = terminal.byRole["agent-process"];
+    assert.equal(cli.peakRssMb, 0);
+    assert.equal(cli.peakProcessCount, 0);
+    assert.equal(cli.peakRssProcess, null);
+    assert.equal(agent.peakRssMb, after.rssMb);
+    assert.equal(agent.peakProcessCount, 1);
+    assert.equal(agent.peakRssProcess.pid, process.pid);
+    assert.equal(agent.peakRssProcess.roles.includes("agent-cli"), false);
+    assert.equal(terminal.peakRssSample.topProcess.pid, process.pid);
+    assert.equal(terminal.peakRssSample.topProcess.roles.includes("agent-cli"), false);
+    assert.ok(before.currentRoles.includes("agent-cli"));
+    assert.ok(after.currentRoles.includes("agent-process"));
+    assert.equal(after.currentRoles.includes("agent-cli"), false);
+    assert.ok(Number.isFinite(agent.maxCpuPercentLower) && agent.maxCpuPercentLower >= 0);
+    assert.ok(Number.isFinite(agent.maxCpuPercent) && agent.maxCpuPercent >= agent.maxCpuPercentLower);
+    assert.equal(cli.maxCpuPercentLower, agent.maxCpuPercentLower);
+    assert.equal(cli.maxCpuPercent, agent.maxCpuPercent);
+    assert.equal(terminal.cpuCoverageComplete, true);
+    t.diagnostic(JSON.stringify({ case: "same-pid-title-rss", pid: process.pid, startTicks: after.startTicks,
+      titles: [before.command, after.command], agentRssMb: agent.peakRssMb, cliRssMb: cli.peakRssMb,
+      cpuPercentLower: agent.maxCpuPercentLower, cpuPercentUpper: agent.maxCpuPercent,
+      cpuCoverageComplete: terminal.cpuCoverageComplete }));
+  } finally {
+    try { await sampler?.stop(); }
+    finally { await fs.promises.rm(root, { recursive: true, force: true }); }
+  }
 });
 
 test("kernel tick quantization keeps a short final interval inconclusive, not a false resource failure", () => {
