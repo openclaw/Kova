@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-version="v0.2.46"
+version="v0.2.47"
 case "$(uname -s):$(uname -m)" in
   Linux:x86_64)
     asset="ocm-x86_64-unknown-linux-gnu.tar.gz"
-    expected_sha256="8981ec7937532f324c477b30c239dcd7f5ed60c32fe5dedde5fccd9d4ffbd739"
+    expected_sha256="05e0bb598fe391c75fe7668e159d7eb09168b4298b5d8d0999786e79e97d0642"
     ;;
   Darwin:arm64)
     asset="ocm-aarch64-apple-darwin.tar.gz"
-    expected_sha256="ff25d72ad60b04937b0646b8017b128e03b7ba2f7534a1bd9cd2a5bd3aabf5d4"
+    expected_sha256="53a1fe66324624a8fd5e81adb16eae656a8e1c627c6bc3b242bca4cbbe0a583e"
     ;;
   *)
     echo "unsupported OCM CI platform: $(uname -s) $(uname -m)" >&2
