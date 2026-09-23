@@ -7,6 +7,10 @@ silence streaming, or `--ascii` for Unicode-free output. Color, width,
 
 Run `kova help <command>` for the complete flags and examples for a command.
 
+Value options accept `--name value` or `--name=value`; the inline form preserves
+all characters after the first `=`, including additional equals signs. Boolean
+options accept only a bare flag, `=true`, or `=false`.
+
 ## Commands
 
 | Command | Purpose |

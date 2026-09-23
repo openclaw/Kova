@@ -27,7 +27,7 @@ export function parseFlags(argv) {
       continue;
     }
 
-    const [rawKey, inlineValue] = token.slice(2).split("=", 2);
+    const [rawKey, inlineValue] = token.slice(2).split(/=(.*)/s, 2);
     const key = rawKey.replaceAll("-", "_");
 
     if (BOOLEAN_FLAGS.has(key)) {
@@ -67,7 +67,7 @@ export function collectErrorFlags(argv) {
     if (!token.startsWith("--")) {
       continue;
     }
-    const [rawKey, inlineValue] = token.slice(2).split("=", 2);
+    const [rawKey, inlineValue] = token.slice(2).split(/=(.*)/s, 2);
     const key = rawKey.replaceAll("-", "_");
     if (!["json", "plain", "no_color"].includes(key)) {
       continue;
