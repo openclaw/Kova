@@ -27,7 +27,7 @@ jobs:
           - os: ubuntu-latest
             node: 24.21.0
           - os: ubuntu-latest
-            node: 26.8.2
+            node: 26.10.0
           - os: macos-15
             node: 24.21.0
     steps:

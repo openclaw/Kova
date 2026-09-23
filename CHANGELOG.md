@@ -4,9 +4,13 @@ All notable changes to Kova are documented in this file.
 
 ## Unreleased
 
-- Preserve equals signs in inline CLI option values and reject malformed boolean values instead of accepting a truncated prefix.
+## 0.2.1 - 2026-09-23
+
+**Highlights:** Reliable memory attribution, complete artifact cleanup, and lossless inline CLI option values.
+
 - Attribute Linux RSS to current process roles without discarding CPU history, preventing agent title changes from falsely exceeding CLI wrapper memory limits.
 - Clean up stale artifacts with current run IDs as well as legacy IDs, and return a failing exit status when any directory removal fails while continuing the remaining attempts.
+- Preserve equals signs in inline CLI option values and reject malformed boolean values instead of accepting a truncated prefix.
 - Give the slow-growing diagnostic heap self-check enough discovery and stabilization time on loaded hosts while retaining the dedicated deadline checks.
 
 ## 0.2.0 - 2026-09-13
