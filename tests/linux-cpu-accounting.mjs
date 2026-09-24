@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import childProcess from "node:child_process";
+import { once } from "node:events";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -33,6 +34,100 @@ test("gateway discovery refreshes a census that predates gateway birth", async (
   assert.equal(summary.byRole.gateway.peakRssMb, 2);
 });
 
+test("terminal Linux CPU samples retain a quantization-safe accounting interval", {
+  skip: process.platform !== "linux"
+}, async () => {
+  const root = await fs.promises.mkdtemp(join(tmpdir(), "kova-terminal-cpu-"));
+  const artifactPath = join(root, "samples.jsonl");
+  try {
+    const sampler = startResourceSampler(process.pid, {
+      artifactPath,
+      intervalMs: 1000,
+      trackedRolePids: { gateway: process.pid }
+    });
+    await sampler.stop();
+    const samples = (await fs.promises.readFile(artifactPath, "utf8")).trim().split("\n").map(JSON.parse);
+    assert.equal(samples.length, 3);
+    assert.equal(samples[1].cpuLowerBoundOnly, true);
+    assert.equal(samples[2].cpuTerminal, true);
+    const elapsedMs = samples[2].cpuClock.monotonicMs - samples[0].cpuClock.finishedMs;
+    assert.ok(elapsedMs >= 450, `terminal CPU interval was only ${elapsedMs}ms`);
+  } finally {
+    await fs.promises.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("terminal sampling refreshes a census after a tracked child exits", {
+  skip: process.platform !== "linux"
+}, async () => {
+  const root = await fs.promises.mkdtemp(join(tmpdir(), "kova-terminal-exit-"));
+  const artifactPath = join(root, "samples.jsonl");
+  const child = childProcess.spawn(process.execPath, ["-e", "const end=Date.now()+75;while(Date.now()<end){}"], {
+    stdio: "ignore"
+  });
+  const childClosed = once(child, "close");
+  try {
+    const sampler = startResourceSampler(process.pid, {
+      artifactPath,
+      intervalMs: 1000,
+      trackedRolePids: { gateway: child.pid }
+    });
+    const summary = await sampler.stop();
+    await childClosed;
+    const samples = (await fs.promises.readFile(artifactPath, "utf8")).trim().split("\n").map(JSON.parse);
+    const settled = samples.at(-1);
+    assert.equal(settled.collectionAttempts, 2);
+    assert.ok(settled.processes.some((entry) => entry.reapedRoles?.includes("gateway")));
+    assert.equal(summary.cpuCoverageComplete, true, JSON.stringify(summary.errors));
+  } finally {
+    child.kill("SIGKILL");
+    await fs.promises.rm(root, { recursive: true, force: true });
+  }
+});
+
+for (const listingFailed of [false, true]) test(listingFailed ? "terminal sampling retries a transient immediate census failure"
+  : "terminal sampling rejects a role first seen in a vanished-process census", async () => {
+  const platform = Object.getOwnPropertyDescriptor(process, "platform");
+  const originalRead = fs.readFileSync;
+  const originalSpawn = childProcess.spawnSync;
+  let census = 0;
+  let now = 0;
+  Object.defineProperty(process, "platform", { ...platform, value: "linux" });
+  mock.method(performance, "now", () => now);
+  mock.method(childProcess, "spawnSync", (command, ...args) => {
+    if (command === "getconf") return { status: 0, stdout: "100\n" };
+    if (command === "ps") {
+      now += 1000;
+      census += 1;
+      if (census === 2 && listingFailed) return { status: 1, stderr: "transient census failure" };
+      return { status: 0, pid: 999, stdout: census === 2
+        ? "1 0 1024 0 node\n2 1 1024 0 gateway\n" : "1 0 1024 0 node\n" };
+    }
+    return originalSpawn(command, ...args);
+  });
+  mock.method(fs, "readFileSync", (path, ...args) => {
+    if (path === "/proc/uptime") return `${now / 1000} 0\n`;
+    if (path === "/proc/2/stat") throw Object.assign(new Error("gone"), { code: "ENOENT" });
+    if (path === "/proc/1/stat") {
+      const fields = Array(22).fill("0");
+      fields[0] = "S";
+      return `1 (node) ${fields.join(" ")}`;
+    }
+    return originalRead(path, ...args);
+  });
+  syncBuiltinESMExports();
+  try {
+    const summary = await startResourceSampler(1, { trackedRolePids: { gateway: 2 } }).stop();
+    assert.equal(summary.cpuCoverageComplete, listingFailed);
+    if (listingFailed) assert.deepEqual(summary.errors, []);
+    else assert.ok(summary.errors.some((error) => error.includes("unobserved process roles")));
+  } finally {
+    mock.restoreAll();
+    Object.defineProperty(process, "platform", platform);
+    syncBuiltinESMExports();
+  }
+});
+
 test("real Linux censuses move same-PID agent RSS while retaining CPU history", {
   skip: process.platform !== "linux"
 }, async (t) => {
@@ -58,8 +153,10 @@ test("real Linux censuses move same-PID agent RSS while retaining CPU history", 
     assert.equal(summary.cpuMeasurementContract, "linux-process-interval-v1");
     assert.equal(summary.cpuCoverageComplete, true, JSON.stringify(summary.errors));
     const samples = (await fs.promises.readFile(artifactPath, "utf8")).trim().split("\n").map(JSON.parse);
-    assert.equal(samples.length, 2);
-    const [before, after] = samples.map((sample) => sample.processes.find((entry) => entry.pid === process.pid));
+    assert.equal(samples.length, 3);
+    assert.equal(samples[1].cpuLowerBoundOnly, true);
+    const [before, after] = [samples[0], samples[2]].map((sample) =>
+      sample.processes.find((entry) => entry.pid === process.pid));
     assert.ok(before && after, "both real censuses must retain the test process");
     assert.equal(before.command, "openclaw");
     assert.equal(after.command, "openclaw-agent");
@@ -67,7 +164,7 @@ test("real Linux censuses move same-PID agent RSS while retaining CPU history", 
     assert.ok(after.roles.includes("agent-cli") && after.roles.includes("agent-process"));
     assert.ok(after.rssMb > 0);
 
-    const terminal = summarizeResourceSamples([samples[1]]);
+    const terminal = summarizeResourceSamples([samples[2]]);
     const cli = terminal.byRole["agent-cli"];
     const agent = terminal.byRole["agent-process"];
     assert.equal(cli.peakRssMb, 0);
@@ -141,6 +238,153 @@ test("role bounds distinguish real parallel CPU from work below the unchanged ga
       lower: role.maxCpuPercentLower, threshold: 200 });
     assert.equal(violations[0]?.kind, expectedKind);
   }
+});
+
+test("terminal settlement preserves an immediately proven CPU excess", () => {
+  const accountant = createLinuxCpuAccountant();
+  const baseline = [1, 2, 3, 4].map((pid) => ({ ...processRow(pid, 0, 0), roles: ["gateway"] }));
+  accountant.sample(baseline, clock(0));
+  const burst = baseline.map((process) => ({ ...process, cpuTicks: 6 }));
+  const immediate = accountant.lowerBoundSample(burst, clock(0.06));
+  const settled = accountant.sample(burst, clock(0.25));
+  const summary = summarizeResourceSamples([
+    { collectionStatus: "ok", cpuMeasurementContract: "linux-process-interval-v1", processes: immediate },
+    { collectionStatus: "ok", cpuMeasurementContract: "linux-process-interval-v1", processes: settled }
+  ]);
+  const role = summary.byRole.gateway;
+  assert.ok(role.maxCpuPercentLower > 200, JSON.stringify(role));
+  assert.ok(role.maxCpuPercent >= role.maxCpuPercentLower, JSON.stringify(role));
+  assert.ok(role.maxCpuPercent - role.maxCpuPercentLower <= 0.1, JSON.stringify(role));
+  const violations = [];
+  checkCpuThreshold(violations, { kind: "resource", metric: "cpu", label: "CPU", value: role.maxCpuPercent,
+    lower: role.maxCpuPercentLower, threshold: 200 });
+  assert.equal(violations[0]?.kind, "resource");
+});
+
+test("terminal settlement preserves proven reaped command-tree CPU without assigning it to an ambiguous role", () => {
+  const accountant = createLinuxCpuAccountant({ accountingRootPid: 1 });
+  const owner = { ...processRow(1, 0, 0), roles: ["command-tree"] };
+  const child = { ...processRow(2, 1, 100), roles: ["gateway"] };
+  accountant.sample([owner, child], clock(1));
+  const reaped = [{ ...owner, childCpuTicks: 150 }];
+  const immediate = accountant.lowerBoundSample(reaped, clock(1.1));
+  const settled = accountant.sample(reaped, clock(1.5));
+  const summary = summarizeResourceSamples([immediate, settled].map((processes) => ({
+    collectionStatus: "ok", cpuMeasurementContract: "linux-process-interval-v1", processes
+  })));
+  assert.ok(summary.maxTotalCpuPercentLower > 400);
+  assert.ok(summary.byRole["command-tree"].maxCpuPercentLower > 400);
+  assert.equal(summary.byRole.gateway.maxCpuPercentLower, 0);
+  const violations = [];
+  checkCpuThreshold(violations, { kind: "resource", metric: "cpu", label: "CPU",
+    value: summary.maxTotalCpuPercent, lower: summary.maxTotalCpuPercentLower, threshold: 400 });
+  assert.equal(violations[0]?.kind, "resource");
+});
+
+test("terminal settlement resolves a finite burst below the CPU gate", () => {
+  const accountant = createLinuxCpuAccountant();
+  const gateway = { ...processRow(1, 0, 0), roles: ["gateway"] };
+  accountant.sample([gateway], clock(0));
+  const burst = [{ ...gateway, cpuTicks: 60 }];
+  const immediate = accountant.lowerBoundSample(burst, clock(0.25));
+  const settled = accountant.sample(burst, clock(0.5));
+  const summary = summarizeResourceSamples([
+    { collectionStatus: "ok", cpuMeasurementContract: "linux-process-interval-v1", processes: immediate },
+    { collectionStatus: "ok", cpuMeasurementContract: "linux-process-interval-v1", processes: settled }
+  ]);
+  const role = summary.byRole.gateway;
+  assert.ok(role.maxCpuPercentLower > 230, JSON.stringify(role));
+  assert.ok(role.maxCpuPercent - role.maxCpuPercentLower <= 0.1, JSON.stringify(role));
+  const violations = [];
+  checkCpuThreshold(violations, { kind: "resource", metric: "cpu", label: "CPU", value: role.maxCpuPercent,
+    lower: role.maxCpuPercentLower, threshold: 250 });
+  assert.deepEqual(violations, []);
+});
+
+test("terminal discovery retains a new child's role after reaping", () => {
+  const accountant = createLinuxCpuAccountant();
+  const owner = processRow(1, 0, 100);
+  accountant.sample([owner], clock(1));
+  const child = { ...processRow(2, 1, 5, 0, 110), roles: ["gateway"] };
+  accountant.lowerBoundSample([owner, child], clock(1.2));
+  const settled = accountant.sample([{ ...owner, childCpuTicks: 60 }], clock(1.5));
+  assert.deepEqual(settled[0].reapedRoles, ["gateway"]);
+  assert.equal(settled[0].reapedCpuPercent, 120);
+  assert.equal(accountant.coverageComplete(), true);
+});
+
+test("terminal discovery cannot forget a new child's missing wait owner", () => {
+  const accountant = createLinuxCpuAccountant();
+  accountant.sample([], clock(1));
+  accountant.lowerBoundSample([
+    { ...processRow(2, 99, 5, 0, 110), roles: ["gateway"] }
+  ], clock(1.2));
+  accountant.sample([], clock(1.5));
+  assert.equal(accountant.coverageComplete(), false);
+});
+
+test("terminal discovery requires the new child's observed CPU to reach its wait owner", () => {
+  const accountant = createLinuxCpuAccountant();
+  const owner = processRow(1, 0, 100);
+  accountant.sample([owner], clock(1));
+  accountant.lowerBoundSample([owner,
+    { ...processRow(2, 1, 5, 0, 110), roles: ["gateway"] }
+  ], clock(1.2));
+  accountant.sample([owner], clock(1.5));
+  assert.equal(accountant.coverageComplete(), false);
+  const settled = accountant.sample([{ ...owner, childCpuTicks: 10 }], clock(2));
+  assert.deepEqual(settled[0].reapedRoles, ["gateway"]);
+  assert.equal(settled[0].reapedCpuPercent, 20);
+  assert.equal(accountant.coverageComplete(), true);
+});
+
+test("terminal discovery excludes historical external-owner CPU and preserves discovery gaps", () => {
+  const accountant = createLinuxCpuAccountant();
+  accountant.sample([], clock(1));
+  accountant.sample([], clock(2));
+  const owner = processRow(1, 0, 100, 200);
+  const child = { ...processRow(2, 1, 5, 0, 150), roles: ["gateway"] };
+  accountant.lowerBoundSample([owner, child], clock(2.2));
+  const settled = accountant.sample([{ ...owner, childCpuTicks: 210 }], clock(2.5));
+  assert.deepEqual(settled[0].reapedRoles, ["gateway"]);
+  assert.equal(settled[0].reapedCpuPercent, 20);
+  assert.equal(accountant.coverageComplete(), false);
+});
+
+test("terminal discovery retains role changes without advancing CPU baselines", () => {
+  const accountant = createLinuxCpuAccountant();
+  const owner = processRow(1, 0, 100);
+  const child = { ...processRow(2, 1, 10), roles: ["agent-cli"] };
+  accountant.sample([owner, child], clock(1));
+  accountant.lowerBoundSample([owner, { ...child, cpuTicks: 20, roles: ["agent-process"] }], clock(1.2));
+  const settled = accountant.sample([{ ...owner, childCpuTicks: 60 }], clock(1.5));
+  assert.deepEqual(settled[0].reapedRoles, ["agent-cli", "agent-process"]);
+  assert.equal(settled[0].reapedCpuPercent, 100);
+  assert.equal(accountant.coverageComplete(), true);
+});
+
+test("terminal discovery retains departed identities to reconstruct prior wait debt", () => {
+  const accountant = createLinuxCpuAccountant();
+  const owner = processRow(1, 0, 0);
+  accountant.sample([owner, { ...processRow(2, 1, 100), roles: ["gateway"] }], clock(1));
+  const reaped = { ...owner, childCpuTicks: 120 };
+  accountant.lowerBoundSample([reaped], clock(1.2));
+  const settled = accountant.sample([reaped], clock(1.5));
+  assert.deepEqual(settled[0].reapedRoles, ["gateway"]);
+  assert.equal(settled[0].reapedCpuPercent, 40);
+  assert.equal(accountant.coverageComplete(), true);
+});
+
+test("terminal discovery does not double-count a child reaped before its parent exits", () => {
+  const accountant = createLinuxCpuAccountant();
+  const owner = processRow(1, 0, 0);
+  const parent = processRow(2, 1, 20);
+  accountant.sample([owner, parent, { ...processRow(3, 2, 10), roles: ["gateway"] }], clock(1));
+  accountant.lowerBoundSample([owner, { ...parent, childCpuTicks: 15 }], clock(1.2));
+  const settled = accountant.sample([{ ...owner, childCpuTicks: 35 }], clock(1.5));
+  assert.deepEqual(settled[0].reapedRoles, ["gateway"]);
+  assert.equal(settled[0].reapedCpuPercent, 10);
+  assert.equal(accountant.coverageComplete(), true);
 });
 
 test("agent title changes move current RSS without losing historical CPU attribution", async () => {

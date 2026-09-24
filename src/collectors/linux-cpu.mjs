@@ -48,7 +48,9 @@ export function readLinuxCpuSnapshot(processes, previouslyTrackedPids = new Set(
       // Parent counters precede every live child counter. A child disappearing
       // after the process census invalidates this scan: its parent's earlier
       // wait counter cannot establish that child's terminal CPU transfer.
-      if (entry.roles?.length || previouslyTrackedPids.has(entry.pid)) throw new LinuxCpuSnapshotChangedError("Product process exited during CPU collection");
+      if (entry.roles?.length || previouslyTrackedPids.has(entry.pid)) {
+        throw Object.assign(new LinuxCpuSnapshotChangedError("Product process exited during CPU collection"), { process: entry });
+      }
     }
   };
   // The census needs product processes and their wait-owner ancestry, not
@@ -82,8 +84,54 @@ export function createLinuxCpuAccountant({ accountingRootPid } = {}) {
     trackedProcessIds() {
       return new Set([...previous.values()].map((entry) => entry.pid));
     },
+    hasObservedRoles(process) {
+      return [...previous.values()].some((entry) => entry.pid === process.pid &&
+        process.roles.every((role) => entry.roles.includes(role)));
+    },
     coverageComplete() {
-      return !missingIntervalBaseline && !missingWaitOwner && ![...reapDebt.values()].some((debt) => debt.ticks > 0 && debt.processes.some((entry) => entry.roles?.length));
+      return !missingIntervalBaseline && !missingWaitOwner && ![...reapDebt.values()].some((debt) => (debt.observedTicks ?? debt.ticks) > 0 && debt.processes.some((entry) => entry.roles?.length));
+    },
+    lowerBoundSample(processes, clock) {
+      const state = { previous, previousClock, initialClock, reapDebt, missingWaitOwner, missingIntervalBaseline };
+      let measured;
+      let observed;
+      let observedMissingIntervalBaseline;
+      let observedMissingWaitOwner;
+      try {
+        measured = this.sample(processes, clock);
+        observed = previous;
+        observedMissingIntervalBaseline = missingIntervalBaseline;
+        observedMissingWaitOwner = missingWaitOwner;
+      } finally {
+        ({ previous, previousClock, initialClock, reapDebt, missingWaitOwner, missingIntervalBaseline } = state);
+      }
+      missingIntervalBaseline ||= observedMissingIntervalBaseline;
+      missingWaitOwner ||= observedMissingWaitOwner;
+      if (previousClock) {
+        // Keep terminal discoveries and role changes even if they disappear
+        // before settlement, but retain the original interval's counter debt.
+        previous = new Map(previous);
+        for (const [key, process] of observed) {
+          const existingExternalOwner = process.startTicks < Math.floor(previousClock.ticks) - 1 &&
+            process.startTicks < Math.floor(initialClock.ticks) - 1;
+          const baseline = previous.get(key) ?? (existingExternalOwner ? process : null);
+          previous.set(key, { ...process,
+            cpuTicks: baseline?.cpuTicks ?? 0,
+            childCpuTicks: baseline?.childCpuTicks ?? 0,
+            ...(!baseline || baseline.observedCpuTicks !== undefined
+              ? { observedCpuTicks: Math.max(process.cpuTicks + process.childCpuTicks, baseline?.observedCpuTicks ?? 0) }
+              : {}) });
+        }
+      }
+      return measured.map((process) => ({
+        ...process,
+        ownCpuPercentUpper: process.ownCpuPercentLower,
+        reapedCpuPercent: process.reapedCpuPercentLower,
+        reapedCpuPercentUpper: process.reapedCpuPercentLower,
+        reapedRoles: process.reapedLowerBoundRoles,
+        cpuPercent: (process.roles.length ? process.ownCpuPercentLower : 0) + process.reapedCpuPercentLower,
+        cpuLowerBoundOnly: true
+      }));
     },
     sample(processes, clock) {
       initialClock ??= clock;
@@ -112,7 +160,7 @@ export function createLinuxCpuAccountant({ accountingRootPid } = {}) {
       for (const [key, process] of previous) {
         if (current.has(key)) continue;
         const heldDebt = nextDebt.get(key);
-        if (heldDebt?.ticks > 0 && heldDebt.processes.some((entry) => entry.roles?.length)) nextMissingWaitOwner = true;
+        if ((heldDebt?.observedTicks ?? heldDebt?.ticks) > 0 && heldDebt.processes.some((entry) => entry.roles?.length)) nextMissingWaitOwner = true;
         let ancestor = previousByPid.get(process.ppid);
         const seen = new Set([key]);
         let foundWaitOwner = false;
@@ -121,6 +169,10 @@ export function createLinuxCpuAccountant({ accountingRootPid } = {}) {
           seen.add(ancestorKey);
           if (current.has(ancestorKey)) {
             const debt = nextDebt.get(ancestorKey) ?? { ticks: 0, processes: [] };
+            // Terminal-only discoveries have no charged baseline, but their
+            // observed CPU must still arrive at a wait owner before qualifying.
+            debt.observedTicks = (debt.observedTicks ?? debt.ticks) +
+              (process.observedCpuTicks ?? process.cpuTicks + process.childCpuTicks);
             debt.ticks += process.cpuTicks + process.childCpuTicks;
             debt.processes.push(process);
             nextDebt.set(ancestorKey, debt);
@@ -141,6 +193,8 @@ export function createLinuxCpuAccountant({ accountingRootPid } = {}) {
         let ownCpuPercentLower = null;
         let ownCpuPercentUpper = null;
         let reapedCpuPercentUpper = null;
+        let reapedCpuPercentLower = 0;
+        let reapedLowerBoundRoles = [];
         let reapedRoles = [];
         let reapedProcesses = [];
         let cpuIntervalComplete = true;
@@ -161,9 +215,18 @@ export function createLinuxCpuAccountant({ accountingRootPid } = {}) {
           if (ownTicks < 0 || waitedTicks < 0) throw new Error(`Regressed CPU counters for process ${process.pid}`);
           const debt = nextDebt.get(key) ?? { ticks: 0, processes: [] };
           const newlyReapedTicks = Math.max(0, waitedTicks - debt.ticks);
+          // The dedicated command wait owner reaps only product descendants.
+          // Other owners may reap unrelated work, and specific product roles
+          // remain ambiguous. Bound both the wait delta and subtracted debt.
+          if (process.pid === accountingRootPid && cpuIntervalComplete && process.roles.includes("command-tree")) {
+            reapedCpuPercentLower = Math.max(0, newlyReapedTicks - 2 - 4 * debt.processes.length) / outerIntervalTicks * 100;
+            reapedLowerBoundRoles = ["command-tree"];
+          }
           reapedRoles = [...new Set([...(process.roles ?? []), ...debt.processes.flatMap((entry) => entry.roles ?? [])])];
           reapedProcesses = debt.processes.filter((entry) => entry.roles?.length).map(({ pid, startTicks, roles, command }) => ({ pid, startTicks, roles, command }));
-          if (debt.ticks > waitedTicks) nextDebt.set(key, { ...debt, ticks: debt.ticks - waitedTicks });
+          if ((debt.observedTicks ?? debt.ticks) > waitedTicks) nextDebt.set(key, { ...debt,
+            ticks: Math.max(0, debt.ticks - waitedTicks),
+            observedTicks: (debt.observedTicks ?? debt.ticks) - waitedTicks });
           else nextDebt.delete(key);
           // The accounting wrapper is harness work. Its waited-child counters
           // still contain product work, including children missed by polling.
@@ -183,7 +246,7 @@ export function createLinuxCpuAccountant({ accountingRootPid } = {}) {
           !inheritedIncompleteHistory.has(key) && cpuIntervalComplete;
         current.set(key, { ...process, cpuHistoryComplete });
         if (!cpuHistoryComplete && process.roles.length) nextMissingIntervalBaseline = true;
-        measured.push({ ...process, ownCpuPercent, reapedCpuPercent, ownCpuPercentLower, ownCpuPercentUpper, reapedCpuPercentUpper, reapedRoles, reapedProcesses, cpuIntervalComplete, cpuHistoryComplete,
+        measured.push({ ...process, ownCpuPercent, reapedCpuPercent, ownCpuPercentLower, ownCpuPercentUpper, reapedCpuPercentUpper, reapedCpuPercentLower, reapedLowerBoundRoles, reapedRoles, reapedProcesses, cpuIntervalComplete, cpuHistoryComplete,
           cpuPercent: ownCpuPercentUpper === null ? null :
             (process.roles.length ? ownCpuPercentUpper : 0) + (reapedRoles.length ? reapedCpuPercentUpper : 0) });
       }

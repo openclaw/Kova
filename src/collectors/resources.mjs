@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { repoRoot } from "../paths.mjs";
 import { ocmServiceStatusJson } from "../ocm/commands.mjs";
 import { ocmInvocation, resolveOcmTransport } from "../ocm/transport.mjs";
@@ -13,6 +14,9 @@ export const PROCESS_LEAKS_SCHEMA = "kova.processLeakSummary.v1";
 // Gateway PIDs remain stable across most phase commands. Reuse live PIDs so
 // resource sampling does not perturb the workload with repeated OCM launches.
 const gatewayPidsByEnv = new Map();
+// Four USER_HZ ticks bound one live process plus unseen reaped work. A 500ms
+// terminal window keeps that uncertainty below the 10-point precision budget.
+const MIN_LINUX_CPU_INTERVAL_MS = 500;
 
 export function startResourceSampler(rootPid, options = {}) {
   const startedAt = Date.now();
@@ -28,6 +32,8 @@ export function startResourceSampler(rootPid, options = {}) {
   let stopped;
   let gatewayPid = null;
   let nextGatewayLookupSample = 0;
+  let lastCpuSampleFinishedMs = null;
+  let lostCpuRoles = false;
 
   sample();
   const timer = setInterval(sample, intervalMs);
@@ -42,8 +48,25 @@ export function startResourceSampler(rootPid, options = {}) {
 
   async function finish() {
     clearInterval(timer);
-    sample();
+    let terminalProcessResult = null;
+    if (lastCpuSampleFinishedMs !== null) {
+      // A command can end just after the periodic census. Give the terminal
+      // counters a stable window while retaining the process roles at stop time.
+      // Keep only the immediate certain floor so a proven burst cannot be
+      // diluted by the wait, while ambiguous tick bounds use the settled read.
+      const processLister = options.processLister ?? listProcesses;
+      terminalProcessResult = processLister(options.redactValues ?? []);
+      sample(1, terminalProcessResult, true);
+      const remainingMs = MIN_LINUX_CPU_INTERVAL_MS - (performance.now() - lastCpuSampleFinishedMs);
+      if (remainingMs > 0) await delay(remainingMs);
+    }
+    sample(1, terminalProcessResult?.ok ? terminalProcessResult : null);
+    if (cpuAccountant && samples.at(-1).collectionStatus === "ok") samples.at(-1).cpuTerminal = true;
     const summary = summarizeResourceSamples(samples);
+    if (lostCpuRoles) {
+      summary.cpuCoverageComplete = false;
+      summary.errors.push("CPU census lost unobserved process roles before counters could be captured");
+    }
     if (cpuAccountant && !cpuAccountant.coverageComplete()) {
       summary.cpuCoverageComplete = false;
       summary.errors.push("Product CPU interval or terminal wait accounting is incomplete");
@@ -60,10 +83,11 @@ export function startResourceSampler(rootPid, options = {}) {
     return summary;
   }
 
-  function sample(attempt = 1) {
+  function sample(attempt = 1, processResultOverride = null, lowerBoundOnly = false) {
     const processLister = options.processLister ?? listProcesses;
-    const processResult = processLister(options.redactValues ?? []);
+    const processResult = processResultOverride ?? processLister(options.redactValues ?? []);
     if (!processResult.ok) {
+      if (lowerBoundOnly) return;
       samples.push({
         timestamp: new Date().toISOString(),
         elapsedMs: Date.now() - startedAt,
@@ -152,11 +176,22 @@ export function startResourceSampler(rootPid, options = {}) {
         cpuClock = readLinuxCpuClock();
         const counters = readLinuxCpuSnapshot(tracked, cpuAccountant.trackedProcessIds());
         cpuClock.finishedMs = performance.now();
-        measured = cpuAccountant.sample(counters, cpuClock).map((entry) => ({ ...entry,
+        if (!lowerBoundOnly) lastCpuSampleFinishedMs = cpuClock.finishedMs;
+        measured = (lowerBoundOnly
+          ? cpuAccountant.lowerBoundSample(counters, cpuClock)
+          : cpuAccountant.sample(counters, cpuClock)).map((entry) => ({ ...entry,
           ...(entry.currentRoles.length ? {} : { rssMb: 0, rssKb: 0, command: "[CPU wait owner for retired product processes]" })
         }));
       } catch (error) {
-        if (error instanceof LinuxCpuSnapshotChangedError && attempt < 3) return sample(attempt + 1);
+        if (error instanceof LinuxCpuSnapshotChangedError && error.process?.roles?.length &&
+            !cpuAccountant.hasObservedRoles(error.process)) lostCpuRoles = true;
+        if (error instanceof LinuxCpuSnapshotChangedError && attempt < 3) {
+          // The failed snapshot proves the census changed. Repeating it can
+          // only fail on the same departed PID; refresh while the accountant
+          // retains its prior roles and wait-owner debt.
+          return sample(attempt + 1, null, lowerBoundOnly);
+        }
+        if (lowerBoundOnly) return;
         samples.push({ timestamp: new Date().toISOString(), elapsedMs: Date.now() - startedAt,
           rootPid, gatewayPid, collectionStatus: "error", collectionError: error.message, processes: [] });
         return;
@@ -171,6 +206,7 @@ export function startResourceSampler(rootPid, options = {}) {
       collectionError: null,
       cpuMeasurementContract: cpuAccountant ? "linux-process-interval-v1" : "ps-process-cpu-v1",
       cpuClock,
+      ...(lowerBoundOnly ? { cpuLowerBoundOnly: true } : {}),
       ...(cpuAccountant ? { collectionAttempts: attempt } : {}),
       processes: measured.filter((entry) => entry.roles.length || entry.reapedRoles?.length)
     });
@@ -210,7 +246,7 @@ export function summarizeResourceSamples(samples) {
     maxTotalCpuPercent = maxNullable(maxTotalCpuPercent, totalCpuPercent);
     const boundedProcesses = sample.processes.filter((entry) => typeof entry.ownCpuPercentLower === "number");
     if (boundedProcesses.length > 0) {
-      const lower = boundedProcesses.reduce((sum, entry) => sum + (entry.roles.length ? entry.ownCpuPercentLower : 0), 0);
+      const lower = boundedProcesses.reduce((sum, entry) => sum + (entry.roles.length ? entry.ownCpuPercentLower : 0) + (entry.reapedCpuPercentLower ?? 0), 0);
       maxTotalCpuPercentLower = maxNullable(maxTotalCpuPercentLower, Math.floor(lower * 10) / 10);
     }
     peakCommandTreeRssMb = maxNullable(peakCommandTreeRssMb, commandTreeRssMb);
@@ -691,7 +727,8 @@ function updateRolePeaks(byRole, sample) {
       if (typeof process.ownCpuPercentUpper === "number") {
         total.cpuPercent = (total.cpuPercent ?? 0) + (ownsRole ? process.ownCpuPercentUpper : 0) +
           (process.reapedRoles.includes(role) ? process.reapedCpuPercentUpper : 0);
-        total.cpuCertainPercent = (total.cpuCertainPercent ?? 0) + (ownsRole ? process.ownCpuPercentLower : 0);
+        total.cpuCertainPercent = (total.cpuCertainPercent ?? 0) + (ownsRole ? process.ownCpuPercentLower : 0) +
+          (process.reapedLowerBoundRoles?.includes(role) ? process.reapedCpuPercentLower : 0);
       } else if (typeof process.cpuPercent === "number") total.cpuPercent = (total.cpuPercent ?? 0) + process.cpuPercent;
       const retired = !ownsRole ? process.reapedProcesses?.find((entry) => entry.roles?.includes(role)) : null;
       const attributed = retired ? { ...process, ...retired, rssMb: 0, role: retired.roles.join(","),
