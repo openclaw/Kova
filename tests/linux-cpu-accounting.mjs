@@ -34,7 +34,7 @@ test("gateway discovery refreshes a census that predates gateway birth", async (
   assert.equal(summary.byRole.gateway.peakRssMb, 2);
 });
 
-test("terminal Linux CPU samples retain a stable accounting interval", {
+test("terminal Linux CPU samples retain a quantization-safe accounting interval", {
   skip: process.platform !== "linux"
 }, async () => {
   const root = await fs.promises.mkdtemp(join(tmpdir(), "kova-terminal-cpu-"));
@@ -50,7 +50,7 @@ test("terminal Linux CPU samples retain a stable accounting interval", {
     assert.equal(samples.length, 3);
     assert.equal(samples[1].cpuLowerBoundOnly, true);
     const elapsedMs = samples[2].cpuClock.monotonicMs - samples[0].cpuClock.finishedMs;
-    assert.ok(elapsedMs >= 200, `terminal CPU interval was only ${elapsedMs}ms`);
+    assert.ok(elapsedMs >= 450, `terminal CPU interval was only ${elapsedMs}ms`);
   } finally {
     await fs.promises.rm(root, { recursive: true, force: true });
   }
@@ -215,6 +215,26 @@ test("terminal settlement preserves an immediately proven CPU excess", () => {
   checkCpuThreshold(violations, { kind: "resource", metric: "cpu", label: "CPU", value: role.maxCpuPercent,
     lower: role.maxCpuPercentLower, threshold: 200 });
   assert.equal(violations[0]?.kind, "resource");
+});
+
+test("terminal settlement resolves a finite burst below the CPU gate", () => {
+  const accountant = createLinuxCpuAccountant();
+  const gateway = { ...processRow(1, 0, 0), roles: ["gateway"] };
+  accountant.sample([gateway], clock(0));
+  const burst = [{ ...gateway, cpuTicks: 60 }];
+  const immediate = accountant.lowerBoundSample(burst, clock(0.25));
+  const settled = accountant.sample(burst, clock(0.5));
+  const summary = summarizeResourceSamples([
+    { collectionStatus: "ok", cpuMeasurementContract: "linux-process-interval-v1", processes: immediate },
+    { collectionStatus: "ok", cpuMeasurementContract: "linux-process-interval-v1", processes: settled }
+  ]);
+  const role = summary.byRole.gateway;
+  assert.ok(role.maxCpuPercentLower > 230, JSON.stringify(role));
+  assert.ok(role.maxCpuPercent - role.maxCpuPercentLower <= 0.1, JSON.stringify(role));
+  const violations = [];
+  checkCpuThreshold(violations, { kind: "resource", metric: "cpu", label: "CPU", value: role.maxCpuPercent,
+    lower: role.maxCpuPercentLower, threshold: 250 });
+  assert.deepEqual(violations, []);
 });
 
 test("agent title changes move current RSS without losing historical CPU attribution", async () => {

@@ -14,7 +14,9 @@ export const PROCESS_LEAKS_SCHEMA = "kova.processLeakSummary.v1";
 // Gateway PIDs remain stable across most phase commands. Reuse live PIDs so
 // resource sampling does not perturb the workload with repeated OCM launches.
 const gatewayPidsByEnv = new Map();
-const MIN_LINUX_CPU_INTERVAL_MS = 250;
+// Four USER_HZ ticks bound one live process plus unseen reaped work. A 500ms
+// terminal window keeps that uncertainty below the 10-point precision budget.
+const MIN_LINUX_CPU_INTERVAL_MS = 500;
 
 export function startResourceSampler(rootPid, options = {}) {
   const startedAt = Date.now();
