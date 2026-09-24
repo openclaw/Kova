@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { repoRoot } from "../paths.mjs";
 import { ocmServiceStatusJson } from "../ocm/commands.mjs";
 import { ocmInvocation, resolveOcmTransport } from "../ocm/transport.mjs";
@@ -13,6 +14,7 @@ export const PROCESS_LEAKS_SCHEMA = "kova.processLeakSummary.v1";
 // Gateway PIDs remain stable across most phase commands. Reuse live PIDs so
 // resource sampling does not perturb the workload with repeated OCM launches.
 const gatewayPidsByEnv = new Map();
+const MIN_LINUX_CPU_INTERVAL_MS = 250;
 
 export function startResourceSampler(rootPid, options = {}) {
   const startedAt = Date.now();
@@ -28,6 +30,7 @@ export function startResourceSampler(rootPid, options = {}) {
   let stopped;
   let gatewayPid = null;
   let nextGatewayLookupSample = 0;
+  let lastCpuSampleFinishedMs = null;
 
   sample();
   const timer = setInterval(sample, intervalMs);
@@ -42,7 +45,16 @@ export function startResourceSampler(rootPid, options = {}) {
 
   async function finish() {
     clearInterval(timer);
-    sample();
+    let terminalProcessResult = null;
+    if (lastCpuSampleFinishedMs !== null) {
+      // A command can end just after the periodic census. Give the terminal
+      // counters a stable window while retaining the process roles at stop time.
+      const processLister = options.processLister ?? listProcesses;
+      terminalProcessResult = processLister(options.redactValues ?? []);
+      const remainingMs = MIN_LINUX_CPU_INTERVAL_MS - (performance.now() - lastCpuSampleFinishedMs);
+      if (remainingMs > 0) await delay(remainingMs);
+    }
+    sample(1, terminalProcessResult);
     const summary = summarizeResourceSamples(samples);
     if (cpuAccountant && !cpuAccountant.coverageComplete()) {
       summary.cpuCoverageComplete = false;
@@ -60,9 +72,9 @@ export function startResourceSampler(rootPid, options = {}) {
     return summary;
   }
 
-  function sample(attempt = 1) {
+  function sample(attempt = 1, processResultOverride = null) {
     const processLister = options.processLister ?? listProcesses;
-    const processResult = processLister(options.redactValues ?? []);
+    const processResult = processResultOverride ?? processLister(options.redactValues ?? []);
     if (!processResult.ok) {
       samples.push({
         timestamp: new Date().toISOString(),
@@ -152,6 +164,7 @@ export function startResourceSampler(rootPid, options = {}) {
         cpuClock = readLinuxCpuClock();
         const counters = readLinuxCpuSnapshot(tracked, cpuAccountant.trackedProcessIds());
         cpuClock.finishedMs = performance.now();
+        lastCpuSampleFinishedMs = cpuClock.finishedMs;
         measured = cpuAccountant.sample(counters, cpuClock).map((entry) => ({ ...entry,
           ...(entry.currentRoles.length ? {} : { rssMb: 0, rssKb: 0, command: "[CPU wait owner for retired product processes]" })
         }));

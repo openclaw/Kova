@@ -33,6 +33,27 @@ test("gateway discovery refreshes a census that predates gateway birth", async (
   assert.equal(summary.byRole.gateway.peakRssMb, 2);
 });
 
+test("terminal Linux CPU samples retain a stable accounting interval", {
+  skip: process.platform !== "linux"
+}, async () => {
+  const root = await fs.promises.mkdtemp(join(tmpdir(), "kova-terminal-cpu-"));
+  const artifactPath = join(root, "samples.jsonl");
+  try {
+    const sampler = startResourceSampler(process.pid, {
+      artifactPath,
+      intervalMs: 1000,
+      trackedRolePids: { gateway: process.pid }
+    });
+    await sampler.stop();
+    const samples = (await fs.promises.readFile(artifactPath, "utf8")).trim().split("\n").map(JSON.parse);
+    assert.equal(samples.length, 2);
+    const elapsedMs = samples[1].cpuClock.monotonicMs - samples[0].cpuClock.finishedMs;
+    assert.ok(elapsedMs >= 200, `terminal CPU interval was only ${elapsedMs}ms`);
+  } finally {
+    await fs.promises.rm(root, { recursive: true, force: true });
+  }
+});
+
 test("real Linux censuses move same-PID agent RSS while retaining CPU history", {
   skip: process.platform !== "linux"
 }, async (t) => {
