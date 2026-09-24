@@ -20,6 +20,14 @@ test("a fast command retains its wait owner through the delayed terminal sample"
   assert.ok(result.resourceSamples.byRole["command-tree"].maxCpuPercent > 0, JSON.stringify(result.resourceSamples));
 });
 
+test("terminal sampling does not time out a command that completed before its deadline", { skip: process.platform !== "linux" }, async () => {
+  const result = await runCommand("true", { resourceSample: {}, timeoutMs: 200 });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.timedOut, false);
+  assert.ok(result.durationMs < 200, `command completion exceeded its deadline: ${result.durationMs}ms`);
+  assert.equal(result.resourceSamples.cpuCoverageComplete, true, JSON.stringify(result.resourceSamples.errors));
+});
+
 test("accounted commands retain output, nonzero exits, and timeout cleanup", { skip: process.platform !== "linux" }, async () => {
   const failed = await runCommand("printf output; printf error >&2; exit 7", { resourceSample: {}, timeoutMs: 10000 });
   assert.equal(failed.status, 7);
