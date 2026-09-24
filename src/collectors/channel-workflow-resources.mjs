@@ -44,7 +44,7 @@ export function summarizeChannelWorkflowResources(results = []) {
         workflowRow,
         samples,
         commandStartedAtEpochMs: result.startedAtEpochMs,
-        includeSettledTerminal: workflowRow === terminalWorkflowRow,
+        terminalWorkflowRow,
         channelId: artifact.channelId ?? payload.channelId ?? null,
         conformanceArtifactPath: payload.artifactPath,
         resourceSampleArtifactPath: result.resourceSamples?.artifactPath ?? null
@@ -80,7 +80,7 @@ function summarizeWorkflowRowResources({
   workflowRow,
   samples,
   commandStartedAtEpochMs,
-  includeSettledTerminal,
+  terminalWorkflowRow,
   channelId,
   conformanceArtifactPath,
   resourceSampleArtifactPath
@@ -101,12 +101,12 @@ function summarizeWorkflowRowResources({
   const intervalMs = sampleIntervalMs(samples);
   const toleranceMs = intervalMs === null ? 0 : Math.min(intervalMs, 1000);
   const terminalSample = samples.at(-1);
-  const windowSamples = samples.filter((sample) =>
-    typeof sample.elapsedMs === "number" &&
-    sample.elapsedMs >= windowStartedAtMs - toleranceMs &&
-    (sample.elapsedMs <= windowFinishedAtMs + toleranceMs ||
-      (includeSettledTerminal && sample === terminalSample))
-  );
+  const windowSamples = samples.filter((sample) => {
+    if (sample === terminalSample && terminalWorkflowRow) return workflowRow === terminalWorkflowRow;
+    return typeof sample.elapsedMs === "number" &&
+      sample.elapsedMs >= windowStartedAtMs - toleranceMs &&
+      sample.elapsedMs <= windowFinishedAtMs + toleranceMs;
+  });
   if (windowSamples.length === 0) {
     return null;
   }
@@ -167,18 +167,18 @@ function settledTerminalWorkflowRow({
 }) {
   const commandStart = numberOrNull(commandStartedAtEpochMs);
   const commandFinish = numberOrNull(commandFinishedAtEpochMs);
-  const terminalElapsedMs = numberOrNull(samples.at(-1)?.elapsedMs);
+  const terminalSample = samples.at(-1);
+  const terminalElapsedMs = numberOrNull(terminalSample?.elapsedMs);
   if (commandStart === null || commandFinish === null || commandFinish < commandStart ||
-      terminalElapsedMs === null ||
-      terminalElapsedMs > commandFinish - commandStart + 1000) {
+      terminalElapsedMs === null || terminalSample.cpuTerminal !== true) {
     return null;
   }
-  const intervalMs = sampleIntervalMs(samples);
-  const toleranceMs = intervalMs === null ? 0 : Math.min(intervalMs, 1000);
   return rows.reduce((owner, row) => {
+    const startedAtEpochMs = numberOrNull(row?.startedAtEpochMs);
     const finishedAtEpochMs = numberOrNull(row?.finishedAtEpochMs);
-    if (finishedAtEpochMs === null || finishedAtEpochMs > commandFinish ||
-        commandFinish - finishedAtEpochMs > toleranceMs) {
+    if (startedAtEpochMs === null || finishedAtEpochMs === null ||
+        startedAtEpochMs < commandStart || finishedAtEpochMs < startedAtEpochMs ||
+        finishedAtEpochMs > commandFinish) {
       return owner;
     }
     const ownerFinishedAtEpochMs = numberOrNull(owner?.finishedAtEpochMs);
@@ -203,7 +203,7 @@ function readResourceSamples(path) {
     .map((line) => line.trim())
     .filter(Boolean)
     .map(parseJsonObject)
-    .filter((sample) => sample && Array.isArray(sample.processes));
+    .filter((sample) => sample && sample.collectionStatus !== "error" && Array.isArray(sample.processes));
 }
 
 function readJsonFile(path) {

@@ -33,6 +33,7 @@ export function startResourceSampler(rootPid, options = {}) {
   let gatewayPid = null;
   let nextGatewayLookupSample = 0;
   let lastCpuSampleFinishedMs = null;
+  let lostCpuRoles = false;
 
   sample();
   const timer = setInterval(sample, intervalMs);
@@ -59,8 +60,13 @@ export function startResourceSampler(rootPid, options = {}) {
       const remainingMs = MIN_LINUX_CPU_INTERVAL_MS - (performance.now() - lastCpuSampleFinishedMs);
       if (remainingMs > 0) await delay(remainingMs);
     }
-    sample(1, terminalProcessResult);
+    sample(1, terminalProcessResult?.ok ? terminalProcessResult : null);
+    if (cpuAccountant && samples.at(-1).collectionStatus === "ok") samples.at(-1).cpuTerminal = true;
     const summary = summarizeResourceSamples(samples);
+    if (lostCpuRoles) {
+      summary.cpuCoverageComplete = false;
+      summary.errors.push("CPU census lost unobserved process roles before counters could be captured");
+    }
     if (cpuAccountant && !cpuAccountant.coverageComplete()) {
       summary.cpuCoverageComplete = false;
       summary.errors.push("Product CPU interval or terminal wait accounting is incomplete");
@@ -177,6 +183,8 @@ export function startResourceSampler(rootPid, options = {}) {
           ...(entry.currentRoles.length ? {} : { rssMb: 0, rssKb: 0, command: "[CPU wait owner for retired product processes]" })
         }));
       } catch (error) {
+        if (error instanceof LinuxCpuSnapshotChangedError && error.process?.roles?.length &&
+            !cpuAccountant.hasObservedRoles(error.process)) lostCpuRoles = true;
         if (error instanceof LinuxCpuSnapshotChangedError && attempt < 3) {
           // The failed snapshot proves the census changed. Repeating it can
           // only fail on the same departed PID; refresh while the accountant
@@ -238,7 +246,7 @@ export function summarizeResourceSamples(samples) {
     maxTotalCpuPercent = maxNullable(maxTotalCpuPercent, totalCpuPercent);
     const boundedProcesses = sample.processes.filter((entry) => typeof entry.ownCpuPercentLower === "number");
     if (boundedProcesses.length > 0) {
-      const lower = boundedProcesses.reduce((sum, entry) => sum + (entry.roles.length ? entry.ownCpuPercentLower : 0), 0);
+      const lower = boundedProcesses.reduce((sum, entry) => sum + (entry.roles.length ? entry.ownCpuPercentLower : 0) + (entry.reapedCpuPercentLower ?? 0), 0);
       maxTotalCpuPercentLower = maxNullable(maxTotalCpuPercentLower, Math.floor(lower * 10) / 10);
     }
     peakCommandTreeRssMb = maxNullable(peakCommandTreeRssMb, commandTreeRssMb);
@@ -719,7 +727,8 @@ function updateRolePeaks(byRole, sample) {
       if (typeof process.ownCpuPercentUpper === "number") {
         total.cpuPercent = (total.cpuPercent ?? 0) + (ownsRole ? process.ownCpuPercentUpper : 0) +
           (process.reapedRoles.includes(role) ? process.reapedCpuPercentUpper : 0);
-        total.cpuCertainPercent = (total.cpuCertainPercent ?? 0) + (ownsRole ? process.ownCpuPercentLower : 0);
+        total.cpuCertainPercent = (total.cpuCertainPercent ?? 0) + (ownsRole ? process.ownCpuPercentLower : 0) +
+          (process.reapedLowerBoundRoles?.includes(role) ? process.reapedCpuPercentLower : 0);
       } else if (typeof process.cpuPercent === "number") total.cpuPercent = (total.cpuPercent ?? 0) + process.cpuPercent;
       const retired = !ownsRole ? process.reapedProcesses?.find((entry) => entry.roles?.includes(role)) : null;
       const attributed = retired ? { ...process, ...retired, rssMb: 0, role: retired.roles.join(","),

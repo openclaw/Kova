@@ -467,12 +467,12 @@ export async function channelWorkflowResourceAttributionCheck(tmp) {
     }), "utf8");
     await writeFile(resourceSampleArtifactPath, [
       resourceSampleLine(0, 210, 50, 5),
-      resourceSampleLine(5, 210, 50, 10),
-      resourceSampleLine(250, 210, 50, 70)
+      JSON.stringify({ ...JSON.parse(resourceSampleLine(5, 210, 50, 10)), cpuLowerBoundOnly: true }),
+      JSON.stringify({ ...JSON.parse(resourceSampleLine(250, 210, 50, 70)), cpuTerminal: true })
     ].join("\n") + "\n", "utf8");
     const shortResult = {
       startedAtEpochMs: commandStartedAtEpochMs,
-      finishedAtEpochMs: commandStartedAtEpochMs + 5,
+      finishedAtEpochMs: commandStartedAtEpochMs + 25,
       stdout: JSON.stringify({
         schemaVersion: "kova.channelCapabilityRun.v1",
         proofMode: "channel-platform-conformance",
@@ -492,6 +492,45 @@ export async function channelWorkflowResourceAttributionCheck(tmp) {
       finishedAtEpochMs: undefined
     }]);
     assertEqual(unownedTerminal.rows.every((row) => row.sampleCount === 2), true, "unowned terminal sample does not widen workflow windows");
+
+    await writeFile(resourceSampleArtifactPath, [
+      resourceSampleLine(0, 210, 50, 5),
+      JSON.stringify({ ...JSON.parse(resourceSampleLine(5, 210, 50, 10)), cpuLowerBoundOnly: true }),
+      JSON.stringify({ ...JSON.parse(resourceSampleLine(2500, 210, 50, 70)), cpuTerminal: true })
+    ].join("\n") + "\n", "utf8");
+    const delayedResources = summarizeChannelWorkflowResources([shortResult]);
+    assertEqual(delayedResources.rows.find((row) => row.caseId === "earlier-workflow")?.sampleCount, 2, "slow terminal collection remains exclusive to the final workflow");
+    assertEqual(delayedResources.rows.find((row) => row.caseId === "short-workflow")?.sampleCount, 3, "slow terminal collection retains its explicit workflow ownership");
+    const slowCompletionResources = summarizeChannelWorkflowResources([{
+      ...shortResult, finishedAtEpochMs: commandStartedAtEpochMs + 2000
+    }]);
+    assertEqual(slowCompletionResources.rows.find((row) => row.caseId === "short-workflow")?.sampleCount, 3, "slow output draining retains the final workflow owner");
+
+    await writeFile(conformanceArtifactPath, JSON.stringify({
+      schemaVersion: "kova.channelConformanceArtifact.v1", channelId: "telegram",
+      rows: [600, 1000].map((finished, index) => ({
+        id: `overlap-${index}`, status: "passed", workflow: `overlap-${index}`,
+        startedAtEpochMs: commandStartedAtEpochMs,
+        finishedAtEpochMs: commandStartedAtEpochMs + finished, durationMs: finished
+      }))
+    }), "utf8");
+    await writeFile(resourceSampleArtifactPath, [
+      resourceSampleLine(0, 210, 50, 5), resourceSampleLine(1000, 210, 50, 10),
+      JSON.stringify({ ...JSON.parse(resourceSampleLine(1500, 210, 50, 70)), cpuTerminal: true })
+    ].join("\n") + "\n", "utf8");
+    const overlappingResources = summarizeChannelWorkflowResources([{
+      ...shortResult, finishedAtEpochMs: commandStartedAtEpochMs + 1010
+    }]);
+    assertEqual(overlappingResources.rows.find((row) => row.caseId === "overlap-0")?.sampleCount, 2, "ordinary sample tolerance cannot share the terminal record with an earlier workflow");
+    assertEqual(overlappingResources.rows.find((row) => row.caseId === "overlap-1")?.sampleCount, 3, "overlapping ordinary windows retain exactly one terminal owner");
+
+    await writeFile(resourceSampleArtifactPath, JSON.stringify({
+      elapsedMs: 1500, cpuTerminal: true, collectionStatus: "error", processes: []
+    }) + "\n", "utf8");
+    const failedTerminalResources = summarizeChannelWorkflowResources([{
+      ...shortResult, finishedAtEpochMs: commandStartedAtEpochMs + 1010
+    }]);
+    assertEqual(failedTerminalResources.caseCount, 0, "failed terminal collection cannot fabricate zero-valued workflow evidence");
 
     return {
       id: "channel-workflow-resource-attribution",

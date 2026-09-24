@@ -1121,11 +1121,27 @@ its product role later or transfers its counters to a wait owner, without
 discarding known CPU bounds from later intervals. An external wait owner's own
 historical host CPU does not invalidate fully observed product child CPU.
 
+At command completion, Linux collection first records an immediate
+`cpuLowerBoundOnly: true` sample without advancing the accounting baseline.
+This preserves proven CPU excess, while uncertain upper bounds come from a
+terminal read taken at least 500 ms after the previous counter scan. A changed
+process census is refreshed before retrying, retaining prior roles and wait
+accounting. The terminal record carries `cpuTerminal: true`, so slow collection
+does not erase its ownership. The final channel workflow can include this record beyond
+its ordinary sample window when the command finish time identifies its owner;
+earlier workflows and records without that finish time keep their usual windows.
+Terminal discoveries retain their roles, observed wait debt, and coverage gaps
+even when they exit before settlement. The dedicated command wait owner also
+retains a conservative reaped-CPU lower bound for total and `command-tree` CPU;
+it does not assign that proven work to ambiguous individual product roles.
+
 For sampled commands, a Kova wait owner remains alive until the final CPU sample.
 Its own CPU and RSS are harness work and excluded from product measurements;
 its child accounting retains sub-second commands and the last interval before
 exit. The watchdog remains active until inherited stdout/stderr writers drain
-and the captured process closes; direct shell exit does not release that ownership. The command environment is forwarded privately to its shell; Node preload and
+and the product command completes; terminal accounting settlement is excluded
+from command duration and timeout. Direct shell exit does not release that
+ownership. The command environment is forwarded privately to its shell; Node preload and
 profiling options do not execute in the accounting helper. Product command
 stdout, stderr, exit status, signal, and timeout behavior remain unchanged. Resource artifacts identify the counter contract as
 `linux-process-interval-v1`. Incomplete counter/baseline evidence is a harness

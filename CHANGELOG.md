@@ -4,6 +4,8 @@ All notable changes to Kova are documented in this file.
 
 ## Unreleased
 
+- Stabilize terminal Linux CPU accounting without hiding proven excess, retain wait-owner counters through settlement, and attribute the settled sample to the final channel workflow. Thanks @RomneyDa. (#144)
+
 ## 0.2.1 - 2026-09-23
 
 **Highlights:** Reliable memory attribution, complete artifact cleanup, and lossless inline CLI option values.
