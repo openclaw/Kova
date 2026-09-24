@@ -450,6 +450,13 @@ export async function channelWorkflowResourceAttributionCheck(tmp) {
       schemaVersion: "kova.channelConformanceArtifact.v1",
       channelId: "telegram",
       rows: [{
+        id: "earlier-workflow",
+        status: "passed",
+        workflow: "earlier-workflow",
+        startedAtEpochMs: commandStartedAtEpochMs,
+        finishedAtEpochMs: commandStartedAtEpochMs + 4,
+        durationMs: 4
+      }, {
         id: "short-workflow",
         status: "passed",
         workflow: "short-workflow",
@@ -475,13 +482,16 @@ export async function channelWorkflowResourceAttributionCheck(tmp) {
       resourceSamples: { artifactPath: resourceSampleArtifactPath }
     };
     const shortResources = summarizeChannelWorkflowResources([shortResult]);
-    assertEqual(shortResources.rows[0]?.sampleCount, 3, "short workflow includes settled terminal sample");
-    assertEqual(shortResources.rows[0]?.maxCpuPercent, 71, "short workflow reports settled terminal CPU");
+    const earlierWorkflow = shortResources.rows.find((row) => row.caseId === "earlier-workflow");
+    const shortWorkflow = shortResources.rows.find((row) => row.caseId === "short-workflow");
+    assertEqual(earlierWorkflow?.sampleCount, 2, "settled terminal sample is exclusive to the final workflow");
+    assertEqual(shortWorkflow?.sampleCount, 3, "short workflow includes settled terminal sample");
+    assertEqual(shortWorkflow?.maxCpuPercent, 71, "short workflow reports settled terminal CPU");
     const unownedTerminal = summarizeChannelWorkflowResources([{
       ...shortResult,
       finishedAtEpochMs: undefined
     }]);
-    assertEqual(unownedTerminal.rows[0]?.sampleCount, 2, "unowned terminal sample does not widen workflow windows");
+    assertEqual(unownedTerminal.rows.every((row) => row.sampleCount === 2), true, "unowned terminal sample does not widen workflow windows");
 
     return {
       id: "channel-workflow-resource-attribution",
