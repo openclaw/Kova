@@ -164,6 +164,27 @@ test("role bounds distinguish real parallel CPU from work below the unchanged ga
   }
 });
 
+test("terminal settlement preserves an immediately proven CPU excess", () => {
+  const accountant = createLinuxCpuAccountant();
+  const baseline = [1, 2, 3, 4].map((pid) => ({ ...processRow(pid, 0, 0), roles: ["gateway"] }));
+  accountant.sample(baseline, clock(0));
+  const burst = baseline.map((process) => ({ ...process, cpuTicks: 6 }));
+  const immediate = accountant.lowerBoundSample(burst, clock(0.06));
+  const settled = accountant.sample(burst, clock(0.25));
+  const summary = summarizeResourceSamples([
+    { collectionStatus: "ok", cpuMeasurementContract: "linux-process-interval-v1", processes: immediate },
+    { collectionStatus: "ok", cpuMeasurementContract: "linux-process-interval-v1", processes: settled }
+  ]);
+  const role = summary.byRole.gateway;
+  assert.ok(role.maxCpuPercentLower > 200, JSON.stringify(role));
+  assert.ok(role.maxCpuPercent >= role.maxCpuPercentLower, JSON.stringify(role));
+  assert.ok(role.maxCpuPercent - role.maxCpuPercentLower <= 0.1, JSON.stringify(role));
+  const violations = [];
+  checkCpuThreshold(violations, { kind: "resource", metric: "cpu", label: "CPU", value: role.maxCpuPercent,
+    lower: role.maxCpuPercentLower, threshold: 200 });
+  assert.equal(violations[0]?.kind, "resource");
+});
+
 test("agent title changes move current RSS without losing historical CPU attribution", async () => {
   const processRoles = await loadProcessRoles();
   const surface = JSON.parse(fs.readFileSync(new URL("../surfaces/agent-cli-local-turn.json", import.meta.url), "utf8"));

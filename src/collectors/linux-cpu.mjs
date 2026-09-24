@@ -85,6 +85,21 @@ export function createLinuxCpuAccountant({ accountingRootPid } = {}) {
     coverageComplete() {
       return !missingIntervalBaseline && !missingWaitOwner && ![...reapDebt.values()].some((debt) => debt.ticks > 0 && debt.processes.some((entry) => entry.roles?.length));
     },
+    lowerBoundSample(processes, clock) {
+      const state = { previous, previousClock, initialClock, reapDebt, missingWaitOwner, missingIntervalBaseline };
+      try {
+        return this.sample(processes, clock).map((process) => ({
+          ...process,
+          ownCpuPercentUpper: process.ownCpuPercentLower,
+          reapedCpuPercent: 0,
+          reapedCpuPercentUpper: 0,
+          cpuPercent: process.roles.length ? process.ownCpuPercentLower : 0,
+          cpuLowerBoundOnly: true
+        }));
+      } finally {
+        ({ previous, previousClock, initialClock, reapDebt, missingWaitOwner, missingIntervalBaseline } = state);
+      }
+    },
     sample(processes, clock) {
       initialClock ??= clock;
       const nextDebt = new Map([...reapDebt].map(([key, debt]) => [key, { ...debt, processes: [...debt.processes] }]));

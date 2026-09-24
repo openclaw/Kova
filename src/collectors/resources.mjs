@@ -49,8 +49,11 @@ export function startResourceSampler(rootPid, options = {}) {
     if (lastCpuSampleFinishedMs !== null) {
       // A command can end just after the periodic census. Give the terminal
       // counters a stable window while retaining the process roles at stop time.
+      // Keep only the immediate certain floor so a proven burst cannot be
+      // diluted by the wait, while ambiguous tick bounds use the settled read.
       const processLister = options.processLister ?? listProcesses;
       terminalProcessResult = processLister(options.redactValues ?? []);
+      sample(1, terminalProcessResult, true);
       const remainingMs = MIN_LINUX_CPU_INTERVAL_MS - (performance.now() - lastCpuSampleFinishedMs);
       if (remainingMs > 0) await delay(remainingMs);
     }
@@ -72,10 +75,11 @@ export function startResourceSampler(rootPid, options = {}) {
     return summary;
   }
 
-  function sample(attempt = 1, processResultOverride = null) {
+  function sample(attempt = 1, processResultOverride = null, lowerBoundOnly = false) {
     const processLister = options.processLister ?? listProcesses;
     const processResult = processResultOverride ?? processLister(options.redactValues ?? []);
     if (!processResult.ok) {
+      if (lowerBoundOnly) return;
       samples.push({
         timestamp: new Date().toISOString(),
         elapsedMs: Date.now() - startedAt,
@@ -164,12 +168,17 @@ export function startResourceSampler(rootPid, options = {}) {
         cpuClock = readLinuxCpuClock();
         const counters = readLinuxCpuSnapshot(tracked, cpuAccountant.trackedProcessIds());
         cpuClock.finishedMs = performance.now();
-        lastCpuSampleFinishedMs = cpuClock.finishedMs;
-        measured = cpuAccountant.sample(counters, cpuClock).map((entry) => ({ ...entry,
+        if (!lowerBoundOnly) lastCpuSampleFinishedMs = cpuClock.finishedMs;
+        measured = (lowerBoundOnly
+          ? cpuAccountant.lowerBoundSample(counters, cpuClock)
+          : cpuAccountant.sample(counters, cpuClock)).map((entry) => ({ ...entry,
           ...(entry.currentRoles.length ? {} : { rssMb: 0, rssKb: 0, command: "[CPU wait owner for retired product processes]" })
         }));
       } catch (error) {
-        if (error instanceof LinuxCpuSnapshotChangedError && attempt < 3) return sample(attempt + 1);
+        if (error instanceof LinuxCpuSnapshotChangedError && attempt < 3) {
+          return sample(attempt + 1, processResultOverride, lowerBoundOnly);
+        }
+        if (lowerBoundOnly) return;
         samples.push({ timestamp: new Date().toISOString(), elapsedMs: Date.now() - startedAt,
           rootPid, gatewayPid, collectionStatus: "error", collectionError: error.message, processes: [] });
         return;
@@ -184,6 +193,7 @@ export function startResourceSampler(rootPid, options = {}) {
       collectionError: null,
       cpuMeasurementContract: cpuAccountant ? "linux-process-interval-v1" : "ps-process-cpu-v1",
       cpuClock,
+      ...(lowerBoundOnly ? { cpuLowerBoundOnly: true } : {}),
       ...(cpuAccountant ? { collectionAttempts: attempt } : {}),
       processes: measured.filter((entry) => entry.roles.length || entry.reapedRoles?.length)
     });
