@@ -105,13 +105,20 @@ export function runCommand(command, options = {}) {
         child.send({ type: "start", env: childEnv }, () => {});
       } else if (message?.type === "complete" && !accountedCompletion) {
         accountedCompletion = { ...message, finishedAtEpochMs: Date.now() };
-        // stop() captures the terminal counters synchronously. Persisting the
-        // artifact must not keep the command's wait owner alive after capture.
+        // The accounting helper owns waitpid state needed by the terminal CPU
+        // read. Release it only after stop() has captured those counters.
         sampledResources = sampler?.stop().catch((error) => ({
           available: false, sampleCount: 0, failedSampleCount: 1,
           cpuCoverageComplete: false, errors: [error.message]
         }));
-        if (child.connected) child.send({ type: "sampled" }, () => {});
+        const releaseAccountingOwner = () => {
+          if (child.connected) child.send({ type: "sampled" }, () => {});
+        };
+        if (sampledResources) {
+          void sampledResources.finally(releaseAccountingOwner);
+        } else {
+          releaseAccountingOwner();
+        }
       }
     });
     const stdout = createBoundedOutputAccumulator({
