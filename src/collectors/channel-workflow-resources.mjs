@@ -37,6 +37,7 @@ export function summarizeChannelWorkflowResources(results = []) {
         workflowRow,
         samples,
         commandStartedAtEpochMs: result.startedAtEpochMs,
+        commandFinishedAtEpochMs: result.finishedAtEpochMs,
         channelId: artifact.channelId ?? payload.channelId ?? null,
         conformanceArtifactPath: payload.artifactPath,
         resourceSampleArtifactPath: result.resourceSamples?.artifactPath ?? null
@@ -72,6 +73,7 @@ function summarizeWorkflowRowResources({
   workflowRow,
   samples,
   commandStartedAtEpochMs,
+  commandFinishedAtEpochMs,
   channelId,
   conformanceArtifactPath,
   resourceSampleArtifactPath
@@ -91,10 +93,20 @@ function summarizeWorkflowRowResources({
   const windowFinishedAtMs = Math.max(windowStartedAtMs, finishedAtEpochMs - commandStart);
   const intervalMs = sampleIntervalMs(samples);
   const toleranceMs = intervalMs === null ? 0 : Math.min(intervalMs, 1000);
+  const commandFinish = numberOrNull(commandFinishedAtEpochMs);
+  const commandFinishedAtMs = commandFinish === null ? null : commandFinish - commandStart;
+  const terminalSample = samples.at(-1);
+  const includeSettledTerminal =
+    commandFinishedAtMs !== null &&
+    commandFinishedAtMs >= 0 &&
+    Math.abs(windowFinishedAtMs - commandFinishedAtMs) <= toleranceMs &&
+    typeof terminalSample?.elapsedMs === "number" &&
+    terminalSample.elapsedMs <= commandFinishedAtMs + 1000;
   const windowSamples = samples.filter((sample) =>
     typeof sample.elapsedMs === "number" &&
     sample.elapsedMs >= windowStartedAtMs - toleranceMs &&
-    sample.elapsedMs <= windowFinishedAtMs + toleranceMs
+    (sample.elapsedMs <= windowFinishedAtMs + toleranceMs ||
+      (includeSettledTerminal && sample === terminalSample))
   );
   if (windowSamples.length === 0) {
     return null;
