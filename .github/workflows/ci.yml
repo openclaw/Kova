@@ -23,7 +23,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            node: 22.23.2
+            node: 22.23.3
           - os: ubuntu-latest
             node: 24.21.0
           - os: ubuntu-latest
