@@ -176,7 +176,10 @@ export function startResourceSampler(rootPid, options = {}) {
         }));
       } catch (error) {
         if (error instanceof LinuxCpuSnapshotChangedError && attempt < 3) {
-          return sample(attempt + 1, processResultOverride, lowerBoundOnly);
+          // The failed snapshot proves the census changed. Repeating it can
+          // only fail on the same departed PID; refresh while the accountant
+          // retains its prior roles and wait-owner debt.
+          return sample(attempt + 1, null, lowerBoundOnly);
         }
         if (lowerBoundOnly) return;
         samples.push({ timestamp: new Date().toISOString(), elapsedMs: Date.now() - startedAt,

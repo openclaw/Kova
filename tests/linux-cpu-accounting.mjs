@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import childProcess from "node:child_process";
+import { once } from "node:events";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -46,10 +47,39 @@ test("terminal Linux CPU samples retain a stable accounting interval", {
     });
     await sampler.stop();
     const samples = (await fs.promises.readFile(artifactPath, "utf8")).trim().split("\n").map(JSON.parse);
-    assert.equal(samples.length, 2);
-    const elapsedMs = samples[1].cpuClock.monotonicMs - samples[0].cpuClock.finishedMs;
+    assert.equal(samples.length, 3);
+    assert.equal(samples[1].cpuLowerBoundOnly, true);
+    const elapsedMs = samples[2].cpuClock.monotonicMs - samples[0].cpuClock.finishedMs;
     assert.ok(elapsedMs >= 200, `terminal CPU interval was only ${elapsedMs}ms`);
   } finally {
+    await fs.promises.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("terminal sampling refreshes a census after a tracked child exits", {
+  skip: process.platform !== "linux"
+}, async () => {
+  const root = await fs.promises.mkdtemp(join(tmpdir(), "kova-terminal-exit-"));
+  const artifactPath = join(root, "samples.jsonl");
+  const child = childProcess.spawn(process.execPath, ["-e", "const end=Date.now()+75;while(Date.now()<end){}"], {
+    stdio: "ignore"
+  });
+  const childClosed = once(child, "close");
+  try {
+    const sampler = startResourceSampler(process.pid, {
+      artifactPath,
+      intervalMs: 1000,
+      trackedRolePids: { gateway: child.pid }
+    });
+    const summary = await sampler.stop();
+    await childClosed;
+    const samples = (await fs.promises.readFile(artifactPath, "utf8")).trim().split("\n").map(JSON.parse);
+    const settled = samples.at(-1);
+    assert.equal(settled.collectionAttempts, 2);
+    assert.ok(settled.processes.some((entry) => entry.reapedRoles?.includes("gateway")));
+    assert.equal(summary.cpuCoverageComplete, true, JSON.stringify(summary.errors));
+  } finally {
+    child.kill("SIGKILL");
     await fs.promises.rm(root, { recursive: true, force: true });
   }
 });
@@ -79,8 +109,10 @@ test("real Linux censuses move same-PID agent RSS while retaining CPU history", 
     assert.equal(summary.cpuMeasurementContract, "linux-process-interval-v1");
     assert.equal(summary.cpuCoverageComplete, true, JSON.stringify(summary.errors));
     const samples = (await fs.promises.readFile(artifactPath, "utf8")).trim().split("\n").map(JSON.parse);
-    assert.equal(samples.length, 2);
-    const [before, after] = samples.map((sample) => sample.processes.find((entry) => entry.pid === process.pid));
+    assert.equal(samples.length, 3);
+    assert.equal(samples[1].cpuLowerBoundOnly, true);
+    const [before, after] = [samples[0], samples[2]].map((sample) =>
+      sample.processes.find((entry) => entry.pid === process.pid));
     assert.ok(before && after, "both real censuses must retain the test process");
     assert.equal(before.command, "openclaw");
     assert.equal(after.command, "openclaw-agent");
@@ -88,7 +120,7 @@ test("real Linux censuses move same-PID agent RSS while retaining CPU history", 
     assert.ok(after.roles.includes("agent-cli") && after.roles.includes("agent-process"));
     assert.ok(after.rssMb > 0);
 
-    const terminal = summarizeResourceSamples([samples[1]]);
+    const terminal = summarizeResourceSamples([samples[2]]);
     const cli = terminal.byRole["agent-cli"];
     const agent = terminal.byRole["agent-process"];
     assert.equal(cli.peakRssMb, 0);
