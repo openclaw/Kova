@@ -1094,15 +1094,35 @@ earlier sample. Vanished process roles remain attached to their wait accounting,
 including a Gateway reaped by an external supervisor. Linux samples retain
 historical CPU membership in `roles` and record the current census membership in
 `currentRoles`. RSS sums, trends, process counts, and peak witnesses use current
-membership, so a process renamed from `openclaw` to `openclaw-agent` no longer
-adds its agent RSS to the CLI wrapper role. An empty `currentRoles` excludes RSS
+membership, so an execution process no longer adds its agent RSS to the CLI
+wrapper role after classification. Ordinary current OpenClaw commands keep the
+`openclaw` title; launchers retain argv. The agent-process registry pairs that
+exact title with an owned `openclaw agent --local` or `ocm @env -- agent --local`
+command tree via `commandScopedProcessPatterns`. Each scope declares invocationPatterns for command-bearing
+launchers, including nonmatching commands. The nearest matching live ancestor
+owns the invocation; the root command is the fallback only when no such ancestor
+exists. OpenClaw launchers include direct CLI and Node/script paths. A nested
+status or remote-agent invocation blocks an outer local-agent role, while a
+deeper local agent gets its own role. Concurrent and expect-failure helpers do
+not label status siblings as agent execution. Command and process patterns must both match;
+status commands, Gateway trees, unrelated processes, and argv-bearing launchers
+do not gain the agent execution role. Legacy `openclaw-agent` titles remain
+recognized. Scoped patterns do not apply to global process snapshots. An empty
+`currentRoles` excludes RSS
 while preserving terminal CPU accounting. Older samples without `currentRoles`
 retain their recorded role attribution; this repair does not requalify old
 reports. Per-process lifetime summaries continue listing observed roles.
 Parent counters are read
 before child counters; a product process disappearing during that census
 discards the inconsistent scan before accounting. Collection attempts are
-recorded, and three unstable censuses produce a harness failure. Ambiguous reaped CPU is
+recorded, and three unstable censuses produce a harness failure. If a process
+vanishes before its roles and counters were observed, subsequent raw samples
+retain `cpuLostProcesses` (redacted command, PID, parent PID, roles, attempt, and
+error). These are census diagnostics, not fabricated counter samples or
+PID/start-time identities. Summarizing the artifacts preserves the incomplete
+CPU gate even when a refreshed census succeeds. The lost CPU remains unknown;
+this diagnostic does not retroactively qualify earlier reports or prove which
+process disappeared in artifacts that omitted it. Ambiguous reaped CPU is
 an upper bound for each affected role; it never raises the lower bound. Unsettled
 terminal wait accounting blocks qualification. CPU percentages may exceed 100% when product threads or
 processes execute concurrently. The collector does not sum `ps` lifetime CPU

@@ -436,7 +436,7 @@ export async function resourceRolePollutionCheck() {
       }
     );
     const openclawWrapperRoles = classifyRegistryRolesForProcess(
-      { command: "openclaw" },
+      { command: "node openclaw.mjs agent --local" },
       {
         processRoles,
         rootCommand: "ocm @kova -- agent --local --message hi",
