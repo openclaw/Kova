@@ -85,13 +85,16 @@ test("terminal sampling refreshes a census after a tracked child exits", {
   }
 });
 
-for (const listingFailed of [false, true]) test(listingFailed ? "terminal sampling retries a transient immediate census failure"
-  : "terminal sampling rejects a role first seen in a vanished-process census", async () => {
+for (const mode of ["lost", "listing-failed", "unstable-lower-bound"]) test(
+  "terminal sampling preserves census evidence: " + mode, async () => {
+  const listingFailed = mode === "listing-failed";
   const platform = Object.getOwnPropertyDescriptor(process, "platform");
   const originalRead = fs.readFileSync;
   const originalSpawn = childProcess.spawnSync;
   let census = 0;
   let now = 0;
+  const artifactDir = await fs.promises.mkdtemp(join(tmpdir(), "kova-lost-census-"));
+  const artifactPath = join(artifactDir, "samples.jsonl");
   Object.defineProperty(process, "platform", { ...platform, value: "linux" });
   mock.method(performance, "now", () => now);
   mock.method(childProcess, "spawnSync", (command, ...args) => {
@@ -100,7 +103,7 @@ for (const listingFailed of [false, true]) test(listingFailed ? "terminal sampli
       now += 1000;
       census += 1;
       if (census === 2 && listingFailed) return { status: 1, stderr: "transient census failure" };
-      return { status: 0, pid: 999, stdout: census === 2
+      return { status: 0, pid: 999, stdout: census === 2 || (mode === "unstable-lower-bound" && census <= 4 && census > 1)
         ? "1 0 1024 0 node\n2 1 1024 0 gateway\n" : "1 0 1024 0 node\n" };
     }
     return originalSpawn(command, ...args);
@@ -117,14 +120,23 @@ for (const listingFailed of [false, true]) test(listingFailed ? "terminal sampli
   });
   syncBuiltinESMExports();
   try {
-    const summary = await startResourceSampler(1, { trackedRolePids: { gateway: 2 } }).stop();
+    const summary = await startResourceSampler(1, { trackedRolePids: { gateway: 2 }, artifactPath }).stop();
     assert.equal(summary.cpuCoverageComplete, listingFailed);
     if (listingFailed) assert.deepEqual(summary.errors, []);
-    else assert.ok(summary.errors.some((error) => error.includes("unobserved process roles")));
+    else {
+      assert.ok(summary.errors.some((error) => error.includes("unobserved process roles")));
+      const samples = (await fs.promises.readFile(artifactPath, "utf8")).trim().split("\n").map(JSON.parse);
+      const replay = summarizeResourceSamples(samples);
+      assert.equal(replay.cpuCoverageComplete, false, "raw evidence must retain the lost-role failure");
+      assert.ok(replay.errors.some((error) => error.includes("unobserved process roles")));
+      const lost = samples.flatMap((sample) => sample.cpuLostProcesses ?? []);
+      assert.ok(lost.some((entry) => entry.pid === 2 && entry.ppid === 1 && entry.command === "gateway" && entry.roles.includes("gateway")));
+    }
   } finally {
     mock.restoreAll();
     Object.defineProperty(process, "platform", platform);
     syncBuiltinESMExports();
+    await fs.promises.rm(artifactDir, { recursive: true, force: true });
   }
 });
 
@@ -139,7 +151,7 @@ test("real Linux censuses move same-PID agent RSS while retaining CPU history", 
   try {
     let completion;
     try {
-      process.title = "openclaw";
+      process.title = "openclaw agent --local";
       sampler = startResourceSampler(process.pid, {
         processRoles, rootCommand: "openclaw agent --local --message hi", artifactPath
       });
@@ -158,7 +170,7 @@ test("real Linux censuses move same-PID agent RSS while retaining CPU history", 
     const [before, after] = [samples[0], samples[2]].map((sample) =>
       sample.processes.find((entry) => entry.pid === process.pid));
     assert.ok(before && after, "both real censuses must retain the test process");
-    assert.equal(before.command, "openclaw");
+    assert.equal(before.command, "openclaw agent --local");
     assert.equal(after.command, "openclaw-agent");
     assert.equal(after.startTicks, before.startTicks);
     assert.ok(after.roles.includes("agent-cli") && after.roles.includes("agent-process"));
@@ -399,8 +411,8 @@ test("agent title changes move current RSS without losing historical CPU attribu
   };
   for (const [agentRssMb, expectedViolations] of [[932.9, []], [1001, ["resourceByRole.agent-process.peakRssMb"]]]) {
     const accountant = createLinuxCpuAccountant();
-    const wrappers = [row(1, 0, rootCommand, 5.8), row(2, 1, "openclaw", 86.2)];
-    const before = accountant.sample([...wrappers, row(3, 2, "openclaw", 187.9)], clock(0));
+    const wrappers = [row(1, 0, rootCommand, 5.8), row(2, 1, "node openclaw.mjs agent --local", 86.2)];
+    const before = accountant.sample([...wrappers, row(3, 2, "node openclaw.mjs agent --local", 187.9)], clock(0));
     const after = accountant.sample([...wrappers, row(3, 2, "openclaw-agent", agentRssMb, 100)], clock(1));
     const sample = (processes, elapsedMs) => ({ processes, elapsedMs, collectionStatus: "ok", cpuMeasurementContract: "linux-process-interval-v1" });
     const summary = summarizeResourceSamples([sample(before, 0), sample(after, 1000)]);

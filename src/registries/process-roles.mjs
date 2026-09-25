@@ -29,5 +29,19 @@ export function validateProcessRoleShape(role, sourceName = "process-role") {
     }
   }
 
+  if (role.commandScopedProcessPatterns !== undefined) {
+    requireArray(role, "commandScopedProcessPatterns", errors);
+    if (Array.isArray(role.commandScopedProcessPatterns)) {
+      for (const [index, scope] of role.commandScopedProcessPatterns.entries()) {
+        for (const key of ["commandPatterns", "processPatterns"]) {
+          if (!Array.isArray(scope?.[key]) || scope[key].length === 0 ||
+              scope[key].some((pattern) => typeof pattern !== "string" || !pattern.length)) {
+            errors.push(`commandScopedProcessPatterns[${index}].${key} must be a nonempty string array`);
+          }
+        }
+      }
+    }
+  }
+
   assertNoShapeErrors(errors, sourceName);
 }

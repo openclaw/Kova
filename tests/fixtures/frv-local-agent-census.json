@@ -1,0 +1,347 @@
+{
+  "source": "FRV 36073359097 / performance 36073752279 / job 107881574212; peak live RSS rows only, not reconstructed CPU samples",
+  "cases": [
+    {
+      "record": 9,
+      "phase": "cold-agent-turn",
+      "rootCommand": "ocm @'kova-agent-cold-warm-message-8e2a29af-kova-260924-234532-5c27c9' -- agent --local --agent main --session-id kova-agent-cold-warm --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 120 --json",
+      "rootPid": 45246,
+      "processes": [
+        {
+          "pid": 43653,
+          "ppid": 1,
+          "command": "node /home/runner/_work/_temp/kova-src/support/mock-ai-provider-supervisor.mjs --script /home/runner/_work/openclaw/openclaw/.artifacts/kova/home/mock-provider/artifacts/kova-260924-234532-5c27c9/kova-agent-cold-warm-message-8e2a29af-kova-260924-234532-5c27c9/mock-openai/script.json --request-log /home/runner/_work/openclaw/openclaw/.artifacts/kova/home/mock-provider/artifacts/kova-260924-234532-5c27c9/kova-agent-cold-warm-message-8e2a29af-kova-260924-234532-5c27c9/mock-openai/requests.jsonl --server-log /home/runner/_work/openclaw/openclaw/.artifacts/kova/home/mock-provider/artifacts/kova-260924-234532-5c27c9/kova-agent-cold-warm-message-8e2a29af-kova-260924-234532-5c27c9/mock-openai/server.log --pid-file /home/runner/_work/openclaw/openclaw/.artifacts/kova/home/mock-provider/artifacts/kova-260924-234532-5c27c9/kova-agent-cold-warm-message-8e2a29af-kova-260924-234532-5c27c9/mock-openai/pid",
+          "rssMb": 70.4,
+          "roles": [
+            "mock-provider"
+          ]
+        },
+        {
+          "pid": 45246,
+          "ppid": 5036,
+          "command": "[Kova command CPU accounting]",
+          "rssMb": 0,
+          "roles": [
+            "agent-cli",
+            "command-tree"
+          ]
+        },
+        {
+          "pid": 45377,
+          "ppid": 45246,
+          "command": "ocm @kova-agent-cold-warm-message-8e2a29af-kova-260924-234532-5c27c9 -- agent --local --agent main --session-id kova-agent-cold-warm --message Reply with exact ASCII text KOVA_AGENT_OK only. --thinking off --timeout 120 --json",
+          "rssMb": 6,
+          "roles": [
+            "agent-cli",
+            "command-tree"
+          ]
+        },
+        {
+          "pid": 45379,
+          "ppid": 45377,
+          "command": "node /home/runner/.ocm/runtimes/kova-local-mug6jmba-3vw-b8b4068b/files/node_modules/openclaw/openclaw.mjs agent --local --agent main --session-id kova-agent-cold-warm --message Reply with exact ASCII text KOVA_AGENT_OK only. --thinking off --timeout 120 --json",
+          "rssMb": 87.7,
+          "roles": [
+            "agent-cli",
+            "command-tree"
+          ]
+        },
+        {
+          "pid": 45391,
+          "ppid": 45379,
+          "command": "openclaw",
+          "rssMb": 870.6,
+          "roles": [
+            "agent-cli",
+            "command-tree"
+          ]
+        }
+      ]
+    },
+    {
+      "record": 9,
+      "phase": "warm-agent-turn",
+      "rootCommand": "ocm @'kova-agent-cold-warm-message-8e2a29af-kova-260924-234532-5c27c9' -- agent --local --agent main --session-id kova-agent-cold-warm --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 120 --json",
+      "rootPid": 46562,
+      "processes": [
+        {
+          "pid": 43653,
+          "ppid": 1,
+          "command": "node /home/runner/_work/_temp/kova-src/support/mock-ai-provider-supervisor.mjs --script /home/runner/_work/openclaw/openclaw/.artifacts/kova/home/mock-provider/artifacts/kova-260924-234532-5c27c9/kova-agent-cold-warm-message-8e2a29af-kova-260924-234532-5c27c9/mock-openai/script.json --request-log /home/runner/_work/openclaw/openclaw/.artifacts/kova/home/mock-provider/artifacts/kova-260924-234532-5c27c9/kova-agent-cold-warm-message-8e2a29af-kova-260924-234532-5c27c9/mock-openai/requests.jsonl --server-log /home/runner/_work/openclaw/openclaw/.artifacts/kova/home/mock-provider/artifacts/kova-260924-234532-5c27c9/kova-agent-cold-warm-message-8e2a29af-kova-260924-234532-5c27c9/mock-openai/server.log --pid-file /home/runner/_work/openclaw/openclaw/.artifacts/kova/home/mock-provider/artifacts/kova-260924-234532-5c27c9/kova-agent-cold-warm-message-8e2a29af-kova-260924-234532-5c27c9/mock-openai/pid",
+          "rssMb": 71,
+          "roles": [
+            "mock-provider"
+          ]
+        },
+        {
+          "pid": 46562,
+          "ppid": 5036,
+          "command": "[Kova command CPU accounting]",
+          "rssMb": 0,
+          "roles": [
+            "agent-cli",
+            "command-tree"
+          ]
+        },
+        {
+          "pid": 46693,
+          "ppid": 46562,
+          "command": "ocm @kova-agent-cold-warm-message-8e2a29af-kova-260924-234532-5c27c9 -- agent --local --agent main --session-id kova-agent-cold-warm --message Reply with exact ASCII text KOVA_AGENT_OK only. --thinking off --timeout 120 --json",
+          "rssMb": 5.9,
+          "roles": [
+            "agent-cli",
+            "command-tree"
+          ]
+        },
+        {
+          "pid": 46695,
+          "ppid": 46693,
+          "command": "node /home/runner/.ocm/runtimes/kova-local-mug6jmba-3vw-b8b4068b/files/node_modules/openclaw/openclaw.mjs agent --local --agent main --session-id kova-agent-cold-warm --message Reply with exact ASCII text KOVA_AGENT_OK only. --thinking off --timeout 120 --json",
+          "rssMb": 87.6,
+          "roles": [
+            "agent-cli",
+            "command-tree"
+          ]
+        },
+        {
+          "pid": 46707,
+          "ppid": 46695,
+          "command": "openclaw",
+          "rssMb": 921.3,
+          "roles": [
+            "agent-cli",
+            "command-tree"
+          ]
+        }
+      ]
+    },
+    {
+      "record": 10,
+      "phase": "cold-agent-turn",
+      "rootCommand": "ocm @'kova-agent-cold-warm-message-2ab680e0-kova-260924-234532-5c27c9' -- agent --local --agent main --session-id kova-agent-cold-warm --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 120 --json",
+      "rootPid": 50766,
+      "processes": [
+        {
+          "pid": 49174,
+          "ppid": 1,
+          "command": "node /home/runner/_work/_temp/kova-src/support/mock-ai-provider-supervisor.mjs --script /home/runner/_work/openclaw/openclaw/.artifacts/kova/home/mock-provider/artifacts/kova-260924-234532-5c27c9/kova-agent-cold-warm-message-2ab680e0-kova-260924-234532-5c27c9/mock-openai/script.json --request-log /home/runner/_work/openclaw/openclaw/.artifacts/kova/home/mock-provider/artifacts/kova-260924-234532-5c27c9/kova-agent-cold-warm-message-2ab680e0-kova-260924-234532-5c27c9/mock-openai/requests.jsonl --server-log /home/runner/_work/openclaw/openclaw/.artifacts/kova/home/mock-provider/artifacts/kova-260924-234532-5c27c9/kova-agent-cold-warm-message-2ab680e0-kova-260924-234532-5c27c9/mock-openai/server.log --pid-file /home/runner/_work/openclaw/openclaw/.artifacts/kova/home/mock-provider/artifacts/kova-260924-234532-5c27c9/kova-agent-cold-warm-message-2ab680e0-kova-260924-234532-5c27c9/mock-openai/pid",
+          "rssMb": 70.9,
+          "roles": [
+            "mock-provider"
+          ]
+        },
+        {
+          "pid": 50766,
+          "ppid": 5036,
+          "command": "[Kova command CPU accounting]",
+          "rssMb": 0,
+          "roles": [
+            "agent-cli",
+            "command-tree"
+          ]
+        },
+        {
+          "pid": 50897,
+          "ppid": 50766,
+          "command": "ocm @kova-agent-cold-warm-message-2ab680e0-kova-260924-234532-5c27c9 -- agent --local --agent main --session-id kova-agent-cold-warm --message Reply with exact ASCII text KOVA_AGENT_OK only. --thinking off --timeout 120 --json",
+          "rssMb": 5.9,
+          "roles": [
+            "agent-cli",
+            "command-tree"
+          ]
+        },
+        {
+          "pid": 50899,
+          "ppid": 50897,
+          "command": "node /home/runner/.ocm/runtimes/kova-local-mug6jmba-3vw-b8b4068b/files/node_modules/openclaw/openclaw.mjs agent --local --agent main --session-id kova-agent-cold-warm --message Reply with exact ASCII text KOVA_AGENT_OK only. --thinking off --timeout 120 --json",
+          "rssMb": 87.6,
+          "roles": [
+            "agent-cli",
+            "command-tree"
+          ]
+        },
+        {
+          "pid": 50911,
+          "ppid": 50899,
+          "command": "openclaw",
+          "rssMb": 917.6,
+          "roles": [
+            "agent-cli",
+            "command-tree"
+          ]
+        }
+      ]
+    },
+    {
+      "record": 10,
+      "phase": "warm-agent-turn",
+      "rootCommand": "ocm @'kova-agent-cold-warm-message-2ab680e0-kova-260924-234532-5c27c9' -- agent --local --agent main --session-id kova-agent-cold-warm --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 120 --json",
+      "rootPid": 51957,
+      "processes": [
+        {
+          "pid": 49174,
+          "ppid": 1,
+          "command": "node /home/runner/_work/_temp/kova-src/support/mock-ai-provider-supervisor.mjs --script /home/runner/_work/openclaw/openclaw/.artifacts/kova/home/mock-provider/artifacts/kova-260924-234532-5c27c9/kova-agent-cold-warm-message-2ab680e0-kova-260924-234532-5c27c9/mock-openai/script.json --request-log /home/runner/_work/openclaw/openclaw/.artifacts/kova/home/mock-provider/artifacts/kova-260924-234532-5c27c9/kova-agent-cold-warm-message-2ab680e0-kova-260924-234532-5c27c9/mock-openai/requests.jsonl --server-log /home/runner/_work/openclaw/openclaw/.artifacts/kova/home/mock-provider/artifacts/kova-260924-234532-5c27c9/kova-agent-cold-warm-message-2ab680e0-kova-260924-234532-5c27c9/mock-openai/server.log --pid-file /home/runner/_work/openclaw/openclaw/.artifacts/kova/home/mock-provider/artifacts/kova-260924-234532-5c27c9/kova-agent-cold-warm-message-2ab680e0-kova-260924-234532-5c27c9/mock-openai/pid",
+          "rssMb": 71.6,
+          "roles": [
+            "mock-provider"
+          ]
+        },
+        {
+          "pid": 51957,
+          "ppid": 5036,
+          "command": "[Kova command CPU accounting]",
+          "rssMb": 0,
+          "roles": [
+            "agent-cli",
+            "command-tree"
+          ]
+        },
+        {
+          "pid": 52088,
+          "ppid": 51957,
+          "command": "ocm @kova-agent-cold-warm-message-2ab680e0-kova-260924-234532-5c27c9 -- agent --local --agent main --session-id kova-agent-cold-warm --message Reply with exact ASCII text KOVA_AGENT_OK only. --thinking off --timeout 120 --json",
+          "rssMb": 5.9,
+          "roles": [
+            "agent-cli",
+            "command-tree"
+          ]
+        },
+        {
+          "pid": 52090,
+          "ppid": 52088,
+          "command": "node /home/runner/.ocm/runtimes/kova-local-mug6jmba-3vw-b8b4068b/files/node_modules/openclaw/openclaw.mjs agent --local --agent main --session-id kova-agent-cold-warm --message Reply with exact ASCII text KOVA_AGENT_OK only. --thinking off --timeout 120 --json",
+          "rssMb": 87.7,
+          "roles": [
+            "agent-cli",
+            "command-tree"
+          ]
+        },
+        {
+          "pid": 52102,
+          "ppid": 52090,
+          "command": "openclaw",
+          "rssMb": 893.2,
+          "roles": [
+            "agent-cli",
+            "command-tree"
+          ]
+        }
+      ]
+    },
+    {
+      "record": 11,
+      "phase": "cold-agent-turn",
+      "rootCommand": "ocm @'kova-agent-cold-warm-message-67b331a3-kova-260924-234532-5c27c9' -- agent --local --agent main --session-id kova-agent-cold-warm --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 120 --json",
+      "rootPid": 56163,
+      "processes": [
+        {
+          "pid": 54571,
+          "ppid": 1,
+          "command": "node /home/runner/_work/_temp/kova-src/support/mock-ai-provider-supervisor.mjs --script /home/runner/_work/openclaw/openclaw/.artifacts/kova/home/mock-provider/artifacts/kova-260924-234532-5c27c9/kova-agent-cold-warm-message-67b331a3-kova-260924-234532-5c27c9/mock-openai/script.json --request-log /home/runner/_work/openclaw/openclaw/.artifacts/kova/home/mock-provider/artifacts/kova-260924-234532-5c27c9/kova-agent-cold-warm-message-67b331a3-kova-260924-234532-5c27c9/mock-openai/requests.jsonl --server-log /home/runner/_work/openclaw/openclaw/.artifacts/kova/home/mock-provider/artifacts/kova-260924-234532-5c27c9/kova-agent-cold-warm-message-67b331a3-kova-260924-234532-5c27c9/mock-openai/server.log --pid-file /home/runner/_work/openclaw/openclaw/.artifacts/kova/home/mock-provider/artifacts/kova-260924-234532-5c27c9/kova-agent-cold-warm-message-67b331a3-kova-260924-234532-5c27c9/mock-openai/pid",
+          "rssMb": 70.6,
+          "roles": [
+            "mock-provider"
+          ]
+        },
+        {
+          "pid": 56163,
+          "ppid": 5036,
+          "command": "[Kova command CPU accounting]",
+          "rssMb": 0,
+          "roles": [
+            "agent-cli",
+            "command-tree"
+          ]
+        },
+        {
+          "pid": 56294,
+          "ppid": 56163,
+          "command": "ocm @kova-agent-cold-warm-message-67b331a3-kova-260924-234532-5c27c9 -- agent --local --agent main --session-id kova-agent-cold-warm --message Reply with exact ASCII text KOVA_AGENT_OK only. --thinking off --timeout 120 --json",
+          "rssMb": 5.9,
+          "roles": [
+            "agent-cli",
+            "command-tree"
+          ]
+        },
+        {
+          "pid": 56296,
+          "ppid": 56294,
+          "command": "node /home/runner/.ocm/runtimes/kova-local-mug6jmba-3vw-b8b4068b/files/node_modules/openclaw/openclaw.mjs agent --local --agent main --session-id kova-agent-cold-warm --message Reply with exact ASCII text KOVA_AGENT_OK only. --thinking off --timeout 120 --json",
+          "rssMb": 88.3,
+          "roles": [
+            "agent-cli",
+            "command-tree"
+          ]
+        },
+        {
+          "pid": 56308,
+          "ppid": 56296,
+          "command": "openclaw",
+          "rssMb": 945.1,
+          "roles": [
+            "agent-cli",
+            "command-tree"
+          ]
+        }
+      ]
+    },
+    {
+      "record": 11,
+      "phase": "warm-agent-turn",
+      "rootCommand": "ocm @'kova-agent-cold-warm-message-67b331a3-kova-260924-234532-5c27c9' -- agent --local --agent main --session-id kova-agent-cold-warm --message 'Reply with exact ASCII text KOVA_AGENT_OK only.' --thinking off --timeout 120 --json",
+      "rootPid": 57354,
+      "processes": [
+        {
+          "pid": 54571,
+          "ppid": 1,
+          "command": "node /home/runner/_work/_temp/kova-src/support/mock-ai-provider-supervisor.mjs --script /home/runner/_work/openclaw/openclaw/.artifacts/kova/home/mock-provider/artifacts/kova-260924-234532-5c27c9/kova-agent-cold-warm-message-67b331a3-kova-260924-234532-5c27c9/mock-openai/script.json --request-log /home/runner/_work/openclaw/openclaw/.artifacts/kova/home/mock-provider/artifacts/kova-260924-234532-5c27c9/kova-agent-cold-warm-message-67b331a3-kova-260924-234532-5c27c9/mock-openai/requests.jsonl --server-log /home/runner/_work/openclaw/openclaw/.artifacts/kova/home/mock-provider/artifacts/kova-260924-234532-5c27c9/kova-agent-cold-warm-message-67b331a3-kova-260924-234532-5c27c9/mock-openai/server.log --pid-file /home/runner/_work/openclaw/openclaw/.artifacts/kova/home/mock-provider/artifacts/kova-260924-234532-5c27c9/kova-agent-cold-warm-message-67b331a3-kova-260924-234532-5c27c9/mock-openai/pid",
+          "rssMb": 71.2,
+          "roles": [
+            "mock-provider"
+          ]
+        },
+        {
+          "pid": 57354,
+          "ppid": 5036,
+          "command": "[Kova command CPU accounting]",
+          "rssMb": 0,
+          "roles": [
+            "agent-cli",
+            "command-tree"
+          ]
+        },
+        {
+          "pid": 57485,
+          "ppid": 57354,
+          "command": "ocm @kova-agent-cold-warm-message-67b331a3-kova-260924-234532-5c27c9 -- agent --local --agent main --session-id kova-agent-cold-warm --message Reply with exact ASCII text KOVA_AGENT_OK only. --thinking off --timeout 120 --json",
+          "rssMb": 5.9,
+          "roles": [
+            "agent-cli",
+            "command-tree"
+          ]
+        },
+        {
+          "pid": 57487,
+          "ppid": 57485,
+          "command": "node /home/runner/.ocm/runtimes/kova-local-mug6jmba-3vw-b8b4068b/files/node_modules/openclaw/openclaw.mjs agent --local --agent main --session-id kova-agent-cold-warm --message Reply with exact ASCII text KOVA_AGENT_OK only. --thinking off --timeout 120 --json",
+          "rssMb": 87.7,
+          "roles": [
+            "agent-cli",
+            "command-tree"
+          ]
+        },
+        {
+          "pid": 57499,
+          "ppid": 57487,
+          "command": "openclaw",
+          "rssMb": 952.9,
+          "roles": [
+            "agent-cli",
+            "command-tree"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -10,7 +10,7 @@
   "scripts": {
     "kova": "node bin/kova.mjs",
     "plan": "node bin/kova.mjs plan",
-    "test:cpu-accounting": "node --test tests/linux-cpu-accounting.mjs tests/resource-command-accounting.mjs",
+    "test:cpu-accounting": "node --test tests/linux-cpu-accounting.mjs tests/resource-command-accounting.mjs tests/resource-process-attribution.mjs",
     "test:ocm-transport": "node tests/ocm-transport.mjs",
     "check": "npm run test:cli-flags && npm run test:cpu-accounting && npm run test:assert-command-output && npm run test:selfcheck-isolation && npm run test:ocm-transport && node bin/kova.mjs self-check",
     "test:cli-flags": "node --test tests/cli-flags.mjs",

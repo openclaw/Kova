@@ -33,7 +33,7 @@ export function startResourceSampler(rootPid, options = {}) {
   let gatewayPid = null;
   let nextGatewayLookupSample = 0;
   let lastCpuSampleFinishedMs = null;
-  let lostCpuRoles = false;
+  const lostCpuProcesses = [];
 
   sample();
   const timer = setInterval(sample, intervalMs);
@@ -63,10 +63,6 @@ export function startResourceSampler(rootPid, options = {}) {
     sample(1, terminalProcessResult?.ok ? terminalProcessResult : null);
     if (cpuAccountant && samples.at(-1).collectionStatus === "ok") samples.at(-1).cpuTerminal = true;
     const summary = summarizeResourceSamples(samples);
-    if (lostCpuRoles) {
-      summary.cpuCoverageComplete = false;
-      summary.errors.push("CPU census lost unobserved process roles before counters could be captured");
-    }
     if (cpuAccountant && !cpuAccountant.coverageComplete()) {
       summary.cpuCoverageComplete = false;
       summary.errors.push("Product CPU interval or terminal wait accounting is incomplete");
@@ -95,7 +91,8 @@ export function startResourceSampler(rootPid, options = {}) {
         gatewayPid,
         collectionStatus: "error",
         collectionError: processResult.error,
-        processes: []
+        processes: [],
+        ...(lostCpuProcesses.length ? { cpuLostProcesses: [...lostCpuProcesses] } : {})
       });
       return;
     }
@@ -126,6 +123,7 @@ export function startResourceSampler(rootPid, options = {}) {
     }
 
     const treePids = collectProcessTreePids(allProcesses, rootPid);
+    const processesByPid = new Map(allProcesses.map((entry) => [entry.pid, entry]));
     const gatewayTreePids = gatewayPid === null ? new Set() : collectProcessTreePids(allProcesses, gatewayPid);
     const tracked = [];
     const seen = new Set();
@@ -147,7 +145,8 @@ export function startResourceSampler(rootPid, options = {}) {
         }
       }
       if (roles.size > 0) {
-        for (const role of matchingRegistryRoles(process, options.rootCommand, roleMatchers, roles)) {
+        for (const role of matchingRegistryRoles(process, options.rootCommand, roleMatchers, roles,
+          ownedAncestorCommands(process, processesByPid, treePids))) {
           roles.add(role);
         }
       }
@@ -184,7 +183,10 @@ export function startResourceSampler(rootPid, options = {}) {
         }));
       } catch (error) {
         if (error instanceof LinuxCpuSnapshotChangedError && error.process?.roles?.length &&
-            !cpuAccountant.hasObservedRoles(error.process)) lostCpuRoles = true;
+            !cpuAccountant.hasObservedRoles(error.process)) {
+          const { pid, ppid, command, roles } = error.process;
+          lostCpuProcesses.push({ pid, ppid, command, roles, attempt, error: error.message });
+        }
         if (error instanceof LinuxCpuSnapshotChangedError && attempt < 3) {
           // The failed snapshot proves the census changed. Repeating it can
           // only fail on the same departed PID; refresh while the accountant
@@ -193,7 +195,8 @@ export function startResourceSampler(rootPid, options = {}) {
         }
         if (lowerBoundOnly) return;
         samples.push({ timestamp: new Date().toISOString(), elapsedMs: Date.now() - startedAt,
-          rootPid, gatewayPid, collectionStatus: "error", collectionError: error.message, processes: [] });
+          rootPid, gatewayPid, collectionStatus: "error", collectionError: error.message, processes: [],
+          ...(lostCpuProcesses.length ? { cpuLostProcesses: [...lostCpuProcesses] } : {}) });
         return;
       }
     }
@@ -208,6 +211,7 @@ export function startResourceSampler(rootPid, options = {}) {
       cpuClock,
       ...(lowerBoundOnly ? { cpuLowerBoundOnly: true } : {}),
       ...(cpuAccountant ? { collectionAttempts: attempt } : {}),
+      ...(lostCpuProcesses.length ? { cpuLostProcesses: [...lostCpuProcesses] } : {}),
       processes: measured.filter((entry) => entry.roles.length || entry.reapedRoles?.length)
     });
   }
@@ -218,6 +222,7 @@ export function summarizeResourceSamples(samples) {
     sample?.collectionStatus !== "error" && Array.isArray(sample?.processes)
   );
   const failedSamples = samples.filter((sample) => sample?.collectionStatus === "error");
+  const lostCpuRoles = samples.some((sample) => sample?.cpuLostProcesses?.length);
   // An external wait owner's host history cannot invalidate a fully sampled product child.
   const missingCpuInterval = usableSamples.some((sample) => sample.processes.some((process) =>
     (process.roles?.length && (process.cpuIntervalComplete === false || process.cpuHistoryComplete === false)) ||
@@ -310,6 +315,7 @@ export function summarizeResourceSamples(samples) {
     failedSampleCount: failedSamples.length,
     available: usableSamples.length > 0,
     errors: [...new Set([
+      ...(lostCpuRoles ? ["CPU census lost unobserved process roles before counters could be captured"] : []),
       ...(missingCpuInterval ? ["CPU interval baseline is missing for a late-discovered product process"] : []),
       ...failedSamples.map((sample) => sample.collectionError).filter(Boolean)
     ])].slice(0, 5),
@@ -318,7 +324,7 @@ export function summarizeResourceSamples(samples) {
     maxTotalCpuPercent,
     maxTotalCpuPercentLower,
     cpuMeasurementContract: usableSamples.find((sample) => sample.cpuMeasurementContract)?.cpuMeasurementContract ?? null,
-    cpuCoverageComplete: !missingCpuInterval && usableSamples.some((sample) => sample.processes.some((process) => typeof process.cpuPercent === "number")) && failedSamples.length === 0,
+    cpuCoverageComplete: !lostCpuRoles && !missingCpuInterval && usableSamples.some((sample) => sample.processes.some((process) => typeof process.cpuPercent === "number")) && failedSamples.length === 0,
     peakCommandTreeRssMb,
     peakGatewayRssMb,
     byRole: roleSummaries,
@@ -483,7 +489,11 @@ function compileRoleMatchers(roles) {
   return roles.map((role) => ({
     id: role.id,
     commandPatterns: compilePatterns(role.commandPatterns ?? []),
-    processPatterns: compilePatterns(role.processPatterns ?? [])
+    processPatterns: compilePatterns(role.processPatterns ?? []),
+    commandScopedProcessPatterns: (role.commandScopedProcessPatterns ?? []).map((scope) => ({
+      commandPatterns: compilePatterns(scope.commandPatterns),
+      processPatterns: compilePatterns(scope.processPatterns)
+    }))
   })).filter((role) => typeof role.id === "string" && role.id.length > 0);
 }
 
@@ -499,7 +509,27 @@ function compilePatterns(patterns) {
     });
 }
 
-function matchingRegistryRoles(process, rootCommand, roleMatchers, existingRoles = new Set()) {
+function ownedAncestorCommands(process, byPid, treePids) {
+  const commands = [];
+  const seen = new Set([process.pid]);
+  let parent = byPid.get(process.ppid);
+  while (parent && treePids.has(parent.pid) && !seen.has(parent.pid)) {
+    seen.add(parent.pid);
+    commands.push(parent.command);
+    parent = byPid.get(parent.ppid);
+  }
+  return commands;
+}
+
+function matchingRegistryRoles(process, rootCommand, roleMatchers, existingRoles = new Set(), ancestorCommands = []) {
+  // A generic product title identifies an execution process only inside the
+  // matching invocation tree, never through a global title or scenario name.
+  const scopedRoles = existingRoles.has("command-tree") && !existingRoles.has("gateway-tree")
+    ? roleMatchers.filter((role) => role.commandScopedProcessPatterns.some((scope) =>
+      [rootCommand, ...ancestorCommands].some((command) => matchesAny(scope.commandPatterns, command)) &&
+      matchesAny(scope.processPatterns, process.command)
+    )).map((role) => role.id) : [];
+  if (scopedRoles.length > 0) return scopedRoles;
   const processRoles = matchingRegistryProcessRoles(process, roleMatchers);
   if (processRoles.length > 0) {
     return processRoles;

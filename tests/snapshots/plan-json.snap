@@ -2929,10 +2929,20 @@
     {
       "id": "agent-process",
       "title": "Agent Process",
-      "description": "Longer-running agent execution work spawned by OpenClaw while processing a turn.",
+      "description": "Local agent execution processes, identified by their dedicated legacy title or generic OpenClaw title inside an owned local-agent invocation.",
       "commandPatterns": [],
       "processPatterns": [
         "(^|\\s|/)openclaw-agent(\\s|$)"
+      ],
+      "commandScopedProcessPatterns": [
+        {
+          "commandPatterns": [
+            "^\\s*(?:openclaw|ocm\\s+@(?:'[^']*'|\"[^\"]*\"|[^\\s]+)\\s+--)\\s+agent\\s+--local(?:\\s|$)"
+          ],
+          "processPatterns": [
+            "^openclaw$"
+          ]
+        }
       ]
     },
     {
