@@ -1098,9 +1098,13 @@ membership, so an execution process no longer adds its agent RSS to the CLI
 wrapper role after classification. Ordinary current OpenClaw commands keep the
 `openclaw` title; launchers retain argv. The agent-process registry pairs that
 exact title with an owned `openclaw agent --local` or `ocm @env -- agent --local`
-command tree via `commandScopedProcessPatterns`. The invocation can be the root
-command or a live ancestor inside that tree, supporting concurrent and
-expect-failure helpers without labeling their status siblings. Both patterns must match;
+command tree via `commandScopedProcessPatterns`. Each scope declares invocationPatterns for command-bearing
+launchers, including nonmatching commands. The nearest matching live ancestor
+owns the invocation; the root command is the fallback only when no such ancestor
+exists. OpenClaw launchers include direct CLI and Node/script paths. A nested
+status or remote-agent invocation blocks an outer local-agent role, while a
+deeper local agent gets its own role. Concurrent and expect-failure helpers do
+not label status siblings as agent execution. Command and process patterns must both match;
 status commands, Gateway trees, unrelated processes, and argv-bearing launchers
 do not gain the agent execution role. Legacy `openclaw-agent` titles remain
 recognized. Scoped patterns do not apply to global process snapshots. An empty

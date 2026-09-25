@@ -2937,10 +2937,13 @@
       "commandScopedProcessPatterns": [
         {
           "commandPatterns": [
-            "^\\s*(?:openclaw|ocm\\s+@(?:'[^']*'|\"[^\"]*\"|[^\\s]+)\\s+--)\\s+agent\\s+--local(?:\\s|$)"
+            "^\\s*(?:(?:(?:[^\\s]*/)?node\\s+)?(?:[^\\s]*/)?openclaw(?:\\.m?js)?|(?:[^\\s]*/)?ocm\\s+@(?:'[^']*'|\"[^\"]*\"|[^\\s]+)\\s+--)\\s+agent\\s+--local(?:\\s|$)"
           ],
           "processPatterns": [
             "^openclaw$"
+          ],
+          "invocationPatterns": [
+            "^\\s*(?:(?:(?:[^\\s]*/)?node\\s+)?(?:[^\\s]*/)?openclaw(?:\\.m?js)?|(?:[^\\s]*/)?ocm)\\s+\\S"
           ]
         }
       ]

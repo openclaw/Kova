@@ -491,6 +491,7 @@ function compileRoleMatchers(roles) {
     commandPatterns: compilePatterns(role.commandPatterns ?? []),
     processPatterns: compilePatterns(role.processPatterns ?? []),
     commandScopedProcessPatterns: (role.commandScopedProcessPatterns ?? []).map((scope) => ({
+      invocationPatterns: compilePatterns(scope.invocationPatterns),
       commandPatterns: compilePatterns(scope.commandPatterns),
       processPatterns: compilePatterns(scope.processPatterns)
     }))
@@ -522,11 +523,16 @@ function ownedAncestorCommands(process, byPid, treePids) {
 }
 
 function matchingRegistryRoles(process, rootCommand, roleMatchers, existingRoles = new Set(), ancestorCommands = []) {
+  // Ancestors are nearest-first. A nested CLI invocation owns its descendants,
+  // even when its command does not match the outer invocation's role.
+  const invocation = ancestorCommands.find((command) => roleMatchers.some((role) =>
+    role.commandScopedProcessPatterns.some((scope) => matchesAny(scope.invocationPatterns, command))
+  )) ?? rootCommand;
   // A generic product title identifies an execution process only inside the
   // matching invocation tree, never through a global title or scenario name.
   const scopedRoles = existingRoles.has("command-tree") && !existingRoles.has("gateway-tree")
     ? roleMatchers.filter((role) => role.commandScopedProcessPatterns.some((scope) =>
-      [rootCommand, ...ancestorCommands].some((command) => matchesAny(scope.commandPatterns, command)) &&
+      matchesAny(scope.commandPatterns, invocation) &&
       matchesAny(scope.processPatterns, process.command)
     )).map((role) => role.id) : [];
   if (scopedRoles.length > 0) return scopedRoles;
@@ -547,14 +553,14 @@ function matchingRegistryRoles(process, rootCommand, roleMatchers, existingRoles
     return commandRoles;
   }
 
-  // Generic wrappers inherit the root command role; owned child processes keep
+  // Generic wrappers inherit the nearest invocation role; owned child processes keep
   // their process-specific role instead of duplicating the whole command tree.
   return roleMatchers
     .filter((role) =>
       role.id !== "command-tree" &&
       role.id !== "gateway" &&
       role.id !== "gateway-tree" &&
-      matchesAny(role.commandPatterns, rootCommand)
+      matchesAny(role.commandPatterns, invocation)
     )
     .map((role) => role.id);
 }

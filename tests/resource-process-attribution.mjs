@@ -86,3 +86,34 @@ test("mixed helper commands use live owned ancestry, not helper-wide agent label
   assert.equal(summary.byRole["agent-process"].peakRssProcess.pid, 3);
   assert.equal(summary.byRole["agent-process"].peakRssMb, 10);
 });
+
+for (const nestedCommand of [
+  "ocm @kova-test -- status",
+  "openclaw status",
+  "node /runtime/openclaw.mjs status",
+  "/usr/bin/node /runtime/openclaw.mjs status",
+  "openclaw agent --message remote",
+  "ocm @kova-test -- unknown-command"
+]) test("nearer invocation overrides an agent root: " + nestedCommand, async () => {
+  const rootCommand = "ocm @kova-test -- agent --local --message hi";
+  const row = (pid, ppid, command, rssMb, cpuPercent) => ({ pid, ppid, command, rssMb, cpuPercent });
+  const summary = await startResourceSampler(1, { processRoles, rootCommand,
+    processLister: () => ({ ok: true, processes: [
+      row(1, 0, rootCommand, 1, 0),
+      row(2, 1, "openclaw", 10, 5),
+      row(3, 2, nestedCommand, 1, 0),
+      row(4, 3, "node helper.mjs", 1, 0),
+      row(5, 4, "openclaw", 100, 50),
+      row(6, 5, "node /runtime/openclaw.mjs agent --local --message status", 1, 0),
+      row(7, 6, "openclaw", 20, 7)
+    ] })
+  }).stop();
+  assert.equal(summary.byRole["agent-process"].peakProcessCount, 2);
+  assert.equal(summary.byRole["agent-process"].peakRssMb, 30);
+  assert.equal(summary.byRole["agent-process"].maxCpuPercent, 12);
+  assert.equal(summary.byRole["agent-process"].peakRssProcess.pid, 7);
+  if (nestedCommand.endsWith("status")) {
+    assert.equal(summary.byRole["status-cli"].peakRssProcess.pid, 5);
+    assert.equal(summary.byRole["status-cli"].maxCpuPercent, 50);
+  }
+});
