@@ -350,6 +350,16 @@ test("terminal discovery requires the new child's observed CPU to reach its wait
   assert.equal(accountant.coverageComplete(), true);
 });
 
+test("terminal lower-bound loss remains provisional until settlement", () => {
+  const accountant = createLinuxCpuAccountant();
+  const owner = processRow(1, 0, 0);
+  const child = { ...processRow(2, 1, 100), roles: ["gateway"] };
+  accountant.sample([owner, child], clock(1));
+  accountant.lowerBoundSample([], clock(1.2));
+  accountant.sample([{ ...owner, childCpuTicks: 100 }], clock(1.5));
+  assert.equal(accountant.coverageComplete(), true);
+});
+
 test("terminal discovery excludes historical external-owner CPU and preserves discovery gaps", () => {
   const accountant = createLinuxCpuAccountant();
   accountant.sample([], clock(1));

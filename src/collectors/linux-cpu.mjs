@@ -96,17 +96,14 @@ export function createLinuxCpuAccountant({ accountingRootPid } = {}) {
       let measured;
       let observed;
       let observedMissingIntervalBaseline;
-      let observedMissingWaitOwner;
       try {
         measured = this.sample(processes, clock);
         observed = previous;
         observedMissingIntervalBaseline = missingIntervalBaseline;
-        observedMissingWaitOwner = missingWaitOwner;
       } finally {
         ({ previous, previousClock, initialClock, reapDebt, missingWaitOwner, missingIntervalBaseline } = state);
       }
       missingIntervalBaseline ||= observedMissingIntervalBaseline;
-      missingWaitOwner ||= observedMissingWaitOwner;
       if (previousClock) {
         // Keep terminal discoveries and role changes even if they disappear
         // before settlement, but retain the original interval's counter debt.
