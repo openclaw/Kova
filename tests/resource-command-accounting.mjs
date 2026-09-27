@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { chmod, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import test from "node:test";
 import { linuxCommandOwnerInvocation } from "../src/collectors/linux-command-owner.mjs";
 import { runCommand, quoteShell, runWithCommandEnv } from "../src/commands.mjs";
@@ -75,6 +75,24 @@ test("the native owner probe excludes ambient Node preloads", { skip: process.pl
       process.env.NODE_OPTIONS = previous;
     }
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a relative scoped KOVA_HOME survives the command cwd change", { skip: process.platform !== "linux" }, async () => {
+  const originalCwd = process.cwd();
+  const outside = await mkdtemp(join(tmpdir(), "kova-command-owner-cwd-"));
+  const home = await mkdtemp(join(tmpdir(), "kova-command-owner-relative-"));
+  try {
+    process.chdir(outside);
+    const result = await runWithCommandEnv({ KOVA_HOME: relative(outside, home) }, () =>
+      runCommand("true", { resourceSample: {}, timeoutMs: 10000 }));
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.resourceSamples.cpuCoverageComplete, true, JSON.stringify(result.resourceSamples.errors));
+    assert.equal((await readdir(join(home, "libexec"))).length, 1);
+  } finally {
+    process.chdir(originalCwd);
+    await rm(outside, { recursive: true, force: true });
+    await rm(home, { recursive: true, force: true });
   }
 });
 

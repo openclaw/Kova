@@ -82,7 +82,7 @@ export function runCommand(command, options = {}) {
       ? [fileURLToPath(new URL("../support/resource-command.mjs", import.meta.url)), shell, command]
       : null;
     const invocation = accountCpu
-      ? linuxCommandOwnerInvocation(process.execPath, accountingArgs, childEnv.KOVA_HOME ?? kovaHome, accountingEnv)
+      ? linuxCommandOwnerInvocation(process.execPath, accountingArgs, childEnv.KOVA_HOME || kovaHome, accountingEnv)
       : { file: shell, args: ["-c", command] };
     const child = spawn(invocation.file, invocation.args, {
       cwd: repoRoot,

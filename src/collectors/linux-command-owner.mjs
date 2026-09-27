@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { repoRoot } from "../paths.mjs";
 
@@ -20,14 +20,14 @@ export function linuxCommandOwnerInvocation(node, args, home, env) {
     // direct helper path until this architecture has a bundled subreaper.
     return { file: node, args };
   }
-  if (!commandOwners.has(home)) {
+  const commandOwnerDir = resolve(home, "libexec");
+  if (!commandOwners.has(commandOwnerDir)) {
     const payloadPath = join(repoRoot, "support", "bin", `linux-${process.arch}`, "resource-command-owner.b64");
     const payload = gunzipSync(Buffer.from(readFileSync(payloadPath, "utf8"), "base64"));
     const actualHash = createHash("sha256").update(payload).digest("hex");
     if (actualHash !== expectedHash) {
       throw new Error(`Linux CPU accounting helper failed integrity verification for ${process.arch}`);
     }
-    const commandOwnerDir = join(home, "libexec");
     mkdirSync(commandOwnerDir, { recursive: true, mode: 0o700 });
     const commandOwner = join(commandOwnerDir, `resource-command-owner-${expectedHash.slice(0, 12)}-${randomUUID()}`);
     writeFileSync(commandOwner, payload, { flag: "wx", mode: 0o700 });
@@ -42,19 +42,19 @@ export function linuxCommandOwnerInvocation(node, args, home, env) {
       // noexec homes and restricted kernels worked before the native owner.
       // Preserve the direct helper instead of turning host policy fatal.
       rmSync(commandOwner, { force: true });
-      commandOwners.set(home, null);
+      commandOwners.set(commandOwnerDir, null);
     } else if (probe.error || probe.status !== 0) {
       rmSync(commandOwner, { force: true });
       throw probe.error ?? new Error(`Linux CPU accounting helper probe exited ${probe.status}`);
     } else {
-      commandOwners.set(home, commandOwner);
+      commandOwners.set(commandOwnerDir, commandOwner);
       if (!cleanupRegistered) {
         cleanupRegistered = true;
         process.once("exit", removeCommandOwners);
       }
     }
   }
-  const commandOwner = commandOwners.get(home);
+  const commandOwner = commandOwners.get(commandOwnerDir);
   return commandOwner ? { file: commandOwner, args: [node, ...args] } : { file: node, args };
 }
 
