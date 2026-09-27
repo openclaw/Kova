@@ -69,10 +69,13 @@ test("parallel child CPU is measured against the work actually performed", { ski
 });
 
 test("detached descendants remain owned through terminal CPU settlement", { skip: process.platform !== "linux" }, async () => {
+  const { execFileSync } = await import("node:child_process");
+  const hz = Number(execFileSync("getconf", ["CLK_TCK"], { encoding: "utf8" }).trim());
+  assert.ok(Number.isSafeInteger(hz) && hz > 0);
   const root = await mkdtemp(join(tmpdir(), "kova-subreaper-"));
   const parentRecord = join(root, "parent.json");
   try {
-    const worker = `const fs=require('node:fs');const start=Date.now();let wrote=false;while(Date.now()-start<750){if(!wrote&&Date.now()-start>=700){fs.writeFileSync(process.env.PARENT_RECORD,JSON.stringify({expected:Number(process.env.EXPECTED_PARENT),actual:process.ppid}));wrote=true;}}`;
+    const worker = `const fs=require('node:fs');const start=Date.now();while(Date.now()-start<750){};fs.writeFileSync(process.env.PARENT_RECORD,JSON.stringify({expected:Number(process.env.EXPECTED_PARENT),actual:process.ppid,cpu:process.cpuUsage()}));`;
     const launcher = `const fs=require('node:fs');const {spawn}=require('node:child_process');const ppid=pid=>{const text=fs.readFileSync('/proc/'+pid+'/stat','utf8');return Number(text.slice(text.lastIndexOf(')')+2).trim().split(/\\s+/)[1]);};const child=spawn(process.execPath,['-e',${JSON.stringify(worker)}],{detached:true,stdio:'ignore',env:{...process.env,EXPECTED_PARENT:String(ppid(process.ppid)),PARENT_RECORD:${JSON.stringify(parentRecord)}}});child.unref();setTimeout(()=>{},300);`;
     const result = await runCommand(`${quoteShell(process.execPath)} -e ${quoteShell(launcher)}`, {
       resourceSample: { intervalMs: 250 },
@@ -80,9 +83,14 @@ test("detached descendants remain owned through terminal CPU settlement", { skip
     });
     assert.equal(result.status, 0, result.stderr);
     assert.equal(result.resourceSamples.cpuCoverageComplete, true, JSON.stringify(result.resourceSamples.errors));
-    assert.ok(result.resourceSamples.byRole["command-tree"].maxCpuPercentLower > 0);
     const parent = JSON.parse(await readFile(parentRecord, "utf8"));
     assert.equal(parent.actual, parent.expected, `detached worker escaped accounting owner ${parent.expected} to ${parent.actual}`);
+    const cpuMicros = parent.cpu.user + parent.cpu.system;
+    const quantizationMicros = 2 * 1_000_000 / hz;
+    const referenceAverageLower = Math.max(0, cpuMicros - quantizationMicros) / (result.durationMs * 1000) * 100;
+    const measuredPeakLower = result.resourceSamples.byRole["command-tree"].maxCpuPercentLower;
+    assert.ok(referenceAverageLower > 0);
+    assert.ok(measuredPeakLower >= referenceAverageLower, `${measuredPeakLower}% does not cover ${referenceAverageLower}% of detached work`);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
