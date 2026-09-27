@@ -75,7 +75,7 @@ test("detached descendants remain owned through terminal CPU settlement", { skip
   const root = await mkdtemp(join(tmpdir(), "kova-subreaper-"));
   const parentRecord = join(root, "parent.json");
   try {
-    const worker = `const fs=require('node:fs');const start=Date.now();while(Date.now()-start<650){};fs.writeFileSync(process.env.PARENT_RECORD,JSON.stringify({expected:Number(process.env.EXPECTED_PARENT),actual:process.ppid,cpu:process.cpuUsage()}));`;
+    const worker = `const fs=require('node:fs');const start=Date.now();while(Date.now()-start<650){};fs.writeFileSync(process.env.PARENT_RECORD,JSON.stringify({expected:Number(process.env.EXPECTED_PARENT),actual:process.ppid,elapsedMs:Date.now()-start,cpu:process.cpuUsage()}));`;
     const launcher = `const fs=require('node:fs');const {spawn}=require('node:child_process');const proc=pid=>{const text=fs.readFileSync('/proc/'+pid+'/stat','utf8');return {parent:Number(text.slice(text.lastIndexOf(')')+2).trim().split(/\\s+/)[1]),command:fs.readFileSync('/proc/'+pid+'/cmdline','utf8')};};let owner=process.ppid;while(owner>1){const entry=proc(owner);if(entry.command.includes('support/resource-command.mjs'))break;owner=entry.parent;}if(owner<=1)throw new Error('resource command owner not found');const child=spawn(process.execPath,['-e',${JSON.stringify(worker)}],{detached:true,stdio:'ignore',env:{...process.env,EXPECTED_PARENT:String(owner),PARENT_RECORD:${JSON.stringify(parentRecord)}}});child.unref();setTimeout(()=>{},300);`;
     const result = await runCommand(`${quoteShell(process.execPath)} -e ${quoteShell(launcher)}`, {
       resourceSample: { intervalMs: 250 },
@@ -87,10 +87,10 @@ test("detached descendants remain owned through terminal CPU settlement", { skip
     assert.equal(parent.actual, parent.expected, `detached worker escaped accounting owner ${parent.expected} to ${parent.actual}`);
     const cpuMicros = parent.cpu.user + parent.cpu.system;
     const quantizationMicros = 2 * 1_000_000 / hz;
-    const referenceAverageLower = Math.max(0, cpuMicros - quantizationMicros) / (result.durationMs * 1000) * 100;
-    const measuredPeakLower = result.resourceSamples.byRole["command-tree"].maxCpuPercentLower;
+    const referenceAverageLower = Math.max(0, cpuMicros - quantizationMicros) / (parent.elapsedMs * 1000) * 100;
+    const measuredPeak = result.resourceSamples.byRole["command-tree"].maxCpuPercent;
     assert.ok(referenceAverageLower > 0);
-    assert.ok(measuredPeakLower >= referenceAverageLower, `${measuredPeakLower}% does not cover ${referenceAverageLower}% of detached work`);
+    assert.ok(measuredPeak >= referenceAverageLower, `${measuredPeak}% does not cover ${referenceAverageLower}% of detached work`);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
