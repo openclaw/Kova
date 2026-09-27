@@ -3,6 +3,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { StringDecoder } from "node:string_decoder";
 import { startResourceSampler } from "./collectors/resources.mjs";
+import { linuxCommandOwnerInvocation } from "./collectors/linux-command-owner.mjs";
 import { repoRoot } from "./paths.mjs";
 import { ocmCommandEnvironment, ocmInvocation } from "./ocm/transport.mjs";
 
@@ -77,9 +78,13 @@ export function runCommand(command, options = {}) {
     const accountingEnv = accountCpu ? Object.fromEntries(
       Object.entries(process.env).filter(([name]) => !name.startsWith("NODE_") && name !== "UV_THREADPOOL_SIZE")
     ) : null;
-    const child = spawn(accountCpu ? process.execPath : shell, accountCpu
+    const accountingArgs = accountCpu
       ? [fileURLToPath(new URL("../support/resource-command.mjs", import.meta.url)), shell, command]
-      : ["-c", command], {
+      : null;
+    const invocation = accountCpu
+      ? linuxCommandOwnerInvocation(process.execPath, accountingArgs)
+      : { file: shell, args: ["-c", command] };
+    const child = spawn(invocation.file, invocation.args, {
       cwd: repoRoot,
       env: accountingEnv ?? childEnv,
       stdio: accountCpu ? ["ignore", "pipe", "pipe", "ipc"] : ["ignore", "pipe", "pipe"],
