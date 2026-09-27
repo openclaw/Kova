@@ -75,7 +75,7 @@ test("detached descendants remain owned through terminal CPU settlement", { skip
   const root = await mkdtemp(join(tmpdir(), "kova-subreaper-"));
   const parentRecord = join(root, "parent.json");
   try {
-    const worker = `const fs=require('node:fs');const start=Date.now();while(Date.now()-start<750){};fs.writeFileSync(process.env.PARENT_RECORD,JSON.stringify({expected:Number(process.env.EXPECTED_PARENT),actual:process.ppid,cpu:process.cpuUsage()}));`;
+    const worker = `const fs=require('node:fs');const start=Date.now();while(Date.now()-start<650){};fs.writeFileSync(process.env.PARENT_RECORD,JSON.stringify({expected:Number(process.env.EXPECTED_PARENT),actual:process.ppid,cpu:process.cpuUsage()}));`;
     const launcher = `const fs=require('node:fs');const {spawn}=require('node:child_process');const ppid=pid=>{const text=fs.readFileSync('/proc/'+pid+'/stat','utf8');return Number(text.slice(text.lastIndexOf(')')+2).trim().split(/\\s+/)[1]);};const child=spawn(process.execPath,['-e',${JSON.stringify(worker)}],{detached:true,stdio:'ignore',env:{...process.env,EXPECTED_PARENT:String(ppid(process.ppid)),PARENT_RECORD:${JSON.stringify(parentRecord)}}});child.unref();setTimeout(()=>{},300);`;
     const result = await runCommand(`${quoteShell(process.execPath)} -e ${quoteShell(launcher)}`, {
       resourceSample: { intervalMs: 250 },
