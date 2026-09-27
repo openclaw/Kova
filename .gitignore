@@ -15,5 +15,4 @@ artifacts/*
 checkouts/*
 !checkouts/.gitkeep
 dist/
-.kova-build/
 .DS_Store

@@ -13,7 +13,6 @@ import { platformInfo } from "./platform.mjs";
 import { artifactsDir, credentialsDir, liveEnvPath, providersPath, reportsDir, repoRoot } from "./paths.mjs";
 import { configureCredentialProvider, ensureCredentialStore } from "./auth.mjs";
 import { renderSetup } from "./reporting/render-setup.mjs";
-import { prepareLinuxCommandOwner } from "./collectors/linux-command-owner.mjs";
 
 const requiredNodeMajor = 22;
 
@@ -39,7 +38,6 @@ export async function runSetup(flags = {}) {
   }));
   checks.push(await directoryCheck("reports-dir", reportsDir));
   checks.push(await directoryCheck("artifacts-dir", artifactsDir));
-  checks.push(prepareLinuxCommandOwner());
   checks.push(await mockProviderPackageCheck());
   checks.push(await credentialStoreCheck(auth));
   checks.push(skillGuidanceCheck());

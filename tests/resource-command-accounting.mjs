@@ -3,7 +3,21 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { linuxCommandOwnerInvocation } from "../src/collectors/linux-command-owner.mjs";
 import { runCommand, quoteShell } from "../src/commands.mjs";
+
+test("unsupported Linux architectures retain the direct accounting helper", () => {
+  const architecture = Object.getOwnPropertyDescriptor(process, "arch");
+  Object.defineProperty(process, "arch", { ...architecture, value: "s390x" });
+  try {
+    assert.deepEqual(linuxCommandOwnerInvocation("/node", ["helper", "command"]), {
+      file: "/node",
+      args: ["helper", "command"]
+    });
+  } finally {
+    Object.defineProperty(process, "arch", architecture);
+  }
+});
 
 test("a final sample measures a sub-second command before its wait owner exits", { skip: process.platform !== "linux" }, async () => {
   const result = await runCommand(`sleep 0.2; ${quoteShell(process.execPath)} -e 'const end=Date.now()+200; while(Date.now()<end){}'`, {
