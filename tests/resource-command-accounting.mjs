@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { runCommand, quoteShell } from "../src/commands.mjs";
 
@@ -63,6 +66,26 @@ test("parallel child CPU is measured against the work actually performed", { ski
     referenceAverageLower, measuredPeak, productionCpuThreshold: 200,
     physicallyObservedAboveThreshold: referenceAverageLower > 200,
     terminalCoverageComplete: result.resourceSamples.cpuCoverageComplete }));
+});
+
+test("detached descendants remain owned through terminal CPU settlement", { skip: process.platform !== "linux" }, async () => {
+  const root = await mkdtemp(join(tmpdir(), "kova-subreaper-"));
+  const parentRecord = join(root, "parent.json");
+  try {
+    const worker = `const fs=require('node:fs');const start=Date.now();let wrote=false;while(Date.now()-start<750){if(!wrote&&Date.now()-start>=700){fs.writeFileSync(process.env.PARENT_RECORD,JSON.stringify({expected:Number(process.env.EXPECTED_PARENT),actual:process.ppid}));wrote=true;}}`;
+    const launcher = `const fs=require('node:fs');const {spawn}=require('node:child_process');const ppid=pid=>{const text=fs.readFileSync('/proc/'+pid+'/stat','utf8');return Number(text.slice(text.lastIndexOf(')')+2).trim().split(/\\s+/)[1]);};const child=spawn(process.execPath,['-e',${JSON.stringify(worker)}],{detached:true,stdio:'ignore',env:{...process.env,EXPECTED_PARENT:String(ppid(process.ppid)),PARENT_RECORD:${JSON.stringify(parentRecord)}}});child.unref();setTimeout(()=>{},300);`;
+    const result = await runCommand(`${quoteShell(process.execPath)} -e ${quoteShell(launcher)}`, {
+      resourceSample: { intervalMs: 250 },
+      timeoutMs: 10000
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.resourceSamples.cpuCoverageComplete, true, JSON.stringify(result.resourceSamples.errors));
+    assert.ok(result.resourceSamples.byRole["command-tree"].maxCpuPercentLower > 0);
+    const parent = JSON.parse(await readFile(parentRecord, "utf8"));
+    assert.equal(parent.actual, parent.expected, `detached worker escaped accounting owner ${parent.expected} to ${parent.actual}`);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 
