@@ -28,9 +28,16 @@ export function linuxCommandOwnerInvocation(node, args, home, env) {
     if (actualHash !== expectedHash) {
       throw new Error(`Linux CPU accounting helper failed integrity verification for ${process.arch}`);
     }
-    mkdirSync(commandOwnerDir, { recursive: true, mode: 0o700 });
     const commandOwner = join(commandOwnerDir, `resource-command-owner-${expectedHash.slice(0, 12)}-${randomUUID()}`);
-    writeFileSync(commandOwner, payload, { flag: "wx", mode: 0o700 });
+    try {
+      mkdirSync(commandOwnerDir, { recursive: true, mode: 0o700 });
+      writeFileSync(commandOwner, payload, { flag: "wx", mode: 0o700 });
+    } catch {
+      // Filesystem policy must not remove the existing direct accounting path.
+      rmSync(commandOwner, { force: true });
+      commandOwners.set(commandOwnerDir, null);
+      return { file: node, args };
+    }
     const probe = spawnSync(commandOwner, [node, "-e", ""], {
       env,
       stdio: "ignore",

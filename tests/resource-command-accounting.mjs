@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmod, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import test from "node:test";
@@ -92,6 +92,27 @@ test("a relative scoped KOVA_HOME survives the command cwd change", { skip: proc
   } finally {
     process.chdir(originalCwd);
     await rm(outside, { recursive: true, force: true });
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("an unwritable scoped KOVA_HOME retains the direct accounting helper", { skip: process.platform !== "linux" }, async (t) => {
+  const home = await mkdtemp(join(tmpdir(), "kova-command-owner-unwritable-"));
+  const writeProbe = join(home, "write-probe");
+  try {
+    await chmod(home, 0o500);
+    try {
+      await mkdir(writeProbe);
+      t.skip("current user bypasses directory write permissions");
+      return;
+    } catch (error) {
+      assert.equal(error.code, "EACCES");
+    }
+    const result = await runWithCommandEnv({ KOVA_HOME: home }, () =>
+      runCommand("true", { resourceSample: {}, timeoutMs: 10000 }));
+    assert.equal(result.status, 0, result.stderr);
+  } finally {
+    await chmod(home, 0o700);
     await rm(home, { recursive: true, force: true });
   }
 });
