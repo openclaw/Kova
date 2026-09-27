@@ -2,9 +2,9 @@ import { spawnSync } from "node:child_process";
 import { accessSync, chmodSync, constants, mkdirSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { kovaHome } from "../paths.mjs";
+import { repoRoot } from "../paths.mjs";
 
-const commandOwnerDir = join(kovaHome, "libexec");
+const commandOwnerDir = join(repoRoot, ".kova-build");
 const commandOwner = join(commandOwnerDir, "resource-command-owner");
 
 export function prepareLinuxCommandOwner() {
