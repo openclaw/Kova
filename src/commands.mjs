@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { StringDecoder } from "node:string_decoder";
 import { startResourceSampler } from "./collectors/resources.mjs";
 import { linuxCommandOwnerInvocation } from "./collectors/linux-command-owner.mjs";
-import { repoRoot } from "./paths.mjs";
+import { kovaHome, repoRoot } from "./paths.mjs";
 import { ocmCommandEnvironment, ocmInvocation } from "./ocm/transport.mjs";
 
 const defaultCommandTimeoutMs = 120000;
@@ -82,7 +82,7 @@ export function runCommand(command, options = {}) {
       ? [fileURLToPath(new URL("../support/resource-command.mjs", import.meta.url)), shell, command]
       : null;
     const invocation = accountCpu
-      ? linuxCommandOwnerInvocation(process.execPath, accountingArgs)
+      ? linuxCommandOwnerInvocation(process.execPath, accountingArgs, childEnv.KOVA_HOME ?? kovaHome)
       : { file: shell, args: ["-c", command] };
     const child = spawn(invocation.file, invocation.args, {
       cwd: repoRoot,

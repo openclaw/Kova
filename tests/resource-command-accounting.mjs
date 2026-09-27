@@ -1,21 +1,58 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { chmod, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { linuxCommandOwnerInvocation } from "../src/collectors/linux-command-owner.mjs";
-import { runCommand, quoteShell } from "../src/commands.mjs";
+import { runCommand, quoteShell, runWithCommandEnv } from "../src/commands.mjs";
 
 test("unsupported Linux architectures retain the direct accounting helper", () => {
   const architecture = Object.getOwnPropertyDescriptor(process, "arch");
   Object.defineProperty(process, "arch", { ...architecture, value: "s390x" });
   try {
-    assert.deepEqual(linuxCommandOwnerInvocation("/node", ["helper", "command"]), {
+    assert.deepEqual(linuxCommandOwnerInvocation("/node", ["helper", "command"], "/unused"), {
       file: "/node",
       args: ["helper", "command"]
     });
   } finally {
     Object.defineProperty(process, "arch", architecture);
+  }
+});
+
+test("the native owner follows the scoped KOVA_HOME", { skip: process.platform !== "linux" }, async () => {
+  const root = await mkdtemp(join(tmpdir(), "kova-command-owner-home-"));
+  try {
+    const result = await runWithCommandEnv({ KOVA_HOME: root }, () =>
+      runCommand("true", { resourceSample: {}, timeoutMs: 10000 }));
+    assert.equal(result.status, 0, result.stderr);
+    const entries = await readdir(join(root, "libexec"));
+    assert.equal(entries.length, 1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a noexec KOVA_HOME retains the direct accounting helper", { skip: process.platform !== "linux" }, async (t) => {
+  const root = await mkdtemp("/dev/shm/kova-command-owner-noexec-").catch(() => null);
+  if (!root) {
+    t.skip("no writable /dev/shm mount");
+    return;
+  }
+  try {
+    const executable = join(root, "probe");
+    await writeFile(executable, "#!/bin/sh\nexit 0\n");
+    await chmod(executable, 0o700);
+    if (spawnSync(executable).error?.code !== "EACCES") {
+      t.skip("/dev/shm is executable");
+      return;
+    }
+    assert.deepEqual(linuxCommandOwnerInvocation("/node", ["helper"], root), {
+      file: "/node",
+      args: ["helper"]
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });
 
