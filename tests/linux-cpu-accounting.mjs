@@ -140,6 +140,51 @@ for (const mode of ["lost", "listing-failed", "unstable-lower-bound"]) test(
   }
 });
 
+test("a vanished structural tree child settles through its wait owner", async () => {
+  const platform = Object.getOwnPropertyDescriptor(process, "platform");
+  const originalRead = fs.readFileSync;
+  const originalSpawn = childProcess.spawnSync;
+  let census = 0;
+  let now = 0;
+  Object.defineProperty(process, "platform", { ...platform, value: "linux" });
+  mock.method(performance, "now", () => now);
+  mock.method(childProcess, "spawnSync", (command, ...args) => {
+    if (command === "getconf") return { status: 0, stdout: "100\n" };
+    if (command === "ps") {
+      now += 1000;
+      census += 1;
+      const child = census === 2 ? "3 2 1024 0 lsof\n" : "";
+      return { status: 0, pid: 999, stdout: `1 0 1024 0 node\n2 1 1024 0 gateway\n${child}` };
+    }
+    return originalSpawn(command, ...args);
+  });
+  mock.method(fs, "readFileSync", (path, ...args) => {
+    if (path === "/proc/uptime") return `${now / 1000} 0\n`;
+    if (path === "/proc/3/stat") throw Object.assign(new Error("gone"), { code: "ENOENT" });
+    if (path === "/proc/1/stat" || path === "/proc/2/stat") {
+      const pid = Number(path.split("/")[2]);
+      const fields = Array(22).fill("0");
+      fields[0] = "S";
+      fields[1] = String(pid === 1 ? 0 : 1);
+      fields[13] = String(pid === 2 && census >= 3 ? 1 : 0);
+      return `${pid} (${pid === 1 ? "node" : "gateway"}) ${fields.join(" ")}`;
+    }
+    return originalRead(path, ...args);
+  });
+  syncBuiltinESMExports();
+  try {
+    const summary = await startResourceSampler(99, {
+      envName: `vanished-gateway-child-${Date.now()}`,
+      gatewayPidLookup: () => 2
+    }).stop();
+    assert.equal(summary.cpuCoverageComplete, true, JSON.stringify(summary.errors));
+  } finally {
+    mock.restoreAll();
+    Object.defineProperty(process, "platform", platform);
+    syncBuiltinESMExports();
+  }
+});
+
 test("real Linux censuses move same-PID agent RSS while retaining CPU history", {
   skip: process.platform !== "linux"
 }, async (t) => {

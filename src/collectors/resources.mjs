@@ -182,9 +182,14 @@ export function startResourceSampler(rootPid, options = {}) {
           ...(entry.currentRoles.length ? {} : { rssMb: 0, rssKb: 0, command: "[CPU wait owner for retired product processes]" })
         }));
       } catch (error) {
-        if (error instanceof LinuxCpuSnapshotChangedError && error.process?.roles?.length &&
-            !cpuAccountant.hasObservedRoles(error.process)) {
-          const { pid, ppid, command, roles } = error.process;
+        const lostProcess = error instanceof LinuxCpuSnapshotChangedError ? error.process : null;
+        const waitOwner = lostProcess && tracked.find((entry) => entry.pid === lostProcess.ppid);
+        // Tree-only children transfer their lifetime CPU to the same census's
+        // wait owner. Distinct product roles still require direct counters.
+        const independentRole = lostProcess?.roles?.some((role) => role !== "uncategorized" &&
+          (!waitOwner?.roles.includes(role) || (role !== "command-tree" && role !== "gateway-tree")));
+        if (lostProcess?.roles?.length && !cpuAccountant.hasObservedRoles(lostProcess) && independentRole) {
+          const { pid, ppid, command, roles } = lostProcess;
           lostCpuProcesses.push({ pid, ppid, command, roles, attempt, error: error.message });
         }
         if (error instanceof LinuxCpuSnapshotChangedError && attempt < 3) {
