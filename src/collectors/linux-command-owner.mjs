@@ -9,10 +9,11 @@ const payloadHashes = {
   arm64: "cd0c4364a99ed53cf5c14d15d93a6564ba252dcff6a8bb85258a3af8a48fa5dd",
   x64: "b6fac1fb18070edfea1070e8682e8c3091d875690d326c16e79f92f89151e83d"
 };
+const commandOwnerProbeTimeoutMs = 5000;
 const commandOwners = new Map();
 let cleanupRegistered = false;
 
-export function linuxCommandOwnerInvocation(node, args, home) {
+export function linuxCommandOwnerInvocation(node, args, home, env) {
   const expectedHash = payloadHashes[process.arch];
   if (!expectedHash) {
     // Kova already accounted commands on every Linux architecture. Keep that
@@ -30,10 +31,16 @@ export function linuxCommandOwnerInvocation(node, args, home) {
     mkdirSync(commandOwnerDir, { recursive: true, mode: 0o700 });
     const commandOwner = join(commandOwnerDir, `resource-command-owner-${expectedHash.slice(0, 12)}-${randomUUID()}`);
     writeFileSync(commandOwner, payload, { flag: "wx", mode: 0o700 });
-    const probe = spawnSync(commandOwner, [node, "-e", ""], { stdio: "ignore" });
-    if (probe.error?.code === "EACCES") {
-      // noexec homes worked before the native owner existed. Preserve the
-      // direct accounting helper instead of turning that mount policy fatal.
+    const probe = spawnSync(commandOwner, [node, "-e", ""], {
+      env,
+      stdio: "ignore",
+      timeout: commandOwnerProbeTimeoutMs,
+      killSignal: "SIGKILL"
+    });
+    const unavailable = probe.error?.code === "EACCES" || probe.error?.code === "ETIMEDOUT" || probe.status === 70;
+    if (unavailable) {
+      // noexec homes and restricted kernels worked before the native owner.
+      // Preserve the direct helper instead of turning host policy fatal.
       rmSync(commandOwner, { force: true });
       commandOwners.set(home, null);
     } else if (probe.error || probe.status !== 0) {

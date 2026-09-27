@@ -11,7 +11,7 @@ test("unsupported Linux architectures retain the direct accounting helper", () =
   const architecture = Object.getOwnPropertyDescriptor(process, "arch");
   Object.defineProperty(process, "arch", { ...architecture, value: "s390x" });
   try {
-    assert.deepEqual(linuxCommandOwnerInvocation("/node", ["helper", "command"], "/unused"), {
+    assert.deepEqual(linuxCommandOwnerInvocation("/node", ["helper", "command"], "/unused", {}), {
       file: "/node",
       args: ["helper", "command"]
     });
@@ -47,11 +47,33 @@ test("a noexec KOVA_HOME retains the direct accounting helper", { skip: process.
       t.skip("/dev/shm is executable");
       return;
     }
-    assert.deepEqual(linuxCommandOwnerInvocation("/node", ["helper"], root), {
+    assert.deepEqual(linuxCommandOwnerInvocation("/node", ["helper"], root, {}), {
       file: "/node",
       args: ["helper"]
     });
   } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("the native owner probe excludes ambient Node preloads", { skip: process.platform !== "linux" }, async () => {
+  const root = await mkdtemp(join(tmpdir(), "kova-command-owner-node-options-"));
+  const marker = join(root, "preload-ran");
+  const preload = join(root, "preload.cjs");
+  const previous = process.env.NODE_OPTIONS;
+  try {
+    await writeFile(preload, `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "loaded");`);
+    process.env.NODE_OPTIONS = `--require=${preload}`;
+    const result = await runWithCommandEnv({ KOVA_HOME: root }, () =>
+      runCommand("true", { resourceSample: {}, timeoutMs: 10000 }));
+    assert.equal(result.status, 0, result.stderr);
+    await assert.rejects(readFile(marker), { code: "ENOENT" });
+  } finally {
+    if (previous === undefined) {
+      delete process.env.NODE_OPTIONS;
+    } else {
+      process.env.NODE_OPTIONS = previous;
+    }
     await rm(root, { recursive: true, force: true });
   }
 });
@@ -127,7 +149,7 @@ test("detached descendants remain owned through terminal CPU settlement", { skip
   const parentRecord = join(root, "parent.json");
   try {
     const worker = `const fs=require('node:fs');const start=Date.now();while(Date.now()-start<650){};fs.writeFileSync(process.env.PARENT_RECORD,JSON.stringify({expected:Number(process.env.EXPECTED_PARENT),actual:process.ppid,elapsedMs:Date.now()-start,cpu:process.cpuUsage()}));`;
-    const launcher = `const fs=require('node:fs');const {spawn}=require('node:child_process');const proc=pid=>{const text=fs.readFileSync('/proc/'+pid+'/stat','utf8');return {parent:Number(text.slice(text.lastIndexOf(')')+2).trim().split(/\\s+/)[1]),command:fs.readFileSync('/proc/'+pid+'/cmdline','utf8')};};let owner=process.ppid;while(owner>1){const entry=proc(owner);if(entry.command.includes('support/resource-command.mjs'))break;owner=entry.parent;}if(owner<=1)throw new Error('resource command owner not found');const child=spawn(process.execPath,['-e',${JSON.stringify(worker)}],{detached:true,stdio:'ignore',env:{...process.env,EXPECTED_PARENT:String(owner),PARENT_RECORD:${JSON.stringify(parentRecord)}}});child.unref();setTimeout(()=>{},300);`;
+    const launcher = `const fs=require('node:fs');const {spawn}=require('node:child_process');const proc=pid=>{const text=fs.readFileSync('/proc/'+pid+'/stat','utf8');return {parent:Number(text.slice(text.lastIndexOf(')')+2).trim().split(/\\s+/)[1]),argv:fs.readFileSync('/proc/'+pid+'/cmdline','utf8').split('\\0').filter(Boolean)};};let owner=process.ppid;while(owner>1){const entry=proc(owner);if(entry.argv.some(arg=>arg.endsWith('/support/resource-command.mjs')))break;owner=entry.parent;}if(owner<=1)throw new Error('resource command owner not found');const child=spawn(process.execPath,['-e',${JSON.stringify(worker)}],{detached:true,stdio:'ignore',env:{...process.env,EXPECTED_PARENT:String(owner),PARENT_RECORD:${JSON.stringify(parentRecord)}}});child.unref();setTimeout(()=>{},300);`;
     const result = await runCommand(`${quoteShell(process.execPath)} -e ${quoteShell(launcher)}`, {
       resourceSample: { intervalMs: 250 },
       timeoutMs: 10000
