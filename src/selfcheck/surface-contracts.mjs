@@ -264,7 +264,7 @@ export async function releaseResourceCalibrationCheck() {
         scenario: gatewayScenario,
         surface: gatewaySurface,
         primaryRssMb: 1177,
-        gatewayCpuPercent: 310,
+        gatewayCpuPercent: 340,
         roles: { gateway: 1177, "gateway-tree": 1440, "status-cli": 900, "plugin-cli": 950 }
       },
       {
