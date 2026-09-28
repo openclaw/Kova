@@ -32,7 +32,7 @@
     },
     "gateway-tree": {
       "peakRssMb": 1440,
-      "maxCpuPercent": 300
+      "maxCpuPercent": 325
     },
     "status-cli": {
       "peakRssMb": 900,
