@@ -35,6 +35,14 @@ export function startResourceSampler(rootPid, options = {}) {
   let lastCpuSampleFinishedMs = null;
   const lostCpuProcesses = [];
 
+  function recordCollectionError(error, lowerBoundOnly = false) {
+    if (lowerBoundOnly) return;
+    samples.push({ timestamp: new Date().toISOString(), elapsedMs: Date.now() - startedAt,
+      rootPid, gatewayPid, collectionStatus: "error",
+      collectionError: error instanceof Error ? error.message : String(error), processes: [],
+      ...(lostCpuProcesses.length ? { cpuLostProcesses: [...lostCpuProcesses] } : {}) });
+  }
+
   sample();
   const timer = setInterval(sample, intervalMs);
   timer.unref?.();
@@ -56,9 +64,13 @@ export function startResourceSampler(rootPid, options = {}) {
       // Keep only the immediate certain floor so a proven burst cannot be
       // diluted by the wait, while ambiguous tick bounds use the settled read.
       const processLister = options.processLister ?? listProcesses;
-      terminalDiscoveryClock = cpuAccountant ? readLinuxCpuClock() : null;
-      terminalProcessResult = processLister(options.redactValues ?? []);
-      sample(1, terminalProcessResult, true, terminalDiscoveryClock);
+      try {
+        terminalDiscoveryClock = cpuAccountant ? readLinuxCpuClock() : null;
+        terminalProcessResult = processLister(options.redactValues ?? []);
+        sample(1, terminalProcessResult, true, terminalDiscoveryClock);
+      } catch (error) {
+        recordCollectionError(error);
+      }
       const remainingMs = MIN_LINUX_CPU_INTERVAL_MS - (performance.now() - lastCpuSampleFinishedMs);
       if (remainingMs > 0) await delay(remainingMs);
     }
@@ -83,7 +95,13 @@ export function startResourceSampler(rootPid, options = {}) {
 
   function sample(attempt = 1, processResultOverride = null, lowerBoundOnly = false, discoveryClockOverride = null) {
     const processLister = options.processLister ?? listProcesses;
-    const discoveryClock = discoveryClockOverride ?? (cpuAccountant ? readLinuxCpuClock() : null);
+    let discoveryClock = discoveryClockOverride;
+    try {
+      discoveryClock ??= cpuAccountant ? readLinuxCpuClock() : null;
+    } catch (error) {
+      recordCollectionError(error, lowerBoundOnly);
+      return;
+    }
     const processResult = processResultOverride ?? processLister(options.redactValues ?? []);
     if (!processResult.ok) {
       if (lowerBoundOnly) return;
@@ -196,10 +214,7 @@ export function startResourceSampler(rootPid, options = {}) {
           // retains its prior roles and wait-owner debt.
           return sample(attempt + 1, null, lowerBoundOnly);
         }
-        if (lowerBoundOnly) return;
-        samples.push({ timestamp: new Date().toISOString(), elapsedMs: Date.now() - startedAt,
-          rootPid, gatewayPid, collectionStatus: "error", collectionError: error.message, processes: [],
-          ...(lostCpuProcesses.length ? { cpuLostProcesses: [...lostCpuProcesses] } : {}) });
+        recordCollectionError(error, lowerBoundOnly);
         return;
       }
     }

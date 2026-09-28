@@ -40,6 +40,30 @@ test("gateway discovery refreshes a census that predates gateway birth", async (
   assert.equal(summary.byRole.gateway.peakRssMb, 2);
 });
 
+test("Linux discovery-clock failures remain incomplete sampler evidence", async () => {
+  const platform = Object.getOwnPropertyDescriptor(process, "platform");
+  const originalRead = fs.readFileSync;
+  const originalSpawn = childProcess.spawnSync;
+  Object.defineProperty(process, "platform", { ...platform, value: "linux" });
+  mock.method(childProcess, "spawnSync", (command, ...args) =>
+    command === "getconf" ? { status: 0, stdout: "100\n" } : originalSpawn(command, ...args));
+  mock.method(fs, "readFileSync", (path, ...args) => {
+    if (path === "/proc/uptime") throw new Error("Linux clock unavailable");
+    return originalRead(path, ...args);
+  });
+  syncBuiltinESMExports();
+  try {
+    const sampler = startResourceSampler(1);
+    const summary = await sampler.stop();
+    assert.equal(summary.cpuCoverageComplete, false);
+    assert.ok(summary.errors.includes("Linux clock unavailable"));
+  } finally {
+    mock.restoreAll();
+    Object.defineProperty(process, "platform", platform);
+    syncBuiltinESMExports();
+  }
+});
+
 test("terminal Linux CPU samples retain a quantization-safe accounting interval", {
   skip: process.platform !== "linux"
 }, async () => {
