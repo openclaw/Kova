@@ -1112,17 +1112,20 @@ recognized. Scoped patterns do not apply to global process snapshots. An empty
 while preserving terminal CPU accounting. Older samples without `currentRoles`
 retain their recorded role attribution; this repair does not requalify old
 reports. Per-process lifetime summaries continue listing observed roles.
-Parent counters are read
-before child counters; a product process disappearing during that census
-discards the inconsistent scan before accounting. Collection attempts are
-recorded, and three unstable censuses produce a harness failure. If a process
-vanishes before its roles and counters were observed, subsequent raw samples
-retain `cpuLostProcesses` (redacted command, PID, parent PID, roles, attempt, and
-error). These are census diagnostics, not fabricated counter samples or
-PID/start-time identities. Summarizing the artifacts preserves the incomplete
-CPU gate even when a refreshed census succeeds. The lost CPU remains unknown;
-this diagnostic does not retroactively qualify earlier reports or prove which
-process disappeared in artifacts that omitted it. Ambiguous reaped CPU is
+Parent counters are read before child counters. A previously counter-observed
+process disappearing during that census discards the inconsistent scan before
+accounting. Collection attempts are recorded, and three unstable censuses
+produce a harness failure. A PID listed by `ps` but gone before its first
+counter read has no accepted counter identity; it is omitted like product work
+that completed entirely between censuses, and the refreshed census retains its
+wait owner's aggregate child CPU. If a previously observed process vanishes,
+subsequent raw samples retain `cpuLostProcesses` (redacted command, PID, parent
+PID, roles, attempt, and error). These are census diagnostics, not fabricated
+counter samples or PID/start-time identities. Summarizing the artifacts
+preserves the incomplete CPU gate even when a refreshed census succeeds. The
+lost CPU remains unknown; this diagnostic does not retroactively qualify
+earlier reports or prove which process disappeared in artifacts that omitted
+it. Ambiguous reaped CPU is
 an upper bound for each affected role; it never raises the lower bound. Unsettled
 terminal wait accounting blocks qualification. CPU percentages may exceed 100% when product threads or
 processes execute concurrently. The collector does not sum `ps` lifetime CPU
