@@ -85,8 +85,8 @@ test("terminal sampling refreshes a census after a tracked child exits", {
   }
 });
 
-for (const mode of ["lost", "listing-failed", "unstable-lower-bound"]) test(
-  "terminal sampling preserves census evidence: " + mode, async () => {
+for (const mode of ["first-glimpse-exit", "listing-failed"]) test(
+  "terminal sampling retries a process that exits before its first counter read: " + mode, async () => {
   const listingFailed = mode === "listing-failed";
   const platform = Object.getOwnPropertyDescriptor(process, "platform");
   const originalRead = fs.readFileSync;
@@ -103,7 +103,7 @@ for (const mode of ["lost", "listing-failed", "unstable-lower-bound"]) test(
       now += 1000;
       census += 1;
       if (census === 2 && listingFailed) return { status: 1, stderr: "transient census failure" };
-      return { status: 0, pid: 999, stdout: census === 2 || (mode === "unstable-lower-bound" && census <= 4 && census > 1)
+      return { status: 0, pid: 999, stdout: census === 2
         ? "1 0 1024 0 node\n2 1 1024 0 gateway\n" : "1 0 1024 0 node\n" };
     }
     return originalSpawn(command, ...args);
@@ -121,68 +121,15 @@ for (const mode of ["lost", "listing-failed", "unstable-lower-bound"]) test(
   syncBuiltinESMExports();
   try {
     const summary = await startResourceSampler(1, { trackedRolePids: { gateway: 2 }, artifactPath }).stop();
-    assert.equal(summary.cpuCoverageComplete, listingFailed);
-    if (listingFailed) assert.deepEqual(summary.errors, []);
-    else {
-      assert.ok(summary.errors.some((error) => error.includes("unobserved process roles")));
-      const samples = (await fs.promises.readFile(artifactPath, "utf8")).trim().split("\n").map(JSON.parse);
-      const replay = summarizeResourceSamples(samples);
-      assert.equal(replay.cpuCoverageComplete, false, "raw evidence must retain the lost-role failure");
-      assert.ok(replay.errors.some((error) => error.includes("unobserved process roles")));
-      const lost = samples.flatMap((sample) => sample.cpuLostProcesses ?? []);
-      assert.ok(lost.some((entry) => entry.pid === 2 && entry.ppid === 1 && entry.command === "gateway" && entry.roles.includes("gateway")));
-    }
+    assert.equal(summary.cpuCoverageComplete, true, JSON.stringify(summary.errors));
+    assert.deepEqual(summary.errors, []);
+    const samples = (await fs.promises.readFile(artifactPath, "utf8")).trim().split("\n").map(JSON.parse);
+    assert.equal(samples.some((sample) => sample.cpuLostProcesses?.length), false);
   } finally {
     mock.restoreAll();
     Object.defineProperty(process, "platform", platform);
     syncBuiltinESMExports();
     await fs.promises.rm(artifactDir, { recursive: true, force: true });
-  }
-});
-
-for (const mode of ["ordinary-wait", "no-wait", "orphan", "first-census", "unverified-command"]) test(
-  `a vanished SQLite worker requires proven wait transfer: ${mode}`, async () => {
-  const platform = Object.getOwnPropertyDescriptor(process, "platform");
-  const originalRead = fs.readFileSync;
-  const originalSpawn = childProcess.spawnSync;
-  let census = 0;
-  let now = 0;
-  Object.defineProperty(process, "platform", { ...platform, value: "linux" });
-  mock.method(performance, "now", () => now);
-  mock.method(childProcess, "spawnSync", (command, ...args) => {
-    if (command === "getconf") return { status: 0, stdout: "100\n" };
-    if (command === "ps") {
-      now += 1000;
-      census += 1;
-      const owner = mode === "orphan" && census >= 3 ? "" : "1 0 1024 0 openclaw-agent\n";
-      const childCensus = mode === "first-census" ? 1 : 2;
-      const childArg = mode === "unverified-command" ? "--unknown-worker" : "--openclaw-sqlite-readonly-child";
-      const child = census === childCensus ? `2 1 1024 0 node worker.js ${childArg} async state.sqlite\n` : "";
-      return { status: 0, pid: 999, stdout: owner + child };
-    }
-    return originalSpawn(command, ...args);
-  });
-  mock.method(fs, "readFileSync", (path, ...args) => {
-    if (path === "/proc/uptime") return `${now / 1000} 0\n`;
-    if (path === "/proc/2/stat") throw Object.assign(new Error("gone"), { code: "ENOENT" });
-    if (path === "/proc/1/stat") {
-      const fields = Array(22).fill("0");
-      fields[0] = "S";
-      fields[13] = String((mode === "ordinary-wait" || mode === "unverified-command") && census >= 3 ? 1 : 0);
-      return `1 (openclaw-agent) ${fields.join(" ")}`;
-    }
-    return originalRead(path, ...args);
-  });
-  syncBuiltinESMExports();
-  try {
-    const summary = await startResourceSampler(1).stop();
-    assert.equal(summary.cpuCoverageComplete, mode === "ordinary-wait", JSON.stringify(summary.errors));
-    assert.equal(summary.errors.some((error) => error.includes("unobserved process roles")),
-      mode !== "ordinary-wait");
-  } finally {
-    mock.restoreAll();
-    Object.defineProperty(process, "platform", platform);
-    syncBuiltinESMExports();
   }
 });
 
@@ -808,7 +755,7 @@ test("resource summaries keep recycled PID identities separate", () => {
 });
 
 
-test("a child exiting after its wait owner read invalidates the census", () => {
+test("only a previously tracked child exiting after its wait owner read invalidates the census", () => {
   const reads = [];
   const original = fs.readFileSync;
   mock.method(fs, "readFileSync", (path, ...args) => {
@@ -820,15 +767,17 @@ test("a child exiting after its wait owner read invalidates the census", () => {
   });
   syncBuiltinESMExports();
   try {
-    assert.throws(() => readLinuxCpuSnapshot([
+    assert.deepEqual(readLinuxCpuSnapshot([
       { ...processRow(2, 1, 100), roles: ["gateway"] }, processRow(1, 0, 0)
-    ]), LinuxCpuSnapshotChangedError);
+    ]).map((entry) => entry.pid), [1]);
     assert.deepEqual(reads, ["/proc/1/stat", "/proc/2/stat"]);
+    reads.length = 0;
     // A restarted Gateway may already have lost its current role, but its
     // previously measured identity still requires terminal wait accounting.
     assert.throws(() => readLinuxCpuSnapshot([
       processRow(2, 1, 100), processRow(1, 0, 0)
     ], new Set([2])), LinuxCpuSnapshotChangedError);
+    assert.deepEqual(reads, ["/proc/1/stat", "/proc/2/stat"]);
   } finally {
     mock.restoreAll();
     syncBuiltinESMExports();

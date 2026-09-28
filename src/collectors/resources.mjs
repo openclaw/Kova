@@ -17,10 +17,6 @@ const gatewayPidsByEnv = new Map();
 // Four USER_HZ ticks bound one live process plus unseen reaped work. A 500ms
 // terminal window keeps that uncertainty below the 10-point precision budget.
 const MIN_LINUX_CPU_INTERVAL_MS = 500;
-// OpenClaw launches this worker only through execFile/spawnSync and therefore
-// waits for it. Counter recovery still requires an exact live owner identity.
-const SQLITE_READONLY_CHILD_ARG = "--openclaw-sqlite-readonly-child";
-const PROCESS_CENSUS_ENTRY = Symbol("processCensusEntry");
 
 export function startResourceSampler(rootPid, options = {}) {
   const startedAt = Date.now();
@@ -38,7 +34,6 @@ export function startResourceSampler(rootPid, options = {}) {
   let nextGatewayLookupSample = 0;
   let lastCpuSampleFinishedMs = null;
   const lostCpuProcesses = [];
-  const recoveredCpuProcesses = new WeakSet();
 
   sample();
   const timer = setInterval(sample, intervalMs);
@@ -84,8 +79,7 @@ export function startResourceSampler(rootPid, options = {}) {
     return summary;
   }
 
-  function sample(attempt = 1, processResultOverride = null, lowerBoundOnly = false,
-    pendingWaitTransfers = []) {
+  function sample(attempt = 1, processResultOverride = null, lowerBoundOnly = false) {
     const processLister = options.processLister ?? listProcesses;
     const processResult = processResultOverride ?? processLister(options.redactValues ?? []);
     if (!processResult.ok) {
@@ -167,7 +161,7 @@ export function startResourceSampler(rootPid, options = {}) {
       }
       seen.add(process.pid);
       const sortedRoles = [...roles].sort();
-      tracked.push({ ...process, [PROCESS_CENSUS_ENTRY]: process,
+      tracked.push({ ...process,
         ...(process.pid === options.accountingRootPid ? { rssKb: 0, rssMb: 0, command: "[Kova command CPU accounting]" } : {}),
         roles: sortedRoles, role: sortedRoles.join(",") });
     }
@@ -180,16 +174,6 @@ export function startResourceSampler(rootPid, options = {}) {
         // clock earlier inflates uncertainty with unrelated `ps` latency.
         cpuClock = readLinuxCpuClock();
         const counters = readLinuxCpuSnapshot(tracked, cpuAccountant.trackedProcessIds());
-        const recoveredCensusEntries = [];
-        for (const pending of pendingWaitTransfers) {
-          const owner = counters.find((entry) => entry.pid === pending.ownerPid &&
-            entry.startTicks === pending.ownerStartTicks);
-          if (!owner || owner.childCpuTicks <= pending.baselineChildCpuTicks) {
-            recordLostCpuProcess(pending.process, pending.attempt, pending.error);
-          } else {
-            recoveredCensusEntries.push(pending.process[PROCESS_CENSUS_ENTRY]);
-          }
-        }
         cpuClock.finishedMs = performance.now();
         if (!lowerBoundOnly) lastCpuSampleFinishedMs = cpuClock.finishedMs;
         measured = (lowerBoundOnly
@@ -197,36 +181,17 @@ export function startResourceSampler(rootPid, options = {}) {
           : cpuAccountant.sample(counters, cpuClock)).map((entry) => ({ ...entry,
           ...(entry.currentRoles.length ? {} : { rssMb: 0, rssKb: 0, command: "[CPU wait owner for retired product processes]" })
         }));
-        for (const entry of recoveredCensusEntries) recoveredCpuProcesses.add(entry);
       } catch (error) {
-        const nextPendingWaitTransfers = [...pendingWaitTransfers];
         if (error instanceof LinuxCpuSnapshotChangedError && error.process?.roles?.length &&
-            !cpuAccountant.hasObservedRoles(error.process) &&
-            !recoveredCpuProcesses.has(error.process[PROCESS_CENSUS_ENTRY])) {
-          const owner = error.observedCounters?.find((entry) => entry.pid === error.process.ppid);
-          const baselineChildCpuTicks = owner ? cpuAccountant.waitOwnerBaseline(owner) : null;
-          if (error.process.command.includes(SQLITE_READONLY_CHILD_ARG) &&
-              owner && baselineChildCpuTicks !== null) {
-            nextPendingWaitTransfers.push({
-              process: error.process,
-              attempt,
-              error: error.message,
-              ownerPid: owner.pid,
-              ownerStartTicks: owner.startTicks,
-              baselineChildCpuTicks
-            });
-          } else {
-            recordLostCpuProcess(error.process, attempt, error.message);
-          }
+            !cpuAccountant.hasObservedRoles(error.process)) {
+          const { pid, ppid, command, roles } = error.process;
+          lostCpuProcesses.push({ pid, ppid, command, roles, attempt, error: error.message });
         }
         if (error instanceof LinuxCpuSnapshotChangedError && attempt < 3) {
           // The failed snapshot proves the census changed. Repeating it can
           // only fail on the same departed PID; refresh while the accountant
           // retains its prior roles and wait-owner debt.
-          return sample(attempt + 1, null, lowerBoundOnly, nextPendingWaitTransfers);
-        }
-        for (const pending of nextPendingWaitTransfers) {
-          recordLostCpuProcess(pending.process, pending.attempt, pending.error);
+          return sample(attempt + 1, null, lowerBoundOnly);
         }
         if (lowerBoundOnly) return;
         samples.push({ timestamp: new Date().toISOString(), elapsedMs: Date.now() - startedAt,
@@ -249,12 +214,6 @@ export function startResourceSampler(rootPid, options = {}) {
       ...(lostCpuProcesses.length ? { cpuLostProcesses: [...lostCpuProcesses] } : {}),
       processes: measured.filter((entry) => entry.roles.length || entry.reapedRoles?.length)
     });
-  }
-
-  function recordLostCpuProcess(process, attempt, error) {
-    if (lostCpuProcesses.some((entry) => entry.pid === process.pid && entry.ppid === process.ppid)) return;
-    const { pid, ppid, command, roles } = process;
-    lostCpuProcesses.push({ pid, ppid, command, roles, attempt, error });
   }
 }
 

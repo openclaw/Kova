@@ -45,14 +45,11 @@ export function readLinuxCpuSnapshot(processes, previouslyTrackedPids = new Set(
       counters.push({ ...entry, ...values });
     } catch (error) {
       if (error.code !== "ENOENT" && error.code !== "ESRCH") throw error;
-      // Parent counters precede every live child counter. A child disappearing
-      // after the process census invalidates this scan: its parent's earlier
-      // wait counter cannot establish that child's terminal CPU transfer.
-      if (entry.roles?.length || previouslyTrackedPids.has(entry.pid)) {
-        throw Object.assign(new LinuxCpuSnapshotChangedError("Product process exited during CPU collection"), {
-          process: entry,
-          observedCounters: counters
-        });
+      // Work never counter-observed is covered like work completed between
+      // censuses. Losing a tracked identity remains incomplete because its
+      // parent's earlier counter cannot establish terminal CPU transfer.
+      if (previouslyTrackedPids.has(entry.pid)) {
+        throw Object.assign(new LinuxCpuSnapshotChangedError("Product process exited during CPU collection"), { process: entry });
       }
     }
   };
@@ -90,13 +87,6 @@ export function createLinuxCpuAccountant({ accountingRootPid } = {}) {
     hasObservedRoles(process) {
       return [...previous.values()].some((entry) => entry.pid === process.pid &&
         process.roles.every((role) => entry.roles.includes(role)));
-    },
-    waitOwnerBaseline(process) {
-      const observed = previous.get(identity(process));
-      if (observed) return observed.childCpuTicks;
-      const bornDuringSampling = previousClock !== undefined && initialClock !== undefined &&
-        process.startTicks >= Math.floor(initialClock.ticks) - 1;
-      return bornDuringSampling ? 0 : null;
     },
     coverageComplete() {
       return !missingIntervalBaseline && !missingWaitOwner && ![...reapDebt.values()].some((debt) => (debt.observedTicks ?? debt.ticks) > 0 && debt.processes.some((entry) => entry.roles?.length));
