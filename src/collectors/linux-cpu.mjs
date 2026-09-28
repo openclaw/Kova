@@ -49,7 +49,10 @@ export function readLinuxCpuSnapshot(processes, previouslyTrackedPids = new Set(
       // after the process census invalidates this scan: its parent's earlier
       // wait counter cannot establish that child's terminal CPU transfer.
       if (entry.roles?.length || previouslyTrackedPids.has(entry.pid)) {
-        throw Object.assign(new LinuxCpuSnapshotChangedError("Product process exited during CPU collection"), { process: entry });
+        throw Object.assign(new LinuxCpuSnapshotChangedError("Product process exited during CPU collection"), {
+          process: entry,
+          observedCounters: counters
+        });
       }
     }
   };
@@ -87,6 +90,13 @@ export function createLinuxCpuAccountant({ accountingRootPid } = {}) {
     hasObservedRoles(process) {
       return [...previous.values()].some((entry) => entry.pid === process.pid &&
         process.roles.every((role) => entry.roles.includes(role)));
+    },
+    waitOwnerBaseline(process) {
+      const observed = previous.get(identity(process));
+      if (observed) return observed.childCpuTicks;
+      const bornDuringSampling = previousClock !== undefined && initialClock !== undefined &&
+        process.startTicks >= Math.floor(initialClock.ticks) - 1;
+      return bornDuringSampling ? 0 : null;
     },
     coverageComplete() {
       return !missingIntervalBaseline && !missingWaitOwner && ![...reapDebt.values()].some((debt) => (debt.observedTicks ?? debt.ticks) > 0 && debt.processes.some((entry) => entry.roles?.length));

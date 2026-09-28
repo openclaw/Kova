@@ -5,6 +5,7 @@ All notable changes to Kova are documented in this file.
 ## Unreleased
 
 - Stabilize terminal Linux CPU accounting without hiding proven excess, retain wait-owner counters through settlement, and attribute the settled sample to the final channel workflow. Thanks @RomneyDa. (#144)
+- Recover Linux CPU coverage when OpenClaw's waited SQLite worker exits between census and counter collection, while keeping missing, orphaned, no-wait, and unrecognized transfers incomplete.
 
 ## 0.2.1 - 2026-09-23
 

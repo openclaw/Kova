@@ -140,6 +140,52 @@ for (const mode of ["lost", "listing-failed", "unstable-lower-bound"]) test(
   }
 });
 
+for (const mode of ["ordinary-wait", "no-wait", "orphan", "first-census", "unverified-command"]) test(
+  `a vanished SQLite worker requires proven wait transfer: ${mode}`, async () => {
+  const platform = Object.getOwnPropertyDescriptor(process, "platform");
+  const originalRead = fs.readFileSync;
+  const originalSpawn = childProcess.spawnSync;
+  let census = 0;
+  let now = 0;
+  Object.defineProperty(process, "platform", { ...platform, value: "linux" });
+  mock.method(performance, "now", () => now);
+  mock.method(childProcess, "spawnSync", (command, ...args) => {
+    if (command === "getconf") return { status: 0, stdout: "100\n" };
+    if (command === "ps") {
+      now += 1000;
+      census += 1;
+      const owner = mode === "orphan" && census >= 3 ? "" : "1 0 1024 0 openclaw-agent\n";
+      const childCensus = mode === "first-census" ? 1 : 2;
+      const childArg = mode === "unverified-command" ? "--unknown-worker" : "--openclaw-sqlite-readonly-child";
+      const child = census === childCensus ? `2 1 1024 0 node worker.js ${childArg} async state.sqlite\n` : "";
+      return { status: 0, pid: 999, stdout: owner + child };
+    }
+    return originalSpawn(command, ...args);
+  });
+  mock.method(fs, "readFileSync", (path, ...args) => {
+    if (path === "/proc/uptime") return `${now / 1000} 0\n`;
+    if (path === "/proc/2/stat") throw Object.assign(new Error("gone"), { code: "ENOENT" });
+    if (path === "/proc/1/stat") {
+      const fields = Array(22).fill("0");
+      fields[0] = "S";
+      fields[13] = String((mode === "ordinary-wait" || mode === "unverified-command") && census >= 3 ? 1 : 0);
+      return `1 (openclaw-agent) ${fields.join(" ")}`;
+    }
+    return originalRead(path, ...args);
+  });
+  syncBuiltinESMExports();
+  try {
+    const summary = await startResourceSampler(1).stop();
+    assert.equal(summary.cpuCoverageComplete, mode === "ordinary-wait", JSON.stringify(summary.errors));
+    assert.equal(summary.errors.some((error) => error.includes("unobserved process roles")),
+      mode !== "ordinary-wait");
+  } finally {
+    mock.restoreAll();
+    Object.defineProperty(process, "platform", platform);
+    syncBuiltinESMExports();
+  }
+});
+
 test("real Linux censuses move same-PID agent RSS while retaining CPU history", {
   skip: process.platform !== "linux"
 }, async (t) => {
