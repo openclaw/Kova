@@ -23,6 +23,14 @@
     "providerFinalMs": 10000,
     "providerFailureHealthFailures": 0,
     "peakRssMb": 900,
+    "roleThresholds": {
+      "agent-cli": {
+        "peakRssMb": 1000
+      },
+      "agent-process": {
+        "peakRssMb": 1000
+      }
+    },
     "missingDependencyErrors": 0,
     "pluginLoadFailures": 0
   },

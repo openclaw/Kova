@@ -30,6 +30,14 @@
     "agentProcessLeaks": 0,
     "statusMs": 10000,
     "peakRssMb": 900,
+    "roleThresholds": {
+      "agent-cli": {
+        "peakRssMb": 1000
+      },
+      "agent-process": {
+        "peakRssMb": 1000
+      }
+    },
     "missingDependencyErrors": 0,
     "pluginLoadFailures": 0,
     "providerTimeoutMentions": 0

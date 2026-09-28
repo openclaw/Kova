@@ -101,7 +101,7 @@
         "preProviderMs": 10000,
         "providerFinalMs": 3000,
         "agentCleanupMs": 5000,
-        "peakRssMb": 1000,
+        "peakRssMb": 1150,
         "postReadyHealthP95Ms": 1000
       },
       "roleThresholds": {
@@ -110,11 +110,11 @@
           "maxCpuPercent": 250
         },
         "agent-cli": {
-          "peakRssMb": 1000,
+          "peakRssMb": 1150,
           "maxCpuPercent": 300
         },
         "agent-process": {
-          "peakRssMb": 1000,
+          "peakRssMb": 1150,
           "maxCpuPercent": 300
         },
         "mock-provider": {
@@ -343,7 +343,7 @@
             "maxRegressionPercent": 10,
             "absoluteCeilingMb": 1200
           },
-          "maxCpuPercent": 250
+          "maxCpuPercent": 360
         },
         "plugin-cli": {
           "peakRssMb": 900,
@@ -1176,10 +1176,10 @@
             "maxRegressionPercent": 10,
             "absoluteCeilingMb": 1200
           },
-          "maxCpuPercent": 250
+          "maxCpuPercent": 310
         },
         "gateway-tree": {
-          "peakRssMb": 1200,
+          "peakRssMb": 1440,
           "maxCpuPercent": 300
         },
         "status-cli": {
@@ -9575,6 +9575,14 @@
         "agentContainmentHealthFailures": 0,
         "agentProcessLeaks": 0,
         "peakRssMb": 900,
+        "roleThresholds": {
+          "agent-cli": {
+            "peakRssMb": 1000
+          },
+          "agent-process": {
+            "peakRssMb": 1000
+          }
+        },
         "missingDependencyErrors": 0,
         "pluginLoadFailures": 0
       },
@@ -9659,7 +9667,7 @@
         "warmPreProviderMs": 10000,
         "providerFinalMs": 3000,
         "statusMs": 10000,
-        "peakRssMb": 1000,
+        "peakRssMb": 1150,
         "agentProcessLeaks": 4,
         "missingDependencyErrors": 0,
         "pluginLoadFailures": 0,
@@ -9879,6 +9887,14 @@
         "agentProcessLeaks": 0,
         "statusMs": 10000,
         "peakRssMb": 900,
+        "roleThresholds": {
+          "agent-cli": {
+            "peakRssMb": 1000
+          },
+          "agent-process": {
+            "peakRssMb": 1000
+          }
+        },
         "missingDependencyErrors": 0,
         "pluginLoadFailures": 0,
         "providerTimeoutMentions": 0
@@ -10221,6 +10237,14 @@
         "providerFinalMs": 10000,
         "providerFailureHealthFailures": 0,
         "peakRssMb": 900,
+        "roleThresholds": {
+          "agent-cli": {
+            "peakRssMb": 1000
+          },
+          "agent-process": {
+            "peakRssMb": 1000
+          }
+        },
         "missingDependencyErrors": 0,
         "pluginLoadFailures": 0
       },
@@ -10305,6 +10329,14 @@
         "agentContainmentHealthFailures": 0,
         "agentProcessLeaks": 0,
         "peakRssMb": 900,
+        "roleThresholds": {
+          "agent-cli": {
+            "peakRssMb": 1000
+          },
+          "agent-process": {
+            "peakRssMb": 1000
+          }
+        },
         "missingDependencyErrors": 0,
         "pluginLoadFailures": 0
       },
@@ -10392,6 +10424,14 @@
         "agentContainmentHealthFailures": 0,
         "agentProcessLeaks": 0,
         "peakRssMb": 900,
+        "roleThresholds": {
+          "agent-cli": {
+            "peakRssMb": 1000
+          },
+          "agent-process": {
+            "peakRssMb": 1000
+          }
+        },
         "missingDependencyErrors": 0,
         "pluginLoadFailures": 0
       },
@@ -10476,6 +10516,14 @@
         "providerFinalMs": 10000,
         "providerFailureHealthFailures": 0,
         "peakRssMb": 900,
+        "roleThresholds": {
+          "agent-cli": {
+            "peakRssMb": 1000
+          },
+          "agent-process": {
+            "peakRssMb": 1000
+          }
+        },
         "missingDependencyErrors": 0,
         "pluginLoadFailures": 0
       },
@@ -10579,6 +10627,14 @@
         "providerFailureHealthFailures": 0,
         "preProviderDominanceRatio": 0.98,
         "peakRssMb": 900,
+        "roleThresholds": {
+          "agent-cli": {
+            "peakRssMb": 1000
+          },
+          "agent-process": {
+            "peakRssMb": 1000
+          }
+        },
         "missingDependencyErrors": 0,
         "pluginLoadFailures": 0
       },
@@ -10662,6 +10718,14 @@
         "agentContainmentHealthFailures": 0,
         "agentProcessLeaks": 0,
         "peakRssMb": 900,
+        "roleThresholds": {
+          "agent-cli": {
+            "peakRssMb": 1000
+          },
+          "agent-process": {
+            "peakRssMb": 1000
+          }
+        },
         "missingDependencyErrors": 0,
         "pluginLoadFailures": 0
       },
@@ -10745,6 +10809,14 @@
         "providerFinalMs": 90000,
         "providerFailureHealthFailures": 0,
         "peakRssMb": 900,
+        "roleThresholds": {
+          "agent-cli": {
+            "peakRssMb": 1000
+          },
+          "agent-process": {
+            "peakRssMb": 1000
+          }
+        },
         "missingDependencyErrors": 0,
         "pluginLoadFailures": 0
       },

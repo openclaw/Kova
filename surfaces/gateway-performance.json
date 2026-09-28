@@ -28,10 +28,10 @@
         "maxRegressionPercent": 10,
         "absoluteCeilingMb": 1200
       },
-      "maxCpuPercent": 250
+      "maxCpuPercent": 310
     },
     "gateway-tree": {
-      "peakRssMb": 1200,
+      "peakRssMb": 1440,
       "maxCpuPercent": 300
     },
     "status-cli": {

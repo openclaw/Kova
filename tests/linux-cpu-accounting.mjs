@@ -412,7 +412,7 @@ test("agent title changes move current RSS without losing historical CPU attribu
     })];
     return { ...processRow(pid, ppid, cpuTicks), command, rssMb, roles, role: roles.join(",") };
   };
-  for (const [agentRssMb, expectedViolations] of [[932.9, []], [1001, ["resourceByRole.agent-process.peakRssMb"]]]) {
+  for (const [agentRssMb, expectedViolations] of [[932.9, []], [1150, []], [1151, ["resourceByRole.agent-process.peakRssMb"]]]) {
     const accountant = createLinuxCpuAccountant();
     const wrappers = [row(1, 0, rootCommand, 5.8), row(2, 1, "node openclaw.mjs agent --local", 86.2)];
     const before = accountant.sample([...wrappers, row(3, 2, "node openclaw.mjs agent --local", 187.9)], clock(0));

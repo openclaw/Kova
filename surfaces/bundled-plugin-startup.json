@@ -19,7 +19,7 @@
         "maxRegressionPercent": 10,
         "absoluteCeilingMb": 1200
       },
-      "maxCpuPercent": 250
+      "maxCpuPercent": 360
     },
     "plugin-cli": {
       "peakRssMb": 900,

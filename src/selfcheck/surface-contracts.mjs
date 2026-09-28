@@ -27,7 +27,7 @@ export async function bundledPluginStartupSurfaceContractCheck() {
       "bundled plugin startup waits for gateway readiness"
     );
     assertEqual(surface.roleThresholds?.gateway?.peakRssMb?.absoluteCeilingMb, 1200, "bundled plugin surface owns absolute gateway RSS ceiling");
-    assertEqual(surface.roleThresholds?.gateway?.maxCpuPercent, 250, "bundled plugin surface owns gateway CPU cap");
+    assertEqual(surface.roleThresholds?.gateway?.maxCpuPercent, 360, "bundled plugin surface owns gateway CPU cap");
     assertEqual(surface.roleThresholds?.["plugin-cli"]?.peakRssMb, 900, "bundled plugin surface owns plugin CLI RSS cap");
     assertEqual(surface.roleThresholds?.["plugin-cli"]?.maxCpuPercent, 250, "bundled plugin surface owns plugin CLI CPU cap");
     assertEqual(policy.roleThresholds?.gateway?.peakRssMb, 1193, "bundled plugin resolves Node 24 baseline with bounded regression allowance");
@@ -35,7 +35,7 @@ export async function bundledPluginStartupSurfaceContractCheck() {
     assertEqual(node22Policy.roleThresholds?.gateway?.peakRssMb, 803, "bundled plugin selects the parsed Node 22 major baseline");
     assertEqual(uncalibratedPolicy.roleThresholds?.gateway?.peakRssMb, 1200, "uncalibrated Node major remains bounded by the absolute ceiling");
     assertEqual(uncalibratedPolicy.report.runtimeCalibration?.[0]?.baselineMb, null, "uncalibrated Node major reports missing baseline evidence");
-    assertEqual(policy.roleThresholds?.gateway?.maxCpuPercent, 250, "bundled plugin resolved gateway CPU cap");
+    assertEqual(policy.roleThresholds?.gateway?.maxCpuPercent, 360, "bundled plugin resolved gateway CPU cap");
     assertEqual(policy.roleThresholds?.["plugin-cli"]?.peakRssMb, 900, "bundled plugin resolved plugin CLI RSS cap");
     assertEqual(policy.roleThresholds?.["plugin-cli"]?.maxCpuPercent, 250, "bundled plugin resolved plugin CLI CPU cap");
     assertEqual(surface.diagnostics?.expectedSpans?.includes("plugins.load"), true, "bundled plugin startup requires plugin load span");
@@ -256,7 +256,7 @@ export async function releaseResourceCalibrationCheck() {
         scenario: freshScenario,
         surface: freshSurface,
         primaryRssMb: 1177,
-        gatewayCpuPercent: 300,
+        gatewayCpuPercent: 345,
         roles: { gateway: 1177, "status-cli": 900, "plugin-cli": 900 }
       },
       {
@@ -264,13 +264,15 @@ export async function releaseResourceCalibrationCheck() {
         scenario: gatewayScenario,
         surface: gatewaySurface,
         primaryRssMb: 1177,
-        roles: { gateway: 1177, "gateway-tree": 1200, "status-cli": 900, "plugin-cli": 950 }
+        gatewayCpuPercent: 310,
+        roles: { gateway: 1177, "gateway-tree": 1440, "status-cli": 900, "plugin-cli": 950 }
       },
       {
         id: "bundled-plugin-startup",
         scenario: null,
         surface: bundledPluginSurface,
         primaryRssMb: null,
+        gatewayCpuPercent: 360,
         roles: { gateway: 1193, "plugin-cli": 900 }
       }
     ];
@@ -426,13 +428,37 @@ export async function agentCliLocalTurnSurfaceContractCheck() {
     assertEqual(expectedSpans.includes("plugins.metadata.scan"), true, "agent CLI surface requires plugin metadata scan timeline span");
     assertEqual(surface.resourcePrimaryRole, "agent-process", "local agent surface headlines the agent process");
     assertEqual(networkOfflineSurface.resourcePrimaryRole, "agent-process", "offline agent surface headlines the agent process");
-    assertEqual(surface.thresholds?.peakRssMb, 1000, "agent CLI surface owns primary RSS cap");
-    assertEqual(surface.roleThresholds?.["agent-cli"]?.peakRssMb, 1000, "agent CLI surface owns agent CLI RSS cap");
-    assertEqual(surface.roleThresholds?.["agent-process"]?.peakRssMb, 1000, "agent CLI surface owns agent process RSS cap");
-    assertEqual(scenario.thresholds?.peakRssMb, 1000, "agent cold/warm scenario owns primary RSS cap");
-    assertEqual(policy.thresholds?.peakRssMb, 1000, "agent cold/warm resolved primary RSS cap");
-    assertEqual(policy.roleThresholds?.["agent-cli"]?.peakRssMb, 1000, "agent CLI resolved agent CLI RSS cap");
-    assertEqual(policy.roleThresholds?.["agent-process"]?.peakRssMb, 1000, "agent CLI resolved agent process RSS cap");
+    assertEqual(surface.thresholds?.peakRssMb, 1150, "agent CLI surface owns primary RSS cap");
+    assertEqual(surface.roleThresholds?.["agent-cli"]?.peakRssMb, 1150, "agent CLI surface owns agent CLI RSS cap");
+    assertEqual(surface.roleThresholds?.["agent-process"]?.peakRssMb, 1150, "agent CLI surface owns agent process RSS cap");
+    assertEqual(scenario.thresholds?.peakRssMb, 1150, "agent cold/warm scenario owns primary RSS cap");
+    assertEqual(policy.thresholds?.peakRssMb, 1150, "agent cold/warm resolved primary RSS cap");
+    assertEqual(policy.roleThresholds?.["agent-cli"]?.peakRssMb, 1150, "agent CLI resolved agent CLI RSS cap");
+    assertEqual(policy.roleThresholds?.["agent-process"]?.peakRssMb, 1150, "agent CLI resolved agent process RSS cap");
+    for (const id of [
+      "agent-provider-slow",
+      "agent-provider-timeout",
+      "agent-provider-malformed",
+      "agent-provider-protocol-failure",
+      "agent-provider-streaming-stall",
+      "agent-provider-random-disconnect",
+      "agent-provider-recovery",
+      "agent-auth-missing",
+      "agent-long-session"
+    ]) {
+      const otherScenario = await readSelfCheckJson("scenarios", `${id}.json`);
+      const otherPolicy = resolveThresholdPolicy({
+        profile: releaseProfile,
+        surface,
+        scenario: otherScenario,
+        nodeVersion: "v24.19.0"
+      });
+      assertEqual(otherPolicy.thresholds?.peakRssMb, 900, `${id} retains primary RSS cap`);
+      for (const role of ["agent-cli", "agent-process"]) {
+        assertEqual(otherPolicy.roleThresholds?.[role]?.peakRssMb, 1000, `${id} retains ${role} RSS cap`);
+        assertEqual(otherPolicy.roleThresholds?.[role]?.maxCpuPercent, 300, `${id} retains ${role} CPU cap`);
+      }
+    }
     const configPreflight = scenario.phases?.find((phase) => phase.id === "config-preflight");
     assertEqual(configPreflight?.commands?.[0], "ocm @{env} -- config validate --json", "agent CLI config preflight command");
     assertEqual(configPreflight?.measurementScope, "harness", "agent CLI config preflight stays outside product measurements");

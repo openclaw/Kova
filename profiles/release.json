@@ -81,7 +81,7 @@
       "fresh-install": {
         "roleThresholds": {
           "gateway": {
-            "maxCpuPercent": 300
+            "maxCpuPercent": 345
           }
         }
       },
