@@ -49,18 +49,20 @@ export function startResourceSampler(rootPid, options = {}) {
   async function finish() {
     clearInterval(timer);
     let terminalProcessResult = null;
+    let terminalDiscoveryClock = null;
     if (lastCpuSampleFinishedMs !== null) {
       // A command can end just after the periodic census. Give the terminal
       // counters a stable window while retaining the process roles at stop time.
       // Keep only the immediate certain floor so a proven burst cannot be
       // diluted by the wait, while ambiguous tick bounds use the settled read.
       const processLister = options.processLister ?? listProcesses;
+      terminalDiscoveryClock = cpuAccountant ? readLinuxCpuClock() : null;
       terminalProcessResult = processLister(options.redactValues ?? []);
-      sample(1, terminalProcessResult, true);
+      sample(1, terminalProcessResult, true, terminalDiscoveryClock);
       const remainingMs = MIN_LINUX_CPU_INTERVAL_MS - (performance.now() - lastCpuSampleFinishedMs);
       if (remainingMs > 0) await delay(remainingMs);
     }
-    sample(1, terminalProcessResult?.ok ? terminalProcessResult : null);
+    sample(1, terminalProcessResult?.ok ? terminalProcessResult : null, false, terminalDiscoveryClock);
     if (cpuAccountant && samples.at(-1).collectionStatus === "ok") samples.at(-1).cpuTerminal = true;
     const summary = summarizeResourceSamples(samples);
     if (cpuAccountant && !cpuAccountant.coverageComplete()) {
@@ -79,8 +81,9 @@ export function startResourceSampler(rootPid, options = {}) {
     return summary;
   }
 
-  function sample(attempt = 1, processResultOverride = null, lowerBoundOnly = false) {
+  function sample(attempt = 1, processResultOverride = null, lowerBoundOnly = false, discoveryClockOverride = null) {
     const processLister = options.processLister ?? listProcesses;
+    const discoveryClock = discoveryClockOverride ?? (cpuAccountant ? readLinuxCpuClock() : null);
     const processResult = processResultOverride ?? processLister(options.redactValues ?? []);
     if (!processResult.ok) {
       if (lowerBoundOnly) return;
@@ -170,9 +173,9 @@ export function startResourceSampler(rootPid, options = {}) {
     let cpuClock = null;
     if (cpuAccountant) {
       try {
-        // Process discovery is not part of the counter snapshot. Starting the
-        // clock earlier inflates uncertainty with unrelated `ps` latency.
         cpuClock = readLinuxCpuClock();
+        cpuClock.discoveryTicks = discoveryClock.ticks;
+        cpuClock.discoveryMonotonicMs = discoveryClock.monotonicMs;
         const counters = readLinuxCpuSnapshot(tracked, cpuAccountant.trackedProcessIds());
         cpuClock.finishedMs = performance.now();
         if (!lowerBoundOnly) lastCpuSampleFinishedMs = cpuClock.finishedMs;

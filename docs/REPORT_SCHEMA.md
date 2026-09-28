@@ -1131,14 +1131,16 @@ terminal wait accounting blocks qualification. CPU percentages may exceed 100% w
 processes execute concurrently. The collector does not sum `ps` lifetime CPU
 averages from processes of different ages.
 
-A product process born during collection but first discovered after an earlier
-sample contributes its lifetime counters as an upper bound over the common
-current interval, never as a lifetime-average percentage. Its
-`cpuIntervalComplete: false` sample excludes that work from total and role lower
-bounds. Missing earlier intervals keep `cpuCoverageComplete` false and block
-qualification even if the current upper bound is below the CPU limit; later
-complete samples cannot repair the discovery gap. Existing product processes
-that predate collection still require a historical baseline. A per-process
+A product process born after the prior census begins contributes its complete
+lifetime counters over that census boundary, even when it starts after `ps`
+has taken its snapshot and first appears in the next census. A process that
+predates the prior census contributes its lifetime counters as an upper bound,
+never as a lifetime-average percentage. Its `cpuIntervalComplete: false` sample
+excludes that work from total and role lower bounds. Missing earlier intervals
+keep `cpuCoverageComplete` false and block qualification even if the current
+upper bound is below the CPU limit; later complete samples cannot repair the
+discovery gap. Existing product processes that predate collection still require
+a historical baseline. A per-process
 `cpuHistoryComplete: false` marker preserves discovery gaps if a process gains
 its product role later or transfers its counters to a wait owner, without
 discarding known CPU bounds from later intervals. An external wait owner's own

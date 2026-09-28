@@ -9,6 +9,7 @@ All notable changes to Kova are documented in this file.
 - Raise five OpenClaw release-profile budgets that current OpenClaw main exceeds by design, approved by Peter for 2026.9.7: gateway-performance gateway-tree RSS 1200→1440 MB and gateway CPU 250→310 %, bundled-plugin-startup gateway CPU 250→360 %, fresh-install onboarded-user gateway CPU 300→345 % (shared with fresh), and the embedded agent CLI RSS cap 1000→1150 MB. Causes: startup provider-catalog acquisition (openclaw/openclaw#145190) and SQLite state-worker growth (openclaw/openclaw#152840); follow-up openclaw/openclaw#160501. Evidence: openclaw/openclaw Actions runs 36446664937, 36407939377, 36377446146.
 - Stabilize terminal Linux CPU accounting without hiding proven excess, retain wait-owner counters through settlement, and attribute the settled sample to the final channel workflow. Thanks @RomneyDa. (#144)
 - Treat Linux processes that disappear before their first counter read like other work completed between censuses, while retaining fail-closed coverage for previously tracked processes.
+- Preserve complete Linux CPU coverage when a product process starts after a census begins but first appears in the next process snapshot.
 
 ## 0.2.1 - 2026-09-23
 

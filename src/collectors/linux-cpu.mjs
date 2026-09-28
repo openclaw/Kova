@@ -109,8 +109,10 @@ export function createLinuxCpuAccountant({ accountingRootPid } = {}) {
         // before settlement, but retain the original interval's counter debt.
         previous = new Map(previous);
         for (const [key, process] of observed) {
-          const existingExternalOwner = process.startTicks < Math.floor(previousClock.ticks) - 1 &&
-            process.startTicks < Math.floor(initialClock.ticks) - 1;
+          const previousDiscoveryTicks = previousClock.discoveryTicks ?? previousClock.ticks;
+          const initialDiscoveryTicks = initialClock.discoveryTicks ?? initialClock.ticks;
+          const existingExternalOwner = process.startTicks < Math.floor(previousDiscoveryTicks) - 1 &&
+            process.startTicks < Math.floor(initialDiscoveryTicks) - 1;
           const baseline = previous.get(key) ?? (existingExternalOwner ? process : null);
           previous.set(key, { ...process,
             cpuTicks: baseline?.cpuTicks ?? 0,
@@ -152,6 +154,12 @@ export function createLinuxCpuAccountant({ accountingRootPid } = {}) {
       }
       const outerIntervalTicks = previousClock === undefined ? null :
         ((clock.finishedMs ?? clock.monotonicMs) - previousClock.monotonicMs) * clock.hz / 1000;
+      // A child can start after `ps` begins but before the counter clock. Its
+      // lifetime is complete, while the wider discovery bracket keeps the
+      // lower bound from assigning pre-counter work to the later interval.
+      const discoveryIntervalTicks = previousClock === undefined ? null :
+        ((clock.finishedMs ?? clock.monotonicMs) -
+          (previousClock.discoveryMonotonicMs ?? previousClock.monotonicMs)) * clock.hz / 1000;
       // Once a child is reaped, Linux transfers its complete CPU lifetime to its
       // wait owner. Subtract the part already observed, including nested waits.
       for (const [key, process] of previous) {
@@ -196,8 +204,10 @@ export function createLinuxCpuAccountant({ accountingRootPid } = {}) {
         let reapedProcesses = [];
         let cpuIntervalComplete = true;
         if (intervalTicks !== null) {
-          const newlyObservedExistingOwner = !before && process.startTicks < Math.floor(previousClock.ticks) - 1;
-          const bornDuringSampling = !before && process.startTicks >= Math.floor(initialClock.ticks) - 1;
+          const previousDiscoveryTicks = previousClock.discoveryTicks ?? previousClock.ticks;
+          const initialDiscoveryTicks = initialClock.discoveryTicks ?? initialClock.ticks;
+          const newlyObservedExistingOwner = !before && process.startTicks < Math.floor(previousDiscoveryTicks) - 1;
+          const bornDuringSampling = !before && process.startTicks >= Math.floor(initialDiscoveryTicks) - 1;
           const lateSessionProcess = newlyObservedExistingOwner && bornDuringSampling;
           cpuIntervalComplete = !newlyObservedExistingOwner;
           if (newlyObservedExistingOwner && process.roles.length && !bornDuringSampling) {
@@ -235,7 +245,7 @@ export function createLinuxCpuAccountant({ accountingRootPid } = {}) {
           const ownUpperTicks = process.pid === accountingRootPid ? 0 : ownTicks + 2;
           const ownLowerTicks = process.pid === accountingRootPid || !cpuIntervalComplete ? 0 :
             Math.max(0, ownTicks - (before ? 2 : 0));
-          ownCpuPercentLower = ownLowerTicks / outerIntervalTicks * 100;
+          ownCpuPercentLower = ownLowerTicks / (before ? outerIntervalTicks : discoveryIntervalTicks) * 100;
           ownCpuPercentUpper = ownUpperTicks / intervalTicks * 100;
           reapedCpuPercentUpper = (newlyReapedTicks + 2) / intervalTicks * 100;
         }
