@@ -4,7 +4,10 @@ All notable changes to Kova are documented in this file.
 
 ## Unreleased
 
-- Refresh compatible CLI/website dependencies, checksum-pinned OCM validation to 0.2.48, and the pnpm hydration tool to 12.8.1 while retaining the Node.js 22 CLI floor.
+## 0.2.2 - 2026-09-30
+
+**Highlights:** Bounded resource probes, resilient Gateway RPC handling, and more accurate Linux CPU evidence.
+
 - Bound process census, gateway lookup, and Linux clock probes even when they ignore SIGTERM, preventing resource sampling from hanging command deadlines. Thanks @SebTardif. (#153)
 - Reject pending Gateway RPCs on malformed frames without crashing support processes, and allow subsequent valid requests to complete. Thanks @SebTardif. (#152)
 - Preserve terminal CPU discovery uncertainty and lifetime upper bounds, including wait-owner transfers, without inventing proven threshold breaches. Thanks @SebTardif. (#151)
@@ -15,6 +18,8 @@ All notable changes to Kova are documented in this file.
 - Stabilize terminal Linux CPU accounting without hiding proven excess, retain wait-owner counters through settlement, and attribute the settled sample to the final channel workflow. Thanks @RomneyDa. (#144)
 - Treat Linux processes that disappear before their first counter read like other work completed between censuses, while retaining fail-closed coverage for previously tracked processes.
 - Preserve complete Linux CPU coverage when a product process starts after a census begins but first appears in the next process snapshot.
+- Update the website image-processing dependency Sharp to 0.35.5.
+- Refresh compatible CLI/website dependencies, checksum-pinned OCM validation to 0.2.48, and the pnpm hydration tool to 12.8.1 while retaining the Node.js 22 CLI floor.
 
 ## 0.2.1 - 2026-09-23
 
