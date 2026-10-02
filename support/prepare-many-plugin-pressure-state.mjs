@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-const expectedCount = parseExpectedCount(process.argv.slice(2));
+const { expectedCount, inspectIndex } = parseArgs(process.argv.slice(2));
 const stateDir = process.env.OPENCLAW_STATE_DIR?.trim();
 
 if (!stateDir) {
@@ -11,8 +11,14 @@ if (!stateDir) {
 }
 
 const pluginRoot = join(stateDir, "fixture-plugins");
-const legacyIndexPath = join(stateDir, "plugins", "installs.json");
-const installRecords = {};
+if (inspectIndex !== undefined) {
+  const pluginId = `kova-plugin-${inspectIndex}`;
+  const pluginDir = join(pluginRoot, pluginId);
+  const manifest = JSON.parse(readFileSync(join(pluginDir, "openclaw.plugin.json"), "utf8"));
+  if (manifest.id !== pluginId) throw new Error(`fixture plugin id does not match ${pluginId}`);
+  console.log(JSON.stringify({ pluginId, pluginDir }));
+  process.exit(0);
+}
 
 rmSync(pluginRoot, { recursive: true, force: true });
 mkdirSync(pluginRoot, { recursive: true });
@@ -53,23 +59,13 @@ for (let index = 0; index < expectedCount; index += 1) {
     join(pluginDir, "index.js"),
     `export default { id: ${JSON.stringify(id)}, register() {} };\n`
   );
-  installRecords[id] = {
-    source: "path",
-    sourcePath: pluginDir,
-    installPath: pluginDir,
-    version: "0.0.0"
-  };
 }
-
-mkdirSync(join(stateDir, "plugins"), { recursive: true });
-writeFileSync(legacyIndexPath, JSON.stringify({ installRecords }, null, 2));
 
 console.log(
   JSON.stringify(
     {
       schemaVersion: "kova.manyPluginPressure.prepare.v1",
       expectedCount,
-      legacyIndexPath,
       pluginRoot
     },
     null,
@@ -77,12 +73,18 @@ console.log(
   )
 );
 
-function parseExpectedCount(args) {
+function parseArgs(args) {
   let count = 80;
+  let inspectIndex;
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === "--expected-count") {
       count = Number.parseInt(args[index + 1], 10);
+      index += 1;
+      continue;
+    }
+    if (arg === "--inspect-index") {
+      inspectIndex = Number(args[index + 1]);
       index += 1;
       continue;
     }
@@ -91,5 +93,8 @@ function parseExpectedCount(args) {
   if (!Number.isInteger(count) || count <= 0 || count > 500) {
     throw new Error("--expected-count must be an integer between 1 and 500");
   }
-  return count;
+  if (inspectIndex !== undefined && (!Number.isInteger(inspectIndex) || inspectIndex < 0 || inspectIndex >= count)) {
+    throw new Error("--inspect-index must identify a prepared plugin");
+  }
+  return { expectedCount: count, inspectIndex };
 }
