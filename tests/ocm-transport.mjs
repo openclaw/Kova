@@ -410,6 +410,13 @@ async function verifyScenarioLifecycle({ home, env, transport, ocmLog }) {
         scenarioId === "agent-cold-warm-message" ? profile.entries.find((entry) => entry.scenario === scenarioId).state : "fresh";
       if (scenarioId === "agent-cold-warm-message") assert.equal(stateId, "mock-openai-provider");
       const state = JSON.parse(await readFile(join(repoRoot, "states", `${stateId}.json`), "utf8"));
+      if (stateId === "many-bundled-plugins") {
+        // The fixture self-check owns all 83 commands and their 80 indices.
+        // Lifecycle coverage needs preparation, first/last installs, and verification.
+        for (const step of state.setup) {
+          step.commands = [...step.commands.slice(0, 3), ...step.commands.slice(-2)];
+        }
+      }
       const context = {
         target: "runtime:fixture", targetPlan: resolveTarget("runtime:fixture", "target"),
         state, runId: `transport-${scenarioId}-${mode}`, timeoutMs: 15000,

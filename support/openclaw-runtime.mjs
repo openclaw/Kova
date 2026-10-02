@@ -148,7 +148,7 @@ export async function waitForGatewayMethodOk(client, method, {
   throw lastError ?? new Error(timeoutMessage);
 }
 
-class DirectGatewayRpcClient {
+export class DirectGatewayRpcClient {
   constructor({ url, token }) {
     this.url = url;
     this.token = token;
@@ -194,7 +194,9 @@ class DirectGatewayRpcClient {
                   this.connected = true;
                   cleanup();
                   ws.addEventListener("message", (messageEvent) => {
-                    void this.handleMessage(messageEvent);
+                    void this.handleMessage(messageEvent).catch((error) => {
+                      this.rejectPending(error instanceof Error ? error : new Error(String(error)));
+                    });
                   });
                   ws.addEventListener("close", () => {
                     this.rejectPending(new Error("gateway direct RPC closed"));

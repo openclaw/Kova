@@ -6,12 +6,22 @@ All notable changes to Kova are documented in this file.
 
 - Prepare the 80-plugin pressure state through OpenClaw's supported installer instead of the retired JSON install index, preserving canonical registry and startup checks.
 
+## 0.2.2 - 2026-09-30
+
+**Highlights:** Bounded resource probes, resilient Gateway RPC handling, and more accurate Linux CPU evidence.
+
+- Bound process census, gateway lookup, and Linux clock probes even when they ignore SIGTERM, preventing resource sampling from hanging command deadlines. Thanks @SebTardif. (#153)
+- Reject pending Gateway RPCs on malformed frames without crashing support processes, and allow subsequent valid requests to complete. Thanks @SebTardif. (#152)
+- Preserve terminal CPU discovery uncertainty and lifetime upper bounds, including wait-owner transfers, without inventing proven threshold breaches. Thanks @SebTardif. (#151)
+- Reap Telegram conformance shims when startup fails, including stalled health responses, and close their log descriptors. Thanks @SebTardif. (#150)
 - Raise the gateway-performance gateway CPU cap from 310 % to 340 % and the gateway-tree CPU cap from 325 % to 360 % for OpenClaw 2026.9.7, approved by Peter. CPU peaks in this lane are noisy: strict release runs on OpenClaw main measured gateway-tree intervals of 272-300.3 % (openclaw/openclaw Actions run 36455844495) and 308.8-330.1 % (run 36459454760), and gateway intervals up to 308.8-314.1 %, a run-to-run spread of about 30 points. Cause: startup provider-catalog acquisition (openclaw/openclaw#145190); follow-up openclaw/openclaw#160501.
 - Raise the gateway-performance gateway-tree CPU cap from 300 % to 325 % for OpenClaw 2026.9.7, approved by Peter: the strict release gate on OpenClaw main measured a 272-300.3 % interval at the old cap (openclaw/openclaw Actions run 36455844495; earlier 281.5-300.2 % in run 36377446146), from the same startup provider-catalog acquisition (openclaw/openclaw#145190).
 - Raise five OpenClaw release-profile budgets that current OpenClaw main exceeds by design, approved by Peter for 2026.9.7: gateway-performance gateway-tree RSS 1200→1440 MB and gateway CPU 250→310 %, bundled-plugin-startup gateway CPU 250→360 %, fresh-install onboarded-user gateway CPU 300→345 % (shared with fresh), and the embedded agent CLI RSS cap 1000→1150 MB. Causes: startup provider-catalog acquisition (openclaw/openclaw#145190) and SQLite state-worker growth (openclaw/openclaw#152840); follow-up openclaw/openclaw#160501. Evidence: openclaw/openclaw Actions runs 36446664937, 36407939377, 36377446146.
 - Stabilize terminal Linux CPU accounting without hiding proven excess, retain wait-owner counters through settlement, and attribute the settled sample to the final channel workflow. Thanks @RomneyDa. (#144)
 - Treat Linux processes that disappear before their first counter read like other work completed between censuses, while retaining fail-closed coverage for previously tracked processes.
 - Preserve complete Linux CPU coverage when a product process starts after a census begins but first appears in the next process snapshot.
+- Update the website image-processing dependency Sharp to 0.35.5.
+- Refresh compatible CLI/website dependencies, checksum-pinned OCM validation to 0.2.48, and the pnpm hydration tool to 12.8.1 while retaining the Node.js 22 CLI floor.
 
 ## 0.2.1 - 2026-09-23
 

@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 let ticksPerSecond;
 function clockTicksPerSecond() {
   if (ticksPerSecond === undefined) {
-    const result = spawnSync("getconf", ["CLK_TCK"], { encoding: "utf8", timeout: 2000 });
+    const result = spawnSync("getconf", ["CLK_TCK"], { encoding: "utf8", timeout: 2000, killSignal: "SIGKILL" });
     ticksPerSecond = result.status === 0 ? Number(result.stdout.trim()) : NaN;
   }
   if (!Number.isSafeInteger(ticksPerSecond) || ticksPerSecond <= 0) {
@@ -117,6 +117,9 @@ export function createLinuxCpuAccountant({ accountingRootPid } = {}) {
           previous.set(key, { ...process,
             cpuTicks: baseline?.cpuTicks ?? 0,
             childCpuTicks: baseline?.childCpuTicks ?? 0,
+            // Retained identity is not a counter baseline: settlement still
+            // spans the prior census and must preserve discovery uncertainty.
+            cpuBaselineMissing: baseline?.cpuBaselineMissing ?? !baseline,
             ...(!baseline || baseline.observedCpuTicks !== undefined
               ? { observedCpuTicks: Math.max(process.cpuTicks + process.childCpuTicks, baseline?.observedCpuTicks ?? 0) }
               : {}) });
@@ -206,8 +209,9 @@ export function createLinuxCpuAccountant({ accountingRootPid } = {}) {
         if (intervalTicks !== null) {
           const previousDiscoveryTicks = previousClock.discoveryTicks ?? previousClock.ticks;
           const initialDiscoveryTicks = initialClock.discoveryTicks ?? initialClock.ticks;
-          const newlyObservedExistingOwner = !before && process.startTicks < Math.floor(previousDiscoveryTicks) - 1;
-          const bornDuringSampling = !before && process.startTicks >= Math.floor(initialDiscoveryTicks) - 1;
+          const hasBaseline = before && !before.cpuBaselineMissing;
+          const newlyObservedExistingOwner = !hasBaseline && process.startTicks < Math.floor(previousDiscoveryTicks) - 1;
+          const bornDuringSampling = !hasBaseline && process.startTicks >= Math.floor(initialDiscoveryTicks) - 1;
           const lateSessionProcess = newlyObservedExistingOwner && bornDuringSampling;
           cpuIntervalComplete = !newlyObservedExistingOwner;
           if (newlyObservedExistingOwner && process.roles.length && !bornDuringSampling) {
@@ -226,7 +230,12 @@ export function createLinuxCpuAccountant({ accountingRootPid } = {}) {
           // Other owners may reap unrelated work, and specific product roles
           // remain ambiguous. Bound both the wait delta and subtracted debt.
           if (process.pid === accountingRootPid && cpuIntervalComplete && process.roles.includes("command-tree")) {
-            reapedCpuPercentLower = Math.max(0, newlyReapedTicks - 2 - 4 * debt.processes.length) / outerIntervalTicks * 100;
+            const unknownHistoryTicks = debt.processes.reduce((total, child) => total +
+              (child.cpuHistoryComplete === false
+                ? Math.max(0, (child.observedCpuTicks ?? 0) - child.cpuTicks - child.childCpuTicks) : 0), 0);
+            const lowerIntervalTicks = debt.processes.some((child) => child.cpuBaselineMissing)
+              ? discoveryIntervalTicks : outerIntervalTicks;
+            reapedCpuPercentLower = Math.max(0, newlyReapedTicks - unknownHistoryTicks - 2 - 4 * debt.processes.length) / lowerIntervalTicks * 100;
             reapedLowerBoundRoles = ["command-tree"];
           }
           reapedRoles = [...new Set([...(process.roles ?? []), ...debt.processes.flatMap((entry) => entry.roles ?? [])])];
@@ -244,8 +253,8 @@ export function createLinuxCpuAccountant({ accountingRootPid } = {}) {
           // Reaped debt is a floored lifetime, so subtracting it remains an upper bound.
           const ownUpperTicks = process.pid === accountingRootPid ? 0 : ownTicks + 2;
           const ownLowerTicks = process.pid === accountingRootPid || !cpuIntervalComplete ? 0 :
-            Math.max(0, ownTicks - (before ? 2 : 0));
-          ownCpuPercentLower = ownLowerTicks / (before ? outerIntervalTicks : discoveryIntervalTicks) * 100;
+            Math.max(0, ownTicks - (hasBaseline ? 2 : 0));
+          ownCpuPercentLower = ownLowerTicks / (hasBaseline ? outerIntervalTicks : discoveryIntervalTicks) * 100;
           ownCpuPercentUpper = ownUpperTicks / intervalTicks * 100;
           reapedCpuPercentUpper = (newlyReapedTicks + 2) / intervalTicks * 100;
         }

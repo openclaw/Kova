@@ -1156,7 +1156,11 @@ does not erase its ownership. The final channel workflow can include this record
 its ordinary sample window when the command finish time identifies its owner;
 earlier workflows and records without that finish time keep their usual windows.
 Terminal discoveries retain their roles, observed wait debt, and coverage gaps
-even when they exit before settlement. The dedicated command wait owner also
+even when they exit before settlement. A retained terminal identity does not
+create a counter baseline: settlement keeps the original census interval and
+lifetime CPU upper bound. Late discovery cannot promote unknown historical CPU
+into a proven lower bound, and births within the census window retain its wider
+discovery bracket. The dedicated command wait owner also
 retains a conservative reaped-CPU lower bound for total and `command-tree` CPU;
 it does not assign that proven work to ambiguous individual product roles.
 

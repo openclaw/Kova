@@ -336,6 +336,77 @@ test("terminal settlement resolves a finite burst below the CPU gate", () => {
   assert.deepEqual(violations, []);
 });
 
+test("terminal discovery preserves lifetime upper bounds without inventing a late child's lower bound", () => {
+  const accountant = createLinuxCpuAccountant();
+  const owner = processRow(1, 0, 0);
+  accountant.sample([owner], clock(1));
+  accountant.sample([owner], clock(2));
+  const child = { ...processRow(2, 1, 500, 0, 150), roles: ["gateway"] };
+  const immediate = accountant.lowerBoundSample([owner, child], clock(2.2));
+  const settled = accountant.sample([owner, child], clock(2.5));
+  assert.equal(settled[1].ownCpuPercent, 1000, "retain all historical CPU as an upper bound");
+  assert.equal(settled[1].ownCpuPercentLower, 0, "unknown history cannot prove a breach");
+  assert.equal(settled[1].cpuIntervalComplete, false);
+  assert.equal(accountant.coverageComplete(), false);
+  const summary = summarizeResourceSamples([immediate, settled].map((processes) => ({
+    collectionStatus: "ok", cpuMeasurementContract: "linux-process-interval-v1", processes
+  })));
+  const role = summary.byRole.gateway;
+  const violations = [];
+  checkCpuThreshold(violations, { kind: "resource", metric: "cpu", label: "CPU",
+    value: role.maxCpuPercent, lower: role.maxCpuPercentLower, threshold: 200 });
+  assert.equal(violations[0]?.kind, "evidence");
+  const next = accountant.sample([owner, { ...child, cpuTicks: 650 }], clock(3));
+  assert.ok(next[1].ownCpuPercentLower > 200, "later observed CPU still proves real excess");
+});
+
+test("reaping a terminal late discovery cannot turn historical CPU into a proven command-tree breach", () => {
+  const accountant = createLinuxCpuAccountant({ accountingRootPid: 1 });
+  const owner = { ...processRow(1, 0, 0), roles: ["command-tree"] };
+  accountant.sample([owner], clock(1));
+  accountant.sample([owner], clock(2));
+  const child = { ...processRow(2, 1, 500, 0, 150), roles: ["gateway"] };
+  accountant.lowerBoundSample([owner, child], clock(2.2));
+  const settled = accountant.sample([{ ...owner, childCpuTicks: 500 }], clock(2.5));
+  assert.equal(settled[0].reapedCpuPercentLower, 0);
+  assert.equal(settled[0].reapedCpuPercent, 1000);
+  assert.equal(accountant.coverageComplete(), false);
+});
+
+test("reaped terminal discoveries retain the wider census-start bracket", () => {
+  const accountant = createLinuxCpuAccountant({ accountingRootPid: 1 });
+  const owner = { ...processRow(1, 0, 0), roles: ["command-tree"] };
+  accountant.sample([owner], clock(1.2, 1));
+  const child = { ...processRow(2, 1, 50, 0, 110), roles: ["gateway"] };
+  accountant.lowerBoundSample([owner, child], clock(1.3));
+  const settled = accountant.sample([{ ...owner, childCpuTicks: 50 }], clock(1.5));
+  assert.equal(settled[0].reapedCpuPercentLower, 88);
+  assert.equal(accountant.coverageComplete(), true);
+});
+
+test("terminal discovery retains a newborn child's CPU over the unchanged census interval", () => {
+  const accountant = createLinuxCpuAccountant();
+  const owner = processRow(1, 0, 0);
+  accountant.sample([owner], clock(1));
+  const child = { ...processRow(2, 1, 50, 0, 110), roles: ["gateway"] };
+  accountant.lowerBoundSample([owner, child], clock(1.2));
+  const settled = accountant.sample([owner, child], clock(1.5));
+  assert.equal(settled[1].ownCpuPercent, 100);
+  assert.equal(settled[1].ownCpuPercentLower, 100);
+  assert.equal(accountant.coverageComplete(), true);
+});
+
+test("terminal discoveries retain the wider census-start bracket for CPU lower bounds", () => {
+  const accountant = createLinuxCpuAccountant();
+  const owner = processRow(1, 0, 0);
+  accountant.sample([owner], clock(1.2, 1));
+  const child = { ...processRow(2, 1, 50, 0, 110), roles: ["gateway"] };
+  accountant.lowerBoundSample([owner, child], clock(1.3));
+  const settled = accountant.sample([owner, child], clock(1.5));
+  assert.equal(settled[1].ownCpuPercentLower, 100);
+  assert.equal(accountant.coverageComplete(), true);
+});
+
 test("terminal discovery retains a new child's role after reaping", () => {
   const accountant = createLinuxCpuAccountant();
   const owner = processRow(1, 0, 100);

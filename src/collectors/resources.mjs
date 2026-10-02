@@ -643,7 +643,8 @@ function listProcesses(redactValues = []) {
   const result = spawnSync("ps", ["-axo", "pid=,ppid=,rss=,%cpu=,command="], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "ignore"],
-    timeout: 2000
+    timeout: 2000,
+    killSignal: "SIGKILL"
   });
   if (result.status !== 0) {
     return {
@@ -739,7 +740,8 @@ function lookupGatewayPid(envName, commandEnv) {
     encoding: "utf8",
     env: invocation.env,
     stdio: ["ignore", "pipe", "ignore"],
-    timeout: 5000
+    timeout: 5000,
+    killSignal: "SIGKILL"
   });
   if (result.status !== 0) {
     return null;

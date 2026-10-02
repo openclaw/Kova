@@ -17,27 +17,41 @@ export async function startTelegramPlatform({ repoRoot, artifactDir, timeoutMs }
     stdio: ["ignore", stdoutFd, stderrFd],
     env: process.env
   });
+  const closed = new Promise((resolve) => child.once("close", resolve));
+  child.on("error", () => {});
   const portPath = join(platformDir, "port");
-  const port = await waitForPortFile(portPath, timeoutMs);
-  const apiRoot = `http://127.0.0.1:${port}`;
-  await waitForHttpOk(`${apiRoot}/health`, timeoutMs);
-  return {
-    channelId: "telegram",
-    artifactDir: platformDir,
-    apiRoot,
-    token: TELEGRAM_TOKEN,
-    port,
-    portPath,
-    callsPath: join(platformDir, "calls.jsonl"),
-    process: child,
-    stdoutFd,
-    stderrFd,
-    repoRoot: null,
-    envName: null,
-    timeoutMs,
-    currentInbound: null,
-    driver: null
-  };
+  try {
+    const port = await waitForPortFile(portPath, timeoutMs);
+    const apiRoot = `http://127.0.0.1:${port}`;
+    await waitForHttpOk(`${apiRoot}/health`, timeoutMs);
+    return {
+      channelId: "telegram",
+      artifactDir: platformDir,
+      apiRoot,
+      token: TELEGRAM_TOKEN,
+      port,
+      portPath,
+      callsPath: join(platformDir, "calls.jsonl"),
+      process: child,
+      stdoutFd,
+      stderrFd,
+      repoRoot: null,
+      envName: null,
+      timeoutMs,
+      currentInbound: null,
+      driver: null
+    };
+  } catch (error) {
+    try {
+      child.kill("SIGKILL");
+    } catch {
+      // The shim already exited.
+    }
+    await closed;
+    closeFd(stdoutFd);
+    closeFd(stderrFd);
+    throw error;
+  }
 }
 
 export async function stopTelegramPlatform({ platform }) {
@@ -104,7 +118,9 @@ async function waitForHttpOk(url, waitMs) {
   const deadline = Date.now() + waitMs;
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(Math.max(1, deadline - Date.now()))
+      });
       if (response.ok) {
         return;
       }

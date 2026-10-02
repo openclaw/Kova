@@ -1,6 +1,6 @@
 {
   "name": "@shakkernerd/kova",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "description": "OpenClaw runtime validation lab",
   "type": "module",
@@ -35,7 +35,7 @@
     "cli-truncate": "^6.1.1",
     "json5": "2.2.3",
     "mock-ai-provider": "0.1.2",
-    "string-width": "^8.2.2",
+    "string-width": "^8.3.0",
     "tar-stream": "3.2.1",
     "unicode-case-folding": "1.1.1",
     "wrap-ansi": "^10.0.2",
