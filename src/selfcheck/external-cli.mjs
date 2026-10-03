@@ -364,7 +364,18 @@ export async function mockAuthOpenClawConfigCheck(tmp) {
       configContract: "canonical",
       home: join(tmp, "mock-auth-config-provider-alias"),
       providerId: "x-ai"
-    }
+    },
+    ...[
+      { id: "restricted", policy: { allow: ["anthropic/*"] } },
+      { id: "unrestricted", policy: { allow: [] } },
+      { id: "empty-policy", policy: {} },
+      { id: "migrated", migrated: true }
+    ].map((fixture) => ({
+      ...fixture,
+      configContract: "canonical",
+      home: join(tmp, `mock-auth-config-${fixture.id}`),
+      providerId: "openai"
+    }))
   ];
   const commands = [];
   let durationMs = 0;
@@ -376,6 +387,18 @@ export async function mockAuthOpenClawConfigCheck(tmp) {
         await writeFile(
           join(stateDir, "openclaw.json"),
           `${JSON.stringify({
+            agents: {
+              ownership: "explicit",
+              entries: { worker: { workspace: "/tmp/kova-worker" }, reviewer: {} },
+              defaults: {
+                systemAgent: { agentId: "worker" },
+                models: {
+                  " ": { alias: "blank" },
+                  "anthropic/claude-sonnet-4-6": { alias: "review" },
+                  "x-ai/gpt-5.5": { alias: "mock", params: { temperature: 0.2 } }
+                }
+              }
+            },
             models: {
               providers: {
                 openai: {
@@ -393,6 +416,16 @@ export async function mockAuthOpenClawConfigCheck(tmp) {
           }, null, 2)}\n`,
           "utf8"
         );
+      } else if (contract.policy || contract.migrated) {
+        const stateDir = join(contract.home, ".openclaw");
+        await mkdir(stateDir, { recursive: true });
+        await writeFile(join(stateDir, "openclaw.json"), JSON.stringify({
+          ...(contract.migrated ? { meta: { migrations: { modelPolicyAllowlist: true } } } : {}),
+          agents: { defaults: {
+            models: { "anthropic/claude-sonnet-4-6": { alias: "review" } },
+            ...(contract.policy ? { modelPolicy: contract.policy } : {})
+          } }
+        }));
       }
       const command = [
         `KOVA_OPENCLAW_CONFIG_CONTRACT=${contract.configContract}`,
@@ -422,6 +455,11 @@ export async function mockAuthOpenClawConfigCheck(tmp) {
       if (contract.providerId === "x-ai") {
         assertEqual(provider?.request?.aliasOnly, true, "provider alias request settings");
         assertEqual(provider?.request?.openaiOnly, undefined, "provider alias excludes OpenAI request settings");
+        assertEqual(config.agents?.ownership, "explicit", "auth setup preserves roster ownership");
+        assertEqual(config.agents?.entries?.worker?.workspace, "/tmp/kova-worker", "auth setup preserves agent entries");
+        assertEqual(config.agents?.defaults?.systemAgent?.agentId, "worker", "auth setup preserves system agent ownership");
+        assertEqual(config.agents?.defaults?.models?.["x-ai/gpt-5.5"]?.alias, "mock", "auth setup preserves mock model metadata");
+        assertEqual(config.agents?.defaults?.models?.["x-ai/gpt-5.5"]?.params?.temperature, 0.2, "auth setup preserves mock model parameters");
       }
       if (contract.id === "legacy-list") {
         assertEqual(Array.isArray(config.agents?.list), true, "legacy mock config agent list");
@@ -432,9 +470,19 @@ export async function mockAuthOpenClawConfigCheck(tmp) {
           `${contract.id} mock image model`
         );
         assertEqual(config.agents?.defaults?.mediaModels, undefined, "legacy mock config omits media models");
+        assertEqual(config.agents?.defaults?.modelPolicy, undefined, "legacy mock config retains legacy model policy");
       } else {
-        assertEqual(config.agents?.entries?.main?.default, true, "canonical mock config agent entry");
+        assertEqual(JSON.stringify(config.agents?.entries?.main), contract.providerId === "x-ai" ? undefined : "{}", "canonical mock config preserves roster without a retired default marker");
         assertEqual(config.agents?.list, undefined, "canonical mock config omits agent list");
+        const expectedPolicy = contract.policy ?? {
+          allow: contract.migrated ? [] : contract.providerId === "x-ai"
+            ? ["anthropic/claude-sonnet-4-6", "x-ai/gpt-5.5"]
+            : ["openai/gpt-5.5"]
+        };
+        assertEqual(JSON.stringify(config.agents?.defaults?.modelPolicy), JSON.stringify(expectedPolicy), `${contract.id} preserves model override policy`);
+        if (contract.providerId === "x-ai" || contract.policy || contract.migrated) {
+          assertEqual(config.agents?.defaults?.models?.["anthropic/claude-sonnet-4-6"]?.alias, "review", `${contract.id} preserves sibling model metadata`);
+        }
         assertEqual(
           config.agents?.defaults?.mediaModels?.image?.primary,
           `${contract.providerId}/gpt-image-1`,

@@ -130,6 +130,7 @@ const commonAgentDefaults = {
   models: {
     ...asObject(existingAgentDefaults.models),
     [modelRef]: {
+      ...asObject(asObject(existingAgentDefaults.models)[modelRef]),
       params: {
         ...asObject(asObject(existingAgentDefaults.models)[modelRef]?.params),
         transport: "sse",
@@ -167,9 +168,14 @@ if (configContract === "legacy-list") {
   delete canonicalDefaults.videoGenerationModel;
   config.agents = {
     ...canonicalAgents,
-    entries: Object.keys(agentEntries).length > 0 ? agentEntries : { main: { default: true } },
+    entries: Object.keys(agentEntries).length > 0 ? agentEntries : { main: {} },
     defaults: {
       ...canonicalDefaults,
+      modelPolicy: canonicalDefaults.modelPolicy ?? {
+        allow: config.meta?.migrations?.modelPolicyAllowlist === true
+          ? []
+          : Object.keys(canonicalDefaults.models).filter((ref) => ref.trim().length > 0)
+      },
       mediaModels: {
         ...asObject(existingAgentDefaults.mediaModels),
         image: {
