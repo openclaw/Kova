@@ -4,7 +4,7 @@ All notable changes to Kova are documented in this file.
 
 ## Unreleased
 
-- Generate canonical mock-auth agent and model-policy config for current OpenClaw while preserving existing model settings, override restrictions, and agent ownership.
+- Generate fresh mock-auth configs that pass current OpenClaw admission while preserving existing model settings, legacy restrictions, explicit policies, and agent ownership.
 - Prepare the 80-plugin pressure state through OpenClaw's supported installer instead of the retired JSON install index, preserving canonical registry and startup checks.
 
 ## 0.2.2 - 2026-09-30

@@ -360,6 +360,13 @@ export async function mockAuthOpenClawConfigCheck(tmp) {
       providerId: "openai"
     },
     {
+      id: "legacy-model-map",
+      configContract: "canonical",
+      home: join(tmp, "mock-auth-config-legacy-model-map"),
+      providerId: "openai",
+      legacyModels: { "gpt-4o": {}, "anthropic/claude-sonnet-4-6": { alias: "review" } }
+    },
+    {
       id: "canonical-provider-alias",
       configContract: "canonical",
       home: join(tmp, "mock-auth-config-provider-alias"),
@@ -416,13 +423,13 @@ export async function mockAuthOpenClawConfigCheck(tmp) {
           }, null, 2)}\n`,
           "utf8"
         );
-      } else if (contract.policy || contract.migrated) {
+      } else if (contract.policy || contract.migrated || contract.legacyModels) {
         const stateDir = join(contract.home, ".openclaw");
         await mkdir(stateDir, { recursive: true });
         await writeFile(join(stateDir, "openclaw.json"), JSON.stringify({
           ...(contract.migrated ? { meta: { migrations: { modelPolicyAllowlist: true } } } : {}),
           agents: { defaults: {
-            models: { "anthropic/claude-sonnet-4-6": { alias: "review" } },
+            models: contract.legacyModels ?? { "anthropic/claude-sonnet-4-6": { alias: "review" } },
             ...(contract.policy ? { modelPolicy: contract.policy } : {})
           } }
         }));
@@ -474,13 +481,21 @@ export async function mockAuthOpenClawConfigCheck(tmp) {
       } else {
         assertEqual(JSON.stringify(config.agents?.entries?.main), contract.providerId === "x-ai" ? undefined : "{}", "canonical mock config preserves roster without a retired default marker");
         assertEqual(config.agents?.list, undefined, "canonical mock config omits agent list");
-        const expectedPolicy = contract.policy ?? {
-          allow: contract.migrated ? [] : contract.providerId === "x-ai"
-            ? ["anthropic/claude-sonnet-4-6", "x-ai/gpt-5.5"]
-            : ["openai/gpt-5.5"]
-        };
+        const expectedPolicy = contract.policy ?? (
+          contract.providerId === "x-ai" || contract.legacyModels
+            ? undefined
+            : { allow: contract.migrated ? [] : ["openai/gpt-5.5"] }
+        );
         assertEqual(JSON.stringify(config.agents?.defaults?.modelPolicy), JSON.stringify(expectedPolicy), `${contract.id} preserves model override policy`);
-        if (contract.providerId === "x-ai" || contract.policy || contract.migrated) {
+        if (contract.legacyModels) {
+          assertEqual(JSON.stringify(config.agents?.defaults?.models?.["gpt-4o"]), "{}", "deferred legacy policy preserves bare model keys");
+          assertEqual(config.agents?.defaults?.models?.["openai/gpt-5.5"]?.params?.transport, "sse", "deferred legacy policy retains the configured mock model");
+          assertEqual(config.meta?.migrations?.modelPolicyAllowlist, undefined, "deferred legacy policy remains unmarked");
+        }
+        if (contract.migrated) {
+          assertEqual(config.meta?.migrations?.modelPolicyAllowlist, true, "auth setup preserves completed policy migration");
+        }
+        if (contract.providerId === "x-ai" || contract.policy || contract.migrated || contract.legacyModels) {
           assertEqual(config.agents?.defaults?.models?.["anthropic/claude-sonnet-4-6"]?.alias, "review", `${contract.id} preserves sibling model metadata`);
         }
         assertEqual(

@@ -166,16 +166,18 @@ if (configContract === "legacy-list") {
   delete canonicalAgents.list;
   delete canonicalDefaults.imageGenerationModel;
   delete canonicalDefaults.videoGenerationModel;
+  const migratedModelPolicy = config.meta?.migrations?.modelPolicyAllowlist === true;
+  const hasLegacyModelMap = Object.keys(asObject(existingAgentDefaults.models))
+    .some((ref) => ref.trim().length > 0);
+  // OpenClaw owns migration of existing maps, including catalog-dependent bare refs.
+  if (canonicalDefaults.modelPolicy === undefined && (migratedModelPolicy || !hasLegacyModelMap)) {
+    canonicalDefaults.modelPolicy = { allow: migratedModelPolicy ? [] : [modelRef] };
+  }
   config.agents = {
     ...canonicalAgents,
     entries: Object.keys(agentEntries).length > 0 ? agentEntries : { main: {} },
     defaults: {
       ...canonicalDefaults,
-      modelPolicy: canonicalDefaults.modelPolicy ?? {
-        allow: config.meta?.migrations?.modelPolicyAllowlist === true
-          ? []
-          : Object.keys(canonicalDefaults.models).filter((ref) => ref.trim().length > 0)
-      },
       mediaModels: {
         ...asObject(existingAgentDefaults.mediaModels),
         image: {
