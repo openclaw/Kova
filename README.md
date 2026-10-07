@@ -166,6 +166,10 @@ npm test --prefix web
 npm run build --prefix web
 ```
 
+The website matrix compares stable releases only. An empty or beta-only catalog
+shows "No stable releases yet." with zero releases and scenarios. The website
+tests exercise those catalogs through Astro as well as the populated matrix.
+
 Install `expect` locally to include setup's hidden-input and cancellation PTY
 checks in `self-check`; CI installs this prerequisite automatically.
 
