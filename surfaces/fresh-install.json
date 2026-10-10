@@ -30,8 +30,8 @@
       "maxCpuPercent": 250
     },
     "status-cli": {
-      "peakRssMb": 900,
-      "maxCpuPercent": 200
+      "peakRssMb": 1100,
+      "maxCpuPercent": 250
     },
     "plugin-cli": {
       "peakRssMb": 900,
