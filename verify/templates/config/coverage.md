@@ -1,11 +1,12 @@
 # Coverage: config
 
 Operations: 32/32
-Conditions: 370/459 (301 ambient, 158 event)
+Conditions: 363/459 (301 ambient, 158 event)
 Entry points: 266/291 (25 excluded)
 Breaks mapped: 3/3
 
 Uncovered:
+- condition 17 Invalid external edit: hot reload skips it without rewriting openclaw.json and the runtime keeps the last accepted config: invalid revisions are observed in a bounded window, without a watcher-completion receipt
 - condition 21 Config without meta: recorded as a write anomaly (missing-meta-vs-last-good): ambient, but no persona trait provides it and no setup phase starts it
 - condition 28 Active work in flight: channel and plugin reloads defer (channels.status statusIssues, channels.start diagnostic): a held model turn does not establish admitted work in the particular plugin being reloaded; that plugin workload remains unstaged
 - condition 29 Policy-only channel write covered by a dynamic-read contract (allowlists, DM and group policy) publishes without a channel restart or drain: event-reload-dynpolicy records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
@@ -19,6 +20,8 @@ Uncovered:
 - condition 42 Busy state store refuses the reload lifecycle lease: change stays pending with capped backoff retries; shutdown cancels them: Busy state store refuses the reload lifecycle lease: no catalogue command holds the state-store lifecycle lease a reload needs
 - condition 43 Automatic plugin reload cannot drain the plugin's admitted work: last-good runtime kept, replacement retried when the work finishes: a held model turn does not establish admitted work in the particular plugin being reloaded; that plugin workload remains unstaged
 - condition 45 Gateway restart applies the saved config in full through startup validation; same-store restarts keep queued notification handoff: the saved sequence does not stage an unapplied revision or queued notification handoff
+- condition 49 External edit observed while a Gateway write finalizes: reconciled, not discarded: the recorded sequence does not establish the persistence overlap or copy-fallback branch required by this consequence
+- condition 50 External edit leaves the config missing or invalid during a Gateway write's final reread: UNAVAILABLE with the committed details, external edit not overwritten: the recorded sequence does not establish the persistence overlap or copy-fallback branch required by this consequence
 - condition 52 Reload mode hybrid (default): hot-applies safe changes, restarts automatically when required: ambient, but no persona trait provides it and no setup phase starts it
 - condition 61 Model selection and provider change: hot-applies without draining the Codex plugin; catalog compatibility metadata never becomes a request override: event-reload-codexnodrain records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
 - condition 64 Channel transport edit: prepared session rows and model catalogs retained: event-reload-transport records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
@@ -50,12 +53,16 @@ Uncovered:
 - condition 101 Canvas enablement change: current-protocol nodes whose hosted capabilities change reconnect, legacy nodes reconnect on descriptor change: Canvas enablement change: needs paired nodes with hosted canvas capabilities, owned by nodes
 - condition 103 Agent requests waiting to start pause while plugin hot reload drains the old runtime, then continue with the replacement or the rollback: a held model turn does not establish admitted work in the particular plugin being reloaded; that plugin workload remains unstaged
 - condition 106 Channel or plugin hot reload: Gateway-hosted channel webhook routes answer 503 with Retry-After: 1 until replacement ingress registers: Channel or plugin hot reload: needs a Gateway-hosted channel webhook route; the persona's test channels have none
+- condition 135 Concurrent edit to an intermediate include during persistence: write refused or unchanged leaf rolled back: the recorded sequence does not establish the persistence overlap or copy-fallback branch required by this consequence
 - condition 143 Include path of 4096 characters or more before or after resolution: clear error: ambient, but no persona trait provides it and no setup phase starts it
 - condition 151 Schema-valid authorable path that is unset: config get explains the runtime default: ambient, but no persona trait provides it and no setup phase starts it
 - condition 152 OpenClaw-managed meta paths (meta.lastTouchedVersion, meta.migrations.*) maintained on writes: ambient, but no persona trait provides it and no setup phase starts it
+- condition 155 Config file cannot be read: the read failure names the file and keeps the underlying error: the candidate-staging case no longer includes a separate unreadable-config experiment
+- condition 161 Copy-fallback publication loses the file before a conflict: original restored when still owned, otherwise partial publication and the backup location reported: the recorded sequence does not establish the persistence overlap or copy-fallback branch required by this consequence
 - condition 169 No interactive terminal: configure prints the equivalent config get, set, patch and validate commands and exits with an error: ambient, but no persona trait provides it and no setup phase starts it
 - condition 174 Default dated log file under /tmp/openclaw, named per profile: ambient, but no persona trait provides it and no setup phase starts it
 - condition 175 /tmp/openclaw unsafe or unavailable: log directory falls back under the OS temp dir: /tmp/openclaw unsafe or unavailable: needs an unsafe or unwritable /tmp/openclaw on the harness host
+- condition 182 Secret values reaching console, file log, OTLP log record and session transcript sinks: masked before they are written: console, file and session sinks are driven; the OTLP sink requires an exporter and collector that are absent
 - condition 188 Input method composing in Search settings: Escape stays with the input method: ambient, but no persona trait provides it and no setup phase starts it
 - condition 194 Save outcome unknown: draft kept and unrelated settings writes paused until a refresh confirms or the user retries or discards: ambient, but no persona trait provides it and no setup phase starts it
 - condition 197 Chosen Lobsterdex lobster not unlocked in this browser: Default shown, choice kept: ambient, but no persona trait provides it and no setup phase starts it
@@ -102,6 +109,7 @@ Uncovered:
 - src/tui/gateway-chat.ts (entry point): placed, not driven; the existing TUI helper waits for an expected reply and no observational TUI script exists
 - entry points excluded (25): listed with reasons under Excluded entry points in derivation.md
 - every command head the phases use must have an entry in the command catalogue, which is a separate change; until it lands with them, a plan that selects these phases is refused
+- theme tool action import (entry point): placed, not driven; browser-local theme import does not call themes.import
 
 Persona additions:
 (Traits the persona does not provide yet; every other trait in requires is one it provides.)
@@ -187,95 +195,117 @@ Fixture requirements: config-legacy-agents-list.ownerlessCron and sqlOwnerCron p
 Additional fixture keys: config-includes-split.fixture is the complete include-tree layout, including the intermediate file and rollback targets, for the concurrent-edit phase. profile-read-only.profileId selects the paired read-only operator for the cron list call.
 
 Case fixture additions:
-Each provides `fixture`, a complete immutable source directory for its named phase. It includes the config, included files, affected databases, backups and permissions that the case needs. The staging receipt preserves original presence and all touched paths for observation and restoration. Unrelated persona content and mock-provider/auth settings are preserved unless the case varies them. Each fixture belongs to one phase, so its replacement does not reorder other cases.
+Each provides `fixture`, a complete immutable input directory for its phase. It includes all affected config, include, database, recovery and permission state; the receipt preserves original presence and paths. Live edits begin with a valid running Gateway and use separate negative payloads. Target-file keys are relative to the clone's state directory and owned by the case. Additional keys below copy the named source value into that case; the broad source trait is not an additional runtime requirement unless a command still names it. Unrelated persona content and mock-provider/auth settings are preserved unless varied by the case.
 
-- config-case-change-settings-with-wizard: change-settings-with-wizard, from {persona:config-fixture-fleet-no-system-agent:path}. (fixture)
-- config-case-event-include-write-through: event-include-write-through, from {persona:config-includes-split:fixture}. (fixture)
-- config-case-event-include-concurrent-edit: event-include-concurrent-edit, from {persona:config-includes-split:fixture}. (fixture)
-- config-case-event-env-readonly: event-env-readonly, from {persona:config-readonly-host:pendingRepairs}. Use schema-valid current config with optional repairs pending; no startup-invalid legacy keys. (fixture)
-- config-case-event-env-roenvvars: event-env-roenvvars, from {persona:config-readonly-host:pendingRepairs}. Use schema-valid current config with optional repairs pending; no startup-invalid legacy keys. (fixture)
-- config-case-event-env-roreload: event-env-roreload, from {persona:config-readonly-host:pendingRepairs}. Use schema-valid current config with optional repairs pending; no startup-invalid legacy keys. (fixture)
-- config-case-event-secret-inactiveref: event-secret-inactiveref, from {persona:config-secret-refs:inactiveMismatch}. Include the inactive provider/source SecretRef mismatch in authored config directly, bypassing strict write validation. (fixture)
-- config-case-event-configure-nosystemagent: event-configure-nosystemagent, from {persona:config-fixture-fleet-no-system-agent:path}. (fixture)
-- config-case-event-include-incroot: event-include-incroot, from {persona:config-include-unsupported:rootInclude}. (fixture)
-- config-case-event-include-incarrayentry: event-include-incarrayentry, from {persona:config-include-unsupported:arrayEntryInclude}. (fixture)
-- config-case-event-include-incarraywrite: event-include-incarraywrite, from {persona:config-include-unsupported:includeArray}. (fixture)
-- config-case-event-include-incsiblingwrite: event-include-incsiblingwrite, from {persona:config-include-unsupported:siblingOverride}. (fixture)
-- config-case-event-include-incshared: event-include-incshared, from {persona:config-include-unsupported:sharedFile}. (fixture)
-- config-case-event-include-incspan: event-include-incspan, from {persona:config-include-unsupported:spanningBoundary}. (fixture)
-- config-case-event-include-incnested: event-include-incnested, from {persona:config-include-unsupported:nestedUnderMerged}. (fixture)
-- config-case-event-include-incdirective: event-include-incdirective, from {persona:config-include-unsupported:nestedDirective}. (fixture)
-- config-case-event-env-rodoctor: event-env-rodoctor, from {persona:config-readonly-host:pendingRepairs}. Use schema-valid current config with optional repairs pending; no startup-invalid legacy keys. (fixture)
-- config-case-event-env-rolegacy: event-env-rolegacy, from {persona:config-readonly-host:pendingRepairs}. Use startup-invalid legacy config; stage while stopped, then establish host read-only mode before attempting startup. (fixture)
-- config-case-event-startup-invalidstart: event-startup-invalidstart, from {persona:config-invalid-fixture:unknownKey}. (fixture)
-- config-case-event-startup-inclegacy: event-startup-inclegacy, from {persona:config-include-legacy-keys:path}. (fixture)
-- config-case-event-startup-newer: event-startup-newer, from {persona:config-newer-version:path}. (fixture)
-- config-case-event-doctor-lkgrestore: event-doctor-lkgrestore, from {persona:config-invalid-fixture:unknownKey}. (fixture)
-- config-case-event-doctor-incdoctor: event-doctor-incdoctor, from {persona:config-include-legacy-keys:mixedBoundary}. (fixture)
-- config-case-event-doctor-schemafirst: event-doctor-schemafirst, from {persona:config-legacy-keys:withStateMigration}. (fixture)
-- config-case-event-doctor-ownerlost: event-doctor-ownerlost, from {persona:config-session-store-owner-lost:path}. (fixture)
-- config-case-event-doctor-repairthrows: event-doctor-repairthrows, from {persona:plugin-repair-throws:config}. (fixture)
-- config-case-event-doctor-autonormalize: event-doctor-autonormalize, from {persona:config-legacy-keys:path}. (fixture)
-- config-case-event-doctor-ownerambig: event-doctor-ownerambig, from {persona:config-owner-ambiguous-history:path}. Include the exact matching openclaw.json.bak through .bak.4 history required by the owner recovery scenario. (fixture)
-- config-case-event-doctor-retiredformat: event-doctor-retiredformat, from {persona:config-retired-format:path}. (fixture)
-- config-case-event-doctor-retiredkeys: event-doctor-retiredkeys, from {persona:config-retired-keys:path}. (fixture)
-- config-case-event-doctor-matrixprivnet: event-doctor-matrixprivnet, from {persona:config-retired-keys:matrixFlat}. (fixture)
-- config-case-event-doctor-taskflow: event-doctor-taskflow, from {persona:config-retired-keys:taskflow}. (fixture)
-- config-case-event-doctor-taskflowallow: event-doctor-taskflowallow, from {persona:config-retired-keys:taskflowOnlyAllow}. (fixture)
-- config-case-event-doctor-taskflownone: event-doctor-taskflownone, from {persona:config-retired-keys:taskflowNoneLeft}. (fixture)
-- config-case-event-doctor-aliascollide: event-doctor-aliascollide, from {persona:config-retired-keys:aliasCollision}. (fixture)
-- config-case-event-doctor-cronpin: event-doctor-cronpin, from {persona:config-legacy-agents-list:ownerlessCron}. (fixture)
-- config-case-event-doctor-cronsqlowner: event-doctor-cronsqlowner, from {persona:config-legacy-agents-list:sqlOwnerCron}. (fixture)
-- config-case-event-doctor-unbound: event-doctor-unbound, from {persona:config-legacy-agents-list:unboundAccounts}. (fixture)
-- config-case-event-doctor-rosterreads: event-doctor-rosterreads, from {persona:config-legacy-agents-list:path}. (fixture)
-- config-case-event-doctor-rosterorder: event-doctor-rosterorder, from {persona:config-legacy-agents-list:path}. (fixture)
-- config-case-event-doctor-systemagent: event-doctor-systemagent, from {persona:config-legacy-agents-list:multiAgentNoOwner}. (fixture)
-- config-case-event-doctor-acctowner: event-doctor-acctowner, from {persona:config-legacy-agents-list:multiAgentAccounts}. (fixture)
-- config-case-event-cron-owner-write-refused: event-cron-owner-write-refused, from {persona:config-legacy-agents-list:ownerlessCron}. (fixture)
-- config-case-event-cron-owner-restricted-view: event-cron-owner-restricted-view, from {persona:config-legacy-agents-list:ownerlessCron}. Use a current keyed agents.entries roster that boots, with unresolved ownership only in the cron database; never use legacy agents.list. (fixture)
-- config-case-event-doctor-rosterinclude: event-doctor-rosterinclude, from {persona:config-include-legacy-keys:rosterInclude}. (fixture)
-- config-case-event-doctor-memincludes: event-doctor-memincludes, from {persona:config-include-legacy-keys:memorySearchInclude}. (fixture)
-- config-case-event-doctor-policyinclude: event-doctor-policyinclude, from {persona:config-include-legacy-keys:policyInclude}. (fixture)
-- config-case-event-doctor-acctmaps: event-doctor-acctmaps, from {persona:channel-multi-account:path}. (fixture)
-- config-case-event-doctor-wadefault: event-doctor-wadefault, from {persona:channel-multi-account:waPolicyDefault}. (fixture)
-- config-case-event-doctor-deferredprivnet: event-doctor-deferredprivnet, from {persona:plugin-configured-missing:privnet}. (fixture)
-- config-case-event-doctor-webhookpin: event-doctor-webhookpin, from {persona:channel-webhook-legacy:existingInstall}. (fixture)
-- config-case-event-doctor-webhookkeep: event-doctor-webhookkeep, from {persona:channel-webhook-legacy:pinRemoved}. (fixture)
-- config-case-event-doctor-webhookstartup: event-doctor-webhookstartup, from {persona:channel-webhook-legacy:markerOnly}. (fixture)
-- config-case-event-doctor-tgwebhookurl: event-doctor-tgwebhookurl, from {persona:channel-webhook-legacy:telegramPublicOrigin}. (fixture)
-- config-case-event-doctor-teamsenv: event-doctor-teamsenv, from {persona:channel-webhook-legacy:teamsEnvOnly}. (fixture)
-- config-case-event-doctor-talkinherit: event-doctor-talkinherit, from {persona:config-legacy-keys:voiceCallTalk}. (fixture)
-- config-case-event-doctor-pluginmissing: event-doctor-pluginmissing, from {persona:plugin-configured-missing:path}. (fixture)
-- config-case-event-doctor-plugindeferred: event-doctor-plugindeferred, from {persona:plugin-configured-missing:path}. (fixture)
-- config-case-event-doctor-pluginsettled: event-doctor-pluginsettled, from {persona:plugin-configured-missing:emptyConfig}. (fixture)
-- config-case-event-doctor-july: event-doctor-july, from {persona:config-july-2026-fixture:path}. (fixture)
-- config-case-event-doctor-llamaserver: event-doctor-llamaserver, from {persona:config-july-2026-fixture:localEmbeddings}. (fixture)
-- config-case-event-doctor-ghtoken: event-doctor-ghtoken, from {persona:config-legacy-keys:copilotGenericToken}. (fixture)
-- config-case-event-doctor-alsoallow: event-doctor-alsoallow, from {persona:config-legacy-keys:alsoAllow}. (fixture)
-- config-case-event-doctor-utility: event-doctor-utility, from {persona:config-legacy-keys:utilitySeparation}. (fixture)
-- config-case-event-doctor-preservefirst: event-doctor-preservefirst, from {persona:config-legacy-keys:path}. (fixture)
-- config-case-event-doctor-bundletransport: event-doctor-bundletransport, from {persona:plugin-bundle-unknown-transport:fixture}. (fixture)
-- config-case-event-doctor-prefixed: event-doctor-prefixed, from {persona:config-invalid-fixture:prefixed}. (fixture)
-- config-case-event-doctor-nolkg: event-doctor-nolkg, from {persona:config-invalid-fixture:noLastGood}. (fixture)
-- config-case-event-state-schema8: event-state-schema8, from {persona:legacy-state-retired:schema8}. (fixture)
-- config-case-event-state-tgsidecars: event-state-tgsidecars, from {persona:legacy-state-retired:tgsidecars}. (fixture)
-- config-case-event-state-tgoffset: event-state-tgoffset, from {persona:legacy-state-retired:tgoffset}. (fixture)
-- config-case-event-state-extstub: event-state-extstub, from {persona:legacy-state-retired:extstub}. (fixture)
-- config-case-event-state-discordretired: event-state-discordretired, from {persona:legacy-state-retired:discordretired}. (fixture)
-- config-case-event-state-devicepair: event-state-devicepair, from {persona:legacy-state-retired:devicepair}. (fixture)
-- config-case-event-state-discordjson: event-state-discordjson, from {persona:legacy-state-retired:discordjson}. (fixture)
-- config-case-event-state-voicejsonl: event-state-voicejsonl, from {persona:legacy-state-retired:voicejsonl}. (fixture)
-- config-case-event-state-cronownerless: event-state-cronownerless, from {persona:legacy-state-retired:cronownerless}. (fixture)
-- config-case-event-state-cronjson: event-state-cronjson, from {persona:legacy-state-retired:cronjson}. (fixture)
-- config-case-event-state-queuejson: event-state-queuejson, from {persona:legacy-state-retired:queuejson}. (fixture)
-- config-case-event-state-retiredfiles: event-state-retiredfiles, from {persona:legacy-state-retired:retiredfiles}. (fixture)
-- config-case-event-state-oauthsidecar: event-state-oauthsidecar, from {persona:legacy-state-retired:oauthsidecar}. (fixture)
-- config-case-event-state-startup-retired: event-state-startup-retired, from {persona:legacy-state-retired:retiredfiles}. (fixture)
-- config-case-event-guard-headless: event-guard-headless, from {persona:config-legacy-keys:path}. (fixture)
-- config-case-event-interactive-startup-offers-doctor: event-interactive-startup-offers-doctor, from {persona:config-fixture-legacy-includes:path}. (fixture)
-- config-case-event-doctor-restores-last-known-good: event-doctor-restores-last-known-good, from {persona:config-fixture-broken-after-good:path}. (fixture)
-- config-case-event-doctor-normalizes-legacy: event-doctor-normalizes-legacy, from {persona:config-fixture-legacy-single-file:path}. (fixture)
-- config-case-event-doctor-second-pass: event-doctor-second-pass, from {persona:config-fixture-july-replay:path}. (fixture)
-- config-case-event-doctor-refuses-retired: event-doctor-refuses-retired, from {persona:config-fixture-retired-inputs:path}. (fixture)
-- config-case-event-webhook-startup-refused: event-webhook-startup-refused, from {persona:config-fixture-webhook-listeners:path}. (fixture)
-- config-case-event-doctor-pending-plugin-migration: event-doctor-pending-plugin-migration, from {persona:config-fixture-plugin-migration-pending:path}. (fixture)
+- config-case-change-settings-with-wizard: change-settings-with-wizard; source variant {persona:config-fixtures:fleetNoSystemAgent}. Provides fixture.
+- config-case-event-include-write-through: event-include-write-through; source variant {persona:config-includes-split:fixture}. Provides fixture.
+- config-case-event-include-concurrent-edit: event-include-concurrent-edit; source variant {persona:config-includes-split:fixture}. Provides fixture and configIncludesSplitIntermediatePath from {persona:config-includes-split:intermediatePath}, configIncludesSplitIntermediatePatch from {persona:config-includes-split:intermediatePatch}.
+- config-case-event-env-readonly: event-env-readonly; source variant {persona:config-readonly-host:pendingRepairs}. Use schema-valid current config with optional repairs pending; no startup-invalid legacy keys. Provides fixture.
+- config-case-event-env-roenvvars: event-env-roenvvars; source variant {persona:config-readonly-host:pendingRepairs}. Use schema-valid current config with optional repairs pending; no startup-invalid legacy keys. Provides fixture.
+- config-case-event-env-roreload: event-env-roreload; source variant {persona:config-readonly-host:pendingRepairs}. Use schema-valid current config with optional repairs pending; no startup-invalid legacy keys. Provides fixture and configReloadPatchesNone from {persona:config-reload-patches:none}.
+- config-case-event-secret-inactiveref: event-secret-inactiveref; source variant {persona:config-secret-refs:inactiveMismatch}. Include the inactive provider/source SecretRef mismatch in authored config directly, bypassing strict write validation. Provides fixture.
+- config-case-event-configure-nosystemagent: event-configure-nosystemagent; source variant {persona:config-fixtures:fleetNoSystemAgent}. Provides fixture.
+- config-case-event-include-incroot: event-include-incroot; source variant {persona:config-include-unsupported:rootInclude}. Provides fixture.
+- config-case-event-include-incarrayentry: event-include-incarrayentry; source variant {persona:config-include-unsupported:arrayEntryInclude}. Provides fixture.
+- config-case-event-include-incarraywrite: event-include-incarraywrite; source variant {persona:config-include-unsupported:includeArray}. Provides fixture.
+- config-case-event-include-incsiblingwrite: event-include-incsiblingwrite; source variant {persona:config-include-unsupported:siblingOverride}. Provides fixture.
+- config-case-event-include-incshared: event-include-incshared; source variant {persona:config-include-unsupported:sharedFile}. Provides fixture.
+- config-case-event-include-incspan: event-include-incspan; source variant {persona:config-include-unsupported:spanningBoundary}. Provides fixture.
+- config-case-event-include-incnested: event-include-incnested; source variant {persona:config-include-unsupported:nestedUnderMerged}. Provides fixture.
+- config-case-event-include-incdirective: event-include-incdirective; source variant {persona:config-include-unsupported:nestedDirective}. Provides fixture.
+- config-case-event-env-rodoctor: event-env-rodoctor; source variant {persona:config-readonly-host:pendingRepairs}. Use schema-valid current config with optional repairs pending; no startup-invalid legacy keys. Provides fixture.
+- config-case-event-env-rolegacy: event-env-rolegacy; source variant {persona:config-readonly-host:pendingRepairs}. Use startup-invalid legacy config; stage while stopped, then establish host read-only mode before attempting startup. Provides fixture.
+- config-case-event-startup-invalidstart: event-startup-invalidstart; source variant {persona:config-invalid-fixture:unknownKey}. Provides fixture.
+- config-case-event-startup-inclegacy: event-startup-inclegacy; source variant {persona:config-include-legacy-keys:path}. Provides fixture.
+- config-case-event-startup-newer: event-startup-newer; source variant {persona:config-newer-version:path}. Provides fixture.
+- config-case-event-doctor-lkgrestore: event-doctor-lkgrestore; source variant {persona:config-invalid-fixture:unknownKey}. Provides fixture.
+- config-case-event-doctor-incdoctor: event-doctor-incdoctor; source variant {persona:config-include-legacy-keys:mixedBoundary}. Provides fixture.
+- config-case-event-doctor-schemafirst: event-doctor-schemafirst; source variant {persona:config-legacy-keys:withStateMigration}. Provides fixture.
+- config-case-event-doctor-ownerlost: event-doctor-ownerlost; source variant {persona:config-session-store-owner-lost:path}. Provides fixture.
+- config-case-event-doctor-repairthrows: event-doctor-repairthrows; source variant {persona:plugin-repair-throws:config}. Provides fixture.
+- config-case-event-doctor-autonormalize: event-doctor-autonormalize; source variant {persona:config-legacy-keys:path}. Provides fixture.
+- config-case-event-doctor-ownerambig: event-doctor-ownerambig; source variant {persona:config-owner-ambiguous-history:path}. Include the exact matching openclaw.json.bak through .bak.4 history required by the owner recovery scenario. Provides fixture.
+- config-case-event-doctor-retiredformat: event-doctor-retiredformat; source variant {persona:config-retired-format:path}. Provides fixture.
+- config-case-event-doctor-retiredkeys: event-doctor-retiredkeys; source variant {persona:config-retired-keys:path}. Provides fixture.
+- config-case-event-doctor-matrixprivnet: event-doctor-matrixprivnet; source variant {persona:config-retired-keys:matrixFlat}. Provides fixture.
+- config-case-event-doctor-taskflow: event-doctor-taskflow; source variant {persona:config-retired-keys:taskflow}. Provides fixture.
+- config-case-event-doctor-taskflowallow: event-doctor-taskflowallow; source variant {persona:config-retired-keys:taskflowOnlyAllow}. Provides fixture.
+- config-case-event-doctor-taskflownone: event-doctor-taskflownone; source variant {persona:config-retired-keys:taskflowNoneLeft}. Provides fixture.
+- config-case-event-doctor-aliascollide: event-doctor-aliascollide; source variant {persona:config-retired-keys:aliasCollision}. Provides fixture.
+- config-case-event-doctor-cronpin: event-doctor-cronpin; source variant {persona:config-legacy-agents-list:ownerlessCron}. Provides fixture.
+- config-case-event-doctor-cronsqlowner: event-doctor-cronsqlowner; source variant {persona:config-legacy-agents-list:sqlOwnerCron}. Provides fixture.
+- config-case-event-doctor-unbound: event-doctor-unbound; source variant {persona:config-legacy-agents-list:unboundAccounts}. Provides fixture.
+- config-case-event-doctor-rosterreads: event-doctor-rosterreads; source variant {persona:config-legacy-agents-list:path}. Provides fixture.
+- config-case-event-doctor-rosterorder: event-doctor-rosterorder; source variant {persona:config-legacy-agents-list:path}. Provides fixture.
+- config-case-event-doctor-systemagent: event-doctor-systemagent; source variant {persona:config-legacy-agents-list:multiAgentNoOwner}. Provides fixture.
+- config-case-event-doctor-acctowner: event-doctor-acctowner; source variant {persona:config-legacy-agents-list:multiAgentAccounts}. Provides fixture.
+- config-case-event-cron-owner-write-refused: event-cron-owner-write-refused; source variant {persona:config-legacy-agents-list:ownerlessCron}. Provides fixture.
+- config-case-event-cron-owner-restricted-view: event-cron-owner-restricted-view; source variant {persona:config-legacy-agents-list:ownerlessCron}. Use a current keyed agents.entries roster that boots, with unresolved ownership only in the cron database; never use legacy agents.list. Provides fixture.
+- config-case-event-doctor-rosterinclude: event-doctor-rosterinclude; source variant {persona:config-include-legacy-keys:rosterInclude}. Provides fixture.
+- config-case-event-doctor-memincludes: event-doctor-memincludes; source variant {persona:config-include-legacy-keys:memorySearchInclude}. Provides fixture.
+- config-case-event-doctor-policyinclude: event-doctor-policyinclude; source variant {persona:config-include-legacy-keys:policyInclude}. Provides fixture.
+- config-case-event-doctor-acctmaps: event-doctor-acctmaps; source variant {persona:channel-multi-account:path}. Provides fixture.
+- config-case-event-doctor-wadefault: event-doctor-wadefault; source variant {persona:channel-multi-account:waPolicyDefault}. Provides fixture.
+- config-case-event-doctor-deferredprivnet: event-doctor-deferredprivnet; source variant {persona:plugin-configured-missing:privnet}. Provides fixture.
+- config-case-event-doctor-webhookpin: event-doctor-webhookpin; source variant {persona:channel-webhook-legacy:existingInstall}. Provides fixture.
+- config-case-event-doctor-webhookkeep: event-doctor-webhookkeep; source variant {persona:channel-webhook-legacy:pinRemoved}. Provides fixture.
+- config-case-event-doctor-webhookstartup: event-doctor-webhookstartup; source variant {persona:channel-webhook-legacy:markerOnly}. Provides fixture.
+- config-case-event-doctor-tgwebhookurl: event-doctor-tgwebhookurl; source variant {persona:channel-webhook-legacy:telegramPublicOrigin}. Provides fixture.
+- config-case-event-doctor-teamsenv: event-doctor-teamsenv; source variant {persona:channel-webhook-legacy:teamsEnvOnly}. Provides fixture.
+- config-case-event-doctor-talkinherit: event-doctor-talkinherit; source variant {persona:config-legacy-keys:voiceCallTalk}. Provides fixture.
+- config-case-event-doctor-pluginmissing: event-doctor-pluginmissing; source variant {persona:plugin-configured-missing:path}. Provides fixture.
+- config-case-event-doctor-plugindeferred: event-doctor-plugindeferred; source variant {persona:plugin-configured-missing:path}. Provides fixture.
+- config-case-event-doctor-pluginsettled: event-doctor-pluginsettled; source variant {persona:plugin-configured-missing:emptyConfig}. Provides fixture.
+- config-case-event-doctor-july: event-doctor-july; source variant {persona:config-july-2026-fixture:path}. Provides fixture.
+- config-case-event-doctor-llamaserver: event-doctor-llamaserver; source variant {persona:config-july-2026-fixture:localEmbeddings}. Provides fixture.
+- config-case-event-doctor-ghtoken: event-doctor-ghtoken; source variant {persona:config-legacy-keys:copilotGenericToken}. Provides fixture.
+- config-case-event-doctor-alsoallow: event-doctor-alsoallow; source variant {persona:config-legacy-keys:alsoAllow}. Provides fixture.
+- config-case-event-doctor-utility: event-doctor-utility; source variant {persona:config-legacy-keys:utilitySeparation}. Provides fixture.
+- config-case-event-doctor-preservefirst: event-doctor-preservefirst; source variant {persona:config-legacy-keys:path}. Provides fixture.
+- config-case-event-doctor-bundletransport: event-doctor-bundletransport; source variant {persona:plugin-bundle-unknown-transport:fixture}. Provides fixture.
+- config-case-event-doctor-prefixed: event-doctor-prefixed; source variant {persona:config-invalid-fixture:prefixed}. Provides fixture.
+- config-case-event-doctor-nolkg: event-doctor-nolkg; source variant {persona:config-invalid-fixture:noLastGood}. Provides fixture.
+- config-case-event-state-schema8: event-state-schema8; source variant {persona:legacy-state-retired:schema8}. Provides fixture.
+- config-case-event-state-tgsidecars: event-state-tgsidecars; source variant {persona:legacy-state-retired:tgsidecars}. Provides fixture.
+- config-case-event-state-tgoffset: event-state-tgoffset; source variant {persona:legacy-state-retired:tgoffset}. Provides fixture.
+- config-case-event-state-extstub: event-state-extstub; source variant {persona:legacy-state-retired:extstub}. Provides fixture.
+- config-case-event-state-discordretired: event-state-discordretired; source variant {persona:legacy-state-retired:discordretired}. Provides fixture.
+- config-case-event-state-devicepair: event-state-devicepair; source variant {persona:legacy-state-retired:devicepair}. Provides fixture.
+- config-case-event-state-discordjson: event-state-discordjson; source variant {persona:legacy-state-retired:discordjson}. Provides fixture.
+- config-case-event-state-voicejsonl: event-state-voicejsonl; source variant {persona:legacy-state-retired:voicejsonl}. Provides fixture.
+- config-case-event-state-cronownerless: event-state-cronownerless; source variant {persona:legacy-state-retired:cronownerless}. Provides fixture.
+- config-case-event-state-cronjson: event-state-cronjson; source variant {persona:legacy-state-retired:cronjson}. Provides fixture.
+- config-case-event-state-queuejson: event-state-queuejson; source variant {persona:legacy-state-retired:queuejson}. Provides fixture.
+- config-case-event-state-retiredfiles: event-state-retiredfiles; source variant {persona:legacy-state-retired:retiredfiles}. Provides fixture.
+- config-case-event-state-oauthsidecar: event-state-oauthsidecar; source variant {persona:legacy-state-retired:oauthsidecar}. Provides fixture.
+- config-case-event-state-startup-retired: event-state-startup-retired; source variant {persona:legacy-state-retired:retiredfiles}. Provides fixture.
+- config-case-event-guard-headless: event-guard-headless; source variant {persona:config-legacy-keys:path}. Provides fixture.
+- config-case-event-interactive-startup-offers-doctor: event-interactive-startup-offers-doctor; source variant {persona:config-fixtures:legacyIncludes}. Provides fixture.
+- config-case-event-doctor-restores-last-known-good: event-doctor-restores-last-known-good; source variant {persona:config-fixtures:brokenAfterGood}. Provides fixture.
+- config-case-event-doctor-normalizes-legacy: event-doctor-normalizes-legacy; source variant {persona:config-fixtures:legacySingleFile}. Provides fixture.
+- config-case-event-doctor-second-pass: event-doctor-second-pass; source variant {persona:config-fixtures:julyReplay}. Provides fixture.
+- config-case-event-doctor-refuses-retired: event-doctor-refuses-retired; source variant {persona:config-fixtures:retiredInputs}. Provides fixture.
+- config-case-event-webhook-startup-refused: event-webhook-startup-refused; source variant {persona:config-fixtures:webhookListeners}. Provides fixture.
+- config-case-event-doctor-pending-plugin-migration: event-doctor-pending-plugin-migration; source variant {persona:config-fixtures:pluginMigrationPending}. Provides fixture.
+- config-case-event-secret-exectrust: event-secret-exectrust; source variant {persona:config-secret-refs:untrustedExec}. Complete authored negative fixture and recovery files. The inactive-provider case has a valid schema but fails provider resolution on an inactive surface; it is not a provider/source schema mismatch. The exec-trust case uses only a harmless synthetic command and records any execution side effects. Provides fixture.
+- config-case-event-secret-inactiveprovider: event-secret-inactiveprovider; source variant {persona:config-secret-refs:brokenInactiveProvider}. Complete authored negative fixture and recovery files. The inactive-provider case has a valid schema but fails provider resolution on an inactive surface; it is not a provider/source schema mismatch. The exec-trust case uses only a harmless synthetic command and records any execution side effects. Provides fixture and providerPath from config path of the inactive broken provider to remove.
+- config-case-hand-edit-config: hand-edit-config; source variant the live config and include layout required by this phase. The initial config is valid and the Gateway runs before live edits. Negative edit payloads are separate immutable files. Include every target file, backup and related state path for restoration; retain unrelated persona data and mock-provider/auth configuration. Provides fixture and configIncludesSplitPluginsInclude from {persona:config-includes-split:pluginsInclude}.
+- config-case-event-watcher-hand-edit: event-watcher-hand-edit; source variant the live config and include layout required by this phase. The initial config is valid and the Gateway runs before live edits. Negative edit payloads are separate immutable files. Include every target file, backup and related state path for restoration; retain unrelated persona data and mock-provider/auth configuration. Provides fixture and configReloadPatchesNone from {persona:config-reload-patches:none}, configReloadPatchesNoneUndo from {persona:config-reload-patches:noneUndo}.
+- config-case-event-watcher-takeover: event-watcher-takeover; source variant the live config and include layout required by this phase. The initial config is valid and the Gateway runs before live edits. Negative edit payloads are separate immutable files. Include every target file, backup and related state path for restoration; retain unrelated persona data and mock-provider/auth configuration. Provides fixture.
+- config-case-event-editor-rename-churn: event-editor-rename-churn; source variant the live config and include layout required by this phase. The initial config is valid and the Gateway runs before live edits. Negative edit payloads are separate immutable files. Include every target file, backup and related state path for restoration; retain unrelated persona data and mock-provider/auth configuration. Provides fixture and configReloadPatchesNone from {persona:config-reload-patches:none}, configReloadPatchesNoneUndo from {persona:config-reload-patches:noneUndo}.
+- config-case-event-hand-edit-during-write: event-hand-edit-during-write; source variant the live config and include layout required by this phase. The initial config is valid and the Gateway runs before live edits. Negative edit payloads are separate immutable files. Include every target file, backup and related state path for restoration; retain unrelated persona data and mock-provider/auth configuration. Provides fixture and configReloadPatchesChannelPolicy from {persona:config-reload-patches:channelPolicy}.
+- config-case-event-include-reload-plan: event-include-reload-plan; source variant the live config and include layout required by this phase. The initial config is valid and the Gateway runs before live edits. Negative edit payloads are separate immutable files. Include every target file, backup and related state path for restoration; retain unrelated persona data and mock-provider/auth configuration. Provides fixture and configIncludesSplitIncludePath from {persona:config-includes-split:includePath}, configIncludesSplitIncludePatch from {persona:config-includes-split:includePatch}, configIncludesSplitIncludePatchUndo from {persona:config-includes-split:includePatchUndo}.
+- config-case-event-invalid-hot-reload: event-invalid-hot-reload; source variant the live config and include layout required by this phase. The initial config is valid and the Gateway runs before live edits. Negative edit payloads are separate immutable files. Include every target file, backup and related state path for restoration; retain unrelated persona data and mock-provider/auth configuration. Provides fixture and configInvalidFixtureUnknownKey from {persona:config-invalid-fixture:unknownKey}.
+- config-case-event-external-edit-breaks-write: event-external-edit-breaks-write; source variant the live config and include layout required by this phase. The initial config is valid and the Gateway runs before live edits. Negative edit payloads are separate immutable files. Include every target file, backup and related state path for restoration; retain unrelated persona data and mock-provider/auth configuration. Provides fixture and configInvalidFixtureUnknownKey from {persona:config-invalid-fixture:unknownKey}.
+- config-case-event-include-ambiguous-plan: event-include-ambiguous-plan; source variant the live config and include layout required by this phase. The initial config is valid and the Gateway runs before live edits. Negative edit payloads are separate immutable files. Include every target file, backup and related state path for restoration; retain unrelated persona data and mock-provider/auth configuration. Provides fixture and configIncludeUnsupportedAmbiguousLayout from {persona:config-include-unsupported:ambiguousLayout}.
+- config-case-event-include-incpathfmt: event-include-incpathfmt; source variant the live config and include layout required by this phase. The initial config is valid and the Gateway runs before live edits. Negative edit payloads are separate immutable files. Include every target file, backup and related state path for restoration; retain unrelated persona data and mock-provider/auth configuration. Provides fixture and configIncludeErrorsBadPathFormat from {persona:config-include-errors:badPathFormat}.
+- config-case-event-include-incconfine: event-include-incconfine; source variant the live config and include layout required by this phase. The initial config is valid and the Gateway runs before live edits. Negative edit payloads are separate immutable files. Include every target file, backup and related state path for restoration; retain unrelated persona data and mock-provider/auth configuration. Provides fixture and configIncludeErrorsEscapingPath from {persona:config-include-errors:escapingPath}.
+- config-case-event-include-incsymlink: event-include-incsymlink; source variant the live config and include layout required by this phase. The initial config is valid and the Gateway runs before live edits. Negative edit payloads are separate immutable files. Include every target file, backup and related state path for restoration; retain unrelated persona data and mock-provider/auth configuration. Provides fixture and configIncludeErrorsSymlinkEscape from {persona:config-include-errors:symlinkEscape}.
+- config-case-event-include-incmissing: event-include-incmissing; source variant the live config and include layout required by this phase. The initial config is valid and the Gateway runs before live edits. Negative edit payloads are separate immutable files. Include every target file, backup and related state path for restoration; retain unrelated persona data and mock-provider/auth configuration. Provides fixture and configIncludeErrorsMissingFile from {persona:config-include-errors:missingFile}.
+- config-case-event-include-incparse: event-include-incparse; source variant the live config and include layout required by this phase. The initial config is valid and the Gateway runs before live edits. Negative edit payloads are separate immutable files. Include every target file, backup and related state path for restoration; retain unrelated persona data and mock-provider/auth configuration. Provides fixture and configIncludeErrorsParseError from {persona:config-include-errors:parseError}.
+- config-case-event-include-inccircular: event-include-inccircular; source variant the live config and include layout required by this phase. The initial config is valid and the Gateway runs before live edits. Negative edit payloads are separate immutable files. Include every target file, backup and related state path for restoration; retain unrelated persona data and mock-provider/auth configuration. Provides fixture and configIncludeErrorsCircular from {persona:config-include-errors:circular}.
+- config-case-event-schema-invalid-config: event-schema-invalid-config; source variant the live config and include layout required by this phase. The initial config is valid and the Gateway runs before live edits. Negative edit payloads are separate immutable files. Include every target file, backup and related state path for restoration; retain unrelated persona data and mock-provider/auth configuration. Provides fixture and configInvalidFixtureUnknownKey from {persona:config-invalid-fixture:unknownKey}.
+- config-case-event-config-unreadable: event-config-unreadable; source variant the live config and include layout required by this phase. The initial config is valid and the Gateway runs before live edits. Negative edit payloads are separate immutable files. Include every target file, backup and related state path for restoration; retain unrelated persona data and mock-provider/auth configuration. Provides fixture.
+- config-case-event-invalid-edit-skipped: event-invalid-edit-skipped; source variant the live config and include layout required by this phase. The initial config is valid and the Gateway runs before live edits. Negative edit payloads are separate immutable files. Include every target file, backup and related state path for restoration; retain unrelated persona data and mock-provider/auth configuration. Provides fixture and configFixtureFilesIncludeErrorsMissing from {persona:config-fixture-files:includeErrorsMissing}, configFixtureFilesIncludeErrorsParseError from {persona:config-fixture-files:includeErrorsParseError}, configFixtureFilesIncludeErrorsCircular from {persona:config-fixture-files:includeErrorsCircular}, configFixtureFilesIncludeErrorsOutsideDir from {persona:config-fixture-files:includeErrorsOutsideDir}, configFixtureFilesIncludeErrorsSymlinkEscape from {persona:config-fixture-files:includeErrorsSymlinkEscape}, configFixtureFilesIncludeErrorsNullByte from {persona:config-fixture-files:includeErrorsNullByte}, configFixtureFilesIncludeErrorsOverlongPath from {persona:config-fixture-files:includeErrorsOverlongPath}.
+- config-case-event-pending-migration-write: event-pending-migration-write; source variant the live config and include layout required by this phase. The initial config is valid and the Gateway runs before live edits. Negative edit payloads are separate immutable files. Include every target file, backup and related state path for restoration; retain unrelated persona data and mock-provider/auth configuration. Provides fixture and pluginConfiguredMissingPath from {persona:plugin-configured-missing:path}.
+- config-case-event-save-staging-fails: event-save-staging-fails; source variant a valid config and full five-slot backup ring. Include openclaw.json and .bak through .bak.4 with distinct known contents. Candidate-staging injection must leave backup reads, writes, renames and removals available. The authored reload mode is hybrid, so the command changing it to off cannot be a no-op. Provides fixture.
