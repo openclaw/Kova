@@ -104,8 +104,10 @@ all name phases by qualified id.
 8. Check every phase against the persona manifest. A phase is withheld when a
    trait in its `requires` is missing from the manifest, or when a
    `{persona:<trait>:<key>}` placeholder in its commands names a trait or key
-   the manifest lacks. Every other placeholder of that form is replaced by its
-   value.
+   the manifest lacks. Other placeholders of that form are resolved to their
+   values, except environment keys, which remain placeholders until `run`
+   creates each clone's copy. The catalogue check uses the command as written
+   before this resolution.
 9. Run the catalogue check on every command. A phase that calls an entry with
    status `toWrite` is withheld. Any other finding (a command with no entry, a
    flag the entry does not list, a placeholder that is not allowed there)
@@ -249,7 +251,8 @@ any other difference in the same phase and signal is classed on its own.
 
 - `change.paths` lists every changed path, before the ignore globs are applied.
 - Each entry in `phases` carries the full phase as its source defines it, with
-  its qualified id, in run order, with `{persona:…}` already replaced;
+  its qualified id, in run order, with `{persona:…}` already replaced except
+  `{persona:<trait>:env}`, which `run` resolves to each clone's copy;
   `{kovaRoot}`, `{env}` and `{run}` are replaced by `run`, from the Kova that
   runs the plan and per clone, so the scripts that run are always the ones
   the cache key describes. The
@@ -290,6 +293,9 @@ any other difference in the same phase and signal is classed on its own.
    values joined by line breaks. When the Kova
    checkout has uncommitted changes, the run neither reads nor writes the
    cache and records all three baseline clones afresh.
+   A persona trait that provides an environment of its own is cloned the same
+   way for each clone, and `{persona:<trait>:env}` resolves to that clone's
+   copy; a run never touches the durable second installation.
 3. Runs `kova persona verify`'s checks on every clone, still on the persona's
    own runtime, so a drifted persona is caught before either target touches
    its data.
@@ -364,8 +370,11 @@ check refuses any other occurrence.
 
 `{env}`, `{kovaRoot}`, `{run}` and, in standard phases, `{target}` are
 replaced shell-quoted, so they may appear anywhere outside quotes, including
-inside a word (`@{env}`, `{run}/turn.json`); the catalogue check refuses them
-inside a quoted argument. A script that needs
+inside a word (`ocm @{env} -- plugins list`, `{run}/turn.json`); the catalogue
+check refuses them inside a quoted argument. A product command may instead
+name an environment the persona holds, `ocm @{persona:<trait>:env} -- ...`,
+which the plan checks like any persona key and `run` resolves to each clone's
+copy. A script that needs
 a run file's content inside JSON reads it through a `--*-from` flag instead. A
 `{persona:<trait>:<key>}` value is replaced as it is and may appear anywhere,
 including inside a single-quoted JSON argument: a persona key value uses only
@@ -466,8 +475,11 @@ as it is. There are two declarations:
   own several ids over time, the column that orders them (`order`). Such an id
   becomes `<id:<path>#<record key value>/<field>/<n>>`, where `<n>` is the id's
   position among the ids of that record key by `order`, counting from 1 (and
-  always 1 without `order`). It is named after the record that owns it, which
-  does not depend on the order records were written. A record key that is
+  always 1 without `order`). When two or more ids under one record key share
+  the same `order` value (or there is no `order`), they share `<n>` and each
+  token gains a further part, `.<m>`, the id's position among those tied ids
+  by the table's rowid, counting from 1; ids without a tie carry no `.<m>`.
+  The token names the owning record; only ties depend on rowid order. A record key that is
   itself a generated id must be declared too, and is replaced first.
 
 Ids present in the persona export are never replaced, whatever declares them,
@@ -522,7 +534,11 @@ one of two things:
 
 A phase is **incomplete** when the baseline clone and a change clone both lack
 its checkpoint, or when either noise clone lacks it: without the noise runs,
-noise cannot be told apart from a difference.
+noise cannot be told apart from a difference. A phase is also incomplete when
+any of its commands exits `2` on any clone. For `script` and `gateway`
+entries, `2` means the call was malformed; `product` and `ocm` entries keep
+their own exit-code meanings, but any exit `2` still makes the phase
+incomplete and the verdict `unresolved`.
 
 Each row gets exactly one class. The table is read top to bottom and the first
 row that matches wins:
@@ -543,7 +559,8 @@ a timeout in a phase written from the `Goal:` line is a difference in the
 `commands`, `logs` or `timing` signal, and it is classed `flaky` or `break`
 unless `expects` predicts that exact item and value.
 
-The verdict is `breaks` when any row is a `break`; otherwise `unresolved` when
+The verdict is `unresolved` when any command exits `2` on any clone.
+Otherwise it is `breaks` when any row is a `break`; otherwise `unresolved` when
 any row is `flaky`, any of the five clones did not start, any phase is
 incomplete, or `undeclared` is not empty;
 otherwise `good-to-go`. `good-to-go` speaks only for the phases that ran; the

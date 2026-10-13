@@ -14,7 +14,8 @@ decides whether OpenClaw answered correctly; only the comparison does.
 - **Entry**: one way to do one thing to the product, with a fixed command form,
   named flags and a fixed output. There is one entry per thing; two entries
   that do the same thing are a defect.
-- **Kind**: `product` (an OpenClaw command, run as `ocm @{env} -- <command>`),
+- **Kind**: `product` (an OpenClaw command, run as `ocm @{env} -- <command>`
+  or `ocm @{persona:<trait>:env} -- <command>`),
   `gateway` (one Gateway method, called by name through Kova's generic Gateway
   caller `support/verify/gateway-call.mjs`, which is not written yet; there is
   one `gateway` entry per method), `script` (a Kova support script that wraps
@@ -63,7 +64,9 @@ decides whether OpenClaw answered correctly; only the comparison does.
    under `{run}`, through one of the entry's own `--*-from <file>` flags, such
    as `--from` or `--session-from`.
 8. Flags are the entry's contract. A phase may not pass a flag the entry does
-   not list; the plan refuses it. The parameters a `gateway` entry passes in
+   not list; the plan refuses it. Each flag says whether it takes a value
+   (`none`, `required` or `optional`), so the check can tell a flag's value
+   from the next operand. The parameters a `gateway` entry passes in
    `--params` belong to the Gateway method; the Gateway validates them, not the
    catalogue.
 9. A product command enters the catalogue by its exact form and the flags
@@ -112,7 +115,7 @@ later phases search, delete or restart around it.
       "kind": "product | gateway | script | ocm",
       "wraps": "<method, command or operation>",
       "command": "<exact command form with placeholders and <flag> slots>",
-      "flags": { "--name": "<meaning; durations in milliseconds>" },
+      "flags": { "--name": { "description": "<meaning; durations in milliseconds>", "value": "none | required | optional" } },
       "prints": ["<top-level JSON field>"],
       "creates": ["<JSON pointer to an id OpenClaw generated for a resource this command created>"],
       "side": "read | write | destructive",
@@ -124,7 +127,14 @@ later phases search, delete or restart around it.
 ```
 
 An entry has no other fields. In `command`, a slot in angle brackets, such as
-`<name>` or `<ms>`, marks a value the phase fills in. `creates` lists, as JSON
+`<name>` or `<ms>`, marks a value the phase fills in; a positional the command
+may omit is shown in square brackets (`[<path>]`) and one that repeats with
+three dots (`<keys...>`). A `product` entry's environment argument is
+`@{env}` or `@{persona:<trait>:env}`; the check accepts both, and the plan
+resolves the second like any persona key. A persona trait that provides an
+environment is cloned by `kova verify run` for each clone, like the primary
+environment, and `{persona:<trait>:env}` resolves to that clone's copy; a run
+never touches the durable second installation. `creates` lists, as JSON
 pointers into the entry's output (`*` matches any array index), each field
 holding an id OpenClaw generated for a resource the command created, such as
 a new session's key; it is empty for a command that creates nothing. Compare
@@ -175,9 +185,9 @@ For a script:
    line.
 2. Give the entry an id, its kind, what it wraps, its exact command form, its
    side, and whether it needs `background`.
-3. List every flag phases pass to it, with its meaning, from the phases that
-   call it; a duration is given in milliseconds. Drop any flag that would
-   assert.
+3. List every flag phases pass to it, with its meaning and whether it takes a
+   value, from the phases that call it; a duration is given in milliseconds.
+   Drop any flag that would assert.
 4. Name the top-level fields its JSON prints, and in `creates` the fields that
    hold ids of resources it creates.
 5. Add the entry with status `toWrite`. Implement the script, run

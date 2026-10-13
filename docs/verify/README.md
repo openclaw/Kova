@@ -102,7 +102,7 @@ kova verify compare --run <run-id> --json
 The persona and the catalogue have their own commands:
 
 ```sh
-kova persona build  --seed <definition> --out <dir> --execute
+kova persona build  --definition <file> --out <dir> --execute
 kova persona verify --persona <manifest>
 kova persona show   --persona <manifest> --json
 kova catalogue list  --product openclaw --json
