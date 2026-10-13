@@ -5,13 +5,13 @@ Conditions: 282/520 (354 ambient, 166 event)
 Entry points: 203/310 (107 excluded)
 Breaks mapped: 6/6
 
-A condition counts as covered when run 2 covered one of its members, or when only run 1 found it and run 1 covered it; the phases that covered those run 1 conditions were taken into this template. Phases: 125 (2 setup, 20 operation, 103 event).
+A condition counts as covered when run 2 covered one of its members, or when only run 1 found it and run 1 covered it; the phases that covered those run 1 conditions were taken into this template. Phases: 124 (1 setup, 20 operation, 103 event).
 
 Uncovered:
 - Update an immutable release installation (operation; entry points openclaw update adopt-immutable and openclaw update recover): needs an explicitly adopted Linux installation with a root-owned system systemd service, sealed release generations and cgroup v2; outside this template's reach
 - Condition 1, Gateway installed as a Windows Scheduled Task (principal, elevation, schtasks and rename limits, task autostart suspension): Windows Scheduled Task paths are owned by platform per the bound; outside this template's reach
 - Condition 11, Managed service runs under another profile than the caller: caller and service projections stay separate: needs a second named profile owning the service; the persona has one profile
-- Condition 13, Older updater reports database-schema-preflight with mode unknown (2026.9.4): needs an installed updater of that specific older release; the persona pins 2026.9.6
+- Condition 13, Older updater reports database-schema-preflight with mode unknown (2026.9.4): needs an installed updater of that specific older release; the persona pins 2026.9.9
 - Condition 18, Cleanup cannot confirm admitted work stopped: ownership and recovery artifacts retained, pending execution: needs an updater child whose termination cannot be confirmed; no harness control reaches it
 - Condition 25, Retained worker close exceeds the ten-second exit grace: warning, retained runtime kept: needs a worker that refuses to close; no harness control reaches it
 - Condition 28, Interrupted pre-create report preparation becomes retryable after its reservation expires: needs an interrupted GitHub issue preparation; a real external service
@@ -25,7 +25,7 @@ Uncovered:
 - Condition 44, Linux OverlayFS installation: retained worker files use private copies: needs a container that denies FICLONE
 - Condition 45, Container or filesystem refuses file cloning (Proxmox LXC FICLONE): guarded byte-copy fallback: needs a container that denies FICLONE
 - Condition 46, Docker OverlayFS rejects moving an image-layer package (EXDEV): verified copy fallback: needs a container that denies FICLONE
-- Condition 48, Retained .openclaw.package-backup-* link to a source checkout makes an older updater refuse with a plugin-link error: needs an installed updater of that specific older release; the persona pins 2026.9.6
+- Condition 48, Retained .openclaw.package-backup-* link to a source checkout makes an older updater refuse with a plugin-link error: needs an installed updater of that specific older release; the persona pins 2026.9.9
 - Condition 49, Candidate without the admission marker or with a failing admission process: installed checks used with a warning: needs a target package without the admission marker or with a crashing admission process
 - Condition 55, Updater-owned native service command still alive: new update excluded; owner exit or lost lease stops its mutation: needs a stalled native service child; no harness control reaches it
 - Condition 56, Target runtime without ownership handoff support refused before stopping the Gateway: needs a sealed system service definition
@@ -61,7 +61,7 @@ Uncovered:
 - Condition 127, Blocking validation failure: staged update discarded, serving Gateway untouched: needs a candidate that fails its isolated canary boot; no harness control reaches it
 - Condition 138, Failed candidate never allowed to start: databases restored before the package, migrated files kept as <database>.migrated-<runId>: needs a candidate that fails after Doctor migrated a stopped installation and before it starts
 - Condition 140, Pending records that require checkpoint replay block mutable updates: needs a legacy checkpoint record; no persona trait provides it
-- Condition 144, Service handoff records from 2026.9.2 or 2026.9.3; a different supervisor UID blocks service mutation: needs an installed updater of that specific older release; the persona pins 2026.9.6
+- Condition 144, Service handoff records from 2026.9.2 or 2026.9.3; a different supervisor UID blocks service mutation: needs an installed updater of that specific older release; the persona pins 2026.9.9
 - Condition 145, Foreground Gateway without a managed service: update hints only, activation left to the operator: OCM environments run a managed service; a foreground Gateway needs its own environment
 - Condition 146, Foreground replacement still starting or rejected by ready check: unverified or shutdown pending: OCM environments run a managed service; a foreground Gateway needs its own environment
 - Condition 147, Chat requester's access grant revoked during staging: pending update stops, Gateway keeps serving: no catalogue script revokes a person-access grant while an update stages
@@ -95,7 +95,7 @@ Uncovered:
 - Condition 228, Update history unreadable: runStatusError, availability still shown: needs a corrupt ledger; no persona trait provides it
 - Condition 230, Diagnostics enabled: slow update.status requests log phase durations: no persona trait enables diagnostics
 - Condition 231, Candidate check exits by signal: termination class, signal and stderr tail kept: needs a signalled candidate check
-- Condition 234, Shared-state schema bump under a 2026.9.2 updater: content applied, version publication deferred: needs an installed updater of that specific older release; the persona pins 2026.9.6
+- Condition 234, Shared-state schema bump under a 2026.9.2 updater: content applied, version publication deferred: needs an installed updater of that specific older release; the persona pins 2026.9.9
 - Condition 235, App-owned package marker (openclaw-install-owner.json): update returns the owner's hint; invalid marker warns: app-owned installations belong to the apps
 - Condition 236, Container image replaced over the same mounted state: entrypoint runs doctor --fix before the Gateway: container image replacement needs a container runtime; outside this template's reach
 - Condition 237, Tenant containers from the retired fleet command left untouched by a host update: needs retired fleet tenants
@@ -110,7 +110,7 @@ Uncovered:
 - Condition 261, Unparseable plugin entry during snapshot inventory: warning, files copied unchanged: needs an unparseable plugin source
 - Condition 262, Package publication completed but cleanup failed: evidence archived or retained with a warning: needs a cleanup failure
 - Condition 263, External-helper operation stuck at publication-complete: repair settles it: needs a stranded publication
-- Condition 264, Older in-directory activation journals reported with their helper status command: needs an installed updater of that specific older release; the persona pins 2026.9.6
+- Condition 264, Older in-directory activation journals reported with their helper status command: needs an installed updater of that specific older release; the persona pins 2026.9.9
 - Condition 267, No owner destination resolves for a notice: skipped and logged, outcome kept: the persona's channels resolve to the owner
 - Condition 268, Destination account disables actions.sendMessage: notices skipped: no persona trait disables sendMessage
 - Condition 274, FreeBSD rc.d service discovery: FreeBSD only
@@ -142,7 +142,7 @@ Uncovered:
 - Condition 330, System-scope systemd Gateway: package updated, operator restart command recorded: needs a system-scope service
 - Condition 331, Installation not writable by the updater: managed-service-handoff-failed with owner commands: needs a foreign-owned installation
 - Condition 334, Missing runtime source capture (openclaw-plugin-build- ENOENT): warning, replacement loads: needs a deleted capture
-- Condition 335, Plugin dependency using import.meta in an older updater's parser: needs an installed updater of that specific older release; the persona pins 2026.9.6
+- Condition 335, Plugin dependency using import.meta in an older updater's parser: needs an installed updater of that specific older release; the persona pins 2026.9.9
 - Condition 336, Legacy openclaw-model-catalog-* temporary trees removed by doctor --fix when no other process runs: no persona trait leaves catalog trees
 - Condition 337, Two identical candidate Doctor failures for one version: automatic updates pause: needs two identical candidate Doctor failures for one version
 - Condition 338, Dependency or build fails during a source update (deps-install-failed, build-failed, ui-build-failed): needs an unbuildable target
@@ -190,7 +190,7 @@ Uncovered:
 - Condition 410, Legacy Tasks rows for native Codex work imported or preserved: no Codex rows in the persona
 - Condition 412, Local embeddings without managed llama-server setup: degraded semantic recall named: no local embeddings in the persona
 - Condition 413, Legacy credential fields (mode, apiKey) in auth stores converted; runtime rejects them: no persona trait holds legacy credential fields
-- Condition 415, Older Git updater keeps an in-memory config snapshot: Doctor preserves config: needs an installed updater of that specific older release; the persona pins 2026.9.6
+- Condition 415, Older Git updater keeps an in-memory config snapshot: Doctor preserves config: needs an installed updater of that specific older release; the persona pins 2026.9.9
 - Condition 417, Model migration changes a consumer's billing route: warning after saving: the persona uses the mock provider
 - Condition 418, Multi-account channel without a default account: routing warning: the persona's channels have one account each
 - Condition 425, Profile-owned skill library tables present when changing builds: no persona trait holds a skill library
@@ -212,19 +212,19 @@ Uncovered:
 - Condition 466, Older Linux host without openat2: older images report a false Gateway owner: needs a container on an old kernel
 - Condition 468, Restart policy loop on an unsafe migration: run Doctor once in the container: needs a container runtime
 - Condition 469, Update wizard selects dev without a Git checkout: offers to create one: the wizard phase cancels before the channel choice; no catalogue script answers the checkout offer
-- Condition 470, Installed 2026.9.3 or 2026.9.4 updater caps rehearsal and snapshot at five minutes even with a larger --timeout: needs an installed updater of that specific older release; the persona pins 2026.9.6
-- Condition 471, Installed 2026.9.4 updater refuses with managed-service-preflight before the target runs: needs an installed updater of that specific older release; the persona pins 2026.9.6
-- Condition 472, pnpm-owned installation whose older updater triggers an interactive build-approval prompt (IO error: not a terminal): needs an installed updater of that specific older release; the persona pins 2026.9.6
-- Condition 474, Published 2026.9.5 Gateways have no installation-replacement watcher: needs an installed updater of that specific older release; the persona pins 2026.9.6
-- Condition 475, Published 2026.8.2 CLI refuses updates on service-less Linux installs: needs an installed updater of that specific older release; the persona pins 2026.9.6
-- Condition 476, Installed 2026.9.7 or 2026.9.8 supervisor refuses candidate trees over 50,000 entries: needs an installed updater of that specific older release; the persona pins 2026.9.6
-- Condition 477, Older updater without the paired-identity drain reports device identity required and waits for its deadline: needs an installed updater of that specific older release; the persona pins 2026.9.6
-- Condition 478, Published 2026.9.5 resident keeps its startup stop budget after daemon-reload and omits write custody: needs an installed updater of that specific older release; the persona pins 2026.9.6
-- Condition 479, Installed 2026.9.2 admits a new update while an older row remains running: needs an installed updater of that specific older release; the persona pins 2026.9.6
-- Condition 480, Older updater returns already-current with runtime-verification-failed: needs an installed updater of that specific older release; the persona pins 2026.9.6
-- Condition 481, Older updater fails at updater-runtime-retention: needs an installed updater of that specific older release; the persona pins 2026.9.6
-- Condition 482, Installed 2026.9.4 updater cannot use orphan-row recovery before updating itself: needs an installed updater of that specific older release; the persona pins 2026.9.6
-- Condition 483, Bun-hosted update driven by 2026.9.7 waits for idle candidate workers: needs an installed updater of that specific older release; the persona pins 2026.9.6
+- Condition 470, Installed 2026.9.3 or 2026.9.4 updater caps rehearsal and snapshot at five minutes even with a larger --timeout: needs an installed updater of that specific older release; the persona pins 2026.9.9
+- Condition 471, Installed 2026.9.4 updater refuses with managed-service-preflight before the target runs: needs an installed updater of that specific older release; the persona pins 2026.9.9
+- Condition 472, pnpm-owned installation whose older updater triggers an interactive build-approval prompt (IO error: not a terminal): needs an installed updater of that specific older release; the persona pins 2026.9.9
+- Condition 474, Published 2026.9.5 Gateways have no installation-replacement watcher: needs an installed updater of that specific older release; the persona pins 2026.9.9
+- Condition 475, Published 2026.8.2 CLI refuses updates on service-less Linux installs: needs an installed updater of that specific older release; the persona pins 2026.9.9
+- Condition 476, Installed 2026.9.7 or 2026.9.8 supervisor refuses candidate trees over 50,000 entries: needs an installed updater of that specific older release; the persona pins 2026.9.9
+- Condition 477, Older updater without the paired-identity drain reports device identity required and waits for its deadline: needs an installed updater of that specific older release; the persona pins 2026.9.9
+- Condition 478, Published 2026.9.5 resident keeps its startup stop budget after daemon-reload and omits write custody: needs an installed updater of that specific older release; the persona pins 2026.9.9
+- Condition 479, Installed 2026.9.2 admits a new update while an older row remains running: needs an installed updater of that specific older release; the persona pins 2026.9.9
+- Condition 480, Older updater returns already-current with runtime-verification-failed: needs an installed updater of that specific older release; the persona pins 2026.9.9
+- Condition 481, Older updater fails at updater-runtime-retention: needs an installed updater of that specific older release; the persona pins 2026.9.9
+- Condition 482, Installed 2026.9.4 updater cannot use orphan-row recovery before updating itself: needs an installed updater of that specific older release; the persona pins 2026.9.9
+- Condition 483, Bun-hosted update driven by 2026.9.7 waits for idle candidate workers: needs an installed updater of that specific older release; the persona pins 2026.9.9
 - Condition 486, Writing the local Markdown report fails; a warning is printed and the outcome preserved (`report-write-fails`): needs fault injection or timing at a precise moment of the update that no catalogue script provides
 - Condition 487, A candidate state snapshot fails (active database, exec approvals or plugin phase named) (`snapshot-error`): needs fault injection or timing at a precise moment of the update that no catalogue script provides
 - Condition 495, Recovery files have unexpected mode, link count or owner, producing permission refusals (`recovery-permissions`): needs recovery files with unexpected mode, link count or owner
@@ -250,26 +250,29 @@ Uncovered:
 
 Phases that depend on each script still to be written (support.toWrite):
 - support/verify/update-cli.mjs: 60 phases
+- support/ensure-gateway-running.mjs: 46 phases
 - support/verify/env-fault.mjs: 40 phases
 - support/verify/gateway-call.mjs: 22 phases
-- support/verify/release-feed.mjs: 14 phases
 - support/verify/control-ui.mjs: 14 phases
+- support/verify/release-feed.mjs: 14 phases
 - support/verify/manual-package-replace.mjs: 11 phases
-- support/verify/session-turn-hold.mjs: 5 phases
+- support/verify/session-turn-hold.mjs: 7 phases
+- support/run-doctor-repair.mjs: 5 phases
 - support/verify/chat-send.mjs: 4 phases
-- support/verify/restart-handoff.mjs: 2 phases
-- support/verify/node-host-auto-update.mjs: 2 phases
+- support/verify/config-fixture.mjs: 3 phases
 - support/verify/agent-tool-turn.mjs: 2 phases
-- support/verify/chat-history-read.mjs: 2 phases
 - support/verify/channel-inbound-turn.mjs: 2 phases
+- support/verify/chat-history-read.mjs: 2 phases
+- support/verify/node-host-auto-update.mjs: 2 phases
+- support/verify/restart-handoff.mjs: 2 phases
 - support/verify/stage-state-fixture.mjs: 2 phases
-- support/verify/source-server-update.mjs: 1 phases
+- support/verify/cron-isolated-run.mjs: 1 phases
 - support/verify/external-supervisor.mjs: 1 phases
 - support/verify/package-recovery-helper.mjs: 1 phases
-- support/verify/cron-isolated-run.mjs: 1 phases
-- support/verify/updater-journey.mjs: 1 phases
-- support/verify/triage-run.mjs: 1 phases
+- support/verify/source-server-update.mjs: 1 phases
 - support/verify/stage-session-store-fixture.mjs: 1 phases
+- support/verify/triage-run.mjs: 1 phases
+- support/verify/updater-journey.mjs: 1 phases
 - env-fault.mjs by fault: channel-probe-fail 13, hold-state-lock 3, config-edit 3, interrupt-doctor 3, signal-restart 2, tmpdir-small 2, kill-gateway 2, kill-update-helper 1, helper-spawn-denied 1, prefix-readonly 1, prefix-volume-full 1, artifacts-volume-full 1, occupy-gateway-port 1, db-writer-loop 1, block-git-remote 1, db-writer-hold 1, config-readonly 1, db-reader-loop 1, freeze-gateway 1, signal-stop 1
 
 Persona additions:
@@ -309,3 +312,12 @@ Persona additions:
 - config-invalid-field: a staged config fixture with an invalid field (path) (named for an uncovered condition; not required by a phase)
 - package-dist-edited: local edits to the installed package's dist (no keys) (named for an uncovered condition; not required by a phase)
 - runtime-bun-available: a Bun 1.4+ executable with WAL-safe node:sqlite available to the env (bunPath) (named for an uncovered condition; not required by a phase)
+
+
+## Execution dependencies
+
+The figures above describe derived coverage, not executed results. Product commands using `@{persona:<trait>:env}` depend on the [run contract](../../../docs/verify/plan-and-verdict.md): every persona-provided environment is cloned separately for each comparison clone, and the placeholder resolves to that copy. The durable persona installation must never be mutated. Catalogue recognition of this product environment form depends on the correction in [PR #174](https://github.com/openclaw/Kova/pull/174).
+
+The existing Gateway health helper currently accepts `--timeout-ms`; these commands use the catalogue's `--timeout` contract. It is therefore listed under `support.toWrite`, with the required compatible adaptation spelled out. The existing Doctor repair helper likewise remains withheld until its catalogue contract is implemented. File existence alone does not make either entry available.
+
+Invalid configuration and missing plugin paths must be staged through `config-fixture.mjs`, without the validated config writer, preserving and restoring the exact original bytes even on interruption. Each scenario claiming a turn in progress starts its own held turn immediately before the action; the initial shared turn was removed. Successful recovery-data removal runs after the reader-refusal scenarios so it cannot consume their input first. These scripts and persona traits remain prerequisites; a command that exits 2 on any clone makes its phase incomplete and the verdict unresolved.

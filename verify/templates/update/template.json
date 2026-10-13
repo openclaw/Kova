@@ -135,10 +135,7 @@
     "update-history-stale"
   ],
   "support": {
-    "existing": [
-      "support/ensure-gateway-running.mjs",
-      "support/run-doctor-repair.mjs"
-    ],
+    "existing": [],
     "toWrite": [
       "support/verify/update-cli.mjs  (openclaw update and openclaw update wizard run in a named environment, the target resolved from the local release feed: side, side-next or the persona's pinned release; optional pseudo-terminal with scripted prompt answers and a signal delivered when the run reaches a named phase; --env --target <side|side-next|persona|variant:<name>> --mode <update|wizard> --channel <stable|extended-stable|beta|dev> --no-restart --yes --stdin <pipe> --cwd-inside-install --interactive --answer <exit|diagnose|report|cancel> --consent <yes|no|timeout> --signal <SIGINT|SIGTERM|SIGHUP|SIGKILL> --at-phase <staging|validating|activating|restarting|verifying> --update-timeout <ms> --timeout <ms> [--background --handle <file>] [--wait <file>])",
       "support/verify/release-feed.mjs  (a local package registry and update-check endpoint that publishes the side's build and a version-bumped copy under the channel dist-tags, pointed to by the environment's npm config and OPENCLAW_TELEMETRY_ENDPOINT; modes change what it serves; --env --publish <side,side-next> --dist-tags <list> --from <handle> --mode <serve|offline|withhold-target|withhold-plugins|withhold-clawhub-official> --publish-variant <canary-fails|install-fails|node-start-fails> (publishes a copy of the side whose candidate Gateway, package install or headless node start fails) --plugin-release <pluginId> --plugin-capabilities widened --plugin-integrity changed (publishes a new release of an installed external plugin) [--background --handle <file>] [--wait <file>])",
@@ -157,7 +154,7 @@
       "support/verify/chat-history-read.mjs  (catalogue entry; --env --session-key --limit --timeout)",
       "support/verify/channel-inbound-turn.mjs  (catalogue entry; --env --chat-type direct --peer --text --timeout)",
       "support/verify/cron-isolated-run.mjs  (catalogue entry; --env --job-id --timeout)",
-      "verify/templates/update/patches/*.json  (config patches: invalid-field, invalid-field-restore, plugin-path-missing, plugin-path-missing-restore, update-automatic-on, update-automatic-beta-on, update-automatic-off, update-checks-off, update-checks-on, restart-off, restart-on)",
+      "verify/templates/update/patches/*.json  (config patches: update-automatic-on, update-automatic-beta-on, update-automatic-off, update-checks-off, update-checks-on, restart-off, restart-on)",
       "product: ocm @{env} -- update status --json  (openclaw update status, src/cli/update-cli.ts and docs/cli/update/status-and-history.md; --json --timeout <seconds>)",
       "product: ocm @{env} -- update --dry-run --json  (openclaw update preview, src/cli/update-option-specs.ts and docs/cli/update.md; --dry-run --json --channel <stable|extended-stable|beta|dev>)",
       "product: ocm @{env} -- update repair --json --yes  (openclaw update repair, src/cli/update-cli.ts registerUpdateFinalizationCommand and docs/cli/update/repair-and-recovery.md; --json --yes --no-restart --timeout <seconds> --channel --accept-capabilities)",
@@ -171,7 +168,10 @@
       "support/verify/triage-run.mjs  (openclaw triage --run under a pseudo-terminal, one bounded embedded repair turn; --env --timeout <ms>)",
       "support/verify/stage-state-fixture.mjs  (gateway stop, copy of a persona state or config fixture into the state directory, then either openclaw doctor --fix --json or a Gateway start whose refusal or warnings are recorded, then removal of the fixture and restore of the previous files and service; --env --fixture <path> --run <doctor|start> --timeout <ms>)",
       "product: ocm @{env} -- sessions --json --active <n>  (sessions listed after a forced restart, src/commands/sessions*.ts and docs/cli/sessions.md; --json --active <minutes>)",
-      "support/verify/stage-session-store-fixture.mjs  (gateway stop, staging of a persona fixture into an agent directory, Doctor, start; --env --agent --fixture)"
+      "support/verify/stage-session-store-fixture.mjs  (gateway stop, staging of a persona fixture into an agent directory, Doctor, start; --env --agent --fixture)",
+      "support/ensure-gateway-running.mjs  (required catalogue-contract adaptation of the existing Gateway health helper: accept --timeout <ms> while retaining --timeout-ms compatibility; --env --artifact-dir --timeout; currently only --timeout-ms is implemented, so phases using --timeout remain withheld until the adaptation is available)",
+      "support/verify/config-fixture.mjs  (save the exact config bytes for one cloned environment, stage an invalid-field or plugin-path-missing fixture by direct file write without config validation, and restore the saved bytes on --wait and on phase interruption; report installation errors as exit 2; --env --fixture <invalid-field|plugin-path-missing> --timeout <ms> [--background --handle <file>] [--wait <file>])",
+      "support/run-doctor-repair.mjs  (existing script whose catalogue entry remains toWrite until its output and exit codes meet the verification contract; --env)"
     ]
   },
   "phases": [
@@ -203,37 +203,11 @@
       "slow": false
     },
     {
-      "id": "setup-turn-in-flight",
-      "kind": "setup",
-      "intent": "A user has sent the main session a message the model is still answering, so later update and restart phases run while a turn is in flight; the started turn and its handle are observed.",
-      "paths": [
-        "src/gateway/server-methods/restart*.ts",
-        "src/infra/restart*.ts",
-        "src/infra/update-maintenance.ts",
-        "src/infra/update-managed-service-handoff*.ts"
-      ],
-      "requires": [
-        "mock-provider-held-turn",
-        "session-main-rolling"
-      ],
-      "commands": [
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-setup --timeout 120000",
-        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 240000 --background --handle {run}/turn-in-flight.json"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing"
-      ],
-      "timeoutMs": 130000,
-      "browser": false,
-      "slow": false
-    },
-    {
       "id": "check-update-status",
       "kind": "operation",
       "intent": "A user checks whether an update is available and what is installed, from the CLI, the Gateway method, the status summary and the Settings Updates page, with failed and stale runs on record and a release published; the reported channel, availability, install facts, recorded runs and the page are observed.",
       "paths": [
+        "packages/gateway-protocol/src/schema/config.ts",
         "src/commands/status.update.ts",
         "src/gateway/server-methods/update-status.ts",
         "src/gateway/server-startup-update-check.ts",
@@ -244,6 +218,7 @@
         "src/infra/update-status-*.ts",
         "ui/src/components/sidebar-attention-update.ts",
         "ui/src/components/update-git-revisions.ts",
+        "ui/src/pages/config/config-page.ts",
         "ui/src/pages/config/updates*.ts"
       ],
       "requires": [
@@ -273,20 +248,67 @@
       "kind": "operation",
       "intent": "An operator brings legacy state and config forward: the first start of the side over the persona's older state is read back from logs, status and Doctor, then doctor --fix runs on it and on environments holding retired JSON state, retired config keys and a legacy agents.list roster, with a dry-run update on the retired ones; migration receipts, refusals, warnings, ready check and the repaired config are observed.",
       "paths": [
+        "src/acp/runtime/session-meta-migration-embedded.ts",
+        "src/acp/runtime/session-meta-write.native.ts",
+        "src/acp/runtime/session-meta-write.worker.ts",
+        "src/agents/workspace-alias-rebind.ts",
+        "src/channels/message/ingress-queue.migration.ts",
+        "src/channels/plugins/types.adapters.ts",
+        "src/commands/config-preflight-snapshot.ts",
         "src/commands/doctor-*-migration*.ts",
+        "src/commands/doctor-auth-flat-profiles.ts",
+        "src/commands/doctor-config-flow.ts",
         "src/commands/doctor-config-preflight-*.ts",
+        "src/commands/doctor-config-preflight.cron.ts",
+        "src/commands/doctor-config-preflight.ts",
+        "src/commands/doctor-heartbeat-main-session-repair.ts",
         "src/commands/doctor-migration-*.ts",
+        "src/commands/doctor-outbound-delivery.ts",
         "src/commands/doctor-post-upgrade*.ts",
+        "src/commands/doctor-session-delivery-state.ts",
+        "src/commands/doctor-session-sqlite-archive.ts",
+        "src/commands/doctor-session-sqlite-discovery.ts",
+        "src/commands/doctor-session-sqlite-failure.ts",
+        "src/commands/doctor-session-sqlite-import.ts",
+        "src/commands/doctor-session-sqlite-restore.ts",
+        "src/commands/doctor-session-sqlite-retained.ts",
+        "src/commands/doctor-session-sqlite-retirement.ts",
+        "src/commands/doctor-session-sqlite-verification.ts",
+        "src/commands/doctor-session-sqlite.ts",
+        "src/commands/doctor-session-state-providers.ts",
+        "src/commands/doctor-session-transcripts.ts",
         "src/commands/doctor-startup-migration-refusal.ts",
+        "src/commands/doctor-state-integrity.ts",
         "src/commands/doctor-update*.ts",
+        "src/commands/doctor/auth-alias-receipt.ts",
         "src/commands/doctor/cron/*migration*.ts",
+        "src/commands/doctor/cron/index.ts",
         "src/commands/doctor/cron/legacy-*.ts",
         "src/commands/doctor/legacy-config-repair.ts",
+        "src/commands/doctor/repair-sequencing.ts",
+        "src/commands/doctor/shared/automatic-config-repair.ts",
+        "src/commands/doctor/shared/codex-route-session-repair.ts",
+        "src/commands/doctor/shared/config-flow-steps.ts",
+        "src/commands/doctor/shared/config-migration-result.ts",
+        "src/commands/doctor/shared/config-recovery.ts",
         "src/commands/doctor/shared/legacy-config-*.ts",
+        "src/commands/doctor/shared/preview-warnings.ts",
+        "src/commands/startup-config-preflight.ts",
         "src/config/*-migration.ts",
+        "src/config/io.runtime-write-finalization.ts",
+        "src/config/io.write-topology.ts",
+        "src/config/io.write.ts",
+        "src/config/mutate.include-io.ts",
+        "src/config/write-lock.ts",
+        "src/flows/doctor-core-checks.ts",
+        "src/flows/doctor-health-contribution-runners.config.ts",
+        "src/flows/doctor-health-contributions.ts",
         "src/flows/doctor-update-budget.ts",
+        "src/gateway/server-agent-database-startup.ts",
+        "src/gateway/server-startup-bootstrap.ts",
         "src/gateway/server-startup-session-migration.ts",
         "src/infra/deferred-plugin-migration*.ts",
+        "src/infra/deferred-plugin-session-sources.ts",
         "src/infra/device-pairing-migration.ts",
         "src/infra/device-pairing-node-desktop-migration.ts",
         "src/infra/exec-approvals-*migration*.ts",
@@ -299,10 +321,17 @@
         "src/infra/sqlite-rollback-recovery.ts",
         "src/infra/startup-migration-checkpoint.ts",
         "src/infra/state-migrations*.ts",
+        "src/plugins/doctor-contract-legacy-setup.ts",
+        "src/plugins/state.worker.ts",
         "src/state/*migration*.ts",
+        "src/state/agent-deletion-journal-recovery.ts",
+        "src/state/openclaw-agent-db-schema.ts",
         "src/state/openclaw-schema-versions.ts",
         "src/state/openclaw-state-db-content-version.ts",
         "src/state/openclaw-state-db-doctor-schema.ts",
+        "src/state/openclaw-state-db-maintenance.ts",
+        "src/state/openclaw-state-db-repair.ts",
+        "src/state/openclaw-state-db-schema-runtime.ts",
         "src/state/openclaw-state-db-schema-version.ts",
         "src/state/openclaw-update-schema-refusal.ts"
       ],
@@ -348,6 +377,7 @@
       "kind": "operation",
       "intent": "A user creates a verified backup before an update; the archive manifest and verification result are observed.",
       "paths": [
+        "src/infra/backup-create.ts",
         "src/infra/update-database-backup.ts",
         "src/infra/update-recovery*.ts"
       ],
@@ -369,10 +399,17 @@
       "kind": "operation",
       "intent": "A user updates OpenClaw from a terminal with piped input while a turn is in flight: a dry run with the live config, then with an invalid field and with a missing plugin load path, then a real update of an npm global installation from the persona's older release to the published side release (reading update status mid-run and running from inside the installation directory), of the OCM-managed environment, and of an installation without a owning package tool and of a Bun-owned installation whose Gateway then starts on Bun; dry-run notes, admission, phases, warnings, verification facts, downtime, status and Doctor findings are observed.",
       "paths": [
+        "src/cli/argv.ts",
+        "src/cli/daemon-cli.ts",
+        "src/cli/daemon-cli/lifecycle-context.ts",
+        "src/cli/program/register.subclis.ts",
         "src/cli/run-main-update-admission.ts",
         "src/cli/update-cli.ts",
         "src/cli/update-cli/**",
         "src/cli/update-option-specs.ts",
+        "src/daemon/launchd-stop.ts",
+        "src/daemon/service-operation-lock.ts",
+        "src/daemon/service-reconciliation.ts",
         "src/daemon/service-update-authority.ts",
         "src/gateway/update-run-*.ts",
         "src/infra/ocm-update-client.ts",
@@ -387,21 +424,25 @@
         "install-dist-edited",
         "install-npm-global",
         "install-tarball-extracted",
+        "mock-provider-held-turn",
         "plugins-bundled-and-external",
+        "session-main-rolling",
         "store-orphan-delivery-rows"
       ],
       "commands": [
         "ocm @{env} -- update --dry-run --json",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/invalid-field.json",
+        "node {kovaRoot}/support/verify/config-fixture.mjs --env {env} --fixture invalid-field --timeout 30000 --background --handle {run}/config-update-from-terminal-invalid-field.json",
         "ocm @{env} -- update --dry-run --json",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/invalid-field-restore.json",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/plugin-path-missing.json",
+        "node {kovaRoot}/support/verify/config-fixture.mjs --wait {run}/config-update-from-terminal-invalid-field.json --timeout 30000",
+        "node {kovaRoot}/support/verify/config-fixture.mjs --env {env} --fixture plugin-path-missing --timeout 30000 --background --handle {run}/config-update-from-terminal-plugin-path-missing.json",
         "ocm @{env} -- update --dry-run --json",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/plugin-path-missing-restore.json",
+        "node {kovaRoot}/support/verify/config-fixture.mjs --wait {run}/config-update-from-terminal-plugin-path-missing.json --timeout 30000",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-npm-global:env} --target side --yes --stdin pipe --cwd-inside-install --background --handle {run}/update-npm.json",
         "ocm @{persona:install-npm-global:env} -- update status --json",
         "node {kovaRoot}/support/verify/update-cli.mjs --wait {run}/update-npm.json --timeout 290000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 360000 --timeout 370000 --background --handle {run}/held-update-from-terminal-operation.json",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side --yes --stdin pipe --timeout 290000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/held-update-from-terminal-operation.json --timeout 370000",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-tarball-extracted:env} --target side --yes --timeout 60000",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-bun-global:env} --target side --yes --timeout 290000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-bun-global:env} --artifact-dir {run}/ready-bun --timeout 120000",
@@ -416,7 +457,7 @@
         "state:state/openclaw.sqlite",
         "doctor"
       ],
-      "timeoutMs": 1050000,
+      "timeoutMs": 1920000,
       "browser": false,
       "slow": true
     },
@@ -509,21 +550,30 @@
       "kind": "operation",
       "intent": "An administrator reviews the available update from the sidebar card and cancels it, then starts it from Settings Updates with Update now and Update and restart while a turn is in flight, follows the phase list and step disclosures through the restart and closes the final report; the confirmation, live phases, reconnect state, report and the recorded run are observed.",
       "paths": [
+        "src/gateway/methods/core-descriptors.ts",
         "src/gateway/server-methods/update*.ts",
         "src/gateway/update-run-*.ts",
         "src/infra/update-*.ts",
         "src/shared/update-outcome.ts",
+        "ui/src/app/app-shell-view.ts",
         "ui/src/app/overlays-updates.ts",
         "ui/src/app/update-*.ts",
         "ui/src/components/sidebar-attention-update.ts",
+        "ui/src/components/sidebar-issue-item.ts",
         "ui/src/components/sidebar-update-card.ts",
         "ui/src/components/update-*.ts",
-        "ui/src/pages/config/updates*.ts"
+        "ui/src/pages/config/updates*.ts",
+        "ui/src/pages/custodian/custodian-alert-card.ts"
       ],
-      "requires": [],
+      "requires": [
+        "mock-provider-held-turn",
+        "session-main-rolling"
+      ],
       "commands": [
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow update-review-cancel --artifact-dir {run}/screens/update-review-cancel --timeout 90000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 360000 --timeout 370000 --background --handle {run}/held-update-from-control-ui-operation.json",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow update-now-confirm --artifact-dir {run}/screens/update-now-confirm --timeout 290000 --out {run}/ui-update.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/held-update-from-control-ui-operation.json --timeout 370000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-ui-update --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.status --params '{}' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.runs.list --params '{\"limit\":5}' --timeout 60000"
@@ -535,7 +585,7 @@
         "screen",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 660000,
+      "timeoutMs": 1400000,
       "browser": true,
       "slow": true
     },
@@ -544,6 +594,9 @@
       "kind": "operation",
       "intent": "An owner sends /update in the main session, then asks the agent to update so it calls the gateway tool's update.run action, a scheduled job asks for an update under its own authority, and a non-owner direct peer sends /update; acknowledgements, restart and final notices, refusals and the recorded runs are observed.",
       "paths": [
+        "src/agents/system-prompt.ts",
+        "src/agents/tools/gateway-tool.ts",
+        "src/auto-reply/reply/command-gates.ts",
         "src/auto-reply/reply/commands-update.ts",
         "src/gateway/server-methods/update*.ts",
         "src/gateway/update-run-*.ts",
@@ -584,6 +637,7 @@
         "src/commands/status-update-restart.ts",
         "src/gateway/server-restart-sentinel*.ts",
         "src/gateway/server-restart-update-run.ts",
+        "src/gateway/server-startup-post-attach.ts",
         "src/gateway/server-startup-restart-sentinel.ts",
         "src/gateway/server-update-sentinel.ts",
         "src/gateway/update-run-*.ts",
@@ -653,9 +707,13 @@
       "kind": "operation",
       "intent": "An operator lists recent update runs and reads one at the history limit through the Gateway and the CLI; the run records, compacted steps and status fields are observed.",
       "paths": [
+        "packages/gateway-protocol/src/core-request-params.ts",
+        "packages/gateway-protocol/src/schema/update-runs.ts",
         "src/cli/update-cli/status.ts",
         "src/gateway/server-methods/update-status.ts",
-        "src/infra/update-run-*.ts"
+        "src/gateway/server-request-lifecycle.ts",
+        "src/infra/update-run-*.ts",
+        "src/state/openclaw-state-worker-runtime.ts"
       ],
       "requires": [
         "update-history-long"
@@ -708,7 +766,9 @@
       "kind": "operation",
       "intent": "A user collects triage diagnostics for a recorded failed update from the CLI with and without JSON, and opens Diagnose update, the terminal commands and the troubleshooting link on the Settings page, with no coding agent on PATH; the saved prompt, archive, handoff commands, detected agents and the page are observed.",
       "paths": [
+        "src/cli/gateway-cli/run.ts",
         "src/cli/gateway-cli/startup-triage.ts",
+        "src/cli/program/register.maintenance.ts",
         "src/commands/triage*.ts",
         "src/infra/triage-continuation.ts",
         "src/infra/update-repair-*.ts",
@@ -775,9 +835,17 @@
         "src/cli/update-cli/update-repair-command.ts",
         "src/commands/doctor-*-migration*.ts",
         "src/commands/doctor-config-preflight-*.ts",
+        "src/commands/doctor-lint-runner.ts",
+        "src/commands/doctor-maintenance-admission.ts",
+        "src/commands/doctor-maintenance-state.ts",
+        "src/commands/doctor-maintenance.ts",
         "src/commands/doctor-migration-*.ts",
+        "src/commands/doctor-original-capture.ts",
         "src/commands/doctor-post-upgrade*.ts",
         "src/commands/doctor-update*.ts",
+        "src/commands/doctor.ts",
+        "src/commands/doctor/shared/release-configured-plugin-installs.ts",
+        "src/flows/doctor-health.ts",
         "src/flows/doctor-update-budget.ts",
         "src/infra/update-repair-maintenance.ts",
         "src/infra/update-retained-runtime*.ts",
@@ -821,7 +889,9 @@
       "kind": "operation",
       "intent": "A user replaces OpenClaw with npm and with pnpm outside the updater while the Gateway keeps running, and updates a Git server with the reference source-server script; the Gateway's replacement record and drain, status, update status and Doctor findings are observed.",
       "paths": [
+        "src/cli/gateway-cli/run-loop-request.ts",
         "src/cli/update-cli/update-command-package*.ts",
+        "src/gateway/server-maintenance.ts",
         "src/gateway/stale-install.ts",
         "src/infra/package-lifecycle.ts",
         "src/infra/update-global*.ts",
@@ -858,7 +928,9 @@
       "intent": "A headless node host attached to the Gateway checks the published release, prepares it and activates it once idle, or defers while busy; node update preparation, deferral, activation and the reported node version are observed.",
       "paths": [
         "src/node-host/auto-update*.ts",
-        "src/node-host/runtime-update-pause.ts"
+        "src/node-host/runner.ts",
+        "src/node-host/runtime-update-pause.ts",
+        "src/node-host/runtime.ts"
       ],
       "requires": [
         "node-host-headless"
@@ -881,37 +953,73 @@
       "kind": "operation",
       "intent": "A user restarts the Gateway while a turn is in flight and a message arrives during the drain: a safe restart, the restart preflight and request methods, /restart from chat, a SIGUSR2 signal, a plain restart and a stop request followed by a service start; drain logs, rejected input, ready check, the restart history and the in-flight turn's outcome are observed.",
       "paths": [
+        "extensions/admin-http-rpc/src/methods.ts",
+        "src/auto-reply/reply/commands-session.ts",
         "src/auto-reply/reply/commands-update.ts",
+        "src/cli/channel-auth.ts",
         "src/cli/daemon-cli/lifecycle-*restart*.ts",
+        "src/cli/daemon-cli/lifecycle-core.ts",
+        "src/cli/daemon-cli/lifecycle-unmanaged.ts",
+        "src/cli/daemon-cli/lifecycle.runtime.ts",
+        "src/cli/daemon-cli/lifecycle.ts",
+        "src/cli/daemon-cli/register-service-commands.ts",
         "src/cli/daemon-cli/restart-*.ts",
+        "src/cli/gateway-cli/host-lifecycle.ts",
+        "src/cli/gateway-cli/lifecycle.runtime.ts",
+        "src/cli/gateway-cli/run-loop-drain.ts",
+        "src/cli/gateway-cli/run-loop-startup.ts",
+        "src/cli/gateway-cli/run-loop.ts",
+        "src/config/io.write.ts",
+        "src/daemon/launchd-lifecycle.ts",
         "src/daemon/restart-*.ts",
+        "src/daemon/schtasks-process.ts",
         "src/gateway/restart-trace.ts",
+        "src/gateway/server-close.ts",
+        "src/gateway/server-methods.ts",
+        "src/gateway/server-methods/config-write-flow.ts",
         "src/gateway/server-methods/restart*.ts",
+        "src/gateway/server-reload-hot.ts",
+        "src/gateway/server-reload-restart.ts",
         "src/gateway/server-restart-sentinel*.ts",
-        "src/infra/restart*.ts"
+        "src/gateway/server-startup-trace.ts",
+        "src/infra/process-respawn.ts",
+        "src/infra/restart*.ts",
+        "src/system-agent/operations-execution-helpers.ts"
       ],
       "requires": [
+        "mock-provider-held-turn",
         "service-definition-outdated",
         "session-main-rolling"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 60000 --timeout 70000 --background --handle {run}/held-restart-gateway-1.json",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message 'Are you still there?' --after-ms 2000 --background --handle {run}/drain-message.json",
         "ocm @{env} -- gateway restart --safe",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/held-restart-gateway-1.json --timeout 70000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-safe --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method gateway.restart.preflight --params '{}' --timeout 30000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 60000 --timeout 70000 --background --handle {run}/held-restart-gateway-4.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method gateway.restart.request --params '{}' --timeout 60000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/held-restart-gateway-4.json --timeout 70000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-request --timeout 120000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 60000 --timeout 70000 --background --handle {run}/held-restart-gateway-6.json",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message '/restart' --timeout 60000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/held-restart-gateway-6.json --timeout 70000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-chat-restart --timeout 120000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 60000 --timeout 70000 --background --handle {run}/held-restart-gateway-8.json",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault signal-restart --timeout 30000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/held-restart-gateway-8.json --timeout 70000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-sigusr2 --timeout 120000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 60000 --timeout 70000 --background --handle {run}/held-restart-gateway-10.json",
         "ocm @{env} -- gateway restart",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/held-restart-gateway-10.json --timeout 70000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-plain --timeout 120000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 60000 --timeout 70000 --background --handle {run}/held-restart-gateway-12.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method gateway.stop.request --params '{}' --timeout 60000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/held-restart-gateway-12.json --timeout 70000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-stop-start --timeout 120000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --wait {run}/drain-message.json --timeout 30000",
-        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/turn-in-flight.json --timeout 30000"
+        "node {kovaRoot}/support/verify/chat-send.mjs --wait {run}/drain-message.json --timeout 30000"
       ],
       "checkpoint": [
         "responses",
@@ -919,7 +1027,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 1500000,
+      "timeoutMs": 2340000,
       "browser": false,
       "slow": true
     },
@@ -931,6 +1039,7 @@
         "src/cli/daemon-cli/lifecycle-*restart*.ts",
         "src/cli/daemon-cli/restart-*.ts",
         "src/cli/daemon-cli/update-*.ts",
+        "src/cli/gateway-cli/output-mode.ts",
         "src/cli/gateway-cli/register-restart-handoff.ts",
         "src/cli/gateway-cli/update-successor.ts",
         "src/daemon/launchd-restart-handoff.ts",
@@ -956,34 +1065,6 @@
         "responses",
         "logs",
         "timing"
-      ],
-      "timeoutMs": 300000,
-      "browser": false,
-      "slow": false
-    },
-    {
-      "id": "retire-update-recovery-data",
-      "kind": "operation",
-      "intent": "After verifying an update, an operator previews retained migration recovery originals while the Gateway serves, stops the Gateway and retires the eligible ones with explicit consent; eligible, protected and removed artifacts, totals and the restarted Gateway are observed.",
-      "paths": [
-        "src/cli/update-cli/cleanup.ts",
-        "src/infra/update-recovery*.ts"
-      ],
-      "requires": [
-        "recovery-originals-retained"
-      ],
-      "commands": [
-        "ocm @{env} -- update cleanup --dry-run --json",
-        "ocm @{env} -- gateway stop",
-        "ocm @{env} -- update cleanup --yes --json",
-        "ocm service start {env} --json",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-retired --timeout 120000"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing",
-        "state:state/openclaw.sqlite"
       ],
       "timeoutMs": 300000,
       "browser": false,
@@ -1363,9 +1444,9 @@
       ],
       "requires": [],
       "commands": [
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/invalid-field.json",
+        "node {kovaRoot}/support/verify/config-fixture.mjs --env {env} --fixture invalid-field --timeout 30000 --background --handle {run}/config-event-managed-handoff-refusal-invalid-field.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.run --params '{}' --timeout 200000",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/invalid-field-restore.json",
+        "node {kovaRoot}/support/verify/config-fixture.mjs --wait {run}/config-event-managed-handoff-refusal-invalid-field.json --timeout 30000",
         "ocm @{env} -- update status --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-handoff-refusal --timeout 60000"
       ],
@@ -1375,9 +1456,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 330000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-managed-handoff-no-result",
@@ -1888,11 +1969,15 @@
         "src/infra/update-maintenance.ts",
         "src/shared/update-outcome.ts"
       ],
-      "requires": [],
+      "requires": [
+        "mock-provider-held-turn",
+        "session-main-rolling"
+      ],
       "commands": [
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 360000 --timeout 370000 --background --handle {run}/held-event-update-drain-deadline-operation.json",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side-next --yes --update-timeout 30000 --timeout 250000",
-        "ocm @{env} -- update status --json",
-        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/turn-in-flight.json --timeout 30000"
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/held-event-update-drain-deadline-operation.json --timeout 370000",
+        "ocm @{env} -- update status --json"
       ],
       "checkpoint": [
         "responses",
@@ -1900,9 +1985,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 1040000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-previous-gateway-ready-check-expiry",
@@ -2599,6 +2684,7 @@
         "src/cli/update-cli/**",
         "src/cli/update-cli/update-command-config*.ts",
         "src/cli/update-option-specs.ts",
+        "src/config/io.write.ts",
         "src/infra/package-update-*.ts",
         "src/infra/update-*.ts",
         "src/shared/update-outcome.ts"
@@ -2680,6 +2766,7 @@
       "kind": "event",
       "intent": "The agent runs openclaw update from its exec shell inside the managed Gateway service; the handoff to the detached helper, exit 75, printed follow-up commands, the shell's fate and the recorded run are observed.",
       "paths": [
+        "src/agents/tools/gateway-tool.ts",
         "src/cli/daemon-cli/update-*.ts",
         "src/cli/gateway-cli/register-restart-handoff.ts",
         "src/cli/gateway-cli/update-successor.ts",
@@ -3006,14 +3093,19 @@
         "src/infra/update-status-schedule.ts",
         "src/shared/update-outcome.ts"
       ],
-      "requires": [],
+      "requires": [
+        "mock-provider-held-turn",
+        "session-main-rolling"
+      ],
       "commands": [
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 240000 --timeout 250000 --background --handle {run}/held-event-campaign-with-active-work-campaign.json",
         "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/update-automatic-beta-on.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.status --params '{}' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.status --params '{}' --after-ms 600000 --timeout 60000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-campaign --timeout 300000",
         "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/update-automatic-off.json",
-        "ocm @{env} -- update status --json"
+        "ocm @{env} -- update status --json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/held-event-campaign-with-active-work-campaign.json --timeout 250000"
       ],
       "checkpoint": [
         "responses",
@@ -3021,7 +3113,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 1100000,
+      "timeoutMs": 1600000,
       "browser": false,
       "slow": true
     },
@@ -3318,11 +3410,15 @@
         "src/gateway/server-restart-sentinel*.ts",
         "src/infra/restart*.ts"
       ],
-      "requires": [],
+      "requires": [
+        "mock-provider-held-turn",
+        "session-main-rolling"
+      ],
       "commands": [
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 60000 --timeout 70000 --background --handle {run}/held-event-restart-drain-expiry-operation.json",
         "ocm @{env} -- gateway restart --wait 5s",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-drain --timeout 120000",
-        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/turn-in-flight.json --timeout 30000"
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/held-event-restart-drain-expiry-operation.json --timeout 70000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-drain --timeout 120000"
       ],
       "checkpoint": [
         "responses",
@@ -3330,9 +3426,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 440000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-restart-handoff-mismatch",
@@ -3363,7 +3459,7 @@
     {
       "id": "event-old-gateway-shutdown-after-replacement",
       "kind": "event",
-      "intent": "An npm installation still running the persona's 2026.9.6 Gateway has its package replaced in place by an update, so the old process's first shutdown may fail loading removed files; the shutdown outcome, restart through the installation owner and the run record are observed.",
+      "intent": "An npm installation still running the persona's pinned older Gateway has its package replaced in place by an update, so the old process's first shutdown may fail loading removed files; the shutdown outcome, restart through the installation owner and the run record are observed.",
       "paths": [
         "src/cli/run-main-update-admission.ts",
         "src/cli/update-cli.ts",
@@ -3438,6 +3534,7 @@
         "recovery-originals-retained"
       ],
       "commands": [
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-event-cleanup-with-readers --timeout 120000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault db-reader-loop --background --handle {run}/fault-reader.json",
         "ocm @{env} -- gateway stop",
         "ocm @{env} -- update cleanup --yes --json",
@@ -3451,9 +3548,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 420000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-doctor-interrupted-during-migration",
@@ -4072,8 +4169,11 @@
         "src/cli/update-option-specs.ts",
         "src/cli/run-main-update-admission.ts"
       ],
-      "requires": [],
+      "requires": [
+        "recovery-originals-retained"
+      ],
       "commands": [
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-event-cleanup-readers-active --timeout 120000",
         "ocm @{env} -- update cleanup --yes --json"
       ],
       "checkpoint": [
@@ -4082,7 +4182,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 60000,
+      "timeoutMs": 180000,
       "browser": false,
       "slow": false
     },
@@ -4350,12 +4450,12 @@
       ],
       "requires": [],
       "commands": [
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/invalid-field.json",
+        "node {kovaRoot}/support/verify/config-fixture.mjs --env {env} --fixture invalid-field --timeout 30000 --background --handle {run}/config-event-startup-failure-triage-invalid-field.json",
         "ocm service restart {env} --json",
         "ocm service restart {env} --json",
         "ocm service restart {env} --json",
         "ocm logs {env} --tail 400",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/invalid-field-restore.json",
+        "node {kovaRoot}/support/verify/config-fixture.mjs --wait {run}/config-event-startup-failure-triage-invalid-field.json --timeout 30000",
         "ocm service restart {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-startup-triage --timeout 120000"
       ],
@@ -4424,6 +4524,34 @@
       "timeoutMs": 600000,
       "browser": false,
       "slow": true
+    },
+    {
+      "id": "retire-update-recovery-data",
+      "kind": "operation",
+      "intent": "After verifying an update, an operator previews retained migration recovery originals while the Gateway serves, stops the Gateway and retires the eligible ones with explicit consent; eligible, protected and removed artifacts, totals and the restarted Gateway are observed.",
+      "paths": [
+        "src/cli/update-cli/cleanup.ts",
+        "src/infra/update-recovery*.ts"
+      ],
+      "requires": [
+        "recovery-originals-retained"
+      ],
+      "commands": [
+        "ocm @{env} -- update cleanup --dry-run --json",
+        "ocm @{env} -- gateway stop",
+        "ocm @{env} -- update cleanup --yes --json",
+        "ocm service start {env} --json",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-retired --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:state/openclaw.sqlite"
+      ],
+      "timeoutMs": 300000,
+      "browser": false,
+      "slow": false
     }
   ]
 }
