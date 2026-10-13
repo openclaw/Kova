@@ -123,6 +123,7 @@
     "channel-group-long-id",
     "channel-groups-mixed",
     "channel-identity-audit",
+    "channel-ingress-aged-pending",
     "channel-ingress-dead-letters",
     "channel-interactive-message",
     "channel-markdown-tables",
@@ -163,7 +164,6 @@
     "config-activation-before-sender",
     "config-agent-coding-profile",
     "config-ambient-agent-override",
-    "config-bindings-no-owner",
     "config-bindings-tiers",
     "config-block-streaming",
     "config-bot-loop-disabled",
@@ -329,16 +329,16 @@
       "product: openclaw sessions  (list session summaries; --active --all-agents --json)",
       "product: openclaw status  (status summary; --all --json)",
       "support/verify/admin-http-rpc-call.mjs  (one Gateway method through the admin-http-rpc plugin HTTP surface; --env --method --params --timeout)",
-      "support/verify/agent-tool-turn.mjs  (one mock-scripted tool call through the agent turn and chat.history, retaining the raw tool result under result in --out; --channel-from binds result.details.channel.id to channelId, --category-from binds result.details.category.id to categoryId, and --parent-from binds that category id to parentId; --buffer-file reads a fixture file and supplies buffer as base64 without placing its bytes in persona keys; for ask_user, background returns only after question.list identifies the pending request for this exact run and tool call and captures the native prompt, while --wait joins the turn and cancels an unresolved question through question.resolve on timeout; the admission timeout never waits for the human answer; --capture-binding records sessions_spawn childSessionKey and resolves that exact child through sessions.list deliveryContext/lastThreadId, retaining its actual conversation id and fixture-created thread response; --thread-from reads a captured thread result, --message-from reads the native delivery receipt for a freshly created message, and outputs retain raw resource-creation results; these are captured result values, never guessed persona replacements; --args --background --buffer-file --capture-binding --category-from --channel-from --env --handle --message-from --out --parent-from --session-key --thread-from --timeout --tool --wait)",
+      "support/verify/agent-tool-turn.mjs  (one mock-scripted tool call through the agent turn and chat.history, retaining the raw tool result under result in --out; --channel-from binds result.details.channel.id to channelId, --category-from binds result.details.category.id to categoryId, and --parent-from binds that category id to parentId; --buffer-file reads a fixture file and supplies buffer as base64 without placing its bytes in persona keys; for ask_user, background returns only after question.list identifies the pending request for this exact run and tool call and captures the native prompt, while --wait joins the turn and cancels an unresolved question through question.resolve on timeout; the admission timeout never waits for the human answer; --capture-binding records sessions_spawn childSessionKey and resolves that exact child through sessions.list deliveryContext/lastThreadId, retaining its actual conversation id and fixture-created thread response; --thread-from reads a captured thread result, --message-from reads the native delivery receipt for a freshly created message, and outputs retain raw resource-creation results; these are captured result values, never guessed persona replacements; --args-file reads a persona-owned JSON object containing native resource identifiers and merges it with --args without shell interpolation, refusing overlapping keys and recording the resolved nonsecret arguments; --args --args-file --background --buffer-file --capture-binding --category-from --channel-from --env --handle --message-from --out --parent-from --session-key --thread-from --timeout --tool --wait)",
       "support/verify/channel-account-add.mjs  (openclaw channels add with a named test credential from Kova credential storage; credential values never enter commands, printed output or persona keys; --channel --credential --env --timeout)",
       "support/verify/channel-adapter-install.mjs  (plugins install for the bundled Discord adapter selected from the same OpenClaw package as the environment; records installation output and plugin discovery; --artifact-dir --channel --env --timeout)",
       "support/verify/channel-adapter-observe.mjs  (the packaged Telegram or Discord inbound and outbound adapter callbacks against the existing shim or fixture; records callback results and platform calls without conformance assertions; --artifact-dir --channel --env --timeout)",
       "support/verify/channel-bound-control.mjs  (sendDurableMessageBatch through the conformance transport to create a callback control; retain the creator as originSubject in the callback record keyed by the generated control/message identity, then capture that record with the response; this is a missing conformance capability using the existing channel ingress SDK, not a new OpenClaw RPC; callbacks read this retained origin and pass the independently authenticated actor to ingress.resolve with authMode origin-subject; --channel --env --label --origin-subject --out --peer --timeout)",
       "support/verify/channel-capabilities-observe.mjs  (channels capabilities and kova.channelProbe.status plus the packaged adapter capability declarations; records the declarations without comparing them to a required set; --artifact-dir --env --timeout)",
-      "support/verify/channel-configured-turn.mjs  (config.get and config.patch on the disposable environment: apply explicit --root-patch and account --channel-patch plus optional agents.defaults changes, record configuration adoption, deliver the actual Telegram/Discord fixture or --admission sdk conformance inbound, join it, and restore all changed keys including absent values in finally; bindings arrays and group maps are replaced for the scoped case and restored without merging stale rules; --parent-peer supplies the actual thread-parent identity to resolveAgentRoute; --account --admission --agent --agent-defaults --artifact-dir --bot-authored --channel --channel-patch --chat-type --env --mention --parent-peer --peer --quote-from --root-patch --sender --text --timeout)",
+      "support/verify/channel-configured-turn.mjs  (config.get and config.patch on the disposable environment: apply explicit --root-patch and account --channel-patch plus optional agents.defaults changes, record configuration adoption, deliver the actual Telegram/Discord fixture or --admission sdk conformance inbound, join it, and restore all changed keys including absent values in finally; bindings arrays and group maps are replaced for the scoped case and restored without merging stale rules; --parent-peer supplies the actual thread-parent identity to resolveAgentRoute; --routing-owner forwards the supplied configured agent as ResolveAgentRouteInput.defaultAgentId at the actual conformance admission route call; --omit-routing-owner leaves that property absent and must not synthesize an owner from the primary clone, cached account context or first roster entry; a persona --env names that separately cloned environment, whose configuration and admission runtime are used throughout, including restoration; record the effective bindings, relevant roster/owner facts and actual route or product error without asserting the selected result; --account --admission --agent --agent-defaults --artifact-dir --bot-authored --channel --channel-patch --chat-type --env --mention --omit-routing-owner --parent-peer --peer --quote-from --root-patch --routing-owner --sender --text --timeout)",
       "support/verify/channel-dead-letter-resubmit.mjs  (openclaw channels dead-letters resubmit twice for a dedicated failed event: for pending, stop the disposable Gateway so no drain consumes the first resubmission; for claimed, keep the event payload on the configured held-response path until the second request returns; observe the actual channel_ingress_events row before the second call, retain the hold through it, record both CLI responses and row states, then release the held response and restore the service in finally; if the requested active interval is not captured, report unavailable evidence rather than a completed-event observation; --account --channel --env --event-id --state --timeout)",
       "support/verify/channel-debounce-overlap.mjs  (config.get and config.patch for messages.inbound.byChannel on the named channel, then two actual Telegram shim updates: start text without awaiting its turn, observe buffered admission, inject the media or command after --gap-ms while the configured --debounce-ms window is still pending, join both results, and restore configuration in finally; record admission timestamps, both dispatches and deliveries; --account --channel --debounce-ms --env --first-text --gap-ms --peer --second-kind --second-media --second-text --timeout)",
-      "support/verify/channel-inbound-turn.mjs  (one inbound platform event and the turn, deliveries and observations it produces: kova.channelProbe.inject and kova.channelProbe.observations on Kova's conformance channel, the Telegram shim update queue, the Discord fixture gateway events, or a real test account on any other channel (message in a direct chat, group or thread; join, reaction, button callback, native command, presence, invite, startup snapshot, relogin or bridge-restart events); in background mode timeout bounds admission and handle creation, the held mock response remains active until joined, and a timed-out join cancels and records the pending operation; --admission sdk requires the future conformance-plugin capability that resolves the requested account, direct or group conversation, sender, mention and command facts through runtime.channel.inbound.ingress.resolve and buildContext before runChannelInboundEvent, preserving the exact returned channelIngress result rather than forcing CommandAuthorized; --question-from reads the captured pending question and native prompt for callback selection or a Force Reply answer; --conversation-from uses the exact captured spawned-child conversation, --parent-peer supplies its real parent, and a subject-bound callback uses only the creator retained in the captured control record, not button text or a caller-supplied authorization boolean; --account --ack-policy --admission --after-ms --artifact-dir --background --bot-authored --callback-from --callback-label --channel --chat-type --conversation-from --env --event --event-id --handle --interval-ms --location --media --mention --out --peer --question-from --quote-from --reaction --repeat --replay-from --reply-to --same-id --sender --sticker --text --thread --timeout --wait)",
+      "support/verify/channel-inbound-turn.mjs  (one inbound platform event and the turn, deliveries and observations it produces: kova.channelProbe.inject and kova.channelProbe.observations on Kova's conformance channel, the Telegram shim update queue, the Discord fixture gateway events, or a real test account on any other channel (message in a direct chat, group or thread; join, reaction, button callback, native command, presence, invite, startup snapshot, relogin or bridge-restart events); in background mode timeout bounds admission and handle creation, the held mock response remains active until joined, and a timed-out join cancels and records the pending operation; --admission sdk requires the future conformance-plugin capability that resolves the requested account, direct or group conversation, sender, mention and command facts through runtime.channel.inbound.ingress.resolve and buildContext before runChannelInboundEvent, preserving the exact returned channelIngress result rather than forcing CommandAuthorized; --question-from reads the captured pending question and native prompt for callback selection or a Force Reply answer; --conversation-from uses the exact captured spawned-child conversation, --parent-peer supplies its real parent, and a subject-bound callback uses only the creator retained in the captured control record, not button text or a caller-supplied authorization boolean; --peer-file reads the native peer identifier from a persona-owned UTF-8 file without shell interpolation; queued background inputs return after admission without waiting for the active turn, and --wait releases only its own held response before joining that handle; --account --ack-policy --admission --after-ms --artifact-dir --background --bot-authored --callback-from --callback-label --channel --chat-type --conversation-from --env --event --event-id --handle --interval-ms --location --media --mention --out --peer --peer-file --question-from --quote-from --reaction --repeat --replay-from --reply-to --same-id --sender --sticker --text --thread --timeout --wait)",
       "support/verify/channel-platform-fault.mjs  (arm a fault on the Telegram shim or the Discord fixture for the next calls of one platform method (429 with retry_after, 5xx, network error, lost response, hang, stall, 401, BOT_COMMANDS_TOO_MUCH, parse error, edit failure, message too old, missing access, reject after first chunk, not dispatched); --channel --count --env --fault --method --timeout)",
       "support/verify/channel-platform-shim.mjs  (start the Telegram platform shim (support/channels/telegram) or the Discord fixture (support/channels/discord) and point the env channel account at it; --wait joins the owned shim, --stop terminates it, and cancellation always closes its sockets; --account --background --channel --env --handle --stop --timeout --wait)",
       "support/verify/channel-probe-fault.mjs  (arm a fault on Kova's conformance channel for its next outbound sends, ingress handling or probe hooks (fail, suppress, partial, ambiguous, defer, not-dispatched, transform-suppress, hang-probe, hang-capabilities, ingress-* and the other names phases pass), through a kova.channelProbe fault method the probe plugin would add; --count --env --fault --timeout)",
@@ -363,7 +363,9 @@
       "support/verify/ocm-service.mjs  (one OCM service start, stop or restart on the disposable environment selected by --action; returns the command output and exit code as JSON; --action --env)",
       "support/verify/question-response.mjs  (question.resolve with id read from the captured pending-question handle and canonical QuestionAnswers passed by --answers, followed by recording the returned resolution; no session-key guessing or synthetic question id; --answers --env --question-from --timeout)",
       "support/verify/state-db-fault.mjs  (a one-shot fault in the shared state database for one table (write failure, changed claim identity, stolen claim); --count --env --fault --table --timeout)",
-      "support/verify/telegram-shim-scenario.mjs  (Kova's Telegram platform shim (support/channels/telegram) with one scripted platform behaviour named by --scenario, driving the Telegram adapter's inbound and outbound through OpenClaw and printing the shim's call transcript; --artifact-dir --env --scenario --timeout)"
+      "support/verify/telegram-shim-scenario.mjs  (Kova's Telegram platform shim (support/channels/telegram) with one scripted platform behaviour named by --scenario, driving the Telegram adapter's inbound and outbound through OpenClaw and printing the shim's call transcript; --artifact-dir --env --scenario --timeout)",
+      "support/verify/ingress-aged-retry.mjs  (observe one dedicated native pending ingress event genuinely older than 24 hours with seven prior failed attempts and its normal retry eligible; verify original received_at and attempts from channel_ingress_events before releasing its isolated transport failure gate for the final failed attempt, then record the native dead-letter transition; the fixture remains gated through setup so no earlier phase consumes it, and this helper owns release and cleanup; absent, changed, already terminal or insufficiently aged fixture state makes this observation unavailable, never successful; do not insert or backdate rows, alter retry policy, advance clocks or use dead-letter resubmit because it resets age and attempts; --artifact-dir --env --event-id --timeout)",
+      "support/verify/channel-delivery-exhaustion.mjs  (one fresh inbound reply through the Telegram shim or SDK-admitted conformance channel, followed by the existing Gateway outbound recovery scheduler; own a dedicated account/peer fault fixture that consistently produces a retryable no-send failure, retain its exact newly created outbound queue id and completion owner, and record native attempt counters, timestamps, recovery states, failed settlement, owner projection and platform observations until the row reaches its terminal state or the deadline; leave maxRetries, backoff, availableAt and all recorded timestamps unchanged; --restarts performs the specified OCM service restarts only after distinct observed completed failures, with the external fixture fault remaining armed before startup recovery; fault state is outside the restarted Gateway and restored in finally, not a reset in-memory counter; unexpected success, ambiguous-send custody, permanent rejection, missing row identity or failure to obtain the requested interval is recorded as unavailable evidence, never manufactured exhaustion; bound initial admission, each restart/join and final observation within the single timeout, and on timeout or interruption quiesce the owned disposable Gateway before clearing a fault while a delivery is pending, retain its identity and transfer that clone to normal disposable-environment cleanup without restarting it; --account --artifact-dir --channel --env --peer --restarts --text --timeout)"
     ]
   },
   "phases": [
@@ -449,7 +451,7 @@
     {
       "id": "connect-channel-account-cli",
       "kind": "operation",
-      "intent": "An operator adds a second Telegram account to the running Gateway from the CLI with environment-backed setup; the add output, the channel list and the status are recorded.",
+      "intent": "An operator adds a second Telegram account to the running Gateway from the CLI with synthetic fixture setup; the add output, the channel list and the status are recorded.",
       "paths": [
         "extensions/telegram/src/**",
         "src/cli/channel-auth.ts",
@@ -464,7 +466,7 @@
         "channel-telegram-shim"
       ],
       "commands": [
-        "ocm @{env} -- channels add --channel telegram --account {persona:channel-telegram-shim:newAccount} --use-env",
+        "ocm @{env} -- channels add --channel telegram --account {persona:channel-telegram-shim:newAccount} --token {persona:channel-telegram-shim:spareToken}",
         "ocm @{env} -- channels list --json",
         "ocm @{env} -- channels status --json"
       ],
@@ -1584,7 +1586,7 @@
     {
       "id": "message-agent-dm",
       "kind": "operation",
-      "intent": "A user DMs the agent through the conformance channel and replies to its message while another channel turn is in flight, observing the replies, deliveries and probe observations.",
+      "intent": "A user sends direct and threaded messages through the conformance channel while a separate turn is in flight; the replies, deliveries and probe observations are recorded.",
       "paths": [
         "src/auto-reply/dispatch*.ts",
         "src/auto-reply/envelope*.ts",
@@ -1617,9 +1619,7 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/channel-probe-observe.mjs --env {env} --case text-final --artifact-dir {run}/dm-text --timeout 57000",
-        "node {kovaRoot}/support/verify/channel-probe-observe.mjs --env {env} --case text-reply-current-final --artifact-dir {run}/dm-reply --timeout 57000",
         "node {kovaRoot}/support/verify/channel-probe-observe.mjs --env {env} --case thread-final --artifact-dir {run}/dm-thread --timeout 57000",
-        "node {kovaRoot}/support/verify/channel-probe-observe.mjs --env {env} --case media-final --artifact-dir {run}/dm-media --timeout 57000",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --text 'what can you do' --artifact-dir {run}/dm-direct --timeout 57000"
       ],
       "checkpoint": [
@@ -2058,10 +2058,11 @@
     {
       "id": "message-agent-routing-bindings",
       "kind": "operation",
-      "intent": "A user writes from peers, threads, accounts and channels matched by each documented binding tier, observing which agent and session each message reaches.",
+      "intent": "A user exercises explicit binding tiers and a supplied fallback owner in the primary clone, then an unbound route in the separate explicit multi-agent clone with no configured, legacy, sole or caller owner; the actual routing results and errors are recorded.",
       "paths": [
         "src/auto-reply/dispatch*.ts",
         "src/auto-reply/inbound*.ts",
+        "src/auto-reply/reply/conversation*.ts",
         "src/auto-reply/reply/dispatch*.ts",
         "src/auto-reply/reply/inbound*.ts",
         "src/auto-reply/reply/origin*.ts",
@@ -2069,6 +2070,7 @@
         "src/auto-reply/reply/routing*.ts",
         "src/auto-reply/reply/source*.ts",
         "src/auto-reply/source*.ts",
+        "src/channels/*/**",
         "src/channels/conversation-resolution.ts",
         "src/channels/inbound-event/**",
         "src/channels/route-projection.ts",
@@ -2081,8 +2083,8 @@
         "channel-probe-admission",
         "channel-probe-conversations",
         "channels-test-accounts",
-        "config-bindings-no-owner",
-        "config-bindings-tiers"
+        "config-bindings-tiers",
+        "env-explicit-fleet-no-owner"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --account {persona:config-bindings-tiers:accountId} --chat-type direct --peer {persona:config-bindings-tiers:peer} --text 'hello under this account state' --artifact-dir {run}/amb-bind-peer --timeout 12000 --channel-patch '{}' --agent-defaults '{}' --root-patch '{\"bindings\":[{\"agentId\":\"{persona:agents-three-configured:secondAgentId}\",\"match\":{\"channel\":\"kova-channel-probe\",\"accountId\":\"{persona:config-bindings-tiers:accountId}\",\"peer\":{\"kind\":\"direct\",\"id\":\"{persona:config-bindings-tiers:peer}\"}}}]}'",
@@ -2090,8 +2092,8 @@
         "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type group --peer {persona:config-bindings-tiers:groupId} --text 'question for the bot' --sender {persona:config-bindings-tiers:senderPeer} --mention --artifact-dir {run}/amb-bind-peer-wildcard --timeout 12000 --account default --channel-patch '{}' --agent-defaults '{}' --root-patch '{\"bindings\":[{\"agentId\":\"{persona:agents-three-configured:secondAgentId}\",\"match\":{\"channel\":\"kova-channel-probe\",\"peer\":{\"kind\":\"group\",\"id\":\"*\"}}}]}'",
         "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --account {persona:config-bindings-tiers:accountId} --chat-type direct --peer {persona:config-bindings-tiers:peer} --text 'hello under this account state' --artifact-dir {run}/amb-bind-account --timeout 12000 --channel-patch '{}' --agent-defaults '{}' --root-patch '{\"bindings\":[{\"agentId\":\"{persona:agents-three-configured:secondAgentId}\",\"match\":{\"channel\":\"kova-channel-probe\",\"accountId\":\"{persona:config-bindings-tiers:accountId}\"}}]}'",
         "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --account {persona:config-bindings-tiers:accountId} --chat-type direct --peer {persona:config-bindings-tiers:peer} --text 'hello under this account state' --artifact-dir {run}/amb-bind-channel --timeout 12000 --channel-patch '{}' --agent-defaults '{}' --root-patch '{\"bindings\":[{\"agentId\":\"{persona:agents-three-configured:secondAgentId}\",\"match\":{\"channel\":\"kova-channel-probe\",\"accountId\":\"*\"}}]}'",
-        "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --account {persona:config-bindings-tiers:accountId} --chat-type direct --peer {persona:config-bindings-tiers:peer} --text 'hello under this account state' --artifact-dir {run}/amb-bind-fallback-owner --timeout 12000 --channel-patch '{}' --agent-defaults '{}' --root-patch '{\"bindings\":[]}'",
-        "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --account {persona:config-bindings-no-owner:accountId} --chat-type direct --peer {persona:config-bindings-no-owner:peer} --text 'hello under this account state' --artifact-dir {run}/amb-bind-no-owner --timeout 12000 --channel-patch '{}' --agent-defaults '{}' --root-patch '{\"bindings\":[]}'",
+        "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --account {persona:config-bindings-tiers:accountId} --chat-type direct --peer {persona:config-bindings-tiers:peer} --text 'hello under this account state' --artifact-dir {run}/amb-bind-fallback-owner --timeout 12000 --channel-patch '{}' --agent-defaults '{}' --root-patch '{\"bindings\":[]}' --routing-owner {persona:agents-three-configured:mainAgentId}",
+        "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {persona:env-explicit-fleet-no-owner:env} --channel kova-channel-probe --admission sdk --account {persona:env-explicit-fleet-no-owner:probeAccountId} --chat-type direct --peer {persona:env-explicit-fleet-no-owner:probePeer} --text 'hello under this account state' --artifact-dir {run}/amb-bind-no-owner --timeout 12000 --channel-patch '{}' --agent-defaults '{}' --root-patch '{\"bindings\":[]}' --omit-routing-owner",
         "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type group --peer {persona:config-bindings-tiers:groupId} --text 'question for the bot' --sender {persona:config-bindings-tiers:senderPeer} --mention --artifact-dir {run}/amb-bind-multi-field --timeout 12000 --account default --channel-patch '{}' --agent-defaults '{}' --root-patch '{\"bindings\":[{\"agentId\":\"{persona:agents-three-configured:secondAgentId}\",\"match\":{\"channel\":\"kova-channel-probe\",\"accountId\":\"default\",\"peer\":{\"kind\":\"group\",\"id\":\"{persona:config-bindings-tiers:groupId}\"}}}]}'",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- agents list --json",
@@ -2393,10 +2395,22 @@
       "kind": "operation",
       "intent": "A user writes through the conformance channel under each receive-acknowledgement policy and plugin contract state, observing acknowledgements, recorded context and diagnostics.",
       "paths": [
+        "extensions/discord/src/**",
+        "extensions/telegram/src/**",
+        "src/auto-reply/chunk*.ts",
         "src/auto-reply/dispatch*.ts",
+        "src/auto-reply/envelope*.ts",
         "src/auto-reply/inbound*.ts",
+        "src/auto-reply/reply/block*.ts",
         "src/auto-reply/reply/dispatch*.ts",
         "src/auto-reply/reply/inbound*.ts",
+        "src/auto-reply/reply/message*.ts",
+        "src/auto-reply/reply/origin*.ts",
+        "src/auto-reply/reply/source*.ts",
+        "src/auto-reply/send*.ts",
+        "src/auto-reply/sender*.ts",
+        "src/auto-reply/source*.ts",
+        "src/channels/*/**",
         "src/channels/allow-from.ts",
         "src/channels/allowlist-match.ts",
         "src/channels/allowlists/**",
@@ -2404,13 +2418,17 @@
         "src/channels/direct-dm*.ts",
         "src/channels/inbound-event/**",
         "src/channels/message-access/**",
+        "src/channels/sender-label.ts",
         "src/channels/turn/**",
+        "src/infra/outbound/**",
         "src/plugin-sdk/channel-*.ts"
       ],
       "requires": [
+        "channel-discord-fixture",
         "channel-plugin-turn-alias",
         "channel-probe-admission",
         "channel-probe-conversations",
+        "channel-telegram-shim",
         "config-activation-before-sender",
         "config-min-identifier-auth",
         "plugin-message-hooks"
@@ -2444,30 +2462,42 @@
       "kind": "operation",
       "intent": "A user exercises every declared Telegram workflow through the platform shim, observing each workflow record.",
       "paths": [
+        "extensions/discord/src/**",
         "extensions/telegram/src/**",
+        "src/auto-reply/chunk*.ts",
         "src/auto-reply/dispatch*.ts",
+        "src/auto-reply/envelope*.ts",
         "src/auto-reply/inbound*.ts",
         "src/auto-reply/reply/block*.ts",
         "src/auto-reply/reply/channel*.ts",
         "src/auto-reply/reply/dispatch*.ts",
         "src/auto-reply/reply/inbound*.ts",
         "src/auto-reply/reply/message*.ts",
+        "src/auto-reply/reply/origin*.ts",
         "src/auto-reply/reply/progress*.ts",
+        "src/auto-reply/reply/source*.ts",
         "src/auto-reply/send*.ts",
+        "src/auto-reply/sender*.ts",
+        "src/auto-reply/source*.ts",
+        "src/channels/*/**",
         "src/channels/draft-stream*.ts",
         "src/channels/inbound-event/**",
         "src/channels/progress-*.ts",
+        "src/channels/sender-label.ts",
         "src/channels/streaming*.ts",
         "src/channels/turn/**",
         "src/infra/outbound/**",
         "src/plugin-sdk/channel-*.ts"
       ],
       "requires": [
+        "channel-discord-fixture",
+        "channel-probe-conversations",
         "channel-telegram-shim"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/channel-adapter-observe.mjs --env {env} --artifact-dir {run}/tg-adapter --channel telegram --timeout 58000",
-        "node {kovaRoot}/support/verify/channel-workflow-observe.mjs --env {env} --artifact-dir {run}/tg-conformance --channel telegram --tier adapter-shim --case-set declared-workflows --timeout 226000"
+        "node {kovaRoot}/support/verify/channel-workflow-observe.mjs --env {env} --artifact-dir {run}/tg-conformance --channel telegram --tier adapter-shim --case-set declared-workflows --timeout 226000",
+        "ocm @{env} -- sessions --json --active 5"
       ],
       "checkpoint": [
         "responses",
@@ -2484,20 +2514,32 @@
       "intent": "A user exercises the Discord adapter capabilities through the fixture, observing each capability record.",
       "paths": [
         "extensions/discord/src/**",
+        "extensions/telegram/src/**",
+        "src/auto-reply/chunk*.ts",
         "src/auto-reply/dispatch*.ts",
+        "src/auto-reply/envelope*.ts",
         "src/auto-reply/inbound*.ts",
+        "src/auto-reply/reply/block*.ts",
         "src/auto-reply/reply/channel*.ts",
         "src/auto-reply/reply/dispatch*.ts",
         "src/auto-reply/reply/inbound*.ts",
         "src/auto-reply/reply/message*.ts",
+        "src/auto-reply/reply/origin*.ts",
+        "src/auto-reply/reply/source*.ts",
         "src/auto-reply/send*.ts",
+        "src/auto-reply/sender*.ts",
+        "src/auto-reply/source*.ts",
+        "src/channels/*/**",
         "src/channels/inbound-event/**",
+        "src/channels/sender-label.ts",
         "src/channels/turn/**",
         "src/infra/outbound/**",
         "src/plugin-sdk/channel-*.ts"
       ],
       "requires": [
-        "channel-discord-fixture"
+        "channel-discord-fixture",
+        "channel-probe-conversations",
+        "channel-telegram-shim"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/channel-adapter-install.mjs --env {env} --artifact-dir {run}/dc-install --channel discord --timeout 120000",
@@ -2562,7 +2604,7 @@
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel imessage --chat-type direct --peer {persona:channel-real-accounts:imessagePeer} --text 'hello from imessage' --artifact-dir {run}/real-imessage --timeout 11000",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel irc --chat-type direct --peer {persona:channel-real-accounts:ircPeer} --text 'hello from irc' --artifact-dir {run}/real-irc --timeout 11000",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel line --chat-type direct --peer {persona:channel-real-accounts:linePeer} --text 'hello from line' --artifact-dir {run}/real-line --timeout 11000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel matrix --chat-type direct --peer {persona:channel-real-accounts:matrixPeer} --text 'hello from matrix' --artifact-dir {run}/real-matrix --timeout 11000",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel matrix --chat-type direct --peer-file {persona:channel-real-accounts:matrixPeerFile} --text 'hello from matrix' --artifact-dir {run}/real-matrix --timeout 11000",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel mattermost --chat-type direct --peer {persona:channel-real-accounts:mattermostPeer} --text 'hello from mattermost' --artifact-dir {run}/real-mattermost --timeout 11000",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel msteams --chat-type direct --peer {persona:channel-real-accounts:msteamsPeer} --text 'hello from msteams' --artifact-dir {run}/real-msteams --timeout 11000",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel nextcloud-talk --chat-type direct --peer {persona:channel-real-accounts:nextcloudtalkPeer} --text 'hello from nextcloud-talk' --artifact-dir {run}/real-nextcloud-talk --timeout 11000",
@@ -2584,52 +2626,6 @@
         "responses",
         "logs",
         "timing"
-      ],
-      "timeoutMs": 290000,
-      "browser": false,
-      "slow": false
-    },
-    {
-      "id": "message-agent-direct-chat",
-      "kind": "operation",
-      "intent": "People message the agent in direct chats on the conformance channel, Telegram and Discord while a channel turn is in flight, with each receive-acknowledgement policy; probe observations, conformance results and the session rows are recorded.",
-      "paths": [
-        "extensions/discord/src/**",
-        "extensions/telegram/src/**",
-        "src/auto-reply/chunk*.ts",
-        "src/auto-reply/dispatch*.ts",
-        "src/auto-reply/envelope*.ts",
-        "src/auto-reply/inbound*.ts",
-        "src/auto-reply/reply/block*.ts",
-        "src/auto-reply/reply/dispatch*.ts",
-        "src/auto-reply/reply/inbound*.ts",
-        "src/auto-reply/reply/message*.ts",
-        "src/auto-reply/reply/origin*.ts",
-        "src/auto-reply/reply/source*.ts",
-        "src/auto-reply/send*.ts",
-        "src/auto-reply/sender*.ts",
-        "src/auto-reply/source*.ts",
-        "src/channels/*/**",
-        "src/channels/sender-label.ts",
-        "src/infra/outbound/**",
-        "src/plugin-sdk/channel-*.ts"
-      ],
-      "requires": [
-        "channel-discord-fixture",
-        "channel-probe-conversations",
-        "channel-telegram-shim"
-      ],
-      "commands": [
-        "node {kovaRoot}/support/verify/channel-probe-observe.mjs --env {env} --artifact-dir {run}/channel-probe-receive-ack --case receive-ack.after-receive-record,receive-ack.after-agent-dispatch,receive-ack.after-durable-send,receive-ack.manual --timeout 80000",
-        "node {kovaRoot}/support/verify/channel-workflow-observe.mjs --env {env} --channel telegram --tier adapter-shim --case-set declared-workflows --artifact-dir {run}/telegram-declared --timeout 90000",
-        "node {kovaRoot}/support/verify/channel-adapter-observe.mjs --env {env} --channel discord --artifact-dir {run}/discord-adapter --timeout 30000",
-        "ocm @{env} -- sessions --json --active 5"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing",
-        "state:agents/main/agent/openclaw-agent.sqlite"
       ],
       "timeoutMs": 290000,
       "browser": false,
@@ -3030,7 +3026,7 @@
         "channel-streaming-modes"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-probe-observe.mjs --env {env} --artifact-dir {run}/channel-probe-live-preview --case live-preview.progress-normal-fallback,live-preview.partial-final-edit --timeout 90000",
+        "node {kovaRoot}/support/verify/channel-probe-observe.mjs --env {env} --artifact-dir {run}/channel-probe-live-preview --case live-preview.progress-normal-fallback --timeout 90000",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-streaming-modes:toolProgressPeer} --text 'Use two tools then answer KOVA_PROGRESS_OK.' --timeout 40000",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-streaming-modes:rawDetailPeer} --text 'Use two tools then answer KOVA_PROGRESS_OK.' --timeout 40000",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-streaming-modes:limitsPeer} --text 'Use two tools then answer KOVA_PROGRESS_OK.' --timeout 40000",
@@ -3475,35 +3471,36 @@
     {
       "id": "route-chats-by-binding",
       "kind": "operation",
-      "intent": "People message through peers matched by an exact peer binding, a parent-thread binding, a peer wildcard, an account binding, a channel-wide binding, a multi-field binding, a DM-scope override and a main-scope room, plus an unbound peer with and without a fallback owner; observations and session rows are recorded.",
+      "intent": "People exercise a direct-peer wildcard and binding-level DM and group session-scope overrides; the common routing flow supplies other binding tiers and both owner outcomes. Actual routing and session rows are recorded.",
       "paths": [
         "src/auto-reply/dispatch*.ts",
         "src/auto-reply/inbound*.ts",
         "src/auto-reply/reply/conversation*.ts",
         "src/auto-reply/reply/dispatch*.ts",
         "src/auto-reply/reply/inbound*.ts",
+        "src/auto-reply/reply/origin*.ts",
         "src/auto-reply/reply/route*.ts",
         "src/auto-reply/reply/routing*.ts",
+        "src/auto-reply/reply/source*.ts",
+        "src/auto-reply/source*.ts",
         "src/channels/*/**",
+        "src/channels/conversation-resolution.ts",
+        "src/channels/inbound-event/**",
+        "src/channels/route-projection.ts",
+        "src/channels/turn/**",
         "src/plugin-sdk/channel-*.ts",
         "src/routing/**"
       ],
       "requires": [
+        "agents-three-configured",
         "channel-probe-admission",
         "channel-probe-conversations",
         "config-bindings-tiers"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:config-bindings-tiers:peerBound} --text 'Reply with exact ASCII text KOVA_ROUTE_OK only.' --timeout 25000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type group --peer {persona:config-bindings-tiers:parentThreadPeer} --thread {persona:config-bindings-tiers:childThread} --text 'Reply with exact ASCII text KOVA_ROUTE_OK only.' --timeout 25000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:config-bindings-tiers:wildcardPeer} --text 'Reply with exact ASCII text KOVA_ROUTE_OK only.' --timeout 25000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:config-bindings-tiers:accountBoundPeer} --text 'Reply with exact ASCII text KOVA_ROUTE_OK only.' --timeout 25000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:config-bindings-tiers:channelBoundPeer} --text 'Reply with exact ASCII text KOVA_ROUTE_OK only.' --timeout 25000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:config-bindings-tiers:multiFieldPeer} --text 'Reply with exact ASCII text KOVA_ROUTE_OK only.' --timeout 25000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:config-bindings-tiers:dmScopePeer} --text 'Reply with exact ASCII text KOVA_ROUTE_OK only.' --timeout 25000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type group --peer {persona:config-bindings-tiers:mainScopeRoom} --text 'Reply with exact ASCII text KOVA_ROUTE_OK only.' --timeout 25000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:config-bindings-tiers:unboundPeer} --text 'Reply with exact ASCII text KOVA_ROUTE_OK only.' --timeout 25000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:config-bindings-tiers:channelOnlyBindingPeer} --text 'Reply with exact ASCII text KOVA_ROUTE_OK only.' --timeout 25000",
+        "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:config-bindings-tiers:wildcardPeer} --text 'Reply with exact ASCII text KOVA_ROUTE_OK only.' --timeout 25000 --account {persona:config-bindings-tiers:accountId} --artifact-dir {run}/route-chats-wildcard --channel-patch '{}' --agent-defaults '{}' --root-patch '{\"bindings\":[{\"agentId\":\"{persona:agents-three-configured:secondAgentId}\",\"match\":{\"channel\":\"kova-channel-probe\",\"peer\":{\"kind\":\"direct\",\"id\":\"*\"}}}]}'",
+        "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:config-bindings-tiers:dmScopePeer} --text 'Reply with exact ASCII text KOVA_ROUTE_OK only.' --timeout 25000 --account {persona:config-bindings-tiers:accountId} --artifact-dir {run}/route-chats-dm-scope --channel-patch '{}' --agent-defaults '{}' --root-patch '{\"bindings\":[{\"agentId\":\"{persona:agents-three-configured:secondAgentId}\",\"match\":{\"channel\":\"kova-channel-probe\",\"peer\":{\"kind\":\"direct\",\"id\":\"{persona:config-bindings-tiers:dmScopePeer}\"}},\"session\":{\"dmScope\":\"per-peer\"}}],\"session\":{\"dmScope\":\"main\"}}'",
+        "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type group --peer {persona:config-bindings-tiers:mainScopeRoom} --text 'Reply with exact ASCII text KOVA_ROUTE_OK only.' --timeout 25000 --account {persona:config-bindings-tiers:accountId} --artifact-dir {run}/route-chats-group-scope --channel-patch '{}' --agent-defaults '{}' --root-patch '{\"bindings\":[{\"agentId\":\"{persona:agents-three-configured:secondAgentId}\",\"match\":{\"channel\":\"kova-channel-probe\",\"peer\":{\"kind\":\"group\",\"id\":\"{persona:config-bindings-tiers:mainScopeRoom}\"}},\"session\":{\"groupScope\":\"main\"}}],\"session\":{\"groupScope\":\"per-group\"}}'",
         "ocm @{env} -- sessions --all-agents --json --active 10"
       ],
       "checkpoint": [
@@ -3512,7 +3509,7 @@
         "timing",
         "state:agents/main/agent/openclaw-agent.sqlite"
       ],
-      "timeoutMs": 280000,
+      "timeoutMs": 105000,
       "browser": false,
       "slow": false
     },
@@ -3634,13 +3631,13 @@
         "channel-real-accounts"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel matrix --account {persona:channel-real-accounts:matrix} --chat-type group --peer {persona:channel-real-accounts:matrixNameKeyedRoom} --text 'Reply with exact ASCII text KOVA_MATRIX_OK only.' --timeout 30000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel matrix --account {persona:channel-real-accounts:matrix} --chat-type group --peer {persona:channel-real-accounts:matrixGatedRoom} --text 'Reply with exact ASCII text KOVA_MATRIX_OK only.' --timeout 30000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel matrix --account {persona:channel-real-accounts:matrix} --chat-type direct --peer {persona:channel-real-accounts:matrixDmUnapproved} --text 'Reply with exact ASCII text KOVA_MATRIX_OK only.' --timeout 30000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel matrix --account {persona:channel-real-accounts:matrix} --chat-type group --peer {persona:channel-real-accounts:matrixEncryptedRoom} --text 'Reply with exact ASCII text KOVA_MATRIX_OK only.' --timeout 30000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel matrix --account {persona:channel-real-accounts:matrix} --chat-type group --peer {persona:channel-real-accounts:matrixProxyRoom} --text 'Reply with exact ASCII text KOVA_MATRIX_OK only.' --timeout 30000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel matrix --account {persona:channel-real-accounts:matrix} --chat-type group --peer {persona:channel-real-accounts:matrixInviteRoom} --text 'Reply with exact ASCII text KOVA_MATRIX_OK only.' --timeout 30000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel matrix --account {persona:channel-real-accounts:matrix} --chat-type group --peer {persona:channel-real-accounts:matrixPerRoomDm} --text 'Reply with exact ASCII text KOVA_MATRIX_OK only.' --timeout 30000",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel matrix --account {persona:channel-real-accounts:matrix} --chat-type group --peer-file {persona:channel-real-accounts:matrixNameKeyedRoomFile} --text 'Reply with exact ASCII text KOVA_MATRIX_OK only.' --timeout 30000",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel matrix --account {persona:channel-real-accounts:matrix} --chat-type group --peer-file {persona:channel-real-accounts:matrixGatedRoomFile} --text 'Reply with exact ASCII text KOVA_MATRIX_OK only.' --timeout 30000",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel matrix --account {persona:channel-real-accounts:matrix} --chat-type direct --peer-file {persona:channel-real-accounts:matrixDmUnapprovedFile} --text 'Reply with exact ASCII text KOVA_MATRIX_OK only.' --timeout 30000",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel matrix --account {persona:channel-real-accounts:matrix} --chat-type group --peer-file {persona:channel-real-accounts:matrixEncryptedRoomFile} --text 'Reply with exact ASCII text KOVA_MATRIX_OK only.' --timeout 30000",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel matrix --account {persona:channel-real-accounts:matrix} --chat-type group --peer-file {persona:channel-real-accounts:matrixProxyRoomFile} --text 'Reply with exact ASCII text KOVA_MATRIX_OK only.' --timeout 30000",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel matrix --account {persona:channel-real-accounts:matrix} --chat-type group --peer-file {persona:channel-real-accounts:matrixInviteRoomFile} --text 'Reply with exact ASCII text KOVA_MATRIX_OK only.' --timeout 30000",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel matrix --account {persona:channel-real-accounts:matrix} --chat-type group --peer-file {persona:channel-real-accounts:matrixPerRoomDmFile} --text 'Reply with exact ASCII text KOVA_MATRIX_OK only.' --timeout 30000",
         "ocm @{env} -- matrix verify status --json",
         "ocm @{env} -- matrix verify backup status --json"
       ],
@@ -3924,7 +3921,7 @@
     {
       "id": "press-buttons-and-choose-options",
       "kind": "operation",
-      "intent": "A person presses command and callback buttons, picks a select option and answers a question prompt in a Telegram chat; shim transcripts are recorded.",
+      "intent": "A person selects an option and answers a question prompt in a Telegram chat; the actual callbacks and shim observations are recorded.",
       "paths": [
         "extensions/telegram/src/**",
         "src/auto-reply/chunk*.ts",
@@ -3943,8 +3940,6 @@
         "channel-telegram-shim"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/telegram-shim-scenario.mjs --env {env} --scenario press-command-button --artifact-dir {run}/telegram-press-command-button --timeout 50000",
-        "node {kovaRoot}/support/verify/telegram-shim-scenario.mjs --env {env} --scenario press-callback-button --artifact-dir {run}/telegram-press-callback-button --timeout 50000",
         "node {kovaRoot}/support/verify/telegram-shim-scenario.mjs --env {env} --scenario choose-select-option --artifact-dir {run}/telegram-choose-select-option --timeout 50000",
         "node {kovaRoot}/support/verify/telegram-shim-scenario.mjs --env {env} --scenario answer-question-choice --artifact-dir {run}/telegram-answer-question-choice --timeout 60000"
       ],
@@ -5081,7 +5076,7 @@
     {
       "id": "start-threads-discord",
       "kind": "operation",
-      "intent": "An operator creates, lists and replies in Discord threads; responses are recorded.",
+      "intent": "An operator creates a Discord thread, lists it, replies using its captured native identifier and deletes that created thread; responses and cleanup are recorded.",
       "paths": [
         "extensions/discord/src/**",
         "src/auto-reply/chunk*.ts",
@@ -5096,19 +5091,21 @@
         "src/infra/outbound/**"
       ],
       "requires": [
-        "channel-real-accounts"
+        "channel-real-accounts",
+        "session-main-rolling"
       ],
       "commands": [
-        "ocm @{env} -- message thread create --channel discord --target {persona:channel-real-accounts:discordChannel} --thread-name kova-thread --json",
+        "node {kovaRoot}/support/verify/message-cli.mjs --env {env} --action thread-create --channel discord --target {persona:channel-real-accounts:discordChannel} --thread-name kova-thread --message KOVA_THREAD_START --json --out {run}/live-discord-thread.json --timeout 30000",
         "ocm @{env} -- message thread list --channel discord --guild-id {persona:channel-real-accounts:discordGuild} --json",
-        "ocm @{env} -- message thread reply --channel discord --target {persona:channel-real-accounts:discordThread} --message KOVA_THREAD_OK --json"
+        "node {kovaRoot}/support/verify/message-cli.mjs --env {env} --action thread-reply --channel discord --thread-from {run}/live-discord-thread.json --message KOVA_THREAD_OK --timeout 30000",
+        "node {kovaRoot}/support/verify/discord-resource-cleanup.mjs --env {env} --session-key {persona:session-main-rolling:key} --thread-from {run}/live-discord-thread.json --timeout 60000"
       ],
       "checkpoint": [
         "responses",
         "logs",
         "timing"
       ],
-      "timeoutMs": 90000,
+      "timeoutMs": 150000,
       "browser": false,
       "slow": false
     },
@@ -5613,7 +5610,7 @@
         "session-main-rolling"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool message --args '{\"action\":\"poll-vote\",\"channel\":\"matrix\",\"accountId\":\"{persona:channel-real-accounts:matrix}\",\"to\":\"{persona:channel-real-accounts:matrixRoom}\",\"pollId\":\"{persona:channel-real-accounts:matrixPollId}\",\"pollOptionIndex\":1}' --timeout 60000"
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool message --args '{\"action\":\"poll-vote\",\"channel\":\"matrix\",\"accountId\":\"{persona:channel-real-accounts:matrix}\",\"pollOptionIndex\":1}' --timeout 60000 --args-file {persona:channel-real-accounts:matrixPollArgsFile}"
       ],
       "checkpoint": [
         "responses",
@@ -6240,17 +6237,31 @@
         "src/auto-reply/dispatch*.ts",
         "src/auto-reply/envelope*.ts",
         "src/auto-reply/inbound*.ts",
+        "src/auto-reply/reply/channel*.ts",
+        "src/auto-reply/reply/conversation*.ts",
         "src/auto-reply/reply/dispatch*.ts",
+        "src/auto-reply/reply/history*.ts",
         "src/auto-reply/reply/inbound*.ts",
+        "src/auto-reply/reply/message*.ts",
         "src/auto-reply/reply/origin*.ts",
+        "src/auto-reply/reply/route*.ts",
+        "src/auto-reply/reply/routing*.ts",
         "src/auto-reply/reply/source*.ts",
+        "src/auto-reply/send*.ts",
         "src/auto-reply/sender*.ts",
         "src/auto-reply/source*.ts",
         "src/channels/*/**",
+        "src/channels/conversation-resolution.ts",
+        "src/channels/inbound-event/**",
+        "src/channels/route-projection.ts",
         "src/channels/sender-label.ts",
-        "src/plugin-sdk/channel-*.ts"
+        "src/channels/turn/**",
+        "src/infra/outbound/**",
+        "src/plugin-sdk/channel-*.ts",
+        "src/routing/**"
       ],
       "requires": [
+        "channel-probe-admission",
         "channel-probe-conversations"
       ],
       "commands": [
@@ -7026,7 +7037,7 @@
     {
       "id": "event-echo-and-repeated-batch",
       "kind": "event",
-      "intent": "The conformance channel echoes the bot's delivered message and redelivers an identical batch; probe observations are recorded.",
+      "intent": "The conformance channel redelivers the same admitted group batch; the resulting dispatches, replies and observations are recorded.",
       "paths": [
         "src/auto-reply/dispatch*.ts",
         "src/auto-reply/inbound*.ts",
@@ -7041,7 +7052,6 @@
         "channel-probe-conversations"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-probe-observe.mjs --env {env} --artifact-dir {run}/channel-probe-echo --case no-self-trigger.bot-authored-echo --timeout 90000",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type group --peer {persona:channel-groups-mixed:gatedGroup} --mention --repeat 2 --interval-ms 0 --text 'Reply with exact ASCII text KOVA_REPEATED_BATCH_OK only.' --timeout 120000"
       ],
       "checkpoint": [
@@ -8331,8 +8341,10 @@
     {
       "id": "event-inbound-retry-exhausted",
       "kind": "event",
-      "intent": "An inbound conformance event fails every retry; dead-letter list, health and doctor output are recorded.",
+      "intent": "An already aged pending inbound event reaches the native retry limit; its preserved age, attempts, dead-letter transition, health and doctor output are recorded. This observation is unavailable without the dedicated aged fixture.",
       "paths": [
+        "src/channels/inbound-event/**",
+        "src/channels/transport/**",
         "src/commands/channels/**",
         "src/commands/doctor-channel-ingress.ts",
         "src/infra/delivery-queue*.ts",
@@ -8341,12 +8353,12 @@
         "src/infra/session-delivery-queue*.ts"
       ],
       "requires": [
+        "channel-ingress-aged-pending",
         "channel-probe-admission",
         "channel-probe-conversations"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-probe-fault.mjs --env {env} --fault fail-ingress --count 10 --timeout 30000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --text 'Reply with exact ASCII text KOVA_DEAD_LETTER_OK only.' --timeout 90000",
+        "node {kovaRoot}/support/verify/ingress-aged-retry.mjs --env {env} --event-id {persona:channel-ingress-aged-pending:eventId} --artifact-dir {run}/ingress-aged-retry --timeout 120000",
         "ocm @{env} -- channels dead-letters list --channel kova-channel-probe --account default --json",
         "ocm @{env} -- health --json",
         "ocm @{env} -- doctor --json"
@@ -8412,7 +8424,7 @@
       ],
       "commands": [
         "ocm @{env} -- config patch --file {persona:channel-config-variants:singleAccountPatch}",
-        "ocm @{env} -- channels add --channel telegram --account {persona:channel-telegram-shim:promotedAccount} --use-env",
+        "ocm @{env} -- channels add --channel telegram --account {persona:channel-telegram-shim:promotedAccount} --token {persona:channel-telegram-shim:spareToken}",
         "ocm @{env} -- config get channels.telegram --json",
         "ocm @{env} -- channels status --json"
       ],
@@ -9284,7 +9296,7 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --text '{persona:mock-provider-held-turn:marker}' --timeout 120000 --background --handle {run}/active-run.json",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --text 'also check the weather' --timeout 60000"
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --text 'also check the weather' --timeout 60000 --background --handle {run}/active-followup-1.json"
       ],
       "checkpoint": [
         "responses",
@@ -9313,7 +9325,8 @@
         "mock-provider-held-turn"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --wait {run}/active-run.json --timeout 120000"
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --wait {run}/active-run.json --timeout 120000",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --wait {run}/active-followup-1.json --timeout 60000"
       ],
       "checkpoint": [
         "responses",
@@ -9695,13 +9708,35 @@
       "intent": "With block streaming off the model emits a media message with a caption; probe observations are recorded.",
       "paths": [
         "src/auto-reply/chunk*.ts",
+        "src/auto-reply/dispatch*.ts",
+        "src/auto-reply/envelope*.ts",
+        "src/auto-reply/inbound*.ts",
         "src/auto-reply/media*.ts",
         "src/auto-reply/reply/block*.ts",
+        "src/auto-reply/reply/channel*.ts",
+        "src/auto-reply/reply/conversation*.ts",
+        "src/auto-reply/reply/dispatch*.ts",
+        "src/auto-reply/reply/history*.ts",
+        "src/auto-reply/reply/inbound*.ts",
         "src/auto-reply/reply/message*.ts",
+        "src/auto-reply/reply/origin*.ts",
+        "src/auto-reply/reply/route*.ts",
+        "src/auto-reply/reply/routing*.ts",
+        "src/auto-reply/reply/source*.ts",
         "src/auto-reply/send*.ts",
-        "src/infra/outbound/**"
+        "src/auto-reply/sender*.ts",
+        "src/auto-reply/source*.ts",
+        "src/channels/conversation-resolution.ts",
+        "src/channels/inbound-event/**",
+        "src/channels/route-projection.ts",
+        "src/channels/sender-label.ts",
+        "src/channels/turn/**",
+        "src/infra/outbound/**",
+        "src/plugin-sdk/channel-*.ts",
+        "src/routing/**"
       ],
       "requires": [
+        "channel-probe-admission",
         "channel-probe-conversations"
       ],
       "commands": [
@@ -9812,8 +9847,8 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --text '{persona:mock-provider-held-turn:marker}' --timeout 150000 --background --handle {run}/steer-run.json",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --text 'first addition' --timeout 30000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --text 'second addition' --timeout 30000"
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --text 'first addition' --timeout 30000 --background --handle {run}/steered-followup-1.json",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --text 'second addition' --timeout 30000 --background --handle {run}/steered-followup-2.json"
       ],
       "checkpoint": [
         "responses",
@@ -9847,7 +9882,9 @@
         "mock-provider-held-turn"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --wait {run}/steer-run.json --timeout 90000"
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --wait {run}/steer-run.json --timeout 90000",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --wait {run}/steered-followup-1.json --timeout 60000",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --wait {run}/steered-followup-2.json --timeout 60000"
       ],
       "checkpoint": [
         "responses",
@@ -10242,7 +10279,7 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel mattermost --account {persona:channel-real-accounts:mattermost} --chat-type group --peer {persona:channel-real-accounts:mattermostChannel} --text 'Reply with exact ASCII text KOVA_MM_PREVIEW_OK only.' --timeout 150000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel matrix --account {persona:channel-real-accounts:matrix} --chat-type group --peer {persona:channel-real-accounts:matrixRoom} --text 'Reply with exact ASCII text KOVA_MX_PREVIEW_OK only.' --timeout 150000"
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel matrix --account {persona:channel-real-accounts:matrix} --chat-type group --peer-file {persona:channel-real-accounts:matrixRoomFile} --text 'Reply with exact ASCII text KOVA_MX_PREVIEW_OK only.' --timeout 150000"
       ],
       "checkpoint": [
         "responses",
@@ -10299,7 +10336,7 @@
         "mock-provider-media-reply"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel matrix --chat-type direct --peer {persona:channel-real-accounts:matrixRoomId} --text '{persona:mock-provider-media-reply:marker}' --artifact-dir {run}/mx-redact --timeout 120000"
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel matrix --chat-type direct --peer-file {persona:channel-real-accounts:matrixRoomIdFile} --text '{persona:mock-provider-media-reply:marker}' --artifact-dir {run}/mx-redact --timeout 120000"
       ],
       "checkpoint": [
         "responses",
@@ -12341,6 +12378,7 @@
       "intent": "A Telegram streamed message finalizes after a delay; the shim transcript is recorded.",
       "paths": [
         "extensions/telegram/src/**",
+        "src/auto-reply/chunk*.ts",
         "src/auto-reply/reply/block*.ts",
         "src/auto-reply/reply/channel*.ts",
         "src/auto-reply/reply/message*.ts",
@@ -12354,7 +12392,9 @@
         "src/plugin-sdk/channel-*.ts"
       ],
       "requires": [
+        "channel-probe-admission",
         "channel-probe-conversations",
+        "channel-streaming-modes",
         "channel-telegram-shim"
       ],
       "commands": [
@@ -12563,7 +12603,7 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type group --peer {persona:channel-groups-mixed:openGroup} --text '{persona:mock-provider-held-turn:marker}' --timeout 120000 --background --handle {run}/mixed-run.json",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type group --peer {persona:channel-groups-mixed:openGroup} --sender {persona:channel-groups-mixed:allowedSender} --text 'me too' --timeout 60000"
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type group --peer {persona:channel-groups-mixed:openGroup} --sender {persona:channel-groups-mixed:allowedSender} --text 'me too' --timeout 60000 --background --handle {run}/mixed-followup-1.json"
       ],
       "checkpoint": [
         "responses",
@@ -12594,7 +12634,8 @@
         "mock-provider-held-turn"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --wait {run}/mixed-run.json --timeout 120000"
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --wait {run}/mixed-run.json --timeout 120000",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --wait {run}/mixed-followup-1.json --timeout 60000"
       ],
       "checkpoint": [
         "responses",
@@ -13406,6 +13447,8 @@
         "src/plugin-sdk/channel-*.ts"
       ],
       "requires": [
+        "channel-groups-mixed",
+        "channel-probe-admission",
         "channel-probe-conversations"
       ],
       "commands": [
@@ -13690,10 +13733,16 @@
       "paths": [
         "extensions/telegram/src/**",
         "src/auto-reply/chunk*.ts",
+        "src/auto-reply/dispatch*.ts",
+        "src/auto-reply/inbound*.ts",
         "src/auto-reply/reply/block*.ts",
+        "src/auto-reply/reply/dispatch*.ts",
+        "src/auto-reply/reply/inbound*.ts",
         "src/auto-reply/reply/message*.ts",
         "src/auto-reply/send*.ts",
-        "src/infra/outbound/**"
+        "src/channels/*/**",
+        "src/infra/outbound/**",
+        "src/plugin-sdk/channel-*.ts"
       ],
       "requires": [
         "channel-telegram-shim"
@@ -13717,10 +13766,16 @@
       "paths": [
         "extensions/telegram/src/**",
         "src/auto-reply/chunk*.ts",
+        "src/auto-reply/dispatch*.ts",
+        "src/auto-reply/inbound*.ts",
         "src/auto-reply/reply/block*.ts",
+        "src/auto-reply/reply/dispatch*.ts",
+        "src/auto-reply/reply/inbound*.ts",
         "src/auto-reply/reply/message*.ts",
         "src/auto-reply/send*.ts",
-        "src/infra/outbound/**"
+        "src/channels/*/**",
+        "src/infra/outbound/**",
+        "src/plugin-sdk/channel-*.ts"
       ],
       "requires": [
         "channel-telegram-shim"
@@ -14335,7 +14390,7 @@
     {
       "id": "event-delivery-retry-exhausted",
       "kind": "event",
-      "intent": "A user lets a delivery exhaust its retry budget, observing the failed row settling its session without resending.",
+      "intent": "A fresh Telegram reply fails through native durable recovery until its retry budget is exhausted; its captured queue identity, real attempts, terminal reason and completion-owner state are recorded without shortening retry policy.",
       "paths": [
         "extensions/telegram/src/**",
         "src/infra/delivery-queue*.ts",
@@ -14348,8 +14403,7 @@
         "channel-telegram-shim"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-platform-fault.mjs --env {env} --channel telegram --fault server-error --count 50 --method sendMessage --timeout 10000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel telegram --chat-type direct --peer {persona:channel-telegram-shim:dmChatId} --text 'never delivered' --artifact-dir {run}/exhausted --timeout 200000"
+        "node {kovaRoot}/support/verify/channel-delivery-exhaustion.mjs --env {env} --channel telegram --account default --peer {persona:channel-telegram-shim:dmChatId} --text 'Reply with exact ASCII text KOVA_DELIVERY_EXHAUSTED_OK only.' --restarts 0 --artifact-dir {run}/exhausted --timeout 1140000"
       ],
       "checkpoint": [
         "responses",
@@ -14357,9 +14411,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 225000,
+      "timeoutMs": 1200000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-crash-after-detached-completion",
@@ -15807,7 +15861,7 @@
     {
       "id": "event-delivery-retry-budget-exhausted",
       "kind": "event",
-      "intent": "A conformance reply fails every attempt across two restarts; queue rows and logs are recorded.",
+      "intent": "A fresh conformance reply fails through native durable recovery until its retry budget is exhausted across two observed restart boundaries; its captured queue identity, real attempts, terminal reason and completion-owner state are recorded without shortening retry policy.",
       "paths": [
         "src/infra/delivery-queue*.ts",
         "src/infra/delivery-recovery*.ts",
@@ -15819,13 +15873,7 @@
         "channel-probe-conversations"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-probe-fault.mjs --env {env} --fault fail-next-send --count 20 --timeout 30000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --text 'Reply with exact ASCII text KOVA_BUDGET_EXHAUSTED_OK only.' --timeout 60000",
-        "node {kovaRoot}/support/verify/ocm-service.mjs --env {env} --action restart",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/gateway-ready-after-budget-restart-1 --timeout-ms 60000",
-        "node {kovaRoot}/support/verify/ocm-service.mjs --env {env} --action restart",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/gateway-ready-after-budget-restart-2 --timeout-ms 60000",
-        "node {kovaRoot}/support/verify/gateway-logs.mjs --env {env} --tail 400"
+        "node {kovaRoot}/support/verify/channel-delivery-exhaustion.mjs --env {env} --channel kova-channel-probe --account default --peer {persona:channel-probe-conversations:dmPeer} --text 'Reply with exact ASCII text KOVA_BUDGET_EXHAUSTED_OK only.' --restarts 2 --artifact-dir {run}/budget-exhausted --timeout 1140000"
       ],
       "checkpoint": [
         "responses",
@@ -15833,9 +15881,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 1200000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-completion-channel-route",
