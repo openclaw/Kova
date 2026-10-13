@@ -210,8 +210,8 @@ Flags declare whether they take no value, a required value or an optional value.
 The check consumes those operands before matching the complete command, so a
 boolean flag cannot hide an unknown subcommand and a value beginning with `--`
 remains a value. OCM command words precede options; OpenClaw child options
-follow the child name, while declared parent options may precede it. For the listed OCM commands, flags
-cannot repeat or consume another flag as an operand; its command form determines
+follow the child name, while declared parent options may precede it. The listed OCM commands extract
+switches before value options and reject repeated flags; the command form determines
 whether and where a `--` separator is required. Unquoted pathname patterns and parentheses are rejected because
 the shell can expand them or interpret them as operators; brace expansion is
 rejected too, even when its individual members are quoted. Placeholders must be

@@ -103,6 +103,8 @@ test("explicit flag arity separates operands from options and subcommands", asyn
   assert.ok(check(c, "ocm logs {env} --tail --follow --json").some((finding) => finding.code === "unlisted-flag" && finding.flag === "--follow"));
   assert.deepEqual(check(c, "ocm logs {env} --tail 5 --json"), []);
   assert.deepEqual(check(c, "ocm logs {env} --tail=5 --json"), []);
+  assert.deepEqual(check(c, "ocm logs --tail --json 5 {env}"), []);
+  assert.deepEqual(check(c, "ocm start --runtime --no-service runtime-name {env} --json"), []);
   assert.deepEqual(check(c, "ocm env exec {env} -- node script.mjs --flag --flag -- --child-option"), []);
   for (const value of ["-1", "-.5", "-1.5e-2"]) assert.deepEqual(check(c, `ocm @{env} -- sessions archive ${value} --json`), []);
   assert.ok(check(c, "ocm @{env} -- sessions archive -1oops --json").some((finding) => finding.code === "unlisted-flag"));

@@ -135,6 +135,21 @@ function argumentOffset(tokens) {
 
 // One pass owns option operands, the end-of-options separator and positionals.
 function commandArguments(tokens, flags, { allowedFlags = flags, head = [], parents = [], ocm = false, expectedSeparator = null } = {}) {
+  if (ocm) {
+    // OCM extracts switches independently before consuming the listed value options.
+    const separator = expectedSeparator === null ? -1 : tokens.indexOf("--", head.length);
+    const limit = separator < 0 ? tokens.length : separator;
+    const switches = [];
+    const rest = [];
+    for (let index = head.length; index < tokens.length; index += 1) {
+      const token = tokens[index];
+      const flag = token.split("=", 1)[0];
+      const info = Object.hasOwn(flags, flag) ? flags[flag] : null;
+      if (index < limit && token !== "--" && isFlag(token) && (!info || (info.value === "none" && !token.includes("=")))) switches.push(token);
+      else rest.push(token);
+    }
+    tokens = [...tokens.slice(0, head.length), ...switches, ...rest];
+  }
   const offset = argumentOffset(tokens);
   const words = canonicalWords(tokens.slice(0, offset));
   const options = [];
