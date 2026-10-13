@@ -682,7 +682,9 @@
         "src/commands/doctor-migration-*.ts",
         "src/commands/doctor-post-upgrade*.ts",
         "src/commands/doctor-update*.ts",
-        "src/flows/doctor-update-budget.ts"
+        "src/flows/doctor-update-budget.ts",
+        "src/cli/update-cli/update-finalization-lifecycle.ts",
+        "src/cli/update-cli/update-operation-deadline.ts"
       ],
       "requires": [],
       "commands": [
@@ -903,7 +905,8 @@
         "src/cli/update-cli/cleanup.ts",
         "src/commands/doctor-session-sqlite-recovery-inventory*.ts",
         "src/commands/doctor-session-sqlite-retirement*.ts",
-        "src/commands/doctor-session-sqlite-verification*.ts"
+        "src/commands/doctor-session-sqlite-verification*.ts",
+        "src/commands/doctor-sqlite-maintenance-lock.ts"
       ],
       "requires": [
         "recovery-originals-retained"
@@ -972,7 +975,8 @@
       "intent": "update.checkOnStart is set to false and the Gateway restarts, so no update check, campaign or notice runs; startup logs and update.status schedule are observed, then checks are re-enabled.",
       "paths": [
         "src/gateway/server-startup-update-check.ts",
-        "src/infra/update-*.ts"
+        "src/infra/update-*.ts",
+        "src/infra/telemetry.ts"
       ],
       "requires": [],
       "commands": [
@@ -1428,7 +1432,8 @@
         "src/cli/update-option-specs.ts",
         "src/commands/doctor-session-sqlite-recovery-inventory*.ts",
         "src/commands/doctor-session-sqlite-retirement*.ts",
-        "src/commands/doctor-session-sqlite-verification*.ts"
+        "src/commands/doctor-session-sqlite-verification*.ts",
+        "src/commands/doctor-sqlite-maintenance-lock.ts"
       ],
       "requires": [
         "recovery-originals-retained"
@@ -1671,7 +1676,9 @@
         "src/state/openclaw-state-db-content-version.ts",
         "src/state/openclaw-state-db-doctor-schema.ts",
         "src/state/openclaw-state-db-schema-version.ts",
-        "src/state/openclaw-update-schema-refusal.ts"
+        "src/state/openclaw-update-schema-refusal.ts",
+        "src/state/agent-database-admission.ts",
+        "src/gateway/server-runtime-state-prepare.ts"
       ],
       "requires": [
         "agents-three-configured",
@@ -1753,7 +1760,8 @@
         "src/commands/doctor-session-sqlite-recovery-inventory*.ts",
         "src/commands/doctor-session-sqlite-retirement*.ts",
         "src/commands/doctor-session-sqlite-verification*.ts",
-        "src/infra/update-recovery*.ts"
+        "src/infra/update-recovery*.ts",
+        "src/commands/doctor-sqlite-maintenance-lock.ts"
       ],
       "requires": [
         "recovery-originals-retained"
