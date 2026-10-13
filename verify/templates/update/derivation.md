@@ -1240,3 +1240,5 @@ Each held-work restart variant captures the prior boot generation and observes i
 Crash-loop observation includes the later persisted recovery transition and channel state within a bounded window. Outbox reconciliation and replay owners select the retained UI flow. Every cleanup attempt restores an independent recovery-originals export; reader presence is no longer claimed to guarantee fingerprint-change refusal, and condition 219 is uncovered for that stronger outcome.
 
 The update-check endpoint now joins a bounded request/exchange observation before product status and teardown. Port occupation persists through the restart failure allowance. Missing legacy provider-key inputs remain uncovered, and source selection includes the scheduling, ACP and response owners. Valid-operation errors/timeouts preserve the catalogue result semantics throughout the declared helpers.
+
+The repeated-stop flow explicitly restarts OCM services after clean SIGTERM exits; waiting for automatic respawn is not a valid prerequisite. Its source selectors include the remaining launcher, legacy-config and channel-recovery owners.

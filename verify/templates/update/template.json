@@ -154,7 +154,7 @@
       "support/verify/restore-update-fixture.mjs  (stop only the named comparison clone through OCM and wait for process exit, restore the complete exported installation and user-state fixture while preserving that clone's identity, paths, credentials placeholders and service ports, select the side or original persona runtime, restore local release-feed routing, then start it; never alter the exported fixture or its original environment; --env --fixture <path> --runtime <side|persona> --release-feed <handle> --timeout <ms>)",
       "support/verify/read-installation-state.mjs  (read the named cloned installation's SQLite database through a consistent read transaction and print compared JSON responses with table names, column names and typed row values; preserve missing-file and read-error outcomes, report unsupported capture as an ordinary result/error after valid inputs; only malformed call arguments use 2, never read the primary environment by substitution; --env --path <relative-path> --timeout <ms>; --table <name> restricts the consistent capture to one named product table; --out <file> also writes that JSON snapshot for a later observer; --observe-crash-recovery with --table gateway_boot_lifecycle and --after-state-from <file> records a new breaker marker and the later gateway.crash_loop_recovered row after that snapshot, polling within --timeout without changing product state; record both the suppressed interval and recovery or ordinary timeout 3, never malformed-input 2 after valid setup)",
       "support/verify/stage-update-history.mjs  (stop the named comparison Gateway through OCM and wait for process exit, stage the exported abandoned/active update rows into its state database without querying update.status, leave the service stopped for the next observed restart or CLI action; preserve other state and use only the supplied immutable fixture; --env --fixture <path> --timeout <ms>)",
-      "support/verify/stop-gateway.mjs  (OCM service stop for only the named comparison clone, followed by bounded polling of OCM service status and the observed Gateway process identity until stopped and exited; service stop may return while shutdown continues, so never equate its exit code with quiescence; print the observed result; malformed initial inputs use 2, errors from a valid stop request use 1 and failure to observe process exit within the bound uses timeout 3; never remove the OCM service or destroy an environment; --env --timeout <ms>)"
+      "support/verify/stop-gateway.mjs  (OCM service stop for only the named comparison clone, followed by bounded polling of OCM service status and the observed Gateway process identity until stopped and exited; service stop may return while shutdown continues, so never equate its exit code with quiescence; print the observed result; malformed initial inputs use 2, errors from a valid stop request use 1 and failure to observe process exit within the bound uses timeout 3; never remove the OCM service or destroy an environment; --env --timeout <ms>; --observe-only waits for an already requested stop without sending another stop or signal)"
     ]
   },
   "phases": [
@@ -289,6 +289,7 @@
         "src/config/io.runtime-write-finalization.ts",
         "src/config/io.write-topology.ts",
         "src/config/io.write.ts",
+        "src/config/legacy*.ts",
         "src/config/mutate.include-io.ts",
         "src/config/write-lock.ts",
         "src/flows/doctor-acp-agent-model-check.ts",
@@ -573,6 +574,7 @@
       "intent": "A fresh idle headless node checks, prepares and activates the published release, once driven by the persona runtime and separately by the comparison side runtime; preparation, activation and the reported node version are observed.",
       "paths": [
         "node-host-launcher.mjs",
+        "src/node-host/*launcher*.ts",
         "src/node-host/auto-update*.ts",
         "src/node-host/runner.ts",
         "src/node-host/runtime-update-pause.ts",
@@ -1067,6 +1069,7 @@
       "intent": "The headless node's prepared runtime fails to reconnect after activation, so its launcher falls back to the previous runtime; the node's fallback messages and reported version are observed.",
       "paths": [
         "node-host-launcher.mjs",
+        "src/node-host/*launcher*.ts",
         "src/node-host/auto-update*.ts",
         "src/node-host/runtime-update-pause.ts"
       ],
@@ -1475,7 +1478,7 @@
     {
       "id": "event-repeated-stop-signals",
       "kind": "event",
-      "intent": "The Gateway receives the same stop signal three times within five minutes through service restarts; the supervisor hint and shutdown records are observed.",
+      "intent": "An operator sends SIGTERM three times, observes each completed stop without another signal and explicitly starts the OCM service between attempts within a five-minute phase bound; the supervisor hint, stopped/started states and shutdown records are observed.",
       "paths": [
         "src/cli/daemon-cli/lifecycle-*restart*.ts",
         "src/cli/daemon-cli/restart-*.ts",
@@ -1490,8 +1493,18 @@
       "requires": [],
       "commands": [
         "node {kovaRoot}/support/verify/release-feed.mjs --env {env} --from {run}/release-feed.json --mode serve --timeout 30000 --background --handle {run}/release-feed-event-repeated-stop-signals.json",
-        "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault signal-stop --count 3 --interval-ms 30000 --timeout 150000",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-signals --timeout 120000",
+        "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault signal-stop --signal SIGTERM --timeout 10000",
+        "node {kovaRoot}/support/verify/stop-gateway.mjs --env {env} --observe-only --timeout 30000",
+        "ocm service start {env} --json",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-signals-1 --timeout 30000",
+        "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault signal-stop --signal SIGTERM --timeout 10000",
+        "node {kovaRoot}/support/verify/stop-gateway.mjs --env {env} --observe-only --timeout 30000",
+        "ocm service start {env} --json",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-signals-2 --timeout 30000",
+        "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault signal-stop --signal SIGTERM --timeout 10000",
+        "node {kovaRoot}/support/verify/stop-gateway.mjs --env {env} --observe-only --timeout 30000",
+        "ocm service start {env} --json",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-signals-3 --timeout 30000",
         "ocm @{env} -- status --json",
         "ocm logs {env} --tail 400",
         "node {kovaRoot}/support/verify/release-feed.mjs --wait {run}/release-feed-event-repeated-stop-signals.json --timeout 30000"
@@ -1502,7 +1515,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 360000,
+      "timeoutMs": 300000,
       "browser": false,
       "slow": true
     },
@@ -1520,6 +1533,7 @@
         "src/commands/doctor/legacy-config-repair.ts",
         "src/commands/doctor/shared/legacy-config-*.ts",
         "src/config/*-migration.ts",
+        "src/config/legacy*.ts",
         "src/gateway/server-startup-session-migration.ts",
         "src/infra/deferred-plugin-migration*.ts",
         "src/infra/device-pairing-migration.ts",
@@ -1680,7 +1694,9 @@
         "src/cli/gateway-cli/crash-loop-recovery.ts",
         "src/cli/gateway-cli/run.ts",
         "src/daemon/restart-*.ts",
+        "src/gateway/channel-health-monitor.ts",
         "src/gateway/restart-trace.ts",
+        "src/gateway/server-channel-autostart-recovery.ts",
         "src/gateway/server-methods/restart*.ts",
         "src/gateway/server-restart-sentinel*.ts",
         "src/infra/gateway-boot-lifecycle.kernel.ts",

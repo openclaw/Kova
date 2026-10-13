@@ -473,7 +473,7 @@ Phases that depend on each script still to be written (support.toWrite):
 - support/verify/read-installation-state.mjs: 13 phases
 - support/verify/env-fault.mjs: 8 phases
 - support/verify/gateway-call.mjs: 8 phases
-- support/verify/stop-gateway.mjs: 7 phases
+- support/verify/stop-gateway.mjs: 8 phases
 - support/verify/manual-package-replace.mjs: 4 phases
 - support/verify/session-turn-hold.mjs: 4 phases
 - support/verify/chat-send.mjs: 3 phases
@@ -671,3 +671,5 @@ Recovery observations and isolation: crash-loop checks include the suppression, 
 The crash-loop phase independently restores update-baseline-fixture before observing its initial boot rows. That export must have settled boot history, with no recent unclean boots or unrecovered breaker marker, so another selected scenario cannot supply the trip being measured. The fixture remains unavailable until the persona supplies that starting state.
 
 Observation lifetimes: the malformed-response endpoint remains available until its current-window request and HTTP exchange are observed within a bound; product status/log collection follows, then teardown. The restart port fault is armed before the request and retained through its result, with a 600,000 ms cap exceeding the pinned 300,000 ms drain plus 60,000 ms health allowance. Thaw scheduling, ACP model checks, CLI response formatting and update-check scheduling select their observations. Across helper contracts, valid operational errors and timeouts use normal 1/3 outcomes; 2 is reserved for malformed call inputs and does not relabel a product or storage failure.
+
+Clean-stop sequencing: repeated SIGTERM observations explicitly wait for each process to exit and start the named OCM service before the next signal. Observation-only stop polling sends no additional signal. The entire phase is bounded to five minutes, preserving the repeated-stop window. Source selection includes node launcher clients, legacy config/roster helpers, and the channel monitor/autostart recovery that releases crash suppression.
