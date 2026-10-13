@@ -333,6 +333,7 @@
         "config-retired-keys",
         "cron-job-isolated",
         "state-legacy-migratable",
+        "state-legacy-retired",
         "state-retired-json",
         "store-legacy-sessions-json",
         "store-rows-legacy-aliases",
@@ -365,6 +366,7 @@
         "node {kovaRoot}/support/verify/read-installation-state.mjs --env {persona:config-retired-keys:env} --path state/openclaw.sqlite --timeout 60000",
         "node {kovaRoot}/support/verify/read-installation-state.mjs --env {persona:state-retired-json:env} --path state/openclaw.sqlite --timeout 60000",
         "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:state-legacy-migratable:path} --run doctor --timeout 240000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:state-legacy-retired:filesPath} --run doctor --timeout 180000",
         "node {kovaRoot}/support/verify/release-feed.mjs --wait {run}/release-feed-migrate-state-and-config.json --timeout 30000"
       ],
       "checkpoint": [
@@ -375,7 +377,7 @@
         "state:state/openclaw.sqlite",
         "state:openclaw.json"
       ],
-      "timeoutMs": 1860000,
+      "timeoutMs": 2040000,
       "browser": false,
       "slow": true
     },
@@ -567,54 +569,6 @@
       "slow": true
     },
     {
-      "id": "update-by-another-method",
-      "kind": "operation",
-      "intent": "A user replaces OpenClaw with npm and with pnpm outside the updater while the Gateway keeps running; separately, the side runtime is started and replaced with side-next to exercise its own detection code, and the Gateway's replacement record and drain, status, update status and Doctor findings are observed.",
-      "paths": [
-        "src/cli/gateway-cli/run-loop-request.ts",
-        "src/cli/update-cli/update-command-package*.ts",
-        "src/gateway/server-maintenance.ts",
-        "src/gateway/stale-install.ts",
-        "src/infra/package-lifecycle.ts",
-        "src/infra/update-global*.ts",
-        "src/infra/update-package-manager.ts"
-      ],
-      "requires": [
-        "gateway-second-instance",
-        "install-npm-global",
-        "install-pnpm-global"
-      ],
-      "commands": [
-        "node {kovaRoot}/support/verify/release-feed.mjs --env {env} --from {run}/release-feed.json --mode serve --timeout 30000 --background --handle {run}/release-feed-update-by-another-method.json",
-        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed-update-by-another-method.json --timeout 240000",
-        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-pnpm-global:env} --fixture {persona:install-pnpm-global:fixture} --runtime persona --release-feed {run}/release-feed-update-by-another-method.json --timeout 240000",
-        "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-npm-global:env} --tool npm --target side --keep-gateway-running --observe-replacement --timeout 240000",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-npm-replaced --timeout 120000",
-        "ocm @{persona:install-npm-global:env} -- status --json",
-        "ocm @{persona:install-npm-global:env} -- update status --json",
-        "ocm @{persona:install-npm-global:env} -- doctor --json",
-        "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-pnpm-global:env} --tool pnpm --target side --keep-gateway-running --observe-replacement --timeout 240000",
-        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime side --release-feed {run}/release-feed-update-by-another-method.json --timeout 240000",
-        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-pnpm-global:env} --fixture {persona:install-pnpm-global:fixture} --runtime side --release-feed {run}/release-feed-update-by-another-method.json --timeout 240000",
-        "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-npm-global:env} --tool npm --target side-next --keep-gateway-running --observe-replacement --timeout 240000",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-npm-replaced-side --timeout 120000",
-        "ocm @{persona:install-npm-global:env} -- status --json",
-        "ocm @{persona:install-npm-global:env} -- update status --json",
-        "ocm @{persona:install-npm-global:env} -- doctor --json",
-        "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-pnpm-global:env} --tool pnpm --target side-next --keep-gateway-running --observe-replacement --timeout 240000",
-        "node {kovaRoot}/support/verify/release-feed.mjs --wait {run}/release-feed-update-by-another-method.json --timeout 30000"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing",
-        "doctor"
-      ],
-      "timeoutMs": 3360000,
-      "browser": false,
-      "slow": true
-    },
-    {
       "id": "keep-node-host-updated",
       "kind": "operation",
       "intent": "A fresh idle headless node checks, prepares and activates the published release, once driven by the persona runtime and separately by the comparison side runtime; preparation, activation and the reported node version are observed.",
@@ -645,132 +599,9 @@
       "slow": true
     },
     {
-      "id": "restart-gateway",
-      "kind": "operation",
-      "intent": "A user restarts the Gateway while a turn is in flight and a message arrives during the drain: a safe restart, the restart preflight and request methods, /restart from chat, a SIGUSR2 signal, a plain restart and a stop request followed by a service start; drain logs, rejected input, ready check, the restart history and the in-flight turn's outcome are observed.",
-      "paths": [
-        "extensions/admin-http-rpc/src/methods.ts",
-        "src/auto-reply/reply/commands-session.ts",
-        "src/auto-reply/reply/commands-update.ts",
-        "src/cli/channel-auth.ts",
-        "src/cli/daemon-cli/lifecycle-*restart*.ts",
-        "src/cli/daemon-cli/lifecycle-core.ts",
-        "src/cli/daemon-cli/lifecycle-unmanaged.ts",
-        "src/cli/daemon-cli/lifecycle.runtime.ts",
-        "src/cli/daemon-cli/lifecycle.ts",
-        "src/cli/daemon-cli/register-service-commands.ts",
-        "src/cli/daemon-cli/restart-*.ts",
-        "src/cli/gateway-cli/host-lifecycle.ts",
-        "src/cli/gateway-cli/lifecycle.runtime.ts",
-        "src/cli/gateway-cli/run-loop-drain.ts",
-        "src/cli/gateway-cli/run-loop-startup.ts",
-        "src/cli/gateway-cli/run-loop.ts",
-        "src/config/io.write.ts",
-        "src/daemon/launchd-lifecycle.ts",
-        "src/daemon/restart-*.ts",
-        "src/daemon/schtasks-process.ts",
-        "src/gateway/restart-trace.ts",
-        "src/gateway/server-close.ts",
-        "src/gateway/server-methods.ts",
-        "src/gateway/server-methods/config-write-flow.ts",
-        "src/gateway/server-methods/restart*.ts",
-        "src/gateway/server-reload-hot.ts",
-        "src/gateway/server-reload-restart.ts",
-        "src/gateway/server-restart-sentinel*.ts",
-        "src/gateway/server-startup-trace.ts",
-        "src/infra/process-respawn.ts",
-        "src/infra/restart*.ts",
-        "src/system-agent/operations-execution-helpers.ts"
-      ],
-      "requires": [
-        "mock-provider-held-turn",
-        "session-main-rolling"
-      ],
-      "commands": [
-        "node {kovaRoot}/support/verify/release-feed.mjs --env {env} --from {run}/release-feed.json --mode serve --timeout 30000 --background --handle {run}/release-feed-restart-gateway.json",
-        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 60000 --timeout 70000 --background --handle {run}/held-restart-gateway-1.json",
-        "ocm @{env} -- gateway restart --safe",
-        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/held-restart-gateway-1.json --timeout 70000",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-safe --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method gateway.restart.preflight --params '{}' --timeout 30000",
-        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 60000 --timeout 70000 --background --handle {run}/held-restart-gateway-4.json",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method gateway.restart.request --params '{}' --timeout 60000",
-        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/held-restart-gateway-4.json --timeout 70000",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-request --timeout 120000",
-        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 60000 --timeout 70000 --background --handle {run}/held-restart-gateway-6.json",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message '/restart' --timeout 60000",
-        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/held-restart-gateway-6.json --timeout 70000",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-chat-restart --timeout 120000",
-        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 60000 --timeout 70000 --background --handle {run}/held-restart-gateway-8.json",
-        "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault signal-restart --timeout 30000",
-        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/held-restart-gateway-8.json --timeout 70000",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-sigusr2 --timeout 120000",
-        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 60000 --timeout 70000 --background --handle {run}/held-restart-gateway-10.json",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message 'Are you still there?' --when-gateway-draining --background --handle {run}/drain-message.json",
-        "ocm @{env} -- gateway restart --wait 30s",
-        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/held-restart-gateway-10.json --timeout 70000",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-plain --timeout 120000",
-        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 60000 --timeout 70000 --background --handle {run}/held-restart-gateway-12.json",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method gateway.stop.request --target-current --params '{}' --timeout 60000",
-        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/held-restart-gateway-12.json --timeout 70000",
-        "ocm service start {env} --json",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-stop-start --timeout 120000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --wait {run}/drain-message.json --timeout 30000",
-        "node {kovaRoot}/support/verify/release-feed.mjs --wait {run}/release-feed-restart-gateway.json --timeout 30000"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing",
-        "state:state/openclaw.sqlite"
-      ],
-      "timeoutMs": 2400000,
-      "browser": false,
-      "slow": true
-    },
-    {
-      "id": "event-installation-replacement-detected",
-      "kind": "event",
-      "intent": "An npm installation is replaced with the side's package while its Gateway runs, and on its maintenance tick the Gateway records the replacement, stops admitting work and hands over to its service; separately, the side runtime is started and replaced with side-next to exercise its own detection code, and the replacement record, drain, status and Doctor reports are observed.",
-      "paths": [
-        "src/gateway/stale-install.ts",
-        "src/infra/package-lifecycle.ts"
-      ],
-      "requires": [
-        "install-npm-global"
-      ],
-      "commands": [
-        "node {kovaRoot}/support/verify/release-feed.mjs --env {env} --from {run}/release-feed.json --mode serve --timeout 30000 --background --handle {run}/release-feed-event-installation-replacement-detected.json",
-        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed-event-installation-replacement-detected.json --timeout 240000",
-        "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-npm-global:env} --tool npm --target side --keep-gateway-running --observe-replacement --timeout 200000",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-replaced --timeout 90000",
-        "ocm @{persona:install-npm-global:env} -- status --json",
-        "ocm @{persona:install-npm-global:env} -- doctor --json",
-        "ocm logs {persona:install-npm-global:env} --tail 400",
-        "node {kovaRoot}/support/verify/read-installation-state.mjs --env {persona:install-npm-global:env} --path state/openclaw.sqlite --timeout 60000",
-        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime side --release-feed {run}/release-feed-event-installation-replacement-detected.json --timeout 240000",
-        "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-npm-global:env} --tool npm --target side-next --keep-gateway-running --observe-replacement --timeout 200000",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-replaced-side --timeout 90000",
-        "ocm @{persona:install-npm-global:env} -- status --json",
-        "ocm @{persona:install-npm-global:env} -- doctor --json",
-        "ocm logs {persona:install-npm-global:env} --tail 400",
-        "node {kovaRoot}/support/verify/read-installation-state.mjs --env {persona:install-npm-global:env} --path state/openclaw.sqlite --timeout 60000",
-        "node {kovaRoot}/support/verify/release-feed.mjs --wait {run}/release-feed-event-installation-replacement-detected.json --timeout 30000"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing",
-        "state:state/openclaw.sqlite"
-      ],
-      "timeoutMs": 1320000,
-      "browser": false,
-      "slow": true
-    },
-    {
       "id": "event-repair-after-manual-replace",
       "kind": "event",
-      "intent": "After a manual replacement where Doctor failed on the live Gateway lock, the operator runs update repair with --no-restart from the updated installation; the repair result and service state are observed.",
+      "intent": "After manually replacing an installation, the operator stops its Gateway through OCM, runs update repair with --no-restart, and starts the service again; the repair result, stopped state and restored service are observed.",
       "paths": [
         "src/cli/update-cli/update-repair-command.ts",
         "src/commands/doctor-*-migration*.ts",
@@ -787,9 +618,11 @@
         "node {kovaRoot}/support/verify/release-feed.mjs --env {env} --from {run}/release-feed.json --mode serve --timeout 30000 --background --handle {run}/release-feed-event-repair-after-manual-replace.json",
         "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed-event-repair-after-manual-replace.json --timeout 240000",
         "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-npm-global:env} --tool npm --target side --keep-gateway-running --timeout 200000",
+        "node {kovaRoot}/support/verify/stop-gateway.mjs --env {persona:install-npm-global:env} --timeout 120000",
         "ocm @{persona:install-npm-global:env} -- update repair --yes --no-restart --json",
         "ocm @{persona:install-npm-global:env} -- status --json",
         "node {kovaRoot}/support/verify/read-installation-state.mjs --env {persona:install-npm-global:env} --path state/openclaw.sqlite --timeout 60000",
+        "ocm service start {persona:install-npm-global:env} --json",
         "node {kovaRoot}/support/verify/release-feed.mjs --wait {run}/release-feed-event-repair-after-manual-replace.json --timeout 30000"
       ],
       "checkpoint": [
@@ -798,7 +631,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 660000,
+      "timeoutMs": 780000,
       "browser": false,
       "slow": true
     },
@@ -831,42 +664,6 @@
         "state:state/openclaw.sqlite"
       ],
       "timeoutMs": 360000,
-      "browser": false,
-      "slow": true
-    },
-    {
-      "id": "event-update-with-restarts-disabled",
-      "kind": "event",
-      "intent": "With commands.restart turned off, an owner sends /update and /restart and a restart signal is delivered; command-policy refusals, signal handling and guidance are observed.",
-      "paths": [
-        "src/auto-reply/reply/command-gates.ts",
-        "src/auto-reply/reply/commands-session.ts",
-        "src/auto-reply/reply/commands-update.ts",
-        "src/infra/update-*.ts",
-        "src/shared/update-outcome.ts"
-      ],
-      "requires": [
-        "session-main-rolling",
-        "update-baseline-fixture"
-      ],
-      "commands": [
-        "node {kovaRoot}/support/verify/release-feed.mjs --env {env} --from {run}/release-feed.json --mode serve --timeout 30000 --background --handle {run}/release-feed-event-update-with-restarts-disabled.json",
-        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed-event-update-with-restarts-disabled.json --timeout 240000",
-        "node {kovaRoot}/support/verify/update-config.mjs --env {env} --preset restart-off --timeout 30000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message '/update' --timeout 60000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message '/restart' --timeout 60000",
-        "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault signal-restart --timeout 30000",
-        "node {kovaRoot}/support/verify/update-config.mjs --env {env} --preset restart-on --timeout 30000",
-        "ocm @{env} -- update status --json",
-        "node {kovaRoot}/support/verify/release-feed.mjs --wait {run}/release-feed-event-update-with-restarts-disabled.json --timeout 30000"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing",
-        "state:openclaw.json"
-      ],
-      "timeoutMs": 640000,
       "browser": false,
       "slow": true
     },
@@ -933,40 +730,6 @@
       "slow": true
     },
     {
-      "id": "event-restart-with-ui-outbox",
-      "kind": "event",
-      "intent": "A follow-up typed in the Control UI is accepted while the Gateway restarts and re-admitted from the browser outbox after reconnect; the outbox replay and transcript are observed.",
-      "paths": [
-        "src/cli/daemon-cli/lifecycle-*restart*.ts",
-        "src/cli/daemon-cli/restart-*.ts",
-        "src/daemon/restart-*.ts",
-        "src/gateway/restart-trace.ts",
-        "src/gateway/server-methods/restart*.ts",
-        "src/gateway/server-restart-sentinel*.ts",
-        "src/infra/restart*.ts"
-      ],
-      "requires": [
-        "session-main-rolling",
-        "update-baseline-fixture"
-      ],
-      "commands": [
-        "node {kovaRoot}/support/verify/release-feed.mjs --env {env} --from {run}/release-feed.json --mode serve --timeout 30000 --background --handle {run}/release-feed-event-restart-with-ui-outbox.json",
-        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed-event-restart-with-ui-outbox.json --timeout 240000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow chat-outbox-restart --artifact-dir {run}/screens/chat-outbox-restart --timeout 200000 --session-key {persona:session-main-rolling:key}",
-        "node {kovaRoot}/support/verify/chat-history-read.mjs --env {env} --session-key {persona:session-main-rolling:key} --limit 10 --timeout 60000",
-        "node {kovaRoot}/support/verify/release-feed.mjs --wait {run}/release-feed-event-restart-with-ui-outbox.json --timeout 30000"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing",
-        "screen"
-      ],
-      "timeoutMs": 600000,
-      "browser": true,
-      "slow": true
-    },
-    {
       "id": "event-package-scripts-skipped",
       "kind": "event",
       "intent": "An npm installation is replaced with lifecycle scripts skipped, then any CLI command runs; the completed pending lifecycle or reinstall guidance is observed.",
@@ -994,6 +757,93 @@
         "state:state/openclaw.sqlite"
       ],
       "timeoutMs": 660000,
+      "browser": false,
+      "slow": true
+    },
+    {
+      "id": "update-by-another-method",
+      "kind": "operation",
+      "intent": "A user replaces OpenClaw with npm and with pnpm outside the updater while the Gateway keeps running; separately, the side runtime is started and replaced with side-next to exercise its own detection code, and the Gateway's replacement record and drain, status, update status and Doctor findings are observed.",
+      "paths": [
+        "src/cli/gateway-cli/run-loop-request.ts",
+        "src/cli/update-cli/update-command-package*.ts",
+        "src/gateway/server-maintenance.ts",
+        "src/gateway/stale-install.ts",
+        "src/infra/package-lifecycle.ts",
+        "src/infra/update-global*.ts",
+        "src/infra/update-package-manager.ts"
+      ],
+      "requires": [
+        "gateway-second-instance",
+        "install-npm-global",
+        "install-pnpm-global"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/release-feed.mjs --env {env} --from {run}/release-feed.json --mode serve --timeout 30000 --background --handle {run}/release-feed-update-by-another-method.json",
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed-update-by-another-method.json --timeout 240000",
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-pnpm-global:env} --fixture {persona:install-pnpm-global:fixture} --runtime persona --release-feed {run}/release-feed-update-by-another-method.json --timeout 240000",
+        "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-npm-global:env} --tool npm --target side --keep-gateway-running --observe-replacement --timeout 240000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-npm-replaced --timeout 120000",
+        "ocm @{persona:install-npm-global:env} -- status --json",
+        "ocm @{persona:install-npm-global:env} -- update status --json",
+        "ocm @{persona:install-npm-global:env} -- doctor --json",
+        "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-pnpm-global:env} --tool pnpm --target side --keep-gateway-running --observe-replacement --timeout 240000",
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime side --release-feed {run}/release-feed-update-by-another-method.json --timeout 240000",
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-pnpm-global:env} --fixture {persona:install-pnpm-global:fixture} --runtime side --release-feed {run}/release-feed-update-by-another-method.json --timeout 240000",
+        "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-npm-global:env} --tool npm --target side-next --keep-gateway-running --observe-replacement --timeout 240000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-npm-replaced-side --timeout 120000",
+        "ocm @{persona:install-npm-global:env} -- status --json",
+        "ocm @{persona:install-npm-global:env} -- update status --json",
+        "ocm @{persona:install-npm-global:env} -- doctor --json",
+        "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-pnpm-global:env} --tool pnpm --target side-next --keep-gateway-running --observe-replacement --timeout 240000",
+        "node {kovaRoot}/support/verify/release-feed.mjs --wait {run}/release-feed-update-by-another-method.json --timeout 30000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "doctor"
+      ],
+      "timeoutMs": 3360000,
+      "browser": false,
+      "slow": true
+    },
+    {
+      "id": "event-installation-replacement-detected",
+      "kind": "event",
+      "intent": "An npm installation is replaced with the side's package while its Gateway runs, and on its maintenance tick the Gateway records the replacement, stops admitting work and hands over to its service; separately, the side runtime is started and replaced with side-next to exercise its own detection code, and the replacement record, drain, status and Doctor reports are observed.",
+      "paths": [
+        "src/gateway/stale-install.ts",
+        "src/infra/package-lifecycle.ts"
+      ],
+      "requires": [
+        "install-npm-global"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/release-feed.mjs --env {env} --from {run}/release-feed.json --mode serve --timeout 30000 --background --handle {run}/release-feed-event-installation-replacement-detected.json",
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed-event-installation-replacement-detected.json --timeout 240000",
+        "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-npm-global:env} --tool npm --target side --keep-gateway-running --observe-replacement --timeout 200000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-replaced --timeout 90000",
+        "ocm @{persona:install-npm-global:env} -- status --json",
+        "ocm @{persona:install-npm-global:env} -- doctor --json",
+        "ocm logs {persona:install-npm-global:env} --tail 400",
+        "node {kovaRoot}/support/verify/read-installation-state.mjs --env {persona:install-npm-global:env} --path state/openclaw.sqlite --timeout 60000",
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime side --release-feed {run}/release-feed-event-installation-replacement-detected.json --timeout 240000",
+        "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-npm-global:env} --tool npm --target side-next --keep-gateway-running --observe-replacement --timeout 200000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-replaced-side --timeout 90000",
+        "ocm @{persona:install-npm-global:env} -- status --json",
+        "ocm @{persona:install-npm-global:env} -- doctor --json",
+        "ocm logs {persona:install-npm-global:env} --tail 400",
+        "node {kovaRoot}/support/verify/read-installation-state.mjs --env {persona:install-npm-global:env} --path state/openclaw.sqlite --timeout 60000",
+        "node {kovaRoot}/support/verify/release-feed.mjs --wait {run}/release-feed-event-installation-replacement-detected.json --timeout 30000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:state/openclaw.sqlite"
+      ],
+      "timeoutMs": 1320000,
       "browser": false,
       "slow": true
     },
@@ -1037,7 +887,10 @@
       "kind": "event",
       "intent": "A session-listing reader keeps polling the databases while update cleanup applies with the Gateway stopped; the Recovery destination database changed refusal and preserved originals are observed.",
       "paths": [
-        "src/cli/update-cli/cleanup.ts"
+        "src/cli/update-cli/cleanup.ts",
+        "src/commands/doctor-session-sqlite-recovery-inventory*.ts",
+        "src/commands/doctor-session-sqlite-retirement*.ts",
+        "src/commands/doctor-session-sqlite-verification*.ts"
       ],
       "requires": [
         "recovery-originals-retained"
@@ -1262,6 +1115,160 @@
       "slow": true
     },
     {
+      "id": "restart-gateway",
+      "kind": "operation",
+      "intent": "A user restarts the Gateway while a turn is in flight and a message arrives during the drain: a safe restart, the restart preflight and request methods, /restart from chat, a SIGUSR2 signal, a plain restart and a stop request followed by a service start; drain logs, rejected input, ready check, the restart history and the in-flight turn's outcome are observed.",
+      "paths": [
+        "extensions/admin-http-rpc/src/methods.ts",
+        "src/auto-reply/reply/commands-session.ts",
+        "src/auto-reply/reply/commands-update.ts",
+        "src/cli/channel-auth.ts",
+        "src/cli/daemon-cli/lifecycle-*restart*.ts",
+        "src/cli/daemon-cli/lifecycle-core.ts",
+        "src/cli/daemon-cli/lifecycle-unmanaged.ts",
+        "src/cli/daemon-cli/lifecycle.runtime.ts",
+        "src/cli/daemon-cli/lifecycle.ts",
+        "src/cli/daemon-cli/register-service-commands.ts",
+        "src/cli/daemon-cli/restart-*.ts",
+        "src/cli/gateway-cli/host-lifecycle.ts",
+        "src/cli/gateway-cli/lifecycle.runtime.ts",
+        "src/cli/gateway-cli/run-loop-drain.ts",
+        "src/cli/gateway-cli/run-loop-startup.ts",
+        "src/cli/gateway-cli/run-loop.ts",
+        "src/config/io.write.ts",
+        "src/daemon/launchd-lifecycle.ts",
+        "src/daemon/restart-*.ts",
+        "src/daemon/schtasks-process.ts",
+        "src/gateway/restart-trace.ts",
+        "src/gateway/server-close.ts",
+        "src/gateway/server-methods.ts",
+        "src/gateway/server-methods/config-write-flow.ts",
+        "src/gateway/server-methods/restart*.ts",
+        "src/gateway/server-reload-hot.ts",
+        "src/gateway/server-reload-restart.ts",
+        "src/gateway/server-restart-sentinel*.ts",
+        "src/gateway/server-startup-trace.ts",
+        "src/infra/process-respawn.ts",
+        "src/infra/restart*.ts",
+        "src/system-agent/operations-execution-helpers.ts"
+      ],
+      "requires": [
+        "mock-provider-held-turn",
+        "session-main-rolling"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/release-feed.mjs --env {env} --from {run}/release-feed.json --mode serve --timeout 30000 --background --handle {run}/release-feed-restart-gateway.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 60000 --timeout 70000 --background --handle {run}/held-restart-gateway-1.json",
+        "ocm @{env} -- gateway restart --safe",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/held-restart-gateway-1.json --timeout 70000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-safe --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method gateway.restart.preflight --params '{}' --timeout 30000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 60000 --timeout 70000 --background --handle {run}/held-restart-gateway-4.json",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method gateway.restart.request --params '{}' --timeout 60000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/held-restart-gateway-4.json --timeout 70000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-request --timeout 120000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 60000 --timeout 70000 --background --handle {run}/held-restart-gateway-6.json",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message '/restart' --timeout 60000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/held-restart-gateway-6.json --timeout 70000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-chat-restart --timeout 120000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 60000 --timeout 70000 --background --handle {run}/held-restart-gateway-8.json",
+        "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault signal-restart --timeout 30000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/held-restart-gateway-8.json --timeout 70000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-sigusr2 --timeout 120000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 60000 --timeout 70000 --background --handle {run}/held-restart-gateway-10.json",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message 'Are you still there?' --when-gateway-draining --background --handle {run}/drain-message.json",
+        "ocm @{env} -- gateway restart --wait 30s",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/held-restart-gateway-10.json --timeout 70000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-plain --timeout 120000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 60000 --timeout 70000 --background --handle {run}/held-restart-gateway-12.json",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method gateway.stop.request --target-current --params '{}' --timeout 60000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/held-restart-gateway-12.json --timeout 70000",
+        "ocm service start {env} --json",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-stop-start --timeout 120000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --wait {run}/drain-message.json --timeout 30000",
+        "node {kovaRoot}/support/verify/release-feed.mjs --wait {run}/release-feed-restart-gateway.json --timeout 30000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:state/openclaw.sqlite"
+      ],
+      "timeoutMs": 2400000,
+      "browser": false,
+      "slow": true
+    },
+    {
+      "id": "event-update-with-restarts-disabled",
+      "kind": "event",
+      "intent": "With commands.restart turned off, an owner sends /update and /restart and a restart signal is delivered; command-policy refusals, signal handling and guidance are observed.",
+      "paths": [
+        "src/auto-reply/reply/command-gates.ts",
+        "src/auto-reply/reply/commands-session.ts",
+        "src/auto-reply/reply/commands-update.ts",
+        "src/infra/update-*.ts",
+        "src/shared/update-outcome.ts"
+      ],
+      "requires": [
+        "session-main-rolling",
+        "update-baseline-fixture"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/release-feed.mjs --env {env} --from {run}/release-feed.json --mode serve --timeout 30000 --background --handle {run}/release-feed-event-update-with-restarts-disabled.json",
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed-event-update-with-restarts-disabled.json --timeout 240000",
+        "node {kovaRoot}/support/verify/update-config.mjs --env {env} --preset restart-off --timeout 30000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message '/update' --timeout 60000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message '/restart' --timeout 60000",
+        "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault signal-restart --timeout 30000",
+        "node {kovaRoot}/support/verify/update-config.mjs --env {env} --preset restart-on --timeout 30000",
+        "ocm @{env} -- update status --json",
+        "node {kovaRoot}/support/verify/release-feed.mjs --wait {run}/release-feed-event-update-with-restarts-disabled.json --timeout 30000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:openclaw.json"
+      ],
+      "timeoutMs": 640000,
+      "browser": false,
+      "slow": true
+    },
+    {
+      "id": "event-restart-with-ui-outbox",
+      "kind": "event",
+      "intent": "A follow-up typed in the Control UI is accepted while the Gateway restarts and re-admitted from the browser outbox after reconnect; the outbox replay and transcript are observed.",
+      "paths": [
+        "src/cli/daemon-cli/lifecycle-*restart*.ts",
+        "src/cli/daemon-cli/restart-*.ts",
+        "src/daemon/restart-*.ts",
+        "src/gateway/restart-trace.ts",
+        "src/gateway/server-methods/restart*.ts",
+        "src/gateway/server-restart-sentinel*.ts",
+        "src/infra/restart*.ts"
+      ],
+      "requires": [
+        "session-main-rolling",
+        "update-baseline-fixture"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/release-feed.mjs --env {env} --from {run}/release-feed.json --mode serve --timeout 30000 --background --handle {run}/release-feed-event-restart-with-ui-outbox.json",
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed-event-restart-with-ui-outbox.json --timeout 240000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow chat-outbox-restart --artifact-dir {run}/screens/chat-outbox-restart --timeout 200000 --session-key {persona:session-main-rolling:key}",
+        "node {kovaRoot}/support/verify/chat-history-read.mjs --env {env} --session-key {persona:session-main-rolling:key} --limit 10 --timeout 60000",
+        "node {kovaRoot}/support/verify/release-feed.mjs --wait {run}/release-feed-event-restart-with-ui-outbox.json --timeout 30000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "screen"
+      ],
+      "timeoutMs": 600000,
+      "browser": true,
+      "slow": true
+    },
+    {
       "id": "event-restart-during-cron",
       "kind": "event",
       "intent": "A user restarts the Gateway while an isolated cron job runs, so the drain waits for its cleanup and result write; the cron run result, drain report and cron list are observed.",
@@ -1342,7 +1349,10 @@
         "src/cli/run-main-update-admission.ts",
         "src/cli/update-cli.ts",
         "src/cli/update-cli/**",
-        "src/cli/update-option-specs.ts"
+        "src/cli/update-option-specs.ts",
+        "src/commands/doctor-session-sqlite-recovery-inventory*.ts",
+        "src/commands/doctor-session-sqlite-retirement*.ts",
+        "src/commands/doctor-session-sqlite-verification*.ts"
       ],
       "requires": [
         "recovery-originals-retained"
@@ -1638,6 +1648,9 @@
       "intent": "After verifying an update, an operator previews retained migration recovery originals while the Gateway serves, stops the Gateway and retires the eligible ones with explicit consent; eligible, protected and removed artifacts, totals and the restarted Gateway are observed.",
       "paths": [
         "src/cli/update-cli/cleanup.ts",
+        "src/commands/doctor-session-sqlite-recovery-inventory*.ts",
+        "src/commands/doctor-session-sqlite-retirement*.ts",
+        "src/commands/doctor-session-sqlite-verification*.ts",
         "src/infra/update-recovery*.ts"
       ],
       "requires": [

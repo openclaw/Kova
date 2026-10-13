@@ -1,13 +1,16 @@
 # Coverage: update
 
 Operations with retained phases: 11/21 (some retained operations have fewer entry points)
-Conditions described by retained phases: 74/520 (354 ambient, 166 event)
+Conditions described by retained phases: 71/520 (354 ambient, 166 event)
 Entry points inventoried: 203 placed/310 (107 excluded); executable coverage has not been measured
 Breaks mapped to retained phases: 0/6; all six are outside reach under OCM supervision
 
-A condition is counted here only when a retained phase describes its concrete setup and observation; runtime execution remains unproven. Reconciliation credits applicable phases from either run and excludes claims whose required inputs or actions were lost. There are 74 described conditions and 446 explicit gaps below. Phases: 37 (1 setup, 11 operation, 25 event). These are declarative descriptions, not executed results.
+A condition is counted here only when a retained phase describes its concrete setup and observation; runtime execution remains unproven. Reconciliation credits applicable phases from either run and excludes claims whose required inputs or actions were lost. There are 71 described conditions and 449 explicit gaps below. Phases: 37 (1 setup, 11 operation, 25 event). These are declarative descriptions, not executed results.
 
 Uncovered:
+- Condition 159, Package already replaced and Doctor failed on the live Gateway lock: repair from the updated installation: The manual replacement does not establish a preceding Doctor failure against the live Gateway; the retained phase describes offline repair without claiming that failure.
+- Condition 188, Triage starts the first launchable coding agent on PATH, or none is found and handoff commands are printed: The retained JSON triage commands return before external coding-agent launch; the other helper runs embedded repair.
+- Condition 244, Retired channel config and JSON stores (Discord voice.tts, Device Pair notify, Voice Call logs) refused with bridge guidance: No retained fixture provides the retired Discord voice configuration, Device Pair notification state or Voice Call logs.
 - Condition 23, GitHub CLI missing or unauthenticated when reporting: sanitized report kept locally, back to the menu: The direct report preview remains, but neither native failure-menu return nor the OCM-backed reporting UI is exercised.
 - Condition 239, Retired pre-June plugin JSON state (iMessage, Active Memory, Nostr, Teams) preserved; bridge through 2026.9.5: No retained fixture provides the retired plugin-specific stores named here.
 - Condition 240, Pre-July Telegram sidecars ignored; Telegram ingress spool still imported: No retained fixture provides the Telegram sidecars and ingress spool named here.
@@ -463,7 +466,7 @@ Phases that depend on each script still to be written (support.toWrite):
 - support/verify/env-fault.mjs: 8 phases
 - support/verify/gateway-call.mjs: 8 phases
 - support/verify/read-installation-state.mjs: 7 phases
-- support/verify/stop-gateway.mjs: 6 phases
+- support/verify/stop-gateway.mjs: 7 phases
 - support/verify/manual-package-replace.mjs: 4 phases
 - support/verify/session-turn-hold.mjs: 4 phases
 - support/verify/chat-send.mjs: 3 phases
@@ -649,3 +652,5 @@ The following ineffective event descriptions were removed because their required
 OCM history boundary: at the pinned revision, `src/gateway/server-methods/update-status.ts:65–113` uses OCM history instead of the native ledger when OCM supports updates. Seeded native failures cannot establish the Settings reporting, retry or diagnosis actions. `check-and-retry-update` and those UI commands are excluded. Direct native-ledger report preview and CLI triage remain; the basic Updates page records the OCM-backed view without claiming it shows native failures.
 
 Product outcomes remain comparable: after successful fault setup, absent thaw recovery, missing replacement detection and incomplete restart sequences are recorded with normal result/error/timeout semantics, not exit 2. Replacement journeys wait for a product record or process-generation change before consuming their observations. The update-check failure scenario stops the clone, resets its telemetry cache, serves a malformed endpoint response and records request attempts on completion. Its source selector includes telemetry.ts; node scenarios include node-host-launcher.mjs and pending package lifecycle includes src/index.ts. The retired-files startup fixture uses filesPath with valid config, separately from the legacy-config refusal fixture.
+
+Persona-consumption order follows the catalogue metadata: session-holding phases precede chat operations that consume the same session, and installation observations precede operations that consume the same installation trait. Setup and file-writer dependencies remain first; recovery retirement remains last. The supported command metadata was checked through the catalogue resolver from [PR #174](https://github.com/openclaw/Kova/pull/174); full planning still requires its deferred registrations. Cleanup phases include the inventory, retirement and destination-verification implementations in their selectors. Doctor now observes the valid-config retired-files export, including its retired JSON delivery queue, separately from the startup-continuation scenario.
