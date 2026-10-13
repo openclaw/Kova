@@ -361,7 +361,8 @@
         "src/config/sessions/store-entry-shape.ts",
         "src/commands/doctor/cron/store-*.ts",
         "src/cli/program/register.subclis.ts",
-        "src/config/types.tools.ts"
+        "src/config/types.tools.ts",
+        "src/cron/agent-id.ts"
       ],
       "requires": [
         "approvals-legacy-json",
@@ -638,7 +639,11 @@
         "src/cli/update-cli/update-command-post-plugin*.ts",
         "src/plugins/plugin-metadata*.ts",
         "src/plugins/manifest*.ts",
-        "src/infra/npm-registry-spec.ts"
+        "src/infra/npm-registry-spec.ts",
+        "src/cli/update-cli/update-command-doctor*.ts",
+        "src/infra/update-runner-doctor*.ts",
+        "src/infra/update-doctor*.ts",
+        "src/infra/update-migrated-finalize*.ts"
       ],
       "requires": [
         "plugin-capability-widened",
@@ -714,7 +719,9 @@
         "src/entry.ts",
         "src/cli/node-cli.ts",
         "src/cli/node-cli/register.ts",
-        "src/infra/npm-registry-spec.ts"
+        "src/infra/npm-registry-spec.ts",
+        "src/infra/update-check*.ts",
+        "src/infra/update-channels.ts"
       ],
       "requires": [
         "node-host-headless"
@@ -952,7 +959,8 @@
         "src/commands/doctor.ts",
         "src/flows/doctor-health*.ts",
         "src/infra/gateway-boot-lifecycle*.ts",
-        "src/cli/program/register.subclis.ts"
+        "src/cli/program/register.subclis.ts",
+        "src/gateway/server-constants.ts"
       ],
       "requires": [
         "gateway-second-instance",
@@ -1000,7 +1008,8 @@
         "src/commands/doctor.ts",
         "src/flows/doctor-health*.ts",
         "src/infra/gateway-boot-lifecycle*.ts",
-        "src/cli/program/register.subclis.ts"
+        "src/cli/program/register.subclis.ts",
+        "src/gateway/server-constants.ts"
       ],
       "requires": [
         "install-npm-global"
@@ -1066,7 +1075,11 @@
         "src/cli/parse-duration.ts",
         "src/cli/program/register.subclis.ts",
         "src/gateway/server-chat-state.ts",
-        "src/gateway/server-shutdown*.ts"
+        "src/gateway/server-shutdown*.ts",
+        "src/infra/agent-run-registry.ts",
+        "src/auto-reply/reply/dispatcher-registry.ts",
+        "src/sessions/session-lifecycle-admission.ts",
+        "src/process/command-queue.ts"
       ],
       "requires": [
         "mock-provider-held-turn",
@@ -1325,7 +1338,9 @@
         "src/entry.ts",
         "src/cli/node-cli.ts",
         "src/cli/node-cli/register.ts",
-        "src/infra/npm-registry-spec.ts"
+        "src/infra/npm-registry-spec.ts",
+        "src/infra/update-check*.ts",
+        "src/infra/update-channels.ts"
       ],
       "requires": [
         "node-host-headless"
@@ -1380,7 +1395,11 @@
         "src/gateway/server-shutdown.ts",
         "src/cli/program/register.subclis.ts",
         "src/gateway/server-chat-state.ts",
-        "src/gateway/server-shutdown*.ts"
+        "src/gateway/server-shutdown*.ts",
+        "src/infra/agent-run-registry.ts",
+        "src/auto-reply/reply/dispatcher-registry.ts",
+        "src/sessions/session-lifecycle-admission.ts",
+        "src/process/command-queue.ts"
       ],
       "requires": [
         "mock-provider-held-turn",
@@ -1473,7 +1492,11 @@
         "src/auto-reply/reply/commands.ts",
         "src/auto-reply/commands-registry*.ts",
         "src/auto-reply/commands-text-routing.ts",
-        "src/gateway/server-shutdown*.ts"
+        "src/gateway/server-shutdown*.ts",
+        "src/infra/agent-run-registry.ts",
+        "src/auto-reply/reply/dispatcher-registry.ts",
+        "src/sessions/session-lifecycle-admission.ts",
+        "src/process/command-queue.ts"
       ],
       "requires": [
         "mock-provider-held-turn",
@@ -1626,7 +1649,16 @@
         "src/gateway/server-shutdown*.ts",
         "ui/src/pages/chat/run-lifecycle*.ts",
         "ui/src/lib/chat/history-message-identity*.ts",
-        "src/shared/agent-run-status.ts"
+        "src/shared/agent-run-status.ts",
+        "src/gateway/server-methods/chat-history*.ts",
+        "src/gateway/server-methods/chat-pending*.ts",
+        "src/config/sessions/*pending-input*.ts",
+        "ui/src/pages/chat/chat-pending-input*.ts",
+        "ui/src/pages/chat/history-merge*.ts",
+        "src/infra/agent-run-registry.ts",
+        "src/auto-reply/reply/dispatcher-registry.ts",
+        "src/sessions/session-lifecycle-admission.ts",
+        "src/process/command-queue.ts"
       ],
       "requires": [
         "session-main-rolling",
@@ -1686,7 +1718,11 @@
         "src/gateway/server-shutdown.ts",
         "src/cli/program/register.subclis.ts",
         "src/gateway/server-chat-state.ts",
-        "src/gateway/server-shutdown*.ts"
+        "src/gateway/server-shutdown*.ts",
+        "src/infra/agent-run-registry.ts",
+        "src/auto-reply/reply/dispatcher-registry.ts",
+        "src/sessions/session-lifecycle-admission.ts",
+        "src/process/command-queue.ts"
       ],
       "requires": [
         "cron-job-isolated",
@@ -1747,7 +1783,11 @@
         "src/cli/parse-duration.ts",
         "src/cli/program/register.subclis.ts",
         "src/gateway/server-chat-state.ts",
-        "src/gateway/server-shutdown*.ts"
+        "src/gateway/server-shutdown*.ts",
+        "src/infra/agent-run-registry.ts",
+        "src/auto-reply/reply/dispatcher-registry.ts",
+        "src/sessions/session-lifecycle-admission.ts",
+        "src/process/command-queue.ts"
       ],
       "requires": [
         "mock-provider-held-turn",
@@ -1830,7 +1870,8 @@
         "src/gateway/server-channel*.ts",
         "src/gateway/server-core-runtime.ts",
         "src/gateway/server-startup-early.ts",
-        "src/cli/program/register.subclis.ts"
+        "src/cli/program/register.subclis.ts",
+        "src/gateway/server-constants.ts"
       ],
       "requires": [
         "channels-test-accounts"

@@ -729,3 +729,5 @@ Recovery fixture restoration runs while the clone is stopped. It first verifies 
 Chat registration and dispatch also select the non-owner helper path. Node inventory/schema contracts, shutdown callback modules, sender-key parsing, plugin eligibility and browser idle-state predicates select their corresponding retained scenarios.
 
 Plugin repair selects post-plugin validation and manifest metadata discovery; node journeys select their packaged entry and version admission. Report-health formatting, outbox lifecycle/receipt predicates and the package-time pending-lifecycle marker producers also select their existing observations. No scenarios or coverage credits are added.
+
+The retained phases also select Doctor child execution/results, node-specific discovery, both server and browser pending-input receipt producers, cron ownership, active-work accounting and maintenance timing. These are source-selection corrections for existing inputs and observations; coverage totals are unchanged.
