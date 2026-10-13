@@ -92,10 +92,10 @@ route /settings/updates: owned by update
 | --- | --- | --- | --- |
 | 1. No config file: OpenClaw runs on safe defaults (default workspace) and the first write skips the baseHash check | docs/gateway/configuration.md "(introduction)"; docs/gateway/configuration/config-rpc.md "Config RPC (programmatic updates)"; docs/help/faq/config-basics.md "What format is the config? Where is it?"; docs/gateway/configuration-reference.md "(introduction)" | ambient (run 2: event) | config-fixtures; config-file-absent |
 | 2. Symlinked openclaw.json: OpenClaw-owned writes replace the link target instead of writing through it | docs/gateway/configuration.md "(introduction)"; docs/cli/config.md "config file"; docs/cli/config.md "Write safety" | ambient (run 2: event) | config-symlinked; config-path-symlinked |
-| 3. Config kept outside the state directory through OPENCLAW_CONFIG_PATH | docs/gateway/configuration.md "(introduction)"; docs/cli/config.md "config file"; docs/help/faq/config-basics.md "What format is the config? Where is it?" | ambient (run 2: event) | config-path-env-override; config-path-env-override |
-| 4. Hand-edited JSON5 config with comments, trailing commas and a root $schema: accepted on read; OpenClaw-owned writes reserialize it as JSON and warn before removing comments | docs/gateway/configuration.md "(introduction)"; docs/gateway/configuration.md "Strict validation"; docs/gateway/configuration-reference.md "(introduction)"; docs/cli/config.md "Write safety"; docs/help/faq/config-basics.md "What format is the config? Where is it?" | ambient | config-json5-comments |
+| 3. Config kept outside the state directory through OPENCLAW_CONFIG_PATH | docs/gateway/configuration.md "(introduction)"; docs/cli/config.md "config file"; docs/help/faq/config-basics.md "What format is the config? Where is it?" | ambient (run 2: event) | config-path-env-override |
+| 4. Hand-edited JSON5 config with comments, trailing commas and a root $schema: accepted on read; OpenClaw-owned writes reserialize it as JSON and warn before removing comments | docs/gateway/configuration.md "(introduction)"; docs/gateway/configuration.md "Strict validation"; docs/gateway/configuration-reference.md "(introduction)"; docs/cli/config.md "Write safety"; docs/help/faq/config-basics.md "What format is the config? Where is it?"; docs/cli/config.md "What it includes" | ambient | config-json5-comments |
 | 5. Per-agent overrides under agents.entries over the root and agents.defaults buckets | docs/gateway/configuration.md "(introduction)" | ambient | agents-three-configured |
-| 6. Plugin and channel schemas loaded from the manifest registry and merged into the schema and the settings form | docs/gateway/configuration.md "Editing config"; docs/gateway/configuration.md "Strict validation"; docs/gateway/configuration-reference.md "(introduction)"; docs/cli/config.md "What it includes" | ambient | plugins-bundled-and-external, channels-test-accounts; plugins-bundled-and-external |
+| 6. Plugin and channel schemas loaded from the manifest registry and merged into the schema and the settings form | docs/gateway/configuration.md "Editing config"; docs/gateway/configuration.md "Strict validation"; docs/gateway/configuration-reference.md "(introduction)"; docs/cli/config.md "What it includes" | ambient | plugins-bundled-and-external; channels-test-accounts |
 | 7. Show advanced preference on: every Advanced (N) group expanded, shared with per-channel settings, Hide advanced on the divider | docs/gateway/configuration.md "Editing config" | ambient | ui-show-advanced-on |
 | 8. Direct edit of openclaw.json picked up by the file watcher and applied once it validates | docs/gateway/configuration.md "Editing config"; docs/gateway/configuration/hot-reload.md "Config hot reload"; docs/cli/config.md "Write safety" | event | none |
 | 9. Gateway start on a config that fails strict validation (unknown key, wrong type): the Gateway refuses to start | docs/gateway/configuration.md "Strict validation"; docs/gateway/configuration/hot-reload.md "Config hot reload"; docs/gateway/troubleshooting/config-validation-and-probes.md "Gateway rejected invalid config"; docs/gateway/troubleshooting/config-validation-and-probes.md "What happened"; docs/gateway/troubleshooting/config-validation-and-probes.md "Common signatures"; docs/cli/config.md "Write safety"; docs/help/faq/config-basics.md "config.apply wiped my config. How do I recover and avoid this?" | event | config-fixtures; config-invalid-fixture |
@@ -117,7 +117,7 @@ route /settings/updates: owned by update
 | 25. More than 30 config.apply or config.patch requests per 60 seconds from one device and client IP: rate limited | docs/gateway/configuration/config-rpc.md "Config RPC (programmatic updates)" | event | none |
 | 26. Restart requests coalesce, then a 30-second cooldown separates restart cycles | docs/gateway/configuration/config-rpc.md "Config RPC (programmatic updates)" | event | none |
 | 27. Another writer changed the config since the caller read it: baseHash, conditional expectation or snapshot guard rejects the write; the Control UI keeps the draft and reports a conflict | docs/gateway/configuration/config-rpc.md "Config RPC (programmatic updates)"; docs/cli/config.md "Conditional writes"; docs/cli/config.md "--dry-run --json fields"; docs/web/control-ui/settings.md "(introduction)" | event | none |
-| 28. Active work in flight: channel and plugin reloads defer (channels.status statusIssues, channels.start diagnostic) | docs/gateway/configuration/config-rpc.md "Config RPC (programmatic updates)"; docs/gateway/configuration/hot-reload.md "Config hot reload" | ambient (setup) | session-main-rolling, mock-provider-held-turn; mock-provider-held-turn |
+| 28. Active work in flight: channel and plugin reloads defer (channels.status statusIssues, channels.start diagnostic) | docs/gateway/configuration/config-rpc.md "Config RPC (programmatic updates)"; docs/gateway/configuration/hot-reload.md "Config hot reload" | ambient (setup) | session-main-rolling; mock-provider-held-turn |
 | 29. Policy-only channel write covered by a dynamic-read contract (allowlists, DM and group policy) publishes without a channel restart or drain | docs/gateway/configuration/config-rpc.md "Config RPC (programmatic updates)" | event | channels-test-accounts |
 | 30. Write mixing hot settings with restart-required settings stays one deferred transaction | docs/gateway/configuration/config-rpc.md "Config RPC (programmatic updates)"; docs/gateway/configuration/hot-reload.md "Config hot reload" | event | none |
 | 31. File watcher takes over the same unapplied write: the RPC stays pending through replay | docs/gateway/configuration/config-rpc.md "Config RPC (programmatic updates)" | event | none |
@@ -132,7 +132,7 @@ route /settings/updates: owned by update
 | 40. Gateway write published straight to the reload owner without waiting for the watcher; consumers read the last applied snapshot until commit; the log records the source revision and origin | docs/gateway/configuration/hot-reload.md "Config hot reload"; docs/gateway/configuration/config-rpc.md "Config RPC (programmatic updates)" | event | none |
 | 41. Committed restart requirement pending: later hot writes do not erase it and earlier terminal or sandbox restrictions stay in force | docs/gateway/configuration/hot-reload.md "Config hot reload"; docs/gateway/configuration/hot-reload.md "What hot-applies vs what needs a restart" | ambient | none |
 | 42. Busy state store refuses the reload lifecycle lease: change stays pending with capped backoff retries; shutdown cancels them | docs/gateway/configuration/hot-reload.md "Config hot reload" | event | none |
-| 43. Automatic plugin reload cannot drain the plugin's admitted work: last-good runtime kept, replacement retried when the work finishes | docs/gateway/configuration/hot-reload.md "Config hot reload" | event | mock-provider-held-turn, plugins-bundled-and-external; mock-provider-held-turn |
+| 43. Automatic plugin reload cannot drain the plugin's admitted work: last-good runtime kept, replacement retried when the work finishes | docs/gateway/configuration/hot-reload.md "Config hot reload" | event | mock-provider-held-turn; plugins-bundled-and-external |
 | 44. Other plugin drain failure: pending plugin settings wait for openclaw plugins reload --wait or a revert; later edits with those settings stay pending | docs/gateway/configuration/hot-reload.md "Config hot reload" | ambient | plugin-fails-reload |
 | 45. Gateway restart applies the saved config in full through startup validation; same-store restarts keep queued notification handoff | docs/gateway/configuration/hot-reload.md "Config hot reload"; docs/gateway/configuration/hot-reload.md "What hot-applies vs what needs a restart" | event | none |
 | 46. Editor temp-write and rename-replace churn settles before the watcher reads the final file | docs/gateway/configuration/hot-reload.md "Config hot reload" | event | none |
@@ -198,14 +198,14 @@ route /settings/updates: owned by update
 | 106. Channel or plugin hot reload: Gateway-hosted channel webhook routes answer 503 with Retry-After: 1 until replacement ingress registers | docs/gateway/configuration/hot-reload.md "What hot-applies vs what needs a restart" | event | channels-test-accounts |
 | 107. Ambiguous source layout: reload planning fails closed | docs/gateway/configuration/hot-reload.md "Reload planning" | event | config-fixtures; config-include-unsupported |
 | 108. .env in the current working directory loaded without overriding existing variables | docs/gateway/configuration/environment-variables.md "Environment variables" | ambient | config-env-substitution |
-| 109. Global ~/.openclaw/.env fallback | docs/gateway/configuration/environment-variables.md "Environment variables" | ambient | config-env-substitution; config-env-substitution |
-| 110. Inline env.vars in config | docs/gateway/configuration/environment-variables.md "Environment variables" | ambient | config-env-substitution; config-env-substitution |
+| 109. Global ~/.openclaw/.env fallback | docs/gateway/configuration/environment-variables.md "Environment variables" | ambient | config-env-substitution |
+| 110. Inline env.vars in config | docs/gateway/configuration/environment-variables.md "Environment variables" | ambient | config-env-substitution |
 | 111. Shell env import enabled with expected keys missing: login shell run, only missing keys imported | docs/gateway/configuration/environment-variables.md "Shell env import (optional)" | ambient (run 2: event) | config-env-substitution; config-shell-env-import |
-| 112. ${VAR} substitution in config string values, including inline partial strings | docs/gateway/configuration/environment-variables.md "Env var substitution in config values" | ambient | config-env-substitution; config-env-substitution |
-| 113. Missing or empty substituted variable: stays visibly unresolved with a warning, unavailable to consumers that need it | docs/gateway/configuration/environment-variables.md "Env var substitution in config values" | ambient (run 2: event) | config-env-substitution; config-env-substitution |
-| 114. Escaped $${VAR}: kept as a literal ${VAR} | docs/gateway/configuration/environment-variables.md "Env var substitution in config values" | ambient | config-env-substitution; config-env-substitution |
-| 115. Lowercase ${var} name: not substituted | docs/gateway/configuration/environment-variables.md "Env var substitution in config values" | ambient | config-env-substitution; config-env-substitution |
-| 116. ${VAR} substitution inside $include files | docs/gateway/configuration/environment-variables.md "Env var substitution in config values" | ambient | config-env-substitution, config-includes-split; config-includes-split |
+| 112. ${VAR} substitution in config string values, including inline partial strings | docs/gateway/configuration/environment-variables.md "Env var substitution in config values" | ambient | config-env-substitution |
+| 113. Missing or empty substituted variable: stays visibly unresolved with a warning, unavailable to consumers that need it | docs/gateway/configuration/environment-variables.md "Env var substitution in config values" | ambient (run 2: event) | config-env-substitution |
+| 114. Escaped $${VAR}: kept as a literal ${VAR} | docs/gateway/configuration/environment-variables.md "Env var substitution in config values" | ambient | config-env-substitution |
+| 115. Lowercase ${var} name: not substituted | docs/gateway/configuration/environment-variables.md "Env var substitution in config values" | ambient | config-env-substitution |
+| 116. ${VAR} substitution inside $include files | docs/gateway/configuration/environment-variables.md "Env var substitution in config values" | ambient | config-env-substitution; config-includes-split |
 | 117. SecretRef objects (env, file, exec, store) in supported fields | docs/gateway/configuration/environment-variables.md "Secret refs (env, file, exec, store)" | ambient | config-secret-refs |
 | 118. secrets.defaults alias selecting a non-default provider for env or store refs | docs/gateway/configuration/environment-variables.md "Secret refs (env, file, exec, store)" | ambient (run 2: event) | config-secret-refs |
 | 119. Single-file $include replaces its containing object | docs/gateway/configuration/common-tasks.md "Split config into multiple files ($include)" | ambient | config-includes-split |
@@ -214,7 +214,7 @@ route /settings/updates: owned by update
 | 122. Relative include paths resolved from the including file | docs/gateway/configuration/common-tasks.md "Split config into multiple files ($include)" | ambient | config-includes-split |
 | 123. OpenClaw-owned write whose keys are owned by one single-file include updates the deepest owning include and leaves openclaw.json intact | docs/gateway/configuration/common-tasks.md "Split config into multiple files ($include)" | event | config-includes-split |
 | 124. Includes admitted through OPENCLAW_INCLUDE_ROOTS: read-only for OpenClaw-owned writes | docs/gateway/configuration/common-tasks.md "Split config into multiple files ($include)" | ambient (run 2: event) | config-include-roots |
-| 125. Control UI form save on the include-resolved config keeps unchanged redacted credentials authored only in included files | docs/gateway/configuration/common-tasks.md "Split config into multiple files ($include)" | event | config-includes-split, config-secret-refs; config-includes-split |
+| 125. Control UI form save on the include-resolved config keeps unchanged redacted credentials authored only in included files | docs/gateway/configuration/common-tasks.md "Split config into multiple files ($include)" | event | config-includes-split; config-secret-refs |
 | 126. Write through an unsupported include layout fails closed instead of flattening: root include (root object authors $include) | docs/gateway/configuration/common-tasks.md "Split config into multiple files ($include)" | ambient (run 2: event) | config-fixtures; config-include-unsupported |
 | 127. Write through an unsupported include layout fails closed instead of flattening: actual array-entry include | docs/gateway/configuration/common-tasks.md "Split config into multiple files ($include)" | ambient (run 2: event) | config-fixtures; config-include-unsupported |
 | 128. Write through an unsupported include layout fails closed instead of flattening: include array | docs/gateway/configuration/common-tasks.md "Split config into multiple files ($include)" | ambient (run 2: event) | config-fixtures; config-include-unsupported |
@@ -252,11 +252,11 @@ route /settings/updates: owned by update
 | 160. Staging a config save fails: the root or include backup ring is left untouched | docs/cli/config.md "Write safety" | event | none |
 | 161. Copy-fallback publication loses the file before a conflict: original restored when still owned, otherwise partial publication and the backup location reported | docs/cli/config.md "Write safety" | event | none |
 | 162. File saved but later processing fails: error names the written file (an include when it owns the setting) and whether it was rolled back | docs/cli/config.md "Write safety" | event | plugin-fails-reload |
-| 163. Recovery restores an eligible valid backup verbatim; a backup needing legacy transforms is recovered through Doctor | docs/cli/config.md "Write safety"; docs/gateway/doctor/config-migrations.md "2. Legacy config key migrations" | event | config-backups-present; config-backups-present |
+| 163. Recovery restores an eligible valid backup verbatim; a backup needing legacy transforms is recovered through Doctor | docs/cli/config.md "Write safety"; docs/gateway/doctor/config-migrations.md "2. Legacy config key migrations" | event | config-backups-present |
 | 164. Plugin schema change or minHostVersion skew: stays loud instead of rolling back unrelated settings | docs/cli/config.md "Write safety" | ambient (run 2: event) | plugin-schema-skew |
-| 165. CLI state or config paths differ from the installed Gateway service: configure stops before writing | docs/cli/configure.md "Options" | ambient (run 2: event) | cli-service-path-mismatch; cli-service-path-mismatch |
+| 165. CLI state or config paths differ from the installed Gateway service: configure stops before writing | docs/cli/configure.md "Options" | ambient (run 2: event) | cli-service-path-mismatch |
 | 166. Remote Gateway or unverifiable service paths: configure warns and continues | docs/cli/configure.md "Options" | ambient (run 2: event) | gateway-remote-mode |
-| 167. OPENCLAW_HOME relocating the CLI state directory: the installed service's recorded environment decides the compared paths | docs/cli/configure.md "Options" | ambient (run 2: event) | cli-service-path-mismatch; cli-service-path-mismatch |
+| 167. OPENCLAW_HOME relocating the CLI state directory: the installed service's recorded environment decides the compared paths | docs/cli/configure.md "Options" | ambient (run 2: event) | cli-service-path-mismatch |
 | 168. Explicit agent fleet with no System Agent: configure asks which agent the agent-scoped sections use | docs/cli/configure.md "Options" | ambient (run 2: event) | config-fixtures; agents-three-configured |
 | 169. No interactive terminal: configure prints the equivalent config get, set, patch and validate commands and exits with an error | docs/cli/configure.md "Options" | ambient (run 2: event) | none |
 | 170. More than 32 .clobbered files for one config path: the oldest rotate out | docs/gateway/troubleshooting/config-validation-and-probes.md "Gateway rejected invalid config"; docs/gateway/troubleshooting/config-validation-and-probes.md "What happened" | ambient | config-backups-present; config-clobbered-history |
@@ -265,20 +265,20 @@ route /settings/updates: owned by update
 | 173. No last-known-good or rejected payload available: recovery needs a backup or reconfiguration | docs/help/faq/config-basics.md "config.apply wiped my config. How do I recover and avoid this?" | ambient (run 2: event) | config-file-absent |
 | 174. Default dated log file under /tmp/openclaw, named per profile | docs/gateway/config-observability.md "Logging" | ambient | none |
 | 175. /tmp/openclaw unsafe or unavailable: log directory falls back under the OS temp dir | docs/gateway/config-observability.md "Logging" | ambient (run 2: event) | log-dir-unsafe |
-| 176. Dated log files older than 24 hours pruned | docs/gateway/config-observability.md "Logging" | event | logs-older-than-day; logs-older-than-day |
+| 176. Dated log files older than 24 hours pruned | docs/gateway/config-observability.md "Logging" | event | logs-older-than-day |
 | 177. logging.file set to a stable path | docs/gateway/config-observability.md "Logging" | ambient | config-reload-patches |
 | 178. Retired consoleStyle compact: Doctor maps it to pretty | docs/gateway/config-observability.md "Logging" | ambient | config-fixtures; config-legacy-keys |
 | 179. Active log file reaches logging.maxFileBytes: rotated, five numbered archives kept | docs/gateway/config-observability.md "Logging" | event | config-reload-patches |
 | 180. Custom logging.redactPatterns: replace the default string list for log and transcript output while built-in form-body, authorization-header and AWS key protections stay | docs/gateway/config-observability.md "Logging"; docs/gateway/logging.md "Redaction" | ambient | config-hand-edited |
 | 181. Retired redaction switch in an older config: Doctor removes it, redaction always on | docs/gateway/config-observability.md "Logging"; docs/gateway/logging.md "Redaction" | ambient | config-fixtures; config-legacy-keys |
-| 182. Secret values reaching console, file log, OTLP log record and session transcript sinks: masked before they are written | docs/gateway/logging.md "Redaction"; docs/gateway/config-observability.md "Logging" | ambient | session-secret-values; session-secret-values |
-| 183. Tool-result text carrying a secret: masked after middleware before model context, replay reuses the masked result | docs/gateway/logging.md "Redaction" | event | session-secret-values; session-secret-values |
+| 182. Secret values reaching console, file log, OTLP log record and session transcript sinks: masked before they are written | docs/gateway/logging.md "Redaction"; docs/gateway/config-observability.md "Logging" | ambient | session-secret-values |
+| 183. Tool-result text carrying a secret: masked after middleware before model context, replay reuses the masked result | docs/gateway/logging.md "Redaction" | event | session-secret-values |
 | 184. Direct tool read of a .env file: broader assignment masking before it becomes a tool result | docs/gateway/logging.md "Redaction" | event | config-env-substitution; workspace-dotenv-file |
 | 185. Registered secrets present: masked regardless of key names | docs/gateway/logging.md "Redaction" | ambient | config-secret-refs |
-| 186. Mask shape by value: 18+ characters keep the first 6 and last 4, shorter become ***, structured credential fields and non-string matches fully masked | docs/gateway/logging.md "Redaction" | ambient | session-secret-values; session-secret-values |
-| 187. Browser settings written by a release before July 1, 2026: older top-level session selections ignored | docs/web/control-ui/settings.md "(introduction)" | ambient (run 2: event) | browser-settings-legacy; browser-settings-legacy |
+| 186. Mask shape by value: 18+ characters keep the first 6 and last 4, shorter become ***, structured credential fields and non-string matches fully masked | docs/gateway/logging.md "Redaction" | ambient | session-secret-values |
+| 187. Browser settings written by a release before July 1, 2026: older top-level session selections ignored | docs/web/control-ui/settings.md "(introduction)" | ambient (run 2: event) | browser-settings-legacy |
 | 188. Input method composing in Search settings: Escape stays with the input method | docs/web/control-ui/settings.md "(introduction)" | ambient (run 2: event) | none |
-| 189. Model menu with more than eight choices: search shown | docs/web/control-ui/settings.md "(introduction)" | ambient | models-many-configured; models-many-configured |
+| 189. Model menu with more than eight choices: search shown | docs/web/control-ui/settings.md "(introduction)" | ambient | models-many-configured |
 | 190. Gateway rejects an invalid setting: Settings not applied keeps the draft with Show reason, Retry and Discard draft and reload | docs/web/control-ui/settings.md "(introduction)" | event | none |
 | 191. Settings agent switched while a save is pending: save target unchanged | docs/web/control-ui/settings.md "(introduction)" | event | agents-three-configured |
 | 192. Config updated by another client while Settings is open without a draft: controls follow the saved configuration | docs/web/control-ui/settings.md "(introduction)" | event | none |
@@ -289,7 +289,7 @@ route /settings/updates: owned by update
 | 197. Chosen Lobsterdex lobster not unlocked in this browser: Default shown, choice kept | docs/web/control-ui/settings.md "Browser tab icon" | ambient (run 2: event) | none |
 | 198. Activity and attention on sessions while a custom tab icon is selected: dots stay visible | docs/web/control-ui/settings.md "Browser tab icon" | ambient | mock-provider-held-turn |
 | 199. Token-mode connection: secret remembered in session storage for the tab and Gateway only | docs/web/control-ui/settings.md "Gateway host status" | ambient | none |
-| 200. Password-mode connection: password kept in memory, never persisted | docs/web/control-ui/settings.md "Gateway host status"; docs/gateway/configuration/hot-reload.md "What hot-applies vs what needs a restart" | ambient (run 2: event) | gateway-auth-password; gateway-auth-password |
+| 200. Password-mode connection: password kept in memory, never persisted | docs/web/control-ui/settings.md "Gateway host status"; docs/gateway/configuration/hot-reload.md "What hot-applies vs what needs a restart" | ambient (run 2: event) | gateway-auth-password |
 | 201. Healthy unchanged connection: Connected without a Connect action | docs/web/control-ui/settings.md "Gateway host status" | ambient | none |
 | 202. Connection attempt running or stuck retrying: disabled Connecting or Reconnecting action, editing URL or secret enables Apply and reconnect | docs/web/control-ui/settings.md "Gateway host status" | event | none |
 | 203. Disconnected: Connect or Retry connection offered; the footer shows Reconnecting under the last-known account or Offline | docs/web/control-ui/settings.md "Gateway host status"; docs/web/control-ui/settings.md "Settings" | event | none |
@@ -297,7 +297,7 @@ route /settings/updates: owned by update
 | 205. Non-English browser locale on first load: UI localizes itself, translations lazy-loaded | docs/web/control-ui/settings.md "Language support" | ambient (run 2: event) | ui-locale-rtl |
 | 206. Saved locale override in browser storage reused on later visits | docs/web/control-ui/settings.md "Language support" | ambient | ui-locale-rtl |
 | 207. Missing translation keys fall back to English | docs/web/control-ui/settings.md "Language support" | ambient | ui-locale-rtl |
-| 208. Profile theme changed by the agent or another client: reaches connected browsers live | docs/web/control-ui/settings.md "Appearance themes" | event | mock-provider-tool-calls, gateway-multi-user-profiles; gateway-multi-user-profiles |
+| 208. Profile theme changed by the agent or another client: reaches connected browsers live | docs/web/control-ui/settings.md "Appearance themes" | event | mock-provider-tool-calls; gateway-multi-user-profiles |
 | 209. Plugin theme added, updated or removed: takes effect after plugin hot reload without a browser reload | docs/web/control-ui/settings.md "Appearance themes" | event | theme-plugin; plugins-bundled-and-external |
 | 210. Selected plugin theme unavailable: Claw renders temporarily and the selection returns when it is available | docs/web/control-ui/settings.md "Appearance themes" | ambient (run 2: event) | theme-plugin; plugins-bundled-and-external |
 | 211. Theme catalog fails to load: Appearance offers Retry | docs/web/control-ui/settings.md "Appearance themes" | event | none |
@@ -312,11 +312,11 @@ route /settings/updates: owned by update
 | 220. Imported theme cleared while active: switches back to Claw | docs/web/control-ui/settings.md "Appearance themes" | event | none |
 | 221. Synced preferences received, reload, reconnect or color-mode change: font and accent customizations kept | docs/web/control-ui/settings.md "Appearance themes" | event | none |
 | 222. Several tabs open on one Gateway: display preferences update open composers and sidebars live, collapse stays per tab, another tab's Gateway choice does not retarget | docs/web/control-ui/settings.md "Appearance themes" | ambient (run 2: event) | none |
-| 223. Gateway-wide ui.prefs.accent or ui.seamColor configured beneath a profile accent | docs/web/control-ui/settings.md "Appearance themes" | ambient | config-ui-accent-layers; config-ui-accent-layers |
+| 223. Gateway-wide ui.prefs.accent or ui.seamColor configured beneath a profile accent | docs/web/control-ui/settings.md "Appearance themes" | ambient | config-ui-accent-layers |
 | 224. Older Control UI reader meeting the theme accent value: falls back to inherited colors | docs/web/control-ui/settings.md "Appearance themes" | ambient | none |
 | 225. Connection bound to an authenticated profile: theme, mode and accent saved to the profile and synced to the person's clients | docs/web/control-ui/settings.md "Appearance themes" | ambient | gateway-multi-user-profiles |
 | 226. Connection without an authenticated or writable profile: theme preferences sync through gateway config, tab icon and fonts stay in the browser | docs/web/control-ui/settings.md "Appearance themes"; docs/web/control-ui/settings.md "Browser tab icon" | ambient (run 2: event) | connection-shared-token |
-| 227. Explicitly read-only connection: preference changes apply only in that browser | docs/web/control-ui/settings.md "Appearance themes" | ambient (run 2: event) | profile-read-only; profile-read-only |
+| 227. Explicitly read-only connection: preference changes apply only in that browser | docs/web/control-ui/settings.md "Appearance themes" | ambient (run 2: event) | profile-read-only |
 | 228. Preference changes made offline: queued until a writable connection | docs/web/control-ui/settings.md "Appearance themes" | event | none |
 | 229. Open links outside OpenClaw enabled: web links use ordinary browser navigation, preview cards follow it | docs/web/control-ui/settings.md "Opening links" | ambient (run 2: event) | none |
 | 230. Existing Open links in Control UI browser preference: restored when external opening is turned off | docs/web/control-ui/settings.md "Opening links" | ambient (run 2: event) | none |
@@ -412,16 +412,16 @@ route /settings/updates: owned by update
 | 320. Listener-only source configuration: gains enabled: true | docs/gateway/doctor/config-migrations.md "Channel webhook listeners" | ambient | config-fixtures |
 | 321. Voice Call realtime settings inherited by Talk: copied into talk.realtime, explicit Talk settings win, later Voice Call edits no longer change Talk | docs/gateway/doctor/config-migrations.md "Talk realtime inheritance" | ambient (run 2: event) | config-fixtures; config-legacy-keys |
 | 322. Published updater invoking Doctor without --fix still runs the Talk inheritance repair | docs/gateway/doctor/config-migrations.md "Talk realtime inheritance" | event | none |
-| 323. Configured plugin missing or failing installation: Doctor, updates and startup continue with a warning naming the plugin and command | docs/gateway/doctor/config-migrations.md "Missing plugins during migration" | ambient (run 2: event) | plugin-configured-missing; plugin-configured-missing |
+| 323. Configured plugin missing or failing installation: Doctor, updates and startup continue with a warning naming the plugin and command | docs/gateway/doctor/config-migrations.md "Missing plugins during migration" | ambient (run 2: event) | plugin-configured-missing |
 | 324. Doctor --fix repairs an older shared database schema before recording pending plugin migrations | docs/gateway/doctor/config-migrations.md "Missing plugins during migration" | event | plugin-configured-missing |
-| 325. Pending plugin migration: state and legacy inputs kept, retired fields inactive, unrelated repairs proceed | docs/gateway/doctor/config-migrations.md "Missing plugins during migration" | ambient (run 2: event) | plugin-configured-missing; plugin-configured-missing |
+| 325. Pending plugin migration: state and legacy inputs kept, retired fields inactive, unrelated repairs proceed | docs/gateway/doctor/config-migrations.md "Missing plugins during migration" | ambient (run 2: event) | plugin-configured-missing |
 | 326. Update driven by an older version defers plugin installation; pending inputs protected | docs/gateway/doctor/config-migrations.md "Missing plugins during migration" | event | none |
 | 327. Session edits after the core import stay authoritative when the plugin migration resumes | docs/gateway/doctor/config-migrations.md "Missing plugins during migration" | ambient | plugin-configured-missing |
-| 328. Unavailable plugin with empty protected config and no outstanding requirement: obligation settled | docs/gateway/doctor/config-migrations.md "Missing plugins during migration" | ambient (run 2: event) | plugin-configured-missing; plugin-configured-missing |
+| 328. Unavailable plugin with empty protected config and no outstanding requirement: obligation settled | docs/gateway/doctor/config-migrations.md "Missing plugins during migration" | ambient (run 2: event) | plugin-configured-missing |
 | 329. Known official replacement: supersedes the old obligation once its migration completes | docs/gateway/doctor/config-migrations.md "Missing plugins during migration" | ambient | plugin-configured-missing |
 | 330. Explicitly enabled plugin: keeps its package obligation until available | docs/gateway/doctor/config-migrations.md "Missing plugins during migration" | ambient | plugin-configured-missing |
 | 331. Retained settings keep the obligation pending; disabling or uninstalling does not complete it | docs/gateway/doctor/config-migrations.md "Missing plugins during migration" | ambient | plugin-configured-missing |
-| 332. Explicit config edit changing a pending migration's retained inputs: refused with the recovery command | docs/gateway/doctor/config-migrations.md "Missing plugins during migration" | event | plugin-configured-missing; plugin-configured-missing |
+| 332. Explicit config edit changing a pending migration's retained inputs: refused with the recovery command | docs/gateway/doctor/config-migrations.md "Missing plugins during migration" | event | plugin-configured-missing |
 | 333. Retired plugins.entries.webhooks: ignored with a plugin removed warning so the Gateway starts; Doctor removes it and its allow and deny references | docs/gateway/doctor/config-migrations.md "Retired TaskFlow Webhooks plugin" | event | config-fixtures; config-retired-keys |
 | 334. Webhooks was the only plugins.allow entry: other enabled plugins kept as explicit entries | docs/gateway/doctor/config-migrations.md "Retired TaskFlow Webhooks plugin" | ambient (run 2: event) | config-fixtures; config-retired-keys |
 | 335. No enabled plugins remain after removal: plugins.enabled set false | docs/gateway/doctor/config-migrations.md "Retired TaskFlow Webhooks plugin" | ambient (run 2: event) | config-fixtures; config-retired-keys |
@@ -442,7 +442,7 @@ route /settings/updates: owned by update
 | 350. Ordinary Doctor (including --non-interactive) normalizes a legacy single-file config when the shared transforms produce a fully valid result | docs/gateway/doctor/config-migrations.md "2. Legacy config key migrations" | event | config-fixtures; config-legacy-keys |
 | 351. Updater that defers plugin repair or advertises a later config handoff: automatic normalization deferred | docs/gateway/doctor/config-migrations.md "2. Legacy config key migrations" | ambient | none |
 | 352. Older Git updater holding an in-memory config snapshot: Doctor preserves the config, even with --fix | docs/gateway/doctor/config-migrations.md "2. Legacy config key migrations" | ambient (run 2: event) | install-git-checkout |
-| 353. Five-slot openclaw.json.bak ring: original kept before a validated repair | docs/gateway/doctor/config-migrations.md "2. Legacy config key migrations"; docs/gateway/configuration.md "Strict validation" | ambient | config-backups-present; config-backups-present |
+| 353. Five-slot openclaw.json.bak ring: original kept before a validated repair | docs/gateway/doctor/config-migrations.md "2. Legacy config key migrations"; docs/gateway/configuration.md "Strict validation" | ambient | config-backups-present |
 | 354. Config inputs (revision, included files, environment-resolved values) change during a Doctor run: change reported, rerun required | docs/gateway/doctor/config-migrations.md "2. Legacy config key migrations" | event | config-legacy-keys |
 | 355. Model migration moving a consumer between subscription and metered API billing: warning after saving, not repeated | docs/gateway/doctor/config-migrations.md "2. Legacy config key migrations" | ambient (run 2: event) | config-fixtures; config-legacy-keys |
 | 356. Model-retirement repairs during an update wait for plugin convergence | docs/gateway/doctor/config-migrations.md "2. Legacy config key migrations" | event | config-legacy-keys |
@@ -518,71 +518,59 @@ route /settings/updates: owned by update
 | 426. Active migration table row, legacy key migrated by Doctor: runtime and channel tuning knobs retired in 2026.7 | docs/gateway/doctor/config-migrations.md "2. Legacy config key migrations"; docs/gateway/doctor/config-migrations.md "2. Legacy config key migrations" (active migrations table row 62) | ambient | config-fixtures; config-legacy-keys |
 | 427. Active migration table row, legacy key migrated by Doctor: diagnostics.memoryPressureSnapshot and memoryPressureBundle | docs/gateway/doctor/config-migrations.md "2. Legacy config key migrations"; docs/gateway/doctor/config-migrations.md "2. Legacy config key migrations" (active migrations table row 63) | ambient | config-fixtures; config-legacy-keys |
 | 428. Active migration table row, legacy key migrated by Doctor: skills.workshop autonomous propose, approvalPolicy, maxPending | docs/gateway/doctor/config-migrations.md "2. Legacy config key migrations"; docs/gateway/doctor/config-migrations.md "2. Legacy config key migrations" (active migrations table row 64) | ambient | config-fixtures; config-legacy-keys |
-| 429. Root $schema string accepted for editor tooling | docs/gateway/configuration.md "Strict validation"; docs/cli/config.md "What it includes" | ambient | config-hand-edited |
-| 430. Write dropping the effective gateway.mode blocked (gateway-mode-missing-vs-last-good) | docs/gateway/configuration.md "Strict validation"; docs/gateway/troubleshooting/config-validation-and-probes.md "Common signatures" | event | none |
-| 431. Write shrinking the file by more than half blocked (size-drop-vs-last-good) | docs/gateway/configuration.md "Strict validation"; docs/gateway/troubleshooting/config-validation-and-probes.md "Common signatures" | event | none |
-| 432. Hot-applied write held until the active Gateway applies that exact write; config.set acknowledges persistence only | docs/gateway/configuration/config-rpc.md "Config RPC (programmatic updates)" | event | none |
-| 433. Routing and allowlist arrays present: removing entries needs the exact path in replacePaths | docs/gateway/configuration/config-rpc.md "Config RPC (programmatic updates)" | ambient | channels-test-accounts |
-| 434. Hot or secrets reload keeps authored model settings separate from catalog defaults | docs/gateway/configuration/hot-reload.md "What hot-applies vs what needs a restart" | event | config-reload-patches |
-| 435. Agent roster, session policy, store topology, model reference or channel activation change invalidates affected facts | docs/gateway/configuration/hot-reload.md "What hot-applies vs what needs a restart" | event | config-reload-patches |
-| 436. Replacement or in-process restart keeping the same store preserves queued notification handoff | docs/gateway/configuration/hot-reload.md "What hot-applies vs what needs a restart" | event | none |
-| 437. Cloud worker profile change applies to newly provisioned workers; running workers keep their settings | docs/gateway/configuration/hot-reload.md "What hot-applies vs what needs a restart" | event | cloud-worker-profile |
-| 438. diagnostics.enabled applies live; diagnostics.otel restarts only its exporter | docs/gateway/configuration/hot-reload.md "What hot-applies vs what needs a restart" | event | config-reload-patches |
-| 439. Gateway accepts its configured secret sent as either token or password; the auth mode selects the secret | docs/gateway/configuration/hot-reload.md "What hot-applies vs what needs a restart"; docs/web/control-ui/settings.md "Gateway host status" | ambient | none |
-| 440. Plugin install, update, enable, disable and uninstall apply without a restart, also with reload off; source edits need plugins reload | docs/gateway/configuration/hot-reload.md "What hot-applies vs what needs a restart" | event | plugins-bundled-and-external |
-| 441. Variable set in both the process and a .env file: the file does not override | docs/gateway/configuration/environment-variables.md "Environment variables" | ambient | config-env-substitution |
-| 442. file and exec SecretRefs through configured secret providers | docs/gateway/configuration/environment-variables.md "Secret refs (env, file, exec, store)" | ambient | config-secret-refs |
-| 443. State schema migration runs before config repair | docs/cli/config.md "Externally managed config" | event | config-legacy-keys |
-| 444. Legacy agents.list roster accepted by set, patch and unset and persisted as the keyed roster | docs/cli/config.md "Paths" | event | config-legacy-agents-list |
-| 445. Legacy roster expanding a single-agent root config retires its default marker with explicit owners | docs/cli/config.md "Paths" | event | config-legacy-agents-list |
-| 446. Explicit ownership combined with a legacy default: true marker rejected | docs/cli/config.md "Paths" | event | config-legacy-agents-list |
-| 447. Secrets in config redacted in every read (config get, config.get, /config show, the gateway tool) | docs/cli/config.md "`config get`" | ambient | channels-test-accounts |
-| 448. Schema printed as a clean fallback while the current config is invalid | docs/cli/config.md "What it includes" | event | config-invalid-fixture |
-| 449. Plugin manifests that cannot load leave live plugin metadata out of the schema | docs/cli/config.md "What it includes" | event | plugin-manifest-broken |
-| 450. Unrelated inactive broken provider does not block targeted repairs or its own removal | docs/cli/config.md "`config validate`" | event | config-secret-refs |
-| 451. Model write resolves changed primary and fallbacks through catalogs; unknown references rejected without changing config | docs/cli/config.md "Values" | event | mock-provider-scripted |
-| 452. Protected maps holding user entries (agents.defaults.models, agents.entries, models.providers, plugins.entries, auth.profiles) refuse replacements that remove entries | docs/cli/config.md "Values" | ambient | agents-three-configured |
-| 453. SecretRef that cannot resolve (missing env or store name, bad file pointer, exec failure, provider mismatch) | docs/cli/config.md "If dry-run fails" | event | config-secret-refs |
-| 454. Gateway in remote mode: configure writes the remote config and exits without local steps | docs/cli/configure.md "Options" | event | gateway-remote-mode |
-| 455. Advisory inspection failure at startup recorded with guidance; startup continues | docs/gateway/doctor/config-migrations.md "Retired state and config formats" | event | legacy-state-retired |
-| 456. Doctor keeps roster order, historical owners and per-surface owners while migrating | docs/gateway/doctor/config-migrations.md "Agent roster migration" | event | config-legacy-agents-list |
-| 457. Headless service stops with the openclaw doctor --fix hint on invalid legacy config | docs/gateway/doctor/config-migrations.md "2. Legacy config key migrations"; docs/gateway/troubleshooting/config-validation-and-probes.md "Fix options" | event | config-legacy-keys |
-| 458. Per-agent migrations apply to keyed and legacy rosters (memorySearch to memory.search) | docs/gateway/doctor/config-migrations.md "2. Legacy config key migrations" | ambient | config-legacy-keys |
-| 459. Explicit QuickJS Code Mode choice preserved even with generic plugins disabled; an explicit deny still blocks it | docs/gateway/doctor/config-migrations.md "2. Legacy config key migrations" | ambient | config-legacy-keys |
-| 460. Voice Call canonical settings win over legacy values; Doctor reports retained destinations | docs/gateway/doctor/config-migrations.md "2. Legacy config key migrations" | ambient | config-legacy-keys |
-| 461. Model-policy migration with an agent repair in the same included file stays in that file | docs/gateway/doctor/config-migrations.md "2. Legacy config key migrations" | event | config-include-legacy-keys |
-| 462. Root and per-agent allowCrossContextSend migration keeps effective permissions, including an agent false override | docs/gateway/doctor/config-migrations.md "2. Legacy config key migrations" | ambient | config-legacy-keys |
-| 463. Multi-agent doctor --fix keeps the historical account owner; accounts without evidence need an explicit binding | docs/gateway/doctor/config-migrations.md "2. Legacy config key migrations" | event | config-legacy-agents-list |
-| 464. Agent config writes to tools.exec.ask or tools.exec.security, including tools.bash aliases, refused | docs/help/faq/config-basics.md "config.apply wiped my config. How do I recover and avoid this?" | event | mock-provider-tool-calls |
-| 465. Ambiguous source assignments preserved in model-visible tool-result text | docs/gateway/logging.md "Redaction" | event | mock-provider-tool-calls |
-| 466. Other config and source reads preserve opaque values | docs/gateway/logging.md "Redaction" | event | mock-provider-tool-calls |
-| 467. Payment credential field names masked by the default patterns | docs/gateway/logging.md "Redaction" | ambient | session-secret-values |
-| 468. Structured credential fields fully masked; matched numbers, booleans and null become "***"; file records keep built-in patterns beside custom ones | docs/gateway/logging.md "Redaction" | ambient | session-secret-values |
-| 469. Raw-editor drafts are manual-save only | docs/web/control-ui/settings.md "(introduction)" | ambient | none |
-| 470. Non-English translations lazy-loaded in the browser | docs/web/control-ui/settings.md "Language support" | event | ui-locale-rtl |
-| 471. Browser without corner-shape support keeps circular composer corners | docs/web/control-ui/settings.md "Appearance themes" | event | none |
-| 472. Downgrade to a Gateway whose ui.prefs.accent accepts only hex colors | docs/web/control-ui/settings.md "Appearance themes" | event | config-ui-accent-layers |
-| 473. Font overrides follow the authenticated profile with a browser-local mirror | docs/web/control-ui/settings.md "Appearance themes" | ambient | gateway-multi-user-profiles |
-| 474. Devices node-binding controls pause while configuration reloads | docs/web/control-ui/settings.md "Settings" | event | node-paired |
+| 429. Hot-applied write held until the active Gateway applies that exact write; config.set acknowledges persistence only | docs/gateway/configuration/config-rpc.md "Config RPC (programmatic updates)" | event | none |
+| 430. Routing and allowlist arrays present: removing entries needs the exact path in replacePaths | docs/gateway/configuration/config-rpc.md "Config RPC (programmatic updates)" | ambient | channels-test-accounts |
+| 431. Hot or secrets reload keeps authored model settings separate from catalog defaults | docs/gateway/configuration/hot-reload.md "What hot-applies vs what needs a restart" | event | config-reload-patches |
+| 432. Agent roster, session policy, store topology, model reference or channel activation change invalidates affected facts | docs/gateway/configuration/hot-reload.md "What hot-applies vs what needs a restart" | event | config-reload-patches |
+| 433. Replacement or in-process restart keeping the same store preserves queued notification handoff | docs/gateway/configuration/hot-reload.md "What hot-applies vs what needs a restart" | event | none |
+| 434. Gateway accepts its configured secret sent as either token or password; the auth mode selects the secret | docs/gateway/configuration/hot-reload.md "What hot-applies vs what needs a restart"; docs/web/control-ui/settings.md "Gateway host status" | ambient | none |
+| 435. Plugin install, update, enable, disable and uninstall apply without a restart, also with reload off; source edits need plugins reload | docs/gateway/configuration/hot-reload.md "What hot-applies vs what needs a restart" | event | plugins-bundled-and-external |
+| 436. State schema migration runs before config repair | docs/cli/config.md "Externally managed config" | event | config-legacy-keys |
+| 437. Legacy agents.list roster accepted by set, patch and unset and persisted as the keyed roster | docs/cli/config.md "Paths" | event | config-legacy-agents-list |
+| 438. Legacy roster expanding a single-agent root config retires its default marker with explicit owners | docs/cli/config.md "Paths" | event | config-legacy-agents-list |
+| 439. Explicit ownership combined with a legacy default: true marker rejected | docs/cli/config.md "Paths" | event | config-legacy-agents-list |
+| 440. Secrets in config redacted in every read (config get, config.get, /config show, the gateway tool) | docs/cli/config.md "`config get`" | ambient | channels-test-accounts |
+| 441. Plugin manifests that cannot load leave live plugin metadata out of the schema | docs/cli/config.md "What it includes" | event | plugin-manifest-broken |
+| 442. Unrelated inactive broken provider does not block targeted repairs or its own removal | docs/cli/config.md "`config validate`" | event | config-secret-refs |
+| 443. Model write resolves changed primary and fallbacks through catalogs; unknown references rejected without changing config | docs/cli/config.md "Values" | event | mock-provider-scripted |
+| 444. Protected maps holding user entries (agents.defaults.models, agents.entries, models.providers, plugins.entries, auth.profiles) refuse replacements that remove entries | docs/cli/config.md "Values" | ambient | agents-three-configured |
+| 445. SecretRef that cannot resolve (missing env or store name, bad file pointer, exec failure, provider mismatch) | docs/cli/config.md "If dry-run fails" | event | config-secret-refs |
+| 446. Gateway in remote mode: configure writes the remote config and exits without local steps | docs/cli/configure.md "Options" | event | gateway-remote-mode |
+| 447. Advisory inspection failure at startup recorded with guidance; startup continues | docs/gateway/doctor/config-migrations.md "Retired state and config formats" | event | legacy-state-retired |
+| 448. Per-agent migrations apply to keyed and legacy rosters (memorySearch to memory.search) | docs/gateway/doctor/config-migrations.md "2. Legacy config key migrations" | ambient | config-legacy-keys |
+| 449. Explicit QuickJS Code Mode choice preserved even with generic plugins disabled; an explicit deny still blocks it | docs/gateway/doctor/config-migrations.md "2. Legacy config key migrations" | ambient | config-legacy-keys |
+| 450. Voice Call canonical settings win over legacy values; Doctor reports retained destinations | docs/gateway/doctor/config-migrations.md "2. Legacy config key migrations" | ambient | config-legacy-keys |
+| 451. Model-policy migration with an agent repair in the same included file stays in that file | docs/gateway/doctor/config-migrations.md "2. Legacy config key migrations" | event | config-include-legacy-keys |
+| 452. Root and per-agent allowCrossContextSend migration keeps effective permissions, including an agent false override | docs/gateway/doctor/config-migrations.md "2. Legacy config key migrations" | ambient | config-legacy-keys |
+| 453. Multi-agent doctor --fix keeps the historical account owner; accounts without evidence need an explicit binding | docs/gateway/doctor/config-migrations.md "2. Legacy config key migrations" | event | config-legacy-agents-list |
+| 454. Agent config writes to tools.exec.ask or tools.exec.security, including tools.bash aliases, refused | docs/help/faq/config-basics.md "config.apply wiped my config. How do I recover and avoid this?" | event | mock-provider-tool-calls |
+| 455. Ambiguous source assignments preserved in model-visible tool-result text | docs/gateway/logging.md "Redaction" | event | mock-provider-tool-calls |
+| 456. Other config and source reads preserve opaque values | docs/gateway/logging.md "Redaction" | event | mock-provider-tool-calls |
+| 457. Payment credential field names masked by the default patterns | docs/gateway/logging.md "Redaction" | ambient | session-secret-values |
+| 458. Raw-editor drafts are manual-save only | docs/web/control-ui/settings.md "(introduction)" | ambient | none |
+| 459. Browser without corner-shape support keeps circular composer corners | docs/web/control-ui/settings.md "Appearance themes" | event | none |
+| 460. Downgrade to a Gateway whose ui.prefs.accent accepts only hex colors | docs/web/control-ui/settings.md "Appearance themes" | event | config-ui-accent-layers |
+| 461. Font overrides follow the authenticated profile with a browser-local mirror | docs/web/control-ui/settings.md "Appearance themes" | ambient | gateway-multi-user-profiles |
+| 462. Devices node-binding controls pause while configuration reloads | docs/web/control-ui/settings.md "Settings" | event | node-paired |
 
 ## Headings walked
 docs/gateway/configuration.md "(introduction)": 1, 2, 3, 4, 5
 docs/gateway/configuration.md "Minimal config": none
 docs/gateway/configuration.md "Editing config": 6, 7, 8
-docs/gateway/configuration.md "Strict validation": 4, 6, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 353, 429, 430, 431
+docs/gateway/configuration.md "Strict validation": 4, 6, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 353
 docs/gateway/configuration.md "Configuration pages": none
 docs/gateway/configuration.md "Where each section moved": none
 docs/gateway/configuration.md "Full reference": none
 docs/gateway/configuration.md "Related": none
-docs/gateway/configuration/config-rpc.md "Config RPC (programmatic updates)": 1, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 159, 432, 433
+docs/gateway/configuration/config-rpc.md "Config RPC (programmatic updates)": 1, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 159, 429, 430
 docs/gateway/configuration/hot-reload.md "Config hot reload": 8, 9, 17, 28, 30, 32, 35, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51
 docs/gateway/configuration/hot-reload.md "Reload modes": 52, 53, 54
-docs/gateway/configuration/hot-reload.md "What hot-applies vs what needs a restart": 41, 45, 53, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 200, 434, 435, 436, 437, 438, 439, 440
+docs/gateway/configuration/hot-reload.md "What hot-applies vs what needs a restart": 41, 45, 53, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 200, 431, 432, 433, 434, 435
 docs/gateway/configuration/hot-reload.md "Reload planning": 47, 107
-docs/gateway/configuration/environment-variables.md "Environment variables": 108, 109, 110, 441
+docs/gateway/configuration/environment-variables.md "Environment variables": 108, 109, 110
 docs/gateway/configuration/environment-variables.md "Shell env import (optional)": 111
 docs/gateway/configuration/environment-variables.md "Env var substitution in config values": 112, 113, 114, 115, 116
-docs/gateway/configuration/environment-variables.md "Secret refs (env, file, exec, store)": 117, 118, 442
+docs/gateway/configuration/environment-variables.md "Secret refs (env, file, exec, store)": 117, 118
 docs/gateway/configuration/common-tasks.md "Common tasks": none (owned by the areas whose keys its tasks describe)
 docs/gateway/configuration/common-tasks.md "Set up a channel (WhatsApp, Telegram, Discord, etc.)": none (owned by channels)
 docs/gateway/configuration/common-tasks.md "Choose and configure models": none (owned by models)
@@ -633,17 +621,17 @@ docs/gateway/configuration-reference.md "Media model template variables": none (
 docs/gateway/configuration-reference.md "Config includes (`$include`)": none
 docs/gateway/configuration-reference.md "Related": none
 docs/cli/config.md "(introduction)": 12, 144
-docs/cli/config.md "Externally managed config": 12, 144, 145, 146, 147, 148, 443
+docs/cli/config.md "Externally managed config": 12, 144, 145, 146, 147, 148, 436
 docs/cli/config.md "Root options": none
 docs/cli/config.md "Examples": none
-docs/cli/config.md "Paths": 149, 150, 444, 445, 446
-docs/cli/config.md "config get": 151, 152, 153, 154, 447
+docs/cli/config.md "Paths": 149, 150, 437, 438, 439
+docs/cli/config.md "config get": 151, 152, 153, 154, 440
 docs/cli/config.md "config file": 2, 3
 docs/cli/config.md "config schema": none
-docs/cli/config.md "What it includes": 6, 14, 429, 448, 449
+docs/cli/config.md "What it includes": 4, 6, 14, 441
 docs/cli/config.md "Related runtime RPC": none
-docs/cli/config.md "config validate": 14, 154, 155, 156, 157, 450
-docs/cli/config.md "Values": 158, 451, 452
+docs/cli/config.md "config validate": 14, 154, 155, 156, 157, 442
+docs/cli/config.md "Values": 158, 443, 444
 docs/cli/config.md "Conditional writes": 27
 docs/cli/config.md "config set modes": none
 docs/cli/config.md "Provider builder flags": none
@@ -656,13 +644,13 @@ docs/cli/config.md "Dry run": none
 docs/cli/config.md "Dry-run behavior": none
 docs/cli/config.md "--dry-run --json fields": 27
 docs/cli/config.md "JSON output shape": none
-docs/cli/config.md "If dry-run fails": 453
+docs/cli/config.md "If dry-run fails": 445
 docs/cli/config.md "Applying changes": 53, 55, 56, 57, 72, 159
 docs/cli/config.md "Write safety": 2, 4, 8, 9, 16, 17, 18, 160, 161, 162, 163, 164
 docs/cli/config.md "Repair loop": none
 docs/cli/config.md "Related": none
 docs/cli/configure.md "openclaw configure (introduction)": none
-docs/cli/configure.md "Options": 165, 166, 167, 168, 169, 454
+docs/cli/configure.md "Options": 165, 166, 167, 168, 169, 446
 docs/cli/configure.md "Gateway section": none (owned by gateway)
 docs/cli/configure.md "Model section": none (owned by models)
 docs/cli/configure.md "Web section": none (owned by web search)
@@ -675,7 +663,7 @@ docs/gateway/doctor/config-migrations.md "Retention policy": 249
 docs/gateway/doctor/config-migrations.md "Deferred compaction checkpoints": none (owned by update)
 docs/gateway/doctor/config-migrations.md "Workspace setup": none (owned by update)
 docs/gateway/doctor/config-migrations.md "Session settings": none (owned by update)
-docs/gateway/doctor/config-migrations.md "Retired state and config formats": 250, 251, 252, 253, 254, 255, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 268, 269, 270, 271, 272, 273, 274, 275, 276, 277, 278, 279, 280, 281, 282, 283, 284, 285, 286, 287, 288, 455
+docs/gateway/doctor/config-migrations.md "Retired state and config formats": 250, 251, 252, 253, 254, 255, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 268, 269, 270, 271, 272, 273, 274, 275, 276, 277, 278, 279, 280, 281, 282, 283, 284, 285, 286, 287, 288, 447
 docs/gateway/doctor/config-migrations.md "Cron ownership before roster migration": 289, 290, 291, 292, 293
 docs/gateway/doctor/config-migrations.md "Legacy cron delivery settings": none (owned by update)
 docs/gateway/doctor/config-migrations.md "Exec approval policy": none (owned by update)
@@ -683,7 +671,7 @@ docs/gateway/doctor/config-migrations.md "Claw provenance schema": none (owned b
 docs/gateway/doctor/config-migrations.md "Channel account routing during an update": 294, 295, 296
 docs/gateway/doctor/config-migrations.md "Channel ownership during an update": 297, 298
 docs/gateway/doctor/config-migrations.md "Sender tool policies": 299
-docs/gateway/doctor/config-migrations.md "Agent roster migration": 300, 301, 302, 456
+docs/gateway/doctor/config-migrations.md "Agent roster migration": 300, 301, 302
 docs/gateway/doctor/config-migrations.md "Channel private-network opt-ins": 303, 304, 305
 docs/gateway/doctor/config-migrations.md "Channel webhook listeners": 152, 306, 307, 308, 309, 310, 311, 312, 313, 314, 315, 316, 317, 318, 319, 320
 docs/gateway/doctor/config-migrations.md "Talk realtime inheritance": 321, 322
@@ -698,12 +686,12 @@ docs/gateway/doctor/config-migrations.md "Auth credential fields": none (owned b
 docs/gateway/doctor/config-migrations.md "Checks 0-2": none
 docs/gateway/doctor/config-migrations.md "0. Optional update (git installs)": 343, 344
 docs/gateway/doctor/config-migrations.md "1. Config normalization": 245, 345, 346, 347, 348, 349, 369
-docs/gateway/doctor/config-migrations.md "2. Legacy config key migrations": 10, 11, 12, 13, 14, 152, 163, 172, 297, 300, 350, 351, 352, 353, 354, 355, 356, 357, 358, 359, 360, 361, 362, 363, 364, 365, 366, 367, 368, 369, 370, 371, 372, 373, 374, 375, 376, 377, 378, 379, 380, 381, 382, 383, 384, 385, 386, 387, 388, 389, 390, 391, 392, 393, 394, 395, 396, 397, 398, 399, 400, 401, 402, 403, 404, 405, 406, 407, 408, 409, 410, 411, 412, 413, 414, 415, 416, 417, 418, 419, 420, 421, 422, 423, 424, 425, 426, 427, 428, 457, 458, 459, 460, 461, 462, 463
+docs/gateway/doctor/config-migrations.md "2. Legacy config key migrations": 10, 11, 12, 13, 14, 152, 163, 172, 297, 300, 350, 351, 352, 353, 354, 355, 356, 357, 358, 359, 360, 361, 362, 363, 364, 365, 366, 367, 368, 369, 370, 371, 372, 373, 374, 375, 376, 377, 378, 379, 380, 381, 382, 383, 384, 385, 386, 387, 388, 389, 390, 391, 392, 393, 394, 395, 396, 397, 398, 399, 400, 401, 402, 403, 404, 405, 406, 407, 408, 409, 410, 411, 412, 413, 414, 415, 416, 417, 418, 419, 420, 421, 422, 423, 424, 425, 426, 427, 428, 448, 449, 450, 451, 452, 453
 docs/gateway/troubleshooting/config-validation-and-probes.md "Gateway rejected invalid config": 9, 10, 11, 12, 13, 15, 16, 170, 171
 docs/gateway/troubleshooting/config-validation-and-probes.md "What happened": 9, 15, 16, 17, 18, 170, 171
 docs/gateway/troubleshooting/config-validation-and-probes.md "Inspect and repair": none
-docs/gateway/troubleshooting/config-validation-and-probes.md "Common signatures": 9, 16, 17, 18, 21, 22, 171, 430, 431
-docs/gateway/troubleshooting/config-validation-and-probes.md "Fix options": 16, 171, 172, 457
+docs/gateway/troubleshooting/config-validation-and-probes.md "Common signatures": 9, 16, 17, 18, 21, 22, 171
+docs/gateway/troubleshooting/config-validation-and-probes.md "Fix options": 16, 171, 172
 docs/gateway/troubleshooting/config-validation-and-probes.md "Gateway check warnings": none (owned by the gateway CLI)
 docs/help/faq/config-basics.md "Config basics": none
 docs/help/faq/config-basics.md "What format is the config? Where is it?": 1, 3, 4
@@ -711,7 +699,7 @@ docs/help/faq/config-basics.md "I set gateway.bind: "lan" (or "tailnet") and now
 docs/help/faq/config-basics.md "Why do I need a token on localhost now?": none (owned by gateway auth)
 docs/help/faq/config-basics.md "Do I have to restart after changing config?": 52, 53, 54, 55, 57, 91
 docs/help/faq/config-basics.md "How do I enable web search (and web fetch)?": none (owned by web search)
-docs/help/faq/config-basics.md "config.apply wiped my config. How do I recover and avoid this?": 9, 10, 16, 17, 18, 171, 173, 464
+docs/help/faq/config-basics.md "config.apply wiped my config. How do I recover and avoid this?": 9, 10, 16, 17, 18, 171, 173, 454
 docs/help/faq/config-basics.md "How do I run a central Gateway with specialized workers across devices?": none (owned by nodes)
 docs/help/faq/config-basics.md "Can the OpenClaw browser run headless?": none (owned by browser)
 docs/help/faq/config-basics.md "How do I use Brave for browser control?": none (owned by browser)
@@ -730,25 +718,25 @@ docs/gateway/logging.md "Slow cron list pages": none (owned by logging)
 docs/gateway/logging.md "Slow cron list requests": none (owned by logging)
 docs/gateway/logging.md "Slow Codex catalog pages": none (owned by logging)
 docs/gateway/logging.md "Console capture": none (owned by logging)
-docs/gateway/logging.md "Redaction": 180, 181, 182, 183, 184, 185, 186, 465, 466, 467, 468
+docs/gateway/logging.md "Redaction": 180, 181, 182, 183, 184, 185, 186, 455, 456, 457
 docs/gateway/logging.md "Gateway WebSocket logs": none (owned by logging)
 docs/gateway/logging.md "WS log style": none (owned by logging)
 docs/gateway/logging.md "Console formatting (subsystem logging)": none (owned by logging)
 docs/gateway/logging.md "Related": none (owned by logging)
-docs/web/control-ui/settings.md "(introduction)": 27, 187, 188, 189, 190, 191, 192, 193, 194, 195, 469
+docs/web/control-ui/settings.md "(introduction)": 27, 187, 188, 189, 190, 191, 192, 193, 194, 195, 458
 docs/web/control-ui/settings.md "Environment identity": none (owned by the Control UI shell)
 docs/web/control-ui/settings.md "Browser tab icon": 196, 197, 198, 226
 docs/web/control-ui/settings.md "(sidebar invitation card section, the heading after Browser tab icon)": none (owned by the Control UI shell)
 docs/web/control-ui/settings.md "Personal identity": none (owned by profiles)
-docs/web/control-ui/settings.md "Gateway host status": 199, 200, 201, 202, 203, 204, 439
-docs/web/control-ui/settings.md "Language support": 205, 206, 207, 470
-docs/web/control-ui/settings.md "Appearance themes": 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 471, 472, 473
+docs/web/control-ui/settings.md "Gateway host status": 199, 200, 201, 202, 203, 204, 434
+docs/web/control-ui/settings.md "Language support": 205, 206, 207
+docs/web/control-ui/settings.md "Appearance themes": 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 459, 460, 461
 docs/web/control-ui/settings.md "Opening links": 229, 230, 231
 docs/web/control-ui/settings.md "Session sources": none (owned by sessions)
 docs/web/control-ui/settings.md "Manage plugins": none (owned by plugins)
 docs/web/control-ui/settings.md "Updates": none (owned by update)
 docs/web/control-ui/settings.md "Apps and extensions": none (owned by native apps)
-docs/web/control-ui/settings.md "Settings": 153, 203, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 474
+docs/web/control-ui/settings.md "Settings": 153, 203, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 462
 docs/web/control-ui/settings.md "Side panel keyboard shortcuts": none (owned by agents and chat)
 docs/web/control-ui/settings.md "This device (macOS and iOS apps)": none (owned by native apps)
 docs/web/control-ui/settings.md "Custom plugin UI": none (owned by plugins)
@@ -763,27 +751,66 @@ docs/cli/configure.md "`openclaw configure`": none (run 2 only)
 | --- | --- | --- |
 | 145983 acknowledge committed config writes after concurrent edits | event-save-staging-fails; event-hand-edit-during-write; event-stale-base-hash; event-include-concurrent-edit | In area through src/config/io*.ts, src/config/mutate.ts and src/gateway/server-methods/config*.ts. A save that fails on a concurrent edit or while staging, and removes the root config or discards the .bak ring before staging succeeds, shows in the recorded openclaw.json and backup ring of these phases (conditions 50, 160, 161). Both runs mapped it; run 1 forces the staging failure, run 2 the concurrent edit |
 | 145553 preserve public status URLs during credential redaction | keep-secrets-out-of-output | In area through src/logging/redact*.ts. The phase runs with a redaction pattern copied into logging.redactPatterns (config-hand-edited) and secret-shaped content including a form-encoded body and Digest and Bearer authorization headers (session-secret-values), so lost built-in protections show in the recorded console and file logs (condition 180). Both runs mapped it |
-| 166049 open public threads at their regular links | find-setting-in-settings; look-up-schema | Its only in-area path is src/config/bundled-channel-config-metadata.generated.ts. config.schema and openclaw config schema record the regenerated channel schema metadata (run 2); the settings-connection-modes flow reloads the last /chat link and a Settings page under token and then password auth, where a 404 on reload is recorded on screen (run 1, conditions 199, 200) |
+| 166049 open public threads at their regular links | find-setting-in-settings; look-up-schema | Its only in-area path is src/config/bundled-channel-config-metadata.generated.ts. config.schema and openclaw config schema record the regenerated channel schema metadata (run 2); the settings-connection-modes flow reloads the last /chat link and a Settings page under token auth, where a 404 on reload is recorded on screen (run 1, condition 199) |
 
 ## Undocumented conditions
 none
 
 ## Reconciliation
-- Runs: run 1 and run 2 are two independent runs of steps 1 to 7 on verify/areas/config.json at the revision above. Union: 474 conditions, 291 entry points (266 placed, 25 excluded), 32 operations, 289 phases. comparison.md gives each run's share.
-- Operations: run 1 grouped 32 operations and run 2 grouped 21. The finer grouping of run 1 is kept: each finer operation has its own entry-point family (its own CLI subcommand, Gateway method or Control UI page). Run 2's operation phases were folded into run 1's: a command was moved over only when it exercised an entry point, variant or condition run 1's phase lacked (listed below); the rest repeated run 1's commands with different text and were not carried.
+- Runs: run 1 and run 2 are two independent runs of steps 1 to 7 on verify/areas/config.json at the revision above. Union: 462 conditions, 291 entry points (266 placed, 25 excluded), 32 operations; the template has 278 phases. comparison.md gives each run's share.
+- Operations: run 1 grouped 32 operations and run 2 grouped 21. The finer grouping of run 1 is kept: each finer operation has its own entry-point family (its own CLI subcommand, Gateway method or Control UI page). Run 2's operation phases were folded into run 1's: a command was moved over only when it exercised an entry point, variant or condition run 1's phase lacked; the rest repeated run 1's commands with different text and were not carried.
 - Entry points from run 1 only: Form segmented choice (On, Off, Auto); Import theme card (tweakcn slot); extensions/matrix/src/matrix/monitor/startup.ts (run 2 read its injected callback as not a call of the listed symbol; kept, since reconciliation adds); src/agents/tools/gateway-tool.ts as a file entry beside its two tool actions (run 2 counted only the actions).
 - Entry points from run 2 only: Settings navigation Retry (failed load); Setup wizard section; New entry draft key, value, null value, Add entry and Cancel.
 - Conditions from run 1 only: 23, 38, 41, 99, 102, 104, 151, 152, 159, 185, 198, 224, 225, 233, 235, 236, 237, 238, 239, 240, 265, 271, 272, 273, 274, 275, 276, 277, 279, 295, 308, 309, 314, 318, 320, 322, 324, 326, 327, 330, 331, 339, 341, 351, 361.
-- Conditions from run 2 only: 432, 433, 434, 435, 436, 439, 440, 443, 444, 445, 446, 447, 449, 450, 451, 452, 453, 454, 455, 458, 459, 460, 461, 462, 463, 464, 465, 466, 467, 469, 471, 472, 473, 474.
-- Conditions where one run named several states the other named in one row are kept as separate rows and counted as found by both: 441, 442, 448, 430, 431, 456, 457, 468, 470, 437, 438, 429 (run 2 rows inside a run 1 row) and 108, 143, 262, 264, 266, 267, 268, 278, 280, 281, 283, 284, 285, 286, 287, 313, 329, 342, 44, 68, 73, 89, 91, 92 (run 1 rows inside a run 2 row).
-- Condition kinds: where the runs disagreed on ambient or event, the row keeps run 1's kind and notes run 2's; the template carries run 2's event phase for such a condition as well, so it is exercised both ways.
-- Setup: merged by condition (a turn in flight); run 2's commands, which hold the turn for the whole run, with the paths of both runs.
-- Commands moved from run 2's operation phases into run 1's: approvals get --gateway; config get channels; config set --merge; config.set from a full config file with a saved base; config-applied-wait after writes (records whether the saved revision was applied); agents set-identity; agents.create; exec-policy set and show; plugins install; the channel probe target-writeback case; config --section model; gateway restart; run-doctor-repair; the language flow with an RTL locale.
-- Event phases: all 225 of run 2 (one per event condition) and the 31 of run 1 whose conditions run 2 found only as ambient, left uncovered or did not find; run 1's other 92 event phases exercised the same conditions as a run 2 event phase and were not carried.
+- Conditions from run 2 only: 429, 430, 431, 432, 433, 434, 435, 436, 437, 438, 439, 440, 441, 442, 443, 444, 445, 446, 447, 448, 449, 450, 451, 452, 453, 454, 455, 456, 457, 458, 459, 460, 461, 462.
+- Rows one run split and the other ran together: where run 2 named a state inside a broader run 1 row, the two are one condition and the row keeps both citations (4, 18, 18, 14, 108, 117, 83, 75, 186, 205, 300, 172); where run 1 listed separately states one run 2 row named together, run 1's rows stand and run 2 counts as finding each (108, 143, 262, 264, 266, 267, 268, 278, 280, 281, 283, 284, 285, 286, 287, 313, 329, 342, 44, 68, 73, 89, 91, 92).
+- Condition kinds: where the runs disagreed on ambient or event, the row keeps run 1's kind and notes run 2's; the template carries run 2's event phase for such a condition as well.
+- Event phases: all event phases of run 2 (one per event condition) and the 31 of run 1 whose conditions run 2 found only as ambient, left uncovered or did not find; run 1's other 92 event phases exercised the same conditions as a run 2 event phase and were not carried.
 - One convention: stage-config-fixture.mjs (run 1) and stage-state-fixture.mjs (run 2) do the same thing and are one script, stage-state-fixture.mjs, with --save-original and an explicit --start-gateway; run-configure.mjs (run 2) is cli-pty.mjs with --command 'configure --section <name>'; config-file-edit.mjs takes --file for both runs' --target and --file, --replace-from for run 1's --from, --out for run 2's --save-original, --mode rename-replace for run 2's --rename-replace and --chmod for its octal --mode; config-write.mjs accepts run 1's inline --raw and --merge and run 2's --raw-from and --base-from; Control UI flows that are the same flow under two names use run 1's name.
 - Persona traits naming the same content under two names were merged (run 1 name to run 2 name, keys of both kept): ui-browser-settings-legacy to browser-settings-legacy, cli-paths-mismatched to cli-service-path-mismatch, config-path-external to config-path-env-override, logs-aged to logs-older-than-day, models-catalog-many to models-many-configured, config-plugin-missing to plugin-configured-missing, gateway-readonly-operator to profile-read-only, config-secret-values to session-secret-values, gateway-password-instance to gateway-auth-password, ui-accent-gateway-wide to config-ui-accent-layers, config-backup-ring-full to config-backups-present, config-env-files to config-env-substitution.
 - Run files: a {run} file name that several phases wrote is prefixed with the writing phase id, so each name has one writer.
 - Phase requires: each phase lists the traits its placeholders name, the traits of the conditions it exercises, and the mock-provider trait its commands rely on (held turn, tool calls, scripted replies); the template requires is their union.
-- Search list: run 2 reported recoverConfigFromJsonRootSuffix (called by src/commands/doctor-config-preflight-legacy-config.ts) and promoteConfigSnapshotToLastKnownGood (called by src/gateway/server-startup-finish.ts) as config writers reached from other areas but absent from search.symbols. They are recorded here for the next derivation; the area file is left as both runs read it.
+- Corrections to commands both runs wrote, made at reconciliation so every phase follows the command and isolation rules of plan-and-verdict.md:
+  - event-env-readonly: runs on {env} with OPENCLAW_CONFIG_READONLY set on its service and CLI environment, then unset (was a persona-provided second environment)
+  - event-env-roreload: runs on {env} with OPENCLAW_CONFIG_READONLY set on its service and CLI environment, then unset (was a persona-provided second environment)
+  - event-env-rodoctor: runs on {env} with OPENCLAW_CONFIG_READONLY set on its service and CLI environment, then unset (was a persona-provided second environment)
+  - event-env-rolegacy: runs on {env} with OPENCLAW_CONFIG_READONLY set on its service and CLI environment, then unset (was a persona-provided second environment)
+  - event-env-shellenv: runs on {env} with OPENCLAW_LOAD_SHELL_ENV set on its service and CLI environment, then unset (was a persona-provided second environment)
+  - event-env-pathenv: runs on {env} with OPENCLAW_CONFIG_PATH set on its service and CLI environment, then unset (was a persona-provided second environment)
+  - event-env-incroots: runs on {env} with OPENCLAW_INCLUDE_ROOTS set on its service and CLI environment, then unset (was a persona-provided second environment)
+  - removed event-env-absent: needs an environment with no config file on each side; the runner clones one persona environment and no catalogue command removes the config file
+  - removed event-env-webhookfresh: needs a fresh installation on each side; the runner clones one persona environment
+  - removed event-env-symlink: needs a symlinked openclaw.json on each side; staging a symlink changes every later write of the shared clone and no catalogue command makes one
+  - removed event-configure-pathunverified: needs a remote Gateway on each side; the runner clones one local environment
+  - removed event-configure-remotemode: needs a remote Gateway on each side; the runner clones one local environment
+  - event-configure-pathmismatch: runs on {env} with OPENCLAW_HOME pointed at the persona home whose paths differ from the service
+  - doctor: --fix runs without --json (the CLI rejects the combination; --json alone is the read-only lint), followed by doctor --json; run-doctor-repair.mjs replaced by doctor --fix; event-doctor-normalizes-legacy runs an ordinary doctor --non-interactive
+  - import-custom-theme: theme tool import call removed (the tool needs a full theme definition object, which a persona key cannot carry); the import is driven through the Control UI flow
+  - other-features-read-config: TUI turn removed (the existing helper waits for an expected reply text, which decides the result); the TUI config read stays placed, not driven
+  - channel turns go through channel-inbound-turn.mjs (direct and group); run-channel-probe-turn.mjs judged invariants and its dm and group case ids do not exist
+  - set-or-remove-setting: the merge write passes the model map as a JSON literal, since a persona key cannot carry JSON
+  - removed event-doctor-inputschanged: needs an edit landing while Doctor is migrating; no catalogue command times one
+  - removed event-reload-httpapi: needs a request to the affected HTTP endpoint; no catalogue command sends one
+  - event-reload-pluginlifecycle: installs, disables and enables the external plugin while reload is off
+  - event-doctor-schemafirst, event-doctor-cronsqlowner, event-doctor-webhookstartup: their fixtures include machine state and databases, so they are staged with stage-state-fixture.mjs and the affected store is checkpointed
+  - phases that restore a fixture record the staged and repaired files and stores with state-snapshot.mjs before the restore; phases with two Doctor passes record the config after each pass; checkpoint paths no longer use globs or placeholders (globbed files are recorded by the snapshot)
+  - phase requires: each event condition of run 2 that names persona traits adds them to the event phase that exercises it (18 additions)
+  - phase paths: every file the derivation places in an operation is in that operation phase's paths, and the source of each agent tool, chat command and plugin command a phase drives is in its paths
+  - turn in flight: the setup turn is held for the bound of the operations before it and joined at the end of set-up-openclaw, the last operation before the operations that restart the Gateway (change-settings-with-wizard, start-on-saved-config, repair-config-with-doctor), which now run after the others; event phases that need active work start and join their own held turn
+  - event-reload-draintimeout: joins its background session-turn-hold.mjs handle turn-reload-draintimeout.json
+  - event-unapplied-config: joins its background session-turn-hold.mjs handle turn-unapplied-config.json
+  - event-reload-restartreq: joins its background session-turn-hold.mjs handle turn-reload-restartreq.json
+  - event-reload-opsettings: joins its background session-turn-hold.mjs handle turn-reload-opsettings.json
+  - event-mixed-write-deferred: joins its background session-turn-hold.mjs handle hold-mixed.json
+  - find-setting-in-settings: the flow that switched to a persona-provided second Gateway removed
+  - removed event-env-passwordmode: needs a second Gateway built from the same persona and switched to each side's target; the runner prepares one environment per side
+  - removed event-ui-gatewayswitch: needs a second Gateway built from the same persona and switched to each side's target; the runner prepares one environment per side
+  - removed event-ui-defaultsession: needs a second Gateway built from the same persona and switched to each side's target; the runner prepares one environment per side
+  - removed event-ui-twotabs: needs a second Gateway built from the same persona and switched to each side's target; the runner prepares one environment per side
+  - find-setting-in-settings: the connection-modes flow runs on {env} under token auth only; its password-auth half needed a second Gateway
+  - setup-turn-in-flight: holds a turn on a second idle session (session-pair-watched), not the session the tool and chat commands use, for 6250000 ms, the sum of the bounds of the operations it must cover
+  - fixture files the phases read are persona keys (config-fixture-files, and plugins-bundled-and-external:externalPluginPackage), so the plan withholds a phase until the persona provides them: acceptDoctorAnswers (accept-doctor.answers.json), configWorkspaceAnswers (config-workspace.answers.json), configureGatewayAnswers (configure-gateway.answers.json), configureHealthAnswers (configure-health.answers.json), configureModelAnswers (configure-model.answers.json), diagnosticsPatch (diagnostics.patch.json5), includeErrorsCircular (include-errors/circular.json5), includeErrorsMissing (include-errors/missing.json5), includeErrorsNullByte (include-errors/null-byte.json5), includeErrorsOutsideDir (include-errors/outside-dir.json5), includeErrorsOverlongPath (include-errors/overlong-path.json5), includeErrorsParseError (include-errors/parse-error.json5), includeErrorsSymlinkEscape (include-errors/symlink-escape.json5), kovaClaw (kova.claw.json), secretsPlan (secrets-plan.json)
+  - the two config writers run 2 reported outside the search list (promoteConfigSnapshotToLastKnownGood in src/gateway/server-startup-finish.ts, recoverConfigFromJsonRootSuffix in src/commands/doctor-config-preflight-legacy-config.ts) are in the paths of the phases that exercise them
+  - budgets: each phase's timeoutMs is at least the sum of its explicit command timeouts, with 15 s more for every command without one up to 300 s; a phase whose explicit timeouts alone pass 300 s is marked slow with that sum as its bound
+- Search list: run 2 reported recoverConfigFromJsonRootSuffix (called by src/commands/doctor-config-preflight-legacy-config.ts) and promoteConfigSnapshotToLastKnownGood (called by src/gateway/server-startup-finish.ts) as config writers reached from other areas but absent from search.symbols. The area file is left as both runs read it; the two callers are in the paths of the phases that exercise them, and comparison.md records the gap.
 - Breaks cross-check: the union of both runs' mappings.
-- Kova support files the phases read and Kova does not have yet: support/verify/fixtures/config/ (answers files for the guided wizard and the interactive start, diagnostics.patch.json5, include-errors/*.json5, kova.claw.json, secrets-plan.json) and personas/openclaw/external-plugin.tgz.

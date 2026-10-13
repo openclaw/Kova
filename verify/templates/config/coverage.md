@@ -1,21 +1,52 @@
 # Coverage: config
 
 Operations: 32/32
-Conditions: 449/474 (307 ambient, 167 event)
+Conditions: 402/462 (303 ambient, 159 event)
 Entry points: 266/291 (25 excluded)
 Breaks mapped: 3/3
 
 Uncovered:
+- condition 1 needs an environment with no config file on each side; the runner clones one persona environment and no catalogue command removes the config file
+- condition 2 needs a symlinked openclaw.json on each side; staging a symlink changes every later write of the shared clone and no catalogue command makes one
+- condition 21 ambient, but no persona trait provides it and no setup phase starts it
 - condition 38 Committed reload whose work needs restart recovery: no catalogue command forces a committed reload into restart recovery
+- condition 41 ambient, but no persona trait provides it and no setup phase starts it
 - condition 42 Busy state store refuses the reload lifecycle lease: no catalogue command holds the state-store lifecycle lease a reload needs
+- condition 52 ambient, but no persona trait provides it and no setup phase starts it
+- condition 78 needs a request to the affected HTTP endpoint; no catalogue command sends one
 - condition 98 TLS certificate files replaced at the accepted paths: the persona Gateway serves loopback HTTP; needs a TLS env (persona addition gateway-tls-files) and a script that replaces the certificate files
 - condition 99 SecretRef-managed Gateway credential without an explicit gateway.auth.mode: rotating a SecretRef-managed Gateway credential would cut the harness's own connection
 - condition 101 Canvas enablement change: needs paired nodes with hosted canvas capabilities, owned by nodes
 - condition 106 Channel or plugin hot reload: needs a Gateway-hosted channel webhook route; the persona's test channels have none
+- condition 143 ambient, but no persona trait provides it and no setup phase starts it
+- condition 151 ambient, but no persona trait provides it and no setup phase starts it
+- condition 152 ambient, but no persona trait provides it and no setup phase starts it
+- condition 166 needs a remote Gateway on each side; the runner clones one local environment
+- condition 169 ambient, but no persona trait provides it and no setup phase starts it
+- condition 174 ambient, but no persona trait provides it and no setup phase starts it
 - condition 175 /tmp/openclaw unsafe or unavailable: needs an unsafe or unwritable /tmp/openclaw on the harness host
+- condition 188 ambient, but no persona trait provides it and no setup phase starts it
+- condition 194 ambient, but no persona trait provides it and no setup phase starts it
+- condition 195 needs a second Gateway built from the same persona and switched to each side's target; the runner prepares one environment per side
+- condition 197 ambient, but no persona trait provides it and no setup phase starts it
+- condition 199 ambient, but no persona trait provides it and no setup phase starts it
+- condition 200 needs a second Gateway built from the same persona and switched to each side's target; the runner prepares one environment per side
+- condition 201 ambient, but no persona trait provides it and no setup phase starts it
+- condition 204 needs a second Gateway built from the same persona and switched to each side's target; the runner prepares one environment per side
+- condition 212 ambient, but no persona trait provides it and no setup phase starts it
+- condition 215 ambient, but no persona trait provides it and no setup phase starts it
+- condition 217 ambient, but no persona trait provides it and no setup phase starts it
+- condition 218 ambient, but no persona trait provides it and no setup phase starts it
+- condition 219 ambient, but no persona trait provides it and no setup phase starts it
+- condition 222 ambient, but no persona trait provides it and no setup phase starts it
 - condition 224 Older Control UI reader meeting the theme accent value: needs an older Control UI build reading the same Gateway
+- condition 229 ambient, but no persona trait provides it and no setup phase starts it
+- condition 230 ambient, but no persona trait provides it and no setup phase starts it
+- condition 233 ambient, but no persona trait provides it and no setup phase starts it
 - condition 235 Gateway running from a source checkout on a branch other than main: the persona runtime is an npm release; needs a source-checkout Gateway (persona addition gateway-source-checkout)
+- condition 239 ambient, but no persona trait provides it and no setup phase starts it
 - condition 240 Approval requested by another session shown inline: owned by approvals; needs a pending exec approval raised from another session
+- condition 241 ambient, but no persona trait provides it and no setup phase starts it
 - condition 246 Update applies runtime config migrations before candidate validation through the backup and include-aware write: needs an update run, owned by update and excluded by the bound
 - condition 293 Update rehearsal imports cron quarantine rows into a private copy; the live Doctor phase archives them after installation: needs an update run, owned by update and excluded by the bound
 - condition 311 One plugin pending while other channels finish; replacing it runs the migration before its runtime starts: needs separately installed Feishu, Teams, Nextcloud Talk or Telegram plugin packages
@@ -27,21 +58,21 @@ Uncovered:
 - condition 344 Externally managed install: needs a deployment-managed install
 - condition 351 Updater that defers plugin repair or advertises a later config handoff: needs an updater advertising a deferred config handoff, owned by update
 - condition 352 Older Git updater holding an in-memory config snapshot: needs an older Git updater holding a config snapshot, owned by update
+- condition 354 needs an edit landing while Doctor is migrating; no catalogue command times one
 - condition 356 Model-retirement repairs during an update wait for plugin convergence: needs an update run with plugin convergence, owned by update
-- condition 455 Advisory inspection failure at startup recorded with guidance; startup continues: needs the startup advisory inspection itself to fail
-- condition 472 Downgrade to a Gateway whose ui.prefs.accent accepts only hex colors: needs an older Gateway build
-- condition 474 Devices node-binding controls pause while configuration reloads: needs a paired node with Devices node bindings
-- Config guard interactive offer to run Doctor (entry point): needs an interactive terminal; Kova runs commands without one
+- condition 434 ambient, but no persona trait provides it and no setup phase starts it
+- condition 447 Advisory inspection failure at startup recorded with guidance; startup continues: needs the startup advisory inspection itself to fail
+- condition 454 needs a remote Gateway on each side; the runner clones one local environment
+- condition 458 ambient, but no persona trait provides it and no setup phase starts it
+- condition 460 Downgrade to a Gateway whose ui.prefs.accent accepts only hex colors: needs an older Gateway build
+- condition 462 Devices node-binding controls pause while configuration reloads: needs a paired node with Devices node bindings
 - OTLP log records (entry point): needs an OTLP collector configured as an exporter
 - Provider errors (entry point): needs a provider error body carrying a secret value; the mock provider's error reply carries none
 - Exec approval display (entry point): needs an exec approval request whose command carries a secret value
 - Gateway WebSocket logs (entry point): needs the full WebSocket log style; the default logs only errors and slow requests
-- extensions/buzz/src/setup-verify.ts, src/cli/claws-cli.gateway-*.ts, src/commands/models/auth-activate.ts, src/tui/gateway-chat.ts (entry point): their commands need a Buzz account, a claw install, a provider sign-in, or a TUI image load; no phase runs them
-- src/cli/connect-cli.ts, src/cli/daemon-cli/install.ts, src/cli/gateway-cli/dev.ts, src/cli/hook-install-persistence.ts, src/cli/hooks-cli.ts, src/cli/plugins-update-command.ts, src/cli/telemetry-cli.ts, src/cli/update-cli/update-command-config.ts, src/cli/update-cli/update-command-rollback.ts, src/commands/agents.commands.bind.ts, src/commands/agents.commands.delete.ts, src/commands/gateway-install-token.ts, src/commands/models/shared.ts, src/commands/promos/claim.ts, src/pairing/command-owner.ts, src/secrets/apply.ts, src/security/fix.ts, src/hooks/gmail-ops.ts, src/skills/config/mutations.ts, src/gateway/github-tool-identity-config.ts (entry point): writers owned by other areas whose commands no phase here runs; their own templates drive them
-- extensions writers other than memory-core (active-memory, browser, codex, feishu, file-transfer, line, matrix, migrate-hermes, nextcloud-talk, nostr, reef, slack, talk-voice, telegram, x), src/plugins/management-mutations.ts, src/plugins/management-uninstall.ts, src/plugin-sdk/migration-runtime.ts, src/plugin-sdk/migration.ts (entry point): need those channels or plugins configured or a migration run; the persona's test channel exercises only the probe write-back
-- src/agents/agent-team.ts, src/agents/sticky-model-selection.ts, src/claws/add.ts, src/claws/update-apply.ts, src/commands/onboard-guided-consent.ts, src/commands/onboard-guided.ts, src/commands/onboard-non-interactive.ts, src/commands/setup.ts, src/system-agent/setup-inference-transition.ts, src/system-agent/setup-recovery.ts, src/wizard/setup.migration-finalize.ts (entry point): first-run onboarding, claws and team flows are outside the persona's lifecycle
+- src/tui/gateway-chat.ts (entry point): placed, not driven; the existing TUI helper waits for an expected reply and no observational TUI script exists
 - entry points excluded (25): listed with reasons under Excluded entry points in derivation.md
-- Kova support files the phases read, not in Kova yet: support/verify/fixtures/config/ and personas/openclaw/external-plugin.tgz (derivation.md, Reconciliation)
+- every command head the phases use must have an entry in the command catalogue, which is a separate change; until it lands with them, a plan that selects these phases is refused
 
 Persona additions:
 (Traits the persona does not provide yet; every other trait in requires is one it provides.)
@@ -51,19 +82,20 @@ Persona additions:
 - browser-settings-legacy: a browser profile seeded with Control UI settings written before July 2026, including an old top-level session selection (none); run 1 described it as: browser storage written by a Control UI release before July 1, 2026 (storageFile)
 - channel-account-stopped: one channel account manually stopped with an explicit channel stop (none); run 1 described it as: one channel account stopped manually (channel, accountId)
 - channel-multi-account: config fixtures with a multi-account channel lacking defaultAccount, a defaultAccount naming an unknown account, and a policy-only unlinked WhatsApp accounts.default beside named accounts (path, waPolicyDefault)
-- channel-target-writeback: a channel probe case whose inbound turn makes the channel plugin record a discovered target in config (case)
+- channel-target-writeback: a channel peer whose inbound turn makes the channel plugin record a discovered target in config (peer)
 - channel-webhook-legacy: config and state fixtures for webhook channel migrations: an existing install with enabled Feishu, Teams, Nextcloud Talk and Telegram webhook accounts lacking legacyWebhook, a removed pin with the marker kept, a marker-only change, Telegram webhookUrl matching and not matching publicOrigin, environment-only Teams credentials, and a webhook channel patch for a fresh install (existingInstall, pinRemoved, markerOnly, telegramPublicOrigin, teamsEnvOnly, freshChannel)
-- cli-service-path-mismatch: a second environment whose CLI state and config paths (including an OPENCLAW_HOME relocation) differ from its installed Gateway service (env); run 1 described it as: a CLI profile whose state and config paths differ from the installed service, and an alternate OPENCLAW_HOME (profile, home)
+- cli-service-path-mismatch: an OPENCLAW_HOME location on the env host whose CLI state and config paths differ from the installed Gateway service (home)
 - config-backups-present: a full .bak ring, a last-known-good copy, .rejected files and more than 32 .clobbered files for openclaw.json (none)
 - config-chat-commands-enabled: commands.config enabled so /config show, set and unset are accepted in chat (none)
 - config-clobbered-history: more than 32 openclaw.json.clobbered.* files beside the config (none)
 - config-env-substitution: .env files in the working directory and ~/.openclaw, a variable set in both the process and a .env file, inline env.vars, ${VAR}, escaped $${VAR} and lowercase ${name} references in config, plus patches adding a missing ${VAR} and a non-default secret alias with their inverses (missingVar, missingVarUndo, secretAlias, secretAliasUndo); run 1 described it as: .env in the working directory and the state directory, inline env.vars, shellEnv enabled, and ${VAR} references that are set, missing, escaped and lowercase (none)
-- config-file-absent: a second environment on the same runtime with no openclaw.json (env)
+- config-file-unreadable: named by a phase; content as the phase intent describes (none)
+- config-fixture-files: Kova support files the phases read, provided by the persona as file paths: acceptDoctorAnswers (accept-doctor.answers.json), configWorkspaceAnswers (config-workspace.answers.json), configureGatewayAnswers (configure-gateway.answers.json), configureHealthAnswers (configure-health.answers.json), configureModelAnswers (configure-model.answers.json), diagnosticsPatch (diagnostics.patch.json5), includeErrorsCircular (include-errors/circular.json5), includeErrorsMissing (include-errors/missing.json5), includeErrorsNullByte (include-errors/null-byte.json5), includeErrorsOutsideDir (include-errors/outside-dir.json5), includeErrorsOverlongPath (include-errors/overlong-path.json5), includeErrorsParseError (include-errors/parse-error.json5), includeErrorsSymlinkEscape (include-errors/symlink-escape.json5), kovaClaw (kova.claw.json), secretsPlan (secrets-plan.json) (acceptDoctorAnswers, configWorkspaceAnswers, configureGatewayAnswers, configureHealthAnswers, configureModelAnswers, diagnosticsPatch, includeErrorsCircular, includeErrorsMissing, includeErrorsNullByte, includeErrorsOutsideDir, includeErrorsOverlongPath, includeErrorsParseError, includeErrorsSymlinkEscape, kovaClaw, secretsPlan)
 - config-fixtures: fixture config sets staged into the env by a phase (one directory each, config files plus any state files they need) (newerVersionInvalid, legacyStartupEligible, legacyIncludes, brokenAfterGood, invalidWithBackups, legacySingleFile, julyReplay, retiredInputs, retiredStateFiles, pluginRepairThrows, unsupportedIncludeLayouts, ambiguousIncludes, cronLegacyOwners, webhookListeners, absentConfig, taskflowWebhooks, pluginMigrationPending, fleetNoSystemAgent, retiredWorkspace)
 - config-id-keyed-arrays: a custom provider with a models array of id-keyed entries (providerId, modelId)
 - config-include-errors: config fixtures whose includes have a null byte or overlong path, escape the config directory, escape through a symlink, name a missing file, fail to parse, or form a cycle (badPathFormat, escapingPath, symlinkEscape, missingFile, parseError, circular)
 - config-include-legacy-keys: config fixtures split by $include holding legacy keys: in an include, spanning a root-owned and an include-owned boundary, a legacy roster in a root include, per-agent memorySearch in an agent include, and model policy beside an agent repair in one include (path, mixedBoundary, rosterInclude, memorySearchInclude, policyInclude)
-- config-include-roots: a second environment whose config includes a file from a directory admitted only through OPENCLAW_INCLUDE_ROOTS, and a patch touching a key it owns (env, patch); run 1 described it as: an include admitted through OPENCLAW_INCLUDE_ROOTS that owns one setting (ownedPath)
+- config-include-roots: a config include from a directory admitted only through OPENCLAW_INCLUDE_ROOTS, that directory, and a patch touching a key the include owns (root, patch)
 - config-include-unsupported: config fixtures for every unsupported write-through layout (root include, array-entry include, include array, sibling override, shared file, spanning boundary, nested include under a merged owner, include with its own $include) each with a patch touching it, and an ambiguous source layout (rootInclude, arrayEntryInclude, includeArray, siblingOverride, sharedFile, spanningBoundary, nestedUnderMerged, nestedDirective, each with a Patch key, ambiguousLayout)
 - config-includes-split: the persona config split with $include: a single-file plugins include, an array include, a sibling override, a nested intermediate include, gateway.mode supplied through an include, numeric map keys and a ${VAR} inside an include, with a patch for a key the include owns and its inverse (includePath, includeKey, includeValue, includePatch, includePatchUndo, intermediatePath, intermediatePatch, intermediatePatchUndo); run 1 described it as: the live config split into $include files: single-file agents and plugins includes, an include array, a sibling override, a nested relative include, numeric map keys and gateway.mode through ${VAR} (pluginsInclude, agentsInclude)
 - config-invalid-fixture: config fixtures that fail validation: an unknown key with a malformed value, a non-JSON prefix before valid content, and an invalid config in an environment without last-known-good or rejected copies (unknownKey, prefixed, noLastGood)
@@ -73,24 +105,21 @@ Persona additions:
 - config-legacy-keys: a single-file config holding every active Doctor migration's legacy key and the retired runtime keys of the migration pages, with variants for a state schema migration, inherited Voice Call realtime settings, a generic GitHub token for Copilot, allow beside alsoAllow, and an older config without utility-model separation (path, withStateMigration, voiceCallTalk, copilotGenericToken, alsoAllow, utilitySeparation)
 - config-newer-version: a config whose meta records a newer OpenClaw version (path)
 - config-owner-ambiguous-history: an owner-targeted heartbeat with ambiguous command owners and matching .bak through .bak.4 history (path)
-- config-path-env-override: a second environment whose config lives outside the state directory through OPENCLAW_CONFIG_PATH (env); run 1 described it as: OPENCLAW_CONFIG_PATH pointing at a config file outside the state directory (path)
-- config-path-symlinked: a second environment whose openclaw.json is a symlink to the real file (env)
-- config-readonly-host: a second environment with OPENCLAW_CONFIG_READONLY=1 on its Gateway and CLI, pending config repairs and a legacy key, and a third with OPENCLAW_NIX_MODE=1 (env, nixEnv)
+- config-path-env-override: a config file outside the state directory for OPENCLAW_CONFIG_PATH to point at (path)
+- config-readonly-host: pending config repairs and a legacy key in the persona config, so the phases that set OPENCLAW_CONFIG_READONLY=1 on the env see refused writes and printed repairs (none)
 - config-reload-patches: config patch files, each with an inverse <key>Undo, for every reload category: none, restart, hotSubsystem, mixedHotRestart, pluginEntry, pluginFail, pluginRuleUnloaded, mediaMaxMb, modelSettings, modelSelection, sandboxTools, channelTransport, channelPrefix, channelPolicy (with channelPolicyReplacePaths), channelDefaults, dynamicPolicy, inboundDebounce, roster, authInputs, sessionStore, policy, updateTelemetry, hostedUrl, httpApi, meetingCapture, authRateLimit, discovery, browserControl, diagnostics, audit, operation, internalHooks, controlUi, allowedOrigins, controlUiDisabled, customPluginUi, acp, terminal, reloadRemote, reloadOff, accessPolicy, retiredWorkspace, logFile, logRotate (one key per patch)
 - config-retired-format: a config in a format last written before the July 2026 support window (path)
 - config-retired-keys: config fixtures with retired inputs Doctor refuses, Matrix and Mattermost flat private-network keys, leftover TaskFlow Webhooks settings, Webhooks as the only allowlisted or enabled plugin, and a legacy plugin ID aliasing another owner (path, matrixFlat, taskflow, taskflowOnlyAllow, taskflowNoneLeft, aliasCollision)
 - config-secret-refs: env, store, file and exec SecretRefs with configured providers, and patches with inverses adding an inactive provider mismatch, an untrusted exec command path, a broken inactive provider and an unresolvable ref (inactiveMismatch, untrustedExec, brokenInactiveProvider, unresolvableRef, each with Undo); run 1 described it as: SecretRefs of every source on active and disabled surfaces, a secrets.defaults alias, a manual exec provider and a registered secret (refPath, envVar)
 - config-session-store-owner-lost: a config whose agents.defaults.sessionStore.agentId an older version removed, with and without a usable backup (path)
 - config-set-targets: paths and values for one-value writes: a scalar path and value, a map path and entry, a full config file for config.set, an unset path, a SecretRef path with an environment variable name, a session.store path and value, an unknown model, an exec ask mode, an agent identity name and a new agent name (path, value, mapPath, mapEntry, fullConfigFile, unsetPath, refPath, refEnvVar, sessionStorePath, sessionStoreValue, unknownModel, execAsk, identityName, newAgentName)
-- config-shell-env-import: a second environment with env.shellEnv enabled and a key exported only by the login shell (env)
+- config-shell-env-import: env.shellEnv enabled and a key that only the login shell of the env host user exports (none)
 - config-ui-accent-layers: a profile ui.accent preference, a gateway-wide ui.prefs.accent and a ui.seamColor all set (none); run 1 described it as: ui.prefs.accent and ui.seamColor configured on the Gateway (none)
 - config-write-fixtures: full configs for config.apply that shrink the file by more than half, drop the effective gateway.mode, omit meta, and hold a redacted *** placeholder (clobberShrink, clobberModeDrop, clobberNoMeta, redactedPlaceholder)
 - config-writer-targets: targets other-area writes and file settings may use: a spare agent id and workspace, an alternate session store path and a log file path (spareAgentId, spareWorkspace, storePath, logFile)
 - configure-answers: pseudo-terminal answer files for openclaw configure sections, one per scenario (gateway, pathmismatch, pathunverified, remotemode, nosystemagent)
 - connection-shared-token: a Control UI connection authenticated only with the shared token and no authenticated profile (none)
-- gateway-auth-password: a second environment whose Gateway uses password auth (env); run 1 described it as: a second Kova env on password auth that the Control UI can switch to (env)
 - gateway-public-origin: the env's public Gateway origin (origin)
-- gateway-remote-mode: a second environment whose config sets the remote Gateway mode (env)
 - legacy-state-retired: state fixtures of retired formats, one per key: below-schema-8 agent databases, Telegram JSON sidecars, Telegram offset rows v1 and v2, openclaw.extension.json stubs, retired Discord settings, device-pair-notify.json, Discord JSON and iMessage files, Voice Call JSONL logs, ownerless cron jobs with quarantine files, cron JSON stores, JSON delivery queues with plugins/installs.json, Voice Wake and restart-sentinel files, and OAuth sidecars referenced by auth-profiles.json (schema8, tgsidecars, tgoffset, extstub, discordretired, devicepair, discordjson, voicejsonl, cronownerless, cronjson, queuejson, retiredfiles, oauthsidecar)
 - logs-older-than-day: dated log files older than 24 hours in the log directory (none); run 1 described it as: dated Gateway log files older than 24 hours in the log directory (none)
 - models-many-configured: more than eight models configured across providers (none); run 1 described it as: more than eight models offered in the settings model menus (none)
@@ -101,16 +130,21 @@ Persona additions:
 - plugin-fails-reload: a plugin whose config flags make it fail on reload, on activation or after a write (pluginId)
 - plugin-manifest-broken: an installed plugin whose manifest cannot load (none)
 - plugin-repair-throws: a config with one plugin whose Doctor config repair throws and one that returns a warning only (config)
-- plugin-schema-skew: an installed plugin whose schema changed or whose minHostVersion is newer than the host, under an existing config entry (none); run 1 described it as: a plugin whose schema or minHostVersion is ahead of the host (named for an uncovered condition; not required by a phase) (pluginId)
+- plugin-schema-skew: an installed plugin whose schema changed or whose minHostVersion is newer than the host, under an existing config entry (none); run 1 described it as: a plugin whose schema or minHostVersion is ahead of the host (pluginId)
 - plugin-slow-stop: a plugin whose service stop hangs past the reload timeout (pluginId)
 - profile-read-only: a read-only operator profile for the Control UI (none); run 1 described it as: an operator profile with read-only scope that the Control UI flow can sign in as (profileId)
 - session-secret-values: a marker message and transcript content carrying placeholder secret values (<token>-shaped bearer, Digest and form-encoded credentials, a payment card field, values shorter and longer than 18 characters, numeric and boolean credential fields), an environment variable name holding a placeholder secret, a source file with ambiguous token assignments and a config file with opaque values (marker, envName, sourceFile, configFile); run 1 described it as: mock replies, tool output and a provider error carrying placeholder secrets: long, short, a form body, a Digest header; a .env file a tool can read (marker, envFilePath, toolSecretLine)
+- state-dir-rejected-unwritable: named by a phase; content as the phase intent describes (none)
 - theme-catalog: a built-in theme id to select and a tweakcn registry URL to import (themeId, importUrl)
 - theme-plugin: an enabled plugin contributing a theme with one color mode and no mascot, plus a tweakcn theme source the importer accepts (pluginId, themeId, tweakcnSource)
 - ui-show-advanced-on: the Show advanced Settings preference enabled in the browser profile (none)
 - workspace-dotenv-file: a .env file with placeholder secrets in the main agent's workspace (path)
 - workspace-retired-setup-state: a workspace directory holding the retired nested .openclaw/workspace-state.json (none)
-- config-backup-ring-full: months of config writes leaving openclaw.json.bak through .bak.4 and a last-known-good copy (none) (named for an uncovered condition; no phase requires it yet)
-- config-symlinked: openclaw.json as a symlink to a file elsewhere (named for an uncovered condition; not required by a phase) (path) (named for an uncovered condition; no phase requires it yet)
+- plugins-bundled-and-external (provided): add the key externalPluginPackage, which a phase now reads
+- session-pair-watched (provided): add the key keyA, which a phase now reads
+- config-file-absent: an installation with no openclaw.json; it needs its own persona variant, since one persona environment is cloned per side (none) (named for an uncovered condition; no phase requires it yet)
+- config-path-symlinked: a symlinked openclaw.json layout (none) (named for an uncovered condition; no phase requires it yet)
+- gateway-auth-password: a Gateway on password auth; it needs its own persona variant or a second Gateway prepared per side (none) (named for an uncovered condition; no phase requires it yet)
+- gateway-remote-mode: a config in remote Gateway mode; it needs a remote Gateway prepared per side (none) (named for an uncovered condition; no phase requires it yet)
 - gateway-source-checkout: a Gateway running from a git checkout on a branch other than main (named for uncovered conditions; not required by a phase) (env) (named for an uncovered condition; no phase requires it yet)
-- gateway-tls-files: a Gateway serving TLS from certificate and key files the harness may replace (named for an uncovered condition; not required by a phase) (certPath, keyPath) (named for an uncovered condition; no phase requires it yet)
+- gateway-tls-files: a Gateway serving TLS from certificate and key files the harness may replace (certPath, keyPath) (named for an uncovered condition; no phase requires it yet)
