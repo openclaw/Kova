@@ -340,7 +340,7 @@
         "migrationRun",
         "supportIssue"
       ],
-      "side": "write",
+      "side": "destructive",
       "background": false,
       "status": "existing",
       "creates": []
@@ -1085,7 +1085,7 @@
         "elapsedMs",
         "error"
       ],
-      "side": "write",
+      "side": "destructive",
       "background": true,
       "status": "toWrite",
       "creates": []
@@ -1197,7 +1197,7 @@
         "reply",
         "elapsedMs"
       ],
-      "side": "write",
+      "side": "destructive",
       "background": true,
       "status": "toWrite",
       "creates": []
@@ -1309,7 +1309,7 @@
         "requests",
         "elapsedMs"
       ],
-      "side": "write",
+      "side": "destructive",
       "background": false,
       "status": "toWrite",
       "creates": []
@@ -1507,7 +1507,7 @@
         "operationId",
         "elapsedMs"
       ],
-      "side": "write",
+      "side": "destructive",
       "background": false,
       "status": "toWrite",
       "creates": []
@@ -1713,7 +1713,7 @@
       "prints": [
         "repairs"
       ],
-      "side": "write",
+      "side": "destructive",
       "background": false,
       "status": "toWrite",
       "creates": []
@@ -2867,7 +2867,7 @@
         "error",
         "elapsedMs"
       ],
-      "side": "write",
+      "side": "destructive",
       "background": true,
       "status": "toWrite",
       "creates": []
@@ -4729,7 +4729,7 @@
         "error",
         "elapsedMs"
       ],
-      "side": "write",
+      "side": "destructive",
       "background": true,
       "status": "toWrite",
       "creates": []

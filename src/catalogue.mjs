@@ -14,17 +14,33 @@ export function parseCatalogueCommand(command, { form = false, standard = false 
   const tokens = [];
   const findings = [];
   if (!text(command)) return { tokens, findings: [{ code: "command", message: "command must be a nonempty string" }] };
+  if (command.includes("\0")) findings.push({ code: "syntax", message: "command must not contain NUL", offset: command.indexOf("\0") });
   let quote = null;
   let comment = false;
   let value = "";
   let started = false;
-  const finish = () => {
-    if (started) tokens.push(value);
+  let tokenStart = 0;
+  const braces = [];
+  const finish = (end) => {
+    if (started) {
+      const raw = command.slice(tokenStart, end);
+      const placeholders = /\{(?:env|kovaRoot|run|target|persona:[a-zA-Z0-9_.-]+:[a-zA-Z0-9_.-]+)\}/g;
+      const written = new Map();
+      for (const [name] of raw.matchAll(placeholders)) written.set(name, (written.get(name) ?? 0) + 1);
+      for (const [name] of value.matchAll(placeholders)) {
+        const remaining = written.get(name) ?? 0;
+        if (!remaining) findings.push({ code: "placeholder", message: `${name} must be written contiguously`, offset: tokenStart });
+        else written.set(name, remaining - 1);
+      }
+      tokens.push(value);
+    }
     value = "";
     started = false;
+    braces.length = 0;
   };
   for (let index = 0; index < command.length; index += 1) {
     const char = command[index];
+    if (!started && !comment && !/[ \t]/.test(char)) tokenStart = index;
     if (quote !== "'" && /[$`;|&<>\r\n]/.test(char)) {
       const slot = !comment && form && char === "<" ? command.slice(index).match(/^<[^<>\r\n]+>/)?.[0] : null;
       if (slot) {
@@ -38,15 +54,25 @@ export function parseCatalogueCommand(command, { form = false, standard = false 
     if (!quote && !comment && !form && /[*?\[\]()]/.test(char)) {
       findings.push({ code: "shell", message: `unquoted shell syntax ${JSON.stringify(char)}`, offset: index });
     }
+    if (!quote && !comment && braces.length) {
+      if (char === "," || (char === "." && command[index + 1] === ".")) braces.at(-1).expands = true;
+      if (char === "}") {
+        const brace = braces.pop();
+        if (brace.expands && !brace.placeholder) findings.push({ code: "shell", message: "unquoted brace expansion", offset: brace.offset });
+      }
+    }
     if (char === "{") {
       const match = command.slice(index).match(/^\{([^{}]+)\}/);
-      if (match && !/^\s*["']/.test(match[1])) {
+      let placeholder = false;
+      if (match) {
         const name = match[1];
         const persona = /^persona:[a-zA-Z0-9_.-]+:[a-zA-Z0-9_.-]+$/.test(name);
         const fixed = ["env", "kovaRoot", "run"].includes(name) || (name === "target" && standard);
-        if (!persona && !fixed) findings.push({ code: "placeholder", message: `unsupported placeholder ${match[0]}`, offset: index });
+        placeholder = persona || fixed;
+        if (!persona && !fixed && !/^\s*["']/.test(name)) findings.push({ code: "placeholder", message: `unsupported placeholder ${match[0]}`, offset: index });
         else if (fixed && quote) findings.push({ code: "placeholder", message: `${match[0]} must appear outside quotes`, offset: index });
       }
+      if (!quote && !comment) braces.push({ offset: index, expands: false, placeholder });
     }
     if (comment) {
       if (char === "\n" || char === "\r") comment = false;
@@ -73,13 +99,13 @@ export function parseCatalogueCommand(command, { form = false, standard = false 
       quote = char;
       started = true;
     } else if (!quote && /[ \t]/.test(char)) {
-      finish();
+      finish(index);
     } else {
       value += char;
       started = true;
     }
   }
-  finish();
+  finish(command.length);
   if (quote) findings.push({ code: "syntax", message: "unterminated quote" });
   return { tokens, findings };
 }
@@ -106,19 +132,23 @@ function argumentOffset(tokens) {
 }
 
 // One pass owns option operands, the end-of-options separator and positionals.
-function commandArguments(tokens, flags, allowedFlags = flags) {
+function commandArguments(tokens, flags, allowedFlags = flags, head = [], parents = []) {
   const offset = argumentOffset(tokens);
   const words = canonicalWords(tokens.slice(0, offset));
   const options = [];
   const findings = [];
   let ended = false;
+  let invalidOrder = false;
   for (let index = offset; index < tokens.length; index += 1) {
     const token = tokens[index];
     if (!ended && token === "--") { ended = true; continue; }
     if (ended || !isFlag(token)) { words.push(token); continue; }
     const equal = token.indexOf("=");
     const flag = equal < 0 ? token : token.slice(0, equal);
-    const info = Object.hasOwn(flags, flag) ? flags[flag] : null;
+    const selected = head.every((word, at) => words[at] === word);
+    const available = selected ? flags : Object.assign({}, ...parents.filter((parent) => parent.head.every((word, at) => words[at] === word)).map(({ entry }) => entry.flags));
+    const info = Object.hasOwn(available, flag) ? available[flag] : null;
+    if (!info && Object.hasOwn(flags, flag)) invalidOrder = true;
     let value = equal < 0 ? undefined : token.slice(equal + 1);
     if (!Object.hasOwn(allowedFlags, flag)) findings.push({ code: "unlisted-flag", flag, message: `unlisted flag ${flag}` });
     if (info?.value === "none" && equal >= 0) findings.push({ code: "argument", flag, message: `${flag} does not take a value` });
@@ -128,7 +158,7 @@ function commandArguments(tokens, flags, allowedFlags = flags) {
     }
     options.push({ flag, value });
   }
-  return { words, options, findings };
+  return { words, options, findings, invalidOrder };
 }
 
 function gatewayMethod(options) {
@@ -222,12 +252,15 @@ function catalogueResolver(catalogue) {
   for (const form of forms) {
     // Parent option arity still matters when a child does not allow that flag.
     const parents = forms.filter(({ head }) => head.length < form.head.length && head.every((word, index) => form.head[index] === word)).sort((a, b) => a.head.length - b.head.length);
+    form.parents = parents;
     form.parsingFlags = Object.assign({}, ...parents.map(({ entry }) => entry.flags), form.entry.flags);
   }
   return (tokens) => {
     const candidates = [];
-    for (const { entry, head, min, max, method, parsingFlags } of forms) {
-      const args = commandArguments(tokens, parsingFlags, entry.flags);
+    for (const { entry, head, min, max, method, parsingFlags, parents } of forms) {
+      if (entry.kind === "ocm" && !head.every((word, index) => tokens[index] === word)) continue;
+      const args = commandArguments(tokens, parsingFlags, entry.flags, head, parents);
+      if (args.invalidOrder) continue;
       if (!head.length || !head.every((word, index) => args.words[index] === word)) continue;
       if (entry.kind === "gateway" && gatewayMethod(args.options) !== method) continue;
       candidates.push({ entry, head, min, max, args });
@@ -242,7 +275,9 @@ function catalogueResolver(catalogue) {
 }
 
 export function resolveCatalogueEntry(catalogue, command) {
-  const match = catalogueResolver(catalogue)(parseCatalogueCommand(command).tokens);
+  const parsed = parseCatalogueCommand(command);
+  if (parsed.findings.length) return null;
+  const match = catalogueResolver(catalogue)(parsed.tokens);
   return match?.validPositionals ? match.entry : null;
 }
 

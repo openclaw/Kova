@@ -75,6 +75,11 @@ test("explicit flag arity separates operands from options and subcommands", asyn
   const { catalogue: c } = await loadCatalogue("openclaw");
   assert.deepEqual(check(c, "ocm @{env} -- cron add --name demo --at +1m --system-event '--maintenance' --json"), []);
   assert.deepEqual(check(c, "ocm @{env} -- sessions --agent cleanup --json"), []);
+  for (const command of ["ocm --json env show {env}", "ocm env --json show {env}", "ocm @{env} -- sessions --session-key cleanup tail --tail 5", "ocm @{env} -- --json status"]) {
+    assert.equal(resolveCatalogueEntry(c, command), null, command);
+    assert.ok(check(c, command).length, command);
+  }
+  assert.deepEqual(check(c, "ocm @{env} -- sessions tail --session-key cleanup --tail 5"), []);
   assert.equal(resolveCatalogueEntry(c, "ocm @{env} -- sessions --json cleanup")?.id, "sessions-cleanup");
   assert.equal(resolveCatalogueEntry(c, "ocm @{env} -- sessions --json invented"), null);
   for (const command of ["ocm @{env} -- sessions cleanup --agent demo --json", "ocm @{env} -- sessions --agent demo cleanup --json"]) {
@@ -117,10 +122,18 @@ test("background forms retain their entry identity and required flags", async ()
     assert.deepEqual(check(c, command).map((finding) => finding.code), ["toWrite"]);
   }
   assert.ok(validateCatalogue(catalogue(entry({ background: true }))).some((finding) => finding.message.includes("--handle")));
+});
+
+test("commands that remove or replace existing resources are destructive", async () => {
+  const { catalogue: c } = await loadCatalogue("openclaw");
+  for (const id of ["doctor", "doctor-repair", "gateway-progress-card-put", "goal-control", "chat-send", "agent-tool-turn", "control-ui"]) {
+    assert.equal(c.entries.find((entry) => entry.id === id).side, "destructive", id);
+  }
   const compact = c.entries.find(({ id }) => id === "sessions-compact");
   const method = c.entries.find(({ wraps }) => wraps === "sessions.compact");
   assert.equal(compact.side, "destructive");
   assert.equal(compact.side, method.side);
+  assert.equal(c.entries.find(({ wraps }) => wraps === "sessions.files.set").side, "destructive");
 });
 
 test("restricted shell syntax permits literal single-quoted content only", () => {
@@ -129,11 +142,12 @@ test("restricted shell syntax permits literal single-quoted content only", () =>
   for (const unsafe of ["$HOME", "$(id)", "`id`", ";", "|", "&", "<", ">", "\n", "\r", '"$HOME"', "\\$HOME", "\\;"]) {
     assert.ok(check(c, `node {kovaRoot}/support/send.mjs --env {env} --text ${unsafe}`).some((finding) => finding.code === "shell"), JSON.stringify(unsafe));
   }
-  for (const value of ["*", "?", "[ab]", "(hello)"]) {
+  for (const value of ["*", "?", "[ab]", "(hello)", '{"demo","cleanup"}', '{"demo",cleanup{}}', '{{}"demo",cleanup}']) {
     assert.ok(check(c, `node {kovaRoot}/support/send.mjs --env {env} --text ${value}`).some((finding) => finding.code === "shell"));
     assert.deepEqual(check(c, `node {kovaRoot}/support/send.mjs --env {env} --text '${value}'`), []);
-    assert.deepEqual(check(c, `node {kovaRoot}/support/send.mjs --env {env} --text "${value}"`), []);
+    if (!value.includes('"')) assert.deepEqual(check(c, `node {kovaRoot}/support/send.mjs --env {env} --text "${value}"`), []);
   }
+  for (const operand of ["'hello\0world'", "hello\\\0world"]) assert.ok(check(c, `node {kovaRoot}/support/send.mjs --env {env} --text ${operand}`).some((finding) => finding.code === "syntax"));
   assert.ok(parseCatalogueCommand("node 'unfinished").findings.some((finding) => finding.code === "syntax"));
   assert.ok(parseCatalogueCommand("node unfinished\\").findings.some((finding) => finding.code === "syntax"));
   const commentBypass = "ocm @{env} -- status --json # '\nprintf KOVA_CATALOGUE_BYPASS\n# '";
@@ -145,6 +159,9 @@ test("restricted shell syntax permits literal single-quoted content only", () =>
 
 test("placeholder placement respects quoting, JSON and standard phase scope", () => {
   const c = catalogue(script);
+  for (const malformed of ["ocm @'{'env'}' -- status --json", "node '{'kovaRoot'}'/support/send.mjs --env {env} --text ok", "node {kovaRoot}/support/send.mjs --env {env} --text {run}'{'run'}'"]) {
+    assert.ok(parseCatalogueCommand(malformed).findings.some((finding) => finding.code === "placeholder"), malformed);
+  }
   const command = "node {kovaRoot}/support/send.mjs --env {env} --text '{\"key\":\"{persona:session:key}\",\"empty\":{}}'";
   assert.deepEqual(check(c, command), []);
   for (const value of ["'{env}'", '"{run}"', "'{kovaRoot}'", "{persona:missing}", "{target}", "{unexpected}"]) {
