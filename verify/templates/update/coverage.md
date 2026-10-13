@@ -1,13 +1,14 @@
 # Coverage: update
 
 Operations with retained phases: 11/21 (some retained operations have fewer entry points)
-Conditions described by retained phases: 65/520 (354 ambient, 166 event)
+Conditions described by retained phases: 64/520 (354 ambient, 166 event)
 Entry points inventoried: 203 placed/310 (107 excluded); executable coverage has not been measured
 Breaks mapped to retained phases: 0/6; all six are outside reach under OCM supervision
 
-A condition is counted here only when a retained phase describes its concrete setup and observation; runtime execution remains unproven. Reconciliation credits applicable phases from either run and excludes claims whose required inputs or actions were lost. There are 65 described conditions and 455 explicit gaps below. Phases: 37 (1 setup, 11 operation, 25 event). These are declarative descriptions, not executed results.
+A condition is counted here only when a retained phase describes its concrete setup and observation; runtime execution remains unproven. Reconciliation credits applicable phases from either run and excludes claims whose required inputs or actions were lost. There are 64 described conditions and 456 explicit gaps below. Phases: 37 (1 setup, 11 operation, 25 event). These are declarative descriptions, not executed results.
 
 Uncovered:
+- Condition 10, Provider-level contextTokens/contextWindow and Copilot discovery.enabled migration: config-hand-edited supplies unspecified older keys; no retained fixture guarantees these particular fields.
 - Condition 219, Recovery destination changes during cleanup with readers: reader presence alone does not guarantee a change between verification passes. The retained reader scenario records either outcome; a deterministic between-check mutation fixture is missing.
 - Condition 242, Retired subagents/runs.json, plugins/installs.json, sandbox JSON registries and room-to-groupChannel records: restart-sentinel.json blocks the combined fixture before the plugin-index check; no independent fixture reaches the other cases.
 - Condition 225, Reachable Gateway with recorded channel warnings (channelIssues, blocked channel startup): No retained fixture establishes recorded channel warnings on a reachable Gateway.
@@ -668,3 +669,5 @@ Asynchronous restarts are observed against a bounded snapshot of gateway_boot_li
 Recovery observations and isolation: crash-loop checks include the suppression, recovery and persistence owners. They capture the initial boot rows, observe the breaker interval and wait up to 420,000 ms for a new recovery row, then record channel state. Existing old recovery rows cannot satisfy that observation. Outbox checks select the reconnect reconciliation and replay owners. Each cleanup attempt independently restores its recovery-originals export, so an earlier successful cleanup cannot erase a later attempt’s input. Reader polling is not treated as guaranteed destination mutation.
 
 The crash-loop phase independently restores update-baseline-fixture before observing its initial boot rows. That export must have settled boot history, with no recent unclean boots or unrecovered breaker marker, so another selected scenario cannot supply the trip being measured. The fixture remains unavailable until the persona supplies that starting state.
+
+Observation lifetimes: the malformed-response endpoint remains available until its current-window request and HTTP exchange are observed within a bound; product status/log collection follows, then teardown. The restart port fault is armed before the request and retained through its result, with a 600,000 ms cap exceeding the pinned 300,000 ms drain plus 60,000 ms health allowance. Thaw scheduling, ACP model checks, CLI response formatting and update-check scheduling select their observations. Across helper contracts, valid operational errors and timeouts use normal 1/3 outcomes; 2 is reserved for malformed call inputs and does not relabel a product or storage failure.
