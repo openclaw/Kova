@@ -129,8 +129,8 @@ default.
 ## What a verification proves and what it does not
 
 A verdict is relative. `good-to-go` means every clone started, no phase is
-incomplete, and no phase showed a difference the change caused that the intent
-file does not predict. It does not mean the area is free of problems: failures
+incomplete, every varying id was declared, and no phase showed a difference
+the change caused that the intent file does not predict. It does not mean the area is free of problems: failures
 present on both sides are issues, reported separately. It says nothing about
 changed paths no phase covers or phases the persona could not support; the
 plan and the verdict list both, so a reader sees what was not exercised.

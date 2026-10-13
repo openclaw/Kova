@@ -29,8 +29,11 @@ shows what the change was checked against.
     "documentation": ["docs/**", "**/*.md", "!docs/reference/templates/**", "!skills/**", "!custodian-skills/**", "!extensions/*/skills/**"],
     "tests": ["**/*.test.ts", "test/**"]
   },
+  "compressed": [
+    { "path": "agents/*/agent/openclaw-agent.sqlite", "table": "transcript_events", "column": "event_zstd", "codec": "zstd" }
+  ],
   "stateIds": [
-    { "path": "agents/*/agent/openclaw-agent.sqlite", "table": "sessions", "column": "session_id", "recordKey": "session_key" }
+    { "path": "agents/*/agent/openclaw-agent.sqlite", "table": "session_windows", "column": "session_id", "recordKey": "session_key", "order": "created_at" }
   ],
   "before": [{ "id": "use-target", "commands": ["..."], "checkpoint": ["logs"], "timeoutMs": 300000 }],
   "after": [{ "id": "doctor", "commands": ["..."], "checkpoint": ["doctor"], "timeoutMs": 120000 }]
@@ -43,8 +46,9 @@ template or a bundled skill, is product behavior and is never ignored; the
 globs exclude it with `!`. A path is ignored when it matches a glob in either
 list and matches no `!` glob in that list; the order of the globs does not
 matter. `stateIds` declares where OpenClaw stores ids it
-generates without a command reporting them (see [Rows](#rows)); the example's
-table and column names are illustrative. `before` and `after` are the standard
+generates without a command reporting them, and `compressed` the database
+columns OpenClaw stores compressed (see [Rows](#rows)); the example's table
+and column names are illustrative. `before` and `after` are the standard
 phases, each in the template phase form without `kind`, `paths` or
 `requires`; they alone may use the `{target}` placeholder, the side's target
 selector:
@@ -413,11 +417,17 @@ are recorded but never compared.
 `state:<path>` names a file or directory relative to the clone's OpenClaw
 state directory. Each file in it becomes items by its kind:
 
-- a SQLite database: one item per row, addressed by path, table and primary
-  key (`agents/main/agent/openclaw-agent.sqlite:sessions/<key>`), with the
-  row's columns as a JSON object. Kova reads it through SQLite's read-only
-  online backup, so the snapshot is consistent while the Gateway runs; the
-  `-wal` and `-shm` side files are never compared on their own.
+- a SQLite database: each row's presence is one item, addressed by path,
+  table and primary key (`agents/main/agent/openclaw-agent.sqlite:sessions/<key>`),
+  valued `true`; each column of the row is its own item, addressed by that
+  address and the column name. A TEXT column that holds JSON is parsed, and
+  each of its JSON nodes is an item, addressed by the column and a JSON
+  pointer. A column OpenClaw stores compressed, declared in the standard
+  file's `compressed` list (for example a zstd `event_zstd` column), is
+  decompressed and then parsed the same way. Kova reads the database through
+  SQLite's read-only online backup, so the snapshot is consistent while the
+  Gateway runs; the `-wal` and `-shm` side files are never compared on their
+  own.
 - a JSON or JSON5 file: one item per JSON node, addressed by path and JSON
   pointer.
 - a JSON Lines file: one item per JSON node, addressed by path, line number
@@ -447,17 +457,32 @@ as it is. There are two declarations:
   same on every clone, because the plan is, and it does not move when the id
   also appears elsewhere first.
 - The standard file's `stateIds` names the state stores where OpenClaw
-  generates ids without a command reporting them, and the stable field of the
-  owning record (`recordKey`). Such an id becomes
-  `<id:<path>#<record key value>/<field>>`, named after the record that owns
-  it, which does not depend on the order records were written.
+  generates ids without a command reporting them: the table and column, the
+  stable field of the owning record (`recordKey`) and, when one record key can
+  own several ids over time, the column that orders them (`order`). Such an id
+  becomes `<id:<path>#<record key value>/<field>/<n>>`, where `<n>` is the id's
+  position among the ids of that record key by `order`, counting from 1 (and
+  always 1 without `order`). It is named after the record that owns it, which
+  does not depend on the order records were written. A record key that is
+  itself a generated id must be declared too, and is replaced first.
+
+Ids present in the persona export are never replaced, whatever declares them,
+so an existing id that a change wrongly replaces still shows as a
+difference.
 
 Each declared id is replaced by its token wherever its string appears, inside
 other strings too (a session key that embeds a generated id), in JSON values,
 JSON object keys, file paths and text lines. A row that involves a declared id
 can therefore differ only through the id's presence or its position, never
-through its value. Values no declaration covers
-stay as they are; when they vary from run to run, the noise runs drop them.
+through its value. Values no declaration covers stay as they are; when they
+vary from run to run, the noise runs drop them.
+
+An undeclared value that varies from run to run inside an address (a SQLite
+primary key, a JSON object key or a file path) gives each clone different
+addresses, which the noise runs cannot pair. Compare finds every address
+segment that differs between the two noise runs, lists its pattern in the
+verdict's `undeclared` list, and drops the items under it; the fix is to
+declare that id.
 
 ## Noise Floor
 
@@ -515,8 +540,8 @@ a timeout in a phase written from the `Goal:` line is a difference in the
 unless `expects` predicts that exact item and value.
 
 The verdict is `breaks` when any row is a `break`; otherwise `unresolved` when
-any row is `flaky`, any of the five clones did not start, or any phase is
-incomplete;
+any row is `flaky`, any of the five clones did not start, any phase is
+incomplete, or `undeclared` is not empty;
 otherwise `good-to-go`. `good-to-go` speaks only for the phases that ran; the
 verdict's `unmapped` and `withheld` lists say what did not.
 
@@ -544,6 +569,7 @@ verdict's `unmapped` and `withheld` lists say what did not.
   "withheld": [],
   "unmapped": [],
   "ignored": [],
+  "undeclared": ["<state path or JSON pointer with the varying segment as *>"],
   "noiseExcluded": 3,
   "run": "<run id>"
 }
