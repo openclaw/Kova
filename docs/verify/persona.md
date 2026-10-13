@@ -1,7 +1,8 @@
 # Persona
 
 A persona is the installation both sides of a verification start from. It is
-built once, kept as a durable OCM environment, and cloned for every run.
+built once, kept as a durable OCM environment and an export of it, and cloned
+from that export for every run.
 Templates name what they need from it as traits; phases read concrete values
 from it through `{persona:<trait>:<key>}`.
 
@@ -41,14 +42,14 @@ environment that every verification clones.
   contains: every trait, every key's value, the runtime it was built with, the
   build time and the content hash of the exported environment.
 - **Pinned runtime**: the OpenClaw version the persona is built with. It is
-  always older than any baseline or change that runs against it;
+  never newer than any baseline or change that runs against it;
   `kova verify run` refuses a target older than it. The OpenClaw persona pins
   `npm:2026.9.9`.
 
 ## Rules
 
-1. The persona is older than both sides. Cloning it and starting either side's
-   runtime on it is an existing installation being updated: the first start
+1. The persona is never newer than either side. Cloning it and starting either
+   side's runtime on it is an existing installation being updated: the first start
    migrates the persona's data on the baseline and on the change alike, and
    any difference in that migration is a difference like any other. Explicit
    updater journeys are phases of the `update` template, not a property of the
@@ -57,8 +58,10 @@ environment that every verification clones.
    environment on the pinned runtime, runs every builder in dependency order,
    runs every check, exports the environment and writes the manifest. A
    persona whose check fails is not a persona.
-3. A verification never changes the persona. Runs clone it, and the durable
-   environment is protected with `ocm env protect`.
+3. A verification never changes the persona. Every clone is made by importing
+   the export after checking its hash against the manifest, so every run starts
+   from the same content. The durable environment is the source the export was
+   made from, and it is protected with `ocm env protect`.
 4. Test credentials only. Traits use Kova's mock provider and its conformance
    channel, which need no credentials. When a trait needs a test account, the
    definition names that credential in `credentials`; the build reads its
@@ -144,15 +147,15 @@ kova persona show   --persona <manifest> --json
 
 - `build` is the only command that creates a durable environment. Without
   `--execute` it prints what it would do.
-- `verify` clones the environment the manifest names, runs every check of the
-  definition the manifest records on the clone, and destroys the clone. It
+- `verify` checks the export's hash, imports it into a clone, runs every check
+  of the definition the manifest records on the clone, and destroys the clone. It
   refuses a definition whose hash differs from the manifest's. The scheduled
   maintenance pass runs it, and `kova verify run` runs the same checks on its
   clones before the first phase, so a drifted persona is caught before a
   comparison is made.
 - `show` prints the manifest; `kova verify plan` uses it to resolve keys and
-  records its path and hash in the plan, and `kova verify run` clones the
-  environment it names.
+  records its path and hash in the plan, and `kova verify run` makes its
+  clones from the export it names.
 
 ## Defining A Trait
 

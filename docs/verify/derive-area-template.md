@@ -53,14 +53,16 @@ the release archive.
    documents.
 2. The area's input file `verify/areas/<area>.json` in the
    [area input file form](#area-input-file-form): the area's `id`, its owner
-   path globs, the exact list of documents that describe it, and the bound
-   decisions (which neighbouring areas own which shared entry points). Two runs
+   path globs, the exact list of documents that describe it, the symbols and
+   literals step 2 searches for, and the bound decisions (which neighbouring areas own which shared entry points). Two runs
    of this procedure read the same input file; when runs differ, the
    difference is resolved by editing this file, never by preferring one run.
 3. The path to the known breaks for OpenClaw, used from step 6 on.
 4. `catalogue/openclaw.json` and the persona manifest, to name existing
    commands and traits. A command or trait they lack is still named, as
    `support.toWrite` or a persona addition.
+5. `verify/standard.json`, whose `ignore.tests` globs tell test paths from
+   production paths in step 6.
 
 ## Output
 
@@ -92,7 +94,10 @@ Rules:
 
 - An entry point belongs to the area when one of the area's documents
   describes it as something the user does here. The input file's bound
-  decisions settle shared entry points; do not re-decide them.
+  decisions settle shared entry points and operations; do not re-decide them.
+  A bound exclude never removes a file step 2's search finds: that file is
+  still listed as a `from <area>` entry point, and only its own operations
+  belong to the other area.
 - Code in another area that reaches this area is not excluded. It is listed in
   step 2 as an entry point of kind `from <area>`.
 - Shared infrastructure the area merely uses is excluded and named under
@@ -129,10 +134,13 @@ Rules:
   emits are not entry points; list them once under `## Excluded entry points`
   as internal.
 - Code in other areas that reaches this area is found by search, not by
-  memory: search the source tree for this area's writer functions and for its
-  method and command name literals, and list one entry point per file found,
-  of kind `from <area>`. A file found this way is never excluded as owned
-  elsewhere; only its own operations belong to the other area.
+  memory: search the source tree for the exact symbols and literals the area
+  input file lists under `search` (its writer functions, its method and
+  command name literals), and list one entry point per file found, of kind
+  `from <area>`. Two runs search for the same list; a run that finds a symbol
+  the list lacks reports it for the input file, it does not add its own. A
+  file found this way is never excluded as owned elsewhere; only its own
+  operations belong to the other area.
 - A UI control counts when a document or the page module names it as an action
   with its own effect: a button, menu item, shortcut, link or form field. Shell
   controls shared by every page (navigation, theme, account, settings panel)
@@ -149,7 +157,8 @@ Rules:
 Do: from the documents read in step 1, list every state the area is normally
 in and every event it normally goes through. Take them from the documents' own
 statements about lifecycle, state location, isolation, recovery, maintenance,
-scale and sharing. Do not take them from incidents.
+scale and sharing. Do not take them from incidents; step 6 is the only place
+a break can add a condition, and it records that condition as undocumented.
 
 A condition is a state the product is in or an event it goes through on its
 own or by configuration, as a document describes it. An action the user
@@ -165,13 +174,22 @@ own consequence. A passage that names several states or events yields one
 condition each. The Control UI's connection states, and whether it has
 finished loading, count when a document describes behavior under them.
 
+Completeness: walk every listed document heading by heading, in order,
+including each section the bound names. Under each heading, record every state
+or event it states with its own consequence, whether or not a harness can
+reach it, or record `none`. Write `## Headings walked` in `derivation.md`: one
+line per heading, `<document> "<heading>": <condition numbers> | none`. A
+heading missing from that list has not been read. Step 8 compares two runs
+heading by heading, so a reader's miss shows as a heading where the other run
+found a condition.
+
 For each condition record: its name, the document and heading it comes from,
 whether it is **ambient** (true while other phases run, such as a turn in
 flight) or **event** (needs its own phase, such as a restart), and the persona
 trait it needs, if any.
 
 Output: section `## Conditions` of `derivation.md`: a table with columns
-Condition, Source, Kind, Persona trait.
+Condition, Source, Kind, Persona trait; and section `## Headings walked`.
 
 ### Step 4. Write the phases
 
@@ -210,8 +228,9 @@ Each phase has:
 - `checkpoint`: the list of what to record, from the defined kinds.
 - `timeoutMs`: the bound for the whole phase, at most 300000. A phase that
   needs longer is split, or marked `slow: true`; a slow phase may exceed the
-  limit, and the plan selects it only when the change touches its own paths,
-  never as a dependency of another phase.
+  limit, and the plan selects it only when the change touches its own paths
+  or when a selected phase reads a `{run}` file it writes, never because
+  another phase of its template was selected.
 - `browser: true` when a command drives a browser.
 
 Output: the `phases` array of `template.json`.
@@ -226,7 +245,8 @@ Rules:
   the condition is that they happen at once; then the intent says so.
 - Commands come from the catalogue. A new script is named under
   `support.toWrite` with one line stating the product method it wraps and its
-  flags.
+  flags. A product command the catalogue lacks is named there in the form
+  `product: <command>  (<what>; <flags>)`.
 - Placeholders in commands are `{env}`, `{kovaRoot}`, `{run}` and
   `{persona:<trait>:<key>}` for an identifier the persona provides (a session
   key, an agent id, a file path). No other placeholder and no invented
@@ -265,8 +285,8 @@ Rules:
 
 - The breaks correct the derivation; they are never copied into the template.
 - A break counts as in the area when at least one of its production paths
-  falls inside the globs. A test path is one that matches an `ignore` glob in
-  `verify/standard.json`; every other path is a production path. A break whose
+  falls inside the globs. A test path is one that matches an `ignore.tests`
+  glob in `verify/standard.json`; every other path is a production path. A break whose
   only in-area paths are test paths is listed with the note `test-only` and
   not counted.
 - A condition added here must still cite a document. When no document states
@@ -289,21 +309,23 @@ Output: `coverage.md`.
 ### Step 8. Reconcile two runs into the template
 
 Do: run steps 1 to 7 twice, independently: two separate sessions or people
-that share nothing but the input file, the revision and this page, each
-writing into its own working directory. Then reconcile:
+that share nothing but the inputs above and this page, each writing into its
+own working directory. Then reconcile:
 
 - Entry points: the union by name. An entry point one run placed and the other
   excluded is placed, with the reason recorded.
 - Conditions: the union by meaning. Two names for one condition become one,
   keeping both document citations.
 - Operations: where the runs grouped differently, keep the finer grouping when
-  the finer operation has its own entry-point family; otherwise keep the
+  the finer operation has its own entry-point family (entry points that share
+  a Gateway method prefix, a CLI command or a UI page); otherwise keep the
   coarser.
 - Phases: for each operation and event condition in the union, take as the
   base the phase whose commands exercise more of that operation's entry
   points, comparing a run's several phases for one operation together; on a
   tie take the phase with the clearer intent. Add a command from the other run
-  only when it exercises an entry point, variant or condition the base lacks,
+  only when it exercises an entry point, a variant (another mode or flag
+  combination of the same entry point) or a condition the base lacks,
   or writes a handle a later phase reads; never duplicate a command that does
   the same thing with different text. Setup phases are merged by condition, one
   per ambient condition. Rewrite script names, flags and their values to one
@@ -325,12 +347,17 @@ and the conditions it found, each as a share of the reconciled union. A run
 found an entry point when it listed it, placed in an operation or excluded
 with a reason.
 
-Rule: reconciliation adds; it never drops something one run covered.
+Rule: reconciliation adds; it never drops an entry point, condition or
+operation one run covered. The only removals are the corrections of rule
+breaches above and scripts no phase calls.
 
-Then, for every script in `support.toWrite` that the catalogue does not list
-yet, add a `toWrite` entry by the catalogue's
-[Adding an entry](catalogue.md#adding-an-entry) procedure, so the plan
-withholds the phases that call it instead of refusing the plan.
+Then make every command the template uses known to the catalogue, by the
+catalogue's [Adding an entry](catalogue.md#adding-an-entry) procedure: a
+`toWrite` entry for every script in `support.toWrite`, and an `existing` entry,
+checked against OpenClaw's own help or Gateway method list, for every
+`product: <command>` line and every Gateway method or OCM operation the
+catalogue lacks. Afterwards the plan withholds phases that call a script not
+yet written, and refuses nothing the template uses.
 
 ## Template Form
 
@@ -433,6 +460,9 @@ Documents: <paths>
 ## Conditions
 | Condition | Source | Kind | Persona trait |
 
+## Headings walked
+<document> "<heading>": <condition numbers> | none
+
 ## Breaks cross-check
 | Break | Phase | Note |
 
@@ -523,6 +553,10 @@ A derivation is accepted when:
   "id": "<area>",
   "paths": ["<glob>"],
   "documents": ["<path>"],
+  "search": {
+    "symbols": ["<function or export name>"],
+    "literals": ["<method or command name>"]
+  },
   "bound": {
     "includes": ["<shared entry point or path>: <reason it is this area's>"],
     "excludes": ["<shared entry point or path>: owned by <area>"]

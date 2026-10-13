@@ -42,8 +42,9 @@ decides whether OpenClaw answered correctly; only the comparison does.
    there. Diagnostics go to stderr. The output is the checkpoint's `responses`
    record for that command. A `product` or `ocm` entry uses the command's own
    JSON output flag when it has one; its output is recorded as printed.
-3. Exit codes of `script` and `gateway` entries: `0` OpenClaw answered,
-   whatever it answered; `1` OpenClaw returned an error, recorded in the JSON;
+3. Exit codes of `script` and `gateway` entries: `0` OpenClaw returned a
+   result, whatever it was; `1` OpenClaw returned an error, recorded in the
+   JSON;
    `2` the call was malformed; `3` the entry's own timeout elapsed. A
    `product` or `ocm` entry keeps the command's own exit codes. An entry never
    decides whether the answer was right.
@@ -71,10 +72,9 @@ decides whether OpenClaw answered correctly; only the comparison does.
 10. A new `script` entry comes only from a template's or persona's
     `support.toWrite`, by [Adding an entry](#adding-an-entry); when the script
     exists, its status flips to `existing` and nothing else changes. A
-    `product`, `gateway` or `ocm` entry is added when a template or persona
-    first uses that command or method, checked as rule 9 says; a Gateway method
-    is checked against the methods the Gateway registers at the catalogue's
-    revision.
+    `product`, `gateway` or `ocm` entry is added, by the same section, when a
+    template or persona first uses that command or method; the area-template
+    derivation does this in its step 8.
 
 ## Background Protocol
 
@@ -133,8 +133,7 @@ kova catalogue check --product openclaw --templates <dir> --personas <dir> --jso
 
 `list` prints the entries. `check` reads every phase command and every builder
 and check in the given templates and personas, resolves each to an entry by
-its command head (for the generic Gateway caller, by the head and the
-`--method` value), and reports:
+its command head, and reports:
 
 - commands with no entry;
 - flags an entry does not list;
@@ -142,12 +141,21 @@ its command head (for the generic Gateway caller, by the head and the
 - placeholders outside the allowed four;
 - `toWrite` entries not yet implemented.
 
+The command head is the command's words up to its first flag, with
+placeholders kept as written: `node {kovaRoot}/support/verify/chat-send.mjs`
+for a script, `ocm @{env} -- plugins list` for an OpenClaw command run
+through OCM, `ocm service restart` for an OCM operation. For the generic
+Gateway caller the head also includes the `--method` value, so each Gateway
+method resolves to its own entry.
+
 `check` exits non-zero on any finding, `toWrite` entries included, so it shows
 what remains to be written. `kova verify plan` runs the same check on the plan
 it writes: it withholds phases that call a `toWrite` entry and refuses to write
 a plan with any other finding.
 
 ## Adding An Entry
+
+For a script:
 
 1. Take the script path and the "wraps" sentence from the template's or
    persona's `support.toWrite` line.
@@ -158,3 +166,14 @@ a plan with any other finding.
 4. Name the top-level fields its JSON prints.
 5. Add the entry with status `toWrite`. Implement the script, run
    `kova catalogue check`, and flip the status to `existing`.
+
+For an OpenClaw command (a `product: <command>` line in `support.toWrite`), a
+Gateway method or an OCM operation a template or persona uses for the first
+time:
+
+1. Check the exact command form and the flags phases use against OpenClaw's or
+   OCM's own `--help` at the catalogue's revision, or the Gateway method name
+   against the methods the Gateway registers there.
+2. Give the entry an id, its kind (`product`, `gateway` or `ocm`), its side,
+   its flags and the top-level fields of its JSON output when it has one.
+3. Add it with status `existing`; the command already exists.

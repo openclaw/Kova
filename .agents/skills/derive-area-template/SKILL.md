@@ -34,13 +34,15 @@ reorder steps, and write each step's output before starting the next.
 2. **Enumerate entry points and group them into operations** (Step 2). List
    every Gateway method, CLI command, UI action, channel route, scheduled job,
    agent or subagent call and plugin call; find calls from other areas by
-   searching the source, one `from <area>` entry point per file found; group
+   searching the source for the input file's `search` symbols and literals,
+   one `from <area>` entry point per file found; group
    them by what the user is doing. Output: `## Operations` and
    `## Excluded entry points`.
 3. **Enumerate standing conditions** (Step 3). From the documents only, never
-   from incidents; one condition per state or event with its own consequence;
-   mark each ambient or event with its source heading and persona trait.
-   Output: `## Conditions`.
+   from incidents; walk every document heading by heading; one condition per
+   state or event with its own consequence; mark each ambient or event with its
+   source heading and persona trait. Output: `## Conditions` and
+   `## Headings walked`.
 4. **Write the phases** (Step 4). Setup, then operations in the order a user's
    session goes, then events; consuming and destructive phases last. Commands
    only from the catalogue or `support.toWrite`; placeholders only `{env}`,
@@ -61,8 +63,9 @@ reorder steps, and write each step's output before starting the next.
    independently: two separate sessions or agents that share nothing but the
    input file, the revision and the page, each writing into its own working
    directory. Reconcile by the page's rules; reconciliation adds and never
-   drops what one run covered. Then add a `toWrite` catalogue entry for every
-   `support.toWrite` script the catalogue lacks. Output: `template.json`,
+   drops what one run covered. Then make every command the template uses known
+   to the catalogue: a `toWrite` entry per new script, a checked `existing`
+   entry per new OpenClaw command, Gateway method or OCM operation. Output: `template.json`,
    `derivation.md` with `## Reconciliation`, `coverage.md` and
    `comparison.md` in `verify/templates/<area>/`.
 

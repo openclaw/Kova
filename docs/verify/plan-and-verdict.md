@@ -18,14 +18,56 @@ The intent file is the input for the phases written for this change (see
 [Intent phases](#intent-phases)). The plan records both lines so the verdict
 shows what the change was checked against.
 
+## The Standard File
+
+`verify/standard.json` holds what every plan shares:
+
+```json
+{
+  "schema": "kova.verify.standard.v1",
+  "ignore": {
+    "documentation": ["docs/**", "**/*.md"],
+    "tests": ["**/*.test.ts", "test/**"]
+  },
+  "before": [{ "id": "use-target", "commands": ["..."], "checkpoint": ["logs"], "timeoutMs": 300000 }],
+  "after": [{ "id": "doctor", "commands": ["..."], "checkpoint": ["doctor"], "timeoutMs": 120000 }]
+}
+```
+
+`ignore` lists the paths a plan never selects phases for: documentation and
+test files. `before` and `after` are the standard phases, each in the template
+phase form without `kind`, `paths` or `requires`:
+
+- before: `use-target` switches the clone to the side's target runtime,
+  `start-gateway` starts the Gateway, `status-before` reads status;
+- after: `status-after` reads status, `doctor` runs Doctor, `stop-gateway`
+  stops the Gateway, `snapshot` snapshots the state.
+
+The persona is always built with an OpenClaw no newer than either side, so
+starting the Gateway on the side's runtime is an existing installation being
+updated: the first start migrates the persona's data, and the `start-gateway`
+checkpoint records it on both sides. A difference in that migration is a
+difference like any other. The explicit upgrade journeys are not standard
+phases; they belong to the `update` template and run only when the change
+touches that area.
+
+## Phase Identity
+
+Every phase in a plan has a qualified id, `<source>/<id>`: `standard/<id>` for
+a standard phase, `<area>/<id>` for a template phase and `intent/<id>` for an
+intent phase. Ids are unique within their source, so qualified ids are unique
+within a plan. Checkpoints, dependencies, `expects`, `withheld` and the verdict
+all name phases by qualified id.
+
 ## Selecting Phases
 
 `kova verify plan` selects phases by script, without judgement:
 
 1. Read the changed paths with `git diff --name-only <baseline> <change>` in
    `--repo`.
-2. Drop every path that matches an `ignore` glob in `verify/standard.json`.
-   Those globs name documentation and test files.
+2. Drop every path that matches an `ignore` glob. When nothing remains and no
+   intent phase is given, the plan is empty: `plan` writes it with no phases
+   and `run` refuses it, because there is nothing to compare.
 3. Match each remaining path against the `paths` of every area file in
    `verify/areas/`. A path no area owns is recorded in `unmapped` as
    `no template for <path>`.
@@ -33,14 +75,13 @@ shows what the change was checked against.
    match a changed path. A path that an area owns but no phase of its template
    lists is recorded in `unmapped` as `no phase for <path> in <area>`.
 5. Add the phases each selected phase depends on: a template's `setup` phases
-   whenever any other phase of that template is selected, and, repeatedly, any
-   phase that writes a `{run}` file a selected phase reads (see
-   [Phase order and dependencies](#phase-order-and-dependencies)).
-6. Add the phases from `--extra-phases`, if given. These are the phases written
-   from the intent file.
-7. When any template or intent phase is selected, add the standard phases
-   before and after everything else. Otherwise the plan is empty: there is
-   nothing to compare.
+   whenever any other phase of that template is selected, and, repeatedly, the
+   phase that writes each `{run}` file a selected phase reads (see
+   [Order and dependencies](#order-and-dependencies)).
+6. Add the phases from `--extra-phases`, if given.
+7. Add the standard phases. A plan for a change with any non-ignored path
+   always runs them, even when no template or intent phase is selected, so the
+   Gateway start, the migration and Doctor are compared for every change.
 8. Check every phase against the persona manifest. A phase is withheld when a
    trait in its `requires` is missing from the manifest, or when a
    `{persona:<trait>:<key>}` placeholder in its commands names a trait or key
@@ -50,47 +91,36 @@ shows what the change was checked against.
    status `toWrite` is withheld. Any other finding (a command with no entry, a
    flag the entry does not list, a placeholder outside the allowed four)
    refuses the whole plan, and nothing is written.
+10. Order the phases (see [Order and dependencies](#order-and-dependencies)).
 
 A withheld phase is listed in `withheld` with what is missing, and it does not
 run. A phase that depends on a withheld phase is withheld with it. The verdict
 repeats `unmapped` and `withheld`, so a reader sees what was not exercised.
 
-A documentation-only or test-only change selects no area and, without intent
-phases, yields an empty plan.
-
 Nobody edits a plan after it is written. A different plan is a different run.
 
-## Phase Order And Dependencies
+## Order And Dependencies
 
-A phase reads a file another phase wrote when a command names a `{run}/<name>`
-path that an earlier phase's command produced: through `--handle` or `--out`
-on the writer, and `--wait`, `--from` or another `--*-from` flag on the reader.
-The plan finds these pairs from the command text and pulls in the writer of
-every file a selected phase reads.
+A phase depends on another when one of its commands reads a `{run}/<name>`
+file the other phase writes: the writer names it with `--handle` or `--out`,
+the reader with `--wait`, `--from` or another `--*-from` flag. The plan finds
+these pairs from the command text.
 
-Within one template, phases keep the template's order. Across templates, the
-plan runs every `setup` phase first, then every `operation` phase, then every
-`event` phase; within each kind, templates are taken in order of area id and
-phases in template order. Intent phases run after the template phases and
-before the closing standard phases.
+The plan orders all selected phases so that every one of these holds:
 
-## Standard Phases
+1. the standard `before` phases come first and the standard `after` phases
+   last;
+2. phases of one template keep the template's order;
+3. a phase that writes a `{run}` file comes before every phase that reads it;
+4. a phase that calls a `destructive` catalogue entry with a
+   `{persona:<trait>:<key>}` value comes after every other phase that names
+   the same trait and key.
 
-The standard phases run on both sides around everything else. They are fixed
-in `verify/standard.json`, which holds the `before` phases, the `after` phases
-and the `ignore` globs, each phase in the template phase form:
-
-- before: switch the clone to the side's target runtime, start the Gateway,
-  read status;
-- after: read status, run Doctor, stop the Gateway, snapshot the state.
-
-The persona is always built with an older OpenClaw than either side, so
-starting the Gateway on the side's runtime is an existing installation being
-updated: the first start migrates the persona's data, and the `start-gateway`
-checkpoint records it on both sides. A difference in that migration is a
-difference like any other. The explicit upgrade journeys are not standard
-phases; they belong to the `update` template and run only when the change
-touches that area.
+Where these leave a choice, `setup` phases come before `operation` phases and
+those before `event` phases; then templates go in order of area id, with
+intent phases after every area; then each source keeps its own order. An
+intent phase takes the `kind` it declares. When the rules cannot all hold, the
+plan is refused and names the phases in conflict.
 
 ## Intent Phases
 
@@ -118,19 +148,23 @@ the same check as template commands. The file holds:
     }
   ],
   "expects": [
-    { "phase": "goal-search-complete", "signal": "responses" },
-    { "phase": "search-history", "signal": "responses" }
+    { "phase": "intent/goal-search-complete", "signal": "responses", "at": "0/result/indexing", "change": false },
+    { "phase": "sessions/search-history", "signal": "responses", "at": "0/result/indexing", "change": false }
   ]
 }
 ```
 
 `phases` are in the template phase form (see
 [Template form](derive-area-template.md#template-form)) plus `from`, set to
-`intent:goal` or `intent:protected`. `expects` names each difference the
-`Goal:` line predicts, as a phase and a signal; it may name a template phase as
-well as an intent phase. Nothing is ever expected from the `Protected:` line.
-`expects` is the only way a difference becomes `intended`; see
-[Classes](#classes).
+`intent:goal` or `intent:protected`.
+
+`expects` lists each difference the `Goal:` line predicts. An entry names a
+qualified phase, a signal, the item within that signal (`at`, in the form the
+[Rows](#rows) section gives for that signal) and the value the change side is
+predicted to show there (`change`). Nothing is ever expected from the
+`Protected:` line. `expects` is the only way a difference becomes `intended`,
+and only a difference at that exact item with that exact change-side value:
+any other difference in the same phase and signal is classed on its own.
 
 ## Plan Form
 
@@ -148,7 +182,7 @@ well as an intent phase. Nothing is ever expected from the `Protected:` line.
   "intent": {
     "goal": "<the Goal line>",
     "protected": "<the Protected line>",
-    "expects": [{ "phase": "goal-search-complete", "signal": "responses" }]
+    "expects": [{ "phase": "intent/goal-search-complete", "signal": "responses", "at": "0/result/indexing", "change": false }]
   },
   "persona": {
     "id": "openclaw-verification-user",
@@ -157,19 +191,20 @@ well as an intent phase. Nothing is ever expected from the `Protected:` line.
     "sha256": "<hash of that manifest>"
   },
   "phases": [
-    { "id": "use-target", "from": "standard" },
-    { "id": "start-gateway", "from": "standard" },
-    { "id": "status-before", "from": "standard" },
-    { "id": "setup-turn-in-flight", "from": "template:sessions" },
-    { "id": "search-history", "from": "template:sessions" },
-    { "id": "goal-search-complete", "from": "intent:goal" },
-    { "id": "status-after", "from": "standard" },
-    { "id": "doctor", "from": "standard" },
-    { "id": "stop-gateway", "from": "standard" },
-    { "id": "snapshot", "from": "standard" }
+    { "id": "standard/use-target", "from": "standard" },
+    { "id": "standard/start-gateway", "from": "standard" },
+    { "id": "standard/status-before", "from": "standard" },
+    { "id": "sessions/setup-turn-in-flight", "from": "template:sessions" },
+    { "id": "sessions/search-history", "from": "template:sessions" },
+    { "id": "intent/goal-search-complete", "from": "intent:goal" },
+    { "id": "standard/status-after", "from": "standard" },
+    { "id": "standard/doctor", "from": "standard" },
+    { "id": "standard/stop-gateway", "from": "standard" },
+    { "id": "standard/snapshot", "from": "standard" }
   ],
+  "phasesSha256": "<hash of the phases array>",
   "withheld": [
-    { "id": "delete-during-search", "from": "template:sessions", "missing": ["trait:sessions-thousands-near-cap"] }
+    { "id": "sessions/delete-during-search", "from": "template:sessions", "missing": ["trait:sessions-thousands-near-cap"] }
   ],
   "unmapped": [],
   "extraPhases": { "file": "<path given to --extra-phases>" }
@@ -178,49 +213,88 @@ well as an intent phase. Nothing is ever expected from the `Protected:` line.
 
 - `change.paths` lists every changed path, before the ignore globs are applied.
 - Each entry in `phases` carries the full phase as its source defines it, with
-  `{persona:…}` and `{kovaRoot}` already replaced; `{env}` and `{run}` are
-  replaced per side when the plan runs. The example shows only `id` and `from`.
+  its qualified id, in run order, with `{persona:…}` and `{kovaRoot}` already
+  replaced; `{env}` and `{run}` are replaced per clone when the plan runs. The
+  example shows only `id` and `from`, and assumes the catalogue has the
+  generic Gateway caller.
 - `from` records where every phase came from: `standard`, `template:<area>`,
   `intent:goal` or `intent:protected`.
+- `phasesSha256` identifies the phases to run, independently of the change,
+  so a later change that selects the same phases can reuse a cached baseline.
 - `withheld[].missing` names each missing thing as `trait:<trait>`,
-  `key:<trait>:<key>`, `entry:<catalogue entry id>` or `phase:<phase id>`.
+  `key:<trait>:<key>`, `entry:<catalogue entry id>` or `phase:<qualified id>`.
 - `intent.expects` is copied from the extra phases file.
-- `persona` records the manifest the plan was resolved against. `run` uses the
-  environment that manifest names and refuses a manifest whose hash differs;
-  the version keeps verdicts from different persona builds apart.
+- `persona` records the manifest the plan was resolved against; `run` refuses
+  a manifest whose hash differs.
 
 ## Running The Plan
 
-`kova verify run --plan plan.json --target-baseline <selector> --target-change
-<selector> --execute`:
+`kova verify run --plan plan.json --target-baseline local-build:<path>
+--target-change local-build:<path> --execute`:
 
-1. Reads the persona manifest the plan records, and reads the OpenClaw version
-   of each target. It refuses to start when either target is older than the
-   persona's runtime: running older code on newer data is a downgrade, and
-   every difference it showed would be spurious.
-2. Clones the persona's environment once for the baseline side, twice for the
-   change side, and twice more for the baseline noise runs (see
-   [Noise floor](#noise-floor)), unless the baseline and its noise runs are
-   already cached.
+1. Checks the targets. Each must be a `local-build:` checkout whose `HEAD` is
+   exactly the plan's commit for that side, with no uncommitted changes; any
+   other selector, commit or state is refused, so a verdict always describes
+   the commits it names. It reads each target's OpenClaw version and refuses a
+   target older than the persona's runtime: running older code on newer data
+   is a downgrade, and every difference it showed would be spurious.
+2. Checks the persona export's hash against the manifest, then creates every
+   clone by importing that export: one clone for the baseline side, two for
+   the change side, and two for the baseline noise runs (see
+   [Noise floor](#noise-floor)). The baseline and noise clones are skipped
+   when a cached baseline matches the baseline commit, the manifest hash and
+   `phasesSha256`.
 3. Runs `kova persona verify`'s checks on every clone, still on the persona's
    own runtime, so a drifted persona is caught before either target touches
    its data.
 4. Runs the phases on every clone in parallel, in plan order, resolving `{env}`
-   to the clone's environment and `{run}` to that clone's run directory. The
-   first standard phase switches the clone to its side's target, using Kova's
-   selectors (`local-build:<path>`, `npm:<version>`, `runtime:<name>`).
+   to the clone's environment and `{run}` to the clone's directory. The first
+   standard phase switches the clone to its side's target.
 5. Records a checkpoint after every phase on every clone.
 6. Reports a clone that fails before its first phase completes as
    `not started`.
-7. Caches the baseline side and its two noise runs, keyed by the baseline
-   target and the plan's hash, so the next change against the same baseline
-   and plan reuses them.
-8. Writes `run.json` into the change side's run directory: the plan's path and
-   hash, every run id, the targets, and every phase's outcome on every clone.
-   Then it destroys the clones.
+7. Caches the baseline clone's directory and the two noise directories under
+   the baseline commit, the manifest hash and `phasesSha256`.
+8. Writes `run.json` and destroys the clones.
 
-Like `kova run`, it is a dry run unless `--execute` is present: without it, it
-prints what it would do.
+Every run has an id and a directory in Kova's artifact store (under `~/.kova`
+by default), laid out as:
+
+```text
+verify/<run id>/
+  run.json
+  baseline/      the baseline clone's directory, or a link to the cached one
+  change-1/      the first change clone's directory
+  change-2/      the second change clone's directory
+  noise-1/       the first noise clone's directory, or a link to the cached one
+  noise-2/       the second
+  verdict.json   written by compare
+  issues.md      written by compare
+```
+
+`run.json`:
+
+```json
+{
+  "schema": "kova.verify.run.v1",
+  "id": "<run id>",
+  "plan": { "path": "<plan.json>", "sha256": "<hash>" },
+  "targets": {
+    "baseline": { "selector": "local-build:<path>", "commit": "<sha>", "version": "<OpenClaw version>" },
+    "change": { "selector": "local-build:<path>", "commit": "<sha>", "version": "<OpenClaw version>" }
+  },
+  "clones": {
+    "baseline": { "cached": false, "started": true, "phases": { "<qualified id>": "recorded | no checkpoint" } },
+    "change-1": { "started": true, "phases": {} },
+    "change-2": { "started": true, "phases": {} },
+    "noise-1": { "cached": false, "started": true, "phases": {} },
+    "noise-2": { "cached": false, "started": true, "phases": {} }
+  }
+}
+```
+
+Like Kova's existing `kova run`, `kova verify run` is a dry run unless
+`--execute` is present: without it, it prints what it would do.
 
 A command started with `--background` keeps running under later phases until a
 later command joins it with `--wait`; see the
@@ -239,13 +313,13 @@ installation running the plan.
 ## Checkpoint Form
 
 After every phase, on each clone, Kova records into
-`<run directory>/checkpoints/<phase-id>/`:
+`<clone directory>/checkpoints/<qualified id>/`:
 
 ```text
-commands.json   always: each command, its exit code, stderr and duration
-responses.json  with responses: the JSON each command printed on stdout
+commands.json   always: each command, its exit code, stdout when it is not JSON, stderr and duration
+responses.json  with responses: the JSON each command printed on stdout, by command index
 logs.txt        with logs: Gateway and agent log lines since the previous checkpoint
-timing.json     with timing: per-command and per-request durations
+timing.json     with timing: per-command and per-request durations and whether each reached its bound
 state/          with state:<path>: a snapshot of that path in the clone's OpenClaw state directory
 doctor.json     with doctor: Doctor's JSON output
 screen.png      with screen: the last browser screenshot, when a browser step ran
@@ -255,35 +329,54 @@ A phase's `checkpoint` list names what to record beyond `commands.json`:
 `responses`, `logs`, `timing`, `state:<path>` (for example `state:sessions`),
 `doctor`, `screen`.
 
+## Rows
+
+Compare splits every checkpoint into items and compares the sides item by
+item. A row is one phase, one signal and one item:
+
+| Signal | Item and its address (`at`) | Value |
+|---|---|---|
+| `checkpoint` | the phase itself (`at` is empty) | recorded or not |
+| `commands` | one command, by index (`0`, `1`, …) | its exit code, and its text stdout when not JSON |
+| `responses` | one JSON leaf, by command index and JSON pointer (`0/result/items/0/title`) | the leaf's value |
+| `logs` | one normalized log line, by its text | the number of times it appears |
+| `timing` | one command or request, by index | whether it reached its bound |
+| `state` | one file, by path; for a JSON file, one leaf by path and JSON pointer | content hash, or the leaf's value |
+| `doctor` | one Doctor finding, by its code or text | present or not |
+| `screen` | the screenshot (`at` is empty) | its content hash |
+
+Log lines are normalized before comparison: timestamps, durations, UUIDs and
+other hexadecimal ids, process ids and port numbers become fixed tokens.
+Absolute durations, RSS and CPU are recorded but never compared; timing only
+compares whether a bound was reached.
+
 ## Noise Floor
 
-Two runs of the same commit differ in timestamps, ids and ordering. To keep
-those out of the verdict, the baseline side is run twice more at the baseline
-target and cached with it. Every row that differs between those two runs
-belongs to the noise set, and compare drops it before classing. The verdict
-records how many rows the noise set removed.
+Two runs of the same commit still differ in some items, such as generated ids
+in responses or the order of independent log lines. The two noise runs repeat
+the baseline side at the baseline commit. Every item whose value differs
+between them belongs to the noise set, and compare drops rows for those items
+before classing. The noise set holds items, not whole signals: a new log line
+or a changed response field still counts when the same phase and signal also
+hold a noisy item. The verdict records how many rows the noise set removed.
 
 ## Classes
 
-`kova verify compare --run <change-run-id> --baseline <baseline-run-id>
-[--noise <id>,<id>] --json` pairs the checkpoints of each phase. `--noise`
-defaults to the noise runs cached with the baseline. Compare writes
-`verdict.json` and `issues.md` into the change run's directory and, with
-`--json`, prints the verdict. Run ids are in `run.json`, and compare reads the
-plan, including `intent.expects`, through it.
+`kova verify compare --run <run id> [--json]` reads `run.json`, the plan it
+names and the clone directories, and writes `verdict.json` and `issues.md` into
+the run's directory; with `--json` it also prints the verdict.
 
-Compare lists rows by phase and signal (`checkpoint`, `commands`, `responses`,
-`logs`, `timing`, `state`, `doctor`, `screen`). A row is one of two things:
+Compare builds rows for the baseline clone against each change clone. A row is
+one of two things:
 
-- a **difference**: the baseline side and the change side recorded something
-  different for the same phase and signal. A phase with a checkpoint on one
-  side only is a difference in the `checkpoint` signal. Timing differs when a
-  command or request reaches its bound on one side and not on the other;
-  absolute durations are recorded but never measured against a threshold, and
-  RSS and CPU are not part of the verdict.
-- a **shared failure**: both sides recorded the same failure in the same phase.
-  A failure is a command that exited non-zero or reached its bound, an error
-  or warning line in the logs, or a Doctor finding.
+- a **difference**: the baseline and the change clone recorded different values
+  for the same item. A phase recorded on one side only is a difference in the
+  `checkpoint` signal.
+- a **shared failure**: both sides recorded the same failure in the same
+  phase. A failure is a command that exited non-zero or reached its bound, an
+  error or warning log line, or a Doctor finding.
+
+A phase recorded on neither the baseline nor a change clone is **incomplete**.
 
 Each row gets exactly one class. The table is read top to bottom and the first
 row that matches wins:
@@ -292,17 +385,19 @@ row that matches wins:
 |---|---|---|
 | `not-caused` | A shared failure | Listed in `issues`; never counts against the change |
 | `fixed` | A difference where only the baseline side failed: the baseline recorded a failure the change side did not, or has no checkpoint for a phase the change side recorded | None |
-| `intended` | A difference whose phase and signal the plan's `intent.expects` lists | None; `explainedBy` is `intent:goal` |
-| `flaky` | Any other difference that only one of the two change runs shows | Verdict `unresolved` |
+| `intended` | A difference at an item `intent.expects` names, where the change side shows the predicted value | None; `explainedBy` is `intent:goal` |
+| `flaky` | Any other difference that only one of the two change clones shows | Verdict `unresolved` |
 | `break` | Any other difference | Verdict `breaks` |
 
-Only `intent.expects` makes a difference intended. Where a phase came from does
-not: a crash, an error or a timeout in a phase written from the `Goal:` line is
-still a difference in the `commands`, `logs` or `timing` signal, and it is
-classed `flaky` or `break` unless `expects` names that phase and signal.
+Where a phase came from never makes a difference intended: a crash, an error or
+a timeout in a phase written from the `Goal:` line is a difference in the
+`commands`, `logs` or `timing` signal, and it is classed `flaky` or `break`
+unless `expects` predicts that exact item and value.
 
 The verdict is `breaks` when any row is a `break`; otherwise `unresolved` when
-any row is `flaky` or any clone did not start; otherwise `good-to-go`.
+any row is `flaky`, any clone did not start, or any phase is incomplete;
+otherwise `good-to-go`. `good-to-go` speaks only for the phases that ran; the
+verdict's `unmapped` and `withheld` lists say what did not.
 
 ## Verdict Form
 
@@ -315,18 +410,19 @@ any row is `flaky` or any clone did not start; otherwise `good-to-go`.
   "persona": { "id": "openclaw-verification-user", "version": "<manifest version>" },
   "verdict": "good-to-go | breaks | unresolved",
   "differences": [
-    { "phase": "search-history", "signal": "timing", "baseline": "1.2s", "change": "bound reached at 60s", "class": "break", "explainedBy": null },
-    { "phase": "goal-search-complete", "signal": "responses", "baseline": "indexing", "change": "complete", "class": "intended", "explainedBy": "intent:goal" },
-    { "phase": "doctor", "signal": "doctor", "baseline": "warning X", "change": "warning X", "class": "not-caused", "explainedBy": null }
+    { "phase": "sessions/search-history", "signal": "timing", "at": "0", "baseline": "within bound", "change": "bound reached", "class": "break", "explainedBy": null },
+    { "phase": "intent/goal-search-complete", "signal": "responses", "at": "0/result/indexing", "baseline": true, "change": false, "class": "intended", "explainedBy": "intent:goal" },
+    { "phase": "standard/doctor", "signal": "doctor", "at": "<finding code>", "baseline": "present", "change": "present", "class": "not-caused", "explainedBy": null }
   ],
   "issues": [
-    { "phase": "doctor", "signal": "doctor", "summary": "warning X, recorded on both sides" }
+    { "phase": "standard/doctor", "signal": "doctor", "at": "<finding code>", "summary": "<the finding>, recorded on both sides" }
   ],
-  "notStarted": [],
+  "notStarted": ["<clone name>"],
+  "incomplete": ["<qualified id>"],
   "withheld": [],
   "unmapped": [],
   "noiseExcluded": 3,
-  "runs": { "baseline": "<run id>", "change": ["<run id>", "<run id>"], "noise": ["<run id>", "<run id>"] }
+  "run": "<run id>"
 }
 ```
 

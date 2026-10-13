@@ -73,29 +73,28 @@ change + baseline  →  plan (areas, templates, intent)  →  run on persona clo
 kova verify plan    --repo <checkout> --baseline <sha> --change <sha> \
                     --intent intent.txt --persona <manifest> \
                     [--extra-phases <file>] --out plan.json
-kova verify run     --plan plan.json \
-                    --target-baseline <selector> --target-change <selector> --execute
-kova verify compare --run <change-run-id> --baseline <baseline-run-id> \
-                    [--noise <id>,<id>] --json
+kova verify run     --plan plan.json --target-baseline local-build:<path> \
+                    --target-change local-build:<path> --execute
+kova verify compare --run <run-id> --json
 ```
 
 - `plan` is pure file assembly. It reads the changed paths from the checkout,
   matches them to areas and template phases, adds the phases those depend on,
   the phases in `--extra-phases` and the standard phases, withholds phases the
   persona cannot support or whose commands are not written yet, records
-  changed paths no phase covers, and refuses to write a plan containing any
-  other command the catalogue check rejects. It never calls a model; phases
-  written from the intent file arrive as a file.
-- `run` clones the persona for each side, switches each clone to its side's
-  target, runs the plan on every clone in parallel and records a checkpoint
-  after every phase. The change side runs twice, so a difference that does not
-  repeat is told apart from one that does; the baseline side runs three
-  times, so differences between its own runs are dropped as noise, and those
-  baseline runs are cached. Targets use Kova's selectors
-  (`local-build:<path>`, `npm:<version>`, `runtime:<name>`). Like Kova's
-  existing `kova run`, it is a dry run unless `--execute` is present, and it
-  destroys its clones afterwards.
-- `compare` reads the runs' checkpoints, drops the noise, classes each
+  changed paths no phase covers, orders the phases, and refuses to write a
+  plan containing any other command the catalogue check rejects. It never
+  calls a model; phases written from the intent file arrive as a file.
+- `run` checks that each target is a local build of exactly the plan's commit
+  for its side, creates clones from the persona's export, switches each clone
+  to its side's target, runs the plan on every clone in parallel and records a
+  checkpoint after every phase. The change side runs twice, so a difference
+  that does not repeat is told apart from one that does; the baseline side
+  runs three times, so items that differ between its own runs are dropped as
+  noise, and those baseline runs are cached. Like Kova's existing `kova run`,
+  it is a dry run unless `--execute` is present, and it destroys its clones
+  afterwards.
+- `compare` reads the run's checkpoints, drops the noise, classes each
   remaining row and writes `verdict.json` in the `kova.verify.v1` form and
   `issues.md`.
 
@@ -113,7 +112,7 @@ kova catalogue check --product openclaw --templates <dir> --personas <dir> --jso
 
 | Path | What it holds | Described in |
 |---|---|---|
-| `verify/standard.json` | The standard phases and the ignored path globs | [Plan and verdict](plan-and-verdict.md#standard-phases) |
+| `verify/standard.json` | The standard phases and the ignored path globs | [Plan and verdict](plan-and-verdict.md#the-standard-file) |
 | `verify/areas/<area>.json` | An area's owner paths, documents and bound decisions | [Deriving an area template](derive-area-template.md#area-input-file-form) |
 | `verify/templates/<area>/template.json` | The area's phases | [Deriving an area template](derive-area-template.md#template-form) |
 | `verify/templates/<area>/derivation.md`, `coverage.md`, `comparison.md` | The record of how the template was derived and what it covers | [Deriving an area template](derive-area-template.md#output) |
@@ -122,16 +121,18 @@ kova catalogue check --product openclaw --templates <dir> --personas <dir> --jso
 | `support/verify/*.mjs`, `support/persona/*.mjs` | Catalogue scripts that wrap one product method or flow each | [Command catalogue](catalogue.md) |
 
 A persona's exported environment is treated as secret-bearing. It lives
-outside the repository and is never committed.
+outside the repository and is never committed. Verification runs, their
+checkpoints and verdicts live in Kova's artifact store, under `~/.kova` by
+default.
 
 ## What a verification proves and what it does not
 
-A verdict is relative. `good-to-go` means both sides ran and no phase recorded
-a difference the change caused that the intent file does not expect. It does
-not mean the area is free of problems: failures present on both sides are
-issues, reported separately. It says nothing about changed paths no phase
-covers or phases the persona could not support; the plan and the verdict list
-both, so a reader sees what was not exercised.
+A verdict is relative. `good-to-go` means every clone started, every phase was
+recorded, and no phase showed a difference the change caused that the intent
+file does not predict. It does not mean the area is free of problems: failures
+present on both sides are issues, reported separately. It says nothing about
+changed paths no phase covers or phases the persona could not support; the
+plan and the verdict list both, so a reader sees what was not exercised.
 
 A verdict is comparable only with verdicts made from the same persona manifest
 version. Rebuilding the persona starts a new series.
