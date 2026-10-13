@@ -8752,6 +8752,48 @@
       "background": false,
       "status": "existing",
       "creates": []
+    },
+    {
+      "id": "ocm-upgrade",
+      "kind": "ocm",
+      "wraps": "ocm upgrade",
+      "command": "ocm upgrade {env} --runtime <name> --json",
+      "flags": {
+        "--runtime": {
+          "description": "installed target runtime name",
+          "value": "required"
+        },
+        "--json": {
+          "description": "JSON output",
+          "value": "none"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "destructive",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "ocm-env-snapshot-create",
+      "kind": "ocm",
+      "wraps": "ocm env snapshot create",
+      "command": "ocm env snapshot create {env} --label <name> --json",
+      "flags": {
+        "--label": {
+          "description": "snapshot label",
+          "value": "required"
+        },
+        "--json": {
+          "description": "JSON output",
+          "value": "none"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "existing"
     }
   ]
 }

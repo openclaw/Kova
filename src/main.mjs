@@ -51,6 +51,12 @@ export async function main(argv) {
     return;
   }
 
+  if (command === "verify") {
+    const { runVerifyCommand } = await import("./commands/verify.mjs");
+    await runVerifyCommand(flags);
+    return;
+  }
+
   if (command === "catalogue") {
     const { runCatalogueCommand } = await import("./commands/catalogue.mjs");
     await runCatalogueCommand(flags);

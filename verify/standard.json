@@ -1,0 +1,117 @@
+{
+  "schema": "kova.verify.standard.v1",
+  "ignore": {
+    "documentation": [
+      "docs/**",
+      "**/*.md",
+      "!docs/reference/templates/**",
+      "!skills/**",
+      "!custodian-skills/**",
+      "!extensions/*/skills/**"
+    ],
+    "tests": [
+      "**/*.test.ts",
+      "test/**"
+    ]
+  },
+  "compressed": [
+    {
+      "path": "agents/*/agent/openclaw-agent.sqlite",
+      "table": "transcript_events",
+      "column": "event_zstd",
+      "codec": "zstd"
+    }
+  ],
+  "stateIds": [
+    {
+      "path": "agents/*/agent/openclaw-agent.sqlite",
+      "table": "session_windows",
+      "column": "session_id",
+      "recordKey": "session_key",
+      "order": "created_at"
+    }
+  ],
+  "before": [
+    {
+      "id": "use-target",
+      "commands": [
+        "ocm upgrade {env} --runtime {target} --json"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs"
+      ],
+      "timeoutMs": 300000
+    },
+    {
+      "id": "start-gateway",
+      "commands": [
+        "ocm service start {env} --json"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "state:agents"
+      ],
+      "timeoutMs": 300000
+    },
+    {
+      "id": "status-before",
+      "commands": [
+        "ocm @{env} -- status --json"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs"
+      ],
+      "timeoutMs": 120000
+    }
+  ],
+  "after": [
+    {
+      "id": "status-after",
+      "commands": [
+        "ocm @{env} -- status --json"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs"
+      ],
+      "timeoutMs": 120000
+    },
+    {
+      "id": "doctor",
+      "commands": [
+        "ocm @{env} -- doctor --json"
+      ],
+      "checkpoint": [
+        "doctor",
+        "logs"
+      ],
+      "timeoutMs": 120000
+    },
+    {
+      "id": "stop-gateway",
+      "commands": [
+        "ocm service stop {env} --json"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs"
+      ],
+      "timeoutMs": 120000
+    },
+    {
+      "id": "snapshot",
+      "commands": [
+        "ocm env snapshot create {env} --label verify-final --json"
+      ],
+      "checkpoint": [
+        "responses",
+        "state:agents",
+        "state:openclaw.json"
+      ],
+      "timeoutMs": 300000
+    }
+  ]
+}

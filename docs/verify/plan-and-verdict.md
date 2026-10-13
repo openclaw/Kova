@@ -50,8 +50,8 @@ generates without a command reporting them, and `compressed` the database
 columns OpenClaw stores compressed (see [Rows](#rows)); the example's table
 and column names are illustrative. `before` and `after` are the standard
 phases, each in the template phase form without `kind`, `paths` or
-`requires`; they alone may use the `{target}` placeholder, the side's target
-selector:
+`requires`; they alone may use the `{target}` placeholder, the installed OCM
+runtime name prepared for the side's target selector:
 
 - before: `use-target` switches the clone to the side's target runtime,
   `start-gateway` starts the Gateway, `status-before` reads status;
@@ -78,8 +78,8 @@ all name phases by qualified id.
 
 `kova verify plan` selects phases by script, without judgement:
 
-1. Read the changed paths with `git diff --name-only <baseline> <change>` in
-   `--repo`.
+1. Read the changed paths with `git diff --name-only --no-renames -z <baseline> <change>` in
+   `--repo`. Renames contribute both the removed and added paths.
 2. Set aside every path that matches an `ignore` glob; the plan lists them in
    `ignored`, and the verdict repeats the list. When nothing remains and no
    intent phase is given, the plan is empty: `plan` writes it with no phases
@@ -128,10 +128,10 @@ A phase depends on another when one of its commands reads a `{run}/<name>`
 file the other phase writes: the writer names it with `--handle` or `--out`,
 the reader with `--wait`, `--from` or another `--*-from` flag. The plan finds
 these pairs from the command text. A `{run}` file name may be written by the
-phases of only one source (one template, the intent phases or the standard
-phases); when two sources write the same name, the plan is refused and names
-them, so a reader of a file always joins the one operation that wrote it,
-whichever source that is.
+commands of only one phase; when two phases write the same name, the plan is
+refused and names them, even within the same template. A reader therefore
+joins one producing phase, whichever source it comes from. A phase may read
+a file it wrote earlier in its own command list.
 
 The plan orders all selected phases so that every one of these holds:
 

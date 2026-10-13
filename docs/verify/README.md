@@ -13,9 +13,9 @@ asks a narrower, relative question and does not change any of that. It reuses
 Kova's target selectors, local builds, OCM lifecycle, evidence collection and
 report store; it adds no threshold and does not feed the release gate.
 
-> Status: `kova verify` and `kova persona` are not available
-> yet. These pages define the forms and procedures the implementation follows.
-> Each change that builds a command updates the page that describes its form.
+> Status: `kova verify plan` and the command catalogue are available.
+> `kova verify run`, `kova verify compare` and `kova persona` are not available
+> yet. Their pages define the forms and procedures the implementation follows.
 
 ## The model
 
