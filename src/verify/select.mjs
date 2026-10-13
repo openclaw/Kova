@@ -91,14 +91,20 @@ export function selectPhases({ paths, standard, templates, areas, extraPhases = 
     writers.get(file).add(record);
   }
   const pending = [...selected];
+  const include = (record) => {
+    if (!selected.has(record)) { selected.add(record); pending.push(record); }
+  };
   const depend = (reader, writer) => {
     reader.deps.add(writer);
-    if (!selected.has(writer)) { selected.add(writer); pending.push(writer); }
+    include(writer);
   };
   for (let i = 0; i < pending.length; i += 1) {
     const record = pending[i];
-    if (record.group === "template" && record.phase.kind !== "setup") {
-      for (const setup of records) if (setup.source === record.source && setup.phase.kind === "setup") depend(record, setup);
+    if (record.group === "template") {
+      for (const setup of records) if (setup !== record && setup.source === record.source && setup.phase.kind === "setup") {
+        include(setup);
+        if (record.phase.kind !== "setup") record.deps.add(setup);
+      }
     }
     for (const file of new Set([...record.reads, ...record.writes])) {
       const candidates = [...(writers.get(file) ?? [])];
@@ -110,14 +116,18 @@ export function selectPhases({ paths, standard, templates, areas, extraPhases = 
       }
     }
   }
-  const commands = [...selected].flatMap((record) => record.phase.commands.map((command, i) => ({ command, source: record.phase.id, at: `/commands/${i}`, standard: record.source === "standard" })));
-  const findings = checkCatalogueCommands(catalogue, commands);
-  const invalid = findings.filter((finding) => finding.code !== "toWrite");
-  if (invalid.length) {
-    const error = new Error(`catalogue check refused plan: ${invalid.map((finding) => `${finding.source ?? "catalogue"}${finding.at ?? ""}: ${finding.code}: ${finding.message}`).join("; ")}`);
-    error.findings = invalid;
-    throw error;
-  }
+  const checkCommands = () => {
+    const commands = [...selected].flatMap((record) => record.phase.commands.map((command, i) => ({ command, source: record.phase.id, at: `/commands/${i}`, standard: record.source === "standard" })));
+    const findings = checkCatalogueCommands(catalogue, commands);
+    const invalid = findings.filter((finding) => finding.code !== "toWrite");
+    if (invalid.length) {
+      const error = new Error(`catalogue check refused plan: ${invalid.map((finding) => `${finding.source ?? "catalogue"}${finding.at ?? ""}: ${finding.code}: ${finding.message}`).join("; ")}`);
+      error.findings = invalid;
+      throw error;
+    }
+    return findings;
+  };
+  const findings = checkCommands();
   for (const finding of findings) byId.get(finding.source).missing.add(`entry:${finding.entryId}`);
   for (const record of selected) {
     for (const trait of record.phase.requires ?? []) if (!own(persona.traits, trait)) record.missing.add(`trait:${trait}`);
@@ -129,6 +139,8 @@ export function selectPhases({ paths, standard, templates, areas, extraPhases = 
       return key === "env" ? placeholder : value;
     }));
   }
+  // Safe key characters can still change argument interpretation (for example a leading dash).
+  checkCommands();
   const dependents = new Map([...selected].map((record) => [record, new Set()]));
   const selectedSetups = [...selected].filter((record) => record.group === "template" && record.phase.kind === "setup");
   for (const record of selected) {
@@ -151,7 +163,7 @@ export function selectPhases({ paths, standard, templates, areas, extraPhases = 
     for (const other of active) {
       if (record.group === "before" && other.group !== "before") precedes(record, other);
       if (record.group === "after" && other.group !== "after") precedes(other, record);
-      if (record.source === other.source && record.group === other.group && record.index < other.index) precedes(record, other);
+      if (record.group !== "intent" && record.source === other.source && record.group === other.group && record.index < other.index) precedes(record, other);
       for (const trait of record.destroys) if (other.traits.has(trait) && !other.destroys.has(trait)) precedes(other, record);
     }
   }

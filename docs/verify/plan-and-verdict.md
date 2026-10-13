@@ -107,7 +107,8 @@ all name phases by qualified id.
    the manifest lacks. Other placeholders of that form are resolved to their
    values, except environment keys, which remain placeholders until `run`
    creates each clone's copy. The catalogue check uses the command as written
-   before this resolution.
+   before this resolution. The resolved commands are checked again so a key
+   value cannot introduce an unlisted option or remove a required operand.
 9. Run the catalogue check on every command. A phase that calls an entry with
    status `toWrite` is withheld. Any other finding (a command with no entry, a
    flag the entry does not list, a placeholder that is not allowed there)

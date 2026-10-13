@@ -6,7 +6,7 @@ import { join, resolve } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { matchesPaths, selectPhases } from "../src/verify/select.mjs";
-import { canonicalJSON, loadPlanInputs, loadTemplates, sha256, validateTemplate } from "../src/verify/plan.mjs";
+import { canonicalJSON, loadPlanInputs, sha256, validateTemplate } from "../src/verify/plan.mjs";
 import { checkCatalogueCommands } from "../src/catalogue.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -51,6 +51,13 @@ test("dependencies close across sources and setup, without selecting unrelated s
   assert.deepEqual(ids(result), ["standard/start", "zeta/prepare", "intent/parent", "zeta/producer", "alpha/consumer", "standard/stop"]);
 });
 
+test("setup-only selection includes every sibling setup and its missing traits", () => {
+  const result = select({ templates: [template("sessions", [phase("first", { kind: "setup" }), phase("second", { kind: "setup", paths: [], requires: ["missing"] })])] });
+  assert.deepEqual(ids(result), ["standard/start", "standard/stop"]);
+  assert.deepEqual(result.withheld.map((item) => item.id), ["sessions/first", "sessions/second"]);
+  assert.ok(result.withheld[0].missing.includes("phase:sessions/second"));
+});
+
 test("traits, keys and toWrite entries are withheld transitively, including setup peers", () => {
   const result = select({ templates: [template("sessions", [
     phase("prepare", { kind: "setup", requires: ["held-turn"], paths: [] }),
@@ -74,6 +81,13 @@ test("persona keys resolve only after checking written commands and environment 
   assert.match(result.phases[1].commands[0], /\{persona:second:env\}/);
   assert.match(source.phases[0].commands[0], /\{persona:history:key\}/);
   assert.throws(() => select({ templates: [source], persona: { traits: { history: { keys: { key: "bad' value" } }, second: { keys: { env: "safe" } } } } }), /unsafe persona key/);
+});
+
+test("substituted positional values must still pass the catalogue", () => {
+  const command = "ocm @{env} -- sessions archive";
+  const entry = { ...entries[0], id: "archive", kind: "product", wraps: "sessions archive", command: `${command} <key> --json`, flags: { "--json": flag("none") }, side: "destructive" };
+  assert.throws(() => select({ catalogue: { ...catalogue, entries: [...entries, entry] }, persona: { traits: { history: { keys: { key: "--not-a-flag" } } } }, templates: [template("sessions", [phase("archive", { commands: [`${command} {persona:history:key} --json`] })])] }), /catalogue check refused plan.*unlisted-/);
+  assert.throws(() => select({ persona: { traits: { history: { keys: { key: "1..3" } } } }, templates: [template("sessions", [phase("expand", { commands: [`${read} --value {{persona:history:key}}`] })])] }), /catalogue check refused plan.*shell/);
 });
 
 test("catalogue errors refuse even a phase already missing its persona", () => {
@@ -100,6 +114,8 @@ test("ordering honors destruction, source order and intent kinds and refuses cyc
   assert.throws(() => select({ persona, templates: [template("sessions", [phase("delete", { commands: [`${remove} --value {persona:history:key}`] }), phase("read", { requires: ["history"] })])] }), /phase order conflicts.*sessions\/delete.*sessions\/read/);
   const kinds = select({ templates: [template("zeta", [phase("event", { kind: "event" })])], extraPhases: { phases: [phase("extra", { from: "intent:protected", kind: "setup", paths: [] })] } });
   assert.deepEqual(ids(kinds), ["standard/start", "intent/extra", "zeta/event", "standard/stop"]);
+  const intent = select({ persona, extraPhases: { phases: [phase("delete", { from: "intent:goal", commands: [`${remove} --value {persona:history:key}`] }), phase("reader", { from: "intent:protected", requires: ["history"] }), phase("prepare", { from: "intent:protected", kind: "setup" })] } });
+  assert.deepEqual(ids(intent), ["standard/start", "intent/prepare", "intent/reader", "intent/delete", "standard/stop"]);
 });
 
 test("loader reads the shipped sessions template and standard commands pass the catalogue", async () => {

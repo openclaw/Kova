@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { readFile, readdir, mkdir, writeFile, rename, rm } from "node:fs/promises";
+import { readFile, readdir, mkdir, open, rename, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { repoRoot } from "../paths.mjs";
 import { loadCatalogue } from "../catalogue.mjs";
@@ -146,12 +146,15 @@ export async function writePlan(plan, file) {
   const destination = resolve(file);
   await mkdir(dirname(destination), { recursive: true });
   const temporary = `${destination}.${randomUUID()}.tmp`;
-  let created = false;
+  const handle = await open(temporary, "wx");
   try {
-    await writeFile(temporary, `${JSON.stringify(plan, null, 2)}\n`, { flag: "wx" });
-    created = true;
+    try {
+      await handle.writeFile(`${JSON.stringify(plan, null, 2)}\n`);
+    } finally {
+      await handle.close();
+    }
     await rename(temporary, destination);
   } finally {
-    if (created) await rm(temporary, { force: true });
+    await rm(temporary, { force: true });
   }
 }
