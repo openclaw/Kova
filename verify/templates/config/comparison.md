@@ -26,16 +26,69 @@ The remaining round 4 difference is granularity inside sections both runs read a
 
 ## Every round
 
-Every round read the same OpenClaw revision. Both runs of a round read the same input file and the same procedure revision; each change was made before the next round started.
+Every round used OpenClaw 7e80556f503d26ddde64e274bfb50cbbec7830f5. Both runs of a round read the same input file and procedure revision. The entry-point and condition-heading acceptance below applies the final criterion to all four recorded rounds. Individual enumerated counts are retained separately from counts credited after reconciliation.
 
-| Round | Procedure | Input file | Entry points found (run 1, run 2) | Conditions found (run 1, run 2) | Condition headings found (run 1, run 2) | Result |
-|---|---|---|---|---|---|---|
-| 1 | revision 1 | bound named the neighbouring areas only | 355/438 (81.1%), 306/438 (69.9%) | estimated about 70% and 93% of about 56 | 32/37 (86.5%), 28/37 (75.7%) | under nine tenths |
-| 2 | revision 2 | bound gained counting rules (Gateway methods, CLI commands, tool actions, a search for code from other areas, redaction sinks, Control UI controls) | 290/294 (98.6%), 280/294 (95.2%) | run 1 not computed; run 2 at most 76.5% (the union was at least run 1's 183) | 55/60 (91.7%), 53/60 (88.3%) | under nine tenths |
-| 3 | revision 3 | search list moved into `search` | 276/279 (98.9%), 274/279 (98.2%) | 93.3%, 82.8% of 209 | 66/68 (97.1%), 58/68 (85.3%) | under nine tenths |
-| 4 | revision 4 | bound names, per document, the sections that are this area's | 284/291 (97.6%), 287/291 (98.6%) | 92.81%, 90.20% of 459 | 62/63 (98.4%), 62/63 (98.4%) | accepted |
+## Round 1
 
-The round 1 and round 3 entry-point unions were recounted from their preserved enumerations. Names and source paths identify entries; aliases and different labels for the same control are matched. Explicitly combined controls count at the finer granularity: for example text and number fields, Form and Raw switches, quiet-hours start and end, and the Settings shortcut and menu item. A generic group that does not name its controls stays a separate entry. This is why a run's credited count can exceed its original row count. Round 2 keeps its recorded reconciliation, including the removal of six search hits that were not calls. The earlier condition-row estimates remain estimates; they are not the heading-based acceptance measure. Rounds 1 and 2 had no heading walk; their condition headings are recovered from the headings each condition cites as its source. Multiple named headings in one citation are counted separately; page-title introductions and shortened versions of the same FAQ question are matched. Quoted values inside a heading, such as "lan" and "tailnet", do not count as headings. These recounts replace the earlier 39- and 67-heading estimates. Rounds 3 and 4 count them from `## Headings walked`.
+Union: 438 entry points, 37 condition headings; the individual-condition union was estimated at about 56 and was not fully reconciled.
+
+| Run | Procedure revision | Entry points found | Condition headings found | Individual conditions found |
+|---|---|---|---|---|
+| 1 | revision 1 | 355/438 (81.1%) | 32/37 (86.5%) | 39 enumerated; credited share estimated at about 70% |
+| 2 | revision 1 | 306/438 (69.9%) | 28/37 (75.7%) | 52 enumerated; credited share estimated at about 93% |
+
+Remaining differences: the runs counted cross-area calls, native callers, sidebar controls and excluded shell surfaces differently; they also grouped conditions differently. The input bound initially named only the neighbouring areas.
+Acceptance: historical shortfall on both required shares; superseded by later rounds.
+Rerun cap: the derivation was later capped at round 4; not reached here.
+Known shortfall: both runs were below nine tenths on entry points and condition headings, for the causes above.
+
+## Round 2
+
+Union: 294 entry points, 60 condition headings; the individual-condition union was not fully reconciled and was at least 183.
+
+| Run | Procedure revision | Entry points found | Condition headings found | Individual conditions found |
+|---|---|---|---|---|
+| 1 | revision 2 | 290/294 (98.6%) | 55/60 (91.7%) | 183 enumerated; complete credited share not computed |
+| 2 | revision 2 | 280/294 (95.2%) | 53/60 (88.3%) | 140 enumerated; credited share at most 140/183 (76.5%) |
+
+Remaining differences: the revised counting rules aligned most entry points, but the runs selected different statements and headings from the same documents. Six search hits that were not calls were removed from run 1's entry census.
+Acceptance: historical shortfall for run 2's heading share; superseded by later rounds.
+Rerun cap: the derivation was later capped at round 4; not reached here.
+Known shortfall: run 2 found 53/60 condition headings (88.3%).
+
+## Round 3
+
+Union: 279 entry points, 68 condition headings, 209 individual conditions in the recorded reconciliation.
+
+| Run | Procedure revision | Entry points found | Condition headings found | Individual conditions found |
+|---|---|---|---|---|
+| 1 | revision 3 | 276/279 (98.9%) | 66/68 (97.1%) | 195 enumerated; 195/209 credited (93.3%) |
+| 2 | revision 3 | 274/279 (98.2%) | 58/68 (85.3%) | 158 enumerated; 173/209 credited (82.8%) after splitting explicitly combined statements |
+
+Remaining differences: five caller files were found only by run 1, and three controls only by run 2. Most condition differences came from document sections whose owning area the input bound did not name; the next input named those sections explicitly.
+Acceptance: historical shortfall for run 2's heading share; superseded by round 4.
+Rerun cap: four rounds; the cap had not yet been reached.
+Known shortfall: run 2 found 58/68 condition headings (85.3%).
+
+## Round 4
+
+Union: 291 entry points, 63 condition headings, 459 reconciled individual conditions.
+
+| Run | Procedure revision | Entry points found | Condition headings found | Individual conditions found |
+|---|---|---|---|---|
+| 1 | revision 4 | 284/291 (97.6%) | 62/63 (98.4%) | 428 enumerated; 426/459 credited (92.81%) after reconciliation |
+| 2 | revision 4 | 287/291 (98.6%) | 62/63 (98.4%) | 406 enumerated; 414/459 credited (90.20%) after reconciliation |
+
+Remaining differences: the entry controls, two differently interpreted headings, retired-key detail and Settings statements named in the counting explanation above. Composite and duplicate condition identities are resolved in derivation.md.
+Acceptance: both runs reach nine tenths on entry points and condition headings.
+Rerun cap: four rounds; reached. No further derivation was run.
+Known shortfall: none on the acceptance shares. The remaining input-bound and execution gaps are disclosed below and in coverage.md.
+
+## Historical counting notes
+
+The round 1 and round 3 entry-point unions were recounted from the preserved enumerations. Names and source paths identify entries; aliases and different labels for the same control are matched. Explicitly combined controls count at the finer granularity, such as text and number fields, Form and Raw switches, quiet-hours start and end, and the Settings shortcut and menu item. A generic group that does not name its controls stays a separate entry. Credited counts can therefore exceed enumerated rows. Round 2 retains its recorded entry reconciliation.
+
+Rounds 1 and 2 had no heading walk; their heading shares are recovered from condition citations, splitting multiple named headings and matching introduction and shortened FAQ labels. Quoted values inside a heading, such as "lan" and "tailnet", are not extra headings. These recounts replace the earlier 39- and 67-heading estimates. Rounds 3 and 4 use `## Headings walked`. Earlier individual-condition estimates remain explicitly qualified and are not the acceptance measure.
 
 What each change fixed:
 
