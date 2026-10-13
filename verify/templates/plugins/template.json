@@ -94,7 +94,7 @@
     "existing": [],
     "toWrite": [
       "support/verify/gateway-call.mjs  (one Gateway method by name, optionally as another operator profile; --env --method --params --timeout --out --background --handle --wait --merge-from --session-from --after-ms --profile; --merge-from merges a plugins.inspect result's reviewToken as acknowledgeCapabilities and a plugin.approval.request result id as id; a plugin.approval.list result requires --approval-session-key --approval-plugin --approval-tool and selects exactly one request matching all three values, exiting 2 on zero or multiple matches; --await-pending polls plugin.approval.list for exactly one still-pending request matching --approval-session-key --approval-plugin --approval-tool, records its id and state to --out, and exits 2 on timeout or ambiguity)",
-      "support/verify/control-ui.mjs  (Control UI flows in a headless browser: incognito-thread, plugin-approval-prompt, plugin-consent-enable, plugin-install-from-catalog, plugin-lifecycle-reload, plugin-mcp-login, plugin-overview, plugin-session-action, plugin-settings-editor, plugin-settings-toggle, plugin-skill-preview, plugin-tab-and-contributions, plugin-ui-lab-toggle, plugin-ui-other-gateway, plugin-ui-reconnect, plugin-uninstall, plugin-view-session-switch, plugins-advanced-policy, plugins-customize-ui, plugins-hub-browse, plugins-installed-inventory; --env --flow --session-key --gateway-env --artifact-dir --out --timeout; plugin-approval-prompt creates its own two-phase plugin.approval.request, waits for that returned id in the browser, answers it and records waitDecision for the same id; system-agent-operation drives the operator-owned openclaw.chat surface with --operation JSON, stages that exact operation, records its proposal, sends explicit operator approval, and retries the identical operation with approved=true; --artifact-from supplies the absolute archive path and SHA-256 of its bytes for plugin_activate_artifact; records the resulting install receipt and browser activation report; --operation --artifact-from; --plugin --account identify the exact plugin and HTTP MCP account for plugin-mcp-login; plugin-ui-replacement-failure opens one persistent browser context, waits for the named plugin revision to report active, changes only that fixture asset with plugin-source-edit ui-asset-broken, calls plugins.controlUi.reload, records the failed replacement and the prior owner in the same browser, restores the asset in finally, reloads and records recovery before closing the context; exit 2 when a working initial activation cannot be established; plugin-skill-preview-retirement uses --plugin and --skill to open one persistent browser/controller, records the open preview, edits that exact skill through plugin-source-edit skill-file-edit while it stays open, closes and reopens the preview in that controller and records its body, then restores the file in finally and closes the browser)",
+      "support/verify/control-ui.mjs  (Control UI flows in a headless browser: incognito-thread, plugin-approval-prompt, plugin-consent-enable, plugin-install-from-catalog, plugin-lifecycle-reload, plugin-mcp-login, plugin-overview, plugin-session-action, plugin-settings-editor, plugin-settings-toggle, plugin-skill-preview, plugin-tab-and-contributions, plugin-ui-lab-toggle, plugin-ui-other-gateway, plugin-ui-reconnect, plugin-uninstall, plugin-view-session-switch, plugins-advanced-policy, plugins-customize-ui, plugins-hub-browse, plugins-installed-inventory; --env --flow --session-key --gateway-env --artifact-dir --out --timeout; plugin-approval-prompt creates its own two-phase plugin.approval.request, waits for that returned id in the browser, answers it and records waitDecision for the same id; system-agent-operation drives the operator-owned openclaw.chat surface with --operation JSON, stages that exact operation, records its proposal, sends explicit operator approval, and retries the identical operation with approved=true; --artifact-from supplies the absolute archive path and SHA-256 of its bytes for plugin_activate_artifact; records the resulting install receipt and browser activation report; --operation --artifact-from; --plugin --account identify the exact plugin and HTTP MCP account for plugin-mcp-login; plugin-ui-replacement-failure opens one persistent browser context, waits for the named plugin revision to report active, changes only that fixture asset with plugin-source-edit ui-asset-broken, calls plugins.controlUi.reload, records the failed replacement and the prior owner in the same browser, restores the asset in finally, reloads and records recovery before closing the context; exit 2 when a working initial activation cannot be established; plugin-skill-preview-retirement uses --plugin and --skill to open one persistent browser/controller, records the open preview, edits that exact skill through plugin-source-edit skill-file-edit while it stays open, closes and reopens the preview in that controller and records its body, then restores the file in finally and closes the browser; plugin-install-from-catalog selects the exact --catalog-id supplied by the warning-policy fixture; plugin-settings-toggle and plugins-installed-inventory use --plugin; plugin-overview uses --plugin for tool/overview details and --mcp-plugin for the account fixture's MCP details, keeping their identities explicit)",
       "support/verify/agent-tool-turn.mjs  (sessions.send with a scripted reply that calls one named tool, then chat.history with tools; --env --session-key --session-from --tool --args --timeout --background --handle --wait; --admission-method names the fixture Gateway method reporting actual slow-tool callback entry: a background launch waits for that method to identify the same session, run, tool and invocation as still held before returning the handle, exiting 2 if admission cannot be established; receipt acknowledgement or a generic before-tool event is insufficient)",
       "support/verify/chat-send.mjs  (chat.send of a message or slash command, then chat.history of the receipt; --env --session-key --session-from --incognito-handle --message --timeout --background --handle --wait)",
       "support/verify/session-turn-hold.mjs  (sessions.send with a reply the mock provider holds open; --env --session-key --hold-ms --progress-cards --timeout --background --handle --wait; with --background, wait for the mock provider to acknowledge the exact run has entered its held response before returning the handle; exit 2 if the hold cannot be established)",
@@ -137,7 +137,8 @@
       "support/verify/plugin-removal-permissions.mjs  (uses openclaw plugins uninstall <id> --dry-run and the current installed-plugin index to resolve the live managed removal target, requiring both to agree; --block saves its canonical target and parent mode to --out, removes parent write permission and verifies removal is denied as the Gateway user; exits 2 for ambiguity, an unowned path or ineffective permissions; --restore-from restores that exact saved mode, never a path from the original persona; --env --plugin --block --out --restore-from --timeout)",
       "support/verify/lsp-fixture.mjs  (controls the local bundle LSP fixture around chat.send/chat.abort: --arm saves configuration and a unique initialization marker to --out; --await-initialize-from waits for that marker's actual initialize request and holds its response, recording the fixture PID and request id, exiting 2 if not pending; --record-exit-from records process exit, pending protocol messages and cleanup after cancellation without treating an alive process as a setup failure; --restore-from restores config and removes only task-owned fixture processes and markers after recording them; --env --control --arm --out --await-initialize-from --record-exit-from --restore-from --timeout)",
       "support/verify/bundled-plugin-reload.mjs  (wraps ocm env resolve, service stop/start, a temporary launcher and plugins reload for one clone: saves the original binding and service state to --out, materializes a private copy of the selected built OpenClaw artifact, verifies its build identity and exclusive file ownership, binds only this clone with ocm launcher add and env set-launcher, starts it and observes the bundled plugin loaded, edits its compiled file, records reload and restartRequired, restores the file and restarts; finally restores the original runtime binding and service state and removes the task-owned launcher/copy. Never edits the shared runtime, uses no hardlinks or writable symlinks to its edited files, and journals ownership before mutation so interrupted cleanup can remove the private copy; exits 2 before editing if isolation is unavailable; --env --plugin --out --timeout)",
-      "support/verify/plugin-native-capture.mjs  (destructive fixture preparation for plugins reload and Doctor: resolves the current native capture references for --plugin from the clone's installed/native index, records the selected directory and its references to --out, and removes that directory while preserving the references to exercise missing-capture recovery; refuses original persona paths, shared runtimes, source directories or a fallback directory whose custody does not belong to this clone; --env --plugin --remove-referenced --out --timeout)"
+      "support/verify/plugin-native-capture.mjs  (destructive fixture preparation for plugins reload and Doctor: resolves the current native capture references for --plugin from the clone's installed/native index, records the selected directory and its references to --out, and removes that directory while preserving the references to exercise missing-capture recovery; refuses original persona paths, shared runtimes, source directories or a fallback directory whose custody does not belong to this clone; --env --plugin --remove-referenced --out --timeout)",
+      "support/verify/uninstall-load-path-race.mjs  (wraps sessions.send, plugins.uninstall and a plugins.load.paths config write: starts a fixture tool held until explicit release, observes its exact callback admission, resolves the current managed directory and saves the preceding load paths, then starts uninstall. Before editing, observes this uninstall's durable enabled-to-disabled config transition, its pending response and live lifecycle lease, while the same tool is still held; missing admission exits 2. Adds the resolved directory only after that barrier, releases the hold immediately after the write is observable without waiting on reload, joins both calls, and records responses, file existence and the recheck outcome to --out; finally restores the previous load paths and releases any remaining task-owned hold. Fixture holds have a bounded failsafe and expose release through --admission-method; --env --plugin --tool --admission-method --session-key --out --timeout)"
     ]
   },
   "phases": [
@@ -281,9 +282,11 @@
         "ui/src/pages/chat/chat-tool-icon-controller.ts",
         "ui/src/pages/config/config-page.ts"
       ],
-      "requires": [],
+      "requires": [
+        "plugins-bundled-and-external"
+      ],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugins-installed-inventory --artifact-dir {run}/screens --timeout 150000 --out {run}/screens/plugins-installed-inventory.json",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugins-installed-inventory --artifact-dir {run}/screens --timeout 150000 --out {run}/screens/plugins-installed-inventory.json --plugin {persona:plugins-bundled-and-external:externalPluginId}",
         "node {kovaRoot}/support/verify/http-get.mjs --env {env} --path /__openclaw__/plugin-icon --timeout 15000 --from {run}/screens/plugins-installed-inventory.json",
         "node {kovaRoot}/support/verify/http-get.mjs --env {env} --path /__openclaw__/plugin-activity-icon --timeout 15000 --from {run}/screens/plugins-installed-inventory.json"
       ],
@@ -391,9 +394,12 @@
         "ui/src/lib/plugins/**",
         "ui/src/components/plugin-*.ts"
       ],
-      "requires": [],
+      "requires": [
+        "plugin-fixture-surfaces",
+        "plugin-mcp-local-account"
+      ],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugin-overview --artifact-dir {run}/screens --timeout 150000"
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugin-overview --artifact-dir {run}/screens --timeout 150000 --plugin {persona:plugin-fixture-surfaces:pluginId} --mcp-plugin {persona:plugin-mcp-local-account:pluginId}"
       ],
       "checkpoint": [
         "responses",
@@ -453,10 +459,11 @@
         "src/plugin-state/**"
       ],
       "requires": [
-        "clawhub-registry-local"
+        "clawhub-registry-local",
+        "config-install-policy"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugin-install-from-catalog --artifact-dir {run}/screens --timeout 240000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugin-install-from-catalog --artifact-dir {run}/screens --timeout 240000 --catalog-id {persona:config-install-policy:warnCatalogId}",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.list --params '{}' --timeout 30000"
       ],
       "checkpoint": [
@@ -696,9 +703,11 @@
         "src/plugins/widget*.ts",
         "src/plugins/theme*.ts"
       ],
-      "requires": [],
+      "requires": [
+        "plugin-fixture-surfaces"
+      ],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugin-settings-toggle --artifact-dir {run}/screens --timeout 180000"
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugin-settings-toggle --artifact-dir {run}/screens --timeout 180000 --plugin {persona:plugin-fixture-surfaces:pluginId}"
       ],
       "checkpoint": [
         "responses",
@@ -1631,7 +1640,7 @@
       "commands": [
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --chat-type direct --peer {persona:session-main-rolling:peer} --text 'KOVA_HOOK_MESSAGE' --timeout 60000",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --chat-type direct --peer {persona:session-main-rolling:peer} --text 'KOVA_HOOK_CANCEL_SEND' --timeout 60000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --chat-type direct --peer kova-unpaired-peer --text 'hello' --timeout 60000",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --chat-type direct --peer {persona:channels-test-accounts:unpairedPeer} --text 'hello' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method {persona:plugin-fixture-surfaces:hookLogMethod} --params '{}' --timeout 30000"
       ],
       "checkpoint": [
@@ -2304,7 +2313,8 @@
         "src/plugins/control*.ts",
         "src/plugins/board*.ts",
         "src/plugins/widget*.ts",
-        "src/plugins/theme*.ts"
+        "src/plugins/theme*.ts",
+        "ui/src/plugins/control-ui-runtime.ts"
       ],
       "requires": [
         "plugin-fixture-feature-ui",
@@ -2511,7 +2521,8 @@
       "intent": "A user uninstalls a managed plugin while its tool is held and adds its installation directory to plugins.load.paths during the drain, observing kept files and the request to remove the new reference before retrying.",
       "paths": [
         "src/plugins/uninstall*.ts",
-        "src/gateway/config-reload.ts"
+        "src/gateway/config-reload.ts",
+        "src/plugins/management-uninstall.ts"
       ],
       "requires": [
         "mock-provider-tool-calls",
@@ -2519,13 +2530,7 @@
         "session-phase-hold"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-phase-hold:key} --tool {persona:plugin-managed-removal:slowToolName} --args '{\"holdMs\":20000}' --timeout 60000 --background --handle {run}/managed-hold.json --admission-method {persona:plugin-managed-removal:holdStatusMethod}",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.uninstall --params '{\"pluginId\":\"{persona:plugin-managed-removal:pluginId}\"}' --timeout 90000 --background --handle {run}/managed-uninstall.json --after-ms 2000",
-        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change load-path-add --path {persona:plugin-managed-removal:installDir} --timeout 15000 --out {run}/event-load-path-re-added-during-uninstall-drain-previous-config.json",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.uninstall --params '{}' --timeout 75000 --wait {run}/managed-uninstall.json",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-phase-hold:key} --timeout 30000 --wait {run}/managed-hold.json",
-        "ocm @{env} -- plugins list --json",
-        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --restore-from {run}/event-load-path-re-added-during-uninstall-drain-previous-config.json --timeout 15000"
+        "node {kovaRoot}/support/verify/uninstall-load-path-race.mjs --env {env} --plugin {persona:plugin-managed-removal:pluginId} --tool {persona:plugin-managed-removal:slowToolName} --admission-method {persona:plugin-managed-removal:holdStatusMethod} --session-key {persona:session-phase-hold:key} --out {run}/uninstall-race.json --timeout 240000"
       ],
       "checkpoint": [
         "responses",
@@ -2533,7 +2538,7 @@
         "timing",
         "state:openclaw.json"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 260000,
       "browser": false,
       "slow": false
     },
@@ -2805,7 +2810,9 @@
       "intent": "A user starts a fresh Gateway process with its preferred capture parent non-writable, records native capture allocation under system temp, then stops it, restores the exact original permissions and starts it again.",
       "paths": [
         "src/plugins/source*.ts",
-        "src/plugins/runtime/**"
+        "src/plugins/runtime/**",
+        "src/plugins/plugin-source-capture-directory.ts",
+        "src/plugins/plugin-metadata-lifecycle.ts"
       ],
       "requires": [
         "plugin-fixture-surfaces"
@@ -3123,7 +3130,10 @@
         "src/plugins/source*.ts",
         "src/plugins/runtime/**",
         "src/commands/startup-plugin-source-captures.ts",
-        "src/gateway/server-startup-plugins.ts"
+        "src/gateway/server-startup-plugins.ts",
+        "src/plugins/plugin-source-capture*.ts",
+        "src/plugins/plugin-lifecycle-lease*.ts",
+        "src/state/openclaw-state-lease*.ts"
       ],
       "requires": [
         "plugin-fixture-surfaces"
@@ -3158,7 +3168,8 @@
       "paths": [
         "src/plugins/plugin-native-*.ts",
         "src/plugins/plugin-generation-*.ts",
-        "src/plugins/source*.ts"
+        "src/plugins/source*.ts",
+        "src/plugins/plugin-source-capture*.ts"
       ],
       "requires": [
         "plugins-native-dependency"
@@ -3223,7 +3234,8 @@
       "intent": "A user resets and then deletes the fixture plugin's session, observing its runtime lifecycle cleanup callbacks and session extension removal.",
       "paths": [
         "src/plugins/session*.ts",
-        "src/plugins/runtime/**"
+        "src/plugins/runtime/**",
+        "src/plugins/registry-runtime-session-ownership.ts"
       ],
       "requires": [
         "mock-provider-scripted",
@@ -3484,7 +3496,9 @@
         "src/cli/plugin-install-config-policy.ts",
         "src/cli/plugin-capability-consent.ts",
         "src/plugin-state/**",
-        "src/gateway/server-retained-plugin-cleanup.ts"
+        "src/gateway/server-retained-plugin-cleanup.ts",
+        "src/plugins/plugin-source-capture-cleanup.ts",
+        "src/plugins/plugin-source-capture-directory.ts"
       ],
       "requires": [
         "plugin-fixture-surfaces"
@@ -3523,7 +3537,9 @@
         "src/cli/plugin-install-config-policy.ts",
         "src/cli/plugin-capability-consent.ts",
         "src/plugin-state/**",
-        "src/gateway/server-startup-plugins.ts"
+        "src/gateway/server-startup-plugins.ts",
+        "src/plugins/active-payload-verification.ts",
+        "src/plugins/payload-verification.ts"
       ],
       "requires": [
         "plugin-fixture-surfaces"
@@ -3557,7 +3573,8 @@
       "kind": "event",
       "intent": "A user uninstalls the fixture plugin while its managed directory cannot be removed, observing the plugin left disabled and tracked for a retry, then the retried uninstall after the directory is restored and the reinstall.",
       "paths": [
-        "src/plugins/uninstall*.ts"
+        "src/plugins/uninstall*.ts",
+        "src/plugins/management-uninstall.ts"
       ],
       "requires": [
         "plugin-fixture-surfaces"
