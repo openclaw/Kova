@@ -2171,7 +2171,9 @@
         "src/cli/plugins-install-*.ts",
         "src/cli/plugin-install-config-policy.ts",
         "src/cli/plugin-capability-consent.ts",
-        "src/plugin-state/**"
+        "src/plugin-state/**",
+        "src/plugins/capability-consent.ts",
+        "src/plugins/capability-summary.ts"
       ],
       "requires": [
         "plugins-third-party-consented"
@@ -2769,6 +2771,7 @@
         "session-plugin-tools"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change reload-mode-hybrid --out {run}/hot-reload-mode.json --timeout 15000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.list --params '{}' --timeout 15000 --out {run}/before-hot.json",
         "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change fixture-config-change --plugin {persona:plugin-fixture-surfaces:pluginId} --out {run}/event-plugin-config-edit-hot-replaces-instance-fixture-config.json --timeout 15000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.list --params '{}' --timeout 15000 --after-ms 5000",
@@ -2777,7 +2780,8 @@
         "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change fixture-config-change --plugin {persona:plugin-fixture-surfaces:pluginId} --timeout 15000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.inspect --params '{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}' --timeout 30000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool {persona:plugin-fixture-surfaces:toolName} --args '{\"input\":\"VERIFY_AFTER_CONFIG\"}' --timeout 60000",
-        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --restore-from {run}/event-plugin-config-edit-hot-replaces-instance-fixture-config.json --timeout 15000"
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --restore-from {run}/event-plugin-config-edit-hot-replaces-instance-fixture-config.json --timeout 15000",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --restore-from {run}/hot-reload-mode.json --timeout 15000"
       ],
       "checkpoint": [
         "responses",
@@ -2860,7 +2864,8 @@
         "src/cli/plugins-reload-command.ts",
         "src/gateway/server-plugin-reload*.ts",
         "src/plugins/plugin-instance.ts",
-        "src/plugins/plugin-instance-settlement.ts"
+        "src/plugins/plugin-instance-settlement.ts",
+        "src/cli/plugins-lifecycle-client.ts"
       ],
       "requires": [
         "mock-provider-tool-calls",

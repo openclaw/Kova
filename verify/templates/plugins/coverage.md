@@ -157,3 +157,5 @@ Persona additions:
 - plugin-concurrency-peer: a separate enabled installed plugin used only as the competing enablement target; it has a distinct identity from every bundled/external inventory and surface fixture (pluginId).
 
 - plugin-model-setup: a local definition for an openai model with an explicit codex runtime policy, a configured but missing Codex package, and the matching official package fixture served by clawhub-registry-local at the selected runtime release cohort. Applied only to a stopped temporary clone of the run environment; no inference or real credentials (modelId, definitionPath).
+
+Registration-method discovery requires a saved method entry. Rendered content does not supply API discovery; the named plugin-page routes remain covered, and static panel/accessory descriptions add no interactive control.
