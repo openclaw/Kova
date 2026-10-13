@@ -1,7 +1,7 @@
 # Coverage: config
 
 Operations: 32/32
-Conditions: 359/459 (301 ambient, 158 event)
+Conditions: 353/459 (301 ambient, 158 event)
 Entry points: 266/291 (25 excluded)
 Breaks mapped: 2/3 (145553 is a gap)
 
@@ -64,9 +64,13 @@ Uncovered:
 - condition 174 Default dated log file under /tmp/openclaw, named per profile: ambient, but no persona trait provides it and no setup phase starts it
 - condition 175 /tmp/openclaw unsafe or unavailable: log directory falls back under the OS temp dir: /tmp/openclaw unsafe or unavailable: needs an unsafe or unwritable /tmp/openclaw on the harness host
 - condition 176 Dated log files older than 24 hours pruned: event-log-prune records restart output only; no aged-file fixture is bound to the resolved dated-log directory under /tmp/openclaw or its OS temporary-directory fallback, and no before/after file inventory observes pruning (src/logging/logger.ts:679 at 7e80556f)
-- condition 179 Active log file reaches logging.maxFileBytes: rotated, five numbered archives kept: event-reload-logrotate records saved/applied size settings without establishing an append crossing maxFileBytes or recording the active file and five numbered archives (src/logging/logger-file-transport.ts:54,184 at 7e80556f)
+- condition 179 Active log file reaches logging.maxFileBytes: rotated, five numbered archives kept: event-reload-logrotate and event-log-rotation record settings or status responses without establishing an append crossing maxFileBytes or recording the active file and five numbered archives (src/logging/logger-file-transport.ts:54,184 at 7e80556f)
 - condition 180 Custom logging.redactPatterns: replace the default string list for log and transcript output while built-in form-body, authorization-header and AWS key protections stay: the declared chat/history and tool commands do not establish a raw form-body or Digest payload reaching the subsystem logger under copied/custom patterns; 145553 remains a gap until a reachable producer and recorded sink output are identified (src/logging/subsystem.test.ts:293 at 7e80556f)
 - condition 182 Secret values reaching console, file log, OTLP log record and session transcript sinks: masked before they are written: chat/history and tool output are observed, but no raw secret-bearing producer is established for console/file logging; the OTLP sink also needs an exporter and collector that are absent
+- condition 183 Tool-result text carrying a secret: masked after middleware before model context, replay reuses the masked result: event-redact-toolresult records history after execution, but neither the live provider request nor replayed model input; transcript persistence and sessions_history apply their own redaction, so clean history does not prove the model-input boundary (src/agents/session-tool-result-guard-wrapper.ts:204 and src/agents/tools/sessions-history-tool.ts:128 at 7e80556f)
+- condition 184 Direct tool read of a .env file: broader assignment masking before it becomes a tool result: event-redact-dotenvread records history after the read, without observing the finalized tool result before persistence and history sanitization; that output does not distinguish the broader .env masking before the tool-result boundary
+- condition 185 Registered secrets present: masked regardless of key names: the recorded fixture descriptions do not tie a registry-backed value to the emitted marker under an unrelated key; a value masked by ordinary patterns cannot distinguish registered-secret protection
+- condition 186 Mask shape by value: 18+ characters keep the first 6 and last 4, shorter become ***, structured credential fields and non-string matches fully masked: text/history observations do not supply structured credential fields or matching numbers, booleans and null to the file or JSON-console serialization boundary; full masking of these typed values is unobserved
 - condition 188 Input method composing in Search settings: Escape stays with the input method: ambient, but no persona trait provides it and no setup phase starts it
 - condition 194 Save outcome unknown: draft kept and unrelated settings writes paused until a refresh confirms or the user retries or discards: ambient, but no persona trait provides it and no setup phase starts it
 - condition 197 Chosen Lobsterdex lobster not unlocked in this browser: Default shown, choice kept: ambient, but no persona trait provides it and no setup phase starts it
@@ -103,6 +107,8 @@ Uncovered:
 - condition 432 Agent roster, session policy, store topology, model reference or channel activation change invalidates affected facts: event-reload-invalidate records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
 - condition 434 Gateway accepts its configured secret sent as either token or password; the auth mode selects the secret: ambient, but no persona trait provides it and no setup phase starts it
 - condition 447 Advisory inspection failure at startup recorded with guidance; startup continues: needs the startup advisory inspection itself to fail
+- condition 455 Ambiguous source assignments preserved in model-visible tool-result text: event-redact-ambiguousassign records history, not the live model request; transcript and history sanitization can differ from model-visible tool text, so they cannot establish preserved assignments there
+- condition 456 Other config and source reads preserve opaque values: event-redact-opaquereads records history after the read, without the model-visible result; the later transcript/history boundary does not establish preservation before model consumption
 - condition 458 Raw-editor drafts are manual-save only: ambient, but no persona trait provides it and no setup phase starts it
 - condition 460 Downgrade to a Gateway whose ui.prefs.accent accepts only hex colors: needs an older Gateway build
 - condition 462 Devices node-binding controls pause while configuration reloads: needs a paired node with Devices node bindings

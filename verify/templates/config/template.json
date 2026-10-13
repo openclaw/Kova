@@ -6147,7 +6147,7 @@
     {
       "id": "event-redact-toolresult",
       "kind": "event",
-      "intent": "An agent runs a command whose output and error carry a secret value, observing the masked tool result in model context, the transcript and the log.",
+      "intent": "Runs a tool command that reads a synthetic secret environment variable, then records chat history, sessions_history and available log lines.",
       "paths": [
         "src/agents/tools/sessions-history-tool.ts",
         "src/logging/redact*.ts",
@@ -6167,8 +6167,7 @@
       "checkpoint": [
         "responses",
         "logs",
-        "timing",
-        "state:logs"
+        "timing"
       ],
       "timeoutMs": 150000,
       "browser": false,
@@ -6177,7 +6176,7 @@
     {
       "id": "event-redact-ambiguousassign",
       "kind": "event",
-      "intent": "An agent reads a source file with ambiguous token assignments, observing the assignments kept in model-visible text.",
+      "intent": "Reads a source file containing ambiguous token assignments through the tool, then records chat history, sessions_history and available log lines.",
       "paths": [
         "src/agents/tools/sessions-history-tool.ts",
         "src/logging/redact*.ts",
@@ -6197,8 +6196,7 @@
       "checkpoint": [
         "responses",
         "logs",
-        "timing",
-        "state:logs"
+        "timing"
       ],
       "timeoutMs": 150000,
       "browser": false,
@@ -6207,7 +6205,7 @@
     {
       "id": "event-redact-dotenvread",
       "kind": "event",
-      "intent": "An agent reads a workspace .env file, observing broader assignment masking in the tool result.",
+      "intent": "Reads a synthetic workspace .env file through the tool, then records chat history, sessions_history and available log lines.",
       "paths": [
         "src/agents/tools/sessions-history-tool.ts",
         "src/logging/redact*.ts",
@@ -6227,8 +6225,7 @@
       "checkpoint": [
         "responses",
         "logs",
-        "timing",
-        "state:logs"
+        "timing"
       ],
       "timeoutMs": 150000,
       "browser": false,
@@ -6237,7 +6234,7 @@
     {
       "id": "event-redact-opaquereads",
       "kind": "event",
-      "intent": "An agent reads a config file with opaque values, observing them preserved.",
+      "intent": "Reads a config file containing opaque values through the tool, then records chat history, sessions_history and available log lines.",
       "paths": [
         "src/agents/tools/sessions-history-tool.ts",
         "src/logging/redact*.ts",
@@ -6257,8 +6254,7 @@
       "checkpoint": [
         "responses",
         "logs",
-        "timing",
-        "state:logs"
+        "timing"
       ],
       "timeoutMs": 150000,
       "browser": false,
@@ -8829,7 +8825,7 @@
     {
       "id": "event-log-rotation",
       "kind": "event",
-      "intent": "A user sets a stable log file path and a small maxFileBytes, then generates log traffic; rotation and numbered archives are observed.",
+      "intent": "Sets a stable logging.file path and maxFileBytes, issues status requests, records their responses and available log lines, then clears those settings.",
       "paths": [
         "src/config/zod-schema.[acdghilmnprt]*.ts",
         "src/config/zod-schema.s[at]*.ts",
@@ -8852,8 +8848,7 @@
       "checkpoint": [
         "responses",
         "logs",
-        "timing",
-        "state:logs"
+        "timing"
       ],
       "timeoutMs": 240000,
       "browser": false,
