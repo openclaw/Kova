@@ -1217,7 +1217,7 @@ Template form corrections: every phase carries its own requires (placeholders, t
 
 ## Retained template
 
-The final template has 38 phases: one setup, 12 operation and 25 event phases. The full inventory of 310 entry points and 520 conditions remains above. Executable selection excludes native updater mutations, campaigns and custom-supervisor paths because every comparison clone stays under OCM supervision. The [coverage record](coverage.md#ocm-only-scope) lists each excluded phase, condition and historical break.
+The final template has 37 phases: one setup, 11 operation and 25 event phases. The full inventory of 310 entry points and 520 conditions remains above. Executable selection excludes native updater mutations, campaigns and custom-supervisor paths because every comparison clone stays under OCM supervision. The [coverage record](coverage.md#ocm-only-scope) lists each excluded phase, condition and historical break.
 
 Each selected phase owns and joins its release-feed process, including interruption cleanup. Independent operations restore their starting installation and user state; secondary status and migration observations use the comparison side’s runtime. Manual replacement and node journeys also retain the older-runtime journey, then separately exercise the side implementation. Secondary database observations are captured from the environment actually exercised.
 
@@ -1228,3 +1228,5 @@ Busy restarts establish their own held work; cron waits for active execution and
 The rich legacy-state fixture is staged for Doctor with repaired config and state observations captured before restoration. Unsupported timer-only interruption scenarios, the native still-starting restart outcome and the unsynchronized Doctor/config race are excluded; their inventory rows remain explicit gaps. Successful recovery-data removal follows the reader-refusal scenarios. Same-code replacement is never credited as compatibility between distinct implementations.
 
 Support helpers remain declarations until their catalogue contracts are implemented; catalogue registration is a separate prerequisite. The data describes scenarios and limitations, not executed update behavior. No new derivation runs were made during this reconciliation.
+
+The retained UI describes OCM-backed availability only; native-ledger reporting, retry and diagnosis actions are not exposed by that status source. Direct RPC report preview and CLI triage remain. Request-cache setup, replacement-generation observations and thaw outcomes are explicit support contracts; missing product reactions are observations, never setup refusal. Missing retired plugin, Telegram and old-schema fixtures remain uncovered.

@@ -1,13 +1,18 @@
 # Coverage: update
 
-Operations with retained phases: 12/21 (some retained operations have fewer entry points)
-Conditions described by retained phases: 79/520 (354 ambient, 166 event)
+Operations with retained phases: 11/21 (some retained operations have fewer entry points)
+Conditions described by retained phases: 74/520 (354 ambient, 166 event)
 Entry points inventoried: 203 placed/310 (107 excluded); executable coverage has not been measured
 Breaks mapped to retained phases: 0/6; all six are outside reach under OCM supervision
 
-A condition is counted here only when a retained phase describes its concrete setup and observation; runtime execution remains unproven. Reconciliation credits applicable phases from either run and excludes claims whose required inputs or actions were lost. There are 79 described conditions and 441 explicit gaps below. Phases: 38 (1 setup, 12 operation, 25 event). These are declarative descriptions, not executed results.
+A condition is counted here only when a retained phase describes its concrete setup and observation; runtime execution remains unproven. Reconciliation credits applicable phases from either run and excludes claims whose required inputs or actions were lost. There are 74 described conditions and 446 explicit gaps below. Phases: 37 (1 setup, 11 operation, 25 event). These are declarative descriptions, not executed results.
 
 Uncovered:
+- Condition 23, GitHub CLI missing or unauthenticated when reporting: sanitized report kept locally, back to the menu: The direct report preview remains, but neither native failure-menu return nor the OCM-backed reporting UI is exercised.
+- Condition 239, Retired pre-June plugin JSON state (iMessage, Active Memory, Nostr, Teams) preserved; bridge through 2026.9.5: No retained fixture provides the retired plugin-specific stores named here.
+- Condition 240, Pre-July Telegram sidecars ignored; Telegram ingress spool still imported: No retained fixture provides the Telegram sidecars and ingress spool named here.
+- Condition 243, Per-agent SQLite layouts below schema 8 refused: No retained fixture provides an agent database below schema 8.
+- Condition 63, No update active: status labels the saved outcome Last recorded update: The OCM-backed status surface replaces native ledger history; the retained native history queries do not establish this status label.
 - Condition 16, Orphan task_delivery_state rows: admission runs preservation-first recovery, refused under a live Gateway owner: Native update admission is excluded, and no retained admission runs over orphan delivery rows.
 - Condition 210, Stale inactive ledger row with a healthy Gateway: lightweight repair records failed/abandoned: Fresh stale rows are staged offline; this does not exercise lightweight repair against a healthy serving Gateway.
 - Condition 372, Doctor interrupted during an agent schema or media migration: rerun reclaims a dead owner and resumes: No retained scenario synchronizes interruption with an observed pending migration.
@@ -452,18 +457,18 @@ Uncovered:
 - Condition 520, A Windows Bun-only node host cannot stage updates and logs the failure hourly (`bun-windows-node`): outside this template's reach: Windows Scheduled Task hosts (bound: owned by platform)
 
 Phases that depend on each script still to be written (support.toWrite):
-- support/verify/release-feed.mjs: 38 phases
+- support/verify/release-feed.mjs: 37 phases
 - support/ensure-gateway-running.mjs: 20 phases
 - support/verify/restore-update-fixture.mjs: 13 phases
-- support/verify/gateway-call.mjs: 9 phases
 - support/verify/env-fault.mjs: 8 phases
+- support/verify/gateway-call.mjs: 8 phases
 - support/verify/read-installation-state.mjs: 7 phases
-- support/verify/control-ui.mjs: 5 phases
-- support/verify/stop-gateway.mjs: 5 phases
+- support/verify/stop-gateway.mjs: 6 phases
 - support/verify/manual-package-replace.mjs: 4 phases
 - support/verify/session-turn-hold.mjs: 4 phases
 - support/verify/chat-send.mjs: 3 phases
 - support/verify/stage-state-fixture.mjs: 3 phases
+- support/verify/control-ui.mjs: 2 phases
 - support/verify/node-host-auto-update.mjs: 2 phases
 - support/verify/stage-update-history.mjs: 2 phases
 - support/verify/update-config.mjs: 2 phases
@@ -501,7 +506,7 @@ Persona additions:
 - recovery-originals-retained: Migration recovery originals and pre-startup-migration backups recorded by an earlier successful update, plus an older npm snapshot directory (none)
 - service-definition-outdated: A native service definition written by an older installer (TimeoutStopSec=30, KillMode=control-group) with one operator drop-in (inventory only; outside reach and not required by a retained phase)
 - state-legacy-migratable: a fixture of legacy state Doctor can migrate: a legacy agents.list roster with a default marker and ownerless cron jobs with null, deliver and mixed-case delivery modes, legacy auth field shapes in JSON and SQLite, a policy-free exec-approvals.json stub and a legacy default-agent SQLite policy, a legacy workspace setup file, session rows with flat pending-delivery fields and provider aliases, orphan task_delivery_state rows, Codex-native task rows, historical ACP metadata keys, unprefixed toolsBySender keys, flat channel allowPrivateNetwork keys, inherited Voice Call realtime settings, a multi-account channel without a default and a policy-only WhatsApp accounts.default, retired TaskFlow Webhooks settings, messages.tts settings, an ownerAllowFrom entry that lost its user: kind, a database without claw provenance columns, shared auth in the main agent database, retired MCP OAuth files, a deleted agent's retained store, pending Skill Workshop proposals, a damaged legacy sessions.json entry, a missing plugins.load.paths entry and a configured plugin that is not installed, Matrix state needing the dedupe scan, an enabled webhook channel account without legacyWebhook, an ACP agent with a separate harness model, legacy Discord dm.policy, stale per-agent OAuth shadows and a legacy audit archive changed other than by append; plus a config file with legacy keys for startup (path, configPath)
-- state-legacy-retired: a fixture of retired pre-July state: plugins/installs.json, cron jobs.json with jobs-state.json and run logs, a JSON delivery queue, restart-sentinel.json, retired config keys, OAuth credential sidecars, retired settings.json keys and a ~/.clawdbot directory (path)
+- state-legacy-retired: a fixture of retired pre-July state: plugins/installs.json, cron jobs.json with jobs-state.json and run logs, a JSON delivery queue, restart-sentinel.json, retired config keys, OAuth credential sidecars, retired settings.json keys and a ~/.clawdbot directory (path; filesPath is a separate export containing only retired state files and a valid supported configuration, without the retired config keys; startup uses filesPath)
 - state-retired-json: A second environment holding retired pre-July JSON state: restart-sentinel.json, plugins/installs.json and a legacy cron jobs.json store (env)
 - store-orphan-delivery-rows: Shared-database task_delivery_state rows whose parent tasks are missing (none) (inventory only; not required by a retained phase)
 - update-history-failed: Update history holding a failed run with a config failure followed by a later success, and a failed run within the last 24 hours (runId)
@@ -640,3 +645,7 @@ OCM lifecycle and observation corrections: stopped-service prerequisites use the
 Retained-scenario prerequisites: the OCM stop wrapper polls until the named Gateway has exited, including when OCM initially reports it still shutting down. Doctor repairs establish this offline ownership and restore the service afterward. The rich legacy-state fixture is now staged for Doctor, with resulting config and state recorded before fixture restoration. Non-owner update attempts require a verified authorized-but-non-owner conformance sender. Freeze recovery pauses for 120 seconds, beyond the pinned 75-second threshold, and waits for the thaw observation; recovery phases include their boot-lifecycle and thaw source owners in selection paths.
 
 The following ineffective event descriptions were removed because their required work or outcome was not established: `event-doctor-interrupted-during-migration`, `event-doctor-terminated-during-archive-repair`, `event-migration-backup-interrupted`, `event-restart-during-startup-migration`, and `event-config-changed-during-doctor`. Their conditions remain inventoried and explicitly uncovered above.
+
+OCM history boundary: at the pinned revision, `src/gateway/server-methods/update-status.ts:65–113` uses OCM history instead of the native ledger when OCM supports updates. Seeded native failures cannot establish the Settings reporting, retry or diagnosis actions. `check-and-retry-update` and those UI commands are excluded. Direct native-ledger report preview and CLI triage remain; the basic Updates page records the OCM-backed view without claiming it shows native failures.
+
+Product outcomes remain comparable: after successful fault setup, absent thaw recovery, missing replacement detection and incomplete restart sequences are recorded with normal result/error/timeout semantics, not exit 2. Replacement journeys wait for a product record or process-generation change before consuming their observations. The update-check failure scenario stops the clone, resets its telemetry cache, serves a malformed endpoint response and records request attempts on completion. Its source selector includes telemetry.ts; node scenarios include node-host-launcher.mjs and pending package lifecycle includes src/index.ts. The retired-files startup fixture uses filesPath with valid config, separately from the legacy-config refusal fixture.

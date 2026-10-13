@@ -2,7 +2,7 @@
   "schema": "kova.verify.template.v1",
   "id": "update",
   "title": "Update",
-  "objective": "Users inspect OpenClaw update availability and history, preview changes, diagnose and report recorded failures, repair and retire recovery data, migrate state, observe package replacement, update headless nodes and restart OCM-supervised Gateways. Native updater mutations and automatic campaigns are outside this template’s reach; coverage.md records their conditions and historical breaks.",
+  "objective": "Users inspect OpenClaw update availability and history, preview changes, diagnose recorded failures and preview reports, repair and retire recovery data, migrate state, observe package replacement, update headless nodes and restart OCM-supervised Gateways. Native updater mutations and automatic campaigns are outside this template’s reach; coverage.md records their conditions and historical breaks.",
   "paths": [
     "src/cli/update-cli.ts",
     "src/cli/update-cli/**",
@@ -125,12 +125,12 @@
   "support": {
     "existing": [],
     "toWrite": [
-      "support/verify/release-feed.mjs  (a local package registry and update-check endpoint that publishes the side's build and a version-bumped copy under the channel dist-tags, pointed to by the environment's npm config and OPENCLAW_TELEMETRY_ENDPOINT; modes change what it serves; --env --publish <side,side-next> --dist-tags <list> --from <handle> --mode <serve|offline|withhold-target|withhold-plugins|withhold-clawhub-official> --publish-variant <canary-fails|install-fails|node-start-fails> (publishes a copy of the side whose candidate Gateway, package install or headless node start fails) --plugin-release <pluginId> --plugin-capabilities widened --plugin-integrity changed (publishes a new release of an installed external plugin) [--background --handle <file>] [--wait <file>]; --from with --mode serve opens a new phase-owned server from the retained publication recipe, restores that clone's feed routing and uses a distinct handle; --timeout <ms> bounds startup/join; --wait stops and reaps the server while retaining publication artifacts; bind each server to the phase worker's process identity and cancellation so worker exit or interruption also stops and reaps it, including partially selected plans)",
-      "support/verify/env-fault.mjs  (injects one named environment fault for the duration of a phase and removes it on --wait: channel-probe-fail, config-readonly, prefix-readonly, prefix-volume-full, tmpdir-small, artifacts-volume-full, block-git-remote, hold-state-lock, db-writer-loop, db-writer-hold, db-reader-loop, config-edit, kill-gateway, freeze-gateway, occupy-gateway-port, signal-restart (SIGUSR2), signal-stop, kill-update-helper, helper-spawn-denied, interrupt-doctor; --env --fault <name> --when-update-phase <phase> --after-ms <ms> --count <n> --interval-ms <ms> --duration-ms <ms> --signal <name> --timeout <ms> [--background --handle <file>] [--wait <file>]; --wait-for-thaw-recovery waits after resume for the product thaw observation and channel recovery completion or deferral, returning 2 if the precondition cannot be observed before the timeout; repeated kill-gateway or signal-stop faults wait for a fresh serving process identity between signals and return 2 if all requested transitions cannot be established within their timeout; github-unavailable gives every spawned CLI and Gateway reporting process isolated HOME/XDG directories and PATH with an unavailable gh stub, clears GH_TOKEN and GITHUB_TOKEN only in those processes, prevents GitHub submission, and restores the previous process environment on --wait or interruption; never changes host authentication)",
-      "support/verify/manual-package-replace.mjs  (npm install -g, pnpm add -g or bun add -g of the side, side-next or persona package over an environment's installation outside the updater; --env --tool <npm|pnpm|bun> --target <side|side-next|persona> --keep-gateway-running --ignore-scripts --timeout <ms>)",
+      "support/verify/release-feed.mjs  (a local package registry and update-check endpoint that publishes the side's build and a version-bumped copy under the channel dist-tags, pointed to by the environment's npm config and OPENCLAW_TELEMETRY_ENDPOINT; modes change what it serves; --env --publish <side,side-next> --dist-tags <list> --from <handle> --mode <serve|offline|invalid-response|withhold-target|withhold-plugins|withhold-clawhub-official> --publish-variant <canary-fails|install-fails|node-start-fails> (publishes a copy of the side whose candidate Gateway, package install or headless node start fails) --plugin-release <pluginId> --plugin-capabilities widened --plugin-integrity changed (publishes a new release of an installed external plugin) [--background --handle <file>] [--wait <file>]; --from with --mode serve opens a new phase-owned server from the retained publication recipe, restores that clone's feed routing and uses a distinct handle; --timeout <ms> bounds startup/join; --wait stops and reaps the server while retaining publication artifacts; bind each server to the phase worker's process identity and cancellation so worker exit or interruption also stops and reaps it, including partially selected plans; --reset-update-check-cache is used only with the named clone stopped and clears its persisted telemetry success cache before the observed start; invalid-response serves malformed JSON only on the update-check endpoint while retaining normal package responses; switching to invalid-response starts a fresh observation window; each handle records update-check attempts with their endpoint mode and --wait prints the observed counts by mode and requests for that window, including zero attempts as a product observation rather than setup failure)",
+      "support/verify/env-fault.mjs  (injects one named environment fault for the duration of a phase and removes it on --wait: channel-probe-fail, config-readonly, prefix-readonly, prefix-volume-full, tmpdir-small, artifacts-volume-full, block-git-remote, hold-state-lock, db-writer-loop, db-writer-hold, db-reader-loop, config-edit, kill-gateway, freeze-gateway, occupy-gateway-port, signal-restart (SIGUSR2), signal-stop, kill-update-helper, helper-spawn-denied, interrupt-doctor; --env --fault <name> --when-update-phase <phase> --after-ms <ms> --count <n> --interval-ms <ms> --duration-ms <ms> --signal <name> --timeout <ms> [--background --handle <file>] [--wait <file>]; --wait-for-thaw-recovery polls after resume for the product thaw observation and channel recovery completion or deferral; after successful freeze/resume, record a missing observation or timeout through ordinary result/error/timeout semantics, never exit 2 for that product outcome; repeated kill-gateway or signal-stop faults wait for a fresh serving process identity between signals, recording missing restarts and partial counts as product outcomes; exit 2 is reserved for inability to establish the initial fixture; github-unavailable gives every spawned CLI and Gateway reporting process isolated HOME/XDG directories and PATH with an unavailable gh stub, clears GH_TOKEN and GITHUB_TOKEN only in those processes, prevents GitHub submission, and restores the previous process environment on --wait or interruption; never changes host authentication)",
+      "support/verify/manual-package-replace.mjs  (npm install -g, pnpm add -g or bun add -g of the side, side-next or persona package over an environment's installation outside the updater; --env --tool <npm|pnpm|bun> --target <side|side-next|persona> --keep-gateway-running --ignore-scripts --timeout <ms>; --observe-replacement captures the predecessor process identity and replacement record before writing, then waits for a new product replacement record or serving process generation before subsequent observations; record predecessor retention, missing transition and timeout as compared results, never exit 2 after successful replacement merely because the product did not react)",
       "support/verify/node-host-auto-update.mjs  (start a fresh disposable headless node from the exported fixture for each invocation, including its persona runtime, runtime selector and activation timestamps; connect only to this comparison environment, observe update preparation/activation/fallback, collect node state and remove the disposable host on completion or interruption; never start or change the durable source host; --env --node <id> --fixture <path> --timeout <ms>; --driver <persona|side> chooses the node implementation before discovery, on a fresh eligible fixture without a prior activation cooldown; for side, prepare a newer side-next Gateway/package target through the cloned environment's OCM runtime selection before starting the side node, restoring it afterwards; collect results separately for each driver)",
-      "support/verify/control-ui.mjs  (catalogue entry; flows this template needs: updates-page-check, updates-channel-select, update-review-cancel, update-now-confirm, updates-hold, updates-toggle-checks, updates-check-status, updates-retry-cancel, updates-diagnose, updates-report-failure, update-failure-ask, update-failure-ask-storage-blocked, update-reconnect, update-reload-after-build, sidebar-server-updated, chat-outbox-restart; --env --flow --artifact-dir --timeout --out --session-key; --github-fixture <handle> requires an active isolated unavailable-GitHub fixture before any reporting action and fails closed without invoking OpenClaw when that fixture is missing or invalid)",
-      "support/verify/gateway-call.mjs  (catalogue entry; methods update.status, update.run, update.hold, update.report, update.runs.list, update.runs.get, gateway.restart.request, gateway.restart.preflight, gateway.stop.request; --env --method --params --timeout --out --merge-from --after-ms [--background --handle] [--wait]; --target-current reads the named clone’s active Gateway lock identity immediately before gateway.stop.request, sends target {pid, ownerId, port}, verifies it belongs to that clone and matches the connected Gateway, and exits 2 without calling the method if identity cannot be established; --github-fixture <handle> requires an active isolated unavailable-GitHub fixture before any reporting action and fails closed without invoking OpenClaw when that fixture is missing or invalid)",
+      "support/verify/control-ui.mjs  (catalogue entry; flows this template needs: chat-outbox-restart, updates-page-check; --env --flow --artifact-dir --timeout --out --session-key; --github-fixture <handle> requires an active isolated unavailable-GitHub fixture before any reporting action and fails closed without invoking OpenClaw when that fixture is missing or invalid)",
+      "support/verify/gateway-call.mjs  (catalogue entry; methods gateway.restart.preflight, gateway.restart.request, gateway.stop.request, update.report, update.runs.get, update.runs.list, update.status; --env --method --params --timeout --out --merge-from --after-ms [--background --handle] [--wait]; --target-current reads the named clone’s active Gateway lock identity immediately before gateway.stop.request, sends target {pid, ownerId, port}, verifies it belongs to that clone and matches the connected Gateway, and exits 2 without calling the method if identity cannot be established; --github-fixture <handle> requires an active isolated unavailable-GitHub fixture before any reporting action and fails closed without invoking OpenClaw when that fixture is missing or invalid)",
       "support/verify/chat-send.mjs  (catalogue entry; /update, /restart and a plain message during a restart drain; --env --session-key --message --timeout --after-ms [--background --handle] [--wait]; --when-gateway-draining waits for the serving process to report draining before sending, reports setup unavailable as exit 2, and never treats a reconnect as drain entry)",
       "support/verify/session-turn-hold.mjs  (catalogue entry; --env --session-key --hold-ms --timeout --background --handle --wait)",
       "support/verify/chat-history-read.mjs  (catalogue entry; --env --session-key --limit --timeout)",
@@ -189,12 +189,13 @@
     {
       "id": "check-update-status",
       "kind": "operation",
-      "intent": "A user checks whether an update is available and what is installed, from the CLI, the Gateway method, the status summary and the Settings Updates page, with failed and stale runs on record and a release published; the reported channel, availability, install facts, recorded runs and the page are observed.",
+      "intent": "A user checks update availability and installation facts through the CLI, Gateway method, status summary and OCM-backed Settings Updates page with a release published; the channel, availability, installation facts and page are observed.",
       "paths": [
         "packages/gateway-protocol/src/schema/config.ts",
         "src/commands/status.update.ts",
         "src/gateway/server-methods/update-status.ts",
         "src/gateway/server-startup-update-check.ts",
+        "src/infra/telemetry.ts",
         "src/infra/update-check*.ts",
         "src/infra/update-run-legacy-expiry.ts",
         "src/infra/update-run-reconciliation*.ts",
@@ -435,53 +436,15 @@
       "slow": false
     },
     {
-      "id": "check-and-retry-update",
-      "kind": "operation",
-      "intent": "An administrator checks the status of a recorded update attempt from the page and from the update dialog, then starts Retry update and cancels at the confirmation; the status banners, dialog states and the absence of a new run are observed.",
-      "paths": [
-        "src/gateway/server-methods/update-status.ts",
-        "ui/src/app/overlays-updates.ts",
-        "ui/src/app/update-*.ts",
-        "ui/src/components/sidebar-attention-update.ts",
-        "ui/src/components/sidebar-update-card.ts",
-        "ui/src/components/update-*.ts",
-        "ui/src/pages/config/updates*.ts"
-      ],
-      "requires": [
-        "update-baseline-fixture"
-      ],
-      "commands": [
-        "node {kovaRoot}/support/verify/release-feed.mjs --env {env} --from {run}/release-feed.json --mode serve --timeout 30000 --background --handle {run}/release-feed-check-and-retry-update.json",
-        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed-check-and-retry-update.json --timeout 240000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow updates-check-status --artifact-dir {run}/screens/updates-check-status --timeout 120000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow updates-retry-cancel --artifact-dir {run}/screens/updates-retry-cancel --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.runs.list --params '{\"limit\":5}' --timeout 60000",
-        "node {kovaRoot}/support/verify/release-feed.mjs --wait {run}/release-feed-check-and-retry-update.json --timeout 30000"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing",
-        "screen"
-      ],
-      "timeoutMs": 600000,
-      "browser": true,
-      "slow": true
-    },
-    {
       "id": "recover-failed-update",
       "kind": "operation",
-      "intent": "A user collects triage diagnostics for a recorded failed update from the CLI with and without JSON, and opens Diagnose update, the terminal commands and the troubleshooting link on the Settings page, with no coding agent on PATH; the saved prompt, archive, handoff commands, detected agents and the page are observed.",
+      "intent": "A user collects triage diagnostics for a recorded failed update through the CLI and a bounded embedded repair attempt with a mock provider and a stub coding agent; the prompt, archive, handoff commands and repair outcome are observed.",
       "paths": [
-        "src/cli/gateway-cli/run.ts",
-        "src/cli/gateway-cli/startup-triage.ts",
         "src/cli/program/register.maintenance.ts",
         "src/commands/triage*.ts",
         "src/infra/triage-continuation.ts",
         "src/infra/update-repair-*.ts",
-        "src/infra/update-triage*.ts",
-        "ui/src/app/update-triage*.ts",
-        "ui/src/pages/config/updates*.ts"
+        "src/infra/update-triage*.ts"
       ],
       "requires": [
         "coding-agent-stub",
@@ -494,7 +457,6 @@
         "ocm @{env} -- triage --non-interactive --json",
         "ocm @{env} -- triage --json",
         "node {kovaRoot}/support/verify/triage-run.mjs --env {env} --timeout 50000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow updates-diagnose --artifact-dir {run}/screens/updates-diagnose --timeout 150000",
         "ocm logs {env} --tail 400",
         "node {kovaRoot}/support/verify/release-feed.mjs --wait {run}/release-feed-recover-failed-update.json --timeout 30000"
       ],
@@ -502,22 +464,19 @@
         "responses",
         "logs",
         "timing",
-        "screen",
         "state:logs/support"
       ],
       "timeoutMs": 600000,
-      "browser": true,
+      "browser": false,
       "slow": true
     },
     {
       "id": "report-update-failure",
       "kind": "operation",
-      "intent": "An owner previews the sanitized failure report for a recorded failed update through update.report and from Settings Updates, cancels once, then submits with the host GitHub CLI unavailable and opens the prefilled issue link; the preview body, fallback result and links are observed.",
+      "intent": "An owner previews a sanitized report for a recorded native-ledger failure through update.report under an isolated unavailable-GitHub fixture; the preview body and RPC result are observed.",
       "paths": [
         "src/gateway/server-methods/update-report.ts",
-        "src/infra/update-failure-*.ts",
-        "ui/src/app/update-failure-report*.ts",
-        "ui/src/pages/config/updates*.ts"
+        "src/infra/update-failure-*.ts"
       ],
       "requires": [
         "gateway-multi-user-profiles",
@@ -529,18 +488,16 @@
         "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed-report-update-failure.json --timeout 240000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault github-unavailable --timeout 30000 --background --handle {run}/github-unavailable-report-update-failure.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.report --params '{\"action\":\"preview\",\"attemptId\":\"{persona:update-history-failed:runId}\"}' --timeout 60000 --github-fixture {run}/github-unavailable-report-update-failure.json",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow updates-report-failure --artifact-dir {run}/screens/updates-report-failure --timeout 150000 --github-fixture {run}/github-unavailable-report-update-failure.json",
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/github-unavailable-report-update-failure.json --timeout 30000",
         "node {kovaRoot}/support/verify/release-feed.mjs --wait {run}/release-feed-report-update-failure.json --timeout 30000"
       ],
       "checkpoint": [
         "responses",
         "logs",
-        "timing",
-        "screen"
+        "timing"
       ],
       "timeoutMs": 600000,
-      "browser": true,
+      "browser": false,
       "slow": true
     },
     {
@@ -631,20 +588,20 @@
         "node {kovaRoot}/support/verify/release-feed.mjs --env {env} --from {run}/release-feed.json --mode serve --timeout 30000 --background --handle {run}/release-feed-update-by-another-method.json",
         "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed-update-by-another-method.json --timeout 240000",
         "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-pnpm-global:env} --fixture {persona:install-pnpm-global:fixture} --runtime persona --release-feed {run}/release-feed-update-by-another-method.json --timeout 240000",
-        "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-npm-global:env} --tool npm --target side --keep-gateway-running --timeout 240000",
+        "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-npm-global:env} --tool npm --target side --keep-gateway-running --observe-replacement --timeout 240000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-npm-replaced --timeout 120000",
         "ocm @{persona:install-npm-global:env} -- status --json",
         "ocm @{persona:install-npm-global:env} -- update status --json",
         "ocm @{persona:install-npm-global:env} -- doctor --json",
-        "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-pnpm-global:env} --tool pnpm --target side --keep-gateway-running --timeout 240000",
+        "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-pnpm-global:env} --tool pnpm --target side --keep-gateway-running --observe-replacement --timeout 240000",
         "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime side --release-feed {run}/release-feed-update-by-another-method.json --timeout 240000",
         "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-pnpm-global:env} --fixture {persona:install-pnpm-global:fixture} --runtime side --release-feed {run}/release-feed-update-by-another-method.json --timeout 240000",
-        "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-npm-global:env} --tool npm --target side-next --keep-gateway-running --timeout 240000",
+        "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-npm-global:env} --tool npm --target side-next --keep-gateway-running --observe-replacement --timeout 240000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-npm-replaced-side --timeout 120000",
         "ocm @{persona:install-npm-global:env} -- status --json",
         "ocm @{persona:install-npm-global:env} -- update status --json",
         "ocm @{persona:install-npm-global:env} -- doctor --json",
-        "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-pnpm-global:env} --tool pnpm --target side-next --keep-gateway-running --timeout 240000",
+        "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-pnpm-global:env} --tool pnpm --target side-next --keep-gateway-running --observe-replacement --timeout 240000",
         "node {kovaRoot}/support/verify/release-feed.mjs --wait {run}/release-feed-update-by-another-method.json --timeout 30000"
       ],
       "checkpoint": [
@@ -662,6 +619,7 @@
       "kind": "operation",
       "intent": "A fresh idle headless node checks, prepares and activates the published release, once driven by the persona runtime and separately by the comparison side runtime; preparation, activation and the reported node version are observed.",
       "paths": [
+        "node-host-launcher.mjs",
         "src/node-host/auto-update*.ts",
         "src/node-host/runner.ts",
         "src/node-host/runtime-update-pause.ts",
@@ -784,14 +742,14 @@
       "commands": [
         "node {kovaRoot}/support/verify/release-feed.mjs --env {env} --from {run}/release-feed.json --mode serve --timeout 30000 --background --handle {run}/release-feed-event-installation-replacement-detected.json",
         "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed-event-installation-replacement-detected.json --timeout 240000",
-        "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-npm-global:env} --tool npm --target side --keep-gateway-running --timeout 200000",
+        "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-npm-global:env} --tool npm --target side --keep-gateway-running --observe-replacement --timeout 200000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-replaced --timeout 90000",
         "ocm @{persona:install-npm-global:env} -- status --json",
         "ocm @{persona:install-npm-global:env} -- doctor --json",
         "ocm logs {persona:install-npm-global:env} --tail 400",
         "node {kovaRoot}/support/verify/read-installation-state.mjs --env {persona:install-npm-global:env} --path state/openclaw.sqlite --timeout 60000",
         "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime side --release-feed {run}/release-feed-event-installation-replacement-detected.json --timeout 240000",
-        "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-npm-global:env} --tool npm --target side-next --keep-gateway-running --timeout 200000",
+        "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-npm-global:env} --tool npm --target side-next --keep-gateway-running --observe-replacement --timeout 200000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-replaced-side --timeout 90000",
         "ocm @{persona:install-npm-global:env} -- status --json",
         "ocm @{persona:install-npm-global:env} -- doctor --json",
@@ -1014,6 +972,7 @@
       "intent": "An npm installation is replaced with lifecycle scripts skipped, then any CLI command runs; the completed pending lifecycle or reinstall guidance is observed.",
       "paths": [
         "src/gateway/stale-install.ts",
+        "src/index.ts",
         "src/infra/package-lifecycle.ts"
       ],
       "requires": [
@@ -1106,22 +1065,26 @@
       "slow": true
     },
     {
-      "id": "event-telemetry-unreachable",
+      "id": "event-update-check-response-invalid",
       "kind": "event",
-      "intent": "The Gateway restarts while the update-check endpoint is unreachable, so the failed check does not interrupt startup; startup logs, ready state and update.status are observed.",
+      "intent": "The Gateway starts with an eligible uncached update check against an endpoint returning malformed JSON; endpoint attempts, startup logs, ready state and update.status are observed.",
       "paths": [
         "src/gateway/server-startup-update-check.ts",
+        "src/infra/telemetry.ts",
         "src/infra/update-*.ts"
       ],
-      "requires": [],
+      "requires": [
+        "update-baseline-fixture"
+      ],
       "commands": [
-        "node {kovaRoot}/support/verify/release-feed.mjs --env {env} --from {run}/release-feed.json --mode serve --timeout 30000 --background --handle {run}/release-feed-event-telemetry-unreachable.json",
-        "node {kovaRoot}/support/verify/release-feed.mjs --from {run}/release-feed-event-telemetry-unreachable.json --mode offline",
+        "node {kovaRoot}/support/verify/release-feed.mjs --env {env} --from {run}/release-feed.json --mode serve --timeout 30000 --background --handle {run}/release-feed-event-update-check-response-invalid.json",
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed-event-update-check-response-invalid.json --timeout 240000",
+        "node {kovaRoot}/support/verify/stop-gateway.mjs --env {env} --timeout 120000",
+        "node {kovaRoot}/support/verify/release-feed.mjs --from {run}/release-feed-event-update-check-response-invalid.json --env {env} --mode invalid-response --reset-update-check-cache --timeout 30000",
         "ocm service restart {env} --json",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-event-telemetry-unreachable --timeout 90000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-event-update-check-response-invalid --timeout 90000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.status --params '{}' --timeout 30000",
-        "node {kovaRoot}/support/verify/release-feed.mjs --from {run}/release-feed-event-telemetry-unreachable.json --mode serve",
-        "node {kovaRoot}/support/verify/release-feed.mjs --wait {run}/release-feed-event-telemetry-unreachable.json --timeout 30000"
+        "node {kovaRoot}/support/verify/release-feed.mjs --wait {run}/release-feed-event-update-check-response-invalid.json --timeout 30000"
       ],
       "checkpoint": [
         "responses",
@@ -1129,9 +1092,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 260000,
+      "timeoutMs": 650000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-update-checks-disabled",
@@ -1237,6 +1200,7 @@
       "kind": "event",
       "intent": "The headless node's prepared runtime fails to reconnect after activation, so its launcher falls back to the previous runtime; the node's fallback messages and reported version are observed.",
       "paths": [
+        "node-host-launcher.mjs",
         "src/node-host/auto-update*.ts",
         "src/node-host/runtime-update-pause.ts"
       ],
@@ -1561,7 +1525,7 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/release-feed.mjs --env {env} --from {run}/release-feed.json --mode serve --timeout 30000 --background --handle {run}/release-feed-event-startup-retired-files.json",
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:state-legacy-retired:path} --run start --timeout 150000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:state-legacy-retired:filesPath} --run start --timeout 150000",
         "node {kovaRoot}/support/verify/release-feed.mjs --wait {run}/release-feed-event-startup-retired-files.json --timeout 30000"
       ],
       "checkpoint": [
