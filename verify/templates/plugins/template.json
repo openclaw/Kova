@@ -88,6 +88,7 @@
     "plugin-ui-consent",
     "plugin-ui-removal",
     "plugin-ui-session-identities",
+    "plugin-untracked-global",
     "plugin-workspace-discovered",
     "plugins-broken-installs",
     "plugins-bundled-and-external",
@@ -1892,7 +1893,7 @@
     {
       "id": "event-gateway-restart-reloads-plugins",
       "kind": "event",
-      "intent": "A user restarts the Gateway while a session is active and the fixture plugin projects cron wakes, observing gateway_stop, the bounded session_end drain, activation-selected startup loading, gateway_start, cron_reconciled with reason startup, the unverified-source warning once again and warm capture reuse.",
+      "intent": "A user restarts the Gateway while a session is active and the fixture plugin projects cron wakes, observing gateway_stop, the bounded session_end drain, activation-selected startup loading, gateway_start, cron_reconciled with reason startup, the startup registry's provenance diagnostics for the named unmanaged global fixture and warm capture reuse.",
       "paths": [
         "src/gateway/server-startup-plugins.ts",
         "src/gateway/server-startup-finish.ts",
@@ -1925,13 +1926,15 @@
         "src/gateway/server-lifecycle.ts",
         "src/plugins/plugin-native-admission-state.ts",
         "src/plugins/plugin-native-admission.ts",
-        "src/plugins/plugin-generation-receipt.ts"
+        "src/plugins/plugin-generation-receipt.ts",
+        "src/gateway/server-plugin-bootstrap.ts"
       ],
       "requires": [
         "mock-provider-held-turn",
         "plugin-fixture-surfaces",
         "plugins-legacy-state",
-        "session-phase-hold"
+        "session-phase-hold",
+        "plugin-untracked-global"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-phase-hold:key} --hold-ms 60000 --timeout 90000 --background --handle {run}/restart-turn.json",
@@ -1942,6 +1945,7 @@
         "ocm logs {env} --tail 400",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-phase-hold:key} --hold-ms 60000 --wait {run}/restart-turn.json --timeout 30000",
         "ocm service restart {env} --json",
+        "ocm @{env} -- plugins inspect {persona:plugin-untracked-global:pluginId} --runtime --json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.list --params '{}' --timeout 30000",
         "ocm @{env} -- status --json",
         "ocm @{env} -- health --json"
@@ -2581,7 +2585,7 @@
     {
       "id": "inspect-plugin",
       "kind": "operation",
-      "intent": "A user inspects a plugin cold and with its runtime loaded, inspects every plugin, reads its credential status and asks through the agent and /plugins inspect, observing identity, shape, registrations, diagnostics and install metadata.",
+      "intent": "A user inspects a plugin cold and with its runtime loaded, inspects every plugin, reads its credential status and asks through the agent and /plugins inspect, observing identity, shape, registrations, diagnostics and install metadata. Runtime inspection of the named unmanaged global fixture records its loaded state and unverified-provenance diagnostic.",
       "paths": [
         "src/cli/plugins-inspect-command.ts",
         "src/gateway/server-methods/plugins.ts",
@@ -2617,7 +2621,8 @@
         "plugin-fixture-surfaces",
         "plugins-broken-installs",
         "plugins-bundled-and-external",
-        "session-plugin-tools"
+        "session-plugin-tools",
+        "plugin-untracked-global"
       ],
       "commands": [
         "ocm @{env} -- plugins inspect {persona:plugin-fixture-surfaces:pluginId} --json",
@@ -2625,6 +2630,7 @@
         "ocm @{env} -- plugins inspect --all --json",
         "ocm @{env} -- plugins inspect {persona:plugins-bundled-and-external:externalPluginId} --runtime --json",
         "ocm @{env} -- plugins inspect {persona:plugins-broken-installs:disposeFailPluginId} --runtime --json",
+        "ocm @{env} -- plugins inspect {persona:plugin-untracked-global:pluginId} --runtime --json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.inspect --params '{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}' --timeout 30000",
         "node {kovaRoot}/support/verify/plugin-credential-context.mjs --env {env} --plugin {persona:plugin-credential-synthetic:pluginId} --out {run}/inspect-plugin-credential-context.json --timeout 15000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.credentials.inspect --params '{}' --merge-from {run}/inspect-plugin-credential-context.json --timeout 30000",

@@ -1,11 +1,12 @@
 # Coverage: plugins
 
 Operations: 34/34
-Conditions: 137/187 (134 ambient, 53 event)
+Conditions: 136/187 (134 ambient, 53 event)
 Entry points: 330/376 (46 excluded)
 Breaks mapped: 7/18
 
 Uncovered:
+- C21 allowlist-unset-with-discovered-non-bundled-plugins (condition): no phase establishes an empty plugins.allow and observes the active-loader warning with a non-explicitly-enabled workspace or global plugin. The shared fixtures populate the allowlist; inventory, inspection and staged Gateway loading do not establish this warning.
 - C175 signed-feed-without-key (condition): the pinned CLI cannot configure a signed profile; its public selector exposes the unsigned built-in profile or rejects an unknown profile before fetching. A checksum mismatch does not exercise signature trust. The signed verifier requires an internal profile argument, outside these product-command phases.
 - C16 nix-mode-or-read-only-config (condition, partial): CLI environment flags are exercised; starting the Gateway itself with these flags is not provided by a persona trait.
 - C187 redaction-patterns-copied-from-defaults (condition): no phase sends encoded form values or Digest authorization through the logging redactor; the public-link prompt does not exercise this boundary.
@@ -180,3 +181,5 @@ File discovery refers to the concrete named file at the pinned revision; caller 
 - plugin-catalog-tool-calls: top-level tools.toolSearch is enabled in directory mode, preserving direct deferred tools and exposing tool_call. For the actual agent/model owning session-plugin-tools, its tools.codeMode and canonical model-entry codeMode are false; the fresh idle turn has no forced Code Mode override. Policy admits the dispatcher and fixture tool, and the prepared catalog contains the native output-schema entry.
 
 - plugin-delivery-inactive-peer: one unique external plugin with an authoritative local path-source installation record, explicit allowlist entry and accepted capability surface, disabled before the settled Gateway generation used by the final-delivery event (pluginId). It has never had a live instance in that generation and has no unresolved retirement. Its successful register is empty: no commands, channels, tools, hooks, services, providers, slots, native dependencies or shared side effects. No other phase changes it; path-source receipts are skipped by update --all. Consent preparation finishes before the Gateway settles. During activation only this peer's enabled flag changes; all sibling code, config, receipts and channel settings remain identical. The held turn therefore cannot borrow this peer, unchanged siblings retain their identity, and publication has no old peer work to drain. The event restores enabled:false only after the original final reply is joined.
+
+- plugin-untracked-global: one independent plugin directory under this clone's global extensions root, with a valid openclaw.plugin.json, configSchema and index.js exporting a successful empty registration (pluginId). It is explicitly enabled and allowlisted, with no authoritative managed install receipt and no competing copy or package identity. Ordinary derived discovery metadata may exist. It loads as origin global with trust.reason record-missing, so runtime inspection records its exact loaded identity and unverified-provenance diagnostic. It contributes no privileged hook runtime, services or shared effects. No other phase installs, repairs, updates or removes it. This directory is distinct from the standalone-script fixture and the config-origin trust probe.
