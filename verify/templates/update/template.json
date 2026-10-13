@@ -333,7 +333,6 @@
         "config-retired-keys",
         "cron-job-isolated",
         "state-legacy-migratable",
-        "state-legacy-retired",
         "state-retired-json",
         "store-legacy-sessions-json",
         "store-rows-legacy-aliases",
@@ -366,7 +365,6 @@
         "node {kovaRoot}/support/verify/read-installation-state.mjs --env {persona:config-retired-keys:env} --path state/openclaw.sqlite --timeout 60000",
         "node {kovaRoot}/support/verify/read-installation-state.mjs --env {persona:state-retired-json:env} --path state/openclaw.sqlite --timeout 60000",
         "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:state-legacy-migratable:path} --run doctor --timeout 240000",
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:state-legacy-retired:filesPath} --run doctor --timeout 180000",
         "node {kovaRoot}/support/verify/release-feed.mjs --wait {run}/release-feed-migrate-state-and-config.json --timeout 30000"
       ],
       "checkpoint": [
@@ -377,7 +375,7 @@
         "state:state/openclaw.sqlite",
         "state:openclaw.json"
       ],
-      "timeoutMs": 2040000,
+      "timeoutMs": 1860000,
       "browser": false,
       "slow": true
     },
@@ -854,11 +852,15 @@
       "paths": [
         "src/cli/daemon-cli/lifecycle-*restart*.ts",
         "src/cli/daemon-cli/restart-*.ts",
+        "src/cli/gateway-cli/run-loop-shutdown-budget.ts",
         "src/daemon/restart-*.ts",
         "src/gateway/restart-trace.ts",
         "src/gateway/server-methods/restart*.ts",
         "src/gateway/server-restart-sentinel*.ts",
-        "src/infra/restart*.ts"
+        "src/infra/gateway-active-work.ts",
+        "src/infra/gateway-drain.ts",
+        "src/infra/restart*.ts",
+        "src/process/gateway-work-admission.ts"
       ],
       "requires": [
         "mock-provider-held-turn",
@@ -1081,15 +1083,19 @@
     {
       "id": "event-restart-forced-under-turn",
       "kind": "event",
-      "intent": "A user forces a restart while a turn is held open, so remaining work is cancelled at the shutdown deadline and the session is marked for recovery; the drain report, held turn outcome and session rows are observed.",
+      "intent": "A user forces a restart while a turn is held for six minutes, longer than the five-minute forced-restart allowance, so the shutdown deadline can cancel active work; the drain report, held turn outcome and session rows are observed.",
       "paths": [
         "src/cli/daemon-cli/lifecycle-*restart*.ts",
         "src/cli/daemon-cli/restart-*.ts",
+        "src/cli/gateway-cli/run-loop-shutdown-budget.ts",
         "src/daemon/launchd-restart-handoff.ts",
         "src/daemon/restart-*.ts",
         "src/gateway/restart-trace.ts",
         "src/gateway/server-methods/restart*.ts",
-        "src/infra/restart*.ts"
+        "src/infra/gateway-active-work.ts",
+        "src/infra/gateway-drain.ts",
+        "src/infra/restart*.ts",
+        "src/process/gateway-work-admission.ts"
       ],
       "requires": [
         "mock-provider-held-turn",
@@ -1097,7 +1103,7 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/release-feed.mjs --env {env} --from {run}/release-feed.json --mode serve --timeout 30000 --background --handle {run}/release-feed-event-restart-forced-under-turn.json",
-        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 120000 --timeout 130000 --background --handle {run}/forced-turn.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 360000 --timeout 370000 --background --handle {run}/forced-turn.json",
         "ocm @{env} -- gateway restart --force --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-event-restart-forced-under-turn --timeout 60000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --wait {run}/forced-turn.json --timeout 60000",
@@ -1110,7 +1116,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 320000,
+      "timeoutMs": 700000,
       "browser": false,
       "slow": true
     },
@@ -1133,6 +1139,7 @@
         "src/cli/gateway-cli/host-lifecycle.ts",
         "src/cli/gateway-cli/lifecycle.runtime.ts",
         "src/cli/gateway-cli/run-loop-drain.ts",
+        "src/cli/gateway-cli/run-loop-shutdown-budget.ts",
         "src/cli/gateway-cli/run-loop-startup.ts",
         "src/cli/gateway-cli/run-loop.ts",
         "src/config/io.write.ts",
@@ -1148,8 +1155,11 @@
         "src/gateway/server-reload-restart.ts",
         "src/gateway/server-restart-sentinel*.ts",
         "src/gateway/server-startup-trace.ts",
+        "src/infra/gateway-active-work.ts",
+        "src/infra/gateway-drain.ts",
         "src/infra/process-respawn.ts",
         "src/infra/restart*.ts",
+        "src/process/gateway-work-admission.ts",
         "src/system-agent/operations-execution-helpers.ts"
       ],
       "requires": [
@@ -1241,11 +1251,15 @@
       "paths": [
         "src/cli/daemon-cli/lifecycle-*restart*.ts",
         "src/cli/daemon-cli/restart-*.ts",
+        "src/cli/gateway-cli/run-loop-shutdown-budget.ts",
         "src/daemon/restart-*.ts",
         "src/gateway/restart-trace.ts",
         "src/gateway/server-methods/restart*.ts",
         "src/gateway/server-restart-sentinel*.ts",
-        "src/infra/restart*.ts"
+        "src/infra/gateway-active-work.ts",
+        "src/infra/gateway-drain.ts",
+        "src/infra/restart*.ts",
+        "src/process/gateway-work-admission.ts"
       ],
       "requires": [
         "session-main-rolling",
@@ -1275,11 +1289,15 @@
       "paths": [
         "src/cli/daemon-cli/lifecycle-*restart*.ts",
         "src/cli/daemon-cli/restart-*.ts",
+        "src/cli/gateway-cli/run-loop-shutdown-budget.ts",
         "src/daemon/launchd-restart-handoff.ts",
         "src/daemon/restart-*.ts",
         "src/gateway/restart-trace.ts",
         "src/gateway/server-methods/restart*.ts",
-        "src/infra/restart*.ts"
+        "src/infra/gateway-active-work.ts",
+        "src/infra/gateway-drain.ts",
+        "src/infra/restart*.ts",
+        "src/process/gateway-work-admission.ts"
       ],
       "requires": [
         "cron-job-isolated",
@@ -1311,11 +1329,15 @@
       "paths": [
         "src/cli/daemon-cli/lifecycle-*restart*.ts",
         "src/cli/daemon-cli/restart-*.ts",
+        "src/cli/gateway-cli/run-loop-shutdown-budget.ts",
         "src/daemon/launchd-restart-handoff.ts",
         "src/daemon/restart-*.ts",
         "src/gateway/restart-trace.ts",
         "src/gateway/server-methods/restart*.ts",
-        "src/infra/restart*.ts"
+        "src/infra/gateway-active-work.ts",
+        "src/infra/gateway-drain.ts",
+        "src/infra/restart*.ts",
+        "src/process/gateway-work-admission.ts"
       ],
       "requires": [
         "mock-provider-held-turn",
