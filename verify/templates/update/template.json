@@ -217,7 +217,7 @@
         "session-main-rolling"
       ],
       "commands": [
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-setup --timeout-ms 120000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-setup --timeout 120000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 240000 --background --handle {run}/turn-in-flight.json"
       ],
       "checkpoint": [
@@ -322,7 +322,7 @@
         "ocm @{env} -- status --json",
         "ocm @{env} -- doctor --json",
         "node {kovaRoot}/support/run-doctor-repair.mjs --env {env}",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-migrated --timeout-ms 120000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-migrated --timeout 120000",
         "ocm @{persona:state-retired-json:env} -- doctor --json",
         "node {kovaRoot}/support/run-doctor-repair.mjs --env {persona:state-retired-json:env}",
         "ocm @{persona:state-retired-json:env} -- update --dry-run --json",
@@ -404,7 +404,7 @@
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side --yes --stdin pipe --timeout 290000",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-tarball-extracted:env} --target side --yes --timeout 60000",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-bun-global:env} --target side --yes --timeout 290000",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-bun-global:env} --artifact-dir {run}/ready-bun --timeout-ms 120000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-bun-global:env} --artifact-dir {run}/ready-bun --timeout 120000",
         "ocm @{persona:install-npm-global:env} -- update status --json",
         "ocm @{persona:install-npm-global:env} -- doctor --json",
         "ocm @{env} -- update status --json"
@@ -524,7 +524,7 @@
       "commands": [
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow update-review-cancel --artifact-dir {run}/screens/update-review-cancel --timeout 90000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow update-now-confirm --artifact-dir {run}/screens/update-now-confirm --timeout 290000 --out {run}/ui-update.json",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-ui-update --timeout-ms 120000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-ui-update --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.status --params '{}' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.runs.list --params '{\"limit\":5}' --timeout 60000"
       ],
@@ -560,7 +560,7 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message '/update' --timeout 250000",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-chat-update --timeout-ms 120000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-chat-update --timeout 120000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool gateway --args '{\"action\":\"update.run\"}' --timeout 200000",
         "node {kovaRoot}/support/verify/cron-isolated-run.mjs --env {env} --job-id {persona:cron-job-update:jobId} --timeout 200000",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --chat-type direct --peer {persona:session-main-rolling:peer} --text '/update' --timeout 60000",
@@ -594,7 +594,7 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.run --params '{\"sessionKey\":\"{persona:session-main-rolling:key}\"}' --timeout 250000",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-notice --timeout-ms 120000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-notice --timeout 120000",
         "ocm @{env} -- status --json",
         "node {kovaRoot}/support/verify/chat-history-read.mjs --env {env} --session-key {persona:session-main-rolling:key} --limit 20 --timeout 60000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow sidebar-server-updated --artifact-dir {run}/screens/sidebar-server-updated --timeout 90000"
@@ -803,7 +803,7 @@
         "ocm @{env} -- update repair --json --yes",
         "ocm @{env} -- status --json",
         "ocm service start {env} --json",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-repair --timeout-ms 120000"
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-repair --timeout 120000"
       ],
       "checkpoint": [
         "responses",
@@ -835,7 +835,7 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-npm-global:env} --tool npm --target side --keep-gateway-running --timeout 240000",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-npm-replaced --timeout-ms 120000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-npm-replaced --timeout 120000",
         "ocm @{persona:install-npm-global:env} -- status --json",
         "ocm @{persona:install-npm-global:env} -- update status --json",
         "ocm @{persona:install-npm-global:env} -- doctor --json",
@@ -897,19 +897,19 @@
       "commands": [
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message 'Are you still there?' --after-ms 2000 --background --handle {run}/drain-message.json",
         "ocm @{env} -- gateway restart --safe",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-safe --timeout-ms 120000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-safe --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method gateway.restart.preflight --params '{}' --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method gateway.restart.request --params '{}' --timeout 60000",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-request --timeout-ms 120000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-request --timeout 120000",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message '/restart' --timeout 60000",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-chat-restart --timeout-ms 120000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-chat-restart --timeout 120000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault signal-restart --timeout 30000",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-sigusr2 --timeout-ms 120000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-sigusr2 --timeout 120000",
         "ocm @{env} -- gateway restart",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-plain --timeout-ms 120000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-plain --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method gateway.stop.request --params '{}' --timeout 60000",
         "ocm service start {env} --json",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-stop-start --timeout-ms 120000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-stop-start --timeout 120000",
         "node {kovaRoot}/support/verify/chat-send.mjs --wait {run}/drain-message.json --timeout 30000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/turn-in-flight.json --timeout 30000"
       ],
@@ -950,7 +950,7 @@
         "node {kovaRoot}/support/verify/restart-handoff.mjs --env {env} --operation consume --expected-pid-from {run}/supervisor.json",
         "ocm @{env} -- update --dry-run --json",
         "node {kovaRoot}/support/verify/external-supervisor.mjs --wait {run}/supervisor.json --timeout 20000",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-supervisor --timeout-ms 120000"
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-supervisor --timeout 120000"
       ],
       "checkpoint": [
         "responses",
@@ -977,7 +977,7 @@
         "ocm @{env} -- gateway stop",
         "ocm @{env} -- update cleanup --yes --json",
         "ocm service start {env} --json",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-retired --timeout-ms 120000"
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-retired --timeout 120000"
       ],
       "checkpoint": [
         "responses",
@@ -1016,7 +1016,7 @@
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/fault-triage.json --timeout 30000",
         "ocm @{env} -- update status --json",
         "ocm logs {env} --tail 400",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-triage --timeout-ms 30000"
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-triage --timeout 30000"
       ],
       "checkpoint": [
         "responses",
@@ -1052,7 +1052,7 @@
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/fault-rollback.json --timeout 30000",
         "ocm @{env} -- update status --json",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-rollback --timeout-ms 30000"
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-rollback --timeout 30000"
       ],
       "checkpoint": [
         "responses",
@@ -1367,7 +1367,7 @@
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.run --params '{}' --timeout 200000",
         "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/invalid-field-restore.json",
         "ocm @{env} -- update status --json",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-handoff-refusal --timeout-ms 60000"
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-handoff-refusal --timeout 60000"
       ],
       "checkpoint": [
         "responses",
@@ -1401,7 +1401,7 @@
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.run --params '{}' --timeout 250000",
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/fault-helper.json --timeout 30000",
         "ocm @{env} -- update status --json",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-helper --timeout-ms 30000"
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-helper --timeout 30000"
       ],
       "checkpoint": [
         "responses",
@@ -1661,7 +1661,7 @@
         "ocm @{env} -- update --dry-run --json",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target persona --yes --timeout 200000",
         "ocm @{env} -- update status --json",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-older-target --timeout-ms 30000"
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-older-target --timeout 30000"
       ],
       "checkpoint": [
         "responses",
@@ -1853,7 +1853,7 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-npm-global:env} --target side --no-restart --yes --timeout 200000",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-watcher --timeout-ms 90000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-watcher --timeout 90000",
         "ocm @{persona:install-npm-global:env} -- status --json",
         "ocm logs {persona:install-npm-global:env} --tail 400"
       ],
@@ -1979,7 +1979,7 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-npm-global:env} --tool npm --target side --keep-gateway-running --timeout 200000",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-replaced --timeout-ms 90000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-replaced --timeout 90000",
         "ocm @{persona:install-npm-global:env} -- status --json",
         "ocm @{persona:install-npm-global:env} -- doctor --json",
         "ocm logs {persona:install-npm-global:env} --tail 400"
@@ -2079,7 +2079,7 @@
       "commands": [
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-npm-global:env} --target side --yes --signal SIGINT --at-phase staging --timeout 200000",
         "ocm @{persona:install-npm-global:env} -- update status --json",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-interrupted --timeout-ms 60000"
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-interrupted --timeout 60000"
       ],
       "checkpoint": [
         "responses",
@@ -2116,7 +2116,7 @@
       "commands": [
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-npm-global:env} --target side --yes --signal SIGINT --at-phase validating --timeout 200000",
         "ocm @{persona:install-npm-global:env} -- update status --json",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-cancelled --timeout-ms 60000"
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-cancelled --timeout 60000"
       ],
       "checkpoint": [
         "responses",
@@ -2149,7 +2149,7 @@
       "commands": [
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-npm-global:env} --target side --yes --signal SIGTERM --at-phase activating --timeout 250000",
         "ocm @{persona:install-npm-global:env} -- update status --json",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-sigterm --timeout-ms 60000"
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-sigterm --timeout 60000"
       ],
       "checkpoint": [
         "responses",
@@ -2212,7 +2212,7 @@
       "requires": [],
       "commands": [
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side-next --yes --signal SIGKILL --at-phase verifying --timeout 250000",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-verify-killed --timeout-ms 60000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-verify-killed --timeout 60000",
         "ocm @{env} -- update status --json",
         "ocm @{env} -- doctor --json"
       ],
@@ -2279,7 +2279,7 @@
       "commands": [
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-npm-global:env} --target side --yes --update-timeout 60000 --timeout 290000",
         "ocm @{persona:install-npm-global:env} -- update status --json",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-still-starting --timeout-ms 120000"
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-still-starting --timeout 120000"
       ],
       "checkpoint": [
         "responses",
@@ -2374,7 +2374,7 @@
       "commands": [
         "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-npm-global:env} --tool npm --target side --keep-gateway-running --timeout 200000",
         "ocm @{persona:install-npm-global:env} -- gateway restart",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-migrating --timeout-ms 90000"
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-migrating --timeout 90000"
       ],
       "checkpoint": [
         "responses",
@@ -2406,7 +2406,7 @@
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side-next --yes --timeout 250000",
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/fault-kill.json --timeout 30000",
         "ocm @{env} -- update status --json",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-killed --timeout-ms 60000"
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-killed --timeout 60000"
       ],
       "checkpoint": [
         "responses",
@@ -2436,7 +2436,7 @@
         "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault occupy-gateway-port --background --handle {run}/fault-port.json --duration-ms 60000",
         "ocm @{env} -- gateway restart",
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/fault-port.json --timeout 90000",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-port --timeout-ms 120000"
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-port --timeout 120000"
       ],
       "checkpoint": [
         "responses",
@@ -2700,7 +2700,7 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool exec --args '{\"command\":\"openclaw update --yes\"}' --timeout 250000",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-agent-shell --timeout-ms 120000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-agent-shell --timeout 120000",
         "ocm @{env} -- update status --json"
       ],
       "checkpoint": [
@@ -2736,7 +2736,7 @@
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method gateway.stop.request --params '{}' --timeout 120000 --after-ms 5000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --wait {run}/update-run.json --timeout 120000",
         "ocm service start {env} --json",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-stop --timeout-ms 120000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-stop --timeout 120000",
         "ocm @{env} -- update status --json"
       ],
       "checkpoint": [
@@ -2924,7 +2924,7 @@
       "commands": [
         "ocm @{env} -- update repair --json --yes --timeout 1",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-repair-timeout --timeout-ms 60000"
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-repair-timeout --timeout 60000"
       ],
       "checkpoint": [
         "responses",
@@ -3011,7 +3011,7 @@
         "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/update-automatic-beta-on.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.status --params '{}' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.status --params '{}' --after-ms 600000 --timeout 60000",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-campaign --timeout-ms 300000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-campaign --timeout 300000",
         "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/update-automatic-off.json",
         "ocm @{env} -- update status --json"
       ],
@@ -3117,7 +3117,7 @@
       "commands": [
         "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/update-automatic-beta-on.json",
         "ocm @{env} -- gateway restart",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-discovery --timeout-ms 120000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-discovery --timeout 120000",
         "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/update-automatic-off.json",
         "ocm logs {env} --tail 400"
       ],
@@ -3267,7 +3267,7 @@
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-git-checkout:env} --channel stable --yes --timeout 150000",
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/fault-glock.json --timeout 30000",
         "ocm @{persona:install-git-checkout:env} -- config get update --json",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-git-checkout:env} --artifact-dir {run}/ready-switch-refused --timeout-ms 60000"
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-git-checkout:env} --artifact-dir {run}/ready-switch-refused --timeout 60000"
       ],
       "checkpoint": [
         "responses",
@@ -3321,7 +3321,7 @@
       "requires": [],
       "commands": [
         "ocm @{env} -- gateway restart --wait 5s",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-drain --timeout-ms 120000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-drain --timeout 120000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/turn-in-flight.json --timeout 30000"
       ],
       "checkpoint": [
@@ -3380,7 +3380,7 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-npm-global:env} --target side --yes --timeout 250000",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-old-shutdown --timeout-ms 90000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-old-shutdown --timeout 90000",
         "ocm @{persona:install-npm-global:env} -- update status --json",
         "ocm logs {persona:install-npm-global:env} --tail 400"
       ],
@@ -3443,7 +3443,7 @@
         "ocm @{env} -- update cleanup --yes --json",
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/fault-reader.json --timeout 30000",
         "ocm service start {env} --json",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-cleanup --timeout-ms 120000"
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-cleanup --timeout 120000"
       ],
       "checkpoint": [
         "responses",
@@ -3547,7 +3547,7 @@
       "requires": [],
       "commands": [
         "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault interrupt-doctor --signal SIGTERM --after-ms 2000 --timeout 60000",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-doctor-term --timeout-ms 120000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-doctor-term --timeout 120000",
         "ocm @{env} -- doctor --json"
       ],
       "checkpoint": [
@@ -3834,7 +3834,7 @@
       "commands": [
         "node {kovaRoot}/support/verify/release-feed.mjs --from {run}/release-feed.json --mode offline",
         "ocm service restart {env} --json",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-event-telemetry-unreachable --timeout-ms 90000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-event-telemetry-unreachable --timeout 90000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.status --params '{}' --timeout 30000",
         "node {kovaRoot}/support/verify/release-feed.mjs --from {run}/release-feed.json --mode serve"
       ],
@@ -3860,7 +3860,7 @@
       "commands": [
         "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/update-checks-off.json",
         "ocm service restart {env} --json",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-event-update-checks-disabled --timeout-ms 60000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-event-update-checks-disabled --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.status --params '{}' --timeout 30000",
         "ocm logs {env} --tail 300",
         "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/update-checks-on.json"
@@ -3896,7 +3896,7 @@
       "commands": [
         "ocm @{env} -- update status --json",
         "ocm service restart {env} --json",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-event-stale-update-history --timeout-ms 60000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-event-stale-update-history --timeout 60000",
         "ocm @{env} -- update status --json",
         "ocm @{env} -- status --json",
         "ocm @{env} -- update repair --yes --json",
@@ -3983,7 +3983,7 @@
       "commands": [
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 120000 --timeout 130000 --background --handle {run}/forced-turn.json",
         "ocm @{env} -- gateway restart --force --json",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-event-restart-forced-under-turn --timeout-ms 60000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-event-restart-forced-under-turn --timeout 60000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --wait {run}/forced-turn.json --timeout 60000",
         "ocm @{env} -- sessions --json --active 5"
       ],
@@ -4016,7 +4016,7 @@
       "commands": [
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method cron.run --params '{\"jobId\":\"{persona:cron-job-isolated:jobId}\",\"mode\":\"force\"}' --timeout 120000 --background --handle {run}/cron-restart.json",
         "ocm @{env} -- gateway restart --json",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-event-restart-during-cron --timeout-ms 60000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-event-restart-during-cron --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method cron.run --params '{}' --timeout 60000 --wait {run}/cron-restart.json",
         "ocm @{env} -- cron list --json"
       ],
@@ -4049,7 +4049,7 @@
       "commands": [
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message 'Reply with exact ASCII text KOVA_DRAIN_OK only.' --after-ms 1500 --timeout 60000 --background --handle {run}/drain-send.json",
         "ocm @{env} -- gateway restart --wait 30s --json",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-event-restart-rejects-new-input --timeout-ms 60000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-event-restart-rejects-new-input --timeout 60000",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --wait {run}/drain-send.json --timeout 60000"
       ],
       "checkpoint": [
@@ -4133,7 +4133,7 @@
       "requires": [],
       "commands": [
         "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault signal-stop --count 3 --interval-ms 30000 --timeout 150000",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-signals --timeout-ms 120000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-signals --timeout 120000",
         "ocm @{env} -- status --json",
         "ocm logs {env} --tail 400"
       ],
@@ -4290,7 +4290,7 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/stage-session-store-fixture.mjs --env {env} --agent {persona:agents-three-configured:mainAgentId} --fixture {persona:store-corrupt-generation:path}",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-event-required-store-refused --timeout-ms 60000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-event-required-store-refused --timeout 60000",
         "ocm @{env} -- status --json",
         "ocm @{env} -- doctor --json"
       ],
@@ -4323,7 +4323,7 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault kill-gateway --count 3 --interval-ms 20000 --timeout 120000",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-crash-loop --timeout-ms 120000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-crash-loop --timeout 120000",
         "ocm @{env} -- channels status --json",
         "ocm logs {env} --tail 400"
       ],
@@ -4357,7 +4357,7 @@
         "ocm logs {env} --tail 400",
         "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/invalid-field-restore.json",
         "ocm service restart {env} --json",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-startup-triage --timeout-ms 120000"
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-startup-triage --timeout 120000"
       ],
       "checkpoint": [
         "responses",
