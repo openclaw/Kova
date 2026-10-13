@@ -138,6 +138,11 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
       diagnosticReport: diagnosticTriggerResult(DIAGNOSTIC_REPORT_SCHEMA, { requested: requestDiagnosticReport, error })
     };
   }
+  const timingEnabled = options.commandEnv?.KOVA_DIAGNOSTIC_TIMING === "1";
+  const timingCode = (phase) => timingEnabled
+    ? `console.error(JSON.stringify({diagnosticTiming:"${phase}",at:Date.now(),processStart:Date.now()-process.uptime()*1000}));`
+    : "";
+  if (timingEnabled) console.error(JSON.stringify({ diagnosticTiming: "session-start", at: requestedAtEpochMs, timeoutMs: normalizedTimeoutMs }));
   const commandBudgetMs = normalizedTimeoutMs - DIAGNOSTIC_RUNNER_EXIT_RESERVE_MS;
   const sessionDeadlineEpochMs = requestedAtEpochMs + normalizedTimeoutMs;
   const discoveryDeadlineEpochMs = sessionDeadlineEpochMs - DIAGNOSTIC_COMMAND_EXIT_RESERVE_MS;
@@ -154,17 +159,22 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
     requestDiagnosticReport ? '-name "report.*.json"' : null,
     requestDiagnosticReport ? '-name "*diagnostic*.json"' : null
   ].filter(Boolean).join(" -o ");
-  const discoveredArtifacts = boundedFindCommand(searchRoots, artifactNamePredicates);
+  const discoveredArtifacts = boundedFindCommand(searchRoots, artifactNamePredicates)
+    .replace('find "$root"', timingEnabled ? 'echo diagnostic-find >&2; /usr/bin/time -p find "$root"' : 'find "$root"')
+    .replace('2>/dev/null', timingEnabled ? '' : '2>/dev/null');
   const fingerprintCommand = `node -e ${quoteShell([
+    timingCode('fingerprint-start'),
     'const fs=require("node:fs");',
     'for(const path of fs.readFileSync(0,"utf8").split("\\n").filter(Boolean)){',
     'try{',
     'const value=fs.statSync(path,{bigint:true});',
     'process.stdout.write(path+"\\t"+[value.dev,value.ino,value.size,value.mtimeNs,value.ctimeNs].join(":")+"\\n");',
     '}catch{}',
-    '}'
+    '}',
+    timingCode('fingerprint-end')
   ].join(""))}`;
   const attributionCommand = `node -e ${quoteShell([
+    timingCode('attribution-start'),
     'const fs=require("node:fs"),pathModule=require("node:path");',
     'const expectedPid=Number(process.argv[1]);',
     `const maxReportBytes=${MAX_DIAGNOSTIC_REPORT_BYTES};`,
@@ -197,7 +207,8 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
     '}',
     'process.stdout.write((heap?"heap":"report")+"\\t"+path+"\\n");',
     '}catch{}',
-    '}'
+    '}',
+    timingCode('attribution-end')
   ].join(""))} ${normalizedPid}`;
   const sessionStateCommand = [
     'baseline=$(mktemp)',
@@ -214,7 +225,7 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
   const artifactOutputCommand = `{ cut -f2 "$attributed"; cut -f1 "$fresh"; } | awk '!seen[$0]++ { if (/[.]heapsnapshot$/) { if (heap++ < 25) print; next } if (report++ < 25) print }'`;
   const command = ocmEnvExecShell(
     envName,
-    `set -eu; ${sessionStateCommand}; ${signalCommand}; while :; do refresh_candidates; refresh_attributed; heap_count=$(awk -F '\\t' '$1 == "heap" { count++ } END { print count + 0 }' "$attributed"); report_count=$(awk -F '\\t' '$1 == "report" { count++ } END { print count + 0 }' "$attributed"); if ${readyConditions}; then break; fi; now_ms=$(node -e 'process.stdout.write(String(Date.now()))'); remaining_ms=$((${discoveryDeadlineEpochMs} - now_ms)); if [ "$remaining_ms" -le 0 ]; then break; fi; sleep_ms=$remaining_ms; if [ "$sleep_ms" -gt ${DIAGNOSTIC_POLL_INTERVAL_MS} ]; then sleep_ms=${DIAGNOSTIC_POLL_INTERVAL_MS}; fi; node -e 'setTimeout(() => {}, Number(process.argv[1]))' "$sleep_ms"; done; ${artifactOutputCommand}`
+    `set -eu; ${sessionStateCommand}; ${signalCommand}; while :; do refresh_candidates; refresh_attributed; heap_count=$(awk -F '\\t' '$1 == "heap" { count++ } END { print count + 0 }' "$attributed"); report_count=$(awk -F '\\t' '$1 == "report" { count++ } END { print count + 0 }' "$attributed"); if ${readyConditions}; then break; fi; now_ms=$(node -e '${timingCode("clock")}process.stdout.write(String(Date.now()))'); remaining_ms=$((${discoveryDeadlineEpochMs} - now_ms)); if [ "$remaining_ms" -le 0 ]; then break; fi; sleep_ms=$remaining_ms; if [ "$sleep_ms" -gt ${DIAGNOSTIC_POLL_INTERVAL_MS} ]; then sleep_ms=${DIAGNOSTIC_POLL_INTERVAL_MS}; fi; node -e '${timingCode("sleep-start")}setTimeout(() => {${timingCode("sleep-end")}}, Number(process.argv[1]))' "$sleep_ms"; done; ${artifactOutputCommand}`
   );
   const result = await runCommand(command, {
     // OCM invocation, polling, and artifact retention share one caller-owned deadline.
@@ -222,6 +233,10 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
     maxOutputChars: 100000,
     env: options.commandEnv
   });
+  if (timingEnabled) {
+    console.error(result.stderr);
+    console.error(JSON.stringify({ diagnosticTiming: "command-end", at: Date.now(), remainingMs: sessionDeadlineEpochMs - Date.now(), status: result.status }));
+  }
   const files = result.status === 0
     ? result.stdout.split("\n").map((line) => line.trim()).filter(Boolean)
     : [];
@@ -260,6 +275,7 @@ export async function triggerDiagnosticSession(envName, pid, timeoutMs, artifact
       transported
     })
   ]);
+  if (timingEnabled) console.error(JSON.stringify({ diagnosticTiming: "retention-end", at: Date.now(), remainingMs: sessionDeadlineEpochMs - Date.now(), heapCount: heapCopied.artifacts.length, heapError: heapCopied.error, reportCount: reportCopied.artifacts.length }));
   const heapError = triggerError ?? heapCopied.error ?? (
     requestHeapSnapshot && heapCopied.files.length === 0
       ? "heap snapshot was not emitted before the diagnostic trigger timeout"
@@ -341,7 +357,8 @@ async function retainTriggeredArtifacts({
         const remainingMs = Math.max(0, deadlineEpochMs - Date.now());
         await waitForStableFile(file, remainingMs, {
           jsonValidation: destination === "heap" ? "envelope" : "full",
-          maxBytes: destination === "heap" ? null : MAX_DIAGNOSTIC_REPORT_BYTES
+          maxBytes: destination === "heap" ? null : MAX_DIAGNOSTIC_REPORT_BYTES,
+          timing: commandEnv?.KOVA_DIAGNOSTIC_TIMING === "1"
         });
         if (!await diagnosticArtifactMatchesPid(file, destination, expectedPid)) {
           throw new Error(`diagnostic artifact belongs to another process: ${file}`);
@@ -472,6 +489,7 @@ async function waitForStableFile(path, timeoutMs, options = {}) {
     const now = Date.now();
     const observedAt = Math.min(now, deadline);
     const state = await fileState(path);
+    if (options.timing && path.endsWith(".heapsnapshot")) console.error(JSON.stringify({ diagnosticTiming: "stability", at: now, remainingMs: deadline - now, ageMs: observedAt - state.mtimeMs, requiredMs: DIAGNOSTIC_STABILITY_MS }));
     if (typeof options.maxBytes === "number" && state.size > options.maxBytes) {
       throw new Error(`diagnostic report exceeds ${options.maxBytes} byte validation limit: ${path}`);
     }

@@ -1,10 +1,24 @@
 import { spawn } from "node:child_process";
 import { chmod, mkdir, readFile, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { availableParallelism } from "node:os";
 import { triggerDiagnosticSession } from "../collectors/diagnostics.mjs";
 import { assertEqual, restoreEnv } from "./harness.mjs";
 
 export async function diagnosticTriggerValidationCheck(tmp) {
+  if (process.env.KOVA_DIAGNOSTIC_LOAD_PROBE === "1"
+    || (process.platform === "darwin" && process.env.GITHUB_ACTIONS === "true")) {
+    const workers = Math.min(12, availableParallelism() * 3);
+    for (const budgetMs of [3000, 5000]) {
+      console.error(JSON.stringify({ diagnosticProbe: "start", budgetMs, workers }));
+      const result = await diagnosticTriggerValidationCase(join(tmp, `probe-${budgetMs}`), budgetMs, workers);
+      console.error(JSON.stringify({ diagnosticProbe: "result", budgetMs, workers, result }));
+    }
+  }
+  return diagnosticTriggerValidationCase(tmp, 5000, 0);
+}
+
+async function diagnosticTriggerValidationCase(tmp, heapBudgetMs, workers) {
   const root = join(tmp, "diagnostic-trigger");
   const binDir = join(root, "bin");
   const openclawHome = join(root, "openclaw-home");
@@ -28,7 +42,7 @@ export async function diagnosticTriggerValidationCheck(tmp) {
     await writeFile(join(binDir, "ocm"), `#!/bin/sh
 printf '%s env=%s\\n' "$*" "\${KOVA_FAKE_WRAPPER_ENV:-}" >> "$KOVA_FAKE_OCM_LOG"
 if [ "\${KOVA_FAKE_OCM_HANG:-}" = "1" ]; then exec sleep 10; fi
-if [ -n "\${KOVA_FAKE_OCM_DELAY:-}" ]; then sleep "$KOVA_FAKE_OCM_DELAY"; fi
+if [ -n "\${KOVA_FAKE_OCM_DELAY:-}" ]; then echo diagnostic-ocm-delay >&2; /usr/bin/time -p sleep "$KOVA_FAKE_OCM_DELAY"; fi
 while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do shift; done
 [ "$#" -gt 0 ] || exit 2
 shift
@@ -54,6 +68,7 @@ function reportName(signal) {
 }
 process.on("SIGUSR2", () => {
   const currentSignal = ++signalCount;
+  if (currentSignal === 3) console.error(JSON.stringify({diagnosticTiming:"child-signal",at:Date.now()}));
   const outputHome = currentSignal === 1
     ? path.join(home, "depth-1", "depth-2", "depth-3", "depth-4", "depth-5")
     : home;
@@ -98,6 +113,7 @@ process.on("SIGUSR2", () => {
   const reportPath = path.join(outputHome, reportName(currentSignal));
   setTimeout(() => {
     fs.mkdirSync(outputHome, { recursive: true });
+    if (currentSignal === 3) console.error(JSON.stringify({diagnosticTiming:"child-write-start",at:Date.now()}));
     fs.writeFileSync(heapPath, "{\\"heap\\":");
     if (currentSignal === 3) {
       return;
@@ -131,6 +147,7 @@ process.on("SIGUSR2", () => {
   }, 400);
   setTimeout(() => {
     fs.appendFileSync(heapPath, "\\"fresh\\"}\\n");
+    if (currentSignal === 3) console.error(JSON.stringify({diagnosticTiming:"child-write-end",at:Date.now()}));
     if (currentSignal !== 3) {
       fs.appendFileSync(reportPath, "\\"fresh\\":true}\\n");
     }
@@ -142,6 +159,7 @@ setInterval(() => {}, 1000);
       env: process.env,
       stdio: ["ignore", "pipe", "pipe"]
     });
+    child.stderr.on("data", (data) => process.stderr.write(data));
     await waitForChildReady(child);
     // This case validates filtering and retention. Separate minimum-deadline
     // coverage below keeps loaded macOS CI from turning it into a timing test.
@@ -178,14 +196,28 @@ setInterval(() => {}, 1000);
     const wrapperInvocation = (await readFile(invocationLog, "utf8")).trim().split("\n").at(-1);
     assertEqual(wrapperInvocation.endsWith("env=preserved"), true, "report wrapper preserves command environment");
     JSON.parse(await readFile(reportOnly.diagnosticReport.artifacts[0], "utf8"));
-    // The delayed wrapper and partial heap write need room for process startup
-    // and the full stability window. This case checks missing-sibling retention;
-    // minimum-deadline and hung-wrapper behavior are exercised separately below.
-    const heapOnly = await triggerDiagnosticSession("kova-self-check", child.pid, 5000, root, {
-      heapSnapshot: true,
-      diagnosticReport: true,
-      commandEnv: { KOVA_FAKE_OCM_DELAY: "0.6" }
-    });
+    const contenders = [];
+    let heapOnly;
+    try {
+      for (let index = 0; index < workers; index += 1) {
+        const contender = spawn(process.execPath, ["-e", 'process.stdout.write("ready\\n"); const end = Date.now() + 15000; while (Date.now() < end) {}'], {
+          stdio: ["ignore", "pipe", "ignore"]
+        });
+        contenders.push(contender);
+      }
+      await Promise.all(contenders.map(waitForChildReady));
+      heapOnly = await triggerDiagnosticSession("kova-self-check", child.pid, heapBudgetMs, root, {
+        heapSnapshot: true,
+        diagnosticReport: true,
+        commandEnv: { KOVA_FAKE_OCM_DELAY: "0.6", KOVA_DIAGNOSTIC_TIMING: "1" }
+      });
+    } finally {
+      await Promise.all(contenders.map((contender) => new Promise((resolve) => {
+        if (contender.exitCode !== null || contender.signalCode !== null) return resolve();
+        contender.once("exit", resolve);
+        contender.kill("SIGTERM");
+      })));
+    }
     assertEqual(heapOnly.heapSnapshot.commandStatus, 0, "partial trigger keeps successful command status");
     assertEqual(heapOnly.heapSnapshot.artifacts.length, 1, "emitted heap survives missing report");
     assertEqual(heapOnly.diagnosticReport.commandStatus, 0, "missing report does not rewrite command status");
