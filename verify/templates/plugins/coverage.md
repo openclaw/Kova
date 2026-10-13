@@ -137,7 +137,9 @@ Persona additions:
 - config-plugin-approvals-forwarded: approvals.plugin forwarding to the DM test channel (none); from run 2, required by event-plugin-approvals-forwarded-to-chat
 - channels-test-accounts (key addition): a sender id that has never paired with the DM channel (unpairedPeer); from run 2
 - config-plugins-include: the plugins section authored through a single-file $include (none); required by enable-and-disable-plugin
-- clawhub-registry-local: ClawHub, npm and the hosted marketplace feed served from local fixtures the Gateway and CLI are pointed at, holding a known plugin listing with its icon, a bundled skill and release, an official external plugin and an exact npm spec, so the baseline and the change read the same registry content (catalogId, packageName, version, skillName, catalogIconPath, officialPluginId, npmSpec)
+- clawhub-registry-local: ClawHub, npm and the hosted marketplace feed served from local fixtures the Gateway and CLI are pointed at, holding a known plugin listing with its icon, a bundled skill and release, an official external plugin and an exact npm spec, so the baseline and the change read the same registry content (catalogId, packageName, version, skillName, catalogIconPath, officialPluginId, officialCatalogId, npmSpec)
 - session-plugin-held: an idle session on the tool-calling mock model, used only by the setup phase's held plugin call (key)
 - session-approval-held: an idle session on the tool-calling mock model, used only by the setup phase's pending approval (key)
 - session-phase-hold: an idle session on the tool-calling mock model, used by the holds a phase starts and joins itself (key)
+
+- plugin-install-package: a local npm-pack archive with a distinct plugin id used only by install-source variants; it is not the enabled surface fixture (packagePath)

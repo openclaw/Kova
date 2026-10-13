@@ -847,8 +847,6 @@ correction: author-and-pack-feature-plugin: dropped 1 command(s): duplicate pack
 correction: activate-agent-built-artifact: artifact path passed with --arg-path outside quotes instead of inside the JSON argument
 correction: review-capability-consent: run file renamed consent-review-inspect.json (one writer per run file)
 correction: event-captures-fall-back-to-system-temp: $OPENCLAW_HOME moved inside a single-quoted shell argument
-correction: event-captures-fall-back-to-system-temp: $OPENCLAW_HOME moved inside a single-quoted shell argument
-correction: event-superseded-generation-retired: $OPENCLAW_HOME moved inside a single-quoted shell argument
 correction: event-superseded-generation-retired: $OPENCLAW_HOME moved inside a single-quoted shell argument
 correction: event-gateway-killed: $OPENCLAW_HOME moved inside a single-quoted shell argument
 correction: requires: traits with no placeholder attached to the phases that run under their condition: plugins-legacy-state -> event-doctor-repairs-legacy-plugin-state, diagnose-plugins, list-installed-plugins, event-gateway-restart-reloads-plugins, update-plugin; plugin-legacy-enabled-unreviewed -> review-capability-consent, enable-and-disable-plugin; plugin-registry-stale -> refresh-plugin-registry, start-gateway-with-plugins; config-plugin-approvals-forwarded -> event-plugin-approvals-forwarded-to-chat; config-provider-without-models -> start-gateway-with-plugins; config-hand-edited -> plugin-hooks-shape-agent-turns; config-plugins-include -> enable-and-disable-plugin
@@ -916,12 +914,6 @@ correction after review: event-cron-reconciled-and-changed: cron-reload-touch dr
 correction after review: set-plugin-loading-policy-in-control-ui: one save covers allow, deny, enabled and the memory slot, restored after Doctor, so later phases run with the policy the persona holds
 correction after review: configure-plugin-settings-in-control-ui: the unknown config key is removed again from the saved copy at the end
 correction after review: install-plugin-from-cli-sources: official install acknowledges capabilities with the reviewToken of a plugins.inspect it records first
-correction after review: configure-plugin-settings-in-control-ui: restores configure-plugin-settings-in-control-ui-fixture-config.json at the end of the phase
-correction after review: use-plugin-tools-in-turns: restores use-plugin-tools-in-turns-tools-allow.json at the end of the phase
-correction after review: event-cron-reconciled-and-changed: cron-reload-touch dropped; its cron-disabled and cron-enabled changes already reload cron config
-correction after review: set-plugin-loading-policy-in-control-ui: one save covers allow, deny, enabled and the memory slot, restored after Doctor, so later phases run with the policy the persona holds
-correction after review: configure-plugin-settings-in-control-ui: the unknown config key is removed again from the saved copy at the end
-correction after review: install-plugin-from-cli-sources: official install acknowledges capabilities with the reviewToken of a plugins.inspect it records first
 correction after review: plugin-hooks-follow-lifecycle: the cron job file is replaced by cron.update on the persona job, which raises the same cron_changed hook
 correction after review: setup phases: the held plugin call and the pending approval run on their own sessions (session-plugin-held, session-approval-held); the main session holds only the in-flight turn
 correction after review: approve-plugin-permission: dropped the join of setup handle approval-pending.json (the setup's hold ends before this phase runs)
@@ -970,3 +962,7 @@ correction after review: approve-plugin-permission asks plugin.approval.request 
 correction after review: event-plugin-approvals-forwarded-to-chat answers the forwarded approval with the id plugin.approval.list returns, through channel-inbound-turn --approve-from
 correction after review: event-reload-wait-cancelled starts a held plugin call before the reload so the cancelled wait has admitted work draining
 correction after review: Headings walked lists every heading of every listed document with the conditions whose Source names it, and Source names each heading as the document writes it
+correction after review: config-change saves through --out; artifact activation reads --artifact-from so the plan selects its archive producer.
+correction after review: approval resolvers select exactly one request by session, plugin and tool instead of pending-list order; abort targets the held session; the browser prompt flow creates and resolves its own request id.
+correction after review: source installs use a separate package identity; phases replacing or removing persona content follow its readers, preserving run-file dependencies.
+correction after review: official inspection uses the discovery catalogId; round 4 names a4ebba8, whose procedure carries sentence-by-sentence reading.
