@@ -29,7 +29,7 @@
     "src/config/validation-plugin-*.ts",
     "src/config/io.plugin-metadata.ts",
     "src/infra/clawhub-plugin-*.ts",
-    "src/infra/plugin-activation.ts",
+    "ui/src/lib/plugin-activation.ts",
     "src/commands/onboarding-plugin-install.ts",
     "src/commands/runtime-plugin-install.ts",
     "src/commands/codex-runtime-plugin-install.ts",
@@ -295,7 +295,6 @@
         "src/plugins/loader*.ts",
         "src/plugins/discovery*.ts",
         "src/plugins/manifest*.ts",
-        "src/plugins/registry*.ts",
         "src/plugins/activation*.ts",
         "src/plugins/source*.ts",
         "src/plugins/bundled*.ts",
@@ -303,7 +302,7 @@
         "src/plugin-sdk/**",
         "src/gateway/server-startup-plugins.ts",
         "src/gateway/plugin-activation-runtime-config.ts",
-        "src/infra/plugin-activation.ts",
+        "ui/src/lib/plugin-activation.ts",
         "src/config/plugin-*.ts",
         "src/config/plugins-allowlist.ts",
         "src/config/types.plugins.ts",
@@ -418,7 +417,7 @@
         "src/plugin-sdk/**",
         "src/gateway/server-startup-plugins.ts",
         "src/gateway/plugin-activation-runtime-config.ts",
-        "src/infra/plugin-activation.ts",
+        "ui/src/lib/plugin-activation.ts",
         "src/config/plugin-*.ts",
         "src/config/plugins-allowlist.ts",
         "src/config/types.plugins.ts",
@@ -485,7 +484,7 @@
       "paths": [
         "src/gateway/server-methods/plugins.ts",
         "ui/src/pages/plugins/skill-preview.ts",
-        "src/plugins/skill*.ts"
+        "src/plugins/management-skill-read.ts"
       ],
       "requires": [
         "plugin-fixture-surfaces"
@@ -807,7 +806,6 @@
         "src/plugins/runtime/**",
         "src/gateway/server-plugin*.ts",
         "src/gateway/server-plugins*.ts",
-        "src/gateway/server-methods/plugins-mutations.ts",
         "src/gateway/server-methods/plugins-lifecycle-error.ts",
         "src/gateway/server-retained-plugin-cleanup.ts",
         "src/gateway/config-reload-plugin-drain.ts",
@@ -862,7 +860,6 @@
         "src/plugins/runtime/**",
         "src/gateway/server-plugin*.ts",
         "src/gateway/server-plugins*.ts",
-        "src/gateway/server-methods/plugins-mutations.ts",
         "src/gateway/server-methods/plugins-lifecycle-error.ts",
         "src/gateway/server-retained-plugin-cleanup.ts",
         "src/gateway/config-reload-plugin-drain.ts",
@@ -1187,11 +1184,10 @@
         "src/plugins/activation*.ts",
         "src/plugins/source*.ts",
         "src/plugins/bundled*.ts",
-        "src/plugins/compat/**",
         "src/plugin-sdk/**",
         "src/gateway/server-startup-plugins.ts",
         "src/gateway/plugin-activation-runtime-config.ts",
-        "src/infra/plugin-activation.ts",
+        "ui/src/lib/plugin-activation.ts",
         "src/config/plugin-*.ts",
         "src/config/plugins-allowlist.ts",
         "src/config/types.plugins.ts",
@@ -1611,9 +1607,8 @@
         "src/plugins/bundled*.ts",
         "src/plugins/compat/**",
         "src/plugin-sdk/**",
-        "src/gateway/server-startup-plugins.ts",
         "src/gateway/plugin-activation-runtime-config.ts",
-        "src/infra/plugin-activation.ts",
+        "ui/src/lib/plugin-activation.ts",
         "src/config/plugin-*.ts",
         "src/config/plugins-allowlist.ts",
         "src/config/types.plugins.ts",
@@ -1952,8 +1947,7 @@
         "src/plugins/hook*.ts",
         "src/plugins/conversation*.ts",
         "src/plugins/interactive*.ts",
-        "src/plugin-sdk/**",
-        "src/cron/**/plugin*.ts"
+        "src/plugin-sdk/**"
       ],
       "requires": [
         "cron-job-isolated",
@@ -2091,7 +2085,6 @@
         "src/gateway/server-methods/plugins-mutations.ts",
         "src/gateway/server-methods/plugins-lifecycle-error.ts",
         "src/gateway/server-retained-plugin-cleanup.ts",
-        "src/gateway/config-reload-plugin-drain.ts",
         "src/cli/plugins-lifecycle-client.ts"
       ],
       "requires": [
@@ -2299,8 +2292,7 @@
         "src/cli/plugins-install-*.ts",
         "src/cli/plugin-install-config-policy.ts",
         "src/cli/plugin-capability-consent.ts",
-        "src/plugin-state/**",
-        "src/cli/plugin-capability-consent.ts"
+        "src/plugin-state/**"
       ],
       "requires": [
         "plugins-third-party-consented"
@@ -2489,7 +2481,7 @@
         "src/plugin-sdk/**",
         "src/gateway/server-startup-plugins.ts",
         "src/gateway/plugin-activation-runtime-config.ts",
-        "src/infra/plugin-activation.ts",
+        "ui/src/lib/plugin-activation.ts",
         "src/config/plugin-*.ts",
         "src/config/plugins-allowlist.ts",
         "src/config/types.plugins.ts",
@@ -2545,9 +2537,8 @@
         "src/plugin-sdk/**",
         "src/gateway/server-startup-plugins.ts",
         "src/gateway/plugin-activation-runtime-config.ts",
-        "src/infra/plugin-activation.ts",
+        "ui/src/lib/plugin-activation.ts",
         "src/config/plugin-*.ts",
-        "src/config/plugins-allowlist.ts",
         "src/config/types.plugins.ts",
         "src/config/validation-plugin-*.ts",
         "src/config/io.plugin-metadata.ts"
@@ -2783,7 +2774,7 @@
       "intent": "A user cancels a turn while a Claude bundle's LSP servers are starting for it, observing cancelled startup and released servers.",
       "paths": [
         "src/plugins/bundle*.ts",
-        "src/agents/**/lsp*.ts"
+        "src/agents/agent-bundle-lsp-*.ts"
       ],
       "requires": [
         "mock-provider-scripted",
@@ -2998,7 +2989,6 @@
         "src/plugins/runtime/**",
         "src/gateway/server-plugin*.ts",
         "src/gateway/server-plugins*.ts",
-        "src/gateway/server-methods/plugins-mutations.ts",
         "src/gateway/server-methods/plugins-lifecycle-error.ts",
         "src/gateway/server-retained-plugin-cleanup.ts",
         "src/gateway/config-reload-plugin-drain.ts",
@@ -3168,7 +3158,6 @@
         "src/plugins/package*.ts",
         "src/infra/clawhub-plugin-*.ts",
         "src/cli/plugins-install-*.ts",
-        "src/cli/plugin-install-config-policy.ts",
         "src/cli/plugin-capability-consent.ts",
         "src/plugin-state/**"
       ],
@@ -3349,9 +3338,8 @@
         "src/plugins/bundled*.ts",
         "src/plugins/compat/**",
         "src/plugin-sdk/**",
-        "src/gateway/server-startup-plugins.ts",
         "src/gateway/plugin-activation-runtime-config.ts",
-        "src/infra/plugin-activation.ts",
+        "ui/src/lib/plugin-activation.ts",
         "src/config/plugin-*.ts",
         "src/config/plugins-allowlist.ts",
         "src/config/types.plugins.ts",

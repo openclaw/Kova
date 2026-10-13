@@ -27,7 +27,7 @@
     "src/config/validation-plugin-*.ts",
     "src/config/io.plugin-metadata.ts",
     "src/infra/clawhub-plugin-*.ts",
-    "src/infra/plugin-activation.ts",
+    "ui/src/lib/plugin-activation.ts",
     "src/commands/onboarding-plugin-install.ts",
     "src/commands/runtime-plugin-install.ts",
     "src/commands/codex-runtime-plugin-install.ts",
