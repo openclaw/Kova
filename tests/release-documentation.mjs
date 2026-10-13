@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -34,3 +35,8 @@ for (const path of paths) {
 }
 assert.deepEqual(failures, [], "installed README links must resolve without the source checkout");
 console.log(`PASS: ${paths.size} local README documentation and image links resolve in the installed package`);
+
+const catalogue = spawnSync(process.execPath, [join(root, "bin/kova.mjs"), "catalogue", "list", "--product", "openclaw", "--json"], { encoding: "utf8" });
+assert.equal(catalogue.status, 0, catalogue.stderr);
+assert.ok(JSON.parse(catalogue.stdout).entries.length > 0, "installed catalogue must contain entries");
+console.log("PASS: installed command catalogue loads");

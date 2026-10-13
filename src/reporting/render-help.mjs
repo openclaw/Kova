@@ -76,6 +76,21 @@ const COMMANDS = [
     ],
   },
   {
+    id: "catalogue", title: "kova catalogue",
+    blurb: "List allowed commands and check templates and personas.",
+    usage: [
+      "kova catalogue list --product <name> [--json|--plain]",
+      "kova catalogue check --product <name> --templates <dir> --personas <dir> [--json|--plain]",
+    ],
+    flags: [
+      ["--product <name>", "catalogue product name"],
+      ["--templates <dir>", "template JSON files, searched recursively"],
+      ["--personas <dir>", "persona JSON files, searched recursively"],
+      ["--json|--plain", "machine output / plain text"],
+    ],
+    examples: ["kova catalogue list --product openclaw --json"],
+  },
+  {
     id: "run", title: "kova run",
     blurb: "Run one OpenClaw scenario. Dry-run unless --execute.",
     usage: [

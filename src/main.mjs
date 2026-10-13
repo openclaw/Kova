@@ -51,6 +51,12 @@ export async function main(argv) {
     return;
   }
 
+  if (command === "catalogue") {
+    const { runCatalogueCommand } = await import("./commands/catalogue.mjs");
+    await runCatalogueCommand(flags);
+    return;
+  }
+
   if (command === "run") {
     const { runScenarioCommand } = await import("./commands/run.mjs");
     await runScenarioCommand(flags);
