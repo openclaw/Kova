@@ -26,17 +26,26 @@ shows what the change was checked against.
 {
   "schema": "kova.verify.standard.v1",
   "ignore": {
-    "documentation": ["docs/**", "**/*.md"],
+    "documentation": ["docs/**", "!docs/reference/templates/**", "**/*.md", "!skills/**"],
     "tests": ["**/*.test.ts", "test/**"]
   },
+  "stateIds": [
+    { "path": "agents/*/agent/openclaw-agent.sqlite", "table": "sessions", "column": "session_id", "recordKey": "session_key" }
+  ],
   "before": [{ "id": "use-target", "commands": ["..."], "checkpoint": ["logs"], "timeoutMs": 300000 }],
   "after": [{ "id": "doctor", "commands": ["..."], "checkpoint": ["doctor"], "timeoutMs": 120000 }]
 }
 ```
 
 `ignore` lists the paths a plan never selects phases for: documentation and
-test files. `before` and `after` are the standard phases, each in the template
-phase form without `kind`, `paths` or `requires`:
+test files. A file OpenClaw ships and loads at run time, such as a workspace
+template or a bundled skill, is product behavior and is never ignored; the
+globs exclude it with `!`. `stateIds` declares where OpenClaw stores ids it
+generates without a command reporting them (see [Rows](#rows)); the example's
+table and column names are illustrative. `before` and `after` are the standard
+phases, each in the template phase form without `kind`, `paths` or
+`requires`; they alone may use the `{target}` placeholder, the side's target
+selector:
 
 - before: `use-target` switches the clone to the side's target runtime,
   `start-gateway` starts the Gateway, `status-before` reads status;
@@ -65,15 +74,16 @@ all name phases by qualified id.
 
 1. Read the changed paths with `git diff --name-only <baseline> <change>` in
    `--repo`.
-2. Drop every path that matches an `ignore` glob. When nothing remains and no
+2. Set aside every path that matches an `ignore` glob; the plan lists them in
+   `ignored`, and the verdict repeats the list. When nothing remains and no
    intent phase is given, the plan is empty: `plan` writes it with no phases
    and `run` refuses it, because there is nothing to compare.
-3. Match each remaining path against the `paths` of every area file in
-   `verify/areas/`. A path no area owns is recorded in `unmapped` as
-   `no template for <path>`.
-4. In each matched area's template, select every phase whose own `paths`
-   match a changed path. A path that an area owns but no phase of its template
-   lists is recorded in `unmapped` as `no phase for <path> in <area>`.
+3. Select every phase, in any template, whose own `paths` match a remaining
+   path. A phase's paths may lie outside its own area's globs, such as a call
+   site in another area that enters this one.
+4. Record every remaining path that no selected phase lists in `unmapped`: as
+   `no phase for <path> in <area>` when an area file in `verify/areas/` owns
+   it, otherwise as `no template for <path>`.
 5. Add the phases from `--extra-phases`, if given.
 6. Add the phases every selected phase depends on: a template's `setup` phases
    whenever any other phase of that template is selected, and, repeatedly, the
@@ -91,7 +101,7 @@ all name phases by qualified id.
    value.
 9. Run the catalogue check on every command. A phase that calls an entry with
    status `toWrite` is withheld. Any other finding (a command with no entry, a
-   flag the entry does not list, a placeholder outside the allowed four)
+   flag the entry does not list, a placeholder that is not allowed there)
    refuses the whole plan, and nothing is written.
 10. Order the phases (see [Order and dependencies](#order-and-dependencies)).
 
@@ -219,6 +229,7 @@ any other difference in the same phase and signal is classed on its own.
     { "id": "sessions/delete-during-search", "from": "template:sessions", "missing": ["trait:sessions-thousands-near-cap"] }
   ],
   "unmapped": [],
+  "ignored": ["docs/concepts/session.md"],
   "extraPhases": { "file": "<path given to --extra-phases>" }
 }
 ```
@@ -259,9 +270,11 @@ any other difference in the same phase and signal is classed on its own.
    the change side, and two for the baseline noise runs (see
    [Noise floor](#noise-floor)). The baseline and noise clones are skipped
    when a cached baseline matches the cache key: the baseline commit, the
-   manifest hash, `phasesSha256` and the Kova revision running the plan (its
-   commit in a source checkout, its version when installed), since Kova's
-   scripts and comparison rules shape every recorded value. When the Kova
+   manifest hash, `phasesSha256`, the Kova revision running the plan (its
+   commit in a source checkout, its version when installed) and the OCM
+   version, since Kova's scripts, its comparison rules and OCM's environment
+   handling shape every recorded value. The key is the SHA-256 of those five
+   values joined by line breaks. When the Kova
    checkout has uncommitted changes, the run neither reads nor writes the
    cache and records all three baseline clones afresh.
 3. Runs `kova persona verify`'s checks on every clone, still on the persona's
@@ -300,6 +313,7 @@ verify/<run id>/
   "id": "<run id>",
   "plan": { "path": "<plan.json>", "sha256": "<hash>" },
   "kova": "<Kova commit or version>",
+  "ocm": "<OCM version>",
   "targets": {
     "baseline": { "selector": "local-build:<path>", "commit": "<sha>", "version": "<OpenClaw version>" },
     "change": { "selector": "local-build:<path>", "commit": "<sha>", "version": "<OpenClaw version>" }
@@ -313,6 +327,12 @@ verify/<run id>/
   }
 }
 ```
+
+Cost: every run needs five clones of the persona, each running the whole plan
+in parallel: the baseline, two change clones and two noise clones. The
+baseline and the two noise clones are cached per baseline commit, plan phases,
+persona build, Kova revision and OCM version, so a later change with the same
+key needs only its two change clones.
 
 Like Kova's existing `kova run`, `kova verify run` is a dry run unless
 `--execute` is present: without it, it prints what it would do.
@@ -329,9 +349,10 @@ contain `$`, a backtick, `;`, `|`, `&`, `<`, `>` or a line break only inside a
 single-quoted argument, where the shell does not interpret them; the catalogue
 check refuses any other occurrence.
 
-`{env}`, `{kovaRoot}` and `{run}` are replaced shell-quoted, so they may appear
-only outside quotes, as a shell word or the start of one (`{run}/turn.json`);
-the catalogue check refuses them inside a quoted argument. A script that needs
+`{env}`, `{kovaRoot}`, `{run}` and, in standard phases, `{target}` are
+replaced shell-quoted, so they may appear anywhere outside quotes, including
+inside a word (`@{env}`, `{run}/turn.json`); the catalogue check refuses them
+inside a quoted argument. A script that needs
 a run file's content inside JSON reads it through a `--*-from` flag instead. A
 `{persona:<trait>:<key>}` value is replaced as it is and may appear anywhere,
 including inside a single-quoted JSON argument: a persona key value uses only
@@ -356,7 +377,8 @@ screen.png      with screen: the last browser screenshot, when a browser step ra
 ```
 
 A phase's `checkpoint` list names what to record beyond `commands.json`:
-`responses`, `logs`, `timing`, `state:<path>` (for example `state:sessions`),
+`responses`, `logs`, `timing`, `state:<path>` (for example
+`state:agents/main/agent/openclaw-agent.sqlite`),
 `doctor`, `screen`.
 
 ## Rows
@@ -366,39 +388,71 @@ item. A row is one phase, one signal and one item:
 
 | Signal | Item and its address (`at`) | Value |
 |---|---|---|
-| `checkpoint` | the phase itself (`at` is empty) | recorded or not |
+| `checkpoint` | the phase itself (`at` is empty) | `true` when recorded, `false` when not |
 | `commands` | a command's exit code, by index (`0/exit`); each normalized line of its text stdout (`0/stdout/<line text>`) | the exit code; the line's count |
-| `responses` | one JSON node, by command index and JSON pointer (`0/result/items/0/title`) | a leaf's value; a container's type (`array` or `object`) with its length or its sorted key list |
+| `responses` | one JSON node, by command index and JSON pointer (`0/result/items/0/title`) | a leaf's JSON value; for a container, `{"type": "array", "length": <n>}` or `{"type": "object", "keys": [<sorted keys>]}` |
 | `logs` | one normalized log line, by its text | the number of times it appears |
-| `timing` | one command, by index; its bound is its `--timeout`, or the phase's `timeoutMs` when it has none | whether it reached its bound |
-| `state` | a JSON or JSON5 file: one node, by path and JSON pointer; a JSON Lines file: one node, by path, line number and JSON pointer (`sessions/<id:…>.jsonl:12/message/text`); any other text file: one line, by path and line number; any other file: the file, by path | as for `responses`; the normalized line text; the content hash |
-| `doctor` | one Doctor finding, by its code or text | present or not |
-| `screen` | the screenshot (`at` is empty) | its content hash |
+| `timing` | one command, by index | `true` when it reached its bound, `false` when not |
+| `state` | see [State items](#state-items) | as for `responses`, or the line's normalized text, or a content hash |
+| `doctor` | one Doctor finding, by its code or text | `true` when present |
+| `screen` | the screenshot (`at` is empty) | its SHA-256 content hash |
 
-Before items are built, every checkpoint is normalized:
+A command's bound is its `--timeout`, or the product's own timeout flag for a
+`product` command that has one, or the phase's `timeoutMs` when it has
+neither. An item one side has and the other lacks has the value
+`{"absent": true}` on the side that lacks it. Absolute durations, RSS and CPU
+are recorded but never compared.
 
-- Text lines (log lines, text stdout and text state files): timestamps,
-  durations, process ids and port numbers become fixed tokens.
-- Generated ids: a generated id is a string value, not present in the persona
-  export, at a JSON field named `id` or ending in `Id` or `_id` (such as
-  `sessionId` or `runId`). Other values, hashes and digests included, are
-  never treated as ids and are compared as they are. Each generated id is
-  replaced by a token named after where it was first produced, not by a
-  count: `<id:<qualified phase>/<command index>/<JSON pointer>>` for an id
-  first seen in a command's output, and
-  `<id:<qualified phase>/<path pattern>/<first line>>` for an id first seen in
-  a state file, where the path pattern is the file's path with the id removed
-  and the first line is the file's first normalized line. The same
-  replacement applies wherever the id appears again: file paths, JSON object
-  keys, JSON values and text lines. A resource created by the same command, or
-  first written as the same kind of file with the same opening line, has the
-  same token on every clone, and a new id elsewhere shifts nothing. When two
-  ids would get the same token, both keep their token with a suffix in their
-  order of appearance in that output or listing.
+### State items
 
-An item one side has and the other lacks has the value `{"absent": true}` on
-the side that lacks it. Absolute durations, RSS and CPU are recorded but never
-compared; timing only compares whether a bound was reached.
+`state:<path>` names a file or directory relative to the clone's OpenClaw
+state directory. Each file in it becomes items by its kind:
+
+- a SQLite database: one item per row, addressed by path, table and primary
+  key (`agents/main/agent/openclaw-agent.sqlite:sessions/<key>`), with the
+  row's columns as a JSON object. Kova reads it through SQLite's read-only
+  online backup, so the snapshot is consistent while the Gateway runs; the
+  `-wal` and `-shm` side files are never compared on their own.
+- a JSON or JSON5 file: one item per JSON node, addressed by path and JSON
+  pointer.
+- a JSON Lines file: one item per JSON node, addressed by path, line number
+  and JSON pointer.
+- any other text file: one item per line, addressed by path and line number,
+  valued by its normalized text.
+- any other file: one item, addressed by path, valued by its SHA-256 content
+  hash.
+
+### Normalization
+
+Before items are built, every checkpoint is normalized.
+
+Text lines (log lines, text stdout and text state lines): timestamps become
+`<time>`, durations `<duration>`, process ids `<pid>` and port numbers
+`<port>`.
+
+Generated ids are replaced only where a declaration says a value is one, so a
+model id, a hash or any other value is never mistaken for one and is compared
+as it is. There are two declarations:
+
+- A catalogue entry's `creates` lists the JSON pointers in its output that
+  hold ids OpenClaw generated for a resource the command created, such as a
+  new session's key or id (see [Catalogue form](catalogue.md#catalogue-form)).
+  Such an id becomes `<id:<qualified phase>/<command index><pointer>>`,
+  naming the command in the plan that created the resource. The token is the
+  same on every clone, because the plan is, and it does not move when the id
+  also appears elsewhere first.
+- The standard file's `stateIds` names the state stores where OpenClaw
+  generates ids without a command reporting them, and the stable field of the
+  owning record (`recordKey`). Such an id becomes
+  `<id:<path>#<record key value>/<field>>`, named after the record that owns
+  it, which does not depend on the order records were written.
+
+Each declared id is replaced by its token wherever its string appears, inside
+other strings too (a session key that embeds a generated id), in JSON values,
+JSON object keys, file paths and text lines. A row that involves a declared id
+can therefore differ only through the id's presence or its position, never
+through its value. Values no declaration covers
+stay as they are; when they vary from run to run, the noise runs drop them.
 
 ## Noise Floor
 
@@ -443,6 +497,9 @@ row that matches wins:
 | `intended` | A difference at an item `intent.expects` names, where the change side shows the predicted value | None; `explainedBy` is `intent:goal` |
 | `flaky` | Any other difference that only one of the two change clones shows | Verdict `unresolved` |
 | `break` | Any other difference | Verdict `breaks` |
+
+An intent phase is compared like any other: a command in it that fails the
+same way on both sides is a shared failure, classed `not-caused`.
 
 Where a phase came from never makes a difference intended: a crash, an error or
 a timeout in a phase written from the `Goal:` line is a difference in the

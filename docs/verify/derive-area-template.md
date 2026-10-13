@@ -438,7 +438,7 @@ which is the authority for them.
     "commands": [
       "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"agentId\":\"main\",\"query\":\"{persona:session-long-compacted:searchWord}\",\"limit\":20}' --timeout 60000"
     ],
-    "checkpoint": ["responses", "logs", "timing", "state:sessions"],
+    "checkpoint": ["responses", "logs", "timing", "state:agents/main/agent/openclaw-agent.sqlite"],
     "timeoutMs": 90000,
     "browser": false,
     "slow": false

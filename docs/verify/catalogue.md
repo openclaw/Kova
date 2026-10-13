@@ -55,7 +55,8 @@ decides whether OpenClaw answered correctly; only the comparison does.
    commands that take their own timeout keep the product's flag.
 6. Background entries follow the [background protocol](#background-protocol).
 7. Placeholders in a phase command are `{env}`, `{kovaRoot}`, `{run}` and
-   `{persona:<trait>:<key>}`, and no others. The plan and the run resolve them
+   `{persona:<trait>:<key>}`, plus `{target}` in standard phases only, and no
+   others. The plan and the run resolve them
    before the command runs, as [Commands](plan-and-verdict.md#commands)
    describes; an entry never sees a placeholder and never resolves one. A
    value an earlier command produced is read from the file that command wrote
@@ -113,6 +114,7 @@ later phases search, delete or restart around it.
       "command": "<exact command form with placeholders and <flag> slots>",
       "flags": { "--name": "<meaning; durations in milliseconds>" },
       "prints": ["<top-level JSON field>"],
+      "creates": ["<JSON pointer to an id OpenClaw generated for a resource this command created>"],
       "side": "read | write | destructive",
       "background": false,
       "status": "existing | toWrite"
@@ -122,7 +124,12 @@ later phases search, delete or restart around it.
 ```
 
 An entry has no other fields. In `command`, a slot in angle brackets, such as
-`<name>` or `<ms>`, marks a value the phase fills in.
+`<name>` or `<ms>`, marks a value the phase fills in. `creates` lists, as JSON
+pointers into the entry's output (`*` matches any array index), each field
+holding an id OpenClaw generated for a resource the command created, such as
+a new session's key; it is empty for a command that creates nothing. Compare
+uses it to give generated ids the same name on every clone (see
+[Rows](plan-and-verdict.md#normalization)).
 
 ## Commands
 
@@ -138,7 +145,7 @@ its command head, and reports:
 - commands with no entry;
 - flags an entry does not list;
 - two entries used for the same thing;
-- placeholders outside the allowed four;
+- placeholders that are not allowed, or not allowed where they appear;
 - shell substitutions or operators outside single quotes (see
   [Commands](plan-and-verdict.md#commands));
 - `toWrite` entries not yet implemented.
@@ -165,7 +172,8 @@ For a script:
 3. List every flag phases pass to it, with its meaning, from the phases that
    call it; a duration is given in milliseconds. Drop any flag that would
    assert.
-4. Name the top-level fields its JSON prints.
+4. Name the top-level fields its JSON prints, and in `creates` the fields that
+   hold ids of resources it creates.
 5. Add the entry with status `toWrite`. Implement the script, run
    `kova catalogue check`, and flip the status to `existing`.
 
