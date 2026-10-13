@@ -1,13 +1,15 @@
 # Coverage: update
 
 Operations: 20/21
-Conditions described by retained phases: 284/520 (354 ambient, 166 event)
+Conditions described by retained phases: 282/520 (354 ambient, 166 event)
 Entry points inventoried: 203 placed/310 (107 excluded); executable coverage has not been measured
 Breaks mapped: 6/6
 
-A condition is counted here only when a retained phase describes its setup and observation; runtime execution remains unproven. Reconciliation retains applicable coverage from either run, regardless of which run supplied the condition wording. The original 282 count is corrected by including conditions 127, 178 and 279 from retained run 1 phases, and excluding condition 357 because its invalid-config setup cannot enter startup triage. Phases: 123 (1 setup, 20 operation, 102 event).
+A condition is counted here only when a retained phase describes its setup and observation; runtime execution remains unproven. Reconciliation retains applicable coverage from either run, regardless of which run supplied the condition wording. The original 282 count is corrected by including conditions 127, 178 and 279 from retained run 1 phases, and excluding condition 357 because its invalid-config setup cannot enter startup triage, condition 369 because no retained phase starts the container entrypoint, and condition 473 because the persona runtime is 2026.9.9 rather than the required 2026.9.6. Phases: 123 (1 setup, 20 operation, 102 event).
 
 Uncovered:
+- Condition 369, Container entrypoint runs activation checks: no retained phase invokes the container entrypoint.
+- Condition 473, A running 2026.9.6 Gateway loads removed files after package replacement: the persona restores 2026.9.9; the general replacement scenario does not reproduce this historical runtime-specific condition.
 - Condition 357, Gateway startup failure triage: the pinned startup gate excludes invalid configuration; no retained phase injects an eligible startup error after recording a boot. The ineffective event-startup-failure-triage phase was removed.
 - Update an immutable release installation (operation; entry points openclaw update adopt-immutable and openclaw update recover): needs an explicitly adopted Linux installation with a root-owned system systemd service, sealed release generations and cgroup v2; outside this template's reach
 - Condition 1, Gateway installed as a Windows Scheduled Task (principal, elevation, schtasks and rename limits, task autostart suspension): Windows Scheduled Task paths are owned by platform per the bound; outside this template's reach
@@ -247,13 +249,14 @@ Uncovered:
 - Condition 520, A Windows Bun-only node host cannot stage updates and logs the failure hourly (`bun-windows-node`): outside this template's reach: Windows Scheduled Task hosts (bound: owned by platform)
 
 Phases that depend on each script still to be written (support.toWrite):
-- support/verify/restore-update-fixture.mjs: 81 phases
+- support/verify/restore-update-fixture.mjs: 91 phases
 - support/verify/update-cli.mjs: 60 phases
 - support/ensure-gateway-running.mjs: 45 phases
-- support/verify/env-fault.mjs: 40 phases
+- support/verify/env-fault.mjs: 41 phases
+- support/verify/read-installation-state.mjs: 37 phases
 - support/verify/gateway-call.mjs: 22 phases
+- support/verify/release-feed.mjs: 15 phases
 - support/verify/control-ui.mjs: 14 phases
-- support/verify/release-feed.mjs: 14 phases
 - support/verify/manual-package-replace.mjs: 11 phases
 - support/verify/session-turn-hold.mjs: 8 phases
 - support/verify/update-config.mjs: 7 phases
@@ -328,3 +331,8 @@ Independent mutating scenarios restore their complete starting installation and 
 Additional persona requirements for that helper: `update-baseline-fixture` provides `path`, an immutable full installation/user-state export for the primary environment; every installation trait used by a restored phase also provides `fixture`, an immutable export of its own original installation and user state, alongside `env`. These keys are missing until the persona supplies them, so the affected phases remain withheld. Valid config changes use the declared `update-config.mjs` presets; no phase depends on nonexistent JSON patch files.
 
 Coverage reconciliation controls: conditions 127, 178 and 279 are described respectively by `event-candidate-validation-fails`, `event-plugin-integrity-drift` and `event-node-candidate-fails`, with the fault or modified release established in those phases. Other run 1 claims are not automatically counted when its supporting phase or persona setup was not retained. This inventory is a description of reachable scenarios once dependencies exist, not a claim of executed coverage.
+
+
+Node update scenarios require `node-host-headless:fixture`, an immutable export of the node's persona runtime and state, including its runtime selector and activation timestamps. The support command creates and removes a fresh disposable node for each invocation, connected only to the comparison Gateway; it never updates the durable source host. This prevents an earlier activation's twelve-hour cooldown from suppressing the fallback scenario.
+
+Every reporting action requires a live `github-unavailable` fixture that isolates HOME/XDG and PATH, removes GitHub token variables only from its own child processes, and cannot submit to GitHub. Reporting wrappers consume that fixture's handle and fail closed before invoking the product if it is unavailable, even if phase execution continues after a setup error. No phase is authorized to publish a real issue. Independent UI/reporting phases restore the seeded failure history so its attempt identity is still current. Secondary installation phases record their own database rows as compared JSON responses through `read-installation-state.mjs`; the primary `state:` checkpoint alone would not observe them.
