@@ -155,7 +155,7 @@ test("background forms retain their entry identity and required flags", async ()
 
 test("commands that remove or replace existing resources are destructive", async () => {
   const { catalogue: c } = await loadCatalogue("openclaw");
-  for (const id of ["doctor", "doctor-repair", "config-patch", "gateway-progress-card-put", "gateway-progress-card-refresh", "goal-control", "chat-send", "agent-tool-turn", "control-ui"]) {
+  for (const id of ["doctor", "doctor-repair", "config-patch", "gateway-progress-card-put", "gateway-progress-card-refresh", "goal-control", "chat-send", "session-send-turn", "tui-message-turn", "agent-tool-turn", "control-ui"]) {
     assert.equal(c.entries.find((entry) => entry.id === id).side, "destructive", id);
   }
   const compact = c.entries.find(({ id }) => id === "sessions-compact");
