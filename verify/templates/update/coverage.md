@@ -1,13 +1,48 @@
 # Coverage: update
 
 Operations: 20/21
-Conditions described by retained phases: 282/520 (354 ambient, 166 event)
+Conditions described by retained phases: 247/520 (354 ambient, 166 event)
 Entry points inventoried: 203 placed/310 (107 excluded); executable coverage has not been measured
-Breaks mapped: 6/6
+Breaks mapped: 5/6; break 159504 needs an affected older updater and is outside the current persona's reach
 
-A condition is counted here only when a retained phase describes its setup and observation; runtime execution remains unproven. Reconciliation retains applicable coverage from either run, regardless of which run supplied the condition wording. The original 282 count is corrected by including conditions 127, 178 and 279 from retained run 1 phases, and excluding condition 357 because its invalid-config setup cannot enter startup triage, condition 369 because no retained phase starts the container entrypoint, and condition 473 because the persona runtime is 2026.9.9 rather than the required 2026.9.6. Phases: 123 (1 setup, 20 operation, 102 event).
+A condition is counted here only when a retained phase describes its concrete setup and observation; runtime execution remains unproven. Reconciliation credits applicable phases from either run and excludes claims whose required inputs or actions were lost. There are 247 described conditions and 273 explicit gaps below. Phases: 123 (1 setup, 20 operation, 102 event).
 
 Uncovered:
+- Condition 7, Unreadable configuration file (config-read-failed with filesystem code): No fixture makes configuration reads fail; invalid fields and read-only writes exercise different conditions.
+- Condition 15, Older updater refuses before staging with plugins.load.paths: plugin path not found: The missing-plugin-path fixture is applied to the primary environment, not to the older updater installation.
+- Condition 19, Another Doctor holds a native command claim: recorded as foreign custody, installation replacement blocked: No concurrent Doctor holds the native-command claim; database locks are a different condition.
+- Condition 24, Uncertain report upload pending: Check report status, no browser handoff: Reporting is intentionally unavailable; no pending or uncertain upload receipt is staged.
+- Condition 61, No usable model authentication: update, verification and rollback proceed; auth findings stay warnings: No fixture removes or invalidates the scripted model authentication.
+- Condition 62, Unavailable inference for embedded repair: external handoff, no login prompt: No fixture makes configured inference unavailable.
+- Condition 74, Target older than the installed version: downgrade confirmation required: Downgrades use --yes; no phase exercises interactive downgrade confirmation.
+- Condition 76, beta dist-tag missing or older than stable: beta falls back to latest: The feed does not remove the beta tag or make it older than the current installation.
+- Condition 107, Git Doctor fails after a database snapshot: snapshots restore pre-migration state; later writes keep the migrated installation: The Git rollback scenario fails a channel probe, not Doctor after the snapshot.
+- Condition 149, Pinned Git update leaves the checkout detached; receipt preserves the upstream: Git updates choose channels, not a pinned commit.
+- Condition 160, update.run without a supervising service boundary: managed-service-handoff-unavailable with a shell command: All declared Gateway environments have a supervisor.
+- Condition 164, Interactive Doctor in a Git checkout offers to update first: No phase invokes the interactive Doctor update offer in a Git installation.
+- Condition 184, Managed Bun Gateway at a different package root: service-root update, repair from another installation refuses: No Bun fixture gives the service and CLI different package roots.
+- Condition 197, Standalone doctor --fix captures retained for 30 days and retired by the next run: No fixture supplies standalone Doctor captures aged thirty days; retained update originals are different inputs.
+- Condition 212, New explicit update supersedes a sole stale identityless row (superseded): The stale-history environment receives only a dry-run update, not a mutating update that supersedes its row.
+- Condition 226, Extended-stable installation ahead of the selector, or selector failures (registry.reason): No extended-stable installation is ahead of its selector, and no selector failure is injected.
+- Condition 258, Operator-managed local plugin copy in plugins.load.paths: plugin-operator-managed warning: No trait supplies an existing operator-managed plugins.load.paths directory to the older installation.
+- Condition 273, No functioning model: /update still works: No fixture removes the inference route used by repair.
+- Condition 277, Headless node host busy: automatic activation postponed until idle, activations at least 12 hours apart: No phase establishes busy work on the node host.
+- Condition 280, Node shares its state directory with an older Gateway: mismatched local node rejected: No node fixture shares state with an older running Gateway.
+- Condition 281, Node update needing a migration or startup repair is deferred: No node target is constructed to require migration or repair before activation.
+- Condition 282, Node automatic updates disabled (nodeHost.autoUpdate.enabled false, checkOnStart false, OPENCLAW_NO_AUTO_UPDATE): No phase disables node automatic updates.
+- Condition 285, Dev Git install: Updates page refreshes the upstream (current, ahead, diverged, unavailable, behind): Control UI commands use the primary installation, not the Git installation.
+- Condition 304, Incomplete $include graph: automatic config rollback unavailable: The include fixture is valid; no phase removes or breaks an included file.
+- Condition 384, Missing file copies of canonical transcript archives: warnings only: No phase removes the canonical archive file copies from the cold-storage fixture.
+- Condition 401, Legacy agents.list roster without a default marker: unbound accounts bound to the first agent; unavailable roster blocks the account: Both declared legacy roster fixtures contain a default marker.
+- Condition 434, Read-only RPC waits get UNAVAILABLE gateway-restarting during drain: No phase starts a read-only RPC wait across the restart drain.
+- Condition 452, Restart during an upgrade records intent without migrating; no state database skips it: The active-update scenario requests stop, not restart; the migration restart happens after package replacement.
+- Condition 465, Campaign target fixed while the installed revision changes: no outdated count or link: No held automatic campaign changes its installed Git revision.
+- Condition 485, Other foreign-key violations or structural damage refuse update admission (`db-structural-damage`): The corrupt-state fixture is exercised by Doctor or startup, not by update admission.
+- Condition 492, Schema state cannot be compared or a new database is unreadable by the previous package, refusing rollback with rollback-state-unverified (`rollback-state-unverified`): No rollback scenario makes schema state unreadable or incomparable.
+- Condition 136, Hard-linked database files: no retained fixture creates hard links.
+- Condition 182, Concurrent mutation of a pnpm or Bun global project: no retained fault mutates the project during activation.
+- Condition 278, Node plugin without an idle-work callback: the current node fixture has default plugins, not this plugin behavior.
+- Condition 421, Missing or drifted canonical indexes: no retained fixture removes or changes those indexes.
 - Condition 369, Container entrypoint runs activation checks: no retained phase invokes the container entrypoint.
 - Condition 473, A running 2026.9.6 Gateway loads removed files after package replacement: the persona restores 2026.9.9; the general replacement scenario does not reproduce this historical runtime-specific condition.
 - Condition 357, Gateway startup failure triage: the pinned startup gate excludes invalid configuration; no retained phase injects an eligible startup error after recording a boot. The ineffective event-startup-failure-triage phase was removed.
@@ -249,13 +284,13 @@ Uncovered:
 - Condition 520, A Windows Bun-only node host cannot stage updates and logs the failure hourly (`bun-windows-node`): outside this template's reach: Windows Scheduled Task hosts (bound: owned by platform)
 
 Phases that depend on each script still to be written (support.toWrite):
+- support/verify/release-feed.mjs: 123 phases
 - support/verify/restore-update-fixture.mjs: 91 phases
 - support/verify/update-cli.mjs: 60 phases
 - support/ensure-gateway-running.mjs: 45 phases
 - support/verify/env-fault.mjs: 41 phases
 - support/verify/read-installation-state.mjs: 37 phases
 - support/verify/gateway-call.mjs: 22 phases
-- support/verify/release-feed.mjs: 15 phases
 - support/verify/control-ui.mjs: 14 phases
 - support/verify/manual-package-replace.mjs: 11 phases
 - support/verify/session-turn-hold.mjs: 8 phases
@@ -274,6 +309,7 @@ Phases that depend on each script still to be written (support.toWrite):
 - support/verify/package-recovery-helper.mjs: 1 phases
 - support/verify/source-server-update.mjs: 1 phases
 - support/verify/stage-session-store-fixture.mjs: 1 phases
+- support/verify/stage-update-history.mjs: 1 phases
 - support/verify/triage-run.mjs: 1 phases
 - support/verify/updater-journey.mjs: 1 phases
 - env-fault.mjs by fault: channel-probe-fail 13, hold-state-lock 3, config-edit 3, interrupt-doctor 3, signal-restart 2, tmpdir-small 2, kill-gateway 2, kill-update-helper 1, helper-spawn-denied 1, prefix-readonly 1, prefix-volume-full 1, artifacts-volume-full 1, occupy-gateway-port 1, db-writer-loop 1, block-git-remote 1, db-writer-hold 1, config-readonly 1, db-reader-loop 1, freeze-gateway 1, signal-stop 1
@@ -336,3 +372,8 @@ Coverage reconciliation controls: conditions 127, 178 and 279 are described resp
 Node update scenarios require `node-host-headless:fixture`, an immutable export of the node's persona runtime and state, including its runtime selector and activation timestamps. The support command creates and removes a fresh disposable node for each invocation, connected only to the comparison Gateway; it never updates the durable source host. This prevents an earlier activation's twelve-hour cooldown from suppressing the fallback scenario.
 
 Every reporting action requires a live `github-unavailable` fixture that isolates HOME/XDG and PATH, removes GitHub token variables only from its own child processes, and cannot submit to GitHub. Reporting wrappers consume that fixture's handle and fail closed before invoking the product if it is unavailable, even if phase execution continues after a setup error. No phase is authorized to publish a real issue. Independent UI/reporting phases restore the seeded failure history so its attempt identity is still current. Secondary installation phases record their own database rows as compared JSON responses through `read-installation-state.mjs`; the primary `state:` checkpoint alone would not observe them.
+
+
+Catalogue registration is a separate prerequisite owned by [PR #174](https://github.com/openclaw/Kova/pull/174). This template's `support.toWrite` list is the input to those additions, not itself a catalogue registry. Until those entries are added, unlisted commands reject planning; only registered entries with `status: toWrite` withhold phases. This contribution does not claim that a current catalogue can plan it.
+
+The release feed retains a publication recipe after setup, then each selected phase starts and joins its own server handle. A server must also stop when its owning phase worker exits or is interrupted. This keeps cleanup local to selected phases instead of requiring an otherwise unselected final phase. `history-stale-run` additionally supplies `fixture`; its rows are staged with the Gateway stopped immediately before restart and separately before repair, without a status query consuming them first. Secondary Doctor migrations use the comparison side's runtime over legacy content; the persona runtime remains for first-hop updater scenarios.
