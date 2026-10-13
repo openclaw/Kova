@@ -216,7 +216,8 @@
         "src/gateway/server-methods/update.ts",
         "src/cli/update-cli.ts",
         "src/cli/update-option-specs.ts",
-        "src/cli/update-cli/shared.ts"
+        "src/cli/update-cli/shared.ts",
+        "ui/src/app/overlays.ts"
       ],
       "requires": [
         "update-baseline-fixture",
@@ -349,7 +350,9 @@
         "src/cli/update-cli/update-command*.ts",
         "src/cli/program/register.maintenance.ts",
         "src/commands/doctor.ts",
-        "src/flows/doctor-health*.ts"
+        "src/flows/doctor-health*.ts",
+        "src/infra/exec-approvals-config.ts",
+        "src/infra/exec-approvals-sqlite*.ts"
       ],
       "requires": [
         "approvals-legacy-json",
@@ -522,7 +525,9 @@
         "src/shared/update-outcome.ts",
         "src/gateway/methods/core-descriptors.ts",
         "src/gateway/server-methods/update.ts",
-        "packages/gateway-protocol/src/schema/config.ts"
+        "packages/gateway-protocol/src/schema/config.ts",
+        "src/infra/github-issue.ts",
+        "src/logging/diagnostic-support-redaction.ts"
       ],
       "requires": [
         "gateway-multi-user-profiles",
@@ -586,7 +591,14 @@
         "src/plugins/installed-plugin-index*.ts",
         "src/plugins/capability-*.ts",
         "src/cli/program/register.maintenance.ts",
-        "src/flows/doctor-health*.ts"
+        "src/flows/doctor-health*.ts",
+        "src/plugins/install*.ts",
+        "src/plugins/plugin-lifecycle-lease.ts",
+        "src/plugins/plugin-version-drift.ts",
+        "src/config/deferred-plugin-migration-config.ts",
+        "src/cli/plugin-capability-consent.ts",
+        "src/infra/install-source-utils.ts",
+        "src/infra/npm-integrity.ts"
       ],
       "requires": [
         "plugin-capability-widened",
@@ -643,7 +655,9 @@
         "src/infra/package-update-*.ts",
         "src/infra/update-global.ts",
         "src/infra/update-npm-prefix.ts",
-        "src/cli/update-cli/update-command-executor.ts"
+        "src/cli/update-cli/update-command-executor.ts",
+        "src/infra/install-source-utils.ts",
+        "src/infra/npm-integrity.ts"
       ],
       "requires": [
         "node-host-headless"
@@ -719,7 +733,8 @@
         "src/gateway/server-methods/restart*.ts",
         "src/gateway/server-restart-sentinel*.ts",
         "src/infra/restart*.ts",
-        "src/cli/daemon-cli/register-service-commands.ts"
+        "src/cli/daemon-cli/register-service-commands.ts",
+        "src/cli/daemon-cli/lifecycle*.ts"
       ],
       "requires": [],
       "commands": [
@@ -971,7 +986,10 @@
         "src/cli/daemon-cli/lifecycle.ts",
         "src/gateway/server-run-shutdown.ts",
         "src/gateway/chat-abort*.ts",
-        "src/auto-reply/reply/reply-run-registry*.ts"
+        "src/auto-reply/reply/reply-run-registry*.ts",
+        "src/gateway/server-lifecycle.ts",
+        "src/agents/run-termination.ts",
+        "src/cli/daemon-cli/lifecycle*.ts"
       ],
       "requires": [
         "mock-provider-held-turn",
@@ -1199,7 +1217,9 @@
         "src/infra/package-update-*.ts",
         "src/infra/update-global.ts",
         "src/infra/update-npm-prefix.ts",
-        "src/cli/update-cli/update-command-executor.ts"
+        "src/cli/update-cli/update-command-executor.ts",
+        "src/infra/install-source-utils.ts",
+        "src/infra/npm-integrity.ts"
       ],
       "requires": [
         "node-host-headless"
@@ -1246,7 +1266,10 @@
         "src/cli/daemon-cli/lifecycle.ts",
         "src/gateway/server-run-shutdown.ts",
         "src/gateway/chat-abort*.ts",
-        "src/auto-reply/reply/reply-run-registry*.ts"
+        "src/auto-reply/reply/reply-run-registry*.ts",
+        "src/gateway/server-lifecycle.ts",
+        "src/agents/run-termination.ts",
+        "src/cli/daemon-cli/lifecycle*.ts"
       ],
       "requires": [
         "mock-provider-held-turn",
@@ -1324,7 +1347,10 @@
         "src/gateway/server/ws-connection/message-handler.ts",
         "src/gateway/server-run-shutdown.ts",
         "src/gateway/chat-abort*.ts",
-        "src/auto-reply/reply/reply-run-registry*.ts"
+        "src/auto-reply/reply/reply-run-registry*.ts",
+        "src/gateway/server-lifecycle.ts",
+        "src/agents/run-termination.ts",
+        "src/cli/daemon-cli/lifecycle*.ts"
       ],
       "requires": [
         "mock-provider-held-turn",
@@ -1382,7 +1408,7 @@
     {
       "id": "event-update-with-restarts-disabled",
       "kind": "event",
-      "intent": "With commands.restart turned off, an owner sends /update and /restart and a restart signal is delivered; command-policy refusals, signal handling and guidance are observed.",
+      "intent": "An operator disables restart commands, completes an OCM stop/start to establish that policy, then exercises /update, /restart and SIGUSR2. Refusals and service logs are observed. A second OCM stop/start establishes the restored enabled policy before later scenarios; asynchronous hot-reload timing is not claimed.",
       "paths": [
         "src/auto-reply/reply/command-gates.ts",
         "src/auto-reply/reply/commands-session.ts",
@@ -1398,7 +1424,8 @@
         "src/commands/doctor-command-owner*.ts",
         "src/cli/update-cli.ts",
         "src/cli/update-option-specs.ts",
-        "src/cli/update-cli/shared.ts"
+        "src/cli/update-cli/shared.ts",
+        "src/gateway/server-reload-hot.ts"
       ],
       "requires": [
         "session-main-rolling",
@@ -1408,10 +1435,16 @@
         "node {kovaRoot}/support/verify/release-feed.mjs --env {env} --from {run}/release-feed.json --mode serve --timeout 30000 --background --handle {run}/release-feed-event-update-with-restarts-disabled.json",
         "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed-event-update-with-restarts-disabled.json --timeout 240000",
         "node {kovaRoot}/support/verify/update-config.mjs --env {env} --preset restart-off --timeout 30000",
+        "node {kovaRoot}/support/verify/stop-gateway.mjs --env {env} --timeout 120000",
+        "ocm service start {env} --json",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-policy-off --timeout 60000",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message '/update' --timeout 60000",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message '/restart' --timeout 60000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault signal-restart --timeout 30000",
         "node {kovaRoot}/support/verify/update-config.mjs --env {env} --preset restart-on --timeout 30000",
+        "node {kovaRoot}/support/verify/stop-gateway.mjs --env {env} --timeout 120000",
+        "ocm service start {env} --json",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-policy-on --timeout 60000",
         "ocm @{env} -- update status --json",
         "node {kovaRoot}/support/verify/release-feed.mjs --wait {run}/release-feed-event-update-with-restarts-disabled.json --timeout 30000"
       ],
@@ -1421,7 +1454,7 @@
         "timing",
         "state:openclaw.json"
       ],
-      "timeoutMs": 640000,
+      "timeoutMs": 1120000,
       "browser": false,
       "slow": true
     },
@@ -1504,7 +1537,10 @@
         "src/cli/daemon-cli/lifecycle.ts",
         "src/gateway/server-run-shutdown.ts",
         "src/gateway/chat-abort*.ts",
-        "src/auto-reply/reply/reply-run-registry*.ts"
+        "src/auto-reply/reply/reply-run-registry*.ts",
+        "src/gateway/server-lifecycle.ts",
+        "src/agents/run-termination.ts",
+        "src/cli/daemon-cli/lifecycle*.ts"
       ],
       "requires": [
         "cron-job-isolated",
@@ -1556,7 +1592,10 @@
         "src/gateway/server/ws-connection/message-handler.ts",
         "src/gateway/server-run-shutdown.ts",
         "src/gateway/chat-abort*.ts",
-        "src/auto-reply/reply/reply-run-registry*.ts"
+        "src/auto-reply/reply/reply-run-registry*.ts",
+        "src/gateway/server-lifecycle.ts",
+        "src/agents/run-termination.ts",
+        "src/cli/daemon-cli/lifecycle*.ts"
       ],
       "requires": [
         "mock-provider-held-turn",
@@ -1740,7 +1779,8 @@
         "src/state/openclaw-state-db-schema-version.ts",
         "src/state/openclaw-update-schema-refusal.ts",
         "src/cli/program/config-guard.ts",
-        "src/commands/startup-config-preflight.ts"
+        "src/commands/startup-config-preflight.ts",
+        "src/commands/config-preflight-snapshot.ts"
       ],
       "requires": [
         "state-legacy-migratable"
@@ -1795,7 +1835,8 @@
         "src/state/openclaw-state-db-schema-version.ts",
         "src/state/openclaw-update-schema-refusal.ts",
         "src/cli/program/config-guard.ts",
-        "src/commands/startup-config-preflight.ts"
+        "src/commands/startup-config-preflight.ts",
+        "src/commands/config-preflight-snapshot.ts"
       ],
       "requires": [
         "state-legacy-retired"
@@ -1855,7 +1896,8 @@
         "src/commands/startup-config-preflight.ts",
         "src/cli/program/register.maintenance.ts",
         "src/commands/doctor.ts",
-        "src/flows/doctor-health*.ts"
+        "src/flows/doctor-health*.ts",
+        "src/commands/config-preflight-snapshot.ts"
       ],
       "requires": [
         "agents-three-configured",

@@ -496,12 +496,12 @@ Uncovered:
 
 Phases that depend on each script still to be written (support.toWrite):
 - support/verify/release-feed.mjs: 37 phases
-- support/ensure-gateway-running.mjs: 20 phases
+- support/ensure-gateway-running.mjs: 21 phases
 - support/verify/restore-update-fixture.mjs: 17 phases
 - support/verify/read-installation-state.mjs: 13 phases
 - support/verify/env-fault.mjs: 8 phases
 - support/verify/gateway-call.mjs: 8 phases
-- support/verify/stop-gateway.mjs: 9 phases
+- support/verify/stop-gateway.mjs: 10 phases
 - support/verify/manual-package-replace.mjs: 4 phases
 - support/verify/session-turn-hold.mjs: 4 phases
 - support/verify/chat-send.mjs: 3 phases
@@ -713,3 +713,5 @@ Source selectors also cover plugin convergence, node package installation, recov
 Nested backup, plugin-convergence, session-row, browser-queue, channel-recovery and diagnostic-export implementations select the observations that consume them. Shared update CLI parsing and RPC registration/schema paths select each retained variant that invokes that entry; restart option dispatch includes the forced variant. This expands selection within the existing operations without adding scenarios or increasing credited coverage.
 
 Doctor dispatch, plugin installation records and capability policy, queued-message sending, drain rejection/cancellation, preview implementation and thaw wiring select their corresponding retained variants. Every restart CLI observation requests structured JSON, preserving its original busy-state response fields. Historical round-two heading arithmetic excludes annotated absence; the final-round discovery shares remain unchanged.
+
+The disabled-restart scenario establishes both the disabled and restored enabled configuration through bounded OCM stop/start and health observation. It does not send policy-gated commands immediately after an asynchronous config write or claim hot-reload timing. Source selection includes repair transactions, installation/consent, node archive acquisition, approvals persistence, forced dispatch, startup admission and shutdown wiring.
