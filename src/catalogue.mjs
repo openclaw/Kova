@@ -84,6 +84,8 @@ export function parseCatalogueCommand(command, { form = false, standard = false 
     }
     if (char === "\\" && quote !== "'") {
       const next = command[index + 1];
+      const escapedPlaceholder = command.slice(index + 1).match(/^\{(?:env|kovaRoot|run|target)\}/)?.[0];
+      if (escapedPlaceholder) findings.push({ code: "placeholder", message: `${escapedPlaceholder} must not be escaped`, offset: index });
       if (next === undefined) findings.push({ code: "syntax", message: "unfinished escape", offset: index });
       else if (/[$`;|&<>\r\n{]/.test(next)) {
         // Still examine protected characters on the next iteration.
@@ -132,16 +134,27 @@ function argumentOffset(tokens) {
 }
 
 // One pass owns option operands, the end-of-options separator and positionals.
-function commandArguments(tokens, flags, allowedFlags = flags, head = [], parents = []) {
+function commandArguments(tokens, flags, { allowedFlags = flags, head = [], parents = [], ocm = false, expectedSeparator = null } = {}) {
   const offset = argumentOffset(tokens);
   const words = canonicalWords(tokens.slice(0, offset));
   const options = [];
   const findings = [];
+  const seenFlags = new Set();
   let ended = false;
   let invalidOrder = false;
+  let separatorAt = null;
   for (let index = offset; index < tokens.length; index += 1) {
     const token = tokens[index];
-    if (!ended && token === "--") { ended = true; continue; }
+    if (!ended && token === "--") {
+      if (ocm && expectedSeparator === null) {
+        findings.push({ code: "argument", message: "this OCM command does not accept --" });
+        words.push(token);
+      } else {
+        separatorAt = words.length;
+        ended = true;
+      }
+      continue;
+    }
     if (ended || !isFlag(token)) { words.push(token); continue; }
     const equal = token.indexOf("=");
     const flag = equal < 0 ? token : token.slice(0, equal);
@@ -150,15 +163,19 @@ function commandArguments(tokens, flags, allowedFlags = flags, head = [], parent
     const info = Object.hasOwn(available, flag) ? available[flag] : null;
     if (!info && Object.hasOwn(flags, flag)) invalidOrder = true;
     let value = equal < 0 ? undefined : token.slice(equal + 1);
+    if (ocm && seenFlags.has(flag)) findings.push({ code: "argument", flag, message: `OCM does not accept repeated ${flag}` });
+    seenFlags.add(flag);
     if (!Object.hasOwn(allowedFlags, flag)) findings.push({ code: "unlisted-flag", flag, message: `unlisted flag ${flag}` });
     if (info?.value === "none" && equal >= 0) findings.push({ code: "argument", flag, message: `${flag} does not take a value` });
     else if (equal < 0 && (info?.value === "required" || (info?.value === "optional" && tokens[index + 1] !== undefined && !isFlag(tokens[index + 1])))) {
-      value = tokens[++index];
+      // The listed OCM operands are names/counts; native flags are removed independently.
+      if (ocm && isFlag(tokens[index + 1])) value = undefined;
+      else value = tokens[++index];
       if (value === undefined) findings.push({ code: "argument", flag, message: `${flag} requires a value` });
     }
     options.push({ flag, value });
   }
-  return { words, options, findings, invalidOrder };
+  return { words, options, findings, invalidOrder, separatorAt };
 }
 
 function gatewayMethod(options) {
@@ -247,7 +264,7 @@ function catalogueResolver(catalogue) {
     const slots = args.words.slice(head.length);
     const min = slots.filter((slot) => !slot.startsWith("[")).length;
     const max = slots.some((slot) => slot.includes("...")) ? Infinity : slots.length;
-    return { entry, head, min, max, method: gatewayMethod(args.options) };
+    return { entry, head, min, max, method: gatewayMethod(args.options), expectedSeparator: args.separatorAt };
   });
   for (const form of forms) {
     // Parent option arity still matters when a child does not allow that flag.
@@ -257,20 +274,20 @@ function catalogueResolver(catalogue) {
   }
   return (tokens) => {
     const candidates = [];
-    for (const { entry, head, min, max, method, parsingFlags, parents } of forms) {
+    for (const { entry, head, min, max, method, parsingFlags, parents, expectedSeparator } of forms) {
       if (entry.kind === "ocm" && !head.every((word, index) => tokens[index] === word)) continue;
-      const args = commandArguments(tokens, parsingFlags, entry.flags, head, parents);
+      const args = commandArguments(tokens, parsingFlags, { allowedFlags: entry.flags, head, parents, ocm: entry.kind === "ocm", expectedSeparator });
       if (args.invalidOrder) continue;
       if (!head.length || !head.every((word, index) => args.words[index] === word)) continue;
       if (entry.kind === "gateway" && gatewayMethod(args.options) !== method) continue;
-      candidates.push({ entry, head, min, max, args });
+      candidates.push({ entry, head, min, max, args, separatorMatches: entry.kind !== "ocm" || args.separatorAt === expectedSeparator });
     }
     const longest = Math.max(0, ...candidates.map(({ head }) => head.length));
     const matches = candidates.filter(({ head }) => head.length === longest);
     if (matches.length !== 1) return null;
     const match = matches[0];
     const count = match.args.words.length - match.head.length;
-    return { ...match, validPositionals: count >= match.min && count <= match.max };
+    return { ...match, validPositionals: match.separatorMatches && count >= match.min && count <= match.max };
   };
 }
 

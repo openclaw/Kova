@@ -374,7 +374,7 @@
         }
       },
       "prints": [],
-      "side": "write",
+      "side": "destructive",
       "background": false,
       "status": "existing",
       "creates": []
@@ -2929,7 +2929,7 @@
         "error",
         "elapsedMs"
       ],
-      "side": "write",
+      "side": "destructive",
       "background": true,
       "status": "toWrite",
       "creates": []

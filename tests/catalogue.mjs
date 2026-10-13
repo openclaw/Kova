@@ -97,6 +97,13 @@ test("explicit flag arity separates operands from options and subcommands", asyn
   assert.deepEqual(check(c, "ocm @{persona:upgrade-env:env} -- status --json"), []);
   assert.equal(resolveCatalogueEntry(c, "ocm @{persona:upgrade-env:root} -- status --json"), null);
   assert.deepEqual(check(c, "ocm env exec {env} -- node script.mjs --child-option"), []);
+  for (const command of ["ocm env exec {env} node script.mjs", "ocm env exec -- {env} node script.mjs", "ocm env show -- {env} --json", "ocm env show {env} --json --json", "ocm logs {env} --tail --follow --json"]) {
+    assert.ok(check(c, command).length, command);
+  }
+  assert.ok(check(c, "ocm logs {env} --tail --follow --json").some((finding) => finding.code === "unlisted-flag" && finding.flag === "--follow"));
+  assert.deepEqual(check(c, "ocm logs {env} --tail 5 --json"), []);
+  assert.deepEqual(check(c, "ocm logs {env} --tail=5 --json"), []);
+  assert.deepEqual(check(c, "ocm env exec {env} -- node script.mjs --flag --flag -- --child-option"), []);
   for (const value of ["-1", "-.5", "-1.5e-2"]) assert.deepEqual(check(c, `ocm @{env} -- sessions archive ${value} --json`), []);
   assert.ok(check(c, "ocm @{env} -- sessions archive -1oops --json").some((finding) => finding.code === "unlisted-flag"));
   assert.deepEqual(check(c, "ocm @{env} -- sessions archive --json -- -1oops"), []);
@@ -126,7 +133,7 @@ test("background forms retain their entry identity and required flags", async ()
 
 test("commands that remove or replace existing resources are destructive", async () => {
   const { catalogue: c } = await loadCatalogue("openclaw");
-  for (const id of ["doctor", "doctor-repair", "gateway-progress-card-put", "goal-control", "chat-send", "agent-tool-turn", "control-ui"]) {
+  for (const id of ["doctor", "doctor-repair", "config-patch", "gateway-progress-card-put", "gateway-progress-card-refresh", "goal-control", "chat-send", "agent-tool-turn", "control-ui"]) {
     assert.equal(c.entries.find((entry) => entry.id === id).side, "destructive", id);
   }
   const compact = c.entries.find(({ id }) => id === "sessions-compact");
@@ -159,6 +166,8 @@ test("restricted shell syntax permits literal single-quoted content only", () =>
 
 test("placeholder placement respects quoting, JSON and standard phase scope", () => {
   const c = catalogue(script);
+  assert.ok(check(c, "node {kovaRoot}/support/send.mjs --env {env} --text \\{run}/data").some((finding) => finding.code === "placeholder"));
+  assert.deepEqual(check(c, "node {kovaRoot}/support/send.mjs --env {env} --text \\\\{run}/data"), []);
   for (const malformed of ["ocm @'{'env'}' -- status --json", "node '{'kovaRoot'}'/support/send.mjs --env {env} --text ok", "node {kovaRoot}/support/send.mjs --env {env} --text {run}'{'run'}'"]) {
     assert.ok(parseCatalogueCommand(malformed).findings.some((finding) => finding.code === "placeholder"), malformed);
   }
