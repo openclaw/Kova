@@ -373,7 +373,8 @@
       "support/verify/channel-login-overlap.mjs  (use the real login-capable WhatsApp adapter on a dedicated test account; establish and observe an actual pending channels.start owner before completing channels login through its existing auth.login path, record the successful login and attempted runtime reconciliation while that same start remains owned, then release and join the start; admission of a background RPC alone is not proof of ownership or overlap; if a bounded pending start and successful real login cannot be supplied, the observation is unavailable; preserve credential redaction, retain only nonsecret status, and cancel or release the owned pending operation on timeout or interruption; --account --artifact-dir --channel --env --timeout)",
       "support/verify/channel-ingress-lifecycle.mjs  (the installed SDK createChannelIngressMonitor and its runtime-supplied native account queue, with channel-owned inspectAsync and deliver callbacks that retain exact event, lane and native claim identities; scoped asynchronous fixture gates record callback entry and release without blocking the Gateway event loop or rewriting queue state; async-preference records companion selection during admission and claim validation; async-admission-order holds the first same-lane inspection before normal durable append; admission-inspection-stop-join and claim-inspection-stop-grace start native stop and waitForIdle without blocking gate release, with the latter recording the supported separate-delivery-grace option; claim-inspection-shutdown and claim-inspection-cancel observe the actual post-await stop/abort guard before delivery; claim-inspection-capacity uses the existing configured startLimit and distinct lanes; claim-inspection-activity records onActivityChange through transfer to real delivery and idle; standard-raw-sync uses the actual synchronous raw-event convenience monitor; legacy-host-sync-fallback requires an already supplied older host and otherwise records unavailable evidence, never simulating a host or installing a runtime; adoption-watchdog uses a native pre-adoption deliver gate, onDeferred, zero onDeferredHeartbeat calls and no adoption-finalizing callback, leaving automatic claim refresh intact and waiting for the unchanged real watchdog; join or cancel every accepted admission, claim inspection and delivery and release every gate in finally, including interruption and native abort, without manufacturing completion; telegram-pre-adoption-restart owns creation of a fresh native Telegram media update with a fixture-owned file identity and a narrowly scoped shim getFile response gate; arm the gate before injection, await the actual matching request and exact claimed native queue row/token before requesting the native restart. Release/cancel the transport gate on the native shutdown abort so graceful shutdown can join, record native cancellation/retryable disposition, join restart and health, then permit replay of the same admitted event with the gate disarmed. Do not reinject it as a different fresh event or treat a held model as the claim boundary. A request timeout, changed claim or uncaptured interval is unavailable evidence. probe-pre-adoption-stop-start owns a fresh SDK-admitted event and its runtime-supplied native queue. The conformance deliver callback records the actual claim and calls onDeferred before awaiting an abort-aware pre-adoption gate; no model dispatch, onAdopted or onAdoptionFinalizing occurs while gated. The helper waits for that gate receipt and matching native claimed row, then starts OCM service stop. Native cancellation unblocks the callback and settles or leaves the row retryable; record the stopped state before service start, disarm this one-event gate before replay, join start/health and the original event lifecycle. Stop/start and fault cleanup are owned by this single helper invocation. deferred-slots-lane-policy first captures native deferred states, never infers them from model latency or input count. The conformance fixture uses the installed monitor with its configured startLimit and channel-supported deferredLaneOccupancy hold/release variants, calls real onDeferred on actual claimed events and retains callback gates before adoption; use distinct native lanes to record configured capacity and the additional released-slot budget rather than six same-peer inputs as a capacity proxy. Do not call these Telegram adapter internals: they are explicit shared-monitor variants within this already promised hold/release observation. For the Telegram policy-change portion, an adopted held-model turn is only a predecessor barrier. Submit owned followups in the background and capture their actual native pre-adoption/deferred handoff plus matching claimed row identities before applying the supplied real lane-policy config patch. Retain those claims through committed configuration adoption, release the predecessor/gates, then record native claim eligibility and lane decisions under the new policy. Use the native adapter lifecycle/available observations; if its deferred handoff cannot be captured by supported fixture capabilities, record this Telegram variant unavailable rather than guessing it from a claimed row alone or replacing it with conformance evidence. No hidden product hooks or SQL state rewrites are authorized. The helper reads and saves all keys touched by the lane-policy file before mutation, including absent values, joins native config adoption, and restores them in finally after all owned callbacks and turns are released/cancelled and joined. It also removes only its scoped fixture faults and restores the original service state. Every startup, request gate, deferred hold, config adoption and cleanup fits inside the single helper timeout. Timed-out capture never proceeds to the disruptive action. Gateway stop/restart cases run after selected phases that require the ambient held turn; otherwise that ambient setup must be recreated before such phases, not assumed to survive.; each case owns its scoped fixture monitor and native account queue, never stopping the separate ambient monitor; --artifact-dir --case --channel --env --heartbeat --timeout --peer --lane-policy-file --barrier-text)",
       "support/verify/channel-guarded-record.mjs  (resolve the real channel/account/group peer and agent/session keys through native ingress/routing; require the persona exact-peer binding with session.groupScope per-group and refuse a shared-main route or existing record/last-route target without deleting it; call runtime.channel.session.recordInboundSession with createIfMissing false and a real updateLastRoute for the same absent conversation, joining native metadata and last-route writes and recording exact-key state before and after; record-only forbids an agent turn or another session-creation path; missing or changed fixture prerequisites produce unavailable evidence; --account --chat-type --channel --create-if-missing --env --out --peer --record-only --timeout)",
-      "support/verify/channel-interrupt-at-boundary.mjs  (one bounded inbound-and-interruption flow through the same conformance SDK admission or Telegram update queue as channel-inbound-turn; owns the input, a scoped harness response hold, read-only correlated product state capture, and the interruption; starts capture before admission and signals only after the selected boundary is actually observed; native-send-started requires the matching final native request plus its delivery_queue_entries id, producerClaimId, platformSendAttemptId and platform_send_started_at; saved-final-send-started additionally requires the matching session pendingFinalDelivery replayable text, intentId and queued delivery id; tool-send-outcome-pending scripts exactly one model-facing message send through the normal admitted source turn using --tool-args, captures its run and tool-call ids, persisted terminal-pending receipt state, matching native receipt and still-withheld result, and excludes an already-recorded terminal outcome; native-send-live-lease requires a normal completed reply rather than a held model, the matching actual native send, exact queue owner, requiresProducerClaim, availableAt, and an observed renewal of that same owner, with more time remaining than freeze-ms; active-turn-recovery-claim requires the exact held provider request and matching persisted restartRecoveryDeliveryRunId, source run and delivery context; active-turn-without-replay-input additionally captures absent reconstructible ingress under the existing scoped fault without fabricating database rows; recorded-unacknowledged-input requires the conformance manual-ack policy, persisted input and matching recovery identity with no ack callback recorded; kill restarts the same owned service through OCM after recording interruption, including the final kill, and joins Gateway health within the overall deadline; --repeat waits for a distinct resumed execution of that same recovery identity before every further kill, including real restart between attempts, and stops if another eligible attempt never appears; all gates are bounded within --timeout, preserve their raw correlated observations, and report an unavailable boundary without signaling when it is missed; native holds belong only to the harness Telegram response or conformance outbound callback, model holds belong only to the mock provider, with no added OpenClaw RPC or internal hook; final-only native gates suppress fixture streaming for this scope through supported configuration and restore it afterward, excluding typing, draft and progress sends; wrapper writes a channel-inbound-turn-compatible --handle once as the only writer, transfers that input to its existing later join when present, and otherwise joins or cancels it itself; verified env-owned Gateway PID and process-start identity are checked immediately before signaling, and freeze always receives SIGCONT before cleanup, including timeout and interruption; all response holds, pending requests, timers, provider scripts and temporary configuration are released/restored in finally, bounded background custody is compatible with the later join, and cleanup never rewrites product queue/session state; POSIX process pause requires a supported disposable environment, otherwise records unavailable evidence; --ack-policy --admission --artifact-dir --boundary --channel --chat-type --env --freeze-ms --gate-timeout --handle --interrupt --mention --peer --repeat --text --timeout --tool-args)"
+      "support/verify/channel-interrupt-at-boundary.mjs  (one bounded inbound-and-interruption flow through the same conformance SDK admission or Telegram update queue as channel-inbound-turn; owns the input, a scoped harness response hold, read-only correlated product state capture, and the interruption; starts capture before admission and signals only after the selected boundary is actually observed; native-send-started requires the matching final native request plus its delivery_queue_entries id, producerClaimId, platformSendAttemptId and platform_send_started_at; saved-final-send-started additionally requires the matching session pendingFinalDelivery replayable text, intentId and queued delivery id; tool-send-outcome-pending scripts exactly one model-facing message send through the normal admitted source turn using --tool-args, captures its run and tool-call ids, persisted terminal-pending receipt state, matching native receipt and still-withheld result, and excludes an already-recorded terminal outcome; native-send-live-lease requires a normal completed reply rather than a held model, the matching actual native send, exact queue owner, requiresProducerClaim, availableAt, and an observed renewal of that same owner, with more time remaining than freeze-ms; native-send-expired-lease captures the same real renewed owner and held native request but pauses beyond its recorded availableAt instead of staying within it; verify before pausing that freeze-ms crosses that actual deadline and record wall time plus the exact queue owner on both sides, then resume and retain the response gate until native expiry or rejected renewal reports lost ownership and abort; the current native 60000ms lease cannot renew after expiry, but a longer effective lease, changed owner, missing expiry interval or absent native loss/abort is unavailable evidence rather than a fabricated lapse; always SIGCONT and join/cancel the held request in bounded cleanup; active-turn-recovery-claim requires the exact held provider request and matching persisted restartRecoveryDeliveryRunId, source run and delivery context; active-turn-without-replay-input additionally captures absent reconstructible ingress under the existing scoped fault without fabricating database rows; recorded-unacknowledged-input requires the conformance manual-ack policy, persisted input and matching recovery identity with no ack callback recorded; kill restarts the same owned service through OCM after recording interruption, including the final kill, and joins Gateway health within the overall deadline; --repeat waits for a distinct resumed execution of that same recovery identity before every further kill, including real restart between attempts, and stops if another eligible attempt never appears; all gates are bounded within --timeout, preserve their raw correlated observations, and report an unavailable boundary without signaling when it is missed; native holds belong only to the harness Telegram response or conformance outbound callback, model holds belong only to the mock provider, with no added OpenClaw RPC or internal hook; final-only native gates suppress fixture streaming for this scope through supported configuration and restore it afterward, excluding typing, draft and progress sends; wrapper writes a channel-inbound-turn-compatible --handle once as the only writer, transfers that input to its existing later join when present, and otherwise joins or cancels it itself; verified env-owned Gateway PID and process-start identity are checked immediately before signaling, and freeze always receives SIGCONT before cleanup, including timeout and interruption; all response holds, pending requests, timers, provider scripts and temporary configuration are released/restored in finally, bounded background custody is compatible with the later join, and cleanup never rewrites product queue/session state; POSIX process pause requires a supported disposable environment, otherwise records unavailable evidence; --ack-policy --admission --artifact-dir --boundary --channel --chat-type --env --freeze-ms --gate-timeout --handle --interrupt --mention --peer --repeat --text --timeout --tool-args)",
+      "support/verify/channel-native-binding-revocation.mjs  (one bounded native Discord command flow through the packaged adapter and registered command, configured ACP binding and public ACP runtime backend contract; uses config.get/config.patch, the existing conformance plugin and Discord fixture, and records actual interaction and backend calls; --binding-file identifies a dedicated fixture-owned binding and target with two supported model values and two supported thinking values; provision and warm that exact binding through ordinary product preparation, then change only its owning agent model and thinking settings so both differ from the accepted stored options while backend, mode, cwd, owner and target remain identical; the unavailable conformance fixture capability registers an owned ACP backend through openclaw/plugin-sdk/acp-runtime with ownerAwareSessions 1 and advertised session/set_config_option controls for model and thinking; it records its real setConfigOption invocation and can withhold that invocation's return through a bounded harness promise; submit the registered native help interaction as the initially allowed sender, using the captured application-command identity, not a chat message named /help or a synthetic CommandAuthorized value; wait for the exact binding session and requested model control to enter the backend after that native interaction, with exclusive custody preventing an unrelated preparation from satisfying the gate; only after capture, patch commands.allowFrom.discord to an empty array through config.patch and wait for the actual runtime snapshot to adopt it while the control remains held; release the accepted model control unchanged, join native preparation/interaction, and record its settlement, later thinking-control calls or their absence, raw native response and stored options without claiming an assertion result; the runtime snapshot read comes from the existing public SDK config snapshot accessor in the fixture process, not disk-only polling or an invented product method; gate and hold deadlines together remain below the native 30000 ms preparation timeout, and any missed gate or adoption deadline records unavailable evidence and joins cleanup without pretending revocation occurred during preparation; no original product callback, authority closure, stored receipt, database row or authorization boolean is replaced; in finally release every pending fixture promise, join the native interaction, restore exact changed config including originally absent keys, close only the dedicated fixture-owned ACP session through the public session API, and restore/unregister only this wrapper's backend instance after users settle; never replace an existing backend id or delete a preexisting session; record only the selected nonsecret config values and snapshot generation, never the full runtime snapshot or credentials; observation output is written once after cleanup; --binding-file --channel --command --env --gate-timeout --hold-ms --out --peer --sender --timeout)"
     ]
   },
   "phases": [
@@ -3465,6 +3466,7 @@
       "kind": "operation",
       "intent": "An operator runs the security audit and Doctor over channel bindings, including Discord guild and role bindings; audit, doctor and Discord fixture output are recorded.",
       "paths": [
+        "extensions/discord/src/**",
         "src/auto-reply/reply/conversation*.ts",
         "src/auto-reply/reply/route*.ts",
         "src/auto-reply/reply/routing*.ts",
@@ -4130,6 +4132,7 @@
       "kind": "operation",
       "intent": "A user repeats send a message to a chat under each documented state of that operation, observing what each state changes.",
       "paths": [
+        "extensions/telegram/src/**",
         "src/auto-reply/reply/channel*.ts",
         "src/auto-reply/reply/message*.ts",
         "src/auto-reply/send*.ts",
@@ -10777,6 +10780,7 @@
       "kind": "event",
       "intent": "The model replies with raw inline HTML on the conformance channel and Telegram; observations and the shim transcript are recorded.",
       "paths": [
+        "extensions/telegram/src/**",
         "src/auto-reply/chunk*.ts",
         "src/auto-reply/reply/block*.ts",
         "src/auto-reply/reply/message*.ts",
@@ -11197,7 +11201,7 @@
     {
       "id": "event-send-started-lease-expired",
       "kind": "event",
-      "intent": "A send starts and its lease expires before the result; queue rows and observations are recorded.",
+      "intent": "A native send remains held while its exact renewed producer lease crosses its actual expiry during a process pause; the native loss of ownership, abort and queue observations are recorded after resume.",
       "paths": [
         "src/infra/delivery-queue*.ts",
         "src/infra/delivery-recovery*.ts",
@@ -11209,9 +11213,7 @@
         "channel-probe-conversations"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-probe-fault.mjs --env {env} --fault slow-send-past-lease --count 1 --timeout 30000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --text 'Reply with exact ASCII text KOVA_LEASE_EXPIRED_OK only.' --timeout 150000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method kova.channelProbe.observations --params '{}' --timeout 30000"
+        "node {kovaRoot}/support/verify/channel-interrupt-at-boundary.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --text 'Reply with exact ASCII text KOVA_LEASE_EXPIRED_OK only.' --boundary native-send-expired-lease --interrupt freeze --freeze-ms 70000 --gate-timeout 150000 --timeout 270000 --artifact-dir {run}/send-lease-expired"
       ],
       "checkpoint": [
         "responses",
@@ -11219,7 +11221,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 210000,
+      "timeoutMs": 300000,
       "browser": false,
       "slow": false
     },
@@ -12007,66 +12009,39 @@
       "slow": false
     },
     {
-      "id": "event-command-auth-revoked-prepare",
-      "kind": "event",
-      "intent": "To prepare the recorded command auth revoked flow, a user starts its preceding commands; their responses and saved handles are recorded.",
-      "paths": [
-        "extensions/discord/src/**",
-        "src/channels/allow-from.ts",
-        "src/channels/allowlist-match.ts",
-        "src/channels/allowlists/**",
-        "src/channels/command-gating.ts",
-        "src/channels/direct-dm*.ts",
-        "src/channels/message-access/**",
-        "src/channels/native-command-session-targets.ts"
-      ],
-      "requires": [
-        "channel-discord-fixture",
-        "channel-paired-sender",
-        "channel-probe-conversations",
-        "config-channel-patches"
-      ],
-      "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel discord --chat-type group --peer {persona:channel-discord-fixture:channelId} --text '/focus' --event native-command --sender {persona:channel-paired-sender:discordOwnerId} --artifact-dir {run}/auth-revoked --timeout 120000 --background --handle {run}/auth-revoked.json",
-        "ocm @{env} -- config patch --file {persona:config-channel-patches:ownerRevoked}"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing"
-      ],
-      "timeoutMs": 255000,
-      "browser": false,
-      "slow": false
-    },
-    {
       "id": "event-command-auth-revoked",
       "kind": "event",
-      "intent": "A user revokes a sender command authorization while a native command prepares a binding, observing the next effect blocked.",
+      "intent": "An authorized Discord user invokes the registered help command on a configured ACP binding; while its first pending backend control is captured, command access is revoked, then that accepted control is released and subsequent backend calls and the native response are recorded.",
       "paths": [
         "extensions/discord/src/**",
+        "src/acp/**",
+        "src/auto-reply/commands-registry*.ts",
         "src/channels/allow-from.ts",
         "src/channels/allowlist-match.ts",
         "src/channels/allowlists/**",
         "src/channels/command-gating.ts",
         "src/channels/direct-dm*.ts",
         "src/channels/message-access/**",
-        "src/channels/native-command-session-targets.ts"
+        "src/channels/native-command-session-targets.ts",
+        "src/channels/plugins/acp-stateful-target-driver.ts",
+        "src/channels/plugins/binding-*.ts",
+        "src/channels/plugins/configured-binding*.ts",
+        "src/plugin-sdk/acp-runtime.ts"
       ],
       "requires": [
         "channel-discord-fixture",
         "channel-paired-sender",
         "channel-probe-admission",
-        "channel-probe-conversations",
-        "config-channel-patches"
+        "config-acp-binding"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --wait {run}/auth-revoked.json --timeout 120000"
+        "node {kovaRoot}/support/verify/channel-native-binding-revocation.mjs --env {env} --channel discord --peer {persona:channel-discord-fixture:channelId} --sender {persona:channel-paired-sender:discordOwnerId} --command help --binding-file {persona:config-acp-binding:discordPreparation} --gate-timeout 10000 --hold-ms 10000 --timeout 210000 --out {run}/auth-revoked.json"
       ],
       "checkpoint": [
         "responses",
         "logs",
-        "timing"
+        "timing",
+        "state:state/openclaw.sqlite"
       ],
       "timeoutMs": 255000,
       "browser": false,
@@ -13184,61 +13159,38 @@
       "slow": false
     },
     {
-      "id": "event-ingress-deferred-no-heartbeat",
+      "id": "event-ingress-adoption-watchdog",
       "kind": "event",
-      "intent": "A deferred ingress claim gets no heartbeat; the ingress table and logs are recorded.",
+      "intent": "A conformance event remains natively claimed before adoption without deferred heartbeat renewal; the unchanged adoption watchdog, cancellation and native retry disposition are recorded.",
       "paths": [
         "src/auto-reply/dispatch*.ts",
         "src/auto-reply/inbound*.ts",
         "src/auto-reply/reply/dispatch*.ts",
         "src/auto-reply/reply/inbound*.ts",
         "src/channels/*/**",
+        "src/channels/message/ingress-drain*.ts",
+        "src/channels/message/ingress-monitor*.ts",
+        "src/channels/message/ingress-queue*.ts",
         "src/infra/delivery-queue*.ts",
         "src/infra/delivery-recovery*.ts",
         "src/infra/outbound/**",
         "src/infra/session-delivery-queue*.ts",
-        "src/plugin-sdk/channel-*.ts"
-      ],
-      "requires": [
-        "channel-probe-admission",
-        "channel-probe-conversations"
-      ],
-      "commands": [
-        "node {kovaRoot}/support/verify/channel-probe-fault.mjs --env {env} --fault ingress-deferred-no-heartbeat --count 1 --timeout 30000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --text 'Reply with exact ASCII text KOVA_DEFERRED_NO_HEARTBEAT_OK only.' --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-logs.mjs --env {env} --tail 400"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing",
-        "state:state/openclaw.sqlite"
-      ],
-      "timeoutMs": 180000,
-      "browser": false,
-      "slow": false
-    },
-    {
-      "id": "event-ingress-adoption-watchdog",
-      "kind": "event",
-      "intent": "A conformance event remains natively claimed before adoption without deferred heartbeat renewal; the unchanged adoption watchdog, cancellation and native retry disposition are recorded.",
-      "paths": [
-        "src/channels/message/ingress-monitor*.ts",
-        "src/channels/message/ingress-drain*.ts",
-        "src/channels/message/ingress-queue*.ts",
+        "src/plugin-sdk/channel-*.ts",
         "src/plugin-sdk/channel-outbound.ts"
       ],
       "requires": [
-        "channel-ingress-monitor-fixture"
+        "channel-ingress-monitor-fixture",
+        "channel-probe-admission",
+        "channel-probe-conversations"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/channel-ingress-lifecycle.mjs --env {env} --case adoption-watchdog --channel kova-channel-probe --heartbeat none --artifact-dir {run}/watchdog --timeout 420000"
       ],
       "checkpoint": [
-        "responses",
         "logs",
-        "timing",
-        "state:state/openclaw.sqlite"
+        "responses",
+        "state:state/openclaw.sqlite",
+        "timing"
       ],
       "timeoutMs": 450000,
       "browser": false,
@@ -13343,6 +13295,7 @@
       "kind": "event",
       "intent": "The agent sends HTML-formatted text to an SMS account; the live transcript is recorded.",
       "paths": [
+        "extensions/sms/src/**",
         "src/auto-reply/chunk*.ts",
         "src/auto-reply/reply/block*.ts",
         "src/auto-reply/reply/message*.ts",
@@ -13784,6 +13737,7 @@
       "kind": "event",
       "intent": "The agent asks a question in a LINE group and on WhatsApp; live transcripts are recorded.",
       "paths": [
+        "extensions/line/src/**",
         "extensions/whatsapp/src/**",
         "src/auto-reply/chunk*.ts",
         "src/auto-reply/reply/block*.ts",
@@ -14183,6 +14137,7 @@
       "kind": "event",
       "intent": "A CLI agent turn delivers to Telegram while its session belongs to the conformance channel; CLI output and the shim transcript are recorded.",
       "paths": [
+        "extensions/telegram/src/**",
         "src/auto-reply/chunk*.ts",
         "src/auto-reply/reply/block*.ts",
         "src/auto-reply/reply/message*.ts",
@@ -14904,8 +14859,10 @@
         "extensions/x/src/**",
         "extensions/zalo/src/**",
         "extensions/zalouser/src/**",
+        "src/acp/**",
         "src/agents/tools/message-tool*.ts",
         "src/auto-reply/chunk*.ts",
+        "src/auto-reply/commands-registry*.ts",
         "src/auto-reply/dispatch*.ts",
         "src/auto-reply/envelope*.ts",
         "src/auto-reply/group*.ts",
@@ -14979,6 +14936,8 @@
         "src/commands/configure.channels.ts",
         "src/commands/doctor-channel-ingress.ts",
         "src/commands/message.ts",
+        "src/config/sessions/pending-final-delivery*.ts",
+        "src/config/sessions/restart-recovery*.ts",
         "src/flows/channel-setup*.ts",
         "src/gateway/server-agent-database-startup.ts",
         "src/gateway/server-methods/channel-pairing.ts",
@@ -15002,6 +14961,7 @@
         "src/infra/outbound/message-action*.ts",
         "src/infra/session-delivery-queue*.ts",
         "src/pairing/pairing-*.ts",
+        "src/plugin-sdk/acp-runtime.ts",
         "src/plugin-sdk/channel-*.ts",
         "src/plugin-sdk/channel-ingress-runtime.ts",
         "src/plugin-sdk/channel-outbound.ts",
@@ -15591,9 +15551,12 @@
       "intent": "A user kills the Gateway right after a Telegram send started, observing the entry reconciled before any replay.",
       "paths": [
         "extensions/telegram/src/**",
+        "src/config/sessions/pending-final-delivery*.ts",
+        "src/config/sessions/restart-recovery*.ts",
         "src/infra/delivery-queue*.ts",
         "src/infra/delivery-recovery*.ts",
         "src/infra/message-tool-run-outcome-store*.ts",
+        "src/infra/outbound/**",
         "src/infra/outbound/delivery-queue*.ts",
         "src/infra/session-delivery-queue*.ts"
       ],
@@ -15649,6 +15612,8 @@
       "kind": "event",
       "intent": "The Gateway stalls for 30 seconds during a delivery; queue rows and logs are recorded.",
       "paths": [
+        "src/config/sessions/pending-final-delivery*.ts",
+        "src/config/sessions/restart-recovery*.ts",
         "src/infra/delivery-queue*.ts",
         "src/infra/delivery-recovery*.ts",
         "src/infra/outbound/**",
@@ -16522,6 +16487,10 @@
         "src/channels/transport/**",
         "src/channels/turn/**",
         "src/commands/doctor-channel-ingress.ts",
+        "src/config/sessions/pending-final-delivery*.ts",
+        "src/config/sessions/restart-recovery*.ts",
+        "src/infra/delivery-queue*.ts",
+        "src/infra/outbound/**",
         "src/plugin-sdk/channel-*.ts"
       ],
       "requires": [
@@ -16583,9 +16552,12 @@
       "kind": "event",
       "intent": "A user kills the Gateway after the final reply was produced but not delivered, observing the resumed turn delivering the saved final.",
       "paths": [
+        "extensions/telegram/src/**",
         "src/auto-reply/reply/channel*.ts",
         "src/auto-reply/reply/message*.ts",
         "src/auto-reply/send*.ts",
+        "src/config/sessions/pending-final-delivery*.ts",
+        "src/config/sessions/restart-recovery*.ts",
         "src/infra/delivery-queue*.ts",
         "src/infra/delivery-recovery*.ts",
         "src/infra/message-tool-run-outcome-store*.ts",
@@ -16696,6 +16668,8 @@
         "src/auto-reply/reply/channel*.ts",
         "src/auto-reply/reply/message*.ts",
         "src/auto-reply/send*.ts",
+        "src/config/sessions/pending-final-delivery*.ts",
+        "src/config/sessions/restart-recovery*.ts",
         "src/infra/delivery-queue*.ts",
         "src/infra/delivery-recovery*.ts",
         "src/infra/message-tool-run-outcome-store*.ts",
@@ -16838,11 +16812,15 @@
       "kind": "event",
       "intent": "A user kills the Gateway right after a message-tool-only send started, observing the turn resumed with restart-safe tools.",
       "paths": [
+        "extensions/telegram/src/**",
         "src/agents/tools/message-tool*.ts",
         "src/channels/plugins/message-action*.ts",
+        "src/config/sessions/pending-final-delivery*.ts",
+        "src/config/sessions/restart-recovery*.ts",
         "src/infra/delivery-queue*.ts",
         "src/infra/delivery-recovery*.ts",
         "src/infra/message-tool-run-outcome-store*.ts",
+        "src/infra/outbound/**",
         "src/infra/outbound/delivery-queue*.ts",
         "src/infra/outbound/message-action*.ts",
         "src/infra/session-delivery-queue*.ts"
@@ -16909,9 +16887,12 @@
       "kind": "event",
       "intent": "A user lets a recovered turn deliver automatically while a reply_payload_sending hook is registered, observing the hook running before channel delivery.",
       "paths": [
+        "extensions/telegram/src/**",
         "src/auto-reply/reply/channel*.ts",
         "src/auto-reply/reply/message*.ts",
         "src/auto-reply/send*.ts",
+        "src/config/sessions/pending-final-delivery*.ts",
+        "src/config/sessions/restart-recovery*.ts",
         "src/infra/delivery-queue*.ts",
         "src/infra/delivery-recovery*.ts",
         "src/infra/message-tool-run-outcome-store*.ts",
@@ -17511,8 +17492,10 @@
         "extensions/x/src/**",
         "extensions/zalo/src/**",
         "extensions/zalouser/src/**",
+        "src/acp/**",
         "src/agents/tools/message-tool*.ts",
         "src/auto-reply/chunk*.ts",
+        "src/auto-reply/commands-registry*.ts",
         "src/auto-reply/dispatch*.ts",
         "src/auto-reply/envelope*.ts",
         "src/auto-reply/group*.ts",
@@ -17586,6 +17569,8 @@
         "src/commands/configure.channels.ts",
         "src/commands/doctor-channel-ingress.ts",
         "src/commands/message.ts",
+        "src/config/sessions/pending-final-delivery*.ts",
+        "src/config/sessions/restart-recovery*.ts",
         "src/flows/channel-setup*.ts",
         "src/gateway/server-agent-database-startup.ts",
         "src/gateway/server-methods/channel-pairing.ts",
@@ -17609,6 +17594,7 @@
         "src/infra/outbound/message-action*.ts",
         "src/infra/session-delivery-queue*.ts",
         "src/pairing/pairing-*.ts",
+        "src/plugin-sdk/acp-runtime.ts",
         "src/plugin-sdk/channel-*.ts",
         "src/plugin-sdk/channel-ingress-runtime.ts",
         "src/plugin-sdk/channel-outbound.ts",
@@ -17666,8 +17652,10 @@
         "extensions/x/src/**",
         "extensions/zalo/src/**",
         "extensions/zalouser/src/**",
+        "src/acp/**",
         "src/agents/tools/message-tool*.ts",
         "src/auto-reply/chunk*.ts",
+        "src/auto-reply/commands-registry*.ts",
         "src/auto-reply/dispatch*.ts",
         "src/auto-reply/envelope*.ts",
         "src/auto-reply/group*.ts",
@@ -17741,6 +17729,8 @@
         "src/commands/configure.channels.ts",
         "src/commands/doctor-channel-ingress.ts",
         "src/commands/message.ts",
+        "src/config/sessions/pending-final-delivery*.ts",
+        "src/config/sessions/restart-recovery*.ts",
         "src/flows/channel-setup*.ts",
         "src/gateway/server-agent-database-startup.ts",
         "src/gateway/server-methods/channel-pairing.ts",
@@ -17764,6 +17754,7 @@
         "src/infra/outbound/message-action*.ts",
         "src/infra/session-delivery-queue*.ts",
         "src/pairing/pairing-*.ts",
+        "src/plugin-sdk/acp-runtime.ts",
         "src/plugin-sdk/channel-*.ts",
         "src/plugin-sdk/channel-ingress-runtime.ts",
         "src/plugin-sdk/channel-outbound.ts",
@@ -17823,6 +17814,8 @@
       "kind": "event",
       "intent": "After the selected channel observations, the background vanish operation is joined and any remaining task-owned work is stopped; its final responses and logs are recorded.",
       "paths": [
+        "src/config/sessions/pending-final-delivery*.ts",
+        "src/config/sessions/restart-recovery*.ts",
         "src/infra/delivery-queue*.ts",
         "src/infra/delivery-recovery*.ts",
         "src/infra/outbound/**",
@@ -17846,6 +17839,8 @@
       "kind": "event",
       "intent": "After the selected channel observations, the background no claim operation is joined and any remaining task-owned work is stopped; its final responses and logs are recorded.",
       "paths": [
+        "src/config/sessions/pending-final-delivery*.ts",
+        "src/config/sessions/restart-recovery*.ts",
         "src/infra/delivery-queue*.ts",
         "src/infra/delivery-recovery*.ts",
         "src/infra/message-tool-run-outcome-store*.ts",
@@ -17932,6 +17927,8 @@
         "src/auto-reply/reply/dispatch*.ts",
         "src/auto-reply/reply/inbound*.ts",
         "src/channels/*/**",
+        "src/config/sessions/pending-final-delivery*.ts",
+        "src/config/sessions/restart-recovery*.ts",
         "src/infra/delivery-queue*.ts",
         "src/infra/delivery-recovery*.ts",
         "src/infra/outbound/**",
@@ -17961,6 +17958,8 @@
         "src/auto-reply/reply/dispatch*.ts",
         "src/auto-reply/reply/inbound*.ts",
         "src/channels/*/**",
+        "src/config/sessions/pending-final-delivery*.ts",
+        "src/config/sessions/restart-recovery*.ts",
         "src/infra/delivery-queue*.ts",
         "src/infra/delivery-recovery*.ts",
         "src/infra/outbound/**",
@@ -17990,6 +17989,8 @@
         "src/auto-reply/reply/dispatch*.ts",
         "src/auto-reply/reply/inbound*.ts",
         "src/channels/*/**",
+        "src/config/sessions/pending-final-delivery*.ts",
+        "src/config/sessions/restart-recovery*.ts",
         "src/infra/delivery-queue*.ts",
         "src/infra/delivery-recovery*.ts",
         "src/infra/outbound/**",
@@ -18014,6 +18015,8 @@
       "kind": "event",
       "intent": "After the selected channel observations, the background tool send operation is joined and any remaining task-owned work is stopped; its final responses and logs are recorded.",
       "paths": [
+        "src/config/sessions/pending-final-delivery*.ts",
+        "src/config/sessions/restart-recovery*.ts",
         "src/infra/delivery-queue*.ts",
         "src/infra/delivery-recovery*.ts",
         "src/infra/message-tool-run-outcome-store*.ts",
