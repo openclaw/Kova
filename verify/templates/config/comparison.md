@@ -30,12 +30,12 @@ Every round used OpenClaw 7e80556f503d26ddde64e274bfb50cbbec7830f5. Both runs of
 
 ## Round 1
 
-Union: 443 entry points, 37 condition headings; the individual-condition union was estimated at about 56 and was not fully reconciled.
+Union: 448 entry points, 37 condition headings; the individual-condition union was estimated at about 56 and was not fully reconciled.
 
 | Run | Procedure revision | Entry points found | Condition headings found | Individual conditions found |
 |---|---|---|---|---|
-| 1 | revision 1 | 355/443 (80.1%) | 32/37 (86.5%) | 39 enumerated; credited share estimated at about 70% |
-| 2 | revision 1 | 312/443 (70.4%) | 28/37 (75.7%) | 52 enumerated; credited share estimated at about 93% |
+| 1 | revision 1 | 354/448 (79.0%) | 32/37 (86.5%) | 39 enumerated; credited share estimated at about 70% |
+| 2 | revision 1 | 308/448 (68.8%) | 28/37 (75.7%) | 52 enumerated; credited share estimated at about 93% |
 
 Remaining differences: the runs counted cross-area calls, native callers, sidebar controls and excluded shell surfaces differently; they also grouped conditions differently. The input bound initially named only the neighbouring areas.
 Acceptance: historical shortfall on both required shares; superseded by later rounds.
@@ -86,7 +86,11 @@ Known shortfall: none on the acceptance shares. The remaining input-bound and ex
 
 ## Historical counting notes
 
-The round 1 and round 3 entry-point unions were recounted from the preserved enumerations. Names and source paths identify entries; aliases and different labels for the same control are matched. Explicitly combined controls count at the finer granularity, such as text and number fields, Form and Raw switches, quiet-hours start and end, and the Settings shortcut and menu item. A generic group that does not name its controls stays a separate entry. Credited counts can therefore exceed enumerated rows. Run 2 in round 1 is credited with the theme-default accent control explicitly included in its preset entry. Its combined select/segmented field and Show API key/secret-reference editor each name two controls, and its `/debug show|set|unset|reset` entry names four commands; these are counted separately even when only one run lists them. A file-level caller record stays one entry by path, including the exec-policy writer and log-tail sink; command names in its description do not turn it into a separate command inventory. Round 2 retains its recorded entry reconciliation; its raw 140/183 ratio is not a bound on credited coverage, since a single row can explicitly contain several conditions.
+The round 1 and round 3 entry-point unions were recounted from the preserved enumerations. Names and source paths identify entries; aliases and different labels for the same control are matched. Explicitly combined controls count at the finer granularity, such as text and number fields, Form and Raw switches, and the Settings shortcut and menu item. A generic group that does not name its controls stays a separate entry. Credited counts can therefore exceed enumerated rows.
+
+Round 1 uses typed identities. A recorded config caller or writer counts once per file path, including repeated read/write uses of the memory panel and repeated uses of the daemon installer. Different startup or CLI-guard files remain distinct. File records for telemetry and exec-policy each count once; bare command records remain separate from file records. Source paths attached to a documented redaction sink describe its implementation, and that sink still counts once.
+
+Run 2 is credited with the theme-default accent explicitly included in its preset entry. Its combined select/segmented field and Show API key/secret-reference editor each name two controls, and its `/debug show|set|unset|reset` entry names four commands. Its generic quiet-hours window remains separate from run 1's start and end controls; its clear-search entry explicitly names Escape and is not additionally credited with the clear button. These rules apply even when only one run lists a surface. Round 2 retains its recorded entry reconciliation; its raw 140/183 ratio is not a bound on credited coverage, since a single row can explicitly contain several conditions.
 
 Rounds 1 and 2 had no heading walk; their heading shares are recovered from condition citations, splitting multiple named headings and matching introduction and shortened FAQ labels. Quoted values inside a heading, such as "lan" and "tailnet", are not extra headings. These recounts replace the earlier 39- and 67-heading estimates. Rounds 3 and 4 use `## Headings walked`. Earlier individual-condition estimates remain explicitly qualified and are not the acceptance measure.
 
