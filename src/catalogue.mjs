@@ -176,6 +176,8 @@ function commandArguments(tokens, flags, { allowedFlags = flags, head = [], pare
     const selected = head.every((word, at) => words[at] === word);
     const available = selected ? flags : Object.assign({}, ...parents.filter((parent) => parent.head.every((word, at) => words[at] === word)).map(({ entry }) => entry.flags));
     const info = Object.hasOwn(available, flag) ? available[flag] : null;
+    const owner = selected ? head : parents.findLast((parent) => parent.head.every((word, at) => words[at] === word) && Object.hasOwn(parent.entry.flags, flag))?.head;
+    if (info && owner !== head && Object.hasOwn(allowedFlags, flag)) findings.push({ code: "argument", flag, message: `${flag} belongs to the parent command; place it after ${head.join(" ")} for this entry` });
     if (!info && Object.hasOwn(flags, flag)) invalidOrder = true;
     let value = equal < 0 ? undefined : token.slice(equal + 1);
     if (ocm && seenFlags.has(flag)) findings.push({ code: "argument", flag, message: `OCM does not accept repeated ${flag}` });
@@ -188,7 +190,7 @@ function commandArguments(tokens, flags, { allowedFlags = flags, head = [], pare
       else value = tokens[++index];
       if (value === undefined) findings.push({ code: "argument", flag, message: `${flag} requires a value` });
     }
-    options.push({ flag, value });
+    options.push({ flag, value, owner });
   }
   return { words, options, findings, invalidOrder, separatorAt };
 }

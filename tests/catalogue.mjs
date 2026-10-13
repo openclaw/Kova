@@ -80,6 +80,9 @@ test("explicit flag arity separates operands from options and subcommands", asyn
     assert.ok(check(c, command).length, command);
   }
   assert.deepEqual(check(c, "ocm @{env} -- sessions tail --session-key cleanup --tail 5"), []);
+  assert.ok(check(c, "ocm @{env} -- sessions --limit 1 import --all --json").some((finding) => finding.code === "argument" && finding.flag === "--limit"));
+  assert.deepEqual(check(c, "ocm @{env} -- sessions import --limit 1 --all --json"), []);
+  assert.deepEqual(check(c, "ocm @{env} -- sessions --limit 1 --json"), []);
   assert.equal(resolveCatalogueEntry(c, "ocm @{env} -- sessions --json cleanup")?.id, "sessions-cleanup");
   assert.equal(resolveCatalogueEntry(c, "ocm @{env} -- sessions --json invented"), null);
   for (const command of ["ocm @{env} -- sessions cleanup --agent demo --json", "ocm @{env} -- sessions --agent demo cleanup --json"]) {
