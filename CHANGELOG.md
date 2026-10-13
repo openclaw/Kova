@@ -4,7 +4,8 @@ All notable changes to Kova are documented in this file.
 
 ## Unreleased
 
-- Refresh compatible CLI/website dependencies and pnpm hydration tooling, including fixes for the http-cache-semantics and source-map-js advisories, while retaining the Node.js 22 CLI floor.
+- Assemble verification plans for OpenClaw changes with `kova verify plan`. Kova now requires Node.js 22.5.0 or newer for native path glob matching.
+- Refresh compatible CLI/website dependencies and pnpm hydration tooling, including fixes for the http-cache-semantics and source-map-js advisories.
 - Render an empty matrix instead of crashing when the catalog has no stable releases, including beta-only catalogs. Thanks @SebTardif. (#166)
 - Preserve direct Linux command accounting when execution policy denies the native owner with EPERM, cleaning up and caching the fallback. Thanks @SebTardif. (#167)
 - Generate fresh mock-auth configs that pass current OpenClaw admission while preserving existing model settings, legacy restrictions, explicit policies, and agent ownership.

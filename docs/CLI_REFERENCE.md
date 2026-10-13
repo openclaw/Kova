@@ -1,5 +1,7 @@
 # CLI Reference
 
+Kova requires Node.js 22.5.0 or newer. `kova setup` checks this prerequisite.
+
 Kova's human-facing commands render a dashboard by default. Add `--json` for
 the stable machine contract, `--plain` for compact text, `--no-progress` to
 silence streaming, or `--ascii` for Unicode-free output. Color, width,
@@ -37,7 +39,7 @@ options accept only a bare flag, `=true`, or `=false`.
 | `kova report paste <run-id>` | Create a fixer-ready handoff. |
 | `kova cleanup` | Remove stale Kova-owned environments or artifacts. |
 
-The `kova verify` commands are forthcoming; [Kova Verify](verify/README.md) describes them.
+`kova verify run` and `kova verify compare` are forthcoming; [Kova Verify](verify/README.md) describes them.
 
 ## Personas
 

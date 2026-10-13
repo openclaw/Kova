@@ -2,7 +2,7 @@
 
 [![CI](https://img.shields.io/github/actions/workflow/status/openclaw/Kova/ci.yml?branch=main&style=flat-square&label=ci)](https://github.com/openclaw/Kova/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/openclaw/Kova?style=flat-square)](https://github.com/openclaw/Kova/releases/latest)
-[![Node.js](https://img.shields.io/badge/node-%E2%89%A522-339933?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/node-%E2%89%A522.5.0-339933?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-555?style=flat-square)](https://github.com/openclaw/Kova/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/openclaw/Kova?style=flat-square)](LICENSE)
 
@@ -18,7 +18,7 @@ agent, plugin, TUI, MCP, browser, and long-running behavior before a release.
 
 ## Install
 
-Kova requires Node.js 22 or newer. Real scenarios use
+Kova requires Node.js 22.5.0 or newer. Real scenarios use
 [OCM](https://github.com/shakkernerd/ocm) to provision isolated OpenClaw
 environments; the installer can install it at the same time:
 
@@ -177,7 +177,7 @@ checks in `self-check`; CI installs this prerequisite automatically.
 CI runs the full check suite and release-install smoke test on Node.js 22, 24,
 and 26 on Linux, and Node.js 24 on macOS. The website has a separate type-check,
 test, and production-build job. `.node-version` pins the development, website,
-hydration, and release-build runtime without changing the Node.js 22 CLI floor.
+hydration, and release-build runtime without changing the Node.js 22.5.0 CLI floor.
 
 ## License
 
