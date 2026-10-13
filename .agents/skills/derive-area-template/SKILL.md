@@ -73,10 +73,15 @@ reorder steps, and write each step's output before starting the next.
 
 ## Finish
 
-Check the five acceptance conditions on the page. When a run found less than
-nine tenths of the reconciled union of entry points or conditions (an entry
-point excluded with a reason counts as found), fix the area input file or the
-document list as the page says and repeat both runs. When
+Check the five acceptance conditions on the page. For every round, record each
+run's procedure revision and shares of the reconciled entry points and
+condition headings in `comparison.md`, retaining individual condition counts
+and the causes of remaining differences. When a run found less than nine
+tenths on either share (an entry point excluded with a reason counts as
+found), correct the input or procedure as the page says. Repeat both runs only
+within the applicable rerun cap; after it, reconcile the recorded runs and
+record a remaining shortfall as a known shortfall, without claiming acceptance
+or starting another run. When
 `catalogue/openclaw.json` exists, run:
 
 ```sh
