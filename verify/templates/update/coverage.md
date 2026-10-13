@@ -1,18 +1,23 @@
 # Coverage: update
 
 Operations with retained phases: 11/21 (some retained operations have fewer entry points)
-Conditions described by retained phases: 37/520 (354 ambient, 166 event)
+Conditions described by retained phases: 33/520 (354 ambient, 166 event)
 Entry points inventoried: 203 placed/310 (107 excluded); executable coverage has not been measured
 Breaks mapped to retained phases: 0/6; all six are outside reach under OCM supervision
 
-A condition is counted here only when a retained phase describes its concrete setup and observation; runtime execution remains unproven. Reconciliation credits applicable phases from either run and excludes claims whose required inputs or actions were lost. There are 37 described conditions and 483 explicit gaps below. Phases: 37 (1 setup, 11 operation, 25 event). These are declarative descriptions, not executed results.
+A condition is counted here only when a retained phase describes its concrete setup and observation; runtime execution remains unproven. Reconciliation credits applicable phases from either run and excludes claims whose required inputs or actions were lost. There are 33 described conditions and 487 explicit gaps below. Phases: 37 (1 setup, 11 operation, 25 event). These are declarative descriptions, not executed results.
 
 The staged Doctor phase describes conditions 399, 406 and 418 with the existing `state-legacy-migratable` fixture: the database without Claw provenance columns, inherited Voice Call realtime settings and a multi-account channel without a default. Its declared pre-restoration state, config and Doctor-output captures observe the repair, copied settings and routing warning. These are described observations, not executed results.
 
 Uncovered:
 
+
 Excluding a saved supporting scenario leaves a coverage gap; it does not make every behavior in that condition unreachable. In particular, external-supervision refusals and suppression are reachable from an OCM clone. The [OCM-only scope](#ocm-only-scope) below distinguishes those observations from the native mutation paths excluded here.
 
+- Condition 208, Managed Gateway already stopped before repair: stays offline with a gateway start warning: The phase records offline OCM repair, but the external repair policy skips native service inspection. It does not establish the native managed-service warning telling the user to run gateway start.
+- Condition 209, Identityless 2026.9.2-era admission older than 24 hours: legacy-driver-expired, config writes no longer suspended: The staged history and repair expose expiration and its reason, but no retained ordinary config write observes cleared suspension while that fixture remains installed. Later policy writes first restore baseline.
+- Condition 211, Active row inactive over 30 minutes with a dead driver: abandonedRun, later reconciled by the Gateway: The retained sequence starts the Gateway and its reconciling watcher before reading status. It observes reconciliation, but does not establish the preceding abandonedRun status while the stale active row is still present.
+- Condition 238, Installation older than July 2026: bridge through 2026.9.5, Doctor stops before rewriting retired keys: The retired-config installation receives read-only Doctor lint and an update preview, not Doctor repair. The repair of the combined retired-state fixture encounters the earlier runtime-file refusal, so neither observation establishes repair refusing to rewrite retired config.
 - Condition 12, A saved config failure from an earlier failed update, followed by a later success: The retained triage does not receive the saved failure artifact or sentinel. Report preview accepts only the current reportable attempt and cannot recover an older failure behind a later success. Keeping those historical rows does not establish recovery.
 - Condition 435, Cron run in flight during shutdown: cleanup window for result writes: The 120-second held cron job can finish during the earlier 300-second active-work drain. No fixture keeps pending work into the later ten-second cron cleanup window, so that cancellation and settlement behavior remains unproven.
 - Condition 290, Update checks disabled (checkOnStart false or OPENCLAW_NO_AUTO_UPDATE): no checks, statistics or notices: The bounded disabled-startup-check observation does not wait through the delayed telemetry scheduler or establish an expired success cache. Absence of requests cannot prove telemetry or daily-notice suppression.
@@ -708,7 +713,7 @@ Clean-stop sequencing: repeated SIGTERM observations explicitly wait for each pr
 
 Hosted stop boundary: a valid gateway.stop.request still refuses external supervision in the pinned product. The template records that refusal and uses the bounded OCM stop helper before starting the service and observing a new generation. It does not claim that the native RPC stopped the Gateway. Restart selectors cover the run-loop implementation family, including shutdown outcome formatting and exit/log cleanup.
 
-Compound condition rows count only when all named prerequisites and observations are supplied. Partial cases remain useful scenarios but are recorded as gaps rather than credited as complete conditions. The retained 37 complete descriptions and 483 gaps do not change the discovery inventory or its comparison shares. Cleanup ownership, check suppression, bounded repair and required-store refusal select their direct implementation owners.
+Compound condition rows count only when all named prerequisites and observations are supplied. Partial cases remain useful scenarios but are recorded as gaps rather than credited as complete conditions. The retained 33 complete descriptions and 487 gaps do not change the discovery inventory or its comparison shares. Cleanup ownership, check suppression, bounded repair and required-store refusal select their direct implementation owners.
 
 Phase selection includes the legacy-config and provider-alias helper families, retired-config refusal, both deferred package lifecycle scripts and their marker/prebuild contracts, reportability policy, and the explicit repair-timeout caller, parser and registration. These corrections retain the existing scenarios and coverage totals.
 
