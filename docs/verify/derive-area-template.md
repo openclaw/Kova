@@ -178,14 +178,16 @@ condition each. The Control UI's connection states, and whether it has
 finished loading, count when a document describes behavior under them.
 
 Completeness: walk every listed document heading by heading, in order,
-including each section the bound names. Under each heading, record every state
-or event it states with its own consequence, whether or not a harness can
-reach it, or record `none`. Write `## Headings walked` in `derivation.md`: one
-line per heading, `<document> "<heading>": <condition numbers> | none`, where a
-condition's number is its row number in `## Conditions`, counting from 1. A
-heading missing from that list has not been read. Step 8 compares two runs
-heading by heading, so a reader's miss shows as a heading where the other run
-found a condition.
+including each section the bound names. Under each heading, take each sentence
+or list item in turn; one that states a state or event with its own
+consequence yields a condition, whether or not a harness can reach it, and the
+condition's Source names the heading; a heading with none records `none`.
+Write `## Headings walked` in `derivation.md`: one line per heading,
+`<document> "<heading>": <condition numbers> | none`, where a condition's
+number is its row number in `## Conditions`, counting from 1. A heading
+missing from that list has not been read. Step 8 compares two runs heading by
+heading, so a reader's miss shows as a heading where the other run found a
+condition.
 
 For each condition record: its name, the document and heading it comes from,
 whether it is **ambient** (true while other phases run, such as a turn in

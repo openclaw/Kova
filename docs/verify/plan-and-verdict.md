@@ -106,7 +106,10 @@ Nobody edits a plan after it is written. A different plan is a different run.
 A phase depends on another when one of its commands reads a `{run}/<name>`
 file the other phase writes: the writer names it with `--handle` or `--out`,
 the reader with `--wait`, `--from` or another `--*-from` flag. The plan finds
-these pairs from the command text.
+these pairs from the command text. A `{run}` file name may be written by the
+phases of only one source (one template, the intent phases or the standard
+phases); when two sources write the same name, the plan is refused and names
+them, so a reader can never join another source's operation.
 
 The plan orders all selected phases so that every one of these holds:
 
@@ -114,11 +117,13 @@ The plan orders all selected phases so that every one of these holds:
    last;
 2. phases of one template keep the template's order;
 3. a phase that writes a `{run}` file comes before every phase that reads it;
-4. a phase that calls a `destructive` catalogue entry with a
-   `{persona:<trait>:<key>}` value, or that lists a trait in `requires` and
-   calls a `destructive` entry, comes after every phase that names any key of
-   that trait or lists it in `requires` and calls no `destructive` entry.
-   Destructive phases keep the tie-break order among themselves.
+4. a phase that removes or replaces persona content, that is, one that calls a
+   `destructive` catalogue entry with a `{persona:<trait>:<key>}` value, comes
+   after every other phase that names any key of that trait or lists it in
+   `requires`, unless that phase also removes or replaces content of the same
+   trait; such phases keep the tie-break order among themselves. Restarting or
+   stopping the Gateway calls a `destructive` entry without a persona value; it
+   removes no persona content and this rule does not order it.
 
 Where these leave a choice, `setup` phases come before `operation` phases and
 those before `event` phases; then templates go in order of area id, with
@@ -363,21 +368,32 @@ item. A row is one phase, one signal and one item:
 | `doctor` | one Doctor finding, by its code or text | present or not |
 | `screen` | the screenshot (`at` is empty) | its content hash |
 
-Text lines (log lines, text stdout and text state files) are normalized before
-comparison: timestamps, durations, UUIDs and other hexadecimal ids, process
-ids and port numbers become fixed tokens. State paths are normalized the same
-way, except that each distinct generated id becomes a numbered token,
-`<id-1>`, `<id-2>`, …, in the order its files were first written, so a file
-named after a session created during the run has the same address on every
-clone. An item one side has and the other
-lacks has the value `{"absent": true}` on the side that lacks it. Absolute
+Before items are built, every checkpoint is normalized:
+
+- Text lines (log lines, text stdout and text state files): timestamps,
+  durations, process ids and port numbers become fixed tokens.
+- Generated ids: an id (a UUID, or a run of eight or more hexadecimal
+  characters) that does not occur in the persona export was generated during
+  the run. Each clone maps its generated ids to numbered tokens, `<id-1>`,
+  `<id-2>`, …, in a fixed order: by the first phase, in plan order, whose
+  checkpoint contains the id; within it, by the first command output that
+  contains it (command index, then JSON pointer); and for an id seen only in
+  state, by the path and then the first normalized line of the file holding
+  it. The map applies everywhere: file paths, JSON object keys, JSON values and
+  text lines. A session created by the same command therefore has the same
+  token on every clone, whatever order files were written in. Ids from the
+  persona export stay as they are.
+
+An item one side has and the other lacks has the value `{"absent": true}` on
+the side that lacks it. Absolute
 durations, RSS and CPU are recorded but never compared; timing only compares
 whether a bound was reached.
 
 ## Noise Floor
 
-Two runs of the same commit still differ in some items, such as generated ids
-in responses or the order of independent log lines. The two noise runs repeat
+Two runs of the same commit still differ in some items after normalization,
+such as a value the product computes from the clock, or a log line that
+appears only when independent work interleaves one way. The two noise runs repeat
 the baseline side at the baseline commit. Every item whose value differs
 between them belongs to the noise set, and compare drops rows for those items
 before classing. The noise set holds items, not whole signals: a new log line
