@@ -17,6 +17,7 @@ const allowedNodeScenarioScripts = new Set([
   "support/ensure-gateway-running.mjs",
   "support/expect-command-fails.mjs",
   "support/install-channel-adapter-package.mjs",
+  "support/install-kova-plugin.mjs",
   "support/install-many-plugin-pressure-state.mjs",
   "support/mcp-bridge-smoke.mjs",
   "support/mcp-tool-call-smoke.mjs",

@@ -25,6 +25,7 @@ import {
   mediaUnderstandingEvidenceEvaluationCheck,
   networkOfflineEvidenceEvaluationCheck
 } from "./selfcheck/browser-media.mjs";
+import { channelProbePluginLoadCheck } from "./selfcheck/channel-probe-plugin.mjs";
 import { channelCapabilityRegistryCheck } from "./selfcheck/channel-registry.mjs";
 import {
   channelCapabilityReportSummaryCheck,
@@ -778,6 +779,7 @@ async function runScopedSelfCheck(flags, scope, workspace) {
       }
     }));
     checks.push(await channelCapabilityRegistryCheck());
+    checks.push(await channelProbePluginLoadCheck(tmp));
     checks.push(inventoryManifestContractsCheck());
     checks.push(await inventoryPlanCheck(tmp));
     checks.push(await repeatedWorkAuditCheck());
