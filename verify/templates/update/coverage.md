@@ -1,13 +1,27 @@
 # Coverage: update
 
 Operations with retained phases: 12/21 (some retained operations have fewer entry points)
-Conditions described by retained phases: 93/520 (354 ambient, 166 event)
+Conditions described by retained phases: 79/520 (354 ambient, 166 event)
 Entry points inventoried: 203 placed/310 (107 excluded); executable coverage has not been measured
 Breaks mapped to retained phases: 0/6; all six are outside reach under OCM supervision
 
-A condition is counted here only when a retained phase describes its concrete setup and observation; runtime execution remains unproven. Reconciliation credits applicable phases from either run and excludes claims whose required inputs or actions were lost. There are 93 described conditions and 427 explicit gaps below. Phases: 43 (1 setup, 12 operation, 30 event). These are declarative descriptions, not executed results.
+A condition is counted here only when a retained phase describes its concrete setup and observation; runtime execution remains unproven. Reconciliation credits applicable phases from either run and excludes claims whose required inputs or actions were lost. There are 79 described conditions and 441 explicit gaps below. Phases: 38 (1 setup, 12 operation, 25 event). These are declarative descriptions, not executed results.
 
 Uncovered:
+- Condition 16, Orphan task_delivery_state rows: admission runs preservation-first recovery, refused under a live Gateway owner: Native update admission is excluded, and no retained admission runs over orphan delivery rows.
+- Condition 210, Stale inactive ledger row with a healthy Gateway: lightweight repair records failed/abandoned: Fresh stale rows are staged offline; this does not exercise lightweight repair against a healthy serving Gateway.
+- Condition 372, Doctor interrupted during an agent schema or media migration: rerun reclaims a dead owner and resumes: No retained scenario synchronizes interruption with an observed pending migration.
+- Condition 385, SIGINT or SIGTERM to Doctor during archive repair batches: Gateway restored: No retained scenario stages pending archive batches and synchronizes interruption with their repair.
+- Condition 453, Standalone restart while startup migration progresses: still-starting exit 2 within five minutes: External-supervision restart uses listener health polling and does not return the native still-starting outcome.
+- Condition 467, Interrupted pre-startup migration backup: retries reuse the completed group; damaged member stops migration: No retained scenario synchronizes interruption with observed backup capture.
+- Condition 416, Config inputs change while Doctor plans migrations: rerun required: An elapsed config-edit delay does not establish a concurrent write during Doctor planning; that ineffective scenario is removed.
+- Condition 47, Retained runtime projections awaiting cleanup by the next update or doctor --fix: No retained fixture supplies updater-retained runtime projections for Doctor cleanup.
+- Condition 154, Restart cannot run after an update: restart skipped or failed guidance: No retained scenario creates the post-update restart-skipped or restart-failed history needed for this guidance.
+- Condition 217, Repair phase exceeds its deadline: exit 1 with stuckPhase and Doctor output excerpts: The retained bounded repair command does not guarantee work exceeding its deadline; timeout failure is not claimed.
+- Condition 229, Configuration writes suspended while an update row is active: No retained phase attempts a config write while an active update row still suspends it.
+- Condition 390, Retained legacy state blocks agent turns; unready live config candidate rejected: No retained command starts an agent turn or commits a live config candidate against this blocked state.
+- Condition 494, Recorded identity evidence is missing versus mismatched (Not verified / Failed badges) (`identity-unavailable`): No retained fixture establishes both missing and mismatched recorded identity evidence.
+- Condition 464, Completed run shown on the sidebar card for 24 hours until acknowledged: The recorded history does not guarantee a completed run less than 24 hours old or its acknowledgement transition.
 - Condition 351, Gateway unreachable during triage: archive written with snapshot failures: The retained triage phase restores a running Gateway; it does not establish an outage.
 - Condition 393, Session compactionCheckpoints still read at runtime: No retained phase requires or reads the compacted-session fixture.
 - Condition 424, Manual installation opens incompatible newer-schema state: Retained replacement journeys install compatible side or side-next code; they do not open incompatible state.
@@ -438,28 +452,30 @@ Uncovered:
 - Condition 520, A Windows Bun-only node host cannot stage updates and logs the failure hourly (`bun-windows-node`): outside this template's reach: Windows Scheduled Task hosts (bound: owned by platform)
 
 Phases that depend on each script still to be written (support.toWrite):
-- support/verify/release-feed.mjs: 43 phases
-- support/ensure-gateway-running.mjs: 22 phases
-- support/verify/restore-update-fixture.mjs: 16 phases
-- support/verify/env-fault.mjs: 12 phases
+- support/verify/release-feed.mjs: 38 phases
+- support/ensure-gateway-running.mjs: 20 phases
+- support/verify/restore-update-fixture.mjs: 13 phases
 - support/verify/gateway-call.mjs: 9 phases
-- support/verify/read-installation-state.mjs: 8 phases
-- support/verify/manual-package-replace.mjs: 7 phases
+- support/verify/env-fault.mjs: 8 phases
+- support/verify/read-installation-state.mjs: 7 phases
 - support/verify/control-ui.mjs: 5 phases
-- support/run-doctor-repair.mjs: 4 phases
+- support/verify/stop-gateway.mjs: 5 phases
+- support/verify/manual-package-replace.mjs: 4 phases
 - support/verify/session-turn-hold.mjs: 4 phases
 - support/verify/chat-send.mjs: 3 phases
+- support/verify/stage-state-fixture.mjs: 3 phases
 - support/verify/node-host-auto-update.mjs: 2 phases
-- support/verify/stage-state-fixture.mjs: 2 phases
+- support/verify/stage-update-history.mjs: 2 phases
 - support/verify/update-config.mjs: 2 phases
+- support/run-doctor-repair.mjs: 1 phases
 - support/verify/channel-inbound-turn.mjs: 1 phases
 - support/verify/chat-history-read.mjs: 1 phases
 - support/verify/cron-isolated-run.mjs: 1 phases
 - support/verify/stage-session-store-fixture.mjs: 1 phases
-- support/verify/stage-update-history.mjs: 2 phases
 - support/verify/triage-run.mjs: 1 phases
 
 Persona additions:
+- channel-authorized-non-owner: A conformance-channel group sender allowed to chat in this comparison clone, but absent from owner grants and command-owner allowlists; peer identifies that sender and is checked before the /update attempt (peer)
 - agents-fleet-large: Several hundred configured agents, each with its own agent database (none) (inventory only; not required by a retained phase)
 - approvals-legacy-json: A legacy exec-approvals.json stub beside an SQLite approvals row holding a default-agent policy with string allowlist entries (none)
 - checkout-dirty: A second Git checkout environment like install-git-checkout with one uncommitted edit in a tracked file (env) (inventory only; not required by a retained phase)
@@ -619,4 +635,8 @@ The original entry-point placement and all 520 condition rows remain in derivati
 
 Node scenarios retain separate persona-driven and side-driven journeys, each with a fresh eligible host fixture. The cron restart scenario requires a held job that has reached active execution and a terminal result read. Same-code native rollback and custom-supervisor handoff scenarios have been excluded.
 
-OCM lifecycle and observation corrections: stopped-service prerequisites use `ocm service stop` and record service status. Fixture helpers must use OCM and wait for process exit. The stop RPC helper supplies the current clone’s PID, owner ID and port and fails closed if that identity is unavailable. The restart-disabled scenario uses the policy-gated chat commands; it makes no unrestricted `update.run` request that OCM could accept. Manual replacement retains the older-runtime journey and adds a fresh side-driven journey to exercise each side’s running replacement detector. Secondary status reads use the side runtime; repair stages fresh stale rows immediately before reading them.
+OCM lifecycle and observation corrections: stopped-service prerequisites use the bounded OCM stop helper and record service status. Fixture helpers must use OCM and wait for process exit. The stop RPC helper supplies the current clone’s PID, owner ID and port and fails closed if that identity is unavailable. The restart-disabled scenario uses the policy-gated chat commands; it makes no unrestricted `update.run` request that OCM could accept. Manual replacement retains the older-runtime journey and adds a fresh side-driven journey to exercise each side’s running replacement detector. Secondary status reads use the side runtime; repair stages fresh stale rows immediately before reading them.
+
+Retained-scenario prerequisites: the OCM stop wrapper polls until the named Gateway has exited, including when OCM initially reports it still shutting down. Doctor repairs establish this offline ownership and restore the service afterward. The rich legacy-state fixture is now staged for Doctor, with resulting config and state recorded before fixture restoration. Non-owner update attempts require a verified authorized-but-non-owner conformance sender. Freeze recovery pauses for 120 seconds, beyond the pinned 75-second threshold, and waits for the thaw observation; recovery phases include their boot-lifecycle and thaw source owners in selection paths.
+
+The following ineffective event descriptions were removed because their required work or outcome was not established: `event-doctor-interrupted-during-migration`, `event-doctor-terminated-during-archive-repair`, `event-migration-backup-interrupted`, `event-restart-during-startup-migration`, and `event-config-changed-during-doctor`. Their conditions remain inventoried and explicitly uncovered above.
