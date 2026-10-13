@@ -1,7 +1,7 @@
 # Coverage: config
 
 Operations: 32/32
-Conditions: 382/462 (303 ambient, 159 event)
+Conditions: 377/460 (302 ambient, 158 event)
 Entry points: 266/291 (25 excluded)
 Breaks mapped: 3/3
 
@@ -9,10 +9,12 @@ Uncovered:
 - condition 21 Config without meta: recorded as a write anomaly (missing-meta-vs-last-good): ambient, but no persona trait provides it and no setup phase starts it
 - condition 28 Active work in flight: channel and plugin reloads defer (channels.status statusIssues, channels.start diagnostic): a held model turn does not establish admitted work in the particular plugin being reloaded; that plugin workload remains unstaged
 - condition 29 Policy-only channel write covered by a dynamic-read contract (allowlists, DM and group policy) publishes without a channel restart or drain: event-reload-dynpolicy records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
+- condition 32 Gateway shutdown while a write waits for application: UNAVAILABLE with recovery guidance: the saved commands do not establish admission into a committed pending-write boundary
 - condition 38 Committed reload whose work needs restart recovery: UNAVAILABLE until the Gateway restarts: Committed reload whose work needs restart recovery: no catalogue command forces a committed reload into restart recovery
 - condition 41 Committed restart requirement pending: later hot writes do not erase it and earlier terminal or sandbox restrictions stay in force: ambient, but no persona trait provides it and no setup phase starts it
 - condition 42 Busy state store refuses the reload lifecycle lease: change stays pending with capped backoff retries; shutdown cancels them: Busy state store refuses the reload lifecycle lease: no catalogue command holds the state-store lifecycle lease a reload needs
 - condition 43 Automatic plugin reload cannot drain the plugin's admitted work: last-good runtime kept, replacement retried when the work finishes: a held model turn does not establish admitted work in the particular plugin being reloaded; that plugin workload remains unstaged
+- condition 45 Gateway restart applies the saved config in full through startup validation; same-store restarts keep queued notification handoff: the saved sequence does not stage an unapplied revision or queued notification handoff
 - condition 52 Reload mode hybrid (default): hot-applies safe changes, restarts automatically when required: ambient, but no persona trait provides it and no setup phase starts it
 - condition 61 Model selection and provider change: hot-applies without draining the Codex plugin; catalog compatibility metadata never becomes a request override: event-reload-codexnodrain records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
 - condition 64 Channel transport edit: prepared session rows and model catalogs retained: event-reload-transport records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
@@ -25,6 +27,7 @@ Uncovered:
 - condition 77 Hosted URL change (gateway.publicOrigin, mcp.apps.sandboxOrigin): new URLs, disallowed browsers reconnect: event-reload-hostedurl records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
 - condition 78 Gateway HTTP API change: applies at the next request: needs a request to the affected HTTP endpoint; no catalogue command sends one
 - condition 79 Gateway tools and nodes change: node command policy updates connected nodes, revoking cancels active invocations, pairing policy rechecks pending approvals: event-hot-reload-nodes records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
+- condition 80 Gateway client features change (cliAgents, controlUi environment, embeds, favicons): hot-applies, open pages reload to pick it up: the reload phase records config but does not open the affected browser page
 - condition 81 Gateway push relay change: applies at the next push: event-hot-reload-push records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
 - condition 82 Gateway terminal change: new terminals get the new shell, disabling closes terminals, not delayed by an unrelated deferred restart: event-reload-terminal records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
 - condition 83 Desktop and Cloud Worker settings change: owning service reconciled, new workers get new profiles: event-hot-reload-desktop records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
@@ -97,7 +100,7 @@ Uncovered:
 Persona additions:
 (Traits the persona does not provide yet; every other trait in requires is one it provides.)
 - agent-gateway-url-override: a Gateway URL an agent's gateway tool can pass as an explicit gatewayUrl override to reach the same Gateway through the client path (url)
-- assistant-import-sources: Claude Code settings and memory on the Gateway host that openclaw migrate claude can import (none)
+- assistant-import-sources: synthetic Claude Code settings and memory in an isolated source directory; migration always passes --from and --no-auth-credentials (claudeSource)
 - attention-items-pending: a failed cron run, an expiring model auth profile and a pending approval (none)
 - browser-settings-legacy: a browser profile seeded with Control UI settings written before July 2026, including an old top-level session selection (none); run 1 described it as: browser storage written by a Control UI release before July 1, 2026 (storageFile)
 - channel-account-stopped: one channel account manually stopped with an explicit channel stop (none); run 1 described it as: one channel account stopped manually (channel, accountId)
@@ -114,7 +117,7 @@ Persona additions:
 - config-fixtures: fixture config sets staged into the env by a phase (one directory each, config files plus any state files they need) (newerVersionInvalid, legacyStartupEligible, legacyIncludes, brokenAfterGood, invalidWithBackups, legacySingleFile, julyReplay, retiredInputs, retiredStateFiles, pluginRepairThrows, unsupportedIncludeLayouts, ambiguousIncludes, cronLegacyOwners, webhookListeners, absentConfig, taskflowWebhooks, pluginMigrationPending, fleetNoSystemAgent, retiredWorkspace)
 - config-id-keyed-arrays: a custom provider with a models array of id-keyed entries (providerId, modelId)
 - config-include-errors: config fixtures whose includes have a null byte or overlong path, escape the config directory, escape through a symlink, name a missing file, fail to parse, or form a cycle (badPathFormat, escapingPath, symlinkEscape, missingFile, parseError, circular)
-- config-include-legacy-keys: config fixtures split by $include holding legacy keys: in an include, spanning a root-owned and an include-owned boundary, a legacy roster in a root include, per-agent memorySearch in an agent include, and model policy beside an agent repair in one include (path, mixedBoundary, rosterInclude, memorySearchInclude, policyInclude)
+- config-include-legacy-keys: complete config/state fixture directories, including every included file and its recovery files, split by $include and holding legacy keys: in an include, spanning a root-owned and an include-owned boundary, a legacy roster in a root include, per-agent memorySearch in an agent include, and model policy beside an agent repair in one include (path, mixedBoundary, rosterInclude, memorySearchInclude, policyInclude)
 - config-include-roots: a config include from a directory admitted only through OPENCLAW_INCLUDE_ROOTS, that directory, and a patch touching a key the include owns (root, patch)
 - config-include-unsupported: config fixtures for every unsupported write-through layout (root include, array-entry include, include array, sibling override, shared file, spanning boundary, nested include under a merged owner, include with its own $include) each with a patch touching it, and an ambiguous source layout (rootInclude, arrayEntryInclude, includeArray, siblingOverride, sharedFile, spanningBoundary, nestedUnderMerged, nestedDirective, each with a Patch key, ambiguousLayout)
 - config-includes-split: the persona config split with $include: a single-file plugins include, an array include, a sibling override, a nested intermediate include, gateway.mode supplied through an include, numeric map keys and a ${VAR} inside an include, with a patch for a key the include owns and its inverse (includePath, includeKey, includeValue, includePatch, includePatchUndo, intermediatePath, intermediatePatch, intermediatePatchUndo); run 1 described it as: the live config split into $include files: single-file agents and plugins includes, an include array, a sibling override, a nested relative include, numeric map keys and gateway.mode through ${VAR} (pluginsInclude, agentsInclude)
@@ -126,7 +129,7 @@ Persona additions:
 - config-newer-version: a config whose meta records a newer OpenClaw version (path)
 - config-owner-ambiguous-history: an owner-targeted heartbeat with ambiguous command owners and matching .bak through .bak.4 history (path)
 - config-path-env-override: a config file outside the state directory for OPENCLAW_CONFIG_PATH to point at (path)
-- config-readonly-host: pending config repairs and a legacy key in the persona config, so the phases that set OPENCLAW_CONFIG_READONLY=1 on the env see refused writes and printed repairs (none)
+- config-readonly-host: a complete pending-repair fixture with legacy keys, staged and restored independently by each read-only phase (pendingRepairs)
 - config-reload-patches: config patch files, each with an inverse <key>Undo, for every reload category: none, restart, hotSubsystem, mixedHotRestart, pluginEntry, pluginFail, pluginRuleUnloaded, mediaMaxMb, modelSettings, modelSelection, sandboxTools, channelTransport, channelPrefix, channelPolicy (with channelPolicyReplacePaths), channelDefaults, dynamicPolicy, inboundDebounce, roster, authInputs, sessionStore, policy, updateTelemetry, hostedUrl, httpApi, meetingCapture, authRateLimit, discovery, browserControl, diagnostics, audit, operation, internalHooks, controlUi, allowedOrigins, controlUiDisabled, customPluginUi, acp, terminal, reloadRemote, reloadOff, accessPolicy, retiredWorkspace, logFile, logRotate (one key per patch)
 - config-retired-format: a config in a format last written before the July 2026 support window (path)
 - config-retired-keys: config fixtures with retired inputs Doctor refuses, Matrix and Mattermost flat private-network keys, leftover TaskFlow Webhooks settings, Webhooks as the only allowlisted or enabled plugin, and a legacy plugin ID aliasing another owner (path, matrixFlat, taskflow, taskflowOnlyAllow, taskflowNoneLeft, aliasCollision)
@@ -143,7 +146,7 @@ Persona additions:
 - legacy-state-retired: state fixtures of retired formats, one per key: below-schema-8 agent databases, Telegram JSON sidecars, Telegram offset rows v1 and v2, openclaw.extension.json stubs, retired Discord settings, device-pair-notify.json, Discord JSON and iMessage files, Voice Call JSONL logs, ownerless cron jobs with quarantine files, cron JSON stores, JSON delivery queues with plugins/installs.json, Voice Wake and restart-sentinel files, and OAuth sidecars referenced by auth-profiles.json (schema8, tgsidecars, tgoffset, extstub, discordretired, devicepair, discordjson, voicejsonl, cronownerless, cronjson, queuejson, retiredfiles, oauthsidecar)
 - logs-older-than-day: dated log files older than 24 hours in the log directory (none); run 1 described it as: dated Gateway log files older than 24 hours in the log directory (none)
 - models-many-configured: more than eight models configured across providers (none); run 1 described it as: more than eight models offered in the settings model menus (none)
-- plugin-bundle-unknown-transport: a plugin bundle whose MCP server declares an unknown HTTP transport type (path)
+- plugin-bundle-unknown-transport: a plugin bundle whose MCP server declares an unknown HTTP transport type, plus a complete state fixture containing its installed files, install record and config reference (path, fixture)
 - plugin-codex-enabled: the Codex plugin enabled with a running app-server (none)
 - plugin-config-marker: the external plugin accepts a free-form kovaMarker string in its config so a write changes it without side effects (none (uses plugins-bundled-and-external externalPluginId))
 - plugin-configured-missing: a config naming a plugin that is not installed with a pending migration, its retained input path and a value, a variant with an empty plugin config, and one with deferred private-network inputs (path, retainedPath, retainedValue, emptyConfig, privnet); run 1 described it as: a configured plugin that is not installed, with a pending migration and retained legacy inputs (pluginId)
@@ -174,3 +177,13 @@ Persona additions:
 - config-nix-host: a Nix-managed installation with immutable config, cloned and switched to the compared runtime per run clone (env)
 
 Fixture requirements: config-legacy-agents-list.ownerlessCron and sqlOwnerCron provide the config and state/openclaw.sqlite together; config-invalid-fixture.noLastGood includes explicit absences for last-known-good and rejected recovery files; config-fixtures.fleetNoSystemAgent includes the roster and System Agent absence. Every staged fixture lists all affected paths, including included config and retired state, in its saved receipt.
+
+Additional fixture keys: config-includes-split.fixture is the complete include-tree layout, including the intermediate file and rollback targets, for the concurrent-edit phase. profile-read-only.profileId selects the paired read-only operator for the cron list call.
+- config-fixture-fleet-no-system-agent: the fleetNoSystemAgent variant described under config-fixtures, exposed separately so replacing this state does not reorder unrelated variants (path)
+- config-fixture-legacy-includes: the legacyIncludes variant described under config-fixtures, exposed separately so replacing this state does not reorder unrelated variants (path)
+- config-fixture-broken-after-good: the brokenAfterGood variant described under config-fixtures, exposed separately so replacing this state does not reorder unrelated variants (path)
+- config-fixture-legacy-single-file: the legacySingleFile variant described under config-fixtures, exposed separately so replacing this state does not reorder unrelated variants (path)
+- config-fixture-july-replay: the julyReplay variant described under config-fixtures, exposed separately so replacing this state does not reorder unrelated variants (path)
+- config-fixture-retired-inputs: the retiredInputs variant described under config-fixtures, exposed separately so replacing this state does not reorder unrelated variants (path)
+- config-fixture-webhook-listeners: the webhookListeners variant described under config-fixtures, exposed separately so replacing this state does not reorder unrelated variants (path)
+- config-fixture-plugin-migration-pending: the pluginMigrationPending variant described under config-fixtures, exposed separately so replacing this state does not reorder unrelated variants (path)
