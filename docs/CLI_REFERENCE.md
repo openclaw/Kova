@@ -209,7 +209,9 @@ path does not prevent readable sibling files from being checked.
 Flags declare whether they take no value, a required value or an optional value.
 The check consumes those operands before matching the complete command, so a
 boolean flag cannot hide an unknown subcommand and a value beginning with `--`
-remains a value. Command forms use `[<path>]` for optional positionals and
+remains a value. Unquoted pathname patterns and parentheses are rejected because
+the shell can expand them or interpret them as operators. Spaces and tabs delimit
+arguments; other Unicode whitespace stays within its argument. Command forms use `[<path>]` for optional positionals and
 `<keys...>` for variadic positionals.
 
 Product commands use `ocm @{env} --` or `ocm @{persona:<trait>:env} --`. Both

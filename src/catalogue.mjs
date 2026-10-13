@@ -35,6 +35,9 @@ export function parseCatalogueCommand(command, { form = false, standard = false 
       }
       findings.push({ code: "shell", message: `shell metacharacter ${JSON.stringify(char)} outside single quotes`, offset: index });
     }
+    if (!quote && !comment && !form && /[*?\[\]()]/.test(char)) {
+      findings.push({ code: "shell", message: `unquoted shell syntax ${JSON.stringify(char)}`, offset: index });
+    }
     if (char === "{") {
       const match = command.slice(index).match(/^\{([^{}]+)\}/);
       if (match && !/^\s*["']/.test(match[1])) {
@@ -69,7 +72,7 @@ export function parseCatalogueCommand(command, { form = false, standard = false 
     } else if (!quote && (char === "'" || char === '"')) {
       quote = char;
       started = true;
-    } else if (!quote && /\s/.test(char)) {
+    } else if (!quote && /[ \t]/.test(char)) {
       finish();
     } else {
       value += char;
@@ -82,7 +85,7 @@ export function parseCatalogueCommand(command, { form = false, standard = false 
 }
 
 const environmentPattern = /^@\{(?:env|persona:[a-zA-Z0-9_.-]+:env)\}$/;
-const isFlag = (word) => word?.startsWith("-") && word !== "-" && !/^-[0-9]/.test(word);
+const isFlag = (word) => word?.startsWith("-") && word !== "-" && !/^-(\d+|\d*\.\d+)(e[+-]?\d+)?$/.test(word);
 const isSlot = (word) => /<|^\[?\{(?:env|run|target|persona:.*)\}/.test(word);
 const canonicalWords = (tokens) => tokens.map((word, index) => index === 1 && tokens[0] === "ocm" && tokens[2] === "--" && environmentPattern.test(word) ? "@{env}" : word);
 
@@ -162,6 +165,11 @@ export function validateCatalogue(catalogue) {
     if (!["read", "write", "destructive"].includes(entry.side)) add(`${at}/side`, "invalid side");
     if (!["existing", "toWrite"].includes(entry.status)) add(`${at}/status`, "invalid status");
     if (typeof entry.background !== "boolean") add(`${at}/background`, "expected a boolean");
+    if (entry.background === true) {
+      for (const [flag, value] of [["--background", "none"], ["--handle", "required"], ["--wait", "required"]]) {
+        if (entry.flags?.[flag]?.value !== value) add(`${at}/flags`, `background entries require ${flag} with value ${value}`);
+      }
+    }
     for (const field of ["prints", "creates"]) {
       if (!Array.isArray(entry[field]) || !entry[field].every((value) => field === "creates" ? typeof value === "string" : text(value)) || new Set(entry[field]).size !== entry[field].length) add(`${at}/${field}`, "expected distinct strings");
     }

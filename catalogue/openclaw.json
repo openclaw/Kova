@@ -748,7 +748,7 @@
         "result",
         "error"
       ],
-      "side": "write",
+      "side": "destructive",
       "background": false,
       "status": "existing",
       "creates": []
@@ -1234,6 +1234,14 @@
         },
         "--env": {
           "description": "OCM environment name",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
           "value": "required"
         }
       },
