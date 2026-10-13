@@ -95,8 +95,8 @@
   "support": {
     "existing": [],
     "toWrite": [
-      "support/verify/gateway-call.mjs  (one Gateway method by name, optionally as another operator profile; --env --method --params --timeout --out --background --handle --wait --merge-from --session-from --after-ms --profile; --merge-from merges a plugins.inspect result's reviewToken as acknowledgeCapabilities and a plugin.approval.request result id as id; a plugin.approval.list result requires --approval-session-key --approval-plugin --approval-tool and selects exactly one request matching all three values, exiting 2 on zero or multiple matches; --await-pending polls plugin.approval.list for exactly one still-pending request matching --approval-session-key --approval-plugin --approval-tool, records its id and state to --out, and exits 2 on timeout or ambiguity; for plugins.credentials.inspect, --merge-from consumes the credential-context producer's pluginId, advertised path and current baseHash without reading or printing credential values)",
-      "support/verify/control-ui.mjs  (Control UI flows in a headless browser: incognito-thread, plugin-approval-prompt, plugin-consent-enable, plugin-install-from-catalog, plugin-lifecycle-reload, plugin-mcp-login, plugin-overview, plugin-session-action, plugin-settings-editor, plugin-settings-toggle, plugin-skill-preview, plugin-tab-and-contributions, plugin-ui-lab-toggle, plugin-ui-other-gateway, plugin-ui-reconnect, plugin-uninstall, plugin-view-session-switch, plugins-advanced-policy, plugins-customize-ui, plugins-hub-browse, plugins-installed-inventory; --env --flow --session-key --gateway-env --artifact-dir --out --timeout; plugin-approval-prompt creates its own two-phase plugin.approval.request, waits for that returned id in the browser, answers it and records waitDecision for the same id; system-agent-operation drives the operator-owned openclaw.chat surface with --operation JSON, stages that exact operation, records its proposal, sends explicit operator approval, and retries the identical operation with approved=true; --artifact-from supplies the absolute archive path and SHA-256 of its bytes for plugin_activate_artifact; records the resulting install receipt and browser activation report; --operation --artifact-from; --plugin --account identify the exact plugin and HTTP MCP account for plugin-mcp-login; plugin-ui-replacement-failure opens one persistent browser context, waits for the named plugin revision to report active, changes only that fixture asset with plugin-source-edit ui-asset-broken, calls plugins.controlUi.reload, records the failed replacement and the prior owner in the same browser, restores the asset in finally, reloads and records recovery before closing the context; exit 2 when a working initial activation cannot be established; plugin-skill-preview-retirement uses --plugin and --skill to open one persistent browser/controller, records the open preview, edits that exact skill through plugin-source-edit skill-file-edit while it stays open, closes and reopens the preview in that controller and records its body, then restores the file in finally and closes the browser; plugin-install-from-catalog selects the exact --catalog-id supplied by the warning-policy fixture; plugin-settings-toggle and plugins-installed-inventory use --plugin; plugin-overview uses --plugin for tool/overview details and --mcp-plugin for the account fixture's MCP details, keeping their identities explicit; plugin-settings-editor uses --plugin for schema settings and --credential-plugin for the synthetic provider credential controls, records only non-secret sentinels and restores prior values)",
+      "support/verify/gateway-call.mjs  (one Gateway method by name, optionally as another operator profile; --env --method --params --timeout --out --background --handle --wait --merge-from --session-from --after-ms --profile; --merge-from merges a plugins.inspect result's reviewToken as acknowledgeCapabilities and a plugin.approval.request result id as id; a plugin.approval.list result requires --approval-session-key --approval-plugin --approval-tool and selects exactly one request matching all three values, exiting 2 on zero or multiple matches; --await-pending polls plugin.approval.list for exactly one still-pending request matching --approval-session-key --approval-plugin --approval-tool, records the full unmodified plugin.approval.list result containing that request and its id/state to --out, and exits 2 on timeout or ambiguity; for plugins.credentials.inspect, --merge-from consumes the credential-context producer's pluginId, advertised path and current baseHash without reading or printing credential values)",
+      "support/verify/control-ui.mjs  (Control UI flows in a headless browser: incognito-thread, plugin-approval-prompt, plugin-consent-enable, plugin-install-from-catalog, plugin-lifecycle-reload, plugin-mcp-login, plugin-overview, plugin-session-action, plugin-settings-editor, plugin-settings-toggle, plugin-skill-preview, plugin-tab-and-contributions, plugin-ui-lab-toggle, plugin-ui-other-gateway, plugin-ui-reconnect, plugin-uninstall, plugin-view-session-switch, plugins-advanced-policy, plugins-customize-ui, plugins-hub-browse, plugins-installed-inventory; --env --flow --session-key --gateway-env --artifact-dir --out --timeout; plugin-approval-prompt creates its own two-phase plugin.approval.request, waits for that returned id in the browser, answers it and records waitDecision for the same id; system-agent-operation drives the operator-owned openclaw.chat surface with --operation JSON, stages that exact operation, records its proposal, sends explicit operator approval, and retries the identical operation with approved=true; --artifact-from supplies the absolute archive path and SHA-256 of its bytes for plugin_activate_artifact; records the resulting install receipt and browser activation report; --operation --artifact-from; --plugin --account identify the exact plugin and HTTP MCP account for plugin-mcp-login; plugin-ui-replacement-failure opens one persistent browser context, waits for the named plugin revision to report active, changes only that fixture asset with plugin-source-edit ui-asset-broken, calls plugins.controlUi.reload, records the failed replacement and the prior owner in the same browser, restores the asset in finally, reloads and records recovery before closing the context; exit 2 when a working initial activation cannot be established; plugin-skill-preview-retirement uses --plugin and --skill to open one persistent browser/controller, records the open preview, edits that exact skill through plugin-source-edit skill-file-edit while it stays open, closes and reopens the preview in that controller and records its body, then restores the file in finally and closes the browser; plugin-install-from-catalog selects the exact --catalog-id supplied by the warning-policy fixture; plugin-settings-toggle and plugins-installed-inventory use --plugin; plugin-overview uses --plugin for tool/overview details and --mcp-plugin for the account fixture's MCP details, keeping their identities explicit; plugin-settings-editor uses --plugin for schema settings and --credential-plugin for the synthetic provider credential controls, records only non-secret sentinels and restores prior values; tab/contribution and reconnect flows use --plugin for native feature UI, --surface-plugin for the tab/widget/link-reader fixture, and --skill for its preview; incognito-thread with --plugin records that fixture's hook observations in the same flow)",
       "support/verify/agent-tool-turn.mjs  (sessions.send with a scripted reply that calls one named tool, then chat.history with tools; --env --session-key --session-from --tool --args --timeout --background --handle --wait; --admission-method names the fixture Gateway method reporting actual slow-tool callback entry: a background launch waits for that method to identify the same session, run, tool and invocation as still held before returning the handle, exiting 2 if admission cannot be established; receipt acknowledgement or a generic before-tool event is insufficient)",
       "support/verify/chat-send.mjs  (chat.send of a message or slash command, then chat.history of the receipt; --env --session-key --session-from --incognito-handle --message --timeout --background --handle --wait)",
       "support/verify/session-turn-hold.mjs  (sessions.send with a reply the mock provider holds open; --env --session-key --hold-ms --progress-cards --timeout --background --handle --wait; with --background, wait for the mock provider to acknowledge the exact run has entered its held response before returning the handle; exit 2 if the hold cannot be established)",
@@ -645,94 +645,6 @@
       "slow": false
     },
     {
-      "id": "use-plugin-pages-and-widgets",
-      "kind": "operation",
-      "intent": "A user opens a plugin's sidebar tab, page, navigation context actions, contributed session action, panel, header accessory, dashboard widget and docked link reader, observing descriptors, asset and cookie-grant responses and the rendered surfaces.",
-      "paths": [
-        "ui/src/pages/plugin/**",
-        "ui/src/components/app-sidebar-plugin-*.ts",
-        "src/gateway/control-ui-plugin-*.ts",
-        "src/gateway/http-auth-plugin-cookie.ts",
-        "src/gateway/server-http-plugin-auth.ts",
-        "src/gateway/hosted-plugin-surface-url.ts",
-        "src/gateway/server-methods/plugin-host-hooks.ts",
-        "src/gateway/server-methods/plugins-control-ui.ts",
-        "src/plugins/control*.ts",
-        "src/plugins/board*.ts",
-        "src/plugins/widget*.ts",
-        "src/plugins/theme*.ts",
-        "ui/src/app/plugin-capabilities.runtime.ts",
-        "ui/src/plugins/control-ui-runtime.ts",
-        "src/gateway/plugin-theme-art-http.ts"
-      ],
-      "requires": [
-        "plugin-fixture-feature-ui"
-      ],
-      "commands": [
-        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change ui-lab-on --out {run}/use-plugin-pages-and-widgets-ui-setting.json --timeout 15000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.uiDescriptors --params '{}' --timeout 30000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.controlUi.list --params '{}' --timeout 30000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugin-tab-and-contributions --artifact-dir {run}/screens --timeout 195000 --out {run}/screens/plugin-tab-and-contributions.json",
-        "node {kovaRoot}/support/verify/http-get.mjs --env {env} --path /__openclaw__/plugin-theme-art --timeout 15000 --from {run}/screens/plugin-tab-and-contributions.json",
-        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --restore-from {run}/use-plugin-pages-and-widgets-ui-setting.json --timeout 15000"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing",
-        "screen"
-      ],
-      "timeoutMs": 300000,
-      "browser": true,
-      "slow": false
-    },
-    {
-      "id": "use-plugin-pages-and-widgets-continued",
-      "kind": "operation",
-      "intent": "A user customizes plugin UI, checks activation status, reloads the fixture view, compares the second Gateway's view, and disables then re-enables the fixture, restoring the preceding Labs setting.",
-      "paths": [
-        "ui/src/pages/plugin/**",
-        "ui/src/components/app-sidebar-plugin-*.ts",
-        "src/gateway/control-ui-plugin-*.ts",
-        "src/gateway/http-auth-plugin-cookie.ts",
-        "src/gateway/server-http-plugin-auth.ts",
-        "src/gateway/hosted-plugin-surface-url.ts",
-        "src/gateway/server-methods/plugin-host-hooks.ts",
-        "src/gateway/server-methods/plugins-control-ui.ts",
-        "src/plugins/control*.ts",
-        "src/plugins/board*.ts",
-        "src/plugins/widget*.ts",
-        "src/plugins/theme*.ts",
-        "ui/src/app/plugin-capabilities.runtime.ts",
-        "ui/src/plugins/control-ui-runtime.ts",
-        "src/gateway/plugin-theme-art-http.ts"
-      ],
-      "requires": [
-        "gateway-second-instance",
-        "plugin-fixture-feature-ui",
-        "plugin-fixture-surfaces"
-      ],
-      "commands": [
-        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change ui-lab-on --out {run}/use-plugin-pages-and-widgets-continued-ui-setting.json --timeout 15000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugins-customize-ui --artifact-dir {run}/screens --timeout 90000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.controlUi.status --params '{}' --timeout 30000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.controlUi.reload --params '{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}' --timeout 30000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugin-ui-other-gateway --artifact-dir {run}/screens --timeout 40000 --gateway-env {persona:gateway-second-instance:env}",
-        "ocm @{env} -- plugins disable {persona:plugin-fixture-surfaces:pluginId}",
-        "ocm @{env} -- plugins enable {persona:plugin-fixture-surfaces:pluginId} --accept-capabilities",
-        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --restore-from {run}/use-plugin-pages-and-widgets-continued-ui-setting.json --timeout 15000"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing",
-        "screen"
-      ],
-      "timeoutMs": 220000,
-      "browser": true,
-      "slow": false
-    },
-    {
       "id": "customize-and-reload-plugin-ui",
       "kind": "operation",
       "intent": "A user picks a plugin composer replacement in Customize UI, returns to Built-in, rebuilds the plugin's browser assets and chooses Reload plugin UI, observing the activation reports and the Gateway's controlUi status.",
@@ -1118,38 +1030,6 @@
       "slow": false
     },
     {
-      "id": "plugin-hooks-shape-agent-turns-continued",
-      "kind": "operation",
-      "intent": "A user sends hook-triggering prompts, asks for a public link summary and repeats a prompt in an incognito thread, recording the resulting replies and hook output.",
-      "paths": [
-        "src/plugins/hook*.ts",
-        "src/plugins/conversation*.ts",
-        "src/plugins/interactive*.ts",
-        "src/plugin-sdk/**",
-        "src/agents/**/hook*.ts"
-      ],
-      "requires": [
-        "config-hand-edited",
-        "mock-provider-scripted",
-        "session-plugin-tools"
-      ],
-      "commands": [
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message 'VERIFY_HOOK_REPLY check' --timeout 45000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message 'Summarize https://x.com/openclaw/status/1 in one line' --timeout 45000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow incognito-thread --artifact-dir {run}/screens --timeout 40000 --out {run}/incognito.json",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --incognito-handle {run}/incognito.json --message 'VERIFY_HOOK_REPLY check' --timeout 45000"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing",
-        "screen"
-      ],
-      "timeoutMs": 180000,
-      "browser": true,
-      "slow": false
-    },
-    {
       "id": "plugin-hooks-intercept-messages",
       "kind": "operation",
       "intent": "Channel peers send direct messages, including an unpaired sender, so plugin message hooks observe, claim, rewrite and cancel delivery, observing deliveries, pairing replies and hook invocations.",
@@ -1229,14 +1109,14 @@
         "agents-three-configured",
         "mock-provider-scripted",
         "mock-provider-tool-calls",
-        "session-plugin-tools"
+        "plugin-fixture-surfaces"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"label\":\"kova-plugin-hooks\"}' --timeout 30000 --out {run}/hook-session.json",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --session-from {run}/hook-session.json --message 'hello' --timeout 45000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-from {run}/hook-session.json --message 'hello' --timeout 45000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.compact --params '{}' --timeout 30000 --session-from {run}/hook-session.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.reset --params '{}' --timeout 30000 --session-from {run}/hook-session.json",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --session-from {run}/hook-session.json --tool sessions_spawn --args '{\"task\":\"Reply done.\"}' --timeout 60000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/hook-session.json --tool sessions_spawn --args '{\"task\":\"Reply done.\"}' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.delete --params '{}' --timeout 30000 --session-from {run}/hook-session.json"
       ],
       "checkpoint": [
@@ -1460,44 +1340,6 @@
         "state:openclaw.json"
       ],
       "timeoutMs": 180000,
-      "browser": true,
-      "slow": false
-    },
-    {
-      "id": "event-control-ui-reconnects",
-      "kind": "event",
-      "intent": "The Control UI loses and regains its Gateway connection while a plugin page, a feature watch query, a docked link reader and a skill preview are open, observing re-fetched snapshots, cleared replacement choices, renewed tab grants and retired preview caches.",
-      "paths": [
-        "ui/src/pages/plugin/**",
-        "ui/src/components/app-sidebar-plugin-*.ts",
-        "src/gateway/control-ui-plugin-*.ts",
-        "src/gateway/http-auth-plugin-cookie.ts",
-        "src/gateway/server-http-plugin-auth.ts",
-        "src/gateway/hosted-plugin-surface-url.ts",
-        "src/gateway/server-methods/plugin-host-hooks.ts",
-        "src/gateway/server-methods/plugins-control-ui.ts",
-        "src/plugins/control*.ts",
-        "src/plugins/board*.ts",
-        "src/plugins/widget*.ts",
-        "src/plugins/theme*.ts",
-        "ui/src/plugins/control-ui-runtime.ts",
-        "ui/src/pages/plugins/skill-preview.ts"
-      ],
-      "requires": [
-        "plugin-fixture-feature-ui"
-      ],
-      "commands": [
-        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change ui-lab-on --out {run}/event-control-ui-reconnects-ui-setting.json --timeout 15000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugin-ui-reconnect --artifact-dir {run}/screens --timeout 150000",
-        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --restore-from {run}/event-control-ui-reconnects-ui-setting.json --timeout 15000"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing",
-        "screen"
-      ],
-      "timeoutMs": 210000,
       "browser": true,
       "slow": false
     },
@@ -2379,6 +2221,167 @@
       "slow": false
     },
     {
+      "id": "use-plugin-pages-and-widgets",
+      "kind": "operation",
+      "intent": "A user opens a plugin's sidebar tab, page, navigation context actions, contributed session action, panel, header accessory, dashboard widget and docked link reader, observing descriptors, asset and cookie-grant responses and the rendered surfaces.",
+      "paths": [
+        "ui/src/pages/plugin/**",
+        "ui/src/components/app-sidebar-plugin-*.ts",
+        "src/gateway/control-ui-plugin-*.ts",
+        "src/gateway/http-auth-plugin-cookie.ts",
+        "src/gateway/server-http-plugin-auth.ts",
+        "src/gateway/hosted-plugin-surface-url.ts",
+        "src/gateway/server-methods/plugin-host-hooks.ts",
+        "src/gateway/server-methods/plugins-control-ui.ts",
+        "src/plugins/control*.ts",
+        "src/plugins/board*.ts",
+        "src/plugins/widget*.ts",
+        "src/plugins/theme*.ts",
+        "ui/src/app/plugin-capabilities.runtime.ts",
+        "ui/src/plugins/control-ui-runtime.ts",
+        "src/gateway/plugin-theme-art-http.ts"
+      ],
+      "requires": [
+        "plugin-fixture-feature-ui",
+        "plugin-fixture-surfaces"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change ui-lab-on --out {run}/use-plugin-pages-and-widgets-ui-setting.json --timeout 15000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.uiDescriptors --params '{}' --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.controlUi.list --params '{}' --timeout 30000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugin-tab-and-contributions --artifact-dir {run}/screens --timeout 195000 --out {run}/screens/plugin-tab-and-contributions.json --plugin {persona:plugin-fixture-feature-ui:pluginId} --surface-plugin {persona:plugin-fixture-surfaces:pluginId}",
+        "node {kovaRoot}/support/verify/http-get.mjs --env {env} --path /__openclaw__/plugin-theme-art --timeout 15000 --from {run}/screens/plugin-tab-and-contributions.json",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --restore-from {run}/use-plugin-pages-and-widgets-ui-setting.json --timeout 15000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "screen"
+      ],
+      "timeoutMs": 300000,
+      "browser": true,
+      "slow": false
+    },
+    {
+      "id": "use-plugin-pages-and-widgets-continued",
+      "kind": "operation",
+      "intent": "A user customizes plugin UI, checks activation status, reloads the fixture view, compares the second Gateway's view, and disables then re-enables the fixture, restoring the preceding Labs setting.",
+      "paths": [
+        "ui/src/pages/plugin/**",
+        "ui/src/components/app-sidebar-plugin-*.ts",
+        "src/gateway/control-ui-plugin-*.ts",
+        "src/gateway/http-auth-plugin-cookie.ts",
+        "src/gateway/server-http-plugin-auth.ts",
+        "src/gateway/hosted-plugin-surface-url.ts",
+        "src/gateway/server-methods/plugin-host-hooks.ts",
+        "src/gateway/server-methods/plugins-control-ui.ts",
+        "src/plugins/control*.ts",
+        "src/plugins/board*.ts",
+        "src/plugins/widget*.ts",
+        "src/plugins/theme*.ts",
+        "ui/src/app/plugin-capabilities.runtime.ts",
+        "ui/src/plugins/control-ui-runtime.ts",
+        "src/gateway/plugin-theme-art-http.ts"
+      ],
+      "requires": [
+        "gateway-second-instance",
+        "plugin-fixture-feature-ui",
+        "plugin-fixture-surfaces"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change ui-lab-on --out {run}/use-plugin-pages-and-widgets-continued-ui-setting.json --timeout 15000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugins-customize-ui --artifact-dir {run}/screens --timeout 90000 --plugin {persona:plugin-fixture-feature-ui:pluginId} --surface-plugin {persona:plugin-fixture-surfaces:pluginId}",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.controlUi.status --params '{}' --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.controlUi.reload --params '{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}' --timeout 30000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugin-ui-other-gateway --artifact-dir {run}/screens --timeout 40000 --gateway-env {persona:gateway-second-instance:env} --plugin {persona:plugin-fixture-feature-ui:pluginId} --surface-plugin {persona:plugin-fixture-surfaces:pluginId}",
+        "ocm @{env} -- plugins disable {persona:plugin-fixture-surfaces:pluginId}",
+        "ocm @{env} -- plugins enable {persona:plugin-fixture-surfaces:pluginId} --accept-capabilities",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --restore-from {run}/use-plugin-pages-and-widgets-continued-ui-setting.json --timeout 15000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "screen"
+      ],
+      "timeoutMs": 220000,
+      "browser": true,
+      "slow": false
+    },
+    {
+      "id": "plugin-hooks-shape-agent-turns-continued",
+      "kind": "operation",
+      "intent": "A user sends hook-triggering prompts, asks for a public link summary and repeats a prompt in an incognito thread, recording the resulting replies and hook output.",
+      "paths": [
+        "src/plugins/hook*.ts",
+        "src/plugins/conversation*.ts",
+        "src/plugins/interactive*.ts",
+        "src/plugin-sdk/**",
+        "src/agents/**/hook*.ts"
+      ],
+      "requires": [
+        "config-hand-edited",
+        "mock-provider-scripted",
+        "plugin-fixture-surfaces",
+        "session-plugin-tools"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message 'VERIFY_HOOK_REPLY check' --timeout 45000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message 'Summarize https://x.com/openclaw/status/1 in one line' --timeout 45000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow incognito-thread --artifact-dir {run}/screens --timeout 40000 --out {run}/incognito.json --plugin {persona:plugin-fixture-surfaces:pluginId}",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --incognito-handle {run}/incognito.json --message 'VERIFY_HOOK_REPLY check' --timeout 45000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "screen"
+      ],
+      "timeoutMs": 180000,
+      "browser": true,
+      "slow": false
+    },
+    {
+      "id": "event-control-ui-reconnects",
+      "kind": "event",
+      "intent": "The Control UI loses and regains its Gateway connection while a plugin page, a feature watch query, a docked link reader and a skill preview are open, observing re-fetched snapshots, cleared replacement choices, renewed tab grants and retired preview caches.",
+      "paths": [
+        "ui/src/pages/plugin/**",
+        "ui/src/components/app-sidebar-plugin-*.ts",
+        "src/gateway/control-ui-plugin-*.ts",
+        "src/gateway/http-auth-plugin-cookie.ts",
+        "src/gateway/server-http-plugin-auth.ts",
+        "src/gateway/hosted-plugin-surface-url.ts",
+        "src/gateway/server-methods/plugin-host-hooks.ts",
+        "src/gateway/server-methods/plugins-control-ui.ts",
+        "src/plugins/control*.ts",
+        "src/plugins/board*.ts",
+        "src/plugins/widget*.ts",
+        "src/plugins/theme*.ts",
+        "ui/src/plugins/control-ui-runtime.ts",
+        "ui/src/pages/plugins/skill-preview.ts"
+      ],
+      "requires": [
+        "plugin-fixture-feature-ui",
+        "plugin-fixture-surfaces"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change ui-lab-on --out {run}/event-control-ui-reconnects-ui-setting.json --timeout 15000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugin-ui-reconnect --artifact-dir {run}/screens --timeout 150000 --plugin {persona:plugin-fixture-feature-ui:pluginId} --surface-plugin {persona:plugin-fixture-surfaces:pluginId} --skill {persona:plugin-fixture-surfaces:skillName}",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --restore-from {run}/event-control-ui-reconnects-ui-setting.json --timeout 15000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "screen"
+      ],
+      "timeoutMs": 210000,
+      "browser": true,
+      "slow": false
+    },
+    {
       "id": "inspect-plugin",
       "kind": "operation",
       "intent": "A user inspects a plugin cold and with its runtime loaded, inspects every plugin, reads its credential status and asks through the agent and /plugins inspect, observing identity, shape, registrations, diagnostics and install metadata.",
@@ -2563,7 +2566,7 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-phase-hold:key} --tool {persona:plugin-fixture-surfaces:approvalToolName} --args '{\"target\":\"kova-approval-wait\",\"approvalTimeoutMs\":50000}' --timeout 60000 --background --handle {run}/approval-wait.json",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugin.approval.list --params '{}' --timeout 15000 --after-ms 3000 --out {run}/approvals.json",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugin.approval.list --params '{}' --timeout 15000 --out {run}/approvals.json --await-pending --approval-session-key {persona:session-phase-hold:key} --approval-plugin {persona:plugin-fixture-surfaces:pluginId} --approval-tool {persona:plugin-fixture-surfaces:approvalToolName}",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugin.approval.resolve --params '{\"decision\":\"allow-always\"}' --timeout 15000 --merge-from {run}/approvals.json --approval-session-key {persona:session-phase-hold:key} --approval-plugin {persona:plugin-fixture-surfaces:pluginId} --approval-tool {persona:plugin-fixture-surfaces:approvalToolName}",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugin.approval.request --params '{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\",\"title\":\"kova approval\",\"description\":\"kova approval request\",\"allowedDecisions\":[\"allow-once\",\"deny\"],\"timeoutMs\":60000,\"twoPhase\":true}' --timeout 15000 --out {run}/approval-request.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugin.approval.resolve --params '{\"decision\":\"allow-always\"}' --timeout 15000 --merge-from {run}/approval-request.json",
@@ -2673,7 +2676,7 @@
         "session-plugin-tools"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool exec --args '{\"command\":\"env\"}' --timeout 60000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool exec --args '{\"command\":\"printf KOVA_EXEC_CHECK\"}' --timeout 60000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool {persona:plugin-fixture-surfaces:toolName} --args '{\"input\":\"KOVA_HOOK_REWRITE\"}' --timeout 60000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool {persona:plugin-fixture-surfaces:toolName} --args '{\"input\":\"KOVA_HOOK_BLOCK\"}' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method {persona:plugin-fixture-surfaces:hookLogMethod} --params '{}' --timeout 30000"
@@ -2781,7 +2784,9 @@
       "paths": [
         "src/plugins/tool*.ts",
         "src/plugins/runtime/**",
-        "src/gateway/server-plugin-reload*.ts"
+        "src/gateway/server-plugin-reload*.ts",
+        "src/plugins/plugin-instance.ts",
+        "src/plugins/plugin-instance-settlement.ts"
       ],
       "requires": [
         "mock-provider-tool-calls",
@@ -2809,7 +2814,9 @@
       "paths": [
         "src/gateway/server-plugin-reload*.ts",
         "src/gateway/config-reload-plugin-drain.ts",
-        "src/plugins/runtime/**"
+        "src/plugins/runtime/**",
+        "src/plugins/plugin-instance.ts",
+        "src/plugins/plugin-instance-settlement.ts"
       ],
       "requires": [
         "mock-provider-tool-calls",
@@ -2839,7 +2846,9 @@
       "intent": "A user reloads the fixture plugin with --wait while a held plugin tool call keeps admitted work draining, and cancels the wait before publication, observing the restored previous generation and the held call's result.",
       "paths": [
         "src/cli/plugins-reload-command.ts",
-        "src/gateway/server-plugin-reload*.ts"
+        "src/gateway/server-plugin-reload*.ts",
+        "src/plugins/plugin-instance.ts",
+        "src/plugins/plugin-instance-settlement.ts"
       ],
       "requires": [
         "mock-provider-tool-calls",
@@ -2867,7 +2876,9 @@
       "intent": "The agent, inside a turn that holds the fixture plugin, asks the plugins tool to reload that same plugin, observing the refusal during preparation instead of a self-wait.",
       "paths": [
         "src/agents/tools/plugins-tool.ts",
-        "src/gateway/server-plugin-reload*.ts"
+        "src/gateway/server-plugin-reload*.ts",
+        "src/plugins/plugin-instance.ts",
+        "src/plugins/plugin-instance-settlement.ts"
       ],
       "requires": [
         "mock-provider-tool-calls",
@@ -2971,7 +2982,7 @@
       "commands": [
         "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change approvals-plugin-forwarding --timeout 15000 --out {run}/event-plugin-approvals-forwarded-to-chat-previous-config.json",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-phase-hold:key} --tool {persona:plugin-fixture-surfaces:approvalToolName} --args '{\"target\":\"kova-approval-forward\",\"approvalTimeoutMs\":60000}' --timeout 90000 --background --handle {run}/approval-forward.json",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugin.approval.list --params '{}' --timeout 15000 --after-ms 3000 --out {run}/forwarded-approvals.json",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugin.approval.list --params '{}' --timeout 15000 --out {run}/forwarded-approvals.json --await-pending --approval-session-key {persona:session-phase-hold:key} --approval-plugin {persona:plugin-fixture-surfaces:pluginId} --approval-tool {persona:plugin-fixture-surfaces:approvalToolName}",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --chat-type direct --peer {persona:session-main-rolling:peer} --approve-from {run}/forwarded-approvals.json --decision allow-once --timeout 30000 --approval-session-key {persona:session-phase-hold:key} --approval-plugin {persona:plugin-fixture-surfaces:pluginId} --approval-tool {persona:plugin-fixture-surfaces:approvalToolName}",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-phase-hold:key} --timeout 60000 --wait {run}/approval-forward.json",
         "node {kovaRoot}/support/verify/config-change.mjs --env {env} --restore-from {run}/event-plugin-approvals-forwarded-to-chat-previous-config.json --timeout 15000"
