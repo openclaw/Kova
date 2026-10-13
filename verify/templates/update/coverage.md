@@ -1,0 +1,311 @@
+# Coverage: update
+
+Operations: 20/21
+Conditions: 282/520 (354 ambient, 166 event)
+Entry points: 203/310 (107 excluded)
+Breaks mapped: 6/6
+
+A condition counts as covered when run 2 covered one of its members, or when only run 1 found it and run 1 covered it; the phases that covered those run 1 conditions were taken into this template. Phases: 125 (2 setup, 20 operation, 103 event).
+
+Uncovered:
+- Update an immutable release installation (operation; entry points openclaw update adopt-immutable and openclaw update recover): needs an explicitly adopted Linux installation with a root-owned system systemd service, sealed release generations and cgroup v2; outside this template's reach
+- Condition 1, Gateway installed as a Windows Scheduled Task (principal, elevation, schtasks and rename limits, task autostart suspension): Windows Scheduled Task paths are owned by platform per the bound; outside this template's reach
+- Condition 11, Managed service runs under another profile than the caller: caller and service projections stay separate: needs a second named profile owning the service; the persona has one profile
+- Condition 13, Older updater reports database-schema-preflight with mode unknown (2026.9.4): needs an installed updater of that specific older release; the persona pins 2026.9.6
+- Condition 18, Cleanup cannot confirm admitted work stopped: ownership and recovery artifacts retained, pending execution: needs an updater child whose termination cannot be confirmed; no harness control reaches it
+- Condition 25, Retained worker close exceeds the ten-second exit grace: warning, retained runtime kept: needs a worker that refuses to close; no harness control reaches it
+- Condition 28, Interrupted pre-create report preparation becomes retryable after its reservation expires: needs an interrupted GitHub issue preparation; a real external service
+- Condition 29, Unexpected exception in an admitted update retains error identity, step and facts in history: needs an unexpected exception inside the updater; no harness control raises one
+- Condition 37, Adopted immutable release installation (preparation-only or activation enabled): needs a root-owned system systemd service with sealed releases and cgroup v2; outside this template's reach
+- Condition 38, Immutable drain under committed Gateway suspension; expired or resumed suspension refuses the handoff: immutable installations are outside this template's reach
+- Condition 39, Immutable activation failure restores the sealed predecessor; inconclusive check stays pending: immutable installations are outside this template's reach
+- Condition 40, Immutable updater interrupted after shutdown commits; recovery observes the supervisor first: immutable installations are outside this template's reach
+- Condition 41, Immutable target with incompatible migration requirements refused before drain: immutable installations are outside this template's reach
+- Condition 42, Hot SQLite rollback journal left in the installation control after an updater crash: immutable installations are outside this template's reach
+- Condition 44, Linux OverlayFS installation: retained worker files use private copies: needs a container that denies FICLONE
+- Condition 45, Container or filesystem refuses file cloning (Proxmox LXC FICLONE): guarded byte-copy fallback: needs a container that denies FICLONE
+- Condition 46, Docker OverlayFS rejects moving an image-layer package (EXDEV): verified copy fallback: needs a container that denies FICLONE
+- Condition 48, Retained .openclaw.package-backup-* link to a source checkout makes an older updater refuse with a plugin-link error: needs an installed updater of that specific older release; the persona pins 2026.9.6
+- Condition 49, Candidate without the admission marker or with a failing admission process: installed checks used with a warning: needs a target package without the admission marker or with a crashing admission process
+- Condition 55, Updater-owned native service command still alive: new update excluded; owner exit or lost lease stops its mutation: needs a stalled native service child; no harness control reaches it
+- Condition 56, Target runtime without ownership handoff support refused before stopping the Gateway: needs a sealed system service definition
+- Condition 57, Definition write authority sealed or unverified, or target lacks --preserve-definition: activation rejected, service may stay stopped: needs a sealed system service definition
+- Condition 58, Obsolete package and launcher backups cleanup exceeds its five-minute budget: remaining backups retained with a warning: needs storage slow enough to exceed five minutes; no harness control reaches it
+- Condition 65, Profile without a runtime database: older npm target initializes state, fresh-profile dry run records nothing: the persona always has a runtime database; a fresh profile needs its own environment
+- Condition 66, Registered custom agent store incompatible with the target: named before any change: needs a custom agent store at a schema the target cannot read; no persona trait provides it
+- Condition 68, No compatible Node for the target: dry run reports Would refuse update or Would replace; node-runtime-preflight: the harness Node version is fixed
+- Condition 69, Service Node cannot run the target while the CLI Node can: service metadata rewritten; --no-restart stops before mutation: the harness Node version is fixed
+- Condition 73, Nix mode (OPENCLAW_NIX_MODE=1): mutating updates disabled, status read-only: needs a Nix-managed installation
+- Condition 77, Git directory replaced during fresh clone validation: update stops without changing the replacement: needs a concurrent replacement of the clone destination; no harness control reaches it
+- Condition 79, Git checkout advanced without rebuilding, or runtime artifacts missing: update still needed: needs a checkout advanced without rebuilding
+- Condition 83, Source command through pnpm openclaw refuses an automatic rebuild while the Gateway runs: needs the pnpm openclaw source wrapper; no catalogue script runs it
+- Condition 92, Validation-copy cleanup, derived-cache cleanup or Git upstream tracking fails: update continues with warnings: needs a cleanup failure; no harness control reaches it
+- Condition 93, Linux user-service supervisor inspection times out: one retry, second timeout leaves the Gateway running: needs a stalled systemd service supervisor; no harness control reaches it
+- Condition 94, Service inspection unavailable or service record stale: managed-service warning, record cannot select package, Node or state: OCM environments run under a service supervisor
+- Condition 95, Linux without a service supervisor: update proceeds when no lock or listener; nothing to restart: OCM environments run under a service supervisor
+- Condition 96, Baseline package fingerprint scan hits its budget or size limit: warning, rollback verifies identity only: needs a package tree beyond the scan limits
+- Condition 97, Package tree over the scan limits (500,000 entries or 8 GiB; older supervisors 50,000 or 1 GiB): needs a package tree beyond the scan limits
+- Condition 98, Sibling .openclaw.update-stage-* directories from another or interrupted updater: no persona trait leaves a stale stage directory
+- Condition 99, Equivalent launcher recreated keeps recovery; changed symlink target refuses the swap: needs a launcher rewrite during the update; no harness control reaches it
+- Condition 100, npm prefix parents owned by another UID: ownership refusal names object, UID and expected UID: needs a Node version switcher
+- Condition 101, Node version switcher switched the shell prefix: global-install-foreign-destination unless the original prefix is kept: needs a Node version switcher
+- Condition 102, Other package tools or tools modify the installation during an update: needs a concurrent package tool; no catalogue script reaches it
+- Condition 109, Plugin files change after snapshot inventory: snapshot refused; link-only changes accepted: needs a plugin write during the snapshot; no harness control reaches it
+- Condition 110, Abandoned plugin Git transaction directories (<destination>.openclaw-update-<UUID>.tmp) are skipped: no persona trait leaves a transaction directory
+- Condition 111, Progress receipt refused at validation start: validation stops before copying: needs a database write refusal at a precise moment
+- Condition 113, Disposable copy cleanup exceeds five minutes: warning, removal may finish in the background: needs storage slow enough to exceed five minutes
+- Condition 119, Candidate Doctor process or pipes stay open past the allowance: exit-phase warning or candidate-checks-timeout: needs a stuck candidate Doctor child
+- Condition 122, Install record, plugin owner or database registration changes before copy: preparation refused: needs a concurrent plugin install during preparation
+- Condition 123, Initial config inspection meets lock contention or a changing source: one retry with a warning: needs a lock at a precise moment
+- Condition 126, Target predates migration continuation: runtime validation unavailable, no schema-neutral rollback: the target is the side under test, not an older release
+- Condition 127, Blocking validation failure: staged update discarded, serving Gateway untouched: needs a candidate that fails its isolated canary boot; no harness control reaches it
+- Condition 138, Failed candidate never allowed to start: databases restored before the package, migrated files kept as <database>.migrated-<runId>: needs a candidate that fails after Doctor migrated a stopped installation and before it starts
+- Condition 140, Pending records that require checkpoint replay block mutable updates: needs a legacy checkpoint record; no persona trait provides it
+- Condition 144, Service handoff records from 2026.9.2 or 2026.9.3; a different supervisor UID blocks service mutation: needs an installed updater of that specific older release; the persona pins 2026.9.6
+- Condition 145, Foreground Gateway without a managed service: update hints only, activation left to the operator: OCM environments run a managed service; a foreground Gateway needs its own environment
+- Condition 146, Foreground replacement still starting or rejected by ready check: unverified or shutdown pending: OCM environments run a managed service; a foreground Gateway needs its own environment
+- Condition 147, Chat requester's access grant revoked during staging: pending update stops, Gateway keeps serving: no catalogue script revokes a person-access grant while an update stages
+- Condition 148, OPENCLAW_NO_RESPAWN set on a foreground Gateway: update.run refused: needs a foreground Gateway environment
+- Condition 152, Shell installer service refresh denied: code installed, service untouched: installer scripts are owned by install
+- Condition 153, LaunchAgent installed but not supervised: re-bootstrapped after the update: macOS launchd behaviour; the harness host runs Linux user services, outside this template's reach
+- Condition 157, Updater-owned Doctor waits for a foreground Gateway to release state: needs a foreground Gateway environment
+- Condition 158, Active Gateway suspension: installation watcher does not restart during preparing, draining or prepared: gateway.suspend.* is consumed from gateway; no catalogue script holds a suspension
+- Condition 166, Shallow or partial checkout: missing objects hydrated privately, ahead/behind unavailable without a merge base: no persona trait provides a shallow checkout
+- Condition 167, Git pack above 256 MiB: size warning, capacity refusal when the object volume is short: needs an oversized pack
+- Condition 168, Newest dev commit does not build: up to ten commits walked back: needs an unbuildable upstream commit
+- Condition 169, pnpm bootstrap through corepack fails: tool-specific early error: needs a broken corepack
+- Condition 170, Another worktree holds the original branch or the reflog is unusable during Git rollback: needs a second worktree on the checkout
+- Condition 171, Restoring the previous Git runtime fails: Gateway stays stopped, originals in <runtime>.openclaw-update-<id>.tmp/previous: needs a filesystem failure during restoration
+- Condition 178, Pinned npm plugin artifact integrity differs from its record: that plugin update aborted: needs a registry serving a tampered artifact
+- Condition 180, Throwing plugin config-repair hook keeps its input and names the plugin: needs a plugin whose repair hook throws
+- Condition 186, npm link to a built Git checkout: rollback verifies that checkout; rebuilding it during the update prevents rollback: needs an npm link into a checkout
+- Condition 189, Original working directory no longer accessible: agent starts in the OS home: needs the operator's directory removed mid-run
+- Condition 192, Stopping the service unloads it and then fails before activation: original runtime restored: needs a stop failure at a precise moment
+- Condition 194, Reporting fails after a successful activation: installation kept, exit nonzero: needs a report write failure after activation
+- Condition 198, Filesystem rejects no-replace rename or hard links: hard-link publication, or audit files preserved with a warning: needs a FUSE or limited filesystem
+- Condition 199, Legacy audit raw archive changed other than by append: quarantined copy, warning repeats until resolved: needs a FUSE or limited filesystem
+- Condition 200, Debug capture enabled during an update: proxy persistence disabled, limitation reported: no persona trait enables debug capture
+- Condition 201, Chat-triggered update to 2026.9.6 fails with an authority-check stack overflow: needs the 2026.9.6 candidate as the target; the target is the side under test
+- Condition 204, Managed handoff lease database replaced or missing after a reboot clears temporary storage: needs the lease database removed between runs; no catalogue script reaches it
+- Condition 206, Interrupted automatic triage leaves an uncertain installation handoff reclaimable after 45 minutes: needs a 45-minute wait
+- Condition 207, Unfinished package or configuration rollback keeps the handoff; repair refuses until restoration completes: needs an unfinished rollback record
+- Condition 213, OPENCLAW_SERVICE_REPAIR_POLICY=external preserved by Doctor children: no persona trait sets the external repair policy
+- Condition 221, Interrupted cleanup reconciled on retry; removal failures exit nonzero: needs a removal failure
+- Condition 223, Git discovery times out twice at startup: git-unavailable until an explicit refresh: needs a stalled git binary
+- Condition 228, Update history unreadable: runStatusError, availability still shown: needs a corrupt ledger; no persona trait provides it
+- Condition 230, Diagnostics enabled: slow update.status requests log phase durations: no persona trait enables diagnostics
+- Condition 231, Candidate check exits by signal: termination class, signal and stderr tail kept: needs a signalled candidate check
+- Condition 234, Shared-state schema bump under a 2026.9.2 updater: content applied, version publication deferred: needs an installed updater of that specific older release; the persona pins 2026.9.6
+- Condition 235, App-owned package marker (openclaw-install-owner.json): update returns the owner's hint; invalid marker warns: app-owned installations belong to the apps
+- Condition 236, Container image replaced over the same mounted state: entrypoint runs doctor --fix before the Gateway: container image replacement needs a container runtime; outside this template's reach
+- Condition 237, Tenant containers from the retired fleet command left untouched by a host update: needs retired fleet tenants
+- Condition 249, Retired same-file memory index refused before canonical tables: needs a retired memory index
+- Condition 250, Masked or start-restricted systemd service: preflight refuses before replacing files: masking the service would stop every other phase
+- Condition 251, Operator masks the service during the update: service-definition warning, no rollback: masking the service would stop every other phase
+- Condition 253, Compatibility config read after package replacement fails: candidate-config-read-failed: needs an unreadable config after replacement
+- Condition 254, Managed Node service points at another global installation: refreshed with gateway install --force: needs two global installations
+- Condition 255, Shell resolves a different openclaw or Node than the service: installation drift reported: needs two global installations
+- Condition 256, Pending package-publication recovery blocks writable preparation: needs a pending publication journal
+- Condition 259, Retained .artifacts/dist-artifacts.lock refuses a source update: needs a stale build lock
+- Condition 261, Unparseable plugin entry during snapshot inventory: warning, files copied unchanged: needs an unparseable plugin source
+- Condition 262, Package publication completed but cleanup failed: evidence archived or retained with a warning: needs a cleanup failure
+- Condition 263, External-helper operation stuck at publication-complete: repair settles it: needs a stranded publication
+- Condition 264, Older in-directory activation journals reported with their helper status command: needs an installed updater of that specific older release; the persona pins 2026.9.6
+- Condition 267, No owner destination resolves for a notice: skipped and logged, outcome kept: the persona's channels resolve to the owner
+- Condition 268, Destination account disables actions.sendMessage: notices skipped: no persona trait disables sendMessage
+- Condition 274, FreeBSD rc.d service discovery: FreeBSD only
+- Condition 276, Background exec completion follow-ups after an update run even with heartbeat every 0m: owned by exec; no catalogue script runs background exec
+- Condition 279, Node candidate fails to reconnect: launcher falls back to the previous runtime: needs a node candidate that cannot reconnect
+- Condition 283, Stale node-runtime/activation.lock: needs an interrupted node activation
+- Condition 288, Open terminal sessions do not defer the campaign and end at the restart: no catalogue script opens a Gateway terminal session
+- Condition 297, Signed macOS app owns the local Gateway update (Update Mac app + Gateway): owned by the apps
+- Condition 299, Package rollback verification mismatch: up to five differing paths recorded: needs a package tree changed during rollback
+- Condition 301, Enabled auto-updater would reapply the newer release during recovery: needs automatic updates enabled during a downgrade recovery
+- Condition 302, Auth profile import .bak files are not the live credential store: no persona trait holds auth import backups
+- Condition 303, Restored service fails its health check after rollback: recovery.service failed: needs a rollback whose restored service fails
+- Condition 305, Doctor times out after migration: process groups stopped, candidate started on migrated state, or Gateway kept stopped while writers remain: needs a Doctor timeout after migration
+- Condition 311, Live service shares a source checkout's dist output: build entry points refuse: needs a live service sharing a source checkout's dist output during a build
+- Condition 312, Source-server script without Corepack or with a pnpm pin mismatch stops before checkout update: the reference script needs a Corepack-less host
+- Condition 313, Source-server publication fails after stopping the service: previous revision restored and restarted: the reference script needs a Corepack-less host
+- Condition 314, Output root such as dist is a symbolic link: build refused: needs a symlinked output root
+- Condition 315, Failed npm package replacement where triage cannot start: installer rerun recovers: installer scripts are owned by install
+- Condition 316, Homebrew formula install: update leaves the formula, records skipped; service on a Cellar path: needs Homebrew
+- Condition 318, npm install fails and retries with --omit=optional; fs-safe native binding restored: needs a failing optional dependency build
+- Condition 319, npm min-release-age quarantine configured: cleared for OpenClaw-managed npm children: no persona trait sets npm quarantine
+- Condition 320, pnpm global install group shared with another package: updater stops before changing it: needs a shared pnpm group
+- Condition 321, Root-owned system-global install: update fails with EACCES, recovery through system npm: needs a root-owned prefix
+- Condition 323, OPENCLAW_DISABLE_BUNDLED_PLUGIN_POSTINSTALL set: postinstall cleanup skipped, lifecycle completed: no persona trait sets it
+- Condition 324, Hardened systemd service without write access to config and state roots: needs a hardened system service
+- Condition 327, Report from a non-owner administrator: prefilled browser issue only, never the host GitHub CLI: control-ui has no profile switch to act as a non-owner administrator
+- Condition 328, Gateway disconnected, method unsupported or no admin scope: Control UI recovery controls disabled, CLI fallback: control-ui has no profile or connection switch to drop the admin scope or the Gateway connection
+- Condition 329, Container package changes are not durable: redeploy the image: needs a container installation
+- Condition 330, System-scope systemd Gateway: package updated, operator restart command recorded: needs a system-scope service
+- Condition 331, Installation not writable by the updater: managed-service-handoff-failed with owner commands: needs a foreign-owned installation
+- Condition 334, Missing runtime source capture (openclaw-plugin-build- ENOENT): warning, replacement loads: needs a deleted capture
+- Condition 335, Plugin dependency using import.meta in an older updater's parser: needs an installed updater of that specific older release; the persona pins 2026.9.6
+- Condition 336, Legacy openclaw-model-catalog-* temporary trees removed by doctor --fix when no other process runs: no persona trait leaves catalog trees
+- Condition 337, Two identical candidate Doctor failures for one version: automatic updates pause: needs two identical candidate Doctor failures for one version
+- Condition 338, Dependency or build fails during a source update (deps-install-failed, build-failed, ui-build-failed): needs an unbuildable target
+- Condition 340, Installed CLI damaged or diagnostics unwritable: automatic triage reports the failure: needs a damaged CLI
+- Condition 343, Git checkout with several remotes and no branch.main.remote: needs a multi-remote checkout
+- Condition 346, Plugin dependency tree corrupted after an update: channel not loaded: needs a corrupted dependency tree
+- Condition 347, Stale per-agent OAuth shadows after re-auth: provider 401s until doctor --fix: needs OAuth profiles; the persona uses the mock provider
+- Condition 348, Prepared model runtime publication times out at startup (ambient credentials stage): needs an external login check that stalls
+- Condition 349, Protocol mismatch: a newer client keeps reconnecting to an older Gateway after rollback: needs a long-running newer client process connected across the downgrade
+- Condition 350, Claude Code without safe-mode support: notice, normal customization: no coding agent CLI in the harness
+- Condition 354, Update failure artifact without a run identity: unrepaired: needs a hand-written artifact
+- Condition 355, Post-turn cleanup fails: another repair refused in that process: needs a cleanup failure
+- Condition 356, Explicit exec deny or sandbox, node or remote route: embedded repair refused (exec-denied-by-policy): no persona trait sets an exec deny policy
+- Condition 358, Unsupervised foreground or container run stays alive after a failed startup retry: needs a foreground run
+- Condition 359, Stop received during triage cancels recovery: needs triage in progress
+- Condition 360, Codex app-server on a socket transport: automatic repair refused: no Codex app-server in the harness
+- Condition 361, Competing failure while triage is owned: already owned, original output kept: needs two failures at once
+- Condition 362, Fixing process disappears abruptly: automatic admission blocked for that boot: needs a killed fixing process
+- Condition 363, Linux user-systemd automatic recovery in a native scope; explicit stop cancels it: needs automatic recovery in progress
+- Condition 364, Missing Node or CLI files: manual triage required: needs a damaged installation
+- Condition 365, Matrix dedupe scan only when Matrix is configured: no Matrix account in the persona
+- Condition 368, Default-layout install with only ~/.clawdbot: renamed; both directories present need manual reconciliation: renaming the state directory would replace the persona
+- Condition 371, Unused legacy stores (loose agent/settings.json) deferred with advisories: no persona trait leaves loose settings
+- Condition 374, Legacy workspace setup files imported; canonical record wins: no persona trait holds legacy workspace setup files
+- Condition 375, Skill Workshop proposals exported; unowned or half-applied proposals held back: no persona trait holds Workshop proposals
+- Condition 376, Plugin migrations with files outside the copied state deferred: no persona trait holds such a plugin
+- Condition 377, Completed agent deletion kept its files or deletion history missing: stores held back with warnings: no persona trait holds a deleted agent's store
+- Condition 378, Incognito reserved database filename collision: no persona trait holds the collision
+- Condition 379, Historical 2026.7.35 shared schema without a deletion journal: needs a 2026.7.35 database
+- Condition 380, Interrupted auth-profile archive recovery reported: no persona trait holds it
+- Condition 383, Another connection commits before the media repair: source changed before migration transaction: needs a commit at a precise moment
+- Condition 387, Device Pair legacy JSON beyond namespace capacity: no persona trait holds it
+- Condition 388, Shared auth still in the legacy agents/main database: relocated; conflicts reported: no persona trait holds legacy auth
+- Condition 389, Retired MCP OAuth files and stale .lock sidecars: no persona trait holds them
+- Condition 392, Owner allowlist with direct-user target kinds; ambiguous owners restored from .bak history: no persona trait holds an ambiguous owner list
+- Condition 394, Retired settings.json or keybindings.json keys refused, last accepted bindings kept: no persona trait holds them
+- Condition 395, Telegram update-offset versions 1 and 2 normalized before account startup: no Telegram account in the persona
+- Condition 399, Older database without Claw provenance columns: claws are owned by claws
+- Condition 400, Policy-only WhatsApp accounts.default beside named accounts: warning, unchanged: no WhatsApp account in the persona
+- Condition 404, Tlon flat allowPrivateNetwork migrated; Matrix and Mattermost forms retired: no such channel in the persona
+- Condition 405, Enabled webhook channel account without legacyWebhook: historical listener pinned once: the persona's test channels do not use webhook listeners
+- Condition 406, Voice Call realtime settings copied into talk.realtime: no Voice Call config in the persona
+- Condition 407, Historical ACP metadata keys: startup refuses unmigrated state with a current binding: no ACP sessions in the persona
+- Condition 409, Retired TaskFlow Webhooks plugin entry ignored; allowlist kept explicit: no persona trait holds the entry
+- Condition 410, Legacy Tasks rows for native Codex work imported or preserved: no Codex rows in the persona
+- Condition 412, Local embeddings without managed llama-server setup: degraded semantic recall named: no local embeddings in the persona
+- Condition 413, Legacy credential fields (mode, apiKey) in auth stores converted; runtime rejects them: no persona trait holds legacy credential fields
+- Condition 415, Older Git updater keeps an in-memory config snapshot: Doctor preserves config: needs an installed updater of that specific older release; the persona pins 2026.9.6
+- Condition 417, Model migration changes a consumer's billing route: warning after saving: the persona uses the mock provider
+- Condition 418, Multi-account channel without a default account: routing warning: the persona's channels have one account each
+- Condition 425, Profile-owned skill library tables present when changing builds: no persona trait holds a skill library
+- Condition 426, Target package without schema metadata checked against the schema-1 contract: needs a pre-metadata target
+- Condition 428, Config health-state write failing: reported once per database per process: needs a failing database write
+- Condition 431, Downgrade to 2026.9.2 with newer accepted-input receipts: same-ID retries rejected: needs a 2026.9.2 target
+- Condition 436, Restart preparation cannot verify service command or owner: GATEWAY_RESTART_PREPARATION_REFUSED: the harness service is always verifiable
+- Condition 440, Pending approvals, questions and node replies answerable during drain: no catalogue script raises a pending approval
+- Condition 442, Exit 79 keeps the Gateway parked unless the updater supplies a verified recovery: needs a failed restoration that cannot be verified
+- Condition 443, Helper result missing, malformed or interrupted: activation left to the operator: needs a failed restoration that cannot be verified
+- Condition 449, Work ignores cancellation at the native deadline: stability bundle, exit 0, fresh Gateway: needs work that ignores cancellation; the mock provider's held turn honours it
+- Condition 451, Shared-state database unreadable: gateway status --deep exits 1 naming it: needs a damaged shared database
+- Condition 454, State selectors pointing outside the account home: isolated, no service management: OCM environments own their selectors
+- Condition 455, Several custom services match: OPENCLAW_SYSTEMD_UNIT required; duplicate user and system services: needs several services
+- Condition 456, Sealed or unsafe service definition: gateway install --force refused: needs a sealed definition
+- Condition 457, Database ownership claimed by an external supervisor: unmarked writable opens fail: database ownership claim is consumed from database
+- Condition 459, Interactive setup prompt open at stop or restart: closed before drain: no catalogue script opens setup
+- Condition 463, Automated environment (CI set): no update check or statistics: the harness sets the endpoint, which overrides the suppression
+- Condition 466, Older Linux host without openat2: older images report a false Gateway owner: needs a container on an old kernel
+- Condition 468, Restart policy loop on an unsafe migration: run Doctor once in the container: needs a container runtime
+- Condition 469, Update wizard selects dev without a Git checkout: offers to create one: the wizard phase cancels before the channel choice; no catalogue script answers the checkout offer
+- Condition 470, Installed 2026.9.3 or 2026.9.4 updater caps rehearsal and snapshot at five minutes even with a larger --timeout: needs an installed updater of that specific older release; the persona pins 2026.9.6
+- Condition 471, Installed 2026.9.4 updater refuses with managed-service-preflight before the target runs: needs an installed updater of that specific older release; the persona pins 2026.9.6
+- Condition 472, pnpm-owned installation whose older updater triggers an interactive build-approval prompt (IO error: not a terminal): needs an installed updater of that specific older release; the persona pins 2026.9.6
+- Condition 474, Published 2026.9.5 Gateways have no installation-replacement watcher: needs an installed updater of that specific older release; the persona pins 2026.9.6
+- Condition 475, Published 2026.8.2 CLI refuses updates on service-less Linux installs: needs an installed updater of that specific older release; the persona pins 2026.9.6
+- Condition 476, Installed 2026.9.7 or 2026.9.8 supervisor refuses candidate trees over 50,000 entries: needs an installed updater of that specific older release; the persona pins 2026.9.6
+- Condition 477, Older updater without the paired-identity drain reports device identity required and waits for its deadline: needs an installed updater of that specific older release; the persona pins 2026.9.6
+- Condition 478, Published 2026.9.5 resident keeps its startup stop budget after daemon-reload and omits write custody: needs an installed updater of that specific older release; the persona pins 2026.9.6
+- Condition 479, Installed 2026.9.2 admits a new update while an older row remains running: needs an installed updater of that specific older release; the persona pins 2026.9.6
+- Condition 480, Older updater returns already-current with runtime-verification-failed: needs an installed updater of that specific older release; the persona pins 2026.9.6
+- Condition 481, Older updater fails at updater-runtime-retention: needs an installed updater of that specific older release; the persona pins 2026.9.6
+- Condition 482, Installed 2026.9.4 updater cannot use orphan-row recovery before updating itself: needs an installed updater of that specific older release; the persona pins 2026.9.6
+- Condition 483, Bun-hosted update driven by 2026.9.7 waits for idle candidate workers: needs an installed updater of that specific older release; the persona pins 2026.9.6
+- Condition 486, Writing the local Markdown report fails; a warning is printed and the outcome preserved (`report-write-fails`): needs fault injection or timing at a precise moment of the update that no catalogue script provides
+- Condition 487, A candidate state snapshot fails (active database, exec approvals or plugin phase named) (`snapshot-error`): needs fault injection or timing at a precise moment of the update that no catalogue script provides
+- Condition 495, Recovery files have unexpected mode, link count or owner, producing permission refusals (`recovery-permissions`): needs recovery files with unexpected mode, link count or owner
+- Condition 496, The Control UI cannot read fresh progress and shows the read error beside the last run (`progress-read-error`): needs fault injection or timing at a precise moment of the update that no catalogue script provides
+- Condition 497, Doctor imports channel state only for enabled channels (`disabled-channel-import`): needs pre-July channel state for a disabled channel
+- Condition 503, The restart is unhealthy or its revision mismatches or is unavailable (`restart-unhealthy`): needs fault injection or timing at a precise moment of the update that no catalogue script provides
+- Condition 504, Switching channels syncs plugin sources (bundled for dev, registry for stable/beta) (`plugins-follow-channel`): needs a Git checkout installation with full source builds inside one phase bound (persona addition install-git-checkout); no phase drives it at this revision
+- Condition 505, Release tags in recognised forms (beta, legacy numeric, extended-stable patches) select Git targets (`git-tag-forms`): needs a Git checkout installation with full source builds inside one phase bound (persona addition install-git-checkout); no phase drives it at this revision
+- Condition 506, A named profile or custom state/config paths are pinned for triage and repair (`named-profile`): needs a named profile or custom state and config paths
+- Condition 507, A support artifact cannot be saved, reporting the storage error (`triage-artifact-save-fails`): needs fault injection or timing at a precise moment of the update that no catalogue script provides
+- Condition 508, Startup finds the webhook completion marker as the sole change or endpoints needing repair (`webhook-startup`): needs a webhook channel whose endpoints need repair at startup
+- Condition 510, Pending delivery settlements or completion recovery exist and older builds may discard their metadata (`pending-settlements`): needs pending delivery settlements or completion recovery before a downgrade
+- Condition 511, Database closure refuses a follow-up drain, parking queued input (`drain-parks-input`): needs fault injection or timing at a precise moment of the update that no catalogue script provides
+- Condition 512, Older persisted running or queued session statuses are normalised to interrupted at startup (`legacy-session-status`): needs persisted running or queued session statuses from an older release
+- Condition 513, Old scripts send SIGUSR1, which no longer restarts the Gateway (`sigusr1-legacy`): needs a script that still sends SIGUSR1, which starts the Node inspector instead of restarting
+- Condition 514, A forced restart from an older caller without a drain budget gets at most 45 seconds (`force-old-caller`): needs a specific older published release as the driver or caller (2026.9.2, 2026.9.4, 2026.9.5 or an older restart caller), other than the persona's pinned release
+- Condition 515, gateway restart runs inside the macOS LaunchAgent process tree and hands off to a detached helper (`restart-inside-launchagent`): outside reach on a Linux host: needs a macOS LaunchAgent service
+- Condition 516, Service-managed profile names collide by case or with reserved labels, or custom service identity variables are set (`profile-service-names`): needs a root-owned system installation or system-scope service (sealed releases, system services, root prefixes, masked or hardened services) that the OCM environment does not provide
+- Condition 517, OPENCLAW_GATEWAY_RESTART_TRACE adds restart timing lines (`restart-timing-log`): needs OPENCLAW_GATEWAY_RESTART_TRACE set on the Gateway
+- Condition 518, A custom container entrypoint bypasses Doctor activation (`custom-entrypoint`): needs a container runtime and image recreation, which an OCM environment does not provide
+- Condition 519, A Bun-only install's launcher is missing, relinked or names a moved Bun (`bun-launcher`): needs a Bun-only installation with a broken launcher
+- Condition 520, A Windows Bun-only node host cannot stage updates and logs the failure hourly (`bun-windows-node`): outside this template's reach: Windows Scheduled Task hosts (bound: owned by platform)
+
+Phases that depend on each script still to be written (support.toWrite):
+- support/verify/update-cli.mjs: 60 phases
+- support/verify/env-fault.mjs: 40 phases
+- support/verify/gateway-call.mjs: 22 phases
+- support/verify/release-feed.mjs: 14 phases
+- support/verify/control-ui.mjs: 14 phases
+- support/verify/manual-package-replace.mjs: 11 phases
+- support/verify/session-turn-hold.mjs: 5 phases
+- support/verify/chat-send.mjs: 4 phases
+- support/verify/restart-handoff.mjs: 2 phases
+- support/verify/node-host-auto-update.mjs: 2 phases
+- support/verify/agent-tool-turn.mjs: 2 phases
+- support/verify/chat-history-read.mjs: 2 phases
+- support/verify/channel-inbound-turn.mjs: 2 phases
+- support/verify/stage-state-fixture.mjs: 2 phases
+- support/verify/source-server-update.mjs: 1 phases
+- support/verify/external-supervisor.mjs: 1 phases
+- support/verify/package-recovery-helper.mjs: 1 phases
+- support/verify/cron-isolated-run.mjs: 1 phases
+- support/verify/updater-journey.mjs: 1 phases
+- support/verify/triage-run.mjs: 1 phases
+- support/verify/stage-session-store-fixture.mjs: 1 phases
+- env-fault.mjs by fault: channel-probe-fail 13, hold-state-lock 3, config-edit 3, interrupt-doctor 3, signal-restart 2, tmpdir-small 2, kill-gateway 2, kill-update-helper 1, helper-spawn-denied 1, prefix-readonly 1, prefix-volume-full 1, artifacts-volume-full 1, occupy-gateway-port 1, db-writer-loop 1, block-git-remote 1, db-writer-hold 1, config-readonly 1, db-reader-loop 1, freeze-gateway 1, signal-stop 1
+
+Persona additions:
+- agents-fleet-large: Several hundred configured agents, each with its own agent database (none)
+- approvals-legacy-json: A legacy exec-approvals.json stub beside an SQLite approvals row holding a default-agent policy with string allowlist entries (none)
+- checkout-dirty: A second Git checkout environment like install-git-checkout with one uncommitted edit in a tracked file (env)
+- coding-agent-stub: a stub coding agent CLI on PATH (codex) that records the prompt it receives and exits (agent)
+- config-include-files: Config split across $include files, with the agent roster in an included file (none)
+- config-legacy-roster: A second environment whose config keeps an agents.list roster with a default marker, unprefixed toolsBySender keys and an ownerless cron job (env)
+- config-retired-keys: A second environment whose config carries retired keys (agents.defaults.llm, routing.allowFrom, top-level heartbeat) (env)
+- cron-job-update: An isolated cron job created by the operator whose scheduled prompt asks the agent to update OpenClaw through the gateway tool (jobId)
+- history-stale-run: the update ledger holds an identityless running row inactive for more than 30 minutes and an untouched 2026.9.2-era admission older than 24 hours (no keys)
+- install-bun-global: A second environment with OpenClaw installed globally by Bun at the persona's pinned release, its Gateway running on Bun (env)
+- install-dist-edited: A local edit in one packaged dist file of the install-npm-global environment (none)
+- install-git-checkout: A second environment running from a Git checkout on the dev channel whose tracking remote is a local mirror of the side's source (env)
+- install-npm-global: A second environment with OpenClaw installed globally by npm at the persona's pinned release under a user prefix configured in ~/.npmrc, its Gateway a managed user service, holding a copy of the persona's state (env)
+- install-pnpm-global: A second environment with OpenClaw installed globally by pnpm at the persona's pinned release (env)
+- install-tarball-extracted: A second environment running from an extracted package tarball with no package-tool owner (env)
+- node-host-headless: A headless node host paired to the Gateway, running the persona's pinned release with its default plugins (nodeId)
+- plugin-capability-widened: An external plugin whose version in the release feed declares an added capability (none)
+- plugin-compat-excluded: An installed external plugin whose declared compatibility range excludes the side's version (none)
+- plugin-migration-pending: An installed plugin with a recorded pending state migration and retained inputs (none)
+- plugin-payload-missing: A configured plugin whose installed payload directory was removed (none)
+- plugin-pin-outdated: An official plugin pinned to an older exact release that drifts from the installed core (none)
+- plugin-record-missing: A configured official plugin present in config with no install record (none)
+- recovery-originals-retained: Migration recovery originals and pre-startup-migration backups recorded by an earlier successful update, plus an older npm snapshot directory (none)
+- service-definition-outdated: A managed service definition written by an older installer (TimeoutStopSec=30, KillMode=control-group) with one operator drop-in (none)
+- state-legacy-migratable: a fixture of legacy state Doctor can migrate: a legacy agents.list roster with a default marker and ownerless cron jobs with null, deliver and mixed-case delivery modes, legacy auth field shapes in JSON and SQLite, a policy-free exec-approvals.json stub and a legacy default-agent SQLite policy, a legacy workspace setup file, session rows with flat pending-delivery fields and provider aliases, orphan task_delivery_state rows, Codex-native task rows, historical ACP metadata keys, unprefixed toolsBySender keys, flat channel allowPrivateNetwork keys, inherited Voice Call realtime settings, a multi-account channel without a default and a policy-only WhatsApp accounts.default, retired TaskFlow Webhooks settings, messages.tts settings, an ownerAllowFrom entry that lost its user: kind, a database without claw provenance columns, shared auth in the main agent database, retired MCP OAuth files, a deleted agent's retained store, pending Skill Workshop proposals, a damaged legacy sessions.json entry, a missing plugins.load.paths entry and a configured plugin that is not installed, Matrix state needing the dedupe scan, an enabled webhook channel account without legacyWebhook, an ACP agent with a separate harness model, legacy Discord dm.policy, stale per-agent OAuth shadows and a legacy audit archive changed other than by append; plus a config file with legacy keys for startup (path, configPath)
+- state-legacy-retired: a fixture of retired pre-July state: plugins/installs.json, cron jobs.json with jobs-state.json and run logs, a JSON delivery queue, restart-sentinel.json, retired config keys, OAuth credential sidecars, retired settings.json keys and a ~/.clawdbot directory (path)
+- state-retired-json: A second environment holding retired pre-July JSON state: restart-sentinel.json, plugins/installs.json and a legacy cron jobs.json store (env)
+- store-orphan-delivery-rows: Shared-database task_delivery_state rows whose parent tasks are missing (none)
+- update-history-failed: Update history holding a failed run with a config failure followed by a later success, and a failed run within the last 24 hours (runId)
+- update-history-long: An update run whose history reached the 128-step and 16 KiB compaction limit (runId)
+- update-history-stale: A second environment whose update history holds an identityless legacy admission older than 24 hours and an active row inactive for over 30 minutes whose driver is dead (env)
+- channel-owner-route: commands.ownerAllowFrom names the test channel's direct-user target of a DM peer (peer) (named for an uncovered condition; not required by a phase)
+- config-includes-split: the config split across $include files (path) (named for an uncovered condition; not required by a phase)
+- config-invalid-field: a staged config fixture with an invalid field (path) (named for an uncovered condition; not required by a phase)
+- package-dist-edited: local edits to the installed package's dist (no keys) (named for an uncovered condition; not required by a phase)
+- runtime-bun-available: a Bun 1.4+ executable with WAL-safe node:sqlite available to the env (bunPath) (named for an uncovered condition; not required by a phase)
