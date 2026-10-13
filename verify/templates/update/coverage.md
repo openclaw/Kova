@@ -341,7 +341,7 @@ Excluding a saved supporting scenario leaves a coverage gap; it does not make ev
 - Condition 204, Managed handoff lease database replaced or missing after a reboot clears temporary storage: needs the lease database removed between runs; no catalogue script reaches it
 - Condition 206, Interrupted automatic triage leaves an uncertain installation handoff reclaimable after 45 minutes: needs a 45-minute wait
 - Condition 207, Unfinished package or configuration rollback keeps the handoff; repair refuses until restoration completes: needs an unfinished rollback record
-- Condition 213, OPENCLAW_SERVICE_REPAIR_POLICY=external preserved by Doctor children: no persona trait sets the external repair policy
+- Condition 213, OPENCLAW_SERVICE_REPAIR_POLICY=external preserved by Doctor children: OCM supplies the external repair policy, but no retained observation establishes that the Doctor child inherited it or refused native service repair under that policy.
 - Condition 221, Interrupted cleanup reconciled on retry; removal failures exit nonzero: needs a removal failure
 - Condition 223, Git discovery times out twice at startup: git-unavailable until an explicit refresh: needs a stalled git binary
 - Condition 228, Update history unreadable: runStatusError, availability still shown: needs a corrupt ledger; no persona trait provides it
@@ -414,33 +414,33 @@ Excluding a saved supporting scenario leaves a coverage gap; it does not make ev
 - Condition 362, Fixing process disappears abruptly: automatic admission blocked for that boot: needs a killed fixing process
 - Condition 363, Linux user-systemd automatic recovery in a native scope; explicit stop cancels it: needs automatic recovery in progress
 - Condition 364, Missing Node or CLI files: manual triage required: needs a damaged installation
-- Condition 365, Matrix dedupe scan only when Matrix is configured: no Matrix account in the persona
+- Condition 365, Matrix dedupe scan only when Matrix is configured: The fixture includes Matrix state needing the dedupe scan, but no configured-versus-unconfigured Matrix comparison establishes that the scan runs only when Matrix is configured.
 - Condition 368, Default-layout install with only ~/.clawdbot: renamed; both directories present need manual reconciliation: renaming the state directory would replace the persona
 - Condition 371, Unused legacy stores (loose agent/settings.json) deferred with advisories: no persona trait leaves loose settings
-- Condition 374, Legacy workspace setup files imported; canonical record wins: no persona trait holds legacy workspace setup files
-- Condition 375, Skill Workshop proposals exported; unowned or half-applied proposals held back: no persona trait holds Workshop proposals
+- Condition 374, Legacy workspace setup files imported; canonical record wins: The fixture includes a legacy workspace setup file, but does not establish a conflicting canonical SQLite setup record; canonical-record precedence remains unobserved.
+- Condition 375, Skill Workshop proposals exported; unowned or half-applied proposals held back: The fixture includes pending Workshop proposals, but no unowned or half-applied proposal establishes the documented holdback behavior.
 - Condition 376, Plugin migrations with files outside the copied state deferred: no persona trait holds such a plugin
-- Condition 377, Completed agent deletion kept its files or deletion history missing: stores held back with warnings: no persona trait holds a deleted agent's store
+- Condition 377, Completed agent deletion kept its files or deletion history missing: stores held back with warnings: The fixture includes a deleted agent's retained store, but does not specify completed deletion history or a separate missing-history case and their holdback warnings.
 - Condition 378, Incognito reserved database filename collision: no persona trait holds the collision
 - Condition 379, Historical 2026.7.35 shared schema without a deletion journal: needs a 2026.7.35 database
 - Condition 380, Interrupted auth-profile archive recovery reported: no persona trait holds it
 - Condition 383, Another connection commits before the media repair: source changed before migration transaction: needs a commit at a precise moment
 - Condition 387, Device Pair legacy JSON beyond namespace capacity: no persona trait holds it
-- Condition 388, Shared auth still in the legacy agents/main database: relocated; conflicts reported: no persona trait holds legacy auth
-- Condition 389, Retired MCP OAuth files and stale .lock sidecars: no persona trait holds them
+- Condition 388, Shared auth still in the legacy agents/main database: relocated; conflicts reported: The fixture includes shared auth in the main agent database, but supplies no destination conflict for the conflict-reporting case.
+- Condition 389, Retired MCP OAuth files and stale .lock sidecars: The fixture includes retired MCP OAuth files, but does not supply stale .lock sidecars.
 - Condition 392, Owner allowlist with direct-user target kinds; ambiguous owners restored from .bak history: no persona trait holds an ambiguous owner list
-- Condition 394, Retired settings.json or keybindings.json keys refused, last accepted bindings kept: no persona trait holds them
+- Condition 394, Retired settings.json or keybindings.json keys refused, last accepted bindings kept: The retired-state fixture includes settings.json keys, but no retained setup supplies retired keybindings alongside last accepted bindings or observes their preservation independently of earlier startup refusals.
 - Condition 395, Telegram update-offset versions 1 and 2 normalized before account startup: no Telegram account in the persona
 - Condition 399, Older database without Claw provenance columns: claws are owned by claws
-- Condition 400, Policy-only WhatsApp accounts.default beside named accounts: warning, unchanged: no WhatsApp account in the persona
-- Condition 404, Tlon flat allowPrivateNetwork migrated; Matrix and Mattermost forms retired: no such channel in the persona
+- Condition 400, Policy-only WhatsApp accounts.default beside named accounts: warning, unchanged: The fixture names a policy-only WhatsApp accounts.default, but does not establish an unlinked default beside named WhatsApp accounts or the unchanged account-selection result.
+- Condition 404, Tlon flat allowPrivateNetwork migrated; Matrix and Mattermost forms retired: The fixture names flat channel allowPrivateNetwork keys without identifying all three channel variants; supported Tlon migration and retired Matrix/Mattermost forms remain unestablished as separate cases.
 - Condition 405, Enabled webhook channel account without legacyWebhook: historical listener pinned once: the persona's test channels do not use webhook listeners
-- Condition 406, Voice Call realtime settings copied into talk.realtime: no Voice Call config in the persona
-- Condition 407, Historical ACP metadata keys: startup refuses unmigrated state with a current binding: no ACP sessions in the persona
-- Condition 409, Retired TaskFlow Webhooks plugin entry ignored; allowlist kept explicit: no persona trait holds the entry
-- Condition 410, Legacy Tasks rows for native Codex work imported or preserved: no Codex rows in the persona
+- Condition 406, Voice Call realtime settings copied into talk.realtime: The fixture supplies inherited Voice Call realtime settings and the Doctor phase captures resulting config. This row remains conservatively uncredited because the retained description does not enumerate the source provider fields and expected Talk destinations.
+- Condition 407, Historical ACP metadata keys: startup refuses unmigrated state with a current binding: The fixture includes historical ACP metadata, but no retained setup establishes a current binding and observes startup refusal before Doctor repairs that metadata.
+- Condition 409, Retired TaskFlow Webhooks plugin entry ignored; allowlist kept explicit: The fixture includes retired TaskFlow Webhooks settings, but Doctor repair precedes any Gateway observation of the ignored entry. The sole-allowed-plugin case and preservation of an explicit allowlist are also unspecified.
+- Condition 410, Legacy Tasks rows for native Codex work imported or preserved: The fixture includes Codex-native task rows, but does not specify their requester, session, lifecycle and connection ownership stamps or acknowledgement states. It therefore does not establish which rows must import and which must remain preserved.
 - Condition 412, Local embeddings without managed llama-server setup: degraded semantic recall named: no local embeddings in the persona
-- Condition 413, Legacy credential fields (mode, apiKey) in auth stores converted; runtime rejects them: no persona trait holds legacy credential fields
+- Condition 413, Legacy credential fields (mode, apiKey) in auth stores converted; runtime rejects them: The fixture includes legacy credential fields in JSON and SQLite, and the Doctor phase records their repair. No retained command observes runtime rejection of those fields before repair.
 - Condition 415, Older Git updater keeps an in-memory config snapshot: Doctor preserves config: needs an installed updater of that specific older release; the persona pins 2026.9.9
 - Condition 417, Model migration changes a consumer's billing route: warning after saving: the persona uses the mock provider
 - Condition 418, Multi-account channel without a default account: routing warning: the persona's channels have one account each
