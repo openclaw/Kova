@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, rm, access } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { matchesPaths, selectPhases } from "../src/verify/select.mjs";
 import { canonicalJSON, loadPlanInputs, sha256, validateTemplate } from "../src/verify/plan.mjs";
-import { checkCatalogueCommands } from "../src/catalogue.mjs";
+import { checkCatalogueCommands, parseCatalogueCommand } from "../src/catalogue.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const flag = (value = "required") => ({ description: "input", value });
@@ -41,6 +42,16 @@ test("selection uses every phase's paths, records area ownership and retains sta
   assert.deepEqual(result.unmapped, ["no phase for src/owned/a.ts in sessions", "no template for unknown.ts"]);
   assert.equal(result.phases[1].from, "template:sessions");
   assert.deepEqual(select({ paths: ["package.json", "support/input.ts"], areas: [{ id: "config", paths: [], bound: { includes: ["package.json: shipped configuration", "support/input.ts: product entry"] } }] }).unmapped, ["no phase for package.json in config", "no phase for support/input.ts in config"]);
+});
+
+test("intent phases cannot hide unmapped paths, even when active or withheld", () => {
+  for (const options of [{}, { requires: ["missing"] }, { commands: [write] }]) {
+    const result = select({ paths: ["unowned/file.ts"], extraPhases: { phases: [phase("extra", { paths: ["unowned/**"], from: "intent:goal", ...options })] }, catalogue: { ...catalogue, entries: entries.map((entry) => entry.id === "write" ? { ...entry, status: "toWrite" } : entry) } });
+    assert.deepEqual(result.unmapped, ["no template for unowned/file.ts"]);
+    const withheld = Boolean(options.requires || options.commands);
+    assert.equal(result.withheld.some((item) => item.id === "intent/extra"), withheld);
+    assert.equal(ids(result).includes("intent/extra"), !withheld);
+  }
 });
 
 test("dependencies close across sources and setup, without selecting unrelated slow phases", () => {
@@ -127,7 +138,152 @@ test("loader reads the shipped sessions template and standard commands pass the 
   const all = checkCatalogueCommands(inputs.catalogue, sessions.phases.flatMap((item) => item.commands.map((command) => ({ command }))));
   assert.deepEqual(all.filter((item) => item.code !== "toWrite"), []);
   assert.ok(all.some((item) => item.code === "toWrite"));
+  const missingIdentities = selectPhases({ ...inputs, paths: ["src/gateway/server-methods/sessions-sharing.ts", "src/gateway/server-methods/session-processes.ts"], persona: { traits: {
+    "session-shared-readonly": { keys: {} }, "session-workspace-changes": { keys: {} },
+  } } });
+  for (const [id, keys] of [["share-session", ["key:session-shared-readonly:sessionId", "key:session-shared-readonly:memberIdentityId", "key:session-shared-readonly:suggestionId"]], ["session-files-changes", ["key:session-workspace-changes:sessionId"]]]) {
+    const withheld = missingIdentities.withheld.find((item) => item.id === `sessions/${id}`);
+    for (const key of keys) assert.ok(withheld?.missing.includes(key), key);
+  }
   assert.throws(() => validateTemplate({ ...sessions, phases: [sessions.phases[0], sessions.phases[0]] }), /duplicate phase/);
+});
+
+test("sessions caller paths select the phases that exercise them", async () => {
+  const inputs = await loadPlanInputs();
+  const cases = [
+    ["src/commands/sessions.ts", ["browse-sessions"]],
+    ["src/commands/sessions-table.ts", ["browse-sessions"]],
+    ["src/commands/sessions-display-model.ts", ["browse-sessions"]],
+    ["src/commands/sessions-tail.ts", ["inspect-status"]],
+    ["src/commands/sessions-lifecycle.ts", ["archive-restore", "delete-session"]],
+    ["src/commands/sessions-compact.ts", ["compact-session"]],
+    ["src/commands/sessions-cleanup.ts", ["maintain-session-store"]],
+    ["src/commands/sessions-cleanup.runtime.ts", ["maintain-session-store"]],
+    ["src/cli/program/register.status-health-sessions.ts", ["browse-sessions", "inspect-status", "archive-restore", "delete-session", "compact-session", "maintain-session-store", "import-transcript", "export-session"]],
+    ["ui/src/lib/session-progress-cards.ts", ["publish-progress"]],
+    ["ui/src/pages/config/session-storage.ts", ["maintain-session-store"]],
+  ];
+  for (const [path, expected] of cases) {
+    const result = selectPhases({ ...inputs, paths: [path], persona: { traits: {} } });
+    assert.deepEqual(result.unmapped, [], path);
+    const selected = new Set([...result.phases, ...result.withheld].map((item) => item.id));
+    for (const id of expected) assert.ok(selected.has(`sessions/${id}`), `${path}: ${id}`);
+  }
+});
+
+test("sessions Gateway requests match the pinned OpenClaw schemas", async (t) => {
+  const checkout = process.env.KOVA_OPENCLAW_CHECKOUT;
+  if (!checkout) return t.skip("Set KOVA_OPENCLAW_CHECKOUT to the pinned OpenClaw checkout");
+  try { await access(checkout); } catch (error) {
+    if (error.code === "ENOENT") return t.skip("OpenClaw checkout is absent");
+    throw error;
+  }
+  const revision = "7e80556f503d26ddde64e274bfb50cbbec7830f5";
+  assert.equal(execFileSync("git", ["-C", checkout, "rev-parse", "HEAD"], { encoding: "utf8" }).trim(), revision);
+  const require = createRequire(join(resolve(checkout), "package.json"));
+  const { createJiti } = require("jiti");
+  const jiti = createJiti(join(resolve(checkout), "package.json"), {
+    fsCache: false,
+    alias: { "@openclaw/normalization-core": join(resolve(checkout), "packages/normalization-core/src") },
+  });
+  const schemas = await jiti.import(join(resolve(checkout), "packages/gateway-protocol/src/schema-modules.ts"));
+  const { Compile } = await jiti.import("typebox/schema");
+  // These method names share or abbreviate schemas in their actual handlers.
+  const aliases = {
+    "sessions.subscribe": "SessionsListParamsSchema",
+    "sessions.github.options": "SessionGitHubOptionsParamsSchema",
+    "sessions.github.status": "SessionGitHubStatusParamsSchema",
+    "session.members.add": "SessionMemberAddParamsSchema",
+    "session.members.remove": "SessionMemberRemoveParamsSchema",
+    "session.members.listEvidence": "SessionMembersListParamsSchema",
+    "sessions.storage.status": "SessionsStorageParamsSchema",
+    "sessions.storage.run": "SessionsStorageParamsSchema",
+  };
+  const { templates } = await loadPlanInputs();
+  const sessions = templates.find((item) => item.id === "sessions");
+  const handles = new Map(), validators = new Map(), failures = [], outputs = new Map();
+  let requests = 0, joins = 0;
+  for (const phase of sessions.phases) for (const command of phase.commands) {
+    const { tokens, findings } = parseCatalogueCommand(command);
+    assert.deepEqual(findings, [], phase.id);
+    if (tokens[1] !== "{kovaRoot}/support/verify/gateway-call.mjs") continue;
+    const flag = (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined;
+    const method = flag("--method"), label = `${phase.id}: ${method}`;
+    if (flag("--wait")) {
+      assert.equal(handles.get(flag("--wait")), method, label);
+      joins += 1;
+      continue;
+    }
+    if (flag("--handle")) handles.set(flag("--handle"), method);
+    // The manifest supplies a hexadecimal content hash, not the placeholder text.
+    const params = JSON.parse((flag("--params") ?? "{}").replaceAll("{persona:session-workspace-changes:fileHash}", "a".repeat(64)));
+    if (flag("--merge-from")) {
+      // These descriptions supply optimistic-concurrency expectations.
+      const fixtures = {
+        "{run}/archive-describe.json": { method: "sessions.patch", params: { expectedSessionId: "fixture-session", expectedLifecycleRevision: "1" } },
+        "{run}/reset-describe.json": { method: "sessions.reset", params: { expectedSessionId: "fixture-session" } },
+      };
+      const fixture = fixtures[flag("--merge-from")];
+      assert.equal(fixture?.method, method, `${label}: missing merge fixture`);
+      Object.assign(params, fixture.params);
+    }
+    requests += 1;
+    if (method === "sessions.get") {
+      // This handler has no ParamsSchema: sessions-read-by-key.ts accepts key/sessionKey,
+      // optional agentId and a positive limit. Keep this exception explicit.
+      if (flag("--session-from")) params.key = "agent:main:fixture";
+      assert.equal(typeof (params.key ?? params.sessionKey), "string", label);
+      assert.ok((params.key ?? params.sessionKey).trim(), label);
+      assert.ok(params.limit === undefined || (Number.isInteger(params.limit) && params.limit > 0), label);
+      assert.ok(params.agentId === undefined || (typeof params.agentId === "string" && params.agentId.trim()), label);
+      assert.ok(Object.keys(params).every((key) => ["key", "sessionKey", "agentId", "limit"].includes(key)), label);
+      continue;
+    }
+    const name = aliases[method] ?? `${method.split(".").map((part) => part[0].toUpperCase() + part.slice(1)).join("")}ParamsSchema`;
+    const schema = schemas[name];
+    assert.ok(schema, `${label}: missing ${name}`);
+    if (flag("--session-from")) {
+      const keys = ["key", "sessionKey"].filter((key) => schema.properties?.[key]);
+      assert.equal(keys.length, 1, `${label}: ambiguous session identity`);
+      assert.equal(params[keys[0]], undefined, `${label}: duplicate session identity`);
+      params[keys[0]] = "agent:main:fixture";
+    }
+    if (flag("--from")) {
+      const source = outputs.get(flag("--from"));
+      assert.equal(source?.phase, phase.id, `${label}: input must be written earlier in this phase`);
+      assert.equal(source.params.key, params.key, `${label}: input belongs to another session`);
+      if (method === "sessions.setInvolvement") {
+        assert.equal(source.method, "sessions.describe", label);
+        assert.equal(params.expectedSessionId, undefined, `${label}: identity must come from the read`);
+        params.expectedSessionId = source.result.session.sessionId;
+      } else if (method === "sessions.processes.stop") {
+        assert.equal(source.method, "sessions.processes.list", label);
+        assert.equal(source.result.sessionId, params.sessionId, label);
+        const matches = source.result.processes.filter((item) => item.processId === params.processId);
+        assert.equal(matches.length, 1, `${label}: process identity must match exactly once`);
+        assert.equal(params.instanceId, undefined, `${label}: incarnation must come from the read`);
+        params.instanceId = matches[0].instanceId;
+      } else assert.fail(`${label}: missing --from contract`);
+    }
+    if (flag("--out")) {
+      // Synthetic read results exercise the declared input mapping, not live handlers.
+      const result = method === "sessions.describe" ? { session: { key: params.key, sessionId: "fixture-session" } }
+        : method === "sessions.processes.list" ? {
+          sessionId: "{persona:session-workspace-changes:sessionId}",
+          processes: [{ processId: "{persona:session-workspace-changes:processId}", instanceId: "fixture-incarnation", name: "fixture", status: "running", startedAt: 1, tail: "", truncated: false, canStop: true }],
+          truncated: false,
+        } : undefined;
+      if (method === "sessions.processes.list") assert.ok(Compile(schemas.SessionsProcessesListResultSchema).Check(result), label);
+      outputs.set(flag("--out"), { phase: phase.id, method, params, result });
+    }
+    if (!validators.has(name)) validators.set(name, Compile(schema));
+    const validator = validators.get(name);
+    if (!validator.Check(params)) failures.push(`${label}: ${JSON.stringify(validator.Errors(params))}`);
+  }
+  assert.equal(requests, 179);
+  assert.equal(joins, 2);
+  t.diagnostic(`${requests} Gateway requests and ${joins} handle joins checked at ${revision}`);
+  assert.deepEqual(failures, []);
 });
 
 test("canonical phase hashing ignores object key insertion order and retains array order", () => {

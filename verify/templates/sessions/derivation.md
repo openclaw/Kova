@@ -25,8 +25,12 @@ src/plugin-sdk/*session*.ts, docs/plugins/hooks/prompt-and-session.md: owned by 
 docs/nodes/talk/*: owned by talk
 docs/tools/acp-agents/sessions.md, src/acp/**: owned by ACP
 src/infra/heartbeat-*.ts, src/cron/**, src/channels/** other than src/channels/session*.ts: owned by heartbeat, cron and channels (they reach this area; listed as entry points of kind from <area>)
-src/commands/doctor-session-*.ts, src/commands/sessions*.ts, src/cli/program/register.status-health-sessions.ts, src/cli/attach-cli.ts, src/cli/tui-cli.ts: CLI command bodies outside the area globs, owned by doctor and the CLI program; their commands are listed as entry points
+src/commands/doctor-session-*.ts, src/cli/attach-cli.ts, src/cli/tui-cli.ts: command bodies outside the area globs, owned by doctor and the CLI program; their commands are listed as entry points. The sessions command bodies and their shared registration are included below.
 Windows-only path handling (src/config/sessions/*windows*, junction creation): owned by platform; a break that needs Windows is outside this template's reach
+
+## Reconciled caller paths
+
+The current area includes `src/commands/sessions*.ts`, `src/cli/program/register.status-health-sessions.ts`, `ui/src/lib/session-progress-cards.ts` and `ui/src/pages/config/session-storage.ts`. The existing phases now select their concrete callers: listing and table rendering select `browse-sessions`; tail selects `inspect-status`; lifecycle commands select `archive-restore` and `delete-session`; compact selects `compact-session`; cleanup and the storage panel select `maintain-session-store`; the progress-card client selects `publish-progress`. The shared CLI registration selects each sessions CLI phase, including import and export. These are corrections to path coverage at the recorded revision, without a new derivation run.
 
 ## Operations
 | Operation | Entry points | Kinds |
@@ -546,4 +550,20 @@ The area input now records search symbols and literals recovered from the entry 
 
 Each phase lists the persona traits named by its placeholders and the additional provider, configuration and ambient state its intent requires. The header is their union. Script flags and status follow catalogue/openclaw.json; historical --timeout-ms spellings use --timeout, sessions list uses sessions, and the all-agent tail form places tail before its flags. Embedded JSON newlines are escaped.
 
-All 60 historical phases and their command variants are represented in 64 current phases. To satisfy the current timeout-sum rule, the three setup sequences are divided at existing command boundaries into seven setup phases. Their first segments retain the original identifiers; later segments have descriptive suffixes. Commands, their order, background lifetimes and shared result files are unchanged, and original checkpoints remain on each sequence's final segment. Operation and event bounds are raised to their explicit command-timeout sums where needed, with slow set when the result exceeds 300000 milliseconds. Conditions assumed to persist across later phases remain historical assumptions rather than demonstrated execution evidence.
+All 60 historical phases and their command variants are represented in 64 current phases. To satisfy the current timeout-sum rule, the three setup sequences are divided at existing command boundaries into seven setup phases. Their first segments retain the original identifiers; later segments have descriptive suffixes. At that conversion, commands, their order, background lifetimes and shared result files were unchanged, and original checkpoints remain on each sequence's final segment. Operation and event bounds are raised to their explicit command-timeout sums where needed, with slow set when the result exceeds 300000 milliseconds. Conditions assumed to persist across later phases remain historical assumptions rather than demonstrated execution evidence.
+
+## Gateway parameter checks
+
+The request payloads follow the schemas at the recorded OpenClaw revision: search is bounded to 25 results, branch navigation uses `sessionKey` and `leafEntryId`, and bulk edits use `targets[].key` plus a `patch` object. Cron-session queries search session keys for `:cron:` (and the configured job ID for the isolated-job case) with `excludeCron: false`; the list API has no `kinds` filter.
+
+Run `KOVA_OPENCLAW_CHECKOUT=/path/to/openclaw node --test tests/verify-plan.mjs` with that checkout at the recorded revision and its declared `jiti` and `typebox` dependencies available. The optional check imports the actual protocol schemas, supplies fixture session identities for `--session-from` and archive/reset expectations for `--merge-from`, and validates every request, including withheld phases. Handle joins validate their originating request. `sessions.get` has no parameter schema at this revision; its requests are checked against the key, agent and limit contract in `sessions-read-by-key.ts`. The check skips when the checkout is absent. This proves parameter shapes, not helper execution or live phase outcomes.
+
+The later schema correction also uses `sessionKey` and `question` for the Home
+companion, `key` for message subscriptions and processes, `name` for group
+rename, `cwd` plus `worktree` for group updates, `identityId` for sharing
+members, `text` and `id` for suggestions, and explicit session expectations for
+involvement and public sharing. Durable keys, earlier result files and the
+narrowed cleanup/reveal/publication coverage are recorded in coverage.md.
+The optional schema check validates the two `--from` mappings with synthetic
+read results, including same-phase producer order and matching session/process
+identity. It is not proof that the unfinished Gateway helper executes them.

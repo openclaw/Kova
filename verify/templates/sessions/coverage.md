@@ -6,7 +6,7 @@ Entry points: 348/455 (107 excluded)
 Breaks mapped: 19/22
 
 Uncovered:
-- sessions.github.publish / sessions.github.confirm (entry points): publication needs a real GitHub repository and token, a real external service; options and status are recorded (C and D)
+- sessions.github.publish / sessions.github.confirm / sessions.github.status (entry points): publication needs a real GitHub repository and token, a real external service. Status requires the requestId returned by that publication, so both status requests are outside reach under credential-free execution. Options remain recorded; the historical C and D status requests were removed after schema validation.
 - `openclaw.sessions.list.v1`, `openclaw.sessions.read.v1` and the receiver catalog "OpenClaw sessions" (entry points): need a second Gateway with a paired node host running the session-share plugin (C and D)
 - openclaw tui <target> with a Control UI URL, gateway shorthand or short reference (branch of entry point openclaw tui): run-tui-message-turn.mjs opens the TUI by session name; only --session is driven (C and D)
 - openclaw resume picker (branch of entry point openclaw resume): the picker needs an interactive TTY selection; query, handoff and session-URL forms are driven (C; D drives the query form)
@@ -90,5 +90,38 @@ These descriptions are retained from the historical derivation. A plan checks th
 
 Historical limits:
 - The totals above describe the reconciled historical coverage, not executed proof. The current heading-based comparison has missing figures, recorded in comparison.md.
-- The 60 historical phases are represented by 64 current phases: the three setup sequences are divided into seven bounded setup phases, and longer operation and event phases use explicit slow bounds. Commands and background lifetimes are preserved.
+- The 60 historical phases are represented by 64 current phases: the three setup sequences are divided into seven bounded setup phases, and longer operation and event phases use explicit slow bounds. Background lifetimes are preserved. The schema corrections below supersede the original command forms.
 - The recorded broadcast-event and manual-operation classifications predate the current derivation rules and remain identified in derivation.md.
+
+## Current schema requirements and limits
+
+- `session-workspace-changes` must expose `sessionId` as well as its existing
+  `key` and `processId`. `session-shared-readonly` must expose `sessionId`,
+  `memberIdentityId` and its existing `suggestionId`. The declarations are in
+  [Persona](../../../docs/verify/persona.md#sessions-identity-keys). Missing keys
+  withhold the affected phases; this document does not claim they are built.
+- `session-files-changes` writes `workspace-processes.json` with
+  `sessions.processes.list` before stopping the matching process. The stop
+  reads its `instanceId` through `--from` and requires the observed session id
+  to match the persona's `sessionId`. It retains the separate main-session
+  process listing. A missing or ambiguous process cannot supply an identity.
+- `browse-sessions` describes the new session into `involvement-describe.json`
+  before reading its current session id through `--from` for
+  `sessions.setInvolvement`. `hidden: true` removes it from the signed-in
+  person's involvement list without changing access.
+- `sessions.cleanup` has no RPC dry-run option at the pinned revision. The two
+  RPC calls use `enforce: false` and the schema's `agent` selector where needed;
+  they run the configured cleanup mode and may mutate disposable run state.
+  Preview coverage is limited to the existing CLI `--dry-run` calls. RPC-only
+  preview is outside reach because the API does not offer it.
+- `sessions.files.reveal` reveals the session workspace, not an arbitrary file;
+  the unsupported path was removed. File-level reveal is outside reach of this
+  RPC. Listing, reading and editing the selected file remain covered.
+- `share-session` adds a suggestion and resolves the persona's stored pending
+  suggestion. The new suggestion's resolution is not claimed. Public sharing
+  uses the durable session id as its concurrency expectation.
+
+The current 179 Gateway requests include two added identity reads and exclude
+the two GitHub status requests. The two existing background joins remain.
+These corrections do not recalculate historical coverage figures or establish
+live execution; the helpers marked `toWrite` still withhold their phases.

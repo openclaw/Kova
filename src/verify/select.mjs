@@ -73,7 +73,7 @@ export function selectPhases({ paths, standard, templates, areas, extraPhases = 
     if (byId.has(record.phase.id)) throw new Error(`duplicate phase: ${record.phase.id}`);
     byId.set(record.phase.id, record);
   }
-  const selected = new Set(records.filter((record) => record.group === "intent" || (record.group === "template" && changed.some((path) => matchesPaths(path, record.phase.paths)))));
+  const selected = new Set(records.filter((record) => record.group === "template" && changed.some((path) => matchesPaths(path, record.phase.paths))));
   const mapped = changed.filter((path) => [...selected].some((record) => matchesPaths(path, record.phase.paths)));
   const unmapped = changed.filter((path) => !mapped.includes(path)).flatMap((path) => {
     const owners = areas.filter((area) => matchesPaths(path, [...area.paths, ...(area.bound?.includes ?? []).flatMap((line) => {
@@ -84,6 +84,7 @@ export function selectPhases({ paths, standard, templates, areas, extraPhases = 
     })]));
     return owners.length ? owners.map((area) => `no phase for ${path} in ${area.id}`) : [`no template for ${path}`];
   });
+  for (const record of records) if (record.group === "intent") selected.add(record);
   if (changed.length || extraPhases.phases.length) for (const record of records) if (record.source === "standard") selected.add(record);
   const writers = new Map();
   for (const record of records) for (const file of record.writes) {

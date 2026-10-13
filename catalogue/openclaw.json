@@ -5607,6 +5607,10 @@
         "--env": {
           "description": "OCM environment name",
           "value": "required"
+        },
+        "--from": {
+          "description": "Earlier sessions.processes.list result file under {run}; require its sessionId to match --params, select exactly one process matching processId and read instanceId from that row; refuse missing or ambiguous identities",
+          "value": "required"
         }
       },
       "prints": [
@@ -5978,6 +5982,10 @@
         },
         "--env": {
           "description": "OCM environment name",
+          "value": "required"
+        },
+        "--from": {
+          "description": "Earlier sessions.describe result file under {run} for the same key; read expectedSessionId from result.session.sessionId and refuse a missing or mismatched identity",
           "value": "required"
         }
       },

@@ -110,7 +110,7 @@
       "support/verify/chat-send.mjs  (chat.send then chat.history for the reply; --session-key --message --queue-mode --intent --expected-leaf --incognito-handle --timeout --background --handle --wait --session-from --after-ms --env)",
       "support/verify/control-ui.mjs  (one named Control UI flow in a headless browser; --flow --session-key --incognito-handle --locale --gateway-env --artifact-dir --out --timeout --session-from --env)",
       "support/verify/cron-isolated-run.mjs  (cron.run of an isolated job; --job-id --timeout --env)",
-      "support/verify/gateway-call.mjs  (Gateway methods named by --method; --method --params --timeout --out --background --handle --wait --session-from --merge-from --after-ms --env)",
+      "support/verify/gateway-call.mjs  (Gateway methods named by --method; --method --params --timeout --out --background --handle --wait --session-from --merge-from --after-ms --env; --from for sessions.processes.stop and sessions.setInvolvement)",
       "support/verify/goal-control.mjs  (sessions.goal.update and sessions.goal.clear with fresh operation ids; --session-key --action --goal-id --note --replay --timeout --env)",
       "support/verify/heartbeat-wake.mjs  (heartbeat wake of the main session; --timeout --env)",
       "support/verify/public-thread-read.mjs  (anonymous HTTP read of a public session thread and its share preview; --session-key --env)",
@@ -393,7 +393,7 @@
       ],
       "commands": [
         "node {kovaRoot}/support/run-cron-runtime-smoke.mjs --env {env} --artifact-dir {run}/cron-smoke --timeout 150000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"agentId\":\"main\",\"kinds\":[\"cron\"],\"excludeCron\":false}' --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"agentId\":\"main\",\"excludeCron\":false,\"search\":\":cron:\"}' --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --params '{\"key\":\"agent:main:main\"}' --timeout 30000"
       ],
       "checkpoint": [
@@ -518,10 +518,10 @@
         "session-with-worktree"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.companion.state --params '{}' --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.companion.ask --params '{\"message\":\"Reply with exact ASCII text KOVA_HOME_OK only.\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.companion.state --params '{\"sessionKey\":\"{persona:session-with-worktree:key}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.companion.ask --params '{\"sessionKey\":\"{persona:session-with-worktree:key}\",\"question\":\"Reply with exact ASCII text KOVA_HOME_OK only.\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow talk-to-home-dock --session-key {persona:session-with-worktree:key} --artifact-dir {run}/home-dock --timeout 150000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.companion.reset --params '{}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.companion.reset --params '{\"sessionKey\":\"{persona:session-with-worktree:key}\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/chat-history-read.mjs --env {env} --session-key {persona:session-main-rolling:key} --limit 10 --timeout 30000"
       ],
       "checkpoint": [
@@ -569,9 +569,9 @@
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.get --params '{\"key\":\"{persona:session-long-compacted:key}\"}' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --params '{\"key\":\"{persona:session-long-compacted:key}\"}' --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.preview --params '{\"keys\":[\"{persona:session-long-compacted:key}\",\"{persona:session-pruned-projections:key}\"]}' --timeout 30000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.messages.subscribe --params '{\"sessionKey\":\"{persona:session-long-compacted:key}\"}' --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.messages.subscribe --params '{\"key\":\"{persona:session-long-compacted:key}\"}' --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.history --params '{\"sessionKey\":\"{persona:session-pruned-projections:key}\",\"limit\":50}' --timeout 60000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.messages.unsubscribe --params '{\"sessionKey\":\"{persona:session-long-compacted:key}\"}' --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.messages.unsubscribe --params '{\"key\":\"{persona:session-long-compacted:key}\"}' --timeout 30000",
         "node {kovaRoot}/support/verify/chat-history-read.mjs --env {env} --session-key {persona:session-long-compacted:key} --limit 50 --follow-delta --timeout 60000",
         "node {kovaRoot}/support/verify/chat-history-read.mjs --env {env} --session-key {persona:session-long-compacted:key} --message-id {persona:session-long-compacted:anchorMessageId} --limit 20 --timeout 60000",
         "node {kovaRoot}/support/verify/chat-history-read.mjs --env {env} --session-key {persona:session-main-rolling:key} --limit 16 --follow-delta --timeout 60000",
@@ -775,7 +775,11 @@
         "src/gateway/session-row-*.ts",
         "src/gateway/session-utils*.ts",
         "src/config/sessions/**",
-        "src/cli/sessions-*.ts"
+        "src/cli/sessions-*.ts",
+        "src/commands/sessions.ts",
+        "src/commands/sessions-table.ts",
+        "src/commands/sessions-display-model.ts",
+        "src/cli/program/register.status-health-sessions.ts"
       ],
       "requires": [
         "agents-multiple-with-global-key",
@@ -798,7 +802,8 @@
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"agentId\":\"main\",\"includeActivitySummary\":true,\"limit\":20}' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.activitySummary.ensure --params '{\"sessions\":[{\"key\":\"{persona:session-long-compacted:key}\"}]}' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.subscribe --params '{\"agentId\":\"main\",\"limit\":20}' --timeout 60000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.setInvolvement --session-from {run}/new-session.json --params '{\"involved\":false}' --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --session-from {run}/new-session.json --params '{}' --out {run}/involvement-describe.json --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.setInvolvement --session-from {run}/new-session.json --params '{\"hidden\":true}' --from {run}/involvement-describe.json --timeout 30000",
         "ocm @{env} -- sessions --json --limit 25",
         "ocm @{env} -- sessions --all-agents --json --limit 25",
         "ocm @{env} -- sessions --json --limit all",
@@ -814,7 +819,7 @@
         "timing",
         "screen"
       ],
-      "timeoutMs": 970000,
+      "timeoutMs": 1000000,
       "browser": true,
       "slow": true
     },
@@ -870,7 +875,9 @@
         "ui/src/components/session-row-*.ts",
         "ui/src/components/sidebar-attention*.ts",
         "src/gateway/server-methods/session-active-runs.ts",
-        "src/gateway/active-sessions-*.ts"
+        "src/gateway/active-sessions-*.ts",
+        "src/commands/sessions-tail.ts",
+        "src/cli/program/register.status-health-sessions.ts"
       ],
       "requires": [
         "mock-provider-held-turn",
@@ -964,7 +971,8 @@
         "src/gateway/server-chat-progress-snapshot.ts",
         "src/agents/tools/progress-card-tool.ts",
         "ui/src/components/session-progress-*.ts",
-        "ui/src/pages/chat/**"
+        "ui/src/pages/chat/**",
+        "ui/src/lib/session-progress-cards.ts"
       ],
       "requires": [
         "mock-provider-tool-calls",
@@ -1030,9 +1038,9 @@
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.patch --session-from {run}/new-session.json --params '{\"unread\":true}' --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.groups.list --params '{}' --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.groups.put --params '{\"names\":[\"Kova\",\"Reviews\"]}' --timeout 30000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.groups.rename --params '{\"from\":\"Reviews\",\"to\":\"Kova Reviews\"}' --timeout 30000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.groups.update --params '{\"name\":\"Kova Reviews\",\"workingDirectory\":\"{persona:session-with-worktree:workspaceDir}\"}' --timeout 30000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.patchMany --params '{\"targets\":[{\"sessionKey\":\"agent:main:kova-rpc-send\"},{\"sessionKey\":\"{persona:sessions-organized-mixed:pinnedKey}\"}],\"category\":\"Kova Reviews\"}' --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.groups.rename --params '{\"to\":\"Kova Reviews\",\"name\":\"Reviews\"}' --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.groups.update --params '{\"name\":\"Kova Reviews\",\"cwd\":\"{persona:session-with-worktree:workspaceDir}\",\"worktree\":true}' --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.patchMany --params '{\"targets\":[{\"key\":\"agent:main:kova-rpc-send\"},{\"key\":\"{persona:sessions-organized-mixed:pinnedKey}\"}],\"patch\":{\"category\":\"Kova Reviews\"}}' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.assignOwner --session-from {run}/new-session.json --params '{\"owner\":{\"type\":\"human\",\"id\":\"{persona:gateway-multi-user-profiles:memberProfileId}\"}}' --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.groups.delete --params '{\"name\":\"Kova Reviews\"}' --timeout 30000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/new-session.json --tool sessions --args '{\"action\":\"patch\",\"label\":\"kova-session-D-tool\",\"group\":\"Kova\"}' --timeout 200000",
@@ -1066,7 +1074,9 @@
         "ui/src/components/session-menu-access.ts",
         "src/gateway/session-archive.runtime.ts",
         "src/gateway/session-row-projection-archive.ts",
-        "src/cli/sessions-*.ts"
+        "src/cli/sessions-*.ts",
+        "src/commands/sessions-lifecycle.ts",
+        "src/cli/program/register.status-health-sessions.ts"
       ],
       "requires": [
         "mock-provider-held-turn",
@@ -1082,7 +1092,7 @@
         "ocm @{env} -- sessions archive agent:main:kova-rpc-send --dry-run --json",
         "ocm @{env} -- sessions archive agent:main:kova-rpc-send agent:main:main --json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.patch --params '{\"key\":\"agent:main:kova-rpc-send\",\"archived\":false}' --merge-from {run}/archive-describe.json --timeout 60000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.patchMany --params '{\"targets\":[{\"sessionKey\":\"agent:main:kova-rpc-send\"},{\"sessionKey\":\"{persona:sessions-organized-mixed:archivedKey}\"}],\"archived\":true}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.patchMany --params '{\"targets\":[{\"key\":\"agent:main:kova-rpc-send\"},{\"key\":\"{persona:sessions-organized-mixed:archivedKey}\"}],\"patch\":{\"archived\":true}}' --timeout 120000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/new-session.json --tool sessions --args '{\"action\":\"patch\",\"sessionKey\":\"agent:main:kova-rpc-send\",\"archived\":false}' --timeout 200000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"agentId\":\"main\",\"archived\":\"all\",\"search\":\"kova\",\"limit\":50}' --timeout 60000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow archive-undo-restore --session-key agent:main:kova-rpc-send --artifact-dir {run}/ui/archive --timeout 150000",
@@ -1127,7 +1137,7 @@
       "commands": [
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.patch --params '{\"key\":\"{persona:session-group-watched:key}\",\"thinkingLevel\":\"low\",\"fastMode\":true}' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.patch --params '{\"key\":\"{persona:session-group-watched:key}\",\"model\":null,\"fastMode\":null}' --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.patchMany --params '{\"targets\":[{\"key\":\"{persona:session-pair-watched:keyA}\"},{\"key\":\"{persona:session-pair-watched:keyB}\"}],\"thinkingLevel\":\"medium\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.patchMany --params '{\"targets\":[{\"key\":\"{persona:session-pair-watched:keyA}\"},{\"key\":\"{persona:session-pair-watched:keyB}\"}],\"patch\":{\"thinkingLevel\":\"medium\"}}' --timeout 120000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --tool session_status --args '{\"sessionKey\":\"current\",\"model\":\"default\"}' --timeout 90000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow composer-model-effort-fast --session-key {persona:session-group-watched:key} --artifact-dir {run}/model --timeout 90000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --params '{\"key\":\"{persona:session-group-watched:key}\"}' --timeout 120000",
@@ -1147,7 +1157,7 @@
     {
       "id": "session-files-changes",
       "kind": "operation",
-      "intent": "A user lists, previews, edits and reveals files of a session with workspace changes, lists and stops its processes, reads its diff and GitHub publication options and status while other sessions run, observing file contents, hashes, process rows and diff output.",
+      "intent": "A user lists, previews, edits files and reveals the workspace of a session with workspace changes, lists and stops its processes, reads its diff and GitHub publication options while other sessions run, observing file contents, hashes, process rows and diff output.",
       "paths": [
         "src/gateway/server-methods/sessions-files.ts",
         "src/gateway/server-methods/session-processes.ts",
@@ -1172,14 +1182,13 @@
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.files.get --params '{\"sessionKey\":\"{persona:session-workspace-changes:key}\",\"path\":\"{persona:session-workspace-changes:filePath}\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.files.set --params '{\"sessionKey\":\"{persona:session-workspace-changes:key}\",\"path\":\"{persona:session-workspace-changes:filePath}\",\"content\":\"kova verify edit\\n\",\"expectedHash\":\"{persona:session-workspace-changes:fileHash}\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.files.assets --params '{\"sessionKey\":\"{persona:session-workspace-changes:key}\",\"path\":\"{persona:session-workspace-changes:htmlPath}\",\"refs\":[\"./style.css\"]}' --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.files.reveal --params '{\"sessionKey\":\"{persona:session-workspace-changes:key}\",\"path\":\"{persona:session-workspace-changes:filePath}\"}' --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.processes.list --params '{\"sessionKey\":\"{persona:session-main-rolling:key}\"}' --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.processes.stop --params '{\"sessionKey\":\"{persona:session-workspace-changes:key}\",\"processId\":\"{persona:session-workspace-changes:processId}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.files.reveal --params '{\"key\":\"{persona:session-workspace-changes:key}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.processes.list --params '{\"key\":\"{persona:session-main-rolling:key}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.processes.list --params '{\"key\":\"{persona:session-workspace-changes:key}\"}' --out {run}/workspace-processes.json --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.processes.stop --params '{\"processId\":\"{persona:session-workspace-changes:processId}\",\"key\":\"{persona:session-workspace-changes:key}\",\"sessionId\":\"{persona:session-workspace-changes:sessionId}\"}' --from {run}/workspace-processes.json --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.diff --params '{\"sessionKey\":\"{persona:session-workspace-changes:key}\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.github.options --params '{\"sessionKey\":\"{persona:session-workspace-changes:key}\"}' --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.github.status --params '{\"sessionKey\":\"{persona:session-workspace-changes:key}\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.github.options --params '{\"sessionKey\":\"{persona:session-workspace-changes:key}\",\"agentId\":\"main\"}' --timeout 30000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.github.status --params '{\"sessionKey\":\"{persona:session-workspace-changes:key}\",\"agentId\":\"main\"}' --timeout 30000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow files-changes-processes-panels --session-key {persona:session-workspace-changes:key} --artifact-dir {run}/ui/files --timeout 150000"
       ],
       "checkpoint": [
@@ -1189,14 +1198,14 @@
         "state:agents/main/agent/openclaw-agent.sqlite",
         "screen"
       ],
-      "timeoutMs": 1410000,
+      "timeoutMs": 1380000,
       "browser": true,
       "slow": true
     },
     {
       "id": "share-session",
       "kind": "operation",
-      "intent": "An owner shares a session read-only and in suggest mode with a teammate, who submits a suggestion that the owner resolves, then publishes the thread publicly, reads it signed out and withdraws it, on a multi-user Gateway while other sessions run, observing sharing state, members, suggestions, public reads and the sharing dialog.",
+      "intent": "An owner shares a session read-only and in suggest mode with a teammate, who submits a suggestion; the owner also resolves a stored pending suggestion, then publishes the thread publicly, reads it signed out and withdraws it, on a multi-user Gateway while other sessions run, observing sharing state, members, suggestions, public reads and the sharing dialog.",
       "paths": [
         "src/gateway/server-methods/sessions-sharing.ts",
         "src/gateway/server-methods/sessions-suggestions.ts",
@@ -1221,18 +1230,18 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.visibility.set --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\",\"visibility\":\"suggest\"}' --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.members.add --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\",\"profileId\":\"{persona:gateway-multi-user-profiles:memberProfileId}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.members.add --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\",\"identityId\":\"{persona:session-shared-readonly:memberIdentityId}\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.members.list --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.members.listEvidence --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\"}' --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.suggestions.add --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\",\"message\":\"Suggested follow-up from a viewer.\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.suggestions.add --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\",\"text\":\"Suggested follow-up from a viewer.\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.suggestions.list --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\"}' --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.suggestions.resolve --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\",\"suggestionId\":\"{persona:session-shared-readonly:suggestionId}\",\"resolution\":\"dismiss\"}' --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.members.remove --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\",\"profileId\":\"{persona:gateway-multi-user-profiles:memberProfileId}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.suggestions.resolve --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\",\"resolution\":\"dismiss\",\"id\":\"{persona:session-shared-readonly:suggestionId}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.members.remove --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\",\"identityId\":\"{persona:session-shared-readonly:memberIdentityId}\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.visibility.set --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\",\"visibility\":\"read-only\"}' --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.publicShare.set --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\",\"enabled\":true}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.publicShare.set --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\",\"enabled\":true,\"expectedSessionId\":\"{persona:session-shared-readonly:sessionId}\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/public-thread-read.mjs --env {env} --session-key {persona:session-shared-readonly:key}",
         "node {kovaRoot}/support/verify/public-thread-read.mjs --env {env} --session-key {persona:session-public-shared:key}",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.publicShare.set --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\",\"enabled\":false}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.publicShare.set --params '{\"sessionKey\":\"{persona:session-shared-readonly:key}\",\"enabled\":false,\"expectedSessionId\":\"{persona:session-shared-readonly:sessionId}\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow session-sharing-dialog --session-key {persona:session-public-shared:key} --artifact-dir {run}/sharing --timeout 150000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.visibility.set --session-from {run}/new-session.json --params '{\"visibility\":\"shared\"}' --timeout 30000"
       ],
@@ -1276,8 +1285,8 @@
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"parentSessionKey\":\"{persona:session-main-rolling:key}\",\"fork\":true,\"forkFrom\":\"last-completed\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.fork --params '{\"sessionKey\":\"{persona:transcripts-cold-stored:key}\",\"entryId\":\"{persona:transcripts-cold-stored:userEntryId}\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.rewind --params '{\"sessionKey\":\"{persona:transcripts-cold-stored:key}\",\"entryId\":\"{persona:transcripts-cold-stored:userEntryId}\"}' --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.branches.list --params '{\"key\":\"{persona:transcripts-cold-stored:key}\"}' --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.branches.switch --params '{\"sessionKey\":\"{persona:transcripts-cold-stored:key}\",\"leafId\":\"{persona:transcripts-cold-stored:leafEntryId}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.branches.list --params '{\"sessionKey\":\"{persona:transcripts-cold-stored:key}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.branches.switch --params '{\"sessionKey\":\"{persona:transcripts-cold-stored:key}\",\"leafEntryId\":\"{persona:transcripts-cold-stored:leafEntryId}\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:transcripts-cold-stored:key} --message \"Reply with exact ASCII text KOVA_LEAF_OK only.\" --expected-leaf {persona:transcripts-cold-stored:leafEntryId} --timeout 120000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow fork-from-message --session-key {persona:session-long-compacted:key} --artifact-dir {run}/fork --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"agentId\":\"main\",\"parentSessionKey\":\"{persona:session-long-compacted:key}\",\"fork\":true,\"forkFrom\":\"last-completed\",\"label\":\"kova-fork\"}' --out {run}/fork.json --timeout 120000",
@@ -1421,7 +1430,8 @@
         "ui/src/components/app-sidebar-session-catalog*.ts",
         "src/gateway/server-methods/session-catalog-import.ts",
         "src/gateway/server-methods/session-catalog-gateway-copy.ts",
-        "src/cli/session-target.ts"
+        "src/cli/session-target.ts",
+        "src/cli/program/register.status-health-sessions.ts"
       ],
       "requires": [
         "catalog-claude-transcript"
@@ -1459,7 +1469,8 @@
         "src/auto-reply/reply/session*.ts",
         "ui/src/pages/chat/chat-commands.ts",
         "ui/src/pages/chat/chat-command-executor.ts",
-        "ui/src/components/session-menu*.ts"
+        "ui/src/components/session-menu*.ts",
+        "src/cli/program/register.status-health-sessions.ts"
       ],
       "requires": [
         "mock-provider-held-turn",
@@ -1540,7 +1551,9 @@
         "src/agents/sessions/manual-compaction-preflight.ts",
         "src/auto-reply/reply/session*.ts",
         "src/cli/sessions-*.ts",
-        "src/gateway/server-methods/sessions-compaction-runner.ts"
+        "src/gateway/server-methods/sessions-compaction-runner.ts",
+        "src/commands/sessions-compact.ts",
+        "src/cli/program/register.status-health-sessions.ts"
       ],
       "requires": [
         "mock-provider-held-turn",
@@ -1579,7 +1592,10 @@
         "src/config/sessions/cleanup-*.ts",
         "src/config/sessions/**",
         "src/config/io.session-store-owner.ts",
-        "src/cli/sessions-*.ts"
+        "src/cli/sessions-*.ts",
+        "src/commands/sessions-cleanup*.ts",
+        "ui/src/pages/config/session-storage.ts",
+        "src/cli/program/register.status-health-sessions.ts"
       ],
       "requires": [
         "mock-provider-held-turn",
@@ -1600,7 +1616,7 @@
         "ocm @{env} -- sessions cleanup --dry-run --fix-dm-scope --json",
         "ocm @{env} -- sessions cleanup --enforce --active-key {persona:session-group-watched:key} --json",
         "ocm @{env} -- sessions cleanup --enforce --fix-dm-scope --fix-missing --json",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.cleanup --params '{\"dryRun\":true}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.cleanup --params '{\"enforce\":false}' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.storage.status --params '{}' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.storage.run --params '{}' --timeout 120000",
         "ocm @{env} -- doctor --session-sqlite inspect --session-sqlite-all-agents --json",
@@ -1701,7 +1717,7 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/cron-isolated-run.mjs --env {env} --job-id {persona:cron-job-isolated:jobId} --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"kinds\":[\"cron\"],\"limit\":50}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"limit\":50,\"search\":\":cron:{persona:cron-job-isolated:jobId}\",\"excludeCron\":false}' --timeout 120000",
         "ocm @{env} -- sessions cleanup --dry-run --json"
       ],
       "checkpoint": [
@@ -2060,12 +2076,12 @@
         "session-long-compacted"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"agentId\":\"main\",\"query\":\"{persona:session-long-compacted:searchWord}\",\"limit\":50}' --timeout 120000 --background --handle {run}/concurrent-search.json",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"agentId\":\"main\",\"query\":\"{persona:session-long-compacted:searchWord}\",\"limit\":25}' --timeout 120000 --background --handle {run}/concurrent-search.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method progressCard.put --session-from {run}/new-session.json --params '{\"plan\":[{\"step\":\"Concurrent save\",\"status\":\"in_progress\"}],\"markdown\":\"Saved during a search.\"}' --timeout 120000 --background --handle {run}/concurrent-card.json",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-from {run}/new-session.json --message \"Reply with exact ASCII text KOVA_AGENT_OK only.\" --timeout 200000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --wait {run}/concurrent-search.json --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method progressCard.put --wait {run}/concurrent-card.json --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"query\":\"{persona:session-long-compacted:searchWord}\",\"limit\":50}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"query\":\"{persona:session-long-compacted:searchWord}\",\"limit\":25}' --timeout 120000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow palette-and-page-search --artifact-dir {run}/ui/search-after-concurrency --timeout 150000"
       ],
       "checkpoint": [
@@ -2150,7 +2166,7 @@
         "ocm @{env} -- sessions cleanup --all-agents --dry-run --json",
         "ocm @{env} -- sessions cleanup --dry-run --fix-dm-scope --json",
         "ocm @{env} -- sessions cleanup --dry-run",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.cleanup --params '{\"agentId\":\"{persona:store-stale-sessions-over-cap:agentId}\",\"dryRun\":true}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.cleanup --params '{\"agent\":\"{persona:store-stale-sessions-over-cap:agentId}\",\"enforce\":false}' --timeout 120000",
         "ocm @{env} -- sessions cleanup --enforce --active-key agent:main:main --json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"agentId\":\"{persona:store-stale-sessions-over-cap:agentId}\",\"archived\":\"all\",\"limit\":50}' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --params '{\"key\":\"{persona:sessions-organized-mixed:pinnedKey}\"}' --timeout 30000",
@@ -2328,7 +2344,9 @@
         "src/gateway/server-methods/sessions-lifecycle-drain.ts",
         "src/agents/tools/sessions-tool-control.ts",
         "ui/src/components/session-menu-access.ts",
-        "ui/src/components/app-sidebar*.ts"
+        "ui/src/components/app-sidebar*.ts",
+        "src/commands/sessions-lifecycle.ts",
+        "src/cli/program/register.status-health-sessions.ts"
       ],
       "requires": [
         "agents-multiple-with-global-key",

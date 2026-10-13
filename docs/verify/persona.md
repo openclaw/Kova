@@ -219,6 +219,43 @@ Dry runs list only runnable builders and checks, and report the withheld traits
 and reasons separately. Actual builds use the version in the exact bound runtime
 receipt. Dependency withholding propagates through the entire dependency graph.
 
+## Sessions Identity Keys
+
+The sessions template requires the following key declarations in the owning
+traits. These are additions to each trait's other keys, not a built persona or
+example identifier values. Their checks must read the identities from the
+created content. Until a manifest contains them, planning withholds the phases
+that need them.
+
+```json
+[
+  {
+    "id": "session-workspace-changes",
+    "keys": {
+      "sessionId": "the durable session id for key",
+      "processId": "the process recorded for that session"
+    }
+  },
+  {
+    "id": "session-shared-readonly",
+    "keys": {
+      "sessionId": "the durable session id for key",
+      "memberIdentityId": "the sharing identity id of the teammate for this session",
+      "suggestionId": "the id of its stored pending suggestion"
+    }
+  }
+]
+```
+
+A sharing identity is distinct from a human profile id. A process incarnation
+is observed during a run: `sessions.processes.stop` reads `instanceId` from the
+earlier `sessions.processes.list` output for the matching process and session.
+Likewise, `sessions.setInvolvement` reads `expectedSessionId` from an earlier
+`sessions.describe` output for the newly created session. These observations
+are passed through the catalogue entry's `--from` input, not stored as persona
+keys. GitHub publication request ids require a real publication and are outside
+the credential-free sessions template.
+
 ## Manifest Form
 
 `persona.json`, written by `kova persona build` into its `--out` directory:
