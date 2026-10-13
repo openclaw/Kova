@@ -1,11 +1,13 @@
 # Coverage: update
 
 Operations with retained phases: 11/21 (some retained operations have fewer entry points)
-Conditions described by retained phases: 34/520 (354 ambient, 166 event)
+Conditions described by retained phases: 37/520 (354 ambient, 166 event)
 Entry points inventoried: 203 placed/310 (107 excluded); executable coverage has not been measured
 Breaks mapped to retained phases: 0/6; all six are outside reach under OCM supervision
 
-A condition is counted here only when a retained phase describes its concrete setup and observation; runtime execution remains unproven. Reconciliation credits applicable phases from either run and excludes claims whose required inputs or actions were lost. There are 34 described conditions and 486 explicit gaps below. Phases: 37 (1 setup, 11 operation, 25 event). These are declarative descriptions, not executed results.
+A condition is counted here only when a retained phase describes its concrete setup and observation; runtime execution remains unproven. Reconciliation credits applicable phases from either run and excludes claims whose required inputs or actions were lost. There are 37 described conditions and 483 explicit gaps below. Phases: 37 (1 setup, 11 operation, 25 event). These are declarative descriptions, not executed results.
+
+The staged Doctor phase describes conditions 399, 406 and 418 with the existing `state-legacy-migratable` fixture: the database without Claw provenance columns, inherited Voice Call realtime settings and a multi-account channel without a default. Its declared pre-restoration state, config and Doctor-output captures observe the repair, copied settings and routing warning. These are described observations, not executed results.
 
 Uncovered:
 
@@ -230,10 +232,10 @@ Excluding a saved supporting scenario leaves a coverage gap; it does not make ev
 - Condition 24, Uncertain report upload pending: Check report status, no browser handoff: Reporting is intentionally unavailable; no pending or uncertain upload receipt is staged.
 - Condition 61, No usable model authentication: update, verification and rollback proceed; auth findings stay warnings: No fixture removes or invalidates the scripted model authentication.
 - Condition 62, Unavailable inference for embedded repair: external handoff, no login prompt: No fixture makes configured inference unavailable.
-- Condition 74, Target older than the installed version: downgrade confirmation required: Downgrades use --yes; no phase exercises interactive downgrade confirmation.
+- Condition 74, Target older than the installed version: downgrade confirmation required: No retained phase performs a downgrade with interactive confirmation; native mutating update scenarios are excluded.
 - Condition 76, beta dist-tag missing or older than stable: beta falls back to latest: The feed does not remove the beta tag or make it older than the current installation.
-- Condition 107, Git Doctor fails after a database snapshot: snapshots restore pre-migration state; later writes keep the migrated installation: The Git rollback scenario fails a channel probe, not Doctor after the snapshot.
-- Condition 149, Pinned Git update leaves the checkout detached; receipt preserves the upstream: Git updates choose channels, not a pinned commit.
+- Condition 107, Git Doctor fails after a database snapshot: snapshots restore pre-migration state; later writes keep the migrated installation: Native Git update and rollback scenarios are excluded; no retained phase fails Doctor after a database snapshot and observes restoration or preservation after later writes.
+- Condition 149, Pinned Git update leaves the checkout detached; receipt preserves the upstream: No retained native Git activation targets a pinned commit and observes the detached checkout and upstream receipt.
 - Condition 160, update.run without a supervising service boundary: managed-service-handoff-unavailable with a shell command: All declared Gateway environments have a supervisor.
 - Condition 164, Interactive Doctor in a Git checkout offers to update first: No phase invokes the interactive Doctor update offer in a Git installation.
 - Condition 184, Managed Bun Gateway at a different package root: service-root update, repair from another installation refuses: No Bun fixture gives the service and CLI different package roots.
@@ -246,12 +248,12 @@ Excluding a saved supporting scenario leaves a coverage gap; it does not make ev
 - Condition 280, Node shares its state directory with an older Gateway: mismatched local node rejected: No node fixture shares state with an older running Gateway.
 - Condition 281, Node update needing a migration or startup repair is deferred: No node target is constructed to require migration or repair before activation.
 - Condition 282, Node automatic updates disabled (nodeHost.autoUpdate.enabled false, checkOnStart false, OPENCLAW_NO_AUTO_UPDATE): No phase disables node automatic updates.
-- Condition 285, Dev Git install: Updates page refreshes the upstream (current, ahead, diverged, unavailable, behind): Control UI commands use the primary installation, not the Git installation.
+- Condition 285, Dev Git install: Updates page refreshes the upstream (current, ahead, diverged, unavailable, behind): The retained Updates page observes the OCM-backed primary installation. No retained phase supplies the Git upstream states and observes their refresh on that page.
 - Condition 304, Incomplete $include graph: automatic config rollback unavailable: The include fixture is valid; no phase removes or breaks an included file.
 - Condition 384, Missing file copies of canonical transcript archives: warnings only: No phase removes the canonical archive file copies from the cold-storage fixture.
 - Condition 401, Legacy agents.list roster without a default marker: unbound accounts bound to the first agent; unavailable roster blocks the account: Both declared legacy roster fixtures contain a default marker.
 - Condition 434, Read-only RPC waits get UNAVAILABLE gateway-restarting during drain: No phase starts a read-only RPC wait across the restart drain.
-- Condition 452, Restart during an upgrade records intent without migrating; no state database skips it: The active-update scenario requests stop, not restart; the migration restart happens after package replacement.
+- Condition 452, Restart during an upgrade records intent without migrating; no state database skips it: The saved active-update scenario is excluded. No retained phase requests restart during an active upgrade or supplies the absent-state-database variant.
 - Condition 465, Campaign target fixed while the installed revision changes: no outdated count or link: No held automatic campaign changes its installed Git revision.
 - Condition 485, Other foreign-key violations or structural damage refuse update admission (`db-structural-damage`): The corrupt-state fixture is exercised by Doctor or startup, not by update admission.
 - Condition 492, Schema state cannot be compared or a new database is unreadable by the previous package, refusing rollback with rollback-state-unverified (`rollback-state-unverified`): No rollback scenario makes schema state unreadable or incomparable.
@@ -268,7 +270,7 @@ Excluding a saved supporting scenario leaves a coverage gap; it does not make ev
 - Condition 13, Older updater reports database-schema-preflight with mode unknown (2026.9.4): needs an installed updater of that specific older release; the persona pins 2026.9.9
 - Condition 18, Cleanup cannot confirm admitted work stopped: ownership and recovery artifacts retained, pending execution: needs an updater child whose termination cannot be confirmed; no harness control reaches it
 - Condition 25, Retained worker close exceeds the ten-second exit grace: warning, retained runtime kept: needs a worker that refuses to close; no harness control reaches it
-- Condition 28, Interrupted pre-create report preparation becomes retryable after its reservation expires: needs an interrupted GitHub issue preparation; a real external service
+- Condition 28, Interrupted pre-create report preparation becomes retryable after its reservation expires: No retained fixture stages an interrupted report-preparation reservation and observes its expiry. Reporting remains isolated from real GitHub publication.
 - Condition 29, Unexpected exception in an admitted update retains error identity, step and facts in history: needs an unexpected exception inside the updater; no harness control raises one
 - Condition 37, Adopted immutable release installation (preparation-only or activation enabled): needs a root-owned system systemd service with sealed releases and cgroup v2; outside this template's reach
 - Condition 38, Immutable drain under committed Gateway suspension; expired or resumed suspension refuses the handoff: immutable installations are outside this template's reach
@@ -278,7 +280,7 @@ Excluding a saved supporting scenario leaves a coverage gap; it does not make ev
 - Condition 42, Hot SQLite rollback journal left in the installation control after an updater crash: immutable installations are outside this template's reach
 - Condition 44, Linux OverlayFS installation: retained worker files use private copies: needs a container that denies FICLONE
 - Condition 45, Container or filesystem refuses file cloning (Proxmox LXC FICLONE): guarded byte-copy fallback: needs a container that denies FICLONE
-- Condition 46, Docker OverlayFS rejects moving an image-layer package (EXDEV): verified copy fallback: needs a container that denies FICLONE
+- Condition 46, Docker OverlayFS rejects moving an image-layer package (EXDEV): verified copy fallback: No retained phase replaces an image-layer package on a filesystem that rejects the move with EXDEV and observes the verified copy fallback.
 - Condition 48, Retained .openclaw.package-backup-* link to a source checkout makes an older updater refuse with a plugin-link error: needs an installed updater of that specific older release; the persona pins 2026.9.9
 - Condition 49, Candidate without the admission marker or with a failing admission process: installed checks used with a warning: needs a target package without the admission marker or with a crashing admission process
 - Condition 55, Updater-owned native service command still alive: new update excluded; owner exit or lost lease stops its mutation: needs a stalled native service child; no harness control reaches it
@@ -295,13 +297,13 @@ Excluding a saved supporting scenario leaves a coverage gap; it does not make ev
 - Condition 83, Source command through pnpm openclaw refuses an automatic rebuild while the Gateway runs: needs the pnpm openclaw source wrapper; no catalogue script runs it
 - Condition 92, Validation-copy cleanup, derived-cache cleanup or Git upstream tracking fails: update continues with warnings: needs a cleanup failure; no harness control reaches it
 - Condition 93, Linux user-service supervisor inspection times out: one retry, second timeout leaves the Gateway running: needs a stalled systemd service supervisor; no harness control reaches it
-- Condition 94, Service inspection unavailable or service record stale: managed-service warning, record cannot select package, Node or state: OCM environments run under a service supervisor
+- Condition 94, Service inspection unavailable or service record stale: managed-service warning, record cannot select package, Node or state: OCM supervision does not establish unavailable or stale native service metadata; no retained fixture supplies those inspection failures or observes the package, runtime and state-selection restrictions.
 - Condition 95, Linux without a service supervisor: update proceeds when no lock or listener; nothing to restart: OCM environments run under a service supervisor
 - Condition 96, Baseline package fingerprint scan hits its budget or size limit: warning, rollback verifies identity only: needs a package tree beyond the scan limits
 - Condition 97, Package tree over the scan limits (500,000 entries or 8 GiB; older supervisors 50,000 or 1 GiB): needs a package tree beyond the scan limits
 - Condition 98, Sibling .openclaw.update-stage-* directories from another or interrupted updater: no persona trait leaves a stale stage directory
 - Condition 99, Equivalent launcher recreated keeps recovery; changed symlink target refuses the swap: needs a launcher rewrite during the update; no harness control reaches it
-- Condition 100, npm prefix parents owned by another UID: ownership refusal names object, UID and expected UID: needs a Node version switcher
+- Condition 100, Foreign-owned npm package or launcher: ownership refusal names object and UIDs; writable foreign-owned prefix parents remain permitted: No retained fixture supplies foreign-owned published objects or writable foreign-owned prefix parents and observes the distinct admission outcomes; native publication is excluded.
 - Condition 101, Node version switcher switched the shell prefix: global-install-foreign-destination unless the original prefix is kept: needs a Node version switcher
 - Condition 102, Other package tools or tools modify the installation during an update: needs a concurrent package tool; no catalogue script reaches it
 - Condition 109, Plugin files change after snapshot inventory: snapshot refused; link-only changes accepted: needs a plugin write during the snapshot; no harness control reaches it
@@ -320,7 +322,7 @@ Excluding a saved supporting scenario leaves a coverage gap; it does not make ev
 - Condition 147, Chat requester's access grant revoked during staging: pending update stops, Gateway keeps serving: no catalogue script revokes a person-access grant while an update stages
 - Condition 148, OPENCLAW_NO_RESPAWN set on a foreground Gateway: update.run refused: needs a foreground Gateway environment
 - Condition 152, Shell installer service refresh denied: code installed, service untouched: installer scripts are owned by install
-- Condition 153, LaunchAgent installed but not supervised: re-bootstrapped after the update: macOS launchd behaviour; the harness host runs Linux user services, outside this template's reach
+- Condition 153, LaunchAgent installed but not supervised: re-bootstrapped after the update: No native launchd service fixture is supplied; native service recovery is excluded from the OCM-only scope.
 - Condition 157, Updater-owned Doctor waits for a foreground Gateway to release state: needs a foreground Gateway environment
 - Condition 158, Active Gateway suspension: installation watcher does not restart during preparing, draining or prepared: gateway.suspend.* is consumed from gateway; no catalogue script holds a suspension
 - Condition 166, Shallow or partial checkout: missing objects hydrated privately, ahead/behind unavailable without a merge base: no persona trait provides a shallow checkout
@@ -335,7 +337,7 @@ Excluding a saved supporting scenario leaves a coverage gap; it does not make ev
 - Condition 192, Stopping the service unloads it and then fails before activation: original runtime restored: needs a stop failure at a precise moment
 - Condition 194, Reporting fails after a successful activation: installation kept, exit nonzero: needs a report write failure after activation
 - Condition 198, Filesystem rejects no-replace rename or hard links: hard-link publication, or audit files preserved with a warning: needs a FUSE or limited filesystem
-- Condition 199, Legacy audit raw archive changed other than by append: quarantined copy, warning repeats until resolved: needs a FUSE or limited filesystem
+- Condition 199, Legacy audit raw archive changed other than by append: quarantined archive, warning not repeated after successful quarantine: The fixture supplies the modified archive and Doctor can record its quarantine. No second Doctor pass over the repaired state observes that the warning does not repeat.
 - Condition 200, Debug capture enabled during an update: proxy persistence disabled, limitation reported: no persona trait enables debug capture
 - Condition 201, Chat-triggered update to 2026.9.6 fails with an authority-check stack overflow: needs the 2026.9.6 candidate as the target; the target is the side under test
 - Condition 204, Managed handoff lease database replaced or missing after a reboot clears temporary storage: needs the lease database removed between runs; no catalogue script reaches it
@@ -352,11 +354,11 @@ Excluding a saved supporting scenario leaves a coverage gap; it does not make ev
 - Condition 236, Container image replaced over the same mounted state: entrypoint runs doctor --fix before the Gateway: container image replacement needs a container runtime; outside this template's reach
 - Condition 237, Tenant containers from the retired fleet command left untouched by a host update: needs retired fleet tenants
 - Condition 249, Retired same-file memory index refused before canonical tables: needs a retired memory index
-- Condition 250, Masked or start-restricted systemd service: preflight refuses before replacing files: masking the service would stop every other phase
-- Condition 251, Operator masks the service during the update: service-definition warning, no rollback: masking the service would stop every other phase
+- Condition 250, Masked or start-restricted systemd service: preflight refuses before replacing files: No native systemd service fixture is supplied; masked-service preflight belongs to the excluded native update path.
+- Condition 251, Operator masks the service during the update: service-definition warning, no rollback: No retained phase runs a native update while changing its systemd service mask and observing the service-definition warning.
 - Condition 253, Compatibility config read after package replacement fails: candidate-config-read-failed: needs an unreadable config after replacement
-- Condition 254, Managed Node service points at another global installation: refreshed with gateway install --force: needs two global installations
-- Condition 255, Shell resolves a different openclaw or Node than the service: installation drift reported: needs two global installations
+- Condition 254, Managed Node service points at another global installation: refreshed with gateway install --force: No retained fixture gives a native service a different installation from the intended Gateway command or runs the native service refresh.
+- Condition 255, Shell resolves a different openclaw or Node than the service: installation drift reported: No retained fixture establishes different shell and service executable paths and observes the resulting installation-drift report.
 - Condition 256, Pending package-publication recovery blocks writable preparation: needs a pending publication journal
 - Condition 259, Retained .artifacts/dist-artifacts.lock refuses a source update: needs a stale build lock
 - Condition 261, Unparseable plugin entry during snapshot inventory: warning, files copied unchanged: needs an unparseable plugin source
@@ -377,7 +379,7 @@ Excluding a saved supporting scenario leaves a coverage gap; it does not make ev
 - Condition 305, Doctor times out after migration: process groups stopped, candidate started on migrated state, or Gateway kept stopped while writers remain: needs a Doctor timeout after migration
 - Condition 311, Live service shares a source checkout's dist output: build entry points refuse: needs a live service sharing a source checkout's dist output during a build
 - Condition 312, Source-server script without Corepack or with a pnpm pin mismatch stops before checkout update: the reference script needs a Corepack-less host
-- Condition 313, Source-server publication fails after stopping the service: previous revision restored and restarted: the reference script needs a Corepack-less host
+- Condition 313, Source-server publication fails after stopping the service: previous revision restored and restarted: No retained phase runs the source-server publication reference script or injects a publication failure after it stops the service.
 - Condition 314, Output root such as dist is a symbolic link: build refused: needs a symlinked output root
 - Condition 315, Failed npm package replacement where triage cannot start: installer rerun recovers: installer scripts are owned by install
 - Condition 316, Homebrew formula install: update leaves the formula, records skipped; service on a Cellar path: needs Homebrew
@@ -400,10 +402,10 @@ Excluding a saved supporting scenario leaves a coverage gap; it does not make ev
 - Condition 340, Installed CLI damaged or diagnostics unwritable: automatic triage reports the failure: needs a damaged CLI
 - Condition 343, Git checkout with several remotes and no branch.main.remote: needs a multi-remote checkout
 - Condition 346, Plugin dependency tree corrupted after an update: channel not loaded: needs a corrupted dependency tree
-- Condition 347, Stale per-agent OAuth shadows after re-auth: provider 401s until doctor --fix: needs OAuth profiles; the persona uses the mock provider
+- Condition 347, Stale per-agent OAuth shadows after re-auth: provider 401s until doctor --fix: The fixture supplies stale per-agent OAuth shadows for Doctor, but no retained provider exchange establishes the pre-repair 401 or successful use of the current credential after repair.
 - Condition 348, Prepared model runtime publication times out at startup (ambient credentials stage): needs an external login check that stalls
 - Condition 349, Protocol mismatch: a newer client keeps reconnecting to an older Gateway after rollback: needs a long-running newer client process connected across the downgrade
-- Condition 350, Claude Code without safe-mode support: notice, normal customization: no coding agent CLI in the harness
+- Condition 350, Claude Code without safe-mode support: notice, normal customization: The coding-agent stub supplies Codex, not a Claude Code executable without safe-mode support; that notice and customization path remain unobserved.
 - Condition 354, Update failure artifact without a run identity: unrepaired: needs a hand-written artifact
 - Condition 355, Post-turn cleanup fails: another repair refused in that process: needs a cleanup failure
 - Condition 356, Explicit exec deny or sandbox, node or remote route: embedded repair refused (exec-denied-by-policy): no persona trait sets an exec deny policy
@@ -415,7 +417,7 @@ Excluding a saved supporting scenario leaves a coverage gap; it does not make ev
 - Condition 363, Linux user-systemd automatic recovery in a native scope; explicit stop cancels it: needs automatic recovery in progress
 - Condition 364, Missing Node or CLI files: manual triage required: needs a damaged installation
 - Condition 365, Matrix dedupe scan only when Matrix is configured: The fixture includes Matrix state needing the dedupe scan, but no configured-versus-unconfigured Matrix comparison establishes that the scan runs only when Matrix is configured.
-- Condition 368, Default-layout install with only ~/.clawdbot: renamed; both directories present need manual reconciliation: renaming the state directory would replace the persona
+- Condition 368, Default-layout install with only ~/.clawdbot: renamed; both directories present need manual reconciliation: The copied legacy-state fixture does not establish a default-layout clone with only the legacy home, or a separate clone with both homes present. Copying files into the OCM state directory cannot demonstrate the home-directory rename and reconciliation cases.
 - Condition 371, Unused legacy stores (loose agent/settings.json) deferred with advisories: no persona trait leaves loose settings
 - Condition 374, Legacy workspace setup files imported; canonical record wins: The fixture includes a legacy workspace setup file, but does not establish a conflicting canonical SQLite setup record; canonical-record precedence remains unobserved.
 - Condition 375, Skill Workshop proposals exported; unowned or half-applied proposals held back: The fixture includes pending Workshop proposals, but no unowned or half-applied proposal establishes the documented holdback behavior.
@@ -431,19 +433,16 @@ Excluding a saved supporting scenario leaves a coverage gap; it does not make ev
 - Condition 392, Owner allowlist with direct-user target kinds; ambiguous owners restored from .bak history: no persona trait holds an ambiguous owner list
 - Condition 394, Retired settings.json or keybindings.json keys refused, last accepted bindings kept: The retired-state fixture includes settings.json keys, but no retained setup supplies retired keybindings alongside last accepted bindings or observes their preservation independently of earlier startup refusals.
 - Condition 395, Telegram update-offset versions 1 and 2 normalized before account startup: no Telegram account in the persona
-- Condition 399, Older database without Claw provenance columns: claws are owned by claws
 - Condition 400, Policy-only WhatsApp accounts.default beside named accounts: warning, unchanged: The fixture names a policy-only WhatsApp accounts.default, but does not establish an unlinked default beside named WhatsApp accounts or the unchanged account-selection result.
 - Condition 404, Tlon flat allowPrivateNetwork migrated; Matrix and Mattermost forms retired: The fixture names flat channel allowPrivateNetwork keys without identifying all three channel variants; supported Tlon migration and retired Matrix/Mattermost forms remain unestablished as separate cases.
-- Condition 405, Enabled webhook channel account without legacyWebhook: historical listener pinned once: the persona's test channels do not use webhook listeners
-- Condition 406, Voice Call realtime settings copied into talk.realtime: The fixture supplies inherited Voice Call realtime settings and the Doctor phase captures resulting config. This row remains conservatively uncredited because the retained description does not enumerate the source provider fields and expected Talk destinations.
+- Condition 405, Enabled webhook channel account without legacyWebhook: historical listener pinned once: The fixture supplies an enabled webhook account without legacyWebhook, but does not specify the prior-operation evidence, channel/transport and inherited-setting prerequisites that determine whether a historical endpoint is pinned. No repeated Doctor pass establishes the one-shot behavior.
 - Condition 407, Historical ACP metadata keys: startup refuses unmigrated state with a current binding: The fixture includes historical ACP metadata, but no retained setup establishes a current binding and observes startup refusal before Doctor repairs that metadata.
 - Condition 409, Retired TaskFlow Webhooks plugin entry ignored; allowlist kept explicit: The fixture includes retired TaskFlow Webhooks settings, but Doctor repair precedes any Gateway observation of the ignored entry. The sole-allowed-plugin case and preservation of an explicit allowlist are also unspecified.
 - Condition 410, Legacy Tasks rows for native Codex work imported or preserved: The fixture includes Codex-native task rows, but does not specify their requester, session, lifecycle and connection ownership stamps or acknowledgement states. It therefore does not establish which rows must import and which must remain preserved.
 - Condition 412, Local embeddings without managed llama-server setup: degraded semantic recall named: no local embeddings in the persona
 - Condition 413, Legacy credential fields (mode, apiKey) in auth stores converted; runtime rejects them: The fixture includes legacy credential fields in JSON and SQLite, and the Doctor phase records their repair. No retained command observes runtime rejection of those fields before repair.
 - Condition 415, Older Git updater keeps an in-memory config snapshot: Doctor preserves config: needs an installed updater of that specific older release; the persona pins 2026.9.9
-- Condition 417, Model migration changes a consumer's billing route: warning after saving: the persona uses the mock provider
-- Condition 418, Multi-account channel without a default account: routing warning: the persona's channels have one account each
+- Condition 417, Model migration changes a consumer's billing route: warning after saving: No retained config fixture supplies a model/consumer mapping whose migration changes the billing route, or captures the warning after that write. A mock model provider alone does not establish or prevent this config behavior.
 - Condition 425, Profile-owned skill library tables present when changing builds: no persona trait holds a skill library
 - Condition 426, Target package without schema metadata checked against the schema-1 contract: needs a pre-metadata target
 - Condition 428, Config health-state write failing: reported once per database per process: needs a failing database write
@@ -459,10 +458,10 @@ Excluding a saved supporting scenario leaves a coverage gap; it does not make ev
 - Condition 456, Sealed or unsafe service definition: gateway install --force refused: needs a sealed definition
 - Condition 457, Database ownership claimed by an external supervisor: unmarked writable opens fail: database ownership claim is consumed from database
 - Condition 459, Interactive setup prompt open at stop or restart: closed before drain: no catalogue script opens setup
-- Condition 463, Automated environment (CI set): no update check or statistics: the harness sets the endpoint, which overrides the suppression
+- Condition 463, Automated environment (CI set): no update check or statistics: No retained phase deliberately sets CI on the comparison Gateway and observes suppression without a configured endpoint override.
 - Condition 466, Older Linux host without openat2: older images report a false Gateway owner: needs a container on an old kernel
 - Condition 468, Restart policy loop on an unsafe migration: run Doctor once in the container: needs a container runtime
-- Condition 469, Update wizard selects dev without a Git checkout: offers to create one: the wizard phase cancels before the channel choice; no catalogue script answers the checkout offer
+- Condition 469, Update wizard selects dev without a Git checkout: offers to create one: No retained phase drives update wizard through dev selection or answers its offer to create a Git checkout.
 - Condition 470, Installed 2026.9.3 or 2026.9.4 updater caps rehearsal and snapshot at five minutes even with a larger --timeout: needs an installed updater of that specific older release; the persona pins 2026.9.9
 - Condition 471, Installed 2026.9.4 updater refuses with managed-service-preflight before the target runs: needs an installed updater of that specific older release; the persona pins 2026.9.9
 - Condition 472, pnpm-owned installation whose older updater triggers an interactive build-approval prompt (IO error: not a terminal): needs an installed updater of that specific older release; the persona pins 2026.9.9
@@ -492,8 +491,8 @@ Excluding a saved supporting scenario leaves a coverage gap; it does not make ev
 - Condition 512, Older persisted running or queued session statuses are normalised to interrupted at startup (`legacy-session-status`): needs persisted running or queued session statuses from an older release
 - Condition 513, Old scripts send SIGUSR1, which no longer restarts the Gateway (`sigusr1-legacy`): needs a script that still sends SIGUSR1, which starts the Node inspector instead of restarting
 - Condition 514, A forced restart from an older caller without a drain budget gets at most 45 seconds (`force-old-caller`): needs a specific older published release as the driver or caller (2026.9.2, 2026.9.4, 2026.9.5 or an older restart caller), other than the persona's pinned release
-- Condition 515, gateway restart runs inside the macOS LaunchAgent process tree and hands off to a detached helper (`restart-inside-launchagent`): outside reach on a Linux host: needs a macOS LaunchAgent service
-- Condition 516, Service-managed profile names collide by case or with reserved labels, or custom service identity variables are set (`profile-service-names`): needs a root-owned system installation or system-scope service (sealed releases, system services, root prefixes, masked or hardened services) that the OCM environment does not provide
+- Condition 515, gateway restart runs inside the macOS LaunchAgent process tree and hands off to a detached helper (`restart-inside-launchagent`): outside reach on a Linux host: No native macOS LaunchAgent service fixture is supplied; an OCM-supervised clone does not establish the inside-LaunchAgent handoff.
+- Condition 516, Service-managed profile names collide by case or with reserved labels, or custom service identity variables are set (`profile-service-names`): No retained setup supplies case-colliding or reserved profile labels or custom service-identity variables. Native service-definition scenarios are excluded.
 - Condition 517, OPENCLAW_GATEWAY_RESTART_TRACE adds restart timing lines (`restart-timing-log`): needs OPENCLAW_GATEWAY_RESTART_TRACE set on the Gateway
 - Condition 518, A custom container entrypoint bypasses Doctor activation (`custom-entrypoint`): needs a container runtime and image recreation, which an OCM environment does not provide
 - Condition 519, A Bun-only install's launcher is missing, relinked or names a moved Bun (`bun-launcher`): needs a Bun-only installation with a broken launcher
@@ -709,7 +708,7 @@ Clean-stop sequencing: repeated SIGTERM observations explicitly wait for each pr
 
 Hosted stop boundary: a valid gateway.stop.request still refuses external supervision in the pinned product. The template records that refusal and uses the bounded OCM stop helper before starting the service and observing a new generation. It does not claim that the native RPC stopped the Gateway. Restart selectors cover the run-loop implementation family, including shutdown outcome formatting and exit/log cleanup.
 
-Compound condition rows count only when all named prerequisites and observations are supplied. Partial cases remain useful scenarios but are recorded as gaps rather than credited as complete conditions. The retained 34 complete descriptions and 486 gaps do not change the discovery inventory or its comparison shares. Cleanup ownership, check suppression, bounded repair and required-store refusal select their direct implementation owners.
+Compound condition rows count only when all named prerequisites and observations are supplied. Partial cases remain useful scenarios but are recorded as gaps rather than credited as complete conditions. The retained 37 complete descriptions and 483 gaps do not change the discovery inventory or its comparison shares. Cleanup ownership, check suppression, bounded repair and required-store refusal select their direct implementation owners.
 
 Phase selection includes the legacy-config and provider-alias helper families, retired-config refusal, both deferred package lifecycle scripts and their marker/prebuild contracts, reportability policy, and the explicit repair-timeout caller, parser and registration. These corrections retain the existing scenarios and coverage totals.
 
