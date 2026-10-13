@@ -1,13 +1,14 @@
 # Coverage: update
 
 Operations with retained phases: 11/21 (some retained operations have fewer entry points)
-Conditions described by retained phases: 35/520 (354 ambient, 166 event)
+Conditions described by retained phases: 34/520 (354 ambient, 166 event)
 Entry points inventoried: 203 placed/310 (107 excluded); executable coverage has not been measured
 Breaks mapped to retained phases: 0/6; all six are outside reach under OCM supervision
 
-A condition is counted here only when a retained phase describes its concrete setup and observation; runtime execution remains unproven. Reconciliation credits applicable phases from either run and excludes claims whose required inputs or actions were lost. There are 35 described conditions and 485 explicit gaps below. Phases: 37 (1 setup, 11 operation, 25 event). These are declarative descriptions, not executed results.
+A condition is counted here only when a retained phase describes its concrete setup and observation; runtime execution remains unproven. Reconciliation credits applicable phases from either run and excludes claims whose required inputs or actions were lost. There are 34 described conditions and 486 explicit gaps below. Phases: 37 (1 setup, 11 operation, 25 event). These are declarative descriptions, not executed results.
 
 Uncovered:
+- Condition 12, A saved config failure from an earlier failed update, followed by a later success: The retained triage does not receive the saved failure artifact or sentinel. Report preview accepts only the current reportable attempt and cannot recover an older failure behind a later success. Keeping those historical rows does not establish recovery.
 - Condition 435, Cron run in flight during shutdown: cleanup window for result writes: The 120-second held cron job can finish during the earlier 300-second active-work drain. No fixture keeps pending work into the later ten-second cron cleanup window, so that cancellation and settlement behavior remains unproven.
 - Condition 290, Update checks disabled (checkOnStart false or OPENCLAW_NO_AUTO_UPDATE): no checks, statistics or notices: The bounded disabled-startup-check observation does not wait through the delayed telemetry scheduler or establish an expired success cache. Absence of requests cannot prove telemetry or daily-notice suppression.
 - Condition 137, Older npm snapshot directories reported by Doctor with size and removal command: The recovery export includes an older npm snapshot, but no Doctor observation runs while it is installed to report its size and removal command.
@@ -548,7 +549,7 @@ Persona additions:
 - state-legacy-retired: a fixture of retired pre-July state: plugins/installs.json, cron jobs.json with jobs-state.json and run logs, a JSON delivery queue, restart-sentinel.json, retired config keys, OAuth credential sidecars, retired settings.json keys and a ~/.clawdbot directory (path; filesPath is a separate export containing only retired state files and a valid supported configuration, without the retired config keys; startup uses filesPath)
 - state-retired-json: A second environment holding retired pre-July JSON state: restart-sentinel.json, plugins/installs.json and a legacy cron jobs.json store (env, fixture)
 - store-orphan-delivery-rows: Shared-database task_delivery_state rows whose parent tasks are missing (none) (inventory only; not required by a retained phase)
-- update-history-failed: Update history holding a failed run with a config failure followed by a later success, and a failed run within the last 24 hours (runId)
+- update-history-failed: Update history holding a failed config run followed by a later success, plus a recent failed run (runId). reportFixture is a separate exported baseline preserving the synthetic owner profiles, with no active run and one current reportable failed attempt; its latest ledger row and matching failure sentinel refer to reportRunId. No later success may supersede that attempt in reportFixture. The older-history rows do not establish guided recovery.
 - update-history-long: An update run whose history reached the 128-step and 16 KiB compaction limit (runId)
 - update-history-stale: A second environment whose update history holds an identityless legacy admission older than 24 hours and an active row inactive for over 30 minutes whose driver is dead (env, fixture)
 - channel-owner-route: commands.ownerAllowFrom names the test channel's direct-user target of a DM peer (peer) (named for an uncovered condition; not required by a phase)
@@ -705,7 +706,7 @@ Clean-stop sequencing: repeated SIGTERM observations explicitly wait for each pr
 
 Hosted stop boundary: a valid gateway.stop.request still refuses external supervision in the pinned product. The template records that refusal and uses the bounded OCM stop helper before starting the service and observing a new generation. It does not claim that the native RPC stopped the Gateway. Restart selectors cover the run-loop implementation family, including shutdown outcome formatting and exit/log cleanup.
 
-Compound condition rows count only when all named prerequisites and observations are supplied. Partial cases remain useful scenarios but are recorded as gaps rather than credited as complete conditions. The retained 35 complete descriptions and 485 gaps do not change the discovery inventory or its comparison shares. Cleanup ownership, check suppression, bounded repair and required-store refusal select their direct implementation owners.
+Compound condition rows count only when all named prerequisites and observations are supplied. Partial cases remain useful scenarios but are recorded as gaps rather than credited as complete conditions. The retained 34 complete descriptions and 486 gaps do not change the discovery inventory or its comparison shares. Cleanup ownership, check suppression, bounded repair and required-store refusal select their direct implementation owners.
 
 Phase selection includes the legacy-config and provider-alias helper families, retired-config refusal, both deferred package lifecycle scripts and their marker/prebuild contracts, reportability policy, and the explicit repair-timeout caller, parser and registration. These corrections retain the existing scenarios and coverage totals.
 
@@ -718,3 +719,5 @@ Doctor dispatch, plugin installation records and capability policy, queued-messa
 The disabled-restart scenario establishes both the disabled and restored enabled configuration through bounded OCM stop/start and health observation. It does not send policy-gated commands immediately after an asynchronous config write or claim hot-reload timing. Source selection includes repair transactions, installation/consent, node archive acquisition, approvals persistence, forced dispatch, startup admission and shutdown wiring.
 
 Staged Doctor repair uses the supported noninteractive repair command; the wrapper encodes its command result and captured state as JSON, rather than requesting the incompatible lint-only JSON flag. The cron restart remains a general active-job observation, with its later cleanup-window condition explicitly uncovered. Selection includes official-plugin repair, noninteractive repair policy, active-run/shutdown ownership, deferred startup checks and database health publication.
+
+Report preview restores an independent current-failure export, because the product rejects an older attempt after a later success. Guided recovery of the older failure remains uncovered. Plugin inventory refresh, resolved migration warnings, finalization, candidate database inspection, telemetry persistence and report projection select their relevant existing observations.

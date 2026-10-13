@@ -218,7 +218,8 @@
         "src/cli/update-option-specs.ts",
         "src/cli/update-cli/shared.ts",
         "ui/src/app/overlays.ts",
-        "src/gateway/server-startup-post-attach.ts"
+        "src/gateway/server-startup-post-attach.ts",
+        "src/infra/telemetry-store*.ts"
       ],
       "requires": [
         "update-baseline-fixture",
@@ -523,7 +524,7 @@
     {
       "id": "report-update-failure",
       "kind": "operation",
-      "intent": "An owner previews a sanitized report for a recorded native-ledger failure through update.report under an isolated unavailable-GitHub fixture; the preview body and RPC result are observed.",
+      "intent": "An owner previews a sanitized report for the current reportable native-ledger failure restored from a dedicated fixture, with no active or later run, under an isolated unavailable-GitHub fixture; the preview body and RPC result are observed.",
       "paths": [
         "src/gateway/server-methods/update-report.ts",
         "src/infra/update-failure-*.ts",
@@ -532,18 +533,18 @@
         "src/gateway/server-methods/update.ts",
         "packages/gateway-protocol/src/schema/config.ts",
         "src/infra/github-issue.ts",
-        "src/logging/diagnostic-support-redaction.ts"
+        "src/logging/diagnostic-support-redaction.ts",
+        "src/infra/update-run-report.ts"
       ],
       "requires": [
         "gateway-multi-user-profiles",
-        "update-baseline-fixture",
         "update-history-failed"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/release-feed.mjs --env {env} --from {run}/release-feed.json --mode serve --timeout 30000 --background --handle {run}/release-feed-report-update-failure.json",
-        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed-report-update-failure.json --timeout 240000",
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-history-failed:reportFixture} --runtime side --release-feed {run}/release-feed-report-update-failure.json --timeout 240000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault github-unavailable --timeout 30000 --background --handle {run}/github-unavailable-report-update-failure.json",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.report --params '{\"action\":\"preview\",\"attemptId\":\"{persona:update-history-failed:runId}\"}' --timeout 60000 --github-fixture {run}/github-unavailable-report-update-failure.json",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.report --params '{\"action\":\"preview\",\"attemptId\":\"{persona:update-history-failed:reportRunId}\"}' --timeout 60000 --github-fixture {run}/github-unavailable-report-update-failure.json",
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/github-unavailable-report-update-failure.json --timeout 30000",
         "node {kovaRoot}/support/verify/release-feed.mjs --wait {run}/release-feed-report-update-failure.json --timeout 30000"
       ],
@@ -608,7 +609,12 @@
         "src/plugins/plugin-package-update*.ts",
         "src/plugins/plugin-peer-link*.ts",
         "src/commands/doctor-repair-mode.ts",
-        "src/commands/doctor-prompter.ts"
+        "src/commands/doctor-prompter.ts",
+        "src/plugins/registry-refresh.ts",
+        "src/plugins/plugin-registry-refresh.ts",
+        "src/infra/npm-managed-root.ts",
+        "src/infra/deferred-plugin-migration*.ts",
+        "src/cli/update-cli/update-finalization*.ts"
       ],
       "requires": [
         "plugin-capability-widened",
@@ -667,7 +673,10 @@
         "src/infra/update-npm-prefix.ts",
         "src/cli/update-cli/update-command-executor.ts",
         "src/infra/install-source-utils.ts",
-        "src/infra/npm-integrity.ts"
+        "src/infra/npm-integrity.ts",
+        "src/cli/program/register.database.ts",
+        "src/state/openclaw-agent-schema-inspection*.ts",
+        "src/state/openclaw-state-schema-inspection*.ts"
       ],
       "requires": [
         "node-host-headless"
@@ -1082,7 +1091,8 @@
         "src/gateway/methods/core-descriptors.ts",
         "src/gateway/server-methods/update.ts",
         "packages/gateway-protocol/src/schema/config.ts",
-        "src/gateway/server-startup-post-attach.ts"
+        "src/gateway/server-startup-post-attach.ts",
+        "src/infra/telemetry-store*.ts"
       ],
       "requires": [
         "update-baseline-fixture"
@@ -1120,7 +1130,8 @@
         "src/gateway/methods/core-descriptors.ts",
         "src/gateway/server-methods/update.ts",
         "packages/gateway-protocol/src/schema/config.ts",
-        "src/gateway/server-startup-post-attach.ts"
+        "src/gateway/server-startup-post-attach.ts",
+        "src/infra/telemetry-store*.ts"
       ],
       "requires": [],
       "commands": [
@@ -1235,7 +1246,10 @@
         "src/infra/update-npm-prefix.ts",
         "src/cli/update-cli/update-command-executor.ts",
         "src/infra/install-source-utils.ts",
-        "src/infra/npm-integrity.ts"
+        "src/infra/npm-integrity.ts",
+        "src/cli/program/register.database.ts",
+        "src/state/openclaw-agent-schema-inspection*.ts",
+        "src/state/openclaw-state-schema-inspection*.ts"
       ],
       "requires": [
         "node-host-headless"
@@ -1931,7 +1945,8 @@
         "src/commands/config-preflight-snapshot.ts",
         "src/state/openclaw-database-preflight*.ts",
         "src/gateway/server/readiness.ts",
-        "src/gateway/server-http-probes.ts"
+        "src/gateway/server-http-probes.ts",
+        "src/state/openclaw-agent-schema-inspection*.ts"
       ],
       "requires": [
         "agents-three-configured",

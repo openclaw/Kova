@@ -1245,7 +1245,7 @@ The repeated-stop flow explicitly restarts OCM services after clean SIGTERM exit
 
 A correctly targeted native stop RPC is an external-supervision refusal observation, followed by an actual OCM stop/start. Restart selection covers the complete run-loop family rather than omitting its exit and formatting helpers.
 
-Final condition accounting requires every clause of a combined inventory row to have a supplied prerequisite and observation. Partial rows remain explicit gaps in coverage.md; the discovery inventory and comparison shares are unchanged. The retained template describes 35 complete conditions and 485 gaps. Source selection includes exclusive cleanup ownership, telemetry suppression, explicit repair deadlines and required-agent database admission.
+Final condition accounting requires every clause of a combined inventory row to have a supplied prerequisite and observation. Partial rows remain explicit gaps in coverage.md; the discovery inventory and comparison shares are unchanged. The retained template describes 34 complete conditions and 486 gaps. Source selection includes exclusive cleanup ownership, telemetry suppression, explicit repair deadlines and required-agent database admission.
 
 Phase selection includes the legacy-config and provider-alias helper families, retired-config refusal, both deferred package lifecycle scripts and their marker/prebuild contracts, reportability policy, and the explicit repair-timeout caller, parser and registration. These corrections retain the existing scenarios and coverage totals.
 
@@ -1258,3 +1258,5 @@ Doctor dispatch, plugin installation records and capability policy, queued-messa
 The disabled-restart scenario establishes both the disabled and restored enabled configuration through bounded OCM stop/start and health observation. It does not send policy-gated commands immediately after an asynchronous config write or claim hot-reload timing. Source selection includes repair transactions, installation/consent, node archive acquisition, approvals persistence, forced dispatch, startup admission and shutdown wiring.
 
 Staged Doctor repair uses the supported noninteractive repair command; the wrapper encodes its command result and captured state as JSON, rather than requesting the incompatible lint-only JSON flag. The cron restart remains a general active-job observation, with its later cleanup-window condition explicitly uncovered. Selection includes official-plugin repair, noninteractive repair policy, active-run/shutdown ownership, deferred startup checks and database health publication.
+
+Report preview restores an independent current-failure export, because the product rejects an older attempt after a later success. Guided recovery of the older failure remains uncovered. Plugin inventory refresh, resolved migration warnings, finalization, candidate database inspection, telemetry persistence and report projection select their relevant existing observations.
