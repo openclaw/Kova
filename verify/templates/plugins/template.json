@@ -68,6 +68,7 @@
     "plugin-install-package",
     "plugin-legacy-enabled-unreviewed",
     "plugin-load-path-unrecorded",
+    "plugin-lsp-held-initialize",
     "plugin-managed-removal",
     "plugin-mcp-local-account",
     "plugin-pack-broken-activation",
@@ -93,15 +94,15 @@
     "existing": [],
     "toWrite": [
       "support/verify/gateway-call.mjs  (one Gateway method by name, optionally as another operator profile; --env --method --params --timeout --out --background --handle --wait --merge-from --session-from --after-ms --profile; --merge-from merges a plugins.inspect result's reviewToken as acknowledgeCapabilities and a plugin.approval.request result id as id; a plugin.approval.list result requires --approval-session-key --approval-plugin --approval-tool and selects exactly one request matching all three values, exiting 2 on zero or multiple matches; --await-pending polls plugin.approval.list for exactly one still-pending request matching --approval-session-key --approval-plugin --approval-tool, records its id and state to --out, and exits 2 on timeout or ambiguity)",
-      "support/verify/control-ui.mjs  (Control UI flows in a headless browser: incognito-thread, plugin-approval-prompt, plugin-consent-enable, plugin-install-from-catalog, plugin-lifecycle-reload, plugin-mcp-login, plugin-overview, plugin-session-action, plugin-settings-editor, plugin-settings-toggle, plugin-skill-preview, plugin-tab-and-contributions, plugin-ui-lab-toggle, plugin-ui-other-gateway, plugin-ui-reconnect, plugin-uninstall, plugin-view-session-switch, plugins-advanced-policy, plugins-customize-ui, plugins-hub-browse, plugins-installed-inventory; --env --flow --session-key --gateway-env --artifact-dir --out --timeout; plugin-approval-prompt creates its own two-phase plugin.approval.request, waits for that returned id in the browser, answers it and records waitDecision for the same id; system-agent-operation drives the operator-owned openclaw.chat surface with --operation JSON, stages that exact operation, records its proposal, sends explicit operator approval, and retries the identical operation with approved=true; --artifact-from supplies the absolute archive path and SHA-256 of its bytes for plugin_activate_artifact; records the resulting install receipt and browser activation report; --operation --artifact-from; --plugin --account identify the exact plugin and HTTP MCP account for plugin-mcp-login; plugin-ui-replacement-failure opens one persistent browser context, waits for the named plugin revision to report active, changes only that fixture asset with plugin-source-edit ui-asset-broken, calls plugins.controlUi.reload, records the failed replacement and the prior owner in the same browser, restores the asset in finally, reloads and records recovery before closing the context; exit 2 when a working initial activation cannot be established)",
-      "support/verify/agent-tool-turn.mjs  (sessions.send with a scripted reply that calls one named tool, then chat.history with tools; --env --session-key --session-from --tool --args --timeout --background --handle --wait)",
+      "support/verify/control-ui.mjs  (Control UI flows in a headless browser: incognito-thread, plugin-approval-prompt, plugin-consent-enable, plugin-install-from-catalog, plugin-lifecycle-reload, plugin-mcp-login, plugin-overview, plugin-session-action, plugin-settings-editor, plugin-settings-toggle, plugin-skill-preview, plugin-tab-and-contributions, plugin-ui-lab-toggle, plugin-ui-other-gateway, plugin-ui-reconnect, plugin-uninstall, plugin-view-session-switch, plugins-advanced-policy, plugins-customize-ui, plugins-hub-browse, plugins-installed-inventory; --env --flow --session-key --gateway-env --artifact-dir --out --timeout; plugin-approval-prompt creates its own two-phase plugin.approval.request, waits for that returned id in the browser, answers it and records waitDecision for the same id; system-agent-operation drives the operator-owned openclaw.chat surface with --operation JSON, stages that exact operation, records its proposal, sends explicit operator approval, and retries the identical operation with approved=true; --artifact-from supplies the absolute archive path and SHA-256 of its bytes for plugin_activate_artifact; records the resulting install receipt and browser activation report; --operation --artifact-from; --plugin --account identify the exact plugin and HTTP MCP account for plugin-mcp-login; plugin-ui-replacement-failure opens one persistent browser context, waits for the named plugin revision to report active, changes only that fixture asset with plugin-source-edit ui-asset-broken, calls plugins.controlUi.reload, records the failed replacement and the prior owner in the same browser, restores the asset in finally, reloads and records recovery before closing the context; exit 2 when a working initial activation cannot be established; plugin-skill-preview-retirement uses --plugin and --skill to open one persistent browser/controller, records the open preview, edits that exact skill through plugin-source-edit skill-file-edit while it stays open, closes and reopens the preview in that controller and records its body, then restores the file in finally and closes the browser)",
+      "support/verify/agent-tool-turn.mjs  (sessions.send with a scripted reply that calls one named tool, then chat.history with tools; --env --session-key --session-from --tool --args --timeout --background --handle --wait; --admission-method names the fixture Gateway method reporting actual slow-tool callback entry: a background launch waits for that method to identify the same session, run, tool and invocation as still held before returning the handle, exiting 2 if admission cannot be established; receipt acknowledgement or a generic before-tool event is insufficient)",
       "support/verify/chat-send.mjs  (chat.send of a message or slash command, then chat.history of the receipt; --env --session-key --session-from --incognito-handle --message --timeout --background --handle --wait)",
-      "support/verify/session-turn-hold.mjs  (sessions.send with a reply the mock provider holds open; --env --session-key --hold-ms --progress-cards --timeout --background --handle --wait)",
-      "support/verify/channel-inbound-turn.mjs  (channel inbound dispatch through the test channel, or /approve <pending id from --approve-from matching --approval-session-key --approval-plugin --approval-tool exactly, exiting 2 on zero or multiple matches> <--decision>; --env --chat-type --peer --text --approve-from --approval-session-key --approval-plugin --approval-tool --decision --timeout; --hold-ms scripts the mock response for this inbound turn before dispatch; --background --handle starts it, --wait joins that handle and records the actual outbound channel delivery)",
+      "support/verify/session-turn-hold.mjs  (sessions.send with a reply the mock provider holds open; --env --session-key --hold-ms --progress-cards --timeout --background --handle --wait; with --background, wait for the mock provider to acknowledge the exact run has entered its held response before returning the handle; exit 2 if the hold cannot be established)",
+      "support/verify/channel-inbound-turn.mjs  (channel inbound dispatch through the test channel, or /approve <pending id from --approve-from matching --approval-session-key --approval-plugin --approval-tool exactly, exiting 2 on zero or multiple matches> <--decision>; --env --chat-type --peer --text --approve-from --approval-session-key --approval-plugin --approval-tool --decision --timeout; --hold-ms scripts the mock response for this inbound turn before dispatch; --background --handle starts it, --wait joins that handle and records the actual outbound channel delivery; a background --hold-ms call returns its handle only after the matching inbound turn has entered the mock response hold and its channel delivery identity is captured, exiting 2 if that condition cannot be established)",
       "support/verify/cron-isolated-run.mjs  (cron.run of an isolated job; --env --job-id --timeout)",
       "support/verify/heartbeat-wake.mjs  (heartbeat wake of the main session; --env --timeout)",
       "support/verify/http-get.mjs  (one GET against a Gateway HTTP route, with Gateway credentials or none, path resolved from a flow's recorded URLs when --from is given; --env --path --from --auth --timeout)",
-      "support/verify/plugin-source-edit.mjs  (edits an installed, linked or bundled plugin's files on the Gateway host and restores the saved copy; modes bundled-dist-touch, cleanup-fails, manifest-bump, marker, payload-tamper, register-throws, gateway-start-fails, service-start-fails, skill-file-edit, ui-asset-broken; --env --plugin --mode --restore; cleanup-fails toggles a fixture-owned marker that the already-loaded cleanup callback reads on every invocation, without editing loaded code; --restore clears that marker so retained cleanup can be retried; gateway-start-fails makes the replacement fixture gateway_start hook throw, leaving service startup successful; gateway-stop-hold arms a fixture-owned marker read by the active gateway_stop hook, which reports entry and waits for explicit release (at most 25000 ms); --out saves the marker identity, --wait-entered-from polls that exact invocation and records its entry plus the live core:plugin-lifecycle/global state lease owner, --verify-held-from records that invocation still pending after the competing RPC (exit 2 if not), and --release-from releases and removes only that marker; --timeout bounds each helper call)",
+      "support/verify/plugin-source-edit.mjs  (edits an installed, linked or bundled plugin's files on the Gateway host and restores the saved copy; modes bundled-dist-touch, cleanup-fails, manifest-bump, marker, payload-tamper, register-throws, gateway-start-fails, service-start-fails, skill-file-edit, ui-asset-broken; --env --plugin --mode --restore; cleanup-fails toggles a fixture-owned marker that the already-loaded cleanup callback reads on every invocation, without editing loaded code; --restore clears that marker so retained cleanup can be retried; gateway-start-fails makes the replacement fixture gateway_start hook throw, leaving service startup successful; gateway-stop-hold arms a fixture-owned marker read by the active gateway_stop hook, which reports entry and waits for explicit release (at most 25000 ms); --out saves the marker identity, --wait-entered-from polls that exact invocation and records its entry plus the live core:plugin-lifecycle/global state lease owner, --verify-held-from records that invocation still pending after the competing RPC (exit 2 if not), and --release-from releases and removes only that marker; --timeout bounds each helper call; bundled-dist-touch refuses unless the caller proves the selected runtime copy is exclusively owned by this clone and its edited files share no inode or writable symlink destination with the original runtime; bundled-plugin-reload owns its restoration)",
       "support/verify/plugin-reload-wait.mjs  (openclaw plugins reload <id> --wait under a terminal, sending Ctrl-C after the given delay; --env --plugin --cancel-after-ms --timeout)",
       "support/verify/config-change.mjs  (openclaw config patch built from one named change, saving the previous values of the paths it touches to --out for a later --restore-from; changes: fixture-config-unknown-key (plugins.entries.<plugin>.config.kovaUnknownKey = true), fixture-config-change (plugins.entries.<plugin>.config.kovaMarker = a new marker), fixture-break-register (plugins.entries.<plugin>.config.kovaBreakRegister = true), plugins-allow-restrictive (plugins.allow = [<plugin>]), plugins-deny-entry (plugins.deny adds <plugin>), plugins-disabled and plugins-enabled (plugins.enabled), memory-slot-unknown (plugins.slots.memory = an id no plugin has), reload-mode-off and reload-mode-hybrid (gateway.reload.mode), ui-lab-on and ui-lab-off (gateway.controlUi.experimental.customPlugins), cron-disabled and cron-enabled (cron.enabled), approvals-plugin-forwarding and approvals-plugin-forwarding-off (approvals.plugin.enabled), fixture-conversation-access-off and fixture-conversation-access-on (plugins.entries.<plugin>.hooks.allowConversationAccess), fixture-hook-timeout-short (plugins.entries.<plugin>.hooks.timeoutMs = 1), tools-allow-add (tools.allow adds <tool>), load-path-add (plugins.load.paths adds <path>); --env --change --plugin --tool --path --out --save-paths --restore-from --timeout)",
       "support/verify/config-file-edit.mjs  (writes one value into openclaw.json without validation, or restores the saved copy; --env --set --restore --timeout; --inline-plugins --out saves the root and single-file plugins include layout, reads the resolved plugins object and writes that same object inline without changing logical config; rejects root-level, nested or multi-file includes with exit 2; --restore-layout-from restores the saved include ownership while retaining current logical plugin values, including the newly installed artifact, and preserves all unrelated config)",
@@ -133,7 +134,10 @@
       "product: ocm @{env} -- health --json  (Gateway health including plugin quarantines and reload state; --json)",
       "support/ensure-gateway-running.mjs  (existing Gateway health waiter, with the verification --timeout alias in ms for its --timeout-ms option; --env --artifact-dir --timeout)",
       "support/verify/capture-root-permissions.mjs  (the clone Gateway must be stopped; --block saves the exact mode of OPENCLAW_STATE_DIR/tmp/plugin-captures to --out, removes its write bits and verifies a new child allocation is refused as the Gateway user, exiting 2 when that condition cannot be established; --restore-from restores the saved mode; records capture paths and permissions without changing child directories; --env --block --out --restore-from --timeout)",
-      "support/verify/plugin-removal-permissions.mjs  (uses openclaw plugins uninstall <id> --dry-run and the current installed-plugin index to resolve the live managed removal target, requiring both to agree; --block saves its canonical target and parent mode to --out, removes parent write permission and verifies removal is denied as the Gateway user; exits 2 for ambiguity, an unowned path or ineffective permissions; --restore-from restores that exact saved mode, never a path from the original persona; --env --plugin --block --out --restore-from --timeout)"
+      "support/verify/plugin-removal-permissions.mjs  (uses openclaw plugins uninstall <id> --dry-run and the current installed-plugin index to resolve the live managed removal target, requiring both to agree; --block saves its canonical target and parent mode to --out, removes parent write permission and verifies removal is denied as the Gateway user; exits 2 for ambiguity, an unowned path or ineffective permissions; --restore-from restores that exact saved mode, never a path from the original persona; --env --plugin --block --out --restore-from --timeout)",
+      "support/verify/lsp-fixture.mjs  (controls the local bundle LSP fixture around chat.send/chat.abort: --arm saves configuration and a unique initialization marker to --out; --await-initialize-from waits for that marker's actual initialize request and holds its response, recording the fixture PID and request id, exiting 2 if not pending; --record-exit-from records process exit, pending protocol messages and cleanup after cancellation without treating an alive process as a setup failure; --restore-from restores config and removes only task-owned fixture processes and markers after recording them; --env --control --arm --out --await-initialize-from --record-exit-from --restore-from --timeout)",
+      "support/verify/bundled-plugin-reload.mjs  (wraps ocm env resolve, service stop/start, a temporary launcher and plugins reload for one clone: saves the original binding and service state to --out, materializes a private copy of the selected built OpenClaw artifact, verifies its build identity and exclusive file ownership, binds only this clone with ocm launcher add and env set-launcher, starts it and observes the bundled plugin loaded, edits its compiled file, records reload and restartRequired, restores the file and restarts; finally restores the original runtime binding and service state and removes the task-owned launcher/copy. Never edits the shared runtime, uses no hardlinks or writable symlinks to its edited files, and journals ownership before mutation so interrupted cleanup can remove the private copy; exits 2 before editing if isolation is unavailable; --env --plugin --out --timeout)",
+      "support/verify/plugin-native-capture.mjs  (destructive fixture preparation for plugins reload and Doctor: resolves the current native capture references for --plugin from the clone's installed/native index, records the selected directory and its references to --out, and removes that directory while preserving the references to exercise missing-capture recovery; refuses original persona paths, shared runtimes, source directories or a fallback directory whose custody does not belong to this clone; --env --plugin --remove-referenced --out --timeout)"
     ]
   },
   "phases": [
@@ -1868,7 +1872,7 @@
         "session-phase-hold"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-phase-hold:key} --tool {persona:plugin-fixture-surfaces:slowToolName} --args '{\"holdMs\":30000}' --timeout 90000 --background --handle {run}/midrun.json",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-phase-hold:key} --tool {persona:plugin-fixture-surfaces:slowToolName} --args '{\"holdMs\":30000}' --timeout 90000 --background --handle {run}/midrun.json --admission-method {persona:plugin-fixture-surfaces:holdStatusMethod}",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.reload --params '{\"plugins\":[{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}]}' --timeout 100000 --after-ms 3000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-phase-hold:key} --timeout 90000 --wait {run}/midrun.json"
       ],
@@ -1896,7 +1900,7 @@
         "session-phase-hold"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-phase-hold:key} --tool {persona:plugin-fixture-surfaces:slowToolName} --args '{\"holdMs\":90000}' --timeout 110000 --background --handle {run}/drain-hold.json",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-phase-hold:key} --tool {persona:plugin-fixture-surfaces:slowToolName} --args '{\"holdMs\":90000}' --timeout 110000 --background --handle {run}/drain-hold.json --admission-method {persona:plugin-fixture-surfaces:holdStatusMethod}",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.reload --params '{\"plugins\":[{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}]}' --timeout 90000 --after-ms 3000",
         "ocm @{env} -- health --json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.list --params '{}' --timeout 15000",
@@ -1926,7 +1930,7 @@
         "session-plugin-tools"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool {persona:plugin-fixture-surfaces:slowToolName} --args '{\"holdMs\":60000}' --timeout 70000 --background --handle {run}/reload-cancel-hold.json",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool {persona:plugin-fixture-surfaces:slowToolName} --args '{\"holdMs\":60000}' --timeout 70000 --background --handle {run}/reload-cancel-hold.json --admission-method {persona:plugin-fixture-surfaces:holdStatusMethod}",
         "node {kovaRoot}/support/verify/plugin-reload-wait.mjs --env {env} --plugin {persona:plugin-fixture-surfaces:pluginId} --cancel-after-ms 5000 --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.list --params '{}' --timeout 30000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --wait {run}/reload-cancel-hold.json --timeout 70000"
@@ -2489,10 +2493,7 @@
         "plugin-fixture-surfaces"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugin-skill-preview --artifact-dir {run}/screens --timeout 60000",
-        "node {kovaRoot}/support/verify/plugin-source-edit.mjs --env {env} --plugin {persona:plugin-fixture-surfaces:pluginId} --mode skill-file-edit",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugin-skill-preview --artifact-dir {run}/screens --timeout 60000",
-        "node {kovaRoot}/support/verify/plugin-source-edit.mjs --env {env} --plugin {persona:plugin-fixture-surfaces:pluginId} --mode skill-file-edit --restore"
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugin-skill-preview-retirement --plugin {persona:plugin-fixture-surfaces:pluginId} --skill {persona:plugin-fixture-surfaces:skillName} --artifact-dir {run}/screens --timeout 120000"
       ],
       "checkpoint": [
         "responses",
@@ -2518,7 +2519,7 @@
         "session-phase-hold"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-phase-hold:key} --tool {persona:plugin-managed-removal:slowToolName} --args '{\"holdMs\":20000}' --timeout 60000 --background --handle {run}/managed-hold.json",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-phase-hold:key} --tool {persona:plugin-managed-removal:slowToolName} --args '{\"holdMs\":20000}' --timeout 60000 --background --handle {run}/managed-hold.json --admission-method {persona:plugin-managed-removal:holdStatusMethod}",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.uninstall --params '{\"pluginId\":\"{persona:plugin-managed-removal:pluginId}\"}' --timeout 90000 --background --handle {run}/managed-uninstall.json --after-ms 2000",
         "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change load-path-add --path {persona:plugin-managed-removal:installDir} --timeout 15000 --out {run}/event-load-path-re-added-during-uninstall-drain-previous-config.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.uninstall --params '{}' --timeout 75000 --wait {run}/managed-uninstall.json",
@@ -2623,19 +2624,23 @@
       ],
       "requires": [
         "mock-provider-scripted",
-        "plugins-local-sources"
+        "plugin-lsp-held-initialize"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:plugins-local-sources:bundleSessionKey} --message 'KOVA_LSP_TURN' --timeout 60000 --background --handle {run}/lsp-turn.json",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.abort --params '{\"sessionKey\":\"{persona:plugins-local-sources:bundleSessionKey}\"}' --timeout 15000 --after-ms 1000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:plugins-local-sources:bundleSessionKey} --message 'KOVA_LSP_TURN' --timeout 60000 --wait {run}/lsp-turn.json"
+        "node {kovaRoot}/support/verify/lsp-fixture.mjs --env {env} --control {persona:plugin-lsp-held-initialize:controlPath} --arm --out {run}/lsp-initialize-control.json --timeout 5000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:plugin-lsp-held-initialize:sessionKey} --message 'KOVA_LSP_TURN' --timeout 90000 --background --handle {run}/lsp-turn.json",
+        "node {kovaRoot}/support/verify/lsp-fixture.mjs --env {env} --await-initialize-from {run}/lsp-initialize-control.json --timeout 20000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.abort --params '{\"sessionKey\":\"{persona:plugin-lsp-held-initialize:sessionKey}\"}' --timeout 15000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --wait {run}/lsp-turn.json --timeout 60000",
+        "node {kovaRoot}/support/verify/lsp-fixture.mjs --env {env} --record-exit-from {run}/lsp-initialize-control.json --timeout 15000",
+        "node {kovaRoot}/support/verify/lsp-fixture.mjs --env {env} --restore-from {run}/lsp-initialize-control.json --timeout 5000"
       ],
       "checkpoint": [
         "responses",
         "logs",
         "timing"
       ],
-      "timeoutMs": 150000,
+      "timeoutMs": 240000,
       "browser": false,
       "slow": false
     },
@@ -2970,26 +2975,17 @@
         "extensions/**"
       ],
       "requires": [
-        "mock-provider-tool-calls",
-        "plugin-fixture-surfaces",
-        "plugins-bundled-and-external",
-        "session-plugin-tools"
+        "plugins-bundled-and-external"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/plugin-source-edit.mjs --env {env} --plugin {persona:plugins-bundled-and-external:bundledPluginId} --mode bundled-dist-touch",
-        "ocm @{env} -- plugins reload {persona:plugins-bundled-and-external:bundledPluginId} --json",
-        "node {kovaRoot}/support/verify/plugin-source-edit.mjs --env {env} --plugin {persona:plugins-bundled-and-external:bundledPluginId} --mode bundled-dist-touch --restore",
-        "ocm @{env} -- gateway restart",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout 120000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool {persona:plugin-fixture-surfaces:toolName} --args '{\"input\":\"VERIFY_BEFORE_RELOAD\"}' --timeout 45000",
-        "node {kovaRoot}/support/verify/plugin-source-edit.mjs --env {env} --plugin {persona:plugin-fixture-surfaces:pluginId} --restore"
+        "node {kovaRoot}/support/verify/bundled-plugin-reload.mjs --env {env} --plugin {persona:plugins-bundled-and-external:bundledPluginId} --out {run}/bundled-runtime-copy.json --timeout 240000"
       ],
       "checkpoint": [
         "responses",
         "logs",
         "timing"
       ],
-      "timeoutMs": 240000,
+      "timeoutMs": 260000,
       "browser": false,
       "slow": false
     },
@@ -3168,7 +3164,7 @@
         "plugins-native-dependency"
       ],
       "commands": [
-        "ocm env exec {env} -- rm -rf {persona:plugins-native-dependency:captureDir}",
+        "node {kovaRoot}/support/verify/plugin-native-capture.mjs --env {env} --plugin {persona:plugins-native-dependency:pluginId} --remove-referenced --out {run}/native-capture-removal.json --timeout 15000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- plugins reload {persona:plugins-native-dependency:pluginId} --json",
         "ocm @{env} -- gateway restart",
