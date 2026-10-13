@@ -1032,3 +1032,5 @@ counting correction: round 1 315/370 and 319/370; round 2 358/390 and 338/390; r
 
 correction after review: passive config-driven phases require the hybrid reload persona state. Cron reconciliation additionally saves/sets/restores reload mode and waits for a new cron_reconciled event with reason reload after each config write, before proceeding. The unpaired message probe uses its own peer trait, preserving destructive channel-command ordering without consuming shared approval-account prerequisites.
 The cron change toggles the current effective enabled value, so an initially disabled scheduler still receives a real config transition; its selectors include the hot-reload plan, scheduler replacement and reconciliation-hook owners.
+
+correction after review: the hot-replacement phase selects the plugin planning and application owners, while approval scenarios select the shared delivery-route owner as well as the agent-side transport.

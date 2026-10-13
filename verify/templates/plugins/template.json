@@ -711,7 +711,8 @@
         "src/cli/plugins-install-*.ts",
         "src/cli/plugin-install-config-policy.ts",
         "src/cli/plugin-capability-consent.ts",
-        "src/plugin-state/**"
+        "src/plugin-state/**",
+        "src/gateway/server-methods/approval-shared.ts"
       ],
       "requires": [
         "mock-provider-tool-calls",
@@ -2588,7 +2589,8 @@
         "src/infra/approval-gateway-*.ts",
         "ui/src/app/exec-approval.ts",
         "src/auto-reply/reply/commands-approve*.ts",
-        "src/agents/agent-tools.before-tool-call.approval.ts"
+        "src/agents/agent-tools.before-tool-call.approval.ts",
+        "src/gateway/server-methods/approval-shared.ts"
       ],
       "requires": [
         "channels-test-accounts",
@@ -2784,7 +2786,9 @@
         "src/gateway/server-methods/plugins-mutations.ts",
         "src/gateway/server-methods/plugins-lifecycle-error.ts",
         "src/gateway/server-retained-plugin-cleanup.ts",
-        "src/cli/plugins-lifecycle-client.ts"
+        "src/cli/plugins-lifecycle-client.ts",
+        "src/gateway/config-reload-plan.ts",
+        "src/gateway/server-reload-hot.ts"
       ],
       "requires": [
         "config-reload-hybrid",
@@ -2978,7 +2982,8 @@
         "src/gateway/server-methods/plugin-approval.ts",
         "src/plugins/hook*.ts",
         "src/gateway/node-invoke-plugin-approval.ts",
-        "src/agents/agent-tools.before-tool-call.approval.ts"
+        "src/agents/agent-tools.before-tool-call.approval.ts",
+        "src/gateway/server-methods/approval-shared.ts"
       ],
       "requires": [
         "channels-test-accounts",
@@ -3010,7 +3015,8 @@
         "src/plugins/hook*.ts",
         "src/gateway/node-invoke-plugin-approval.ts",
         "src/infra/exec-approval-channel-runtime.ts",
-        "src/agents/agent-tools.before-tool-call.approval.ts"
+        "src/agents/agent-tools.before-tool-call.approval.ts",
+        "src/gateway/server-methods/approval-shared.ts"
       ],
       "requires": [
         "channels-test-accounts",
@@ -3045,7 +3051,8 @@
       "paths": [
         "src/gateway/server-methods/plugin-approval.ts",
         "src/infra/approval-*.ts",
-        "src/agents/agent-tools.before-tool-call.approval.ts"
+        "src/agents/agent-tools.before-tool-call.approval.ts",
+        "src/gateway/server-methods/approval-shared.ts"
       ],
       "requires": [
         "config-reload-hybrid",
@@ -3160,7 +3167,8 @@
         "src/gateway/server-methods/plugin-approval.ts",
         "src/plugins/hook*.ts",
         "src/gateway/node-invoke-plugin-approval.ts",
-        "src/agents/agent-tools.before-tool-call.approval.ts"
+        "src/agents/agent-tools.before-tool-call.approval.ts",
+        "src/gateway/server-methods/approval-shared.ts"
       ],
       "requires": [
         "channels-test-accounts",
