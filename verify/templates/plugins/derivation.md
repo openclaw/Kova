@@ -1070,3 +1070,5 @@ The durable final-reply probe records an initially disabled path-source peer, th
 
 C21 remains discovered but is uncovered: local plugin discovery does not establish an empty allowlist, and inspection or staged Gateway registration does not enable the active-loader warning. No phase currently establishes both preconditions.
 C22 remains covered by explicit runtime inspection of the named, enabled unmanaged global fixture. Its record-missing provenance diagnostic is recorded independently of active-loader warning emission; startup logs expose that diagnostic without claiming the direct warning-cache branch was exercised.
+
+The overview audit interaction uses the local registry entry's valid selected-release security metadata and its owned local audit page. The installed package remains the target for tool preview, Ask OpenClaw and Settings; the MCP account and registry audit have separate explicit identities. The local npm-pack overview is not assumed to have registry security metadata.
