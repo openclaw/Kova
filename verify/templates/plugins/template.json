@@ -149,7 +149,8 @@
       "support/verify/plugin-native-capture.mjs  (destructive fixture preparation for plugins reload and Doctor: resolves the current native capture references for --plugin from the clone's installed/native index, records the selected directory and its references to --out, and removes that directory while preserving the references to exercise missing-capture recovery; refuses original persona paths, shared runtimes, source directories or a fallback directory whose custody does not belong to this clone; --env --plugin --remove-referenced --out --timeout)",
       "support/verify/uninstall-load-path-race.mjs  (wraps sessions.send, plugins.uninstall and a plugins.load.paths config write: starts a fixture tool held until explicit release, observes its exact callback admission, resolves the current managed directory and saves the preceding load paths, then starts uninstall. Before editing, observes this uninstall's durable enabled-to-disabled config transition, its pending response and live lifecycle lease, while the same tool is still held, observed through its clone-owned marker after ordinary plugin admission closes; missing admission exits 2. Adds the resolved directory only after that barrier, releases the hold immediately after the write is observable without waiting on reload, joins both calls, and records responses, file existence and the recheck outcome to --out; finally restores the previous load paths and releases any remaining task-owned hold. Fixture holds have a bounded failsafe; --admission-method is used only for initial admission before uninstall. Later observation and release use --release-path, resolved relative to the clone state root and validated as exclusively clone-owned, independently of the retiring plugin's Gateway methods; --env --plugin --tool --admission-method --session-key --release-path --out --timeout)",
       "support/verify/plugin-credential-context.mjs  (config.get and plugins.inspect for one installed synthetic provider; selects its sole advertised credential path and current projected config hash, writes only {pluginId,path,baseHash} to --out for plugins.credentials.inspect --merge-from, and exits 2 if the descriptor or revision cannot be established; never emits config or credential values; --env --plugin --out --timeout)",
-      "support/verify/model-setup-install.mjs  (wraps ocm env clone and openclaw models set <model>: creates a stopped task-owned clone of --env with the exact same selected runtime artifact and a unique state directory, retaining no live services from its source; journals ownership to --out before mutation. In that clone only, applies --fixture with an explicit codex model runtime policy for the supplied openai/<model> selection, local registry routing and a configured missing codex install. Refuses to remove or edit any package path outside the new clone state root, including symlink destinations. Records that the codex package and usable install are absent and that model selection requires codex before calling ocm @<owned-clone> -- models set <model>; records its exit status, repair output and subsequent plugins list --json plus installed-package identity, so warnings or a no-op cannot masquerade as an install. The local registry supplies the official package fixture at the selected runtime release cohort, with accepted fixture capability metadata; no provider request or real credentials are used. In finally, stops only services it started and removes only its owned clone, including after command failure; never changes the source clone, shared runtime or durable persona. Exits 2 if isolation, missing-plugin precondition, local package or policy cannot be established; --env --model --fixture --out --timeout)"
+      "support/verify/model-setup-install.mjs  (wraps ocm env clone and openclaw models set <model>: creates a stopped task-owned clone of --env with the exact same selected runtime artifact and a unique state directory, retaining no live services from its source; journals ownership to --out before mutation. In that clone only, applies --fixture with an explicit codex model runtime policy for the supplied openai/<model> selection, local registry routing and a configured missing codex install. Refuses to remove or edit any package path outside the new clone state root, including symlink destinations. Records that the codex package and usable install are absent and that model selection requires codex before calling ocm @<owned-clone> -- models set <model>; records its exit status, repair output and subsequent plugins list --json plus installed-package identity, so warnings or a no-op cannot masquerade as an install. The local registry supplies the official package fixture at the selected runtime release cohort, with accepted fixture capability metadata; no provider request or real credentials are used. In finally, stops only services it started and removes only its owned clone, including after command failure; never changes the source clone, shared runtime or durable persona. Exits 2 if isolation, missing-plugin precondition, local package or policy cannot be established; --env --model --fixture --out --timeout)",
+      "support/verify/plugin-authoring-metadata.mjs  (makes only the generated name field in an existing tool scaffold openclaw.plugin.json stale by appending a distinct sentinel, preserving valid JSON, package metadata and compiled entry bytes; --env --root --out --restore-from --timeout; accepts only this run-owned scaffold directory, refuses symlink escapes, and saves original bytes plus target identity to --out before editing. --restore-from restores only that same manifest from its saved bytes; no installed plugin, source checkout or shared runtime is edited. Prints before/after field values and the backup identity, never an expected validation result)"
     ]
   },
   "phases": [
@@ -544,7 +545,9 @@
       "paths": [
         "src/cli/plugins-marketplace-list-command.ts",
         "src/plugins/marketplace*.ts",
-        "src/plugins/catalog*.ts"
+        "src/plugins/catalog*.ts",
+        "src/cli/plugins-cli.runtime.ts",
+        "src/plugins/official-external-plugin-catalog-hosted.ts"
       ],
       "requires": [
         "clawhub-registry-local",
@@ -570,7 +573,7 @@
     {
       "id": "author-tool-plugin",
       "kind": "operation",
-      "intent": "A plugin author scaffolds tool and provider plugins, builds and validates the tool scaffold, checks stale metadata and scaffolds over an existing directory, observing generated manifests and validation results.",
+      "intent": "A plugin author scaffolds tool and provider plugins, compiles the tool, deliberately makes its generated manifest name stale, records build-check and validation results, regenerates and checks it again, then restores the saved manifest and exercises an existing scaffold directory.",
       "paths": [
         "src/cli/plugins-authoring-command.ts",
         "src/cli/plugins-build-bundle.ts",
@@ -587,9 +590,13 @@
         "ocm @{env} -- plugins init kova-verify-models --directory {run}/scaffold-provider --type provider",
         "ocm env exec {env} -- npm --prefix {run}/scaffold-tool install",
         "ocm env exec {env} -- npm --prefix {run}/scaffold-tool run build",
+        "node {kovaRoot}/support/verify/plugin-authoring-metadata.mjs --env {env} --root {run}/scaffold-tool --out {run}/author-tool-metadata.json --timeout 15000",
         "ocm @{env} -- plugins build --root {run}/scaffold-tool --check",
-        "ocm @{env} -- plugins build --root {run}/scaffold-tool",
         "ocm @{env} -- plugins validate --root {run}/scaffold-tool --json",
+        "ocm @{env} -- plugins build --root {run}/scaffold-tool",
+        "ocm @{env} -- plugins build --root {run}/scaffold-tool --check",
+        "ocm @{env} -- plugins validate --root {run}/scaffold-tool --json",
+        "node {kovaRoot}/support/verify/plugin-authoring-metadata.mjs --env {env} --root {run}/scaffold-tool --restore-from {run}/author-tool-metadata.json --timeout 15000",
         "ocm @{env} -- plugins init {persona:plugin-authoring-workspace:toolId} --directory {run}/scaffold --type tool --force",
         "ocm @{env} -- plugins pack --root {persona:plugin-authoring-workspace:featureProjectDir} --out {run}/feature-artifact.tgz --json"
       ],

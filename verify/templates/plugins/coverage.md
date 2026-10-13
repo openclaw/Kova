@@ -1,11 +1,12 @@
 # Coverage: plugins
 
 Operations: 34/34
-Conditions: 138/187 (134 ambient, 53 event)
+Conditions: 137/187 (134 ambient, 53 event)
 Entry points: 330/376 (46 excluded)
 Breaks mapped: 7/18
 
 Uncovered:
+- C175 signed-feed-without-key (condition): the pinned CLI cannot configure a signed profile; its public selector exposes the unsigned built-in profile or rejects an unknown profile before fetching. A checksum mismatch does not exercise signature trust. The signed verifier requires an internal profile argument, outside these product-command phases.
 - C16 nix-mode-or-read-only-config (condition, partial): CLI environment flags are exercised; starting the Gateway itself with these flags is not provided by a persona trait.
 - C187 redaction-patterns-copied-from-defaults (condition): no phase sends encoded form values or Digest authorization through the logging redactor; the public-link prompt does not exercise this boundary.
 - C43 clawhub-release-audit-outcome (condition): needs a ClawHub release with a Review or blocking moderation outcome; registry content outside the product
