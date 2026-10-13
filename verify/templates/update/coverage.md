@@ -1,13 +1,16 @@
 # Coverage: update
 
 Operations with retained phases: 12/21 (some retained operations have fewer entry points)
-Conditions described by retained phases: 96/520 (354 ambient, 166 event)
+Conditions described by retained phases: 93/520 (354 ambient, 166 event)
 Entry points inventoried: 203 placed/310 (107 excluded); executable coverage has not been measured
 Breaks mapped to retained phases: 0/6; all six are outside reach under OCM supervision
 
-A condition is counted here only when a retained phase describes its concrete setup and observation; runtime execution remains unproven. Reconciliation credits applicable phases from either run and excludes claims whose required inputs or actions were lost. There are 96 described conditions and 424 explicit gaps below. Phases: 43 (1 setup, 12 operation, 30 event). These are declarative descriptions, not executed results.
+A condition is counted here only when a retained phase describes its concrete setup and observation; runtime execution remains unproven. Reconciliation credits applicable phases from either run and excludes claims whose required inputs or actions were lost. There are 93 described conditions and 427 explicit gaps below. Phases: 43 (1 setup, 12 operation, 30 event). These are declarative descriptions, not executed results.
 
 Uncovered:
+- Condition 351, Gateway unreachable during triage: archive written with snapshot failures: The retained triage phase restores a running Gateway; it does not establish an outage.
+- Condition 393, Session compactionCheckpoints still read at runtime: No retained phase requires or reads the compacted-session fixture.
+- Condition 424, Manual installation opens incompatible newer-schema state: Retained replacement journeys install compatible side or side-next code; they do not open incompatible state.
 - Condition 437, Older systemd service with KillMode=control-group interrupts children immediately: Native systemd or launchd service-definition semantics are outside reach from OCM-supervised clones. An OCM restart does not establish them.
 - Condition 438, Short systemd stop timeout: drain and reserve clamped; unreadable service uses 90 seconds: Native systemd or launchd service-definition semantics are outside reach from OCM-supervised clones. An OCM restart does not establish them.
 - Condition 439, launchd ExitTimeOut budgets: Native systemd or launchd service-definition semantics are outside reach from OCM-supervised clones. An OCM restart does not establish them.
@@ -439,7 +442,7 @@ Phases that depend on each script still to be written (support.toWrite):
 - support/ensure-gateway-running.mjs: 22 phases
 - support/verify/restore-update-fixture.mjs: 16 phases
 - support/verify/env-fault.mjs: 12 phases
-- support/verify/gateway-call.mjs: 10 phases
+- support/verify/gateway-call.mjs: 9 phases
 - support/verify/read-installation-state.mjs: 8 phases
 - support/verify/manual-package-replace.mjs: 7 phases
 - support/verify/control-ui.mjs: 5 phases
@@ -453,7 +456,7 @@ Phases that depend on each script still to be written (support.toWrite):
 - support/verify/chat-history-read.mjs: 1 phases
 - support/verify/cron-isolated-run.mjs: 1 phases
 - support/verify/stage-session-store-fixture.mjs: 1 phases
-- support/verify/stage-update-history.mjs: 1 phases
+- support/verify/stage-update-history.mjs: 2 phases
 - support/verify/triage-run.mjs: 1 phases
 
 Persona additions:
@@ -615,3 +618,5 @@ Excluded phase IDs from the saved reconciliation:
 The original entry-point placement and all 520 condition rows remain in derivation.md as inventory, independent of executable selection. No new derivation runs were made. A native-service capability would require a separate lifecycle and persona design before these exclusions could change.
 
 Node scenarios retain separate persona-driven and side-driven journeys, each with a fresh eligible host fixture. The cron restart scenario requires a held job that has reached active execution and a terminal result read. Same-code native rollback and custom-supervisor handoff scenarios have been excluded.
+
+OCM lifecycle and observation corrections: stopped-service prerequisites use `ocm service stop` and record service status. Fixture helpers must use OCM and wait for process exit. The stop RPC helper supplies the current clone’s PID, owner ID and port and fails closed if that identity is unavailable. The restart-disabled scenario uses the policy-gated chat commands; it makes no unrestricted `update.run` request that OCM could accept. Manual replacement retains the older-runtime journey and adds a fresh side-driven journey to exercise each side’s running replacement detector. Secondary status reads use the side runtime; repair stages fresh stale rows immediately before reading them.
