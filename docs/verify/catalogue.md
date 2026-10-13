@@ -5,8 +5,8 @@ builders and checks, and the phases written from an intent file all draw from
 it. A command that is not in the catalogue is not a valid phase command:
 `kova verify plan` refuses it before anything runs.
 
-The catalogue keeps verification honest in two ways. Every command prints a
-known JSON shape, so checkpoints compare field by field. And no command
+The catalogue keeps verification honest in two ways. Every command has a fixed
+form and a known output, so checkpoints compare field by field. And no command
 decides whether OpenClaw answered correctly; only the comparison does.
 
 ## Definitions
@@ -15,9 +15,11 @@ decides whether OpenClaw answered correctly; only the comparison does.
   named flags and a fixed output. There is one entry per thing; two entries
   that do the same thing are a defect.
 - **Kind**: `product` (an OpenClaw command, run as `ocm @{env} -- <command>`),
-  `gateway` (one Gateway method by name through Kova's generic caller),
-  `script` (a Kova support script that wraps one method or one short flow and
-  prints JSON), `ocm` (an OCM lifecycle operation on the environment).
+  `gateway` (one Gateway method, called by name through Kova's generic Gateway
+  caller `support/verify/gateway-call.mjs`, which is not written yet; there is
+  one `gateway` entry per method), `script` (a Kova support script that wraps
+  one method or one short flow and prints JSON), `ocm` (an OCM lifecycle
+  operation on the environment).
 - **Wraps**: the product method, command or operation the entry performs. A
   `script` entry names it; for a `gateway` entry it is the method.
 - **Side**: `read` (observes, changes nothing), `write` (changes product
@@ -25,21 +27,26 @@ decides whether OpenClaw answered correctly; only the comparison does.
   Gateway).
 - **Handle**: a JSON file under `{run}/` that a background entry writes when it
   starts and a later command reads with `--wait`.
-- **Status**: `existing` (the script is in Kova) or `toWrite` (named by a
-  template or persona, not yet implemented). A `toWrite` entry may appear in a
-  template; the plan withholds the phases that call it until it exists.
+- **Status**: `existing` (the command exists: a script or the generic caller
+  in Kova, or an OpenClaw or OCM command at the catalogue's revision) or
+  `toWrite` (named by a template or persona, not yet implemented). A `toWrite`
+  entry may appear in a template; the plan withholds the phases that call it
+  until it exists.
 
 ## Rules
 
 1. One entry does one thing. A script wraps one product method, or one short
    flow OpenClaw itself defines (a resume under a pseudo-terminal, a Control
    UI flow). It does not combine operations a phase could list separately.
-2. Every entry prints JSON on stdout and nothing else there. Diagnostics go to
-   stderr. The output is the checkpoint's `responses` record for that command.
-3. Exit codes: `0` OpenClaw answered, whatever it answered; `1` OpenClaw
-   returned an error, recorded in the JSON; `2` the call was malformed; `3` the
-   entry's own timeout elapsed. An entry never decides whether the answer was
-   right.
+2. Every `script` and `gateway` entry prints JSON on stdout and nothing else
+   there. Diagnostics go to stderr. The output is the checkpoint's `responses`
+   record for that command. A `product` or `ocm` entry uses the command's own
+   JSON output flag when it has one; its output is recorded as printed.
+3. Exit codes of `script` and `gateway` entries: `0` OpenClaw answered,
+   whatever it answered; `1` OpenClaw returned an error, recorded in the JSON;
+   `2` the call was malformed; `3` the entry's own timeout elapsed. A
+   `product` or `ocm` entry keeps the command's own exit codes. An entry never
+   decides whether the answer was right.
 4. No expected values. An entry has no flag that asserts, matches or expects.
    The one exception is a marker string passed to OpenClaw as content, such as
    a message text.
@@ -48,19 +55,26 @@ decides whether OpenClaw answered correctly; only the comparison does.
 6. Background entries follow the [background protocol](#background-protocol).
 7. Placeholders in a phase command are `{env}`, `{kovaRoot}`, `{run}` and
    `{persona:<trait>:<key>}`, and no others. The plan and the run resolve them
-   before the command runs; an entry never sees a placeholder and never
-   resolves one. A value an earlier command produced is read from the file
-   that command wrote under `{run}`, through the entry's own `--from <file>`
-   flag.
+   before the command runs, as [Commands](plan-and-verdict.md#commands)
+   describes; an entry never sees a placeholder and never resolves one. A
+   value an earlier command produced is read from the file that command wrote
+   under `{run}`, through one of the entry's own `--*-from <file>` flags, such
+   as `--from` or `--session-from`.
 8. Flags are the entry's contract. A phase may not pass a flag the entry does
-   not list; the plan refuses it.
+   not list; the plan refuses it. The parameters a `gateway` entry passes in
+   `--params` belong to the Gateway method; the Gateway validates them, not the
+   catalogue.
 9. A product command enters the catalogue by its exact form and the flags
    phases use, checked against OpenClaw's own `--help` at the catalogue's
    recorded revision. A product flag that disappears retires the entry, and
    the scheduled maintenance pass reports every phase that used it.
-10. New entries come only from a template's or persona's `support.toWrite`.
-    When the script exists, its status flips to `existing`; nothing else
-    changes.
+10. A new `script` entry comes only from a template's or persona's
+    `support.toWrite`, by [Adding an entry](#adding-an-entry); when the script
+    exists, its status flips to `existing` and nothing else changes. A
+    `product`, `gateway` or `ocm` entry is added when a template or persona
+    first uses that command or method, checked as rule 9 says; a Gateway method
+    is checked against the methods the Gateway registers at the catalogue's
+    revision.
 
 ## Background Protocol
 
@@ -107,7 +121,8 @@ later phases search, delete or restart around it.
 }
 ```
 
-An entry has no other fields.
+An entry has no other fields. In `command`, a slot in angle brackets, such as
+`<name>` or `<ms>`, marks a value the phase fills in.
 
 ## Commands
 
@@ -118,7 +133,8 @@ kova catalogue check --product openclaw --templates <dir> --personas <dir> --jso
 
 `list` prints the entries. `check` reads every phase command and every builder
 and check in the given templates and personas, resolves each to an entry by
-its command head, and reports:
+its command head (for the generic Gateway caller, by the head and the
+`--method` value), and reports:
 
 - commands with no entry;
 - flags an entry does not list;
@@ -126,9 +142,10 @@ its command head, and reports:
 - placeholders outside the allowed four;
 - `toWrite` entries not yet implemented.
 
-`check` exits non-zero on any finding. `kova verify plan` runs the same check
-on the plan it writes: it withholds phases that call a `toWrite` entry and
-refuses to write a plan with any other finding.
+`check` exits non-zero on any finding, `toWrite` entries included, so it shows
+what remains to be written. `kova verify plan` runs the same check on the plan
+it writes: it withholds phases that call a `toWrite` entry and refuses to write
+a plan with any other finding.
 
 ## Adding An Entry
 

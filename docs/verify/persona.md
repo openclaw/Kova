@@ -8,7 +8,8 @@ from it through `{persona:<trait>:<key>}`.
 The OpenClaw persona, `openclaw-verification-user`, is a user who has run
 OpenClaw for months: history across several agents, saved and shared sessions,
 bundled plugins and an external plugin with its install records, an agent
-database at an older schema, channels on test accounts, a scheduled job,
+database at an older schema, a channel on Kova's conformance channel, a
+scheduled job,
 hand-edited config and a workspace with files. It is built from real content
 produced through OpenClaw's own commands, not from markers.
 
@@ -21,13 +22,16 @@ environment that every verification clones.
 
 - **Persona**: one durable OCM environment plus its manifest. There is one
   persona per product for ordinary verification; a variant exists only when a
-  template proves it needs one.
+  template proves it needs one, and a plan uses it by passing the variant's
+  manifest to `--persona`.
 - **Trait**: one piece of content the persona holds, named `<noun>-<qualifier>`
   in lower-case hyphenated words, for example `session-long-compacted`. A trait
   is what a template's `requires` lists.
 - **Key**: a concrete identifier a trait exposes, such as a session key, an
   agent id, a file path or a marker string. Phases reference it as
-  `{persona:<trait>:<key>}` and the manifest resolves it.
+  `{persona:<trait>:<key>}` and the manifest resolves it. A key value uses
+  only letters, digits and `.`, `_`, `-`, `:`, `/`, `@`, so it can be placed in
+  a shell command or a JSON string without quoting.
 - **Builder**: the commands that put a trait into a fresh environment, through
   OpenClaw's own commands or a catalogue script. A builder runs once, when the
   persona is built, never during a verification.
@@ -37,8 +41,9 @@ environment that every verification clones.
   contains: every trait, every key's value, the runtime it was built with, the
   build time and the content hash of the exported environment.
 - **Pinned runtime**: the OpenClaw version the persona is built with. It is
-  always older than any baseline or change that runs against it. The OpenClaw
-  persona pins `npm:2026.9.9`.
+  always older than any baseline or change that runs against it;
+  `kova verify run` refuses a target older than it. The OpenClaw persona pins
+  `npm:2026.9.9`.
 
 ## Rules
 
@@ -50,26 +55,29 @@ environment that every verification clones.
    persona.
 2. The persona is built, not hand-made. `kova persona build` creates a fresh
    environment on the pinned runtime, runs every builder in dependency order,
-   runs every check, writes the manifest and exports the environment. A
+   runs every check, exports the environment and writes the manifest. A
    persona whose check fails is not a persona.
 3. A verification never changes the persona. Runs clone it, and the durable
    environment is protected with `ocm env protect`.
 4. Test credentials only. Traits use Kova's mock provider and its conformance
-   channel, which need no credentials. A trait that needs a test account names
-   the credential in `credentials`; the build reads it from Kova's credential
-   store, and it never appears in a definition, a manifest or a repository. The
-   exported environment is still treated as secret-bearing and is never
-   committed.
-5. Keys are resolved from the manifest, never guessed. A phase that names a
-   trait or key the manifest lacks is withheld by `kova verify plan`, before
-   any environment is created.
+   channel, which need no credentials. When a trait needs a test account, the
+   definition names that credential in `credentials`; the build reads its
+   value from Kova's credential store (`kova setup`), and the value never
+   appears in a definition, a manifest or a repository. The exported
+   environment is still treated as secret-bearing and is never committed.
+5. Keys are resolved from the manifest, never guessed, and a build refuses a
+   key value outside the allowed characters. A phase whose
+   `requires` lists a trait the manifest lacks, or whose commands name a trait
+   or key the manifest lacks, is withheld by `kova verify plan`, before any
+   environment is created.
 6. Mock behavior is a trait too. A provider that streams slowly, serves one
    request at a time or returns an overflow error is content of the persona
    (its configuration and the mock's script), named like any other trait.
 7. A trait a template requires and the persona lacks is a persona addition. It
    is listed in the template's coverage, the plan withholds the phases that
-   need it, and the verdict lists them. The scheduled maintenance pass turns
-   persona additions into builders.
+   need it, and the verdict lists them. A persona addition becomes part of the
+   persona through [Defining a trait](#defining-a-trait); the scheduled
+   maintenance pass reports the additions still open.
 8. The manifest version is recorded in every plan and every verdict. A rebuild
    produces a new version, and verdicts are comparable only within one
    version.
@@ -117,12 +125,12 @@ anywhere in a definition or a manifest.
   "persona": "openclaw-verification-user",
   "version": "<build time as YYYYMMDDTHHMMSSZ>",
   "runtime": { "selector": "npm:2026.9.9", "resolved": "<exact version and digest>" },
+  "definition": { "path": "<the definition given to --seed>", "sha256": "<its hash>" },
   "env": { "name": "<durable env name>", "export": "<path to the .ocm-env.tar>", "sha256": "<hash>" },
   "doctor": "<Doctor output after the build>",
   "traits": {
     "<trait id>": { "keys": { "<key>": "<value>" }, "checkedAt": "<time>" }
-  },
-  "missing": ["<trait id the definition lists but the build could not satisfy>"]
+  }
 }
 ```
 
@@ -136,11 +144,15 @@ kova persona show   --persona <manifest> --json
 
 - `build` is the only command that creates a durable environment. Without
   `--execute` it prints what it would do.
-- `verify` clones the persona, runs every check on the clone and destroys the
-  clone. The scheduled maintenance pass runs it, and `kova verify run` runs the
-  same checks on its clones before the first phase, so a drifted persona is
-  caught before a comparison is made.
-- `show` prints the manifest; `kova verify plan` uses it to resolve keys.
+- `verify` clones the environment the manifest names, runs every check of the
+  definition the manifest records on the clone, and destroys the clone. It
+  refuses a definition whose hash differs from the manifest's. The scheduled
+  maintenance pass runs it, and `kova verify run` runs the same checks on its
+  clones before the first phase, so a drifted persona is caught before a
+  comparison is made.
+- `show` prints the manifest; `kova verify plan` uses it to resolve keys and
+  records its path and hash in the plan, and `kova verify run` clones the
+  environment it names.
 
 ## Defining A Trait
 
@@ -175,7 +187,8 @@ What `kova persona build` does:
 
 ## Maintenance
 
-A scheduled maintenance pass runs `kova persona verify` daily. It rebuilds the
-persona when a check fails, when a template's `requires` names a trait the
-manifest lacks, or when the pinned runtime moves, and it records the manifest
-version it produced. It never edits OpenClaw.
+The [scheduled maintenance pass](README.md#the-model) runs
+`kova persona verify` daily. It rebuilds the persona when a check fails, when
+the definition gains a trait, or when the pinned runtime moves, and it records
+the manifest version it produced. It reports every trait a template's
+`requires` names that the definition still lacks. It never edits OpenClaw.

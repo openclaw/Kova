@@ -17,7 +17,8 @@ placeholders and command rules.
 - The OpenClaw checkout at a named revision. Record the full sha.
 - `verify/areas/<area>.json` in the area input file form. If it is missing,
   stop and ask for it; do not invent bounds.
-- The path to the known breaks for OpenClaw, used only in step 6.
+- The path to the known breaks for OpenClaw, in the page's known breaks form,
+  used from step 6 on.
 - `catalogue/openclaw.json` and the persona manifest, when they exist, to name
   existing commands and traits.
 
@@ -32,16 +33,20 @@ reorder steps, and write each step's output before starting the next.
    `derivation.md`.
 2. **Enumerate entry points and group them into operations** (Step 2). List
    every Gateway method, CLI command, UI action, channel route, scheduled job,
-   agent or subagent call and plugin call; group them by what the user is
-   doing. Output: `## Operations` and `## Excluded entry points`.
+   agent or subagent call and plugin call; find calls from other areas by
+   searching the source, one `from <area>` entry point per file found; group
+   them by what the user is doing. Output: `## Operations` and
+   `## Excluded entry points`.
 3. **Enumerate standing conditions** (Step 3). From the documents only, never
-   from incidents; mark each ambient or event with its source heading and
-   persona trait. Output: `## Conditions`.
+   from incidents; one condition per state or event with its own consequence;
+   mark each ambient or event with its source heading and persona trait.
+   Output: `## Conditions`.
 4. **Write the phases** (Step 4). Setup, then operations in the order a user's
    session goes, then events; consuming and destructive phases last. Commands
    only from the catalogue or `support.toWrite`; placeholders only `{env}`,
-   `{kovaRoot}`, `{run}`, `{persona:<trait>:<key>}`; no expected value or
-   assertion. Output: the `phases` array of `template.json`.
+   `{kovaRoot}`, `{run}`, `{persona:<trait>:<key>}`; every trait a phase needs
+   in its own `requires`; no expected value or assertion. Output: the `phases`
+   array of `template.json`.
 5. **Complete the template header** (Step 5). Fill `id`, `title`, `objective`,
    `paths`, `requires` and `support`. Output: `template.json` complete, with
    no fields outside the template form.
@@ -54,21 +59,26 @@ reorder steps, and write each step's output before starting the next.
    table form, with uncovered items and persona additions by name.
 8. **Reconcile two runs into the template** (Step 8). Steps 1 to 7 run twice,
    independently: two separate sessions or agents that share nothing but the
-   input file, the revision and the page. Reconcile by the page's rules;
-   reconciliation adds and never drops what one run covered. Output:
-   `template.json`, `derivation.md` with `## Reconciliation`, `coverage.md`
-   and `comparison.md`.
+   input file, the revision and the page, each writing into its own working
+   directory. Reconcile by the page's rules; reconciliation adds and never
+   drops what one run covered. Then add a `toWrite` catalogue entry for every
+   `support.toWrite` script the catalogue lacks. Output: `template.json`,
+   `derivation.md` with `## Reconciliation`, `coverage.md` and
+   `comparison.md` in `verify/templates/<area>/`.
 
 ## Finish
 
-Check the five acceptance conditions on the page. When a run covers less than
-nine tenths of the reconciled union of entry points or conditions, fix the area
-input file or the document list as the page says and repeat both runs. When
+Check the five acceptance conditions on the page. When a run found less than
+nine tenths of the reconciled union of entry points or conditions (an entry
+point excluded with a reason counts as found), fix the area input file or the
+document list as the page says and repeat both runs. When
 `catalogue/openclaw.json` exists, run:
 
 ```sh
 node bin/kova.mjs catalogue check --product openclaw --templates verify/templates --personas personas --json
 ```
 
-Report the coverage counts, the persona additions, the `support.toWrite`
-scripts and any acceptance condition that does not hold.
+Every finding other than a `toWrite` entry must be fixed before finishing;
+`toWrite` entries are expected until their scripts exist. Report the coverage
+counts, the persona additions, the `support.toWrite` scripts and any
+acceptance condition that does not hold.

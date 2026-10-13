@@ -3,13 +3,16 @@
 An area template tells `kova verify` how users exercise one area of OpenClaw
 and under which conditions. The plan for a change is assembled from the
 templates of the areas the change touches. This page is the procedure that
-produces a template. Run it once per area, and again when the scheduled
-maintenance pass reports that the area's operations or conditions changed.
+produces a template. Derive each area once, and again when the
+[scheduled maintenance pass](README.md#the-model) reports that the area's
+operations or conditions changed. One derivation runs steps 1 to 7 twice,
+independently, and step 8 reconciles the two runs into one template.
 
 The procedure reads OpenClaw's own entry points and documents, not incidents.
-Known breaks are used only at the end, to find what the derivation missed.
-The repo-local `derive-area-template` skill in `.agents/skills/` runs these
-steps for an agent.
+Known breaks are used only from step 6 on, to find what the derivation
+missed. In a Kova source checkout, the `derive-area-template` skill in
+`.agents/skills/` gives an agent these steps as a checklist; it is not part of
+the release archive.
 
 ## Definitions
 
@@ -18,7 +21,8 @@ steps for an agent.
   Examples: sessions, update, plugins, config, channels.
 - **Entry point**: a way a user or another part of the product reaches the
   area. Kinds: Gateway method, CLI command, UI action, channel route, scheduled
-  job, agent or subagent call, plugin call.
+  job, agent or subagent call (including an agent tool action), plugin call,
+  and `from <area>` for a call site in another area that enters this one.
 - **Operation**: something a user does in the area, named in the user's words.
   One operation usually covers several entry points. Examples: "send a
   message", "search history", "fork a session".
@@ -38,29 +42,38 @@ steps for an agent.
 - **Command catalogue**: the support scripts and product commands a phase may
   call. A phase may name a script that does not exist yet; it is listed under
   `support.toWrite`. See [Command catalogue](catalogue.md).
-- **Known breaks**: a list of OpenClaw changes known to have broken user
-  behavior, each with the paths it changed. It is an input to step 6 only.
+- **Known breaks**: a JSON file listing OpenClaw changes known to have broken
+  user behavior, in the [known breaks form](#known-breaks-form). Its path is
+  an input; it can live anywhere, and nothing from it is copied into a
+  template.
 
 ## Inputs
 
-1. The OpenClaw checkout at a named revision.
+1. The OpenClaw checkout at a named revision: its source tree and its
+   documents.
 2. The area's input file `verify/areas/<area>.json` in the
-   [area input file form](#area-input-file-form): the area's name, its owner
+   [area input file form](#area-input-file-form): the area's `id`, its owner
    path globs, the exact list of documents that describe it, and the bound
    decisions (which neighbouring areas own which shared entry points). Two runs
    of this procedure read the same input file; when runs differ, the
    difference is resolved by editing this file, never by preferring one run.
-3. The product's source tree.
-4. The path to the known breaks for the product, used only in step 6.
+3. The path to the known breaks for OpenClaw, used from step 6 on.
+4. `catalogue/openclaw.json` and the persona manifest, to name existing
+   commands and traits. A command or trait they lack is still named, as
+   `support.toWrite` or a persona addition.
 
 ## Output
 
-Files under `verify/templates/<area>/`:
+Files under `verify/templates/<area>/`, written by step 8:
 
 - `template.json` in the [template form](#template-form).
 - `derivation.md` in the [derivation record form](#derivation-record-form).
 - `coverage.md` in the [coverage table form](#coverage-table-form).
-- `comparison.md`, written by step 8.
+- `comparison.md` in the [comparison form](#comparison-form).
+
+Each of the two runs writes its own `derivation.md`, `coverage.md` and phases
+in a working directory of its own, outside `verify/templates/`; only step 8
+writes into the template directory.
 
 ## Procedure
 
@@ -71,8 +84,9 @@ Read every listed document in full. A document may be added only when a listed
 document links to it and it describes an operation of this area; record the
 addition. Record the revision.
 
-Output: section `## Bounds` of `derivation.md`: the globs, the document paths
-with any additions marked, the revision.
+Output: the `Revision:` and `Date:` lines of `derivation.md`, and its section
+`## Bounds`: the globs, and the document paths with each addition marked
+`(added: linked from <document>)`.
 
 Rules:
 
@@ -88,10 +102,12 @@ Rules:
 
 Do: for each entry-point kind, list every entry point the area exposes:
 
-- Gateway methods: every registered method name with the area's prefixes.
-- CLI commands: every command and subcommand under the area's command files.
-- UI actions: every action a user can take on the area's pages, from the page
-  modules and their docs.
+- Gateway methods: every registered method whose handler lives under the
+  area's globs, or that the area's documents describe.
+- CLI commands: every command and subcommand registered from a file under the
+  area's globs, or that the area's documents describe.
+- UI actions: every action a user can take on the area's pages, from the UI
+  page modules under the area's globs and the documents that describe them.
 - Channel routes, scheduled jobs, agent and subagent calls, plugin calls: every
   place in the source where the area is entered from elsewhere.
 
@@ -107,10 +123,16 @@ Rules:
 
 - Do not group by implementation. Group by what the user is doing.
 - What counts as one entry point: one Gateway method, one CLI command or
-  subcommand, one named UI control, one route or call site, one tool action.
+  subcommand, one named UI control, one route or call site, one agent tool
+  action.
   Flags and parameters are not entry points. Broadcast events the product
   emits are not entry points; list them once under `## Excluded entry points`
   as internal.
+- Code in other areas that reaches this area is found by search, not by
+  memory: search the source tree for this area's writer functions and for its
+  method and command name literals, and list one entry point per file found,
+  of kind `from <area>`. A file found this way is never excluded as owned
+  elsewhere; only its own operations belong to the other area.
 - A UI control counts when a document or the page module names it as an action
   with its own effect: a button, menu item, shortcut, link or form field. Shell
   controls shared by every page (navigation, theme, account, settings panel)
@@ -137,6 +159,11 @@ boundary, a compaction summary in the transcript) is an ambient condition when
 a document describes later behavior under it. A state the persona can be put
 in counts as an ambient condition when a document describes it as a lasting
 state of the product.
+
+Granularity: one condition per state or event a document describes with its
+own consequence. A passage that names several states or events yields one
+condition each. The Control UI's connection states, and whether it has
+finished loading, count when a document describes behavior under them.
 
 For each condition record: its name, the document and heading it comes from,
 whether it is **ambient** (true while other phases run, such as a turn in
@@ -177,10 +204,14 @@ Each phase has:
   command or a catalogue script. A phase that must keep running under later
   phases uses `--background --handle {run}/<name>.json`; a later phase joins it
   with `--wait {run}/<name>.json`.
+- `requires`: the persona traits this phase needs, whether or not its commands
+  read a key from them (a mock provider's behavior, a configuration the
+  persona carries). The plan withholds the phase when the persona lacks one.
 - `checkpoint`: the list of what to record, from the defined kinds.
 - `timeoutMs`: the bound for the whole phase, at most 300000. A phase that
-  needs longer is split, or marked `slow: true` and then selected only by its
-  own paths, never by a setup or template-wide rule.
+  needs longer is split, or marked `slow: true`; a slow phase may exceed the
+  limit, and the plan selects it only when the change touches its own paths,
+  never as a dependency of another phase.
 - `browser: true` when a command drives a browser.
 
 Output: the `phases` array of `template.json`.
@@ -199,19 +230,21 @@ Rules:
 - Placeholders in commands are `{env}`, `{kovaRoot}`, `{run}` and
   `{persona:<trait>:<key>}` for an identifier the persona provides (a session
   key, an agent id, a file path). No other placeholder and no invented
-  literal. A command that needs a value an earlier command produced reads it
+  literal: a value that names persona content comes from a placeholder, while
+  an OpenClaw constant, such as the default agent id `main`, is written as it
+  is. A command that needs a value an earlier command produced reads it
   from a file that command wrote under `{run}`; the script that reads it owns
   that resolution.
 - Persona traits are named `<noun>-<qualifier>` in lower-case hyphenated
   words. A trait the current persona does not provide is still named; it
   appears in `coverage.md` under persona additions.
-- Every persona trait a phase needs is listed in `requires`.
+- Every persona trait a phase needs is listed in that phase's `requires`,
+  including every trait its placeholders name.
 
 ### Step 5. Complete the template header
 
 Do: fill `id`, `title`, `objective`, `paths` (from step 1), `requires` (the
-union of the phases' persona traits), and `support` (`existing` and
-`toWrite`).
+union of the phases' `requires`), and `support` (`existing` and `toWrite`).
 
 Output: `template.json` complete.
 
@@ -232,8 +265,10 @@ Rules:
 
 - The breaks correct the derivation; they are never copied into the template.
 - A break counts as in the area when at least one of its production paths
-  falls inside the globs. A break whose only in-area paths are test files is
-  listed with the note `test-only` and not counted.
+  falls inside the globs. A test path is one that matches an `ignore` glob in
+  `verify/standard.json`; every other path is a production path. A break whose
+  only in-area paths are test paths is listed with the note `test-only` and
+  not counted.
 - A condition added here must still cite a document. When no document states
   it, add the condition anyway, cite the break in the Note, and list it under a
   `## Undocumented conditions` section of `derivation.md`; the scheduled
@@ -243,14 +278,19 @@ Rules:
 
 Do: count operations covered of operations total, conditions covered of
 conditions total, entry points covered of entry points total, and breaks
-mapped of breaks in the area. List the uncovered items by name.
+mapped of breaks in the area. An operation is covered when a phase performs
+it. A condition is covered when phases run under it: an ambient condition
+through a setup phase or a persona trait, an event condition through its own
+event phase. An entry point is covered when it is placed in an operation. List
+the uncovered items by name.
 
 Output: `coverage.md`.
 
 ### Step 8. Reconcile two runs into the template
 
-Do: run steps 1 to 7 twice, independently, on the same area input file and
-revision. Then reconcile:
+Do: run steps 1 to 7 twice, independently: two separate sessions or people
+that share nothing but the input file, the revision and this page, each
+writing into its own working directory. Then reconcile:
 
 - Entry points: the union by name. An entry point one run placed and the other
   excluded is placed, with the reason recorded.
@@ -280,10 +320,17 @@ revision. Then reconcile:
 
 Output: `verify/templates/<area>/template.json`, `derivation.md` with a
 `## Reconciliation` section listing every item taken from only one run, and
-`coverage.md`. Also `comparison.md`: for each run, entry points covered and
-conditions found as a share of the reconciled union.
+`coverage.md`. Also `comparison.md`: for each run, the entry points it found
+and the conditions it found, each as a share of the reconciled union. A run
+found an entry point when it listed it, placed in an operation or excluded
+with a reason.
 
 Rule: reconciliation adds; it never drops something one run covered.
+
+Then, for every script in `support.toWrite` that the catalogue does not list
+yet, add a `toWrite` entry by the catalogue's
+[Adding an entry](catalogue.md#adding-an-entry) procedure, so the plan
+withholds the phases that call it instead of refusing the plan.
 
 ## Template Form
 
@@ -297,7 +344,10 @@ Rule: reconciliation adds; it never drops something one run covered.
   "requires": ["<persona trait>"],
   "support": {
     "existing": ["<script path>"],
-    "toWrite": ["<script path>  (<product method>; <flags>)"]
+    "toWrite": [
+      "<script path>  (<product method>; <flags>)",
+      "product: <command>  (<what>; <flags>)"
+    ]
   },
   "phases": [
     {
@@ -305,6 +355,7 @@ Rule: reconciliation adds; it never drops something one run covered.
       "kind": "setup | operation | event",
       "intent": "<one sentence>",
       "paths": ["<glob>"],
+      "requires": ["<persona trait>"],
       "commands": ["<command>"],
       "checkpoint": ["responses", "logs", "timing", "state:<path>", "doctor", "screen"],
       "timeoutMs": 60000,
@@ -316,7 +367,9 @@ Rule: reconciliation adds; it never drops something one run covered.
 ```
 
 No other fields. In particular a template holds no expected value, no
-threshold and no record of incidents.
+threshold and no record of incidents. A `support.toWrite` line names either a
+script still to be written or, in the `product: <command>` form, an OpenClaw
+command the catalogue lacks.
 
 Two illustrative phases from a sessions template. The setup phase starts a
 turn the mock provider holds open; the operation phase searches history while
@@ -330,6 +383,7 @@ which is the authority for them.
     "kind": "setup",
     "intent": "A user has sent the main session a message the model is still answering, so later phases run while that turn is in flight; the started run and its handle are observed.",
     "paths": ["src/gateway/server-methods/chat-*.ts", "src/agents/sessions/**"],
+    "requires": ["session-main-rolling", "mock-provider-held-turn"],
     "commands": [
       "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 240000 --background --handle {run}/turn-main.json"
     ],
@@ -343,6 +397,7 @@ which is the authority for them.
     "kind": "operation",
     "intent": "A client searches transcripts through sessions.search while a turn is in flight; the result set and its timing are observed.",
     "paths": ["src/gateway/server-methods/sessions-search-*.ts", "src/config/sessions/**"],
+    "requires": ["session-long-compacted"],
     "commands": [
       "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"agentId\":\"main\",\"query\":\"{persona:session-long-compacted:searchWord}\",\"limit\":20}' --timeout 60000"
     ],
@@ -383,6 +438,9 @@ Documents: <paths>
 
 ## Undocumented conditions
 <condition>: needed by <break>, stated in no document
+
+## Reconciliation
+<item>: from run <1 or 2> only; <why it was kept>
 ```
 
 ## Coverage Table Form
@@ -402,18 +460,52 @@ Persona additions:
 - <trait>: <what the persona must contain> (<keys it provides>)
 ```
 
+## Comparison Form
+
+```text
+# Comparison: <area>
+
+Union: <entry points> entry points, <conditions> conditions
+
+| Run | Entry points found | Conditions found |
+|---|---|---|
+| 1 | <found>/<union> | <found>/<union> |
+| 2 | <found>/<union> | <found>/<union> |
+```
+
+A run found an entry point when it listed it, placed in an operation or
+excluded with a reason, and found a condition when its `## Conditions` table
+lists it under any name step 8 merged.
+
+## Known Breaks Form
+
+```json
+{
+  "schema": "kova.verify.known-breaks.v1",
+  "product": "openclaw",
+  "breaks": [
+    {
+      "id": "<the change that broke behavior: a pull request or commit>",
+      "summary": "<one sentence: what users saw break>",
+      "paths": ["<every path the change touched>"]
+    }
+  ]
+}
+```
+
 ## Acceptance
 
 A derivation is accepted when:
 
 1. Two independent runs of this procedure on the same area input file and
-   revision each cover at least nine tenths of the reconciled union of entry
-   points and of conditions. Differences in operation grouping and phase
-   wording are allowed. A run that misses more than a tenth of what the other
-   found means the input file or this procedure is incomplete: fix it and
-   repeat both runs. A difference that comes from the bound is fixed in the
-   area input file; a difference that comes from a document one run did not
-   read is fixed by listing that document.
+   revision each found at least nine tenths of the reconciled union of entry
+   points and of conditions, counted as `comparison.md` counts them: an entry
+   point excluded with a reason counts as found. Differences in operation
+   grouping and phase wording are allowed. A run below nine tenths means the
+   input file or this procedure is incomplete: fix it and repeat both runs.
+   A difference that comes from the bound is fixed in the area input file; a
+   difference that comes from a document one run did not read is fixed by
+   listing that document.
 2. Every entry point is in an operation or excluded with a reason.
 3. Every break in the area maps to a phase, or is recorded as outside the
    product's reach.

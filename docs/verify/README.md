@@ -20,7 +20,7 @@ report store; it adds no threshold and does not feed the release gate.
 ## The model
 
 ```text
-change + baseline  →  plan (areas, templates, intent)  →  run on two persona clones
+change + baseline  →  plan (areas, templates, intent)  →  run on persona clones
                    →  checkpoints per phase per side   →  compare  →  verdict + issues
 ```
 
@@ -28,8 +28,8 @@ change + baseline  →  plan (areas, templates, intent)  →  run on two persona
   relative to its **baseline**, the commit it is compared against.
 - **Intent file**: `intent.txt`, two lines written by whoever asks for the
   verification. `Goal:` states what the change is meant to do; `Protected:`
-  states what must not change. The intent file is how an intended difference
-  is told apart from a break.
+  states what must not change. The differences the goal predicts are named
+  with the intent phases; only those count as intended rather than as breaks.
 - **Persona**: one durable OCM environment that looks like a user who has run
   OpenClaw for months, built once from a definition and cloned for every run.
   Its content is a set of named **traits**. See [Persona](persona.md).
@@ -44,8 +44,8 @@ change + baseline  →  plan (areas, templates, intent)  →  run on two persona
   against an environment, followed by a checkpoint. A phase records; it never
   asserts.
 - **Checkpoint**: what Kova records after a phase on each side: command
-  results, Gateway replies, logs, timing, selected state, Doctor output and
-  screenshots.
+  results and the JSON they printed, logs, timing, selected state, Doctor
+  output and screenshots.
 - **Plan**: the phases one change needs, assembled by script from the changed
   paths, the area templates, the standard phases and the phases written from
   the intent file. See [Plan and verdict](plan-and-verdict.md).
@@ -55,9 +55,17 @@ change + baseline  →  plan (areas, templates, intent)  →  run on two persona
 - **Verdict**: the comparison of the two sides, phase by phase, with every
   difference classed as a break, intended, not caused by the change, fixed, or
   flaky.
-- **Issues**: differences present on both sides. They are real problems in
-  OpenClaw that the change did not cause. They are reported, never counted
-  against the change.
+- **Issues**: failures present on both sides, such as the same error log line
+  or Doctor finding. They are real problems in OpenClaw that the change did
+  not cause. They are reported, never counted against the change.
+- **Scheduled maintenance pass**: a recurring Kova job, not built yet, that
+  keeps the persona, the catalogue and the templates current: it runs
+  `kova persona verify` daily, rebuilds the persona when a check fails or the
+  definition gains a trait, reruns the enumeration steps of each
+  template's derivation on `main`, and reports catalogue entries and phases
+  whose OpenClaw command or flag has gone. It may edit templates, derivation
+  records and the catalogue, never OpenClaw. Until it exists, a maintainer
+  runs the same commands and procedures by hand.
 
 ## The commands
 
@@ -68,25 +76,28 @@ kova verify plan    --repo <checkout> --baseline <sha> --change <sha> \
 kova verify run     --plan plan.json \
                     --target-baseline <selector> --target-change <selector> --execute
 kova verify compare --run <change-run-id> --baseline <baseline-run-id> \
-                    [--noise <id>,<id>] --intent intent.txt --json
+                    [--noise <id>,<id>] --json
 ```
 
 - `plan` is pure file assembly. It reads the changed paths from the checkout,
-  matches them to areas and template phases, adds the standard phases, adds
-  the phases in `--extra-phases`, withholds phases whose persona keys the
-  manifest cannot resolve or whose commands are not written yet, records paths
-  no area owns, and refuses to write a plan containing any other command the
-  catalogue check rejects. It never calls a
-  model; phases written from the intent file arrive as a file.
-- `run` clones the persona twice, starts the baseline target on one clone and
-  the change target on the other, runs the plan on both, and records a
-  checkpoint after every phase on each side. Targets use Kova's selectors
-  (`local-build:<path>`, `npm:<version>`, `runtime:<name>`). Like `kova run`,
-  it is a dry run unless `--execute` is present, and it destroys its clones
-  afterwards.
-- `compare` reads the two runs' checkpoints, removes the noise, classes each
-  remaining difference and writes `verdict.json` in the `kova.verify.v1` form
-  and `issues.md`.
+  matches them to areas and template phases, adds the phases those depend on,
+  the phases in `--extra-phases` and the standard phases, withholds phases the
+  persona cannot support or whose commands are not written yet, records
+  changed paths no phase covers, and refuses to write a plan containing any
+  other command the catalogue check rejects. It never calls a model; phases
+  written from the intent file arrive as a file.
+- `run` clones the persona for each side, switches each clone to its side's
+  target, runs the plan on every clone in parallel and records a checkpoint
+  after every phase. The change side runs twice, so a difference that does not
+  repeat is told apart from one that does; the baseline side runs three
+  times, so differences between its own runs are dropped as noise, and those
+  baseline runs are cached. Targets use Kova's selectors
+  (`local-build:<path>`, `npm:<version>`, `runtime:<name>`). Like Kova's
+  existing `kova run`, it is a dry run unless `--execute` is present, and it
+  destroys its clones afterwards.
+- `compare` reads the runs' checkpoints, drops the noise, classes each
+  remaining row and writes `verdict.json` in the `kova.verify.v1` form and
+  `issues.md`.
 
 The persona and the catalogue have their own commands:
 
@@ -115,12 +126,12 @@ outside the repository and is never committed.
 
 ## What a verification proves and what it does not
 
-A verdict is relative. `good-to-go` means no phase the plan ran recorded a
-difference that only the change side shows and the intent file does not
-explain. It does not mean the area is free of problems: differences present on
-both sides are issues, reported separately. It says nothing about paths no area owns or phases the
-persona could not support; the plan and the verdict list both, so a reader
-sees what was not exercised.
+A verdict is relative. `good-to-go` means both sides ran and no phase recorded
+a difference the change caused that the intent file does not expect. It does
+not mean the area is free of problems: failures present on both sides are
+issues, reported separately. It says nothing about changed paths no phase
+covers or phases the persona could not support; the plan and the verdict list
+both, so a reader sees what was not exercised.
 
 A verdict is comparable only with verdicts made from the same persona manifest
 version. Rebuilding the persona starts a new series.
