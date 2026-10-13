@@ -204,7 +204,8 @@
         "ui/src/components/sidebar-attention-update.ts",
         "ui/src/components/update-git-revisions.ts",
         "ui/src/pages/config/config-page.ts",
-        "ui/src/pages/config/updates*.ts"
+        "ui/src/pages/config/updates*.ts",
+        "src/infra/ocm-update-client.ts"
       ],
       "requires": [
         "update-baseline-fixture",
@@ -389,7 +390,13 @@
       "paths": [
         "src/infra/backup-create.ts",
         "src/infra/update-database-backup.ts",
-        "src/infra/update-recovery*.ts"
+        "src/infra/update-recovery*.ts",
+        "src/commands/backup.ts",
+        "src/commands/backup-verify*.ts",
+        "src/commands/backup-shared.ts",
+        "src/commands/backup-summary.ts",
+        "src/commands/backup-record.ts",
+        "src/commands/backup-sqlite.ts"
       ],
       "requires": [],
       "commands": [
@@ -527,7 +534,11 @@
         "src/flows/doctor-update-budget.ts",
         "src/infra/update-repair-maintenance.ts",
         "src/infra/update-retained-runtime*.ts",
-        "src/infra/update-run-legacy-expiry.ts"
+        "src/infra/update-run-legacy-expiry.ts",
+        "src/cli/update-cli/update-command-plugins.ts",
+        "src/cli/update-cli/update-command-fresh-doctor.ts",
+        "src/commands/doctor/shared/post-core-plugin-convergence.ts",
+        "src/commands/doctor/shared/missing-configured-plugin-install*.ts"
       ],
       "requires": [
         "plugin-capability-widened",
@@ -580,7 +591,8 @@
         "src/node-host/auto-update*.ts",
         "src/node-host/runner.ts",
         "src/node-host/runtime-update-pause.ts",
-        "src/node-host/runtime.ts"
+        "src/node-host/runtime.ts",
+        "src/infra/package-update-*.ts"
       ],
       "requires": [
         "node-host-headless"
@@ -752,7 +764,8 @@
         "scripts/preinstall-package-manager-warning.mjs",
         "scripts/postinstall-bundled-plugins.mjs",
         "scripts/lib/package-lifecycle-marker.mjs",
-        "scripts/lib/fs-safe-prebuild.mjs"
+        "scripts/lib/fs-safe-prebuild.mjs",
+        "openclaw.mjs"
       ],
       "requires": [
         "install-npm-global"
@@ -916,7 +929,9 @@
         "src/commands/doctor-session-sqlite-recovery-inventory*.ts",
         "src/commands/doctor-session-sqlite-retirement*.ts",
         "src/commands/doctor-session-sqlite-verification*.ts",
-        "src/commands/doctor-sqlite-maintenance-lock.ts"
+        "src/commands/doctor-sqlite-maintenance-lock.ts",
+        "src/infra/session-sqlite-migration-artifact.ts",
+        "src/infra/session-sqlite-migration-manifest.ts"
       ],
       "requires": [
         "recovery-originals-retained"
@@ -982,7 +997,7 @@
     {
       "id": "event-update-checks-disabled",
       "kind": "event",
-      "intent": "update.checkOnStart is set to false and the Gateway restarts, so no update check, campaign or notice runs; startup logs and update.status schedule are observed, then checks are re-enabled.",
+      "intent": "An operator disables startup update checks, restarts the Gateway and observes startup logs and update.status before re-enabling checks. This bounded observation does not establish suppression of delayed telemetry or daily notices.",
       "paths": [
         "src/gateway/server-startup-update-check.ts",
         "src/infra/update-*.ts",
@@ -1056,7 +1071,11 @@
       "intent": "A group member who may chat but is not an owner sends /update, so the request is refused with owner setup guidance and no run starts; the reply and update history are observed.",
       "paths": [
         "src/auto-reply/reply/command-gates.ts",
-        "src/auto-reply/reply/commands-update.ts"
+        "src/auto-reply/reply/commands-update.ts",
+        "src/auto-reply/command-auth.ts",
+        "src/auto-reply/reply/commands-context.ts",
+        "src/config/commands.flags.ts",
+        "src/commands/doctor-command-owner*.ts"
       ],
       "requires": [
         "channel-authorized-non-owner",
@@ -1087,7 +1106,8 @@
         "node-host-launcher.mjs",
         "src/node-host/*launcher*.ts",
         "src/node-host/auto-update*.ts",
-        "src/node-host/runtime-update-pause.ts"
+        "src/node-host/runtime-update-pause.ts",
+        "src/infra/package-update-*.ts"
       ],
       "requires": [
         "node-host-headless"
@@ -1268,7 +1288,11 @@
         "src/cli/gateway-cli/run-loop.ts",
         "src/infra/restart.ts",
         "src/infra/update-*.ts",
-        "src/shared/update-outcome.ts"
+        "src/shared/update-outcome.ts",
+        "src/auto-reply/command-auth.ts",
+        "src/auto-reply/reply/commands-context.ts",
+        "src/config/commands.flags.ts",
+        "src/commands/doctor-command-owner*.ts"
       ],
       "requires": [
         "session-main-rolling",
@@ -1315,7 +1339,11 @@
         "src/infra/restart*.ts",
         "src/process/gateway-work-admission.ts",
         "ui/src/pages/chat/chat-outbox-drain.ts",
-        "ui/src/pages/chat/chat-queue-reconnect.ts"
+        "ui/src/pages/chat/chat-queue-reconnect.ts",
+        "ui/src/pages/chat/chat-pane-context.ts",
+        "ui/src/pages/chat/chat-state-refresh.ts",
+        "ui/src/pages/chat/chat-outbox*.ts",
+        "ui/src/lib/chat/outbox-store.ts"
       ],
       "requires": [
         "session-main-rolling",
@@ -1359,7 +1387,9 @@
         "src/infra/gateway-drain.ts",
         "src/infra/gateway-shutdown-budget.ts",
         "src/infra/restart*.ts",
-        "src/process/gateway-work-admission.ts"
+        "src/process/gateway-work-admission.ts",
+        "src/cron/active-jobs.ts",
+        "src/gateway/server-cron.ts"
       ],
       "requires": [
         "cron-job-isolated",
@@ -1443,7 +1473,9 @@
         "src/commands/doctor-session-sqlite-recovery-inventory*.ts",
         "src/commands/doctor-session-sqlite-retirement*.ts",
         "src/commands/doctor-session-sqlite-verification*.ts",
-        "src/commands/doctor-sqlite-maintenance-lock.ts"
+        "src/commands/doctor-sqlite-maintenance-lock.ts",
+        "src/infra/session-sqlite-migration-artifact.ts",
+        "src/infra/session-sqlite-migration-manifest.ts"
       ],
       "requires": [
         "recovery-originals-retained"
@@ -1580,7 +1612,9 @@
         "src/state/openclaw-state-db-content-version.ts",
         "src/state/openclaw-state-db-doctor-schema.ts",
         "src/state/openclaw-state-db-schema-version.ts",
-        "src/state/openclaw-update-schema-refusal.ts"
+        "src/state/openclaw-update-schema-refusal.ts",
+        "src/cli/program/config-guard.ts",
+        "src/commands/startup-config-preflight.ts"
       ],
       "requires": [
         "state-legacy-migratable"
@@ -1633,7 +1667,9 @@
         "src/state/openclaw-state-db-content-version.ts",
         "src/state/openclaw-state-db-doctor-schema.ts",
         "src/state/openclaw-state-db-schema-version.ts",
-        "src/state/openclaw-update-schema-refusal.ts"
+        "src/state/openclaw-update-schema-refusal.ts",
+        "src/cli/program/config-guard.ts",
+        "src/commands/startup-config-preflight.ts"
       ],
       "requires": [
         "state-legacy-retired"
@@ -1688,7 +1724,9 @@
         "src/state/openclaw-state-db-schema-version.ts",
         "src/state/openclaw-update-schema-refusal.ts",
         "src/state/agent-database-admission.ts",
-        "src/gateway/server-runtime-state-prepare.ts"
+        "src/gateway/server-runtime-state-prepare.ts",
+        "src/cli/program/config-guard.ts",
+        "src/commands/startup-config-preflight.ts"
       ],
       "requires": [
         "agents-three-configured",
@@ -1771,7 +1809,9 @@
         "src/commands/doctor-session-sqlite-retirement*.ts",
         "src/commands/doctor-session-sqlite-verification*.ts",
         "src/infra/update-recovery*.ts",
-        "src/commands/doctor-sqlite-maintenance-lock.ts"
+        "src/commands/doctor-sqlite-maintenance-lock.ts",
+        "src/infra/session-sqlite-migration-artifact.ts",
+        "src/infra/session-sqlite-migration-manifest.ts"
       ],
       "requires": [
         "recovery-originals-retained"

@@ -1245,6 +1245,8 @@ The repeated-stop flow explicitly restarts OCM services after clean SIGTERM exit
 
 A correctly targeted native stop RPC is an external-supervision refusal observation, followed by an actual OCM stop/start. Restart selection covers the complete run-loop family rather than omitting its exit and formatting helpers.
 
-Final condition accounting requires every clause of a combined inventory row to have a supplied prerequisite and observation. Partial rows remain explicit gaps in coverage.md; the discovery inventory and comparison shares are unchanged. The retained template describes 37 complete conditions and 483 gaps. Source selection includes exclusive cleanup ownership, telemetry suppression, explicit repair deadlines and required-agent database admission.
+Final condition accounting requires every clause of a combined inventory row to have a supplied prerequisite and observation. Partial rows remain explicit gaps in coverage.md; the discovery inventory and comparison shares are unchanged. The retained template describes 36 complete conditions and 484 gaps. Source selection includes exclusive cleanup ownership, telemetry suppression, explicit repair deadlines and required-agent database admission.
 
 Phase selection includes the legacy-config and provider-alias helper families, retired-config refusal, both deferred package lifecycle scripts and their marker/prebuild contracts, reportability policy, and the explicit repair-timeout caller, parser and registration. These corrections retain the existing scenarios and coverage totals.
+
+Source selectors also cover plugin convergence, node package installation, recovery artifact/manifest contracts, command authorization, outbox ownership and persistence, startup preflight, cron accounting, OCM-backed status and verified-backup commands. Condition 290 remains uncovered because a short startup observation cannot establish suppression of a later eligible telemetry request.

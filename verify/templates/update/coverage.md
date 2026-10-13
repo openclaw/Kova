@@ -1,13 +1,14 @@
 # Coverage: update
 
 Operations with retained phases: 11/21 (some retained operations have fewer entry points)
-Conditions described by retained phases: 37/520 (354 ambient, 166 event)
+Conditions described by retained phases: 36/520 (354 ambient, 166 event)
 Entry points inventoried: 203 placed/310 (107 excluded); executable coverage has not been measured
 Breaks mapped to retained phases: 0/6; all six are outside reach under OCM supervision
 
-A condition is counted here only when a retained phase describes its concrete setup and observation; runtime execution remains unproven. Reconciliation credits applicable phases from either run and excludes claims whose required inputs or actions were lost. There are 37 described conditions and 483 explicit gaps below. Phases: 37 (1 setup, 11 operation, 25 event). These are declarative descriptions, not executed results.
+A condition is counted here only when a retained phase describes its concrete setup and observation; runtime execution remains unproven. Reconciliation credits applicable phases from either run and excludes claims whose required inputs or actions were lost. There are 36 described conditions and 484 explicit gaps below. Phases: 37 (1 setup, 11 operation, 25 event). These are declarative descriptions, not executed results.
 
 Uncovered:
+- Condition 290, Update checks disabled (checkOnStart false or OPENCLAW_NO_AUTO_UPDATE): no checks, statistics or notices: The bounded disabled-startup-check observation does not wait through the delayed telemetry scheduler or establish an expired success cache. Absence of requests cannot prove telemetry or daily-notice suppression.
 - Condition 137, Older npm snapshot directories reported by Doctor with size and removal command: The recovery export includes an older npm snapshot, but no Doctor observation runs while it is installed to report its size and removal command.
 - Condition 196, Original state captures under <state-directory>.update-captures/<run-id>; incomplete captures warned; status shows restored, manual or incomplete: No incomplete capture, manual-restoration outcome or partial capture manifest is declared.
 - Condition 215, Deferred plugin migrations: finalization runs another fresh Doctor; retained inputs protected from config edits: Deferred migration is exercised, but no command attempts to edit or remove protected inputs while migration is pending.
@@ -703,6 +704,8 @@ Clean-stop sequencing: repeated SIGTERM observations explicitly wait for each pr
 
 Hosted stop boundary: a valid gateway.stop.request still refuses external supervision in the pinned product. The template records that refusal and uses the bounded OCM stop helper before starting the service and observing a new generation. It does not claim that the native RPC stopped the Gateway. Restart selectors cover the run-loop implementation family, including shutdown outcome formatting and exit/log cleanup.
 
-Compound condition rows count only when all named prerequisites and observations are supplied. Partial cases remain useful scenarios but are recorded as gaps rather than credited as complete conditions. The retained 37 complete descriptions and 483 gaps do not change the discovery inventory or its comparison shares. Cleanup ownership, check suppression, bounded repair and required-store refusal select their direct implementation owners.
+Compound condition rows count only when all named prerequisites and observations are supplied. Partial cases remain useful scenarios but are recorded as gaps rather than credited as complete conditions. The retained 36 complete descriptions and 484 gaps do not change the discovery inventory or its comparison shares. Cleanup ownership, check suppression, bounded repair and required-store refusal select their direct implementation owners.
 
 Phase selection includes the legacy-config and provider-alias helper families, retired-config refusal, both deferred package lifecycle scripts and their marker/prebuild contracts, reportability policy, and the explicit repair-timeout caller, parser and registration. These corrections retain the existing scenarios and coverage totals.
+
+Source selectors also cover plugin convergence, node package installation, recovery artifact/manifest contracts, command authorization, outbox ownership and persistence, startup preflight, cron accounting, OCM-backed status and verified-backup commands. Condition 290 remains uncovered because a short startup observation cannot establish suppression of a later eligible telemetry request.
