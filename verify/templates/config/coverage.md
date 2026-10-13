@@ -1,9 +1,9 @@
 # Coverage: config
 
 Operations: 32/32
-Conditions: 363/459 (301 ambient, 158 event)
+Conditions: 359/459 (301 ambient, 158 event)
 Entry points: 266/291 (25 excluded)
-Breaks mapped: 3/3
+Breaks mapped: 2/3 (145553 is a gap)
 
 Uncovered:
 - condition 17 Invalid external edit: hot reload skips it without rewriting openclaw.json and the runtime keeps the last accepted config: invalid revisions are observed in a bounded window, without a watcher-completion receipt
@@ -58,11 +58,15 @@ Uncovered:
 - condition 151 Schema-valid authorable path that is unset: config get explains the runtime default: ambient, but no persona trait provides it and no setup phase starts it
 - condition 152 OpenClaw-managed meta paths (meta.lastTouchedVersion, meta.migrations.*) maintained on writes: ambient, but no persona trait provides it and no setup phase starts it
 - condition 155 Config file cannot be read: the read failure names the file and keeps the underlying error: the candidate-staging case no longer includes a separate unreadable-config experiment
+- condition 159 Write with no effective diff: No change, file left byte-for-byte untouched (config.patch changedPaths []): event-noop-write authors hybrid once through the CLI and submits an identical RPC patch, but does not establish a repeated CLI set under authored equality or retain before/after file bytes (src/cli/config-cli-runner.ts:483 at 7e80556f)
 - condition 161 Copy-fallback publication loses the file before a conflict: original restored when still owned, otherwise partial publication and the backup location reported: the recorded sequence does not establish the persistence overlap or copy-fallback branch required by this consequence
 - condition 169 No interactive terminal: configure prints the equivalent config get, set, patch and validate commands and exits with an error: ambient, but no persona trait provides it and no setup phase starts it
 - condition 174 Default dated log file under /tmp/openclaw, named per profile: ambient, but no persona trait provides it and no setup phase starts it
 - condition 175 /tmp/openclaw unsafe or unavailable: log directory falls back under the OS temp dir: /tmp/openclaw unsafe or unavailable: needs an unsafe or unwritable /tmp/openclaw on the harness host
-- condition 182 Secret values reaching console, file log, OTLP log record and session transcript sinks: masked before they are written: console, file and session sinks are driven; the OTLP sink requires an exporter and collector that are absent
+- condition 176 Dated log files older than 24 hours pruned: event-log-prune records restart output only; no aged-file fixture is bound to the resolved dated-log directory under /tmp/openclaw or its OS temporary-directory fallback, and no before/after file inventory observes pruning (src/logging/logger.ts:679 at 7e80556f)
+- condition 179 Active log file reaches logging.maxFileBytes: rotated, five numbered archives kept: event-reload-logrotate records saved/applied size settings without establishing an append crossing maxFileBytes or recording the active file and five numbered archives (src/logging/logger-file-transport.ts:54,184 at 7e80556f)
+- condition 180 Custom logging.redactPatterns: replace the default string list for log and transcript output while built-in form-body, authorization-header and AWS key protections stay: the declared chat/history and tool commands do not establish a raw form-body or Digest payload reaching the subsystem logger under copied/custom patterns; 145553 remains a gap until a reachable producer and recorded sink output are identified (src/logging/subsystem.test.ts:293 at 7e80556f)
+- condition 182 Secret values reaching console, file log, OTLP log record and session transcript sinks: masked before they are written: chat/history and tool output are observed, but no raw secret-bearing producer is established for console/file logging; the OTLP sink also needs an exporter and collector that are absent
 - condition 188 Input method composing in Search settings: Escape stays with the input method: ambient, but no persona trait provides it and no setup phase starts it
 - condition 194 Save outcome unknown: draft kept and unrelated settings writes paused until a refresh confirms or the user retries or discards: ambient, but no persona trait provides it and no setup phase starts it
 - condition 197 Chosen Lobsterdex lobster not unlocked in this browser: Default shown, choice kept: ambient, but no persona trait provides it and no setup phase starts it
@@ -111,6 +115,8 @@ Uncovered:
 - every command head the phases use must have an entry in the command catalogue, which is a separate change; until it lands with them, a plan that selects these phases is refused
 - theme tool action import (entry point): placed, not driven; browser-local theme import does not call themes.import
 
+Historical-break gap: 145553 remains in config/redaction coverage. Its subsystem-console boundary has no declared raw-payload producer paired with recorded sink output. Chat/history redaction and provider-error preprocessing do not prove that boundary; the missing helper alone is not an outside-reach disposition. See derivation.md for the source evidence.
+
 Persona additions:
 (Traits the persona does not provide yet; every other trait in requires is one it provides.)
 - agent-gateway-url-override: a Gateway URL an agent's gateway tool can pass as an explicit gatewayUrl override to reach the same Gateway through the client path (url)
@@ -158,7 +164,7 @@ Persona additions:
 - connection-shared-token: a Control UI connection authenticated only with the shared token and no authenticated profile (none)
 - gateway-public-origin: the env's public Gateway origin (origin)
 - legacy-state-retired: state fixtures of retired formats, one per key: below-schema-8 agent databases, Telegram JSON sidecars, Telegram offset rows v1 and v2, openclaw.extension.json stubs, retired Discord settings, device-pair-notify.json, Discord JSON and iMessage files, Voice Call JSONL logs, ownerless cron jobs with quarantine files, cron JSON stores, JSON delivery queues with plugins/installs.json, Voice Wake and restart-sentinel files, and OAuth sidecars referenced by auth-profiles.json (schema8, tgsidecars, tgoffset, extstub, discordretired, devicepair, discordjson, voicejsonl, cronownerless, cronjson, queuejson, retiredfiles, oauthsidecar)
-- logs-older-than-day: dated log files older than 24 hours in the log directory (none); run 1 described it as: dated Gateway log files older than 24 hours in the log directory (none)
+- logs-older-than-day: retained need for condition 176, with no requiring phase; the recorded runs did not bind aged files to the resolved log directory or a before/after inventory
 - models-many-configured: more than eight models configured across providers (none); run 1 described it as: more than eight models offered in the settings model menus (none)
 - plugin-bundle-unknown-transport: a plugin bundle whose MCP server declares an unknown HTTP transport type, plus a complete state fixture containing its installed files, install record and config reference (path, fixture)
 - plugin-codex-enabled: the Codex plugin enabled with a running app-server (none)
@@ -170,7 +176,7 @@ Persona additions:
 - plugin-schema-skew: an installed plugin whose schema changed or whose minHostVersion is newer than the host, under an existing config entry (none); run 1 described it as: a plugin whose schema or minHostVersion is ahead of the host (pluginId)
 - plugin-slow-stop: a plugin whose service stop hangs past the reload timeout (pluginId)
 - profile-read-only: a read-only operator profile for the Control UI (none); run 1 described it as: an operator profile with read-only scope that the Control UI flow can sign in as (profileId)
-- session-secret-values: a marker message and transcript content carrying placeholder secret values (<token>-shaped bearer, Digest and form-encoded credentials, a payment card field, values shorter and longer than 18 characters, numeric and boolean credential fields), an environment variable name holding a placeholder secret, a source file with ambiguous token assignments and a config file with opaque values (marker, envName, sourceFile, configFile); run 1 described it as: mock replies, tool output and a provider error carrying placeholder secrets: long, short, a form body, a Digest header; a .env file a tool can read (marker, envFilePath, toolSecretLine)
+- session-secret-values: a marker message and transcript content carrying placeholder secret values (<token>-shaped bearer, Digest and form-encoded credentials, a payment card field, values shorter and longer than 18 characters, numeric and boolean credential fields), an environment variable name holding a placeholder secret, a source file with ambiguous token assignments and a config file with opaque values (marker, envName, sourceFile, configFile); run 1 also requested a provider error, but the mock provider does not supply a secret-bearing error, and no raw subsystem-log producer is established (marker, envFilePath, toolSecretLine)
 - state-dir-rejected-unwritable: named by a phase; content as the phase intent describes (none)
 - theme-catalog: a built-in theme id to select and a tweakcn registry URL to import (themeId, importUrl)
 - theme-plugin: an enabled plugin contributing a theme with one color mode and no mascot, plus a tweakcn theme source the importer accepts (pluginId, themeId, tweakcnSource)

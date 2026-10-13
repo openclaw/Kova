@@ -199,7 +199,6 @@
     "gateway-public-origin",
     "gateway-remote-mode",
     "gateway-second-instance",
-    "logs-older-than-day",
     "mock-provider-held-turn",
     "mock-provider-scripted",
     "mock-provider-tool-calls",
@@ -1120,7 +1119,7 @@
     {
       "id": "keep-secrets-out-of-output",
       "kind": "operation",
-      "intent": "A user with a copied redact pattern runs a turn whose reply, tool output and provider error carry placeholder secrets of several shapes (long, short, form body, Digest header, registered secret); console and file logs, transcript, sessions_history, Control UI tool events, diagnostics export and WebSocket logs are observed.",
+      "intent": "Sends a synthetic secret-shaped marker through chat and records sessions_history, chat history, Control UI tool events, a diagnostics export and available log lines.",
       "paths": [
         "src/agents/tools/sessions-history-tool.ts",
         "src/config/redact-*.ts",
@@ -4995,7 +4994,7 @@
     {
       "id": "event-reload-logrotate",
       "kind": "event",
-      "intent": "A tool lowers maxFileBytes and the Gateway logs past it, observing the rotation and the numbered archives.",
+      "intent": "Changes and restores logging.maxFileBytes through config.patch, recording the saved and applied config responses.",
       "paths": [
         "src/config/[abcdefghjlmnoptuvw]*.ts",
         "src/config/i[mns]*.ts",
@@ -8462,13 +8461,11 @@
     {
       "id": "event-log-prune",
       "kind": "event",
-      "intent": "The Gateway runs with dated log files older than a day, observing which files are pruned.",
+      "intent": "Restarts the Gateway and records its startup output and log lines.",
       "paths": [
         "src/logging/*.ts"
       ],
-      "requires": [
-        "logs-older-than-day"
-      ],
+      "requires": [],
       "commands": [
         "ocm service restart {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
@@ -8477,8 +8474,7 @@
       "checkpoint": [
         "responses",
         "logs",
-        "timing",
-        "state:logs"
+        "timing"
       ],
       "timeoutMs": 120000,
       "browser": false,
@@ -8621,7 +8617,7 @@
     {
       "id": "event-noop-write",
       "kind": "event",
-      "intent": "A user sets a value to what it already is through the CLI and config.patch; No change, empty changedPaths and the untouched file bytes are observed.",
+      "intent": "Authors gateway.reload.mode as hybrid through the CLI, then submits the same value through config.patch and records its response, including changedPaths, and the final config state.",
       "paths": [
         "src/cli/command-config-*.ts",
         "src/cli/config-*.ts",
