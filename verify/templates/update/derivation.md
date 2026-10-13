@@ -1242,3 +1242,5 @@ Crash-loop observation includes the later persisted recovery transition and chan
 The update-check endpoint now joins a bounded request/exchange observation before product status and teardown. Port occupation persists through the restart failure allowance. Missing legacy provider-key inputs remain uncovered, and source selection includes the scheduling, ACP and response owners. Valid-operation errors/timeouts preserve the catalogue result semantics throughout the declared helpers.
 
 The repeated-stop flow explicitly restarts OCM services after clean SIGTERM exits; waiting for automatic respawn is not a valid prerequisite. Its source selectors include the remaining launcher, legacy-config and channel-recovery owners.
+
+A correctly targeted native stop RPC is an external-supervision refusal observation, followed by an actual OCM stop/start. Restart selection covers the complete run-loop family rather than omitting its exit and formatting helpers.
