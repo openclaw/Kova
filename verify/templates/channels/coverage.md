@@ -1,0 +1,310 @@
+# Coverage: channels
+
+Operations: 33/36
+Conditions: 538/645 (365 ambient, 280 event)
+Entry points: 340/428 (88 excluded)
+Breaks mapped: 3/6
+
+Counting rule: these counts describe the written plan after the declared helpers and persona additions exist; no phase has been executed as this template. An operation is covered when a phase performs it without a real platform account. An event condition is covered when its event flow can perform it without a real platform account. An ambient condition is covered by the persona content or the setup that supplies it. Entry points count as placed when assigned to one operation, even when a live adapter remains outside reach. Every event condition has a written flow; account-dependent flows remain listed below.
+
+Uncovered:
+- Link a channel account by QR or interactive login (operation): completing the login needs a real QR-capable account; the no-channel error probe does not cover completion
+- Set the bot's profile and presence (operation): the combined profile flow publishes through Nostr relays and needs a real account; fixture-only presence does not cover that flow
+- Manage a group chat's name, icon and members (operation): its phases (manage-group-chat, manage-group-chat-with-icon-file) need a real iMessage (macOS Messages host) account; written, outside reach
+- a2a inbound monitor (extensions/a2a/src) (entry point, channel route) and its adapter-specific features: needs a real A2A account; its phases are written, outside reach, and the adapter pages are not read, by the bound
+- buzz inbound monitor (extensions/buzz/src) (entry point, channel route) and its adapter-specific features: needs a real Buzz account; its phases are written, outside reach, and the adapter pages are not read, by the bound
+- clickclack inbound monitor (extensions/clickclack/src) (entry point, channel route) and its adapter-specific features: needs a real ClickClack account; its phases are written, outside reach, and the adapter pages are not read, by the bound
+- feishu inbound monitor (extensions/feishu/src) (entry point, channel route) and its adapter-specific features: needs a real Feishu account; its phases are written, outside reach, and the adapter pages are not read, by the bound
+- googlechat inbound monitor (extensions/googlechat/src) (entry point, channel route) and its adapter-specific features: needs a real Google Chat account; its phases are written, outside reach, and the adapter pages are not read, by the bound
+- imessage inbound monitor (extensions/imessage/src) (entry point, channel route) and its adapter-specific features: needs a real iMessage (macOS Messages host) account; its phases are written, outside reach, and the adapter pages are not read, by the bound
+- irc inbound monitor (extensions/irc/src) (entry point, channel route) and its adapter-specific features: needs a real IRC account; its phases are written, outside reach, and the adapter pages are not read, by the bound
+- line inbound monitor (extensions/line/src) (entry point, channel route) and its adapter-specific features: needs a real LINE account; its phases are written, outside reach, and the adapter pages are not read, by the bound
+- matrix inbound monitor (extensions/matrix/src) (entry point, channel route) and its adapter-specific features: needs a real Matrix account; its phases are written, outside reach, and the adapter pages are not read, by the bound
+- mattermost inbound monitor (extensions/mattermost/src) (entry point, channel route) and its adapter-specific features: needs a real Mattermost account; its phases are written, outside reach, and the adapter pages are not read, by the bound
+- msteams inbound monitor (extensions/msteams/src) (entry point, channel route) and its adapter-specific features: needs a real Microsoft Teams account; its phases are written, outside reach, and the adapter pages are not read, by the bound
+- nextcloud-talk inbound monitor (extensions/nextcloud-talk/src) (entry point, channel route) and its adapter-specific features: needs a real Nextcloud Talk account; its phases are written, outside reach, and the adapter pages are not read, by the bound
+- nostr inbound monitor (extensions/nostr/src) (entry point, channel route) and its adapter-specific features: needs a real Nostr account; its phases are written, outside reach, and the adapter pages are not read, by the bound
+- raft inbound monitor (extensions/raft/src) (entry point, channel route) and its adapter-specific features: needs a real Raft account; its phases are written, outside reach, and the adapter pages are not read, by the bound
+- reef inbound monitor (extensions/reef/src) (entry point, channel route) and its adapter-specific features: needs a real Reef account; its phases are written, outside reach, and the adapter pages are not read, by the bound
+- signal inbound monitor (extensions/signal/src) (entry point, channel route) and its adapter-specific features: needs a real Signal account; its phases are written, outside reach, and the adapter pages are not read, by the bound
+- slack inbound monitor (extensions/slack/src) (entry point, channel route) and its adapter-specific features: needs a real Slack account; its phases are written, outside reach, and the adapter pages are not read, by the bound
+- sms inbound monitor (extensions/sms/src) (entry point, channel route) and its adapter-specific features: needs a real SMS account; its phases are written, outside reach, and the adapter pages are not read, by the bound
+- synology-chat inbound monitor (extensions/synology-chat/src) (entry point, channel route) and its adapter-specific features: needs a real Synology Chat account; its phases are written, outside reach, and the adapter pages are not read, by the bound
+- tlon inbound monitor (extensions/tlon/src) (entry point, channel route) and its adapter-specific features: needs a real Tlon account; its phases are written, outside reach, and the adapter pages are not read, by the bound
+- twitch inbound monitor (extensions/twitch/src) (entry point, channel route) and its adapter-specific features: needs a real Twitch account; its phases are written, outside reach, and the adapter pages are not read, by the bound
+- whatsapp inbound monitor (extensions/whatsapp/src) (entry point, channel route) and its adapter-specific features: needs a real WhatsApp account; its phases are written, outside reach, and the adapter pages are not read, by the bound
+- x inbound monitor (extensions/x/src) (entry point, channel route) and its adapter-specific features: needs a real X account; its phases are written, outside reach, and the adapter pages are not read, by the bound
+- zalo inbound monitor (extensions/zalo/src) (entry point, channel route) and its adapter-specific features: needs a real Zalo account; its phases are written, outside reach, and the adapter pages are not read, by the bound
+- zalouser inbound monitor (extensions/zalouser/src) (entry point, channel route) and its adapter-specific features: needs a real Zalo personal account; its phases are written, outside reach, and the adapter pages are not read, by the bound
+- telegram and discord inbound monitors outside Kova's Telegram shim and Discord fixture (live platform behaviour, adapter-specific features on their own pages): need a real account; outside reach
+- 8. Matrix startup snapshots, membership updates and unaccepted invites do not introduce (condition): its event phase (event-matrix-startup-snapshot-no-intro) needs a real Matrix account; written, outside reach
+- 13. Slack multi-person DM routed as a group chat (condition): needs a Slack workspace
+- 14. Channel plugin installed on demand, loaded only when the channel is active (WhatsApp) (condition): the on-demand WhatsApp plugin path requires a real account; written, outside reach
+- 42. Slack team binding (condition): needs a Slack workspace
+- 51. Legacy WhatsApp broadcast array with single-pass fan-out (condition): needs a WhatsApp phone
+- 67. Slack without channel membership or message event subscription (condition): needs a Slack workspace
+- 68. Microsoft Teams without ChannelMessage.Read.Group permission (condition): needs a Microsoft Teams tenant
+- 69. Google Chat interaction webhook gives no unmentioned messages or thread owners (condition): needs a Google Chat app
+- 89. Signal groupAllowFrom matching group id or sender (condition): needs a signal-cli account
+- 91. Matrix room-name or unresolved allowlist keys ignored unless name matching enabled (condition): needs a Matrix homeserver account
+- 116. WhatsApp group woken by @-mention, pattern, E.164 digits or quoted reply (condition): its event phase (event-whatsapp-group-pings) needs a real WhatsApp account; written, outside reach
+- 117. WhatsApp group not in channels.whatsapp.groups dropped with a log hint (condition): its event phase (event-wa-unlisted-group) needs a real WhatsApp account; written, outside reach
+- 118. WhatsApp group on a non-default account keyed with account suffix (condition): needs a WhatsApp phone
+- 119. Ephemeral or view-once WhatsApp message unwrapped so a ping still triggers (condition): its event phase (event-whatsapp-group-pings) needs a real WhatsApp account; written, outside reach
+- 128. Qualified WhatsApp broadcast key takes precedence over unqualified (condition): needs a WhatsApp phone
+- 142. WhatsApp audio transcribed once before broadcast fan-out (condition): its event phase (event-broadcast-audio-once) needs a real WhatsApp account; written, outside reach
+- 144. WhatsApp group context buffer shared by broadcast agents and cleared after fan-out (condition): needs a WhatsApp phone
+- 155. Discord channel-audience access group resolved at authorization time (condition): needs a real Discord guild with member lookups (the fixture has no member intent)
+- 168. Slack channel allowlist keyed by name instead of ID never matches (condition): outside reach: Slack workspace
+- 172. Slack ambient room without history scope for its room type (condition): needs a Slack workspace
+- 199. WhatsApp connected, no DM replies while sender awaits pairing (condition): needs a WhatsApp phone
+- 200. WhatsApp group messages ignored by mention gating (condition): needs a WhatsApp phone
+- 201. WhatsApp QR login times out with 408 behind unreachable proxy (condition): its event phases (event-whatsapp-qr-proxy-timeout, event-wa-qr-408) need a real WhatsApp account; written, outside reach
+- 204. WhatsApp replies late while stale local TUI clients degrade the event loop (condition): needs a WhatsApp phone
+- 219. Slack socket mode connected but no responses (tokens, scopes, configured_unavailable) (condition): needs a Slack workspace
+- 220. Slack DMs blocked pending pairing (condition): needs a Slack workspace
+- 221. Slack channel message ignored by groupPolicy or channel allowlist (condition): needs a Slack workspace
+- 222. iMessage imsg missing or non-macOS host (condition): needs a macOS Messages host
+- 223. iMessage sends but cannot receive without automation permission (condition): needs a macOS Messages host
+- 224. iMessage DM sender blocked pending pairing (condition): needs a macOS Messages host
+- 225. Signal daemon reachable but bot silent (condition): needs a signal-cli account
+- 226. Signal DM blocked pending pairing (condition): needs a signal-cli account
+- 227. Signal group replies not triggering under group allowlist or mention patterns (condition): needs a signal-cli account
+- 228. QQ Bot wrong appId or clientSecret replies gone to Mars (condition): needs a QQ Bot account (external plugin)
+- 229. QQ Bot receives no inbound messages (condition): needs a QQ Bot account (external plugin)
+- 230. QQ Bot voice not transcribed without STT provider (condition): needs a QQ Bot account (external plugin)
+- 231. QQ Bot proactive messages blocked without recent interaction (condition): its phase (event-qqbot-proactive-blocked) needs a real QQ Bot account; written, outside reach
+- 232. Matrix room messages ignored by policy, allowlist or mention gating (condition): needs a Matrix homeserver account
+- 233. Matrix DMs not processed pending pairing (condition): needs a Matrix homeserver account
+- 234. Matrix encrypted rooms failing on unverified device (condition): needs a Matrix homeserver account
+- 235. Matrix key backup restore pending or broken (condition): needs a Matrix homeserver account
+- 236. Matrix cross-signing or bootstrap state wrong (condition): needs a Matrix homeserver account
+- 254. Third-party channel plugin on the legacy shared setup adapter (condition): outside reach: third-party legacy channel plugin
+- 260. Remote-mode Gateway: login saves auth locally (condition): no phase runs under it: its persona trait config-gateway-remote is required by no phase
+- 295. WhatsApp live group listing while another process owns the session (condition): its phase (event-whatsapp-groups-owned-elsewhere) needs a real WhatsApp account; written, outside reach
+- 319. QQ Bot block replies streaming unless its streaming mode is off (condition): outside reach: external QQ Bot plugin
+- 353. Microsoft Teams or Mattermost block mode, rotating posts without native preview (condition): outside reach: Teams tenant or Mattermost server
+- 354. Slack native streaming transport in partial mode (condition): needs a Slack workspace
+- 355. Slack top-level DMs without a reply thread show no thread-style preview (condition): needs a Slack workspace
+- 356. Slack native agent card in reply threads during progress (condition): needs a Slack workspace
+- 357. Slack failed turn keeps card marked Failed (condition): its event phase (event-slack-failed-no-reply) needs a real Slack account; written, outside reach
+- 358. Slack cards link to OpenClaw only with publicOrigin (condition): needs a Slack workspace
+- 359. Slack top-level progress turns use a typing reaction instead of preview (condition): needs a Slack workspace
+- 370. Mattermost preview deleted before finalize, fresh final post (condition): its event phases (event-preview-unavailable-at-finalize, event-mm-preview-deleted) need a real Mattermost and Matrix account; written, outside reach
+- 371. Matrix media-only, error or reply-target-mismatch final redacts stale preview (condition): its event phases (event-preview-unavailable-at-finalize, event-mm-preview-deleted, event-mx-preview-redacted) need a real Mattermost and Matrix account; written, outside reach
+- 417. Slack angle-bracket tokens surviving escaping (condition): needs a Slack workspace
+- 433. Nextcloud Talk reaction removal rejected (add-only) (condition): needs a Nextcloud Talk server
+- 434. WhatsApp single bot reaction slot, new replaces old (condition): its event phase (event-wa-reaction-slot) needs a real WhatsApp account; written, outside reach
+- 435. Signal inbound reaction notifications (reactionNotifications) (condition): needs a Signal, Slack or real Discord account with reactionNotifications modes
+- 437. iMessage reactions mapped to tapbacks (condition): needs a macOS Messages host
+- 438. Feishu clearAll reaction semantics (condition): outside reach: Nextcloud Talk, WhatsApp, Signal, iMessage and Feishu accounts
+- 447. Extra Telegram bot menu entries (customCommands) (condition): no phase runs under it: its persona trait config-telegram-custom-commands is required by no phase
+- 458. Self-chat mode ignores native mentions, answers only text patterns (condition): needs a WhatsApp phone
+- 473. Legacy single-account WhatsApp auth directory awaiting doctor migration (condition): needs a WhatsApp phone
+- 475. Telegram apiRoot with /bot<TOKEN> suffix awaiting doctor --fix (condition): needs a real Telegram Bot API root
+- 476. Self-hosted Telegram Bot API in local mode with trusted file roots (condition): needs a self-hosted Telegram Bot API server
+- 478. Signal pinned to one account identity at startup (condition): needs a signal-cli account
+- 480. iMessage through SSH wrapper to a remote Messages Mac (condition): needs a macOS Messages host
+- 481. iMessage reads work but sends fail with AppleEvents -1743 (condition): needs a macOS Messages host
+- 482. iMessage send transport falls back from IMCore bridge to AppleScript (condition): its event phase (event-imessage-transport-fallback) needs a real iMessage (macOS Messages host) account; written, outside reach
+- 483. iMessage includeAttachments off by default (condition): needs a macOS Messages host
+- 485. iMessage group registry gate needs explicit chat_id or wildcard (condition): needs a macOS Messages host
+- 486. Remote imsg v0.13.4 limits (poll votes need pollOptionId; no attachment replies to nonzero parts) (condition): outside reach: macOS Messages host
+- 494. Discord bot presence follows runtime availability (condition): needs real Discord presence events
+- 501. Matrix traffic through an explicit proxy (condition): needs a Matrix homeserver account
+- 502. Matrix private-network homeserver (condition): outside reach: Matrix homeserver
+- 503. Matrix autoJoin off, invites ignored (condition): needs a Matrix homeserver account
+- 504. Matrix autoJoin allowlist or always joins invited rooms (condition): its event phase (event-matrix-auto-join) needs a real Matrix account; written, outside reach
+- 505. Matrix DMs isolated per room (condition): needs a Matrix homeserver account
+- 506. IRC NickServ identification (condition): needs an IRC server
+- 507. Google Chat service account from inline JSON, file or SecretRef (condition): outside reach: Google Chat app
+- 508. Slack in Socket Mode (condition): needs a Slack workspace
+- 509. Slack in HTTP mode (condition): needs a Slack workspace
+- 510. Slack postAs user (condition): needs a Slack workspace
+- 511. Slack Enterprise Grid org-wide install (condition): needs a Slack workspace
+- 513. Slack group DM the app never joined unseen (condition): needs a Slack workspace
+- 514. Slack unfurls off for bot replies (condition): needs a Slack workspace
+- 515. Slack thread history per thread or shared (thread.historyScope) (condition): needs a Slack workspace
+- 516. New Slack threads inherit parent transcript (condition): needs a Slack workspace
+- 517. Existing thread messages fetched when a Slack thread session starts (condition): its event phase (event-slack-thread-initial-history) needs a real Slack account; written, outside reach
+- 518. Temporary Slack typing reaction on the inbound message while a reply runs (condition): needs a Slack workspace
+- 519. Mattermost chatmode oncall (condition): needs a Mattermost server
+- 520. Mattermost chatmode onmessage (condition): needs a Mattermost server
+- 521. Mattermost chatmode onchar (condition): needs a Mattermost server
+- 522. Mattermost slash command registration failed, callbacks rejected (condition): its event phases (event-mattermost-invalid-command-token, event-mm-command-registration) need a real Mattermost account; written, outside reach
+- 524. QR login completes in web.login.wait and starts the channel (condition): its event phase (event-web-login-completes) needs a real WhatsApp account; written, outside reach
+- 532. Plugin using deprecated MediaPath/MediaUrls context fields (condition): no phase runs under it: its persona trait channel-plugin-legacy-media-fields is required by no phase
+- 558. Per-message authentication map missing a field treated as unverified (condition): its event phase (event-auth-map-missing-field) needs a real Slack account; written, outside reach
+- 559. Third-party plugin on deprecated dangerous or mutableIdentifierMatching fields (condition): outside reach: third-party legacy channel plugin
+- 596. Question choices as text or numbered reactions where native callbacks unavailable (condition): its event phase (event-question-on-limited-channels) needs a real LINE and WhatsApp account; written, outside reach
+- 619. WhatsApp with messages.ackReaction unset sends no acknowledgment (condition): needs a WhatsApp phone
+- 621. Retired WhatsApp inbound messagePrefix awaiting doctor move to responsePrefix (condition): needs a WhatsApp phone
+- [OpenClaw #164989](https://github.com/openclaw/openclaw/pull/164989) (break): needs a remote OpenClaw worker, which this environment does not provide; outside reach
+- [OpenClaw #165600](https://github.com/openclaw/openclaw/pull/165600) (break): chat.send on an Incognito Control UI session, owned by sessions; outside this template
+- [OpenClaw #166049](https://github.com/openclaw/openclaw/pull/166049) (break): the Control UI public-thread chat link, owned by sessions; the X adapter paths need a real X account; outside this template
+
+- 202. WhatsApp disconnect and relogin loop flagged as recent reconnects (condition): its WhatsApp reconnect phases require a real account; written, outside reach
+- 203. WhatsApp status=408 request time-out loop (condition): its WhatsApp timeout-loop phases require a real account; written, outside reach
+- 471. WhatsApp starts automatically when a linked session exists (condition): its WhatsApp auto-start phase requires a linked real account; written, outside reach
+- 484. iMessage inbound recovery after bridge or Gateway restart (condition): its iMessage bridge and Gateway recovery phases require a macOS Messages host; written, outside reach
+- 523. web.login.start without a channel selects first QR-capable provider (condition): selecting a loaded QR-capable provider requires the real QR account configuration; written, outside reach
+
+Persona additions:
+The input persona also supplies agents-three-configured (three agent identifiers), config-heartbeat-short (heartbeat timing), cron-job-isolated (jobId), gateway-multi-user-profiles (memberProfileId), and mock-provider-held-turn (marker). These are reused content; they require no new trait definition here. legacyPluginCredential is a credential-store name, never a credential value; the unavailable channel-account-add wrapper resolves it without recording the value. The Telegram shim token keys identify synthetic fixture values only.
+Every listed key identifies a value containing only letters, digits and . _ - : / @. Definitions name content and identifiers, never secret values; real-account content remains outside reach.
+- channel-access-groups: accessGroups with an operators group referenced from DM and group allowlists, a reference to a missing group, an unreferenced group, a sender listed only for another channel, and an account with dmPolicy open without "*" (crossChannelSender, memberSender, missingGroupSender, openNoWildcardAccount, unreferencedSender)
+- channel-accounts-multiple: a channel with a default and a named account, plus disabled, autostart-suppressed, secret-missing, unlisted, owner-unresolved and no-deferred-delivery accounts (disabledAccount, namedAccount, noDeferredAccount, ownerlessAccount, secretMissingAccount, suppressedAccount, unlistedAccount)
+- channel-ambient-room: rooms with unmentionedInbound room_event and message-tool replies: an always-on room, a still mention-gated room, a room whose agent lacks the message tool, an ackReactionScope all room and a room with an agent-specific override (ackAllRoom, ambientRoom, gatedAmbientRoom, mutedAgentRoom, overrideRoom)
+- channel-ambient-unsupported: room_event set on a channel without ambient room event support, which keeps its existing group behaviour (groupId, senderPeer)
+- channel-bot-identity-unknown: a channel without a reliable inbound bot identity, keeping its self-message and access filters (botPeer, groupId)
+- channel-bot-peer: bot-authored inbound messages between two bots (bot loop protection); and a second bot identity and rooms that accept bots, require a bot mention, refuse bots, disable the loop guard and override it (acceptRoom, botId, channelId, discordChannelId, mentionOnlyRoom, noBotsRoom, overrideRoom, unguardedRoom)
+- channel-bot-thread: unmentioned follow-ups accepted in a confirmed bot-created thread (requireMentionInBotThreads false) (evictedThreadId, threadId)
+- channel-broadcast-group: a qualified broadcast room on the conformance channel with two participant agents (handles and mention patterns), a spare agent listed in it, and mock markers for a follow-up round, an all-pass round and one failing participant; and broadcast group threads with three agents and distinct mention patterns: a two-round group, a sequential group, a small-budget group, a no-selection group, a route-bound peer, a failing participant and a peer with a configured ACP binding (acpBoundGroup, agentA, agentB, agentC, budgetGroup, failingAgentGroup, groupId, noSelectionGroup, passMarker, roundsGroup, senderPeer, sequentialGroup)
+- channel-cli-wizard-answers: scripted answer files for the configure channels section and the guided Telegram add (configureAnswers, telegramAnswers)
+- channel-config-variants: config patch files the event phases apply: messages, mention, debounce and channels.defaults changes, an added account and a single-account shape to promote (debouncePatch, mentionPatch, messagesPatch, singleAccountPatch)
+- channel-debounce: inbound debounce configured for a burst peer and set to 0 for another (burstPeer, noDebouncePeer)
+- channel-delivery-queued: queued outbound deliveries pending on a slow Telegram chat (slowChatId)
+- channel-discord-fixture: a Discord account on the fixture with a guild, channels (allowlisted, unmapped, ambient, unlisted, no-intent), DM user, member, victim users, role, sticker, message ids, an uncached channel name, an alias handle and a video attachment carrying duration_secs (aliasHandle, audienceUserId, botMessageId, channelId, channelSessionKey, dmUserId, guildId, messageId, roleId, secondVictimUserId, stickerId, uncachedChannelName, userId, victimUserId, videoWithDurationPath)
+- channel-dm-history: dmHistoryLimit with per-DM overrides, an account dms map replacing the root map, and an ambiguous DM session without an observed peer (accountMapPeer, ambiguousPeer, limitedPeer)
+- channel-dm-pairing: accounts under pairing, allowlist, open (with "*" and with stale concrete entries) and disabled DM policies, pending requests (one approvable, one older than an hour, one for offline approval), an unknown sender, a full account at three pending requests and an account with no command owner (expiredCode, offlineCode, pairingAccount, pairingAccountPeer, pendingCode, pendingRequestId, pendingSender, unknownSender)
+- channel-group-activation: a stored group activation mode (mention or always) overriding requireMention (groupId, senderPeer)
+- channel-group-allowlisted: an allowlisted mention-gated group on the conformance channel with an allowlisted sender, a blocked sender, a second sender, a brand-new group, its session key, and a Telegram group (agentName, blockedSenderPeer, groupChatId, groupId, otherSenderPeer, senderPeer)
+- channel-group-always-on: an always-on group (requireMention false) whose chatter is handled as user requests (groupId, senderPeer)
+- channel-group-ambient: unmentioned room chatter recorded as quiet ambient context (groupId, senderPeer)
+- channel-group-history: pending skipped messages (and recent processed room messages) kept as group history context up to historyLimit (groupId, senderPeer)
+- channel-group-introduced: a durable join-introduction claim (90 days) so reconnects and restarts do not repeat it (groupChatId)
+- channel-group-joinable: the bot joins an allowed group and posts one room introduction (groupChatId, groupId, telegramGroupId)
+- channel-group-long-id: rooms and groups with very long opaque ids shown under a shortened stable label (groupId, senderPeer)
+- channel-groups-mixed: groups on the conformance channel and the Telegram shim in every documented admission, mention, thread and context state (gated, always-on, unlisted, disabled policy, open policy, disabled entry, no provider block, bot-created threads, forum topic, long id, context-visibility modes, verbose, restricted sender, activation stored, configWrites off), with allowed, unlisted, paired-only, owner, restricted and mutable-only senders (activationGroup, allowedSender, allowlistContextGroup, badContextGroup, beforeSenderGroup, botJoinedThread, botThread, botThreadOpen, botThreadStrict, configWritesOffGroup, defaultPolicyGroup, denyInGroup, denyPatternGroup, disabledEntryGroup, disabledPolicyGroup, foreignThread, freshGroup, gatedGroup, identityPatternGroup, implicitOffGroup, injectedNameSender, injectedSubjectGroup, invalidPatternGroup, longIdGroup, mutableSender, noProviderBlockGroup, openGroup, openPolicyGroup, ownerMessage, ownerSender, pairedSender, quietGroup, quoteContextGroup, replyModeGroup, restrictedGroup, restrictedSender, strictBotThread, topic, topicGroup, undetectableGroup, unknownOwnerThread, unlistedGroup, unlistedMessage, unlistedSender, verboseGroup)
+- channel-identity-audit: execution-identity audit collection enabled (no keys)
+- channel-ingress-dead-letters: inbound dead letters on the Telegram default account with one resubmittable event id, a completed one, and a pruned event id; and dead-letter rows for the conformance account, including one completed row and one from before payload retention (completedEventId, eventId, legacyEventId, prunedEventId, telegramEventId)
+- channel-interactive-message: a private Telegram chat for Web App buttons and a short component callback TTL; the presentation payloads themselves are written in the commands (privateChatId)
+- channel-markdown-tables: accounts with markdown.tables code, bullets, block and off (blockAccountPeer, bulletsAccountPeer, codeAccountPeer, offAccountPeer)
+- channel-model-pins: modelByChannel pins for a channel and a DM peer, a peer whose session has its own model override, and a patch file changing the pins (overriddenPeer, patchFile, pinnedPeer)
+- channel-multi-account: several accounts on one channel with an explicit default account (accountId, peer)
+- channel-multi-account-no-default: several accounts on one channel without a default, falling back to the first normalized account id (accountId, peer)
+- channel-paired-before-bootstrap: senders approved before first-owner bootstrap while commands.ownerAllowFrom remains empty (no keys)
+- channel-paired-sender: an approved DM sender who is the command owner on the conformance channel and Discord, with a group (discordOwnerId, groupId, ownerPeer, senderPeer)
+- channel-pairing-cap: three pending requests on one account and expired requests retained for the listing and admission flows (no keys)
+- channel-pairing-legacy-files: legacy channel pairing and allowFrom JSON files under the cloned credentials directory, awaiting Doctor import (no keys)
+- channel-pairing-pending: pending DM pairing requests on the conformance channel (one older than an hour, codes and request ids for three) and a pending sender (code, pendingPeer, secondRequestId, thirdRequestId)
+- channel-plugin-binding: a plugin-owned conversation binding on a conformance-channel thread and a follow-up peer (senderPeer, threadId)
+- channel-plugin-load-broken: a configured channel whose plugin fails to load (importing a removed SDK subpath), a disabled channel plugin and a plugin with untracked provenance (no keys)
+- channel-plugin-turn-alias: a plugin on the deprecated runtime.channel.turn alias (accountId, peer)
+- channel-probe-conversations: the conformance channel (kova-channel-probe) installed and running with an owner DM, an unknown sender, a fresh peer, a failing peer and peers whose sends the probe suppresses, transforms, omits or returns without identity, spare accounts (empty, ownerless, admission-rejected) and two image files; and Kova's conformance channel plugin installed and enabled with its probe account, DM peers, a thread, media and presentation files and marker strings for scripted replies (accountId, dmPeer, dmSessionKey, emptyAccountId, failingPeer, freshPeer, imagePath, longReplyMarker, mediaFile, nameOnlySender, noIdentityPeer, notSentPeer, outboundOnlyPeer, peer, policyRejectPeer, runnerFailMarker, secondDmPeer, secondImagePath, secondPeer, silentMediaMarker, threadId, transformSuppressPeer, unknownPeer)
+- channel-reaction-level: accounts with reactionLevel off and minimal, and Telegram chats with reaction notifications own, all, allowlist and off (minimalPeer, offPeer)
+- channel-real-accounts: real test accounts on every other bundled chat app and on the external and third-party channel plugins the phases name (Slack, WhatsApp, Matrix, iMessage, Signal, Mattermost, Microsoft Teams, Google Chat, LINE, Feishu, IRC, Nostr, SMS, QQ Bot, Zalo, Twitch, X, a real Discord guild and the rest), with peers, groups, threads, message ids and files on each; the persona cannot provide these, so phases that need them are outside reach (a2aPeer, bindingPluginThread, buzzPeer, clickclackPeer, codexHarness, discord, discordAudienceSender, discordChannel, discordGuild, discordMessageId, discordRole, discordTestMember, discordThread, discordUser, emojiFile, feishuMessageId, feishuPeer, googlechat, googlechatPeer, googlechatSpace, imessage, imessageGroup, imessageGroupChatId, imessageGroupSessionKey, imessageMessageId, imessageNoAutomationPeer, imessageParticipant, imessagePeer, imessageRemotePollGroup, imessageSshPeer, imessageUnapprovedPeer, imessageUnregisteredGroup, irc, ircChannel, ircPeer, legacyPluginAccount, legacyPluginChannel, legacyPluginPeer, legacyPluginCredential, line, lineGroup, linePeer, matrix, matrixDmUnapproved, matrixEncryptedRoom, matrixGatedRoom, matrixInviteRoom, matrixNameKeyedRoom, matrixPeer, matrixPerRoomDm, matrixProxyRoom, matrixRoom, matrixRoomId, mattermost, mattermostChannel, mattermostChannelId, mattermostOnCharChannel, mattermostPeer, msteams, msteamsPeer, nextcloud-talkMessageId, nextcloud-talkPeer, nextcloudtalkPeer, nostrPeer, qqbot, qqbotBadCredsPeer, qqbotPeer, qqbotStreamingPeer, qqbotVoicePeer, raftPeer, reefPeer, signal, signalGatedGroup, signalMessageId, signalPeer, signalPinnedAccountPeer, signalUnapprovedPeer, slack, slackChannel, slackDmUnapproved, slackFileId, slackGridChannel, slackHistoryScopeChannel, slackMpim, slackNameKeyedChannel, slackPeer, slackTeamBoundChannel, slackThreadChannel, slackThreadTs, slackUnjoinedChannel, slackUnlistedChannel, slackUserIdentityChannel, sms, smsPeer, stickerFile, stickerId, synologychatPeer, teamsBlockModeChannel, teamsChannel, tlonPeer, twitchPeer, uploadFile, voiceNotePath, whatsapp, whatsappAccount, whatsappBroadcastGroup, whatsappBroadcastJid, whatsappGatedGroup, whatsappGroup, whatsappGroupJid, whatsappMessageId, whatsappOnDemandPeer, whatsappPeer, whatsappSecondAccountGroup, whatsappSelfChat, whatsappUnapprovedPeer, whatsappUnlistedGroupJid, xPeer, zaloPeer, zalouserPeer)
+- channel-streaming-modes: accounts with preview streaming off, partial, block and progress, block streaming at text end and message end, newline chunking, coalescing, human delay, progress tool log, raw detail, line limits and narration off, plus scripted-reply markers (blockPeer, blockStreamingPeer, coalescePeer, duplicateFinalMarker, explicitPreviewPeer, humanDelayPeer, limitsPeer, mediaFinalMarker, mediaRepeatMarker, messageEndPeer, narrationOffPeer, newlinePeer, offPeer, partialPeer, progressCardMarker, progressPeer, rawDetailPeer, silentAfterPreviewMarker, slowFetchMarker, toolProgressPeer)
+- channel-teams-retired-state: retired Microsoft Teams conversation, poll, SSO-token and feedback JSON files left on disk (no keys)
+- channel-telegram-forum: telegram forum topics keyed into the group session (:topic:<id>) (topicId)
+- channel-telegram-shim: a Telegram account on the platform shim with a DM chat, a group, a rich-message chat, an unknown and a second user, a spare account id and token, known bot and media message ids and a poll id; and Kova's Telegram platform shim configured as a Telegram account, with DM and group chats, a forum topic, account names reserved for add and remove, a duplicate-named entry, a poll id and a known bot message id (account, botMessageId, chatId, dmChatId, dmSessionKey, duplicateName, emptyAccount, groupChatId, mediaMessageId, memberSenderId, messageId, newAccount, otherUserId, pollId, promotedAccount, scratchAccount, spareToken, unknownChatId, unknownUserId)
+- channel-thread-session: a Discord thread and a conformance-channel thread keyed as their own sessions (discordThreadId, senderPeer, threadId)
+- channel-typing-modes: agents with typingMode never, instant, thinking, message and unset, each reachable from a DM peer (instantPeer, messagePeer, neverPeer, thinkingPeer, unsetPeer)
+- channel-workspace-plugin: a channel plugin installed in the selected agent workspace and visible through channel discovery (no keys)
+- cli-profile-mismatched: a CLI profile whose state and config paths differ from the running Gateway's service (profile)
+- config-access-group: a static message.senders access group with shared (*) and per-channel members (accountId, groupId, peer, senderPeer)
+- config-access-group-missing: an allowlist referencing an access group that does not exist, authorizing nobody (accountId, peer)
+- config-ack-off: acknowledgment reactions disabled (ackReaction empty or scope off) (groupChatId)
+- config-ack-scope-all: messages.ackReactionScope all, sending the ack reaction even for room events (groupId, senderPeer)
+- config-ack-scope-direct: ack scope direct, acking direct messages (chatId)
+- config-ack-scope-group-all: ack scope group-all, acking every group message (groupChatId)
+- config-acp-binding: a configured ACP binding on a broadcast room, which stays exclusive and bypasses fan-out (groupId, senderPeer)
+- config-activation-before-sender: mention activation evaluated before sender gates on a public surface (groupId, senderPeer)
+- config-agent-coding-profile: an ambient room whose agent lacks the message tool (coding or minimal profile), listening but never speaking (groupId, senderPeer)
+- config-ambient-agent-override: an agent-level unmentionedInbound override in a room several agents share (groupId, senderPeer)
+- config-bindings-no-owner: several agents with no owner and no matching binding, so routing picks no agent (accountId, peer)
+- config-bindings-tiers: route bindings at every documented tier (peer, parent peer, peer wildcard, account, channel-wide, multi-field, fallback owner, channel-only) with DM and group scope overrides, and the peers, threads and groups each matches; and bindings at every routing tier (exact peer, parent thread, peer wildcard, account, channel-wide, multi-field), a DM-scope override, a groupScope main room, an unbound peer and a channel-only binding (accountBoundPeer, accountId, channelBoundPeer, channelOnlyBindingPeer, childThread, dmScopePeer, groupId, mainScopeRoom, multiFieldPeer, parentThreadPeer, peer, peerBound, senderPeer, threadId, unboundPeer, wildcardPeer)
+- config-block-streaming: block streaming enabled on a channel, partial replies sent as blocks (chatId, telegramChatId)
+- config-bot-loop-disabled: bot loop protection disabled (enabled false) (botId, channelId)
+- config-bot-loop-override: botLoopProtection overridden per room, account or channel, narrowest first (botId, channelId)
+- config-broadcast-gating-off: broadcast mentionGating false, selecting all participants (groupId, senderPeer)
+- config-channel-patches: config patch files for mid-run changes: strict group mention, room_event messages, short debounce, changed identity link, changed modelByChannel, revoked owner, changed queue lane policy, reload off and reload on (ownerRevoked, queueLanePolicyChanged, reloadOff, reloadOn)
+- config-chunk-newline: chunking on paragraph boundaries (streaming.chunkMode newline) (chatId)
+- config-command-text-raw: command text shown raw in progress lines (commandText raw) (chatId)
+- config-commands-allowfrom: a per-provider commands.allowFrom as the only command authorization source (peer)
+- config-context-visibility: supplemental context only from allowlisted senders (contextVisibility allowlist) (groupId, otherSenderPeer, senderPeer)
+- config-context-visibility-unknown: an unknown contextVisibility combination failing closed and omitting context (groupId, otherSenderPeer, senderPeer)
+- config-debounce-off: burst batching disabled per channel (byChannel 0) (chatId)
+- config-default-group-policy: channels.defaults.groupPolicy applying only where the channel policy is unset (groupId, senderPeer)
+- config-discord-group-dms: discord and Slack group DMs controlled separately (dm.groupEnabled, groupChannels) (dmUserId)
+- config-dm-history-account-map: an account-level dms map replacing the root dms map (accountId, peer)
+- config-dm-history-limit: dM history windowed by dmHistoryLimit or a per-DM historyLimit (accountId, peer)
+- config-dm-open-concrete: dmPolicy open with concrete allowFrom entries, admitting only those senders (accountId, peer)
+- config-dm-open-no-star: dmPolicy open without * in the effective DM allowlist (accountId, peer)
+- config-dm-policy-allowlist: a manually allowlisted sender without owner access sending an owner-only command (accountId, allowlistedPeer, peer)
+- config-dm-policy-disabled: dmPolicy disabled, all inbound DMs ignored (accountId, peer)
+- config-dm-policy-open: dmPolicy open with allowFrom *, all DMs admitted (accountId, peer)
+- config-dm-scope-per-account: dMs isolated per account, channel and peer (per-account-channel-peer) (accountId, peer)
+- config-dm-scope-per-channel-peer: dMs isolated per channel and peer (per-channel-peer) (accountId, peer)
+- config-env-token-default: environment tokens applying only to the default account (accountId, peer)
+- config-group-allowlist-empty: an empty group allowlist blocking every group message (groupId, senderPeer)
+- config-group-policy-disabled: group messages dropped under groupPolicy disabled (groupId, senderPeer)
+- config-group-policy-open: groups bypassing allowlists under groupPolicy open, mention gating still applying (groupId, senderPeer)
+- config-group-scope-main: non-direct peers routed into the main session (session.groupScope main) (groupId, senderPeer)
+- config-group-tools: group or per-sender tool restrictions on a room (tools, toolsBySender), restricted requesters creating only hidden helpers (groupId, senderPeer)
+- config-history-limit-zero: group history context disabled (historyLimit 0) (groupId, senderPeer)
+- config-human-delay: a human-like delay between block replies (humanDelay) (chatId)
+- config-implicit-mentions-off: implicit mention facts turned off (implicitMentions false) (groupId, senderPeer)
+- config-join-intro-off: join introductions turned off for a channel or account (joinIntro false) (groupChatId)
+- config-legacy-agents-list: a legacy agents.list roster awaiting Doctor migration before broadcast membership resolves (no keys)
+- config-legacy-route-markers: legacy config left in place: default-agent markers, unprefixed toolsBySender keys, the Telegram includeGroupHistoryContext key, mixed account shapes, flat streaming keys, silentReply internal, BlueBubbles and Slack enterpriseOrgInstall (no keys)
+- config-mention-account-policy: an account-level mention pattern policy taking precedence over the channel policy (groupId, patternWord, senderPeer)
+- config-mention-pattern-invalid: invalid or unsafe mention patterns ignored with a warning (groupId, patternWord, senderPeer)
+- config-mention-patterns-scoped: a native mention triggering while regex patterns are denied in that room (deniedTelegramGroupId, groupId, patternWord, senderPeer)
+- config-mention-undetectable: a group where neither native mentions nor any pattern can detect a mention, so gating is not enforced (groupId, senderPeer)
+- config-min-identifier-auth: a minimum identifier authentication refusing weaker claims (accountId, peer)
+- config-model-by-channel: a channel, group, topic or DM peer pinned to a model (channels.modelByChannel) (accountId, peer)
+- config-model-override-session: a session with an active /model override that channels.modelByChannel does not replace (accountId, peer)
+- config-name-matching: mutable name or tag allowlist matching re-enabled (dangerouslyAllowNameMatching) (channelId)
+- config-outbound-only-identity: a stable outbound-only identity delivered through a provider-owned session isolated from main (outboundOnlyTarget)
+- config-preview-over-block: an explicit Discord or Telegram preview mode taking precedence over an inherited block streaming default (chatId)
+- config-progress-commentary: the commentary progress lane rendering pre-tool narration in the draft (chatId)
+- config-progress-label: a custom, pooled or hidden progress label (chatId)
+- config-provider-block-missing: a missing channels.<provider> block failing closed to allowlist, logged once per account (groupId, senderPeer)
+- config-reaction-level-off: reactionLevel off (chatId)
+- config-reload-off: config reload disabled (gateway.reload.mode off), so channel and messages changes need a restart (accountId, token)
+- config-response-prefix: a per-channel or per-account responsePrefix applied to replies and explicit sends; and responsePrefix configured on an account, and a template prefix with a model placeholder (accountId, peer, prefixedPeer, templatePeer, unresolvedSessionKey)
+- config-response-usage: a per-reply usage footer (messages.responseUsage tokens or full) (chatId)
+- config-room-entry-disabled: a room allowlist entry with enabled false (groupId, senderPeer)
+- config-send-policy-deny: outbound delivery denied by sendPolicy (groupId, senderPeer)
+- config-silent-group-allow: selective silence allowed for unaddressed group requests (silentReply.group allow, NO_REPLY) (groupId, senderPeer)
+- config-status-reactions: lifecycle status reactions enabled (messages.statusReactions.enabled) (chatId)
+- config-streaming-mode: block streaming off (default), final text replies only (chatId, partialChatId, toolLogChatId)
+- config-table-mode-off: a channel whose table mode does not preserve tables, discouraging Markdown tables (groupId, senderPeer)
+- config-tables-block: native tables kept where the transport supports them (markdown.tables block) (chatId)
+- config-tables-bullets: markdown tables converted to bullets (markdown.tables bullets) (chatId)
+- config-tables-off: table parsing disabled, raw table text passed through (markdown.tables off) (chatId)
+- config-telegram-inline-buttons-off: telegram with inline buttons disabled, buttons sent as text fallback (no keys)
+- config-telegram-reactions-off: telegram react and emoji-list gated by actions.reactions (chatId)
+- config-telegram-reasoning-stream: telegram streaming reasoning into a transient draft bubble deleted after final delivery (chatId)
+- config-telegram-rich-messages: telegram plan previews as native checkboxes (richMessages true) (chatId, partialChatId)
+- config-telegram-username-allow: telegram @username sender allowlist entries that do not match at runtime and log a warning (chatId, groupChatId)
+- config-tool-detail-raw: tool progress detail mode raw (toolProgressDetail raw) (chatId)
+- config-tools-by-sender-legacy: retired unprefixed toolsBySender keys awaiting doctor --fix (groupId, senderPeer)
+- config-typing-agent-override: a per-agent typingMode override (chatId)
+- config-typing-mode: typingMode never (chatId)
+- config-visible-replies-tool: group visible replies through the message tool only (messages.groupChat.visibleReplies message_tool); and groups and peers with message-tool-only visible replies, one without the message tool, one under a denying send policy, one with a harness default, plus stranding markers (accountId, denyPolicyGroup, doubleStrandMarker, globalToolOnlyPeer, groupId, harnessDefaultGroup, noMessageToolGroup, peer, senderPeer, strandMarker, telegramGroupId, toolOnlyGroup)
+- config-visible-replies-tool-denied: tool-only delivery while the message tool is unavailable under tool policy, falling back to automatic replies (groupId, senderPeer)
+- config-writes-off: channel-initiated config writes blocked (configWrites false) (peer)
+- env-explicit-fleet-no-owner: a second Kova environment with an explicit multi-agent fleet and no System Agent (env, peer)
+- env-fresh-no-roster: a second Kova environment with no agent roster and exactly one channel (env, peer)
+- mock-provider-empty-turn: a scripted empty or reasoning-only turn (marker)
+- mock-provider-failing: scripted failures: provider error after acceptance, after tool work, and a rate-limit error (marker)
+- mock-provider-long-reply: scripted replies longer than channel limits: plain, fenced code, tables, styled lists and quotes, tall Discord text, and longWord, a single word of about 5000 letters and digits that exceeds every text limit (fenceMarker, longWord, marker, tableMarker)
+- mock-provider-markdown-reply: scripted replies with Markdown styles, links, spoilers, details, inline HTML, stray <final> markers, image syntax and tables, and a Telegram chat bound to it (chatId, linksMarker, marker, spoilerMarker, tablesMarker)
+- mock-provider-media-reply: scripted replies that return media, media streamed early and repeated, a duplicate final, and NO_REPLY with tool media (marker)
+- mock-provider-no-reply: a scripted NO_REPLY answer (marker)
+- plugin-message-hooks: a plugin registering message_sending, reply_payload_sending and before_agent_finalize hooks, with a peer whose sends it cancels and Telegram chats it applies to; and a plugin registering message_sending and reply_payload_sending hooks that cancel, rewrite or defer payloads carrying marker strings (accountId, cancelMarker, deferMarker, finalizeChatId, peer, rewriteMarker, telegramChatId)
+- channels-test-accounts: existing trait; these phases additionally read accountId, peer (the same identifier-value rule applies)
+- dm-scope-isolated: existing trait; these phases additionally read accountId (the same identifier-value rule applies)
+- mock-provider-tool-calls: existing trait; these phases additionally read cardClearMarker, chatId, manyToolsMarker, progressMarker, restartMarker, slowFetchMarker (the same identifier-value rule applies)
+- session-group-watched: existing trait; these phases additionally read groupId, senderPeer (the same identifier-value rule applies)
+- session-main-rolling: existing trait; these phases additionally read accountId (the same identifier-value rule applies)
+- session-progress-card: existing trait; these phases additionally read chatId (the same identifier-value rule applies)
+
+Limits:
+- Phases that drive Kova's conformance channel (support/plugins/kova-channel-probe) cannot record at this revision, because the plugin imports openclaw/plugin-sdk/channel-message, which OpenClaw removed in favour of openclaw/plugin-sdk/channel-outbound; they are written as they will run once the plugin is updated.
+- In an isolated Kova home under /tmp with OCM 0.2.48 and Node 24.21.0, nine media and source-visible delivery rows of the probe scenario reported fewer deliveries than expected on OpenClaw 2026.9.9 and 2026.10.3, while the same code passed them with OCM 0.3.0 in an existing OCM store. The cause is not established (possibly /tmp to /private/tmp path resolution or the OCM version), so differences recorded by phases that drive media or source-visible delivery under such a setup are not yet attributable to the change.
+- The template declares 93 product-command or unavailable-wrapper forms; only the Gateway-start helper is an existing callable script here. The command catalogue is absent in this checkout. The template is a derived plan, and these dependencies must be implemented and registered before it can record observations.
+- Run 2 found 379/428 entry points, below the required nine-tenths share. The final condition-heading shares are 246/258 and 248/258, both above nine tenths; the finer condition-by-meaning shares are recorded separately in comparison.md. This reconciliation does not resolve the entry-enumeration acceptance gap.
+- The background held-turn contract bounds admission separately from its lifetime and releases on join. Gateway restarts can interrupt that ambient condition; later phases must record interruption, and the dedicated restart flows create their own handles where recorded. Runtime continuity and cancellation have not been demonstrated.
