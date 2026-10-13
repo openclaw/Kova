@@ -6,20 +6,22 @@ Date: 2026-10-13
 State: reconciled with a known shortfall after the permitted rerun.
 The procedure's nine-tenths acceptance was not met.
 
-Union: 435 entry points, 655 conditions, 258 condition-bearing document headings.
+Union: 437 entry points, 655 conditions, 258 condition-bearing document headings.
 The recorded-run reconciliation contained 645 conditions; source review added ten
 documented inspection conditions that neither run found.
 
 | Round | Run | Entry points found | Condition headings found |
 |---|---|---|---|
-| 1 | 1 | 318/332 (95.8%) | 214/245 (87.3%) |
-| 1 | 2 | 298/332 (89.8%) | 227/245 (92.7%) |
-| 2 | 1 | 399/435 (91.7%) | 246/258 (95.3%) |
-| 2 | 2 | 378/435 (86.9%) | 248/258 (96.1%) |
+| 1 | 1 | 317/334 (94.9%) | 214/245 (87.3%) |
+| 1 | 2 | 297/334 (88.9%) | 227/245 (92.7%) |
+| 2 | 1 | 399/437 (91.3%) | 246/258 (95.3%) |
+| 2 | 2 | 379/437 (86.7%) | 248/258 (96.1%) |
 
 An entry point is found when a run lists it, placed or excluded with a reason.
 Equivalent names identify the same entry point. A combined entry receives credit
-for each separately listed control or callback it explicitly names. Distinct
+for each control, callback or HTTP method and path it explicitly names. A
+method-unspecified route family does not establish discovery of an individual
+HTTP method. Distinct
 native-command, profile HTTP and voice routes remain distinct.
 
 The condition measure counts document headings under which a run records at least
@@ -42,7 +44,7 @@ literals, with the sentence-by-sentence rule and clarified bounds. The public
 phase, command and reconciliation requirements from
 [the derivation procedure](../../../docs/verify/derive-area-template.md) were
 applied when combining the results. Both runs passed the heading measure. The
-second run's 86.9% entry-point share remains below nine tenths. Historical
+second run's 86.7% entry-point share remains below nine tenths. Historical
 procedure versions are identified by these recorded changes; immutable revision
 hashes were not retained for them.
 
@@ -90,6 +92,23 @@ corrected denominator includes eight reconciliation corrections with no individu
 run credit. This correction applies to both rounds: it supersedes the intermediate
 319/325 and 299/325, and 400/428 and 379/428 figures. It is a correction of recorded
 granularity, without another derivation run.
+
+The Nostr HTTP handler exposes GET and PUT on
+`/api/channels/nostr/<account>/profile`, plus POST on
+`/api/channels/nostr/<account>/profile/import`. The second run in round 2 explicitly
+named PUT profile and POST profile import in its combined label, so splitting that
+label adds one discovery credit. The first run named no HTTP entry. Neither named
+GET. In round 1, both runs named only a method-unspecified profile route; neither
+receives credit for a method it did not enumerate. UI actions and HTTP methods
+remain separate entries, even when one invokes the other.
+
+Replacing one HTTP family with three methods adds two entries to each round's
+corrected inventory. Round 1 loses its former generic-family credit for each run;
+round 2 retains the first run's credit count and adds one for the second. These
+figures supersede 318/332 and 298/332, and 399/435 and 378/435. GET is a source-review
+addition with no run credit. The final inventory has 349 placed and 88 excluded
+entries. This is an accounting correction to recorded inputs, without a new
+independent derivation. Both rounds retain the stated acceptance shortfall.
 
 Source review added conditions 646–655 for asynchronous ingress inspection under
 "Durable ingress monitors", a heading both runs had already found. No derivation
