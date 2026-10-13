@@ -44,7 +44,7 @@
   "requires": [
     "agents-three-configured",
     "channels-test-accounts",
-    "clawhub-catalog-reachable",
+    "clawhub-registry-local",
     "claws-package-installed",
     "codex-harness-native-plugins",
     "config-hand-edited",
@@ -80,7 +80,10 @@
     "plugins-npm-tracked",
     "plugins-policy-mixed",
     "plugins-third-party-consented",
+    "session-approval-held",
     "session-main-rolling",
+    "session-phase-hold",
+    "session-plugin-held",
     "session-plugin-tools"
   ],
   "support": {
@@ -88,21 +91,21 @@
       "support/ensure-gateway-running.mjs"
     ],
     "toWrite": [
-      "support/verify/gateway-call.mjs  (one Gateway method by name, optionally as another operator profile; --env --method --params --timeout --out --background --handle --wait --merge-from --session-from --after-ms --profile)",
+      "support/verify/gateway-call.mjs  (one Gateway method by name, optionally as another operator profile; --env --method --params --timeout --out --background --handle --wait --merge-from --session-from --after-ms --profile; --merge-from merges a plugins.inspect result's reviewToken as acknowledgeCapabilities and a plugin.approval.list or plugin.approval.request result's first id as id)",
       "support/verify/control-ui.mjs  (Control UI flows in a headless browser: incognito-thread, plugin-approval-prompt, plugin-consent-enable, plugin-install-from-catalog, plugin-lifecycle-reload, plugin-mcp-login, plugin-overview, plugin-session-action, plugin-settings-editor, plugin-settings-toggle, plugin-skill-preview, plugin-tab-and-contributions, plugin-ui-lab-toggle, plugin-ui-other-gateway, plugin-ui-reconnect, plugin-uninstall, plugin-view-session-switch, plugins-advanced-policy, plugins-customize-ui, plugins-hub-browse, plugins-installed-inventory; --env --flow --session-key --gateway-env --artifact-dir --out --timeout)",
       "support/verify/agent-tool-turn.mjs  (sessions.send with a scripted reply that calls one named tool, then chat.history with tools; --env --session-key --tool --args --arg-path --timeout --background --handle --wait)",
       "support/verify/chat-send.mjs  (chat.send of a message or slash command, then chat.history of the receipt; --env --session-key --session-from --incognito-handle --message --timeout --background --handle --wait)",
       "support/verify/session-turn-hold.mjs  (sessions.send with a reply the mock provider holds open; --env --session-key --hold-ms --progress-cards --timeout --background --handle --wait)",
-      "support/verify/channel-inbound-turn.mjs  (channel inbound dispatch through the test channel; --env --chat-type --peer --text --timeout)",
+      "support/verify/channel-inbound-turn.mjs  (channel inbound dispatch through the test channel, or /approve <first pending id from --approve-from> <--decision>; --env --chat-type --peer --text --approve-from --decision --timeout)",
       "support/verify/cron-isolated-run.mjs  (cron.run of an isolated job; --env --job-id --timeout)",
       "support/verify/heartbeat-wake.mjs  (heartbeat wake of the main session; --env --timeout)",
       "support/verify/http-get.mjs  (one GET against a Gateway HTTP route, with Gateway credentials or none, path resolved from a flow's recorded URLs when --from is given; --env --path --from --auth --timeout)",
       "support/verify/plugin-source-edit.mjs  (edits an installed, linked or bundled plugin's files on the Gateway host and restores the saved copy; modes bundled-dist-touch, cleanup-fails, manifest-bump, marker, payload-tamper, register-throws, service-start-fails, skill-file-edit, ui-asset-broken; --env --plugin --mode --restore)",
       "support/verify/plugin-reload-wait.mjs  (openclaw plugins reload <id> --wait under a terminal, sending Ctrl-C after the given delay; --env --plugin --cancel-after-ms --timeout)",
+      "support/verify/config-change.mjs  (openclaw config patch built from one named change, saving the previous values of the paths it touches to --save for a later --restore-from; changes: fixture-config-unknown-key (plugins.entries.<plugin>.config.kovaUnknownKey = true), fixture-config-change (plugins.entries.<plugin>.config.kovaMarker = a new marker), fixture-break-register (plugins.entries.<plugin>.config.kovaBreakRegister = true), plugins-allow-restrictive (plugins.allow = [<plugin>]), plugins-deny-entry (plugins.deny adds <plugin>), plugins-disabled and plugins-enabled (plugins.enabled), memory-slot-unknown (plugins.slots.memory = an id no plugin has), reload-mode-off and reload-mode-hybrid (gateway.reload.mode), ui-lab-on and ui-lab-off (gateway.controlUi.experimental.customPlugins), cron-disabled and cron-enabled (cron.enabled), approvals-plugin-forwarding and approvals-plugin-forwarding-off (approvals.plugin.enabled), fixture-conversation-access-off and fixture-conversation-access-on (plugins.entries.<plugin>.hooks.allowConversationAccess), fixture-hook-timeout-short (plugins.entries.<plugin>.hooks.timeoutMs = 1), tools-allow-add (tools.allow adds <tool>), load-path-add (plugins.load.paths adds <path>); --env --change --plugin --tool --path --save --save-paths --restore-from --timeout)",
       "support/verify/config-file-edit.mjs  (writes one value into openclaw.json without validation, or restores the saved copy; --env --set --restore --timeout)",
       "support/verify/gateway-kill.mjs  (SIGKILL of the running Gateway process; --env --timeout)",
       "support/verify/clawhub-reachability.mjs  (points the Gateway's ClawHub endpoint at an unreachable address and restores it, restarting the service; --env --mode --timeout)",
-      "verify/templates/plugins/patches/*.json  (inputs for openclaw config patch --file and openclaw cron add --file: approvals-plugin-forwarding, approvals-plugin-forwarding-off, cron-disabled, cron-enabled, cron-job-hook, cron-reload-touch, fixture-break-register, fixture-config-change, fixture-config-restore, fixture-config-unknown-key, fixture-conversation-access-off, fixture-conversation-access-on, fixture-hook-timeout-restore, fixture-hook-timeout-short, linked-load-path-readd, memory-slot-unknown, plugins-allow-restore, plugins-allow-restrictive, plugins-deny-entry, plugins-disabled, plugins-enabled, reload-mode-hybrid, reload-mode-off, tools-allow-fixture-optional, ui-lab-off, ui-lab-on)",
       "product: ocm @{env} -- plugins list --json  (installed inventory; adds --enabled and --verbose to the plugins-list entry)",
       "product: ocm @{env} -- plugins install <source>  (managed install; adds --link, --force, --accept-capabilities, --acknowledge-install-policy-warning and --marketplace to the plugins-install entry)",
       "product: ocm @{env} -- plugins search <query>  (ClawHub plugin search; --limit, --json)",
@@ -133,7 +136,7 @@
     {
       "id": "setup-plugin-tool-turn-in-flight",
       "kind": "setup",
-      "intent": "A user's main session runs an agent turn whose plugin tool call stays open, so later lifecycle phases replace plugins while admitted plugin work is in flight, observing the turn's admission and the plugin's runtime generation.",
+      "intent": "A user's agent turn on its own session holds a plugin tool call open, so the phases after it run while admitted plugin work is in flight; the turn's admission and the plugin's runtime generation are observed.",
       "paths": [
         "src/plugins/tool*.ts",
         "src/plugins/runtime/**",
@@ -143,11 +146,11 @@
       "requires": [
         "mock-provider-tool-calls",
         "plugin-fixture-surfaces",
-        "session-main-rolling"
+        "session-plugin-held"
       ],
       "commands": [
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 10000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool {persona:plugin-fixture-surfaces:slowToolName} --args '{\"holdMs\":240000}' --timeout 290000 --background --handle {run}/plugin-turn.json"
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-held:key} --tool {persona:plugin-fixture-surfaces:slowToolName} --args '{\"holdMs\":240000}' --timeout 290000 --background --handle {run}/plugin-turn.json"
       ],
       "checkpoint": [
         "responses",
@@ -199,10 +202,10 @@
       "requires": [
         "mock-provider-tool-calls",
         "plugin-fixture-surfaces",
-        "session-main-rolling"
+        "session-approval-held"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool {persona:plugin-fixture-surfaces:approvalToolName} --args '{\"target\":\"kova-approval-pending\",\"approvalTimeoutMs\":280000}' --timeout 290000 --background --handle {run}/approval-pending.json"
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-approval-held:key} --tool {persona:plugin-fixture-surfaces:approvalToolName} --args '{\"target\":\"kova-approval-pending\",\"approvalTimeoutMs\":280000}' --timeout 290000 --background --handle {run}/approval-pending.json"
       ],
       "checkpoint": [
         "responses",
@@ -227,9 +230,9 @@
         "packages/gateway-protocol/src/core-request-params.ts"
       ],
       "requires": [
-        "clawhub-catalog-reachable",
+        "clawhub-registry-local",
         "mock-provider-tool-calls",
-        "session-main-rolling"
+        "session-plugin-tools"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.catalog.categories --params '{}' --timeout 30000",
@@ -240,8 +243,8 @@
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method catalog.browse --params '{\"kind\":\"plugin\",\"feed\":\"trending\",\"officialOnly\":true}' --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method catalog.searchKeywords --params '{\"keywords\":[\"calendar\",\"github\",\"Calendar \"],\"kinds\":[\"plugin\"]}' --timeout 30000",
         "ocm @{env} -- plugins search calendar --limit 20 --json",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool plugins --args '{\"action\":\"search\",\"query\":\"calendar\"}' --timeout 60000",
-        "node {kovaRoot}/support/verify/http-get.mjs --env {env} --path {persona:clawhub-catalog-reachable:catalogIconPath} --auth gateway --timeout 20000"
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool plugins --args '{\"action\":\"search\",\"query\":\"calendar\"}' --timeout 60000",
+        "node {kovaRoot}/support/verify/http-get.mjs --env {env} --path {persona:clawhub-registry-local:catalogIconPath} --auth gateway --timeout 20000"
       ],
       "checkpoint": [
         "responses",
@@ -262,7 +265,9 @@
         "ui/src/components/plugin-*.ts",
         "src/gateway/plugin-icon-http.ts"
       ],
-      "requires": [],
+      "requires": [
+        "clawhub-registry-local"
+      ],
       "commands": [
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugins-hub-browse --artifact-dir {run}/screens --timeout 150000 --out {run}/screens/plugins-hub-browse.json",
         "node {kovaRoot}/support/verify/http-get.mjs --env {env} --path /__openclaw__/catalog-icon --timeout 15000 --from {run}/screens/plugins-hub-browse.json",
@@ -313,20 +318,16 @@
         "gateway-multi-user-profiles",
         "mock-provider-scripted",
         "mock-provider-tool-calls",
-        "plugin-fixture-surfaces",
         "plugins-bundled-and-external",
         "plugins-legacy-state",
-        "session-main-rolling"
+        "session-plugin-tools"
       ],
       "commands": [
         "ocm @{env} -- plugins list --json",
         "ocm @{env} -- plugins list --json --enabled --verbose",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.list --params '{}' --timeout 30000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool plugins --args '{\"action\":\"list\"}' --timeout 60000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message '/plugins list' --timeout 60000",
-        "ocm @{env} -- plugins inspect {persona:plugin-fixture-surfaces:pluginId} --runtime --json",
-        "ocm @{env} -- plugins inspect --all --json",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.inspect --params '{\"pluginId\":\"{persona:plugins-bundled-and-external:externalPluginId}\"}' --timeout 30000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool plugins --args '{\"action\":\"list\"}' --timeout 60000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message '/plugins list' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.list --params '{}' --timeout 30000 --profile {persona:gateway-multi-user-profiles:memberProfileId}",
         "node {kovaRoot}/support/verify/http-get.mjs --env {env} --path /__openclaw__/plugin-icon/{persona:plugins-bundled-and-external:externalPluginId} --auth gateway --timeout 20000"
       ],
@@ -430,7 +431,6 @@
         "plugin-fixture-surfaces",
         "plugins-broken-installs",
         "plugins-bundled-and-external",
-        "session-main-rolling",
         "session-plugin-tools"
       ],
       "commands": [
@@ -441,9 +441,10 @@
         "ocm @{env} -- plugins inspect {persona:plugins-broken-installs:disposeFailPluginId} --runtime --json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.inspect --params '{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}' --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.credentials.inspect --params '{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}' --timeout 30000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool plugins --args '{\"action\":\"inspect\",\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}' --timeout 60000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message '/plugins inspect {persona:plugin-fixture-surfaces:pluginId}' --timeout 60000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message '/plugins inspect {persona:plugins-bundled-and-external:externalPluginId}' --timeout 45000"
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool plugins --args '{\"action\":\"inspect\",\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}' --timeout 60000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message '/plugins inspect {persona:plugin-fixture-surfaces:pluginId}' --timeout 60000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message '/plugins inspect {persona:plugins-bundled-and-external:externalPluginId}' --timeout 45000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.inspect --params '{\"pluginId\":\"{persona:plugins-bundled-and-external:externalPluginId}\"}' --timeout 30000"
       ],
       "checkpoint": [
         "responses",
@@ -527,7 +528,7 @@
         "src/plugins/hook*.ts"
       ],
       "requires": [
-        "clawhub-catalog-reachable",
+        "clawhub-registry-local",
         "config-install-policy",
         "marketplace-local",
         "plugin-fixture-surfaces",
@@ -548,8 +549,9 @@
         "ocm @{env} -- plugins install npm-pack:{persona:plugin-pack-requires-config:path} --force --accept-capabilities",
         "ocm @{env} -- plugins install {persona:plugin-pack-multi-entry:path}",
         "ocm @{env} -- config get plugins --json",
-        "ocm @{env} -- plugins install clawhub:{persona:clawhub-catalog-reachable:packageName} --accept-capabilities",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.install --params '{\"source\":\"official\",\"pluginId\":\"{persona:clawhub-catalog-reachable:officialPluginId}\",\"acknowledgeCapabilities\":{}}' --timeout 120000"
+        "ocm @{env} -- plugins install clawhub:{persona:clawhub-registry-local:packageName} --accept-capabilities",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.inspect --params '{\"source\":\"official\",\"pluginId\":\"{persona:clawhub-registry-local:officialPluginId}\"}' --timeout 30000 --out {run}/official-review.json",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.install --params '{\"source\":\"official\",\"pluginId\":\"{persona:clawhub-registry-local:officialPluginId}\"}' --timeout 120000 --merge-from {run}/official-review.json"
       ],
       "checkpoint": [
         "responses",
@@ -584,6 +586,7 @@
         "src/gateway/server-methods/plugins-lifecycle-error.ts"
       ],
       "requires": [
+        "clawhub-registry-local",
         "plugins-npm-tracked",
         "plugins-third-party-consented"
       ],
@@ -625,7 +628,9 @@
         "src/cli/plugin-capability-consent.ts",
         "src/plugin-state/**"
       ],
-      "requires": [],
+      "requires": [
+        "clawhub-registry-local"
+      ],
       "commands": [
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugin-install-from-catalog --artifact-dir {run}/screens --timeout 240000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.list --params '{}' --timeout 30000"
@@ -663,17 +668,18 @@
         "src/agents/tools/system-agent-tool.ts"
       ],
       "requires": [
+        "clawhub-registry-local",
         "mock-provider-scripted",
         "mock-provider-tool-calls",
         "plugins-npm-tracked",
         "plugins-third-party-consented",
-        "session-main-rolling"
+        "session-plugin-tools"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message '/plugins install npm-pack:{persona:plugins-third-party-consented:packagePath} --force' --timeout 60000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message '/plugins install npm-pack:{persona:plugins-third-party-consented:packagePath} --force --accept-capabilities' --timeout 60000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool plugins --args '{\"action\":\"install\",\"source\":\"official\",\"pluginId\":\"{persona:plugins-npm-tracked:officialPluginId}\"}' --timeout 120000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool openclaw --args '{\"action\":\"plugin_install\",\"spec\":\"{persona:plugins-npm-tracked:officialPluginSpec}\"}' --timeout 60000"
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message '/plugins install npm-pack:{persona:plugins-third-party-consented:packagePath} --force' --timeout 60000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message '/plugins install npm-pack:{persona:plugins-third-party-consented:packagePath} --force --accept-capabilities' --timeout 60000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool plugins --args '{\"action\":\"install\",\"source\":\"official\",\"pluginId\":\"{persona:plugins-npm-tracked:officialPluginId}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool openclaw --args '{\"action\":\"plugin_install\",\"spec\":\"{persona:plugins-npm-tracked:officialPluginSpec}\"}' --timeout 60000"
       ],
       "checkpoint": [
         "responses",
@@ -707,12 +713,12 @@
         "src/agents/tools/system-agent-tool.ts"
       ],
       "requires": [
-        "clawhub-catalog-reachable",
+        "clawhub-registry-local",
         "mock-provider-scripted",
         "session-plugin-tools"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message '/plugins install clawhub:{persona:clawhub-catalog-reachable:packageName} --accept-capabilities' --timeout 90000"
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message '/plugins install clawhub:{persona:clawhub-registry-local:packageName} --accept-capabilities' --timeout 90000"
       ],
       "checkpoint": [
         "responses",
@@ -819,7 +825,7 @@
         "plugin-legacy-enabled-unreviewed",
         "plugins-bundled-and-external",
         "plugins-policy-mixed",
-        "session-main-rolling"
+        "session-plugin-tools"
       ],
       "commands": [
         "ocm @{env} -- plugins disable {persona:plugins-bundled-and-external:externalPluginId}",
@@ -828,10 +834,10 @@
         "ocm @{env} -- plugins enable {persona:plugins-bundled-and-external:externalPluginId} {persona:plugins-policy-mixed:deniedPluginId} {persona:plugin-fixture-surfaces:pluginId}",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.setEnabled --params '{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\",\"enabled\":false}' --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.setEnabled --params '{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\",\"enabled\":true}' --timeout 30000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool plugins --args '{\"action\":\"disable\",\"pluginId\":\"{persona:plugins-bundled-and-external:externalPluginId}\"}' --timeout 45000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool plugins --args '{\"action\":\"enable\",\"pluginId\":\"{persona:plugins-bundled-and-external:externalPluginId}\"}' --timeout 45000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message '/plugins disable {persona:plugins-bundled-and-external:externalPluginId}' --timeout 45000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message '/plugins enable {persona:plugins-bundled-and-external:externalPluginId}' --timeout 45000"
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool plugins --args '{\"action\":\"disable\",\"pluginId\":\"{persona:plugins-bundled-and-external:externalPluginId}\"}' --timeout 45000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool plugins --args '{\"action\":\"enable\",\"pluginId\":\"{persona:plugins-bundled-and-external:externalPluginId}\"}' --timeout 45000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message '/plugins disable {persona:plugins-bundled-and-external:externalPluginId}' --timeout 45000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message '/plugins enable {persona:plugins-bundled-and-external:externalPluginId}' --timeout 45000"
       ],
       "checkpoint": [
         "responses",
@@ -970,12 +976,13 @@
         "plugin-fixture-surfaces"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugin-settings-editor --artifact-dir {run}/screens --timeout 200000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugin-settings-editor --artifact-dir {run}/screens --timeout 180000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method {persona:plugin-fixture-surfaces:hookLogMethod} --params '{}' --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.credentials.inspect --params '{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}' --timeout 30000",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/fixture-config-unknown-key.json",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change fixture-config-unknown-key --plugin {persona:plugin-fixture-surfaces:pluginId} --save {run}/configure-plugin-settings-in-control-ui-fixture-config.json --timeout 15000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.inspect --params '{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}' --timeout 30000",
-        "ocm @{env} -- config get plugins.entries --json"
+        "ocm @{env} -- config get plugins.entries --json",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --restore-from {run}/configure-plugin-settings-in-control-ui-fixture-config.json --timeout 15000"
       ],
       "checkpoint": [
         "responses",
@@ -984,7 +991,7 @@
         "screen",
         "state:openclaw.json"
       ],
-      "timeoutMs": 290000,
+      "timeoutMs": 300000,
       "browser": true,
       "slow": false
     },
@@ -1027,18 +1034,20 @@
         "src/plugins/slot*.ts"
       ],
       "requires": [
-        "plugin-workspace-discovered"
+        "plugin-fixture-surfaces",
+        "plugin-workspace-discovered",
+        "plugins-policy-mixed"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugins-advanced-policy --artifact-dir {run}/screens --timeout 180000",
         "ocm @{env} -- plugins list --json",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/plugins-allow-restrictive.json",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change plugins-allow-restrictive --save-paths plugins.allow,plugins.deny,plugins.enabled,plugins.slots.memory --plugin {persona:plugin-fixture-surfaces:pluginId} --save {run}/set-plugin-loading-policy-in-control-ui-plugins-policy.json --timeout 15000",
         "ocm @{env} -- plugins enable {persona:plugin-workspace-discovered:pluginId}",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/plugins-deny-entry.json",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/plugins-disabled.json",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/memory-slot-unknown.json",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change plugins-deny-entry --plugin {persona:plugins-policy-mixed:deniedPluginId} --timeout 15000",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change plugins-disabled --timeout 15000",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change memory-slot-unknown --timeout 15000",
         "ocm @{env} -- plugins doctor --json",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/plugins-allow-restore.json"
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --restore-from {run}/set-plugin-loading-policy-in-control-ui-plugins-policy.json --timeout 15000"
       ],
       "checkpoint": [
         "responses",
@@ -1047,7 +1056,7 @@
         "screen",
         "state:openclaw.json"
       ],
-      "timeoutMs": 240000,
+      "timeoutMs": 300000,
       "browser": true,
       "slow": false
     },
@@ -1075,25 +1084,26 @@
         "plugin-fixture-surfaces",
         "plugins-local-sources",
         "plugins-native-dependency",
-        "session-main-rolling"
+        "session-plugin-tools"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/plugin-source-edit.mjs --env {env} --plugin {persona:plugins-local-sources:linkedPluginId} --mode marker",
         "ocm @{env} -- plugins reload {persona:plugins-local-sources:linkedPluginId} --json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.reload --params '{\"plugins\":[{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}]}' --timeout 120000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool plugins --args '{\"action\":\"reload\",\"pluginId\":\"{persona:plugins-local-sources:linkedPluginId}\"}' --timeout 90000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool plugins --args '{\"action\":\"reload\",\"pluginId\":\"{persona:plugins-local-sources:linkedPluginId}\"}' --timeout 90000",
         "ocm @{env} -- plugins reload {persona:plugins-native-dependency:pluginId} --json",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugin-lifecycle-reload --artifact-dir {run}/screens --timeout 60000",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/reload-mode-off.json",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/reload-mode-hybrid.json"
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change reload-mode-off --timeout 15000",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change reload-mode-hybrid --timeout 15000"
       ],
       "checkpoint": [
         "responses",
         "logs",
         "timing",
-        "state:tmp/plugin-captures"
+        "state:tmp/plugin-captures",
+        "screen"
       ],
-      "timeoutMs": 270000,
+      "timeoutMs": 300000,
       "browser": true,
       "slow": false
     },
@@ -1119,13 +1129,13 @@
       "requires": [
         "mock-provider-held-turn",
         "plugins-native-dependency",
-        "session-main-rolling"
+        "session-phase-hold"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 90000 --timeout 95000 --background --handle {run}/turn-reload.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-phase-hold:key} --hold-ms 90000 --timeout 95000 --background --handle {run}/turn-reload.json",
         "ocm @{env} -- plugins inspect {persona:plugins-native-dependency:pluginId} --runtime --json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.refresh --params '{}' --timeout 30000",
-        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --wait {run}/turn-reload.json --timeout 30000"
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-phase-hold:key} --wait {run}/turn-reload.json --timeout 30000"
       ],
       "checkpoint": [
         "responses",
@@ -1242,7 +1252,7 @@
         "src/commands/doctor/shared/post-core-plugin-convergence.ts"
       ],
       "requires": [
-        "clawhub-catalog-reachable",
+        "clawhub-registry-local",
         "plugins-legacy-state",
         "plugins-npm-tracked"
       ],
@@ -1252,7 +1262,7 @@
         "ocm @{env} -- plugins update {persona:plugins-npm-tracked:officialPluginId}",
         "ocm @{env} -- plugins update --all",
         "ocm @{env} -- plugins list --json",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.install --params '{\"source\":\"official\",\"pluginId\":\"{persona:clawhub-catalog-reachable:officialPluginId}\",\"mode\":\"update\"}' --timeout 120000"
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.install --params '{\"source\":\"official\",\"pluginId\":\"{persona:clawhub-registry-local:officialPluginId}\",\"mode\":\"update\"}' --timeout 120000"
       ],
       "checkpoint": [
         "responses",
@@ -1275,6 +1285,7 @@
         "src/plugins/catalog*.ts"
       ],
       "requires": [
+        "clawhub-registry-local",
         "marketplace-local"
       ],
       "commands": [
@@ -1305,6 +1316,7 @@
         "src/plugin-sdk/**"
       ],
       "requires": [
+        "clawhub-registry-local",
         "plugin-authoring-workspace"
       ],
       "commands": [
@@ -1338,12 +1350,15 @@
         "src/cli/plugins-control-ui-build.ts",
         "src/cli/plugins-build-bundle.ts"
       ],
-      "requires": [],
+      "requires": [
+        "clawhub-registry-local"
+      ],
       "commands": [
         "ocm @{env} -- plugins init kova-verify-feature --directory {run}/scaffold-feature --type feature",
         "ocm env exec {env} -- npm --prefix {run}/scaffold-feature install",
         "ocm env exec {env} -- npm --prefix {run}/scaffold-feature run build",
         "ocm @{env} -- plugins validate --root {run}/scaffold-feature --json",
+        "ocm @{env} -- plugins pack --root {run}/scaffold-feature --out {run}/feature.tgz --json",
         "ocm @{env} -- plugins pack --root {run}/scaffold-feature --out {run}/feature.tgz --json"
       ],
       "checkpoint": [
@@ -1380,10 +1395,10 @@
       "commands": [
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.uiDescriptors --params '{}' --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.controlUi.list --params '{}' --timeout 30000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugin-tab-and-contributions --artifact-dir {run}/screens --timeout 200000 --out {run}/screens/plugin-tab-and-contributions.json",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugin-tab-and-contributions --artifact-dir {run}/screens --timeout 195000 --out {run}/screens/plugin-tab-and-contributions.json",
         "node {kovaRoot}/support/verify/http-get.mjs --env {env} --path /__openclaw__/plugin-theme-art --timeout 15000 --from {run}/screens/plugin-tab-and-contributions.json",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/ui-lab-on.json",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/ui-lab-off.json"
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change ui-lab-on --timeout 15000",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change ui-lab-off --timeout 15000"
       ],
       "checkpoint": [
         "responses",
@@ -1391,7 +1406,7 @@
         "timing",
         "screen"
       ],
-      "timeoutMs": 280000,
+      "timeoutMs": 300000,
       "browser": true,
       "slow": false
     },
@@ -1457,14 +1472,11 @@
         "src/plugins/theme*.ts",
         "ui/src/plugins/control-ui-runtime.ts"
       ],
-      "requires": [
-        "plugin-fixture-feature-ui"
-      ],
+      "requires": [],
       "commands": [
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugins-customize-ui --artifact-dir {run}/screens --timeout 150000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.controlUi.reload --params '{}' --timeout 60000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.controlUi.status --params '{}' --timeout 30000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.controlUi.report --params '{\"pluginId\":\"{persona:plugin-fixture-feature-ui:pluginId}\",\"status\":\"activated\"}' --timeout 30000"
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.controlUi.status --params '{}' --timeout 30000"
       ],
       "checkpoint": [
         "responses",
@@ -1479,7 +1491,7 @@
     {
       "id": "run-plugin-session-action",
       "kind": "operation",
-      "intent": "A user runs a plugin-registered session action on the main session while a plugin tool call is in flight, observing the action result, scope checks and session projection.",
+      "intent": "A user runs a plugin-registered session action on an idle session, observing the action result, scope checks and session projection.",
       "paths": [
         "src/gateway/server-methods/plugin-host-hooks.ts",
         "src/gateway/method-scopes.ts",
@@ -1488,11 +1500,10 @@
       ],
       "requires": [
         "plugin-fixture-surfaces",
-        "session-main-rolling",
         "session-plugin-tools"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.sessionAction --params '{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\",\"actionId\":\"{persona:plugin-fixture-surfaces:sessionActionId}\",\"sessionKey\":\"{persona:session-main-rolling:key}\"}' --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.sessionAction --params '{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\",\"actionId\":\"{persona:plugin-fixture-surfaces:sessionActionId}\",\"sessionKey\":\"{persona:session-plugin-tools:key}\"}' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method {persona:plugin-fixture-surfaces:hookLogMethod} --params '{}' --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.uiDescriptors --params '{}' --timeout 30000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugin-session-action --artifact-dir {run}/screens --timeout 120000 --session-key {persona:session-plugin-tools:key}"
@@ -1501,10 +1512,11 @@
         "responses",
         "logs",
         "timing",
-        "state:state/openclaw.sqlite"
+        "state:state/openclaw.sqlite",
+        "screen"
       ],
       "timeoutMs": 240000,
-      "browser": false,
+      "browser": true,
       "slow": false
     },
     {
@@ -1524,23 +1536,26 @@
         "mock-provider-scripted",
         "mock-provider-tool-calls",
         "plugin-fixture-surfaces",
-        "session-main-rolling"
+        "session-phase-hold",
+        "session-plugin-tools"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugin.approval.list --params '{}' --timeout 15000 --out {run}/approvals.json",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-phase-hold:key} --tool {persona:plugin-fixture-surfaces:approvalToolName} --args '{\"target\":\"kova-approval-wait\",\"approvalTimeoutMs\":50000}' --timeout 60000 --background --handle {run}/approval-wait.json",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugin.approval.list --params '{}' --timeout 15000 --after-ms 3000 --out {run}/approvals.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugin.approval.resolve --params '{\"decision\":\"allow-always\"}' --timeout 15000 --merge-from {run}/approvals.json",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool {persona:plugin-fixture-surfaces:approvalToolName} --args '{\"target\":\"kova-approval-wait\",\"approvalTimeoutMs\":60000}' --timeout 90000 --wait {run}/approval-pending.json",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugin.approval.request --params '{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\",\"title\":\"kova approval\",\"description\":\"kova approval request\",\"allowedDecisions\":[\"allow-once\",\"deny\"],\"timeoutMs\":60000}' --timeout 15000 --out {run}/approval-request.json",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugin.approval.request --params '{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\",\"title\":\"kova approval\",\"description\":\"kova approval request\",\"allowedDecisions\":[\"allow-once\",\"deny\"],\"timeoutMs\":60000,\"twoPhase\":true}' --timeout 15000 --out {run}/approval-request.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugin.approval.resolve --params '{\"decision\":\"allow-always\"}' --timeout 15000 --merge-from {run}/approval-request.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugin.approval.resolve --params '{\"decision\":\"deny\"}' --timeout 15000 --merge-from {run}/approval-request.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugin.approval.waitDecision --params '{}' --timeout 20000 --merge-from {run}/approval-request.json",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugin-approval-prompt --artifact-dir {run}/screens --timeout 60000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message '/approve kova-unknown-approval allow-once' --timeout 30000"
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugin-approval-prompt --artifact-dir {run}/screens --timeout 55000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message '/approve kova-unknown-approval allow-once' --timeout 30000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-phase-hold:key} --wait {run}/approval-wait.json --timeout 60000"
       ],
       "checkpoint": [
         "responses",
         "logs",
-        "timing"
+        "timing",
+        "screen"
       ],
       "timeoutMs": 300000,
       "browser": true,
@@ -1569,10 +1584,10 @@
       ],
       "requires": [
         "mock-provider-tool-calls",
-        "session-main-rolling"
+        "session-plugin-tools"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool openclaw --args '{\"action\":\"plugin_activate_artifact\"}' --arg-path path={run}/feature.tgz --timeout 120000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool openclaw --args '{\"action\":\"plugin_activate_artifact\"}' --arg-path path={run}/feature.tgz --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.controlUi.status --params '{}' --timeout 30000",
         "ocm @{env} -- plugins list --json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugin.approval.list --params '{}' --timeout 30000"
@@ -1689,23 +1704,25 @@
         "mock-provider-tool-calls",
         "plugin-fixture-surfaces",
         "plugins-local-sources",
-        "session-main-rolling"
+        "session-main-rolling",
+        "session-plugin-tools"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool {persona:plugin-fixture-surfaces:toolName} --args '{\"input\":\"kova\"}' --timeout 35000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool {persona:plugin-fixture-surfaces:optionalToolName} --args '{\"input\":\"kova\"}' --timeout 35000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool {persona:plugin-fixture-surfaces:schemaBreakToolName} --args '{\"input\":\"kova\"}' --timeout 35000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool {persona:plugins-local-sources:bundleMcpToolName} --args '{}' --timeout 35000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --chat-type direct --peer {persona:session-main-rolling:peer} --text 'KOVA_PLUGIN_DELIVERY' --timeout 50000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool {persona:plugin-fixture-surfaces:toolName} --args '{\"input\":\"kova\"}' --timeout 35000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool {persona:plugin-fixture-surfaces:optionalToolName} --args '{\"input\":\"kova\"}' --timeout 35000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool {persona:plugin-fixture-surfaces:schemaBreakToolName} --args '{\"input\":\"kova\"}' --timeout 35000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool {persona:plugins-local-sources:bundleMcpToolName} --args '{}' --timeout 35000",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --chat-type direct --peer {persona:session-main-rolling:peer} --text 'KOVA_PLUGIN_DELIVERY' --timeout 40000",
         "node {kovaRoot}/support/verify/cron-isolated-run.mjs --env {env} --job-id {persona:cron-job-isolated:jobId} --timeout 90000",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/tools-allow-fixture-optional.json"
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change tools-allow-add --tool {persona:plugin-fixture-surfaces:optionalToolName} --save {run}/use-plugin-tools-in-turns-tools-allow.json --timeout 15000",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --restore-from {run}/use-plugin-tools-in-turns-tools-allow.json --timeout 15000"
       ],
       "checkpoint": [
         "responses",
         "logs",
         "timing"
       ],
-      "timeoutMs": 280000,
+      "timeoutMs": 300000,
       "browser": false,
       "slow": false
     },
@@ -1758,24 +1775,24 @@
         "mock-provider-scripted",
         "plugin-fixture-surfaces",
         "plugins-local-sources",
-        "session-main-rolling"
+        "session-plugin-tools"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message 'KOVA_HOOK_TURN' --timeout 50000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message 'KOVA_HOOK_REPLY_CLAIM' --timeout 50000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message 'KOVA_HOOK_RUN_BLOCK' --timeout 50000",
-        "node {kovaRoot}/support/verify/heartbeat-wake.mjs --env {env} --timeout 90000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message 'KOVA_HOOK_TURN' --timeout 50000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message 'KOVA_HOOK_REPLY_CLAIM' --timeout 50000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message 'KOVA_HOOK_RUN_BLOCK' --timeout 50000",
+        "node {kovaRoot}/support/verify/heartbeat-wake.mjs --env {env} --timeout 80000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method {persona:plugin-fixture-surfaces:hookLogMethod} --params '{}' --timeout 20000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method {persona:plugins-local-sources:hookLogMethod} --params '{}' --timeout 20000",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/fixture-conversation-access-off.json",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/fixture-conversation-access-on.json"
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change fixture-conversation-access-off --plugin {persona:plugin-fixture-surfaces:pluginId} --timeout 15000",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change fixture-conversation-access-on --plugin {persona:plugin-fixture-surfaces:pluginId} --timeout 15000"
       ],
       "checkpoint": [
         "responses",
         "logs",
         "timing"
       ],
-      "timeoutMs": 280000,
+      "timeoutMs": 300000,
       "browser": false,
       "slow": false
     },
@@ -1804,7 +1821,8 @@
       "checkpoint": [
         "responses",
         "logs",
-        "timing"
+        "timing",
+        "screen"
       ],
       "timeoutMs": 180000,
       "browser": true,
@@ -1824,12 +1842,12 @@
       "requires": [
         "mock-provider-tool-calls",
         "plugin-fixture-surfaces",
-        "session-main-rolling"
+        "session-plugin-tools"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool exec --args '{\"command\":\"env\"}' --timeout 60000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool {persona:plugin-fixture-surfaces:toolName} --args '{\"input\":\"KOVA_HOOK_REWRITE\"}' --timeout 60000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool {persona:plugin-fixture-surfaces:toolName} --args '{\"input\":\"KOVA_HOOK_BLOCK\"}' --timeout 60000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool exec --args '{\"command\":\"env\"}' --timeout 60000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool {persona:plugin-fixture-surfaces:toolName} --args '{\"input\":\"KOVA_HOOK_REWRITE\"}' --timeout 60000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool {persona:plugin-fixture-surfaces:toolName} --args '{\"input\":\"KOVA_HOOK_BLOCK\"}' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method {persona:plugin-fixture-surfaces:hookLogMethod} --params '{}' --timeout 30000"
       ],
       "checkpoint": [
@@ -1887,12 +1905,12 @@
         "mock-provider-scripted",
         "mock-provider-tool-calls",
         "plugin-fixture-surfaces",
-        "session-main-rolling"
+        "session-plugin-tools"
       ],
       "commands": [
-        "ocm @{env} -- sessions compact {persona:session-main-rolling:key} --json",
+        "ocm @{env} -- sessions compact {persona:session-plugin-tools:key} --json",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:plugin-fixture-surfaces:sessionKey} --message '/reset' --timeout 60000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool sessions_spawn --args '{\"task\":\"Reply with KOVA_SUBAGENT_DONE.\",\"runTimeoutSeconds\":60}' --timeout 90000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool sessions_spawn --args '{\"task\":\"Reply with KOVA_SUBAGENT_DONE.\",\"runTimeoutSeconds\":60}' --timeout 90000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method {persona:plugin-fixture-surfaces:hookLogMethod} --params '{}' --timeout 30000"
       ],
       "checkpoint": [
@@ -1955,7 +1973,7 @@
         "plugins-local-sources"
       ],
       "commands": [
-        "ocm @{env} -- cron add --file {kovaRoot}/verify/templates/plugins/patches/cron-job-hook.json",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method cron.update --params '{\"id\":\"{persona:cron-job-isolated:jobId}\",\"patch\":{\"description\":\"kova plugin cron hook\"}}' --timeout 30000",
         "ocm @{env} -- plugins install {persona:plugins-local-sources:archivePath} --force --accept-capabilities",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method {persona:plugin-fixture-surfaces:hookLogMethod} --params '{}' --timeout 30000",
         "ocm @{env} -- cron list --json",
@@ -1986,7 +2004,7 @@
         "gateway-multi-user-profiles",
         "mock-provider-scripted",
         "plugin-fixture-surfaces",
-        "session-main-rolling"
+        "session-plugin-tools"
       ],
       "commands": [
         "ocm @{env} -- plugins inspect {persona:plugin-fixture-surfaces:pluginId} --runtime --json",
@@ -1994,7 +2012,7 @@
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method {persona:plugin-fixture-surfaces:reservedMethodName} --params '{}' --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method {persona:plugin-fixture-surfaces:sdkProbeMethod} --params '{}' --timeout 30000",
         "node {kovaRoot}/support/verify/http-get.mjs --env {env} --path {persona:plugin-fixture-surfaces:routePath} --timeout 15000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message '/{persona:plugin-fixture-surfaces:commandName}' --timeout 60000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message '/{persona:plugin-fixture-surfaces:commandName}' --timeout 60000",
         "ocm @{env} -- models list --json",
         "ocm @{env} -- plugins inspect --all --runtime --json",
         "ocm @{env} -- status --json",
@@ -2022,14 +2040,14 @@
       ],
       "requires": [
         "mock-provider-scripted",
-        "session-main-rolling"
+        "session-plugin-tools"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message '/codex plugins' --timeout 60000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message '/codex plugins list' --timeout 60000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message '/codex plugins available' --timeout 60000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message '/codex plugins status kova@kova' --timeout 60000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message '/codex plugins refresh' --timeout 60000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message '/codex plugins' --timeout 60000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message '/codex plugins list' --timeout 60000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message '/codex plugins available' --timeout 60000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message '/codex plugins status kova@kova' --timeout 60000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message '/codex plugins refresh' --timeout 60000",
         "ocm @{env} -- migrate codex --dry-run"
       ],
       "checkpoint": [
@@ -2094,14 +2112,14 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.list --params '{}' --timeout 15000 --out {run}/before-hot.json",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/fixture-config-change.json",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change fixture-config-change --plugin {persona:plugin-fixture-surfaces:pluginId} --save {run}/event-plugin-config-edit-hot-replaces-instance-fixture-config.json --timeout 15000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.list --params '{}' --timeout 15000 --after-ms 5000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method {persona:plugin-fixture-surfaces:hookLogMethod} --params '{}' --timeout 30000",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/fixture-config-restore.json",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/fixture-config-change.json",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --restore-from {run}/event-plugin-config-edit-hot-replaces-instance-fixture-config.json --timeout 15000",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change fixture-config-change --plugin {persona:plugin-fixture-surfaces:pluginId} --timeout 15000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.inspect --params '{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}' --timeout 30000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool {persona:plugin-fixture-surfaces:toolName} --args '{\"input\":\"VERIFY_AFTER_CONFIG\"}' --timeout 60000",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/fixture-config-restore.json"
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --restore-from {run}/event-plugin-config-edit-hot-replaces-instance-fixture-config.json --timeout 15000"
       ],
       "checkpoint": [
         "responses",
@@ -2109,7 +2127,7 @@
         "timing",
         "state:openclaw.json"
       ],
-      "timeoutMs": 150000,
+      "timeoutMs": 270000,
       "browser": false,
       "slow": false
     },
@@ -2125,12 +2143,12 @@
       "requires": [
         "mock-provider-tool-calls",
         "plugin-fixture-surfaces",
-        "session-main-rolling"
+        "session-phase-hold"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool {persona:plugin-fixture-surfaces:slowToolName} --args '{\"holdMs\":30000}' --timeout 90000 --background --handle {run}/midrun.json",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-phase-hold:key} --tool {persona:plugin-fixture-surfaces:slowToolName} --args '{\"holdMs\":30000}' --timeout 90000 --background --handle {run}/midrun.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.reload --params '{\"plugins\":[{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}]}' --timeout 100000 --after-ms 3000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool {persona:plugin-fixture-surfaces:slowToolName} --args '{\"holdMs\":30000}' --timeout 90000 --wait {run}/midrun.json"
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-phase-hold:key} --timeout 90000 --wait {run}/midrun.json"
       ],
       "checkpoint": [
         "responses",
@@ -2153,15 +2171,14 @@
       "requires": [
         "mock-provider-tool-calls",
         "plugin-fixture-surfaces",
-        "session-main-rolling"
+        "session-phase-hold"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool {persona:plugin-fixture-surfaces:slowToolName} --args '{\"holdMs\":90000}' --timeout 110000 --background --handle {run}/drain-hold.json",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-phase-hold:key} --tool {persona:plugin-fixture-surfaces:slowToolName} --args '{\"holdMs\":90000}' --timeout 110000 --background --handle {run}/drain-hold.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.reload --params '{\"plugins\":[{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}]}' --timeout 90000 --after-ms 3000",
         "ocm @{env} -- health --json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.list --params '{}' --timeout 15000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool {persona:plugin-fixture-surfaces:slowToolName} --args '{}' --timeout 45000 --wait {run}/drain-hold.json",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool {persona:plugin-fixture-surfaces:slowToolName} --args '{}' --timeout 30000 --wait {run}/plugin-turn.json",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-phase-hold:key} --timeout 45000 --wait {run}/drain-hold.json",
         "ocm @{env} -- plugins reload {persona:plugin-fixture-surfaces:pluginId} --wait --json"
       ],
       "checkpoint": [
@@ -2176,24 +2193,28 @@
     {
       "id": "event-reload-wait-cancelled",
       "kind": "event",
-      "intent": "A user reloads the fixture plugin with --wait while admitted work drains and cancels the wait before publication, observing the restored previous generation and the unaffected admitted run.",
+      "intent": "A user reloads the fixture plugin with --wait while a held plugin tool call keeps admitted work draining, and cancels the wait before publication, observing the restored previous generation and the held call's result.",
       "paths": [
         "src/cli/plugins-reload-command.ts",
         "src/gateway/server-plugin-reload*.ts"
       ],
       "requires": [
-        "plugin-fixture-surfaces"
+        "mock-provider-tool-calls",
+        "plugin-fixture-surfaces",
+        "session-plugin-tools"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool {persona:plugin-fixture-surfaces:slowToolName} --args '{\"holdMs\":60000}' --timeout 70000 --background --handle {run}/reload-cancel-hold.json",
         "node {kovaRoot}/support/verify/plugin-reload-wait.mjs --env {env} --plugin {persona:plugin-fixture-surfaces:pluginId} --cancel-after-ms 5000 --timeout 30000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.list --params '{}' --timeout 30000"
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.list --params '{}' --timeout 30000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --wait {run}/reload-cancel-hold.json --timeout 70000"
       ],
       "checkpoint": [
         "responses",
         "logs",
         "timing"
       ],
-      "timeoutMs": 60000,
+      "timeoutMs": 200000,
       "browser": false,
       "slow": false
     },
@@ -2208,10 +2229,10 @@
       "requires": [
         "mock-provider-tool-calls",
         "plugin-fixture-surfaces",
-        "session-main-rolling"
+        "session-plugin-tools"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool plugins --args '{\"action\":\"reload\",\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}' --timeout 90000"
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool plugins --args '{\"action\":\"reload\",\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}' --timeout 90000"
       ],
       "checkpoint": [
         "responses",
@@ -2232,6 +2253,7 @@
         "src/cli/plugins-lifecycle-client.ts"
       ],
       "requires": [
+        "clawhub-registry-local",
         "plugin-fixture-surfaces",
         "plugins-bundled-and-external"
       ],
@@ -2265,14 +2287,15 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.reload --params '{\"plugins\":[{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}]}' --timeout 60000 --background --handle {run}/reload-a.json",
-        "ocm @{env} -- plugins disable {persona:plugins-bundled-and-external:bundledOffPluginId}"
+        "ocm @{env} -- plugins disable {persona:plugins-bundled-and-external:bundledOffPluginId}",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.reload --params '{}' --timeout 120000 --wait {run}/reload-a.json"
       ],
       "checkpoint": [
         "responses",
         "logs",
         "timing"
       ],
-      "timeoutMs": 60000,
+      "timeoutMs": 180000,
       "browser": false,
       "slow": false
     },
@@ -2359,10 +2382,10 @@
       "requires": [
         "mock-provider-tool-calls",
         "plugin-fixture-surfaces",
-        "session-main-rolling"
+        "session-plugin-tools"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool {persona:plugin-fixture-surfaces:approvalToolName} --args '{\"target\":\"kova-approval-timeout\",\"approvalTimeoutMs\":5000}' --timeout 60000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool {persona:plugin-fixture-surfaces:approvalToolName} --args '{\"target\":\"kova-approval-timeout\",\"approvalTimeoutMs\":5000}' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method {persona:plugin-fixture-surfaces:hookLogMethod} --params '{}' --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugin.approval.list --params '{}' --timeout 30000"
       ],
@@ -2387,12 +2410,13 @@
       "requires": [
         "mock-provider-tool-calls",
         "plugin-fixture-surfaces",
-        "session-main-rolling"
+        "session-phase-hold",
+        "session-plugin-tools"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool {persona:plugin-fixture-surfaces:approvalToolName} --args '{\"target\":\"kova-approval-abort\",\"approvalTimeoutMs\":120000}' --timeout 130000 --background --handle {run}/approval-abort.json",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.abort --params '{\"sessionKey\":\"{persona:session-main-rolling:key}\"}' --timeout 15000 --after-ms 3000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool {persona:plugin-fixture-surfaces:approvalToolName} --args '{}' --timeout 30000 --wait {run}/approval-abort.json",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-phase-hold:key} --tool {persona:plugin-fixture-surfaces:approvalToolName} --args '{\"target\":\"kova-approval-abort\",\"approvalTimeoutMs\":120000}' --timeout 130000 --background --handle {run}/approval-abort.json",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.abort --params '{\"sessionKey\":\"{persona:session-plugin-tools:key}\"}' --timeout 15000 --after-ms 3000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-phase-hold:key} --timeout 30000 --wait {run}/approval-abort.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method {persona:plugin-fixture-surfaces:hookLogMethod} --params '{}' --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugin.approval.list --params '{}' --timeout 30000"
       ],
@@ -2408,7 +2432,7 @@
     {
       "id": "event-plugin-approvals-forwarded-to-chat",
       "kind": "event",
-      "intent": "An operator turns on plugin approval forwarding to the test channel, the agent requests a plugin approval, and the operator answers it from chat, observing the forwarded prompt and the decision.",
+      "intent": "An operator turns on plugin approval forwarding to the test channel, the agent requests a plugin approval, and the operator answers it from chat with the forwarded request id, observing the forwarded prompt and the decision.",
       "paths": [
         "src/gateway/server-methods/plugin-approval.ts",
         "src/plugins/hook*.ts",
@@ -2420,21 +2444,23 @@
         "config-plugin-approvals-forwarded",
         "mock-provider-tool-calls",
         "plugin-fixture-surfaces",
-        "session-main-rolling"
+        "session-main-rolling",
+        "session-phase-hold"
       ],
       "commands": [
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/approvals-plugin-forwarding.json",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool {persona:plugin-fixture-surfaces:approvalToolName} --args '{\"target\":\"kova-approval-forward\",\"approvalTimeoutMs\":60000}' --timeout 90000 --background --handle {run}/approval-forward.json",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --chat-type direct --peer {persona:session-main-rolling:peer} --text '/approve kova-forwarded allow-once' --timeout 30000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool {persona:plugin-fixture-surfaces:approvalToolName} --args '{}' --timeout 60000 --wait {run}/approval-forward.json",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/approvals-plugin-forwarding-off.json"
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change approvals-plugin-forwarding --timeout 15000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-phase-hold:key} --tool {persona:plugin-fixture-surfaces:approvalToolName} --args '{\"target\":\"kova-approval-forward\",\"approvalTimeoutMs\":60000}' --timeout 90000 --background --handle {run}/approval-forward.json",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugin.approval.list --params '{}' --timeout 15000 --after-ms 3000 --out {run}/forwarded-approvals.json",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --chat-type direct --peer {persona:session-main-rolling:peer} --approve-from {run}/forwarded-approvals.json --decision allow-once --timeout 30000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-phase-hold:key} --timeout 60000 --wait {run}/approval-forward.json",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change approvals-plugin-forwarding-off --timeout 15000"
       ],
       "checkpoint": [
         "responses",
         "logs",
         "timing"
       ],
-      "timeoutMs": 240000,
+      "timeoutMs": 260000,
       "browser": false,
       "slow": false
     },
@@ -2452,9 +2478,9 @@
         "session-plugin-tools"
       ],
       "commands": [
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/approvals-plugin-forwarding-off.json",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change approvals-plugin-forwarding-off --timeout 15000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool {persona:plugin-fixture-surfaces:approvalToolName} --args '{\"target\":\"production\"}' --timeout 60000",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/approvals-plugin-forwarding.json"
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change approvals-plugin-forwarding --timeout 15000"
       ],
       "checkpoint": [
         "responses",
@@ -2502,11 +2528,11 @@
         "plugins-bundled-and-external"
       ],
       "commands": [
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/plugins-disabled.json",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change plugins-disabled --timeout 15000",
         "ocm @{env} -- plugins list --json",
         "ocm @{env} -- plugins enable {persona:plugins-bundled-and-external:externalPluginId}",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.list --params '{}' --timeout 30000",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/plugins-enabled.json",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change plugins-enabled --timeout 15000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.list --params '{}' --timeout 30000"
       ],
@@ -2544,16 +2570,17 @@
         "src/config/io.plugin-metadata.ts"
       ],
       "requires": [
+        "plugin-fixture-surfaces",
         "plugins-bundled-and-external",
         "plugins-local-sources"
       ],
       "commands": [
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/plugins-allow-restrictive.json",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change plugins-allow-restrictive --plugin {persona:plugin-fixture-surfaces:pluginId} --save {run}/event-allowlist-made-restrictive-plugins-policy.json --timeout 15000",
         "ocm @{env} -- plugins enable {persona:plugins-bundled-and-external:externalPluginId}",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.setEnabled --params '{\"pluginId\":\"{persona:plugins-bundled-and-external:externalPluginId}\",\"enabled\":true}' --timeout 30000",
         "ocm @{env} -- plugins install {persona:plugins-local-sources:archivePath} --force --accept-capabilities",
         "ocm @{env} -- config get plugins --json",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/plugins-allow-restore.json"
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --restore-from {run}/event-allowlist-made-restrictive-plugins-policy.json --timeout 15000"
       ],
       "checkpoint": [
         "responses",
@@ -2577,13 +2604,13 @@
         "plugin-fixture-surfaces"
       ],
       "commands": [
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/reload-mode-off.json",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/fixture-config-change.json",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change reload-mode-off --timeout 15000",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change fixture-config-change --plugin {persona:plugin-fixture-surfaces:pluginId} --save {run}/event-passive-reload-disabled-fixture-config.json --timeout 15000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method {persona:plugin-fixture-surfaces:hookLogMethod} --params '{}' --timeout 15000 --after-ms 5000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.refresh --params '{}' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.reload --params '{\"plugins\":[{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}]}' --timeout 60000",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/fixture-config-restore.json",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/reload-mode-hybrid.json"
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --restore-from {run}/event-passive-reload-disabled-fixture-config.json --timeout 15000",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change reload-mode-hybrid --timeout 15000"
       ],
       "checkpoint": [
         "responses",
@@ -2591,7 +2618,7 @@
         "timing",
         "state:openclaw.json"
       ],
-      "timeoutMs": 240000,
+      "timeoutMs": 260000,
       "browser": false,
       "slow": false
     },
@@ -2681,8 +2708,8 @@
       "requires": [],
       "commands": [
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugin-ui-reconnect --artifact-dir {run}/screens --timeout 150000",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/ui-lab-on.json",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/ui-lab-off.json"
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change ui-lab-on --timeout 15000",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change ui-lab-off --timeout 15000"
       ],
       "checkpoint": [
         "responses",
@@ -2690,7 +2717,7 @@
         "timing",
         "screen"
       ],
-      "timeoutMs": 180000,
+      "timeoutMs": 210000,
       "browser": true,
       "slow": false
     },
@@ -2713,10 +2740,10 @@
         "src/plugins/theme*.ts"
       ],
       "requires": [
-        "session-main-rolling"
+        "session-plugin-tools"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugin-view-session-switch --artifact-dir {run}/screens --timeout 150000 --session-key {persona:session-main-rolling:key}"
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugin-view-session-switch --artifact-dir {run}/screens --timeout 150000 --session-key {persona:session-plugin-tools:key}"
       ],
       "checkpoint": [
         "responses",
@@ -2808,22 +2835,21 @@
         "mock-provider-scripted",
         "mock-provider-tool-calls",
         "plugin-fixture-surfaces",
-        "session-main-rolling",
         "session-plugin-tools"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message 'KOVA_HOOK_SLOW' --timeout 120000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message 'KOVA_HOOK_SLOW' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method {persona:plugin-fixture-surfaces:hookLogMethod} --params '{}' --timeout 30000",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/fixture-hook-timeout-short.json",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change fixture-hook-timeout-short --plugin {persona:plugin-fixture-surfaces:pluginId} --save {run}/event-plugin-hook-handler-times-out-hook-timeout.json --timeout 15000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool {persona:plugin-fixture-surfaces:toolName} --args '{\"input\":\"VERIFY_SLOW_HOOK\"}' --timeout 60000",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/fixture-hook-timeout-restore.json"
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --restore-from {run}/event-plugin-hook-handler-times-out-hook-timeout.json --timeout 15000"
       ],
       "checkpoint": [
         "responses",
         "logs",
         "timing"
       ],
-      "timeoutMs": 210000,
+      "timeoutMs": 270000,
       "browser": false,
       "slow": false
     },
@@ -2843,12 +2869,11 @@
         "plugin-fixture-surfaces"
       ],
       "commands": [
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/cron-reload-touch.json",
         "ocm @{env} -- cron list --json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method cron.update --params '{\"id\":\"{persona:cron-job-isolated:jobId}\",\"patch\":{\"description\":\"kova cron hook\"}}' --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method {persona:plugin-fixture-surfaces:hookLogMethod} --params '{}' --timeout 15000 --after-ms 3000",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/cron-disabled.json",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/cron-enabled.json"
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change cron-disabled --timeout 15000",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change cron-enabled --timeout 15000"
       ],
       "checkpoint": [
         "responses",
@@ -2870,6 +2895,7 @@
         "src/infra/clawhub-plugin-*.ts"
       ],
       "requires": [
+        "clawhub-registry-local",
         "plugins-bundled-and-external",
         "plugins-npm-tracked"
       ],
@@ -2901,12 +2927,12 @@
       "requires": [
         "mock-provider-held-turn",
         "plugin-fixture-surfaces",
-        "session-main-rolling"
+        "session-phase-hold"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 20000 --timeout 60000 --background --handle {run}/final-reply.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-phase-hold:key} --hold-ms 20000 --timeout 60000 --background --handle {run}/final-reply.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.reload --params '{\"plugins\":[{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}]}' --timeout 60000 --after-ms 2000",
-        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 20000 --wait {run}/final-reply.json --timeout 60000"
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-phase-hold:key} --hold-ms 20000 --wait {run}/final-reply.json --timeout 60000"
       ],
       "checkpoint": [
         "responses",
@@ -2955,14 +2981,14 @@
       "requires": [
         "mock-provider-tool-calls",
         "plugins-local-sources",
-        "session-main-rolling"
+        "session-phase-hold"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool {persona:plugins-local-sources:linkedSlowToolName} --args '{\"holdMs\":20000}' --timeout 60000 --background --handle {run}/linked-hold.json",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-phase-hold:key} --tool {persona:plugins-local-sources:linkedSlowToolName} --args '{\"holdMs\":20000}' --timeout 60000 --background --handle {run}/linked-hold.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.uninstall --params '{\"pluginId\":\"{persona:plugins-local-sources:linkedPluginId}\"}' --timeout 90000 --background --handle {run}/linked-uninstall.json --after-ms 2000",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/linked-load-path-readd.json",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.uninstall --params '{}' --timeout 90000 --wait {run}/linked-uninstall.json",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool {persona:plugins-local-sources:linkedSlowToolName} --args '{}' --timeout 60000 --wait {run}/linked-hold.json",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change load-path-add --path {persona:plugins-local-sources:linkDir} --timeout 15000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.uninstall --params '{}' --timeout 75000 --wait {run}/linked-uninstall.json",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-phase-hold:key} --timeout 60000 --wait {run}/linked-hold.json",
         "ocm @{env} -- plugins list --json"
       ],
       "checkpoint": [
@@ -3001,7 +3027,7 @@
         "plugins-npm-tracked",
         "plugins-policy-mixed",
         "plugins-third-party-consented",
-        "session-main-rolling"
+        "session-plugin-tools"
       ],
       "commands": [
         "ocm @{env} -- plugins uninstall {persona:plugins-local-sources:multiEntryChildId} --dry-run",
@@ -3009,8 +3035,8 @@
         "ocm @{env} -- plugins uninstall {persona:plugins-local-sources:multiEntryChildId} --force",
         "ocm @{env} -- plugins uninstall {persona:plugins-policy-mixed:slotPluginId} --force",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.uninstall --params '{\"pluginId\":\"{persona:plugins-local-sources:linkedPluginId}\",\"keepFiles\":true}' --timeout 90000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool plugins --args '{\"action\":\"uninstall\",\"pluginId\":\"{persona:plugins-third-party-consented:pluginId}\"}' --timeout 60000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool openclaw --args '{\"action\":\"plugin_uninstall\",\"pluginId\":\"{persona:plugins-npm-tracked:officialPluginId}\"}' --timeout 45000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool plugins --args '{\"action\":\"uninstall\",\"pluginId\":\"{persona:plugins-third-party-consented:pluginId}\"}' --timeout 60000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool openclaw --args '{\"action\":\"plugin_uninstall\",\"pluginId\":\"{persona:plugins-npm-tracked:officialPluginId}\"}' --timeout 45000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugin-uninstall --artifact-dir {run}/screens --timeout 60000",
         "ocm @{env} -- plugins list --json",
         "ocm @{env} -- config get plugins --json"
@@ -3021,7 +3047,8 @@
         "timing",
         "state:openclaw.json",
         "state:state/openclaw.sqlite",
-        "state:npm/projects"
+        "state:npm/projects",
+        "screen"
       ],
       "timeoutMs": 300000,
       "browser": true,
@@ -3045,8 +3072,8 @@
         "ocm @{env} -- health --json",
         "node {kovaRoot}/support/verify/plugin-source-edit.mjs --env {env} --plugin {persona:plugin-fixture-surfaces:pluginId} --mode register-throws --restore",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.reload --params '{\"plugins\":[{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}]}' --timeout 120000",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/fixture-break-register.json",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/plugins/patches/fixture-config-restore.json"
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change fixture-break-register --plugin {persona:plugin-fixture-surfaces:pluginId} --save {run}/event-replacement-fails-before-publication-fixture-config.json --timeout 15000",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --restore-from {run}/event-replacement-fails-before-publication-fixture-config.json --timeout 15000"
       ],
       "checkpoint": [
         "responses",
@@ -3054,7 +3081,7 @@
         "timing",
         "state:tmp/plugin-captures"
       ],
-      "timeoutMs": 270000,
+      "timeoutMs": 300000,
       "browser": false,
       "slow": false
     },
@@ -3210,35 +3237,6 @@
       "slow": false
     },
     {
-      "id": "event-uninstall-file-removal-fails",
-      "kind": "event",
-      "intent": "A user uninstalls the fixture plugin while its managed directory cannot be removed, observing the plugin left disabled and tracked for a retry, then the retried uninstall after the directory is restored and the reinstall.",
-      "paths": [
-        "src/plugins/uninstall*.ts"
-      ],
-      "requires": [
-        "plugin-fixture-surfaces"
-      ],
-      "commands": [
-        "ocm env exec {env} -- chmod 0555 {persona:plugin-fixture-surfaces:installDir}/..",
-        "ocm @{env} -- plugins uninstall {persona:plugin-fixture-surfaces:pluginId} --force",
-        "ocm @{env} -- plugins list --json",
-        "ocm env exec {env} -- chmod 0755 {persona:plugin-fixture-surfaces:installDir}/..",
-        "ocm @{env} -- plugins uninstall {persona:plugin-fixture-surfaces:pluginId} --force",
-        "ocm @{env} -- plugins install npm-pack:{persona:plugin-fixture-surfaces:packagePath} --force --accept-capabilities"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing",
-        "state:openclaw.json",
-        "state:npm/projects"
-      ],
-      "timeoutMs": 240000,
-      "browser": false,
-      "slow": false
-    },
-    {
       "id": "event-superseded-generation-retired",
       "kind": "event",
       "intent": "A user reinstalls the fixture plugin over itself and restarts the Gateway, observing the retained old generation path while running and its retirement after restart.",
@@ -3350,16 +3348,16 @@
         "mock-provider-held-turn",
         "plugin-fixture-surfaces",
         "plugins-legacy-state",
-        "session-main-rolling"
+        "session-phase-hold"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 60000 --timeout 90000 --background --handle {run}/restart-turn.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-phase-hold:key} --hold-ms 60000 --timeout 90000 --background --handle {run}/restart-turn.json",
         "ocm @{env} -- gateway restart",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method {persona:plugin-fixture-surfaces:hookLogMethod} --params '{}' --timeout 30000",
         "ocm @{env} -- plugins list --json",
         "ocm logs {env} --tail 400",
-        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 60000 --wait {run}/restart-turn.json --timeout 30000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-phase-hold:key} --hold-ms 60000 --wait {run}/restart-turn.json --timeout 30000",
         "ocm service restart {env} --json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.list --params '{}' --timeout 30000",
         "ocm @{env} -- status --json",
@@ -3578,6 +3576,35 @@
         "state:state/openclaw.sqlite"
       ],
       "timeoutMs": 120000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "event-uninstall-file-removal-fails",
+      "kind": "event",
+      "intent": "A user uninstalls the fixture plugin while its managed directory cannot be removed, observing the plugin left disabled and tracked for a retry, then the retried uninstall after the directory is restored and the reinstall.",
+      "paths": [
+        "src/plugins/uninstall*.ts"
+      ],
+      "requires": [
+        "plugin-fixture-surfaces"
+      ],
+      "commands": [
+        "ocm env exec {env} -- chmod 0555 {persona:plugin-fixture-surfaces:installDir}/..",
+        "ocm @{env} -- plugins uninstall {persona:plugin-fixture-surfaces:pluginId} --force",
+        "ocm @{env} -- plugins list --json",
+        "ocm env exec {env} -- chmod 0755 {persona:plugin-fixture-surfaces:installDir}/..",
+        "ocm @{env} -- plugins uninstall {persona:plugin-fixture-surfaces:pluginId} --force",
+        "ocm @{env} -- plugins install npm-pack:{persona:plugin-fixture-surfaces:packagePath} --force --accept-capabilities"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:openclaw.json",
+        "state:npm/projects"
+      ],
+      "timeoutMs": 240000,
       "browser": false,
       "slow": false
     }

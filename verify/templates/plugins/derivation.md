@@ -12,27 +12,15 @@ Linked pages not added: docs/plugins/manifest/*, docs/plugins/hooks/prompt-and-s
 ## Excluded paths
 src/auto-reply/reply/commands-plugins.ts, src/auto-reply/reply/plugins-commands.ts: /plugins chat command bodies outside the globs; their commands are listed as entry points because the area's documents describe them
 src/agents/tools/system-agent-tool.ts: the system agent tool body is owned by the system agent; its plugin actions are listed as entry points
-src/commands/doctor-plugin-*.ts, src/commands/doctor-config-preflight-plugin-*.ts, src/infra/deferred-plugin-*.ts: owned by update (bound)
+src/commands/doctor-plugin-*.ts, src/commands/doctor-config-preflight-plugin-*.ts, src/commands/doctor/shared/*plugin*, src/infra/deferred-plugin-*.ts: owned by update (bound); Doctor's plugin repair is listed as an entry point of kind from update
 src/gateway/server-methods/nodes.read.ts (plugin.surface.refresh): owned by nodes
 ui/src/plugins/** other than control-ui-runtime.ts, ui/src/app/** other than the files listed as from Control UI shell: owned by the Control UI shell
 ui/src/pages/plugin/logbook-*.ts: owned by the logbook plugin's feature area (bound)
 extensions/<id>/** feature code: owned by each plugin's feature area (bound); install, enablement, startup load and reload of every shipped plugin stay here
 docs/plugins/reference/*, docs/plugins/sdk-channel-*, docs/plugins/sdk-provider-plugins*, docs/plugins/codex-harness*, docs/plugins/sdk-agent-harness*: owned by plugin features, channels, models and agent runtime (bound)
 Windows-only path handling: owned by platform (bound)
-src/commands/doctor-plugin-*.ts, src/commands/doctor-config-preflight-plugin-*.ts, src/commands/doctor/shared/*plugin*: owned by update (Doctor plugin repair; its files found by search are listed as from update)
-src/infra/deferred-plugin-*.ts: owned by update
-docs/plugins/reference/* and per-plugin feature documents (voice-call, meetings, memory plugins, workboard, logbook): owned by each plugin's feature area
-channels.* methods, openclaw channels, docs/plugins/sdk-channel-*: owned by channels
-config.* methods, openclaw config, general config hot reload: owned by config
-sessions.* methods and docs/plugins/hooks/prompt-and-session.md: owned by sessions
-skills.*, openclaw skills, the Skills and Skill workshop pages: owned by skills
-docs/plugins/sdk-provider-plugins*, docs/plugins/manifest/*: owned by models
-docs/plugins/codex-harness*, docs/plugins/sdk-agent-harness* and the Copilot and Agents API harnesses: owned by agent runtime
-docs/plugins/sdk-runtime* (api.runtime.*): consumed from the area each helper wraps
-openclaw hooks, internal hooks and webhooks: owned by automation
-the MCP settings page and mcp config: owned by MCP
-dashboard widgets: owned by dashboards
 src/agents/tools/plugins-tool.ts, src/auto-reply/reply/commands-plugins*.ts, src/agents/tools/system-agent-tool.ts, ui/src/plugins/**, src/commands/startup-config-preflight.ts: outside the globs; their entry points are listed because the area's documents describe them, their code is owned by agents, auto-reply, the system agent, the Control UI runtime and startup
+channels.*, config.*, sessions.*, skills.* methods and their CLI and pages, model provider behaviour, the agent harnesses, api.runtime.* helpers, internal hooks, the MCP settings page and dashboard widgets: owned by the areas the bound names
 
 ## Operations
 | Operation | Entry points | Kinds |
@@ -126,11 +114,11 @@ UI settings navigation, sidebar, theme and account controls around the plugin pa
 | C8 replacement-fails-after-publication | docs/plugins/manage-plugins.md "Use the Control UI"; docs/cli/plugins/uninstall-and-update.md "Reload"; docs/plugins/architecture.md "Plugin metadata snapshot and lookup table"; docs/gateway/protocol/rpc-system-and-channels.md "Catalog detail and client confirmation" | event | plugin-fixture-surfaces |
 | C9 recovery-cannot-complete-ready-state-reports-plugin-reload | docs/plugins/architecture.md "Plugin metadata snapshot and lookup table"; docs/cli/plugins/uninstall-and-update.md "Reload" | event | plugin-fixture-surfaces |
 | C10 install-saved-but-runtime-activation-failed | docs/plugins/tool-plugins.md "Tool does not appear after install"; docs/plugins/manage-plugins.md "Use the Control UI"; docs/plugins/manage-plugins.md "Manage plugins from an agent conversation"; docs/cli/plugins/install.md "Install"; docs/gateway/protocol/rpc-system-and-channels.md "Catalog detail and client confirmation"; docs/plugins/manage-plugins.md "Use the Control UI", "Manage plugins from an agent conversation" | ambient | plugins-broken-installs |
-| C11 bundled-code-edited-while-loaded-restart-required | docs/plugins/manage-plugins.md "Apply changes and inspect"; docs/cli/plugins/uninstall-and-update.md "Reload"; docs/plugins/architecture.md "Runtime instance and source lifetime"; docs/tools/plugin.md "Verify the active Gateway", "Plugin hooks"; docs/cli/plugins/list.md "List"; docs/plugins/tool-plugins.md "Optional and [tool-builder] tools" | event | plugins-bundled-and-external |
+| C11 bundled-code-edited-while-loaded-restart-required | docs/plugins/manage-plugins.md "Apply changes and inspect"; docs/cli/plugins/uninstall-and-update.md "Reload"; docs/plugins/architecture.md "Runtime instance and source lifetime"; docs/tools/plugin.md "Verify the active Gateway", "Plugin hooks"; docs/cli/plugins/list.md "List"; docs/plugins/tool-plugins.md "Optional and constructor-built tools (the heading at line 122)" | event | plugins-bundled-and-external |
 | C12 passive-config-reload-disabled | docs/plugins/manage-plugins.md "Apply changes and inspect"; docs/cli/plugins/list.md "List"; docs/plugins/architecture-internals/load-pipeline.md "Plugin cache boundary" | event | plugin-fixture-surfaces |
 | C13 disable-cleanup-leaves-process-state | docs/plugins/manage-plugins.md "Apply changes and inspect"; docs/cli/plugins/uninstall-and-update.md "Reload"; docs/plugins/architecture.md "Plugin metadata snapshot and lookup table" | ambient | plugin-fixture-surfaces |
 | C14 another-lifecycle-operation-already-applying | docs/cli/plugins/uninstall-and-update.md "(intro)"; docs/gateway/protocol/rpc-system-and-channels.md "Catalog detail and client confirmation" | event | plugin-fixture-surfaces |
-| C15 plugin-changed-during-agent-run | docs/plugins/manage-plugins.md "Manage plugins from an agent conversation"; docs/plugins/tool-plugins.md "Optional and constructor-built tools"; docs/plugins/tool-plugins.md "Owner-authorized continuations"; docs/plugins/hooks/reference.md "Hook catalog"; docs/plugins/architecture.md "Runtime instance and source lifetime"; docs/plugins/architecture-internals/packaging.md "Plugin SDK import paths"; docs/plugins/architecture.md "Plugin metadata snapshot and lookup table"; docs/cli/plugins/uninstall-and-update.md "Reload" | event | plugin-fixture-surfaces, mock-provider-tool-calls |
+| C15 plugin-changed-during-agent-run | docs/plugins/manage-plugins.md "Manage plugins from an agent conversation"; docs/plugins/tool-plugins.md "Optional and constructor-built tools (the heading at line 122)"; docs/plugins/tool-plugins.md "Owner-authorized continuations"; docs/plugins/hooks/reference.md "Hook catalog"; docs/plugins/architecture.md "Runtime instance and source lifetime"; docs/plugins/architecture-internals/packaging.md "Plugin SDK import paths"; docs/plugins/architecture.md "Plugin metadata snapshot and lookup table"; docs/cli/plugins/uninstall-and-update.md "Reload" | event | plugin-fixture-surfaces, mock-provider-tool-calls |
 | C16 nix-mode-or-read-only-config | docs/tools/plugin.md "Troubleshooting"; docs/plugins/manage-plugins.md "Use the Control UI"; docs/plugins/manage-plugins.md "Uninstall plugins"; docs/cli/plugins.md "Commands"; docs/cli/plugins/uninstall-and-update.md "Reload"; docs/gateway/protocol/rpc-system-and-channels.md "Plugin management"; docs/gateway/protocol/rpc-system-and-channels.md "Catalog detail and client confirmation"; docs/plugins/manage-plugins.md "Use the Control UI", "Uninstall plugins"; docs/gateway/protocol/rpc-system-and-channels.md "Plugin management", "Catalog detail and client confirmation" | ambient | config-read-only-environment |
 | C17 plugins-globally-disabled | docs/tools/plugin.md "Configure plugin policy"; docs/cli/plugins/install.md "Enable installed plugins" | event | plugins-bundled-and-external |
 | C18 plugin-in-deny-list | docs/tools/plugin.md "Configure plugin policy"; docs/plugins/manage-plugins.md "Use the Control UI"; docs/cli/plugins/install.md "Enable installed plugins" | ambient | plugins-policy-mixed |
@@ -141,7 +129,7 @@ UI settings navigation, sidebar, theme and account controls around the plugin pa
 | C23 stale-plugin-ids-in-config | docs/tools/plugin.md "Configure plugin policy"; docs/tools/plugin.md "Troubleshooting"; docs/plugins/manifest.md "Configuration validation"; docs/cli/plugins/inspect-and-diagnose.md "Doctor"; docs/tools/plugin.md "Configure plugin policy", "Troubleshooting" | ambient | plugins-policy-mixed |
 | C24 exclusive-slot-selected | docs/tools/plugin.md "Configure plugin policy"; docs/cli/plugins/uninstall-and-update.md "Uninstall"; docs/plugins/manifest.md "Configuration validation"; docs/plugins/manifest.md "Notes"; docs/plugins/architecture.md "Plugin metadata snapshot and lookup table"; docs/plugins/manifest.md "Configuration validation", "Notes" | ambient | plugins-policy-mixed |
 | C25 bundled-default-enablement | docs/tools/plugin.md "Configure plugin policy"; docs/plugins/manage-plugins.md "Enable and disable plugins"; docs/cli/plugins.md "Commands"; docs/plugins/manifest.md "Top-level field reference"; docs/plugins/plugin-inventory.md "Definitions", "Install a plugin" | ambient | plugins-bundled-and-external |
-| C26 bundled-plugin-auto-activated-by-config | docs/tools/plugin.md "Configure plugin policy"; docs/plugins/manifest.md "Top-level field reference"; docs/plugins/architecture-internals/load-pipeline.md "Manifest-first behavior"; docs/plugins/architecture.md "Plugin metadata snapshot and lookup table"; docs/plugins/architecture-internals/load-pipeline.md "Manifest-first behavior" (added at step 6, break 143837) | ambient | plugins-bundled-and-external, config-provider-without-models |
+| C26 bundled-plugin-auto-activated-by-config | docs/tools/plugin.md "Configure plugin policy"; docs/plugins/manifest.md "Top-level field reference"; docs/plugins/architecture-internals/load-pipeline.md "Manifest-first behavior"; docs/plugins/architecture.md "Plugin metadata snapshot and lookup table" | ambient | plugins-bundled-and-external, config-provider-without-models |
 | C27 workspace-origin-plugin-disabled-by-default | docs/tools/plugin.md "Configure plugin policy"; docs/cli/plugins/install.md "Local paths and bundle formats"; docs/plugins/architecture.md "Execution model"; docs/cli/plugins/inspect-and-diagnose.md "Inspect" | ambient | plugins-local-sources |
 | C28 load-path-or-linked-local-plugin | docs/tools/plugin.md "Configure plugin policy"; docs/plugins/manage-plugins.md "Capability consent"; docs/cli/plugins/install.md "Install"; docs/cli/plugins/install.md "Local paths and bundle formats"; docs/plugins/dependency-resolution.md "Local plugins"; docs/plugins/architecture.md "Execution model"; docs/plugins/architecture.md "Runtime instance and source lifetime" | ambient | plugins-local-sources |
 | C29 standalone-script-in-extensions-root | docs/cli/plugins/install.md "Local paths and bundle formats"; docs/plugins/manage-plugins.md "Choose a source" | ambient | plugins-local-sources |
@@ -149,7 +137,7 @@ UI settings navigation, sidebar, theme and account controls around the plugin pa
 | C31 bundle-mcp-tools-in-agent-turn | docs/plugins/bundles.md "MCP for embedded OpenClaw"; docs/plugins/bundles.md "Transports"; docs/plugins/bundles.md "Tool naming"; docs/plugins/architecture.md "Plugin metadata snapshot and lookup table" | ambient | plugins-local-sources, mock-provider-tool-calls |
 | C32 turn-cancel-during-bundle-lsp-startup | docs/plugins/bundles.md "Embedded OpenClaw LSP" | event | plugins-local-sources, mock-provider-held-turn |
 | C33 hook-pack-installed | docs/cli/plugins/install.md "Hook packs and npm specs" | ambient | plugins-local-sources |
-| C34 multi-entry-package-installed | docs/plugins/manage-plugins.md "Install plugins"; docs/plugins/manage-plugins.md "Update plugins"; docs/plugins/manage-plugins.md "Uninstall plugins"; docs/cli/plugins/inspect-and-diagnose.md "Inspect"; docs/cli/plugins/uninstall-and-update.md "Uninstall"; docs/plugins/manifest.md "Top-level field reference"; docs/plugins/manage-plugins.md "Install plugins", "Update plugins"; docs/cli/plugins/uninstall-and-update.md "Uninstall", "[Accordion] Resolving plugin id vs npm spec"; docs/plugins/architecture-internals/packaging.md "Package packs" | ambient | plugins-local-sources |
+| C34 multi-entry-package-installed | docs/plugins/manage-plugins.md "Install plugins"; docs/plugins/manage-plugins.md "Update plugins"; docs/plugins/manage-plugins.md "Uninstall plugins"; docs/cli/plugins/inspect-and-diagnose.md "Inspect"; docs/cli/plugins/uninstall-and-update.md "Uninstall"; docs/plugins/manifest.md "Top-level field reference"; docs/plugins/manage-plugins.md "Install plugins", "Update plugins"; docs/cli/plugins/uninstall-and-update.md "Uninstall", "Resolving plugin id vs npm spec"; docs/plugins/architecture-internals/packaging.md "Package packs" | ambient | plugins-local-sources |
 | C35 package-ownership-ambiguous | docs/plugins/manage-plugins.md "Update plugins"; docs/cli/plugins/uninstall-and-update.md "Uninstall"; docs/cli/plugins/inspect-and-diagnose.md "Inspect"; docs/gateway/protocol/rpc-system-and-channels.md "Catalog detail and client confirmation" | ambient | plugins-broken-installs |
 | C36 orphan-install-record | docs/cli/plugins/uninstall-and-update.md "Uninstall"; docs/cli/plugins/uninstall-and-update.md "Update" | ambient | plugins-broken-installs |
 | C37 third-party-capability-consent-required | docs/plugins/manage-plugins.md "Capability consent"; docs/cli/plugins/install.md "Install"; docs/gateway/protocol/rpc-system-and-channels.md "Plugin management"; docs/gateway/protocol/rpc-system-and-channels.md "Catalog detail and client confirmation"; docs/plugins/architecture-internals/load-pipeline.md "Plugin cache boundary" | ambient | plugins-third-party-consented |
@@ -158,13 +146,13 @@ UI settings navigation, sidebar, theme and account controls around the plugin pa
 | C40 non-interactive-caller-cannot-approve-capabilities | docs/plugins/manage-plugins.md "Capability consent"; docs/tools/plugin.md "Quick start"; docs/plugins/manage-plugins.md "Capability consent", "Install plugins"; docs/cli/plugins/install.md "Install", "--force confirmation and reinstall vs update"; docs/cli/plugins/uninstall-and-update.md "Uninstall", "Reload" | ambient | plugins-third-party-consented |
 | C41 trust-gated-capability-refused-for-local-copy | docs/tools/plugin.md "Plugin runtime trust refused"; docs/cli/plugins/install.md "Install"; docs/plugins/manage-plugins.md "Capability consent" | ambient | plugins-local-sources |
 | C42 unsafe-plugin-path-blocked | docs/tools/plugin.md "Blocked plugin path ownership"; docs/cli/plugins/inspect-and-diagnose.md "Doctor"; docs/plugins/architecture-internals/load-pipeline.md "Load pipeline"; docs/plugins/architecture-internals/packaging.md "Package packs" | ambient | plugins-broken-installs |
-| C43 clawhub-release-audit-outcome | docs/cli/plugins/install.md "ClawHub security audit"; docs/cli/plugins/uninstall-and-update.md "ClawHub Security Audit on update"; docs/plugins/community.md "Publish plugins"; docs/cli/plugins/uninstall-and-update.md "[Accordion] ClawHub Security Audit on update" | ambient | none |
+| C43 clawhub-release-audit-outcome | docs/cli/plugins/install.md "ClawHub security audit"; docs/cli/plugins/uninstall-and-update.md "ClawHub Security Audit on update"; docs/plugins/community.md "Publish plugins" | ambient | none |
 | C44 clawhub-registry-unreachable | docs/gateway/protocol/rpc-system-and-channels.md "Plugin management"; docs/gateway/protocol/rpc-system-and-channels.md "Browse and search"; docs/gateway/protocol/rpc-system-and-channels.md "Catalog detail and client confirmation"; docs/gateway/protocol/rpc-system-and-channels.md "Catalog detail and client confirmation", "Browse and search", "Bulk keyword discovery" | event | none |
-| C45 update-channel-beta-or-extended-stable | docs/cli/plugins/install.md "Install"; docs/cli/plugins/uninstall-and-update.md "Beta channel updates"; docs/cli/plugins/uninstall-and-update.md "[Accordion] Beta channel updates" | event | plugins-npm-tracked |
+| C45 update-channel-beta-or-extended-stable | docs/cli/plugins/install.md "Install"; docs/cli/plugins/uninstall-and-update.md "Beta channel updates" | event | plugins-npm-tracked |
 | C46 npm-latest-release-incompatible-or-prerelease | docs/tools/plugin.md "Choose an install source"; docs/cli/plugins/install.md "Hook packs and npm specs"; docs/cli/plugins/install.md "Hook packs and npm specs", "Sources and locators" | ambient | none |
-| C47 npm-artifact-integrity-drift | docs/cli/plugins/uninstall-and-update.md "Version checks and integrity drift"; docs/cli/plugins/install.md "Sources and locators"; docs/cli/plugins/uninstall-and-update.md "[Accordion] Version checks and integrity drift" | event | none |
+| C47 npm-artifact-integrity-drift | docs/cli/plugins/uninstall-and-update.md "Version checks and integrity drift"; docs/cli/plugins/install.md "Sources and locators" | event | none |
 | C48 installed-plugin-already-at-target-version | docs/cli/plugins/uninstall-and-update.md "Version checks and integrity drift" | ambient | plugins-npm-tracked |
-| C49 exact-pinned-install-records | docs/plugins/manage-plugins.md "Update plugins"; docs/cli/plugins/install.md "--pin scope"; docs/cli/plugins/uninstall-and-update.md "Resolving plugin id vs npm spec"; docs/cli/plugins/uninstall-and-update.md "[Accordion] Resolving plugin id vs npm spec", "[Accordion] Existing plugin source choices", "[Accordion] Version checks and integrity drift" | ambient | plugins-npm-tracked |
+| C49 exact-pinned-install-records | docs/plugins/manage-plugins.md "Update plugins"; docs/cli/plugins/install.md "--pin scope"; docs/cli/plugins/uninstall-and-update.md "Resolving plugin id vs npm spec"; docs/cli/plugins/uninstall-and-update.md "Resolving plugin id vs npm spec", "Existing plugin source choices", "Version checks and integrity drift" | ambient | plugins-npm-tracked |
 | C50 managed-npm-install-incomplete | docs/cli/plugins/install.md "--force confirmation and reinstall vs update"; docs/tools/plugin.md "Troubleshooting" | ambient | plugins-broken-installs |
 | C51 plugin-missing-runtime-dependency | docs/plugins/manage-plugins.md "List and search plugins"; docs/plugins/dependency-resolution.md "(intro)"; docs/plugins/tool-plugins.md "`Cannot find package 'typebox'`"; docs/plugins/dependency-resolution.md "Missing runtime imports"; docs/plugins/dependency-resolution.md "Startup and reload"; docs/cli/plugins/list.md "List"; docs/cli/plugins/inspect-and-diagnose.md "Inspect"; docs/tools/plugin.md "Troubleshooting"; docs/plugins/dependency-resolution.md "Responsibility split", "Missing runtime imports", "Startup and reload", "Local plugins" | ambient | plugins-broken-installs |
 | C52 host-config-or-plugin-config-invalid | docs/cli/plugins/install.md "Config includes and invalid-config repair"; docs/tools/plugin.md "Troubleshooting"; docs/plugins/manifest.md "JSON Schema requirements"; docs/plugins/manage-plugins.md "Install plugins" | event | plugin-fixture-surfaces |
@@ -214,7 +202,7 @@ UI settings navigation, sidebar, theme and account controls around the plugin pa
 | C96 artifact-activation-refused | docs/plugins/feature-plugins.md "Approve an agent-built artifact" | ambient | config-plugins-include |
 | C97 no-connected-browser-no-activation-receipt | docs/plugins/feature-plugins.md "Approve an agent-built artifact" | ambient | plugin-fixture-feature-ui |
 | C98 marketplace-feed-falls-back | docs/cli/plugins/marketplace.md "Marketplace" | ambient | none |
-| C99 claude-marketplace-sources-available | docs/cli/plugins/install.md "Marketplace shorthand"; docs/cli/plugins/install.md "Marketplace sources"; docs/cli/plugins/install.md "Remote marketplace rules"; docs/cli/plugins/install.md "Marketplace shorthand", "[Tab] Marketplace sources" | ambient | marketplace-local |
+| C99 claude-marketplace-sources-available | docs/cli/plugins/install.md "Marketplace shorthand"; docs/cli/plugins/install.md "Marketplace sources"; docs/cli/plugins/install.md "Remote marketplace rules"; docs/cli/plugins/install.md "Marketplace shorthand", "Marketplace sources" | ambient | marketplace-local |
 | C100 keyword-results-change-during-paging | docs/gateway/protocol/rpc-system-and-channels.md "Bulk keyword discovery" | event | none |
 | C101 client-on-gateway-without-catalog-methods | docs/gateway/protocol/rpc-system-and-channels.md "ClawHub catalog discovery" | ambient | none |
 | C102 generated-plugin-metadata-stale | docs/plugins/tool-plugins.md "`plugin entry not found: ./dist/index.js`"; docs/plugins/tool-plugins.md "`plugin entry does not expose defineToolPlugin metadata`"; docs/plugins/tool-plugins.md "`openclaw.plugin.json generated metadata is stale`"; docs/plugins/tool-plugins.md "`package.json openclaw.extensions must include ./dist/index.js`"; docs/cli/plugins/authoring.md "Author"; docs/plugins/tool-plugins.md "Generated metadata"; docs/plugins/tool-plugins.md "Validate in CI"; docs/plugins/tool-plugins.md "Troubleshooting" | ambient | none |
@@ -236,15 +224,15 @@ UI settings navigation, sidebar, theme and account controls around the plugin pa
 | C118 external-channel-catalog-file | docs/plugins/architecture-internals/packaging.md "Channel catalog metadata" | ambient | plugins-external-channel-catalog |
 | C119 disabled-or-unconfigured-channel-plugin-loads-setup-entry | docs/plugins/architecture-internals/packaging.md "Package packs" | ambient | plugins-policy-mixed |
 | C120 plugin-method-in-reserved-admin-namespace | docs/plugins/architecture-internals/packaging.md "Package packs"; docs/plugins/sdk-overview/host-hooks.md "Host hooks for workflow plugins"; docs/plugins/building-plugins.md "Import conventions" | ambient | plugin-fixture-surfaces |
-| C121 optional-plugin-tool-not-allowlisted | docs/plugins/plugin-permission-requests.md "Choose the right gate"; docs/plugins/building-plugins.md "Registering tools"; docs/plugins/tool-plugins.md "Optional and constructor-built tools"; docs/plugins/tool-plugins.md "Optional and [tool-builder] tools" | ambient | plugin-fixture-surfaces |
+| C121 optional-plugin-tool-not-allowlisted | docs/plugins/plugin-permission-requests.md "Choose the right gate"; docs/plugins/building-plugins.md "Registering tools"; docs/plugins/tool-plugins.md "Optional and constructor-built tools (the heading at line 122)" | ambient | plugin-fixture-surfaces |
 | C122 tool-result-mismatches-output-schema | docs/plugins/tool-plugins.md "Output contracts" | ambient | plugin-fixture-surfaces |
 | C123 skill-preview-connection-retired | docs/plugins/architecture.md "Skill previews"; docs/plugins/feature-plugins.md "Define operations once", "Build and reload"; docs/plugins/sdk-overview/host-hooks.md "Docked link readers" | event | plugin-fixture-surfaces |
 | C124 plugin-runtime-cleanup-on-session-reset-or-delete | docs/plugins/sdk-overview/host-hooks.md "Host hooks for workflow plugins" | event | plugin-fixture-surfaces |
 | C125 invalid-board-widget-content-kind | docs/plugins/sdk-overview/host-hooks.md "Host hooks for workflow plugins" | ambient | plugins-broken-installs |
-| C126 trusted-policy-or-middleware-without-contract | docs/plugins/sdk-overview/host-hooks.md "Host hooks for workflow plugins"; docs/plugins/sdk-overview/host-hooks.md "When to use tool-result middleware"; docs/plugins/building-plugins.md "Quickstart"; docs/plugins/sdk-overview/host-hooks.md "Host hooks for workflow plugins", "[Accordion] When to use tool-result middleware" | ambient | plugin-fixture-surfaces |
+| C126 trusted-policy-or-middleware-without-contract | docs/plugins/sdk-overview/host-hooks.md "Host hooks for workflow plugins"; docs/plugins/sdk-overview/host-hooks.md "When to use tool-result middleware"; docs/plugins/building-plugins.md "Quickstart"; docs/plugins/sdk-overview/host-hooks.md "Host hooks for workflow plugins", "When to use tool-result middleware" | ambient | plugin-fixture-surfaces |
 | C127 load-path-re-added-during-uninstall-drain | docs/cli/plugins/uninstall-and-update.md "Uninstall" | event | plugins-local-sources, mock-provider-tool-calls |
 | C128 uninstall-drain-or-file-removal-fails | docs/cli/plugins/uninstall-and-update.md "Uninstall" | event | plugin-fixture-surfaces |
-| C129 pending-doctor-repairs-or-migrations-at-update | docs/cli/plugins/uninstall-and-update.md "Update"; docs/cli/plugins/uninstall-and-update.md "Update" (added at step 6, break 148901) | ambient | plugins-legacy-state |
+| C129 pending-doctor-repairs-or-migrations-at-update | docs/cli/plugins/uninstall-and-update.md "Update" | ambient | plugins-legacy-state |
 | C130 update-finalization-fails-and-rolls-back | docs/cli/plugins/uninstall-and-update.md "Update" | event | none |
 | C131 official-plugin-renamed-or-id-replaced | docs/cli/plugins/uninstall-and-update.md "Resolving plugin id vs npm spec"; docs/plugins/architecture-internals/packaging.md "Channel catalog metadata" | ambient | none |
 | C132 clawhub-and-npm-release-lag | docs/cli/plugins/uninstall-and-update.md "Existing plugin source choices" | ambient | none |
@@ -258,7 +246,7 @@ UI settings navigation, sidebar, theme and account controls around the plugin pa
 | C140 plugin-mcp-server-overridden-by-operator | docs/plugins/manifest.md "Top-level field reference"; docs/plugins/bundles.md "MCP for embedded OpenClaw" | ambient | plugins-local-sources |
 | C141 broken-capability-catalog-entry | docs/plugins/manifest.md "Capability catalogs" | ambient | plugins-broken-installs |
 | C142 missing-or-invalid-plugin-manifest | docs/plugins/manifest.md "(intro)"; docs/plugins/manifest.md "Configuration validation"; docs/cli/plugins/inspect-and-diagnose.md "Doctor"; docs/plugins/manifest.md "(intro)", "JSON Schema requirements", "Capability catalogs", "Configuration validation"; docs/cli/plugins/install.md "Archives" | ambient | plugins-broken-installs |
-| C143 install-policy-warns-or-blocks | docs/tools/plugin.md "Operator install policy"; docs/cli/plugins/install.md "--acknowledge-install-policy-warning"; docs/cli/plugins/uninstall-and-update.md "--acknowledge-install-policy-warning on update"; docs/plugins/hooks/lifecycle.md "Install hooks"; docs/gateway/protocol/rpc-system-and-channels.md "Plugin management"; docs/cli/plugins/uninstall-and-update.md "[Accordion] --acknowledge-install-policy-warning on update" | ambient | config-install-policy |
+| C143 install-policy-warns-or-blocks | docs/tools/plugin.md "Operator install policy"; docs/cli/plugins/install.md "--acknowledge-install-policy-warning"; docs/cli/plugins/uninstall-and-update.md "--acknowledge-install-policy-warning on update"; docs/plugins/hooks/lifecycle.md "Install hooks"; docs/gateway/protocol/rpc-system-and-channels.md "Plugin management" | ambient | config-install-policy |
 | C144 prompt-injection-disallowed-for-plugin | docs/plugins/hooks.md "Permissions and scope"; docs/plugins/sdk-overview/host-hooks.md "Host hooks for workflow plugins" | ambient | plugins-local-sources |
 | C145 same-plugin-id-from-several-sources | docs/plugins/architecture.md "Execution model"; docs/plugins/architecture-internals/load-pipeline.md "Plugin cache boundary" | ambient | plugins-local-sources |
 | C146 second-session-discussion-provider-registered | docs/plugins/sdk-overview.md "Session discussion provider" | ambient | none |
@@ -266,8 +254,8 @@ UI settings navigation, sidebar, theme and account controls around the plugin pa
 | C148 workspace-discovery-without-system-owner | docs/cli/plugins/inspect-and-diagnose.md "Inspect" | ambient | none |
 | C149 cli-connected-to-remote-gateway-with-local-source | docs/cli/plugins/install.md "Install"; docs/gateway/protocol/rpc-system-and-channels.md "Plugin management" | ambient | none |
 | C150 plugin-cli-registered-lazily-on-first-invocation | docs/plugins/architecture.md "Architecture overview" | ambient | plugin-fixture-surfaces |
-| C151 plugin-tool-delivery-only-in-active-channel-turn | docs/plugins/building-plugins.md "Registering tools"; docs/plugins/tool-plugins.md "Optional and constructor-built tools"; docs/plugins/tool-plugins.md "Optional and [tool-builder] tools" | ambient | channels-test-accounts, plugin-fixture-surfaces |
-| C152 plugin-tool-constructed-in-sandboxed-session | docs/plugins/tool-plugins.md "Optional and constructor-built tools"; docs/plugins/tool-plugins.md "Optional and [tool-builder] tools" | ambient | none |
+| C151 plugin-tool-delivery-only-in-active-channel-turn | docs/plugins/building-plugins.md "Registering tools"; docs/plugins/tool-plugins.md "Optional and constructor-built tools (the heading at line 122)" | ambient | channels-test-accounts, plugin-fixture-surfaces |
+| C152 plugin-tool-constructed-in-sandboxed-session | docs/plugins/tool-plugins.md "Optional and constructor-built tools (the heading at line 122)" | ambient | none |
 | C153 config-references-missing-downloadable-plugin | docs/plugins/dependency-resolution.md "Startup and reload"; docs/plugins/bundles.md "Runtime dependencies and cleanup" | ambient | plugins-legacy-state |
 | C154 file-symlinks-unavailable | docs/plugins/architecture.md "Runtime instance and source lifetime" | ambient | none |
 | C155 metadata-snapshot-reused-after-startup | docs/plugins/architecture.md "Plugin metadata snapshot and lookup table"; docs/plugins/architecture-internals/load-pipeline.md "Plugin cache boundary" | ambient | plugin-fixture-surfaces |
@@ -275,49 +263,54 @@ UI settings navigation, sidebar, theme and account controls around the plugin pa
 | C157 read-only-operator | docs/plugins/manage-plugins.md "Use the Control UI"; docs/gateway/protocol/rpc-system-and-channels.md "Plugin management" | ambient | operator-read-only-profile |
 | C158 gateway-restart-reloads-plugins | docs/plugins/hooks/lifecycle.md "Gateway lifecycle"; docs/plugins/hooks/lifecycle.md "Safe external cron projection"; docs/plugins/hooks/reference.md "Hook catalog"; docs/plugins/architecture.md "Plugin metadata snapshot and lookup table"; docs/plugins/architecture-internals/load-pipeline.md "Manifest-first behavior"; docs/plugins/architecture-internals/load-pipeline.md "Load pipeline"; docs/tools/plugin.md "Plugin hooks"; docs/tools/plugin.md "Troubleshooting"; docs/cli/plugins/list.md "List"; docs/plugins/building-plugins.md "Quickstart"; docs/plugins/dependency-resolution.md "Startup and reload"; docs/cli/plugins/inspect-and-diagnose.md "Registry"; docs/plugins/hooks/lifecycle.md "Gateway lifecycle", "Safe external cron projection"; docs/plugins/manage-plugins.md "Apply changes and inspect" | event | plugin-fixture-surfaces, mock-provider-held-turn |
 | C159 plugin-registry-missing-or-stale-at-startup | docs/cli/plugins/inspect-and-diagnose.md "Registry"; docs/cli/plugins/list.md "List" | event | plugin-fixture-surfaces |
-| C160 running-gateway-differs-from-cold-inventory | docs/tools/plugin.md "Verify the active Gateway"; docs/cli/plugins/list.md "List"; docs/plugins/manage-plugins.md "Apply changes and inspect"; docs/tools/plugin.md "Verify the active Gateway", "Plugin hooks"; docs/cli/plugins/uninstall-and-update.md "Reload"; docs/plugins/architecture.md "Runtime instance and source lifetime"; docs/plugins/tool-plugins.md "Optional and [tool-builder] tools" | ambient | plugin-fixture-surfaces |
+| C160 running-gateway-differs-from-cold-inventory | docs/tools/plugin.md "Verify the active Gateway"; docs/cli/plugins/list.md "List"; docs/plugins/manage-plugins.md "Apply changes and inspect"; docs/tools/plugin.md "Verify the active Gateway", "Plugin hooks"; docs/cli/plugins/uninstall-and-update.md "Reload"; docs/plugins/architecture.md "Runtime instance and source lifetime"; docs/plugins/tool-plugins.md "Optional and constructor-built tools (the heading at line 122)" | ambient | plugin-fixture-surfaces |
 | C161 hoisted-dependencies-in-managed-project | docs/plugins/dependency-resolution.md "Hoisted transitive dependencies" | ambient | plugins-npm-tracked |
 | C162 plugin-dock-conversation-exists | docs/plugins/feature-plugins.md "Host capabilities"; docs/plugins/feature-plugins.md "Dock a conversation" | ambient | plugin-fixture-feature-ui |
 | C163 plugin-from-another-clawhub-registry | docs/plugins/manage-plugins.md "Use the Control UI" | ambient | none |
-| C164 native-capture-directory-missing | docs/plugins/architecture.md "Runtime instance and source lifetime"; docs/plugins/architecture.md "Runtime instance and source lifetime" (added at step 6, break 159650) | event | plugins-native-dependency |
-| C165 native-dependency-shared-between-captures | docs/plugins/architecture.md "Runtime instance and source lifetime"; docs/plugins/architecture.md "Runtime instance and source lifetime" (added at step 6, break 159536) | ambient | plugins-native-dependency |
+| C164 native-capture-directory-missing | docs/plugins/architecture.md "Runtime instance and source lifetime" | event | plugins-native-dependency |
+| C165 native-dependency-shared-between-captures | docs/plugins/architecture.md "Runtime instance and source lifetime" | ambient | plugins-native-dependency |
 | C166 plugin-inspection-disposal-fails | docs/cli/plugins/list.md "List"; docs/cli/plugins/inspect-and-diagnose.md "Doctor"; docs/plugins/sdk-overview/host-hooks.md "Host hooks for workflow plugins" | ambient | plugins-broken-installs |
 | C167 installed-inventory-beyond-twelve | docs/plugins/manage-plugins.md "Use the Control UI" | ambient | plugins-bundled-and-external |
 | C168 hook-only-plugin-startup-intent | docs/tools/plugin.md "Plugin hooks"; docs/cli/plugins/list.md "List"; docs/plugins/architecture-internals/load-pipeline.md "Manifest-first behavior" | ambient | plugin-fixture-surfaces |
 | C169 operator-hook-timeouts | docs/plugins/hooks/reference.md "Registration and execution" | ambient | plugin-fixture-surfaces |
 | C170 install-policy-unavailable | docs/plugins/hooks/lifecycle.md "Install hooks" | ambient | none |
 | C171 legacy-enabled-plugin-without-acceptance | docs/plugins/manage-plugins.md "Capability consent" | ambient | plugin-legacy-enabled-unreviewed |
-| C172 host-peer-link-dangling | docs/plugins/dependency-resolution.md "Host peer dependency"; docs/plugins/architecture.md "Runtime instance and source lifetime"; docs/cli/plugins/inspect-and-diagnose.md "Registry"; docs/cli/plugins/install.md "Archives" | ambient | plugin-host-link-dangling |
+| C172 host-peer-link-dangling | docs/plugins/dependency-resolution.md "Host peer dependency"; docs/plugins/architecture.md "Runtime instance and source lifetime"; docs/cli/plugins/inspect-and-diagnose.md "Registry"; docs/cli/plugins/install.md "Archives" | ambient | plugins-legacy-state |
 | C173 control-ui-other-gateway | docs/plugins/feature-plugins.md "(intro)" | ambient | gateway-second-instance |
 | C174 third-party-cookie-blocking | docs/plugins/sdk-overview/host-hooks.md "Host hooks for workflow plugins" | ambient | none |
 | C175 signed-feed-without-key | docs/cli/plugins/marketplace.md "Marketplace" | ambient | none |
-| C176 remote-marketplace-entry-escapes | docs/cli/plugins/install.md "[Tab] Remote marketplace rules" | ambient | none |
+| C176 remote-marketplace-entry-escapes | docs/cli/plugins/install.md "Remote marketplace rules" | ambient | none |
 | C177 reinstall-preserves-disabled | docs/plugins/manage-plugins.md "Capability consent"; docs/cli/plugins/install.md "--force confirmation and reinstall vs update" | ambient (left by disable) | none |
 | C178 uninstall-marker-retained | docs/plugins/manage-plugins.md "Uninstall plugins"; docs/cli/plugins/uninstall-and-update.md "Uninstall"; docs/plugins/manifest.md "Configuration validation" | ambient (left by uninstall) | none |
 | C179 bundle-mcp-timeouts | docs/plugins/bundles.md "Transports" | ambient | none |
 | C180 artifact-replaces-inference-plugin | docs/plugins/feature-plugins.md "Approve an agent-built artifact" | event | none |
 | C181 node-worker-hook-admission | docs/plugins/hooks.md "Choose a hook" | ambient | none |
 | C182 zip-name-collision | docs/cli/plugins/install.md "Sources and locators" | ambient | none |
-| C183 official-entry-for-bundled-only-plugin | docs/plugins/plugin-inventory.md "Install a plugin", "Definitions" (added at step 6, break 150291) | ambient | plugins-bundled-and-external |
-| C184 cli-invocation-plugin-resources | docs/plugins/architecture.md "Plugin metadata snapshot and lookup table"; docs/plugins/sdk-overview/host-hooks.md "Host hooks for workflow plugins" (added at step 6, break 160181) | ambient | plugin-fixture-surfaces |
-| C185 doctor-plugin-repairs | docs/tools/plugin.md "Configure plugin policy", "Troubleshooting"; docs/plugins/dependency-resolution.md "Startup and reload", "Legacy cleanup"; docs/cli/plugins/inspect-and-diagnose.md "Registry"; docs/cli/plugins/list.md "Plugin index"; docs/plugins/bundles.md "Runtime dependencies and cleanup" | event | plugin-index-legacy-records |
+| C183 official-entry-for-bundled-only-plugin | docs/plugins/plugin-inventory.md "Install a plugin", "Definitions" | ambient | plugins-bundled-and-external |
+| C184 cli-invocation-plugin-resources | docs/plugins/architecture.md "Plugin metadata snapshot and lookup table"; docs/plugins/sdk-overview/host-hooks.md "Host hooks for workflow plugins" | ambient | plugin-fixture-surfaces |
+| C185 doctor-plugin-repairs | docs/tools/plugin.md "Configure plugin policy", "Troubleshooting"; docs/plugins/dependency-resolution.md "Startup and reload", "Legacy cleanup"; docs/cli/plugins/inspect-and-diagnose.md "Registry"; docs/cli/plugins/list.md "Plugin index"; docs/plugins/bundles.md "Runtime dependencies and cleanup" | event | plugins-legacy-state |
 | C186 sdk-catalog-loader-default-call | added at step 6 from break 142557 (no listed document) | ambient | plugin-fixture-surfaces |
 | C187 redaction-patterns-copied-from-defaults | added at step 6 from break 145553 (no listed document) | ambient | config-hand-edited |
 
 ## Headings walked
 docs/tools/plugin.md "(intro)": none
 docs/tools/plugin.md "Requirements": none
-docs/tools/plugin.md "Quick start": C1, C19
+docs/tools/plugin.md "Quick start": C1, C2, C19, C40
+docs/tools/plugin.md "Find the plugin": none
+docs/tools/plugin.md "Install the plugin": none
+docs/tools/plugin.md "Configure and enable it": none
+docs/tools/plugin.md "Apply the changes": none
+docs/tools/plugin.md "Verify runtime registration": none
 docs/tools/plugin.md "Configuration": none
 docs/tools/plugin.md "Choose an install source": C46
 docs/tools/plugin.md "Operator install policy": C143
 docs/tools/plugin.md "Configure plugin policy": C17, C18, C19, C20, C21, C22, C23, C24, C25, C26, C27, C28, C185
 docs/tools/plugin.md "Understand plugin formats": C30
-docs/tools/plugin.md "Plugin hooks": C1, C158, C168
-docs/tools/plugin.md "Verify the active Gateway": C160
-docs/tools/plugin.md "Troubleshooting": C16, C23, C50, C51, C52, C60, C63, C158, C185
-docs/tools/plugin.md "Plugin runtime trust refused": C41
-docs/tools/plugin.md "Blocked plugin path ownership": C42
+docs/tools/plugin.md "Plugin hooks": C1, C11, C158, C160, C168
+docs/tools/plugin.md "Verify the active Gateway": C11, C160
+docs/tools/plugin.md "Troubleshooting": C16, C23, C50, C51, C52, C60, C63, C156, C158, C185
+docs/tools/plugin.md "Plugin runtime trust refused": C22, C41
+docs/tools/plugin.md "Blocked plugin path ownership": C42, C112
 docs/tools/plugin.md "Slow plugin tool setup": C72
 docs/tools/plugin.md "Related": none
 docs/plugins/manage-plugins.md "(intro)": none
@@ -325,8 +318,8 @@ docs/plugins/manage-plugins.md "Use the Control UI": C3, C4, C7, C8, C10, C16, C
 docs/plugins/manage-plugins.md "List and search plugins": C51
 docs/plugins/manage-plugins.md "Enable and disable plugins": C25
 docs/plugins/manage-plugins.md "Capability consent": C20, C28, C37, C38, C39, C40, C41, C171, C177
-docs/plugins/manage-plugins.md "Install plugins": C34, C52, C54
-docs/plugins/manage-plugins.md "Apply changes and inspect": C1, C2, C11, C12, C13, C160
+docs/plugins/manage-plugins.md "Install plugins": C34, C40, C52, C54, C55
+docs/plugins/manage-plugins.md "Apply changes and inspect": C1, C2, C11, C12, C13, C158, C160
 docs/plugins/manage-plugins.md "Manage plugins from an agent conversation": C10, C15
 docs/plugins/manage-plugins.md "Update plugins": C34, C35, C49
 docs/plugins/manage-plugins.md "Uninstall plugins": C16, C34, C116, C178
@@ -334,44 +327,44 @@ docs/plugins/manage-plugins.md "Choose a source": C29
 docs/plugins/manage-plugins.md "Publish plugins": none
 docs/plugins/manage-plugins.md "Related": none
 docs/cli/plugins.md "(intro)": none
-docs/cli/plugins.md "`openclaw plugins`": C134
+docs/cli/plugins.md "`openclaw plugins`": C2, C134
 docs/cli/plugins.md "Commands": C16, C25, C115
 docs/cli/plugins.md "Plugins pages": none
 docs/cli/plugins.md "Where each section moved": none
 docs/cli/plugins.md "Related": none
 docs/cli/plugins/install.md "(intro)": none
-docs/cli/plugins/install.md "Install": C2, C3, C10, C19, C28, C37, C39, C41, C45, C114, C116, C149
-docs/cli/plugins/install.md "Sources and locators": C47, C182
+docs/cli/plugins/install.md "Install": C2, C3, C10, C19, C22, C28, C37, C39, C40, C41, C45, C114, C116, C149
+docs/cli/plugins/install.md "Sources and locators": C46, C47, C182
 docs/cli/plugins/install.md "Config includes and invalid-config repair": C52, C53, C54
-docs/cli/plugins/install.md "--force confirmation and reinstall vs update": C50, C55, C56, C177
+docs/cli/plugins/install.md "--force confirmation and reinstall vs update": C40, C50, C55, C56, C177
 docs/cli/plugins/install.md "--pin scope": C49
 docs/cli/plugins/install.md "--acknowledge-install-policy-warning": C143
 docs/cli/plugins/install.md "ClawHub security audit": C43
 docs/cli/plugins/install.md "Hook packs and npm specs": C33, C46
 docs/cli/plugins/install.md "Git repositories": C55
-docs/cli/plugins/install.md "Archives": C57, C172
+docs/cli/plugins/install.md "Archives": C57, C142, C172
 docs/cli/plugins/install.md "Marketplace shorthand": C99
 docs/cli/plugins/install.md "Marketplace sources": C99
 docs/cli/plugins/install.md "Remote marketplace rules": C99, C176
 docs/cli/plugins/install.md "Local paths and bundle formats": C27, C28, C29, C30
 docs/cli/plugins/install.md "Enable installed plugins": C2, C17, C18, C19
 docs/cli/plugins/list.md "(intro)": none
-docs/cli/plugins/list.md "List": C1, C12, C21, C22, C51, C74, C112, C158, C159, C160, C166, C168
+docs/cli/plugins/list.md "List": C1, C11, C12, C21, C22, C51, C74, C112, C158, C159, C160, C166, C168
 docs/cli/plugins/list.md "Plugin index": C57, C58, C185
 docs/cli/plugins/inspect-and-diagnose.md "(intro)": none
-docs/cli/plugins/inspect-and-diagnose.md "Inspect": C2, C34, C35, C51, C61, C148
-docs/cli/plugins/inspect-and-diagnose.md "Doctor": C23, C42, C115, C142, C166
-docs/cli/plugins/inspect-and-diagnose.md "Registry": C56, C57, C59, C159, C172, C185
+docs/cli/plugins/inspect-and-diagnose.md "Inspect": C2, C27, C34, C35, C51, C61, C148
+docs/cli/plugins/inspect-and-diagnose.md "Doctor": C23, C42, C60, C115, C142, C166
+docs/cli/plugins/inspect-and-diagnose.md "Registry": C56, C57, C59, C158, C159, C172, C185
 docs/cli/plugins/uninstall-and-update.md "(intro)": C2, C14
-docs/cli/plugins/uninstall-and-update.md "Uninstall": C20, C24, C34, C35, C36, C127, C128, C134, C178
-docs/cli/plugins/uninstall-and-update.md "Update": C36, C113, C129, C130, C133
-docs/cli/plugins/uninstall-and-update.md "Resolving plugin id vs npm spec": C49, C131
+docs/cli/plugins/uninstall-and-update.md "Uninstall": C20, C24, C34, C35, C36, C40, C127, C128, C134, C178
+docs/cli/plugins/uninstall-and-update.md "Update": C36, C57, C113, C129, C130, C133
+docs/cli/plugins/uninstall-and-update.md "Resolving plugin id vs npm spec": C34, C49, C131
 docs/cli/plugins/uninstall-and-update.md "Beta channel updates": C45, C133
-docs/cli/plugins/uninstall-and-update.md "Existing plugin source choices": C132
-docs/cli/plugins/uninstall-and-update.md "Version checks and integrity drift": C47, C48
+docs/cli/plugins/uninstall-and-update.md "Existing plugin source choices": C49, C132
+docs/cli/plugins/uninstall-and-update.md "Version checks and integrity drift": C47, C48, C49
 docs/cli/plugins/uninstall-and-update.md "--acknowledge-install-policy-warning on update": C143
 docs/cli/plugins/uninstall-and-update.md "ClawHub Security Audit on update": C43
-docs/cli/plugins/uninstall-and-update.md "Reload": C3, C4, C5, C6, C7, C8, C9, C11, C13, C16, C38
+docs/cli/plugins/uninstall-and-update.md "Reload": C3, C4, C5, C6, C7, C8, C9, C11, C13, C15, C16, C38, C40, C160
 docs/cli/plugins/marketplace.md "(intro)": none
 docs/cli/plugins/marketplace.md "Marketplace": C98, C175
 docs/cli/plugins/authoring.md "(intro)": none
@@ -383,8 +376,8 @@ docs/plugins/install-overrides.md "Environment": C114
 docs/plugins/install-overrides.md "Behavior": C114
 docs/plugins/install-overrides.md "Package E2E": none
 docs/plugins/dependency-resolution.md "(intro)": C51
-docs/plugins/dependency-resolution.md "Responsibility split": none
-docs/plugins/dependency-resolution.md "Install roots": C56
+docs/plugins/dependency-resolution.md "Responsibility split": C51
+docs/plugins/dependency-resolution.md "Install roots": C56, C57
 docs/plugins/dependency-resolution.md "npm-pack tarball installs": none
 docs/plugins/dependency-resolution.md "Missing runtime imports": C51
 docs/plugins/dependency-resolution.md "Hoisted transitive dependencies": C161
@@ -393,24 +386,27 @@ docs/plugins/dependency-resolution.md "Verify a package tarball": none
 docs/plugins/dependency-resolution.md "Bundled runtime dependencies": none
 docs/plugins/dependency-resolution.md "Host peer dependency": C57, C172
 docs/plugins/dependency-resolution.md "git installs": none
-docs/plugins/dependency-resolution.md "Local plugins": C28
-docs/plugins/dependency-resolution.md "Startup and reload": C51, C57, C153, C185
+docs/plugins/dependency-resolution.md "Local plugins": C28, C51
+docs/plugins/dependency-resolution.md "Startup and reload": C51, C57, C153, C158, C185
 docs/plugins/dependency-resolution.md "Bundled plugins": C113
 docs/plugins/dependency-resolution.md "Native imports from a standalone source build": none
 docs/plugins/dependency-resolution.md "Legacy cleanup": C57, C185
 docs/plugins/bundles.md "(intro)": none
 docs/plugins/bundles.md "Why bundles exist": none
-docs/plugins/bundles.md "Install a bundle": C2
+docs/plugins/bundles.md "Install a bundle": C2, C30
+docs/plugins/bundles.md "Install from a directory, archive, or marketplace": none
+docs/plugins/bundles.md "Verify detection": none
+docs/plugins/bundles.md "Use the bundle": none
 docs/plugins/bundles.md "What OpenClaw maps from bundles": none
 docs/plugins/bundles.md "Supported now": C30
 docs/plugins/bundles.md "Skill content": C30
 docs/plugins/bundles.md "Hook packs": C30
 docs/plugins/bundles.md "Embedded OpenClaw settings": C30
-docs/plugins/bundles.md "Embedded OpenClaw LSP": C32
+docs/plugins/bundles.md "Embedded OpenClaw LSP": C30, C32
 docs/plugins/bundles.md "Detected but not executed": C30
-docs/plugins/bundles.md "MCP for embedded OpenClaw": C31, C140
+docs/plugins/bundles.md "MCP for embedded OpenClaw": C30, C31, C140
 docs/plugins/bundles.md "Transports": C31, C179
-docs/plugins/bundles.md "Tool naming": C31
+docs/plugins/bundles.md "Tool naming": C30, C31
 docs/plugins/bundles.md "Bundle formats": C30
 docs/plugins/bundles.md "Agent Plugins bundles": C30
 docs/plugins/bundles.md "Codex bundles": none
@@ -429,7 +425,7 @@ docs/plugins/community.md "(intro)": none
 docs/plugins/community.md "Find plugins": none
 docs/plugins/community.md "Publish plugins": C43
 docs/plugins/community.md "Related": none
-docs/plugins/compatibility.md "(intro)": none
+docs/plugins/compatibility.md "(intro)": C62
 docs/plugins/compatibility.md "Compatibility registry": none
 docs/plugins/compatibility.md "Deprecation policy": C62
 docs/plugins/compatibility.md "Current compatibility areas": C62
@@ -444,15 +440,15 @@ docs/plugins/compatibility.md "Maintainer acceptance lane": none
 docs/plugins/compatibility.md "Release notes": none
 docs/plugins/compatibility.md "Related": none
 docs/plugins/plugin-inventory.md "(intro)": none
-docs/plugins/plugin-inventory.md "Definitions": C113, C183
-docs/plugins/plugin-inventory.md "Install a plugin": C2, C183
+docs/plugins/plugin-inventory.md "Definitions": C25, C113, C183
+docs/plugins/plugin-inventory.md "Install a plugin": C2, C25, C183
 docs/plugins/plugin-inventory.md "Core npm package": none
 docs/plugins/plugin-inventory.md "Official external packages": none
 docs/plugins/plugin-inventory.md "Source checkout only": none
 docs/plugins/plugin-inventory.md "How this page is built": none
 docs/plugins/plugin-permission-requests.md "(intro)": none
 docs/plugins/plugin-permission-requests.md "Choose the right gate": C121
-docs/plugins/plugin-permission-requests.md "Request approval before a tool call": C79
+docs/plugins/plugin-permission-requests.md "Request approval before a tool call": C79, C80
 docs/plugins/plugin-permission-requests.md "Declare approval scope": C79
 docs/plugins/plugin-permission-requests.md "Decision behavior": C79, C80, C81, C82
 docs/plugins/plugin-permission-requests.md "Route approval prompts": C83, C84
@@ -467,29 +463,40 @@ docs/plugins/architecture.md "plain-capability": none
 docs/plugins/architecture.md "hybrid-capability": none
 docs/plugins/architecture.md "hook-only": none
 docs/plugins/architecture.md "non-capability": none
-docs/plugins/architecture.md "Compatibility signals": C62
+docs/plugins/architecture.md "Compatibility signals": C62, C156
 docs/plugins/architecture.md "Architecture overview": C69, C150, C156
-docs/plugins/architecture.md "Plugin metadata snapshot and lookup table": C3, C4, C5, C6, C7, C8, C9, C24, C31, C61, C64, C68, C70, C155, C158, C184
-docs/plugins/architecture.md "Runtime instance and source lifetime": C11, C15, C28, C64, C65, C66, C67, C69, C111, C154, C164, C165, C172
+docs/plugins/architecture.md "Manifest + discovery": none
+docs/plugins/architecture.md "Enablement + validation": none
+docs/plugins/architecture.md "Runtime loading": none
+docs/plugins/architecture.md "Surface consumption": none
+docs/plugins/architecture.md "Plugin metadata snapshot and lookup table": C3, C4, C5, C6, C7, C8, C9, C13, C15, C24, C26, C31, C61, C64, C68, C70, C155, C156, C158, C184
+docs/plugins/architecture.md "Runtime instance and source lifetime": C11, C15, C28, C64, C65, C66, C67, C69, C111, C154, C160, C164, C165, C172
 docs/plugins/architecture.md "Activation planning": none
 docs/plugins/architecture.md "Channel plugins and the shared message tool": none
 docs/plugins/architecture.md "Capability ownership model": none
 docs/plugins/architecture.md "Vendor multi-capability": none
 docs/plugins/architecture.md "Vendor single-capability": none
 docs/plugins/architecture.md "Feature plugin": none
+docs/plugins/architecture.md "Define the capability": none
+docs/plugins/architecture.md "Expose through the SDK": none
+docs/plugins/architecture.md "Wire consumers": none
+docs/plugins/architecture.md "Vendor implementations": none
 docs/plugins/architecture.md "Capability layering": none
 docs/plugins/architecture.md "Core capability layer": none
 docs/plugins/architecture.md "Vendor plugin layer": none
 docs/plugins/architecture.md "Channel/feature plugin layer": none
 docs/plugins/architecture.md "Multi-capability company plugin example": none
 docs/plugins/architecture.md "Capability example: video understanding": none
+docs/plugins/architecture.md "Core defines the contract": none
+docs/plugins/architecture.md "Vendor plugins register": none
+docs/plugins/architecture.md "Consumers use the shared behavior": none
 docs/plugins/architecture.md "Contracts and enforcement": C63
 docs/plugins/architecture.md "Runtime registration enforcement": none
 docs/plugins/architecture.md "Contract tests": none
 docs/plugins/architecture.md "What belongs in a contract": none
 docs/plugins/architecture.md "Good contracts": none
 docs/plugins/architecture.md "Bad contracts": none
-docs/plugins/architecture.md "Skill previews": C123
+docs/plugins/architecture.md "Skill previews": C91, C123
 docs/plugins/architecture.md "Execution model": C22, C27, C28, C63, C113, C145
 docs/plugins/architecture.md "Export boundary": none
 docs/plugins/architecture.md "Internals and reference": none
@@ -497,14 +504,15 @@ docs/plugins/architecture.md "Related": none
 docs/plugins/architecture-internals/load-pipeline.md "(intro)": none
 docs/plugins/architecture-internals/load-pipeline.md "Load pipeline": C42, C158
 docs/plugins/architecture-internals/load-pipeline.md "Manifest-first behavior": C26, C63, C158, C168
-docs/plugins/architecture-internals/load-pipeline.md "Plugin cache boundary": C12, C37, C63, C69, C145, C155
+docs/plugins/architecture-internals/load-pipeline.md "Plugin cache boundary": C12, C37, C63, C68, C69, C145, C155
 docs/plugins/architecture-internals/load-pipeline.md "Registry model": none
 docs/plugins/architecture-internals/packaging.md "(intro)": none
 docs/plugins/architecture-internals/packaging.md "Plugin SDK import paths": C15, C61
-docs/plugins/architecture-internals/packaging.md "Package packs": C42, C119, C120
+docs/plugins/architecture-internals/packaging.md "Package packs": C34, C42, C119, C120
 docs/plugins/architecture-internals/packaging.md "Channel catalog metadata": C118, C131
 docs/plugins/manifest.md "(intro)": C142
 docs/plugins/manifest.md "What this file does": none
+docs/plugins/manifest.md "Use it for:": none
 docs/plugins/manifest.md "Where each field is documented": none
 docs/plugins/manifest.md "Model fields": none
 docs/plugins/manifest.md "Provider fields": none
@@ -517,14 +525,14 @@ docs/plugins/manifest.md "Minimal example": none
 docs/plugins/manifest.md "Rich example": none
 docs/plugins/manifest.md "Top-level field reference": C25, C26, C34, C138, C139, C140
 docs/plugins/manifest.md "Catalog categories": C147
-docs/plugins/manifest.md "JSON Schema requirements": C52
+docs/plugins/manifest.md "JSON Schema requirements": C52, C142
 docs/plugins/manifest.md "Retained state checks": C133
 docs/plugins/manifest.md "Validation behavior": none
-docs/plugins/manifest.md "Capability catalogs": C141
+docs/plugins/manifest.md "Capability catalogs": C141, C142
 docs/plugins/manifest.md "Configuration validation": C20, C23, C24, C134, C142, C178
 docs/plugins/manifest.md "Notes": C24, C62
 docs/plugins/manifest.md "Related": none
-docs/plugins/hooks.md "(intro)": C63
+docs/plugins/hooks.md "(intro)": C62, C63
 docs/plugins/hooks.md "Quick start": C1
 docs/plugins/hooks.md "Permissions and scope": C1, C74, C75, C144
 docs/plugins/hooks.md "Choose a hook": C76, C181
@@ -538,12 +546,19 @@ docs/plugins/hooks.md "Message and delivery hooks": none
 docs/plugins/hooks.md "Gateway and install lifecycle hooks": none
 docs/plugins/hooks.md "Related": none
 docs/plugins/hooks/lifecycle.md "(intro)": none
-docs/plugins/hooks/lifecycle.md "Install hooks": C143, C170
+docs/plugins/hooks/lifecycle.md "Install hooks": C73, C143, C170
 docs/plugins/hooks/lifecycle.md "Gateway lifecycle": C71, C158
 docs/plugins/hooks/lifecycle.md "Safe external cron projection": C71, C158
 docs/plugins/hooks/reference.md "(intro)": none
 docs/plugins/hooks/reference.md "Registration and execution": C73, C77, C78, C136, C169
-docs/plugins/hooks/reference.md "Hook catalog": C15, C74, C137, C158
+docs/plugins/hooks/reference.md "Hook catalog": C1, C15, C74, C75, C137, C158
+docs/plugins/hooks/reference.md "Agent turn": none
+docs/plugins/hooks/reference.md "Conversation observation": none
+docs/plugins/hooks/reference.md "Tools": none
+docs/plugins/hooks/reference.md "Messages and delivery": none
+docs/plugins/hooks/reference.md "Sessions and compaction": none
+docs/plugins/hooks/reference.md "Subagents": none
+docs/plugins/hooks/reference.md "Lifecycle": none
 docs/plugins/hooks/reference.md "Skill lifecycle": none
 docs/plugins/hooks/reference.md "Channel pairing requests": C135
 docs/plugins/sdk-overview.md "(intro)": none
@@ -556,10 +571,10 @@ docs/plugins/sdk-overview.md "Where each section moved": none
 docs/plugins/sdk-overview.md "Docked link readers": none
 docs/plugins/sdk-overview.md "Related": none
 docs/plugins/sdk-overview/host-hooks.md "(intro)": none
-docs/plugins/sdk-overview/host-hooks.md "Host hooks for workflow plugins": C62, C74, C87, C91, C93, C94, C120, C124, C125, C126, C144, C166, C174, C184
+docs/plugins/sdk-overview/host-hooks.md "Host hooks for workflow plugins": C62, C74, C87, C91, C93, C94, C120, C124, C125, C126, C144, C156, C166, C174, C184
 docs/plugins/sdk-overview/host-hooks.md "When to use tool-result middleware": C126
 docs/plugins/sdk-overview/host-hooks.md "Sandbox backends": none
-docs/plugins/sdk-overview/host-hooks.md "Docked link readers": C91, C93
+docs/plugins/sdk-overview/host-hooks.md "Docked link readers": C91, C93, C123
 docs/plugins/sdk-entrypoints.md "(intro)": none
 docs/plugins/sdk-entrypoints.md "Where each section moved": none
 docs/plugins/sdk-entrypoints.md "Plugin shapes": none
@@ -575,6 +590,12 @@ docs/plugins/building-plugins.md "(intro)": none
 docs/plugins/building-plugins.md "Requirements": none
 docs/plugins/building-plugins.md "Choose the plugin shape": none
 docs/plugins/building-plugins.md "Quickstart": C126, C158
+docs/plugins/building-plugins.md "Create package metadata": none
+docs/plugins/building-plugins.md "Register the tool": none
+docs/plugins/building-plugins.md "Test the runtime": none
+docs/plugins/building-plugins.md "Test the package install": none
+docs/plugins/building-plugins.md "Publish": none
+docs/plugins/building-plugins.md "Install": none
 docs/plugins/building-plugins.md "Add plugin artwork": none
 docs/plugins/building-plugins.md "Registering tools": C63, C121, C151
 docs/plugins/building-plugins.md "Import conventions": C120
@@ -586,7 +607,7 @@ docs/plugins/tool-plugins.md "(intro)": none
 docs/plugins/tool-plugins.md "Requirements": none
 docs/plugins/tool-plugins.md "Quickstart": C103
 docs/plugins/tool-plugins.md "Write a tool": none
-docs/plugins/tool-plugins.md "Optional and constructor-built tools": C15, C121, C151, C152
+docs/plugins/tool-plugins.md "Optional and constructor-built tools (the heading at line 122)": C11, C15, C121, C151, C152, C160
 docs/plugins/tool-plugins.md "Owner-authorized continuations": C15
 docs/plugins/tool-plugins.md "Return values": none
 docs/plugins/tool-plugins.md "Output contracts": C122
@@ -608,11 +629,11 @@ docs/plugins/tool-plugins.md "See also": none
 docs/plugins/feature-plugins.md "(intro)": C87, C173
 docs/plugins/feature-plugins.md "Enable custom plugin UI": C86
 docs/plugins/feature-plugins.md "Create a feature plugin": C88
-docs/plugins/feature-plugins.md "Define operations once": C91
+docs/plugins/feature-plugins.md "Define operations once": C91, C123
 docs/plugins/feature-plugins.md "Contribute and replace views": C92, C93
 docs/plugins/feature-plugins.md "Host capabilities": C162
 docs/plugins/feature-plugins.md "Dock a conversation": C92, C162
-docs/plugins/feature-plugins.md "Build and reload": C89, C90, C91
+docs/plugins/feature-plugins.md "Build and reload": C89, C90, C91, C123
 docs/plugins/feature-plugins.md "Approve an agent-built artifact": C2, C53, C95, C96, C97, C180
 docs/plugins/codex-native-plugins.md "(intro)": none
 docs/plugins/codex-native-plugins.md "Requirements": C104
@@ -620,17 +641,17 @@ docs/plugins/codex-native-plugins.md "Quickstart": C105, C110
 docs/plugins/codex-native-plugins.md "Scheduled automations": C106
 docs/plugins/codex-native-plugins.md "Manage plugins from chat": C104, C105
 docs/plugins/codex-native-plugins.md "How native plugin setup works": C104
-docs/plugins/codex-native-plugins.md "Support boundary": none
+docs/plugins/codex-native-plugins.md "Support boundary": C104
 docs/plugins/codex-native-plugins.md "App inventory and ownership": C107
-docs/plugins/codex-native-plugins.md "Connected account apps": C108
+docs/plugins/codex-native-plugins.md "Connected account apps": C107, C108, C110
 docs/plugins/codex-native-plugins.md "Thread app config": C107
 docs/plugins/codex-native-plugins.md "Approval decision order": none
 docs/plugins/codex-native-plugins.md "Which configuration owns each setting": none
 docs/plugins/codex-native-plugins.md "Native tool enablement": none
-docs/plugins/codex-native-plugins.md "Native approval mode": none
+docs/plugins/codex-native-plugins.md "Native approval mode": C109
 docs/plugins/codex-native-plugins.md "Destructive action policy": C109
-docs/plugins/codex-native-plugins.md "Approval examples": none
-docs/plugins/codex-native-plugins.md "Troubleshooting": C107
+docs/plugins/codex-native-plugins.md "Approval examples": C109
+docs/plugins/codex-native-plugins.md "Troubleshooting": C107, C110
 docs/plugins/codex-native-plugins.md "Related": none
 docs/gateway/protocol/rpc-system-and-channels.md "(intro)": none
 docs/gateway/protocol/rpc-system-and-channels.md "System and identity": none
@@ -639,10 +660,10 @@ docs/gateway/protocol/rpc-system-and-channels.md "Memory": none
 docs/gateway/protocol/rpc-system-and-channels.md "Channels and login helpers": none
 docs/gateway/protocol/rpc-system-and-channels.md "Channel DM pairing": none
 docs/gateway/protocol/rpc-system-and-channels.md "Plugin management": C16, C37, C44, C143, C149, C157
-docs/gateway/protocol/rpc-system-and-channels.md "Catalog detail and client confirmation": C8, C10, C14, C16, C37, C44, C53, C111
+docs/gateway/protocol/rpc-system-and-channels.md "Catalog detail and client confirmation": C7, C8, C10, C14, C16, C35, C37, C44, C53, C111
 docs/gateway/protocol/rpc-system-and-channels.md "ClawHub catalog discovery": C101
 docs/gateway/protocol/rpc-system-and-channels.md "Browse and search": C44
-docs/gateway/protocol/rpc-system-and-channels.md "Bulk keyword discovery": C100
+docs/gateway/protocol/rpc-system-and-channels.md "Bulk keyword discovery": C44, C100
 docs/gateway/protocol/rpc-system-and-channels.md "Upstream contracts and gaps": none
 docs/gateway/protocol/rpc-system-and-channels.md "Messaging and logs": none
 docs/gateway/protocol/rpc-system-and-channels.md "Operator terminal": none
@@ -665,7 +686,7 @@ docs/gateway/protocol/rpc-system-and-channels.md "Operator terminal": none
 | 150291 prepare three bundled plugins for catalog publication | list-installed-plugins | plugins.list curated official picks and install routes for bundled-only plugins; browse-plugin-catalog also records catalog entries |
 | 163850 deslop Feishu, WhatsApp, and Teams | none | the Teams plugin's Doctor recovery guidance is Doctor repair (bound: owned by update) and needs retired Teams state |
 | 157135 preserve steering across reconnects and show queued input | none | the in-area path is a Workboard manifest; the symptom is chat scrolling, owned by sessions |
-| 145553 preserve public status URLs during credential redaction | plugin-hooks-shape-agent-turns | from run 2: undocumented condition redaction-patterns-copied-from-defaults added at step 6; a public status URL is sent in a turn under config-hand-edited (redaction patterns copied from the shipped defaults) and the reply and hook log are recorded; run 1 recorded it as owned by logging |
+| 145553 preserve public status URLs during credential redaction | none | not mapped: the break is masking of encoded form values and Digest authorization under copied redaction patterns, owned by logging; the in-area path is an SDK re-export, and the hook turn that sends a public status URL does not exercise that masking |
 | 166049 open public threads at their regular links | none | chat link routing owned by sessions and the Control UI; the in-area paths are the X plugin's feature code |
 | 137131 hydrate published models from models.dev | none | outside the product's reach: needs an upstream models.dev document larger than the publisher's cap (external data) |
 
@@ -863,5 +884,89 @@ correction: event-replacement-fails-before-publication: split for the 300000 ms 
 traits: run 2 names merged into run 1 names where they describe the same persona content: plugin-fixture-all-surfaces -> plugin-fixture-surfaces (keys catalogProbeMethod -> sdkProbeMethod, gatewayMethod -> methodName, httpRoutePath -> routePath, reservedMethod -> reservedMethodName), marketplace-local-fixture -> marketplace-local (path -> marketplacePath), plugin-native-dependency-installed -> plugins-native-dependency, config-plugins-include-file -> config-plugins-include, config-provider-auto-enable -> config-provider-without-models, config-install-policy keys warnPackPath/blockPackPath -> warnPackagePath/blockPackagePath; run 2's single-fixture traits (plugin-pack-*, plugin-disabled-with-config, plugin-load-path-unrecorded, plugin-workspace-discovered, plugin-legacy-enabled-unreviewed, plugin-registry-stale, plugin-authoring-workspace, session-plugin-tools, clawhub-catalog-reachable, codex-harness-native-plugins) stay separate; run 2's plugin-artifact-packed is the artifact run 1 packs during the run, so no trait is needed
 names: run 2's Control UI flow names, patch file names and script forms rewritten to run 1's (plugins-settings-installed -> plugins-installed-inventory, plugin-install-ui -> plugin-install-from-catalog, plugin-settings-enable-toggle -> plugin-settings-toggle, plugin-settings-configure -> plugin-settings-editor, plugin-ui-customize -> plugins-customize-ui, plugin-tab-page -> plugin-tab-and-contributions, plugin-uninstall-ui -> plugin-uninstall; plugin-fixture-edit -> plugin-source-edit, plugin-capture-prune -> the env exec removal run 1 uses, gateway-call-as -> gateway-call --profile); every data file under verify/templates/plugins/patches/
 search list: run 1 reported the openclaw tool actions plugin_install, plugin_activate_artifact and plugin_uninstall and the /plugins chat command handlers; run 2 reported the plugin_activate_artifact literal, the parsePluginsCommand symbol and the codex_plugins literal; both entry points are already placed from the documents; the input file is unchanged, since both runs searched it as written
-breaks: 145553 mapped from run 2 (run 1 had none); the other seven mapped breaks are mapped by both runs
+breaks: the seven mapped breaks are mapped by both runs; 145553, which run 2 mapped, is not mapped (correction below)
 correction after both runs: the input file's glob src/infra/plugin-activation.ts named no file at 7e80556f; the module is ui/src/lib/plugin-activation.ts, so the glob in the input file, the template paths and the Bounds line above name that file. Phase path globs that matched no file were corrected the same way: src/plugins/skill*.ts -> src/plugins/management-skill-read.ts (preview-plugin-skill), src/agents/**/lsp*.ts -> src/agents/agent-bundle-lsp-*.ts (event-turn-cancel-during-bundle-lsp-startup), and src/cron/**/plugin*.ts removed from plugin-hooks-follow-lifecycle (only test files match it). No entry point or condition came from these globs.
+counting: entry points are counted one per control, method, command, route or call site; a line in Operations or Excluded entry points that names two controls counts two, which gives the 379 in coverage.md and comparison.md from these 365 lines
+/btw (chat command): entry point from run 1 only; kept as run 1 listed it
+/new, /reset (chat command): entry point from run 1 only; kept as run 1 listed it
+Broadcast events plugins.changed, plugins.install.progress, plugins.controlUi.changed, plugin.approval.requested, plugin.approval.resolved: entry point from run 1 only; kept as run 1 listed it
+Credential API key field: entry point from run 1 only; kept as run 1 listed it
+Docked link reader: entry point from run 1 only; kept as run 1 listed it
+Plugin approval prompt decision buttons (Allow once, Allow always, Deny): entry point from run 1 only; kept as run 1 listed it
+Plugin frame session navigation (openclaw-plugin-session-open): entry point from run 1 only; kept as run 1 listed it
+Plugin overview MCP server details button: entry point from run 1 only; kept as run 1 listed it
+Plugin settings "Retry" (config read or write): entry point from run 1 only; kept as run 1 listed it
+Plugin settings "Try again" (inspection retry): entry point from run 1 only; kept as run 1 listed it
+Plugins hub "View all" (documented as "Show all") for Installed plugins: entry point from run 1 only; kept as run 1 listed it
+Secret reference "Source" select: entry point from run 1 only; kept as run 1 listed it
+Secret reference value field: entry point from run 1 only; kept as run 1 listed it
+api.onConversationBindingResolved (plugin call): entry point from run 1 only; kept as run 1 listed it
+openclaw claws status (CLI command): entry point from run 1 only; kept as run 1 listed it
+openclaw logs --follow (CLI command): entry point from run 1 only; kept as run 1 listed it
+openclaw mcp set (CLI command): entry point from run 1 only; kept as run 1 listed it
+openclaw onboard (CLI command): entry point from run 1 only; kept as run 1 listed it
+openclaw skills search (CLI command): entry point from run 1 only; kept as run 1 listed it
+openclaw tool action plugin_install: entry point from run 1 only; kept as run 1 listed it
+openclaw tool action plugin_uninstall: entry point from run 1 only; kept as run 1 listed it
+plugin.surface.refresh (Gateway method): entry point from run 1 only; kept as run 1 listed it
+session discussion provider (openclaw/plugin-sdk/session-discussion) (plugin call): entry point from run 1 only; kept as run 1 listed it
+correction after review: configure-plugin-settings-in-control-ui: restores configure-plugin-settings-in-control-ui-fixture-config.json at the end of the phase
+correction after review: use-plugin-tools-in-turns: restores use-plugin-tools-in-turns-tools-allow.json at the end of the phase
+correction after review: event-cron-reconciled-and-changed: cron-reload-touch dropped; its cron-disabled and cron-enabled changes already reload cron config
+correction after review: set-plugin-loading-policy-in-control-ui: one save covers allow, deny, enabled and the memory slot, restored after Doctor, so later phases run with the policy the persona holds
+correction after review: configure-plugin-settings-in-control-ui: the unknown config key is removed again from the saved copy at the end
+correction after review: install-plugin-from-cli-sources: official install acknowledges capabilities with the reviewToken of a plugins.inspect it records first
+correction after review: configure-plugin-settings-in-control-ui: restores configure-plugin-settings-in-control-ui-fixture-config.json at the end of the phase
+correction after review: use-plugin-tools-in-turns: restores use-plugin-tools-in-turns-tools-allow.json at the end of the phase
+correction after review: event-cron-reconciled-and-changed: cron-reload-touch dropped; its cron-disabled and cron-enabled changes already reload cron config
+correction after review: set-plugin-loading-policy-in-control-ui: one save covers allow, deny, enabled and the memory slot, restored after Doctor, so later phases run with the policy the persona holds
+correction after review: configure-plugin-settings-in-control-ui: the unknown config key is removed again from the saved copy at the end
+correction after review: install-plugin-from-cli-sources: official install acknowledges capabilities with the reviewToken of a plugins.inspect it records first
+correction after review: plugin-hooks-follow-lifecycle: the cron job file is replaced by cron.update on the persona job, which raises the same cron_changed hook
+correction after review: setup phases: the held plugin call and the pending approval run on their own sessions (session-plugin-held, session-approval-held); the main session holds only the in-flight turn
+correction after review: approve-plugin-permission: dropped the join of setup handle approval-pending.json (the setup's hold ends before this phase runs)
+correction after review: event-reload-drain-budget-exceeded: dropped the join of setup handle plugin-turn.json (the setup's hold ends before this phase runs)
+correction after review: operation and event phases: foreground turns and calls move from the main session (held by a setup) to the idle tool session; holds a phase starts and joins itself run on session-plugin-held
+correction after review: approve-plugin-permission: starts its own approval-gated call in the background, lists and resolves it, and joins it at the end
+correction after review: joins: agent-tool-turn joins pass only the session, --wait and --timeout
+correction after review: event-concurrent-lifecycle-request-continued: joins the background reload it starts ({run}/reload-a.json)
+correction after review: run-plugin-session-action: browser true (drives control-ui.mjs)
+correction after review: author-and-pack-feature-plugin: packs a second time onto the existing artifact, the documented target-exists case
+correction after review: list-installed-plugins: its inspect commands moved to inspect-plugin (one operation per phase)
+correction after review: event-uninstall-file-removal-fails: moved to the end; it uninstalls and reinstalls the fixture plugin, so every phase that reads the fixture runs before it
+correction after review: browse-plugin-catalog: requires clawhub-registry-local (ClawHub, npm and the marketplace feed served by local fixtures)
+correction after review: browse-plugin-catalog-in-control-ui: requires clawhub-registry-local (ClawHub, npm and the marketplace feed served by local fixtures)
+correction after review: install-plugin-from-cli-sources: requires clawhub-registry-local (ClawHub, npm and the marketplace feed served by local fixtures)
+correction after review: install-plugin-through-gateway: requires clawhub-registry-local (ClawHub, npm and the marketplace feed served by local fixtures)
+correction after review: install-plugin-in-control-ui: requires clawhub-registry-local (ClawHub, npm and the marketplace feed served by local fixtures)
+correction after review: install-plugin-from-chat-and-agent: requires clawhub-registry-local (ClawHub, npm and the marketplace feed served by local fixtures)
+correction after review: install-plugin-from-chat-and-agent-continued: requires clawhub-registry-local (ClawHub, npm and the marketplace feed served by local fixtures)
+correction after review: update-plugin: requires clawhub-registry-local (ClawHub, npm and the marketplace feed served by local fixtures)
+correction after review: browse-marketplaces-and-feeds: requires clawhub-registry-local (ClawHub, npm and the marketplace feed served by local fixtures)
+correction after review: author-tool-plugin: requires clawhub-registry-local (ClawHub, npm and the marketplace feed served by local fixtures)
+correction after review: author-and-pack-feature-plugin: requires clawhub-registry-local (ClawHub, npm and the marketplace feed served by local fixtures)
+correction after review: event-concurrent-lifecycle-request: requires clawhub-registry-local (ClawHub, npm and the marketplace feed served by local fixtures)
+correction after review: event-clawhub-registry-unreachable: requires clawhub-registry-local (ClawHub, npm and the marketplace feed served by local fixtures)
+correction after review: configure-plugin-settings-in-control-ui: timeoutMs 290000 -> 300000
+correction after review: set-plugin-loading-policy-in-control-ui: timeoutMs 240000 -> 300000
+correction after review: reload-plugin: timeoutMs 270000 -> 300000
+correction after review: use-plugin-pages-and-widgets: timeoutMs 280000 -> 300000
+correction after review: approve-plugin-permission: timeoutMs 300000 -> 300000
+correction after review: use-plugin-tools-in-turns: timeoutMs 280000 -> 300000
+correction after review: plugin-hooks-shape-agent-turns: timeoutMs 280000 -> 300000
+correction after review: event-plugin-config-edit-hot-replaces-instance: timeoutMs 150000 -> 270000
+correction after review: event-concurrent-lifecycle-request-continued: timeoutMs 60000 -> 180000
+correction after review: event-plugin-approvals-forwarded-to-chat: timeoutMs 240000 -> 260000
+correction after review: event-passive-reload-disabled: timeoutMs 240000 -> 260000
+correction after review: event-control-ui-reconnects: timeoutMs 180000 -> 210000
+correction after review: event-plugin-hook-handler-times-out: timeoutMs 210000 -> 270000
+correction after review: event-load-path-re-added-during-uninstall-drain: timeoutMs 300000 -> 300000
+correction after review: event-replacement-fails-before-publication: timeoutMs 270000 -> 300000
+correction after review: timeouts trimmed to fit the 300000 ms bound: configure (editor flow 180000), pages (tab flow 195000), approve (prompt flow 55000), tools (channel turn 40000), hooks (heartbeat 80000), load-path drain (uninstall join 75000)
+correction after review: in-phase holds and the approval phase's own pending call run on session-phase-hold, a session no setup holds, so a plan that selects one phase with the setups does not queue its hold behind a setup's
+correction after review: break 145553 is not mapped; the phase run 2 named sends a public status URL and does not exercise the encoded form values and Digest authorization the break concerns
+correction after review: plugins.controlUi.report is sent by a connected Control UI with the active browser revision; the generic caller cannot send it, so the customize phase records it through the plugins-customize-ui flow and plugins.controlUi.status
+correction after review: approve-plugin-permission asks plugin.approval.request for a two-phase acknowledgement, so the call returns the pending id the resolves and waitDecision use
+correction after review: event-plugin-approvals-forwarded-to-chat answers the forwarded approval with the id plugin.approval.list returns, through channel-inbound-turn --approve-from
+correction after review: event-reload-wait-cancelled starts a held plugin call before the reload so the cancelled wait has admitted work draining
+correction after review: Headings walked lists every heading of every listed document with the conditions whose Source names it, and Source names each heading as the document writes it

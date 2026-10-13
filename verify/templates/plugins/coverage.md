@@ -2,8 +2,8 @@
 
 Operations: 34/34
 Conditions: 140/187 (134 ambient, 53 event)
-Entry points: 326/365 (39 excluded)
-Breaks mapped: 8/18
+Entry points: 333/379 (46 excluded)
+Breaks mapped: 7/18
 
 Uncovered:
 - C43 clawhub-release-audit-outcome (condition): needs a ClawHub release with a Review or blocking moderation outcome; registry content outside the product
@@ -53,6 +53,18 @@ Uncovered:
 - C180 artifact-replaces-inference-plugin (condition): would replace the plugin backing the persona's active inference route
 - C181 node-worker-hook-admission (condition): needs a paired OpenClaw node worker
 - C182 zip-name-collision (condition): no colliding archive fixture in the persona
+- 141836 (break) support Flux voice-note transcription: Deepgram transcription is the plugin's own feature (bound: owned by its feature area) and needs the real Deepgram service; lifecycle phases are selected by the extensions path but do not transcribe audio
+- 127469 (break) respect provenance in automatic context: memory plugin feature (bound: memory plugins owned by their feature area); needs a legacy memory index and slow embeddings
+- 126391 (break) prevent malformed streamed tool calls: provider stream parsing owned by models (bound); needs a real provider's streamed tool-call output
+- 146713 (break) rebuild outdated provenance on search: memory plugin feature (bound); needs an index written by a newer version
+- 144420 (break) share API-key editing and removal: provider auth owned by models (bound); needs two clients editing one key
+- 164989 (break) read model context and watermarks through the history reader: needs a remote OpenClaw worker placement (cloud workers, outside the bound)
+- 163850 (break) deslop Feishu, WhatsApp, and Teams: the Teams plugin's Doctor recovery guidance is Doctor repair (bound: owned by update) and needs retired Teams state
+- 157135 (break) preserve steering across reconnects and show queued input: the in-area path is a Workboard manifest; the symptom is chat scrolling, owned by sessions
+- 145553 (break) preserve public status URLs during credential redaction: masking of encoded form values and Digest authorization is owned by logging; the in-area path is an SDK re-export, and no phase sends those values
+- 166049 (break) open public threads at their regular links: chat link routing owned by sessions and the Control UI; the in-area paths are the X plugin's feature code
+- 137131 (break) hydrate published models from models.dev: outside the product's reach: needs an upstream models.dev document larger than the publisher's cap (external data)
+- the six breaks whose only in-area paths are extension feature code (127469, 146713, 144420, 163850, 157135, 166049) are in the area through extensions/**, while the bound gives each plugin's own feature behaviour to that plugin's feature area; no template covers those feature areas yet, so a change to that code selects only this template's lifecycle phases
 - openclaw plugins (CLI command) (entry point, excluded): command group; prints help only, every subcommand is listed
 - openclaw plugins marketplace (CLI command) (entry point, excluded): command group; prints help only, its three subcommands are listed
 - plugin.surface.refresh (Gateway method) (entry point, excluded): owned by nodes (src/gateway/server-methods/nodes.read.ts, nodes method family); it is neither plugins.* nor plugin.approval.*; reported for the input file
@@ -94,7 +106,7 @@ Uncovered:
 - UI settings navigation, sidebar, theme and account controls around the plugin pages (entry point, excluded): shell
 
 Persona additions:
-- plugin-fixture-surfaces: an external fixture plugin installed from a local npm-pack package with its receipt, enabled, allowlisted and granted conversation access, that registers a required tool, an optional tool, a slow tool, an approval-gated tool (before_tool_call requireApproval), a tool whose result breaks its output schema, a tool name that collides with a core tool and a malformed tool, Gateway methods (one in a reserved admin namespace, one returning its hook invocation log, one calling the public SDK catalog loader without options), an HTTP route, a service, a root CLI command, a chat command, a session action and session extension, a runtime lifecycle registration, tab, widget and link-reader Control UI descriptors (one tab slug colliding with a reserved name), trusted tool policy and tool-result middleware with their manifest contracts, a slow tool constructor, a handler for every typed hook with operator hook timeouts and an eligibleTriggers-limited heartbeat hook, a bundled skill, a dedicated session, and cron projection hooks (pluginId, sourceDir, themeArtPath, toolName, optionalToolName, slowToolName, approvalToolName, schemaBreakToolName, hookLogMethod, methodName, reservedMethodName, sdkProbeMethod, routePath, cliCommand, commandName, sessionActionId, sessionKey, skillName, packagePath, installDir)
+- plugin-fixture-surfaces: an external fixture plugin installed from a local npm-pack package with its receipt, enabled, allowlisted and granted conversation access, that registers a required tool, an optional tool, a slow tool, an approval-gated tool (before_tool_call requireApproval), a tool whose result breaks its output schema, a tool name that collides with a core tool and a malformed tool, Gateway methods (one in a reserved admin namespace, one returning its hook invocation log, one calling the public SDK catalog loader without options), an HTTP route, a service, a root CLI command, a chat command, a session action and session extension, a runtime lifecycle registration, tab, widget and link-reader Control UI descriptors (one tab slug colliding with a reserved name), trusted tool policy and tool-result middleware with their manifest contracts, a slow tool constructor, a handler for every typed hook with operator hook timeouts and an eligibleTriggers-limited heartbeat hook, a bundled skill, a dedicated session, and cron projection hooks (pluginId, sourceDir, themeArtPath, toolName, optionalToolName, slowToolName, approvalToolName, schemaBreakToolName, hookLogMethod, methodName, reservedMethodName, sdkProbeMethod, routePath, cliCommand, commandName, sessionActionId, sessionKey, skillName, packagePath, installDir); its config schema accepts kovaMarker (a string the config-change script changes), kovaBreakRegister (register() throws while true) and kovaUnknownKey is not declared
 - plugin-fixture-feature-ui: a feature plugin with a native page, navigation with context actions, a composer replacement, a panel, a header accessory, a dashboard widget and a docked conversation, with Settings → Labs → Custom plugin UI turned on (pluginId)
 - plugins-policy-mixed: plugins.deny naming one installed plugin, one entry disabled with its config kept, stale unknown ids in plugins.entries and plugins.allow, a legacy plugin id in config, plugins.slots.memory selecting an installed memory plugin, and a disabled channel plugin (deniedPluginId, slotPluginId)
 - plugins-local-sources: a plugins.load.paths TypeScript plugin, a --link install with a slow tool, a workspace-origin plugin left disabled, a standalone script in the extensions root, a Claude bundle with an MCP stdio server, LSP config, settings.json and hooks.json, a hook pack, a multi-entry package with one child disabled, a mixed-case plugin id, a plugin requiring a missing companion plugin, a plugin MCP server overridden by mcp.servers, a load-path copy of a bundled plugin id, a second hook plugin without conversation access and with allowPromptInjection false, and a local archive (linkDir, linkedPluginId, linkedSlowToolName, archivePath, multiEntryChildId, bundleMcpToolName, bundleSessionKey, hookLogMethod)
@@ -110,10 +122,8 @@ Persona additions:
 - claws-package-installed: an installed Claw whose package references an installed plugin (pluginId)
 - plugins-bundled-and-external (key additions): the existing trait plus the id of one bundled plugin whose compiled file a phase edits and one bundled plugin disabled by default (bundledPluginId, bundledOffPluginId)
 - config-read-only-environment: the Gateway service started with OPENCLAW_CONFIG_READONLY=1 or OPENCLAW_NIX_MODE=1 (named for the uncovered condition; not required by a phase)
-- config-plugins-include: the plugins section authored through a single-file $include (named for uncovered conditions; not required by a phase)
 - plugins-external-channel-catalog: an external channel catalog file under ~/.openclaw/mpm/plugins.json (named for the uncovered condition; not required by a phase)
 - session-plugin-tools: an idle session on an agent whose model is the tool-calling mock, owned by the operator (key)
-- clawhub-catalog-reachable: network access to ClawHub and npm with a known plugin listing, its icon path, a bundled skill name and version, an official external plugin id and an exact npm spec (catalogId, packageName, version, skillName, catalogIconPath, officialPluginId, npmSpec)
 - plugin-pack-requires-config: an npm-pack tarball of a plugin whose config has a required field (path, pluginId)
 - plugin-pack-multi-entry: a local package with two plugin entries (path, packageName, pluginId, childId)
 - plugin-pack-broken-activation: an npm-pack tarball whose register() throws (path, pluginId)
@@ -126,3 +136,8 @@ Persona additions:
 - codex-harness-native-plugins: a Codex-mode agent with codexPlugins enabled and one configured native plugin, and its session (agentId, sessionKey, pluginKey)
 - config-plugin-approvals-forwarded: approvals.plugin forwarding to the DM test channel (none); from run 2, required by event-plugin-approvals-forwarded-to-chat
 - channels-test-accounts (key addition): a sender id that has never paired with the DM channel (unpairedPeer); from run 2
+- config-plugins-include: the plugins section authored through a single-file $include (none); required by enable-and-disable-plugin
+- clawhub-registry-local: ClawHub, npm and the hosted marketplace feed served from local fixtures the Gateway and CLI are pointed at, holding a known plugin listing with its icon, a bundled skill and release, an official external plugin and an exact npm spec, so the baseline and the change read the same registry content (catalogId, packageName, version, skillName, catalogIconPath, officialPluginId, npmSpec)
+- session-plugin-held: an idle session on the tool-calling mock model, used only by the setup phase's held plugin call (key)
+- session-approval-held: an idle session on the tool-calling mock model, used only by the setup phase's pending approval (key)
+- session-phase-hold: an idle session on the tool-calling mock model, used by the holds a phase starts and joins itself (key)
