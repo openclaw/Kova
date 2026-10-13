@@ -69,6 +69,7 @@
     "plugin-legacy-enabled-unreviewed",
     "plugin-load-path-unrecorded",
     "plugin-managed-removal",
+    "plugin-mcp-local-account",
     "plugin-pack-broken-activation",
     "plugin-pack-multi-entry",
     "plugin-pack-requires-config",
@@ -92,7 +93,7 @@
     "existing": [],
     "toWrite": [
       "support/verify/gateway-call.mjs  (one Gateway method by name, optionally as another operator profile; --env --method --params --timeout --out --background --handle --wait --merge-from --session-from --after-ms --profile; --merge-from merges a plugins.inspect result's reviewToken as acknowledgeCapabilities and a plugin.approval.request result id as id; a plugin.approval.list result requires --approval-session-key --approval-plugin --approval-tool and selects exactly one request matching all three values, exiting 2 on zero or multiple matches; --await-pending polls plugin.approval.list for exactly one still-pending request matching --approval-session-key --approval-plugin --approval-tool, records its id and state to --out, and exits 2 on timeout or ambiguity)",
-      "support/verify/control-ui.mjs  (Control UI flows in a headless browser: incognito-thread, plugin-approval-prompt, plugin-consent-enable, plugin-install-from-catalog, plugin-lifecycle-reload, plugin-mcp-login, plugin-overview, plugin-session-action, plugin-settings-editor, plugin-settings-toggle, plugin-skill-preview, plugin-tab-and-contributions, plugin-ui-lab-toggle, plugin-ui-other-gateway, plugin-ui-reconnect, plugin-uninstall, plugin-view-session-switch, plugins-advanced-policy, plugins-customize-ui, plugins-hub-browse, plugins-installed-inventory; --env --flow --session-key --gateway-env --artifact-dir --out --timeout; plugin-approval-prompt creates its own two-phase plugin.approval.request, waits for that returned id in the browser, answers it and records waitDecision for the same id; system-agent-operation drives the operator-owned openclaw.chat surface with --operation JSON, stages that exact operation, records its proposal, sends explicit operator approval, and retries the identical operation with approved=true; --artifact-from supplies the absolute archive path and SHA-256 of its bytes for plugin_activate_artifact; records the resulting install receipt and browser activation report; --operation --artifact-from)",
+      "support/verify/control-ui.mjs  (Control UI flows in a headless browser: incognito-thread, plugin-approval-prompt, plugin-consent-enable, plugin-install-from-catalog, plugin-lifecycle-reload, plugin-mcp-login, plugin-overview, plugin-session-action, plugin-settings-editor, plugin-settings-toggle, plugin-skill-preview, plugin-tab-and-contributions, plugin-ui-lab-toggle, plugin-ui-other-gateway, plugin-ui-reconnect, plugin-uninstall, plugin-view-session-switch, plugins-advanced-policy, plugins-customize-ui, plugins-hub-browse, plugins-installed-inventory; --env --flow --session-key --gateway-env --artifact-dir --out --timeout; plugin-approval-prompt creates its own two-phase plugin.approval.request, waits for that returned id in the browser, answers it and records waitDecision for the same id; system-agent-operation drives the operator-owned openclaw.chat surface with --operation JSON, stages that exact operation, records its proposal, sends explicit operator approval, and retries the identical operation with approved=true; --artifact-from supplies the absolute archive path and SHA-256 of its bytes for plugin_activate_artifact; records the resulting install receipt and browser activation report; --operation --artifact-from; --plugin --account identify the exact plugin and HTTP MCP account for plugin-mcp-login; plugin-ui-replacement-failure opens one persistent browser context, waits for the named plugin revision to report active, changes only that fixture asset with plugin-source-edit ui-asset-broken, calls plugins.controlUi.reload, records the failed replacement and the prior owner in the same browser, restores the asset in finally, reloads and records recovery before closing the context; exit 2 when a working initial activation cannot be established)",
       "support/verify/agent-tool-turn.mjs  (sessions.send with a scripted reply that calls one named tool, then chat.history with tools; --env --session-key --session-from --tool --args --timeout --background --handle --wait)",
       "support/verify/chat-send.mjs  (chat.send of a message or slash command, then chat.history of the receipt; --env --session-key --session-from --incognito-handle --message --timeout --background --handle --wait)",
       "support/verify/session-turn-hold.mjs  (sessions.send with a reply the mock provider holds open; --env --session-key --hold-ms --progress-cards --timeout --background --handle --wait)",
@@ -131,7 +132,8 @@
       "product: ocm @{env} -- status --json  (adds --all to the status entry)",
       "product: ocm @{env} -- health --json  (Gateway health including plugin quarantines and reload state; --json)",
       "support/ensure-gateway-running.mjs  (existing Gateway health waiter, with the verification --timeout alias in ms for its --timeout-ms option; --env --artifact-dir --timeout)",
-      "support/verify/capture-root-permissions.mjs  (the clone Gateway must be stopped; --block saves the exact mode of OPENCLAW_STATE_DIR/tmp/plugin-captures to --out, removes its write bits and verifies a new child allocation is refused as the Gateway user, exiting 2 when that condition cannot be established; --restore-from restores the saved mode; records capture paths and permissions without changing child directories; --env --block --out --restore-from --timeout)"
+      "support/verify/capture-root-permissions.mjs  (the clone Gateway must be stopped; --block saves the exact mode of OPENCLAW_STATE_DIR/tmp/plugin-captures to --out, removes its write bits and verifies a new child allocation is refused as the Gateway user, exiting 2 when that condition cannot be established; --restore-from restores the saved mode; records capture paths and permissions without changing child directories; --env --block --out --restore-from --timeout)",
+      "support/verify/plugin-removal-permissions.mjs  (uses openclaw plugins uninstall <id> --dry-run and the current installed-plugin index to resolve the live managed removal target, requiring both to agree; --block saves its canonical target and parent mode to --out, removes parent write permission and verifies removal is denied as the Gateway user; exits 2 for ambiguity, an unowned path or ineffective permissions; --restore-from restores that exact saved mode, never a path from the original persona; --env --plugin --block --out --restore-from --timeout)"
     ]
   },
   "phases": [
@@ -146,7 +148,8 @@
         "src/plugins/clawhub*.ts",
         "src/cli/plugins-search-command.ts",
         "src/infra/clawhub-plugin-*.ts",
-        "packages/gateway-protocol/src/core-request-params.ts"
+        "packages/gateway-protocol/src/core-request-params.ts",
+        "extensions/*/package.json"
       ],
       "requires": [
         "clawhub-registry-local",
@@ -231,7 +234,8 @@
         "src/config/plugins-allowlist.ts",
         "src/config/types.plugins.ts",
         "src/config/validation-plugin-*.ts",
-        "src/config/io.plugin-metadata.ts"
+        "src/config/io.plugin-metadata.ts",
+        "extensions/*/package.json"
       ],
       "requires": [
         "gateway-multi-user-profiles",
@@ -776,11 +780,11 @@
         "ui/src/components/plugin-*.ts"
       ],
       "requires": [
-        "plugin-fixture-surfaces"
+        "plugin-mcp-local-account"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugin-mcp-login --artifact-dir {run}/screens --timeout 150000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.inspect --params '{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}' --timeout 30000"
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugin-mcp-login --plugin {persona:plugin-mcp-local-account:pluginId} --account {persona:plugin-mcp-local-account:serverName} --artifact-dir {run}/screens --timeout 150000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.inspect --params '{\"pluginId\":\"{persona:plugin-mcp-local-account:pluginId}\"}' --timeout 30000"
       ],
       "checkpoint": [
         "responses",
@@ -1081,7 +1085,8 @@
       "commands": [
         "ocm @{env} -- plugins init kova-verify-feature --directory {run}/scaffold-feature --type feature",
         "ocm env exec {env} -- npm --prefix {run}/scaffold-feature install",
-        "ocm env exec {env} -- npm --prefix {run}/scaffold-feature run build",
+        "ocm env exec {env} -- node {run}/scaffold-feature/node_modules/typescript/bin/tsc -p {run}/scaffold-feature/tsconfig.json",
+        "ocm @{env} -- plugins build --root {run}/scaffold-feature",
         "ocm @{env} -- plugins validate --root {run}/scaffold-feature --json",
         "ocm @{env} -- plugins pack --root {run}/scaffold-feature --out {run}/feature.tgz --json",
         "ocm @{env} -- plugins pack --root {run}/scaffold-feature --out {run}/feature.tgz --json"
@@ -1369,7 +1374,9 @@
         "src/config/plugins-allowlist.ts",
         "src/config/types.plugins.ts",
         "src/config/validation-plugin-*.ts",
-        "src/config/io.plugin-metadata.ts"
+        "src/config/io.plugin-metadata.ts",
+        "src/agents/prepared-model-runtime*.ts",
+        "src/plugins/provider-discovery.ts"
       ],
       "requires": [
         "config-provider-without-models",
@@ -1711,7 +1718,9 @@
         "src/plugins/gateway*.ts",
         "src/plugins/service*.ts",
         "src/plugins/command*.ts",
-        "src/gateway/server-plugin-in-process-*.ts"
+        "src/gateway/server-plugin-in-process-*.ts",
+        "src/plugin-sdk/**",
+        "src/agents/prepared-model-catalog.ts"
       ],
       "requires": [
         "gateway-multi-user-profiles",
@@ -2313,7 +2322,7 @@
     {
       "id": "event-plugin-ui-activation-fails",
       "kind": "event",
-      "intent": "A user installs a feature plugin build whose browser asset fails to activate and reloads plugin UI, then restores the working build, observing the reported failure and the previous working activation kept.",
+      "intent": "A user activates a working feature plugin in one browser session, tries a broken browser revision in that same session, records whether the working activation survives, then restores the asset and records recovery before closing the browser.",
       "paths": [
         "ui/src/pages/plugin/**",
         "ui/src/components/app-sidebar-plugin-*.ts",
@@ -2333,12 +2342,7 @@
         "plugin-fixture-feature-ui"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/plugin-source-edit.mjs --env {env} --plugin {persona:plugin-fixture-feature-ui:pluginId} --mode ui-asset-broken",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.controlUi.reload --params '{}' --timeout 60000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugins-customize-ui --artifact-dir {run}/screens --timeout 90000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.controlUi.status --params '{}' --timeout 30000",
-        "node {kovaRoot}/support/verify/plugin-source-edit.mjs --env {env} --plugin {persona:plugin-fixture-feature-ui:pluginId} --mode ui-asset-broken --restore",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.controlUi.reload --params '{}' --timeout 60000"
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugin-ui-replacement-failure --plugin {persona:plugin-fixture-feature-ui:pluginId} --artifact-dir {run}/screens --timeout 240000"
       ],
       "checkpoint": [
         "responses",
@@ -2346,7 +2350,7 @@
         "timing",
         "screen"
       ],
-      "timeoutMs": 280000,
+      "timeoutMs": 260000,
       "browser": true,
       "slow": false
     },
@@ -2889,7 +2893,9 @@
         "src/config/plugins-allowlist.ts",
         "src/config/types.plugins.ts",
         "src/config/validation-plugin-*.ts",
-        "src/config/io.plugin-metadata.ts"
+        "src/config/io.plugin-metadata.ts",
+        "src/config/sessions/startup-migration.ts",
+        "src/plugins/update-cohort.ts"
       ],
       "requires": [
         "mock-provider-held-turn",
@@ -3561,10 +3567,10 @@
         "plugin-fixture-surfaces"
       ],
       "commands": [
-        "ocm env exec {env} -- chmod 0555 {persona:plugin-fixture-surfaces:installDir}/..",
+        "node {kovaRoot}/support/verify/plugin-removal-permissions.mjs --env {env} --plugin {persona:plugin-fixture-surfaces:pluginId} --block --out {run}/uninstall-removal-mode.json --timeout 15000",
         "ocm @{env} -- plugins uninstall {persona:plugin-fixture-surfaces:pluginId} --force",
         "ocm @{env} -- plugins list --json",
-        "ocm env exec {env} -- chmod 0755 {persona:plugin-fixture-surfaces:installDir}/..",
+        "node {kovaRoot}/support/verify/plugin-removal-permissions.mjs --env {env} --restore-from {run}/uninstall-removal-mode.json --timeout 15000",
         "ocm @{env} -- plugins uninstall {persona:plugin-fixture-surfaces:pluginId} --force",
         "ocm @{env} -- plugins install npm-pack:{persona:plugin-fixture-surfaces:packagePath} --force --accept-capabilities"
       ],
