@@ -2,7 +2,7 @@
 
 Operations: 34/34
 Conditions: 138/187 (134 ambient, 53 event)
-Entry points: 333/374 (41 excluded)
+Entry points: 333/382 (49 excluded)
 Breaks mapped: 7/18
 
 Uncovered:
@@ -155,3 +155,5 @@ Persona additions:
 - plugin-credential-synthetic: an enabled local web-search or web-fetch provider plugin with manifest contract metadata advertising one credential field, backed only by a non-secret sentinel and a local synthetic reference. It performs no external requests and uses no real credentials; settings support the field, reveal and reference UI, and changes are restored after the flow (pluginId).
 
 - plugin-concurrency-peer: a separate enabled installed plugin used only as the competing enablement target; it has a distinct identity from every bundled/external inventory and surface fixture (pluginId).
+
+- plugin-model-setup: a local definition for an openai model with an explicit codex runtime policy, a configured but missing Codex package, and the matching official package fixture served by clawhub-registry-local at the selected runtime release cohort. Applied only to a stopped temporary clone of the run environment; no inference or real credentials (modelId, definitionPath).

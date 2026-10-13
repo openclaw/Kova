@@ -73,6 +73,7 @@
     "plugin-lsp-held-initialize",
     "plugin-managed-removal",
     "plugin-mcp-local-account",
+    "plugin-model-setup",
     "plugin-pack-broken-activation",
     "plugin-pack-multi-entry",
     "plugin-pack-requires-config",
@@ -141,7 +142,8 @@
       "support/verify/bundled-plugin-reload.mjs  (wraps ocm env resolve, service stop/start, a temporary launcher and plugins reload for one clone: saves the original binding and service state to --out, materializes a private copy of the selected built OpenClaw artifact, verifies its build identity and exclusive file ownership, binds only this clone with ocm launcher add and env set-launcher, starts it and observes the bundled plugin loaded, edits its compiled file, records reload and restartRequired, restores the file and restarts; finally restores the original runtime binding and service state and removes the task-owned launcher/copy. Never edits the shared runtime, uses no hardlinks or writable symlinks to its edited files, and journals ownership before mutation so interrupted cleanup can remove the private copy; exits 2 before editing if isolation is unavailable; --env --plugin --out --timeout)",
       "support/verify/plugin-native-capture.mjs  (destructive fixture preparation for plugins reload and Doctor: resolves the current native capture references for --plugin from the clone's installed/native index, records the selected directory and its references to --out, and removes that directory while preserving the references to exercise missing-capture recovery; refuses original persona paths, shared runtimes, source directories or a fallback directory whose custody does not belong to this clone; --env --plugin --remove-referenced --out --timeout)",
       "support/verify/uninstall-load-path-race.mjs  (wraps sessions.send, plugins.uninstall and a plugins.load.paths config write: starts a fixture tool held until explicit release, observes its exact callback admission, resolves the current managed directory and saves the preceding load paths, then starts uninstall. Before editing, observes this uninstall's durable enabled-to-disabled config transition, its pending response and live lifecycle lease, while the same tool is still held, observed through its clone-owned marker after ordinary plugin admission closes; missing admission exits 2. Adds the resolved directory only after that barrier, releases the hold immediately after the write is observable without waiting on reload, joins both calls, and records responses, file existence and the recheck outcome to --out; finally restores the previous load paths and releases any remaining task-owned hold. Fixture holds have a bounded failsafe; --admission-method is used only for initial admission before uninstall. Later observation and release use --release-path, resolved relative to the clone state root and validated as exclusively clone-owned, independently of the retiring plugin's Gateway methods; --env --plugin --tool --admission-method --session-key --release-path --out --timeout)",
-      "support/verify/plugin-credential-context.mjs  (config.get and plugins.inspect for one installed synthetic provider; selects its sole advertised credential path and current projected config hash, writes only {pluginId,path,baseHash} to --out for plugins.credentials.inspect --merge-from, and exits 2 if the descriptor or revision cannot be established; never emits config or credential values; --env --plugin --out --timeout)"
+      "support/verify/plugin-credential-context.mjs  (config.get and plugins.inspect for one installed synthetic provider; selects its sole advertised credential path and current projected config hash, writes only {pluginId,path,baseHash} to --out for plugins.credentials.inspect --merge-from, and exits 2 if the descriptor or revision cannot be established; never emits config or credential values; --env --plugin --out --timeout)",
+      "support/verify/model-setup-install.mjs  (wraps ocm env clone and openclaw models set <model>: creates a stopped task-owned clone of --env with the exact same selected runtime artifact and a unique state directory, retaining no live services from its source; journals ownership to --out before mutation. In that clone only, applies --fixture with an explicit codex model runtime policy for the supplied openai/<model> selection, local registry routing and a configured missing codex install. Refuses to remove or edit any package path outside the new clone state root, including symlink destinations. Records that the codex package and usable install are absent and that model selection requires codex before calling ocm @<owned-clone> -- models set <model>; records its exit status, repair output and subsequent plugins list --json plus installed-package identity, so warnings or a no-op cannot masquerade as an install. The local registry supplies the official package fixture at the selected runtime release cohort, with accepted fixture capability metadata; no provider request or real credentials are used. In finally, stops only services it started and removes only its owned clone, including after command failure; never changes the source clone, shared runtime or durable persona. Exits 2 if isolation, missing-plugin precondition, local package or policy cannot be established; --env --model --fixture --out --timeout)"
     ]
   },
   "phases": [
@@ -268,7 +270,7 @@
     {
       "id": "install-plugin-during-setup",
       "kind": "operation",
-      "intent": "A user changes the default model so setup repairs the runtime plugins the selection needs, observing setup-time installs reached from other areas.",
+      "intent": "A user selects a model that requires the missing Codex runtime plugin, observing the setup repair install and its resulting inventory in an isolated clone.",
       "paths": [
         "src/commands/models/set.ts",
         "src/commands/models/auth.ts",
@@ -276,20 +278,22 @@
         "src/commands/onboarding-plugin-install.ts",
         "src/commands/codex-runtime-plugin-install.ts",
         "src/commands/channel-setup/plugin-install.ts",
-        "src/wizard/setup.official-plugins.ts"
+        "src/wizard/setup.official-plugins.ts",
+        "src/agents/openai-routing.ts",
+        "src/commands/doctor/shared/missing-configured-plugin-install*.ts",
+        "src/commands/doctor/shared/configured-runtime-plugin-installs.ts"
       ],
       "requires": [
-        "mock-provider-scripted"
+        "clawhub-registry-local",
+        "plugin-model-setup"
       ],
       "commands": [
-        "ocm @{env} -- models set {persona:mock-provider-scripted:modelId}",
-        "ocm @{env} -- plugins list --json"
+        "node {kovaRoot}/support/verify/model-setup-install.mjs --env {env} --model {persona:plugin-model-setup:modelId} --fixture {persona:plugin-model-setup:definitionPath} --out {run}/model-setup-install.json --timeout 165000"
       ],
       "checkpoint": [
         "responses",
         "logs",
-        "timing",
-        "state:state/openclaw.sqlite"
+        "timing"
       ],
       "timeoutMs": 180000,
       "browser": false,
@@ -806,8 +810,11 @@
         "gateway-multi-user-profiles",
         "mock-provider-scripted",
         "mock-provider-tool-calls",
+        "plugins-broken-installs",
         "plugins-bundled-and-external",
         "plugins-legacy-state",
+        "plugins-local-sources",
+        "plugins-policy-mixed",
         "session-plugin-tools"
       ],
       "commands": [
@@ -1288,13 +1295,13 @@
         "plugin-fixture-surfaces"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change reload-mode-off --timeout 15000",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change reload-mode-off --out {run}/passive-reload-mode.json --timeout 15000",
         "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change fixture-config-change --plugin {persona:plugin-fixture-surfaces:pluginId} --out {run}/event-passive-reload-disabled-fixture-config.json --timeout 15000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method {persona:plugin-fixture-surfaces:hookLogMethod} --params '{}' --timeout 15000 --after-ms 5000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.refresh --params '{}' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.reload --params '{\"plugins\":[{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}]}' --timeout 60000",
         "node {kovaRoot}/support/verify/config-change.mjs --env {env} --restore-from {run}/event-passive-reload-disabled-fixture-config.json --timeout 15000",
-        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change reload-mode-hybrid --timeout 15000"
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --restore-from {run}/passive-reload-mode.json --timeout 15000"
       ],
       "checkpoint": [
         "responses",

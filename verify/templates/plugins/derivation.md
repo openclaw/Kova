@@ -71,22 +71,30 @@ openclaw gateway status --deep --require-rpc (CLI command): consumed from gatewa
 openclaw health (CLI command): consumed from status (reports runtime quarantines)
 openclaw status --all (CLI command): consumed from status (reports configured-unavailable plugins)
 openclaw doctor (--fix) plugin repairs (CLI command): owned by update (bound); its plugin repair files are listed as from update
-openclaw update, openclaw update status, openclaw update repair (CLI command): owned by update (bound)
+openclaw update (CLI command): owned by update (bound)
+openclaw update status (CLI command): owned by update (bound)
+openclaw update repair (CLI command): owned by update (bound)
 openclaw hooks list (CLI command): owned by automation (bound)
 openclaw claws status (CLI command): owned by claws
 openclaw skills search (CLI command): owned by skills (bound)
 openclaw mcp set (CLI command): owned by MCP (bound)
-openclaw config set / openclaw config get (CLI command): owned by config (bound)
+openclaw config set (CLI command): owned by config (bound)
+openclaw config get (CLI command): owned by config (bound)
 openclaw logs --follow (CLI command): consumed from logs
 openclaw onboard (CLI command): owned by onboarding; its setup-time install caller is listed as from onboarding
-/new, /reset (chat command): owned by sessions (bound); named by the Codex plugin document
+/new (chat command): owned by sessions (bound); named by the Codex plugin document
+/reset (chat command): owned by sessions (bound); named by the Codex plugin document
 /btw (chat command): owned by the btw side-discussion tool
-clawhub package publish, clawhub login (CLI command): external ClawHub CLI, not this product
+clawhub package publish (CLI command): external ClawHub CLI, not this product
+clawhub login (CLI command): external ClawHub CLI, not this product
 api.enqueueNextTurnInjection (plugin call): not a registration method (bound counts api.register* and hook names); session workflow owned by sessions
 api.emitAgentEvent (plugin call): not a registration method
-api.setRunContext / api.getRunContext / api.clearRunContext (plugin call): not a registration method
+api.setRunContext (plugin call): not a registration method
+api.getRunContext (plugin call): not a registration method
+api.clearRunContext (plugin call): not a registration method
 api.sendSessionAttachment (plugin call): not a registration method; bundled-only session workflow
-api.scheduleSessionTurn / api.unscheduleSessionTurnsByTag (plugin call): not a registration method; owned by cron
+api.scheduleSessionTurn (plugin call): not a registration method; owned by cron
+api.unscheduleSessionTurnsByTag (plugin call): not a registration method; owned by cron
 api.onConversationBindingResolved (plugin call): not a registration method; conversation bindings owned by channels
 registerSandboxBackend (openclaw/plugin-sdk/sandbox) (plugin call): SDK module function, not an api.register* method; owned by sandbox
 session discussion provider (openclaw/plugin-sdk/session-discussion) (plugin call): SDK module function; owned by the btw side-discussion tool
@@ -884,10 +892,11 @@ names: run 2's Control UI flow names, patch file names and script forms rewritte
 search list: run 1 reported the openclaw tool actions plugin_install, plugin_activate_artifact and plugin_uninstall and the /plugins chat command handlers; run 2 reported the plugin_activate_artifact literal, the parsePluginsCommand symbol and the codex_plugins literal; both entry points are already placed from the documents; the input file is unchanged, since both runs searched it as written
 breaks: the seven mapped breaks are mapped by both runs; 145553, which run 2 mapped, is not mapped (correction below)
 correction after both runs: the input file's glob src/infra/plugin-activation.ts named no file at 7e80556f; the module is ui/src/lib/plugin-activation.ts, so the glob in the input file, the template paths and the Bounds line above name that file. Phase path globs that matched no file were corrected the same way: src/plugins/skill*.ts -> src/plugins/management-skill-read.ts (preview-plugin-skill), src/agents/**/lsp*.ts -> src/agents/agent-bundle-lsp-*.ts (event-turn-cancel-during-bundle-lsp-startup), and src/cron/**/plugin*.ts removed from plugin-hooks-follow-lifecycle (only test files match it). No entry point or condition came from these globs.
-counting: entry points are counted one per control, method, command, route or call site; a line in Operations or Excluded entry points that names two controls counts two, which gives the 374 in coverage.md and comparison.md after excluding the internal broadcasts
+counting: entry points are counted one per control, method, command, route or call site; a line in Operations or Excluded entry points that names two controls counts two, which gives the 382 in coverage.md and comparison.md after excluding the internal broadcasts and expanding each explicitly named command and API method
 /btw (chat command): entry point from run 1 only; kept as run 1 listed it
-/new, /reset (chat command): entry point from run 1 only; kept as run 1 listed it
-Broadcast events plugins.changed, plugins.install.progress, plugins.controlUi.changed, plugin.approval.requested, plugin.approval.resolved: entry point from run 1 only; kept as run 1 listed it
+/new (chat command): entry point from run 1 only; kept as run 1 listed it
+/reset (chat command): entry point from run 1 only; kept as run 1 listed it
+Broadcast events plugins.changed, plugins.install.progress, plugins.controlUi.changed, plugin.approval.requested, plugin.approval.resolved: recorded as internal emissions and excluded from entry-point counts
 Credential API key field: entry point from run 1 only; kept as run 1 listed it
 Docked link reader: entry point from run 1 only; kept as run 1 listed it
 Plugin approval prompt decision buttons (Allow once, Allow always, Deny): entry point from run 1 only; kept as run 1 listed it
@@ -972,7 +981,7 @@ correction after review: system-agent operations run through the operator chat f
 correction after review: channel delivery starts through inbound channel dispatch; the uninstall race uses a managed removal target; active cleanup failure is controlled by a marker read by the live callback.
 correction after review: catalog detail uses a discovery id, skill reads declare installed source, filesystem probes use OPENCLAW_STATE_DIR, and the normal-turn join allows its full remaining hold time.
 correction after review: destructive ordering includes CLI, Gateway and tool removals, so the capability-widening phase precedes uninstall; CLI-only read-only policy and the unexercised redactor boundary remain uncovered.
-correction after review: the entry-point arithmetic now excludes emitted broadcast events consistently with the exclusions above: round 1 312/343 and 315/343; round 2 362/393 and 352/393; round 3 354/374 and 352/374; round 4 334/393 and 373/393.
+correction after review: the entry-point arithmetic excludes emitted broadcast events and counts each explicitly named command and method separately: round 1 315/347 and 316/347; round 2 365/398 and 354/398; round 3 362/382 and 355/382; round 4 339/399 and 378/399.
 correction after review: every named config change saves and restores its exact preceding values; update and capability-widening operations precede removal even though both are destructive operations.
 
 correction after review: session compaction and reset use a created session instead of consuming shared persona state; artifact activation temporarily inlines the plugins section and restores its include ownership without losing newly installed values; the multi-entry package starts installed and unreviewed.
@@ -993,3 +1002,11 @@ correction after review: phase order uses the catalogue classifications of chat,
 correction after review: drain and cancellation selectors include plugin-instance and settlement owners. Every hook continuation and mixed browser surface declares its providing fixtures. Approval-list producers poll for the exact pending request before either resolver runs. Scratch-session commands use only their returned session keys, and the exec hook probe prints a harmless marker instead of inherited environment values.
 
 correction after review: approval resolution, forwarding, no-route, timeout and cancellation select the before-tool-call approval transport owner. Loading-policy restoration captures the complete plugins subtree before any browser or CLI mutation and restores its exact prior shape, including load paths and per-plugin enablement.
+openclaw config get: entry point from run 1 only; excluded with the reason listed above
+openclaw update status: entry point from run 1 only; excluded with the reason listed above
+openclaw update repair: entry point from run 1 only; excluded with the reason listed above
+clawhub login: entry point from run 1 only; excluded with the reason listed above
+counting correction: the saved run 1 and run 2 each name setRunContext, getRunContext and clearRunContext, and each names scheduleSessionTurn and unscheduleSessionTurnsByTag; each method is counted separately, with flat and namespaced spellings matched to the same method. The CLI and chat names split above retain their original exclusions.
+
+plugin-model-setup: additional persona content: modelId is an openai model with an explicit codex runtime policy; definitionPath is a credential-free local setup fixture describing that policy, a configured but absent codex install, and registry endpoints/package metadata from clawhub-registry-local for the selected runtime release cohort. It is applied only to a temporary clone of the selected run environment. The helper captures the absent package before models set and the installed package afterward, and removes its clone in finally. The primary mock model and plugin inventory stay intact.
+correction after review: installed inventory requires local, broken and policy-restricted plugins explicitly. Passive reload saves and restores the exact preceding gateway.reload.mode value and presence. Setup installation selects a model whose runtime policy actually requires a missing plugin, with both precondition and resulting package captured in an owned clone.
