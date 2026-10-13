@@ -35,7 +35,7 @@ Union: 438 entry points, 37 condition headings; the individual-condition union w
 | Run | Procedure revision | Entry points found | Condition headings found | Individual conditions found |
 |---|---|---|---|---|
 | 1 | revision 1 | 355/438 (81.1%) | 32/37 (86.5%) | 39 enumerated; credited share estimated at about 70% |
-| 2 | revision 1 | 306/438 (69.9%) | 28/37 (75.7%) | 52 enumerated; credited share estimated at about 93% |
+| 2 | revision 1 | 307/438 (70.1%) | 28/37 (75.7%) | 52 enumerated; credited share estimated at about 93% |
 
 Remaining differences: the runs counted cross-area calls, native callers, sidebar controls and excluded shell surfaces differently; they also grouped conditions differently. The input bound initially named only the neighbouring areas.
 Acceptance: historical shortfall on both required shares; superseded by later rounds.
@@ -44,12 +44,12 @@ Known shortfall: both runs were below nine tenths on entry points and condition 
 
 ## Round 2
 
-Union: 294 entry points, 60 condition headings; the individual-condition union was not fully reconciled and was at least 183.
+Union: 294 entry points, 60 condition headings; the individual-condition union and credited shares were not fully reconciled.
 
 | Run | Procedure revision | Entry points found | Condition headings found | Individual conditions found |
 |---|---|---|---|---|
 | 1 | revision 2 | 290/294 (98.6%) | 55/60 (91.7%) | 183 enumerated; complete credited share not computed |
-| 2 | revision 2 | 280/294 (95.2%) | 53/60 (88.3%) | 140 enumerated; credited share at most 140/183 (76.5%) |
+| 2 | revision 2 | 280/294 (95.2%) | 53/60 (88.3%) | 140 enumerated; complete credited share not computed |
 
 Remaining differences: the revised counting rules aligned most entry points, but the runs selected different statements and headings from the same documents. Six search hits that were not calls were removed from run 1's entry census.
 Acceptance: historical shortfall for run 2's heading share; superseded by later rounds.
@@ -86,7 +86,7 @@ Known shortfall: none on the acceptance shares. The remaining input-bound and ex
 
 ## Historical counting notes
 
-The round 1 and round 3 entry-point unions were recounted from the preserved enumerations. Names and source paths identify entries; aliases and different labels for the same control are matched. Explicitly combined controls count at the finer granularity, such as text and number fields, Form and Raw switches, quiet-hours start and end, and the Settings shortcut and menu item. A generic group that does not name its controls stays a separate entry. Credited counts can therefore exceed enumerated rows. Round 2 retains its recorded entry reconciliation.
+The round 1 and round 3 entry-point unions were recounted from the preserved enumerations. Names and source paths identify entries; aliases and different labels for the same control are matched. Explicitly combined controls count at the finer granularity, such as text and number fields, Form and Raw switches, quiet-hours start and end, and the Settings shortcut and menu item. A generic group that does not name its controls stays a separate entry. Credited counts can therefore exceed enumerated rows. Run 2 in round 1 is credited with the theme-default accent control explicitly included in its preset entry. Round 2 retains its recorded entry reconciliation; its raw 140/183 ratio is not a bound on credited coverage, since a single row can explicitly contain several conditions.
 
 Rounds 1 and 2 had no heading walk; their heading shares are recovered from condition citations, splitting multiple named headings and matching introduction and shortened FAQ labels. Quoted values inside a heading, such as "lan" and "tailnet", are not extra headings. These recounts replace the earlier 39- and 67-heading estimates. Rounds 3 and 4 use `## Headings walked`. Earlier individual-condition estimates remain explicitly qualified and are not the acceptance measure.
 
