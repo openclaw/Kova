@@ -278,11 +278,10 @@
         "src/commands/doctor/legacy-config-repair.ts",
         "src/commands/doctor/repair-sequencing.ts",
         "src/commands/doctor/shared/automatic-config-repair.ts",
-        "src/commands/doctor/shared/codex-route-session-repair.ts",
         "src/commands/doctor/shared/config-flow-steps.ts",
         "src/commands/doctor/shared/config-migration-result.ts",
         "src/commands/doctor/shared/config-recovery.ts",
-        "src/commands/doctor/shared/legacy-config-*.ts",
+        "src/commands/doctor/shared/legacy*.ts",
         "src/commands/doctor/shared/preview-warnings.ts",
         "src/commands/startup-config-preflight.ts",
         "src/config/*-migration.ts",
@@ -326,7 +325,9 @@
         "src/state/openclaw-state-db-repair.ts",
         "src/state/openclaw-state-db-schema-runtime.ts",
         "src/state/openclaw-state-db-schema-version.ts",
-        "src/state/openclaw-update-schema-refusal.ts"
+        "src/state/openclaw-update-schema-refusal.ts",
+        "src/commands/doctor/shared/codex-route-*.ts",
+        "src/commands/doctor/shared/retired-config-formats.ts"
       ],
       "requires": [
         "approvals-legacy-json",
@@ -478,7 +479,8 @@
       "intent": "An owner previews a sanitized report for a recorded native-ledger failure through update.report under an isolated unavailable-GitHub fixture; the preview body and RPC result are observed.",
       "paths": [
         "src/gateway/server-methods/update-report.ts",
-        "src/infra/update-failure-*.ts"
+        "src/infra/update-failure-*.ts",
+        "src/shared/update-outcome.ts"
       ],
       "requires": [
         "gateway-multi-user-profiles",
@@ -684,7 +686,11 @@
         "src/commands/doctor-update*.ts",
         "src/flows/doctor-update-budget.ts",
         "src/cli/update-cli/update-finalization-lifecycle.ts",
-        "src/cli/update-cli/update-operation-deadline.ts"
+        "src/cli/update-cli/update-operation-deadline.ts",
+        "src/cli/update-cli/update-repair*.ts",
+        "src/cli/update-cli/shared.ts",
+        "src/cli/update-option-specs.ts",
+        "src/cli/update-cli.ts"
       ],
       "requires": [],
       "commands": [
@@ -742,7 +748,11 @@
       "paths": [
         "src/gateway/stale-install.ts",
         "src/index.ts",
-        "src/infra/package-lifecycle.ts"
+        "src/infra/package-lifecycle.ts",
+        "scripts/preinstall-package-manager-warning.mjs",
+        "scripts/postinstall-bundled-plugins.mjs",
+        "scripts/lib/package-lifecycle-marker.mjs",
+        "scripts/lib/fs-safe-prebuild.mjs"
       ],
       "requires": [
         "install-npm-global"
