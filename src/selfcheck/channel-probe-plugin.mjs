@@ -4,9 +4,11 @@ import { pathToFileURL } from "node:url";
 import { repoRoot } from "../paths.mjs";
 import { assertEqual, inlineCheck } from "./harness.mjs";
 
-// The plugin-sdk subpaths the probe imports, as current OpenClaw exports them.
-// The retired compatibility facades (channel-message among them) are absent, so
-// an import of one fails here the way it fails in OpenClaw's plugin loader.
+// Stand-in for the plugin-sdk subpaths the probe imports, as OpenClaw exports them
+// since openclaw/openclaw#162333 retired channel-message. Importing any other
+// subpath fails with ERR_PACKAGE_PATH_NOT_EXPORTED, the error OpenClaw's plugin
+// loader reports. This keeps the probe on that import list; it does not follow
+// later changes to OpenClaw's exports, which the channel scenario run covers.
 const openClawPluginSdk = {
   "./plugin-sdk/core": `
     export function definePluginEntry(entry) { return entry; }
