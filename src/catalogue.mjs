@@ -135,7 +135,7 @@ function argumentOffset(tokens) {
 
 // One pass owns option operands, the end-of-options separator and positionals.
 function commandArguments(tokens, flags, { allowedFlags = flags, head = [], parents = [], ocm = false, expectedSeparator = null } = {}) {
-  if (ocm) {
+  if (ocm && head.every((word, index) => tokens[index] === word)) {
     // OCM extracts switches independently before consuming the listed value options.
     const separator = expectedSeparator === null ? -1 : tokens.indexOf("--", head.length);
     const limit = separator < 0 ? tokens.length : separator;
@@ -156,7 +156,6 @@ function commandArguments(tokens, flags, { allowedFlags = flags, head = [], pare
   const findings = [];
   const seenFlags = new Set();
   let ended = false;
-  let invalidOrder = false;
   let separatorAt = null;
   for (let index = offset; index < tokens.length; index += 1) {
     const token = tokens[index];
@@ -175,10 +174,8 @@ function commandArguments(tokens, flags, { allowedFlags = flags, head = [], pare
     const flag = equal < 0 ? token : token.slice(0, equal);
     const selected = head.every((word, at) => words[at] === word);
     const available = selected ? flags : Object.assign({}, ...parents.filter((parent) => parent.head.every((word, at) => words[at] === word)).map(({ entry }) => entry.flags));
-    const info = Object.hasOwn(available, flag) ? available[flag] : null;
-    const owner = selected ? head : parents.findLast((parent) => parent.head.every((word, at) => words[at] === word) && Object.hasOwn(parent.entry.flags, flag))?.head;
-    if (info && owner !== head && Object.hasOwn(allowedFlags, flag)) findings.push({ code: "argument", flag, message: `${flag} belongs to the parent command; place it after ${head.join(" ")} for this entry` });
-    if (!info && Object.hasOwn(flags, flag)) invalidOrder = true;
+    const info = Object.hasOwn(available, flag) ? available[flag] : Object.hasOwn(flags, flag) ? flags[flag] : null;
+    if (!selected) findings.push({ code: "flag-placement", flag, message: `${flag} must follow the complete command head: ${head.join(" ")}` });
     let value = equal < 0 ? undefined : token.slice(equal + 1);
     if (ocm && seenFlags.has(flag)) findings.push({ code: "argument", flag, message: `OCM does not accept repeated ${flag}` });
     seenFlags.add(flag);
@@ -190,9 +187,9 @@ function commandArguments(tokens, flags, { allowedFlags = flags, head = [], pare
       else value = tokens[++index];
       if (value === undefined) findings.push({ code: "argument", flag, message: `${flag} requires a value` });
     }
-    options.push({ flag, value, owner });
+    options.push({ flag, value });
   }
-  return { words, options, findings, invalidOrder, separatorAt };
+  return { words, options, findings, separatorAt };
 }
 
 function gatewayMethod(options) {
@@ -243,6 +240,9 @@ export function validateCatalogue(catalogue) {
     const parsed = parseCatalogueCommand(entry.command, { form: true, standard: true });
     for (const finding of parsed.findings) add(`${at}/command`, finding.message);
     const args = commandArguments(parsed.tokens, validFlags ? entry.flags : {});
+    const fixedHead = headWords(args.words);
+    const writtenWords = canonicalWords(parsed.tokens);
+    if (!fixedHead.every((word, index) => writtenWords[index] === word)) add(`${at}/command`, "flags must follow the complete command head", "flag-placement");
     if (entry.kind === "gateway" && (!gatewayMethod(args.options) || gatewayMethod(args.options) !== entry.wraps)) add(`${at}/command`, "Gateway command must name exactly its wraps method");
     if (entry.kind === "product" && canonicalWords(parsed.tokens).slice(0, 3).join(" ") !== "ocm @{env} --") add(`${at}/command`, "product command must begin with ocm @{env} -- or ocm @{persona:<trait>:env} --");
     if (entry.kind === "script" && (parsed.tokens[0] !== "node" || !parsed.tokens[1]?.startsWith("{kovaRoot}/support/"))) add(`${at}/command`, "script command must name a Kova support script");
@@ -292,19 +292,18 @@ function catalogueResolver(catalogue) {
   return (tokens) => {
     const candidates = [];
     for (const { entry, head, min, max, method, parsingFlags, parents, expectedSeparator } of forms) {
-      if (entry.kind === "ocm" && !head.every((word, index) => tokens[index] === word)) continue;
       const args = commandArguments(tokens, parsingFlags, { allowedFlags: entry.flags, head, parents, ocm: entry.kind === "ocm", expectedSeparator });
-      if (args.invalidOrder) continue;
       if (!head.length || !head.every((word, index) => args.words[index] === word)) continue;
       if (entry.kind === "gateway" && gatewayMethod(args.options) !== method) continue;
-      candidates.push({ entry, head, min, max, args, separatorMatches: entry.kind !== "ocm" || args.separatorAt === expectedSeparator });
+      const count = args.words.length - head.length;
+      const validPositionals = (entry.kind !== "ocm" || args.separatorAt === expectedSeparator) && count >= min && count <= max;
+      candidates.push({ entry, head, args, validPositionals });
     }
     const longest = Math.max(0, ...candidates.map(({ head }) => head.length));
     const matches = candidates.filter(({ head }) => head.length === longest);
-    if (matches.length !== 1) return null;
-    const match = matches[0];
-    const count = match.args.words.length - match.head.length;
-    return { ...match, validPositionals: match.separatorMatches && count >= match.min && count <= match.max };
+    const valid = matches.filter(({ validPositionals }) => validPositionals);
+    const selected = valid.length ? valid : matches;
+    return selected.length === 1 ? selected[0] : null;
   };
 }
 
@@ -312,7 +311,7 @@ export function resolveCatalogueEntry(catalogue, command) {
   const parsed = parseCatalogueCommand(command);
   if (parsed.findings.length) return null;
   const match = catalogueResolver(catalogue)(parsed.tokens);
-  return match?.validPositionals ? match.entry : null;
+  return match?.validPositionals && !match.args.findings.some(({ code }) => code === "flag-placement") ? match.entry : null;
 }
 
 // Shared with callers that already have phase commands, including standard phases.

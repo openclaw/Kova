@@ -209,9 +209,10 @@ path does not prevent readable sibling files from being checked.
 Flags declare whether they take no value, a required value or an optional value.
 The check consumes those operands before matching the complete command, so a
 boolean flag cannot hide an unknown subcommand and a value beginning with `--`
-remains a value. OCM command words precede options; OpenClaw child options
-follow the child name. A parent option keeps its original meaning and is not
-rebound to a same-named child option. The listed OCM commands extract
+remains a value. Flags must follow the complete command head; placing a flag
+between command words produces a `flag-placement` finding, even when the
+product CLI accepts that spelling. For example, use `sessions cleanup --json`
+instead of `sessions --json cleanup`. The listed OCM commands extract
 switches before value options and reject repeated flags; the command form determines
 whether and where a `--` separator is required. Unquoted pathname patterns and parentheses are rejected because
 the shell can expand them or interpret them as operators; brace expansion is

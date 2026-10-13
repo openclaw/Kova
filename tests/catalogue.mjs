@@ -80,13 +80,30 @@ test("explicit flag arity separates operands from options and subcommands", asyn
     assert.ok(check(c, command).length, command);
   }
   assert.deepEqual(check(c, "ocm @{env} -- sessions tail --session-key cleanup --tail 5"), []);
-  assert.ok(check(c, "ocm @{env} -- sessions --limit 1 import --all --json").some((finding) => finding.code === "argument" && finding.flag === "--limit"));
+  assert.ok(check(c, "ocm @{env} -- sessions --limit 1 import --all --json").some((finding) => finding.code === "flag-placement" && finding.flag === "--limit"));
   assert.deepEqual(check(c, "ocm @{env} -- sessions import --limit 1 --all --json"), []);
   assert.deepEqual(check(c, "ocm @{env} -- sessions --limit 1 --json"), []);
-  assert.equal(resolveCatalogueEntry(c, "ocm @{env} -- sessions --json cleanup")?.id, "sessions-cleanup");
+  for (const [misplaced, canonical] of [
+    ["sessions --json cleanup --dry-run", "sessions cleanup --json --dry-run"],
+    ["sessions --json import --all", "sessions import --json --all"],
+    ["sessions --all-agents tail --tail 5", "sessions tail --all-agents --tail 5"],
+    ["sessions --session-key cleanup tail --tail 5", "sessions tail --session-key cleanup --tail 5"],
+    ["--json status", "status --json"],
+  ]) {
+    for (const env of ["@{env}", "@{persona:upgrade-env:env}"]) {
+      const command = `ocm ${env} -- ${misplaced}`;
+      assert.equal(resolveCatalogueEntry(c, command), null, command);
+      assert.ok(check(c, command).some((finding) => finding.code === "flag-placement"), command);
+      assert.deepEqual(check(c, `ocm ${env} -- ${canonical}`), []);
+    }
+  }
+  for (const command of ["ocm --json env show {env}", "ocm env --json show {env}"]) {
+    assert.ok(check(c, command).some((finding) => finding.code === "flag-placement"), command);
+  }
+  assert.deepEqual(check(c, "ocm @{env} -- config --invented get gateway.port --json").map(({ code }) => code), ["flag-placement", "unlisted-flag"]);
+  assert.ok(validateCatalogue(catalogue(entry({ command: "ocm @{env} -- sessions --json cleanup" }))).some((finding) => finding.code === "flag-placement"));
   assert.equal(resolveCatalogueEntry(c, "ocm @{env} -- sessions --json invented"), null);
   for (const command of ["ocm @{env} -- sessions cleanup --agent demo --json", "ocm @{env} -- sessions --agent demo cleanup --json"]) {
-    assert.equal(resolveCatalogueEntry(c, command)?.id, "sessions-cleanup");
     assert.ok(check(c, command).some((finding) => finding.code === "unlisted-flag" && finding.flag === "--agent"));
   }
   assert.equal(resolveCatalogueEntry(c, "ocm @{env} -- sessions --agent cleanup invented --json"), null);
@@ -246,12 +263,12 @@ test("real CLI lists the bundled catalogue and exits nonzero on planted findings
   const pass = run(...args);
   assert.equal(pass.status, 0, pass.stderr);
   assert.equal(JSON.parse(pass.stdout).commandCount, 3);
-  await writeFile(paths.template, JSON.stringify({ schema: "kova.verify.template.v1", phases: [{ commands: ["ocm @{env} -- nonexistent --json", "ocm @{env} -- status --unlisted", "ocm @{env} -- config get {bad} --json"] }] }));
+  await writeFile(paths.template, JSON.stringify({ schema: "kova.verify.template.v1", phases: [{ commands: ["ocm @{env} -- nonexistent --json", "ocm @{env} -- status --unlisted", "ocm @{env} -- config get {bad} --json", "ocm @{env} -- sessions --json cleanup --dry-run"] }] }));
   const fail = run(...args);
   assert.equal(fail.status, 1, fail.stderr);
-  assert.deepEqual(JSON.parse(fail.stdout).findings.map((finding) => finding.code), ["unlisted-command", "unlisted-flag", "placeholder"]);
+  assert.deepEqual(JSON.parse(fail.stdout).findings.map((finding) => finding.code), ["unlisted-command", "unlisted-flag", "placeholder", "flag-placement"]);
   const plain = run(...args.slice(0, -1));
   assert.equal(plain.status, 1);
-  assert.match(plain.stdout, /^FAIL: 5 commands, 3 findings/);
+  assert.match(plain.stdout, /^FAIL: 6 commands, 4 findings/);
   for (const invalid of [["list", "--product", "../openclaw"], ["check", "--product", "openclaw"], ["list", "extra", "--product", "openclaw"], ["list", "--product", "openclaw", "--unknown"]]) assert.equal(run(...invalid).status, 1);
 });
