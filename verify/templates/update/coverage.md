@@ -1,13 +1,14 @@
 # Coverage: update
 
 Operations: 20/21
-Conditions described by retained phases: 247/520 (354 ambient, 166 event)
+Provisional conditions described by retained phases: 246/520 (354 ambient, 166 event)
 Entry points inventoried: 203 placed/310 (107 excluded); executable coverage has not been measured
 Breaks mapped: 5/6; break 159504 needs an affected older updater and is outside the current persona's reach
 
-A condition is counted here only when a retained phase describes its concrete setup and observation; runtime execution remains unproven. Reconciliation credits applicable phases from either run and excludes claims whose required inputs or actions were lost. There are 247 described conditions and 273 explicit gaps below. Phases: 123 (1 setup, 20 operation, 102 event).
+A condition is counted here only when a retained phase describes its concrete setup and observation; runtime execution remains unproven. Reconciliation credits applicable phases from either run and excludes claims whose required inputs or actions were lost. There are 246 provisionally described conditions and 274 explicit gaps below. Phases: 123 (1 setup, 20 operation, 102 event).
 
 Uncovered:
+- Condition 422, Compatibility rollback between different implementations at the same schema: side-next only bumps the version of side, so no retained phase establishes a distinct older reader or newer companion-table behavior.
 - Condition 7, Unreadable configuration file (config-read-failed with filesystem code): No fixture makes configuration reads fail; invalid fields and read-only writes exercise different conditions.
 - Condition 15, Older updater refuses before staging with plugins.load.paths: plugin path not found: The missing-plugin-path fixture is applied to the primary environment, not to the older updater installation.
 - Condition 19, Another Doctor holds a native command claim: recorded as foreign custody, installation replacement blocked: No concurrent Doctor holds the native-command claim; database locks are a different condition.
@@ -25,7 +26,7 @@ Uncovered:
 - Condition 212, New explicit update supersedes a sole stale identityless row (superseded): The stale-history environment receives only a dry-run update, not a mutating update that supersedes its row.
 - Condition 226, Extended-stable installation ahead of the selector, or selector failures (registry.reason): No extended-stable installation is ahead of its selector, and no selector failure is injected.
 - Condition 258, Operator-managed local plugin copy in plugins.load.paths: plugin-operator-managed warning: No trait supplies an existing operator-managed plugins.load.paths directory to the older installation.
-- Condition 273, No functioning model: /update still works: No fixture removes the inference route used by repair.
+- Condition 273, No functioning model: /update still works: No fixture removes inference while /update is invoked.
 - Condition 277, Headless node host busy: automatic activation postponed until idle, activations at least 12 hours apart: No phase establishes busy work on the node host.
 - Condition 280, Node shares its state directory with an older Gateway: mismatched local node rejected: No node fixture shares state with an older running Gateway.
 - Condition 281, Node update needing a migration or startup repair is deferred: No node target is constructed to require migration or repair before activation.
@@ -287,10 +288,10 @@ Phases that depend on each script still to be written (support.toWrite):
 - support/verify/release-feed.mjs: 123 phases
 - support/verify/restore-update-fixture.mjs: 91 phases
 - support/verify/update-cli.mjs: 60 phases
-- support/ensure-gateway-running.mjs: 45 phases
+- support/ensure-gateway-running.mjs: 46 phases
 - support/verify/env-fault.mjs: 41 phases
 - support/verify/read-installation-state.mjs: 37 phases
-- support/verify/gateway-call.mjs: 22 phases
+- support/verify/gateway-call.mjs: 21 phases
 - support/verify/control-ui.mjs: 14 phases
 - support/verify/manual-package-replace.mjs: 11 phases
 - support/verify/session-turn-hold.mjs: 8 phases
@@ -301,11 +302,11 @@ Phases that depend on each script still to be written (support.toWrite):
 - support/verify/channel-inbound-turn.mjs: 2 phases
 - support/verify/chat-history-read.mjs: 2 phases
 - support/verify/config-fixture.mjs: 2 phases
+- support/verify/cron-isolated-run.mjs: 2 phases
+- support/verify/external-supervisor.mjs: 2 phases
 - support/verify/node-host-auto-update.mjs: 2 phases
 - support/verify/restart-handoff.mjs: 2 phases
 - support/verify/stage-state-fixture.mjs: 2 phases
-- support/verify/cron-isolated-run.mjs: 1 phases
-- support/verify/external-supervisor.mjs: 1 phases
 - support/verify/package-recovery-helper.mjs: 1 phases
 - support/verify/source-server-update.mjs: 1 phases
 - support/verify/stage-session-store-fixture.mjs: 1 phases
@@ -377,3 +378,10 @@ Every reporting action requires a live `github-unavailable` fixture that isolate
 Catalogue registration is a separate prerequisite owned by [PR #174](https://github.com/openclaw/Kova/pull/174). This template's `support.toWrite` list is the input to those additions, not itself a catalogue registry. Until those entries are added, unlisted commands reject planning; only registered entries with `status: toWrite` withhold phases. This contribution does not claim that a current catalogue can plan it.
 
 The release feed retains a publication recipe after setup, then each selected phase starts and joins its own server handle. A server must also stop when its owning phase worker exits or is interrupted. This keeps cleanup local to selected phases instead of requiring an otherwise unselected final phase. `history-stale-run` additionally supplies `fixture`; its rows are staged with the Gateway stopped immediately before restart and separately before repair, without a status query consuming them first. Secondary Doctor migrations use the comparison side's runtime over legacy content; the persona runtime remains for first-hop updater scenarios.
+
+
+## Unresolved native-service prerequisite
+
+These counts remain provisional for native-update behavior. OCM marks its running Gateway as externally supervised. At the pinned OpenClaw revision, that disables automatic campaigns, refuses native CLI updates and can route update.run to OCM. Restoring package and user-state fixtures does not establish native service ownership. The template needs an explicit disposable native-service fixture contract for those cases, or must mark them outside reach with an OCM-only scope. No such fixture is implemented or activated by these files; native execution coverage is not established.
+
+The same-code rollback phase records replacement and startup only; condition422 remains uncovered. Node scenarios declare separate persona-driven and side-driven journeys, each with a fresh eligible host fixture. The cron restart scenario requires a held job that has reached active execution and a terminal result read, rather than a background enqueue acknowledgement. The PID-mismatch scenario creates and holds a handoff before the wrong-PID consume, then uses the matching consumer to observe retention.

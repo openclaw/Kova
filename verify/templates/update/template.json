@@ -143,10 +143,10 @@
       "support/verify/env-fault.mjs  (injects one named environment fault for the duration of a phase and removes it on --wait: channel-probe-fail, config-readonly, prefix-readonly, prefix-volume-full, tmpdir-small, artifacts-volume-full, block-git-remote, hold-state-lock, db-writer-loop, db-writer-hold, db-reader-loop, config-edit, kill-gateway, freeze-gateway, occupy-gateway-port, signal-restart (SIGUSR2), signal-stop, kill-update-helper, helper-spawn-denied, interrupt-doctor; --env --fault <name> --when-update-phase <phase> --after-ms <ms> --count <n> --interval-ms <ms> --duration-ms <ms> --signal <name> --timeout <ms> [--background --handle <file>] [--wait <file>]; github-unavailable gives every spawned CLI and Gateway reporting process isolated HOME/XDG directories and PATH with an unavailable gh stub, clears GH_TOKEN and GITHUB_TOKEN only in those processes, prevents GitHub submission, and restores the previous process environment on --wait or interruption; never changes host authentication)",
       "support/verify/manual-package-replace.mjs  (npm install -g, pnpm add -g or bun add -g of the side, side-next or persona package over an environment's installation outside the updater; --env --tool <npm|pnpm|bun> --target <side|side-next|persona> --keep-gateway-running --ignore-scripts --timeout <ms>)",
       "support/verify/source-server-update.mjs  (scripts/update-gateway.sh run inside the environment's Git checkout against the local mirror; --env --timeout <ms>)",
-      "support/verify/external-supervisor.mjs  (runs the environment's Gateway under OPENCLAW_SUPERVISOR_MODE=external with a minimal supervisor that records the served PID and consumes handoffs, restoring the managed service on --wait; --env --timeout <ms> [--background --handle <file>] [--wait <file>])",
+      "support/verify/external-supervisor.mjs  (runs the environment's Gateway under OPENCLAW_SUPERVISOR_MODE=external with a minimal supervisor that records the served PID and consumes handoffs, restoring the managed service on --wait; --env --timeout <ms> [--background --handle <file>] [--wait <file>]; --hold-handoff records the pending handoff without consuming it so explicit mismatch and matching consumers can run; restore the previous service on completion or interruption)",
       "support/verify/restart-handoff.mjs  (openclaw gateway restart-handoff consume with the expected PID read from a supervisor handle, or a deliberately wrong one; --env --operation consume --expected-pid-from <file> --expected-pid-mismatch)",
       "support/verify/package-recovery-helper.mjs  (the package-publication recovery helper's status, repair or retire command printed by an earlier update, read from that update's result file; --env --action <status|repair|retire> --from <file>)",
-      "support/verify/node-host-auto-update.mjs  (start a fresh disposable headless node from the exported fixture for each invocation, including its persona runtime, runtime selector and activation timestamps; connect only to this comparison environment, observe update preparation/activation/fallback, collect node state and remove the disposable host on completion or interruption; never start or change the durable source host; --env --node <id> --fixture <path> --timeout <ms>)",
+      "support/verify/node-host-auto-update.mjs  (start a fresh disposable headless node from the exported fixture for each invocation, including its persona runtime, runtime selector and activation timestamps; connect only to this comparison environment, observe update preparation/activation/fallback, collect node state and remove the disposable host on completion or interruption; never start or change the durable source host; --env --node <id> --fixture <path> --timeout <ms>; --driver <persona|side> chooses the node implementation before discovery, on a fresh eligible fixture without a prior activation cooldown; for side, prepare a newer side-next Gateway/package target through the cloned environment's OCM runtime selection before starting the side node, restoring it afterwards; collect results separately for each driver)",
       "support/verify/control-ui.mjs  (catalogue entry; flows this template needs: updates-page-check, updates-channel-select, update-review-cancel, update-now-confirm, updates-hold, updates-toggle-checks, updates-check-status, updates-retry-cancel, updates-diagnose, updates-report-failure, update-failure-ask, update-failure-ask-storage-blocked, update-reconnect, update-reload-after-build, sidebar-server-updated, chat-outbox-restart; --env --flow --artifact-dir --timeout --out --session-key; --github-fixture <handle> requires an active isolated unavailable-GitHub fixture before any reporting action and fails closed without invoking OpenClaw when that fixture is missing or invalid)",
       "support/verify/gateway-call.mjs  (catalogue entry; methods update.status, update.run, update.hold, update.report, update.runs.list, update.runs.get, gateway.restart.request, gateway.restart.preflight, gateway.stop.request; --env --method --params --timeout --out --merge-from --after-ms [--background --handle] [--wait]; --github-fixture <handle> requires an active isolated unavailable-GitHub fixture before any reporting action and fails closed without invoking OpenClaw when that fixture is missing or invalid)",
       "support/verify/chat-send.mjs  (catalogue entry; /update, /restart and a plain message during a restart drain; --env --session-key --message --timeout --after-ms [--background --handle] [--wait]; --when-gateway-draining waits for the serving process to report draining before sending, reports setup unavailable as exit 2, and never treats a reconnect as drain entry)",
@@ -154,7 +154,7 @@
       "support/verify/agent-tool-turn.mjs  (catalogue entry; gateway tool update.run action and exec running openclaw update; --env --session-key --tool --args --timeout)",
       "support/verify/chat-history-read.mjs  (catalogue entry; --env --session-key --limit --timeout)",
       "support/verify/channel-inbound-turn.mjs  (catalogue entry; --env --chat-type direct --peer --text --timeout)",
-      "support/verify/cron-isolated-run.mjs  (catalogue entry; --env --job-id --timeout)",
+      "support/verify/cron-isolated-run.mjs  (catalogue entry; --env --job-id --timeout; --hold-ms <ms> uses the held mock-provider fixture for this invocation; --wait-for-running returns the background handle only after cron.run has progressed from queued to active execution; --wait reads the terminal cron.runs result rather than the enqueue response; [--background --handle <file>] [--wait <file>])",
       "product: ocm @{env} -- update status --json  (openclaw update status, src/cli/update-cli.ts and docs/cli/update/status-and-history.md; --json --timeout <seconds>)",
       "product: ocm @{env} -- update --dry-run --json  (openclaw update preview, src/cli/update-option-specs.ts and docs/cli/update.md; --dry-run --json --channel <stable|extended-stable|beta|dev>)",
       "product: ocm @{env} -- update repair --json --yes  (openclaw update repair, src/cli/update-cli.ts registerUpdateFinalizationCommand and docs/cli/update/repair-and-recovery.md; --json --yes --no-restart --timeout <seconds> --channel --accept-capabilities)",
@@ -666,7 +666,9 @@
         "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed-update-from-chat.json --timeout 240000",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message '/update' --timeout 250000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-chat-update --timeout 120000",
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed-update-from-chat.json --timeout 240000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool gateway --args '{\"action\":\"update.run\"}' --timeout 200000",
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed-update-from-chat.json --timeout 240000",
         "node {kovaRoot}/support/verify/cron-isolated-run.mjs --env {env} --job-id {persona:cron-job-update:jobId} --timeout 200000",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --chat-type direct --peer {persona:session-main-rolling:peer} --text '/update' --timeout 60000",
         "ocm @{env} -- update status --json",
@@ -678,7 +680,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 1200000,
+      "timeoutMs": 1620000,
       "browser": false,
       "slow": true
     },
@@ -1013,7 +1015,7 @@
     {
       "id": "keep-node-host-updated",
       "kind": "operation",
-      "intent": "A headless node host attached to the Gateway checks the published release, prepares it and activates it once idle, or defers while busy; node update preparation, deferral, activation and the reported node version are observed.",
+      "intent": "A fresh idle headless node checks, prepares and activates the published release, once driven by the persona runtime and separately by the comparison side runtime; preparation, activation and the reported node version are observed.",
       "paths": [
         "src/node-host/auto-update*.ts",
         "src/node-host/runner.ts",
@@ -1025,7 +1027,8 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/release-feed.mjs --env {env} --from {run}/release-feed.json --mode serve --timeout 30000 --background --handle {run}/release-feed-keep-node-host-updated.json",
-        "node {kovaRoot}/support/verify/node-host-auto-update.mjs --env {env} --node {persona:node-host-headless:nodeId} --fixture {persona:node-host-headless:fixture} --timeout 280000",
+        "node {kovaRoot}/support/verify/node-host-auto-update.mjs --env {env} --node {persona:node-host-headless:nodeId} --fixture {persona:node-host-headless:fixture} --timeout 280000 --driver persona",
+        "node {kovaRoot}/support/verify/node-host-auto-update.mjs --env {env} --node {persona:node-host-headless:nodeId} --fixture {persona:node-host-headless:fixture} --timeout 280000 --driver side",
         "ocm @{env} -- nodes status --json",
         "node {kovaRoot}/support/verify/release-feed.mjs --wait {run}/release-feed-keep-node-host-updated.json --timeout 30000"
       ],
@@ -1034,7 +1037,7 @@
         "logs",
         "timing"
       ],
-      "timeoutMs": 360000,
+      "timeoutMs": 630000,
       "browser": false,
       "slow": true
     },
@@ -1146,7 +1149,7 @@
       "requires": [],
       "commands": [
         "node {kovaRoot}/support/verify/release-feed.mjs --env {env} --from {run}/release-feed.json --mode serve --timeout 30000 --background --handle {run}/release-feed-restart-under-external-supervisor.json",
-        "node {kovaRoot}/support/verify/external-supervisor.mjs --env {env} --background --handle {run}/supervisor.json",
+        "node {kovaRoot}/support/verify/external-supervisor.mjs --env {env} --hold-handoff --background --handle {run}/supervisor.json",
         "ocm @{env} -- gateway restart-handoff capabilities --json",
         "ocm @{env} -- gateway restart --safe",
         "node {kovaRoot}/support/verify/restart-handoff.mjs --env {env} --operation consume --expected-pid-from {run}/supervisor.json",
@@ -3396,9 +3399,9 @@
       "slow": true
     },
     {
-      "id": "event-update-supersedes-stale-row",
+      "id": "event-preview-with-stale-history",
       "kind": "event",
-      "intent": "An explicit dry-run update on an installation whose only active row is stale and identityless supersedes it; the superseded outcome and the new run are observed.",
+      "intent": "An installation restored from the stale-history fixture starts the comparison side and previews an update; the preview, reconciled history and resulting ledger state are observed.",
       "paths": [
         "src/infra/update-run-admission.ts",
         "src/infra/update-run-reconciliation*.ts"
@@ -3407,12 +3410,12 @@
         "update-history-stale"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/release-feed.mjs --env {env} --from {run}/release-feed.json --mode serve --timeout 30000 --background --handle {run}/release-feed-event-update-supersedes-stale-row.json",
-        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:update-history-stale:env} --fixture {persona:update-history-stale:fixture} --runtime persona --release-feed {run}/release-feed-event-update-supersedes-stale-row.json --timeout 240000",
+        "node {kovaRoot}/support/verify/release-feed.mjs --env {env} --from {run}/release-feed.json --mode serve --timeout 30000 --background --handle {run}/release-feed-event-preview-with-stale-history.json",
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:update-history-stale:env} --fixture {persona:update-history-stale:fixture} --runtime side --release-feed {run}/release-feed-event-preview-with-stale-history.json --timeout 240000",
         "ocm @{persona:update-history-stale:env} -- update --dry-run --json",
         "ocm @{persona:update-history-stale:env} -- update status --json",
         "node {kovaRoot}/support/verify/read-installation-state.mjs --env {persona:update-history-stale:env} --path state/openclaw.sqlite --timeout 60000",
-        "node {kovaRoot}/support/verify/release-feed.mjs --wait {run}/release-feed-event-update-supersedes-stale-row.json --timeout 30000"
+        "node {kovaRoot}/support/verify/release-feed.mjs --wait {run}/release-feed-event-preview-with-stale-history.json --timeout 30000"
       ],
       "checkpoint": [
         "responses",
@@ -3836,7 +3839,12 @@
       "requires": [],
       "commands": [
         "node {kovaRoot}/support/verify/release-feed.mjs --env {env} --from {run}/release-feed.json --mode serve --timeout 30000 --background --handle {run}/release-feed-event-restart-handoff-mismatch.json",
-        "node {kovaRoot}/support/verify/restart-handoff.mjs --env {env} --operation consume --expected-pid-mismatch",
+        "node {kovaRoot}/support/verify/external-supervisor.mjs --env {env} --hold-handoff --background --handle {run}/supervisor-mismatch.json",
+        "ocm @{env} -- gateway restart --safe",
+        "node {kovaRoot}/support/verify/restart-handoff.mjs --env {env} --operation consume --expected-pid-from {run}/supervisor-mismatch.json --expected-pid-mismatch",
+        "node {kovaRoot}/support/verify/restart-handoff.mjs --env {env} --operation consume --expected-pid-from {run}/supervisor-mismatch.json",
+        "node {kovaRoot}/support/verify/external-supervisor.mjs --wait {run}/supervisor-mismatch.json --timeout 30000",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-handoff-mismatch --timeout 120000",
         "ocm @{env} -- gateway restart-handoff capabilities --json",
         "node {kovaRoot}/support/verify/release-feed.mjs --wait {run}/release-feed-event-restart-handoff-mismatch.json --timeout 30000"
       ],
@@ -4500,7 +4508,8 @@
       "commands": [
         "node {kovaRoot}/support/verify/release-feed.mjs --env {env} --from {run}/release-feed.json --mode serve --timeout 30000 --background --handle {run}/release-feed-event-node-candidate-fails.json",
         "node {kovaRoot}/support/verify/release-feed.mjs --from {run}/release-feed-event-node-candidate-fails.json --publish-variant node-start-fails",
-        "node {kovaRoot}/support/verify/node-host-auto-update.mjs --env {env} --node {persona:node-host-headless:nodeId} --fixture {persona:node-host-headless:fixture} --timeout 200000",
+        "node {kovaRoot}/support/verify/node-host-auto-update.mjs --env {env} --node {persona:node-host-headless:nodeId} --fixture {persona:node-host-headless:fixture} --timeout 200000 --driver persona",
+        "node {kovaRoot}/support/verify/node-host-auto-update.mjs --env {env} --node {persona:node-host-headless:nodeId} --fixture {persona:node-host-headless:fixture} --timeout 200000 --driver side",
         "ocm @{env} -- nodes status --json",
         "node {kovaRoot}/support/verify/release-feed.mjs --wait {run}/release-feed-event-node-candidate-fails.json --timeout 30000"
       ],
@@ -4510,7 +4519,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 340000,
+      "timeoutMs": 470000,
       "browser": false,
       "slow": true
     },
@@ -4564,14 +4573,15 @@
         "src/gateway/restart-trace.ts"
       ],
       "requires": [
-        "cron-job-isolated"
+        "cron-job-isolated",
+        "mock-provider-held-turn"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/release-feed.mjs --env {env} --from {run}/release-feed.json --mode serve --timeout 30000 --background --handle {run}/release-feed-event-restart-during-cron.json",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method cron.run --params '{\"jobId\":\"{persona:cron-job-isolated:jobId}\",\"mode\":\"force\"}' --timeout 120000 --background --handle {run}/cron-restart.json",
+        "node {kovaRoot}/support/verify/cron-isolated-run.mjs --env {env} --job-id {persona:cron-job-isolated:jobId} --hold-ms 120000 --wait-for-running --timeout 150000 --background --handle {run}/cron-restart.json",
         "ocm @{env} -- gateway restart --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-event-restart-during-cron --timeout 60000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method cron.run --params '{}' --timeout 60000 --wait {run}/cron-restart.json",
+        "node {kovaRoot}/support/verify/cron-isolated-run.mjs --wait {run}/cron-restart.json --timeout 180000",
         "ocm @{env} -- cron list --json",
         "node {kovaRoot}/support/verify/release-feed.mjs --wait {run}/release-feed-event-restart-during-cron.json --timeout 30000"
       ],
@@ -4581,7 +4591,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 320000,
+      "timeoutMs": 460000,
       "browser": false,
       "slow": true
     },
@@ -4917,7 +4927,7 @@
     {
       "id": "event-same-schema-rollback-and-reupgrade",
       "kind": "event",
-      "intent": "The side is updated to a newer build, replaced back with the side's own build and updated again; companion-table handling, disabled features and reconciled projections on each start are observed.",
+      "intent": "The side is updated to a version-bumped copy, replaced with its original package, then updated again; package replacement, startup and status across this same-code cycle are observed. This does not exercise compatibility between different implementations.",
       "paths": [
         "src/infra/update-recovery*.ts",
         "src/state/openclaw-schema-versions.ts"
