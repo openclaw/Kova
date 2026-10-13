@@ -21,6 +21,7 @@ placeholders and command rules.
   used from step 6 on.
 - `catalogue/openclaw.json` and the persona manifest, when they exist, to name
   existing commands and traits.
+- `verify/standard.json`, for the test globs step 6 uses.
 
 ## Steps
 
@@ -61,13 +62,14 @@ reorder steps, and write each step's output before starting the next.
    table form, with uncovered items and persona additions by name.
 8. **Reconcile two runs into the template** (Step 8). Steps 1 to 7 run twice,
    independently: two separate sessions or agents that share nothing but the
-   input file, the revision and the page, each writing into its own working
-   directory. Reconcile by the page's rules; reconciliation adds and never
-   drops what one run covered. Then make every command the template uses known
-   to the catalogue: a `toWrite` entry per new script, a checked `existing`
-   entry per new OpenClaw command, Gateway method or OCM operation. Output: `template.json`,
-   `derivation.md` with `## Reconciliation`, `coverage.md` and
-   `comparison.md` in `verify/templates/<area>/`.
+   inputs and the page, each writing into its own working directory.
+   Reconcile by the page's rules; reconciliation adds and never drops what one
+   run covered. Then make every command the template uses known to the
+   catalogue: a `toWrite` entry per new script, a checked entry per new
+   OpenClaw command, Gateway method or OCM operation, `existing` only when it
+   can run today. Output: `template.json`, `derivation.md` with
+   `## Reconciliation`, `coverage.md` and `comparison.md` in
+   `verify/templates/<area>/`.
 
 ## Finish
 

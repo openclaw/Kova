@@ -358,11 +358,13 @@ breaches above and scripts no phase calls.
 
 Then make every command the template uses known to the catalogue, by the
 catalogue's [Adding an entry](catalogue.md#adding-an-entry) procedure: a
-`toWrite` entry for every script in `support.toWrite`, and an `existing` entry,
-checked against OpenClaw's own help or Gateway method list, for every
+`toWrite` entry for every script in `support.toWrite`, and an entry checked
+against OpenClaw's own help or Gateway method list for every
 `product: <command>` line and every Gateway method or OCM operation the
-catalogue lacks. Afterwards the plan withholds phases that call a script not
-yet written, and refuses nothing the template uses.
+catalogue lacks, with status `existing` when the command can run today (a
+Gateway method stays `toWrite` until Kova's generic Gateway caller exists).
+Afterwards the plan withholds phases that call a command not yet runnable, and
+refuses nothing the template uses.
 
 ## Template Form
 

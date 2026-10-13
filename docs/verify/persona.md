@@ -56,8 +56,9 @@ environment that every verification clones.
    updater journeys are phases of the `update` template, not a property of the
    persona.
 2. The persona is built, not hand-made. `kova persona build` creates a fresh
-   environment on the pinned runtime, runs every builder in dependency order,
-   runs every check, exports the environment and writes the manifest. A
+   environment on the pinned runtime, runs each trait's builder and then its
+   check, trait by trait in dependency order, exports the environment and
+   writes the manifest. A
    persona whose check fails is not a persona.
 3. A verification never changes the persona. Every clone is made by importing
    the export after checking its hash against the manifest, so every run starts
@@ -115,10 +116,17 @@ anywhere in a definition or a manifest.
   ],
   "support": {
     "existing": ["<script path>"],
-    "toWrite": ["<script path>  (<what it builds>; <flags>)"]
+    "toWrite": ["<script path>  (<what it builds>; <flags>)"],
+    "fixtures": ["<fixture file path>"]
   }
 }
 ```
+
+During a build, `{env}` is the environment being built, `{kovaRoot}` the Kova
+root, `{run}` a working directory for the build, and `{persona:<trait>:<key>}`
+the key a trait listed in `needs` recorded when its check ran earlier in the
+same build. Builders and checks follow the same command rules as phase
+commands (see [Commands](plan-and-verdict.md#commands)).
 
 ## Manifest Form
 

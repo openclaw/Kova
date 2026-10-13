@@ -116,8 +116,9 @@ The plan orders all selected phases so that every one of these holds:
 3. a phase that writes a `{run}` file comes before every phase that reads it;
 4. a phase that calls a `destructive` catalogue entry with a
    `{persona:<trait>:<key>}` value, or that lists a trait in `requires` and
-   calls a `destructive` entry, comes after every other phase that names any
-   key of that trait or lists it in `requires`.
+   calls a `destructive` entry, comes after every phase that names any key of
+   that trait or lists it in `requires` and calls no `destructive` entry.
+   Destructive phases keep the tie-break order among themselves.
 
 Where these leave a choice, `setup` phases come before `operation` phases and
 those before `event` phases; then templates go in order of area id, with
@@ -253,7 +254,9 @@ any other difference in the same phase and signal is classed on its own.
    when a cached baseline matches the cache key: the baseline commit, the
    manifest hash, `phasesSha256` and the Kova revision running the plan (its
    commit in a source checkout, its version when installed), since Kova's
-   scripts and comparison rules shape every recorded value.
+   scripts and comparison rules shape every recorded value. When the Kova
+   checkout has uncommitted changes, the run neither reads nor writes the
+   cache and records all three baseline clones afresh.
 3. Runs `kova persona verify`'s checks on every clone, still on the persona's
    own runtime, so a drifted persona is caught before either target touches
    its data.
@@ -334,7 +337,7 @@ After every phase, on each clone, Kova records into
 commands.json   always: each command, its exit code, its stdout when that is not JSON, stderr and duration
 responses.json  with responses: the JSON each command printed on stdout, by command index
 logs.txt        with logs: Gateway and agent log lines since the previous checkpoint
-timing.json     with timing: per-command and per-request durations and whether each reached its bound
+timing.json     with timing: each command's duration and whether it reached its bound
 state/          with state:<path>: a snapshot of that path in the clone's OpenClaw state directory
 doctor.json     with doctor: Doctor's JSON output
 screen.png      with screen: the last browser screenshot, when a browser step ran
@@ -353,16 +356,20 @@ item. A row is one phase, one signal and one item:
 |---|---|---|
 | `checkpoint` | the phase itself (`at` is empty) | recorded or not |
 | `commands` | a command's exit code, by index (`0/exit`); each normalized line of its text stdout (`0/stdout/<line text>`) | the exit code; the line's count |
-| `responses` | one JSON leaf, by command index and JSON pointer (`0/result/items/0/title`) | the leaf's value |
+| `responses` | one JSON node, by command index and JSON pointer (`0/result/items/0/title`) | a leaf's value; a container's type (`array` or `object`) with its length or its sorted key list |
 | `logs` | one normalized log line, by its text | the number of times it appears |
-| `timing` | one command or request, by index | whether it reached its bound |
-| `state` | a JSON file: one leaf, by path and JSON pointer; a JSON Lines file: one leaf, by path, line number and JSON pointer (`sessions/abc.jsonl:12/message/text`); any other text file: one normalized line, by path and text; any other file: the file, by path | the leaf's value; the line's count; the content hash |
+| `timing` | one command, by index; its bound is its `--timeout`, or the phase's `timeoutMs` when it has none | whether it reached its bound |
+| `state` | a JSON or JSON5 file: one node, by path and JSON pointer; a JSON Lines file: one node, by path, line number and JSON pointer (`sessions/<id-1>.jsonl:12/message/text`); any other text file: one line, by path and line number; any other file: the file, by path | as for `responses`; the normalized line text; the content hash |
 | `doctor` | one Doctor finding, by its code or text | present or not |
 | `screen` | the screenshot (`at` is empty) | its content hash |
 
 Text lines (log lines, text stdout and text state files) are normalized before
 comparison: timestamps, durations, UUIDs and other hexadecimal ids, process
-ids and port numbers become fixed tokens. An item one side has and the other
+ids and port numbers become fixed tokens. State paths are normalized the same
+way, except that each distinct generated id becomes a numbered token,
+`<id-1>`, `<id-2>`, …, in the order its files were first written, so a file
+named after a session created during the run has the same address on every
+clone. An item one side has and the other
 lacks has the value `{"absent": true}` on the side that lacks it. Absolute
 durations, RSS and CPU are recorded but never compared; timing only compares
 whether a bound was reached.
@@ -391,8 +398,9 @@ one of two things:
   `checkpoint` signal.
 - a **shared failure**: both sides recorded the same failure in the same
   phase. A failure is a command that exited non-zero or reached its bound, an
-  error or warning log line, or a Doctor finding. An error or warning line
-  present on both sides is a shared failure whatever its count on each side.
+  error or warning log line (a line OpenClaw logged at level `error` or
+  `warn`), or a Doctor finding. An error or warning line present on both
+  sides is a shared failure whatever its count on each side.
 
 A phase is **incomplete** when the baseline clone and a change clone both lack
 its checkpoint, or when either noise clone lacks it: without the noise runs,
@@ -430,7 +438,7 @@ verdict's `unmapped` and `withheld` lists say what did not.
   "change": { "repo": "openclaw/openclaw", "baseline": "<sha>", "change": "<sha>" },
   "persona": { "id": "openclaw-verification-user", "version": "<manifest version>" },
   "verdict": "good-to-go | breaks | unresolved",
-  "differences": [
+  "rows": [
     { "phase": "sessions/search-history", "signal": "timing", "at": "0", "clones": ["change-1", "change-2"], "baseline": "within bound", "change": "bound reached", "class": "break", "explainedBy": null },
     { "phase": "intent/goal-search-complete", "signal": "responses", "at": "0/result/indexing", "clones": ["change-1", "change-2"], "baseline": true, "change": false, "class": "intended", "explainedBy": "intent:goal" },
     { "phase": "standard/doctor", "signal": "doctor", "at": "<finding code>", "clones": ["change-1", "change-2"], "baseline": "present", "change": "present", "class": "not-caused", "explainedBy": null }
@@ -447,11 +455,10 @@ verdict's `unmapped` and `withheld` lists say what did not.
 }
 ```
 
-`differences` holds every classed row, shared failures included. A row that
-both change clones show is listed once, with both clones in `clones` and the
-first clone's value as `change`; a `flaky` row lists the one clone that shows
-it. `issues`
-repeats the `not-caused` rows with a one-line summary. `issues.md` lists the
+`rows` holds every classed row, differences and shared failures alike. A row
+that both change clones show is listed once, with both clones in `clones` and
+the first clone's value as `change`; a `flaky` row lists the one clone that
+shows it. `issues` repeats the `not-caused` rows with a one-line summary. `issues.md` lists the
 same rows for a human reader: each issue, the phase it was seen in and the
 evidence on both sides. Issues are problems that exist without the change;
 they are reported so they can be fixed on their own, and they never block the

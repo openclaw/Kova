@@ -53,8 +53,8 @@ change + baseline  →  plan (areas, templates, intent)  →  run on persona clo
   outside the catalogue is refused before anything runs. See
   [Command catalogue](catalogue.md).
 - **Verdict**: the comparison of the two sides, phase by phase, with every
-  difference classed as a break, intended, not caused by the change, fixed, or
-  flaky.
+  difference and every failure both sides share classed as a break,
+  intended, not caused by the change, fixed, or flaky.
 - **Issues**: failures present on both sides, such as the same error log line
   or Doctor finding. They are real problems in OpenClaw that the change did
   not cause. They are reported, never counted against the change.
