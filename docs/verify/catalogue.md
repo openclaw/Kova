@@ -139,6 +139,8 @@ its command head, and reports:
 - flags an entry does not list;
 - two entries used for the same thing;
 - placeholders outside the allowed four;
+- shell substitutions or operators outside single quotes (see
+  [Commands](plan-and-verdict.md#commands));
 - `toWrite` entries not yet implemented.
 
 The command head is the command's words up to its first flag, with
@@ -176,4 +178,7 @@ time:
    against the methods the Gateway registers there.
 2. Give the entry an id, its kind (`product`, `gateway` or `ocm`), its side,
    its flags and the top-level fields of its JSON output when it has one.
-3. Add it with status `existing`; the command already exists.
+3. Add it with status `existing` when the command can run today. A `gateway`
+   entry is `existing` only when both the method is registered and Kova's
+   generic Gateway caller exists; until the caller is written, every `gateway`
+   entry has status `toWrite`, and the plan withholds the phases that call it.

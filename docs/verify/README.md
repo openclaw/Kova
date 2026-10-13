@@ -89,9 +89,10 @@ kova verify compare --run <run-id> --json
   for its side, creates clones from the persona's export, switches each clone
   to its side's target, runs the plan on every clone in parallel and records a
   checkpoint after every phase. The change side runs twice, so a difference
-  that does not repeat is told apart from one that does; the baseline side
-  runs three times, so items that differ between its own runs are dropped as
-  noise, and those baseline runs are cached. Like Kova's existing `kova run`,
+  that does not repeat is told apart from one that does; the baseline commit
+  runs three times, once for the comparison and twice more so that items
+  which differ between those two extra runs are dropped as noise, and those
+  baseline runs are cached. Like Kova's existing `kova run`,
   it is a dry run unless `--execute` is present, and it destroys its clones
   afterwards.
 - `compare` reads the run's checkpoints, drops the noise, classes each
@@ -127,8 +128,8 @@ default.
 
 ## What a verification proves and what it does not
 
-A verdict is relative. `good-to-go` means every clone started, every phase was
-recorded, and no phase showed a difference the change caused that the intent
+A verdict is relative. `good-to-go` means every clone started, no phase is
+incomplete, and no phase showed a difference the change caused that the intent
 file does not predict. It does not mean the area is free of problems: failures
 present on both sides are issues, reported separately. It says nothing about
 changed paths no phase covers or phases the persona could not support; the

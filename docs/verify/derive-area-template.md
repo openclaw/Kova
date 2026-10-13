@@ -54,9 +54,12 @@ the release archive.
 2. The area's input file `verify/areas/<area>.json` in the
    [area input file form](#area-input-file-form): the area's `id`, its owner
    path globs, the exact list of documents that describe it, the symbols and
-   literals step 2 searches for, and the bound decisions (which neighbouring areas own which shared entry points). Two runs
-   of this procedure read the same input file; when runs differ, the
-   difference is resolved by editing this file, never by preferring one run.
+   literals step 2 searches for, and the bound decisions (which neighbouring
+   areas own which shared entry points). Two runs of this procedure read the
+   same input file. When the runs differ because of the bound, the document
+   list or the search list, the difference is resolved by editing this file,
+   never by preferring one run; every other difference is reconciled by
+   step 8.
 3. The path to the known breaks for OpenClaw, used from step 6 on.
 4. `catalogue/openclaw.json` and the persona manifest, to name existing
    commands and traits. A command or trait they lack is still named, as
@@ -178,7 +181,8 @@ Completeness: walk every listed document heading by heading, in order,
 including each section the bound names. Under each heading, record every state
 or event it states with its own consequence, whether or not a harness can
 reach it, or record `none`. Write `## Headings walked` in `derivation.md`: one
-line per heading, `<document> "<heading>": <condition numbers> | none`. A
+line per heading, `<document> "<heading>": <condition numbers> | none`, where a
+condition's number is its row number in `## Conditions`, counting from 1. A
 heading missing from that list has not been read. Step 8 compares two runs
 heading by heading, so a reader's miss shows as a heading where the other run
 found a condition.
@@ -227,7 +231,8 @@ Each phase has:
   persona carries). The plan withholds the phase when the persona lacks one.
 - `checkpoint`: the list of what to record, from the defined kinds.
 - `timeoutMs`: the bound for the whole phase, at most 300000. A phase that
-  needs longer is split, or marked `slow: true`; a slow phase may exceed the
+  needs longer is split, or marked `slow: true`; a `setup` phase is never
+  slow. A slow phase may exceed the
   limit, and the plan selects it only when the change touches its own paths
   or when a selected phase reads a `{run}` file it writes, never because
   another phase of its template was selected.
@@ -286,9 +291,9 @@ Rules:
 - The breaks correct the derivation; they are never copied into the template.
 - A break counts as in the area when at least one of its production paths
   falls inside the globs. A test path is one that matches an `ignore.tests`
-  glob in `verify/standard.json`; every other path is a production path. A break whose
-  only in-area paths are test paths is listed with the note `test-only` and
-  not counted.
+  glob in `verify/standard.json`; every other path is a production path. A
+  break whose only in-area paths are test paths is listed with the note
+  `test-only` and not counted.
 - A condition added here must still cite a document. When no document states
   it, add the condition anyway, cite the break in the Note, and list it under a
   `## Undocumented conditions` section of `derivation.md`; the scheduled

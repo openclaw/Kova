@@ -37,7 +37,8 @@ environment that every verification clones.
   OpenClaw's own commands or a catalogue script. A builder runs once, when the
   persona is built, never during a verification.
 - **Check**: one read command that proves the trait is present and prints its
-  keys. It runs at build time and in `kova persona verify`.
+  keys as one JSON object whose top-level fields are the trait's key names. It
+  runs at build time and in `kova persona verify`.
 - **Manifest**: `persona.json`, the record of what one build of the persona
   contains: every trait, every key's value, the runtime it was built with, the
   build time and the content hash of the exported environment.
@@ -62,8 +63,9 @@ environment that every verification clones.
    the export after checking its hash against the manifest, so every run starts
    from the same content. The durable environment is the source the export was
    made from, and it is protected with `ocm env protect`.
-4. Test credentials only. Traits use Kova's mock provider and its conformance
-   channel, which need no credentials. When a trait needs a test account, the
+4. Test credentials only. Traits use Kova's mock model provider (the one Kova
+   scenarios use by default) and its channel conformance support, which need
+   no credentials. When a trait needs a test account, the
    definition names that credential in `credentials`; the build reads its
    value from Kova's credential store (`kova setup`), and the value never
    appears in a definition, a manifest or a repository. The exported
