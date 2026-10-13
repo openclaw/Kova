@@ -145,7 +145,7 @@
       "product: ocm @{env} -- nodes status --json  (connected node versions, src/cli/nodes-cli/register.status.ts; --json)",
       "product: ocm @{env} -- backup create --output {run}/backup --verify --json  (verified backup before an update, src/cli/program/register.backup.ts and docs/install/updating/rollback-and-recovery.md; --output <path> --verify --json)",
       "support/verify/triage-run.mjs  (openclaw triage --run under a pseudo-terminal, one bounded embedded repair turn; --env --timeout <ms>)",
-      "support/verify/stage-state-fixture.mjs  (OCM service stop and confirmed process exit, copy of a persona state or config fixture into the state directory, then either openclaw doctor --fix --json or a Gateway start whose refusal or warnings are recorded, record Doctor output and the resulting config and state rows as compared JSON before restoring anything, then removal of the fixture and restore of the previous files and service; --env --fixture <path> --run <doctor|start> --timeout <ms>)",
+      "support/verify/stage-state-fixture.mjs  (OCM service stop and confirmed process exit, copy of a persona state or config fixture into the state directory, then either openclaw doctor --fix --non-interactive (the wrapper encodes command output, exit status and state observations as JSON; it must not pass --json to the repair command) or a Gateway start whose refusal or warnings are recorded, record Doctor output and the resulting config and state rows as compared JSON before restoring anything, then removal of the fixture and restore of the previous files and service; --env --fixture <path> --run <doctor|start> --timeout <ms>)",
       "product: ocm @{env} -- sessions --json --active <n>  (sessions listed after a forced restart, src/commands/sessions*.ts and docs/cli/sessions.md; --json --active <minutes>)",
       "support/verify/stage-session-store-fixture.mjs  (OCM service stop and confirmed process exit, staging of a persona fixture into an agent directory, Doctor, start; --env --agent --fixture)",
       "support/ensure-gateway-running.mjs  (required catalogue-contract adaptation of the existing Gateway health helper: accept --timeout <ms> while retaining --timeout-ms compatibility; --env --artifact-dir --timeout; currently only --timeout-ms is implemented, so phases using --timeout remain withheld until the adaptation is available; --after-state-from <file> consumes a prior gateway_boot_lifecycle snapshot, observes a new active boot/owner generation and healthy serving state, and never accepts the healthy predecessor or starts/restarts the service itself in this mode; observe both in-process and process replacement restarts; record missing transition as ordinary timeout 3, not malformed input 2; a valid prior capture that records a product/storage error stays an error outcome rather than being relabeled malformed input)",
@@ -217,7 +217,8 @@
         "src/cli/update-cli.ts",
         "src/cli/update-option-specs.ts",
         "src/cli/update-cli/shared.ts",
-        "ui/src/app/overlays.ts"
+        "ui/src/app/overlays.ts",
+        "src/gateway/server-startup-post-attach.ts"
       ],
       "requires": [
         "update-baseline-fixture",
@@ -352,7 +353,10 @@
         "src/commands/doctor.ts",
         "src/flows/doctor-health*.ts",
         "src/infra/exec-approvals-config.ts",
-        "src/infra/exec-approvals-sqlite*.ts"
+        "src/infra/exec-approvals-sqlite*.ts",
+        "src/commands/doctor-repair-mode.ts",
+        "src/commands/doctor-prompter.ts",
+        "src/config/sessions/store-entry-shape.ts"
       ],
       "requires": [
         "approvals-legacy-json",
@@ -489,7 +493,8 @@
         "src/infra/triage-continuation.ts",
         "src/infra/update-repair-*.ts",
         "src/infra/update-triage*.ts",
-        "src/logging/diagnostic-support*.ts"
+        "src/logging/diagnostic-support*.ts",
+        "src/infra/installation-target-context.ts"
       ],
       "requires": [
         "coding-agent-stub",
@@ -598,7 +603,12 @@
         "src/config/deferred-plugin-migration-config.ts",
         "src/cli/plugin-capability-consent.ts",
         "src/infra/install-source-utils.ts",
-        "src/infra/npm-integrity.ts"
+        "src/infra/npm-integrity.ts",
+        "src/plugins/official-external-*.ts",
+        "src/plugins/plugin-package-update*.ts",
+        "src/plugins/plugin-peer-link*.ts",
+        "src/commands/doctor-repair-mode.ts",
+        "src/commands/doctor-prompter.ts"
       ],
       "requires": [
         "plugin-capability-widened",
@@ -734,7 +744,8 @@
         "src/gateway/server-restart-sentinel*.ts",
         "src/infra/restart*.ts",
         "src/cli/daemon-cli/register-service-commands.ts",
-        "src/cli/daemon-cli/lifecycle*.ts"
+        "src/cli/daemon-cli/lifecycle*.ts",
+        "src/gateway/server-shutdown.ts"
       ],
       "requires": [],
       "commands": [
@@ -989,7 +1000,10 @@
         "src/auto-reply/reply/reply-run-registry*.ts",
         "src/gateway/server-lifecycle.ts",
         "src/agents/run-termination.ts",
-        "src/cli/daemon-cli/lifecycle*.ts"
+        "src/cli/daemon-cli/lifecycle*.ts",
+        "src/agents/embedded-agent-runner/active-run-projections.ts",
+        "src/gateway/server-shutdown.ts",
+        "src/cli/parse-duration.ts"
       ],
       "requires": [
         "mock-provider-held-turn",
@@ -1067,7 +1081,8 @@
         "src/infra/update-*.ts",
         "src/gateway/methods/core-descriptors.ts",
         "src/gateway/server-methods/update.ts",
-        "packages/gateway-protocol/src/schema/config.ts"
+        "packages/gateway-protocol/src/schema/config.ts",
+        "src/gateway/server-startup-post-attach.ts"
       ],
       "requires": [
         "update-baseline-fixture"
@@ -1104,7 +1119,8 @@
         "src/infra/telemetry.ts",
         "src/gateway/methods/core-descriptors.ts",
         "src/gateway/server-methods/update.ts",
-        "packages/gateway-protocol/src/schema/config.ts"
+        "packages/gateway-protocol/src/schema/config.ts",
+        "src/gateway/server-startup-post-attach.ts"
       ],
       "requires": [],
       "commands": [
@@ -1269,7 +1285,9 @@
         "src/auto-reply/reply/reply-run-registry*.ts",
         "src/gateway/server-lifecycle.ts",
         "src/agents/run-termination.ts",
-        "src/cli/daemon-cli/lifecycle*.ts"
+        "src/cli/daemon-cli/lifecycle*.ts",
+        "src/agents/embedded-agent-runner/active-run-projections.ts",
+        "src/gateway/server-shutdown.ts"
       ],
       "requires": [
         "mock-provider-held-turn",
@@ -1350,7 +1368,10 @@
         "src/auto-reply/reply/reply-run-registry*.ts",
         "src/gateway/server-lifecycle.ts",
         "src/agents/run-termination.ts",
-        "src/cli/daemon-cli/lifecycle*.ts"
+        "src/cli/daemon-cli/lifecycle*.ts",
+        "src/agents/embedded-agent-runner/active-run-projections.ts",
+        "src/gateway/server-shutdown.ts",
+        "src/cli/parse-duration.ts"
       ],
       "requires": [
         "mock-provider-held-turn",
@@ -1425,7 +1446,8 @@
         "src/cli/update-cli.ts",
         "src/cli/update-option-specs.ts",
         "src/cli/update-cli/shared.ts",
-        "src/gateway/server-reload-hot.ts"
+        "src/gateway/server-reload-hot.ts",
+        "src/gateway/server-shutdown.ts"
       ],
       "requires": [
         "session-main-rolling",
@@ -1486,7 +1508,9 @@
         "ui/src/lib/chat/outbox*.ts",
         "ui/src/app/boot-record.ts",
         "ui/src/pages/chat/chat-send*.ts",
-        "ui/src/pages/chat/chat-queue*.ts"
+        "ui/src/pages/chat/chat-queue*.ts",
+        "src/agents/embedded-agent-runner/active-run-projections.ts",
+        "src/gateway/server-shutdown.ts"
       ],
       "requires": [
         "session-main-rolling",
@@ -1512,7 +1536,7 @@
     {
       "id": "event-restart-during-cron",
       "kind": "event",
-      "intent": "A user restarts the Gateway while an isolated cron job runs, so the drain waits for its cleanup and result write; the cron run result, drain report and cron list are observed.",
+      "intent": "A cron job is active when a plain Gateway restart begins. Its terminal result, replacement Gateway and persisted cron schedule are observed; the job may finish during the normal drain, so this scenario does not claim the later ten-second cron cleanup window.",
       "paths": [
         "gateway-shutdown-budget.mjs",
         "src/cli/daemon-cli/lifecycle-*restart*.ts",
@@ -1540,7 +1564,10 @@
         "src/auto-reply/reply/reply-run-registry*.ts",
         "src/gateway/server-lifecycle.ts",
         "src/agents/run-termination.ts",
-        "src/cli/daemon-cli/lifecycle*.ts"
+        "src/cli/daemon-cli/lifecycle*.ts",
+        "src/gateway/server-cron*.ts",
+        "src/agents/embedded-agent-runner/active-run-projections.ts",
+        "src/gateway/server-shutdown.ts"
       ],
       "requires": [
         "cron-job-isolated",
@@ -1595,7 +1622,10 @@
         "src/auto-reply/reply/reply-run-registry*.ts",
         "src/gateway/server-lifecycle.ts",
         "src/agents/run-termination.ts",
-        "src/cli/daemon-cli/lifecycle*.ts"
+        "src/cli/daemon-cli/lifecycle*.ts",
+        "src/agents/embedded-agent-runner/active-run-projections.ts",
+        "src/gateway/server-shutdown.ts",
+        "src/cli/parse-duration.ts"
       ],
       "requires": [
         "mock-provider-held-turn",
@@ -1712,7 +1742,8 @@
         "src/gateway/server-restart-sentinel*.ts",
         "src/infra/gateway-boot-lifecycle.kernel.ts",
         "src/infra/gateway-boot-lifecycle.ts",
-        "src/infra/restart*.ts"
+        "src/infra/restart*.ts",
+        "src/gateway/server-shutdown.ts"
       ],
       "requires": [],
       "commands": [
@@ -1897,7 +1928,10 @@
         "src/cli/program/register.maintenance.ts",
         "src/commands/doctor.ts",
         "src/flows/doctor-health*.ts",
-        "src/commands/config-preflight-snapshot.ts"
+        "src/commands/config-preflight-snapshot.ts",
+        "src/state/openclaw-database-preflight*.ts",
+        "src/gateway/server/readiness.ts",
+        "src/gateway/server-http-probes.ts"
       ],
       "requires": [
         "agents-three-configured",
@@ -1942,7 +1976,8 @@
         "src/infra/gateway-boot-lifecycle.ts",
         "src/infra/gateway-boot-lifecycle.worker.ts",
         "src/infra/restart*.ts",
-        "src/gateway/server-channel*.ts"
+        "src/gateway/server-channel*.ts",
+        "src/gateway/server-shutdown.ts"
       ],
       "requires": [
         "channels-test-accounts",

@@ -1,13 +1,14 @@
 # Coverage: update
 
 Operations with retained phases: 11/21 (some retained operations have fewer entry points)
-Conditions described by retained phases: 36/520 (354 ambient, 166 event)
+Conditions described by retained phases: 35/520 (354 ambient, 166 event)
 Entry points inventoried: 203 placed/310 (107 excluded); executable coverage has not been measured
 Breaks mapped to retained phases: 0/6; all six are outside reach under OCM supervision
 
-A condition is counted here only when a retained phase describes its concrete setup and observation; runtime execution remains unproven. Reconciliation credits applicable phases from either run and excludes claims whose required inputs or actions were lost. There are 36 described conditions and 484 explicit gaps below. Phases: 37 (1 setup, 11 operation, 25 event). These are declarative descriptions, not executed results.
+A condition is counted here only when a retained phase describes its concrete setup and observation; runtime execution remains unproven. Reconciliation credits applicable phases from either run and excludes claims whose required inputs or actions were lost. There are 35 described conditions and 485 explicit gaps below. Phases: 37 (1 setup, 11 operation, 25 event). These are declarative descriptions, not executed results.
 
 Uncovered:
+- Condition 435, Cron run in flight during shutdown: cleanup window for result writes: The 120-second held cron job can finish during the earlier 300-second active-work drain. No fixture keeps pending work into the later ten-second cron cleanup window, so that cancellation and settlement behavior remains unproven.
 - Condition 290, Update checks disabled (checkOnStart false or OPENCLAW_NO_AUTO_UPDATE): no checks, statistics or notices: The bounded disabled-startup-check observation does not wait through the delayed telemetry scheduler or establish an expired success cache. Absence of requests cannot prove telemetry or daily-notice suppression.
 - Condition 137, Older npm snapshot directories reported by Doctor with size and removal command: The recovery export includes an older npm snapshot, but no Doctor observation runs while it is installed to report its size and removal command.
 - Condition 196, Original state captures under <state-directory>.update-captures/<run-id>; incomplete captures warned; status shows restored, manual or incomplete: No incomplete capture, manual-restoration outcome or partial capture manifest is declared.
@@ -704,7 +705,7 @@ Clean-stop sequencing: repeated SIGTERM observations explicitly wait for each pr
 
 Hosted stop boundary: a valid gateway.stop.request still refuses external supervision in the pinned product. The template records that refusal and uses the bounded OCM stop helper before starting the service and observing a new generation. It does not claim that the native RPC stopped the Gateway. Restart selectors cover the run-loop implementation family, including shutdown outcome formatting and exit/log cleanup.
 
-Compound condition rows count only when all named prerequisites and observations are supplied. Partial cases remain useful scenarios but are recorded as gaps rather than credited as complete conditions. The retained 36 complete descriptions and 484 gaps do not change the discovery inventory or its comparison shares. Cleanup ownership, check suppression, bounded repair and required-store refusal select their direct implementation owners.
+Compound condition rows count only when all named prerequisites and observations are supplied. Partial cases remain useful scenarios but are recorded as gaps rather than credited as complete conditions. The retained 35 complete descriptions and 485 gaps do not change the discovery inventory or its comparison shares. Cleanup ownership, check suppression, bounded repair and required-store refusal select their direct implementation owners.
 
 Phase selection includes the legacy-config and provider-alias helper families, retired-config refusal, both deferred package lifecycle scripts and their marker/prebuild contracts, reportability policy, and the explicit repair-timeout caller, parser and registration. These corrections retain the existing scenarios and coverage totals.
 
@@ -715,3 +716,5 @@ Nested backup, plugin-convergence, session-row, browser-queue, channel-recovery 
 Doctor dispatch, plugin installation records and capability policy, queued-message sending, drain rejection/cancellation, preview implementation and thaw wiring select their corresponding retained variants. Every restart CLI observation requests structured JSON, preserving its original busy-state response fields. Historical round-two heading arithmetic excludes annotated absence; the final-round discovery shares remain unchanged.
 
 The disabled-restart scenario establishes both the disabled and restored enabled configuration through bounded OCM stop/start and health observation. It does not send policy-gated commands immediately after an asynchronous config write or claim hot-reload timing. Source selection includes repair transactions, installation/consent, node archive acquisition, approvals persistence, forced dispatch, startup admission and shutdown wiring.
+
+Staged Doctor repair uses the supported noninteractive repair command; the wrapper encodes its command result and captured state as JSON, rather than requesting the incompatible lint-only JSON flag. The cron restart remains a general active-job observation, with its later cleanup-window condition explicitly uncovered. Selection includes official-plugin repair, noninteractive repair policy, active-run/shutdown ownership, deferred startup checks and database health publication.
