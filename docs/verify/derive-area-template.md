@@ -281,11 +281,13 @@ Output: `template.json` complete.
 
 Do: from the known breaks, take every break whose changed paths fall inside
 the area's globs. For each, name the phase that would have recorded the
-difference, or write `none`. For every `none`, return to step 2 or step 3: an
+difference, or write `none`. A break whose behavior the area input's bound
+excludes maps to a documented gap in `coverage.md`, naming its cause and the
+area that owns it. For every other `none`, return to step 2 or step 3: an
 operation or a condition was missed. Correct it and rerun step 4 for the
-affected phases. Repeat until no `none` remains or the remaining ones are
-explicitly outside the product's reach (another platform, a real provider's
-output) and recorded as such.
+affected phases. Repeat until every break maps to a phase, a documented gap
+for behavior the bound excludes, or is explicitly outside the product's
+reach (another platform, a real provider's output) and recorded as such.
 
 Output: section `## Breaks cross-check` of `derivation.md`: a table with
 columns Break, Phase, Note.
@@ -567,8 +569,10 @@ A derivation is accepted when:
    difference that comes from a document one run did not read is fixed by
    listing that document.
 2. Every entry point is in an operation or excluded with a reason.
-3. Every break in the area maps to a phase, or is recorded as outside the
-   product's reach.
+3. Every break in the area maps to a phase, is recorded as outside the
+   product's reach, or, when the area input's bound excludes its behavior,
+   maps to a documented gap in `coverage.md` naming its cause and the area
+   that owns it.
 4. No phase contains an expected value or assertion.
 5. Every persona trait in `requires` is one the persona can provide, or is
    listed as a persona addition.

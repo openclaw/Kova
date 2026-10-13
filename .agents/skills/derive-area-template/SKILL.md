@@ -54,8 +54,11 @@ reorder steps, and write each step's output before starting the next.
    `paths`, `requires` and `support`. Output: `template.json` complete, with
    no fields outside the template form.
 6. **Cross-check against known breaks** (Step 6). Map every break in the
-   area's globs to a phase; for each `none`, return to step 2 or 3 and redo
-   step 4 for the affected phases. Never copy a break into the template.
+   area's globs to a phase, record it as outside the product's reach, or,
+   when the area input's bound excludes its behavior, map it to a documented
+   gap in `coverage.md` naming its cause and the area that owns it. For each
+   remaining `none`, return to step 2 or 3 and redo step 4 for the affected
+   phases. Never copy a break into the template.
    Output: `## Breaks cross-check` and, when needed,
    `## Undocumented conditions`.
 7. **Write the coverage table** (Step 7). Output: `coverage.md` in the coverage

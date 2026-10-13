@@ -56,8 +56,9 @@ change + baseline  →  plan (areas, templates, intent)  →  run on persona clo
   difference and every failure both sides share classed as a break,
   intended, not caused by the change, fixed, or flaky.
 - **Issues**: failures present on both sides, such as the same error log line
-  or Doctor finding. They are real problems in OpenClaw that the change did
-  not cause. They are reported, never counted against the change.
+  or Doctor finding. They are usually OpenClaw problems the change did not
+  cause, but may include a shared malformed call (exit `2`). They are
+  reported, never counted against the change.
 - **Scheduled maintenance pass**: a recurring Kova job, not built yet, that
   keeps the persona, the catalogue and the templates current: it runs
   `kova persona verify` daily, rebuilds the persona when a check fails or the
