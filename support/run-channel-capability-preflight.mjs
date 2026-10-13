@@ -81,17 +81,18 @@ async function resolveRuntimeContext(parsed) {
 }
 
 async function probeRuntimeChannelMessageContracts({ catalog: catalogValue, packageRoot }) {
-  const channelMessage = await importOpenClawChannelMessage(packageRoot);
+  const { exportPath, contracts } = await importOpenClawChannelContracts(packageRoot);
   const groups = groupCatalogCapabilities(catalogValue);
+  const adapterName = "Kova OpenClaw preflight";
+  const declaredMap = (keys) => Object.fromEntries(keys.map((key) => [key, true]));
   const groupResults = {};
 
   groupResults["durable-final"] = await proveGroup({
     group: "durable-final",
     capabilities: groups.get("durable-final") ?? [],
-    list: channelMessage.listDeclaredDurableFinalCapabilities,
-    verify: (capabilities, proofs) => channelMessage.verifyDurableFinalCapabilityProofs({
-      adapterName: "Kova OpenClaw preflight",
-      capabilities,
+    verify: (keys, proofs) => contracts.verifyDurableFinalCapabilityProofs({
+      adapterName,
+      capabilities: declaredMap(keys),
       proofs
     })
   });
@@ -99,10 +100,9 @@ async function probeRuntimeChannelMessageContracts({ catalog: catalogValue, pack
   groupResults["live-preview"] = await proveGroup({
     group: "live-preview",
     capabilities: groups.get("live-preview") ?? [],
-    list: channelMessage.listDeclaredChannelMessageLiveCapabilities,
-    verify: (capabilities, proofs) => channelMessage.verifyChannelMessageLiveCapabilityProofs({
-      adapterName: "Kova OpenClaw preflight",
-      capabilities,
+    verify: (keys, proofs) => contracts.verifyChannelMessageLiveCapabilityAdapterProofs({
+      adapterName,
+      adapter: { live: { capabilities: declaredMap(keys) } },
       proofs
     })
   });
@@ -110,49 +110,47 @@ async function probeRuntimeChannelMessageContracts({ catalog: catalogValue, pack
   groupResults["live-finalizer"] = await proveGroup({
     group: "live-finalizer",
     capabilities: groups.get("live-finalizer") ?? [],
-    list: channelMessage.listDeclaredLivePreviewFinalizerCapabilities,
-    verify: (capabilities, proofs) => channelMessage.verifyLivePreviewFinalizerCapabilityProofs({
-      adapterName: "Kova OpenClaw preflight",
-      capabilities,
+    verify: (keys, proofs) => contracts.verifyChannelMessageLiveFinalizerProofs({
+      adapterName,
+      adapter: { live: { finalizer: { capabilities: declaredMap(keys) } } },
       proofs
     })
   });
 
-  groupResults.ack = await proveReceiveAckGroup({
+  groupResults.ack = await proveGroup({
+    group: "ack",
     capabilities: groups.get("ack") ?? [],
-    list: channelMessage.listDeclaredReceiveAckPolicies,
-    verify: (receive, proofs) => channelMessage.verifyChannelMessageReceiveAckPolicyProofs({
-      adapterName: "Kova OpenClaw preflight",
-      receive,
+    verify: (keys, proofs) => contracts.verifyChannelMessageReceiveAckPolicyAdapterProofs({
+      adapterName,
+      adapter: { receive: { supportedAckPolicies: keys } },
       proofs
     })
   });
 
   return {
     packageRoot,
-    exportPath: await resolvePackageExportPath(packageRoot, "./plugin-sdk/channel-message"),
+    exportPath,
     groupResults
   };
 }
 
-async function importOpenClawChannelMessage(packageRoot) {
-  const exportPath = await resolvePackageExportPath(packageRoot, "./plugin-sdk/channel-message");
-  const mod = await import(pathToFileURL(exportPath).href);
+// OpenClaw's channel message contract verifiers. channel-outbound has exported
+// them since 2026.5.27 and is the only entrypoint current OpenClaw provides.
+async function importOpenClawChannelContracts(packageRoot) {
+  const exportName = "./plugin-sdk/channel-outbound";
+  const exportPath = await resolvePackageExportPath(packageRoot, exportName);
+  const contracts = await import(pathToFileURL(exportPath).href);
   const requiredExports = [
-    "listDeclaredDurableFinalCapabilities",
-    "listDeclaredChannelMessageLiveCapabilities",
-    "listDeclaredLivePreviewFinalizerCapabilities",
-    "listDeclaredReceiveAckPolicies",
     "verifyDurableFinalCapabilityProofs",
-    "verifyChannelMessageLiveCapabilityProofs",
-    "verifyLivePreviewFinalizerCapabilityProofs",
-    "verifyChannelMessageReceiveAckPolicyProofs"
+    "verifyChannelMessageLiveCapabilityAdapterProofs",
+    "verifyChannelMessageLiveFinalizerProofs",
+    "verifyChannelMessageReceiveAckPolicyAdapterProofs"
   ];
-  const missing = requiredExports.filter((name) => typeof mod[name] !== "function");
+  const missing = requiredExports.filter((name) => typeof contracts[name] !== "function");
   if (missing.length > 0) {
-    throw new Error(`openclaw/plugin-sdk/channel-message is missing exports: ${missing.join(", ")}`);
+    throw new Error(`openclaw/plugin-sdk/channel-outbound is missing exports: ${missing.join(", ")}`);
   }
-  return mod;
+  return { exportPath, contracts };
 }
 
 async function resolvePackageExportPath(packageRoot, exportName) {
@@ -168,34 +166,27 @@ async function resolvePackageExportPath(packageRoot, exportName) {
   return join(packageRoot, relativePath);
 }
 
-async function proveGroup({ group, capabilities, list, verify }) {
+// The verifiers walk the runtime's own capability list and report each entry as
+// "verified" (declared, proof ran) or "not_declared", so the verified entries are
+// the catalog capabilities this runtime knows.
+async function proveGroup({ group, capabilities, verify }) {
   const runtimeKeys = capabilities.map(runtimeCapabilityKey);
-  const capabilityMap = Object.fromEntries(runtimeKeys.map((key) => [key, true]));
   const proofs = Object.fromEntries(runtimeKeys.map((key) => [key, () => undefined]));
   const expected = capabilities.map((capability) => capability.id);
-  const actual = list(capabilityMap).map(kebabValue);
+  let actual = [];
   let verifyError = null;
   try {
-    await verify(capabilityMap, proofs);
+    const results = await verify(runtimeKeys, proofs);
+    if (!Array.isArray(results)) {
+      throw new Error(`OpenClaw ${group} verifier did not return proof results`);
+    }
+    actual = results
+      .filter((result) => result?.status === "verified")
+      .map((result) => kebabValue(result.capability ?? result.policy));
   } catch (error) {
     verifyError = error.message;
   }
   return compareGroup({ group, expected, actual, verifyError });
-}
-
-async function proveReceiveAckGroup({ capabilities, list, verify }) {
-  const runtimeKeys = capabilities.map(runtimeCapabilityKey);
-  const receive = { supportedAckPolicies: runtimeKeys };
-  const proofs = Object.fromEntries(runtimeKeys.map((key) => [key, () => undefined]));
-  const expected = capabilities.map((capability) => capability.id);
-  const actual = list(receive).map(kebabValue);
-  let verifyError = null;
-  try {
-    await verify(receive, proofs);
-  } catch (error) {
-    verifyError = error.message;
-  }
-  return compareGroup({ group: "ack", expected, actual, verifyError });
 }
 
 function compareGroup({ group, expected, actual, verifyError }) {
