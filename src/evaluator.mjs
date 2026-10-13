@@ -332,7 +332,7 @@ export function evaluateRecord(record, scenario, options = {}) {
   const upgradeMs = maxDurationWhere(allResults, isUpgradeCommand);
   const statusMs = maxDurationWhere(allResults, isStatusCommand);
   const pluginsListMs = maxDurationWhere(allResults, isPluginsListCommand);
-  const pluginInstallMs = maxDurationWhere(allResults, (command) => command.includes("run-official-plugin-install.mjs") || command.includes(" -- plugins install"));
+  const pluginInstallMs = maxDurationWhere(allResults, (command) => command.includes("run-official-plugin-install.mjs") || command.includes("install-kova-plugin.mjs") || command.includes(" -- plugins install"));
   const modelsListMs = maxDurationWhere(allResults, isModelsListCommand);
   const doctorFixMs = maxDurationWhere(allResults, isDoctorFixCommand);
   const rssGrowthMb = maxNullable(resourceSummary.maxTotalRssGrowthMb);

@@ -57,7 +57,7 @@
       "title": "Install Kova Channel Probe Plugin",
       "intent": "Install the deterministic Kova channel plugin through the user-visible plugin install path before gateway startup.",
       "commands": [
-        "ocm @{env} -- plugins install {kovaRoot}/support/plugins/kova-channel-probe --force",
+        "node {kovaRoot}/support/install-kova-plugin.mjs --env {env} --plugin kova-channel-probe",
         "ocm @{env} -- plugins list"
       ],
       "evidence": [
