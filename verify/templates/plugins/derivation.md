@@ -991,3 +991,5 @@ correction after review: scratch hook sessions use sessions.create's default-age
 correction after review: phase order uses the catalogue classifications of chat, tool, browser and Gateway commands, with destructive operations after readers; the catalogue classifications are preserved.
 
 correction after review: drain and cancellation selectors include plugin-instance and settlement owners. Every hook continuation and mixed browser surface declares its providing fixtures. Approval-list producers poll for the exact pending request before either resolver runs. Scratch-session commands use only their returned session keys, and the exec hook probe prints a harmless marker instead of inherited environment values.
+
+correction after review: approval resolution, forwarding, no-route, timeout and cancellation select the before-tool-call approval transport owner. Loading-policy restoration captures the complete plugins subtree before any browser or CLI mutation and restores its exact prior shape, including load paths and per-plugin enablement.

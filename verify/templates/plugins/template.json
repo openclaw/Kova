@@ -106,7 +106,7 @@
       "support/verify/http-get.mjs  (one GET against a Gateway HTTP route, with Gateway credentials or none, path resolved from a flow's recorded URLs when --from is given; --env --path --from --auth --timeout)",
       "support/verify/plugin-source-edit.mjs  (edits an installed, linked or bundled plugin's files on the Gateway host and restores the saved copy; modes bundled-dist-touch, cleanup-fails, manifest-bump, marker, payload-tamper, register-throws, gateway-start-fails, service-start-fails, skill-file-edit, ui-asset-broken; --env --plugin --mode --restore; cleanup-fails toggles a fixture-owned marker that the already-loaded cleanup callback reads on every invocation, without editing loaded code; --restore clears that marker so retained cleanup can be retried; gateway-start-fails makes the replacement fixture gateway_start hook throw, leaving service startup successful; gateway-stop-hold arms a fixture-owned marker read by the active gateway_stop hook, which reports entry and waits for explicit release (at most 25000 ms); --out saves the marker identity, --wait-entered-from polls that exact invocation and records its entry plus the live core:plugin-lifecycle/global state lease owner, --verify-held-from records that invocation still pending after the competing RPC (exit 2 if not), and --release-from releases and removes only that marker; --timeout bounds each helper call; bundled-dist-touch refuses unless the caller proves the selected runtime copy is exclusively owned by this clone and its edited files share no inode or writable symlink destination with the original runtime; bundled-plugin-reload owns its restoration)",
       "support/verify/plugin-reload-wait.mjs  (openclaw plugins reload <id> --wait under a terminal, sending Ctrl-C after the given delay; --env --plugin --cancel-after-ms --timeout)",
-      "support/verify/config-change.mjs  (openclaw config patch built from one named change, saving the previous values of the paths it touches to --out for a later --restore-from; changes: fixture-config-unknown-key (plugins.entries.<plugin>.config.kovaUnknownKey = true), fixture-config-change (plugins.entries.<plugin>.config.kovaMarker = a new marker), fixture-break-register (plugins.entries.<plugin>.config.kovaBreakRegister = true), plugins-allow-restrictive (plugins.allow = [<plugin>]), plugins-deny-entry (plugins.deny adds <plugin>), plugins-disabled and plugins-enabled (plugins.enabled), memory-slot-unknown (plugins.slots.memory = an id no plugin has), reload-mode-off and reload-mode-hybrid (gateway.reload.mode), ui-lab-on and ui-lab-off (gateway.controlUi.experimental.customPlugins), cron-disabled and cron-enabled (cron.enabled), approvals-plugin-forwarding and approvals-plugin-forwarding-off (approvals.plugin.enabled), fixture-conversation-access-off and fixture-conversation-access-on (plugins.entries.<plugin>.hooks.allowConversationAccess), fixture-hook-timeout-short (plugins.entries.<plugin>.hooks.timeoutMs = 1), tools-allow-add (tools.allow adds <tool>), load-path-add (plugins.load.paths adds <path>); --env --change --plugin --tool --path --out --save-paths --restore-from --timeout)",
+      "support/verify/config-change.mjs  (openclaw config patch built from one named change, saving the previous values of the paths it touches to --out for a later --restore-from; changes: fixture-config-unknown-key (plugins.entries.<plugin>.config.kovaUnknownKey = true), fixture-config-change (plugins.entries.<plugin>.config.kovaMarker = a new marker), fixture-break-register (plugins.entries.<plugin>.config.kovaBreakRegister = true), plugins-allow-restrictive (plugins.allow = [<plugin>]), plugins-deny-entry (plugins.deny adds <plugin>), plugins-disabled and plugins-enabled (plugins.enabled), memory-slot-unknown (plugins.slots.memory = an id no plugin has), reload-mode-off and reload-mode-hybrid (gateway.reload.mode), ui-lab-on and ui-lab-off (gateway.controlUi.experimental.customPlugins), cron-disabled and cron-enabled (cron.enabled), approvals-plugin-forwarding and approvals-plugin-forwarding-off (approvals.plugin.enabled), fixture-conversation-access-off and fixture-conversation-access-on (plugins.entries.<plugin>.hooks.allowConversationAccess), fixture-hook-timeout-short (plugins.entries.<plugin>.hooks.timeoutMs = 1), tools-allow-add (tools.allow adds <tool>), load-path-add (plugins.load.paths adds <path>); --env --change --plugin --tool --path --out --save-paths --restore-from --timeout; --snapshot-only with --save-paths saves the exact prior values and presence without applying a change; a subtree snapshot preserves all nested keys, so --restore-from restores it exactly, including removing additions made by the browser flow)",
       "support/verify/config-file-edit.mjs  (writes one value into openclaw.json without validation, or restores the saved copy; --env --set --restore --timeout; --inline-plugins --out saves the root and single-file plugins include layout, reads the resolved plugins object and writes that same object inline without changing logical config; rejects root-level, nested or multi-file includes with exit 2; --restore-layout-from restores the saved include ownership while retaining current logical plugin values, including the newly installed artifact, and preserves all unrelated config)",
       "support/verify/gateway-kill.mjs  (SIGKILL of the running Gateway process; --env --timeout)",
       "support/verify/clawhub-reachability.mjs  (points the Gateway's ClawHub endpoint at an unreachable address and restores it, restarting the service; --env --mode --timeout)",
@@ -404,9 +404,10 @@
         "plugins-policy-mixed"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --snapshot-only --save-paths plugins --out {run}/set-plugin-loading-policy-in-control-ui-plugins-policy.json --timeout 15000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugins-advanced-policy --artifact-dir {run}/screens --timeout 180000",
         "ocm @{env} -- plugins list --json",
-        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change plugins-allow-restrictive --save-paths plugins.allow,plugins.deny,plugins.enabled,plugins.slots.memory --plugin {persona:plugin-fixture-surfaces:pluginId} --out {run}/set-plugin-loading-policy-in-control-ui-plugins-policy.json --timeout 15000",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change plugins-allow-restrictive --plugin {persona:plugin-fixture-surfaces:pluginId} --timeout 15000",
         "ocm @{env} -- plugins enable {persona:plugin-workspace-discovered:pluginId}",
         "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change plugins-deny-entry --plugin {persona:plugins-policy-mixed:deniedPluginId} --timeout 15000",
         "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change plugins-disabled --timeout 15000",
@@ -2553,7 +2554,8 @@
         "src/gateway/server-aux-handlers.ts",
         "src/infra/approval-gateway-*.ts",
         "ui/src/app/exec-approval.ts",
-        "src/auto-reply/reply/commands-approve*.ts"
+        "src/auto-reply/reply/commands-approve*.ts",
+        "src/agents/agent-tools.before-tool-call.approval.ts"
       ],
       "requires": [
         "channels-test-accounts",
@@ -2938,7 +2940,8 @@
       "paths": [
         "src/gateway/server-methods/plugin-approval.ts",
         "src/plugins/hook*.ts",
-        "src/gateway/node-invoke-plugin-approval.ts"
+        "src/gateway/node-invoke-plugin-approval.ts",
+        "src/agents/agent-tools.before-tool-call.approval.ts"
       ],
       "requires": [
         "channels-test-accounts",
@@ -2969,7 +2972,8 @@
         "src/gateway/server-methods/plugin-approval.ts",
         "src/plugins/hook*.ts",
         "src/gateway/node-invoke-plugin-approval.ts",
-        "src/infra/exec-approval-channel-runtime.ts"
+        "src/infra/exec-approval-channel-runtime.ts",
+        "src/agents/agent-tools.before-tool-call.approval.ts"
       ],
       "requires": [
         "channels-test-accounts",
@@ -3002,7 +3006,8 @@
       "intent": "A plugin approval is requested when forwarding is off and no approval-capable client is connected, observing the blocked call and its reason.",
       "paths": [
         "src/gateway/server-methods/plugin-approval.ts",
-        "src/infra/approval-*.ts"
+        "src/infra/approval-*.ts",
+        "src/agents/agent-tools.before-tool-call.approval.ts"
       ],
       "requires": [
         "mock-provider-tool-calls",
@@ -3114,7 +3119,8 @@
       "paths": [
         "src/gateway/server-methods/plugin-approval.ts",
         "src/plugins/hook*.ts",
-        "src/gateway/node-invoke-plugin-approval.ts"
+        "src/gateway/node-invoke-plugin-approval.ts",
+        "src/agents/agent-tools.before-tool-call.approval.ts"
       ],
       "requires": [
         "channels-test-accounts",
