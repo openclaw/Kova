@@ -1,13 +1,14 @@
 # Coverage: update
 
 Operations: 20/21
-Conditions: 282/520 (354 ambient, 166 event)
-Entry points: 203/310 (107 excluded)
+Conditions described by retained phases: 284/520 (354 ambient, 166 event)
+Entry points inventoried: 203 placed/310 (107 excluded); executable coverage has not been measured
 Breaks mapped: 6/6
 
-A condition counts as covered when run 2 covered one of its members, or when only run 1 found it and run 1 covered it; the phases that covered those run 1 conditions were taken into this template. Phases: 124 (1 setup, 20 operation, 103 event).
+A condition is counted here only when a retained phase describes its setup and observation; runtime execution remains unproven. Reconciliation retains applicable coverage from either run, regardless of which run supplied the condition wording. The original 282 count is corrected by including conditions 127, 178 and 279 from retained run 1 phases, and excluding condition 357 because its invalid-config setup cannot enter startup triage. Phases: 123 (1 setup, 20 operation, 102 event).
 
 Uncovered:
+- Condition 357, Gateway startup failure triage: the pinned startup gate excludes invalid configuration; no retained phase injects an eligible startup error after recording a boot. The ineffective event-startup-failure-triage phase was removed.
 - Update an immutable release installation (operation; entry points openclaw update adopt-immutable and openclaw update recover): needs an explicitly adopted Linux installation with a root-owned system systemd service, sealed release generations and cgroup v2; outside this template's reach
 - Condition 1, Gateway installed as a Windows Scheduled Task (principal, elevation, schtasks and rename limits, task autostart suspension): Windows Scheduled Task paths are owned by platform per the bound; outside this template's reach
 - Condition 11, Managed service runs under another profile than the caller: caller and service projections stay separate: needs a second named profile owning the service; the persona has one profile
@@ -58,7 +59,6 @@ Uncovered:
 - Condition 122, Install record, plugin owner or database registration changes before copy: preparation refused: needs a concurrent plugin install during preparation
 - Condition 123, Initial config inspection meets lock contention or a changing source: one retry with a warning: needs a lock at a precise moment
 - Condition 126, Target predates migration continuation: runtime validation unavailable, no schema-neutral rollback: the target is the side under test, not an older release
-- Condition 127, Blocking validation failure: staged update discarded, serving Gateway untouched: needs a candidate that fails its isolated canary boot; no harness control reaches it
 - Condition 138, Failed candidate never allowed to start: databases restored before the package, migrated files kept as <database>.migrated-<runId>: needs a candidate that fails after Doctor migrated a stopped installation and before it starts
 - Condition 140, Pending records that require checkpoint replay block mutable updates: needs a legacy checkpoint record; no persona trait provides it
 - Condition 144, Service handoff records from 2026.9.2 or 2026.9.3; a different supervisor UID blocks service mutation: needs an installed updater of that specific older release; the persona pins 2026.9.9
@@ -76,7 +76,6 @@ Uncovered:
 - Condition 169, pnpm bootstrap through corepack fails: tool-specific early error: needs a broken corepack
 - Condition 170, Another worktree holds the original branch or the reflog is unusable during Git rollback: needs a second worktree on the checkout
 - Condition 171, Restoring the previous Git runtime fails: Gateway stays stopped, originals in <runtime>.openclaw-update-<id>.tmp/previous: needs a filesystem failure during restoration
-- Condition 178, Pinned npm plugin artifact integrity differs from its record: that plugin update aborted: needs a registry serving a tampered artifact
 - Condition 180, Throwing plugin config-repair hook keeps its input and names the plugin: needs a plugin whose repair hook throws
 - Condition 186, npm link to a built Git checkout: rollback verifies that checkout; rebuilding it during the update prevents rollback: needs an npm link into a checkout
 - Condition 189, Original working directory no longer accessible: agent starts in the OS home: needs the operator's directory removed mid-run
@@ -115,7 +114,6 @@ Uncovered:
 - Condition 268, Destination account disables actions.sendMessage: notices skipped: no persona trait disables sendMessage
 - Condition 274, FreeBSD rc.d service discovery: FreeBSD only
 - Condition 276, Background exec completion follow-ups after an update run even with heartbeat every 0m: owned by exec; no catalogue script runs background exec
-- Condition 279, Node candidate fails to reconnect: launcher falls back to the previous runtime: needs a node candidate that cannot reconnect
 - Condition 283, Stale node-runtime/activation.lock: needs an interrupted node activation
 - Condition 288, Open terminal sessions do not defer the campaign and end at the restart: no catalogue script opens a Gateway terminal session
 - Condition 297, Signed macOS app owns the local Gateway update (Update Mac app + Gateway): owned by the apps
@@ -249,20 +247,22 @@ Uncovered:
 - Condition 520, A Windows Bun-only node host cannot stage updates and logs the failure hourly (`bun-windows-node`): outside this template's reach: Windows Scheduled Task hosts (bound: owned by platform)
 
 Phases that depend on each script still to be written (support.toWrite):
+- support/verify/restore-update-fixture.mjs: 81 phases
 - support/verify/update-cli.mjs: 60 phases
-- support/ensure-gateway-running.mjs: 46 phases
+- support/ensure-gateway-running.mjs: 45 phases
 - support/verify/env-fault.mjs: 40 phases
 - support/verify/gateway-call.mjs: 22 phases
 - support/verify/control-ui.mjs: 14 phases
 - support/verify/release-feed.mjs: 14 phases
 - support/verify/manual-package-replace.mjs: 11 phases
-- support/verify/session-turn-hold.mjs: 7 phases
+- support/verify/session-turn-hold.mjs: 8 phases
+- support/verify/update-config.mjs: 7 phases
 - support/run-doctor-repair.mjs: 5 phases
 - support/verify/chat-send.mjs: 4 phases
-- support/verify/config-fixture.mjs: 3 phases
 - support/verify/agent-tool-turn.mjs: 2 phases
 - support/verify/channel-inbound-turn.mjs: 2 phases
 - support/verify/chat-history-read.mjs: 2 phases
+- support/verify/config-fixture.mjs: 2 phases
 - support/verify/node-host-auto-update.mjs: 2 phases
 - support/verify/restart-handoff.mjs: 2 phases
 - support/verify/stage-state-fixture.mjs: 2 phases
@@ -320,4 +320,11 @@ The figures above describe derived coverage, not executed results. Product comma
 
 The existing Gateway health helper currently accepts `--timeout-ms`; these commands use the catalogue's `--timeout` contract. It is therefore listed under `support.toWrite`, with the required compatible adaptation spelled out. The existing Doctor repair helper likewise remains withheld until its catalogue contract is implemented. File existence alone does not make either entry available.
 
-Invalid configuration and missing plugin paths must be staged through `config-fixture.mjs`, without the validated config writer, preserving and restoring the exact original bytes even on interruption. Each scenario claiming a turn in progress starts its own held turn immediately before the action; the initial shared turn was removed. Successful recovery-data removal runs after the reader-refusal scenarios so it cannot consume their input first. These scripts and persona traits remain prerequisites; a command that exits 2 on any clone makes its phase incomplete and the verdict unresolved.
+Invalid configuration and missing plugin paths must be staged through `config-fixture.mjs`, without the validated config writer, preserving and restoring the exact original bytes even on interruption. Each scenario claiming a turn in progress starts its own held turn immediately before the action; the admission-rejection send additionally waits for an observed draining state; the initial shared turn was removed. Successful recovery-data removal runs after the reader-refusal scenarios so it cannot consume their input first. These scripts and persona traits remain prerequisites; a command that exits 2 on any clone makes its phase incomplete and the verdict unresolved.
+
+
+Independent mutating scenarios restore their complete starting installation and user state with `restore-update-fixture.mjs` before injecting faults or applying updates. This prevents an earlier phase's update from turning a later first-hop migration into an already-current check. The helper preserves the comparison clone's identity and service ports, never edits the immutable fixture or its source installation, and restores local release-feed routing. `repair-after-update` deliberately continues the update named by `update-npm.json` rather than resetting its input.
+
+Additional persona requirements for that helper: `update-baseline-fixture` provides `path`, an immutable full installation/user-state export for the primary environment; every installation trait used by a restored phase also provides `fixture`, an immutable export of its own original installation and user state, alongside `env`. These keys are missing until the persona supplies them, so the affected phases remain withheld. Valid config changes use the declared `update-config.mjs` presets; no phase depends on nonexistent JSON patch files.
+
+Coverage reconciliation controls: conditions 127, 178 and 279 are described respectively by `event-candidate-validation-fails`, `event-plugin-integrity-drift` and `event-node-candidate-fails`, with the fault or modified release established in those phases. Other run 1 claims are not automatically counted when its supporting phase or persona setup was not retained. This inventory is a description of reachable scenarios once dependencies exist, not a claim of executed coverage.

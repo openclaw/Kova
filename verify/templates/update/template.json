@@ -130,6 +130,7 @@
     "store-orphan-delivery-rows",
     "store-rows-legacy-aliases",
     "transcripts-cold-stored",
+    "update-baseline-fixture",
     "update-history-failed",
     "update-history-long",
     "update-history-stale"
@@ -148,13 +149,12 @@
       "support/verify/node-host-auto-update.mjs  (starts the persona's headless node host against the published release and records its automatic update check, preparation, busy deferral, activation or fallback; --env --node <id> --timeout <ms>)",
       "support/verify/control-ui.mjs  (catalogue entry; flows this template needs: updates-page-check, updates-channel-select, update-review-cancel, update-now-confirm, updates-hold, updates-toggle-checks, updates-check-status, updates-retry-cancel, updates-diagnose, updates-report-failure, update-failure-ask, update-failure-ask-storage-blocked, update-reconnect, update-reload-after-build, sidebar-server-updated, chat-outbox-restart; --env --flow --artifact-dir --timeout --out --session-key)",
       "support/verify/gateway-call.mjs  (catalogue entry; methods update.status, update.run, update.hold, update.report, update.runs.list, update.runs.get, gateway.restart.request, gateway.restart.preflight, gateway.stop.request; --env --method --params --timeout --out --merge-from --after-ms [--background --handle] [--wait])",
-      "support/verify/chat-send.mjs  (catalogue entry; /update, /restart and a plain message during a restart drain; --env --session-key --message --timeout --after-ms [--background --handle] [--wait])",
+      "support/verify/chat-send.mjs  (catalogue entry; /update, /restart and a plain message during a restart drain; --env --session-key --message --timeout --after-ms [--background --handle] [--wait]; --when-gateway-draining waits for the serving process to report draining before sending, reports setup unavailable as exit 2, and never treats a reconnect as drain entry)",
       "support/verify/session-turn-hold.mjs  (catalogue entry; --env --session-key --hold-ms --timeout --background --handle --wait)",
       "support/verify/agent-tool-turn.mjs  (catalogue entry; gateway tool update.run action and exec running openclaw update; --env --session-key --tool --args --timeout)",
       "support/verify/chat-history-read.mjs  (catalogue entry; --env --session-key --limit --timeout)",
       "support/verify/channel-inbound-turn.mjs  (catalogue entry; --env --chat-type direct --peer --text --timeout)",
       "support/verify/cron-isolated-run.mjs  (catalogue entry; --env --job-id --timeout)",
-      "verify/templates/update/patches/*.json  (config patches: update-automatic-on, update-automatic-beta-on, update-automatic-off, update-checks-off, update-checks-on, restart-off, restart-on)",
       "product: ocm @{env} -- update status --json  (openclaw update status, src/cli/update-cli.ts and docs/cli/update/status-and-history.md; --json --timeout <seconds>)",
       "product: ocm @{env} -- update --dry-run --json  (openclaw update preview, src/cli/update-option-specs.ts and docs/cli/update.md; --dry-run --json --channel <stable|extended-stable|beta|dev>)",
       "product: ocm @{env} -- update repair --json --yes  (openclaw update repair, src/cli/update-cli.ts registerUpdateFinalizationCommand and docs/cli/update/repair-and-recovery.md; --json --yes --no-restart --timeout <seconds> --channel --accept-capabilities)",
@@ -171,7 +171,9 @@
       "support/verify/stage-session-store-fixture.mjs  (gateway stop, staging of a persona fixture into an agent directory, Doctor, start; --env --agent --fixture)",
       "support/ensure-gateway-running.mjs  (required catalogue-contract adaptation of the existing Gateway health helper: accept --timeout <ms> while retaining --timeout-ms compatibility; --env --artifact-dir --timeout; currently only --timeout-ms is implemented, so phases using --timeout remain withheld until the adaptation is available)",
       "support/verify/config-fixture.mjs  (save the exact config bytes for one cloned environment, stage an invalid-field or plugin-path-missing fixture by direct file write without config validation, and restore the saved bytes on --wait and on phase interruption; report installation errors as exit 2; --env --fixture <invalid-field|plugin-path-missing> --timeout <ms> [--background --handle <file>] [--wait <file>])",
-      "support/run-doctor-repair.mjs  (existing script whose catalogue entry remains toWrite until its output and exit codes meet the verification contract; --env)"
+      "support/run-doctor-repair.mjs  (existing script whose catalogue entry remains toWrite until its output and exit codes meet the verification contract; --env)",
+      "support/verify/update-config.mjs  (openclaw config patch using built-in presets verified against the pinned config schema: update-automatic-on, update-automatic-beta-on, update-automatic-off, update-checks-off, update-checks-on, restart-off, restart-on; no external patch files; --env --preset <name> --timeout <ms>)",
+      "support/verify/restore-update-fixture.mjs  (stop only the named comparison clone, restore the complete exported installation and user-state fixture while preserving that clone's identity, paths, credentials placeholders and service ports, select the side or original persona runtime, restore local release-feed routing, then start it; never alter the exported fixture or its original environment; --env --fixture <path> --runtime <side|persona> --release-feed <handle> --timeout <ms>)"
     ]
   },
   "phases": [
@@ -427,9 +429,14 @@
         "mock-provider-held-turn",
         "plugins-bundled-and-external",
         "session-main-rolling",
-        "store-orphan-delivery-rows"
+        "store-orphan-delivery-rows",
+        "update-baseline-fixture"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-bun-global:env} --fixture {persona:install-bun-global:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-tarball-extracted:env} --fixture {persona:install-tarball-extracted:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "ocm @{env} -- update --dry-run --json",
         "node {kovaRoot}/support/verify/config-fixture.mjs --env {env} --fixture invalid-field --timeout 30000 --background --handle {run}/config-update-from-terminal-invalid-field.json",
         "ocm @{env} -- update --dry-run --json",
@@ -457,7 +464,7 @@
         "state:state/openclaw.sqlite",
         "doctor"
       ],
-      "timeoutMs": 1920000,
+      "timeoutMs": 2880000,
       "browser": false,
       "slow": true
     },
@@ -480,9 +487,11 @@
       ],
       "requires": [
         "plugin-migration-pending",
-        "plugins-bundled-and-external"
+        "plugins-bundled-and-external",
+        "update-baseline-fixture"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/release-feed.mjs --from {run}/release-feed.json --plugin-release {persona:plugins-bundled-and-external:externalPluginId}",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side --yes --timeout 150000",
         "node {kovaRoot}/support/run-doctor-repair.mjs --env {env}",
@@ -495,7 +504,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
       "slow": true
     },
@@ -520,9 +529,14 @@
       "requires": [
         "checkout-dirty",
         "install-git-checkout",
-        "install-pnpm-global"
+        "install-pnpm-global",
+        "update-baseline-fixture"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:checkout-dirty:env} --fixture {persona:checkout-dirty:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-git-checkout:env} --fixture {persona:install-git-checkout:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-pnpm-global:env} --fixture {persona:install-pnpm-global:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "ocm @{env} -- update --channel beta --dry-run --json",
         "ocm @{env} -- update --channel extended-stable --dry-run --json",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow updates-channel-select --artifact-dir {run}/screens/updates-channel-select --timeout 120000",
@@ -541,7 +555,7 @@
         "screen",
         "state:openclaw.json"
       ],
-      "timeoutMs": 1200000,
+      "timeoutMs": 2160000,
       "browser": true,
       "slow": true
     },
@@ -567,9 +581,11 @@
       ],
       "requires": [
         "mock-provider-held-turn",
-        "session-main-rolling"
+        "session-main-rolling",
+        "update-baseline-fixture"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow update-review-cancel --artifact-dir {run}/screens/update-review-cancel --timeout 90000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 360000 --timeout 370000 --background --handle {run}/held-update-from-control-ui-operation.json",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow update-now-confirm --artifact-dir {run}/screens/update-now-confirm --timeout 290000 --out {run}/ui-update.json",
@@ -585,7 +601,7 @@
         "screen",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 1400000,
+      "timeoutMs": 1640000,
       "browser": true,
       "slow": true
     },
@@ -609,9 +625,11 @@
         "cron-job-update",
         "gateway-multi-user-profiles",
         "mock-provider-tool-calls",
-        "session-main-rolling"
+        "session-main-rolling",
+        "update-baseline-fixture"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message '/update' --timeout 250000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-chat-update --timeout 120000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool gateway --args '{\"action\":\"update.run\"}' --timeout 200000",
@@ -625,7 +643,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 900000,
+      "timeoutMs": 1140000,
       "browser": false,
       "slow": true
     },
@@ -644,9 +662,11 @@
         "ui/src/components/sidebar-update-card.ts"
       ],
       "requires": [
-        "session-main-rolling"
+        "session-main-rolling",
+        "update-baseline-fixture"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.run --params '{\"sessionKey\":\"{persona:session-main-rolling:key}\"}' --timeout 250000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-notice --timeout 120000",
         "ocm @{env} -- status --json",
@@ -660,7 +680,7 @@
         "screen",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 660000,
+      "timeoutMs": 900000,
       "browser": true,
       "slow": true
     },
@@ -681,14 +701,17 @@
         "ui/src/components/sidebar-update-card.ts",
         "ui/src/pages/config/updates*.ts"
       ],
-      "requires": [],
+      "requires": [
+        "update-baseline-fixture"
+      ],
       "commands": [
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/update-automatic-on.json",
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
+        "node {kovaRoot}/support/verify/update-config.mjs --env {env} --preset update-automatic-on --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.status --params '{}' --timeout 60000 --out {run}/campaign.json",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow updates-hold --artifact-dir {run}/screens/updates-hold --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.hold --params '{}' --merge-from {run}/campaign.json --timeout 60000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow updates-toggle-checks --artifact-dir {run}/screens/updates-toggle-checks --timeout 120000",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/update-automatic-off.json",
+        "node {kovaRoot}/support/verify/update-config.mjs --env {env} --preset update-automatic-off --timeout 30000",
         "ocm logs {env} --tail 400"
       ],
       "checkpoint": [
@@ -698,7 +721,7 @@
         "screen",
         "state:openclaw.json"
       ],
-      "timeoutMs": 360000,
+      "timeoutMs": 670000,
       "browser": true,
       "slow": true
     },
@@ -904,6 +927,9 @@
         "install-pnpm-global"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-git-checkout:env} --fixture {persona:install-git-checkout:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-pnpm-global:env} --fixture {persona:install-pnpm-global:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-npm-global:env} --tool npm --target side --keep-gateway-running --timeout 240000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-npm-replaced --timeout 120000",
         "ocm @{persona:install-npm-global:env} -- status --json",
@@ -918,7 +944,7 @@
         "timing",
         "doctor"
       ],
-      "timeoutMs": 900000,
+      "timeoutMs": 1620000,
       "browser": false,
       "slow": true
     },
@@ -1089,9 +1115,11 @@
         "src/shared/update-outcome.ts"
       ],
       "requires": [
-        "channels-test-accounts"
+        "channels-test-accounts",
+        "update-baseline-fixture"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault channel-probe-fail --background --handle {run}/fault-triage.json",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side-next --yes --stdin pipe --timeout 250000",
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/fault-triage.json --timeout 30000",
@@ -1105,7 +1133,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 310000,
+      "timeoutMs": 550000,
       "browser": false,
       "slow": true
     },
@@ -1125,9 +1153,11 @@
         "src/shared/update-outcome.ts"
       ],
       "requires": [
-        "channels-test-accounts"
+        "channels-test-accounts",
+        "update-baseline-fixture"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault channel-probe-fail --background --handle {run}/fault-rollback.json",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side-next --yes --timeout 250000",
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/fault-rollback.json --timeout 30000",
@@ -1141,7 +1171,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 310000,
+      "timeoutMs": 550000,
       "browser": false,
       "slow": true
     },
@@ -1165,9 +1195,11 @@
         "ui/src/pages/config/updates*.ts"
       ],
       "requires": [
-        "channels-test-accounts"
+        "channels-test-accounts",
+        "update-baseline-fixture"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault channel-probe-fail --background --handle {run}/fault-svc.json",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side-next --yes --no-restart --timeout 200000",
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/fault-svc.json --timeout 30000",
@@ -1181,7 +1213,7 @@
         "screen",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 310000,
+      "timeoutMs": 550000,
       "browser": true,
       "slow": true
     },
@@ -1205,6 +1237,7 @@
         "install-git-checkout"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-git-checkout:env} --fixture {persona:install-git-checkout:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {persona:install-git-checkout:env} --fault channel-probe-fail --background --handle {run}/fault-git.json",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-git-checkout:env} --channel dev --yes --timeout 250000",
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/fault-git.json --timeout 30000",
@@ -1216,9 +1249,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-migrated-verification-failure-repair",
@@ -1243,6 +1276,7 @@
         "install-npm-global"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {persona:install-npm-global:env} --fault channel-probe-fail --background --handle {run}/fault-mig.json",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-npm-global:env} --target side --yes --stdin pipe --timeout 250000",
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/fault-mig.json --timeout 30000",
@@ -1254,7 +1288,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
       "slow": true
     },
@@ -1274,6 +1308,7 @@
         "install-npm-global"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {persona:install-npm-global:env} --fault channel-probe-fail --background --handle {run}/fault-repair.json",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-npm-global:env} --target side --yes --timeout 250000",
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/fault-repair.json --timeout 30000",
@@ -1286,7 +1321,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
       "slow": true
     },
@@ -1309,9 +1344,11 @@
         "src/shared/update-outcome.ts"
       ],
       "requires": [
-        "channels-test-accounts"
+        "channels-test-accounts",
+        "update-baseline-fixture"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault channel-probe-fail --background --handle {run}/fault-menu.json",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side-next --interactive --answer report,exit --timeout 250000",
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/fault-menu.json --timeout 30000",
@@ -1323,9 +1360,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-triage-consent-timeout",
@@ -1339,9 +1376,11 @@
         "src/infra/update-triage*.ts"
       ],
       "requires": [
-        "channels-test-accounts"
+        "channels-test-accounts",
+        "update-baseline-fixture"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault channel-probe-fail --background --handle {run}/fault-consent.json",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side-next --interactive --answer diagnose --consent timeout --timeout 250000",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side-next --interactive --answer diagnose --consent no --timeout 250000",
@@ -1353,7 +1392,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 540000,
+      "timeoutMs": 780000,
       "browser": false,
       "slow": true
     },
@@ -1374,9 +1413,11 @@
         "ui/src/pages/config/updates*.ts"
       ],
       "requires": [
-        "channels-test-accounts"
+        "channels-test-accounts",
+        "update-baseline-fixture"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault channel-probe-fail --background --handle {run}/fault-ui.json",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow update-now-confirm --artifact-dir {run}/screens/update-now-confirm --timeout 250000 --out {run}/ui-failure.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.run --params '{}' --timeout 30000",
@@ -1390,7 +1431,7 @@
         "timing",
         "screen"
       ],
-      "timeoutMs": 350000,
+      "timeoutMs": 590000,
       "browser": true,
       "slow": true
     },
@@ -1442,8 +1483,11 @@
         "src/infra/update-*.ts",
         "src/shared/update-outcome.ts"
       ],
-      "requires": [],
+      "requires": [
+        "update-baseline-fixture"
+      ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/config-fixture.mjs --env {env} --fixture invalid-field --timeout 30000 --background --handle {run}/config-event-managed-handoff-refusal-invalid-field.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.run --params '{}' --timeout 200000",
         "node {kovaRoot}/support/verify/config-fixture.mjs --wait {run}/config-event-managed-handoff-refusal-invalid-field.json --timeout 30000",
@@ -1456,7 +1500,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 330000,
+      "timeoutMs": 570000,
       "browser": false,
       "slow": true
     },
@@ -1476,8 +1520,11 @@
         "src/infra/update-*.ts",
         "src/shared/update-outcome.ts"
       ],
-      "requires": [],
+      "requires": [
+        "update-baseline-fixture"
+      ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault kill-update-helper --when-update-phase validating --background --handle {run}/fault-helper.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.run --params '{}' --timeout 250000",
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/fault-helper.json --timeout 30000",
@@ -1490,7 +1537,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 310000,
+      "timeoutMs": 550000,
       "browser": false,
       "slow": true
     },
@@ -1510,8 +1557,11 @@
         "src/infra/update-*.ts",
         "src/shared/update-outcome.ts"
       ],
-      "requires": [],
+      "requires": [
+        "update-baseline-fixture"
+      ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault helper-spawn-denied --background --handle {run}/fault-spawn.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.run --params '{}' --timeout 100000",
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/fault-spawn.json --timeout 30000",
@@ -1523,9 +1573,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-npm-prefix-not-writable",
@@ -1545,6 +1595,7 @@
         "install-npm-global"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {persona:install-npm-global:env} --fault prefix-readonly --background --handle {run}/fault-prefix.json",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-npm-global:env} --target side --yes --timeout 200000",
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/fault-prefix.json --timeout 30000",
@@ -1556,9 +1607,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-npm-prefix-volume-full",
@@ -1578,6 +1629,7 @@
         "install-npm-global"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {persona:install-npm-global:env} --fault prefix-volume-full --background --handle {run}/fault-enospc.json",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-npm-global:env} --target side --yes --timeout 250000",
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/fault-enospc.json --timeout 30000",
@@ -1589,9 +1641,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-snapshot-space-insufficient",
@@ -1608,8 +1660,11 @@
         "src/infra/update-snapshot-capacity*.ts",
         "src/shared/update-outcome.ts"
       ],
-      "requires": [],
+      "requires": [
+        "update-baseline-fixture"
+      ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault tmpdir-small --background --handle {run}/fault-tmp.json",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side-next --yes --timeout 250000",
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/fault-tmp.json --timeout 30000",
@@ -1621,9 +1676,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-dev-staging-no-space",
@@ -1637,6 +1692,7 @@
         "install-git-checkout"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-git-checkout:env} --fixture {persona:install-git-checkout:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {persona:install-git-checkout:env} --fault artifacts-volume-full --background --handle {run}/fault-art.json",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-git-checkout:env} --channel dev --yes --timeout 250000",
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/fault-art.json --timeout 30000",
@@ -1648,9 +1704,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-registry-target-404",
@@ -1670,6 +1726,7 @@
         "install-npm-global"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/release-feed.mjs --from {run}/release-feed.json --mode withhold-target",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-npm-global:env} --target side --yes --timeout 200000",
         "node {kovaRoot}/support/verify/release-feed.mjs --from {run}/release-feed.json --mode serve",
@@ -1681,9 +1738,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-registry-offline",
@@ -1704,8 +1761,11 @@
         "src/infra/update-status-*.ts",
         "src/shared/update-outcome.ts"
       ],
-      "requires": [],
+      "requires": [
+        "update-baseline-fixture"
+      ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/release-feed.mjs --from {run}/release-feed.json --mode offline",
         "ocm @{env} -- update --dry-run --json",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side-next --yes --timeout 120000",
@@ -1718,9 +1778,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-candidate-refuses-older-target",
@@ -1737,8 +1797,11 @@
         "src/shared/update-outcome.ts",
         "src/state/openclaw-update-schema-refusal.ts"
       ],
-      "requires": [],
+      "requires": [
+        "update-baseline-fixture"
+      ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "ocm @{env} -- update --dry-run --json",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target persona --yes --timeout 200000",
         "ocm @{env} -- update status --json",
@@ -1750,9 +1813,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-pre-activation-failure-observation",
@@ -1771,6 +1834,7 @@
         "install-npm-global"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {persona:install-npm-global:env} --fault tmpdir-small --background --handle {run}/fault-pre.json",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-npm-global:env} --target side --yes --timeout 200000",
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/fault-pre.json --timeout 30000",
@@ -1782,9 +1846,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-refused-update-keeps-channel",
@@ -1800,8 +1864,11 @@
         "src/infra/update-channels.ts",
         "src/shared/update-outcome.ts"
       ],
-      "requires": [],
+      "requires": [
+        "update-baseline-fixture"
+      ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --channel beta --target persona --yes --timeout 200000",
         "ocm @{env} -- config get update --json",
         "ocm @{env} -- update status --json"
@@ -1812,9 +1879,9 @@
         "timing",
         "state:openclaw.json"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-activation-deadline",
@@ -1835,6 +1902,7 @@
         "install-npm-global"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-npm-global:env} --target side --yes --update-timeout 1000 --timeout 250000",
         "ocm @{persona:install-npm-global:env} -- update status --json",
         "ocm @{persona:install-npm-global:env} -- doctor --json"
@@ -1845,9 +1913,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-dev-to-package-activation-failure",
@@ -1868,6 +1936,7 @@
         "install-git-checkout"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-git-checkout:env} --fixture {persona:install-git-checkout:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {persona:install-git-checkout:env} --fault channel-probe-fail --background --handle {run}/fault-switch.json",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-git-checkout:env} --channel stable --yes --timeout 250000",
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/fault-switch.json --timeout 30000",
@@ -1879,9 +1948,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-no-restart-update",
@@ -1898,8 +1967,11 @@
         "src/infra/update-*.ts",
         "src/shared/update-outcome.ts"
       ],
-      "requires": [],
+      "requires": [
+        "update-baseline-fixture"
+      ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side-next --no-restart --yes --timeout 200000",
         "ocm @{env} -- update status --json",
         "ocm logs {env} --tail 400"
@@ -1910,9 +1982,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-no-restart-watcher-restart",
@@ -1933,6 +2005,7 @@
         "install-npm-global"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-npm-global:env} --target side --no-restart --yes --timeout 200000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-watcher --timeout 90000",
         "ocm @{persona:install-npm-global:env} -- status --json",
@@ -1944,9 +2017,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-update-drain-deadline",
@@ -1971,9 +2044,11 @@
       ],
       "requires": [
         "mock-provider-held-turn",
-        "session-main-rolling"
+        "session-main-rolling",
+        "update-baseline-fixture"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 360000 --timeout 370000 --background --handle {run}/held-event-update-drain-deadline-operation.json",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side-next --yes --update-timeout 30000 --timeout 250000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/held-event-update-drain-deadline-operation.json --timeout 370000",
@@ -1985,7 +2060,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 1040000,
+      "timeoutMs": 1280000,
       "browser": false,
       "slow": true
     },
@@ -2003,8 +2078,11 @@
         "src/infra/update-candidate-predecessor-stop.ts",
         "src/shared/update-outcome.ts"
       ],
-      "requires": [],
+      "requires": [
+        "update-baseline-fixture"
+      ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side-next --yes --update-timeout 2000 --timeout 250000",
         "ocm @{env} -- update status --json"
       ],
@@ -2014,9 +2092,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-replaced-gateway-update",
@@ -2037,6 +2115,7 @@
         "install-npm-global"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-npm-global:env} --tool npm --target persona --keep-gateway-running --timeout 200000",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-npm-global:env} --target side --yes --timeout 250000",
         "ocm @{persona:install-npm-global:env} -- update status --json"
@@ -2047,7 +2126,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 480000,
+      "timeoutMs": 720000,
       "browser": false,
       "slow": true
     },
@@ -2063,6 +2142,7 @@
         "install-npm-global"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-npm-global:env} --tool npm --target side --keep-gateway-running --timeout 200000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-replaced --timeout 90000",
         "ocm @{persona:install-npm-global:env} -- status --json",
@@ -2075,9 +2155,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-repair-after-manual-replace",
@@ -2096,6 +2176,7 @@
         "install-npm-global"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-npm-global:env} --tool npm --target side --keep-gateway-running --timeout 200000",
         "ocm @{persona:install-npm-global:env} -- update repair --yes --no-restart --json",
         "ocm @{persona:install-npm-global:env} -- status --json"
@@ -2106,9 +2187,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-manual-install-over-stranded-update",
@@ -2129,6 +2210,7 @@
         "install-npm-global"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-npm-global:env} --target side --yes --signal SIGKILL --at-phase activating --timeout 200000",
         "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-npm-global:env} --tool npm --target side --timeout 200000",
         "ocm @{persona:install-npm-global:env} -- update repair --json --yes",
@@ -2140,7 +2222,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 480000,
+      "timeoutMs": 720000,
       "browser": false,
       "slow": true
     },
@@ -2162,6 +2244,7 @@
         "install-npm-global"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-npm-global:env} --target side --yes --signal SIGINT --at-phase staging --timeout 200000",
         "ocm @{persona:install-npm-global:env} -- update status --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-interrupted --timeout 60000"
@@ -2172,9 +2255,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-cancel-before-mutation",
@@ -2199,6 +2282,7 @@
         "install-npm-global"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-npm-global:env} --target side --yes --signal SIGINT --at-phase validating --timeout 200000",
         "ocm @{persona:install-npm-global:env} -- update status --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-cancelled --timeout 60000"
@@ -2209,9 +2293,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-updater-signal-during-activation",
@@ -2232,6 +2316,7 @@
         "install-npm-global"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-npm-global:env} --target side --yes --signal SIGTERM --at-phase activating --timeout 250000",
         "ocm @{persona:install-npm-global:env} -- update status --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-sigterm --timeout 60000"
@@ -2242,7 +2327,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 310000,
+      "timeoutMs": 550000,
       "browser": false,
       "slow": true
     },
@@ -2264,6 +2349,7 @@
         "install-npm-global"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-npm-global:env} --target side --yes --signal SIGKILL --at-phase restarting --timeout 250000",
         "ocm @{persona:install-npm-global:env} -- update status --json",
         "ocm @{persona:install-npm-global:env} -- status --json",
@@ -2275,9 +2361,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-updater-exits-during-verification",
@@ -2294,8 +2380,11 @@
         "src/infra/update-run-reconciliation*.ts",
         "src/shared/update-outcome.ts"
       ],
-      "requires": [],
+      "requires": [
+        "update-baseline-fixture"
+      ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side-next --yes --signal SIGKILL --at-phase verifying --timeout 250000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-verify-killed --timeout 60000",
         "ocm @{env} -- update status --json",
@@ -2307,7 +2396,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 310000,
+      "timeoutMs": 550000,
       "browser": false,
       "slow": true
     },
@@ -2328,9 +2417,11 @@
       "requires": [
         "agents-fleet-large",
         "session-long-compacted",
-        "sessions-thousands-near-cap"
+        "sessions-thousands-near-cap",
+        "update-baseline-fixture"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side-next --yes --timeout 290000",
         "ocm @{env} -- update status --json"
       ],
@@ -2340,7 +2431,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
       "slow": true
     },
@@ -2362,6 +2453,7 @@
         "install-npm-global"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-npm-global:env} --target side --yes --update-timeout 60000 --timeout 290000",
         "ocm @{persona:install-npm-global:env} -- update status --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-still-starting --timeout 120000"
@@ -2372,7 +2464,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 410000,
+      "timeoutMs": 650000,
       "browser": false,
       "slow": true
     },
@@ -2394,6 +2486,7 @@
         "install-npm-global"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-npm-global:env} --target side --yes --update-timeout 20000 --timeout 290000",
         "ocm @{persona:install-npm-global:env} -- update status --json"
       ],
@@ -2403,7 +2496,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
       "slow": true
     },
@@ -2425,6 +2518,7 @@
         "install-npm-global"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-npm-global:env} --target side --yes --update-timeout 10000 --timeout 250000",
         "ocm @{persona:install-npm-global:env} -- update status --json"
       ],
@@ -2434,9 +2528,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-restart-during-startup-migration",
@@ -2457,6 +2551,7 @@
         "install-npm-global"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-npm-global:env} --tool npm --target side --keep-gateway-running --timeout 200000",
         "ocm @{persona:install-npm-global:env} -- gateway restart",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-migrating --timeout 90000"
@@ -2467,9 +2562,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-gateway-killed-during-verification",
@@ -2485,8 +2580,11 @@
         "src/infra/update-run-verification.ts",
         "src/shared/update-outcome.ts"
       ],
-      "requires": [],
+      "requires": [
+        "update-baseline-fixture"
+      ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault kill-gateway --when-update-phase verifying --background --handle {run}/fault-kill.json",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side-next --yes --timeout 250000",
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/fault-kill.json --timeout 30000",
@@ -2499,7 +2597,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 340000,
+      "timeoutMs": 580000,
       "browser": false,
       "slow": true
     },
@@ -2552,8 +2650,11 @@
         "src/infra/update-*.ts",
         "src/shared/update-outcome.ts"
       ],
-      "requires": [],
+      "requires": [
+        "update-baseline-fixture"
+      ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault hold-state-lock --when-update-phase activating --background --handle {run}/fault-lock.json",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side-next --yes --timeout 250000",
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/fault-lock.json --timeout 30000",
@@ -2565,9 +2666,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-already-current-maintenance-refused",
@@ -2588,8 +2689,11 @@
         "src/infra/update-*.ts",
         "src/shared/update-outcome.ts"
       ],
-      "requires": [],
+      "requires": [
+        "update-baseline-fixture"
+      ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault hold-state-lock --when-update-phase activating --background --handle {run}/fault-lock2.json",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side --yes --timeout 250000",
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/fault-lock2.json --timeout 30000",
@@ -2601,9 +2705,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-foreign-writer-during-maintenance",
@@ -2623,6 +2727,7 @@
         "install-npm-global"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {persona:install-npm-global:env} --fault db-writer-loop --background --handle {run}/fault-writer.json",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-npm-global:env} --target side --yes --timeout 250000",
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/fault-writer.json --timeout 30000",
@@ -2634,7 +2739,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
       "slow": true
     },
@@ -2654,9 +2759,11 @@
       ],
       "requires": [
         "channels-test-accounts",
-        "config-include-files"
+        "config-include-files",
+        "update-baseline-fixture"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault config-edit --when-update-phase verifying --background --handle {run}/fault-edit.json",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault channel-probe-fail --background --handle {run}/fault-edit-probe.json",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side-next --yes --timeout 250000",
@@ -2670,7 +2777,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 310000,
+      "timeoutMs": 550000,
       "browser": false,
       "slow": true
     },
@@ -2689,8 +2796,11 @@
         "src/infra/update-*.ts",
         "src/shared/update-outcome.ts"
       ],
-      "requires": [],
+      "requires": [
+        "update-baseline-fixture"
+      ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault config-edit --when-update-phase requested --background --handle {run}/fault-adm.json",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side-next --yes --timeout 250000",
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/fault-adm.json --timeout 30000",
@@ -2703,9 +2813,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-config-changed-during-doctor",
@@ -2817,11 +2927,14 @@
         "src/infra/update-*.ts",
         "src/shared/update-outcome.ts"
       ],
-      "requires": [],
+      "requires": [
+        "update-baseline-fixture"
+      ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.run --params '{}' --background --handle {run}/update-run.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method gateway.stop.request --params '{}' --timeout 120000 --after-ms 5000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --wait {run}/update-run.json --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --method update.run --wait {run}/update-run.json --timeout 120000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-stop --timeout 120000",
         "ocm @{env} -- update status --json"
@@ -2832,7 +2945,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 360000,
+      "timeoutMs": 600000,
       "browser": false,
       "slow": true
     },
@@ -2848,15 +2961,17 @@
         "src/shared/update-outcome.ts"
       ],
       "requires": [
-        "session-main-rolling"
+        "session-main-rolling",
+        "update-baseline-fixture"
       ],
       "commands": [
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/restart-off.json",
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
+        "node {kovaRoot}/support/verify/update-config.mjs --env {env} --preset restart-off --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.run --params '{}' --timeout 120000",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message '/update' --timeout 60000",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message '/restart' --timeout 60000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault signal-restart --timeout 30000",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/restart-on.json",
+        "node {kovaRoot}/support/verify/update-config.mjs --env {env} --preset restart-on --timeout 30000",
         "ocm @{env} -- update status --json"
       ],
       "checkpoint": [
@@ -2865,9 +2980,9 @@
         "timing",
         "state:openclaw.json"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 580000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-git-remote-unreachable",
@@ -2882,6 +2997,7 @@
         "install-git-checkout"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-git-checkout:env} --fixture {persona:install-git-checkout:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {persona:install-git-checkout:env} --fault block-git-remote --background --handle {run}/fault-remote.json",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-git-checkout:env} --channel dev --yes --timeout 150000",
         "ocm @{persona:install-git-checkout:env} -- status --json",
@@ -2893,9 +3009,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-plugin-target-unavailable",
@@ -2916,6 +3032,7 @@
         "plugins-bundled-and-external"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/release-feed.mjs --from {run}/release-feed.json --mode withhold-plugins",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-npm-global:env} --target side --yes --timeout 250000",
         "node {kovaRoot}/support/verify/release-feed.mjs --from {run}/release-feed.json --mode serve",
@@ -2927,9 +3044,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-clawhub-plugin-missing",
@@ -2946,9 +3063,11 @@
         "src/shared/update-outcome.ts"
       ],
       "requires": [
-        "plugins-bundled-and-external"
+        "plugins-bundled-and-external",
+        "update-baseline-fixture"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/release-feed.mjs --from {run}/release-feed.json --mode withhold-clawhub-official",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side-next --yes --timeout 250000",
         "node {kovaRoot}/support/verify/release-feed.mjs --from {run}/release-feed.json --mode serve",
@@ -2960,9 +3079,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-repair-during-live-update",
@@ -2977,8 +3096,11 @@
         "src/commands/doctor-update*.ts",
         "src/flows/doctor-update-budget.ts"
       ],
-      "requires": [],
+      "requires": [
+        "update-baseline-fixture"
+      ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side-next --yes --background --handle {run}/update-live.json",
         "ocm @{env} -- update repair --json --yes",
         "node {kovaRoot}/support/verify/update-cli.mjs --wait {run}/update-live.json --timeout 250000",
@@ -2990,9 +3112,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-repair-phase-timeout",
@@ -3037,8 +3159,11 @@
         "src/infra/update-run-admission.ts",
         "src/shared/update-outcome.ts"
       ],
-      "requires": [],
+      "requires": [
+        "update-baseline-fixture"
+      ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault db-writer-hold --background --handle {run}/fault-hold.json --duration-ms 60000",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side-next --yes --update-timeout 5000 --timeout 60000",
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/fault-hold.json --timeout 90000",
@@ -3050,9 +3175,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-update-supersedes-stale-row",
@@ -3095,15 +3220,17 @@
       ],
       "requires": [
         "mock-provider-held-turn",
-        "session-main-rolling"
+        "session-main-rolling",
+        "update-baseline-fixture"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 240000 --timeout 250000 --background --handle {run}/held-event-campaign-with-active-work-campaign.json",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/update-automatic-beta-on.json",
+        "node {kovaRoot}/support/verify/update-config.mjs --env {env} --preset update-automatic-beta-on --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.status --params '{}' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.status --params '{}' --after-ms 600000 --timeout 60000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-campaign --timeout 300000",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/update-automatic-off.json",
+        "node {kovaRoot}/support/verify/update-config.mjs --env {env} --preset update-automatic-off --timeout 30000",
         "ocm @{env} -- update status --json",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/held-event-campaign-with-active-work-campaign.json --timeout 250000"
       ],
@@ -3113,7 +3240,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 1600000,
+      "timeoutMs": 1840000,
       "browser": false,
       "slow": true
     },
@@ -3134,14 +3261,16 @@
         "src/infra/update-status-schedule.ts"
       ],
       "requires": [
-        "channels-test-accounts"
+        "channels-test-accounts",
+        "update-baseline-fixture"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault channel-probe-fail --background --handle {run}/fault-camp.json",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/update-automatic-beta-on.json",
+        "node {kovaRoot}/support/verify/update-config.mjs --env {env} --preset update-automatic-beta-on --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.status --params '{}' --after-ms 240000 --timeout 60000",
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/fault-camp.json --timeout 300000",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/update-automatic-off.json",
+        "node {kovaRoot}/support/verify/update-config.mjs --env {env} --preset update-automatic-off --timeout 30000",
         "ocm @{env} -- update status --json"
       ],
       "checkpoint": [
@@ -3150,7 +3279,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 700000,
+      "timeoutMs": 940000,
       "browser": false,
       "slow": true
     },
@@ -3169,13 +3298,16 @@
         "src/infra/update-status-*.ts",
         "src/infra/update-status-schedule.ts"
       ],
-      "requires": [],
+      "requires": [
+        "update-baseline-fixture"
+      ],
       "commands": [
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/update-automatic-beta-on.json",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/update-checks-off.json",
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
+        "node {kovaRoot}/support/verify/update-config.mjs --env {env} --preset update-automatic-beta-on --timeout 30000",
+        "node {kovaRoot}/support/verify/update-config.mjs --env {env} --preset update-checks-off --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.status --params '{}' --timeout 60000",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/update-checks-on.json",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/update-automatic-off.json",
+        "node {kovaRoot}/support/verify/update-config.mjs --env {env} --preset update-checks-on --timeout 30000",
+        "node {kovaRoot}/support/verify/update-config.mjs --env {env} --preset update-automatic-off --timeout 30000",
         "ocm logs {env} --tail 400"
       ],
       "checkpoint": [
@@ -3184,9 +3316,9 @@
         "timing",
         "state:openclaw.json"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-shutdown-during-discovery",
@@ -3205,12 +3337,15 @@
         "src/infra/update-startup-auto-run.ts",
         "src/infra/update-status-schedule.ts"
       ],
-      "requires": [],
+      "requires": [
+        "update-baseline-fixture"
+      ],
       "commands": [
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/update-automatic-beta-on.json",
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
+        "node {kovaRoot}/support/verify/update-config.mjs --env {env} --preset update-automatic-beta-on --timeout 30000",
         "ocm @{env} -- gateway restart",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-discovery --timeout 120000",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/update-automatic-off.json",
+        "node {kovaRoot}/support/verify/update-config.mjs --env {env} --preset update-automatic-off --timeout 30000",
         "ocm logs {env} --tail 400"
       ],
       "checkpoint": [
@@ -3219,9 +3354,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-control-ui-reconnect-during-update",
@@ -3323,6 +3458,7 @@
         "install-git-checkout"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-git-checkout:env} --fixture {persona:install-git-checkout:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/release-feed.mjs --from {run}/release-feed.json --mode withhold-target",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-git-checkout:env} --channel stable --yes --timeout 200000",
         "node {kovaRoot}/support/verify/release-feed.mjs --from {run}/release-feed.json --mode serve",
@@ -3334,9 +3470,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-channel-switch-refused",
@@ -3355,6 +3491,7 @@
         "install-git-checkout"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-git-checkout:env} --fixture {persona:install-git-checkout:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {persona:install-git-checkout:env} --fault hold-state-lock --background --handle {run}/fault-glock.json",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-git-checkout:env} --channel stable --yes --timeout 150000",
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/fault-glock.json --timeout 30000",
@@ -3367,9 +3504,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-package-scripts-skipped",
@@ -3383,6 +3520,7 @@
         "install-npm-global"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-npm-global:env} --tool npm --target side --ignore-scripts --timeout 200000",
         "ocm @{persona:install-npm-global:env} -- status --json",
         "ocm @{persona:install-npm-global:env} -- update status --json"
@@ -3393,9 +3531,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-restart-drain-expiry",
@@ -3475,6 +3613,7 @@
         "install-npm-global"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-npm-global:env} --target side --yes --timeout 250000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {persona:install-npm-global:env} --artifact-dir {run}/ready-old-shutdown --timeout 90000",
         "ocm @{persona:install-npm-global:env} -- update status --json",
@@ -3486,7 +3625,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 340000,
+      "timeoutMs": 580000,
       "browser": false,
       "slow": true
     },
@@ -3506,8 +3645,11 @@
         "src/infra/update-run-mutation.worker.ts",
         "src/shared/update-outcome.ts"
       ],
-      "requires": [],
+      "requires": [
+        "update-baseline-fixture"
+      ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault config-readonly --when-update-phase activating --background --handle {run}/fault-cfgro.json",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side-next --yes --timeout 250000",
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/fault-cfgro.json --timeout 30000",
@@ -3519,9 +3661,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-cleanup-with-readers",
@@ -3594,6 +3736,7 @@
         "install-npm-global"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-npm-global:env} --tool npm --target side --timeout 200000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {persona:install-npm-global:env} --fault interrupt-doctor --signal SIGINT --after-ms 3000 --timeout 60000",
         "node {kovaRoot}/support/run-doctor-repair.mjs --env {persona:install-npm-global:env}",
@@ -3605,9 +3748,9 @@
         "timing",
         "doctor"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-doctor-terminated-during-archive-repair",
@@ -3693,6 +3836,7 @@
         "install-npm-global"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-npm-global:env} --tool npm --target side --timeout 200000",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {persona:install-npm-global:env} --fault interrupt-doctor --signal SIGKILL --after-ms 1000 --timeout 60000",
         "node {kovaRoot}/support/run-doctor-repair.mjs --env {persona:install-npm-global:env}",
@@ -3704,9 +3848,9 @@
         "timing",
         "doctor"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 540000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-update-already-current",
@@ -3721,8 +3865,11 @@
         "src/infra/package-update-*.ts",
         "src/shared/update-outcome.ts"
       ],
-      "requires": [],
+      "requires": [
+        "update-baseline-fixture"
+      ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side --yes --timeout 150000",
         "ocm @{env} -- update status --json"
       ],
@@ -3732,7 +3879,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 200000,
+      "timeoutMs": 440000,
       "browser": false,
       "slow": true
     },
@@ -3752,8 +3899,11 @@
         "src/commands/doctor-post-upgrade*.ts",
         "src/flows/doctor-update-budget.ts"
       ],
-      "requires": [],
+      "requires": [
+        "update-baseline-fixture"
+      ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/release-feed.mjs --from {run}/release-feed.json --publish-variant canary-fails",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target variant:canary-fails --yes --timeout 150000",
         "ocm @{env} -- update status --json",
@@ -3765,7 +3915,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 260000,
+      "timeoutMs": 500000,
       "browser": false,
       "slow": true
     },
@@ -3809,8 +3959,11 @@
         "src/infra/package-update-*.ts",
         "src/shared/update-outcome.ts"
       ],
-      "requires": [],
+      "requires": [
+        "update-baseline-fixture"
+      ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/release-feed.mjs --from {run}/release-feed.json --publish-variant install-fails",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target variant:install-fails --yes --timeout 150000",
         "ocm @{env} -- update status --json",
@@ -3822,7 +3975,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 260000,
+      "timeoutMs": 500000,
       "browser": false,
       "slow": true
     },
@@ -3840,9 +3993,11 @@
         "src/shared/update-outcome.ts"
       ],
       "requires": [
-        "plugins-bundled-and-external"
+        "plugins-bundled-and-external",
+        "update-baseline-fixture"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/release-feed.mjs --from {run}/release-feed.json --mode offline",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side --yes --timeout 150000",
         "node {kovaRoot}/support/verify/release-feed.mjs --from {run}/release-feed.json --mode serve"
@@ -3853,7 +4008,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 230000,
+      "timeoutMs": 470000,
       "browser": false,
       "slow": true
     },
@@ -3871,9 +4026,11 @@
         "src/shared/update-outcome.ts"
       ],
       "requires": [
-        "plugins-bundled-and-external"
+        "plugins-bundled-and-external",
+        "update-baseline-fixture"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/release-feed.mjs --from {run}/release-feed.json --plugin-release {persona:plugins-bundled-and-external:externalPluginId} --plugin-capabilities widened",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side --yes --timeout 120000",
         "ocm @{env} -- update repair --yes --accept-capabilities --json"
@@ -3884,7 +4041,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 280000,
+      "timeoutMs": 520000,
       "browser": false,
       "slow": true
     },
@@ -3902,9 +4059,11 @@
         "src/shared/update-outcome.ts"
       ],
       "requires": [
-        "plugins-bundled-and-external"
+        "plugins-bundled-and-external",
+        "update-baseline-fixture"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/release-feed.mjs --from {run}/release-feed.json --plugin-release {persona:plugins-bundled-and-external:externalPluginId} --plugin-integrity changed",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side --yes --timeout 150000",
         "ocm @{env} -- plugins list --json"
@@ -3915,7 +4074,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 260000,
+      "timeoutMs": 500000,
       "browser": false,
       "slow": true
     },
@@ -3955,12 +4114,12 @@
       ],
       "requires": [],
       "commands": [
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/update-checks-off.json",
+        "node {kovaRoot}/support/verify/update-config.mjs --env {env} --preset update-checks-off --timeout 30000",
         "ocm service restart {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-event-update-checks-disabled --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method update.status --params '{}' --timeout 30000",
         "ocm logs {env} --tail 300",
-        "ocm @{env} -- config patch --file {kovaRoot}/verify/templates/update/patches/update-checks-on.json"
+        "node {kovaRoot}/support/verify/update-config.mjs --env {env} --preset update-checks-on --timeout 30000"
       ],
       "checkpoint": [
         "responses",
@@ -4141,13 +4300,16 @@
         "src/gateway/restart-trace.ts"
       ],
       "requires": [
+        "mock-provider-held-turn",
         "session-main-rolling"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message 'Reply with exact ASCII text KOVA_DRAIN_OK only.' --after-ms 1500 --timeout 60000 --background --handle {run}/drain-send.json",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 120000 --timeout 130000 --background --handle {run}/held-drain-admission.json",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message 'Reply with exact ASCII text KOVA_DRAIN_OK only.' --when-gateway-draining --timeout 60000 --background --handle {run}/drain-send.json",
         "ocm @{env} -- gateway restart --wait 30s --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-event-restart-rejects-new-input --timeout 60000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --wait {run}/drain-send.json --timeout 60000"
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --wait {run}/drain-send.json --timeout 60000",
+        "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/held-drain-admission.json --timeout 130000"
       ],
       "checkpoint": [
         "responses",
@@ -4155,9 +4317,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 250000,
+      "timeoutMs": 510000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-cleanup-readers-active",
@@ -4438,38 +4600,6 @@
       "slow": false
     },
     {
-      "id": "event-startup-failure-triage",
-      "kind": "event",
-      "intent": "The Gateway fails to start three times because its config carries an invalid field, tripping the crash-loop breaker so startup failure triage runs once; the triage handoff, retry and manual guidance are observed.",
-      "paths": [
-        "src/cli/gateway-cli/startup-triage.ts",
-        "src/commands/triage*.ts",
-        "src/infra/triage-continuation.ts",
-        "src/infra/update-repair-*.ts",
-        "src/infra/update-triage*.ts"
-      ],
-      "requires": [],
-      "commands": [
-        "node {kovaRoot}/support/verify/config-fixture.mjs --env {env} --fixture invalid-field --timeout 30000 --background --handle {run}/config-event-startup-failure-triage-invalid-field.json",
-        "ocm service restart {env} --json",
-        "ocm service restart {env} --json",
-        "ocm service restart {env} --json",
-        "ocm logs {env} --tail 400",
-        "node {kovaRoot}/support/verify/config-fixture.mjs --wait {run}/config-event-startup-failure-triage-invalid-field.json --timeout 30000",
-        "ocm service restart {env} --json",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-startup-triage --timeout 120000"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing",
-        "state:state/openclaw.sqlite"
-      ],
-      "timeoutMs": 300000,
-      "browser": false,
-      "slow": false
-    },
-    {
       "id": "event-same-schema-rollback-and-reupgrade",
       "kind": "event",
       "intent": "The side is updated to a newer build, replaced back with the side's own build and updated again; companion-table handling, disabled features and reconciled projections on each start are observed.",
@@ -4477,8 +4607,11 @@
         "src/infra/update-recovery*.ts",
         "src/state/openclaw-schema-versions.ts"
       ],
-      "requires": [],
+      "requires": [
+        "update-baseline-fixture"
+      ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {env} --fixture {persona:update-baseline-fixture:path} --runtime side --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {env} --target side-next --yes --timeout 250000",
         "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {env} --tool npm --target side --timeout 200000",
         "ocm @{env} -- status --json",
@@ -4491,7 +4624,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 800000,
+      "timeoutMs": 1040000,
       "browser": false,
       "slow": true
     },
@@ -4509,6 +4642,7 @@
         "install-npm-global"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/restore-update-fixture.mjs --env {persona:install-npm-global:env} --fixture {persona:install-npm-global:fixture} --runtime persona --release-feed {run}/release-feed.json --timeout 240000",
         "node {kovaRoot}/support/verify/update-cli.mjs --env {persona:install-npm-global:env} --target side --yes --timeout 250000",
         "node {kovaRoot}/support/verify/manual-package-replace.mjs --env {persona:install-npm-global:env} --tool npm --target persona --timeout 200000",
         "ocm @{persona:install-npm-global:env} -- status --json",
@@ -4521,7 +4655,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 600000,
+      "timeoutMs": 840000,
       "browser": false,
       "slow": true
     },
