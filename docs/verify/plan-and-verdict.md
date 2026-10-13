@@ -128,7 +128,8 @@ the reader with `--wait`, `--from` or another `--*-from` flag. The plan finds
 these pairs from the command text. A `{run}` file name may be written by the
 phases of only one source (one template, the intent phases or the standard
 phases); when two sources write the same name, the plan is refused and names
-them, so a reader can never join another source's operation.
+them, so a reader of a file always joins the one operation that wrote it,
+whichever source that is.
 
 The plan orders all selected phases so that every one of these holds:
 
@@ -213,7 +214,10 @@ any other difference in the same phase and signal is classed on its own.
   "intent": {
     "goal": "<the Goal line>",
     "protected": "<the Protected line>",
-    "expects": [{ "phase": "intent/goal-search-complete", "signal": "responses", "at": "0/result/indexing", "change": false }]
+    "expects": [
+      { "phase": "intent/goal-search-complete", "signal": "responses", "at": "0/result/indexing", "change": false },
+      { "phase": "sessions/search-history", "signal": "responses", "at": "0/result/indexing", "change": false }
+    ]
   },
   "persona": {
     "id": "openclaw-verification-user",
@@ -528,8 +532,8 @@ row that matches wins:
 | `not-caused` | A shared failure | Listed in `issues`; never counts against the change |
 | `fixed` | A difference where only the baseline side failed: the baseline recorded a failure the change side did not, or has no checkpoint for a phase the change side recorded | None |
 | `intended` | A difference at an item `intent.expects` names, where the change side shows the predicted value | None; `explainedBy` is `intent:goal` |
-| `flaky` | Any other difference that only one of the two change clones shows | Verdict `unresolved` |
-| `break` | Any other difference | Verdict `breaks` |
+| `flaky` | Any other difference at an item where only one of the two change clones differs from the baseline | Verdict `unresolved` |
+| `break` | Any other difference: both change clones differ from the baseline at the item, whether or not their values agree | Verdict `breaks` |
 
 An intent phase is compared like any other: a command in it that fails the
 same way on both sides is a shared failure, classed `not-caused`.

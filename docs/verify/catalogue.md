@@ -170,9 +170,11 @@ a plan with any other finding.
 
 For a script:
 
-1. Take the script path and the "wraps" sentence from the template's or
-   persona's `support.toWrite` line.
-2. Give the entry an id, its kind, its side, and whether it needs `background`.
+1. Take the script path and the sentence in parentheses (what it wraps or
+   builds, and its flags) from the template's or persona's `support.toWrite`
+   line.
+2. Give the entry an id, its kind, what it wraps, its exact command form, its
+   side, and whether it needs `background`.
 3. List every flag phases pass to it, with its meaning, from the phases that
    call it; a duration is given in milliseconds. Drop any flag that would
    assert.
@@ -188,8 +190,10 @@ time:
 1. Check the exact command form and the flags phases use against OpenClaw's or
    OCM's own `--help` at the catalogue's revision, or the Gateway method name
    against the methods the Gateway registers there.
-2. Give the entry an id, its kind (`product`, `gateway` or `ocm`), its side,
-   its flags and the top-level fields of its JSON output when it has one.
+2. Fill every field of the [catalogue form](#catalogue-form): its id, its kind
+   (`product`, `gateway` or `ocm`), what it wraps, its exact command, its
+   flags, the top-level fields of its JSON output when it has one, `creates`,
+   its side and whether it runs in the background.
 3. Add it with status `existing` when the command can run today. A `gateway`
    entry is `existing` only when both the method is registered and Kova's
    generic Gateway caller exists; until the caller is written, every `gateway`

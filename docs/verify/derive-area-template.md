@@ -161,7 +161,7 @@ Do: from the documents read in step 1, list every state the area is normally
 in and every event it normally goes through. Take them from the documents' own
 statements about lifecycle, state location, isolation, recovery, maintenance,
 scale and sharing. Do not take them from incidents; step 6 is the only place
-a break can add a condition, and it records that condition as undocumented.
+a break can add a condition, by the rules given there.
 
 A condition is a state the product is in or an event it goes through on its
 own or by configuration, as a document describes it. An action the user
@@ -224,8 +224,9 @@ Each phase has:
 - `paths`: the source globs of the entry points this phase exercises. The plan
   selects a phase when the change touches one of its paths; `setup` phases are
   selected whenever any phase of the template is.
-- `commands`: one or more commands against `{env}`, each calling a product
-  command or a catalogue script. A phase that must keep running under later
+- `commands`: one or more commands against `{env}`, each calling a catalogue
+  entry: an OpenClaw command, a Gateway method, a Kova script or an OCM
+  operation. A phase that must keep running under later
   phases uses `--background --handle {run}/<name>.json`; a later phase joins it
   with `--wait {run}/<name>.json`.
 - `requires`: the persona traits this phase needs, whether or not its commands
@@ -327,7 +328,8 @@ own working directory. Then reconcile:
 - Operations: where the runs grouped differently, keep the finer grouping when
   the finer operation has its own entry-point family (entry points that share
   a Gateway method prefix, a CLI command or a UI page); otherwise keep the
-  coarser.
+  coarser, whose entry points include every entry point of the finer
+  operations, so no entry point is dropped.
 - Phases: for each operation and event condition in the union, take as the
   base the phase whose commands exercise more of that operation's entry
   points, comparing a run's several phases for one operation together; on a
