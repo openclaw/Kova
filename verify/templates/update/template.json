@@ -543,7 +543,8 @@
         "src/logging/diagnostic-support-redaction.ts",
         "src/infra/update-run-report.ts",
         "src/gateway/server-update-sentinel.ts",
-        "src/infra/restart-sentinel.ts"
+        "src/infra/restart-sentinel.ts",
+        "src/infra/update-run-report*.ts"
       ],
       "requires": [
         "gateway-multi-user-profiles",
@@ -633,7 +634,11 @@
         "src/infra/update-failure-facts.ts",
         "src/cli/program/register.subclis.ts",
         "src/plugins/manifest-contract-eligibility.ts",
-        "src/plugins/npm-project-roots.ts"
+        "src/plugins/npm-project-roots.ts",
+        "src/cli/update-cli/update-command-post-plugin*.ts",
+        "src/plugins/plugin-metadata*.ts",
+        "src/plugins/manifest*.ts",
+        "src/infra/npm-registry-spec.ts"
       ],
       "requires": [
         "plugin-capability-widened",
@@ -704,7 +709,12 @@
         "src/state/openclaw-agent-db-contract.ts",
         "src/state/openclaw-state-db-contract.ts",
         "src/infra/package-dist-inventory.ts",
-        "src/infra/update-runner-command*.ts"
+        "src/infra/update-runner-command*.ts",
+        "openclaw.mjs",
+        "src/entry.ts",
+        "src/cli/node-cli.ts",
+        "src/cli/node-cli/register.ts",
+        "src/infra/npm-registry-spec.ts"
       ],
       "requires": [
         "node-host-headless"
@@ -896,7 +906,10 @@
         "src/cli/update-cli.ts",
         "src/cli/update-option-specs.ts",
         "src/cli/update-cli/shared.ts",
-        "src/cli/program/register.subclis.ts"
+        "src/cli/program/register.subclis.ts",
+        "scripts/lib/package-dist-inventory.ts",
+        "scripts/openclaw-prepack.ts",
+        "scripts/write-package-dist-inventory.ts"
       ],
       "requires": [
         "install-npm-global"
@@ -1307,7 +1320,12 @@
         "src/state/openclaw-agent-db-contract.ts",
         "src/state/openclaw-state-db-contract.ts",
         "src/infra/package-dist-inventory.ts",
-        "src/infra/update-runner-command*.ts"
+        "src/infra/update-runner-command*.ts",
+        "openclaw.mjs",
+        "src/entry.ts",
+        "src/cli/node-cli.ts",
+        "src/cli/node-cli/register.ts",
+        "src/infra/npm-registry-spec.ts"
       ],
       "requires": [
         "node-host-headless"
@@ -1605,7 +1623,10 @@
         "src/gateway/server-shutdown.ts",
         "src/shared/session-run-state.ts",
         "ui/src/lib/session-run-state.ts",
-        "src/gateway/server-shutdown*.ts"
+        "src/gateway/server-shutdown*.ts",
+        "ui/src/pages/chat/run-lifecycle*.ts",
+        "ui/src/lib/chat/history-message-identity*.ts",
+        "src/shared/agent-run-status.ts"
       ],
       "requires": [
         "session-main-rolling",
