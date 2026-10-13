@@ -12,6 +12,7 @@ Partial documents read under the bound: docs/web/control-ui/settings.md (Updates
 Caller search: the `search.symbols` and `search.literals` of the area input file, grepped as whole words with fixed strings (`grep -rowF`) over src, ui/src, extensions and packages, file types .ts/.tsx/.js/.mjs/.mts/.cts, skipping node_modules and dist build output.
 
 ## Excluded paths
+src/infra/sqlite-snapshot-source.ts, src/infra/sqlite-readonly-worker.ts, src/infra/sqlite-readonly-location.worker.ts: owned by shared SQLite storage infrastructure; consumed implementations, not update entry points. Candidate compatibility and database-preflight entries remain selected in the node journeys.
 src/agents/main-session-recovery/**, src/gateway/server-methods/chat-restart-recovery.ts: owned by sessions (automatic resume of interrupted turns after a restart; bound decision)
 src/plugins/update*.ts, src/cli/plugins-update-*.ts: owned by plugins (plugin code reached during plugin sync is listed as kind from plugins)
 src/gateway/server-reload-*.ts, src/config/io*.ts, src/config/mutate*.ts, src/config/write-lock.ts: owned by config (config writes; the update hooks they call are listed as entry points of kind from config)
@@ -1268,3 +1269,5 @@ Copied recovery originals require clone-local filesystem identities. Restoration
 Plugin repair selects post-plugin validation and manifest metadata discovery; node journeys select their packaged entry and version admission. Report-health formatting, outbox lifecycle/receipt predicates and the package-time pending-lifecycle marker producers also select their existing observations. No scenarios or coverage credits are added.
 
 The retained phases also select Doctor child execution/results, node-specific discovery, both server and browser pending-input receipt producers, cron ownership, active-work accounting and maintenance timing. These are source-selection corrections for existing inputs and observations; coverage totals are unchanged.
+
+Local release publication controls package-command discovery and telemetry’s supported endpoint override. CLI update status also performs a direct public-npm fetch that neither setting redirects, so the template records its returned metadata without claiming a controlled available-release condition. External-registry variation is a comparison limit. Generic SQLite snapshot/read-only workers remain excluded shared infrastructure under the derivation procedure; node-specific activation and admission owners remain selected.

@@ -125,10 +125,10 @@
   "support": {
     "existing": [],
     "toWrite": [
-      "support/verify/release-feed.mjs  (a local package registry and update-check endpoint that publishes the side's build and a version-bumped copy under the channel dist-tags, pointed to by the environment's npm config and OPENCLAW_TELEMETRY_ENDPOINT; modes change what it serves; --env --publish <side,side-next> --dist-tags <list> --from <handle> --mode <serve|offline|invalid-response|withhold-target|withhold-plugins|withhold-clawhub-official> --publish-variant <canary-fails|install-fails|node-start-fails> (publishes a copy of the side whose candidate Gateway, package install or headless node start fails) --plugin-release <pluginId> --plugin-capabilities widened --plugin-integrity changed (publishes a new release of an installed external plugin) [--background --handle <file>] [--wait <file>]; --from with --mode serve opens a new phase-owned server from the retained publication recipe, restores that clone's feed routing and uses a distinct handle; --timeout <ms> bounds startup/join; --wait stops and reaps the server while retaining publication artifacts; bind each server to the phase worker's process identity and cancellation so worker exit or interruption also stops and reaps it, including partially selected plans; --reset-update-check-cache is used only with the named clone stopped and clears its persisted telemetry success cache before the observed start; invalid-response serves malformed JSON only on the update-check endpoint while retaining normal package responses; switching to invalid-response starts a fresh observation window; each handle records update-check attempts with their endpoint mode and --wait prints the observed counts by mode and requests for that window, including zero attempts as a product observation rather than setup failure; --observe-check-from <handle> keeps that endpoint live while waiting for an update-check request and completed HTTP exchange in the current observation window, then prints the attempt and response outcome without stopping the server; no request or unsettled exchange at the bound is ordinary timeout 3; --wait remains the separate teardown after product status/log observations)",
+      "support/verify/release-feed.mjs  (a local package registry and update-check endpoint that publishes the side's build and a version-bumped copy under the channel dist-tags, used by package-command callers through the environment's npm config and by telemetry checks through OPENCLAW_TELEMETRY_ENDPOINT; direct public-registry fetches such as CLI update status are not redirected by either setting and have no controlled available-release prerequisite; modes change what it serves; --env --publish <side,side-next> --dist-tags <list> --from <handle> --mode <serve|offline|invalid-response|withhold-target|withhold-plugins|withhold-clawhub-official> --publish-variant <canary-fails|install-fails|node-start-fails> (publishes a copy of the side whose candidate Gateway, package install or headless node start fails) --plugin-release <pluginId> --plugin-capabilities widened --plugin-integrity changed (publishes a new release of an installed external plugin) [--background --handle <file>] [--wait <file>]; --from with --mode serve opens a new phase-owned server from the retained publication recipe, restores that clone's feed routing and uses a distinct handle; --timeout <ms> bounds startup/join; --wait stops and reaps the server while retaining publication artifacts; bind each server to the phase worker's process identity and cancellation so worker exit or interruption also stops and reaps it, including partially selected plans; --reset-update-check-cache is used only with the named clone stopped and clears its persisted telemetry success cache before the observed start; invalid-response serves malformed JSON only on the update-check endpoint while retaining normal package responses; switching to invalid-response starts a fresh observation window; each handle records update-check attempts with their endpoint mode and --wait prints the observed counts by mode and requests for that window, including zero attempts as a product observation rather than setup failure; --observe-check-from <handle> keeps that endpoint live while waiting for an update-check request and completed HTTP exchange in the current observation window, then prints the attempt and response outcome without stopping the server; no request or unsettled exchange at the bound is ordinary timeout 3; --wait remains the separate teardown after product status/log observations)",
       "support/verify/env-fault.mjs  (injects one named environment fault for the duration of a phase and removes it on --wait: channel-probe-fail, config-readonly, prefix-readonly, prefix-volume-full, tmpdir-small, artifacts-volume-full, block-git-remote, hold-state-lock, db-writer-loop, db-writer-hold, db-reader-loop, config-edit, kill-gateway, freeze-gateway, occupy-gateway-port, signal-restart (SIGUSR2), signal-stop, kill-update-helper, helper-spawn-denied, interrupt-doctor; --env --fault <name> --when-update-phase <phase> --after-ms <ms> --count <n> --interval-ms <ms> --duration-ms <ms> --signal <name> --timeout <ms> [--background --handle <file>] [--wait <file>]; --wait-for-thaw-recovery polls after resume for the product thaw observation and channel recovery completion or deferral; after successful freeze/resume, record a missing observation or timeout through ordinary result/error/timeout semantics, never exit 2 for that product outcome; repeated kill-gateway or signal-stop faults wait for a fresh serving process identity between signals, recording missing restarts and partial counts as product outcomes; exit 2 is reserved for malformed initial fixture or call inputs; failures of valid fault operations are ordinary errors or timeouts; github-unavailable gives every spawned CLI and Gateway reporting process isolated HOME/XDG directories and PATH with an unavailable gh stub, clears GH_TOKEN and GITHUB_TOKEN only in those processes, prevents GitHub submission, and restores the previous process environment on --wait or interruption; never changes host authentication; occupy-gateway-port returns an armed handle before restart, records acquisition after the predecessor releases the port and retains the blocker through the restart result until --wait, the duration cap or phase cancellation; it reports whether the intended port was actually held and always releases it on teardown)",
       "support/verify/manual-package-replace.mjs  (npm install -g, pnpm add -g or bun add -g of the side, side-next or persona package over an environment's installation outside the updater; --env --tool <npm|pnpm|bun> --target <side|side-next|persona> --keep-gateway-running --ignore-scripts --timeout <ms>; --observe-replacement captures the predecessor process identity and replacement record before writing, then waits for a new product replacement record or serving process generation before subsequent observations; record predecessor retention, missing transition and timeout as compared results, never exit 2 after successful replacement merely because the product did not react)",
-      "support/verify/node-host-auto-update.mjs  (start a fresh disposable headless node from the exported fixture for each invocation, including its persona runtime, runtime selector and activation timestamps; connect only to this comparison environment, observe update preparation/activation/fallback, collect node state and remove the disposable host on completion or interruption; never start or change the durable source host; --env --node <id> --fixture <path> --timeout <ms>; --driver <persona|side> chooses the node implementation before discovery, on a fresh eligible fixture without a prior activation cooldown; for side, prepare a newer side-next Gateway/package target through the cloned environment's OCM runtime selection before starting the side node, restoring it afterwards; collect results separately for each driver)",
+      "support/verify/node-host-auto-update.mjs  (start a fresh disposable headless node from the exported fixture for each invocation, including its persona runtime, runtime selector and activation timestamps; connect only to this comparison environment, observe update preparation/activation/fallback, collect node state and remove the disposable host on completion or interruption; never start or change the durable source host; --env --node <id> --fixture <path> --timeout <ms>; --driver <persona|side> chooses the node implementation before discovery, on a fresh eligible fixture without a prior activation cooldown; for side, prepare a newer side-next Gateway/package target through the cloned environment's OCM runtime selection before starting the side node, restoring it afterwards; inherit the named clone's npm registry routing in each disposable host and its package-tool subprocesses; collect results separately for each driver)",
       "support/verify/control-ui.mjs  (catalogue entry; flows this template needs: chat-outbox-restart, updates-page-check; --env --flow --artifact-dir --timeout --out --session-key; --github-fixture <handle> requires an active isolated unavailable-GitHub fixture before any reporting action and fails closed without invoking OpenClaw when that fixture is missing or invalid)",
       "support/verify/gateway-call.mjs  (catalogue entry; methods gateway.restart.preflight, gateway.restart.request, gateway.stop.request, update.report, update.runs.get, update.runs.list, update.status; --env --method --params --timeout --out --merge-from --after-ms [--background --handle] [--wait]; --target-current reads the named clone’s active Gateway lock identity immediately before gateway.stop.request, sends target {pid, ownerId, port}, verifies it belongs to that clone and matches the connected Gateway, and records error 1 without calling the method if a valid request cannot establish live identity; malformed initial call inputs alone use 2; --github-fixture <handle> requires an active isolated unavailable-GitHub fixture before any reporting action and fails closed without invoking OpenClaw when that fixture is missing or invalid)",
       "support/verify/chat-send.mjs  (catalogue entry; /update, /restart and a plain message during a restart drain; --env --session-key --message --timeout --after-ms [--background --handle] [--wait]; --when-gateway-draining waits for the serving process to report draining before sending, records missing drain after a valid held turn and restart request as a product result or timeout 3, never exit 2; only invalid initial fixture or call inputs use 2; never treat a reconnect as drain entry)",
@@ -161,7 +161,7 @@
     {
       "id": "setup-release-published",
       "kind": "setup",
-      "intent": "A newer OpenClaw release (the side's own build and a version-bumped copy of it) is published on the stable, beta and extended-stable channels of a local release feed the environment's update checks and package tools use, so every later phase runs with an update available; the feed's published targets are observed.",
+      "intent": "Publish side and version-bumped packages plus an update-check endpoint for callers supporting npm registry configuration or OPENCLAW_TELEMETRY_ENDPOINT, retaining the publication recipe; published fixture targets are observed.",
       "paths": [
         "src/commands/status.update.ts",
         "src/gateway/server-methods/update-status.ts",
@@ -192,7 +192,7 @@
     {
       "id": "check-update-status",
       "kind": "operation",
-      "intent": "A user checks update availability and installation facts through the CLI, Gateway method, status summary and OCM-backed Settings Updates page with a release published; the channel, availability, installation facts and page are observed.",
+      "intent": "A user inspects installed-version and channel facts through the CLI, Gateway method, status summary and OCM-backed Settings Updates page; returned status and externally discovered availability are observed, with no controlled newer-release prerequisite claimed for direct public-registry callers.",
       "paths": [
         "packages/gateway-protocol/src/schema/config.ts",
         "src/commands/status.update.ts",
@@ -220,7 +220,8 @@
         "ui/src/app/overlays.ts",
         "src/gateway/server-startup-post-attach.ts",
         "src/infra/telemetry-store*.ts",
-        "src/cli/program/register.subclis.ts"
+        "src/cli/program/register.subclis.ts",
+        "src/cli/update-cli/status.ts"
       ],
       "requires": [
         "update-baseline-fixture",
@@ -362,7 +363,9 @@
         "src/commands/doctor/cron/store-*.ts",
         "src/cli/program/register.subclis.ts",
         "src/config/types.tools.ts",
-        "src/cron/agent-id.ts"
+        "src/cron/agent-id.ts",
+        "src/commands/doctor-maintenance*.ts",
+        "src/commands/doctor-database-preflight*.ts"
       ],
       "requires": [
         "approvals-legacy-json",
@@ -643,7 +646,8 @@
         "src/cli/update-cli/update-command-doctor*.ts",
         "src/infra/update-runner-doctor*.ts",
         "src/infra/update-doctor*.ts",
-        "src/infra/update-migrated-finalize*.ts"
+        "src/infra/update-migrated-finalize*.ts",
+        "src/plugins/status-dependencies*.ts"
       ],
       "requires": [
         "plugin-capability-widened",
@@ -721,7 +725,11 @@
         "src/cli/node-cli/register.ts",
         "src/infra/npm-registry-spec.ts",
         "src/infra/update-check*.ts",
-        "src/infra/update-channels.ts"
+        "src/infra/update-channels.ts",
+        "src/node-host/startup-state-readiness.ts",
+        "src/node-host/config.ts",
+        "src/node-host/plugin-node-host.ts",
+        "src/state/openclaw-agent-db-registry.read.ts"
       ],
       "requires": [
         "node-host-headless"
@@ -874,7 +882,8 @@
         "src/cli/update-option-specs.ts",
         "src/cli/update-cli/shared.ts",
         "src/cli/update-cli/update-command*.ts",
-        "src/cli/program/register.subclis.ts"
+        "src/cli/program/register.subclis.ts",
+        "src/cli/update-cli/status.ts"
       ],
       "requires": [
         "update-history-stale"
@@ -916,7 +925,8 @@
         "src/cli/program/register.subclis.ts",
         "scripts/lib/package-dist-inventory.ts",
         "scripts/openclaw-prepack.ts",
-        "scripts/write-package-dist-inventory.ts"
+        "scripts/write-package-dist-inventory.ts",
+        "src/cli/update-cli/status.ts"
       ],
       "requires": [
         "install-npm-global"
@@ -960,7 +970,8 @@
         "src/flows/doctor-health*.ts",
         "src/infra/gateway-boot-lifecycle*.ts",
         "src/cli/program/register.subclis.ts",
-        "src/gateway/server-constants.ts"
+        "src/gateway/server-constants.ts",
+        "src/cli/update-cli/status.ts"
       ],
       "requires": [
         "gateway-second-instance",
@@ -1237,7 +1248,8 @@
         "src/gateway/update-run-*.ts",
         "src/infra/update-*.ts",
         "src/cli/update-cli/shared.ts",
-        "src/cli/program/register.subclis.ts"
+        "src/cli/program/register.subclis.ts",
+        "src/cli/update-cli/status.ts"
       ],
       "requires": [
         "history-stale-run"
@@ -1340,7 +1352,11 @@
         "src/cli/node-cli/register.ts",
         "src/infra/npm-registry-spec.ts",
         "src/infra/update-check*.ts",
-        "src/infra/update-channels.ts"
+        "src/infra/update-channels.ts",
+        "src/node-host/startup-state-readiness.ts",
+        "src/node-host/config.ts",
+        "src/node-host/plugin-node-host.ts",
+        "src/state/openclaw-agent-db-registry.read.ts"
       ],
       "requires": [
         "node-host-headless"
@@ -1580,7 +1596,8 @@
         "src/auto-reply/reply/commands.ts",
         "src/auto-reply/commands-registry*.ts",
         "src/auto-reply/commands-text-routing.ts",
-        "src/gateway/server-shutdown*.ts"
+        "src/gateway/server-shutdown*.ts",
+        "src/cli/update-cli/status.ts"
       ],
       "requires": [
         "session-main-rolling",
@@ -1658,7 +1675,13 @@
         "src/infra/agent-run-registry.ts",
         "src/auto-reply/reply/dispatcher-registry.ts",
         "src/sessions/session-lifecycle-admission.ts",
-        "src/process/command-queue.ts"
+        "src/process/command-queue.ts",
+        "ui/src/pages/chat/composer-persistence*.ts",
+        "ui/src/pages/chat/composer-queue-serialization*.ts",
+        "ui/src/pages/chat/chat-history*.ts",
+        "src/gateway/server-methods/chat-send*.ts",
+        "src/gateway/server-methods/chat-server-timing*.ts",
+        "src/gateway/chat-queued-turns.ts"
       ],
       "requires": [
         "session-main-rolling",
