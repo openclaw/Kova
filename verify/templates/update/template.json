@@ -170,7 +170,10 @@
         "src/infra/update-check*.ts",
         "src/infra/update-check-package-target.ts",
         "src/infra/update-startup*.ts",
-        "src/infra/update-status-*.ts"
+        "src/infra/update-status-*.ts",
+        "src/gateway/methods/core-descriptors.ts",
+        "src/gateway/server-methods/update.ts",
+        "packages/gateway-protocol/src/schema/config.ts"
       ],
       "requires": [],
       "commands": [
@@ -205,7 +208,15 @@
         "ui/src/components/update-git-revisions.ts",
         "ui/src/pages/config/config-page.ts",
         "ui/src/pages/config/updates*.ts",
-        "src/infra/ocm-update-client.ts"
+        "src/infra/ocm-update-client.ts",
+        "ui/src/app/overlays-updates.ts",
+        "ui/src/app/update-overlay-helpers.ts",
+        "ui/src/app/update-schedule-*.ts",
+        "src/gateway/methods/core-descriptors.ts",
+        "src/gateway/server-methods/update.ts",
+        "src/cli/update-cli.ts",
+        "src/cli/update-option-specs.ts",
+        "src/cli/update-cli/shared.ts"
       ],
       "requires": [
         "update-baseline-fixture",
@@ -328,7 +339,13 @@
         "src/state/openclaw-state-db-schema-version.ts",
         "src/state/openclaw-update-schema-refusal.ts",
         "src/commands/doctor/shared/codex-route-*.ts",
-        "src/commands/doctor/shared/retired-config-formats.ts"
+        "src/commands/doctor/shared/retired-config-formats.ts",
+        "src/commands/doctor/shared/session-entry*.ts",
+        "src/config/sessions/session-entry-state-format.ts",
+        "src/flows/doctor-health-contributions-*.ts",
+        "src/cli/update-cli.ts",
+        "src/cli/update-option-specs.ts",
+        "src/cli/update-cli/shared.ts"
       ],
       "requires": [
         "approvals-legacy-json",
@@ -396,7 +413,11 @@
         "src/commands/backup-shared.ts",
         "src/commands/backup-summary.ts",
         "src/commands/backup-record.ts",
-        "src/commands/backup-sqlite.ts"
+        "src/commands/backup-sqlite.ts",
+        "src/cli/program/register.backup.ts",
+        "src/commands/backup*.ts",
+        "src/infra/backup*.ts",
+        "src/state/backup-run-records*.ts"
       ],
       "requires": [],
       "commands": [
@@ -424,7 +445,13 @@
         "src/gateway/server-methods/update-status.ts",
         "src/gateway/server-request-lifecycle.ts",
         "src/infra/update-run-*.ts",
-        "src/state/openclaw-state-worker-runtime.ts"
+        "src/state/openclaw-state-worker-runtime.ts",
+        "src/gateway/methods/core-descriptors.ts",
+        "src/gateway/server-methods/update.ts",
+        "packages/gateway-protocol/src/schema/config.ts",
+        "src/cli/update-cli.ts",
+        "src/cli/update-option-specs.ts",
+        "src/cli/update-cli/shared.ts"
       ],
       "requires": [
         "update-history-long"
@@ -454,7 +481,8 @@
         "src/commands/triage*.ts",
         "src/infra/triage-continuation.ts",
         "src/infra/update-repair-*.ts",
-        "src/infra/update-triage*.ts"
+        "src/infra/update-triage*.ts",
+        "src/logging/diagnostic-support*.ts"
       ],
       "requires": [
         "coding-agent-stub",
@@ -487,7 +515,10 @@
       "paths": [
         "src/gateway/server-methods/update-report.ts",
         "src/infra/update-failure-*.ts",
-        "src/shared/update-outcome.ts"
+        "src/shared/update-outcome.ts",
+        "src/gateway/methods/core-descriptors.ts",
+        "src/gateway/server-methods/update.ts",
+        "packages/gateway-protocol/src/schema/config.ts"
       ],
       "requires": [
         "gateway-multi-user-profiles",
@@ -538,7 +569,15 @@
         "src/cli/update-cli/update-command-plugins.ts",
         "src/cli/update-cli/update-command-fresh-doctor.ts",
         "src/commands/doctor/shared/post-core-plugin-convergence.ts",
-        "src/commands/doctor/shared/missing-configured-plugin-install*.ts"
+        "src/commands/doctor/shared/missing-configured-plugin-install*.ts",
+        "src/cli/update-cli/update-command-plugin*.ts",
+        "src/plugins/update*.ts",
+        "src/plugins/active-payload-verification.ts",
+        "src/plugins/payload-verification.ts",
+        "src/commands/doctor/shared/update-phase.ts",
+        "src/cli/update-cli.ts",
+        "src/cli/update-option-specs.ts",
+        "src/cli/update-cli/shared.ts"
       ],
       "requires": [
         "plugin-capability-widened",
@@ -592,7 +631,10 @@
         "src/node-host/runner.ts",
         "src/node-host/runtime-update-pause.ts",
         "src/node-host/runtime.ts",
-        "src/infra/package-update-*.ts"
+        "src/infra/package-update-*.ts",
+        "src/infra/update-global.ts",
+        "src/infra/update-npm-prefix.ts",
+        "src/cli/update-cli/update-command-executor.ts"
       ],
       "requires": [
         "node-host-headless"
@@ -624,7 +666,10 @@
         "src/commands/doctor-migration-*.ts",
         "src/commands/doctor-post-upgrade*.ts",
         "src/commands/doctor-update*.ts",
-        "src/flows/doctor-update-budget.ts"
+        "src/flows/doctor-update-budget.ts",
+        "src/cli/update-cli.ts",
+        "src/cli/update-option-specs.ts",
+        "src/cli/update-cli/shared.ts"
       ],
       "requires": [
         "install-npm-global"
@@ -664,7 +709,8 @@
         "src/gateway/restart-trace.ts",
         "src/gateway/server-methods/restart*.ts",
         "src/gateway/server-restart-sentinel*.ts",
-        "src/infra/restart*.ts"
+        "src/infra/restart*.ts",
+        "src/cli/daemon-cli/register-service-commands.ts"
       ],
       "requires": [],
       "commands": [
@@ -730,7 +776,10 @@
       "intent": "An installation restored from the stale-history fixture starts the comparison side and previews an update; the preview, reconciled history and resulting ledger state are observed.",
       "paths": [
         "src/infra/update-run-admission.ts",
-        "src/infra/update-run-reconciliation*.ts"
+        "src/infra/update-run-reconciliation*.ts",
+        "src/cli/update-cli.ts",
+        "src/cli/update-option-specs.ts",
+        "src/cli/update-cli/shared.ts"
       ],
       "requires": [
         "update-history-stale"
@@ -765,7 +814,10 @@
         "scripts/postinstall-bundled-plugins.mjs",
         "scripts/lib/package-lifecycle-marker.mjs",
         "scripts/lib/fs-safe-prebuild.mjs",
-        "openclaw.mjs"
+        "openclaw.mjs",
+        "src/cli/update-cli.ts",
+        "src/cli/update-option-specs.ts",
+        "src/cli/update-cli/shared.ts"
       ],
       "requires": [
         "install-npm-global"
@@ -800,7 +852,10 @@
         "src/gateway/stale-install.ts",
         "src/infra/package-lifecycle.ts",
         "src/infra/update-global*.ts",
-        "src/infra/update-package-manager.ts"
+        "src/infra/update-package-manager.ts",
+        "src/cli/update-cli.ts",
+        "src/cli/update-option-specs.ts",
+        "src/cli/update-cli/shared.ts"
       ],
       "requires": [
         "gateway-second-instance",
@@ -895,7 +950,9 @@
         "src/infra/gateway-drain.ts",
         "src/infra/gateway-shutdown-budget.ts",
         "src/infra/restart*.ts",
-        "src/process/gateway-work-admission.ts"
+        "src/process/gateway-work-admission.ts",
+        "src/cli/daemon-cli/register-service-commands.ts",
+        "src/cli/daemon-cli/lifecycle.ts"
       ],
       "requires": [
         "mock-provider-held-turn",
@@ -931,7 +988,10 @@
         "src/commands/doctor-session-sqlite-verification*.ts",
         "src/commands/doctor-sqlite-maintenance-lock.ts",
         "src/infra/session-sqlite-migration-artifact.ts",
-        "src/infra/session-sqlite-migration-manifest.ts"
+        "src/infra/session-sqlite-migration-manifest.ts",
+        "src/cli/update-cli.ts",
+        "src/cli/update-option-specs.ts",
+        "src/cli/update-cli/shared.ts"
       ],
       "requires": [
         "recovery-originals-retained"
@@ -967,7 +1027,10 @@
         "src/gateway/server-startup-update-check.ts",
         "src/infra/gateway-scheduler.ts",
         "src/infra/telemetry.ts",
-        "src/infra/update-*.ts"
+        "src/infra/update-*.ts",
+        "src/gateway/methods/core-descriptors.ts",
+        "src/gateway/server-methods/update.ts",
+        "packages/gateway-protocol/src/schema/config.ts"
       ],
       "requires": [
         "update-baseline-fixture"
@@ -1001,7 +1064,10 @@
       "paths": [
         "src/gateway/server-startup-update-check.ts",
         "src/infra/update-*.ts",
-        "src/infra/telemetry.ts"
+        "src/infra/telemetry.ts",
+        "src/gateway/methods/core-descriptors.ts",
+        "src/gateway/server-methods/update.ts",
+        "packages/gateway-protocol/src/schema/config.ts"
       ],
       "requires": [],
       "commands": [
@@ -1037,7 +1103,8 @@
         "src/commands/status.update.ts",
         "src/gateway/server-methods/update*.ts",
         "src/gateway/update-run-*.ts",
-        "src/infra/update-*.ts"
+        "src/infra/update-*.ts",
+        "src/cli/update-cli/shared.ts"
       ],
       "requires": [
         "history-stale-run"
@@ -1075,7 +1142,10 @@
         "src/auto-reply/command-auth.ts",
         "src/auto-reply/reply/commands-context.ts",
         "src/config/commands.flags.ts",
-        "src/commands/doctor-command-owner*.ts"
+        "src/commands/doctor-command-owner*.ts",
+        "src/gateway/methods/core-descriptors.ts",
+        "src/gateway/server-methods/update.ts",
+        "packages/gateway-protocol/src/schema/config.ts"
       ],
       "requires": [
         "channel-authorized-non-owner",
@@ -1107,7 +1177,10 @@
         "src/node-host/*launcher*.ts",
         "src/node-host/auto-update*.ts",
         "src/node-host/runtime-update-pause.ts",
-        "src/infra/package-update-*.ts"
+        "src/infra/package-update-*.ts",
+        "src/infra/update-global.ts",
+        "src/infra/update-npm-prefix.ts",
+        "src/cli/update-cli/update-command-executor.ts"
       ],
       "requires": [
         "node-host-headless"
@@ -1149,7 +1222,9 @@
         "src/infra/gateway-drain.ts",
         "src/infra/gateway-shutdown-budget.ts",
         "src/infra/restart*.ts",
-        "src/process/gateway-work-admission.ts"
+        "src/process/gateway-work-admission.ts",
+        "src/cli/daemon-cli/register-service-commands.ts",
+        "src/cli/daemon-cli/lifecycle.ts"
       ],
       "requires": [
         "mock-provider-held-turn",
@@ -1221,7 +1296,8 @@
         "src/infra/process-respawn.ts",
         "src/infra/restart*.ts",
         "src/process/gateway-work-admission.ts",
-        "src/system-agent/operations-execution-helpers.ts"
+        "src/system-agent/operations-execution-helpers.ts",
+        "src/gateway/methods/core-descriptors.ts"
       ],
       "requires": [
         "mock-provider-held-turn",
@@ -1292,7 +1368,10 @@
         "src/auto-reply/command-auth.ts",
         "src/auto-reply/reply/commands-context.ts",
         "src/config/commands.flags.ts",
-        "src/commands/doctor-command-owner*.ts"
+        "src/commands/doctor-command-owner*.ts",
+        "src/cli/update-cli.ts",
+        "src/cli/update-option-specs.ts",
+        "src/cli/update-cli/shared.ts"
       ],
       "requires": [
         "session-main-rolling",
@@ -1343,7 +1422,9 @@
         "ui/src/pages/chat/chat-pane-context.ts",
         "ui/src/pages/chat/chat-state-refresh.ts",
         "ui/src/pages/chat/chat-outbox*.ts",
-        "ui/src/lib/chat/outbox-store.ts"
+        "ui/src/lib/chat/outbox-store.ts",
+        "ui/src/lib/chat/outbox*.ts",
+        "ui/src/app/boot-record.ts"
       ],
       "requires": [
         "session-main-rolling",
@@ -1389,7 +1470,9 @@
         "src/infra/restart*.ts",
         "src/process/gateway-work-admission.ts",
         "src/cron/active-jobs.ts",
-        "src/gateway/server-cron.ts"
+        "src/gateway/server-cron.ts",
+        "src/cli/daemon-cli/register-service-commands.ts",
+        "src/cli/daemon-cli/lifecycle.ts"
       ],
       "requires": [
         "cron-job-isolated",
@@ -1434,7 +1517,9 @@
         "src/infra/gateway-drain.ts",
         "src/infra/gateway-shutdown-budget.ts",
         "src/infra/restart*.ts",
-        "src/process/gateway-work-admission.ts"
+        "src/process/gateway-work-admission.ts",
+        "src/cli/daemon-cli/register-service-commands.ts",
+        "src/cli/daemon-cli/lifecycle.ts"
       ],
       "requires": [
         "mock-provider-held-turn",
@@ -1475,7 +1560,8 @@
         "src/commands/doctor-session-sqlite-verification*.ts",
         "src/commands/doctor-sqlite-maintenance-lock.ts",
         "src/infra/session-sqlite-migration-artifact.ts",
-        "src/infra/session-sqlite-migration-manifest.ts"
+        "src/infra/session-sqlite-migration-manifest.ts",
+        "src/cli/update-cli/shared.ts"
       ],
       "requires": [
         "recovery-originals-retained"
@@ -1511,7 +1597,8 @@
         "src/gateway/server-maintenance.ts",
         "src/gateway/server-methods/restart*.ts",
         "src/gateway/server-restart-sentinel*.ts",
-        "src/infra/restart*.ts"
+        "src/infra/restart*.ts",
+        "src/gateway/server-channel*.ts"
       ],
       "requires": [
         "channels-test-accounts"
@@ -1770,7 +1857,8 @@
         "src/infra/gateway-boot-lifecycle.kernel.ts",
         "src/infra/gateway-boot-lifecycle.ts",
         "src/infra/gateway-boot-lifecycle.worker.ts",
-        "src/infra/restart*.ts"
+        "src/infra/restart*.ts",
+        "src/gateway/server-channel*.ts"
       ],
       "requires": [
         "channels-test-accounts",
@@ -1811,7 +1899,10 @@
         "src/infra/update-recovery*.ts",
         "src/commands/doctor-sqlite-maintenance-lock.ts",
         "src/infra/session-sqlite-migration-artifact.ts",
-        "src/infra/session-sqlite-migration-manifest.ts"
+        "src/infra/session-sqlite-migration-manifest.ts",
+        "src/cli/update-cli.ts",
+        "src/cli/update-option-specs.ts",
+        "src/cli/update-cli/shared.ts"
       ],
       "requires": [
         "recovery-originals-retained"
