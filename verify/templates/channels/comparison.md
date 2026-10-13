@@ -6,14 +6,14 @@ Date: 2026-10-13
 State: reconciled with a known shortfall after the permitted rerun.
 The procedure's nine-tenths acceptance was not met.
 
-Union: 428 entry points, 645 conditions, 258 condition-bearing document headings.
+Union: 435 entry points, 645 conditions, 258 condition-bearing document headings.
 
 | Round | Run | Entry points found | Condition headings found |
 |---|---|---|---|
-| 1 | 1 | 319/325 (98.2%) | 214/245 (87.3%) |
-| 1 | 2 | 299/325 (92.0%) | 227/245 (92.7%) |
-| 2 | 1 | 400/428 (93.5%) | 246/258 (95.3%) |
-| 2 | 2 | 379/428 (88.6%) | 248/258 (96.1%) |
+| 1 | 1 | 318/332 (95.8%) | 214/245 (87.3%) |
+| 1 | 2 | 298/332 (89.8%) | 227/245 (92.7%) |
+| 2 | 1 | 399/435 (91.7%) | 246/258 (95.3%) |
+| 2 | 2 | 378/435 (86.9%) | 248/258 (96.1%) |
 
 An entry point is found when a run lists it, placed or excluded with a reason.
 Equivalent names identify the same entry point. A combined entry receives credit
@@ -29,7 +29,8 @@ condition wording or granularity does not create additional headings.
 Round 1 used input version 2: 34 listed documents, 27 search symbols and 19
 literals, with the fixed search list and heading walk introduced at 13:30 UTC on
 2026-10-13. Both runs completed before the 13:50 UTC sentence-by-sentence
-completeness rule. The first run fell short on condition headings. Differences
+completeness rule. The first run fell short on condition headings, and the second on entry points
+after the individual-control correction below. Differences
 included troubleshooting signatures, ambient-room examples, SDK sections and
 restart recovery. The eight condition-bearing restart-recovery headings came from
 a document the first run added under step 1.
@@ -39,7 +40,7 @@ literals, with the sentence-by-sentence rule and clarified bounds. The public
 phase, command and reconciliation requirements from
 [the derivation procedure](../../../docs/verify/derive-area-template.md) were
 applied when combining the results. Both runs passed the heading measure. The
-second run's 88.6% entry-point share remains below nine tenths. Historical
+second run's 86.9% entry-point share remains below nine tenths. Historical
 procedure versions are identified by these recorded changes; immutable revision
 hashes were not retained for them.
 
@@ -76,3 +77,14 @@ test-file correction.
 
 No further derivation was performed. The combined result preserves the remaining
 shortfall and its cause.
+
+The Nostr profile form exposes eight separately editable controls: `name`,
+`displayName`, `about`, `picture`, `banner`, `website`, `nip05`, and `lud16` in
+`ui/src/pages/channels/view.nostr-profile-form.ts`. Each run listed the form fields
+as one generic family. That grouping breaches the one-control-per-entry rule.
+The corrected inventory replaces that family with eight named controls. Neither
+run receives discovery credit for individual names it did not enumerate, so the
+corrected denominator includes eight reconciliation corrections with no individual
+run credit. This correction applies to both rounds: it supersedes the intermediate
+319/325 and 299/325, and 400/428 and 379/428 figures. It is a correction of recorded
+granularity, without another derivation run.
