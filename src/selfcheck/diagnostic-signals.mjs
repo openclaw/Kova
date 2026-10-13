@@ -182,7 +182,10 @@ setInterval(() => {}, 1000);
     const wrapperInvocation = (await readFile(invocationLog, "utf8")).trim().split("\n").at(-1);
     assertEqual(wrapperInvocation.endsWith("env=preserved"), true, "report wrapper preserves command environment");
     JSON.parse(await readFile(reportOnly.diagnosticReport.artifacts[0], "utf8"));
-    const heapOnly = await triggerDiagnosticSession("kova-self-check", child.pid, 3000, root, {
+    // The delayed wrapper and partial heap write need room for process startup
+    // and the full stability window. This case checks missing-sibling retention;
+    // minimum-deadline and hung-wrapper behavior are exercised separately below.
+    const heapOnly = await triggerDiagnosticSession("kova-self-check", child.pid, 5000, root, {
       heapSnapshot: true,
       diagnosticReport: true,
       commandEnv: { KOVA_FAKE_OCM_DELAY: "0.6", KOVA_DIAGNOSTIC_TIMING: "1" }
