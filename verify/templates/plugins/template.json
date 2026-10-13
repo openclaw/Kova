@@ -64,11 +64,13 @@
     "mock-provider-tool-calls",
     "operator-read-only-profile",
     "plugin-authoring-workspace",
+    "plugin-catalog-tool-calls",
     "plugin-concurrency-peer",
     "plugin-credential-synthetic",
     "plugin-disabled-with-config",
     "plugin-fixture-feature-ui",
     "plugin-fixture-surfaces",
+    "plugin-gateway-new-packages",
     "plugin-install-package",
     "plugin-legacy-enabled-unreviewed",
     "plugin-load-path-unrecorded",
@@ -80,6 +82,7 @@
     "plugin-pack-multi-entry",
     "plugin-pack-requires-config",
     "plugin-registry-stale",
+    "plugin-skill-change-fixture",
     "plugin-trust-local-probe",
     "plugin-ui-consent",
     "plugin-ui-removal",
@@ -107,7 +110,7 @@
       "support/verify/agent-tool-turn.mjs  (sessions.send with a scripted reply that calls one named tool, then chat.history with tools; --env --session-key --session-from --tool --args --timeout --background --handle --wait; --admission-method names the fixture Gateway method reporting actual slow-tool callback entry: a background launch waits for that method to identify the same session, run, tool and invocation as still held before returning the handle, exiting 2 if admission cannot be established; receipt acknowledgement or a generic before-tool event is insufficient)",
       "support/verify/chat-send.mjs  (chat.send of a message or slash command, then chat.history of the receipt; --env --session-key --session-from --incognito-handle --message --timeout --background --handle --wait)",
       "support/verify/session-turn-hold.mjs  (sessions.send with a reply the mock provider holds open; --env --session-key --hold-ms --progress-cards --timeout --background --handle --wait; with --background, wait for the mock provider to acknowledge the exact run has entered its held response before returning the handle; exit 2 if the hold cannot be established)",
-      "support/verify/channel-inbound-turn.mjs  (channel inbound dispatch through the test channel, or /approve <pending id from --approve-from matching --approval-session-key --approval-plugin --approval-tool exactly, exiting 2 on zero or multiple matches> <--decision>; --env --chat-type --peer --text --approve-from --approval-session-key --approval-plugin --approval-tool --decision --timeout; --hold-ms scripts the mock response for this inbound turn before dispatch; --background --handle starts it, --wait joins that handle and records the actual outbound channel delivery; a background --hold-ms call returns its handle only after the matching inbound turn has entered the mock response hold and its channel delivery identity is captured, exiting 2 if that condition cannot be established)",
+      "support/verify/channel-inbound-turn.mjs  (channel inbound dispatch through the test channel, or /approve <pending id from --approve-from matching --approval-session-key --approval-plugin --approval-tool exactly, exiting 2 on zero or multiple matches> <--decision>; --env --chat-type --peer --text --approve-from --approval-session-key --approval-plugin --approval-tool --decision --timeout; --hold-ms scripts the mock response for this inbound turn before dispatch; --background --handle starts it, --wait joins that handle and records the actual outbound channel delivery; a background --hold-ms call returns its handle only after the matching inbound turn has entered the mock response hold and its channel delivery identity is captured, exiting 2 if that condition cannot be established; --hold-until-release holds that admitted mock response until --release-from consumes its exact background handle, with --max-hold-ms as a cancellation deadline rather than automatic successful delivery. Release verifies the same response remains pending, and --wait still collects final delivery. Only the owned response is released/cancelled, never another run)",
       "support/verify/cron-isolated-run.mjs  (cron.run of an isolated job; --env --job-id --timeout)",
       "support/verify/heartbeat-wake.mjs  (heartbeat wake of the main session; --env --timeout)",
       "support/verify/http-get.mjs  (one GET against a Gateway HTTP route, with Gateway credentials or none, path resolved from a flow's recorded URLs when --from is given; --env --path --from --auth --timeout)",
@@ -150,7 +153,8 @@
       "support/verify/uninstall-load-path-race.mjs  (wraps sessions.send, plugins.uninstall and a plugins.load.paths config write: starts a fixture tool held until explicit release, observes its exact callback admission, resolves the current managed directory and saves the preceding load paths, then starts uninstall. Before editing, observes this uninstall's durable enabled-to-disabled config transition, its pending response and live lifecycle lease, while the same tool is still held, observed through its clone-owned marker after ordinary plugin admission closes; missing admission exits 2. Adds the resolved directory only after that barrier, releases the hold immediately after the write is observable without waiting on reload, joins both calls, and records responses, file existence and the recheck outcome to --out; finally restores the previous load paths and releases any remaining task-owned hold. Fixture holds have a bounded failsafe; --admission-method is used only for initial admission before uninstall. Later observation and release use --release-path, resolved relative to the clone state root and validated as exclusively clone-owned, independently of the retiring plugin's Gateway methods; --env --plugin --tool --admission-method --session-key --release-path --out --timeout)",
       "support/verify/plugin-credential-context.mjs  (config.get and plugins.inspect for one installed synthetic provider; selects its sole advertised credential path and current projected config hash, writes only {pluginId,path,baseHash} to --out for plugins.credentials.inspect --merge-from, and exits 2 if the descriptor or revision cannot be established; never emits config or credential values; --env --plugin --out --timeout)",
       "support/verify/model-setup-install.mjs  (wraps ocm env clone and openclaw models set <model>: creates a stopped task-owned clone of --env with the exact same selected runtime artifact and a unique state directory, retaining no live services from its source; journals ownership to --out before mutation. In that clone only, applies --fixture with an explicit codex model runtime policy for the supplied openai/<model> selection, local registry routing and a configured missing codex install. Refuses to remove or edit any package path outside the new clone state root, including symlink destinations. Records that the codex package and usable install are absent and that model selection requires codex before calling ocm @<owned-clone> -- models set <model>; records its exit status, repair output and subsequent plugins list --json plus installed-package identity, so warnings or a no-op cannot masquerade as an install. The local registry supplies the official package fixture at the selected runtime release cohort, with accepted fixture capability metadata; no provider request or real credentials are used. In finally, stops only services it started and removes only its owned clone, including after command failure; never changes the source clone, shared runtime or durable persona. Exits 2 if isolation, missing-plugin precondition, local package or policy cannot be established; --env --model --fixture --out --timeout)",
-      "support/verify/plugin-authoring-metadata.mjs  (makes only the generated name field in an existing tool scaffold openclaw.plugin.json stale by appending a distinct sentinel, preserving valid JSON, package metadata and compiled entry bytes; --env --root --out --restore-from --timeout; accepts only this run-owned scaffold directory, refuses symlink escapes, and saves original bytes plus target identity to --out before editing. --restore-from restores only that same manifest from its saved bytes; no installed plugin, source checkout or shared runtime is edited. Prints before/after field values and the backup identity, never an expected validation result)"
+      "support/verify/plugin-authoring-metadata.mjs  (makes only the generated name field in an existing tool scaffold openclaw.plugin.json stale by appending a distinct sentinel, preserving valid JSON, package metadata and compiled entry bytes; --env --root --out --restore-from --timeout; accepts only this run-owned scaffold directory, refuses symlink escapes, and saves original bytes plus target identity to --out before editing. --restore-from restores only that same manifest from its saved bytes; no installed plugin, source checkout or shared runtime is edited. Prints before/after field values and the backup identity, never an expected validation result)",
+      "support/verify/plugin-skill-change.mjs  (uses the real Gateway skills.upload.begin, skills.upload.chunk, skills.upload.commit and skills.install RPCs to install one tiny local skill archive into an initially empty fixture-owned agent workspace; --env --archive --agent --workspace --slug --hook-log-method --timeout. Reads bytes and computes size/SHA internally; begin uses kind skill-archive and force false, chunks carry the returned uploadId, and install uses source upload with that same id/slug, the named agent and timeoutMs 30000. Saves the value/presence of skills.install.allowUploadedArchives, enables that existing setting only for this call and restores it in finally. Records responses and a new skill_changed fixture-hook event for this target after its pre-call log sequence; missing fixture metadata exits 2, while missing product events are recorded timeouts. The returned targetDir must equal the initially absent <workspace>/skills/<slug> with no symlink escape; cleanup removes only that newly created target and this upload staging, never the workspace, archive or unrelated skill. Always restores the setting and cleans its own partial upload/target on failure within the bound; no external registry or model request)"
     ]
   },
   "phases": [
@@ -189,7 +193,10 @@
       "paths": [
         "src/gateway/server-methods/plugins.ts",
         "src/gateway/server-methods/plugins-mutations.ts",
-        "src/gateway/method-scopes.ts"
+        "src/gateway/method-scopes.ts",
+        "src/gateway/server-methods/method-authorization.ts",
+        "src/gateway/methods/core-descriptors.ts",
+        "src/plugins/management-service.ts"
       ],
       "requires": [
         "operator-read-only-profile",
@@ -262,7 +269,10 @@
         "src/wizard/setup.official-plugins.ts",
         "src/agents/openai-routing.ts",
         "src/commands/doctor/shared/missing-configured-plugin-install*.ts",
-        "src/commands/doctor/shared/configured-runtime-plugin-installs.ts"
+        "src/commands/doctor/shared/configured-runtime-plugin-installs.ts",
+        "src/plugins/install.ts",
+        "src/plugins/install-persistence.ts",
+        "src/plugins/capability-consent.ts"
       ],
       "requires": [
         "clawhub-registry-local",
@@ -324,7 +334,9 @@
       "paths": [
         "src/plugins/install*.ts",
         "src/plugins/installed-plugin-*.ts",
-        "src/cli/plugins-install-*.ts"
+        "src/cli/plugins-install-*.ts",
+        "src/plugins/management-*.ts",
+        "src/plugins/capability-consent.ts"
       ],
       "requires": [
         "plugin-pack-multi-entry"
@@ -461,7 +473,9 @@
         "src/cli/plugins-cli.runtime.ts",
         "src/plugins/registry*.ts",
         "src/plugins/installed*.ts",
-        "src/gateway/server-methods/plugins-mutations.ts"
+        "src/gateway/server-methods/plugins-mutations.ts",
+        "src/plugins/plugin-registry-snapshot.ts",
+        "src/plugins/management-mutations.ts"
       ],
       "requires": [
         "plugin-registry-stale",
@@ -508,7 +522,11 @@
         "src/config/plugins-allowlist.ts",
         "src/config/types.plugins.ts",
         "src/config/validation-plugin-*.ts",
-        "src/config/io.plugin-metadata.ts"
+        "src/config/io.plugin-metadata.ts",
+        "src/commands/doctor-config-preflight-plugin-verification.ts",
+        "src/plugins/active-payload-verification.ts",
+        "src/plugins/payload-verification.ts",
+        "src/plugins/runtime-degraded-state.ts"
       ],
       "requires": [
         "plugin-disabled-with-config",
@@ -641,46 +659,6 @@
       "slow": false
     },
     {
-      "id": "customize-and-reload-plugin-ui",
-      "kind": "operation",
-      "intent": "A user picks a plugin composer replacement in Customize UI, returns to Built-in, rebuilds the plugin's browser assets and chooses Reload plugin UI, observing the activation reports and the Gateway's controlUi status.",
-      "paths": [
-        "ui/src/pages/plugin/**",
-        "ui/src/components/app-sidebar-plugin-*.ts",
-        "src/gateway/control-ui-plugin-*.ts",
-        "src/gateway/http-auth-plugin-cookie.ts",
-        "src/gateway/server-http-plugin-auth.ts",
-        "src/gateway/hosted-plugin-surface-url.ts",
-        "src/gateway/server-methods/plugin-host-hooks.ts",
-        "src/gateway/server-methods/plugins-control-ui.ts",
-        "src/plugins/control*.ts",
-        "src/plugins/board*.ts",
-        "src/plugins/widget*.ts",
-        "src/plugins/theme*.ts",
-        "ui/src/plugins/control-ui-runtime.ts"
-      ],
-      "requires": [
-        "config-reload-hybrid",
-        "plugin-fixture-feature-ui"
-      ],
-      "commands": [
-        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change ui-lab-on --out {run}/customize-and-reload-plugin-ui-ui-setting.json --timeout 15000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugins-customize-ui --artifact-dir {run}/screens --timeout 150000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.controlUi.reload --params '{}' --timeout 60000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.controlUi.status --params '{}' --timeout 30000",
-        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --restore-from {run}/customize-and-reload-plugin-ui-ui-setting.json --timeout 15000"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing",
-        "screen"
-      ],
-      "timeoutMs": 270000,
-      "browser": true,
-      "slow": false
-    },
-    {
       "id": "activate-agent-built-artifact",
       "kind": "operation",
       "intent": "A user asks the system agent to activate the packed feature plugin archive and approves the proposal, observing the retained archive, the managed install, the runtime receipt and browser activation reports.",
@@ -728,6 +706,46 @@
       "slow": false
     },
     {
+      "id": "customize-and-reload-plugin-ui",
+      "kind": "operation",
+      "intent": "A user picks a plugin composer replacement in Customize UI, returns to Built-in, rebuilds the plugin's browser assets and chooses Reload plugin UI, observing the activation reports and the Gateway's controlUi status.",
+      "paths": [
+        "ui/src/pages/plugin/**",
+        "ui/src/components/app-sidebar-plugin-*.ts",
+        "src/gateway/control-ui-plugin-*.ts",
+        "src/gateway/http-auth-plugin-cookie.ts",
+        "src/gateway/server-http-plugin-auth.ts",
+        "src/gateway/hosted-plugin-surface-url.ts",
+        "src/gateway/server-methods/plugin-host-hooks.ts",
+        "src/gateway/server-methods/plugins-control-ui.ts",
+        "src/plugins/control*.ts",
+        "src/plugins/board*.ts",
+        "src/plugins/widget*.ts",
+        "src/plugins/theme*.ts",
+        "ui/src/plugins/control-ui-runtime.ts"
+      ],
+      "requires": [
+        "config-reload-hybrid",
+        "plugin-fixture-feature-ui"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change ui-lab-on --out {run}/customize-and-reload-plugin-ui-ui-setting.json --timeout 15000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow plugins-customize-ui --artifact-dir {run}/screens --timeout 150000 --plugin {persona:plugin-fixture-feature-ui:pluginId}",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.controlUi.reload --params '{\"pluginId\":\"{persona:plugin-fixture-feature-ui:pluginId}\"}' --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.controlUi.status --params '{}' --timeout 30000",
+        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --restore-from {run}/customize-and-reload-plugin-ui-ui-setting.json --timeout 15000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "screen"
+      ],
+      "timeoutMs": 270000,
+      "browser": true,
+      "slow": false
+    },
+    {
       "id": "browse-plugin-catalog",
       "kind": "operation",
       "intent": "A user browses and searches the ClawHub plugin catalog through the Gateway, the CLI and the agent's plugins tool observing categories, pages, details and installed-state facts.",
@@ -739,7 +757,9 @@
         "src/cli/plugins-search-command.ts",
         "src/infra/clawhub-plugin-*.ts",
         "packages/gateway-protocol/src/core-request-params.ts",
-        "extensions/*/package.json"
+        "extensions/*/package.json",
+        "src/plugins/management-service.ts",
+        "src/agents/tools/plugins-tool.ts"
       ],
       "requires": [
         "clawhub-registry-local",
@@ -797,7 +817,8 @@
         "src/config/types.plugins.ts",
         "src/config/validation-plugin-*.ts",
         "src/config/io.plugin-metadata.ts",
-        "extensions/*/package.json"
+        "extensions/*/package.json",
+        "src/plugins/management-service.ts"
       ],
       "requires": [
         "gateway-multi-user-profiles",
@@ -892,7 +913,9 @@
         "src/config/validation-plugin-*.ts",
         "src/config/io.plugin-metadata.ts",
         "src/agents/prepared-model-runtime*.ts",
-        "src/plugins/provider-discovery.ts"
+        "src/plugins/provider-discovery.ts",
+        "src/plugins/plugin-source-capture-report.ts",
+        "src/plugins/plugin-source-capture-directory.ts"
       ],
       "requires": [
         "config-provider-without-models",
@@ -958,7 +981,13 @@
         "src/plugins/conversation*.ts",
         "src/plugins/interactive*.ts",
         "src/plugin-sdk/**",
-        "src/agents/**/hook*.ts"
+        "src/agents/**/hook*.ts",
+        "src/plugins/registry-registrars-tools-hooks.ts",
+        "src/plugins/before-agent-reply.ts",
+        "src/agents/embedded-agent-runner/run-orchestrator.ts",
+        "src/agents/harness/before-agent-run.ts",
+        "src/agents/embedded-agent-runner/run/attempt-before-agent-run.ts",
+        "src/agents/embedded-agent-runner/run/attempt-prompt-helpers.ts"
       ],
       "requires": [
         "config-hand-edited",
@@ -1005,7 +1034,9 @@
         "src/gateway/server-retained-plugin-cleanup.ts",
         "src/gateway/config-reload-plugin-drain.ts",
         "src/cli/plugins-lifecycle-client.ts",
-        "ui/src/pages/plugins/settings-lifecycle.ts"
+        "ui/src/pages/plugins/settings-lifecycle.ts",
+        "src/agents/tools/plugins-tool.ts",
+        "src/plugins/lifecycle.ts"
       ],
       "requires": [
         "mock-provider-tool-calls",
@@ -1044,7 +1075,12 @@
         "src/plugins/conversation*.ts",
         "src/plugins/interactive*.ts",
         "src/plugin-sdk/**",
-        "src/auto-reply/**/plugin*.ts"
+        "src/auto-reply/**/plugin*.ts",
+        "src/auto-reply/reply/message-received-hooks.ts",
+        "src/auto-reply/reply/dispatch-from-config.prepare-operation.ts",
+        "src/infra/outbound/deliver-hooks.ts",
+        "src/infra/outbound/message-sent-hook.ts",
+        "src/pairing/pairing-challenge.ts"
       ],
       "requires": [
         "channel-unpaired-plugin-probe",
@@ -1075,7 +1111,12 @@
         "src/plugins/hook*.ts",
         "src/plugins/conversation*.ts",
         "src/plugins/interactive*.ts",
-        "src/plugin-sdk/**"
+        "src/plugin-sdk/**",
+        "src/gateway/session-lifecycle-plugin-hooks.ts",
+        "src/gateway/session-reset-service.ts",
+        "src/agents/embedded-agent-runner/compact.queued-execution.ts",
+        "src/agents/subagents/spawn/subagent-spawn-lifecycle.ts",
+        "src/agents/subagents/registry/subagent-registry-completion.ts"
       ],
       "requires": [
         "agents-three-configured",
@@ -1110,7 +1151,12 @@
         "src/plugins/hook*.ts",
         "src/plugins/conversation*.ts",
         "src/plugins/interactive*.ts",
-        "src/plugin-sdk/**"
+        "src/plugin-sdk/**",
+        "src/gateway/session-lifecycle-plugin-hooks.ts",
+        "src/gateway/session-reset-service.ts",
+        "src/agents/embedded-agent-runner/compact.queued-execution.ts",
+        "src/agents/subagents/spawn/subagent-spawn-lifecycle.ts",
+        "src/agents/subagents/registry/subagent-registry-completion.ts"
       ],
       "requires": [
         "agents-three-configured",
@@ -1148,16 +1194,14 @@
         "extensions/codex/index.ts"
       ],
       "requires": [
-        "codex-harness-native-plugins",
-        "mock-provider-scripted",
-        "session-plugin-tools"
+        "codex-harness-native-plugins"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message '/codex plugins' --timeout 60000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message '/codex plugins list' --timeout 60000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message '/codex plugins available' --timeout 60000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message '/codex plugins status kova@kova' --timeout 60000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message '/codex plugins refresh' --timeout 60000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:codex-harness-native-plugins:sessionKey} --message '/codex plugins' --timeout 60000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:codex-harness-native-plugins:sessionKey} --message '/codex plugins list' --timeout 60000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:codex-harness-native-plugins:sessionKey} --message '/codex plugins available' --timeout 60000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:codex-harness-native-plugins:sessionKey} --message '/codex plugins status {persona:codex-harness-native-plugins:pluginKey}' --timeout 60000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:codex-harness-native-plugins:sessionKey} --message '/codex plugins refresh' --timeout 60000",
         "ocm @{env} -- migrate codex --dry-run"
       ],
       "checkpoint": [
@@ -1263,7 +1307,8 @@
         "src/gateway/server-methods/plugins-lifecycle-error.ts",
         "src/gateway/server-retained-plugin-cleanup.ts",
         "src/gateway/config-reload-plugin-drain.ts",
-        "src/cli/plugins-lifecycle-client.ts"
+        "src/cli/plugins-lifecycle-client.ts",
+        "src/plugins/enable.ts"
       ],
       "requires": [
         "config-reload-hybrid",
@@ -1406,7 +1451,9 @@
         "src/gateway/config-reload-plan.ts",
         "src/gateway/server-reload-hot.ts",
         "src/gateway/server-cron.ts",
-        "src/gateway/server-cron-reconciled.ts"
+        "src/gateway/server-cron-reconciled.ts",
+        "src/gateway/server-runtime-services.ts",
+        "src/gateway/server-lifecycle.ts"
       ],
       "requires": [
         "config-reload-hybrid",
@@ -1441,7 +1488,8 @@
         "src/gateway/server-methods/plugins.ts",
         "src/gateway/server-methods/catalog.ts",
         "src/plugins/clawhub*.ts",
-        "src/infra/clawhub-plugin-*.ts"
+        "src/infra/clawhub-plugin-*.ts",
+        "src/plugins/catalog-discovery.ts"
       ],
       "requires": [
         "clawhub-registry-local",
@@ -1451,7 +1499,7 @@
       "commands": [
         "node {kovaRoot}/support/verify/clawhub-reachability.mjs --env {env} --mode block --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.catalog.browse --params '{}' --timeout 30000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.catalog.get --params '{\"id\":\"{persona:clawhub-registry-local:catalogId}\"}' --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.catalog.get --params '{\"id\":\"{persona:plugins-npm-tracked:installedClawhubDiscoveryId}\"}' --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method catalog.browse --params '{\"kind\":\"plugin\"}' --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.install --params '{\"source\":\"clawhub\",\"packageName\":\"{persona:plugins-npm-tracked:clawhubPackage}\"}' --timeout 30000",
         "node {kovaRoot}/support/verify/clawhub-reachability.mjs --env {env} --mode restore --timeout 60000"
@@ -1468,10 +1516,12 @@
     {
       "id": "event-durable-final-reply-across-reload",
       "kind": "event",
-      "intent": "A channel turn's final reply is pending while an unrelated plugin reloads, observing that the reply is delivered through the retained channel registration.",
+      "intent": "A channel turn is admitted and its mock response remains held until an unrelated plugin reload finishes. The driver then explicitly releases and joins that exact response, recording final delivery through the retained channel registration.",
       "paths": [
         "src/gateway/server-plugin-reload-channels.ts",
-        "src/gateway/plugin-channel-reload-targets.ts"
+        "src/gateway/plugin-channel-reload-targets.ts",
+        "src/channels/turn/durable-delivery-runtime.ts",
+        "src/channels/turn/durable-delivery.ts"
       ],
       "requires": [
         "channels-test-accounts",
@@ -1480,8 +1530,9 @@
         "session-channel-held"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --chat-type direct --peer {persona:session-channel-held:peer} --text VERIFY_FINAL_REPLY --hold-ms 20000 --timeout 60000 --background --handle {run}/final-reply.json",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --chat-type direct --peer {persona:session-channel-held:peer} --text VERIFY_FINAL_REPLY --hold-until-release --max-hold-ms 90000 --timeout 120000 --background --handle {run}/final-reply.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.reload --params '{\"plugins\":[{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}]}' --timeout 60000 --after-ms 2000",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --release-from {run}/final-reply.json --timeout 5000",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --wait {run}/final-reply.json --timeout 60000"
       ],
       "checkpoint": [
@@ -1489,7 +1540,7 @@
         "logs",
         "timing"
       ],
-      "timeoutMs": 200000,
+      "timeoutMs": 270000,
       "browser": false,
       "slow": false
     },
@@ -1523,21 +1574,30 @@
     {
       "id": "plugin-hooks-follow-lifecycle",
       "kind": "operation",
-      "intent": "A user adds a cron job and installs a plugin so plugin cron and install hooks run, observing cron_changed, before_install and skill_changed hook invocations.",
+      "intent": "A user edits a cron job, installs a plugin and uploads a local skill archive into a dedicated workspace, recording cron_changed, before_install and skill_changed hook invocations. The skill probe removes only its created target and restores the upload setting.",
       "paths": [
         "src/plugins/hook*.ts",
         "src/plugins/conversation*.ts",
         "src/plugins/interactive*.ts",
-        "src/plugin-sdk/**"
+        "src/plugin-sdk/**",
+        "src/gateway/server-cron.ts",
+        "src/plugins/install-security-scan.runtime.ts",
+        "src/gateway/server-methods/skills-upload.ts",
+        "src/gateway/server-methods/skills-install.ts",
+        "src/skills/lifecycle/upload-install.ts",
+        "src/skills/lifecycle/archive-install.ts",
+        "src/skills/lifecycle/skill-change-hook.ts"
       ],
       "requires": [
         "cron-job-isolated",
         "plugin-fixture-surfaces",
-        "plugins-local-sources"
+        "plugins-local-sources",
+        "plugin-skill-change-fixture"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method cron.update --params '{\"id\":\"{persona:cron-job-isolated:jobId}\",\"patch\":{\"description\":\"kova plugin cron hook\"}}' --timeout 30000",
         "ocm @{env} -- plugins install {persona:plugins-local-sources:archivePath} --force --accept-capabilities",
+        "node {kovaRoot}/support/verify/plugin-skill-change.mjs --env {env} --archive {persona:plugin-skill-change-fixture:archivePath} --agent {persona:plugin-skill-change-fixture:agentId} --workspace {persona:plugin-skill-change-fixture:workspaceDir} --slug {persona:plugin-skill-change-fixture:slug} --hook-log-method {persona:plugin-fixture-surfaces:hookLogMethod} --timeout 90000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method {persona:plugin-fixture-surfaces:hookLogMethod} --params '{}' --timeout 30000",
         "ocm @{env} -- cron list --json",
         "node {kovaRoot}/support/verify/cron-isolated-run.mjs --env {env} --job-id {persona:cron-job-isolated:jobId} --timeout 120000"
@@ -1547,14 +1607,14 @@
         "logs",
         "timing"
       ],
-      "timeoutMs": 180000,
+      "timeoutMs": 300000,
       "browser": false,
       "slow": false
     },
     {
       "id": "event-allowlist-made-restrictive",
       "kind": "event",
-      "intent": "An operator sets a restrictive plugins.allow that omits the external plugin, then enables it and installs a new plugin, observing allowlist refusal before consent, the install adding its id to the list and the restored policy.",
+      "intent": "A user restricts plugins.allow to the surface fixture, records CLI enable refusal for another ID, then explicitly admits that ID through the admin API and installs a third distinct ID, recording allowlist membership and caller-specific results.",
       "paths": [
         "src/config/plugins-allowlist.ts",
         "src/plugins/loader*.ts",
@@ -1572,7 +1632,10 @@
         "src/config/plugin-*.ts",
         "src/config/types.plugins.ts",
         "src/config/validation-plugin-*.ts",
-        "src/config/io.plugin-metadata.ts"
+        "src/config/io.plugin-metadata.ts",
+        "src/plugins/enable.ts",
+        "src/plugins/management-mutations.ts",
+        "src/plugins/install-persistence.ts"
       ],
       "requires": [
         "plugin-fixture-surfaces",
@@ -1662,13 +1725,15 @@
     {
       "id": "event-recovery-cannot-complete",
       "kind": "event",
-      "intent": "A user sets the fixture's active cleanup-failure marker and reloads it, observing failed settlement and health; clearing the marker lets the retained cleanup callback succeed on the retry.",
+      "intent": "A user arms the fixture cleanup-failure marker and reloads it, recording failed settlement and health. Clearing the marker and restarting the Gateway creates a fresh instance for subsequent work; it does not retry the cached failed disposal.",
       "paths": [
         "src/gateway/server-plugin-reload-cleanup.ts",
         "src/gateway/server-plugin-reload-recovery.ts",
         "src/gateway/server-retained-plugin-cleanup.ts",
         "src/plugins/host-hook-cleanup.ts",
-        "src/plugins/plugin-instance.ts"
+        "src/plugins/plugin-instance.ts",
+        "src/gateway/server-plugin-reload.ts",
+        "src/gateway/server-plugin-runtime-generation.ts"
       ],
       "requires": [
         "plugin-fixture-surfaces"
@@ -1679,7 +1744,8 @@
         "ocm @{env} -- health --json",
         "ocm @{env} -- status --json --all",
         "node {kovaRoot}/support/verify/plugin-source-edit.mjs --env {env} --plugin {persona:plugin-fixture-surfaces:pluginId} --mode cleanup-fails --restore",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.reload --params '{\"plugins\":[{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}]}' --timeout 120000"
+        "ocm service restart {env} --json",
+        "ocm @{env} -- health --json"
       ],
       "checkpoint": [
         "responses",
@@ -1707,7 +1773,8 @@
         "src/infra/clawhub-plugin-*.ts",
         "src/cli/plugins-install-*.ts",
         "src/cli/plugin-capability-consent.ts",
-        "src/plugin-state/**"
+        "src/plugin-state/**",
+        "src/gateway/config-reload.ts"
       ],
       "requires": [
         "plugin-fixture-surfaces",
@@ -1780,7 +1847,8 @@
         "src/gateway/config-reload-plugin-drain.ts",
         "src/cli/plugins-lifecycle-client.ts",
         "src/plugins/registry*.ts",
-        "src/gateway/server-startup-plugins.ts"
+        "src/gateway/server-startup-plugins.ts",
+        "src/cli/plugins-cli.runtime.ts"
       ],
       "requires": [
         "plugin-fixture-surfaces",
@@ -1833,7 +1901,18 @@
         "src/config/validation-plugin-*.ts",
         "src/config/io.plugin-metadata.ts",
         "src/config/sessions/startup-migration.ts",
-        "src/plugins/update-cohort.ts"
+        "src/plugins/update-cohort.ts",
+        "src/gateway/server-start.ts",
+        "src/gateway/server-shutdown.ts",
+        "src/gateway/server-close.ts",
+        "src/gateway/active-sessions-shutdown-drain.ts",
+        "src/gateway/server-startup-observers.ts",
+        "src/gateway/server-runtime-services.ts",
+        "src/gateway/server-cron-reconciled.ts",
+        "src/gateway/server-lifecycle.ts",
+        "src/plugins/plugin-native-admission-state.ts",
+        "src/plugins/plugin-native-admission.ts",
+        "src/plugins/plugin-generation-receipt.ts"
       ],
       "requires": [
         "mock-provider-held-turn",
@@ -1986,7 +2065,11 @@
         "src/gateway/server-methods/plugins-lifecycle-error.ts",
         "src/gateway/server-retained-plugin-cleanup.ts",
         "src/gateway/config-reload-plugin-drain.ts",
-        "src/cli/plugins-lifecycle-client.ts"
+        "src/cli/plugins-lifecycle-client.ts",
+        "src/plugins/enable.ts",
+        "src/plugins/capability-consent.ts",
+        "src/cli/plugins-cli.ts",
+        "src/agents/tools/plugins-tool.ts"
       ],
       "requires": [
         "config-plugins-include",
@@ -2040,7 +2123,9 @@
         "src/gateway/server-methods/plugins-lifecycle-error.ts",
         "src/gateway/server-retained-plugin-cleanup.ts",
         "src/gateway/config-reload-plugin-drain.ts",
-        "src/cli/plugins-lifecycle-client.ts"
+        "src/cli/plugins-lifecycle-client.ts",
+        "src/plugins/enable.ts",
+        "src/plugins/capability-consent.ts"
       ],
       "requires": [
         "config-plugins-include",
@@ -2086,7 +2171,9 @@
         "src/plugin-state/**",
         "src/auto-reply/reply/commands-plugins-install.ts",
         "src/agents/tools/plugins-tool.ts",
-        "src/agents/tools/system-agent-tool.ts"
+        "src/agents/tools/system-agent-tool.ts",
+        "src/plugins/management-*.ts",
+        "src/plugins/capability-consent.ts"
       ],
       "requires": [
         "clawhub-registry-local",
@@ -2117,7 +2204,7 @@
     {
       "id": "install-plugin-through-gateway",
       "kind": "operation",
-      "intent": "A client installs an official plugin and a third-party package through plugins.install, first without and then with the reviewed capability token, observing the consent requirement, runtime receipt and install progress.",
+      "intent": "An administrator installs two initially absent packages through plugins.install, one official and one local third-party archive, recording the staged-surface acceptance, runtime receipts, progress and installed inspection.",
       "paths": [
         "src/plugins/install*.ts",
         "src/plugins/installed*.ts",
@@ -2132,18 +2219,18 @@
         "src/cli/plugin-capability-consent.ts",
         "src/plugin-state/**",
         "src/gateway/server-methods/plugins-mutations.ts",
-        "src/gateway/server-methods/plugins-lifecycle-error.ts"
+        "src/gateway/server-methods/plugins-lifecycle-error.ts",
+        "src/plugins/management-*.ts",
+        "src/plugins/capability-consent.ts"
       ],
       "requires": [
         "clawhub-registry-local",
-        "plugins-npm-tracked",
-        "plugins-third-party-consented"
+        "plugin-gateway-new-packages"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.install --params '{\"source\":\"official\",\"pluginId\":\"{persona:plugins-npm-tracked:officialPluginId}\"}' --timeout 150000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.install --params '{\"source\":\"npm-pack\",\"archivePath\":\"{persona:plugins-third-party-consented:packagePath}\"}' --timeout 60000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.inspect --params '{\"pluginId\":\"{persona:plugins-third-party-consented:pluginId}\"}' --timeout 30000 --out {run}/consent-inspect.json",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.install --params '{\"source\":\"npm-pack\",\"archivePath\":\"{persona:plugins-third-party-consented:packagePath}\",\"mode\":\"update\"}' --timeout 60000 --merge-from {run}/consent-inspect.json"
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.install --params '{\"source\":\"official\",\"pluginId\":\"{persona:plugin-gateway-new-packages:officialPluginId}\"}' --timeout 150000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.install --params '{\"source\":\"npm-pack\",\"archivePath\":\"{persona:plugin-gateway-new-packages:packagePath}\"}' --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.inspect --params '{\"pluginId\":\"{persona:plugin-gateway-new-packages:pluginId}\"}' --timeout 30000"
       ],
       "checkpoint": [
         "responses",
@@ -2401,7 +2488,9 @@
         "src/plugins/conversation*.ts",
         "src/plugins/interactive*.ts",
         "src/plugin-sdk/**",
-        "src/agents/**/hook*.ts"
+        "src/agents/**/hook*.ts",
+        "src/plugins/before-agent-reply.ts",
+        "src/agents/embedded-agent-runner/run-orchestrator.ts"
       ],
       "requires": [
         "config-hand-edited",
@@ -2503,7 +2592,10 @@
         "src/config/plugins-allowlist.ts",
         "src/config/types.plugins.ts",
         "src/config/validation-plugin-*.ts",
-        "src/config/io.plugin-metadata.ts"
+        "src/config/io.plugin-metadata.ts",
+        "src/plugins/management-service.ts",
+        "src/agents/tools/plugins-tool.ts",
+        "src/auto-reply/reply/commands-plugins.ts"
       ],
       "requires": [
         "mock-provider-scripted",
@@ -2651,7 +2743,9 @@
         "ui/src/app/exec-approval.ts",
         "src/auto-reply/reply/commands-approve*.ts",
         "src/agents/agent-tools.before-tool-call.approval.ts",
-        "src/gateway/server-methods/approval-shared.ts"
+        "src/gateway/server-methods/approval-shared.ts",
+        "src/gateway/exec-approval-*.ts",
+        "src/gateway/server-methods/approval-request-delivery.ts"
       ],
       "requires": [
         "channels-test-accounts",
@@ -2695,7 +2789,17 @@
         "src/gateway/server-methods/nodes.invoke.ts",
         "src/gateway/node-invoke-plugin-*.ts",
         "src/gateway/node-plugin-tool-snapshot.ts",
-        "src/plugins/bundle*.ts"
+        "src/plugins/bundle*.ts",
+        "src/agents/openclaw-plugin-tools.ts",
+        "src/agents/agent-bundle-mcp-runtime.ts",
+        "src/agents/tool-search-runtime.ts",
+        "src/agents/tool-search.ts",
+        "src/agents/tool-search-catalog.ts",
+        "src/agents/tool-search-directory.ts",
+        "src/agents/tool-surface-plan.ts",
+        "src/agents/embedded-agent-runner/run/attempt-tool-search-executor.ts",
+        "src/plugins/schema-validator.ts",
+        "src/agents/code-mode-runtime.ts"
       ],
       "requires": [
         "channels-test-accounts",
@@ -2704,12 +2808,13 @@
         "plugin-fixture-surfaces",
         "plugins-local-sources",
         "session-main-rolling",
-        "session-plugin-tools"
+        "session-plugin-tools",
+        "plugin-catalog-tool-calls"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool {persona:plugin-fixture-surfaces:toolName} --args '{\"input\":\"kova\"}' --timeout 35000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool {persona:plugin-fixture-surfaces:optionalToolName} --args '{\"input\":\"kova\"}' --timeout 35000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool {persona:plugin-fixture-surfaces:schemaBreakToolName} --args '{\"input\":\"kova\"}' --timeout 35000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool tool_call --args '{\"id\":\"openclaw:{persona:plugin-fixture-surfaces:pluginId}:{persona:plugin-fixture-surfaces:schemaBreakToolName}\",\"args\":{\"input\":\"kova\"}}' --timeout 35000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool {persona:plugins-local-sources:bundleMcpToolName} --args '{}' --timeout 35000",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --chat-type direct --peer {persona:session-main-rolling:peer} --text 'KOVA_PLUGIN_DELIVERY' --timeout 40000",
         "node {kovaRoot}/support/verify/cron-isolated-run.mjs --env {env} --job-id {persona:cron-job-isolated:jobId} --timeout 90000",
@@ -2736,17 +2841,19 @@
         "src/gateway/server-methods/nodes.invoke.ts",
         "src/gateway/node-invoke-plugin-*.ts",
         "src/gateway/node-plugin-tool-snapshot.ts",
-        "src/plugins/bundle*.ts"
+        "src/plugins/bundle*.ts",
+        "src/auto-reply/reply/commands-plugin.ts",
+        "src/gateway/server-methods/tools-catalog.ts",
+        "src/plugins/command*.ts"
       ],
       "requires": [
-        "agents-three-configured",
         "mock-provider-scripted",
         "plugin-fixture-surfaces",
         "session-plugin-tools"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message '/{persona:plugin-fixture-surfaces:commandName}' --timeout 45000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method tools.catalog --params '{\"agentId\":\"{persona:agents-three-configured:mainAgentId}\"}' --timeout 30000"
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method tools.catalog --params '{\"agentId\":\"{persona:session-plugin-tools:agentId}\"}' --timeout 30000"
       ],
       "checkpoint": [
         "responses",
@@ -2766,7 +2873,9 @@
         "src/plugins/conversation*.ts",
         "src/plugins/interactive*.ts",
         "src/plugin-sdk/**",
-        "src/agents/agent-tools.before-tool-call*.ts"
+        "src/agents/agent-tools.before-tool-call*.ts",
+        "src/agents/bash-tools.exec-request-preparation.ts",
+        "src/agents/session-tool-result-guard-wrapper.ts"
       ],
       "requires": [
         "mock-provider-tool-calls",
@@ -2801,7 +2910,11 @@
         "src/plugins/command*.ts",
         "src/gateway/server-plugin-in-process-*.ts",
         "src/plugin-sdk/**",
-        "src/agents/prepared-model-catalog.ts"
+        "src/agents/prepared-model-catalog.ts",
+        "src/gateway/server/plugins-http.ts",
+        "src/gateway/server-methods/method-authorization.ts",
+        "src/gateway/method-scopes.ts",
+        "src/auto-reply/reply/commands-plugin.ts"
       ],
       "requires": [
         "gateway-multi-user-profiles",
@@ -2852,7 +2965,8 @@
         "src/gateway/server-retained-plugin-cleanup.ts",
         "src/cli/plugins-lifecycle-client.ts",
         "src/gateway/config-reload-plan.ts",
-        "src/gateway/server-reload-hot.ts"
+        "src/gateway/server-reload-hot.ts",
+        "src/plugins/loader-runtime-core.ts"
       ],
       "requires": [
         "config-reload-hybrid",
@@ -2892,7 +3006,9 @@
         "src/plugins/runtime/**",
         "src/gateway/server-plugin-reload*.ts",
         "src/plugins/plugin-instance.ts",
-        "src/plugins/plugin-instance-settlement.ts"
+        "src/plugins/plugin-instance-settlement.ts",
+        "src/agents/prepared-model-runtime.plugin-lifetime.ts",
+        "src/agents/runtime-plugin-work.ts"
       ],
       "requires": [
         "mock-provider-tool-calls",
@@ -2987,20 +3103,30 @@
     {
       "id": "event-reload-requested-from-turn-holding-plugin",
       "kind": "event",
-      "intent": "The agent, inside a turn that holds the fixture plugin, asks the plugins tool to reload that same plugin, observing the refusal during preparation instead of a self-wait.",
+      "intent": "A user invokes the fixture-owned self-reload tool in a Gateway-hosted administrator turn. Inside its still-active callback, the tool awaits the public SDK reload request for its own plugin, recording preparation refusal before a self-wait.",
       "paths": [
-        "src/agents/tools/plugins-tool.ts",
         "src/gateway/server-plugin-reload*.ts",
         "src/plugins/plugin-instance.ts",
-        "src/plugins/plugin-instance-settlement.ts"
+        "src/plugins/plugin-instance-settlement.ts",
+        "src/plugins/registry-state.ts",
+        "src/plugins/registry-registrars-tools-hooks.ts",
+        "src/plugins/plugin-instance-bindings.ts",
+        "src/agents/tools/gateway.ts",
+        "src/agents/tools/in-process-gateway.ts",
+        "src/gateway/server-plugin-in-process-*.ts",
+        "src/plugin-sdk/agent-harness-runtime.ts",
+        "src/agents/openclaw-tools.ts",
+        "src/agents/tools/gateway-caller-context.ts",
+        "src/agents/embedded-agent-runner/run/attempt-gateway-tools.ts"
       ],
       "requires": [
         "mock-provider-tool-calls",
         "plugin-fixture-surfaces",
-        "session-plugin-tools"
+        "session-plugin-tools",
+        "plugin-catalog-tool-calls"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool plugins --args '{\"action\":\"reload\",\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}' --timeout 90000"
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool {persona:plugin-fixture-surfaces:selfReloadToolName} --args '{}' --timeout 45000"
       ],
       "checkpoint": [
         "responses",
@@ -3019,7 +3145,11 @@
         "src/plugins/install*.ts",
         "src/plugins/loader*.ts",
         "src/gateway/server-methods/plugins-mutations.ts",
-        "src/gateway/server-plugin-reload*.ts"
+        "src/gateway/server-plugin-reload*.ts",
+        "src/plugins/management-mutations.ts",
+        "src/plugins/lifecycle.ts",
+        "src/gateway/server-methods/plugins-lifecycle-error.ts",
+        "src/cli/plugins-install-gateway.ts"
       ],
       "requires": [
         "mock-provider-tool-calls",
@@ -3054,7 +3184,8 @@
         "src/plugins/hook*.ts",
         "src/gateway/node-invoke-plugin-approval.ts",
         "src/agents/agent-tools.before-tool-call.approval.ts",
-        "src/gateway/server-methods/approval-shared.ts"
+        "src/gateway/server-methods/approval-shared.ts",
+        "src/gateway/exec-approval-*.ts"
       ],
       "requires": [
         "channels-test-accounts",
@@ -3087,7 +3218,11 @@
         "src/gateway/node-invoke-plugin-approval.ts",
         "src/infra/exec-approval-channel-runtime.ts",
         "src/agents/agent-tools.before-tool-call.approval.ts",
-        "src/gateway/server-methods/approval-shared.ts"
+        "src/gateway/server-methods/approval-shared.ts",
+        "src/gateway/server-methods/approval-request-delivery.ts",
+        "src/infra/exec-approval-forwarder.ts",
+        "src/auto-reply/reply/commands-approve.ts",
+        "src/infra/approval-gateway-resolver.ts"
       ],
       "requires": [
         "channels-test-accounts",
@@ -3123,7 +3258,10 @@
         "src/gateway/server-methods/plugin-approval.ts",
         "src/infra/approval-*.ts",
         "src/agents/agent-tools.before-tool-call.approval.ts",
-        "src/gateway/server-methods/approval-shared.ts"
+        "src/gateway/server-methods/approval-shared.ts",
+        "src/gateway/server-methods/approval-request-delivery.ts",
+        "src/infra/exec-approval-forwarder.ts",
+        "src/gateway/exec-approval-*.ts"
       ],
       "requires": [
         "config-reload-hybrid",
@@ -3153,7 +3291,8 @@
         "src/plugins/hook*.ts",
         "src/plugins/conversation*.ts",
         "src/plugins/interactive*.ts",
-        "src/plugin-sdk/**"
+        "src/plugin-sdk/**",
+        "src/plugins/registry-registrars-tools-hooks.ts"
       ],
       "requires": [
         "config-reload-hybrid",
@@ -3214,7 +3353,11 @@
         "src/plugins/hook*.ts",
         "src/gateway/node-invoke-plugin-approval.ts",
         "src/agents/agent-tools.before-tool-call.approval.ts",
-        "src/gateway/server-methods/approval-shared.ts"
+        "src/gateway/server-methods/approval-shared.ts",
+        "src/gateway/chat-abort.ts",
+        "src/gateway/server-aux-handlers.ts",
+        "src/gateway/server-methods/approval-run-cancellation.ts",
+        "src/gateway/exec-approval-*.ts"
       ],
       "requires": [
         "channels-test-accounts",
@@ -3282,7 +3425,13 @@
         "src/commands/doctor/shared/missing-configured-plugin-install.*.ts",
         "src/commands/doctor/shared/post-core-plugin-convergence.ts",
         "src/plugins/legacy*.ts",
-        "src/plugins/installed*.ts"
+        "src/plugins/installed*.ts",
+        "src/commands/doctor-plugin-registry.ts",
+        "src/commands/doctor/shared/plugin-registry-migration.ts",
+        "src/commands/doctor/shared/plugin-runtime-symlinks.ts",
+        "src/commands/doctor-plugin-host-links.ts",
+        "src/plugins/plugin-peer-link.ts",
+        "src/commands/doctor-plugin-generations.ts"
       ],
       "requires": [
         "plugins-legacy-state"
@@ -3375,45 +3524,6 @@
       "slow": false
     },
     {
-      "id": "install-plugin-from-chat-and-agent-continued",
-      "kind": "operation",
-      "intent": "A user installs a ClawHub plugin through the chat command and records its install and capability-consent response.",
-      "paths": [
-        "src/plugins/install*.ts",
-        "src/plugins/installed*.ts",
-        "src/plugins/npm*.ts",
-        "src/plugins/managed*.ts",
-        "src/plugins/official*.ts",
-        "src/plugins/clawhub*.ts",
-        "src/plugins/package*.ts",
-        "src/infra/clawhub-plugin-*.ts",
-        "src/cli/plugins-install-*.ts",
-        "src/cli/plugin-install-config-policy.ts",
-        "src/cli/plugin-capability-consent.ts",
-        "src/plugin-state/**",
-        "src/auto-reply/reply/commands-plugins-install.ts",
-        "src/agents/tools/plugins-tool.ts",
-        "src/agents/tools/system-agent-tool.ts"
-      ],
-      "requires": [
-        "clawhub-registry-local",
-        "mock-provider-scripted",
-        "session-plugin-tools"
-      ],
-      "commands": [
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message '/plugins install clawhub:{persona:clawhub-registry-local:packageName} --accept-capabilities' --timeout 90000"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing",
-        "state:state/openclaw.sqlite"
-      ],
-      "timeoutMs": 90000,
-      "browser": false,
-      "slow": false
-    },
-    {
       "id": "update-plugin",
       "kind": "operation",
       "intent": "A user previews and runs plugin updates for a tracked npm plugin, a pinned record and every plugin, observing resolved targets, pins kept, already-current skips, orphan skips and the refreshed Gateway.",
@@ -3433,7 +3543,8 @@
         "src/plugins/update*.ts",
         "src/cli/plugins-update-command.ts",
         "src/cli/plugins-update-selection.ts",
-        "src/commands/doctor/shared/post-core-plugin-convergence.ts"
+        "src/commands/doctor/shared/post-core-plugin-convergence.ts",
+        "src/plugins/management-*.ts"
       ],
       "requires": [
         "clawhub-registry-local",
@@ -3446,7 +3557,7 @@
         "ocm @{env} -- plugins update {persona:plugins-npm-tracked:officialPluginId}",
         "ocm @{env} -- plugins update --all",
         "ocm @{env} -- plugins list --json",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.install --params '{\"source\":\"official\",\"pluginId\":\"{persona:clawhub-registry-local:officialPluginId}\",\"mode\":\"update\"}' --timeout 120000"
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.install --params '{\"source\":\"official\",\"pluginId\":\"{persona:plugins-npm-tracked:officialPluginId}\",\"mode\":\"update\"}' --timeout 120000"
       ],
       "checkpoint": [
         "responses",
@@ -3456,6 +3567,47 @@
         "state:npm/projects"
       ],
       "timeoutMs": 300000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "install-plugin-from-chat-and-agent-continued",
+      "kind": "operation",
+      "intent": "A user installs a ClawHub plugin through the chat command and records its install and capability-consent response.",
+      "paths": [
+        "src/plugins/install*.ts",
+        "src/plugins/installed*.ts",
+        "src/plugins/npm*.ts",
+        "src/plugins/managed*.ts",
+        "src/plugins/official*.ts",
+        "src/plugins/clawhub*.ts",
+        "src/plugins/package*.ts",
+        "src/infra/clawhub-plugin-*.ts",
+        "src/cli/plugins-install-*.ts",
+        "src/cli/plugin-install-config-policy.ts",
+        "src/cli/plugin-capability-consent.ts",
+        "src/plugin-state/**",
+        "src/auto-reply/reply/commands-plugins-install.ts",
+        "src/agents/tools/plugins-tool.ts",
+        "src/agents/tools/system-agent-tool.ts",
+        "src/plugins/management-*.ts",
+        "src/plugins/capability-consent.ts"
+      ],
+      "requires": [
+        "clawhub-registry-local",
+        "mock-provider-scripted",
+        "session-plugin-tools"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-plugin-tools:key} --message '/plugins install clawhub:{persona:clawhub-registry-local:packageName} --accept-capabilities' --timeout 90000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:state/openclaw.sqlite"
+      ],
+      "timeoutMs": 90000,
       "browser": false,
       "slow": false
     },
@@ -3537,7 +3689,9 @@
         "src/cli/plugins-install-gateway.ts",
         "src/cli/plugins-install-hook-fallback.ts",
         "src/plugins/bundle*.ts",
-        "src/plugins/hook*.ts"
+        "src/plugins/hook*.ts",
+        "src/plugins/management-*.ts",
+        "src/plugins/capability-consent.ts"
       ],
       "requires": [
         "clawhub-registry-local",
@@ -3585,7 +3739,9 @@
         "src/cli/plugins-cli*.ts",
         "src/cli/plugins-reload-command.ts",
         "src/gateway/server-methods/plugins*.ts",
-        "src/config/plugin-*.ts"
+        "src/config/plugin-*.ts",
+        "src/config/config-write-guard.ts",
+        "src/config/paths.ts"
       ],
       "requires": [
         "plugin-fixture-surfaces",
