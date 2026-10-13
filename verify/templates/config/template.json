@@ -53,6 +53,7 @@
     "cli-service-path-mismatch",
     "config-backups-present",
     "config-case-change-settings-with-wizard",
+    "config-case-event-cli-storeowner",
     "config-case-event-config-unreadable",
     "config-case-event-configure-nosystemagent",
     "config-case-event-cron-owner-restricted-view",
@@ -5717,12 +5718,14 @@
         "src/commands/config-*.ts"
       ],
       "requires": [
-        "config-set-targets"
+        "config-case-event-cli-storeowner"
       ],
       "commands": [
-        "ocm @{env} -- config set {persona:config-set-targets:sessionStorePath} {persona:config-set-targets:sessionStoreValue}",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-cli-storeowner:fixture} --out {run}/store-owner-original.json --timeout 60000",
+        "ocm @{env} -- config set session.store {run}/alternate-store.sqlite",
         "ocm @{env} -- config get agents.defaults.sessionStore --json",
-        "ocm @{env} -- config unset {persona:config-set-targets:sessionStorePath}"
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/store-owner-original.json --out {run}/store-owner-result.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/store-owner-original.json --start-gateway --timeout 60000"
       ],
       "checkpoint": [
         "responses",
@@ -5730,7 +5733,7 @@
         "timing",
         "state:openclaw.json"
       ],
-      "timeoutMs": 90000,
+      "timeoutMs": 210000,
       "browser": false,
       "slow": false
     },
@@ -11677,7 +11680,6 @@
         "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --out {run}/event-pending-migration-write-state.json --timeout 30000",
         "ocm service stop {env} --json",
         "ocm @{env} -- config validate --json",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method config.get --params '{}' --after-ms 3000 --timeout 15000",
         "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/event-pending-migration-write-scope-original.json --out {run}/event-pending-migration-write-before-restore-1.json --timeout 30000",
         "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/pm-original.json --timeout 60000",
         "ocm service start {env} --json",
@@ -13009,7 +13011,7 @@
       "commands": [
         "ocm service stop {env} --json",
         "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-guard-headless:fixture} --out {run}/gh-original.json --timeout 60000",
-        "ocm @{env} -- sessions --json",
+        "ocm @{env} -- config unset diagnostics.flags",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm logs {env} --tail 400",
@@ -13159,7 +13161,7 @@
     {
       "id": "event-interactive-startup-offers-doctor",
       "kind": "event",
-      "intent": "An interactive sessions command meets invalid config, offers Doctor and retries; the conversation and repaired state are observed. The separate headless phase retains its own original fixture.",
+      "intent": "An interactive config unset command meets invalid config, offers Doctor and retries; the conversation and repaired state are observed. The separate headless phase retains its own original fixture.",
       "paths": [
         "src/cli/program/config-guard.ts",
         "src/config/*-migration.ts",
@@ -13174,7 +13176,7 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-interactive-startup-offers-doctor:fixture} --out {run}/event-interactive-startup-offers-doctor-saved.json --timeout 50000",
-        "node {kovaRoot}/support/verify/cli-pty.mjs --env {env} --command 'sessions --json' --answers {persona:config-fixture-files:acceptDoctorAnswers} --timeout 70000",
+        "node {kovaRoot}/support/verify/cli-pty.mjs --env {env} --command 'config unset diagnostics.flags' --answers {persona:config-fixture-files:acceptDoctorAnswers} --timeout 70000",
         "ocm service start {env} --json",
         "ocm logs {env} --tail 300",
         "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/event-interactive-startup-offers-doctor-saved.json --out {run}/event-interactive-startup-offers-doctor-state.json --timeout 30000",
