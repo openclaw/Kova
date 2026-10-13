@@ -9,7 +9,10 @@
       "wraps": "ocm env clone",
       "command": "ocm env clone <source> {env} --json",
       "flags": {
-        "--json": "JSON output"
+        "--json": {
+          "description": "JSON output",
+          "value": "none"
+        }
       },
       "prints": [
         "name",
@@ -42,7 +45,10 @@
       "wraps": "ocm env show",
       "command": "ocm env show {env} --json",
       "flags": {
-        "--json": "JSON output"
+        "--json": {
+          "description": "JSON output",
+          "value": "none"
+        }
       },
       "prints": [
         "name",
@@ -73,7 +79,7 @@
       "id": "ocm-env-exec",
       "kind": "ocm",
       "wraps": "ocm env exec",
-      "command": "ocm env exec {env} -- <command>",
+      "command": "ocm env exec {env} -- <command...>",
       "flags": {},
       "prints": [],
       "side": "destructive",
@@ -85,11 +91,20 @@
       "id": "ocm-start",
       "kind": "ocm",
       "wraps": "ocm start",
-      "command": "ocm start {env} --runtime <name> --no-service --json",
+      "command": "ocm start [{env}] --runtime <name> --no-service --json",
       "flags": {
-        "--no-service": "create without a service",
-        "--json": "JSON output",
-        "--runtime": "installed OCM runtime name"
+        "--no-service": {
+          "description": "create without a service",
+          "value": "none"
+        },
+        "--json": {
+          "description": "JSON output",
+          "value": "none"
+        },
+        "--runtime": {
+          "description": "installed OCM runtime name",
+          "value": "required"
+        }
       },
       "prints": [
         "envName",
@@ -122,7 +137,10 @@
       "wraps": "ocm service start",
       "command": "ocm service start {env} --json",
       "flags": {
-        "--json": "JSON output"
+        "--json": {
+          "description": "JSON output",
+          "value": "none"
+        }
       },
       "prints": [
         "envName",
@@ -153,7 +171,10 @@
       "wraps": "ocm service stop",
       "command": "ocm service stop {env} --json",
       "flags": {
-        "--json": "JSON output"
+        "--json": {
+          "description": "JSON output",
+          "value": "none"
+        }
       },
       "prints": [
         "envName",
@@ -184,7 +205,10 @@
       "wraps": "ocm service restart",
       "command": "ocm service restart {env} --json",
       "flags": {
-        "--json": "JSON output"
+        "--json": {
+          "description": "JSON output",
+          "value": "none"
+        }
       },
       "prints": [
         "envName",
@@ -215,8 +239,14 @@
       "wraps": "ocm logs",
       "command": "ocm logs {env} --tail <n> --json",
       "flags": {
-        "--tail": "lines",
-        "--json": "print JSON"
+        "--tail": {
+          "description": "lines",
+          "value": "required"
+        },
+        "--json": {
+          "description": "print JSON",
+          "value": "none"
+        }
       },
       "prints": [
         "envName",
@@ -238,7 +268,10 @@
       "wraps": "openclaw status",
       "command": "ocm @{env} -- status --json",
       "flags": {
-        "--json": "JSON output"
+        "--json": {
+          "description": "JSON output",
+          "value": "none"
+        }
       },
       "prints": [
         "os",
@@ -277,10 +310,22 @@
       "wraps": "openclaw doctor",
       "command": "ocm @{env} -- doctor --json",
       "flags": {
-        "--json": "JSON output",
-        "--fix": "apply repairs",
-        "--session-sqlite": "session store checks",
-        "--session-sqlite-all-agents": "all agents"
+        "--json": {
+          "description": "JSON output",
+          "value": "none"
+        },
+        "--fix": {
+          "description": "apply repairs",
+          "value": "none"
+        },
+        "--session-sqlite": {
+          "description": "session store checks",
+          "value": "required"
+        },
+        "--session-sqlite-all-agents": {
+          "description": "all agents",
+          "value": "none"
+        }
       },
       "prints": [
         "schemaVersion",
@@ -306,7 +351,10 @@
       "wraps": "openclaw config get",
       "command": "ocm @{env} -- config get <path> --json",
       "flags": {
-        "--json": "JSON output"
+        "--json": {
+          "description": "JSON output",
+          "value": "none"
+        }
       },
       "prints": [],
       "side": "read",
@@ -320,7 +368,10 @@
       "wraps": "openclaw config patch",
       "command": "ocm @{env} -- config patch --file <file>",
       "flags": {
-        "--file": "JSON patch file"
+        "--file": {
+          "description": "JSON patch file",
+          "value": "required"
+        }
       },
       "prints": [],
       "side": "write",
@@ -334,7 +385,10 @@
       "wraps": "openclaw agents list",
       "command": "ocm @{env} -- agents list --json",
       "flags": {
-        "--json": "JSON output"
+        "--json": {
+          "description": "JSON output",
+          "value": "none"
+        }
       },
       "prints": [],
       "side": "read",
@@ -348,7 +402,10 @@
       "wraps": "openclaw models list",
       "command": "ocm @{env} -- models list --json",
       "flags": {
-        "--json": "JSON output"
+        "--json": {
+          "description": "JSON output",
+          "value": "none"
+        }
       },
       "prints": [
         "count",
@@ -366,7 +423,10 @@
       "wraps": "openclaw plugins list",
       "command": "ocm @{env} -- plugins list --json",
       "flags": {
-        "--json": "JSON output"
+        "--json": {
+          "description": "JSON output",
+          "value": "none"
+        }
       },
       "prints": [
         "workspaceDir",
@@ -386,7 +446,10 @@
       "wraps": "openclaw plugins install",
       "command": "ocm @{env} -- plugins install <source> --force",
       "flags": {
-        "--force": "acknowledge a non-ClawHub source and allow replacement of an existing plugin or hook pack"
+        "--force": {
+          "description": "acknowledge a non-ClawHub source and allow replacement of an existing plugin or hook pack",
+          "value": "none"
+        }
       },
       "prints": [],
       "side": "destructive",
@@ -400,7 +463,10 @@
       "wraps": "openclaw channels status",
       "command": "ocm @{env} -- channels status --json",
       "flags": {
-        "--json": "JSON output"
+        "--json": {
+          "description": "JSON output",
+          "value": "none"
+        }
       },
       "prints": [
         "ts",
@@ -431,7 +497,10 @@
       "wraps": "openclaw devices list",
       "command": "ocm @{env} -- devices list --json",
       "flags": {
-        "--json": "JSON output"
+        "--json": {
+          "description": "JSON output",
+          "value": "none"
+        }
       },
       "prints": [
         "pending",
@@ -448,7 +517,10 @@
       "wraps": "users list",
       "command": "ocm @{env} -- users list --json",
       "flags": {
-        "--json": "JSON output"
+        "--json": {
+          "description": "JSON output",
+          "value": "none"
+        }
       },
       "prints": [
         "profiles"
@@ -464,7 +536,10 @@
       "wraps": "openclaw cron list",
       "command": "ocm @{env} -- cron list --json",
       "flags": {
-        "--json": "JSON output"
+        "--json": {
+          "description": "JSON output",
+          "value": "none"
+        }
       },
       "prints": [
         "jobs",
@@ -485,12 +560,24 @@
       "id": "cron-add",
       "kind": "product",
       "wraps": "openclaw cron add",
-      "command": "ocm @{env} -- cron add --name <name> --at <time> --system-event <text> --json",
+      "command": "ocm @{env} -- cron add [<scheduleOrName>] [<message>] --name <name> --at <time> --system-event <text> --json",
       "flags": {
-        "--name": "job name",
-        "--at": "one-time schedule",
-        "--system-event": "system event text",
-        "--json": "print JSON"
+        "--name": {
+          "description": "job name",
+          "value": "required"
+        },
+        "--at": {
+          "description": "one-time schedule",
+          "value": "required"
+        },
+        "--system-event": {
+          "description": "system event text",
+          "value": "required"
+        },
+        "--json": {
+          "description": "print JSON",
+          "value": "none"
+        }
       },
       "prints": [
         "id",
@@ -519,11 +606,26 @@
       "wraps": "openclaw sessions",
       "command": "ocm @{env} -- sessions --json",
       "flags": {
-        "--json": "JSON output",
-        "--all-agents": "every agent",
-        "--agent": "one agent",
-        "--active": "active within minutes",
-        "--limit": "row limit"
+        "--json": {
+          "description": "JSON output",
+          "value": "none"
+        },
+        "--all-agents": {
+          "description": "every agent",
+          "value": "none"
+        },
+        "--agent": {
+          "description": "one agent",
+          "value": "required"
+        },
+        "--active": {
+          "description": "active within minutes",
+          "value": "required"
+        },
+        "--limit": {
+          "description": "row limit",
+          "value": "required"
+        }
       },
       "prints": [
         "path",
@@ -547,9 +649,18 @@
       "wraps": "openclaw sessions tail",
       "command": "ocm @{env} -- sessions tail --session-key <key> --tail <n>",
       "flags": {
-        "--session-key": "session",
-        "--tail": "messages",
-        "--all-agents": "include every configured agent"
+        "--session-key": {
+          "description": "session",
+          "value": "required"
+        },
+        "--tail": {
+          "description": "messages",
+          "value": "required"
+        },
+        "--all-agents": {
+          "description": "include every configured agent",
+          "value": "none"
+        }
       },
       "prints": [],
       "side": "read",
@@ -561,10 +672,16 @@
       "id": "sessions-archive",
       "kind": "product",
       "wraps": "openclaw sessions archive",
-      "command": "ocm @{env} -- sessions archive <keys> --json",
+      "command": "ocm @{env} -- sessions archive <keys...> --json",
       "flags": {
-        "--json": "JSON output",
-        "--dry-run": "preview"
+        "--json": {
+          "description": "JSON output",
+          "value": "none"
+        },
+        "--dry-run": {
+          "description": "preview",
+          "value": "none"
+        }
       },
       "prints": [
         "ok",
@@ -581,11 +698,20 @@
       "id": "sessions-delete",
       "kind": "product",
       "wraps": "openclaw sessions delete",
-      "command": "ocm @{env} -- sessions delete <keys> --yes --json",
+      "command": "ocm @{env} -- sessions delete <keys...> --yes --json",
       "flags": {
-        "--yes": "no prompt",
-        "--json": "JSON output",
-        "--dry-run": "preview"
+        "--yes": {
+          "description": "no prompt",
+          "value": "none"
+        },
+        "--json": {
+          "description": "JSON output",
+          "value": "none"
+        },
+        "--dry-run": {
+          "description": "preview",
+          "value": "none"
+        }
       },
       "prints": [
         "ok",
@@ -604,8 +730,14 @@
       "wraps": "openclaw sessions compact",
       "command": "ocm @{env} -- sessions compact <key> --json",
       "flags": {
-        "--json": "JSON output",
-        "--max-lines": "truncate to the last N transcript lines instead of LLM summarization"
+        "--json": {
+          "description": "JSON output",
+          "value": "none"
+        },
+        "--max-lines": {
+          "description": "truncate to the last N transcript lines instead of LLM summarization",
+          "value": "required"
+        }
       },
       "prints": [
         "ok",
@@ -627,13 +759,34 @@
       "wraps": "openclaw sessions cleanup",
       "command": "ocm @{env} -- sessions cleanup --json",
       "flags": {
-        "--json": "JSON output",
-        "--dry-run": "preview",
-        "--enforce": "apply caps",
-        "--fix-missing": "repair missing",
-        "--fix-dm-scope": "repair DM scope",
-        "--active-key": "protect a key",
-        "--all-agents": "every agent"
+        "--json": {
+          "description": "JSON output",
+          "value": "none"
+        },
+        "--dry-run": {
+          "description": "preview",
+          "value": "none"
+        },
+        "--enforce": {
+          "description": "apply caps",
+          "value": "none"
+        },
+        "--fix-missing": {
+          "description": "repair missing",
+          "value": "none"
+        },
+        "--fix-dm-scope": {
+          "description": "repair DM scope",
+          "value": "none"
+        },
+        "--active-key": {
+          "description": "protect a key",
+          "value": "required"
+        },
+        "--all-agents": {
+          "description": "every agent",
+          "value": "none"
+        }
       },
       "prints": [
         "agentId",
@@ -667,13 +820,28 @@
       "id": "sessions-import",
       "kind": "product",
       "wraps": "openclaw sessions import",
-      "command": "ocm @{env} -- sessions import <catalogId> <threadId> --json",
+      "command": "ocm @{env} -- sessions import [<catalogId>] [<threadId>] --json",
       "flags": {
-        "--json": "JSON output",
-        "--all": "every thread",
-        "--catalog": "catalog id",
-        "--dry-run": "preview",
-        "--limit": "thread limit"
+        "--json": {
+          "description": "JSON output",
+          "value": "none"
+        },
+        "--all": {
+          "description": "every thread",
+          "value": "none"
+        },
+        "--catalog": {
+          "description": "catalog id",
+          "value": "required"
+        },
+        "--dry-run": {
+          "description": "preview",
+          "value": "none"
+        },
+        "--limit": {
+          "description": "thread limit",
+          "value": "required"
+        }
       },
       "prints": [
         "ok",
@@ -693,10 +861,22 @@
       "wraps": "openclaw sessions export-trajectory",
       "command": "ocm @{env} -- sessions export-trajectory --session-key <key> --output <name> --json",
       "flags": {
-        "--session-key": "session",
-        "--output": "output directory name inside .openclaw/trajectory-exports",
-        "--workspace": "workspace root path",
-        "--json": "JSON output"
+        "--session-key": {
+          "description": "session",
+          "value": "required"
+        },
+        "--output": {
+          "description": "output directory name inside .openclaw/trajectory-exports",
+          "value": "required"
+        },
+        "--workspace": {
+          "description": "workspace root path",
+          "value": "required"
+        },
+        "--json": {
+          "description": "JSON output",
+          "value": "none"
+        }
       },
       "prints": [
         "outputDir",
@@ -718,10 +898,22 @@
       "wraps": "openclaw memory forget --session",
       "command": "ocm @{env} -- memory forget --agent <id> --session <key> --json",
       "flags": {
-        "--agent": "agent",
-        "--session": "session",
-        "--dry-run": "preview",
-        "--json": "JSON output"
+        "--agent": {
+          "description": "agent",
+          "value": "required"
+        },
+        "--session": {
+          "description": "session",
+          "value": "required"
+        },
+        "--dry-run": {
+          "description": "preview",
+          "value": "none"
+        },
+        "--json": {
+          "description": "JSON output",
+          "value": "none"
+        }
       },
       "prints": [
         "agentId",
@@ -745,11 +937,20 @@
       "id": "attach",
       "kind": "product",
       "wraps": "openclaw attach",
-      "command": "ocm @{env} -- attach <session> --print-config --ttl <ms>",
+      "command": "ocm @{env} -- attach [<target>] --print-config --ttl <ms>",
       "flags": {
-        "--session": "session",
-        "--print-config": "print the grant",
-        "--ttl": "attachment grant lifetime in milliseconds"
+        "--session": {
+          "description": "session",
+          "value": "required"
+        },
+        "--print-config": {
+          "description": "print the grant",
+          "value": "none"
+        },
+        "--ttl": {
+          "description": "attachment grant lifetime in milliseconds",
+          "value": "required"
+        }
       },
       "prints": [],
       "side": "write",
@@ -763,8 +964,14 @@
       "wraps": "openclaw gateway stop",
       "command": "ocm @{env} -- gateway stop --json --force",
       "flags": {
-        "--json": "print JSON",
-        "--force": "acknowledge stopping the Gateway without an interactive prompt"
+        "--json": {
+          "description": "print JSON",
+          "value": "none"
+        },
+        "--force": {
+          "description": "acknowledge stopping the Gateway without an interactive prompt",
+          "value": "none"
+        }
       },
       "prints": [
         "action",
@@ -790,7 +997,10 @@
       "wraps": "openclaw gateway restart",
       "command": "ocm @{env} -- gateway restart --json",
       "flags": {
-        "--json": "print JSON"
+        "--json": {
+          "description": "print JSON",
+          "value": "none"
+        }
       },
       "prints": [
         "action",
@@ -816,19 +1026,58 @@
       "wraps": "chat.send then chat.history for the reply",
       "command": "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key <key> --message '<text>' --timeout <ms>",
       "flags": {
-        "--session-key": "session",
-        "--message": "text sent",
-        "--queue-mode": "steer | followup | collect | interrupt",
-        "--intent": "send intent such as session-goal-start",
-        "--expected-leaf": "leaf entry id passed to the product",
-        "--incognito-handle": "handle of an incognito session",
-        "--timeout": "ms",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--session-key": {
+          "description": "session",
+          "value": "required"
+        },
+        "--message": {
+          "description": "text sent",
+          "value": "required"
+        },
+        "--queue-mode": {
+          "description": "steer | followup | collect | interrupt",
+          "value": "required"
+        },
+        "--intent": {
+          "description": "send intent such as session-goal-start",
+          "value": "required"
+        },
+        "--expected-leaf": {
+          "description": "leaf entry id passed to the product",
+          "value": "required"
+        },
+        "--incognito-handle": {
+          "description": "handle of an incognito session",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "receipt",
@@ -847,14 +1096,38 @@
       "wraps": "sessions.send with a reply the persona's mock holds open",
       "command": "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key <key> --hold-ms <ms> --background --handle {run}/<name>.json",
       "flags": {
-        "--session-key": "session",
-        "--hold-ms": "how long the mock keeps the reply open",
-        "--progress-cards": "number of progress_card calls while held",
-        "--timeout": "ms",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--env": "OCM environment name"
+        "--session-key": {
+          "description": "session",
+          "value": "required"
+        },
+        "--hold-ms": {
+          "description": "how long the mock keeps the reply open",
+          "value": "required"
+        },
+        "--progress-cards": {
+          "description": "emit progress cards while held",
+          "value": "none"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "runId",
@@ -873,17 +1146,50 @@
       "wraps": "a turn whose scripted reply calls one session tool, then chat.history with tools",
       "command": "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key <key> --tool <name> --args '<json>' --timeout <ms>",
       "flags": {
-        "--session-key": "session",
-        "--tool": "tool name",
-        "--args": "JSON tool args",
-        "--out": "file under {run} to write the result to",
-        "--timeout": "ms",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--env": "OCM environment name"
+        "--session-key": {
+          "description": "session",
+          "value": "required"
+        },
+        "--tool": {
+          "description": "tool name",
+          "value": "required"
+        },
+        "--args": {
+          "description": "JSON tool args",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "toolCall",
@@ -902,13 +1208,34 @@
       "wraps": "chat.startup, chat.history with cursors, chat.message.get, sessions.messages.subscribe",
       "command": "node {kovaRoot}/support/verify/chat-history-read.mjs --env {env} --session-key <key> --timeout <ms>",
       "flags": {
-        "--session-key": "session",
-        "--limit": "page size",
-        "--message-id": "anchor message",
-        "--follow-delta": "subscribe and read deltas",
-        "--timeout": "ms",
-        "--wait": "join a handle",
-        "--env": "OCM environment name"
+        "--session-key": {
+          "description": "session",
+          "value": "required"
+        },
+        "--limit": {
+          "description": "page size",
+          "value": "required"
+        },
+        "--message-id": {
+          "description": "anchor message",
+          "value": "required"
+        },
+        "--follow-delta": {
+          "description": "subscribe and read deltas",
+          "value": "none"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "pages",
@@ -926,16 +1253,46 @@
       "wraps": "one named Control UI flow in a headless browser",
       "command": "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow <name> --artifact-dir {run}/screens --timeout <ms>",
       "flags": {
-        "--flow": "flow name from the flow list the script defines",
-        "--session-key": "session the flow opens",
-        "--incognito-handle": "handle of an incognito session",
-        "--locale": "UI locale",
-        "--gateway-env": "a second environment to switch to",
-        "--artifact-dir": "screenshot directory",
-        "--out": "file under {run} to write the result to",
-        "--timeout": "ms",
-        "--session-from": "file under {run} whose JSON holds the session key to open",
-        "--env": "OCM environment name"
+        "--flow": {
+          "description": "flow name from the flow list the script defines",
+          "value": "required"
+        },
+        "--session-key": {
+          "description": "session the flow opens",
+          "value": "required"
+        },
+        "--incognito-handle": {
+          "description": "handle of an incognito session",
+          "value": "required"
+        },
+        "--locale": {
+          "description": "UI locale",
+          "value": "required"
+        },
+        "--gateway-env": {
+          "description": "a second environment to switch to",
+          "value": "required"
+        },
+        "--artifact-dir": {
+          "description": "screenshot directory",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to open",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "flow",
@@ -955,8 +1312,14 @@
       "wraps": "anonymous HTTP read of a public session thread and its share preview",
       "command": "node {kovaRoot}/support/verify/public-thread-read.mjs --env {env} --session-key <key>",
       "flags": {
-        "--session-key": "session",
-        "--env": "OCM environment name"
+        "--session-key": {
+          "description": "session",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "status",
@@ -974,11 +1337,26 @@
       "wraps": "openclaw resume under a pseudo-terminal",
       "command": "node {kovaRoot}/support/verify/run-resume.mjs --env {env} --query '<text>' --timeout <ms>",
       "flags": {
-        "--query": "resume query",
-        "--handoff-from": "file under {run} with a handoff payload",
-        "--url-from": "file under {run} with a session URL",
-        "--timeout": "ms",
-        "--env": "OCM environment name"
+        "--query": {
+          "description": "resume query",
+          "value": "required"
+        },
+        "--handoff-from": {
+          "description": "file under {run} with a handoff payload",
+          "value": "required"
+        },
+        "--url-from": {
+          "description": "file under {run} with a session URL",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "resolved",
@@ -996,11 +1374,26 @@
       "wraps": "inbound channel dispatch through session routing",
       "command": "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --chat-type <direct|group|thread> --peer <id> --text '<text>' --timeout <ms>",
       "flags": {
-        "--chat-type": "direct | group | thread",
-        "--peer": "peer id",
-        "--text": "message text",
-        "--timeout": "ms",
-        "--env": "OCM environment name"
+        "--chat-type": {
+          "description": "direct | group | thread",
+          "value": "required"
+        },
+        "--peer": {
+          "description": "peer id",
+          "value": "required"
+        },
+        "--text": {
+          "description": "message text",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "sessionKey",
@@ -1018,9 +1411,18 @@
       "wraps": "cron.run of an isolated job",
       "command": "node {kovaRoot}/support/verify/cron-isolated-run.mjs --env {env} --job-id <id> --timeout <ms>",
       "flags": {
-        "--job-id": "job",
-        "--timeout": "ms",
-        "--env": "OCM environment name"
+        "--job-id": {
+          "description": "job",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "sessionKey",
@@ -1038,8 +1440,14 @@
       "wraps": "heartbeat wake of the main session",
       "command": "node {kovaRoot}/support/verify/heartbeat-wake.mjs --env {env} --timeout <ms>",
       "flags": {
-        "--timeout": "ms",
-        "--env": "OCM environment name"
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "woke",
@@ -1057,13 +1465,34 @@
       "wraps": "sessions.goal.update and sessions.goal.clear with fresh operation ids",
       "command": "node {kovaRoot}/support/verify/goal-control.mjs --env {env} --session-key <key> --action <name> --timeout <ms>",
       "flags": {
-        "--session-key": "session",
-        "--action": "edit | pause | resume | block | complete | clear",
-        "--goal-id": "goal",
-        "--note": "note text",
-        "--replay": "replay the previous operation",
-        "--timeout": "ms",
-        "--env": "OCM environment name"
+        "--session-key": {
+          "description": "session",
+          "value": "required"
+        },
+        "--action": {
+          "description": "edit | pause | resume | block | complete | clear",
+          "value": "required"
+        },
+        "--goal-id": {
+          "description": "goal",
+          "value": "required"
+        },
+        "--note": {
+          "description": "note text",
+          "value": "required"
+        },
+        "--replay": {
+          "description": "replay the previous operation",
+          "value": "none"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "goal",
@@ -1081,9 +1510,18 @@
       "wraps": "gateway stop, staging of a persona fixture into an agent directory, Doctor, start",
       "command": "node {kovaRoot}/support/verify/stage-session-store-fixture.mjs --env {env} --agent <id> --fixture <path>",
       "flags": {
-        "--agent": "agent",
-        "--fixture": "fixture path from the persona",
-        "--env": "OCM environment name"
+        "--agent": {
+          "description": "agent",
+          "value": "required"
+        },
+        "--fixture": {
+          "description": "fixture path from the persona",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "staged",
@@ -1101,9 +1539,18 @@
       "wraps": "Gateway startup wait",
       "command": "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout <ms>",
       "flags": {
-        "--artifact-dir": "artifact directory",
-        "--env": "OCM environment name",
-        "--timeout": "ms"
+        "--artifact-dir": {
+          "description": "artifact directory",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        }
       },
       "prints": [
         "ready",
@@ -1120,11 +1567,26 @@
       "wraps": "sessions.create and sessions.send, then chat history",
       "command": "node {kovaRoot}/support/run-gateway-session-send-turn.mjs --env {env} --session-key <key> --message '<text>' --timeout <ms>",
       "flags": {
-        "--session-key": "session",
-        "--create-session": "true | false",
-        "--message": "text",
-        "--timeout": "ms",
-        "--env": "OCM environment name"
+        "--session-key": {
+          "description": "session",
+          "value": "required"
+        },
+        "--create-session": {
+          "description": "true | false",
+          "value": "required"
+        },
+        "--message": {
+          "description": "text",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "sessionKey",
@@ -1142,10 +1604,22 @@
       "wraps": "openclaw tui turn",
       "command": "node {kovaRoot}/support/run-tui-message-turn.mjs --env {env} --session <name> --message '<text>' --timeout <ms>",
       "flags": {
-        "--session": "session name",
-        "--message": "text",
-        "--timeout": "ms",
-        "--env": "OCM environment name"
+        "--session": {
+          "description": "session name",
+          "value": "required"
+        },
+        "--message": {
+          "description": "text",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "reply",
@@ -1162,10 +1636,22 @@
       "wraps": "a turn through the test channel probe",
       "command": "node {kovaRoot}/support/run-channel-probe-turn.mjs --env {env} --case <name> --artifact-dir {run} --timeout <ms>",
       "flags": {
-        "--case": "probe case",
-        "--artifact-dir": "artifact directory",
-        "--env": "OCM environment name",
-        "--timeout": "ms"
+        "--case": {
+          "description": "probe case",
+          "value": "required"
+        },
+        "--artifact-dir": {
+          "description": "artifact directory",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        }
       },
       "prints": [
         "case",
@@ -1183,9 +1669,18 @@
       "wraps": "cron runtime smoke",
       "command": "node {kovaRoot}/support/run-cron-runtime-smoke.mjs --env {env} --artifact-dir {run} --timeout <ms>",
       "flags": {
-        "--artifact-dir": "artifact directory",
-        "--env": "OCM environment name",
-        "--timeout": "ms"
+        "--artifact-dir": {
+          "description": "artifact directory",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        }
       },
       "prints": [
         "jobs",
@@ -1202,7 +1697,10 @@
       "wraps": "openclaw doctor --fix with its output captured",
       "command": "node {kovaRoot}/support/run-doctor-repair.mjs --env {env}",
       "flags": {
-        "--env": "OCM environment name"
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "repairs"
@@ -1218,7 +1716,10 @@
       "wraps": "mock provider credentials",
       "command": "node {kovaRoot}/support/configure-openclaw-mock-auth.mjs --env {env}",
       "flags": {
-        "--env": "OCM environment name"
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "configured"
@@ -1234,16 +1735,46 @@
       "wraps": "the mock provider's scripted reply table",
       "command": "node {kovaRoot}/support/write-mock-ai-provider-script.mjs --env {env} --script <file>",
       "flags": {
-        "--script": "reply table file",
-        "--add-held-turn": "add a held reply",
-        "--marker": "trigger text",
-        "--hold-ms": "ms the reply stays open",
-        "--progress-card": "call progress_card while held",
-        "--add-tool-call-model": "add a tool-calling model",
-        "--add-single-slot-model": "add a serial model",
-        "--add-overflow-once": "add a one-time overflow error",
-        "--model-id": "model id",
-        "--env": "OCM environment name"
+        "--script": {
+          "description": "reply table file",
+          "value": "required"
+        },
+        "--add-held-turn": {
+          "description": "add a held reply",
+          "value": "none"
+        },
+        "--marker": {
+          "description": "trigger text",
+          "value": "required"
+        },
+        "--hold-ms": {
+          "description": "ms the reply stays open",
+          "value": "required"
+        },
+        "--progress-card": {
+          "description": "call progress_card while held",
+          "value": "none"
+        },
+        "--add-tool-call-model": {
+          "description": "add a tool-calling model",
+          "value": "none"
+        },
+        "--add-single-slot-model": {
+          "description": "add a serial model",
+          "value": "none"
+        },
+        "--add-overflow-once": {
+          "description": "add a one-time overflow error",
+          "value": "none"
+        },
+        "--model-id": {
+          "description": "model id",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "entries"
@@ -1259,10 +1790,22 @@
       "wraps": "legacy sessions.json and JSONL history layout",
       "command": "node {kovaRoot}/support/prepare-large-memory-session-state.mjs --env {env} --agent <id> --legacy-only",
       "flags": {
-        "--agent": "agent",
-        "--legacy-only": "no database",
-        "--plant-word": "word planted in history",
-        "--env": "OCM environment name"
+        "--agent": {
+          "description": "agent",
+          "value": "required"
+        },
+        "--legacy-only": {
+          "description": "no database",
+          "value": "none"
+        },
+        "--plant-word": {
+          "description": "word planted in history",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "paths"
@@ -1278,29 +1821,98 @@
       "wraps": "sessions.create and sessions.send through the mock, with persona options",
       "command": "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key <key> --messages <n>",
       "flags": {
-        "--key": "session key",
-        "--messages": "turns",
-        "--compact-every": "compaction interval",
-        "--reset-once": "one reset boundary",
-        "--plant-word": "word planted once",
-        "--plant-prefix": "prefix planted several times",
-        "--fill-to-threshold": "fraction of the compaction threshold",
-        "--tool-turns": "tool-calling turns",
-        "--prune-ttl": "cache TTL in minutes",
-        "--goal": "goal text",
-        "--progress-card": "steps",
-        "--pending": "queued,cancelled,interrupted",
-        "--age-minutes": "age of last interaction",
-        "--age-days": "age in days",
-        "--share": "read-only | suggest | draft",
-        "--member": "profile id",
-        "--suggestion": "suggestion text",
-        "--public": "public access",
-        "--dashboard": "dashboard session",
-        "--worktree": "repository path",
-        "--watched-by": "watcher key",
-        "--global-and-qualified": "store under both key spellings",
-        "--env": "OCM environment name"
+        "--key": {
+          "description": "session key",
+          "value": "required"
+        },
+        "--messages": {
+          "description": "turns",
+          "value": "required"
+        },
+        "--compact-every": {
+          "description": "compaction interval",
+          "value": "required"
+        },
+        "--reset-once": {
+          "description": "one reset boundary",
+          "value": "none"
+        },
+        "--plant-word": {
+          "description": "word planted once",
+          "value": "required"
+        },
+        "--plant-prefix": {
+          "description": "prefix planted several times",
+          "value": "required"
+        },
+        "--fill-to-threshold": {
+          "description": "fraction of the compaction threshold",
+          "value": "required"
+        },
+        "--tool-turns": {
+          "description": "tool-calling turns",
+          "value": "required"
+        },
+        "--prune-ttl": {
+          "description": "cache TTL in minutes",
+          "value": "required"
+        },
+        "--goal": {
+          "description": "goal text",
+          "value": "required"
+        },
+        "--progress-card": {
+          "description": "steps",
+          "value": "required"
+        },
+        "--pending": {
+          "description": "queued,cancelled,interrupted",
+          "value": "required"
+        },
+        "--age-minutes": {
+          "description": "age of last interaction",
+          "value": "required"
+        },
+        "--age-days": {
+          "description": "age in days",
+          "value": "required"
+        },
+        "--share": {
+          "description": "read-only | suggest | draft",
+          "value": "required"
+        },
+        "--member": {
+          "description": "profile id",
+          "value": "required"
+        },
+        "--suggestion": {
+          "description": "suggestion text",
+          "value": "required"
+        },
+        "--public": {
+          "description": "public access",
+          "value": "none"
+        },
+        "--dashboard": {
+          "description": "dashboard session",
+          "value": "none"
+        },
+        "--worktree": {
+          "description": "repository path",
+          "value": "required"
+        },
+        "--watched-by": {
+          "description": "watcher key",
+          "value": "required"
+        },
+        "--global-and-qualified": {
+          "description": "store under both key spellings",
+          "value": "none"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "key",
@@ -1317,12 +1929,30 @@
       "wraps": "reads a session's identifiers from the store",
       "command": "node {kovaRoot}/support/persona/session-keys.mjs --env {env} --key <key>",
       "flags": {
-        "--key": "session key",
-        "--children": "include children",
-        "--workspace": "include workspace facts",
-        "--cold": "include cold-storage entry ids",
-        "--organized": "the organized set",
-        "--env": "OCM environment name"
+        "--key": {
+          "description": "session key",
+          "value": "required"
+        },
+        "--children": {
+          "description": "include children",
+          "value": "none"
+        },
+        "--workspace": {
+          "description": "include workspace facts",
+          "value": "none"
+        },
+        "--cold": {
+          "description": "include cold-storage entry ids",
+          "value": "none"
+        },
+        "--organized": {
+          "description": "the organized set",
+          "value": "none"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "key",
@@ -1342,8 +1972,14 @@
       "wraps": "reads the mock reply table",
       "command": "node {kovaRoot}/support/persona/check-mock-script.mjs --env {env} --marker <text>",
       "flags": {
-        "--marker": "trigger text",
-        "--env": "OCM environment name"
+        "--marker": {
+          "description": "trigger text",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "present",
@@ -1360,9 +1996,18 @@
       "wraps": "inbound channel and UI turns into the main session over a date range",
       "command": "node {kovaRoot}/support/persona/fill-main-session.mjs --env {env} --days <n> --channels <list>",
       "flags": {
-        "--days": "span",
-        "--channels": "dm,group,ui",
-        "--env": "OCM environment name"
+        "--days": {
+          "description": "span",
+          "value": "required"
+        },
+        "--channels": {
+          "description": "dm,group,ui",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "key",
@@ -1380,9 +2025,18 @@
       "wraps": "inbound group turns through the test channel",
       "command": "node {kovaRoot}/support/persona/fill-group-session.mjs --env {env} --channel <id> --turns <n>",
       "flags": {
-        "--channel": "group channel",
-        "--turns": "turns",
-        "--env": "OCM environment name"
+        "--channel": {
+          "description": "group channel",
+          "value": "required"
+        },
+        "--turns": {
+          "description": "turns",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "key",
@@ -1399,8 +2053,14 @@
       "wraps": "sessions_spawn with thread binding",
       "command": "node {kovaRoot}/support/persona/spawn-thread-subagent.mjs --env {env} --parent <key>",
       "flags": {
-        "--parent": "parent session",
-        "--env": "OCM environment name"
+        "--parent": {
+          "description": "parent session",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "key",
@@ -1417,10 +2077,22 @@
       "wraps": "sessions_spawn; one child finishes, one yields",
       "command": "node {kovaRoot}/support/persona/spawn-children.mjs --env {env} --parent <key> --finished <n> --yielding <n>",
       "flags": {
-        "--parent": "parent session",
-        "--finished": "children that finish",
-        "--yielding": "children that yield",
-        "--env": "OCM environment name"
+        "--parent": {
+          "description": "parent session",
+          "value": "required"
+        },
+        "--finished": {
+          "description": "children that finish",
+          "value": "required"
+        },
+        "--yielding": {
+          "description": "children that yield",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "cancelRunId",
@@ -1437,9 +2109,18 @@
       "wraps": "workspace files, an HTML asset pair, uncommitted edits, a long process",
       "command": "node {kovaRoot}/support/persona/workspace-changes.mjs --env {env} --key <key> --start-process",
       "flags": {
-        "--key": "session",
-        "--start-process": "start a long process",
-        "--env": "OCM environment name"
+        "--key": {
+          "description": "session",
+          "value": "required"
+        },
+        "--start-process": {
+          "description": "start a long process",
+          "value": "none"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "filePath",
@@ -1458,7 +2139,10 @@
       "wraps": "sessions.patch and sessions.fork across the organized set",
       "command": "node {kovaRoot}/support/persona/organize-sessions.mjs --env {env}",
       "flags": {
-        "--env": "OCM environment name"
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "pinnedKey",
@@ -1478,12 +2162,30 @@
       "wraps": "bulk sessions.create",
       "command": "node {kovaRoot}/support/persona/make-many-sessions.mjs --env {env} --agent <id> --count <n>",
       "flags": {
-        "--agent": "agent",
-        "--count": "sessions",
-        "--stale-days": "age of stale rows",
-        "--pin": "pinned count",
-        "--archive": "archived count",
-        "--env": "OCM environment name"
+        "--agent": {
+          "description": "agent",
+          "value": "required"
+        },
+        "--count": {
+          "description": "sessions",
+          "value": "required"
+        },
+        "--stale-days": {
+          "description": "age of stale rows",
+          "value": "required"
+        },
+        "--pin": {
+          "description": "pinned count",
+          "value": "required"
+        },
+        "--archive": {
+          "description": "archived count",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "created"
@@ -1499,7 +2201,10 @@
       "wraps": "cron, hook, heartbeat and model-run rows through their entry points",
       "command": "node {kovaRoot}/support/persona/make-automation-rows.mjs --env {env}",
       "flags": {
-        "--env": "OCM environment name"
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "rows"
@@ -1515,8 +2220,14 @@
       "wraps": "inbound DM turns under per-peer scope",
       "command": "node {kovaRoot}/support/persona/make-stale-dm-rows.mjs --env {env} --peers <n>",
       "flags": {
-        "--peers": "peers",
-        "--env": "OCM environment name"
+        "--peers": {
+          "description": "peers",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "rows"
@@ -1532,7 +2243,10 @@
       "wraps": "legacy lock files with a dead and a live owner",
       "command": "node {kovaRoot}/support/persona/write-stale-locks.mjs --env {env}",
       "flags": {
-        "--env": "OCM environment name"
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "paths"
@@ -1548,8 +2262,14 @@
       "wraps": "reset, delete and cap archives of a given size",
       "command": "node {kovaRoot}/support/persona/inflate-archives.mjs --env {env} --mb <n>",
       "flags": {
-        "--mb": "size",
-        "--env": "OCM environment name"
+        "--mb": {
+          "description": "size",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "victimKey",
@@ -1567,7 +2287,10 @@
       "wraps": "session rows with provider and lastProvider aliases",
       "command": "node {kovaRoot}/support/persona/write-legacy-alias-rows.mjs --env {env}",
       "flags": {
-        "--env": "OCM environment name"
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "rows"
@@ -1583,8 +2306,14 @@
       "wraps": "swap in the corrupt fixture, run Doctor, restore the live store",
       "command": "node {kovaRoot}/support/persona/quarantine-generation.mjs --env {env} --agent <id>",
       "flags": {
-        "--agent": "agent",
-        "--env": "OCM environment name"
+        "--agent": {
+          "description": "agent",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "quarantined"
@@ -1600,7 +2329,10 @@
       "wraps": "devices pairing approval for a CLI profile",
       "command": "node {kovaRoot}/support/persona/pair-cli-profile.mjs --env {env}",
       "flags": {
-        "--env": "OCM environment name"
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "profile",
@@ -1617,8 +2349,14 @@
       "wraps": "a second human profile from a test credential",
       "command": "node {kovaRoot}/support/persona/add-operator-profile.mjs --env {env} --credential <name>",
       "flags": {
-        "--credential": "credential name",
-        "--env": "OCM environment name"
+        "--credential": {
+          "description": "credential name",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "memberProfileId"
@@ -1634,17 +2372,50 @@
       "wraps": "chat.abort",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.abort --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -1663,17 +2434,50 @@
       "wraps": "chat.history",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.history --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -1692,17 +2496,50 @@
       "wraps": "chat.inject",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.inject --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -1723,17 +2560,50 @@
       "wraps": "chat.message.get",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.message.get --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -1752,17 +2622,50 @@
       "wraps": "chat.metadata",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.metadata --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -1781,17 +2684,50 @@
       "wraps": "chat.startup",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.startup --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -1810,17 +2746,50 @@
       "wraps": "progressCard.get",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method progressCard.get --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -1839,17 +2808,50 @@
       "wraps": "progressCard.put",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method progressCard.put --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -1868,17 +2870,50 @@
       "wraps": "progressCard.refresh",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method progressCard.refresh --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -1897,17 +2932,50 @@
       "wraps": "session.members.add",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.members.add --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -1926,17 +2994,50 @@
       "wraps": "session.members.list",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.members.list --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -1955,17 +3056,50 @@
       "wraps": "session.members.listEvidence",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.members.listEvidence --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -1984,17 +3118,50 @@
       "wraps": "session.members.remove",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.members.remove --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2013,17 +3180,50 @@
       "wraps": "session.publicShare.set",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.publicShare.set --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2042,17 +3242,50 @@
       "wraps": "session.suggestions.add",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.suggestions.add --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2073,17 +3306,50 @@
       "wraps": "session.suggestions.list",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.suggestions.list --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2102,17 +3368,50 @@
       "wraps": "session.suggestions.resolve",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.suggestions.resolve --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2131,17 +3430,50 @@
       "wraps": "session.visibility.set",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method session.visibility.set --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2160,17 +3492,50 @@
       "wraps": "sessions.abort",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.abort --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2189,17 +3554,50 @@
       "wraps": "sessions.activitySummary.ensure",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.activitySummary.ensure --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2218,17 +3616,50 @@
       "wraps": "sessions.assignOwner",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.assignOwner --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2247,17 +3678,50 @@
       "wraps": "sessions.branches.list",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.branches.list --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2276,17 +3740,50 @@
       "wraps": "sessions.branches.switch",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.branches.switch --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2305,17 +3802,50 @@
       "wraps": "sessions.catalog.import",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.catalog.import --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2334,17 +3864,50 @@
       "wraps": "sessions.cleanup",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.cleanup --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2363,17 +3926,50 @@
       "wraps": "sessions.compact",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.compact --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2392,17 +3988,50 @@
       "wraps": "sessions.companion.ask",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.companion.ask --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2421,17 +4050,50 @@
       "wraps": "sessions.companion.reset",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.companion.reset --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2450,17 +4112,50 @@
       "wraps": "sessions.companion.state",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.companion.state --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2479,17 +4174,50 @@
       "wraps": "sessions.create",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2508,17 +4236,50 @@
       "wraps": "sessions.delete",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.delete --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2537,17 +4298,50 @@
       "wraps": "sessions.describe",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2566,17 +4360,50 @@
       "wraps": "sessions.diff",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.diff --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2595,17 +4422,50 @@
       "wraps": "sessions.files.assets",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.files.assets --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2624,17 +4484,50 @@
       "wraps": "sessions.files.get",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.files.get --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2653,17 +4546,50 @@
       "wraps": "sessions.files.list",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.files.list --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2682,17 +4608,50 @@
       "wraps": "sessions.files.reveal",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.files.reveal --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2711,17 +4670,50 @@
       "wraps": "sessions.files.set",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.files.set --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2740,17 +4732,50 @@
       "wraps": "sessions.fork",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.fork --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2771,17 +4796,50 @@
       "wraps": "sessions.get",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.get --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2800,17 +4858,50 @@
       "wraps": "sessions.github.options",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.github.options --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2829,17 +4920,50 @@
       "wraps": "sessions.github.status",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.github.status --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2858,17 +4982,50 @@
       "wraps": "sessions.groups.delete",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.groups.delete --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2887,17 +5044,50 @@
       "wraps": "sessions.groups.list",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.groups.list --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2916,17 +5106,50 @@
       "wraps": "sessions.groups.put",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.groups.put --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2945,17 +5168,50 @@
       "wraps": "sessions.groups.rename",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.groups.rename --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -2974,17 +5230,50 @@
       "wraps": "sessions.groups.update",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.groups.update --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -3003,17 +5292,50 @@
       "wraps": "sessions.list",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -3032,17 +5354,50 @@
       "wraps": "sessions.messages.subscribe",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.messages.subscribe --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -3061,17 +5416,50 @@
       "wraps": "sessions.messages.unsubscribe",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.messages.unsubscribe --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -3090,17 +5478,50 @@
       "wraps": "sessions.patch",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.patch --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -3119,17 +5540,50 @@
       "wraps": "sessions.patchMany",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.patchMany --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -3148,17 +5602,50 @@
       "wraps": "sessions.preview",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.preview --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -3177,17 +5664,50 @@
       "wraps": "sessions.processes.list",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.processes.list --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -3206,17 +5726,50 @@
       "wraps": "sessions.processes.stop",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.processes.stop --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -3235,17 +5788,50 @@
       "wraps": "sessions.recover",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.recover --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -3264,17 +5850,50 @@
       "wraps": "sessions.reset",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.reset --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -3293,17 +5912,50 @@
       "wraps": "sessions.resolve",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.resolve --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -3322,17 +5974,50 @@
       "wraps": "sessions.rewind",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.rewind --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -3351,17 +6036,50 @@
       "wraps": "sessions.search",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -3380,17 +6098,50 @@
       "wraps": "sessions.setInvolvement",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.setInvolvement --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -3409,17 +6160,50 @@
       "wraps": "sessions.storage.run",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.storage.run --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -3438,17 +6222,50 @@
       "wraps": "sessions.storage.status",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.storage.status --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -3467,17 +6284,50 @@
       "wraps": "sessions.subscribe",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.subscribe --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",
@@ -3496,17 +6346,50 @@
       "wraps": "sessions.title.prepare",
       "command": "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.title.prepare --params '<json>' --timeout <ms>",
       "flags": {
-        "--method": "Gateway method name",
-        "--params": "JSON params",
-        "--timeout": "ms",
-        "--out": "file under {run} to write the result to",
-        "--background": "start and write a handle",
-        "--handle": "handle path",
-        "--wait": "join a handle",
-        "--session-from": "file under {run} whose JSON holds the session key to act on",
-        "--merge-from": "file under {run} whose JSON is merged into --params",
-        "--after-ms": "ms to wait before issuing the call",
-        "--env": "OCM environment name"
+        "--method": {
+          "description": "Gateway method name",
+          "value": "required"
+        },
+        "--params": {
+          "description": "JSON params",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "ms",
+          "value": "required"
+        },
+        "--out": {
+          "description": "file under {run} to write the result to",
+          "value": "required"
+        },
+        "--background": {
+          "description": "start and write a handle",
+          "value": "none"
+        },
+        "--handle": {
+          "description": "handle path",
+          "value": "required"
+        },
+        "--wait": {
+          "description": "join a handle",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "file under {run} whose JSON holds the session key to act on",
+          "value": "required"
+        },
+        "--merge-from": {
+          "description": "file under {run} whose JSON is merged into --params",
+          "value": "required"
+        },
+        "--after-ms": {
+          "description": "ms to wait before issuing the call",
+          "value": "required"
+        },
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
       },
       "prints": [
         "method",

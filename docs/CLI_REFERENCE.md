@@ -203,7 +203,20 @@ The check reads every phase command and every persona builder and check. It
 never runs those commands. It reports unknown command heads, unlisted flags,
 invalid placeholders, shell syntax outside the permitted quoting rules and
 entries whose status is `toWrite`. Every finding makes the exit status nonzero.
-Catalogue schema errors and duplicate entries also fail the command.
+Catalogue schema errors and duplicate entries also fail the command. A rejected
+path does not prevent readable sibling files from being checked.
+
+Flags declare whether they take no value, a required value or an optional value.
+The check consumes those operands before matching the complete command, so a
+boolean flag cannot hide an unknown subcommand and a value beginning with `--`
+remains a value. Command forms use `[<path>]` for optional positionals and
+`<keys...>` for variadic positionals.
+
+Product commands use `ocm @{env} --` or `ocm @{persona:<trait>:env} --`. Both
+resolve to the same catalogue entry. For each run, the primary environment and
+every persona-provided environment are cloned; the plan resolves each environment
+placeholder to that run's clone. The catalogue check validates the written forms
+without creating environments or resolving their names.
 
 JSON checks return `schema: "kova.verify.catalogue-check.v1"`, `product`,
 `revision`, `ok`, `files`, `commandCount` and `findings`. Each finding identifies

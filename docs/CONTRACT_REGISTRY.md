@@ -131,6 +131,14 @@ exactly `id`, `kind`, `wraps`, `command`, `flags`, `prints`, `creates`, `side`,
 defines their meanings. Duplicate ids, command heads and wrapped operations
 are rejected.
 
+Every `flags` value has exactly `description` and `value`, for example
+`"--json": { "description": "print JSON", "value": "none" }` or
+`"--timeout": { "description": "milliseconds", "value": "required" }`.
+`value` is `none`, `required` or `optional`. Command forms spell optional and
+variadic positionals explicitly, as `[<path>]`, `<keys...>` or `[<keys...>]`.
+Product environment arguments are `@{env}` or `@{persona:<trait>:env}`; each
+refers to its own clone for the run, including persona-provided environments.
+
 `creates` is an array of JSON pointers into command output, with `*` for array
 indices, naming generated resource ids. Use an empty array when no such id is
 reported. Do not declare caller-supplied ids, existing resource ids, or secrets.

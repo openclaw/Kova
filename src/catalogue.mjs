@@ -15,6 +15,7 @@ export function parseCatalogueCommand(command, { form = false, standard = false 
   const findings = [];
   if (!text(command)) return { tokens, findings: [{ code: "command", message: "command must be a nonempty string" }] };
   let quote = null;
+  let comment = false;
   let value = "";
   let started = false;
   const finish = () => {
@@ -25,7 +26,7 @@ export function parseCatalogueCommand(command, { form = false, standard = false 
   for (let index = 0; index < command.length; index += 1) {
     const char = command[index];
     if (quote !== "'" && /[$`;|&<>\r\n]/.test(char)) {
-      const slot = form && char === "<" ? command.slice(index).match(/^<[^<>\r\n]+>/)?.[0] : null;
+      const slot = !comment && form && char === "<" ? command.slice(index).match(/^<[^<>\r\n]+>/)?.[0] : null;
       if (slot) {
         value += slot;
         started = true;
@@ -43,6 +44,14 @@ export function parseCatalogueCommand(command, { form = false, standard = false 
         if (!persona && !fixed) findings.push({ code: "placeholder", message: `unsupported placeholder ${match[0]}`, offset: index });
         else if (fixed && quote) findings.push({ code: "placeholder", message: `${match[0]} must appear outside quotes`, offset: index });
       }
+    }
+    if (comment) {
+      if (char === "\n" || char === "\r") comment = false;
+      continue;
+    }
+    if (!quote && char === "#" && !started) {
+      comment = true;
+      continue;
     }
     if (char === "\\" && quote !== "'") {
       const next = command[index + 1];
@@ -72,30 +81,63 @@ export function parseCatalogueCommand(command, { form = false, standard = false 
   return { tokens, findings };
 }
 
+const environmentPattern = /^@\{(?:env|persona:[a-zA-Z0-9_.-]+:env)\}$/;
+const isFlag = (word) => word?.startsWith("-") && word !== "-" && !/^-[0-9]/.test(word);
+const isSlot = (word) => /<|^\[?\{(?:env|run|target|persona:.*)\}/.test(word);
+const canonicalWords = (tokens) => tokens.map((word, index) => index === 1 && tokens[0] === "ocm" && tokens[2] === "--" && environmentPattern.test(word) ? "@{env}" : word);
+
 function headWords(tokens) {
-  const forwarded = tokens[0] === "ocm" && tokens[1] === "@{env}" && tokens[2] === "--";
+  const forwarded = tokens[0] === "ocm" && environmentPattern.test(tokens[1]) && tokens[2] === "--";
   const words = [];
   for (let index = 0; index < tokens.length; index += 1) {
     const word = tokens[index];
-    if ((word.startsWith("-") && !(forwarded && index === 2)) || word.includes("<") || /^\{(?:env|run|target|persona:.*)\}$/.test(word)) break;
+    if ((word.startsWith("-") && !(forwarded && index === 2)) || isSlot(word)) break;
     words.push(word);
   }
   return words;
 }
 
-function gatewayMethod(tokens) {
-  const values = [];
-  for (let index = 0; index < tokens.length; index += 1) {
-    if (tokens[index] === "--method") values.push(tokens[index + 1]);
-    else if (tokens[index].startsWith("--method=")) values.push(tokens[index].slice(9));
+function argumentOffset(tokens) {
+  if (tokens[0] === "ocm" && environmentPattern.test(tokens[1]) && tokens[2] === "--") return 3;
+  return tokens[0] === "node" ? 2 : 1;
+}
+
+// One pass owns option operands, the end-of-options separator and positionals.
+function commandArguments(tokens, flags, allowedFlags = flags) {
+  const offset = argumentOffset(tokens);
+  const words = canonicalWords(tokens.slice(0, offset));
+  const options = [];
+  const findings = [];
+  let ended = false;
+  for (let index = offset; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (!ended && token === "--") { ended = true; continue; }
+    if (ended || !isFlag(token)) { words.push(token); continue; }
+    const equal = token.indexOf("=");
+    const flag = equal < 0 ? token : token.slice(0, equal);
+    const info = Object.hasOwn(flags, flag) ? flags[flag] : null;
+    let value = equal < 0 ? undefined : token.slice(equal + 1);
+    if (!Object.hasOwn(allowedFlags, flag)) findings.push({ code: "unlisted-flag", flag, message: `unlisted flag ${flag}` });
+    if (info?.value === "none" && equal >= 0) findings.push({ code: "argument", flag, message: `${flag} does not take a value` });
+    else if (equal < 0 && (info?.value === "required" || (info?.value === "optional" && tokens[index + 1] !== undefined && !isFlag(tokens[index + 1])))) {
+      value = tokens[++index];
+      if (value === undefined) findings.push({ code: "argument", flag, message: `${flag} requires a value` });
+    }
+    options.push({ flag, value });
   }
+  return { words, options, findings };
+}
+
+function gatewayMethod(options) {
+  const values = options.filter(({ flag }) => flag === "--method").map(({ value }) => value);
   return values.length === 1 && /^[a-zA-Z][a-zA-Z0-9.]*$/.test(values[0]) ? values[0] : null;
 }
 
-export function catalogueCommandHead(command, { kind } = {}) {
+export function catalogueCommandHead(command, { kind, flags = {} } = {}) {
   const { tokens } = parseCatalogueCommand(command, { form: true, standard: true });
-  const head = headWords(tokens).join(" ");
-  return kind === "gateway" ? `${head} --method ${gatewayMethod(tokens) ?? "<missing>"}` : head;
+  const head = headWords(canonicalWords(tokens)).join(" ");
+  const args = commandArguments(tokens, { ...(isObject(flags) ? flags : {}), "--method": { value: "required" } });
+  return kind === "gateway" ? `${head} --method ${gatewayMethod(args.options) ?? "<missing>"}` : head;
 }
 
 export function validateCatalogue(catalogue) {
@@ -124,19 +166,29 @@ export function validateCatalogue(catalogue) {
       if (!Array.isArray(entry[field]) || !entry[field].every((value) => field === "creates" ? typeof value === "string" : text(value)) || new Set(entry[field]).size !== entry[field].length) add(`${at}/${field}`, "expected distinct strings");
     }
     if (Array.isArray(entry.creates)) for (const pointer of entry.creates) if (typeof pointer !== "string" || !pointerPattern.test(pointer)) add(`${at}/creates`, `invalid JSON pointer: ${JSON.stringify(pointer)}`);
-    if (!isObject(entry.flags) || !Object.entries(entry.flags).every(([flag, meaning]) => flagPattern.test(flag) && text(meaning))) add(`${at}/flags`, "expected flag names and nonempty meanings");
+    const validFlags = isObject(entry.flags) && Object.entries(entry.flags).every(([flag, info]) => flagPattern.test(flag) && isObject(info) && Object.keys(info).length === 2 && text(info.description) && ["none", "required", "optional"].includes(info.value));
+    if (!validFlags) add(`${at}/flags`, "expected flag objects with description and value: none, required or optional");
     const parsed = parseCatalogueCommand(entry.command, { form: true, standard: true });
     for (const finding of parsed.findings) add(`${at}/command`, finding.message);
-    if (entry.kind === "gateway" && (!gatewayMethod(parsed.tokens) || gatewayMethod(parsed.tokens) !== entry.wraps)) add(`${at}/command`, "Gateway command must name exactly its wraps method");
-    if (entry.kind === "product" && parsed.tokens.slice(0, 3).join(" ") !== "ocm @{env} --") add(`${at}/command`, "product command must begin with ocm @{env} --");
+    const args = commandArguments(parsed.tokens, validFlags ? entry.flags : {});
+    if (entry.kind === "gateway" && (!gatewayMethod(args.options) || gatewayMethod(args.options) !== entry.wraps)) add(`${at}/command`, "Gateway command must name exactly its wraps method");
+    if (entry.kind === "product" && canonicalWords(parsed.tokens).slice(0, 3).join(" ") !== "ocm @{env} --") add(`${at}/command`, "product command must begin with ocm @{env} -- or ocm @{persona:<trait>:env} --");
     if (entry.kind === "script" && (parsed.tokens[0] !== "node" || !parsed.tokens[1]?.startsWith("{kovaRoot}/support/"))) add(`${at}/command`, "script command must name a Kova support script");
     const head = catalogueCommandHead(entry.command, entry);
     if (!head) add(`${at}/command`, "command has no fixed head");
-    for (const [map, key, label] of [[ids, entry.id, "id"], [heads, head, "command head"], [operations, entry.wraps?.trim(), "operation"]]) {
+    for (const [map, key, label] of [[ids, entry.id, "id"], [heads, head, "command head"], [operations, typeof entry.wraps === "string" ? entry.wraps.trim() : entry.wraps, "operation"]]) {
       if (map.has(key)) add(at, `duplicate ${label} with ${map.get(key)}: ${key}`, "duplicate");
       else map.set(key, entry.id);
     }
-    for (const flag of commandFlags(parsed.tokens)) if (isObject(entry.flags) && !Object.hasOwn(entry.flags, flag)) add(`${at}/flags`, `command form uses unlisted flag ${flag}`);
+    if (validFlags) {
+      for (const finding of args.findings) add(`${at}/command`, finding.message);
+      const slots = args.words.slice(headWords(args.words).length);
+      for (const [slotIndex, slot] of slots.entries()) {
+        if (!isSlot(slot)) add(`${at}/command`, "positionals after the command head must be value slots");
+        if (slot.includes("...") && slotIndex !== slots.length - 1) add(`${at}/command`, "a variadic positional must be last");
+        if (!slot.startsWith("[") && slots.slice(0, slotIndex).some((prior) => prior.startsWith("["))) add(`${at}/command`, "required positionals must precede optional positionals");
+      }
+    }
   }
   return findings;
 }
@@ -149,31 +201,41 @@ export async function loadCatalogue(product, { root = repoRoot } = {}) {
   return { catalogue, findings };
 }
 
-function commandFlags(tokens) {
-  return tokens.filter((token) => token.startsWith("-") && token !== "--" && !/^-[0-9]/.test(token)).map((token) => token.split("=", 1)[0]);
-}
-
 function catalogueResolver(catalogue) {
   const forms = catalogue.entries.map((entry) => {
     const form = parseCatalogueCommand(entry.command, { form: true, standard: true }).tokens;
-    const head = headWords(form);
-    return { entry, head, positional: /<|^\{/.test(form[head.length] ?? ""), method: gatewayMethod(form) };
+    const args = commandArguments(form, entry.flags);
+    const head = headWords(args.words);
+    const slots = args.words.slice(head.length);
+    const min = slots.filter((slot) => !slot.startsWith("[")).length;
+    const max = slots.some((slot) => slot.includes("...")) ? Infinity : slots.length;
+    return { entry, head, min, max, method: gatewayMethod(args.options) };
   });
+  for (const form of forms) {
+    // Parent option arity still matters when a child does not allow that flag.
+    const parents = forms.filter(({ head }) => head.length < form.head.length && head.every((word, index) => form.head[index] === word)).sort((a, b) => a.head.length - b.head.length);
+    form.parsingFlags = Object.assign({}, ...parents.map(({ entry }) => entry.flags), form.entry.flags);
+  }
   return (tokens) => {
-    const words = headWords(tokens);
-    const candidates = forms.filter(({ entry, head, positional, method }) => {
-      if (head.length === 0 || !head.every((word, index) => tokens[index] === word)) return false;
-      if (words.length > head.length && !positional) return false;
-      return entry.kind !== "gateway" || gatewayMethod(tokens) === method;
-    });
+    const candidates = [];
+    for (const { entry, head, min, max, method, parsingFlags } of forms) {
+      const args = commandArguments(tokens, parsingFlags, entry.flags);
+      if (!head.length || !head.every((word, index) => args.words[index] === word)) continue;
+      if (entry.kind === "gateway" && gatewayMethod(args.options) !== method) continue;
+      candidates.push({ entry, head, min, max, args });
+    }
     const longest = Math.max(0, ...candidates.map(({ head }) => head.length));
     const matches = candidates.filter(({ head }) => head.length === longest);
-    return matches.length === 1 ? matches[0].entry : null;
+    if (matches.length !== 1) return null;
+    const match = matches[0];
+    const count = match.args.words.length - match.head.length;
+    return { ...match, validPositionals: count >= match.min && count <= match.max };
   };
 }
 
 export function resolveCatalogueEntry(catalogue, command) {
-  return catalogueResolver(catalogue)(parseCatalogueCommand(command).tokens);
+  const match = catalogueResolver(catalogue)(parseCatalogueCommand(command).tokens);
+  return match?.validPositionals ? match.entry : null;
 }
 
 // Shared with callers that already have phase commands, including standard phases.
@@ -187,30 +249,34 @@ export function checkCatalogueCommands(catalogue, commands) {
     const parsed = parseCatalogueCommand(command, { standard });
     parsed.findings.forEach(add);
     if (!text(command)) continue;
-    const entry = resolve(parsed.tokens);
-    if (!entry) { add({ code: "unlisted-command", message: "command has no unique catalogue entry" }); continue; }
-    for (const flag of commandFlags(parsed.tokens)) {
-      if (!Object.hasOwn(entry.flags, flag)) add({ code: "unlisted-flag", entryId: entry.id, flag, message: `unlisted flag ${flag}` });
-    }
+    const match = resolve(parsed.tokens);
+    if (!match) { add({ code: "unlisted-command", message: "command has no unique catalogue entry" }); continue; }
+    const { entry, args } = match;
+    if (!match.validPositionals) add({ code: "unlisted-command", entryId: entry.id, message: "arguments do not match the catalogue command form" });
+    for (const finding of args.findings) add({ entryId: entry.id, ...finding });
     if (entry.status === "toWrite") add({ code: "toWrite", entryId: entry.id, message: "entry is not implemented" });
   }
   return findings;
 }
 
-async function jsonFiles(path) {
-  const info = await lstat(path);
-  if (info.isSymbolicLink()) throw new Error(`input must not be a symbolic link: ${path}`);
-  if (info.isFile()) {
-    if (!path.endsWith(".json")) throw new Error(`input must be JSON: ${path}`);
-    return [path];
+async function jsonFiles(path, findings) {
+  try {
+    const info = await lstat(path);
+    if (info.isSymbolicLink()) throw new Error(`input must not be a symbolic link: ${path}`);
+    if (info.isFile()) {
+      if (!path.endsWith(".json")) throw new Error(`input must be JSON: ${path}`);
+      return [path];
+    }
+    if (!info.isDirectory()) throw new Error(`input is not a file or directory: ${path}`);
+    const files = [];
+    for (const entry of (await readdir(path, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
+      if (entry.isSymbolicLink() || entry.isDirectory() || entry.name.endsWith(".json")) files.push(...await jsonFiles(join(path, entry.name), findings));
+    }
+    return files;
+  } catch (error) {
+    findings.push({ code: "input", source: path, at: "", message: error.message });
+    return [];
   }
-  if (!info.isDirectory()) throw new Error(`input is not a file or directory: ${path}`);
-  const files = [];
-  for (const entry of (await readdir(path, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
-    if (entry.isSymbolicLink()) throw new Error(`input must not be a symbolic link: ${join(path, entry.name)}`);
-    if (entry.isDirectory() || entry.name.endsWith(".json")) files.push(...await jsonFiles(join(path, entry.name)));
-  }
-  return files;
 }
 
 export async function checkCatalogueInputs(catalogue, { templates, personas }) {
@@ -218,14 +284,9 @@ export async function checkCatalogueInputs(catalogue, { templates, personas }) {
   const commands = [];
   const files = [];
   for (const [kind, path] of [["template", templates], ["persona", personas]]) {
-    let inputs;
-    try {
-      inputs = await jsonFiles(path);
-      if (!inputs.length) throw new Error(`no JSON files in ${path}`);
-    } catch (error) {
-      findings.push({ code: "input", source: path, at: "", message: error.message });
-      continue;
-    }
+    const priorFindings = findings.length;
+    const inputs = await jsonFiles(path, findings);
+    if (!inputs.length && findings.length === priorFindings) findings.push({ code: "input", source: path, at: "", message: `no JSON files in ${path}` });
     for (const source of inputs) {
       files.push(source);
       try {
