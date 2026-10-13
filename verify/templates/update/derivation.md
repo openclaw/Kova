@@ -1012,20 +1012,27 @@ docs/install/bun-compatibility.md "History across releases": none
 docs/install/bun-compatibility.md "Related": none
 
 ## Breaks cross-check
-| Break | Phase | Note |
+
+All six historical update breaks are outside reach from OCM-supervised clones. The original mappings remain part of the saved derivations; they do not establish coverage in the retained template.
+
+| Break | Phase | Why outside reach |
 | --- | --- | --- |
-| 155433 | update-from-control-ui; event-updater-signal-during-activation | The managed update.run handoff parks the Gateway service; on a macOS host the service is a LaunchAgent and the launchd stop guard is recorded; on a Linux host the same phases record the systemd handoff and this break is outside reach (run 1 mapped it to the Control UI update; run 2 recorded it outside reach on Linux) |
-| 150816 | update-from-terminal | A Bun-owned installation is updated and its Gateway starts on Bun, where the startup snapshot cleanup error showed (both runs added a Bun condition at step 6) |
-| 161813 | update-from-terminal | The update runs with its working directory inside the installation it replaces, so the post-update receipt read and Doctor continuation are recorded |
-| 162604 | event-doctor-config-write-refused; event-verification-failure-rollback | The activation Doctor refuses a config write while the progress writer is open; the refusal, rollback decision and database write evidence are recorded |
-| 159504 | none with the current persona | The mapped older-updater phases still observe candidate failure, but the 2026.9.9 driver already ignores the canary progress marker when choosing its diagnostic. Reproducing this historical reporting break requires an affected older driver; outside the current persona's reach. |
-| 156633 | event-interactive-failure-menu | The failure menu's Report update failure choice with no GitHub CLI, then Exit, records whether the CLI returns to the menu |
-| 153984 | none | test-only: its only change inside the globs is src/cli/daemon-cli/restart-health-client.test.ts; not counted |
+| 155433 | none | Native managed update.run handoff and the macOS LaunchAgent stop guard require native service ownership. OCM can handle update.run before the native updater is entered. |
+| 150816 | none | The affected Bun activation and startup cleanup are reached by a mutating native update, which external supervision refuses. |
+| 161813 | none | Reading the receipt and continuing Doctor from inside the replaced installation requires native updater mutation; external supervision refuses it first. |
+| 162604 | none | The activation Doctor write refusal, progress writer and native rollback decision require native updater activation. |
+| 159504 | none | The native older-updater journey is unavailable under OCM supervision. Independently, the pinned 2026.9.9 updater already ignores the canary progress marker; reproducing the historical diagnostic needs an affected older driver. |
+| 156633 | none | The interactive failure menu follows a failed mutating native update, which external supervision refuses before activation. |
+| 153984 | none | Test-only: its only change inside the globs is src/cli/daemon-cli/restart-health-client.test.ts; not counted. |
+
+The source boundary is documented in [coverage.md](coverage.md#ocm-only-scope).
 
 ## Undocumented conditions
 none: every condition added at step 6 cites a listed document
 
 ## Reconciliation
+
+The following records the historical reconciliation. The OCM-only disposition below supersedes executable phase and coverage claims for removed native paths, while preserving the full inventory.
 Operator-scheduled automation calling gateway update.run: from run 1 only; entry point kept (reconciliation adds)
 Ask OpenClaw update-failure alert and its "Review update" action: from run 1 only; entry point kept (reconciliation adds)
 Post-core plugin sync during openclaw update (docs/cli/update/how-updates-run.md "Plugin sync details"): from run 1 only; entry point kept (reconciliation adds)
@@ -1216,4 +1223,10 @@ Reconciliation of remaining scenario preconditions: update.hold sends its empty 
 
 Final lifecycle reconciliation: secondary Doctor migrations execute the side runtime; stale update-history rows are restaged immediately before each recovery action; every selected phase owns and joins its release-feed server, with interruption cleanup required of that helper. Unsupported hard-link, concurrent package-project mutation, missing node idle-callback and drifted-index setups are listed as gaps. Break159504 is outside reach with the fixed2026.9.9 updater, rather than claimed as covered by a generic candidate failure. Catalogue registration remains the separate prerequisite recorded in coverage.md.
 
-Additional command reconciliation: independent chat callers each restore their starting installation; cron restart waits for active held work and collects the terminal result; handoff mismatch now first creates a retained handoff; node discovery is specified under each side as well as the persona runtime. Stale-history preview is described as a preview, not as superseding a row. Same-code package cycling is no longer claimed to exercise condition422 compatibility. Native campaigns and native-updater scenarios remain blocked by the unresolved service-fixture boundary recorded in coverage.md.
+Additional command reconciliation: independent chat callers each restore their starting installation; cron restart waits for active held work and collects the terminal result; handoff mismatch now first creates a retained handoff; node discovery is specified under each side as well as the persona runtime. Stale-history preview is described as a preview, not as superseding a row. Same-code package cycling is no longer claimed to exercise condition422 compatibility. Native campaigns and native-updater mutations are outside reach under the OCM-only scope recorded in coverage.md.
+
+## OCM-only disposition
+
+The retained template has 43 phases: one setup, 12 operation and 30 event phases. Eighty previously reconciled phases are excluded from executable selection because their native mutation, campaign, handoff or custom supervisor prerequisites cannot be established by an OCM-supervised clone. The inventories of 310 entry points and 520 conditions remain intact; comparison.md measures discovery overlap, not executable coverage. coverage.md lists the excluded conditions and all six historical breaks.
+
+The manual replacement operation retains npm and pnpm replacement, without the native source-server script. Repair restores its own primary and stale-history fixtures and no longer reads a result produced by an excluded native update. Unused support commands and persona requirements were removed. No native service or fixture is introduced.

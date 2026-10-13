@@ -1,13 +1,163 @@
 # Coverage: update
 
-Operations: 20/21
-Provisional conditions described by retained phases: 246/520 (354 ambient, 166 event)
+Operations with retained phases: 12/21 (some retained operations have fewer entry points)
+Conditions described by retained phases: 96/520 (354 ambient, 166 event)
 Entry points inventoried: 203 placed/310 (107 excluded); executable coverage has not been measured
-Breaks mapped: 5/6; break 159504 needs an affected older updater and is outside the current persona's reach
+Breaks mapped to retained phases: 0/6; all six are outside reach under OCM supervision
 
-A condition is counted here only when a retained phase describes its concrete setup and observation; runtime execution remains unproven. Reconciliation credits applicable phases from either run and excludes claims whose required inputs or actions were lost. There are 246 provisionally described conditions and 274 explicit gaps below. Phases: 123 (1 setup, 20 operation, 102 event).
+A condition is counted here only when a retained phase describes its concrete setup and observation; runtime execution remains unproven. Reconciliation credits applicable phases from either run and excludes claims whose required inputs or actions were lost. There are 96 described conditions and 424 explicit gaps below. Phases: 43 (1 setup, 12 operation, 30 event). These are declarative descriptions, not executed results.
 
 Uncovered:
+- Condition 437, Older systemd service with KillMode=control-group interrupts children immediately: Native systemd or launchd service-definition semantics are outside reach from OCM-supervised clones. An OCM restart does not establish them.
+- Condition 438, Short systemd stop timeout: drain and reserve clamped; unreadable service uses 90 seconds: Native systemd or launchd service-definition semantics are outside reach from OCM-supervised clones. An OCM restart does not establish them.
+- Condition 439, launchd ExitTimeOut budgets: Native systemd or launchd service-definition semantics are outside reach from OCM-supervised clones. An OCM restart does not establish them.
+- Condition 9, Legacy config fields while switching channel: Doctor prepares a read-only projection bound to the original bytes: Its saved scenario depended on excluded native activation, campaign discovery or update transitions; the retained status, Doctor, repair and restart observations do not establish this condition.
+- Condition 14, Configured plugins.load.paths directory missing: admission warning, configured-plugin-path-unavailable, update continues: Its saved scenario depended on excluded native activation, campaign discovery or update transitions; the retained status, Doctor, repair and restart observations do not establish this condition.
+- Condition 30, Managed child refuses before service parking: serving Gateway untouched, refusal kept in history: Its saved scenario depended on excluded native activation, campaign discovery or update transitions; the retained status, Doctor, repair and restart observations do not establish this condition.
+- Condition 31, Managed child produces no usable result: managed-service-handoff-failed: Its saved scenario depended on excluded native activation, campaign discovery or update transitions; the retained status, Doctor, repair and restart observations do not establish this condition.
+- Condition 32, Retained activation with update-recovery-pending: exact recovery command followed: Its saved scenario depended on excluded native activation, campaign discovery or update transitions; the retained status, Doctor, repair and restart observations do not establish this condition.
+- Condition 50, Legacy plugin configuration (Discord dm.policy) admitted with a warning when the candidate planner repairs it: Its saved scenario depended on excluded native activation, campaign discovery or update transitions; the retained status, Doctor, repair and restart observations do not establish this condition.
+- Condition 75, dev channel ensures a Git checkout at the default or OPENCLAW_GIT_DIR location: Its saved scenario depended on excluded native activation, campaign discovery or update transitions; the retained status, Doctor, repair and restart observations do not establish this condition.
+- Condition 84, Outdated OpenClaw-managed systemd policy refreshed without stopping the Gateway; operator drop-ins preserved: Its saved scenario depended on excluded native activation, campaign discovery or update transitions; the retained status, Doctor, repair and restart observations do not establish this condition.
+- Condition 85, Writable managed service definition stale: finalization backs it up and repairs recognized policy: Its saved scenario depended on excluded native activation, campaign discovery or update transitions; the retained status, Doctor, repair and restart observations do not establish this condition.
+- Condition 86, Maintenance stop drains active turns until idle or the step deadline; remaining turns interrupted with a warning; write custody refuses the stop: Its saved scenario depended on excluded native activation, campaign discovery or update transitions; the retained status, Doctor, repair and restart observations do not establish this condition.
+- Condition 128, New version running while verification fails: guidance uses the latest observed service state: Its saved scenario depended on excluded native activation, campaign discovery or update transitions; the retained status, Doctor, repair and restart observations do not establish this condition.
+- Condition 129, Failed update while the Gateway still serves: guidance names the serving version, failure stays: Its saved scenario depended on excluded native activation, campaign discovery or update transitions; the retained status, Doctor, repair and restart observations do not establish this condition.
+- Condition 163, Git checkout on stable or beta selects the release tag; extended-stable unsupported for checkouts: Its saved scenario depended on excluded native activation, campaign discovery or update transitions; the retained status, Doctor, repair and restart observations do not establish this condition.
+- Condition 233, Updater exits during restart verification: Gateway or Doctor finish the run succeeded after fresh checks: Its saved scenario depended on excluded native activation, campaign discovery or update transitions; the retained status, Doctor, repair and restart observations do not establish this condition.
+- Condition 293, Disabling checks cancels unfinished discovery and its campaign: Its saved scenario depended on excluded native activation, campaign discovery or update transitions; the retained status, Doctor, repair and restart observations do not establish this condition.
+- Condition 294, Gateway shutdown cancels unfinished discovery and waits for Git processes: Its saved scenario depended on excluded native activation, campaign discovery or update transitions; the retained status, Doctor, repair and restart observations do not establish this condition.
+- Condition 325, Control UI failed attempt opens Ask OpenClaw once per attempt identity; browser storage unavailable disables the automatic request: Its saved scenario depended on excluded native activation, campaign discovery or update transitions; the retained status, Doctor, repair and restart observations do not establish this condition.
+- Condition 326, Lost connection or verification timeout shown as an unknown outcome until the version arrives: Its saved scenario depended on excluded native activation, campaign discovery or update transitions; the retained status, Doctor, repair and restart observations do not establish this condition.
+- Condition 423, Agent schema bump that older code cannot read (cold storage 20, canonical validation 21, compact payloads 23): Its saved scenario depended on excluded native activation, campaign discovery or update transitions; the retained status, Doctor, repair and restart observations do not establish this condition.
+- Condition 3, Installation without a detected owning package tool (container image, extracted tarball, Yarn global): update recorded as skipped, Gateway left running: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 4, Unrecognized installation root: target preflight skipped, commands to locate the owner printed: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 5, Installed updater older than the candidate: fixes in the candidate do not apply to the first hop: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 6, Invalid configuration at update admission (invalid-config before schema inspection, invalid fields listed, dry run keeps guidance in notes): The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 8, Selected target equals the installed version and build: no-op after validation, plugin convergence still runs, skipped already-current: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 17, A failed update or repair attempt enters recovery triage after service recovery and cleanup: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 20, Verified automatic rollback leaves the previous generation running; no automatic triage, nonzero exit: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 21, Late Git verification failure restores configuration, source and runtime and restarts the verified service: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 22, Interactive failure menu after a failed update (Diagnose, Report, Report in browser, Check report status, Exit by default): The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 26, CLI invoked from a working directory inside the installation being replaced: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 27, Dashboard update fails while the Gateway handles the request: Gateway warning log with the public reason: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 33, npm install fails with EACCES or EPERM on the global prefix (global-install-permission-denied, sanitized npm lines): The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 34, npm install fails with ENOSPC on the prefix or cache volume: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 35, Registry lacks the requested version or tag (E404, ETARGET, EINTEGRITY; stale-cache retry): The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 36, Confirmed ENOSPC during dev staging: preflight-insufficient-space: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 43, Candidate refuses or fails before mutation: stage removed, installed package and Gateway kept: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 52, Update run with non-terminal stdin: confirmations fail promptly, menus and consent do not wait: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 53, Piped or captured output: progress without animation, elapsed time every 30 seconds: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 54, An active chat session does not block an explicit update: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 59, Historical package backups present: a later verified activation retires them; failures preserve them: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 60, Aggregate activation deadline expires: update-activation-timeout, ownership retained until writers settle: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 64, Switching from a dev checkout to a package: failed activation leaves recovery unverified, no automatic restart: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 67, State newer than the updater can read: install-compatible-build or restore-backup refusal: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 70, Package metadata cannot be resolved (registry lookup, dist-tag, version mismatch, schema declaration): The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 71, Saved update.channel keeps governing later updates after a one-off --tag: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 72, Source checkout with uncommitted changes: clean check fails before installation, checkout preserved (dirty): The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 78, Channel health collection times out during post-update verification: warning kept, explicit negative probe fails: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 80, --no-restart cannot replace runtime files used by a running Gateway; process and retry action reported: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 81, Another Gateway shares this installation: its separate state needs doctor --fix under its own account: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 82, Live sibling Gateway uses overlapping output paths: runtime completion refused: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 89, Replaced Gateway rejects connections because its runtime files are gone: stopped through its service owner: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 90, Paired operator identity only (no shared token): maintenance drain uses it without new pairing: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 91, Explicit package artifact with the same version: build identity compared before the no-op: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 103, Fresh local update interrupted before activation: failed interrupted entry, owner held: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 104, SIGINT, SIGTERM or SIGHUP during activation or verification: forward work stops, recovery owner restores and reports; SIGKILL needs explicit recovery: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 105, Target Doctor migrated shared state: candidate runtime owns finalization, code-only rollback prohibited: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 106, Database writes during Doctor maintenance: automatic restoration refused, state-migrated-no-rollback, manual recovery: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 108, Old Gateway keeps serving through staging and validation while a canary boots on copied state: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 112, Previous-Gateway ready check verification after the canary; expiry leaves it unverified and blocks automatic restart: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 114, Doctor warnings during update: kept in the report, do not block ready check; unconfirmed child termination still blocks: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 115, Old Gateway serving with a database schema older than the candidate during capability check: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 116, Large or busy databases: snapshot budgets scale with size, deadline extends while files change: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 117, Live snapshots while writers continue (bounded WAL prefix, crash journals recovered privately): The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 118, Candidate startup slow but progressing: milestones renew the allowance up to four times; stalled or exited candidate fails validation: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 120, Insufficient temporary space for snapshots: TMPDIR, capture directory, system temp; snapshot-capacity-insufficient or snapshot-location-unavailable: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 121, Low disk space on the target volume: warning only, kept in history: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 124, Plugin resolution error attributed to a named plugin recorded without rejecting the update: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 125, Plugin activation or load failures after the core checks pass are named warnings: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 127, Blocking validation failure: staged update discarded, serving Gateway untouched: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 130, Startup lease ends while the same Gateway still progresses: still-starting warning, no restart or rollback: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 131, Ready check allowance expires for the same running process: skipped `gateway-readiness-unverified`, backups retained: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 132, Process or boot generation changes during verification: failure and recovery: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 133, Plugin downloads count toward downtime; service stopped through convergence: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 134, Doctor cannot enter maintenance at finalization: service restored, warning, Doctor and plugin work pending: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 135, Pre-migration database snapshots retained beside the package backup; capacity shortage refuses before migration: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 139, Snapshots taken while a Gateway may write (--no-restart) only for manual recovery: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 141, Config edited after the activation Doctor pass or $include changed: automatic rollback refused: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 142, Update fails before activation: recovery observes the existing Gateway once without restarting: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 143, Update launched from a shell inside the managed Gateway service: detached helper, exit 75, the exec shell may be terminated: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 150, Stopping a Gateway during helper startup, staging or activation waits for update work; draining if cleanup is uncertain: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 151, Stored extended-stable channel: read-only startup and 24-hour hints, never applied automatically: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 161, Managed-service handoff failure kinds (spawn, permission, ownership, payload, timeout, early exit, preparation): The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 162, Restart sentinel pending with restart-health-pending until the CLI rewrites it; status shows an Update restart row: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 165, Configured tracking remote fetch fails (fetch-failed); unrelated remote unavailable only warns: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 172, Changed plugin snapshot or deferred model retirement runs fresh Doctor repairs before restart: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 174, Managed release pin resumes the catalog default; pins outside eligibility kept with a pin advisory: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 175, Beta channel plugins pick newest of beta and latest; ClawHub @beta unavailable falls back with a warning: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 176, Plugin npm target unavailable or registry unreachable: plugin-target-unavailable advisory, core update continues: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 177, Plugin compatibility range excludes the target core: named notice, plugin unavailable until compatible: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 178, Pinned npm plugin artifact integrity differs from its record: that plugin update aborted: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 179, Invalid plugin manifest or missing payload: per-plugin warning; invalid config snapshot fails the update: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 181, Extended-stable core: official plugins target the exact installed core version: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 183, pnpm- or Bun-owned installation: --channel dev rejected before activation; repair runs children on that Bun: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 185, Gateway and updater running on the Bun runtime of a Bun-owned global installation: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 187, Local packaged dist edits: recovery bundle under update-recovery/, replay only with matching baseline: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 190, Non-interactive failure without verified rollback: diagnostics and handoff commands, owned automatic repair on configured inference: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 191, Another process saves configuration during database admission: config reread, checks repeated, implicit channel change re-resolved: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 193, Already-current installation needs plugin maintenance and a maintenance step is refused: restart after Doctor writers settle: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 195, Initial-check rejections (arguments, external supervisor, store ownership, handoff identity, immutable config) collect no diagnostics: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 202, Package activation stranded at prepared or publishing by an older updater: repair settles or aborts it: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 203, Manual install over a stranded update: closed as superseded-by-manual-install: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 214, Another live or uninspectable update driver blocks repair and Doctor service stops: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 222, Update in progress: status shows its phase instead of another update: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 224, Detached updater's late terminal notification awaited for up to 30 minutes by the watcher: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 227, History admission waits for a busy database writer: update-ledger-busy deferral: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 252, Update invoked from inside the Gateway process tree: inside-gateway-service, deferred maintenance for already-current: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 257, ClawHub lacks a version-matched official plugin: trusted npm source tried, version-skew warning: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 260, Canary uses a temporary loopback port and suppresses listeners, preserving rate-limit settings: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 265, Update requested from a chat session with a delivery route: acknowledgement, restarting, back-on and final-report notices follow there: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 266, Managed service installation: a chat-started update's restart can stop the Gateway before an intermediate notice: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 269, Run with an internal origin session (Control UI, webchat): notices in that transcript: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 272, Scheduled automation calls gateway update.run under the scheduled run's authority: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 284, Gateway automatic updates enabled on a managed service (update.auto.enabled): The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 286, Channel cadence: stable delay with jitter, beta interval, dev hourly pinned commit: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 287, Campaign due with active work: waits for idle, one-minute countdown, 15-minute hard deadline: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 289, Failed campaign apply ends the campaign; handoff failures surface after the Gateway returns: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 291, External supervisor mode: automatic applies and self-update refused, hints still run: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 292, External supervisor mode: restart targets the running Gateway, native service ops and self-update refused: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 295, update.run with a routable chat session: acknowledgement awaited up to 10 seconds (ackDelivered): The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 296, Control UI reconnects during an update: dialog shows Gateway restarting and resumes from the run record: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 298, Fresh shared database without fleet_cells: older revisions reject it: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 300, Config written by a newer version (meta.lastTouchedVersion): older binary refuses service mutations: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 307, Triage launch consent: only Yes starts the agent; Enter, n, cancel or 30 seconds skips: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 309, Failed candidate during an install-type switch leaves the previous command runnable: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 310, Installation-change watcher restarts a Gateway updated with --no-restart: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 332, Candidate migration rehearsal step exceeds its budget (candidate-migration-rehearsal): The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 333, Large agent fleet: minutes of model-catalog preparation after the listener binds, HTTP unanswered: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 341, Updater killed after the Gateway stops: Gateway stays stopped unless recovery was verified: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 342, Refused or failed core update keeps the previous channel: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 344, Refused channel switch or verified rollback recovers the previous service; unverified leaves it stopped: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 345, Last recorded update fetch failed: status shows update check stale: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 352, Bounded unattended repair before triage for validation failures or unsafe rollback: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 386, Large fleets: shared inspection across update guard and admission: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 419, Database schema newer than the running build: startup exits 78, update refuses older targets: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 420, Two databases at the same version differ in shape and canonical validation applies (`same-version-shape`): The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 427, Linked source checkout reports its build commit, not HEAD: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 430, Control UI tab open while an update replaces the bundled UI: one reload per reported build: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 444, Cancellation before package mutation restores the original service: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 446, Previously active sessions at update time reach a resumed or terminal state after the update: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 458, Restart handoff consume with a mismatched, missing or expired handoff: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 484, Doctor's config write refused during an update: the update fails with the refusal and rollback keeps it as the reason: The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 488, An agent updates the Gateway that hosts its own session and must use the gateway tool's update.run action (`agent-own-gateway`): The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 491, Plugins change during an otherwise current update, so a running managed Gateway restarts unless --no-restart (`plugins-changed-restart`): The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 493, A chat-initiated update carries the requester's authority through Doctor, handoffs and repair workers (`chat-requester-authority`): The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 498, An enabled configured plugin has no version for the target in the registry, warning before the Gateway stops (`plugin-availability-preflight`): The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 499, Gateway automatic updates are off by default; checks can be on or off independently (`auto-off-default`): The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 500, A Control UI update asks for confirmation first; cancel, Escape or dismiss leave the Gateway untouched (`ui-confirmation`): The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
+- Condition 502, The package install, staging, verification or launcher swap fails (global-install-failed) and rollback is attempted (`global-install-failed`): The saved scenario requires an excluded native update, campaign or custom-supervisor path; outside reach from an OCM-supervised clone.
 - Condition 422, Compatibility rollback between different implementations at the same schema: side-next only bumps the version of side, so no retained phase establishes a distinct older reader or newer companion-table behavior.
 - Condition 7, Unreadable configuration file (config-read-failed with filesystem code): No fixture makes configuration reads fail; invalid fields and read-only writes exercise different conditions.
 - Condition 15, Older updater refuses before staging with plugins.load.paths: plugin path not found: The missing-plugin-path fixture is applied to the primary environment, not to the older updater installation.
@@ -285,52 +435,43 @@ Uncovered:
 - Condition 520, A Windows Bun-only node host cannot stage updates and logs the failure hourly (`bun-windows-node`): outside this template's reach: Windows Scheduled Task hosts (bound: owned by platform)
 
 Phases that depend on each script still to be written (support.toWrite):
-- support/verify/release-feed.mjs: 123 phases
-- support/verify/restore-update-fixture.mjs: 91 phases
-- support/verify/update-cli.mjs: 60 phases
-- support/ensure-gateway-running.mjs: 46 phases
-- support/verify/env-fault.mjs: 41 phases
-- support/verify/read-installation-state.mjs: 37 phases
-- support/verify/gateway-call.mjs: 21 phases
-- support/verify/control-ui.mjs: 14 phases
-- support/verify/manual-package-replace.mjs: 11 phases
-- support/verify/session-turn-hold.mjs: 8 phases
-- support/verify/update-config.mjs: 7 phases
-- support/run-doctor-repair.mjs: 5 phases
-- support/verify/chat-send.mjs: 4 phases
-- support/verify/agent-tool-turn.mjs: 2 phases
-- support/verify/channel-inbound-turn.mjs: 2 phases
-- support/verify/chat-history-read.mjs: 2 phases
-- support/verify/config-fixture.mjs: 2 phases
-- support/verify/cron-isolated-run.mjs: 2 phases
-- support/verify/external-supervisor.mjs: 2 phases
+- support/verify/release-feed.mjs: 43 phases
+- support/ensure-gateway-running.mjs: 22 phases
+- support/verify/restore-update-fixture.mjs: 16 phases
+- support/verify/env-fault.mjs: 12 phases
+- support/verify/gateway-call.mjs: 10 phases
+- support/verify/read-installation-state.mjs: 8 phases
+- support/verify/manual-package-replace.mjs: 7 phases
+- support/verify/control-ui.mjs: 5 phases
+- support/run-doctor-repair.mjs: 4 phases
+- support/verify/session-turn-hold.mjs: 4 phases
+- support/verify/chat-send.mjs: 3 phases
 - support/verify/node-host-auto-update.mjs: 2 phases
-- support/verify/restart-handoff.mjs: 2 phases
 - support/verify/stage-state-fixture.mjs: 2 phases
-- support/verify/package-recovery-helper.mjs: 1 phases
-- support/verify/source-server-update.mjs: 1 phases
+- support/verify/update-config.mjs: 2 phases
+- support/verify/channel-inbound-turn.mjs: 1 phases
+- support/verify/chat-history-read.mjs: 1 phases
+- support/verify/cron-isolated-run.mjs: 1 phases
 - support/verify/stage-session-store-fixture.mjs: 1 phases
 - support/verify/stage-update-history.mjs: 1 phases
 - support/verify/triage-run.mjs: 1 phases
-- support/verify/updater-journey.mjs: 1 phases
-- env-fault.mjs by fault: channel-probe-fail 13, hold-state-lock 3, config-edit 3, interrupt-doctor 3, signal-restart 2, tmpdir-small 2, kill-gateway 2, kill-update-helper 1, helper-spawn-denied 1, prefix-readonly 1, prefix-volume-full 1, artifacts-volume-full 1, occupy-gateway-port 1, db-writer-loop 1, block-git-remote 1, db-writer-hold 1, config-readonly 1, db-reader-loop 1, freeze-gateway 1, signal-stop 1
 
 Persona additions:
-- agents-fleet-large: Several hundred configured agents, each with its own agent database (none)
+- agents-fleet-large: Several hundred configured agents, each with its own agent database (none) (inventory only; not required by a retained phase)
 - approvals-legacy-json: A legacy exec-approvals.json stub beside an SQLite approvals row holding a default-agent policy with string allowlist entries (none)
-- checkout-dirty: A second Git checkout environment like install-git-checkout with one uncommitted edit in a tracked file (env)
+- checkout-dirty: A second Git checkout environment like install-git-checkout with one uncommitted edit in a tracked file (env) (inventory only; not required by a retained phase)
 - coding-agent-stub: a stub coding agent CLI on PATH (codex) that records the prompt it receives and exits (agent)
-- config-include-files: Config split across $include files, with the agent roster in an included file (none)
+- config-include-files: Config split across $include files, with the agent roster in an included file (none) (inventory only; not required by a retained phase)
 - config-legacy-roster: A second environment whose config keeps an agents.list roster with a default marker, unprefixed toolsBySender keys and an ownerless cron job (env)
 - config-retired-keys: A second environment whose config carries retired keys (agents.defaults.llm, routing.allowFrom, top-level heartbeat) (env)
-- cron-job-update: An isolated cron job created by the operator whose scheduled prompt asks the agent to update OpenClaw through the gateway tool (jobId)
+- cron-job-update: An isolated cron job created by the operator whose scheduled prompt asks the agent to update OpenClaw through the gateway tool (jobId) (inventory only; not required by a retained phase)
 - history-stale-run: the update ledger holds an identityless running row inactive for more than 30 minutes and an untouched 2026.9.2-era admission older than 24 hours (no keys)
-- install-bun-global: A second environment with OpenClaw installed globally by Bun at the persona's pinned release, its Gateway running on Bun (env)
-- install-dist-edited: A local edit in one packaged dist file of the install-npm-global environment (none)
-- install-git-checkout: A second environment running from a Git checkout on the dev channel whose tracking remote is a local mirror of the side's source (env)
+- install-bun-global: A second environment with OpenClaw installed globally by Bun at the persona's pinned release, its Gateway running on Bun (env) (inventory only; not required by a retained phase)
+- install-dist-edited: A local edit in one packaged dist file of the install-npm-global environment (none) (inventory only; not required by a retained phase)
+- install-git-checkout: A second environment running from a Git checkout on the dev channel whose tracking remote is a local mirror of the side's source (env) (inventory only; not required by a retained phase)
 - install-npm-global: A second environment with OpenClaw installed globally by npm at the persona's pinned release under a user prefix configured in ~/.npmrc, its Gateway a managed user service, holding a copy of the persona's state (env)
 - install-pnpm-global: A second environment with OpenClaw installed globally by pnpm at the persona's pinned release (env)
-- install-tarball-extracted: A second environment running from an extracted package tarball with no package-tool owner (env)
+- install-tarball-extracted: A second environment running from an extracted package tarball with no package-tool owner (env) (inventory only; not required by a retained phase)
 - node-host-headless: A headless node host paired to the Gateway, running the persona's pinned release with its default plugins (nodeId)
 - plugin-capability-widened: An external plugin whose version in the release feed declares an added capability (none)
 - plugin-compat-excluded: An installed external plugin whose declared compatibility range excludes the side's version (none)
@@ -339,11 +480,11 @@ Persona additions:
 - plugin-pin-outdated: An official plugin pinned to an older exact release that drifts from the installed core (none)
 - plugin-record-missing: A configured official plugin present in config with no install record (none)
 - recovery-originals-retained: Migration recovery originals and pre-startup-migration backups recorded by an earlier successful update, plus an older npm snapshot directory (none)
-- service-definition-outdated: A managed service definition written by an older installer (TimeoutStopSec=30, KillMode=control-group) with one operator drop-in (none)
+- service-definition-outdated: A native service definition written by an older installer (TimeoutStopSec=30, KillMode=control-group) with one operator drop-in (inventory only; outside reach and not required by a retained phase)
 - state-legacy-migratable: a fixture of legacy state Doctor can migrate: a legacy agents.list roster with a default marker and ownerless cron jobs with null, deliver and mixed-case delivery modes, legacy auth field shapes in JSON and SQLite, a policy-free exec-approvals.json stub and a legacy default-agent SQLite policy, a legacy workspace setup file, session rows with flat pending-delivery fields and provider aliases, orphan task_delivery_state rows, Codex-native task rows, historical ACP metadata keys, unprefixed toolsBySender keys, flat channel allowPrivateNetwork keys, inherited Voice Call realtime settings, a multi-account channel without a default and a policy-only WhatsApp accounts.default, retired TaskFlow Webhooks settings, messages.tts settings, an ownerAllowFrom entry that lost its user: kind, a database without claw provenance columns, shared auth in the main agent database, retired MCP OAuth files, a deleted agent's retained store, pending Skill Workshop proposals, a damaged legacy sessions.json entry, a missing plugins.load.paths entry and a configured plugin that is not installed, Matrix state needing the dedupe scan, an enabled webhook channel account without legacyWebhook, an ACP agent with a separate harness model, legacy Discord dm.policy, stale per-agent OAuth shadows and a legacy audit archive changed other than by append; plus a config file with legacy keys for startup (path, configPath)
 - state-legacy-retired: a fixture of retired pre-July state: plugins/installs.json, cron jobs.json with jobs-state.json and run logs, a JSON delivery queue, restart-sentinel.json, retired config keys, OAuth credential sidecars, retired settings.json keys and a ~/.clawdbot directory (path)
 - state-retired-json: A second environment holding retired pre-July JSON state: restart-sentinel.json, plugins/installs.json and a legacy cron jobs.json store (env)
-- store-orphan-delivery-rows: Shared-database task_delivery_state rows whose parent tasks are missing (none)
+- store-orphan-delivery-rows: Shared-database task_delivery_state rows whose parent tasks are missing (none) (inventory only; not required by a retained phase)
 - update-history-failed: Update history holding a failed run with a config failure followed by a later success, and a failed run within the last 24 hours (runId)
 - update-history-long: An update run whose history reached the 128-step and 16 KiB compaction limit (runId)
 - update-history-stale: A second environment whose update history holds an identityless legacy admission older than 24 hours and an active row inactive for over 30 minutes whose driver is dead (env)
@@ -363,11 +504,11 @@ The existing Gateway health helper currently accepts `--timeout-ms`; these comma
 Invalid configuration and missing plugin paths must be staged through `config-fixture.mjs`, without the validated config writer, preserving and restoring the exact original bytes even on interruption. Each scenario claiming a turn in progress starts its own held turn immediately before the action; the admission-rejection send additionally waits for an observed draining state; the initial shared turn was removed. Successful recovery-data removal runs after the reader-refusal scenarios so it cannot consume their input first. These scripts and persona traits remain prerequisites; a command that exits 2 on any clone makes its phase incomplete and the verdict unresolved.
 
 
-Independent mutating scenarios restore their complete starting installation and user state with `restore-update-fixture.mjs` before injecting faults or applying updates. This prevents an earlier phase's update from turning a later first-hop migration into an already-current check. The helper preserves the comparison clone's identity and service ports, never edits the immutable fixture or its source installation, and restores local release-feed routing. `repair-after-update` deliberately continues the update named by `update-npm.json` rather than resetting its input.
+Independent mutating scenarios restore their complete starting installation and user state with `restore-update-fixture.mjs` before injecting faults or applying updates. This prevents an earlier phase's update from turning a later first-hop migration into an already-current check. The helper preserves the comparison clone's identity and service ports, never edits the immutable fixture or its source installation, and restores local release-feed routing. `repair-after-update` restores its own primary and stale-history fixtures and no longer consumes a result from a native update.
 
 Additional persona requirements for that helper: `update-baseline-fixture` provides `path`, an immutable full installation/user-state export for the primary environment; every installation trait used by a restored phase also provides `fixture`, an immutable export of its own original installation and user state, alongside `env`. These keys are missing until the persona supplies them, so the affected phases remain withheld. Valid config changes use the declared `update-config.mjs` presets; no phase depends on nonexistent JSON patch files.
 
-Coverage reconciliation controls: conditions 127, 178 and 279 are described respectively by `event-candidate-validation-fails`, `event-plugin-integrity-drift` and `event-node-candidate-fails`, with the fault or modified release established in those phases. Other run 1 claims are not automatically counted when its supporting phase or persona setup was not retained. This inventory is a description of reachable scenarios once dependencies exist, not a claim of executed coverage.
+Coverage reconciliation controls: condition 279 is described by `event-node-candidate-fails`. Conditions 127 and 178 require excluded native updater paths and remain uncovered. Other run 1 claims are not automatically counted when its supporting phase or persona setup was not retained. This inventory is a description of reachable scenarios once dependencies exist, not a claim of executed coverage.
 
 
 Node update scenarios require `node-host-headless:fixture`, an immutable export of the node's persona runtime and state, including its runtime selector and activation timestamps. The support command creates and removes a fresh disposable node for each invocation, connected only to the comparison Gateway; it never updates the durable source host. This prevents an earlier activation's twelve-hour cooldown from suppressing the fallback scenario.
@@ -380,8 +521,97 @@ Catalogue registration is a separate prerequisite owned by [PR #174](https://git
 The release feed retains a publication recipe after setup, then each selected phase starts and joins its own server handle. A server must also stop when its owning phase worker exits or is interrupted. This keeps cleanup local to selected phases instead of requiring an otherwise unselected final phase. `history-stale-run` additionally supplies `fixture`; its rows are staged with the Gateway stopped immediately before restart and separately before repair, without a status query consuming them first. Secondary Doctor migrations use the comparison side's runtime over legacy content; the persona runtime remains for first-hop updater scenarios.
 
 
-## Unresolved native-service prerequisite
+## OCM-only scope
 
-These counts remain provisional for native-update behavior. OCM marks its running Gateway as externally supervised. At the pinned OpenClaw revision, that disables automatic campaigns, refuses native CLI updates and can route update.run to OCM. Restoring package and user-state fixtures does not establish native service ownership. The template needs an explicit disposable native-service fixture contract for those cases, or must mark them outside reach with an OCM-only scope. No such fixture is implemented or activated by these files; native execution coverage is not established.
+Every comparison clone remains an OCM environment under external supervision. OCM's `build_openclaw_env` sets the external repair policy and marks a running service `OPENCLAW_SUPERVISOR_MODE=external` ([shell.rs, lines 66–118](https://github.com/openclaw/ocm/blob/6c563651c7f0047db553e0e9438a7df3cfaaad76/src/infra/shell.rs#L66)); the Gateway receives that supervision mode as well ([supervisor/mod.rs](https://github.com/openclaw/ocm/blob/6c563651c7f0047db553e0e9438a7df3cfaaad76/src/supervisor/mod.rs#L2911)). At OpenClaw 7e80556f, this disables automatic campaigns ([update-startup.ts, lines 288–305](https://github.com/openclaw/openclaw/blob/7e80556f503d26ddde64e274bfb50cbbec7830f5/src/infra/update-startup.ts#L288)) and refuses mutating native CLI updates before their preparation ([update-command-run.ts, line 627](https://github.com/openclaw/openclaw/blob/7e80556f503d26ddde64e274bfb50cbbec7830f5/src/cli/update-cli/update-command-run.ts#L627)). `update.run` can delegate to OCM before native execution ([update-admission.ts, lines 79–114](https://github.com/openclaw/openclaw/blob/7e80556f503d26ddde64e274bfb50cbbec7830f5/src/gateway/server-methods/update-admission.ts#L79)). An OCM update cannot stand in for a native updater scenario.
 
-The same-code rollback phase records replacement and startup only; condition422 remains uncovered. Node scenarios declare separate persona-driven and side-driven journeys, each with a fresh eligible host fixture. The cron restart scenario requires a held job that has reached active execution and a terminal result read, rather than a background enqueue acknowledgement. The PID-mismatch scenario creates and holds a handoff before the wrong-PID consume, then uses the matching consumer to observe retention.
+Native campaigns, native activation and rollback, updater-driven failure menus and native handoffs are outside reach. Their commands are excluded from executable selection, not marked as future native-service dependencies. Package and state fixtures do not remove the supervision boundary. No native service, custom supervisor or bypass of the external-supervision hint is created. Read-only previews, Doctor, update repair, recovery cleanup and package-replacement observations retain their separate paths.
+
+All six historical breaks are outside reach here: 155433 needs the native managed handoff and macOS stop guard; 150816 needs native Bun activation; 161813 needs native replacement from the updater's working directory; 162604 needs the native activation Doctor and rollback; 159504 needs an affected older native updater (also absent from the pinned persona); 156633 needs the native interactive failure menu. The [breaks cross-check](derivation.md#breaks-cross-check) records each disposition.
+
+Excluded phase IDs from the saved reconciliation:
+
+- `update-from-terminal`
+- `finish-plugin-updates`
+- `switch-release-channel`
+- `update-from-control-ui`
+- `update-from-chat`
+- `receive-restart-notices`
+- `schedule-automatic-updates`
+- `restart-under-external-supervisor`
+- `event-verification-failure-triage`
+- `event-verification-failure-rollback`
+- `event-verification-failure-service-state`
+- `event-git-verification-failure-restore`
+- `event-migrated-verification-failure-repair`
+- `event-verification-failure-unattended-repair`
+- `event-interactive-failure-menu`
+- `event-triage-consent-timeout`
+- `event-control-ui-update-failure-log`
+- `event-control-ui-update-failure-ask`
+- `event-managed-handoff-refusal`
+- `event-managed-handoff-no-result`
+- `event-managed-handoff-spawn-failure`
+- `event-npm-prefix-not-writable`
+- `event-npm-prefix-volume-full`
+- `event-snapshot-space-insufficient`
+- `event-dev-staging-no-space`
+- `event-registry-target-404`
+- `event-registry-offline`
+- `event-candidate-refuses-older-target`
+- `event-pre-activation-failure-observation`
+- `event-refused-update-keeps-channel`
+- `event-activation-deadline`
+- `event-dev-to-package-activation-failure`
+- `event-no-restart-update`
+- `event-no-restart-watcher-restart`
+- `event-update-drain-deadline`
+- `event-previous-gateway-ready-check-expiry`
+- `event-replaced-gateway-update`
+- `event-manual-install-over-stranded-update`
+- `event-update-interrupted-before-activation`
+- `event-cancel-before-mutation`
+- `event-updater-signal-during-activation`
+- `event-updater-killed-after-stop`
+- `event-updater-exits-during-verification`
+- `event-slow-candidate-startup`
+- `event-still-starting-after-update`
+- `event-ready-check-unverified-after-update`
+- `event-rehearsal-budget-exceeded`
+- `event-gateway-killed-during-verification`
+- `event-doctor-maintenance-refused`
+- `event-already-current-maintenance-refused`
+- `event-foreign-writer-during-maintenance`
+- `event-config-edited-during-update`
+- `event-config-saved-during-admission`
+- `event-update-from-agent-shell`
+- `event-stop-during-update`
+- `event-git-remote-unreachable`
+- `event-plugin-target-unavailable`
+- `event-clawhub-plugin-missing`
+- `event-repair-during-live-update`
+- `event-ledger-busy`
+- `event-campaign-with-active-work`
+- `event-campaign-apply-failure`
+- `event-checks-disabled-during-discovery`
+- `event-shutdown-during-discovery`
+- `event-control-ui-reconnect-during-update`
+- `event-control-ui-reload-after-update`
+- `event-install-switch-candidate-failure`
+- `event-channel-switch-refused`
+- `event-restart-handoff-mismatch`
+- `event-old-gateway-shutdown-after-replacement`
+- `event-doctor-config-write-refused`
+- `event-update-already-current`
+- `event-candidate-validation-fails`
+- `event-candidate-validation-fails-older-updater`
+- `event-package-install-fails`
+- `event-plugin-registry-offline`
+- `event-capability-consent`
+- `event-plugin-integrity-drift`
+- `event-same-schema-rollback-and-reupgrade`
+- `event-downgrade-newer-schema-refusal`
+
+The original entry-point placement and all 520 condition rows remain in derivation.md as inventory, independent of executable selection. No new derivation runs were made. A native-service capability would require a separate lifecycle and persona design before these exclusions could change.
+
+Node scenarios retain separate persona-driven and side-driven journeys, each with a fresh eligible host fixture. The cron restart scenario requires a held job that has reached active execution and a terminal result read. Same-code native rollback and custom-supervisor handoff scenarios have been excluded.

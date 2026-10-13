@@ -7,7 +7,7 @@ Union: 310 entry points, 520 conditions under 165 condition headings
 | 1 | 287/310 | 165/165 |
 | 2 | 305/310 | 152/165 |
 
-Run 1 found 92.6% of the entry points and conditions under 100% of the condition headings; run 2 found 98.4% and 92.1%. Both runs clear nine tenths on both measures under the current condition-heading acceptance rule. The historical procedure used condition-row shares; run 1 does not clear that older measure, as the figures below show. The template is the reconciliation of these two runs, the third and last round below, and it keeps everything either run found.
+Run 1 found 92.6% of the entry points and conditions under 100% of the condition headings; run 2 found 98.4% and 92.1%. Both runs clear nine tenths on both measures under the current condition-heading acceptance rule. The historical procedure used condition-row shares; run 1 does not clear that older measure, as the figures below show. The template is the reconciliation of these two runs, the third and last round below, and its inventories keep everything either run found. The executable phases exclude paths unavailable under OCM supervision; see [coverage.md](coverage.md#ocm-only-scope).
 
 Counting:
 
@@ -27,7 +27,7 @@ Every round ran steps 1 to 7 twice, independently, on OpenClaw 7e80556f503d26ddd
 
 Procedure provenance per run: A and B began from the first procedure text. Both received the caller-search and condition-granularity amendments during round 1; B applied them in its first pass and A rewrote its output. C and D were both instructed to use those amendments plus the heading-by-heading completeness rule and headings ledger. Runs 1 and 2 of round 3 were both instructed to use the sentence-or-list-item completeness amendment. The saved round-3 procedure snapshot has SHA-256 `921a97e865d8061debe4440e74ba85ba15b0fe094bb07f496f844258acbcb318`.
 
-Known provenance shortfall: the run briefs point to a mutable procedure document and do not record the exact revision or hash each run read. The amendments above are recoverable from the saved briefs and comparisons; the snapshot hash identifies the saved text but cannot prove each historical reader saw exactly those bytes. No new runs were made after the third-round cap. Round 1 is consequently not evidence of two runs using one frozen revision.
+Known provenance shortfall: the run briefs point to a mutable procedure document and do not record the exact revision or hash each run read. The amendments above are recoverable from the saved briefs and comparisons; the snapshot hash identifies the saved text but cannot prove each historical reader saw exactly those bytes. The exact revision is unavailable for A, B, C, D and both final-round runs; the per-round amendments and saved snapshot above are the recoverable procedure evidence. No new runs were made after the third-round cap. Round 1 is consequently not evidence of two runs using one frozen revision.
 
 Round 1 had no headings ledger; its condition headings are the headings its conditions cite as their source. Round 1's entry-point union was matched by hand and is approximate; its saved comparison credits B with about 147 union entries although B lists 139, without retaining a component map to reproduce that normalization. Round 2's entry-point figures are 204/235 and 205/235; its heading figures are 153/157 and 152/157. Both earlier rounds have entry-point shortfalls; round 1 also has A's condition-heading shortfall.
 
