@@ -129,7 +129,9 @@ pointers into the entry's output (`*` matches any array index), each field
 holding an id OpenClaw generated for a resource the command created, such as
 a new session's key; it is empty for a command that creates nothing. Compare
 uses it to give generated ids the same name on every clone (see
-[Rows](plan-and-verdict.md#normalization)).
+[Rows](plan-and-verdict.md#normalization)); the token names the concrete
+pointer, with the actual array index, so two ids the same command created
+get two tokens.
 
 ## Commands
 
@@ -150,8 +152,10 @@ its command head, and reports:
   [Commands](plan-and-verdict.md#commands));
 - `toWrite` entries not yet implemented.
 
-The command head is the command's words up to its first flag, with
-placeholders kept as written: `node {kovaRoot}/support/verify/chat-send.mjs`
+The command head is the command's words up to its first flag or value slot,
+with placeholders kept as written; `kova catalogue check` and the check inside
+`kova verify plan` both compute it on the command as the template or phase
+file writes it, before any placeholder is replaced: `node {kovaRoot}/support/verify/chat-send.mjs`
 for a script, `ocm @{env} -- plugins list` for an OpenClaw command run
 through OCM, `ocm service restart` for an OCM operation. For the generic
 Gateway caller the head also includes the `--method` value, so each Gateway

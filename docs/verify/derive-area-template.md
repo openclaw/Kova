@@ -574,8 +574,9 @@ A derivation is accepted when:
 }
 ```
 
-`kova verify plan` matches changed paths against the area files' `paths` to
-find the templates a change needs.
+`kova verify plan` selects phases by their own `paths`; it uses the area
+files' `paths`, with every path `bound.includes` names, to report a changed
+path that an area owns but no phase covers.
 
 ## Maintenance
 

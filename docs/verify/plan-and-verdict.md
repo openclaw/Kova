@@ -26,7 +26,7 @@ shows what the change was checked against.
 {
   "schema": "kova.verify.standard.v1",
   "ignore": {
-    "documentation": ["docs/**", "!docs/reference/templates/**", "**/*.md", "!skills/**"],
+    "documentation": ["docs/**", "**/*.md", "!docs/reference/templates/**", "!skills/**", "!custodian-skills/**", "!extensions/*/skills/**"],
     "tests": ["**/*.test.ts", "test/**"]
   },
   "stateIds": [
@@ -40,7 +40,9 @@ shows what the change was checked against.
 `ignore` lists the paths a plan never selects phases for: documentation and
 test files. A file OpenClaw ships and loads at run time, such as a workspace
 template or a bundled skill, is product behavior and is never ignored; the
-globs exclude it with `!`. `stateIds` declares where OpenClaw stores ids it
+globs exclude it with `!`. A path is ignored when it matches a glob in either
+list and matches no `!` glob in that list; the order of the globs does not
+matter. `stateIds` declares where OpenClaw stores ids it
 generates without a command reporting them (see [Rows](#rows)); the example's
 table and column names are illustrative. `before` and `after` are the standard
 phases, each in the template phase form without `kind`, `paths` or
@@ -91,9 +93,10 @@ all name phases by qualified id.
    source it comes from (see [Order and dependencies](#order-and-dependencies)).
    A `{run}` file that a selected phase reads and no phase writes refuses the
    plan.
-7. Add the standard phases. A plan for a change with any non-ignored path
-   always runs them, even when no template or intent phase is selected, so the
-   Gateway start, the migration and Doctor are compared for every change.
+7. Add the standard phases. A plan for a change with any non-ignored path, or
+   with any intent phase, always runs them, even when no template phase is
+   selected, so the Gateway start, the migration and Doctor are compared for
+   every change.
 8. Check every phase against the persona manifest. A phase is withheld when a
    trait in its `requires` is missing from the manifest, or when a
    `{persona:<trait>:<key>}` placeholder in its commands names a trait or key
@@ -106,7 +109,9 @@ all name phases by qualified id.
 10. Order the phases (see [Order and dependencies](#order-and-dependencies)).
 
 A withheld phase is listed in `withheld` with what is missing, and it does not
-run. A phase that depends on a withheld phase is withheld with it. The verdict
+run. A phase that depends on a withheld phase is withheld with it; when a
+`setup` phase is withheld, every other phase of its template is withheld
+too. The verdict
 repeats `unmapped` and `withheld`, so a reader sees what was not exercised.
 
 Nobody edits a plan after it is written. A different plan is a different run.
@@ -480,7 +485,10 @@ one of two things:
 - a **shared failure**: both sides recorded the same failure in the same
   phase. A failure is a command that exited non-zero or reached its bound, an
   error or warning log line (a line OpenClaw logged at level `error` or
-  `warn`), or a Doctor finding. An error or warning line present on both
+  `warn`), or a Doctor finding. The same failure means the same command with
+  the same exit code or the same reached bound, the same normalized log line,
+  or the same Doctor finding; a command that exits non-zero with a different
+  code on each side is a difference. An error or warning line present on both
   sides is a shared failure whatever its count on each side.
 
 A phase is **incomplete** when the baseline clone and a change clone both lack
@@ -523,26 +531,30 @@ verdict's `unmapped` and `withheld` lists say what did not.
   "persona": { "id": "openclaw-verification-user", "version": "<manifest version>" },
   "verdict": "good-to-go | breaks | unresolved",
   "rows": [
-    { "phase": "sessions/search-history", "signal": "timing", "at": "0", "clones": ["change-1", "change-2"], "baseline": "within bound", "change": "bound reached", "class": "break", "explainedBy": null },
+    { "phase": "sessions/search-history", "signal": "timing", "at": "0", "clones": ["change-1", "change-2"], "baseline": false, "change": true, "class": "break", "explainedBy": null },
     { "phase": "intent/goal-search-complete", "signal": "responses", "at": "0/result/indexing", "clones": ["change-1", "change-2"], "baseline": true, "change": false, "class": "intended", "explainedBy": "intent:goal" },
-    { "phase": "standard/doctor", "signal": "doctor", "at": "<finding code>", "clones": ["change-1", "change-2"], "baseline": "present", "change": "present", "class": "not-caused", "explainedBy": null }
+    { "phase": "standard/doctor", "signal": "doctor", "at": "<finding code>", "clones": ["change-1", "change-2"], "baseline": true, "change": true, "class": "not-caused", "explainedBy": null }
   ],
   "issues": [
     { "phase": "standard/doctor", "signal": "doctor", "at": "<finding code>", "summary": "<the finding>, recorded on both sides" }
   ],
+  "intent": { "goal": "<the Goal line>", "protected": "<the Protected line>" },
   "notStarted": ["<clone name>"],
   "incomplete": ["<qualified id>"],
   "withheld": [],
   "unmapped": [],
+  "ignored": [],
   "noiseExcluded": 3,
   "run": "<run id>"
 }
 ```
 
 `rows` holds every classed row, differences and shared failures alike. A row
-that both change clones show is listed once, with both clones in `clones` and
-the first clone's value as `change`; a `flaky` row lists the one clone that
-shows it. `issues` repeats the `not-caused` rows with a one-line summary. `issues.md` lists the
+that both change clones show with the same value is listed once, with both
+clones in `clones`; when the two change clones show different values for the
+same item, each is listed with its own clone. A `flaky` row lists the one
+clone that shows it. `issues` repeats the `not-caused` rows with a one-line
+summary. `issues.md` lists the
 same rows for a human reader: each issue, the phase it was seen in and the
 evidence on both sides. Issues are problems that exist without the change;
 they are reported so they can be fixed on their own, and they never block the

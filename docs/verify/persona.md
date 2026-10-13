@@ -171,8 +171,8 @@ kova persona show   --persona <manifest> --json
 
 1. Take the trait name from a template's `requires` and the content sentence
    from the template's coverage table.
-2. Name every key a phase reads through `{persona:<trait>:<key>}`, and no key
-   that no phase reads.
+2. Name every key a phase or another trait's builder reads through
+   `{persona:<trait>:<key>}`, and no key that none of them reads.
 3. Write the builder from OpenClaw's own commands first
    (`ocm @{env} -- <command>`, a config patch, a Gateway method through a
    catalogue script). Use a fixture file only where no product command can
