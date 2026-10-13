@@ -3427,7 +3427,7 @@
         "error",
         "elapsedMs"
       ],
-      "side": "write",
+      "side": "destructive",
       "background": true,
       "status": "toWrite",
       "creates": []

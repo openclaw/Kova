@@ -155,7 +155,7 @@ test("background forms retain their entry identity and required flags", async ()
 
 test("commands that remove or replace existing resources are destructive", async () => {
   const { catalogue: c } = await loadCatalogue("openclaw");
-  for (const id of ["doctor", "doctor-repair", "config-patch", "gateway-progress-card-put", "gateway-progress-card-refresh", "goal-control", "chat-send", "session-send-turn", "tui-message-turn", "channel-inbound-turn", "agent-tool-turn", "control-ui"]) {
+  for (const id of ["doctor", "doctor-repair", "config-patch", "gateway-progress-card-put", "gateway-progress-card-refresh", "gateway-session-suggestions-resolve", "goal-control", "chat-send", "session-send-turn", "tui-message-turn", "channel-inbound-turn", "agent-tool-turn", "control-ui"]) {
     assert.equal(c.entries.find((entry) => entry.id === id).side, "destructive", id);
   }
   const compact = c.entries.find(({ id }) => id === "sessions-compact");
@@ -257,8 +257,8 @@ test("real CLI lists the bundled catalogue and exits nonzero on planted findings
   const cli = fileURLToPath(new URL("../bin/kova.mjs", import.meta.url));
   const run = (...args) => spawnSync(process.execPath, [cli, "catalogue", ...args], { encoding: "utf8" });
   const assertCommonOptions = (args, expected) => {
-    for (const option of ["--ascii", "--no-progress"]) {
-      const result = run(...args, option);
+    for (const options of [["--plain"], ["--ascii"], ["--no-progress"], ["--color=never"], ["--color", "never"], ["--width=80"], ["--width", "80"], ["--align=left"], ["--align", "left"]]) {
+      const result = run(...args, ...options);
       assert.equal(result.status, expected.status, result.stderr);
       assert.equal(result.stdout, expected.stdout);
       assert.equal(result.stderr, expected.stderr);
