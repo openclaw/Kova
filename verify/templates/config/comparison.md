@@ -7,7 +7,7 @@ Union: 291 entry points, 462 conditions under 63 condition headings
 | 1 | 284/291 (97.6%) | 428/462 (92.6%) | 62/63 (98.4%) |
 | 2 | 287/291 (98.6%) | 417/462 (90.3%) | 62/63 (98.4%) |
 
-Both runs found at least nine tenths of the reconciled union of entry points, of conditions and of condition headings. Revision 7e80556f503d26ddde64e274bfb50cbbec7830f5; area input file verify/areas/config.json as committed; procedure revision 4 (below). The template, derivation.md and coverage.md in this directory are the reconciliation of these two runs.
+Both runs satisfy acceptance: at least nine tenths of the reconciled union of entry points and of condition headings. Condition-row shares are reported separately. Revision 7e80556f503d26ddde64e274bfb50cbbec7830f5; area input file verify/areas/config.json as committed; procedure revision 4 (below). The template, derivation.md and coverage.md in this directory are the reconciliation of these two runs.
 
 ## How the shares were counted
 
@@ -30,12 +30,12 @@ Every round read the same OpenClaw revision. Both runs of a round read the same 
 
 | Round | Procedure | Input file | Entry points found (run 1, run 2) | Conditions found (run 1, run 2) | Condition headings found (run 1, run 2) | Result |
 |---|---|---|---|---|---|---|
-| 1 | revision 1 | bound named the neighbouring areas only | estimated about 82% and 69% of about 432 | estimated about 70% and 93% of about 56 | 82.1%, 71.8% of 39 | under nine tenths |
-| 2 | revision 2 | bound gained counting rules (Gateway methods, CLI commands, tool actions, a search for code from other areas, redaction sinks, Control UI controls) | 98.6%, 95.2% of 294 | run 1 not computed; run 2 at most 76.5% (the union was at least run 1's 183) | 85.1%, 77.6% of 67 | under nine tenths |
-| 3 | revision 3 | search list moved into `search` | not computed one by one; the file entry points agreed but for 5 of 83 | 93.3%, 82.8% of 209 | 97.1%, 85.3% of 68 | under nine tenths |
-| 4 | revision 4 | bound names, per document, the sections that are this area's | 97.6%, 98.6% of 291 | 92.6%, 90.3% of 462 | 98.4%, 98.4% of 63 | accepted |
+| 1 | revision 1 | bound named the neighbouring areas only | 355/437 (81.2%), 306/437 (70.0%) | estimated about 70% and 93% of about 56 | 32/37 (86.5%), 28/37 (75.7%) | under nine tenths |
+| 2 | revision 2 | bound gained counting rules (Gateway methods, CLI commands, tool actions, a search for code from other areas, redaction sinks, Control UI controls) | 290/294 (98.6%), 280/294 (95.2%) | run 1 not computed; run 2 at most 76.5% (the union was at least run 1's 183) | 55/60 (91.7%), 53/60 (88.3%) | under nine tenths |
+| 3 | revision 3 | search list moved into `search` | 276/279 (98.9%), 274/279 (98.2%) | 93.3%, 82.8% of 209 | 66/68 (97.1%), 58/68 (85.3%) | under nine tenths |
+| 4 | revision 4 | bound names, per document, the sections that are this area's | 284/291 (97.6%), 287/291 (98.6%) | 92.6%, 90.3% of 462 | 62/63 (98.4%), 62/63 (98.4%) | accepted |
 
-Rounds 1 to 3 fell short and were superseded, so their unions were not reconciled one entry by one entry; the figures marked estimated or not computed cannot be recovered without matching those superseded runs again. Rounds 1 and 2 had no heading walk; their condition headings are counted from the headings each condition cites as its source. Rounds 3 and 4 count them from `## Headings walked`.
+The round 1 and round 3 entry-point unions were recounted from their preserved enumerations. Names and source paths identify entries; aliases and different labels for the same control are matched. Explicitly combined controls count at the finer granularity: for example text and number fields, Form and Raw switches, quiet-hours start and end, and the Settings shortcut and menu item. A generic group that does not name its controls stays a separate entry. This is why a run's credited count can exceed its original row count. Round 2 keeps its recorded reconciliation, including the removal of six search hits that were not calls. The earlier condition-row estimates remain estimates; they are not the heading-based acceptance measure. Rounds 1 and 2 had no heading walk; their condition headings are recovered from the headings each condition cites as its source. Multiple named headings in one citation are counted separately; page-title introductions and shortened versions of the same FAQ question are matched. Quoted values inside a heading, such as "lan" and "tailnet", do not count as headings. These recounts replace the earlier 39- and 67-heading estimates. Rounds 3 and 4 count them from `## Headings walked`.
 
 What each change fixed:
 
@@ -49,4 +49,8 @@ Round 4 is the last round of this derivation; these gaps are recorded here inste
 
 - The bound gives docs/gateway/config-secrets-env.md to secrets, but its `${VAR:-fallback}` defaults, empty fallbacks, nested and literal forms, and the restoring of authored fallbacks on write-back describe src/config/env-substitution.ts and src/config/env-preserve-authored.ts, which are in this area's paths. No condition or phase covers them. The next derivation should list those sections as config's.
 - Run 2 reported two config writers missing from `search.symbols`: promoteConfigSnapshotToLastKnownGood (called from src/gateway/server-startup-finish.ts) and recoverConfigFromJsonRootSuffix (called from src/commands/doctor-config-preflight-legacy-config.ts). The area file is left as both runs read it; their callers are in the paths of the phases that exercise them, but they are not counted as entry points. The next derivation should add both symbols.
-- Phases that needed a second environment (no config file, a symlinked config, a remote Gateway, password auth, switching Gateways) were removed at reconciliation, because one persona environment is cloned per side; their conditions are listed as uncovered in coverage.md.
+- The second-environment phases from the recorded runs are retained with per-clone persona environments. They require the named environment exports and support scripts before they can execute; the template itself does not create those environments.
+
+The round 3 entry-point residual is five caller files found only by run 1 (the agents page, memory panel, dreaming page and two cloud-worker pages) and three controls found only by run 2 (the native Settings route, Learn more link and draft Cancel). Its select-or-segmented control explicitly covers both controls run 2 named separately. Round 1's much larger residual comes from the recorded differences in cross-area calls, individual settings controls, native callers and excluded shell surfaces described above.
+
+Coverage limits after reconciliation include dependent consumer behavior that the saved phases do not drive. Those conditions stay in the reconciled derivation and in the heading census; coverage.md identifies them as uncovered. A config write and a subsequent config read alone do not establish terminal, connection, authentication, admission or plugin-work consequences.

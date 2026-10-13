@@ -1,71 +1,91 @@
 # Coverage: config
 
 Operations: 32/32
-Conditions: 402/462 (303 ambient, 159 event)
+Conditions: 382/462 (303 ambient, 159 event)
 Entry points: 266/291 (25 excluded)
 Breaks mapped: 3/3
 
 Uncovered:
-- condition 1 needs an environment with no config file on each side; the runner clones one persona environment and no catalogue command removes the config file
-- condition 2 needs a symlinked openclaw.json on each side; staging a symlink changes every later write of the shared clone and no catalogue command makes one
-- condition 21 ambient, but no persona trait provides it and no setup phase starts it
-- condition 38 Committed reload whose work needs restart recovery: no catalogue command forces a committed reload into restart recovery
-- condition 41 ambient, but no persona trait provides it and no setup phase starts it
-- condition 42 Busy state store refuses the reload lifecycle lease: no catalogue command holds the state-store lifecycle lease a reload needs
-- condition 52 ambient, but no persona trait provides it and no setup phase starts it
-- condition 78 needs a request to the affected HTTP endpoint; no catalogue command sends one
-- condition 98 TLS certificate files replaced at the accepted paths: the persona Gateway serves loopback HTTP; needs a TLS env (persona addition gateway-tls-files) and a script that replaces the certificate files
-- condition 99 SecretRef-managed Gateway credential without an explicit gateway.auth.mode: rotating a SecretRef-managed Gateway credential would cut the harness's own connection
-- condition 101 Canvas enablement change: needs paired nodes with hosted canvas capabilities, owned by nodes
-- condition 106 Channel or plugin hot reload: needs a Gateway-hosted channel webhook route; the persona's test channels have none
-- condition 143 ambient, but no persona trait provides it and no setup phase starts it
-- condition 151 ambient, but no persona trait provides it and no setup phase starts it
-- condition 152 ambient, but no persona trait provides it and no setup phase starts it
-- condition 166 needs a remote Gateway on each side; the runner clones one local environment
-- condition 169 ambient, but no persona trait provides it and no setup phase starts it
-- condition 174 ambient, but no persona trait provides it and no setup phase starts it
-- condition 175 /tmp/openclaw unsafe or unavailable: needs an unsafe or unwritable /tmp/openclaw on the harness host
-- condition 188 ambient, but no persona trait provides it and no setup phase starts it
-- condition 194 ambient, but no persona trait provides it and no setup phase starts it
-- condition 195 needs a second Gateway built from the same persona and switched to each side's target; the runner prepares one environment per side
-- condition 197 ambient, but no persona trait provides it and no setup phase starts it
-- condition 199 ambient, but no persona trait provides it and no setup phase starts it
-- condition 200 needs a second Gateway built from the same persona and switched to each side's target; the runner prepares one environment per side
-- condition 201 ambient, but no persona trait provides it and no setup phase starts it
-- condition 204 needs a second Gateway built from the same persona and switched to each side's target; the runner prepares one environment per side
-- condition 212 ambient, but no persona trait provides it and no setup phase starts it
-- condition 215 ambient, but no persona trait provides it and no setup phase starts it
-- condition 217 ambient, but no persona trait provides it and no setup phase starts it
-- condition 218 ambient, but no persona trait provides it and no setup phase starts it
-- condition 219 ambient, but no persona trait provides it and no setup phase starts it
-- condition 222 ambient, but no persona trait provides it and no setup phase starts it
-- condition 224 Older Control UI reader meeting the theme accent value: needs an older Control UI build reading the same Gateway
-- condition 229 ambient, but no persona trait provides it and no setup phase starts it
-- condition 230 ambient, but no persona trait provides it and no setup phase starts it
-- condition 233 ambient, but no persona trait provides it and no setup phase starts it
-- condition 235 Gateway running from a source checkout on a branch other than main: the persona runtime is an npm release; needs a source-checkout Gateway (persona addition gateway-source-checkout)
-- condition 239 ambient, but no persona trait provides it and no setup phase starts it
-- condition 240 Approval requested by another session shown inline: owned by approvals; needs a pending exec approval raised from another session
-- condition 241 ambient, but no persona trait provides it and no setup phase starts it
-- condition 246 Update applies runtime config migrations before candidate validation through the backup and include-aware write: needs an update run, owned by update and excluded by the bound
-- condition 293 Update rehearsal imports cron quarantine rows into a private copy; the live Doctor phase archives them after installation: needs an update run, owned by update and excluded by the bound
-- condition 311 One plugin pending while other channels finish; replacing it runs the migration before its runtime starts: needs separately installed Feishu, Teams, Nextcloud Talk or Telegram plugin packages
-- condition 314 Read-only external config source needing the listener migration: needs read-only config and a pending listener migration staged together; not staged
-- condition 316 Older host refuses a separately installed Feishu, Teams, Nextcloud Talk or Telegram plugin needing 2026.9.9: needs a channel plugin package requiring a newer host
-- condition 322 Published updater invoking Doctor without --fix still runs the Talk inheritance repair: needs a published updater invoking Doctor, owned by update
-- condition 326 Update driven by an older version defers plugin installation; pending inputs protected: needs an update driven by an older version, owned by update
-- condition 343 Git checkout with interactive Doctor: the persona runtime is an npm release; needs a git-checkout install (persona addition gateway-source-checkout)
-- condition 344 Externally managed install: needs a deployment-managed install
-- condition 351 Updater that defers plugin repair or advertises a later config handoff: needs an updater advertising a deferred config handoff, owned by update
-- condition 352 Older Git updater holding an in-memory config snapshot: needs an older Git updater holding a config snapshot, owned by update
-- condition 354 needs an edit landing while Doctor is migrating; no catalogue command times one
-- condition 356 Model-retirement repairs during an update wait for plugin convergence: needs an update run with plugin convergence, owned by update
-- condition 434 ambient, but no persona trait provides it and no setup phase starts it
-- condition 447 Advisory inspection failure at startup recorded with guidance; startup continues: needs the startup advisory inspection itself to fail
-- condition 454 needs a remote Gateway on each side; the runner clones one local environment
-- condition 458 ambient, but no persona trait provides it and no setup phase starts it
-- condition 460 Downgrade to a Gateway whose ui.prefs.accent accepts only hex colors: needs an older Gateway build
-- condition 462 Devices node-binding controls pause while configuration reloads: needs a paired node with Devices node bindings
+- condition 21 Config without meta: recorded as a write anomaly (missing-meta-vs-last-good): ambient, but no persona trait provides it and no setup phase starts it
+- condition 28 Active work in flight: channel and plugin reloads defer (channels.status statusIssues, channels.start diagnostic): a held model turn does not establish admitted work in the particular plugin being reloaded; that plugin workload remains unstaged
+- condition 29 Policy-only channel write covered by a dynamic-read contract (allowlists, DM and group policy) publishes without a channel restart or drain: event-reload-dynpolicy records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
+- condition 38 Committed reload whose work needs restart recovery: UNAVAILABLE until the Gateway restarts: Committed reload whose work needs restart recovery: no catalogue command forces a committed reload into restart recovery
+- condition 41 Committed restart requirement pending: later hot writes do not erase it and earlier terminal or sandbox restrictions stay in force: ambient, but no persona trait provides it and no setup phase starts it
+- condition 42 Busy state store refuses the reload lifecycle lease: change stays pending with capped backoff retries; shutdown cancels them: Busy state store refuses the reload lifecycle lease: no catalogue command holds the state-store lifecycle lease a reload needs
+- condition 43 Automatic plugin reload cannot drain the plugin's admitted work: last-good runtime kept, replacement retried when the work finishes: a held model turn does not establish admitted work in the particular plugin being reloaded; that plugin workload remains unstaged
+- condition 52 Reload mode hybrid (default): hot-applies safe changes, restarts automatically when required: ambient, but no persona trait provides it and no setup phase starts it
+- condition 61 Model selection and provider change: hot-applies without draining the Codex plugin; catalog compatibility metadata never becomes a request override: event-reload-codexnodrain records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
+- condition 64 Channel transport edit: prepared session rows and model catalogs retained: event-reload-transport records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
+- condition 65 Model or provider authentication input change: catalog requests wait for the replacement publication: event-reload-authinputs records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
+- condition 66 session.store change: conversations not migrated, queued notifications end store-replaced, pending child-result delivery suspended: event-reload-storechange records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
+- condition 70 Sessions and messages settings change: no restart; debounce at next admission, ack reactions on later turns, admitted turns keep their policy: event-reload-debounce records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
+- condition 74 Approval and install policy change: applies to subsequent operations; approval expiry affects new grants: event-reload-opsettings records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
+- condition 75 Diagnostics and ACP change: subsequent operations; diagnostics.enabled live; only the OTel exporter restarts: event-reload-subsequentops records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
+- condition 76 Updates and telemetry settings change: next check; a pending countdown rechecks; an applying update keeps its target: event-reload-updatetele records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
+- condition 77 Hosted URL change (gateway.publicOrigin, mcp.apps.sandboxOrigin): new URLs, disallowed browsers reconnect: event-reload-hostedurl records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
+- condition 78 Gateway HTTP API change: applies at the next request: needs a request to the affected HTTP endpoint; no catalogue command sends one
+- condition 79 Gateway tools and nodes change: node command policy updates connected nodes, revoking cancels active invocations, pairing policy rechecks pending approvals: event-hot-reload-nodes records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
+- condition 81 Gateway push relay change: applies at the next push: event-hot-reload-push records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
+- condition 82 Gateway terminal change: new terminals get the new shell, disabling closes terminals, not delayed by an unrelated deferred restart: event-reload-terminal records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
+- condition 83 Desktop and Cloud Worker settings change: owning service reconciled, new workers get new profiles: event-hot-reload-desktop records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
+- condition 85 Gateway access policy change (roles, trusted proxies, identity scopes): clients reconnect under current authority, an owner grant change revokes retained work: event-reload-access records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
+- condition 86 Meeting capture change: capture writers reconciled, title edits apply to future captures: event-reload-meeting records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
+- condition 87 Gateway auth rate-limit change: recorded failures and lockouts retained, removal restores defaults: event-reload-authrate records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
+- condition 88 Discovery visibility change: advertisements replaced without interrupting connections: event-reload-discovery records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
+- condition 89 Browser defaults change: next request or next use, externally attached browsers keep running: event-hot-reload-browser records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
+- condition 90 Browser control policy change: Browser control service replaced, pending operations cancelled, owned Chrome closed: event-reload-browserctl records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
+- condition 94 Audit collection toggled (logging.audit): applies to later events, disabling drains accepted writes, enabling does not backfill: event-reload-audit records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
+- condition 95 Control UI allowedOrigins narrowed: pending handshakes recheck, disallowed browser connections close, a removed admitted origin's runs are revoked: event-reload-origins records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
+- condition 96 Control UI disabled then re-enabled: pages stop serving; re-enabling answers 503 until assets are ready: event-reload-uidisabled records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
+- condition 97 Custom plugin UI toggled: connected pages refresh plugin views, disabling removes custom views: event-reload-customui records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
+- condition 98 TLS certificate files replaced at the accepted paths: valid material served without interrupting connections, invalid replacement keeps the previous material: TLS certificate files replaced at the accepted paths: the persona Gateway serves loopback HTTP; needs a TLS env (persona addition gateway-tls-files) and a script that replaces the certificate files
+- condition 99 SecretRef-managed Gateway credential without an explicit gateway.auth.mode: rotation not eligible for hot reload: SecretRef-managed Gateway credential without an explicit gateway.auth.mode: rotating a SecretRef-managed Gateway credential would cut the harness's own connection
+- condition 101 Canvas enablement change: current-protocol nodes whose hosted capabilities change reconnect, legacy nodes reconnect on descriptor change: Canvas enablement change: needs paired nodes with hosted canvas capabilities, owned by nodes
+- condition 103 Agent requests waiting to start pause while plugin hot reload drains the old runtime, then continue with the replacement or the rollback: a held model turn does not establish admitted work in the particular plugin being reloaded; that plugin workload remains unstaged
+- condition 106 Channel or plugin hot reload: Gateway-hosted channel webhook routes answer 503 with Retry-After: 1 until replacement ingress registers: Channel or plugin hot reload: needs a Gateway-hosted channel webhook route; the persona's test channels have none
+- condition 143 Include path of 4096 characters or more before or after resolution: clear error: ambient, but no persona trait provides it and no setup phase starts it
+- condition 151 Schema-valid authorable path that is unset: config get explains the runtime default: ambient, but no persona trait provides it and no setup phase starts it
+- condition 152 OpenClaw-managed meta paths (meta.lastTouchedVersion, meta.migrations.*) maintained on writes: ambient, but no persona trait provides it and no setup phase starts it
+- condition 169 No interactive terminal: configure prints the equivalent config get, set, patch and validate commands and exits with an error: ambient, but no persona trait provides it and no setup phase starts it
+- condition 174 Default dated log file under /tmp/openclaw, named per profile: ambient, but no persona trait provides it and no setup phase starts it
+- condition 175 /tmp/openclaw unsafe or unavailable: log directory falls back under the OS temp dir: /tmp/openclaw unsafe or unavailable: needs an unsafe or unwritable /tmp/openclaw on the harness host
+- condition 188 Input method composing in Search settings: Escape stays with the input method: ambient, but no persona trait provides it and no setup phase starts it
+- condition 194 Save outcome unknown: draft kept and unrelated settings writes paused until a refresh confirms or the user retries or discards: ambient, but no persona trait provides it and no setup phase starts it
+- condition 197 Chosen Lobsterdex lobster not unlocked in this browser: Default shown, choice kept: ambient, but no persona trait provides it and no setup phase starts it
+- condition 199 Token-mode connection: secret remembered in session storage for the tab and Gateway only: ambient, but no persona trait provides it and no setup phase starts it
+- condition 201 Healthy unchanged connection: Connected without a Connect action: ambient, but no persona trait provides it and no setup phase starts it
+- condition 212 Browser-local tweakcn import present: never uploaded, not synced: ambient, but no persona trait provides it and no setup phase starts it
+- condition 215 Explicit accent and font overrides set: they take precedence over the theme: ambient, but no persona trait provides it and no setup phase starts it
+- condition 217 Increased contrast or forced colors: background artwork hidden, composers opaque: ambient, but no persona trait provides it and no setup phase starts it
+- condition 218 Reduced transparency: composers opaque: ambient, but no persona trait provides it and no setup phase starts it
+- condition 219 Reduced motion: modal dialogs open and close without animation: ambient, but no persona trait provides it and no setup phase starts it
+- condition 224 Older Control UI reader meeting the theme accent value: falls back to inherited colors: Older Control UI reader meeting the theme accent value: needs an older Control UI build reading the same Gateway
+- condition 229 Open links outside OpenClaw enabled: web links use ordinary browser navigation, preview cards follow it: ambient, but no persona trait provides it and no setup phase starts it
+- condition 230 Existing Open links in Control UI browser preference: restored when external opening is turned off: ambient, but no persona trait provides it and no setup phase starts it
+- condition 233 Native embed presentation: settings without Dashboard chrome, Back follows app history: ambient, but no persona trait provides it and no setup phase starts it
+- condition 235 Gateway running from a source checkout on a branch other than main: footer shows the branch: Gateway running from a source checkout on a branch other than main: the persona runtime is an npm release; needs a source-checkout Gateway (persona addition gateway-source-checkout)
+- condition 239 Sidebar collapsed in one tab: not remembered across tabs, windows or reloads; width remembered: ambient, but no persona trait provides it and no setup phase starts it
+- condition 240 Approval requested by another session shown inline: the requesting session's title is used: Approval requested by another session shown inline: owned by approvals; needs a pending exec approval raised from another session
+- condition 241 Incomplete array-row edit: stays with its item when earlier rows are removed or other settings edited: ambient, but no persona trait provides it and no setup phase starts it
+- condition 246 Update applies runtime config migrations before candidate validation through the backup and include-aware write: Update applies runtime config migrations before candidate validation through the backup and include-aware write: needs an update run, owned by update and excluded by the bound
+- condition 293 Update rehearsal imports cron quarantine rows into a private copy; the live Doctor phase archives them after installation: Update rehearsal imports cron quarantine rows into a private copy; the live Doctor phase archives them after installation: needs an update run, owned by update and excluded by the bound
+- condition 311 One plugin pending while other channels finish; replacing it runs the migration before its runtime starts: One plugin pending while other channels finish; replacing it runs the migration before its runtime starts: needs separately installed Feishu, Teams, Nextcloud Talk or Telegram plugin packages
+- condition 314 Read-only external config source needing the listener migration: the startup error directs updating the source and marker: Read-only external config source needing the listener migration: needs read-only config and a pending listener migration staged together; not staged
+- condition 316 Older host refuses a separately installed Feishu, Teams, Nextcloud Talk or Telegram plugin needing 2026.9.9: Older host refuses a separately installed Feishu, Teams, Nextcloud Talk or Telegram plugin needing 2026.9.9: needs a channel plugin package requiring a newer host
+- condition 322 Published updater invoking Doctor without --fix still runs the Talk inheritance repair: Published updater invoking Doctor without --fix still runs the Talk inheritance repair: needs a published updater invoking Doctor, owned by update
+- condition 326 Update driven by an older version defers plugin installation; pending inputs protected: Update driven by an older version defers plugin installation; pending inputs protected: needs an update driven by an older version, owned by update
+- condition 343 Git checkout with interactive Doctor: an update is offered before the checks: Git checkout with interactive Doctor: the persona runtime is an npm release; needs a git-checkout install (persona addition gateway-source-checkout)
+- condition 344 Externally managed install: Doctor continues without offering self-update: Externally managed install: needs a deployment-managed install
+- condition 351 Updater that defers plugin repair or advertises a later config handoff: automatic normalization deferred: Updater that defers plugin repair or advertises a later config handoff: needs an updater advertising a deferred config handoff, owned by update
+- condition 352 Older Git updater holding an in-memory config snapshot: Doctor preserves the config, even with --fix: Older Git updater holding an in-memory config snapshot: needs an older Git updater holding a config snapshot, owned by update
+- condition 354 Config inputs (revision, included files, environment-resolved values) change during a Doctor run: change reported, rerun required: needs an edit landing while Doctor is migrating; no catalogue command times one
+- condition 356 Model-retirement repairs during an update wait for plugin convergence: Model-retirement repairs during an update wait for plugin convergence: needs an update run with plugin convergence, owned by update
+- condition 432 Agent roster, session policy, store topology, model reference or channel activation change invalidates affected facts: event-reload-invalidate records saved/applied config and reload logs but does not drive the dependent consumer or its active-work state
+- condition 434 Gateway accepts its configured secret sent as either token or password; the auth mode selects the secret: ambient, but no persona trait provides it and no setup phase starts it
+- condition 447 Advisory inspection failure at startup recorded with guidance; startup continues: Advisory inspection failure at startup recorded with guidance; startup continues: needs the startup advisory inspection itself to fail
+- condition 458 Raw-editor drafts are manual-save only: ambient, but no persona trait provides it and no setup phase starts it
+- condition 460 Downgrade to a Gateway whose ui.prefs.accent accepts only hex colors: Downgrade to a Gateway whose ui.prefs.accent accepts only hex colors: needs an older Gateway build
+- condition 462 Devices node-binding controls pause while configuration reloads: Devices node-binding controls pause while configuration reloads: needs a paired node with Devices node bindings
 - OTLP log records (entry point): needs an OTLP collector configured as an exporter
 - Provider errors (entry point): needs a provider error body carrying a secret value; the mock provider's error reply carries none
 - Exec approval display (entry point): needs an exec approval request whose command carries a secret value
@@ -116,7 +136,7 @@ Persona additions:
 - config-shell-env-import: env.shellEnv enabled and a key that only the login shell of the env host user exports (none)
 - config-ui-accent-layers: a profile ui.accent preference, a gateway-wide ui.prefs.accent and a ui.seamColor all set (none); run 1 described it as: ui.prefs.accent and ui.seamColor configured on the Gateway (none)
 - config-write-fixtures: full configs for config.apply that shrink the file by more than half, drop the effective gateway.mode, omit meta, and hold a redacted *** placeholder (clobberShrink, clobberModeDrop, clobberNoMeta, redactedPlaceholder)
-- config-writer-targets: targets other-area writes and file settings may use: a spare agent id and workspace, an alternate session store path and a log file path (spareAgentId, spareWorkspace, storePath, logFile)
+- config-writer-targets: targets other-area writes and file settings may use: an alternate workspace, session store and log path for other-area writes; these differ from the disposable agent workspace (spareWorkspace, storePath, logFile)
 - configure-answers: pseudo-terminal answer files for openclaw configure sections, one per scenario (gateway, pathmismatch, pathunverified, remotemode, nosystemagent)
 - connection-shared-token: a Control UI connection authenticated only with the shared token and no authenticated profile (none)
 - gateway-public-origin: the env's public Gateway origin (origin)
@@ -142,9 +162,15 @@ Persona additions:
 - workspace-retired-setup-state: a workspace directory holding the retired nested .openclaw/workspace-state.json (none)
 - plugins-bundled-and-external (provided): add the key externalPluginPackage, which a phase now reads
 - session-pair-watched (provided): add the key keyA, which a phase now reads
-- config-file-absent: an installation with no openclaw.json; it needs its own persona variant, since one persona environment is cloned per side (none) (named for an uncovered condition; no phase requires it yet)
-- config-path-symlinked: a symlinked openclaw.json layout (none) (named for an uncovered condition; no phase requires it yet)
-- gateway-auth-password: a Gateway on password auth; it needs its own persona variant or a second Gateway prepared per side (none) (named for an uncovered condition; no phase requires it yet)
-- gateway-remote-mode: a config in remote Gateway mode; it needs a remote Gateway prepared per side (none) (named for an uncovered condition; no phase requires it yet)
+- config-file-absent: a separate installation with no openclaw.json, imported afresh per run clone; only the first-save phase uses it (env)
+- config-path-symlinked: a separate installation with a symlinked openclaw.json whose target is retained in its export and remapped into each run clone (env)
+- gateway-auth-password: a separate Gateway with synthetic password authentication, cloned per run clone (env)
+- gateway-remote-mode: a remote-mode CLI installation and reachable Gateway, exported and cloned per run clone (env)
 - gateway-source-checkout: a Gateway running from a git checkout on a branch other than main (named for uncovered conditions; not required by a phase) (env) (named for an uncovered condition; no phase requires it yet)
 - gateway-tls-files: a Gateway serving TLS from certificate and key files the harness may replace (certPath, keyPath) (named for an uncovered condition; no phase requires it yet)
+- config-webhook-fresh: a separate fresh installation without the webhook migration marker; its environment is cloned independently from config-file-absent (env)
+- gateway-second-instance (provided): its env key must resolve to the per-run clone, including every Control UI Gateway-switch flow
+- config-disposable-agent: an unused agent id and new workspace, distinct from config-writer-targets, created and deleted in the same operation (spareAgentId, spareWorkspace)
+- config-nix-host: a Nix-managed installation with immutable config, cloned and switched to the compared runtime per run clone (env)
+
+Fixture requirements: config-legacy-agents-list.ownerlessCron and sqlOwnerCron provide the config and state/openclaw.sqlite together; config-invalid-fixture.noLastGood includes explicit absences for last-known-good and rejected recovery files; config-fixtures.fleetNoSystemAgent includes the roster and System Agent absence. Every staged fixture lists all affected paths, including included config and retired state, in its saved receipt.
