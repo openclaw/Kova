@@ -144,17 +144,15 @@ async function verifyImportBoundaries({ check, root, packageRoot, configured, na
   const marker = join(root, "candidate-imported");
   const canary = `import { writeFileSync } from "node:fs"; writeFileSync(${JSON.stringify(marker)}, "imported");\n`;
   await writeFile(join(packageRoot, "package.json"), JSON.stringify({
-    type: "module", exports: { "./plugin-sdk/channel-message": "./channel-message.mjs" }
+    type: "module", exports: { "./plugin-sdk/channel-outbound": "./channel-outbound.mjs" }
   }));
-  await writeFile(join(packageRoot, "channel-message.mjs"), canary + `
-    export const listDeclaredDurableFinalCapabilities = Object.keys;
-    export const listDeclaredChannelMessageLiveCapabilities = Object.keys;
-    export const listDeclaredLivePreviewFinalizerCapabilities = Object.keys;
-    export const listDeclaredReceiveAckPolicies = value => value.supportedAckPolicies;
-    export const verifyDurableFinalCapabilityProofs = () => {};
-    export const verifyChannelMessageLiveCapabilityProofs = () => {};
-    export const verifyLivePreviewFinalizerCapabilityProofs = () => {};
-    export const verifyChannelMessageReceiveAckPolicyProofs = () => {};
+  await writeFile(join(packageRoot, "channel-outbound.mjs"), canary + `
+    const verified = (keys) => keys.map((capability) => ({ capability, status: "verified" }));
+    export const verifyDurableFinalCapabilityProofs = ({ capabilities }) => verified(Object.keys(capabilities));
+    export const verifyChannelMessageLiveCapabilityAdapterProofs = ({ adapter }) => verified(Object.keys(adapter.live.capabilities));
+    export const verifyChannelMessageLiveFinalizerProofs = ({ adapter }) => verified(Object.keys(adapter.live.finalizer.capabilities));
+    export const verifyChannelMessageReceiveAckPolicyAdapterProofs = ({ adapter }) =>
+      adapter.receive.supportedAckPolicies.map((policy) => ({ policy, status: "verified" }));
   `);
   const { loadChannelCapabilities } = await import("../src/registries/channel-capabilities.mjs");
   const [channel] = await loadChannelCapabilities("telegram");
