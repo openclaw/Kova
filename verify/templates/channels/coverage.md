@@ -8,6 +8,7 @@ Breaks mapped: 3/6
 Counting rule: these counts describe the written plan after the declared helpers and persona additions exist; no phase has been executed as this template. An operation is covered when a phase performs it without a real platform account. An event condition is covered when its event flow can perform it without a real platform account. An ambient condition is covered by the persona content or the setup that supplies it. Entry points count as placed when assigned to one operation, even when a live adapter remains outside reach. Incomplete flows and account-dependent flows remain listed below; a combined condition is not counted as fully planned while one of its variants remains outside reach.
 
 Uncovered:
+- 573. Claim taken by another owner during fan-in adoption fails the rest (condition): outside reach. No supplied fixture performs a genuine native ownership transition for the captured live claim. A callback exception or direct database identity rewrite does not establish another native owner; successful multiple-claim settlement remains planned under 572.
 - 589. Ambiguous provider send reconciled automatically (condition): outside reach. Telegram has no automatic reconciliation opt-in/callback, and the current conformance adapter has no authoritative persisted provider proof or reconciliation callback. Lost-response injection plus restart cannot supply these capabilities. Matrix has the native capability but needs a real account and a supplied correlated provider fixture.
 - 377. Failed or blocked draft write leaves previous plan (condition): outside reach. The native progress_card tool calls in-process progressCard.put and emits a replacement plan only after a successful result. A Telegram editMessageText fault cannot induce that write failure. No supported owner-scoped public or OS failure fixture is supplied; the existing recipe retains successful create/clear coverage for 376 only.
 - 427. Durable delivery producer claim expired or replaced, budget not charged (condition): partially covered by event-send-started-lease-expired for expiry only. Replaced-owner reservation remains outside reach: the declared fixture has no independent native owner that can replace this exact queue claim while the stale caller remains live. No replacement flow or synthetic claim mutation is credited.
@@ -140,7 +141,7 @@ Uncovered:
 - 522. Mattermost slash command registration failed, callbacks rejected (condition): its event phases (event-mattermost-invalid-command-token, event-mm-command-registration) need a real Mattermost account; written, outside reach
 - 524. QR login completes in web.login.wait and starts the channel (condition): its event phase (event-web-login-completes) needs a real WhatsApp account; written, outside reach
 - 532. Plugin using deprecated MediaPath/MediaUrls context fields (condition): no phase runs under it: its persona trait channel-plugin-legacy-media-fields is required by no phase
-- 558. Per-message authentication map missing a field treated as unverified (condition): its event phase (event-auth-map-missing-field) needs a real Slack account; written, outside reach
+
 - 559. Third-party plugin on deprecated dangerous or mutableIdentifierMatching fields (condition): outside reach: third-party legacy channel plugin
 - 596. Question choices as text or numbered reactions where native callbacks unavailable (condition): its event phase (event-question-on-limited-channels) needs a real LINE and WhatsApp account; written, outside reach
 - 619. WhatsApp with messages.ackReaction unset sends no acknowledgment (condition): needs a WhatsApp phone
@@ -172,8 +173,8 @@ Every listed key identifies a value containing only letters, digits and . _ - : 
 - channel-bot-thread: unmentioned follow-ups accepted in a confirmed bot-created thread (requireMentionInBotThreads false) (evictedThreadId, threadId)
 - channel-broadcast-group: a qualified broadcast room on the conformance channel with two participant agents (handles and mention patterns), a spare agent listed in it, and mock markers for a follow-up round, an all-pass round and one failing participant; and broadcast group threads with three agents and distinct mention patterns: a two-round group, a sequential group, a small-budget group, a no-selection group, a route-bound peer, a failing participant and a peer with a configured ACP binding (acpBoundGroup, agentA, agentB, agentC, budgetGroup, failingAgentGroup, groupId, noSelectionGroup, passMarker, roundsGroup, senderPeer, sequentialGroup)
 - channel-cli-wizard-answers: scripted answer files for the configure channels section and the guided Telegram add (configureAnswers, telegramAnswers)
-- channel-config-variants: config patch files the event phases apply: messages, mention, debounce and channels.defaults changes, an added account and a single-account shape to promote (debouncePatch, mentionPatch, messagesPatch, singleAccountPatch)
-- channel-debounce: inbound debounce configured for a burst peer and set to 0 for another (burstPeer, noDebouncePeer)
+- channel-config-variants: config patch files the event phases apply: messages, mention and channels.defaults changes, an added account and a single-account shape to promote (mentionPatch, messagesPatch, singleAccountPatch)
+- channel-debounce: an already supplied conformance receive fixture owning the installed native SDK debouncer, live runtime-config reads, public pending/flush observations and genuine ingress claim lifecycles; account, sender and separate conversation identities are explicit, and helpers apply and restore channel-wide delays of 0, 1000 and 30000ms. Peer names do not select config. The fixture publicly declares messages.inbound as a live-read reload prefix and remains the same instance across the pending-config observation. This capability is unavailable until implemented (accountId, burstPeer, fixture, noDebouncePeer, sender)
 - channel-delivery-queued: queued outbound deliveries pending on a slow Telegram chat (slowChatId)
 - channel-discord-fixture: a Discord account on the fixture with a guild, channels (allowlisted, unmapped, ambient, unlisted, no-intent), DM user, member, victim users, role, sticker, message ids, an uncached channel name, an alias handle and a video attachment carrying duration_secs; CLI and tool kick/ban subjects are distinct from one another and from role/timeout subjects; discovery gates for roles, moderation, presence and upload actions used here are enabled (aliasHandle, audienceUserId, botMessageId, channelId, channelSessionKey, cliBanUserId, cliKickUserId, dmUserId, guildId, messageId, roleId, stickerId, toolBanUserId, toolKickUserId, uncachedChannelName, userId, victimUserId, videoWithDurationPath)
 - channel-dm-history: dmHistoryLimit with per-DM overrides, an account dms map replacing the root map, and an ambiguous DM session without an observed peer (accountMapAccountId, accountMapPeer, ambiguousPeer, limitedPeer)
@@ -676,3 +677,146 @@ Native send fixture prerequisites:
 - channel-telegram-shim:preconnectFixtureFile: Nonsecret manifest of the supplied exclusive shim listener/controller identity, bound loopback host/port, exact preconnectAccountId, controlled socket/listener close/rebind capability and native retry-diagnostic observer. Contains no credential values. Preflight verifies no other account/ambient/controller depends on this endpoint. Missing ownership/capability is unavailable; never substitute the shared Telegram shim. Capture the effective native account apiRoot and compare it to this manifest before closing the endpoint. Resolve the account through its actual merged Telegram config, not merely a persona label.
 - channel-probe-conversations: The native batch cases use the existing accountId/dmPeer plus a captured real configured session/delivery context when recording route/mirror evidence; the future conformance-plugin method invokes public sendDurableMessageBatch with two or three literal source payloads. It must record real public adapter callbacks and receipts; no new model batch response grammar, private product hook, store mutation or reconciliation proof is supplied.
 - plugin-message-hooks: For durable-batch.mixed-outcomes, cancellation targets only source payload B through its exact marker, account, target and invocation. A and C do not carry the cancellation marker; C's provider failure is separate and must reach its actual callback. Restore only this fixture predicate after the batch.
+
+Ordinary conformance Gateway send and message.action observations each have one canonical invocation; changing only a short payload label or fresh idempotency token does not create another variant. The receipt event retains one CLI dry-run with its failed/suppressed reply sequence and route-state observations. Selectors and prerequisites from removed duplicates are carried to those owners. Queued sends, hook markers, formatting/length/media, explicit source contexts, native entry points and captured resource or same-key retry sequences remain distinct. No condition, entry point or recorded discovery share changes.
+
+Native recovery fixture qualification:
+- channel-telegram-shim:preconnectFixtureFile: Durable recovery/exhaustion also uses this same pre-supplied exclusive endpoint. Its controller must keep the listener live for inbound admission/provider hold, then establish actual refused connect across every native send retry and retain the outage across any Gateway restart. It records safe close/rebind and real fault consumption, contains no product queue data, and restores the endpoint before account reactivation. A failure branch with socket reset, post-send evidence or missing syscall proof remains the native uncertain outcome.
+- channel-probe-conversations: Recovery no-send variants require the future existing fixture's actual public message adapter callback to throw retryable PlatformMessageNotDispatchedError before any visible effect. Its external fault controller is scope-bound across restart; native queue identity/owner/state comes only from real core persistence. Confirmed-owner observation uses the public afterSendSuccess callback only after a real receipt. Neither capability changes product queue data or supplies automatic unknown-send reconciliation.
+- channel-delivery-queued: Do not infer separate session-delivery-queue or ingress-drain backlog from an outbound send failure. The corrected restart/recovery flows create and capture one actual outbound delivery plus any native completion owner; a separately claimed session-delivery row needs its own existing native producer and captured identity.
+- channel-telegram-shim:preconnectAccountId: Recovery/exhaustion uses this actual pre-supplied native apiRoot account. The owning helper temporarily applies/restores final-only account streaming after native adoption, while its endpoint is still live; inbound admission and a real scoped held provider request precede closing the endpoint. Endpoint restoration precedes native account restoration after every observed restart/outage.
+Replayable outbound recovery requires an actual retained no-send row before restart; ambiguous delivery stays separate. The existing recovery helper owns scoped fault release, endpoint reopening before account restoration, native scheduler observations and bounded cleanup. Generic failure does not establish a separate ingress or session-delivery backlog.
+
+Remaining live settings now use actual account-level transport, identity, scope, credential-source, daemon and mode fixtures. Room-specific variants retain their actual native membership, allowlist, invite, thread and encryption facts; peer names do not configure these states. Slack Socket Mode and HTTP accounts are distinct, and real thread inputs carry both channel and thread identity. Matrix invites use native membership events and selected auto-join accounts; Signal selects its actual daemon/account; workplace and external plugin cases require their real native configuration/event contracts. Existing real-platform exclusions remain. Generic condition558 is now planned through the existing conformance admission fixture with an explicitly present authentication map omitting a declared field, preserving native denial and without forcing authorization. Its unsupported native Slack producer is not claimed. Condition574 retains event-ingress-deferred-slots as its finite-capacity conformance owner; the unsupported Slack-only duplicate is removed. This adds one planned condition and no new condition, entry point or derivation credit.
+
+Additional native platform fixtures:
+- channel-slack-native-fixtures: Supplied task-owned native content for the corresponding canonical support.toWrite recipes; live-platform availability and exclusive custody remain required. (channelScopeAccountId, channelScopeChannel, channelScopeThreadTs, enterpriseAccountId, enterpriseChannel, failedChannel, failedProgressScript, failedThreadTs, historyChannel, httpAccountId, httpChannel, initialHistoryAccountId, initialHistoryChannel, initialHistoryThreadTs, joinedMpim, joinedThreadChannel, joinedThreadTs, linkReplyScript, missingHistoryAccountId, nameKeyedChannel, namePolicyAccountId, pairingAccountId, partialAccountId, partialChannel, partialScript, partialThreadTs, progressChannel, progressDm, progressDmAccountId, progressScript, progressThreadTs, recipesFile, registryAccountId, socketAccountId, socketChannel, socketProgressAccountId, teamBoundAccountId, teamChannel, threadProgressAccountId, threadScopeAccountId, threadScopeChannel, threadScopeThreadTs, unapprovedDm, unavailableTokenAccountId, unfurlChannel, unfurlsOffAccountId, unjoinedChannel, unlistedChannel, userAccountId, userChannel)
+- channel-slack-native-fixtures:channelScopeAccountId: Actual supplied native fixture value for channelScopeAccountId.
+- channel-slack-native-fixtures:channelScopeChannel: Actual supplied native fixture value for channelScopeChannel.
+- channel-slack-native-fixtures:channelScopeThreadTs: Actual supplied native fixture value for channelScopeThreadTs.
+- channel-slack-native-fixtures:enterpriseAccountId: Actual supplied native fixture value for enterpriseAccountId.
+- channel-slack-native-fixtures:enterpriseChannel: Actual supplied native fixture value for enterpriseChannel.
+- channel-slack-native-fixtures:failedChannel: Actual supplied native fixture value for failedChannel.
+- channel-slack-native-fixtures:failedProgressScript: Actual supplied native fixture value for failedProgressScript.
+- channel-slack-native-fixtures:failedThreadTs: Actual supplied native fixture value for failedThreadTs.
+- channel-slack-native-fixtures:historyChannel: Actual supplied native fixture value for historyChannel.
+- channel-slack-native-fixtures:httpAccountId: Actual supplied native fixture value for httpAccountId.
+- channel-slack-native-fixtures:httpChannel: Actual supplied native fixture value for httpChannel.
+- channel-slack-native-fixtures:initialHistoryAccountId: Actual supplied native fixture value for initialHistoryAccountId.
+- channel-slack-native-fixtures:initialHistoryChannel: Actual supplied native fixture value for initialHistoryChannel.
+- channel-slack-native-fixtures:initialHistoryThreadTs: Actual supplied native fixture value for initialHistoryThreadTs.
+- channel-slack-native-fixtures:joinedMpim: Actual supplied native fixture value for joinedMpim.
+- channel-slack-native-fixtures:joinedThreadChannel: Actual supplied native fixture value for joinedThreadChannel.
+- channel-slack-native-fixtures:joinedThreadTs: Actual supplied native fixture value for joinedThreadTs.
+- channel-slack-native-fixtures:linkReplyScript: Actual supplied native fixture value for linkReplyScript.
+- channel-slack-native-fixtures:missingHistoryAccountId: Actual supplied native fixture value for missingHistoryAccountId.
+- channel-slack-native-fixtures:nameKeyedChannel: Actual supplied native fixture value for nameKeyedChannel.
+- channel-slack-native-fixtures:namePolicyAccountId: Actual supplied native fixture value for namePolicyAccountId.
+- channel-slack-native-fixtures:pairingAccountId: Actual supplied native fixture value for pairingAccountId.
+- channel-slack-native-fixtures:partialAccountId: Actual supplied native fixture value for partialAccountId.
+- channel-slack-native-fixtures:partialChannel: Actual supplied native fixture value for partialChannel.
+- channel-slack-native-fixtures:partialScript: Actual supplied native fixture value for partialScript.
+- channel-slack-native-fixtures:partialThreadTs: Actual supplied native fixture value for partialThreadTs.
+- channel-slack-native-fixtures:progressChannel: Actual supplied native fixture value for progressChannel.
+- channel-slack-native-fixtures:progressDm: Actual supplied native fixture value for progressDm.
+- channel-slack-native-fixtures:progressDmAccountId: Actual supplied native fixture value for progressDmAccountId.
+- channel-slack-native-fixtures:progressScript: Actual supplied native fixture value for progressScript.
+- channel-slack-native-fixtures:progressThreadTs: Actual supplied native fixture value for progressThreadTs.
+- channel-slack-native-fixtures:recipesFile: Structured descriptor of approved existing native configuration, identities, observers and case inputs; never secrets or arbitrary code.
+- channel-slack-native-fixtures:registryAccountId: Actual supplied native fixture value for registryAccountId.
+- channel-slack-native-fixtures:socketAccountId: Actual supplied native fixture value for socketAccountId.
+- channel-slack-native-fixtures:socketChannel: Actual supplied native fixture value for socketChannel.
+- channel-slack-native-fixtures:socketProgressAccountId: Actual supplied native fixture value for socketProgressAccountId.
+- channel-slack-native-fixtures:teamBoundAccountId: Actual supplied native fixture value for teamBoundAccountId.
+- channel-slack-native-fixtures:teamChannel: Actual supplied native fixture value for teamChannel.
+- channel-slack-native-fixtures:threadProgressAccountId: Actual supplied native fixture value for threadProgressAccountId.
+- channel-slack-native-fixtures:threadScopeAccountId: Actual supplied native fixture value for threadScopeAccountId.
+- channel-slack-native-fixtures:threadScopeChannel: Actual supplied native fixture value for threadScopeChannel.
+- channel-slack-native-fixtures:threadScopeThreadTs: Actual supplied native fixture value for threadScopeThreadTs.
+- channel-slack-native-fixtures:unapprovedDm: Actual supplied native fixture value for unapprovedDm.
+- channel-slack-native-fixtures:unavailableTokenAccountId: Actual supplied native fixture value for unavailableTokenAccountId.
+- channel-slack-native-fixtures:unfurlChannel: Actual supplied native fixture value for unfurlChannel.
+- channel-slack-native-fixtures:unfurlsOffAccountId: Actual supplied native fixture value for unfurlsOffAccountId.
+- channel-slack-native-fixtures:unjoinedChannel: Actual supplied native fixture value for unjoinedChannel.
+- channel-slack-native-fixtures:unlistedChannel: Actual supplied native fixture value for unlistedChannel.
+- channel-slack-native-fixtures:userAccountId: Actual supplied native fixture value for userAccountId.
+- channel-slack-native-fixtures:userChannel: Actual supplied native fixture value for userChannel.
+- channel-slack-native-fixtures: Native account, transport, event and cleanup requirements are specified by the existing helper recipe contracts in support.toWrite; recipe names alone supply no capability.
+- channel-matrix-native-fixtures: Supplied task-owned native content for the corresponding canonical support.toWrite recipes; live-platform availability and exclusive custody remain required. (allowedInviteRoomFile, alwaysInviteRoomFile, autoJoinAllowlistAccountId, autoJoinAlwaysAccountId, autoJoinOffAccountId, backupAccountId, encryptedAccountId, encryptedRoomFile, firstDmRoomFile, gatedRoomFile, namePolicyAccountId, nameRoomFile, offInviteRoomFile, pairingAccountId, pairingRoomFile, perRoomAccountId, policyAccountId, privateNetworkAccountId, privateRoomFile, proxyAccountId, proxyRoomFile, recipesFile, startupAccountId, verificationAccountId, secondDmRoomFile)
+- channel-matrix-native-fixtures:allowedInviteRoomFile: Actual supplied native fixture value for allowedInviteRoomFile.
+- channel-matrix-native-fixtures:alwaysInviteRoomFile: Actual supplied native fixture value for alwaysInviteRoomFile.
+- channel-matrix-native-fixtures:autoJoinAllowlistAccountId: Actual supplied native fixture value for autoJoinAllowlistAccountId.
+- channel-matrix-native-fixtures:autoJoinAlwaysAccountId: Actual supplied native fixture value for autoJoinAlwaysAccountId.
+- channel-matrix-native-fixtures:autoJoinOffAccountId: Actual supplied native fixture value for autoJoinOffAccountId.
+- channel-matrix-native-fixtures:backupAccountId: Actual supplied native fixture value for backupAccountId.
+- channel-matrix-native-fixtures:encryptedAccountId: Actual supplied native fixture value for encryptedAccountId.
+- channel-matrix-native-fixtures:encryptedRoomFile: Actual supplied native fixture value for encryptedRoomFile.
+- channel-matrix-native-fixtures:firstDmRoomFile: Actual supplied native fixture value for firstDmRoomFile.
+- channel-matrix-native-fixtures:gatedRoomFile: Actual supplied native fixture value for gatedRoomFile.
+- channel-matrix-native-fixtures:namePolicyAccountId: Actual supplied native fixture value for namePolicyAccountId.
+- channel-matrix-native-fixtures:nameRoomFile: Actual supplied native fixture value for nameRoomFile.
+- channel-matrix-native-fixtures:offInviteRoomFile: Actual supplied native fixture value for offInviteRoomFile.
+- channel-matrix-native-fixtures:pairingAccountId: Actual supplied native fixture value for pairingAccountId.
+- channel-matrix-native-fixtures:pairingRoomFile: Actual supplied native fixture value for pairingRoomFile.
+- channel-matrix-native-fixtures:perRoomAccountId: Actual supplied native fixture value for perRoomAccountId.
+- channel-matrix-native-fixtures:policyAccountId: Actual supplied native fixture value for policyAccountId.
+- channel-matrix-native-fixtures:privateNetworkAccountId: Actual supplied native fixture value for privateNetworkAccountId.
+- channel-matrix-native-fixtures:privateRoomFile: Actual supplied native fixture value for privateRoomFile.
+- channel-matrix-native-fixtures:proxyAccountId: Actual supplied native fixture value for proxyAccountId.
+- channel-matrix-native-fixtures:proxyRoomFile: Actual supplied native fixture value for proxyRoomFile.
+- channel-matrix-native-fixtures:recipesFile: Structured descriptor of approved existing native configuration, identities, observers and case inputs; never secrets or arbitrary code.
+- channel-matrix-native-fixtures:startupAccountId: Actual supplied native fixture value for startupAccountId.
+- channel-matrix-native-fixtures:verificationAccountId: Actual supplied native fixture value for verificationAccountId.
+- channel-matrix-native-fixtures:secondDmRoomFile: Second real owned Matrix DM room with the same partner as firstDmRoomFile, UTF-8 file-backed ID.
+- channel-matrix-native-fixtures: Native account, transport, event and cleanup requirements are specified by the existing helper recipe contracts in support.toWrite; recipe names alone supply no capability.
+- channel-signal-native-fixtures: Supplied task-owned native content for the corresponding canonical support.toWrite recipes; live-platform availability and exclusive custody remain required. (daemonPeer, gatedGroup, groupPolicyAccountId, pairingAccountId, pinnedAccountId, pinnedPeer, recipesFile, silentDaemonAccountId, unapprovedPeer)
+- channel-signal-native-fixtures:daemonPeer: Actual supplied native fixture value for daemonPeer.
+- channel-signal-native-fixtures:gatedGroup: Actual supplied native fixture value for gatedGroup.
+- channel-signal-native-fixtures:groupPolicyAccountId: Actual supplied native fixture value for groupPolicyAccountId.
+- channel-signal-native-fixtures:pairingAccountId: Actual supplied native fixture value for pairingAccountId.
+- channel-signal-native-fixtures:pinnedAccountId: Actual supplied native fixture value for pinnedAccountId.
+- channel-signal-native-fixtures:pinnedPeer: Actual supplied native fixture value for pinnedPeer.
+- channel-signal-native-fixtures:recipesFile: Structured descriptor of approved existing native configuration, identities, observers and case inputs; never secrets or arbitrary code.
+- channel-signal-native-fixtures:silentDaemonAccountId: Actual supplied native fixture value for silentDaemonAccountId.
+- channel-signal-native-fixtures:unapprovedPeer: Actual supplied native fixture value for unapprovedPeer.
+- channel-signal-native-fixtures: Native account, transport, event and cleanup requirements are specified by the existing helper recipe contracts in support.toWrite; recipe names alone supply no capability.
+- channel-workplace-native-fixtures: Supplied task-owned native content for the corresponding canonical support.toWrite recipes; live-platform availability and exclusive custody remain required. (googleFileAccountId, googleFileSpace, googleInlineAccountId, googleInlineSpace, googleRefAccountId, googleRefSpace, ircChannel, ircNickservAccountId, mattermostOncallAccountId, mattermostOncallChannel, mattermostOnmessageAccountId, mattermostOnmessageChannel, mattermostSlashAccountId, recipesFile, teamsAccountId, teamsChannel)
+- channel-workplace-native-fixtures:googleFileAccountId: Actual supplied native fixture value for googleFileAccountId.
+- channel-workplace-native-fixtures:googleFileSpace: Actual supplied native fixture value for googleFileSpace.
+- channel-workplace-native-fixtures:googleInlineAccountId: Actual supplied native fixture value for googleInlineAccountId.
+- channel-workplace-native-fixtures:googleInlineSpace: Actual supplied native fixture value for googleInlineSpace.
+- channel-workplace-native-fixtures:googleRefAccountId: Actual supplied native fixture value for googleRefAccountId.
+- channel-workplace-native-fixtures:googleRefSpace: Actual supplied native fixture value for googleRefSpace.
+- channel-workplace-native-fixtures:ircChannel: Actual supplied native fixture value for ircChannel.
+- channel-workplace-native-fixtures:ircNickservAccountId: Actual supplied native fixture value for ircNickservAccountId.
+- channel-workplace-native-fixtures:mattermostOncallAccountId: Actual supplied native fixture value for mattermostOncallAccountId.
+- channel-workplace-native-fixtures:mattermostOncallChannel: Actual supplied native fixture value for mattermostOncallChannel.
+- channel-workplace-native-fixtures:mattermostOnmessageAccountId: Actual supplied native fixture value for mattermostOnmessageAccountId.
+- channel-workplace-native-fixtures:mattermostOnmessageChannel: Actual supplied native fixture value for mattermostOnmessageChannel.
+- channel-workplace-native-fixtures:mattermostSlashAccountId: Actual supplied native fixture value for mattermostSlashAccountId.
+- channel-workplace-native-fixtures:recipesFile: Structured descriptor of approved existing native configuration, identities, observers and case inputs; never secrets or arbitrary code.
+- channel-workplace-native-fixtures:teamsAccountId: Actual supplied native fixture value for teamsAccountId.
+- channel-workplace-native-fixtures:teamsChannel: Actual supplied native fixture value for teamsChannel.
+- channel-workplace-native-fixtures: Native account, transport, event and cleanup requirements are specified by the existing helper recipe contracts in support.toWrite; recipe names alone supply no capability.
+- channel-external-native-fixtures: Supplied task-owned native content for the corresponding canonical support.toWrite recipes; live-platform availability and exclusive custody remain required. (qqBadCredentialsAccountId, qqBadCredentialsPeer, qqBlockAccountId, qqNoAudioProviderAccountId, qqNoInboundAccountId, qqPeer, qqStreamingPeer, qqVoicePeer, recipesFile)
+- channel-external-native-fixtures:qqBadCredentialsAccountId: Actual supplied native fixture value for qqBadCredentialsAccountId.
+- channel-external-native-fixtures:qqBadCredentialsPeer: Actual supplied native fixture value for qqBadCredentialsPeer.
+- channel-external-native-fixtures:qqBlockAccountId: Actual supplied native fixture value for qqBlockAccountId.
+- channel-external-native-fixtures:qqNoAudioProviderAccountId: Actual supplied native fixture value for qqNoAudioProviderAccountId.
+- channel-external-native-fixtures:qqNoInboundAccountId: Actual supplied native fixture value for qqNoInboundAccountId.
+- channel-external-native-fixtures:qqPeer: Actual supplied native fixture value for qqPeer.
+- channel-external-native-fixtures:qqStreamingPeer: Actual supplied native fixture value for qqStreamingPeer.
+- channel-external-native-fixtures:qqVoicePeer: Actual supplied native fixture value for qqVoicePeer.
+- channel-external-native-fixtures:recipesFile: Structured descriptor of approved existing native configuration, identities, observers and case inputs; never secrets or arbitrary code.
+- channel-external-native-fixtures: Native account, transport, event and cleanup requirements are specified by the existing helper recipe contracts in support.toWrite; recipe names alone supply no capability.
+- channel-discord-live-fixtures: Supplied task-owned native content for the corresponding canonical support.toWrite recipes; live-platform availability and exclusive custody remain required. (audienceAccountId, audienceSender, presenceAccountId, recipesFile)
+- channel-discord-live-fixtures:audienceAccountId: Actual supplied native fixture value for audienceAccountId.
+- channel-discord-live-fixtures:audienceSender: Actual supplied native fixture value for audienceSender.
+- channel-discord-live-fixtures:presenceAccountId: Actual supplied native fixture value for presenceAccountId.
+- channel-discord-live-fixtures:recipesFile: Structured descriptor of approved existing native configuration, identities, observers and case inputs; never secrets or arbitrary code.
+- channel-discord-live-fixtures: Native account, transport, event and cleanup requirements are specified by the existing helper recipe contracts in support.toWrite; recipe names alone supply no capability.
+- env-discord-auto-presence: Supplied task-owned native content for the corresponding canonical support.toWrite recipes; live-platform availability and exclusive custody remain required. (env)
+- env-discord-auto-presence:env: Pre-existing approved persona environment with real Discord account and native auth availability state; the executor clones it per run/side and resolves this env key to that run-owned clone.
+- env-discord-auto-presence: All native product invocations use @{persona:env-discord-auto-presence:env}; helper --env receives the resolved clone ID. No durable source environment, external host, account, permission, auth store or service configuration is mutated to prepare this case.
+
+Condition 573 remains outside reach: no supplied native ownership-transition fixture can take one exact still-live claim from another owner during fan-in adoption. A callback-injected exception or direct database identity rewrite is not that event. The false combined recipe is removed; successful native multiple-claim settlement remains planned under 572. This correction subtracts one fully planned condition, while inventory, entry points, document headings and recorded discovery shares remain unchanged. Applied together with the separate newly supported condition558 correction, the current total remains 542/655.
