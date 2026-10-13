@@ -345,13 +345,13 @@
       "support/verify/channel-adapter-observe.mjs  (the packaged Telegram or Discord inbound and outbound adapter callbacks against the existing shim or fixture; records callback results and platform calls without conformance assertions; --artifact-dir --channel --env --timeout)",
       "support/verify/channel-bound-control.mjs  (sendDurableMessageBatch through the conformance transport to create a callback control; retain the creator as originSubject in the callback record keyed by the generated control/message identity, then capture that record with the response; this is a missing conformance capability using the existing channel ingress SDK, not a new OpenClaw RPC; callbacks read this retained origin and pass the independently authenticated actor to ingress.resolve with authMode origin-subject; --channel --env --label --origin-subject --out --peer --timeout)",
       "support/verify/channel-capabilities-observe.mjs  (channels capabilities and kova.channelProbe.status plus the packaged adapter capability declarations; records the declarations without comparing them to a required set; --artifact-dir --env --timeout)",
-      "support/verify/channel-configured-turn.mjs  (config.get and config.patch on the disposable environment: apply explicit --root-patch and account --channel-patch plus optional agents.defaults changes, record configuration adoption, deliver the actual Telegram/Discord fixture or --admission sdk conformance inbound, join it, and restore all changed keys including absent values in finally; bindings arrays and group maps are replaced for the scoped case and restored without merging stale rules; --parent-peer supplies the actual thread-parent identity to resolveAgentRoute; --routing-owner forwards the supplied configured agent as ResolveAgentRouteInput.defaultAgentId at the actual conformance admission route call; --omit-routing-owner leaves that property absent and must not synthesize an owner from the primary clone, cached account context or first roster entry; a persona --env names that separately cloned environment, whose configuration and admission runtime are used throughout, including restoration; record the effective bindings, relevant roster/owner facts and actual route or product error without asserting the selected result; --account --admission --agent --agent-defaults --artifact-dir --bot-authored --channel --channel-patch --chat-type --env --mention --omit-routing-owner --parent-peer --peer --quote-from --root-patch --routing-owner --sender --text --timeout; --root-patch, --channel-patch and --agent-defaults use actual merge-patch semantics: null removes the named key, never persists null as its config value; root agent entry patches address agents.entries by the already configured --agent id, which must match the actual route; do not create or silently reroute an unknown agent; capture effective channel/account streaming, markdown and routed-agent/default values after adoption before input, reject shadowed prerequisites, preserve null-to-absence restoration, and join the full turn before restoring shared defaults; streaming account fragments inherit root values, so explicit-preview precedence requires block.enabled absent in both root and account; humanDelay and toolProgressDetail overrides at the agent entry must not shadow the intended default; inherited typing requires both entry and defaults fields absent; wrapper supports event and reply-to forwarding for these native cases; --event --reply-to; the existing --channel-patch applies at the real adapter account config when supported, while Teams uses only --root-patch under channels.msteams and rejects an invented accounts subtree; live Mattermost resolves account overrides over root, so the onchar case sets chatmode and oncharPrefixes on the explicitly selected configured account; for these live variants, before any inbound event snapshot exact config and initial account lifecycle, require exclusive disposable test-account custody and real accessible target, patch through config.patch, wait for runtime config adoption, stop and fully join that exact native account, start it again from the adopted configuration and capture a fresh lastStartAt from channels.status plus native running/connected status, existing adapter connection logs or the read-only platform probe; these existing observations establish that the restarted monitor is active without an invented callback-inspection RPC; retain the actual adopted root Teams streaming.mode or merged Mattermost chatmode/oncharPrefixes without exposing credentials; if the adapter, permissions, isolated lifecycle custody, config adoption or native start cannot be established within the command timeout, emit unavailable prerequisites and do not inject the message; after input join native processing/delivery, restore exact changed settings including absence, restart only that account to restore its prior active configuration if it was running, or leave it stopped if initially stopped, and join cleanup even after timeout; the Mattermost onchar input carries a matching prefix and does not rely on mention bypass; the wrapper never emulates account config for a single-account adapter; acknowledgement cases capture the effective global messages.ackReactionScope and statusReactions plus account-resolved ackReaction before input, with no stale global value inferred from peer identity; selected Telegram reactionLevel and actions.reactions are recorded from the merged account, and restored after the completed turn; after configuration adoption it uses channel-inbound-turn\u2019s same scoped marker resolution, real capability capture and cleanup contract, refusing an unavailable script/fault boundary before injection; The listed unavailable helpers additionally accept --ambient-from {run}/channel-turn-in-flight.json. They contact the same ambient controller inside their existing command deadline after each successful native configuration/runtime adoption and before the foreground input or read whose busy-instance condition is required. They repeat the bounded check after restoring configuration and before returning. This includes native account/plugin reloads and a Gateway restart caused by config.patch; a successful config write or disk read is not proof that the previous ambient generation survived. Do not wait for the ambient request itself to complete as part of ordinary adoption. If a native reload cannot adopt while the ambient request remains active, record the actual deferred state, ask its owner to release/join only that ambient request, complete the intended native adoption, and re-admit/capture the replacement before the dependent operation. Intentional mid-turn changes retain their own scenario's holder, claim and exact event ordering; the ambient controller may touch only its separate ambient generation, never the scenario's pending request. If that separation or replacement cannot be established before the native scenario deadline, record the unmet ambient prerequisite and stop the dependent step, then clean up normally. For binding-array replacement, preserve only the previously captured dedicated ambient binding when it is provably disjoint from the selected case's account/peer and leaves the case's effective matching rules unchanged; restore the original full array afterward. Do not merge arbitrary old bindings. If the case requires removal of that exact ambient binding or a conflicting wildcard prevents an equivalent disjoint route, report the unsatisfied concurrent fixture rather than inventing an owner or weakening the case. Direct CLI/config mutations that are followed by another observation in the same phase need the same bounded --ensure-active check after actual adoption; do not insert it between a deliberately captured interruption and that interruption's own observation. UI/wizard helpers apply this boundary to their ordinary post-save observation while retaining the actual save/restart response.; --ambient-from; After native configuration adoption, delegate marker/script selection and native tool evidence to the channel-inbound-turn contract above; preserve the actual account/agent bindings and source sender. Do not choose a script from free-form user prose. Existing phase deadlines and config restoration include this activity. --script-file; Apply the channel-inbound-turn content recipe contract after native configuration adoption and before input; preserve exact existing config/ambient restoration. Table/format/preview content must be selected by explicit marker or file, never inferred from prose.)",
+      "support/verify/channel-configured-turn.mjs  (config.get and config.patch on the disposable environment: apply explicit --root-patch and account --channel-patch plus optional agents.defaults changes, record configuration adoption, deliver the actual Telegram/Discord fixture or --admission sdk conformance inbound, join it, and restore all changed keys including absent values in finally; bindings arrays and group maps are replaced for the scoped case and restored without merging stale rules; --parent-peer supplies the actual thread-parent identity to resolveAgentRoute; --routing-owner forwards the supplied configured agent as ResolveAgentRouteInput.defaultAgentId at the actual conformance admission route call; --omit-routing-owner leaves that property absent and must not synthesize an owner from the primary clone, cached account context or first roster entry; a persona --env names that separately cloned environment, whose configuration and admission runtime are used throughout, including restoration; record the effective bindings, relevant roster/owner facts and actual route or product error without asserting the selected result; --account --admission --agent --agent-defaults --artifact-dir --bot-authored --channel --channel-patch --chat-type --env --mention --omit-routing-owner --parent-peer --peer --quote-from --root-patch --routing-owner --sender --text --timeout; --root-patch, --channel-patch and --agent-defaults use actual merge-patch semantics: null removes the named key, never persists null as its config value; root agent entry patches address agents.entries by the already configured --agent id, which must match the actual route; do not create or silently reroute an unknown agent; capture effective channel/account streaming, markdown and routed-agent/default values after adoption before input, reject shadowed prerequisites, preserve null-to-absence restoration, and join the full turn before restoring shared defaults; streaming account fragments inherit root values, so explicit-preview precedence requires block.enabled absent in both root and account; humanDelay and toolProgressDetail overrides at the agent entry must not shadow the intended default; inherited typing requires both entry and defaults fields absent; wrapper supports event and reply-to forwarding for these native cases; --event --reply-to; the existing --channel-patch applies at the real adapter account config when supported, while Teams uses only --root-patch under channels.msteams and rejects an invented accounts subtree; live Mattermost resolves account overrides over root, so the onchar case sets chatmode and oncharPrefixes on the explicitly selected configured account; for these live variants, before any inbound event snapshot exact config and initial account lifecycle, require exclusive disposable test-account custody and real accessible target, patch through config.patch, wait for runtime config adoption, stop and fully join that exact native account, start it again from the adopted configuration and capture a fresh lastStartAt from channels.status plus native running/connected status, existing adapter connection logs or the read-only platform probe; these existing observations establish that the restarted monitor is active without an invented callback-inspection RPC; retain the actual adopted root Teams streaming.mode or merged Mattermost chatmode/oncharPrefixes without exposing credentials; if the adapter, permissions, isolated lifecycle custody, config adoption or native start cannot be established within the command timeout, emit unavailable prerequisites and do not inject the message; after input join native processing/delivery, restore exact changed settings including absence, restart only that account to restore its prior active configuration if it was running, or leave it stopped if initially stopped, and join cleanup even after timeout; the Mattermost onchar input carries a matching prefix and does not rely on mention bypass; the wrapper never emulates account config for a single-account adapter; acknowledgement cases capture the effective global messages.ackReactionScope and statusReactions plus account-resolved ackReaction before input, with no stale global value inferred from peer identity; selected Telegram reactionLevel and actions.reactions are recorded from the merged account, and restored after the completed turn; after configuration adoption it uses channel-inbound-turn\u2019s same scoped marker resolution, real capability capture and cleanup contract, refusing an unavailable script/fault boundary before injection; The listed unavailable helpers additionally accept --ambient-from {run}/channel-turn-in-flight.json. They contact the same ambient controller inside their existing command deadline after each successful native configuration/runtime adoption and before the foreground input or read whose busy-instance condition is required. They repeat the bounded check after restoring configuration and before returning. This includes native account/plugin reloads and a Gateway restart caused by config.patch; a successful config write or disk read is not proof that the previous ambient generation survived. Do not wait for the ambient request itself to complete as part of ordinary adoption. If a native reload cannot adopt while the ambient request remains active, record the actual deferred state, ask its owner to release/join only that ambient request, complete the intended native adoption, and re-admit/capture the replacement before the dependent operation. Intentional mid-turn changes retain their own scenario's holder, claim and exact event ordering; the ambient controller may touch only its separate ambient generation, never the scenario's pending request. If that separation or replacement cannot be established before the native scenario deadline, record the unmet ambient prerequisite and stop the dependent step, then clean up normally. For binding-array replacement, preserve only the previously captured dedicated ambient binding when it is provably disjoint from the selected case's account/peer and leaves the case's effective matching rules unchanged; restore the original full array afterward. Do not merge arbitrary old bindings. If the case requires removal of that exact ambient binding or a conflicting wildcard prevents an equivalent disjoint route, report the unsatisfied concurrent fixture rather than inventing an owner or weakening the case. Direct CLI/config mutations that are followed by another observation in the same phase need the same bounded --ensure-active check after actual adoption; do not insert it between a deliberately captured interruption and that interruption's own observation. UI/wizard helpers apply this boundary to their ordinary post-save observation while retaining the actual save/restart response.; --ambient-from; After native configuration adoption, delegate marker/script selection and native tool evidence to the channel-inbound-turn contract above; preserve the actual account/agent bindings and source sender. Do not choose a script from free-form user prose. Existing phase deadlines and config restoration include this activity. --script-file; Apply the channel-inbound-turn content recipe contract after native configuration adoption and before input; preserve exact existing config/ambient restoration. Table/format/preview content must be selected by explicit marker or file, never inferred from prose.; Forward explicit --recipe together with the existing --script-file after native config adoption, under the same owned provider/observation/cleanup contract. This adds no new configuration surface and preserves all current restore and account lifecycle behavior. --recipe)",
       "support/verify/channel-dead-letter-resubmit.mjs  (openclaw channels dead-letters resubmit twice for one dedicated native failed event; pending mode saves the original service state, stops the disposable Gateway through both commands and restores that service state with Gateway health and cleanup in finally; claimed mode arms a pre-adoption gate before the first resubmission, using the conformance native monitor deliver callback or the Telegram shim getFile response for the actual media payload retained in that event; await both entered-gate evidence and the exact native claimed row/token/owner, retain the same gate through the second CLI response and state read, then release or cancel and join in finally; never hold a model response as a substitute for a native claim, change stored payloads, synthesize queue state or suppress native lease refresh; a missing fixture, existing terminal state, changed claim, expired transport request or uncaptured interval records unavailable evidence; --account --channel --env --event-id --state --timeout)",
       "support/verify/channel-debounce-overlap.mjs  (config.get and config.patch for messages.inbound.byChannel on the named channel, then two actual Telegram shim updates: start text without awaiting its turn, observe buffered admission, inject the media or command after --gap-ms while the configured --debounce-ms window is still pending, join both results, and restore configuration in finally; record admission timestamps, both dispatches and deliveries; --account --channel --debounce-ms --env --first-text --gap-ms --peer --second-kind --second-media --second-text --timeout)",
-      "support/verify/channel-inbound-turn.mjs  (one inbound platform event and the turn, deliveries and observations it produces: kova.channelProbe.inject and kova.channelProbe.observations on Kova's conformance channel, the Telegram shim update queue, the Discord fixture gateway events, or a real test account on any other channel (message in a direct chat, group or thread; join, reaction, button callback, native command, presence, invite, startup snapshot, relogin or bridge-restart events); in background mode timeout bounds admission and handle creation, the held mock response remains active until joined, and a timed-out join cancels and records the pending operation; --admission sdk requires the future conformance-plugin capability that resolves the requested account, direct or group conversation, sender, mention and command facts through runtime.channel.inbound.ingress.resolve and buildContext before runChannelInboundEvent, preserving the exact returned channelIngress result rather than forcing CommandAuthorized; --question-from reads the captured pending question and native prompt for callback selection or a Force Reply answer; --conversation-from uses the exact captured spawned-child conversation, --parent-peer supplies its real parent, and a subject-bound callback uses only the creator retained in the captured control record, not button text or a caller-supplied authorization boolean; --peer-file reads the native peer identifier from a persona-owned UTF-8 file without shell interpolation; queued background inputs return after admission without waiting for the active turn, and --wait reads channel and operation identity from that captured handle, refuses conflicting routing flags, and releases only its own held response before joining; detached-completion-crash requires a real supplied Codex harness, captures its actual child completion and matching parent restartRecoveryHarnessCompletion and recovery identity plus an active held parent provider request before killing the verified owned Gateway; spawn acceptance alone never signals that boundary, and missing capture is unavailable evidence; bound the whole sequence and release all fixture holds, cancel or join owned work and, only if killed, restart the same disposable service in finally; --account --ack-policy --admission --after-ms --artifact-dir --background --bot-authored --callback-from --callback-label --channel --chat-type --conversation-from --env --event --event-id --handle --interval-ms --location --media --mention --out --peer --peer-file --question-from --quote-from --reaction --repeat --replay-from --reply-to --same-id --sender --sticker --text --thread --timeout --wait; a declared persona marker requires the future fixture registry to resolve its exact script by marker, case, configured account, peer, routed agent and invocation before admission; capture that nonsecret correlation and the actual provider or native fault capability, select only a dedicated fixture/provider scope, never reset a provider serving another held turn, and release its scripts/gates/faults in finally; unsupported partial-to-final ordering, tool-response holds or native write faults produce unavailable prerequisites before input instead of treating marker text as scripted behavior; this is not an undocumented action of the existing provider script generator; The unavailable channel-inbound-turn helper additionally supports --ensure-active --from and establishes sole background custody at initial --background --handle. The controller lives outside the tested Gateway and is the only writer of the existing handle and its captured generations; foreground helpers contact it instead of editing the handle or calling shared provider release endpoints. The setup uses only the already authorized dedicated ambient account/sender, with its own configured main-session route and independent provider capacity; it must never create a pairing request or consume pairing retention fixtures. Setup returns only after capturing the actual pending held provider request, native inbound/run identity, dedicated account/peer/session route and matching persisted restartRecoveryDeliveryRunId, restartRecoveryDeliverySourceRunId and delivery context. A handle or admission response alone is insufficient. The background startup timeout bounds admission/capture, not the total lifetime; preserve that existing distinction without extending product deadlines. Each explicit --ensure-active request has one bounded deadline. First inspect the recorded native provider request, native execution/session state and current recovery claim. If the same request is still held with the same live claim and route, record that generation and return without new input. If the previous request has aborted, completed or been interrupted, record its native terminal disposition, release only its scoped fixture hold, and join or cancel its owned work through the existing ordinary APIs before at most one re-admission. A missing observation is not a terminal state; unresolved or concurrently recovered work must never cause a duplicate turn. For a native resumed execution, correlate its actual request and recovery identity before adopting it; otherwise settle the old execution before another input. Re-admit only through the same SDK admission and already authorized sender, after confirming the saved dedicated account, main-session route, separate ordinary-session lane and provider capacity still exist in the currently adopted configuration. Capture a fresh pending provider request and actual recovery claim before returning. Do not repair routing by forcing payload authorization, writing session rows, selecting a default account or redirecting to another configured owner. An expired deadline, missing route, unavailable account, absent native request/claim, ambiguous old outcome or lost controller returns structured unavailable-custody output and exit 2; dependent observation must not proceed. No background restart/re-admission loop, autonomous retries, service start, configuration rewrite, fixture reset or new clone is performed. --wait closes the controller once: prevent further re-admission, release/join or cancel the current generation and every still-owned prior operation, remove observation waits and timers, and return bounded settlement evidence. Controller cleanup must also run when the owning invocation is cancelled, fails or exits before the final phase; preserve its owned-resource identity so executor teardown can join that exact controller. Capture only task-owned request/claim identifiers and relevant nonsecret lifecycle fields, never complete session contents or unrelated observations. --ensure-active --from are observation/precondition operations, not expected-result assertions.; For detached-completion-crash only, apply the task-owned account and native suppression restoration contract declared by gateway-kill, including conditional native-window waits before returning to ordinary observations; --restore-accounts-file --ambient-from --post-restart. ; Keep the existing restriction: --ensure-active observes/adopts or re-admits owned ambient work but never starts a service or account and never clears suppression. A preceding lifecycle owner must finish account restoration and any required native recovery before returning. The ten-second check is not a breaker recovery budget.; explicit temporary park/unpark custody is additionally available only to the owning gateway-thaw-observe or gateway-suspension helper for its declared observation interval: park blocks all ensure-active re-admission, releases and joins the current captured generation and prior owned work, records parked state through the sole controller writer, and preserves the controller/handle for reuse; it does not close the controller as --wait does; unpark is requested only after the caller has finished native account/config restoration, then performs at most one ordinary ensure-active capture under the remaining deadline; parked status is never accepted as active custody, and a failed restoration prevents later dependent observations; cancellation of the owning thaw or suspension helper must release only its own park reservation and attempt bounded restoration or report an explicit unavailable-custody result to executor cleanup; For tool-dependent inputs, prose is not a script selector. A declared marker or explicit --script-file must identify a scoped fixture recipe before admission; record actual source account/peer/agent, provider operation, advertised native tool catalog, model tool-call ids/names/arguments, and matching native results or policy denials. Correlate dynamically returned child/session/approval/process/message identities from real results, never fixture literals. Native admission/tool denial is preserved; do not make a forbidden call succeed, add a tool or widen policy to complete a case. When the intended downstream interval cannot occur, record that evidence as unavailable. Stage-dependent continuation, injection or interruption waits for the actual captured activity, not elapsed time or request acceptance. The recipe reuses installed provider response forms and existing native APIs; it does not invent mock protocol fields or product hooks. Scope parent/child recipes independently and never reset a provider serving ambient or other work. The full existing timeout includes script selection, all gates, native joins, owned approval/child cleanup and exact script/fault restoration. --script-file supplies the persona fixture recipe. The restrictedDelegateScript recipe owns the original restricted input, its captured child, native queued same-sender followup and later --after-sender input as one bounded sequence; --out writes their correlated observations only after owned cleanup. The original source actor and every later sender use ordinary SDK admission; no direct sessions_spawn call outside that source turn substitutes for inherited policy. --script-file --after-sender; For content-dependent input, the marker or --script-file selects the exact literal response/content recipe before admission; ordinary prose never selects a recipe. Record fixture content/hash and actual source account/peer/agent/provider correlation plus native output boundaries; rendered output alone must not stand in for raw fixture input. The named file may include only existing provider grammar plus explicitly declared harness orchestration; unsupported reasoning, multiple-source-payload or midstream boundary capability returns unavailable before input. Preserve native content parsing, limits, tool/admission policy and all existing controller/park/restore contracts. questionRecipesFile owns native ask_user creation, pending prompt capture, genuine platform answer or observed timeout and exact pending-id cancellation/join in finally, with a concurrent terminal-answer read before any retry. A primary route means the native registration predicate, not a forced main-session binding. heldRoundScript background returns only after actual captured active participant request; existing handle wait remains its cleanup owner. All recipe work and cleanup fit the original timeout; no global provider reset, full conversation export or fabricated native result.; for declared parent-completion recipes the helper owns the entire native lifecycle, not only the initial parent response: admit the real channel input, capture actual source account/conversation/thread, parent agent/session/incarnation and provider run, then the scripted parent calls sessions_spawn with runtime subagent, mode run, completionTarget parent, expectsCompletionMessage true, cleanup delete and runTimeoutSeconds30; capture the actual accepted childSessionKey/runId and bind the child provider script by that identity, with an independently bounded child-response hold that cannot consume ambient or parent responses; require actual child execution and its request/identity before yielding; once the spawn result has actually reached the parent, its next scripted model response calls sessions_yield with native message/acknowledgment arguments only, no waitFor message; if native yield returns deferred, first consume the earlier async result then retry yield only while this exact child remains pending, and require real yielded state rather than treating acceptance/nothing_pending/already_pending as a new yield; release only this child response after that captured yield, let it return its scripted result through the normal runtime, and observe its real terminal run event or bounded agent.wait by captured runId; this external join never replaces the parent model's native sessions_yield; capture the actual child-completion event arriving in the same parent session/incarnation and the new resumed parent request, requiring its correlation to the captured child without creating a completion event or metadata; resumed parent must emit the declared marker under the actual conversation reply policy, using model-facing message action send when tool-only or otherwise required and normal final delivery when allowed; after a confirmed native message send result the scripted parent emits NO_REPLY to avoid an extra automatic reply; record the native channel receipt/account/target and parent terminal outcome separately from spawn acceptance, child result, private handoff and waiting notice; native sessions_yield acknowledgment creates its own runtime-owned waiting status, while a resumed model/message-tool reply is never reclassified as host-owned by the helper; outputs contain only task-owned ids/markers, actual tool results and relevant lifecycle fields, not private completion wrappers or fabricated Codex context; join the child, resumed parent, native output settlement and native cleanup before returning; on timeout use only the captured parent's authorized subagents action cancel with runId, or exact owned-run cancellation through existing native APIs, never kill/target aliases, broad stop or a guessed session; native runTimeoutSeconds bounds a child even if cancellation is unavailable; await settlement and preserve denial rather than widening tools/policy; ordinary agent-tool-turn sessions_spawn acceptance does not fulfill a completion-delivery recipe; park custody is exclusive and bound to the caller invocation plus the captured ambient generation, with an opaque reservation retained by the sole ambient controller. A competing helper cannot park, release or unpark it. Suspension parking occurs only after the caller records the native draining response; unpark is deferred until the caller has resumed its exact native lease and recorded running/admission reopening. Parked state is an intentional condition inside those owning helpers and does not satisfy ordinary active-custody checks. Neither a phase-entry ensure-active call nor another helper may re-admit while this reservation is held. On cancellation the owner first releases its native suspension if any, then releases its own park reservation and makes one bounded restoration attempt; if native admission remains closed or restoration fails, it reports unavailable continuation to executor cleanup rather than forcing a new request; The explicitly permitted park/unpark owners additionally include gateway-startup-status-observe for its one declared startup observation. It uses the same exclusive invocation-bound park reservation, joins only the ambient controller's captured work before restarting, and unparks only after its native startup gate is released, the original restart joins and account restoration completes. It cannot close or write the shared ambient handle, and no ordinary active guard may run while it intentionally holds the park reservation. Cancellation must release the fixture service gate before attempting startup/account restoration and unpark; no other helper may release that reservation.)",
-      "support/verify/channel-platform-fault.mjs  (arm a fault on the Telegram shim or the Discord fixture for the next calls of one platform method (429 with retry_after, 5xx, network error, lost response, hang, stall, 401, BOT_COMMANDS_TOO_MUCH, parse error, edit failure, message too old, missing access, reject after first chunk, not dispatched); --channel --count --env --fault --method --timeout; --account scopes the fault by exact configured account and native credential identity, never the next call from another account; --account; credential identity is resolved privately for fault scoping and is never emitted in artifacts)",
+      "support/verify/channel-inbound-turn.mjs  (one inbound platform event and the turn, deliveries and observations it produces: kova.channelProbe.inject and kova.channelProbe.observations on Kova's conformance channel, the Telegram shim update queue, the Discord fixture gateway events, or a real test account on any other channel (message in a direct chat, group or thread; join, reaction, button callback, native command, presence, invite, startup snapshot, relogin or bridge-restart events); in background mode timeout bounds admission and handle creation, the held mock response remains active until joined, and a timed-out join cancels and records the pending operation; --admission sdk requires the future conformance-plugin capability that resolves the requested account, direct or group conversation, sender, mention and command facts through runtime.channel.inbound.ingress.resolve and buildContext before runChannelInboundEvent, preserving the exact returned channelIngress result rather than forcing CommandAuthorized; --question-from reads the captured pending question and native prompt for callback selection or a Force Reply answer; --conversation-from uses the exact captured spawned-child conversation, --parent-peer supplies its real parent, and a subject-bound callback uses only the creator retained in the captured control record, not button text or a caller-supplied authorization boolean; --peer-file reads the native peer identifier from a persona-owned UTF-8 file without shell interpolation; queued background inputs return after admission without waiting for the active turn, and --wait reads channel and operation identity from that captured handle, refuses conflicting routing flags, and releases only its own held response before joining; detached-completion-crash requires a real supplied Codex harness, captures its actual child completion and matching parent restartRecoveryHarnessCompletion and recovery identity plus an active held parent provider request before killing the verified owned Gateway; spawn acceptance alone never signals that boundary, and missing capture is unavailable evidence; bound the whole sequence and release all fixture holds, cancel or join owned work and, only if killed, restart the same disposable service in finally; --account --ack-policy --admission --after-ms --artifact-dir --background --bot-authored --callback-from --callback-label --channel --chat-type --conversation-from --env --event --event-id --handle --interval-ms --location --media --mention --out --peer --peer-file --question-from --quote-from --reaction --repeat --replay-from --reply-to --same-id --sender --sticker --text --thread --timeout --wait; a declared persona marker requires the future fixture registry to resolve its exact script by marker, case, configured account, peer, routed agent and invocation before admission; capture that nonsecret correlation and the actual provider or native fault capability, select only a dedicated fixture/provider scope, never reset a provider serving another held turn, and release its scripts/gates/faults in finally; unsupported partial-to-final ordering, tool-response holds or native write faults produce unavailable prerequisites before input instead of treating marker text as scripted behavior; this is not an undocumented action of the existing provider script generator; The unavailable channel-inbound-turn helper additionally supports --ensure-active --from and establishes sole background custody at initial --background --handle. The controller lives outside the tested Gateway and is the only writer of the existing handle and its captured generations; foreground helpers contact it instead of editing the handle or calling shared provider release endpoints. The setup uses only the already authorized dedicated ambient account/sender, with its own configured main-session route and independent provider capacity; it must never create a pairing request or consume pairing retention fixtures. Setup returns only after capturing the actual pending held provider request, native inbound/run identity, dedicated account/peer/session route and matching persisted restartRecoveryDeliveryRunId, restartRecoveryDeliverySourceRunId and delivery context. A handle or admission response alone is insufficient. The background startup timeout bounds admission/capture, not the total lifetime; preserve that existing distinction without extending product deadlines. Each explicit --ensure-active request has one bounded deadline. First inspect the recorded native provider request, native execution/session state and current recovery claim. If the same request is still held with the same live claim and route, record that generation and return without new input. If the previous request has aborted, completed or been interrupted, record its native terminal disposition, release only its scoped fixture hold, and join or cancel its owned work through the existing ordinary APIs before at most one re-admission. A missing observation is not a terminal state; unresolved or concurrently recovered work must never cause a duplicate turn. For a native resumed execution, correlate its actual request and recovery identity before adopting it; otherwise settle the old execution before another input. Re-admit only through the same SDK admission and already authorized sender, after confirming the saved dedicated account, main-session route, separate ordinary-session lane and provider capacity still exist in the currently adopted configuration. Capture a fresh pending provider request and actual recovery claim before returning. Do not repair routing by forcing payload authorization, writing session rows, selecting a default account or redirecting to another configured owner. An expired deadline, missing route, unavailable account, absent native request/claim, ambiguous old outcome or lost controller returns structured unavailable-custody output and exit 2; dependent observation must not proceed. No background restart/re-admission loop, autonomous retries, service start, configuration rewrite, fixture reset or new clone is performed. --wait closes the controller once: prevent further re-admission, release/join or cancel the current generation and every still-owned prior operation, remove observation waits and timers, and return bounded settlement evidence. Controller cleanup must also run when the owning invocation is cancelled, fails or exits before the final phase; preserve its owned-resource identity so executor teardown can join that exact controller. Capture only task-owned request/claim identifiers and relevant nonsecret lifecycle fields, never complete session contents or unrelated observations. --ensure-active --from are observation/precondition operations, not expected-result assertions.; For detached-completion-crash only, apply the task-owned account and native suppression restoration contract declared by gateway-kill, including conditional native-window waits before returning to ordinary observations; --restore-accounts-file --ambient-from --post-restart. ; Keep the existing restriction: --ensure-active observes/adopts or re-admits owned ambient work but never starts a service or account and never clears suppression. A preceding lifecycle owner must finish account restoration and any required native recovery before returning. The ten-second check is not a breaker recovery budget.; explicit temporary park/unpark custody is additionally available only to the owning gateway-thaw-observe or gateway-suspension helper for its declared observation interval: park blocks all ensure-active re-admission, releases and joins the current captured generation and prior owned work, records parked state through the sole controller writer, and preserves the controller/handle for reuse; it does not close the controller as --wait does; unpark is requested only after the caller has finished native account/config restoration, then performs at most one ordinary ensure-active capture under the remaining deadline; parked status is never accepted as active custody, and a failed restoration prevents later dependent observations; cancellation of the owning thaw or suspension helper must release only its own park reservation and attempt bounded restoration or report an explicit unavailable-custody result to executor cleanup; For tool-dependent inputs, prose is not a script selector. A declared marker or explicit --script-file must identify a scoped fixture recipe before admission; record actual source account/peer/agent, provider operation, advertised native tool catalog, model tool-call ids/names/arguments, and matching native results or policy denials. Correlate dynamically returned child/session/approval/process/message identities from real results, never fixture literals. Native admission/tool denial is preserved; do not make a forbidden call succeed, add a tool or widen policy to complete a case. When the intended downstream interval cannot occur, record that evidence as unavailable. Stage-dependent continuation, injection or interruption waits for the actual captured activity, not elapsed time or request acceptance. The recipe reuses installed provider response forms and existing native APIs; it does not invent mock protocol fields or product hooks. Scope parent/child recipes independently and never reset a provider serving ambient or other work. The full existing timeout includes script selection, all gates, native joins, owned approval/child cleanup and exact script/fault restoration. --script-file supplies the persona fixture recipe. The restrictedDelegateScript recipe owns the original restricted input, its captured child, native queued same-sender followup and later --after-sender input as one bounded sequence; --out writes their correlated observations only after owned cleanup. The original source actor and every later sender use ordinary SDK admission; no direct sessions_spawn call outside that source turn substitutes for inherited policy. --script-file --after-sender; For content-dependent input, the marker or --script-file selects the exact literal response/content recipe before admission; ordinary prose never selects a recipe. Record fixture content/hash and actual source account/peer/agent/provider correlation plus native output boundaries; rendered output alone must not stand in for raw fixture input. The named file may include only existing provider grammar plus explicitly declared harness orchestration; unsupported reasoning, multiple-source-payload or midstream boundary capability returns unavailable before input. Preserve native content parsing, limits, tool/admission policy and all existing controller/park/restore contracts. questionRecipesFile owns native ask_user creation, pending prompt capture, genuine platform answer or observed timeout and exact pending-id cancellation/join in finally, with a concurrent terminal-answer read before any retry. A primary route means the native registration predicate, not a forced main-session binding. heldRoundScript background returns only after actual captured active participant request; existing handle wait remains its cleanup owner. All recipe work and cleanup fit the original timeout; no global provider reset, full conversation export or fabricated native result.; for declared parent-completion recipes the helper owns the entire native lifecycle, not only the initial parent response: admit the real channel input, capture actual source account/conversation/thread, parent agent/session/incarnation and provider run, then the scripted parent calls sessions_spawn with runtime subagent, mode run, completionTarget parent, expectsCompletionMessage true, cleanup delete and runTimeoutSeconds30; capture the actual accepted childSessionKey/runId and bind the child provider script by that identity, with an independently bounded child-response hold that cannot consume ambient or parent responses; require actual child execution and its request/identity before yielding; once the spawn result has actually reached the parent, its next scripted model response calls sessions_yield with native message/acknowledgment arguments only, no waitFor message; if native yield returns deferred, first consume the earlier async result then retry yield only while this exact child remains pending, and require real yielded state rather than treating acceptance/nothing_pending/already_pending as a new yield; release only this child response after that captured yield, let it return its scripted result through the normal runtime, and observe its real terminal run event or bounded agent.wait by captured runId; this external join never replaces the parent model's native sessions_yield; capture the actual child-completion event arriving in the same parent session/incarnation and the new resumed parent request, requiring its correlation to the captured child without creating a completion event or metadata; resumed parent must emit the declared marker under the actual conversation reply policy, using model-facing message action send when tool-only or otherwise required and normal final delivery when allowed; after a confirmed native message send result the scripted parent emits NO_REPLY to avoid an extra automatic reply; record the native channel receipt/account/target and parent terminal outcome separately from spawn acceptance, child result, private handoff and waiting notice; native sessions_yield acknowledgment creates its own runtime-owned waiting status, while a resumed model/message-tool reply is never reclassified as host-owned by the helper; outputs contain only task-owned ids/markers, actual tool results and relevant lifecycle fields, not private completion wrappers or fabricated Codex context; join the child, resumed parent, native output settlement and native cleanup before returning; on timeout use only the captured parent's authorized subagents action cancel with runId, or exact owned-run cancellation through existing native APIs, never kill/target aliases, broad stop or a guessed session; native runTimeoutSeconds bounds a child even if cancellation is unavailable; await settlement and preserve denial rather than widening tools/policy; ordinary agent-tool-turn sessions_spawn acceptance does not fulfill a completion-delivery recipe; park custody is exclusive and bound to the caller invocation plus the captured ambient generation, with an opaque reservation retained by the sole ambient controller. A competing helper cannot park, release or unpark it. Suspension parking occurs only after the caller records the native draining response; unpark is deferred until the caller has resumed its exact native lease and recorded running/admission reopening. Parked state is an intentional condition inside those owning helpers and does not satisfy ordinary active-custody checks. Neither a phase-entry ensure-active call nor another helper may re-admit while this reservation is held. On cancellation the owner first releases its native suspension if any, then releases its own park reservation and makes one bounded restoration attempt; if native admission remains closed or restoration fails, it reports unavailable continuation to executor cleanup rather than forcing a new request; The explicitly permitted park/unpark owners additionally include gateway-startup-status-observe for its one declared startup observation. It uses the same exclusive invocation-bound park reservation, joins only the ambient controller's captured work before restarting, and unparks only after its native startup gate is released, the original restart joins and account restoration completes. It cannot close or write the shared ambient handle, and no ordinary active guard may run while it intentionally holds the park reservation. Cancellation must release the fixture service gate before attempting startup/account restoration and unpark; no other helper may release that reservation.; All added recipe selectors are metadata for the already declared unavailable helper, not new provider response fields or product hooks. Before input verify only fixture capability, actual account/route/native configuration and isolated controller ownership. Once valid scripted work is admitted, record native absence, refusal, wrong message identity, missing retry, replacement or failed final/cleanup as actual product evidence; do not relabel those outcomes as a missing fixture or require product success as a precondition. If an expected capture never appears, end that dependent action at its bound, record the missing native stage and settle owned work; never fault an arbitrary message. Release only owned holds and restore exact scripts/config/faults in finally within the original command deadline, preserving all ambient/park/restoration rules. Optional --recipe selects the exact declared case from --script-file without inferring it from prompt wording. preview-cleanup-fails owns the conformance public SDK capture/final/clear sequence described by telegram-shim-scenario, scoped to its actual native callback and message identity. progress-long-final first executes the existing meaningful progress_card/tool recipe and captures actual draft identity/content, then releases the declared long final through the native finalizer; record the effective native chunk limits, actual final payload/chunk count, native finalizer decision and normal delivery/preview disposition. Never lower the limit or force a finalizer refusal to create the observation. approval-after-progress extends the existing approvalPromptScript: capture actual progress first, then invoke its real exec ask-always operation, capture the native approval id and outgoing approval payload plus normal channel delivery, resolve/cancel only that owned approval and join. Merely returning prose about an approval is insufficient. Card-clear markers now perform valid create/capture/clear only; no native plan-write fault is supplied and condition 377 receives no credit. --recipe)",
+      "support/verify/channel-platform-fault.mjs  (arm a fault on the Telegram shim or the Discord fixture for the next calls of one platform method (429 with retry_after, 5xx, network error, lost response, hang, stall, 401, BOT_COMMANDS_TOO_MUCH, parse error, edit failure, message too old, missing access, reject after first chunk, not dispatched); --channel --count --env --fault --method --timeout; --account scopes the fault by exact configured account and native credential identity, never the next call from another account; --account; credential identity is resolved privately for fault scoping and is never emitted in artifacts; Preview observation recipes own any fault against an existing message: resolve the captured account/chat/message and named native operation after that case owns the object, and disarm unused faults in finally. Account-only next-call faults cannot stand in for a captured edit or cleanup boundary. A Telegram HTTP fault never represents an in-process progressCard.put failure.)",
       "support/verify/channel-platform-shim.mjs  (start the Telegram platform shim (support/channels/telegram) or the Discord fixture (support/channels/discord) and point the env channel account at it; --wait joins the owned shim, --stop terminates it, and cancellation always closes its sockets; --account --background --channel --env --handle --stop --timeout --wait)",
-      "support/verify/channel-probe-fault.mjs  (arm a fault on Kova's conformance channel for its next outbound sends, ingress handling or probe hooks (fail, suppress, partial, ambiguous, defer, not-dispatched, transform-suppress, hang-probe, hang-capabilities, ingress-* and the other names phases pass), through a kova.channelProbe fault method the probe plugin would add; --count --env --fault --timeout; --account scopes the fault by exact configured account and native credential identity, never the next call from another account; --account; credential identity is resolved privately for fault scoping and is never emitted in artifacts; producer-claim replacement is outside this fixture: it never writes native producerClaimId, platformSendAttemptId, availableAt or attempt counters)",
+      "support/verify/channel-probe-fault.mjs  (arm a fault on Kova's conformance channel for its next outbound sends, ingress handling or probe hooks (fail, suppress, partial, ambiguous, defer, not-dispatched, transform-suppress, hang-probe, hang-capabilities, ingress-* and the other names phases pass), through a kova.channelProbe fault method the probe plugin would add; --count --env --fault --timeout; --account scopes the fault by exact configured account and native credential identity, never the next call from another account; --account; credential identity is resolved privately for fault scoping and is never emitted in artifacts; producer-claim replacement is outside this fixture: it never writes native producerClaimId, platformSendAttemptId, availableAt or attempt counters; When used by the owned preview-cleanup recipe, a future fault may reject only the actual conformance public SDK clear callback for the captured preview of that invocation, after recording its real final delivery relation. It does not create a preview, invoke the callback itself or synthesize final acceptance. That narrow fixture capability is unavailable until implemented; no direct native state or private hook is authorized.)",
       "support/verify/channel-probe-observe.mjs  (kova.channelProbe.reset, inject and observations for one recorded case through the installed conformance channel; records raw RPC, delivery, acknowledgement and preview data without evaluating expected outcomes; --artifact-dir --case --env --timeout; --account is resolved through the real configured account and propagated to ingress, outbound, preview and typing callbacks; live-preview and media-final cases capture effective streaming settings and the capability used, using shared public SDK preview/streaming APIs and restoring any scoped configuration; missing safe-edit capability records the native fallback without claiming a preview was shown; no peer-to-account inference; --account; never reset global observations belonging to another selected background input; use correlated snapshot cursors or the declared account-scoped fixture state, and report unavailable if isolation cannot be established; Existing catalog-backed cases resolve the exact case id from channel-capabilities/workflows and use its providerScript, fixture content and native livePreview contract through the scoped producer; do not infer the catalog recipe from the prompt alone. In particular text-final/thread-final/media-final, source-visible-delivery.*, completion-handoff.* and live-preview.* keep their existing explicit recipes. Do not replace their providerScript with a generic default answer; safe-edit absence retains the recorded native fallback.)",
       "support/verify/channel-reply-payload.mjs  (sendDurableMessageBatch from openclaw/plugin-sdk/channel-outbound through the conformance transport inside its existing runtime context, with the exact --payload including text, presentationTextMode and presentation; --data-blocks text selects a conformance adapter with no native chart or table renderer so core performs the documented authored fallback; record delivered payloads without comparing an expected body; --channel --data-blocks --env --payload --peer --timeout)",
       "support/verify/channel-restart-overlap.mjs  (one graceful OCM service restart concurrent with kova.channelProbe.inject: first observe the matching held provider request and actual active recovery identity from --held-from, then start restart asynchronously, observe the draining interval, submit the inbound before releasing the held turn, then join restart and record both results and lifecycle timing; --env --held-from --peer --text --timeout; Planned restarts, clean_stop and forced_stop do not by themselves establish an unclean boot. Record the actual native outcome rather than labeling every service restart a crash. If the already owned restart discovers inherited or unexpected native suppression, apply the same scoped account restoration/native-recovery contract before handing off to ordinary observations. Record the intended startup/offline/autostart outcome before restoration so a manual start is never credited as automatic startup. Automatic-start scenarios require a genuinely cleared native breaker baseline before their own restart; if suppression remains, the lifecycle owner waits for actual native recovery within a declared slow deadline before performing that case. Do not leave that wait or account-start work to the ambient guard.)",
@@ -372,7 +372,7 @@
       "support/verify/ocm-service.mjs  (one OCM service start, stop or restart on the disposable environment selected by --action; returns the command output and exit code as JSON; --action --env; Planned restarts, clean_stop and forced_stop do not by themselves establish an unclean boot. Record the actual native outcome rather than labeling every service restart a crash. If the already owned restart discovers inherited or unexpected native suppression, apply the same scoped account restoration/native-recovery contract before handing off to ordinary observations. Record the intended startup/offline/autostart outcome before restoration so a manual start is never credited as automatic startup. Automatic-start scenarios require a genuinely cleared native breaker baseline before their own restart; if suppression remains, the lifecycle owner waits for actual native recovery within a declared slow deadline before performing that case. Do not leave that wait or account-start work to the ambient guard.)",
       "support/verify/question-response.mjs  (question.resolve with id read from the captured pending-question handle and canonical QuestionAnswers passed by --answers, followed by recording the returned resolution; no session-key guessing or synthetic question id; --answers --env --question-from --timeout)",
       "support/verify/state-db-fault.mjs  (a one-shot fault in the shared state database for one table (write failure, changed claim identity, stolen claim); --count --env --fault --table --timeout)",
-      "support/verify/telegram-shim-scenario.mjs  (Kova's Telegram platform shim (support/channels/telegram) with one scripted platform behaviour named by --scenario, driving the Telegram adapter's inbound and outbound through OpenClaw and printing the shim's call transcript; --artifact-dir --env --scenario --timeout; --account selects a dedicated native fixture identity; each preview/progress/render scenario applies its named streaming.mode and block.enabled configuration through config.get/config.patch, plus progress fields or richMessages as required, records runtime adoption and actual routed account/agent, drives the adapter, joins all writes, and restores exact prior settings including absence in finally; reasoning-stream uses actual routed reasoningDefault stream with no overriding session setting, and utility-filler cases require a configured mock utility model while narration-off uses progress.narration false or an explicitly disabled utilityModel empty string; raw platform faults alone do not choose a mode; --account; the optional --ambient-from uses the bounded native custody and configuration-adoption contract declared by channel-configured-turn, including post-adoption and post-restoration checks inside this command deadline, preserving intentional scenario interruption observations; --ambient-from; For reaction-notify-own/all/off, require the explicitly selected native Telegram account and authorized non-bot sender; save that account reactionNotifications value including absence, apply exactly own/all/off through config.patch at channels.telegram.accounts[accountId].reactionNotifications, await native runtime adoption, and record the effective account setting before any reaction update. Create and capture an actual native bot-sent message on that account/chat so own-mode attribution uses the product sent-message record, plus a distinct fixture-owned non-bot message for the contrasting own/all observation. Emit real message_reaction additions with old_reaction/new_reaction and captured numeric message identity; do not use a bot actor, an unchanged/removal-only reaction, an uncorrelated guessed id or a topic lacking its native cached scope. The real ingress sender/account authorization still applies; notification mode does not bypass it. Join native processing, record adapter/system-event outcomes, remove only case-owned fixture messages/reactions where supported, restore the exact account field including absence, and verify ambient custody after restoration. No Telegram allowlist notification value is permitted. Notification scenario flags additionally include --peer and --sender.; late-operation-completion additionally requires --script-file selecting a scoped reply-progress producer that invokes the public onItemEvent callback with two distinct producer-owned itemId values: older running, current running, then older phase end/status completed while current remains active; capture all three actual callback payloads and native draft writes, then settle current and join finalization, preserving native mode/config and cleanup; a natural-language prompt or unrelated process-exit notification does not establish this progress-item sequence; if the producer cannot supply the public callback sequence, stop before the dependent event and record unavailable support; --script-file; For recovered-turn-typing and other actual crash cases, apply the task-owned account and native suppression restoration contract declared by gateway-kill, including conditional native-window waits before returning to ordinary observations; --restore-accounts-file --ambient-from --post-restart. ; Named tool/progress scenarios explicitly select their supplied --script-file: progress-draft-yield-subagents uses native spawn/yield/progress capture; rich-messages uses the real progress_card plan; error/final and message-between-draft-and-answer variants wait for actual progress/draft activity. Preserve the already explicit late-operation-completion recipe. Apply the scoped script selection, captured native tool activity and cleanup contract declared by channel-inbound-turn; --script-file.; For named output-shape cases, --script-file selects the exact recipe by the existing --scenario name. Require the declared literal Markdown/HTML/media/length or controlled preview/reasoning/narration sequence, capture native delivery and lifecycle boundaries, and apply the same scoped selection/cancellation/restoration contract as channel-inbound-turn. A scenario name or platform fault is not itself provider content. questionRecipesFile invokes and captures actual ask_user and completes its owned answer/expiry/cancel lifecycle. Native outbound-only cases instead construct the declared actual CLI/message payload from existing fixture values and record it; they need no model imitation. Missing controlled producer or native interaction is unavailable evidence before dependent work. message-tool-send uses the explicit messageToolSendScript through the actually offered native tool; the similarly named send-text case stays a direct literal outbound producer.; progress-draft-yield-subagents uses the same captured spawn-result, native sessions_yield, child-terminal and resumed-parent lifecycle contract as channel-inbound-turn parent-completion recipes; its existing progressYieldScript must keep the exact child pending through yield, record draft writes during that interval, then capture the resumed parent's real final channel output and join native child cleanup; a tool acceptance or ordinary final-text mock response cannot satisfy this interval; For final-edit-fails with --edit-error message-too-old, the existing previewRecipesFile owns one controlled native partial-to-final sequence. Use the explicitly selected streamingScenarioAccountId with actual partial mode, block disabled and no quote, hook, room-event or reasoning-mode suppression of its answer preview. Emit an ordinary plain-text partial of at least 64 ASCII characters (above native initial threshold 30), below the native single-message limit, then hold terminal content. Capture successful native sendMessage, numeric preview message_id, account/chat/run identity, accepted text and quiescent prior preview writes before any fault is armed. Do not use a provider hold before its first output as this boundary. The controlled producer then provides a different substantive terminal final within the same single-message limit without another intermediate partial update. Arm a one-shot shim response only for the captured account/chat/message and its actual terminal editMessageText request: HTTP 400 with Telegram body error_code 400 and description Bad Request: message can't be edited. Capture the actual native terminal/finalization boundary, exact outgoing edit request and received rejection; matching text or an arbitrary next account edit alone is insufficient. Do not reject initial sendMessage, unrelated edits, progress writes or another turn. Observe native preview discard/cleanup and a fresh sendMessage final with a new captured message identity, plus correlated native final receipt. Record detached preview cleanup separately and join it within the command bound; no cleanup action may manufacture the fallback result. A missing preview, unchanged terminal text, absent terminal boundary, different native transport method, uncaptured fault consumption or unsupported controlled producer returns unavailable evidence. No clock change or claimed natural aging: the supplied shim models Telegram's actual noneditable-target rejection. Preserve every existing scoped config/provider/ambient restoration rule and disarm the owned unused fault in finally. The entire case remains bounded by 150000 ms. --edit-error is an unavailable helper option; this declaration supplies no new mock response type or product hook.)",
+      "support/verify/telegram-shim-scenario.mjs  (Kova's Telegram platform shim (support/channels/telegram) with one scripted platform behaviour named by --scenario, driving the Telegram adapter's inbound and outbound through OpenClaw and printing the shim's call transcript; --artifact-dir --env --scenario --timeout; --account selects a dedicated native fixture identity; each preview/progress/render scenario applies its named streaming.mode and block.enabled configuration through config.get/config.patch, plus progress fields or richMessages as required, records runtime adoption and actual routed account/agent, drives the adapter, joins all writes, and restores exact prior settings including absence in finally; reasoning-stream uses actual routed reasoningDefault stream with no overriding session setting, and utility-filler cases require a configured mock utility model while narration-off uses progress.narration false or an explicitly disabled utilityModel empty string; raw platform faults alone do not choose a mode; --account; the optional --ambient-from uses the bounded native custody and configuration-adoption contract declared by channel-configured-turn, including post-adoption and post-restoration checks inside this command deadline, preserving intentional scenario interruption observations; --ambient-from; For reaction-notify-own/all/off, require the explicitly selected native Telegram account and authorized non-bot sender; save that account reactionNotifications value including absence, apply exactly own/all/off through config.patch at channels.telegram.accounts[accountId].reactionNotifications, await native runtime adoption, and record the effective account setting before any reaction update. Create and capture an actual native bot-sent message on that account/chat so own-mode attribution uses the product sent-message record, plus a distinct fixture-owned non-bot message for the contrasting own/all observation. Emit real message_reaction additions with old_reaction/new_reaction and captured numeric message identity; do not use a bot actor, an unchanged/removal-only reaction, an uncorrelated guessed id or a topic lacking its native cached scope. The real ingress sender/account authorization still applies; notification mode does not bypass it. Join native processing, record adapter/system-event outcomes, remove only case-owned fixture messages/reactions where supported, restore the exact account field including absence, and verify ambient custody after restoration. No Telegram allowlist notification value is permitted. Notification scenario flags additionally include --peer and --sender.; late-operation-completion additionally requires --script-file selecting a scoped reply-progress producer that invokes the public onItemEvent callback with two distinct producer-owned itemId values: older running, current running, then older phase end/status completed while current remains active; capture all three actual callback payloads and native draft writes, then settle current and join finalization, preserving native mode/config and cleanup; a natural-language prompt or unrelated process-exit notification does not establish this progress-item sequence; if the producer cannot supply the public callback sequence, stop before the dependent event and record unavailable support; --script-file; For recovered-turn-typing and other actual crash cases, apply the task-owned account and native suppression restoration contract declared by gateway-kill, including conditional native-window waits before returning to ordinary observations; --restore-accounts-file --ambient-from --post-restart. ; Named tool/progress scenarios explicitly select their supplied --script-file: progress-draft-yield-subagents uses native spawn/yield/progress capture; rich-messages uses the real progress_card plan; error/final and message-between-draft-and-answer variants wait for actual progress/draft activity. Preserve the already explicit late-operation-completion recipe. Apply the scoped script selection, captured native tool activity and cleanup contract declared by channel-inbound-turn; --script-file.; For named output-shape cases, --script-file selects the exact recipe by the existing --scenario name. Require the declared literal Markdown/HTML/media/length or controlled preview/reasoning/narration sequence, capture native delivery and lifecycle boundaries, and apply the same scoped selection/cancellation/restoration contract as channel-inbound-turn. A scenario name or platform fault is not itself provider content. questionRecipesFile invokes and captures actual ask_user and completes its owned answer/expiry/cancel lifecycle. Native outbound-only cases instead construct the declared actual CLI/message payload from existing fixture values and record it; they need no model imitation. Missing controlled producer or native interaction is unavailable evidence before dependent work. message-tool-send uses the explicit messageToolSendScript through the actually offered native tool; the similarly named send-text case stays a direct literal outbound producer.; progress-draft-yield-subagents uses the same captured spawn-result, native sessions_yield, child-terminal and resumed-parent lifecycle contract as channel-inbound-turn parent-completion recipes; its existing progressYieldScript must keep the exact child pending through yield, record draft writes during that interval, then capture the resumed parent's real final channel output and join native child cleanup; a tool acceptance or ordinary final-text mock response cannot satisfy this interval; For final-edit-fails with --edit-error message-too-old, the existing previewRecipesFile owns one controlled native partial-to-final sequence. Use the explicitly selected streamingScenarioAccountId with actual partial mode, block disabled and no quote, hook, room-event or reasoning-mode suppression of its answer preview. Emit an ordinary plain-text partial of at least 64 ASCII characters (above native initial threshold 30), below the native single-message limit, then hold terminal content. Capture successful native sendMessage, numeric preview message_id, account/chat/run identity, accepted text and quiescent prior preview writes before any fault is armed. Do not use a provider hold before its first output as this boundary. The controlled producer then provides a different substantive terminal final within the same single-message limit without another intermediate partial update. Arm a one-shot shim response only for the captured account/chat/message and its actual terminal editMessageText request: HTTP 400 with Telegram body error_code 400 and description Bad Request: message can't be edited. Capture the actual native terminal/finalization boundary, exact outgoing edit request and received rejection; matching text or an arbitrary next account edit alone is insufficient. Do not reject initial sendMessage, unrelated edits, progress writes or another turn. Observe native preview discard/cleanup and a fresh sendMessage final with a new captured message identity, plus correlated native final receipt. Record detached preview cleanup separately and join it within the command bound; no cleanup action may manufacture the fallback result. A missing preview, unchanged terminal text, absent terminal boundary, different native transport method, uncaptured fault consumption or unsupported controlled producer returns unavailable evidence. No clock change or claimed natural aging: the supplied shim models Telegram's actual noneditable-target rejection. Preserve every existing scoped config/provider/ambient restoration rule and disarm the owned unused fault in finally. The entire case remains bounded by 150000 ms. --edit-error is an unavailable helper option; this declaration supplies no new mock response type or product hook.; All added recipe selectors are metadata for the already declared unavailable helper, not new provider response fields or product hooks. Before input verify only fixture capability, actual account/route/native configuration and isolated controller ownership. Once valid scripted work is admitted, record native absence, refusal, wrong message identity, missing retry, replacement or failed final/cleanup as actual product evidence; do not relabel those outcomes as a missing fixture or require product success as a precondition. If an expected capture never appears, end that dependent action at its bound, record the missing native stage and settle owned work; never fault an arbitrary message. Release only owned holds and restore exact scripts/config/faults in finally within the original command deadline, preserving all ambient/park/restoration rules. For idempotent-edit-retried, use previewRecipesFile on streamingScenarioAccountId with adopted Telegram streaming.mode partial, block.enabled false and richMessages false, preserving/restoring prior values. No preview-disabling modifier, selected quote or room-event input. Produce plain-text A of at least 64 ASCII characters within one native page, then hold further output until its successful native sendMessage and numeric message_id are captured (or record native nonproduction at the bound). After existing writes settle, arm exactly one HTTP 502 / {ok:false,error_code:502,description:Bad Gateway} for that account/chat/message's editMessageText of different, still-single-page text B. Emit B as a native partial, capture the attempted edit and injected response, then release exactly the same B as terminal final; do not wait for an assumed idle retry, issue a manual edit or emit another changed C. The native draft loop retains an unsent value and stop/flush supplies the next attempt. Observe all same-target B requests, accepted/rejected responses, final receipt and any replacement message identities without asserting success. Failure to retry, unexpected replacement or lost final after valid capture is product output. Never mutate product retry/backoff/clock settings. This is distinct from the permanent HTTP400 final-edit-fails recipe, which remains unchanged except for explicit plain transport selection. For preview-cleanup-fails, the recipe uses native progress_card/real bounded tool activity on the existing selected progress-mode route, captures the newly visible native preview identity and actual plan before terminal release, and stops additional native progress mutations. Produce an ordinary separate non-error final through the existing native progress final-delivery path. Scope the future fault to only the actual product-owned clear/delete of that preview; the clear/delete is neither invoked nor simulated by the helper. The fixture may hold that exact callback/HTTP response while correlating the native accepted separate-final receipt, then fail that owned cleanup once (Telegram HTTP502; conformance reject its genuine public SDK preview clear callback). Capture final receipt/outcome before and after the cleanup response, the actual failure observation and all message identities; no forced change to the delivery result. A delete occurring before accepted final is recorded as that native ordering, not manufactured accepted-final cleanup. Telegram cleanup is detached and can wait for the native four-second minimum dwell, so wait for the actual captured delete response/log inside the existing 120000 ms bound; do not return solely when the model turn ends. After recording product outcomes, disarm and separately clean only the owned orphan using an existing native cleanup operation; that cleanup never supplies product evidence. No generic next-account delete fault, private callback injection or fabricated preview clear. Conformance scoped public clear-fault support is explicitly unavailable until implemented in its existing fixture callback. For final-edit-fails --edit-error message-too-old also explicitly apply and restore richMessages false so its stated sendMessage\u2192editMessageText path is concrete; do not mistake sendRichMessage for an absent preview. Existing named progress and final recipes retain their distinct source contexts.)",
       "support/verify/ingress-aged-retry.mjs  (observe one dedicated native pending ingress event older than 24 hours with seven prior failed attempts and its normal retry eligible; verify original received_at and attempts from channel_ingress_events before releasing its isolated transport failure gate for the final failed attempt, then record the native dead-letter transition; the fixture remains gated through setup so no earlier phase consumes it, and this helper owns release and cleanup; absent, changed, already terminal or insufficiently aged fixture state makes this observation unavailable, never successful; do not insert or backdate rows, alter retry policy, advance clocks or use dead-letter resubmit because it resets age and attempts; --artifact-dir --env --event-id --timeout)",
       "support/verify/channel-delivery-exhaustion.mjs  (one fresh inbound reply through the Telegram shim or SDK-admitted conformance channel, followed by the existing Gateway outbound recovery scheduler; own a dedicated account/peer fault fixture that consistently produces a retryable no-send failure, retain its exact newly created outbound queue id and completion owner, and record native attempt counters, timestamps, recovery states, failed settlement, owner projection and platform observations until the row reaches its terminal state or the deadline; leave maxRetries, backoff, availableAt and all recorded timestamps unchanged; --restarts performs the specified OCM service restarts only after distinct observed completed failures, with the external fixture fault remaining armed before startup recovery; fault state is outside the restarted Gateway and restored in finally, not a reset in-memory counter; unexpected success, ambiguous-send custody, permanent rejection, missing row identity or failure to obtain the requested interval is recorded as unavailable evidence, never manufactured exhaustion; bound initial admission, each restart/join and final observation within the single timeout, and on timeout or interruption quiesce the owned disposable Gateway before clearing a fault while a delivery is pending, retain its identity and transfer that clone to normal disposable-environment cleanup without restarting it; --account --artifact-dir --channel --env --peer --restarts --text --timeout; For --restarts only, apply the task-owned account and native suppression restoration contract declared by gateway-kill, including conditional native-window waits before returning to ordinary observations; --restore-accounts-file --ambient-from --post-restart. )",
       "support/verify/channel-login-overlap.mjs  (use the real login-capable WhatsApp adapter on a dedicated test account; establish and observe an actual pending channels.start owner before completing channels login through its existing auth.login path, record the successful login and attempted runtime reconciliation while that same start remains owned, then release and join the start; admission of a background RPC alone is not proof of ownership or overlap; if a bounded pending start and successful real login cannot be supplied, the observation is unavailable; preserve credential redaction, retain only nonsecret status, and cancel or release the owned pending operation on timeout or interruption; --account --artifact-dir --channel --env --timeout)",
@@ -838,6 +838,7 @@
         "src/commands/channels.ts",
         "src/commands/channels/**",
         "src/gateway/server-methods/web.ts",
+        "ui/src/lib/channels/**",
         "ui/src/pages/channels/**"
       ],
       "requires": [
@@ -903,7 +904,7 @@
     {
       "id": "link-channel-qr",
       "kind": "operation",
-      "intent": "A user starts and waits for a WhatsApp QR login from the Gateway methods, the CLI and the Channels page, observing the QR session and the wait result.",
+      "intent": "A user waits for the captured WhatsApp QR login through the Gateway and opens account-default CLI login, observing both results. The shared Channels page QR flow is recorded in link-account-by-qr.",
       "paths": [
         "extensions/whatsapp/src/**",
         "src/cli/channel-auth.ts",
@@ -925,8 +926,7 @@
       "commands": [
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --ensure-active --from {run}/channel-turn-in-flight.json --timeout 10000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method web.login.wait --params '{\"channel\":\"whatsapp\",\"timeoutMs\":20000}' --merge-from {run}/qr-start.json --timeout 30000",
-        "ocm @{env} -- channels login --channel whatsapp --verbose",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow channels-whatsapp-qr --artifact-dir {run}/screens --timeout 90000 --ambient-from {run}/channel-turn-in-flight.json"
+        "ocm @{env} -- channels login --channel whatsapp --verbose"
       ],
       "checkpoint": [
         "responses",
@@ -976,8 +976,18 @@
     {
       "id": "check-channel-status",
       "kind": "operation",
-      "intent": "An operator lists and checks every channel account while several channels run, some accounts are disabled, suppressed or missing a secret and catalog channels are not yet installed; list, status, probe, Gateway status and health output are recorded.",
+      "intent": "An operator lists configured and catalog channels, reads recorded and probed status, and checks overall status and health while account, workspace plugin, broken or disabled plugin, provenance and legacy configuration traits coexist; responses are recorded.",
       "paths": [
+        "src/auto-reply/dispatch*.ts",
+        "src/auto-reply/inbound*.ts",
+        "src/auto-reply/reply/conversation*.ts",
+        "src/auto-reply/reply/dispatch*.ts",
+        "src/auto-reply/reply/inbound*.ts",
+        "src/auto-reply/reply/route*.ts",
+        "src/auto-reply/reply/routing*.ts",
+        "src/channels/*/**",
+        "src/channels/account-*.ts",
+        "src/channels/status/**",
         "src/cli/channel-auth.ts",
         "src/cli/channel-options.ts",
         "src/cli/channels-cli*.ts",
@@ -985,13 +995,19 @@
         "src/commands/channels/**",
         "src/gateway/server-methods/channels*.ts",
         "src/infra/channel-*.ts",
-        "src/infra/channels-status-issues.ts"
+        "src/infra/channels-status-issues.ts",
+        "src/plugin-sdk/channel-*.ts",
+        "src/routing/**"
       ],
       "requires": [
         "channel-accounts-multiple",
         "channel-ambient-turn",
+        "channel-plugin-load-broken",
         "channel-probe-admission",
         "channel-probe-conversations",
+        "channel-workspace-plugin",
+        "config-legacy-agents-list",
+        "config-legacy-route-markers",
         "mock-provider-held-turn"
       ],
       "commands": [
@@ -1046,29 +1062,125 @@
     {
       "id": "check-channel-status-broken-plugin",
       "kind": "operation",
-      "intent": "An operator checks status while one configured channel's plugin fails to load (a removed SDK import), another plugin is disabled and one has untracked provenance; status, list and doctor output are recorded.",
+      "intent": "An operator runs Doctor over supplied channel, access, binding, plugin and legacy configuration, including retired Microsoft Teams conversation, poll, SSO-token and feedback JSON files; diagnostic findings and recovery guidance are recorded.",
       "paths": [
+        "extensions/discord/src/**",
+        "extensions/feishu/src/**",
+        "extensions/msteams/src/**",
+        "extensions/telegram/src/**",
+        "extensions/whatsapp/src/**",
+        "src/agents/agent-scope-config.ts",
+        "src/agents/identity.ts",
+        "src/auto-reply/chunk*.ts",
+        "src/auto-reply/dispatch*.ts",
+        "src/auto-reply/envelope*.ts",
+        "src/auto-reply/group*.ts",
+        "src/auto-reply/inbound*.ts",
+        "src/auto-reply/reply/block*.ts",
+        "src/auto-reply/reply/channel*.ts",
+        "src/auto-reply/reply/conversation*.ts",
+        "src/auto-reply/reply/dispatch*.ts",
+        "src/auto-reply/reply/get-reply-directives.ts",
+        "src/auto-reply/reply/get-reply.ts",
+        "src/auto-reply/reply/group*.ts",
+        "src/auto-reply/reply/history*.ts",
+        "src/auto-reply/reply/inbound*.ts",
+        "src/auto-reply/reply/mentions*.ts",
+        "src/auto-reply/reply/message*.ts",
+        "src/auto-reply/reply/origin*.ts",
+        "src/auto-reply/reply/progress*.ts",
+        "src/auto-reply/reply/reply-dispatch-delay.ts",
+        "src/auto-reply/reply/route*.ts",
+        "src/auto-reply/reply/routing*.ts",
+        "src/auto-reply/reply/source*.ts",
+        "src/auto-reply/reply/typing*.ts",
+        "src/auto-reply/send*.ts",
+        "src/auto-reply/sender*.ts",
+        "src/auto-reply/source*.ts",
+        "src/channels/*/**",
+        "src/channels/account-*.ts",
+        "src/channels/allow-from.ts",
+        "src/channels/allowlist-match.ts",
+        "src/channels/allowlists/**",
+        "src/channels/command-gating.ts",
+        "src/channels/conversation-resolution.ts",
+        "src/channels/direct-dm*.ts",
+        "src/channels/draft-stream*.ts",
+        "src/channels/inbound-event/**",
+        "src/channels/join-intro/**",
+        "src/channels/message-access/**",
+        "src/channels/progress-*.ts",
+        "src/channels/route-projection.ts",
+        "src/channels/sender-label.ts",
+        "src/channels/status/**",
+        "src/channels/streaming*.ts",
+        "src/channels/turn/**",
         "src/cli/channel-auth.ts",
         "src/cli/channel-options.ts",
         "src/cli/channels-cli*.ts",
+        "src/cli/pairing-cli.ts",
+        "src/cli/pairing-command-format.ts",
         "src/commands/channels.ts",
         "src/commands/channels/**",
+        "src/config/markdown-tables*.ts",
+        "src/config/merge-patch.ts",
+        "src/config/types.agents.ts",
+        "src/gateway/server-methods/channel-pairing.ts",
         "src/gateway/server-methods/channels*.ts",
+        "src/gateway/server-methods/config.ts",
         "src/infra/channel-*.ts",
-        "src/infra/channels-status-issues.ts"
+        "src/infra/channels-status-issues.ts",
+        "src/infra/outbound/**",
+        "src/infra/outbound/format*.ts",
+        "src/infra/outbound/markdown*.ts",
+        "src/pairing/pairing-*.ts",
+        "src/plugin-sdk/channel-*.ts",
+        "src/routing/**"
       ],
       "requires": [
+        "agents-three-configured",
+        "channel-access-groups",
+        "channel-accounts-multiple",
         "channel-ambient-turn",
+        "channel-discord-fixture",
+        "channel-group-introduced",
+        "channel-group-joinable",
+        "channel-mode-target",
         "channel-plugin-load-broken",
+        "channel-plugin-turn-alias",
         "channel-probe-admission",
         "channel-probe-conversations",
-        "mock-provider-held-turn"
+        "channel-streaming-modes",
+        "channel-teams-retired-state",
+        "channel-telegram-forum",
+        "channel-telegram-shim",
+        "channel-workspace-plugin",
+        "channels-test-accounts",
+        "config-activation-before-sender",
+        "config-bindings-tiers",
+        "config-human-delay",
+        "config-join-intro-off",
+        "config-legacy-agents-list",
+        "config-legacy-route-markers",
+        "config-min-identifier-auth",
+        "config-progress-commentary",
+        "config-progress-label",
+        "config-tables-block",
+        "config-tables-bullets",
+        "config-tables-off",
+        "config-telegram-reasoning-stream",
+        "config-telegram-rich-messages",
+        "config-telegram-username-allow",
+        "config-tool-detail-raw",
+        "config-visible-replies-tool",
+        "env-explicit-fleet-no-owner",
+        "mock-provider-held-turn",
+        "mock-provider-markdown-reply",
+        "mock-provider-tool-calls",
+        "plugin-message-hooks"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --ensure-active --from {run}/channel-turn-in-flight.json --timeout 10000",
-        "ocm @{env} -- channels status --json",
-        "ocm @{env} -- channels list --json",
-        "ocm @{env} -- status --json",
         "ocm @{env} -- doctor --json"
       ],
       "checkpoint": [
@@ -1166,7 +1278,7 @@
     {
       "id": "check-channel-status-under-states-1",
       "kind": "operation",
-      "intent": "A user reads the configured channel list, recorded and probed status, and Doctor findings; the summaries are recorded.",
+      "intent": "A user reads the full overall status summary with --all; shared inventory, probe and Doctor observations are recorded by the corresponding status and Doctor phases.",
       "paths": [
         "src/channels/account-*.ts",
         "src/channels/status/**",
@@ -1189,12 +1301,7 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --ensure-active --from {run}/channel-turn-in-flight.json --timeout 10000",
-        "ocm @{env} -- status --all --json",
-        "ocm @{env} -- channels list --all --json",
-        "ocm @{env} -- channels list --json",
-        "ocm @{env} -- channels status --probe --json",
-        "ocm @{env} -- doctor --json",
-        "ocm @{env} -- status --json"
+        "ocm @{env} -- status --all --json"
       ],
       "checkpoint": [
         "responses",
@@ -1211,21 +1318,54 @@
       "intent": "An operator asks what each channel account can do, for all channels and for Telegram, and Kova's preflight reads the packaged message contracts; capability output is recorded.",
       "paths": [
         "extensions/telegram/src/**",
+        "src/agents/agent-scope-config.ts",
+        "src/agents/identity.ts",
+        "src/auto-reply/dispatch*.ts",
+        "src/auto-reply/envelope*.ts",
+        "src/auto-reply/inbound*.ts",
+        "src/auto-reply/reply/block*.ts",
+        "src/auto-reply/reply/conversation*.ts",
+        "src/auto-reply/reply/dispatch*.ts",
+        "src/auto-reply/reply/history*.ts",
+        "src/auto-reply/reply/inbound*.ts",
+        "src/auto-reply/reply/typing*.ts",
+        "src/auto-reply/sender*.ts",
+        "src/channels/allow-from.ts",
+        "src/channels/allowlist-match.ts",
+        "src/channels/allowlists/**",
+        "src/channels/command-gating.ts",
+        "src/channels/direct-dm*.ts",
+        "src/channels/inbound-event/**",
+        "src/channels/join-intro/**",
+        "src/channels/message-access/**",
+        "src/channels/sender-label.ts",
+        "src/channels/streaming*.ts",
+        "src/channels/turn/**",
         "src/cli/channel-auth.ts",
         "src/cli/channel-options.ts",
         "src/cli/channels-cli*.ts",
         "src/commands/channels.ts",
         "src/commands/channels/**",
+        "src/config/markdown-tables*.ts",
         "src/gateway/server-methods/channels*.ts",
         "src/infra/channel-*.ts",
-        "src/infra/channels-status-issues.ts"
+        "src/infra/channels-status-issues.ts",
+        "src/plugin-sdk/channel-*.ts"
       ],
       "requires": [
         "channel-ambient-turn",
+        "channel-group-introduced",
+        "channel-group-joinable",
         "channel-probe-admission",
         "channel-probe-conversations",
+        "channel-streaming-modes",
+        "channel-telegram-forum",
         "channel-telegram-shim",
-        "mock-provider-held-turn"
+        "config-join-intro-off",
+        "config-telegram-reasoning-stream",
+        "config-telegram-username-allow",
+        "mock-provider-held-turn",
+        "mock-provider-markdown-reply"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --ensure-active --from {run}/channel-turn-in-flight.json --timeout 10000",
@@ -1394,6 +1534,7 @@
       "kind": "operation",
       "intent": "An operator looks up self, peers, groups and group members on Telegram and the conformance channel and resolves names to ids; directory and resolve output is recorded.",
       "paths": [
+        "extensions/discord/src/**",
         "extensions/telegram/src/**",
         "src/cli/channel-auth.ts",
         "src/cli/channel-options.ts",
@@ -1404,6 +1545,7 @@
       ],
       "requires": [
         "channel-ambient-turn",
+        "channel-discord-fixture",
         "channel-probe-admission",
         "channel-probe-conversations",
         "channel-telegram-shim",
@@ -1430,7 +1572,7 @@
     {
       "id": "look-up-channel-ids",
       "kind": "operation",
-      "intent": "A user resolves channel and user names and lists self, peers, groups and group members on Telegram and Discord, observing the ids returned.",
+      "intent": "A user resolves Discord channel and user names and lists its self, peers, groups and group members, observing returned identifiers. Shared Telegram directory output is recorded in look-up-directory.",
       "paths": [
         "extensions/discord/src/**",
         "extensions/telegram/src/**",
@@ -1455,8 +1597,7 @@
         "ocm @{env} -- directory self --channel discord --json",
         "ocm @{env} -- directory peers list --channel discord --limit 20 --json",
         "ocm @{env} -- directory groups list --channel discord --json",
-        "ocm @{env} -- directory groups members --channel discord --group-id {persona:channel-discord-fixture:channelId} --json",
-        "ocm @{env} -- directory groups list --channel telegram --json"
+        "ocm @{env} -- directory groups members --channel discord --group-id {persona:channel-discord-fixture:channelId} --json"
       ],
       "checkpoint": [
         "responses",
@@ -1470,7 +1611,7 @@
     {
       "id": "look-up-channel-ids-under-states",
       "kind": "operation",
-      "intent": "A user repeats look up channel ids and names under each documented state of that operation, observing what each state changes.",
+      "intent": "A user resolves a Discord channel name using the explicit channel kind and lists conformance-channel groups, observing returned identifiers and empty or unsupported results. Shared self and peer listings are recorded by the corresponding directory phases.",
       "paths": [
         "extensions/discord/src/**",
         "extensions/telegram/src/**",
@@ -1492,11 +1633,7 @@
       "commands": [
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --ensure-active --from {run}/channel-turn-in-flight.json --timeout 10000",
         "ocm @{env} -- channels resolve --channel discord --kind channel general --json",
-        "ocm @{env} -- directory groups list --channel kova-channel-probe --json",
-        "ocm @{env} -- directory groups list --channel telegram --json",
-        "ocm @{env} -- directory peers list --channel kova-channel-probe --json",
-        "ocm @{env} -- directory self --channel telegram --json",
-        "ocm @{env} -- directory self --channel discord --json"
+        "ocm @{env} -- directory groups list --channel kova-channel-probe --json"
       ],
       "checkpoint": [
         "responses",
@@ -1802,6 +1939,7 @@
         "src/auto-reply/reply/source*.ts",
         "src/auto-reply/sender*.ts",
         "src/auto-reply/source*.ts",
+        "src/channels/*/**",
         "src/channels/allow-from.ts",
         "src/channels/allowlist-match.ts",
         "src/channels/allowlists/**",
@@ -1819,6 +1957,7 @@
         "src/routing/**"
       ],
       "requires": [
+        "agents-three-configured",
         "channel-ambient-turn",
         "channel-multi-account",
         "channel-multi-account-no-default",
@@ -1840,6 +1979,7 @@
         "config-model-override-session",
         "config-response-prefix",
         "dm-scope-isolated",
+        "env-explicit-fleet-no-owner",
         "mock-provider-held-turn",
         "session-main-rolling"
       ],
@@ -2214,14 +2354,15 @@
         "channel-probe-admission",
         "channel-probe-conversations",
         "config-broadcast-gating-off",
-        "mock-provider-held-turn"
+        "mock-provider-held-turn",
+        "mock-provider-tool-calls"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --ensure-active --from {run}/channel-turn-in-flight.json --timeout 10000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type group --peer {persona:channel-broadcast-group:groupId} --text 'broadcast room question' --sender {persona:channel-broadcast-group:senderPeer} --mention --artifact-dir {run}/amb-broadcast-configured --timeout 15000",
-        "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type group --peer {persona:channel-broadcast-group:groupId} --text 'broadcast room question' --sender {persona:channel-broadcast-group:senderPeer} --mention --artifact-dir {run}/amb-broadcast-budget-short --timeout 15000 --account default --channel-patch '{}' --agent-defaults '{}' --root-patch '{\"broadcast\":{\"strategy\":\"parallel\",\"kova-channel-probe:{persona:channel-broadcast-group:groupId}\":{\"agents\":[\"{persona:channel-broadcast-group:agentA}\",\"{persona:channel-broadcast-group:agentB}\"],\"maxRounds\":1,\"maxTurns\":1}}}' --ambient-from {run}/channel-turn-in-flight.json",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type group --peer {persona:config-broadcast-gating-off:groupId} --text 'broadcast room question' --sender {persona:config-broadcast-gating-off:senderPeer} --mention --artifact-dir {run}/amb-broadcast-gating-off --timeout 15000",
-        "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type group --peer {persona:channel-broadcast-group:groupId} --text 'broadcast room question' --sender {persona:channel-broadcast-group:senderPeer} --mention --artifact-dir {run}/amb-broadcast-sequential --timeout 15000 --account default --channel-patch '{}' --agent-defaults '{}' --root-patch '{\"broadcast\":{\"strategy\":\"sequential\",\"kova-channel-probe:{persona:channel-broadcast-group:groupId}\":{\"agents\":[\"{persona:channel-broadcast-group:agentA}\",\"{persona:channel-broadcast-group:agentB}\"],\"maxRounds\":1,\"maxTurns\":2}}}' --ambient-from {run}/channel-turn-in-flight.json",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type group --peer {persona:channel-broadcast-group:groupId} --text 'broadcast room question' --sender {persona:channel-broadcast-group:senderPeer} --mention --artifact-dir {run}/amb-broadcast-configured --timeout 15000 --script-file {persona:mock-provider-tool-calls:progressScript}",
+        "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type group --peer {persona:channel-broadcast-group:groupId} --text 'broadcast room question' --sender {persona:channel-broadcast-group:senderPeer} --mention --artifact-dir {run}/amb-broadcast-budget-short --timeout 15000 --account default --channel-patch '{}' --agent-defaults '{}' --root-patch '{\"broadcast\":{\"strategy\":\"parallel\",\"kova-channel-probe:{persona:channel-broadcast-group:groupId}\":{\"agents\":[\"{persona:channel-broadcast-group:agentA}\",\"{persona:channel-broadcast-group:agentB}\"],\"maxRounds\":1,\"maxTurns\":1}}}' --ambient-from {run}/channel-turn-in-flight.json --script-file {persona:mock-provider-tool-calls:progressScript}",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type group --peer {persona:config-broadcast-gating-off:groupId} --text 'broadcast room question' --sender {persona:config-broadcast-gating-off:senderPeer} --mention --artifact-dir {run}/amb-broadcast-gating-off --timeout 15000 --script-file {persona:mock-provider-tool-calls:progressScript}",
+        "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type group --peer {persona:channel-broadcast-group:groupId} --text 'broadcast room question' --sender {persona:channel-broadcast-group:senderPeer} --mention --artifact-dir {run}/amb-broadcast-sequential --timeout 15000 --account default --channel-patch '{}' --agent-defaults '{}' --root-patch '{\"broadcast\":{\"strategy\":\"sequential\",\"kova-channel-probe:{persona:channel-broadcast-group:groupId}\":{\"agents\":[\"{persona:channel-broadcast-group:agentA}\",\"{persona:channel-broadcast-group:agentB}\"],\"maxRounds\":1,\"maxTurns\":2}}}' --ambient-from {run}/channel-turn-in-flight.json --script-file {persona:mock-provider-tool-calls:progressScript}",
         "ocm @{env} -- config get agents --json"
       ],
       "checkpoint": [
@@ -2276,10 +2417,8 @@
         "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --account {persona:config-bindings-tiers:accountId} --chat-type direct --peer {persona:config-bindings-tiers:peer} --text 'hello under this account state' --artifact-dir {run}/amb-bind-fallback-owner --timeout 12000 --channel-patch '{}' --agent-defaults '{}' --root-patch '{\"bindings\":[]}' --routing-owner {persona:agents-three-configured:mainAgentId} --ambient-from {run}/channel-turn-in-flight.json",
         "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {persona:env-explicit-fleet-no-owner:env} --channel kova-channel-probe --admission sdk --account {persona:env-explicit-fleet-no-owner:probeAccountId} --chat-type direct --peer {persona:env-explicit-fleet-no-owner:probePeer} --text 'hello under this account state' --artifact-dir {run}/amb-bind-no-owner --timeout 12000 --channel-patch '{}' --agent-defaults '{}' --root-patch '{\"bindings\":[]}' --omit-routing-owner",
         "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type group --peer {persona:config-bindings-tiers:groupId} --text 'question for the bot' --sender {persona:config-bindings-tiers:senderPeer} --mention --artifact-dir {run}/amb-bind-multi-field --timeout 12000 --account default --channel-patch '{}' --agent-defaults '{}' --root-patch '{\"bindings\":[{\"agentId\":\"{persona:agents-three-configured:secondAgentId}\",\"match\":{\"channel\":\"kova-channel-probe\",\"accountId\":\"default\",\"peer\":{\"kind\":\"group\",\"id\":\"{persona:config-bindings-tiers:groupId}\"}}}]}' --ambient-from {run}/channel-turn-in-flight.json",
-        "ocm @{env} -- doctor --json",
         "ocm @{env} -- agents list --json",
-        "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --account {persona:config-bindings-tiers:accountId} --chat-type direct --peer {persona:config-bindings-tiers:peer} --text 'hello under this account state' --artifact-dir {run}/amb-channel-only-binding --timeout 12000 --channel-patch '{}' --agent-defaults '{}' --root-patch '{\"bindings\":[{\"agentId\":\"{persona:agents-three-configured:secondAgentId}\",\"match\":{\"channel\":\"kova-channel-probe\"}}]}' --ambient-from {run}/channel-turn-in-flight.json",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --account {persona:channels-test-accounts:accountId} --chat-type direct --peer {persona:channels-test-accounts:peer} --text 'hello under this account state' --artifact-dir {run}/amb-multi-channel --timeout 12000"
+        "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --account {persona:config-bindings-tiers:accountId} --chat-type direct --peer {persona:config-bindings-tiers:peer} --text 'hello under this account state' --artifact-dir {run}/amb-channel-only-binding --timeout 12000 --channel-patch '{}' --agent-defaults '{}' --root-patch '{\"bindings\":[{\"agentId\":\"{persona:agents-three-configured:secondAgentId}\",\"match\":{\"channel\":\"kova-channel-probe\"}}]}' --ambient-from {run}/channel-turn-in-flight.json"
       ],
       "checkpoint": [
         "responses",
@@ -2343,11 +2482,9 @@
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel telegram --chat-type group --peer {persona:channel-telegram-shim:groupChatId} --text 'group message on telegram' --artifact-dir {run}/amb-tg-privacy-mode --timeout 12000",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel telegram --chat-type group --peer {persona:config-telegram-username-allow:groupChatId} --text 'group message on telegram' --artifact-dir {run}/amb-tg-username-allow --timeout 12000",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel telegram --chat-type direct --peer {persona:config-telegram-username-allow:chatId} --text 'hello on telegram' --artifact-dir {run}/amb-tg-upgrade-allowlist --timeout 12000",
-        "ocm @{env} -- doctor --json",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel telegram --chat-type direct --peer {persona:channel-telegram-shim:chatId} --text 'hello on telegram' --artifact-dir {run}/amb-tg-debounce-default --timeout 12000",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel telegram --chat-type direct --peer {persona:mock-provider-markdown-reply:chatId} --text '{persona:mock-provider-markdown-reply:imageMarker}' --artifact-dir {run}/amb-tg-markdown-image --timeout 12000 --script-file {persona:mock-provider-markdown-reply:renderRecipesFile}",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel telegram --chat-type direct --peer {persona:config-telegram-reasoning-stream:chatId} --text '{persona:channel-streaming-modes:reasoningMarker}' --artifact-dir {run}/amb-tg-reasoning-draft --timeout 12000 --account {persona:config-telegram-reasoning-stream:accountId} --script-file {persona:channel-streaming-modes:previewRecipesFile}",
-        "ocm @{env} -- channels capabilities --channel telegram --json",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel telegram --chat-type group --peer {persona:config-join-intro-off:groupChatId} --event join --artifact-dir {run}/amb-join-intro-disabled --timeout 12000 --account {persona:config-join-intro-off:accountId}",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel telegram --chat-type group --peer {persona:channel-group-joinable:groupChatId} --event join --artifact-dir {run}/amb-join-intro-no-history --timeout 12000",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel telegram --chat-type group --peer {persona:channel-group-introduced:groupChatId} --event join --artifact-dir {run}/amb-join-intro-claim --timeout 12000"
@@ -2547,9 +2684,7 @@
         "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel telegram --chat-type direct --peer {persona:channel-mode-target:peer} --text '{persona:mock-provider-tool-calls:progressMarker}' --artifact-dir {run}/amb-progress-commentary --timeout 15000 --account {persona:channel-mode-target:accountId} --agent {persona:channel-mode-target:agentId} --channel-patch '{\"streaming\":{\"mode\":\"progress\",\"progress\":{\"commentary\":true,\"toolProgress\":false},\"block\":{\"enabled\":false}}}' --agent-defaults '{\"blockStreamingDefault\":\"off\"}' --ambient-from {run}/channel-turn-in-flight.json",
         "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel telegram --chat-type direct --peer {persona:channel-mode-target:peer} --text '{persona:mock-provider-tool-calls:progressMarker}' --artifact-dir {run}/amb-progress-label-custom --timeout 15000 --account {persona:channel-mode-target:accountId} --agent {persona:channel-mode-target:agentId} --channel-patch '{\"streaming\":{\"mode\":\"progress\",\"progress\":{\"label\":\"Kova\"},\"block\":{\"enabled\":false}}}' --agent-defaults '{\"blockStreamingDefault\":\"off\"}' --ambient-from {run}/channel-turn-in-flight.json",
         "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel telegram --chat-type direct --peer {persona:channel-mode-target:peer} --text '{persona:mock-provider-tool-calls:progressMarker}' --artifact-dir {run}/amb-tool-detail-raw --timeout 15000 --account {persona:channel-mode-target:accountId} --agent {persona:channel-mode-target:agentId} --channel-patch '{\"streaming\":{\"mode\":\"progress\",\"progress\":{\"toolProgress\":true},\"block\":{\"enabled\":false}}}' --agent-defaults '{\"blockStreamingDefault\":\"off\",\"toolProgressDetail\":\"raw\"}' --ambient-from {run}/channel-turn-in-flight.json",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --text '{persona:mock-provider-tool-calls:progressMarker}' --artifact-dir {run}/amb-no-edit-support --timeout 15000 --account {persona:channel-streaming-modes:noEditAccountId}",
         "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel telegram --chat-type direct --peer {persona:channel-mode-target:peer} --text '{persona:mock-provider-tool-calls:progressMarker}' --artifact-dir {run}/amb-human-delay --timeout 15000 --account {persona:channel-mode-target:accountId} --agent {persona:channel-mode-target:agentId} --channel-patch '{\"streaming\":{\"mode\":\"off\",\"block\":{\"enabled\":true}}}' --agent-defaults '{\"blockStreamingDefault\":\"on\",\"blockStreamingBreak\":\"text_end\",\"humanDelay\":{\"mode\":\"custom\",\"minMs\":300,\"maxMs\":300}}' --root-patch '{\"agents\":{\"entries\":{\"{persona:channel-mode-target:agentId}\":{\"humanDelay\":null}}}}' --ambient-from {run}/channel-turn-in-flight.json",
-        "ocm @{env} -- doctor --json",
         "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel telegram --chat-type direct --peer {persona:channel-mode-target:peer} --text '{persona:mock-provider-markdown-reply:tablesMarker}' --artifact-dir {run}/amb-tables-code --timeout 12000 --account {persona:channel-mode-target:accountId} --agent {persona:channel-mode-target:agentId} --channel-patch '{\"markdown\":{\"tables\":\"code\"},\"richMessages\":false}' --agent-defaults '{}' --root-patch '{}' --ambient-from {run}/channel-turn-in-flight.json",
         "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel telegram --chat-type direct --peer {persona:config-tables-bullets:chatId} --text '{persona:mock-provider-markdown-reply:tablesMarker}' --artifact-dir {run}/amb-tables-bullets --timeout 12000 --account default --channel-patch '{\"markdown\":{\"tables\":\"bullets\"}}' --agent-defaults '{}' --root-patch '{}' --ambient-from {run}/channel-turn-in-flight.json",
         "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel telegram --chat-type direct --peer {persona:config-tables-block:chatId} --text '{persona:mock-provider-markdown-reply:tablesMarker}' --artifact-dir {run}/amb-tables-block --timeout 12000 --account default --channel-patch '{\"markdown\":{\"tables\":\"block\"},\"richMessages\":true}' --agent-defaults '{}' --root-patch '{}' --ambient-from {run}/channel-turn-in-flight.json",
@@ -2616,7 +2751,6 @@
         "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel telegram --chat-type direct --peer {persona:channel-mode-target:peer} --text '{persona:mock-provider-held-turn:marker}' --artifact-dir {run}/amb-typing-thinking --timeout 12000 --account {persona:channel-mode-target:accountId} --agent {persona:channel-mode-target:agentId} --channel-patch '{}' --agent-defaults '{\"typingMode\":\"thinking\"}' --ambient-from {run}/channel-turn-in-flight.json",
         "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel telegram --chat-type direct --peer {persona:channel-mode-target:peer} --text '{persona:mock-provider-held-turn:marker}' --artifact-dir {run}/amb-typing-message --timeout 12000 --account {persona:channel-mode-target:accountId} --agent {persona:channel-mode-target:agentId} --channel-patch '{}' --agent-defaults '{\"typingMode\":\"message\"}' --ambient-from {run}/channel-turn-in-flight.json",
         "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel telegram --chat-type direct --peer {persona:config-typing-agent-override:chatId} --text '{persona:mock-provider-held-turn:marker}' --artifact-dir {run}/amb-typing-agent-override --timeout 12000 --account {persona:config-typing-agent-override:accountId} --agent {persona:config-typing-agent-override:agentId} --channel-patch '{}' --agent-defaults '{\"typingMode\":\"never\"}' --root-patch '{\"agents\":{\"entries\":{\"{persona:config-typing-agent-override:agentId}\":{\"typingMode\":\"instant\"}}}}' --ambient-from {run}/channel-turn-in-flight.json",
-        "node {kovaRoot}/support/verify/heartbeat-wake.mjs --env {env} --timeout 30000 --ambient-from {run}/channel-turn-in-flight.json",
         "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel telegram --chat-type group --peer {persona:config-ack-off:groupChatId} --text 'group message on telegram' --artifact-dir {run}/amb-ack-off --timeout 12000 --account {persona:config-ack-off:accountId} --channel-patch '{\"ackReaction\":\"\\ud83d\\udc4d\"}' --agent-defaults '{}' --root-patch '{\"messages\":{\"ackReactionScope\":\"off\",\"statusReactions\":{\"enabled\":false}}}' --ambient-from {run}/channel-turn-in-flight.json",
         "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel telegram --chat-type group --peer {persona:channel-group-allowlisted:groupChatId} --text 'group message on telegram' --artifact-dir {run}/amb-ack-scope-group-mentions --timeout 12000 --mention --account {persona:channel-group-allowlisted:accountId} --channel-patch '{\"ackReaction\":\"\\ud83d\\udc4d\"}' --agent-defaults '{}' --root-patch '{\"messages\":{\"ackReactionScope\":\"group-mentions\",\"statusReactions\":{\"enabled\":false}}}' --ambient-from {run}/channel-turn-in-flight.json",
         "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel telegram --chat-type group --peer {persona:config-ack-scope-group-all:groupChatId} --text 'group message on telegram' --artifact-dir {run}/amb-ack-scope-group-all --timeout 12000 --account {persona:config-ack-scope-group-all:accountId} --channel-patch '{\"ackReaction\":\"\\ud83d\\udc4d\"}' --agent-defaults '{}' --root-patch '{\"messages\":{\"ackReactionScope\":\"group-all\",\"statusReactions\":{\"enabled\":false}}}' --ambient-from {run}/channel-turn-in-flight.json",
@@ -2688,13 +2822,10 @@
         "node {kovaRoot}/support/verify/channel-probe-observe.mjs --env {env} --case receive-ack.after-agent-dispatch --artifact-dir {run}/amb-ack-after-dispatch --timeout 30000",
         "node {kovaRoot}/support/verify/channel-probe-observe.mjs --env {env} --case receive-ack.after-durable-send --artifact-dir {run}/amb-ack-after-send --timeout 30000",
         "node {kovaRoot}/support/verify/channel-probe-observe.mjs --env {env} --case receive-ack.manual --artifact-dir {run}/amb-ack-manual --timeout 30000",
-        "node {kovaRoot}/support/verify/heartbeat-wake.mjs --env {env} --timeout 30000 --ambient-from {run}/channel-turn-in-flight.json",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --account {persona:channel-plugin-turn-alias:accountId} --chat-type direct --peer {persona:channel-plugin-turn-alias:peer} --text 'hello under this account state' --artifact-dir {run}/amb-turn-alias --timeout 12000",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --account {persona:channel-probe-conversations:accountId} --chat-type direct --peer {persona:channel-probe-conversations:peer} --text 'hello under this account state' --artifact-dir {run}/amb-participant-unresolved --timeout 12000",
-        "ocm @{env} -- security audit --json",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --account {persona:config-min-identifier-auth:accountId} --chat-type direct --peer {persona:config-min-identifier-auth:peer} --text 'hello under this account state' --artifact-dir {run}/amb-min-identifier-auth --timeout 12000",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type group --peer {persona:config-activation-before-sender:groupId} --text 'unmentioned room message' --sender {persona:config-activation-before-sender:senderPeer} --artifact-dir {run}/amb-activation-before-sender --timeout 12000",
-        "ocm @{env} -- doctor --json",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --account {persona:plugin-message-hooks:accountId} --chat-type direct --peer {persona:plugin-message-hooks:peer} --text 'hello under this account state' --artifact-dir {run}/amb-message-hooks --timeout 12000",
         "ocm @{env} -- plugins list --json"
       ],
@@ -3198,8 +3329,7 @@
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type group --peer {persona:config-visible-replies-tool:noMessageToolGroup} --mention --text '{persona:config-visible-replies-tool:strandMarker}' --timeout 40000",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:config-visible-replies-tool:globalToolOnlyPeer} --text '{persona:mock-provider-tool-calls:messageSendMarker}' --timeout 40000",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type group --peer {persona:config-visible-replies-tool:denyPolicyGroup} --mention --text '{persona:mock-provider-tool-calls:messageSendMarker}' --timeout 40000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type group --peer {persona:config-visible-replies-tool:harnessDefaultGroup} --mention --text '{persona:mock-provider-tool-calls:messageSendMarker}' --timeout 40000",
-        "ocm @{env} -- doctor --json"
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type group --peer {persona:config-visible-replies-tool:harnessDefaultGroup} --mention --text '{persona:mock-provider-tool-calls:messageSendMarker}' --timeout 40000"
       ],
       "checkpoint": [
         "responses",
@@ -3316,30 +3446,49 @@
       "kind": "operation",
       "intent": "People ask for tool-heavy work on progress-mode accounts with the tool log, raw detail, line limits and label, no utility model, and on a channel without safe edits; probe observations are recorded.",
       "paths": [
+        "extensions/telegram/src/**",
         "src/agents/agent-scope-config.ts",
         "src/agents/identity.ts",
         "src/agents/utility-model-setting.ts",
         "src/auto-reply/chunk*.ts",
         "src/auto-reply/reply/block*.ts",
+        "src/auto-reply/reply/get-reply-directives.ts",
+        "src/auto-reply/reply/get-reply.ts",
         "src/auto-reply/reply/message*.ts",
         "src/auto-reply/reply/progress*.ts",
+        "src/auto-reply/reply/reply-dispatch-delay.ts",
         "src/auto-reply/reply/typing*.ts",
         "src/auto-reply/send*.ts",
         "src/channels/*/**",
+        "src/channels/draft-stream*.ts",
+        "src/channels/progress-*.ts",
         "src/channels/streaming*.ts",
         "src/config/markdown-tables*.ts",
         "src/config/merge-patch.ts",
         "src/config/types.agents.ts",
         "src/gateway/server-methods/config.ts",
         "src/infra/outbound/**",
+        "src/infra/outbound/format*.ts",
+        "src/infra/outbound/markdown*.ts",
         "src/plugin-sdk/channel-*.ts"
       ],
       "requires": [
         "channel-ambient-turn",
+        "channel-mode-target",
         "channel-probe-admission",
         "channel-probe-conversations",
         "channel-streaming-modes",
+        "channel-telegram-shim",
+        "config-human-delay",
+        "config-progress-commentary",
+        "config-progress-label",
+        "config-tables-block",
+        "config-tables-bullets",
+        "config-tables-off",
+        "config-telegram-rich-messages",
+        "config-tool-detail-raw",
         "mock-provider-held-turn",
+        "mock-provider-markdown-reply",
         "mock-provider-tool-calls"
       ],
       "commands": [
@@ -3409,7 +3558,7 @@
     {
       "id": "message-agent-access-groups",
       "kind": "operation",
-      "intent": "Senders listed through access groups, a missing group, an unreferenced group, a cross-channel id and an open DM policy without a wildcard message the agent; observations and doctor output are recorded.",
+      "intent": "Senders listed through access groups, a missing group, an unreferenced group, a cross-channel id and an open DM policy without a wildcard message the agent; admission and reply observations are recorded. Shared configuration diagnostics are recorded by the Doctor phase.",
       "paths": [
         "src/auto-reply/dispatch*.ts",
         "src/auto-reply/inbound*.ts",
@@ -3435,8 +3584,7 @@
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --sender {persona:channel-access-groups:missingGroupSender} --text 'Reply with exact ASCII text KOVA_ACCESS_MISSING_OK only.' --timeout 40000",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --sender {persona:channel-access-groups:unreferencedSender} --text 'Reply with exact ASCII text KOVA_ACCESS_UNREFERENCED_OK only.' --timeout 40000",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --sender {persona:channel-access-groups:crossChannelSender} --text 'Reply with exact ASCII text KOVA_ACCESS_CROSS_OK only.' --timeout 40000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --account {persona:channel-access-groups:openNoWildcardAccount} --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --text 'Reply with exact ASCII text KOVA_OPEN_NO_WILDCARD_OK only.' --timeout 40000",
-        "ocm @{env} -- doctor --json"
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --account {persona:channel-access-groups:openNoWildcardAccount} --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --text 'Reply with exact ASCII text KOVA_OPEN_NO_WILDCARD_OK only.' --timeout 40000"
       ],
       "checkpoint": [
         "responses",
@@ -3643,7 +3791,7 @@
     {
       "id": "message-agent-legacy-config",
       "kind": "operation",
-      "intent": "People message the agent while legacy route markers, unprefixed toolsBySender keys, a retired Telegram history key, mixed account shapes, flat streaming keys, the retired silentReply setting, BlueBubbles config and a retired Slack key remain in config, and Doctor inspects them; responses, logs and resulting state are recorded.",
+      "intent": "An operator lists Telegram pairing requests while the supplied legacy channel and routing configuration remains present; the pairing response is recorded. Shared recorded status and legacy diagnostics are recorded by the status and Doctor phases.",
       "paths": [
         "src/auto-reply/dispatch*.ts",
         "src/auto-reply/inbound*.ts",
@@ -3666,9 +3814,7 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --ensure-active --from {run}/channel-turn-in-flight.json --timeout 10000",
-        "ocm @{env} -- pairing list telegram --json",
-        "ocm @{env} -- doctor --json",
-        "ocm @{env} -- channels status --json"
+        "ocm @{env} -- pairing list telegram --json"
       ],
       "checkpoint": [
         "responses",
@@ -3904,25 +4050,55 @@
     {
       "id": "route-chats-audit-and-repair",
       "kind": "operation",
-      "intent": "An operator runs the security audit and Doctor over channel bindings, including Discord guild and role bindings; audit, doctor and Discord fixture output are recorded.",
+      "intent": "An operator runs the security audit over supplied access policy and channel bindings, then observes the separate Discord guild-role binding scenario. Shared static configuration findings are recorded by the Doctor phase.",
       "paths": [
         "extensions/discord/src/**",
+        "extensions/telegram/src/**",
+        "src/auto-reply/chunk*.ts",
+        "src/auto-reply/dispatch*.ts",
+        "src/auto-reply/envelope*.ts",
+        "src/auto-reply/inbound*.ts",
+        "src/auto-reply/reply/block*.ts",
         "src/auto-reply/reply/conversation*.ts",
+        "src/auto-reply/reply/dispatch*.ts",
+        "src/auto-reply/reply/inbound*.ts",
+        "src/auto-reply/reply/message*.ts",
+        "src/auto-reply/reply/origin*.ts",
         "src/auto-reply/reply/route*.ts",
         "src/auto-reply/reply/routing*.ts",
+        "src/auto-reply/reply/source*.ts",
+        "src/auto-reply/send*.ts",
+        "src/auto-reply/sender*.ts",
+        "src/auto-reply/source*.ts",
+        "src/channels/*/**",
+        "src/channels/allow-from.ts",
+        "src/channels/allowlist-match.ts",
+        "src/channels/allowlists/**",
+        "src/channels/command-gating.ts",
+        "src/channels/direct-dm*.ts",
+        "src/channels/inbound-event/**",
+        "src/channels/message-access/**",
+        "src/channels/sender-label.ts",
+        "src/channels/turn/**",
+        "src/infra/outbound/**",
+        "src/plugin-sdk/channel-*.ts",
         "src/routing/**"
       ],
       "requires": [
         "channel-ambient-turn",
         "channel-discord-fixture",
+        "channel-plugin-turn-alias",
         "channel-probe-admission",
         "channel-probe-conversations",
-        "mock-provider-held-turn"
+        "channel-telegram-shim",
+        "config-activation-before-sender",
+        "config-min-identifier-auth",
+        "mock-provider-held-turn",
+        "plugin-message-hooks"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --ensure-active --from {run}/channel-turn-in-flight.json --timeout 10000",
         "ocm @{env} -- security audit --json",
-        "ocm @{env} -- doctor --json",
         "node {kovaRoot}/support/verify/discord-fixture-scenario.mjs --env {env} --scenario guild-role-binding --artifact-dir {run}/discord-guild-role-binding --timeout 60000 --ambient-from {run}/channel-turn-in-flight.json"
       ],
       "checkpoint": [
@@ -4153,14 +4329,16 @@
         "channel-probe-admission",
         "channel-probe-conversations",
         "channel-real-accounts",
-        "mock-provider-held-turn"
+        "channel-streaming-modes",
+        "mock-provider-held-turn",
+        "mock-provider-long-reply"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --ensure-active --from {run}/channel-turn-in-flight.json --timeout 10000",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel qqbot --account {persona:channel-real-accounts:qqbot} --chat-type direct --peer {persona:channel-real-accounts:qqbotBadCredsPeer} --text 'Reply with exact ASCII text KOVA_QQ_OK only.' --timeout 60000",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel qqbot --account {persona:channel-real-accounts:qqbot} --chat-type direct --peer {persona:channel-real-accounts:qqbotPeer} --text 'Reply with exact ASCII text KOVA_QQ_OK only.' --timeout 60000",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel qqbot --account {persona:channel-real-accounts:qqbot} --chat-type direct --peer {persona:channel-real-accounts:qqbotVoicePeer} --text 'Reply with exact ASCII text KOVA_QQ_OK only.' --timeout 60000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel qqbot --account {persona:channel-real-accounts:qqbot} --chat-type direct --peer {persona:channel-real-accounts:qqbotStreamingPeer} --text 'Reply with exact ASCII text KOVA_QQ_OK only.' --timeout 60000"
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel qqbot --account {persona:channel-real-accounts:qqbot} --chat-type direct --peer {persona:channel-real-accounts:qqbotStreamingPeer} --text '{persona:mock-provider-long-reply:marker}' --timeout 60000 --script-file {persona:channel-streaming-modes:previewRecipesFile} --recipe live-block-output"
       ],
       "checkpoint": [
         "responses",
@@ -4200,12 +4378,14 @@
         "channel-probe-admission",
         "channel-probe-conversations",
         "channel-real-accounts",
-        "mock-provider-held-turn"
+        "channel-streaming-modes",
+        "mock-provider-held-turn",
+        "mock-provider-long-reply"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --ensure-active --from {run}/channel-turn-in-flight.json --timeout 10000",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel msteams --account {persona:channel-real-accounts:msteams} --chat-type group --peer {persona:channel-real-accounts:teamsChannel} --text 'Reply with exact ASCII text KOVA_WORK_OK only.' --timeout 40000",
-        "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel msteams --account {persona:channel-real-accounts:msteams} --chat-type group --peer {persona:channel-real-accounts:teamsBlockModeChannel} --text 'Reply with exact ASCII text KOVA_WORK_OK only.' --timeout 40000 --channel-patch '{}' --agent-defaults '{}' --root-patch '{\"channels\":{\"msteams\":{\"streaming\":{\"mode\":\"block\"}}}}' --ambient-from {run}/channel-turn-in-flight.json",
+        "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel msteams --account {persona:channel-real-accounts:msteams} --chat-type group --peer {persona:channel-real-accounts:teamsBlockModeChannel} --text '{persona:mock-provider-long-reply:marker}' --timeout 40000 --channel-patch '{}' --agent-defaults '{}' --root-patch '{\"channels\":{\"msteams\":{\"streaming\":{\"mode\":\"block\"}}}}' --ambient-from {run}/channel-turn-in-flight.json --script-file {persona:channel-streaming-modes:previewRecipesFile} --recipe live-block-output",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel mattermost --account {persona:channel-real-accounts:mattermost} --chat-type group --peer {persona:channel-real-accounts:mattermostChannel} --text 'Reply with exact ASCII text KOVA_WORK_OK only.' --timeout 40000",
         "node {kovaRoot}/support/verify/channel-configured-turn.mjs --env {env} --channel mattermost --account {persona:channel-real-accounts:mattermost} --chat-type group --peer {persona:channel-real-accounts:mattermostOnCharChannel} --text '! Reply with exact ASCII text KOVA_WORK_OK only.' --timeout 40000 --channel-patch '{\"chatmode\":\"onchar\",\"oncharPrefixes\":[\"!\"]}' --agent-defaults '{}' --root-patch '{}' --ambient-from {run}/channel-turn-in-flight.json",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel googlechat --account {persona:channel-real-accounts:googlechat} --chat-type group --peer {persona:channel-real-accounts:googlechatSpace} --text 'Reply with exact ASCII text KOVA_WORK_OK only.' --timeout 40000",
@@ -6113,7 +6293,7 @@
     {
       "id": "deliver-from-jobs-and-agents",
       "kind": "operation",
-      "intent": "A cron job, a heartbeat, a CLI agent turn with delivery, a sub-agent completion and a restart-free node event each deliver a reply to the conformance chat, with heartbeat visibility set and an outbound-only identity; responses and probe observations are recorded.",
+      "intent": "A cron job, a CLI turn with delivery, a child completion and an outbound-only identity deliver replies to the conformance chat; responses and probe observations are recorded. The shared heartbeat delivery observation is recorded in event-internal-wake-through-inbound.",
       "paths": [
         "src/agents/subagents/**",
         "src/agents/tools/message-tool*.ts",
@@ -6144,7 +6324,6 @@
       "commands": [
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --ensure-active --from {run}/channel-turn-in-flight.json --timeout 10000",
         "node {kovaRoot}/support/verify/cron-isolated-run.mjs --env {env} --job-id {persona:cron-job-isolated:jobId} --timeout 60000",
-        "node {kovaRoot}/support/verify/heartbeat-wake.mjs --env {env} --timeout 60000 --ambient-from {run}/channel-turn-in-flight.json",
         "ocm @{env} -- agent --agent main --message 'Reply with exact ASCII text KOVA_AGENT_DELIVER_OK only.' --deliver --reply-channel kova-channel-probe --reply-to {persona:channel-probe-conversations:dmPeer} --json",
         "ocm @{env} -- agent --agent main --to {persona:channel-probe-conversations:outboundOnlyPeer} --channel kova-channel-probe --message 'KOVA_OUTBOUND_ONLY' --deliver --json",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --text '{persona:mock-provider-tool-calls:parentCompletionMarker}' --script-file {persona:mock-provider-tool-calls:parentCompletionScript} --timeout 60000 --out {run}/deliver-from-jobs-subagent.json --ambient-from {run}/channel-turn-in-flight.json",
@@ -11314,12 +11493,20 @@
         "extensions/telegram/src/**",
         "src/agents/agent-scope-config.ts",
         "src/agents/identity.ts",
+        "src/auto-reply/chunk*.ts",
         "src/auto-reply/reply/block*.ts",
+        "src/auto-reply/reply/message*.ts",
         "src/auto-reply/reply/progress*.ts",
         "src/auto-reply/reply/typing*.ts",
+        "src/auto-reply/send*.ts",
         "src/channels/*/**",
+        "src/channels/draft-stream*.ts",
+        "src/channels/progress-*.ts",
         "src/channels/streaming*.ts",
         "src/config/markdown-tables*.ts",
+        "src/infra/outbound/**",
+        "src/infra/outbound/format*.ts",
+        "src/infra/outbound/markdown*.ts",
         "src/plugin-sdk/channel-*.ts"
       ],
       "requires": [
@@ -11328,7 +11515,8 @@
         "channel-probe-conversations",
         "channel-streaming-modes",
         "channel-telegram-shim",
-        "mock-provider-held-turn"
+        "mock-provider-held-turn",
+        "mock-provider-long-reply"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --ensure-active --from {run}/channel-turn-in-flight.json --timeout 10000",
@@ -11392,7 +11580,7 @@
     {
       "id": "event-final-too-big-for-draft",
       "kind": "event",
-      "intent": "A progress-mode turn ends with a reply too long for the draft and another ends with an approval prompt; observations are recorded.",
+      "intent": "A captured conformance progress draft precedes a long final, and a separate captured draft precedes a native approval prompt; normal delivery and preview disposition are recorded.",
       "paths": [
         "extensions/telegram/src/**",
         "src/agents/agent-scope-config.ts",
@@ -11428,9 +11616,8 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --ensure-active --from {run}/channel-turn-in-flight.json --timeout 10000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-streaming-modes:progressPeer} --text '{persona:channel-probe-conversations:longReplyMarker}' --timeout 90000 --account {persona:channel-streaming-modes:progressAccountId}",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-streaming-modes:progressPeer} --text '{persona:mock-provider-tool-calls:approvalPromptMarker}' --timeout 90000 --account {persona:channel-streaming-modes:progressAccountId} --script-file {persona:mock-provider-tool-calls:approvalPromptScript}",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel telegram --chat-type direct --peer {persona:config-streaming-mode:partialChatId} --text '{persona:mock-provider-long-reply:marker}' --artifact-dir {run}/final-fallback --timeout 120000 --account {persona:config-streaming-mode:partialAccountId}"
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-streaming-modes:progressPeer} --text '{persona:channel-probe-conversations:longReplyMarker}' --timeout 90000 --account {persona:channel-streaming-modes:progressAccountId} --script-file {persona:channel-streaming-modes:previewRecipesFile} --recipe progress-long-final",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-streaming-modes:progressPeer} --text '{persona:mock-provider-tool-calls:approvalPromptMarker}' --timeout 90000 --account {persona:channel-streaming-modes:progressAccountId} --script-file {persona:mock-provider-tool-calls:approvalPromptScript} --recipe approval-after-progress"
       ],
       "checkpoint": [
         "responses",
@@ -11558,7 +11745,7 @@
     {
       "id": "event-final-cancels-pending-preview",
       "kind": "event",
-      "intent": "A media final, an error final and an explicit-reply final arrive while a preview is pending; observations are recorded.",
+      "intent": "A media final and an explicit-reply final arrive while a preview is pending; observations are recorded. The shared error-final branch of this condition is recorded in event-preview-retained-or-unused.",
       "paths": [
         "extensions/discord/src/**",
         "src/agents/agent-scope-config.ts",
@@ -11592,7 +11779,6 @@
       "commands": [
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --ensure-active --from {run}/channel-turn-in-flight.json --timeout 10000",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-streaming-modes:partialPeer} --text '{persona:channel-streaming-modes:mediaFinalMarker}' --timeout 40000 --account {persona:channel-streaming-modes:partialAccountId}",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-streaming-modes:partialPeer} --text '{persona:channel-probe-conversations:runnerFailMarker}' --timeout 40000 --account {persona:channel-streaming-modes:partialAccountId}",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-streaming-modes:partialPeer} --reply-to inbound --text '{persona:channel-streaming-modes:explicitReplyFinalMarker}' --timeout 40000 --account {persona:channel-streaming-modes:partialAccountId} --script-file {persona:channel-streaming-modes:explicitReplyFinalScript}",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel discord --chat-type group --peer {persona:channel-discord-fixture:channelId} --text '{persona:mock-provider-media-reply:marker}' --mention --artifact-dir {run}/media-cancels --timeout 120000 --account {persona:config-streaming-mode:discordPartialAccountId}"
       ],
@@ -11765,7 +11951,7 @@
     {
       "id": "event-progress-card-cleared-or-failed",
       "kind": "event",
-      "intent": "A progress card is cleared and a later card write fails during a progress-mode turn; observations are recorded.",
+      "intent": "A native progress card is created and captured, then cleared through a valid progress_card call; card state and native draft disposition are recorded. Native card-write failure remains outside reach.",
       "paths": [
         "extensions/telegram/src/**",
         "src/agents/agent-scope-config.ts",
@@ -11801,45 +11987,6 @@
         "timing"
       ],
       "timeoutMs": 255000,
-      "browser": false,
-      "slow": false
-    },
-    {
-      "id": "event-progress-write-fails",
-      "kind": "event",
-      "intent": "A user gets a progress draft edit rejected mid-turn, observing the previous plan left in place.",
-      "paths": [
-        "extensions/telegram/src/**",
-        "src/agents/agent-scope-config.ts",
-        "src/agents/identity.ts",
-        "src/auto-reply/reply/block*.ts",
-        "src/auto-reply/reply/progress*.ts",
-        "src/auto-reply/reply/typing*.ts",
-        "src/channels/draft-stream*.ts",
-        "src/channels/progress-*.ts",
-        "src/channels/streaming*.ts",
-        "src/config/markdown-tables*.ts"
-      ],
-      "requires": [
-        "channel-ambient-turn",
-        "channel-probe-admission",
-        "channel-probe-conversations",
-        "channel-telegram-shim",
-        "config-streaming-mode",
-        "mock-provider-held-turn",
-        "mock-provider-tool-calls"
-      ],
-      "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --ensure-active --from {run}/channel-turn-in-flight.json --timeout 10000",
-        "node {kovaRoot}/support/verify/channel-platform-fault.mjs --env {env} --channel telegram --fault edit-fail --count 2 --method editMessageText --timeout 10000 --account {persona:config-streaming-mode:toolLogAccountId}",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel telegram --chat-type direct --peer {persona:channel-telegram-shim:dmChatId} --text '{persona:mock-provider-tool-calls:progressMarker}' --artifact-dir {run}/progress-write --timeout 120000 --account {persona:config-streaming-mode:toolLogAccountId}"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing"
-      ],
-      "timeoutMs": 145000,
       "browser": false,
       "slow": false
     },
@@ -12756,12 +12903,13 @@
         "channel-ambient-turn",
         "channel-probe-admission",
         "channel-probe-conversations",
+        "channel-streaming-modes",
         "channel-telegram-shim",
         "mock-provider-held-turn"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --ensure-active --from {run}/channel-turn-in-flight.json --timeout 10000",
-        "node {kovaRoot}/support/verify/telegram-shim-scenario.mjs --env {env} --scenario idempotent-edit-retried --artifact-dir {run}/telegram-idempotent-edit-retried --timeout 150000 --ambient-from {run}/channel-turn-in-flight.json"
+        "node {kovaRoot}/support/verify/telegram-shim-scenario.mjs --env {env} --scenario idempotent-edit-retried --artifact-dir {run}/telegram-idempotent-edit-retried --timeout 150000 --ambient-from {run}/channel-turn-in-flight.json --account {persona:channel-telegram-shim:streamingScenarioAccountId} --script-file {persona:channel-streaming-modes:previewRecipesFile}"
       ],
       "checkpoint": [
         "responses",
@@ -13920,21 +14068,88 @@
     {
       "id": "event-internal-wake-through-inbound",
       "kind": "event",
-      "intent": "A heartbeat wakes the agent through the inbound path; logs and session rows are recorded.",
+      "intent": "The common heartbeat wakes the configured owner through the inbound path and observes its run, channel delivery and session rows; this one observation also supplies the generic heartbeat calls from typing, plugin-contract and job-delivery flows.",
       "paths": [
+        "extensions/discord/src/**",
+        "extensions/telegram/src/**",
+        "src/agents/agent-scope-config.ts",
+        "src/agents/identity.ts",
+        "src/agents/subagents/**",
+        "src/agents/tools/message-tool*.ts",
+        "src/agents/tools/sessions-spawn-tool.ts",
+        "src/agents/tools/sessions-yield-tool.ts",
+        "src/agents/tools/subagents-tool.ts",
+        "src/auto-reply/chunk*.ts",
         "src/auto-reply/dispatch*.ts",
+        "src/auto-reply/envelope*.ts",
         "src/auto-reply/inbound*.ts",
+        "src/auto-reply/reply/block*.ts",
         "src/auto-reply/reply/dispatch*.ts",
+        "src/auto-reply/reply/followup*.ts",
+        "src/auto-reply/reply/get-reply-run-context.ts",
         "src/auto-reply/reply/inbound*.ts",
+        "src/auto-reply/reply/message*.ts",
+        "src/auto-reply/reply/origin*.ts",
+        "src/auto-reply/reply/source*.ts",
+        "src/auto-reply/reply/source-reply*.ts",
+        "src/auto-reply/reply/typing*.ts",
+        "src/auto-reply/send*.ts",
+        "src/auto-reply/sender*.ts",
+        "src/auto-reply/source*.ts",
         "src/channels/*/**",
+        "src/channels/ack-reactions.ts",
+        "src/channels/allow-from.ts",
+        "src/channels/allowlist-match.ts",
+        "src/channels/allowlists/**",
+        "src/channels/command-gating.ts",
+        "src/channels/direct-dm*.ts",
+        "src/channels/inbound-event/**",
+        "src/channels/message-access/**",
+        "src/channels/sender-label.ts",
+        "src/channels/status-reaction*.ts",
+        "src/channels/streaming*.ts",
+        "src/channels/turn/**",
+        "src/channels/typing*.ts",
+        "src/config/markdown-tables*.ts",
+        "src/config/merge-patch.ts",
+        "src/config/types.agents.ts",
+        "src/config/zod-schema.messages.ts",
+        "src/gateway/agent-turn/**",
+        "src/gateway/server-methods/agent.ts",
+        "src/gateway/server-methods/config.ts",
+        "src/infra/delivery-queue*.ts",
+        "src/infra/delivery-recovery*.ts",
+        "src/infra/outbound/**",
+        "src/infra/session-delivery-queue*.ts",
         "src/plugin-sdk/channel-*.ts"
       ],
       "requires": [
         "channel-ambient-turn",
+        "channel-discord-fixture",
+        "channel-group-allowlisted",
+        "channel-mode-target",
+        "channel-plugin-turn-alias",
         "channel-probe-admission",
         "channel-probe-conversations",
+        "channel-reaction-level",
+        "channel-telegram-shim",
+        "config-ack-off",
+        "config-ack-scope-direct",
+        "config-ack-scope-group-all",
+        "config-activation-before-sender",
+        "config-debounce-off",
         "config-heartbeat-short",
-        "mock-provider-held-turn"
+        "config-min-identifier-auth",
+        "config-reaction-level-off",
+        "config-response-usage",
+        "config-status-reactions",
+        "config-telegram-reactions-off",
+        "config-typing-agent-override",
+        "config-typing-mode",
+        "cron-job-isolated",
+        "mock-provider-held-turn",
+        "mock-provider-tool-calls",
+        "plugin-message-hooks"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --ensure-active --from {run}/channel-turn-in-flight.json --timeout 10000",
@@ -15108,24 +15323,36 @@
     {
       "id": "event-preview-retained-or-unused",
       "kind": "event",
-      "intent": "A partial-preview turn ends with an accepted error final and another leaves an unused preview; observations are recorded.",
+      "intent": "A partial-preview turn ends with an accepted error final and another leaves an unused preview; final cancellation and retained or unused preview observations are recorded for both condition mappings.",
       "paths": [
+        "extensions/discord/src/**",
         "src/agents/agent-scope-config.ts",
         "src/agents/identity.ts",
+        "src/auto-reply/chunk*.ts",
+        "src/auto-reply/media*.ts",
         "src/auto-reply/reply/block*.ts",
+        "src/auto-reply/reply/message*.ts",
         "src/auto-reply/reply/progress*.ts",
         "src/auto-reply/reply/typing*.ts",
+        "src/auto-reply/send*.ts",
         "src/channels/*/**",
+        "src/channels/draft-stream*.ts",
+        "src/channels/progress-*.ts",
         "src/channels/streaming*.ts",
         "src/config/markdown-tables*.ts",
+        "src/infra/outbound/**",
         "src/plugin-sdk/channel-*.ts"
       ],
       "requires": [
         "channel-ambient-turn",
+        "channel-discord-fixture",
         "channel-probe-admission",
         "channel-probe-conversations",
         "channel-streaming-modes",
-        "mock-provider-held-turn"
+        "config-streaming-mode",
+        "mock-provider-held-turn",
+        "mock-provider-long-reply",
+        "mock-provider-media-reply"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --ensure-active --from {run}/channel-turn-in-flight.json --timeout 10000",
@@ -15171,11 +15398,9 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --ensure-active --from {run}/channel-turn-in-flight.json --timeout 10000",
-        "node {kovaRoot}/support/verify/channel-probe-fault.mjs --env {env} --fault fail-preview-delete --count 1 --timeout 30000 --account {persona:channel-streaming-modes:progressAccountId}",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-streaming-modes:progressPeer} --text '{persona:mock-provider-tool-calls:progressMarker}' --timeout 120000 --account {persona:channel-streaming-modes:progressAccountId}",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-streaming-modes:progressPeer} --text '{persona:mock-provider-tool-calls:progressMarker}' --timeout 120000 --account {persona:channel-streaming-modes:progressAccountId} --script-file {persona:channel-streaming-modes:previewRecipesFile} --recipe preview-cleanup-fails",
         "node {kovaRoot}/support/verify/gateway-logs.mjs --env {env} --tail 400",
-        "node {kovaRoot}/support/verify/channel-platform-fault.mjs --env {env} --channel telegram --fault server-error --count 1 --method deleteMessage --timeout 10000 --account {persona:config-streaming-mode:toolLogAccountId}",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel telegram --chat-type direct --peer {persona:channel-telegram-shim:dmChatId} --text '{persona:mock-provider-tool-calls:progressMarker}' --artifact-dir {run}/cleanup-fails --timeout 120000 --account {persona:config-streaming-mode:toolLogAccountId}"
+        "node {kovaRoot}/support/verify/telegram-shim-scenario.mjs --env {env} --scenario preview-cleanup-fails --account {persona:config-streaming-mode:toolLogAccountId} --peer {persona:channel-telegram-shim:dmChatId} --script-file {persona:channel-streaming-modes:previewRecipesFile} --artifact-dir {run}/cleanup-fails --timeout 120000 --ambient-from {run}/channel-turn-in-flight.json"
       ],
       "checkpoint": [
         "responses",
@@ -16779,36 +17004,6 @@
         "timing"
       ],
       "timeoutMs": 190000,
-      "browser": false,
-      "slow": false
-    },
-    {
-      "id": "event-retired-teams-state-doctor",
-      "kind": "event",
-      "intent": "An operator runs Doctor while retired Microsoft Teams conversation, poll, SSO-token and feedback JSON files remain on disk; doctor output is recorded.",
-      "paths": [
-        "extensions/feishu/src/**",
-        "extensions/msteams/src/**",
-        "extensions/whatsapp/src/**"
-      ],
-      "requires": [
-        "channel-ambient-turn",
-        "channel-probe-admission",
-        "channel-probe-conversations",
-        "channel-teams-retired-state",
-        "mock-provider-held-turn"
-      ],
-      "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --ensure-active --from {run}/channel-turn-in-flight.json --timeout 10000",
-        "ocm @{env} -- doctor --json"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing",
-        "doctor"
-      ],
-      "timeoutMs": 30000,
       "browser": false,
       "slow": false
     },
