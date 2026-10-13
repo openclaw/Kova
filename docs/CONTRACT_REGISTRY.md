@@ -121,3 +121,36 @@ Self-check and plan validation must fail for:
 
 If a new surface or state needs exceptions to these rules, the contract is too
 loose. Tighten the JSON or add a focused validator.
+
+## Command Catalogue Entries
+
+`catalogue/<product>.json` uses `schema: "kova.verify.catalogue.v1"`, a product
+name, the inspected product `revision` and an `entries` array. Each entry has
+exactly `id`, `kind`, `wraps`, `command`, `flags`, `prints`, `creates`, `side`,
+`background` and `status`; the [catalogue contract](verify/catalogue.md)
+defines their meanings. Duplicate ids, command heads and wrapped operations
+are rejected.
+
+Every `flags` value has exactly `description` and `value`, for example
+`"--json": { "description": "print JSON", "value": "none" }` or
+`"--timeout": { "description": "milliseconds", "value": "required" }`.
+`value` is `none`, `required` or `optional`. Command forms spell optional and
+variadic positionals explicitly, as `[<path>]`, `<keys...>` or `[<keys...>]`.
+Product environment arguments are `@{env}` or `@{persona:<trait>:env}`; each
+refers to its own clone for the run, including persona-provided environments.
+
+`creates` is an array of JSON pointers into command output, with `*` for array
+indices, naming generated resource ids. Use an empty array when no such id is
+reported. Do not declare caller-supplied ids, existing resource ids, or secrets.
+A method that can return either a new or existing id cannot express that
+condition through an unconditional pointer; leave it undeclared rather than
+hide a meaningful difference. Such varying addresses remain visible through
+the comparison's undeclared-id reporting.
+
+Each Gateway method has its own entry, including its literal `--method` value
+in the command head. Its status remains `toWrite` until the generic caller
+exists. Product forms and flags must match OpenClaw's help at the recorded
+revision; the catalogue is not permission to invent missing product commands.
+Run `kova catalogue check --product <product> --templates <dir> --personas <dir>`
+when editing definitions. A nonzero result for `toWrite` records pending work
+and must not be suppressed to make an unfinished template appear executable.

@@ -13,7 +13,7 @@ asks a narrower, relative question and does not change any of that. It reuses
 Kova's target selectors, local builds, OCM lifecycle, evidence collection and
 report store; it adds no threshold and does not feed the release gate.
 
-> Status: `kova verify`, `kova persona` and `kova catalogue` are not available
+> Status: `kova verify` and `kova persona` are not available
 > yet. These pages define the forms and procedures the implementation follows.
 > Each change that builds a command updates the page that describes its form.
 

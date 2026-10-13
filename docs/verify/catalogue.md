@@ -171,6 +171,8 @@ through OCM, `ocm service restart` for an OCM operation. For the generic
 Gateway caller the head also includes the `--method` value, so each Gateway
 method resolves to its own entry.
 
+Flags must follow all fixed words of the complete command head; a flag interleaved among those words is outside catalogue syntax and produces a `flag-placement` finding, regardless of what OpenClaw accepts.
+
 For a `product` entry's lookup, `@{env}` and
 `@{persona:<trait>:env}` are equivalent environment operands: the check uses
 `@{env}` for either when comparing command heads. The plan keeps the original
