@@ -53,21 +53,103 @@
     "channels-test-accounts",
     "cli-service-path-mismatch",
     "config-backups-present",
+    "config-case-change-settings-with-wizard",
+    "config-case-event-configure-nosystemagent",
+    "config-case-event-cron-owner-restricted-view",
+    "config-case-event-cron-owner-write-refused",
+    "config-case-event-doctor-acctmaps",
+    "config-case-event-doctor-acctowner",
+    "config-case-event-doctor-aliascollide",
+    "config-case-event-doctor-alsoallow",
+    "config-case-event-doctor-autonormalize",
+    "config-case-event-doctor-bundletransport",
+    "config-case-event-doctor-cronpin",
+    "config-case-event-doctor-cronsqlowner",
+    "config-case-event-doctor-deferredprivnet",
+    "config-case-event-doctor-ghtoken",
+    "config-case-event-doctor-incdoctor",
+    "config-case-event-doctor-july",
+    "config-case-event-doctor-lkgrestore",
+    "config-case-event-doctor-llamaserver",
+    "config-case-event-doctor-matrixprivnet",
+    "config-case-event-doctor-memincludes",
+    "config-case-event-doctor-nolkg",
+    "config-case-event-doctor-normalizes-legacy",
+    "config-case-event-doctor-ownerambig",
+    "config-case-event-doctor-ownerlost",
+    "config-case-event-doctor-pending-plugin-migration",
+    "config-case-event-doctor-plugindeferred",
+    "config-case-event-doctor-pluginmissing",
+    "config-case-event-doctor-pluginsettled",
+    "config-case-event-doctor-policyinclude",
+    "config-case-event-doctor-prefixed",
+    "config-case-event-doctor-preservefirst",
+    "config-case-event-doctor-refuses-retired",
+    "config-case-event-doctor-repairthrows",
+    "config-case-event-doctor-restores-last-known-good",
+    "config-case-event-doctor-retiredformat",
+    "config-case-event-doctor-retiredkeys",
+    "config-case-event-doctor-rosterinclude",
+    "config-case-event-doctor-rosterorder",
+    "config-case-event-doctor-rosterreads",
+    "config-case-event-doctor-schemafirst",
+    "config-case-event-doctor-second-pass",
+    "config-case-event-doctor-systemagent",
+    "config-case-event-doctor-talkinherit",
+    "config-case-event-doctor-taskflow",
+    "config-case-event-doctor-taskflowallow",
+    "config-case-event-doctor-taskflownone",
+    "config-case-event-doctor-teamsenv",
+    "config-case-event-doctor-tgwebhookurl",
+    "config-case-event-doctor-unbound",
+    "config-case-event-doctor-utility",
+    "config-case-event-doctor-wadefault",
+    "config-case-event-doctor-webhookkeep",
+    "config-case-event-doctor-webhookpin",
+    "config-case-event-doctor-webhookstartup",
+    "config-case-event-env-readonly",
+    "config-case-event-env-rodoctor",
+    "config-case-event-env-roenvvars",
+    "config-case-event-env-rolegacy",
+    "config-case-event-env-roreload",
+    "config-case-event-guard-headless",
+    "config-case-event-include-concurrent-edit",
+    "config-case-event-include-incarrayentry",
+    "config-case-event-include-incarraywrite",
+    "config-case-event-include-incdirective",
+    "config-case-event-include-incnested",
+    "config-case-event-include-incroot",
+    "config-case-event-include-incshared",
+    "config-case-event-include-incsiblingwrite",
+    "config-case-event-include-incspan",
+    "config-case-event-include-write-through",
+    "config-case-event-interactive-startup-offers-doctor",
+    "config-case-event-secret-inactiveref",
+    "config-case-event-startup-inclegacy",
+    "config-case-event-startup-invalidstart",
+    "config-case-event-startup-newer",
+    "config-case-event-state-cronjson",
+    "config-case-event-state-cronownerless",
+    "config-case-event-state-devicepair",
+    "config-case-event-state-discordjson",
+    "config-case-event-state-discordretired",
+    "config-case-event-state-extstub",
+    "config-case-event-state-oauthsidecar",
+    "config-case-event-state-queuejson",
+    "config-case-event-state-retiredfiles",
+    "config-case-event-state-schema8",
+    "config-case-event-state-startup-retired",
+    "config-case-event-state-tgoffset",
+    "config-case-event-state-tgsidecars",
+    "config-case-event-state-voicejsonl",
+    "config-case-event-webhook-startup-refused",
     "config-chat-commands-enabled",
     "config-clobbered-history",
     "config-disposable-agent",
     "config-env-substitution",
     "config-file-absent",
     "config-file-unreadable",
-    "config-fixture-broken-after-good",
     "config-fixture-files",
-    "config-fixture-fleet-no-system-agent",
-    "config-fixture-july-replay",
-    "config-fixture-legacy-includes",
-    "config-fixture-legacy-single-file",
-    "config-fixture-plugin-migration-pending",
-    "config-fixture-retired-inputs",
-    "config-fixture-webhook-listeners",
     "config-fixtures",
     "config-hand-edited",
     "config-id-keyed-arrays",
@@ -675,6 +757,7 @@
         "ui/src/pages/config/view.ts"
       ],
       "requires": [
+        "config-includes-split",
         "config-json5-comments",
         "mock-provider-held-turn",
         "models-many-configured",
@@ -1206,7 +1289,7 @@
         "ocm @{env} -- claws add {persona:config-fixture-files:kovaClaw} --dry-run --json",
         "ocm @{env} -- plugins list --json",
         "ocm logs {env} --tail 300",
-        "ocm @{env} -- plugins install {persona:plugins-bundled-and-external:externalPluginPackage}",
+        "ocm @{env} -- plugins install {persona:plugins-bundled-and-external:externalPluginPackage} --force",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.abort --params '{\"sessionKey\":\"{persona:session-pair-watched:keyA}\"}' --timeout 15000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --wait {run}/manage-plugins-hooks-claws-busy-1.json --timeout 30000"
       ],
@@ -1481,8 +1564,8 @@
       ],
       "requires": [
         "cli-service-path-mismatch",
+        "config-case-change-settings-with-wizard",
         "config-fixture-files",
-        "config-fixture-fleet-no-system-agent",
         "config-fixtures",
         "mock-provider-held-turn",
         "mock-provider-tool-calls",
@@ -1496,7 +1579,7 @@
         "node {kovaRoot}/support/verify/cli-pty.mjs --env {env} --command 'configure --section gateway' --answers {persona:config-fixture-files:configureGatewayAnswers} --timeout 40000 --env-var OPENCLAW_HOME={persona:cli-service-path-mismatch:home}",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.abort --params '{\"sessionKey\":\"{persona:session-pair-watched:keyA}\"}' --timeout 15000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --wait {run}/change-settings-with-wizard-busy-1.json --timeout 30000",
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-fixture-fleet-no-system-agent:path} --out {run}/wizard-fleet.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-change-settings-with-wizard:fixture} --out {run}/wizard-fleet.json --timeout 30000",
         "node {kovaRoot}/support/verify/cli-pty.mjs --env {env} --command 'configure --section model' --answers {persona:config-fixture-files:configureModelAnswers} --timeout 40000",
         "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/wizard-fleet.json --out {run}/change-settings-with-wizard-state.json --timeout 30000",
         "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/wizard-fleet.json --start-gateway --timeout 30000",
@@ -1696,7 +1779,7 @@
         "ocm @{persona:config-path-symlinked:env} -- config file --json",
         "ocm @{persona:config-path-symlinked:env} -- config set {persona:config-set-targets:path} {persona:config-set-targets:value}",
         "ocm @{persona:config-path-symlinked:env} -- config validate --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {persona:config-path-symlinked:env} --path openclaw.json --out {run}/symlink-result.json --timeout 30000"
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {persona:config-path-symlinked:env} --path openclaw.json --path {persona:config-path-symlinked:targetPath} --out {run}/symlink-result.json --timeout 30000"
       ],
       "checkpoint": [
         "responses",
@@ -2352,7 +2435,7 @@
     {
       "id": "event-watcher-takeover",
       "kind": "event",
-      "intent": "A tool's write is still waiting for application when the watcher observes the same file content, observing the RPC staying pending through replay and its final answer.",
+      "intent": "A client performs the recorded config changes and observations; write responses, saved configuration and reload output are captured without claiming a committed pending-work boundary.",
       "paths": [
         "src/config/[abcdefghjlmnoptuvw]*.ts",
         "src/config/i[mns]*.ts",
@@ -2382,7 +2465,8 @@
         "src/gateway/server-runtime-config.ts"
       ],
       "requires": [
-        "config-reload-patches"
+        "config-reload-patches",
+        "plugins-bundled-and-external"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method config.get --params '{}' --out {run}/take-base.json --timeout 15000",
@@ -2403,7 +2487,7 @@
     {
       "id": "event-superseded-write",
       "kind": "event",
-      "intent": "A second tool write with different content supersedes a first one still awaiting application, observing UNAVAILABLE for the first and the applied revision of the second.",
+      "intent": "A client performs the recorded config changes and observations; write responses, saved configuration and reload output are captured without claiming a committed pending-work boundary.",
       "paths": [
         "src/config/[abcdefghjlmnoptuvw]*.ts",
         "src/config/i[mns]*.ts",
@@ -2433,7 +2517,8 @@
         "src/gateway/server-runtime-config.ts"
       ],
       "requires": [
-        "config-reload-patches"
+        "config-reload-patches",
+        "plugins-bundled-and-external"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method config.get --params '{}' --out {run}/sup-base.json --timeout 15000",
@@ -2511,7 +2596,7 @@
     {
       "id": "event-newer-write-during-reload",
       "kind": "event",
-      "intent": "A tool saves a newer change while a committed reload is still finishing its channel and model work, observing the order of application and any UNAVAILABLE answer.",
+      "intent": "A client performs the recorded config changes and observations; write responses, saved configuration and reload output are captured without claiming a committed pending-work boundary.",
       "paths": [
         "src/config/[abcdefghjlmnoptuvw]*.ts",
         "src/config/i[mns]*.ts",
@@ -2541,7 +2626,9 @@
         "src/gateway/server-runtime-config.ts"
       ],
       "requires": [
-        "config-reload-patches"
+        "channels-test-accounts",
+        "config-reload-patches",
+        "plugins-bundled-and-external"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method config.get --params '{}' --out {run}/nw-base.json --timeout 15000",
@@ -2622,7 +2709,7 @@
     {
       "id": "event-unapplied-config",
       "kind": "event",
-      "intent": "A plugin setting change stays unapplied behind busy plugin work, observing config.get's appliedConfigHash against the saved revision and the Control UI's unapplied-config notice.",
+      "intent": "A client performs the recorded config changes and observations; write responses, saved configuration and reload output are captured without claiming a committed pending-work boundary.",
       "paths": [
         "src/gateway/applied-config-hash-publisher.ts",
         "src/gateway/config-*.ts",
@@ -2873,7 +2960,7 @@
         "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw-from {persona:config-reload-patches:reloadOff} --base-from {run}/reloadoff-base.json --out {run}/reloadoff-write.json --timeout 45000",
         "node {kovaRoot}/support/verify/config-applied-wait.mjs --env {env} --timeout 45000",
         "ocm @{env} -- config patch --file {persona:config-reload-patches:none}",
-        "ocm @{env} -- plugins install {persona:plugins-bundled-and-external:externalPluginPackage}",
+        "ocm @{env} -- plugins install {persona:plugins-bundled-and-external:externalPluginPackage} --force",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method config.get --params '{}' --timeout 15000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method config.get --params '{}' --out {run}/reloadoff-after.json --timeout 15000",
         "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw-from {persona:config-reload-patches:reloadOffUndo} --base-from {run}/reloadoff-after.json --timeout 45000",
@@ -4749,7 +4836,7 @@
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method config.get --params '{}' --out {run}/pluginlifecycle-base.json --timeout 15000",
         "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw-from {persona:config-reload-patches:reloadOff} --base-from {run}/pluginlifecycle-base.json --out {run}/pluginlifecycle-write.json --timeout 45000",
         "node {kovaRoot}/support/verify/config-applied-wait.mjs --env {env} --timeout 45000",
-        "ocm @{env} -- plugins install {persona:plugins-bundled-and-external:externalPluginPackage}",
+        "ocm @{env} -- plugins install {persona:plugins-bundled-and-external:externalPluginPackage} --force",
         "ocm @{env} -- plugins disable {persona:plugins-bundled-and-external:externalPluginId}",
         "ocm @{env} -- plugins enable {persona:plugins-bundled-and-external:externalPluginId}",
         "ocm @{env} -- plugins list --json",
@@ -5173,17 +5260,21 @@
         "src/gateway/server-methods/config.ts"
       ],
       "requires": [
+        "config-case-event-include-write-through",
         "config-include-roots",
         "config-includes-split"
       ],
       "commands": [
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-include-write-through:fixture} --out {run}/include-write-original.json --start-gateway --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method config.get --params '{}' --out {run}/iw-base.json --timeout 15000",
         "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw-from {persona:config-includes-split:includePatch} --base-from {run}/iw-base.json --timeout 45000",
         "ocm @{env} -- config set {persona:config-includes-split:includeKey} {persona:config-includes-split:includeValue} --strict-json",
         "node {kovaRoot}/support/verify/config-applied-wait.mjs --env {env} --timeout 45000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method config.get --params '{}' --out {run}/iw-base2.json --timeout 15000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/include-write-original.json --out {run}/include-write-material.json --timeout 30000",
         "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw-from {persona:config-includes-split:includePatchUndo} --base-from {run}/iw-base2.json --timeout 45000",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path {persona:config-includes-split:includePath} --out {run}/event-include-write-through-state.json --timeout 30000"
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/include-write-original.json --out {run}/event-include-write-through-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/include-write-original.json --start-gateway --timeout 60000"
       ],
       "checkpoint": [
         "responses",
@@ -5191,9 +5282,9 @@
         "timing",
         "state:openclaw.json"
       ],
-      "timeoutMs": 225000,
+      "timeoutMs": 375000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-env-incroots",
@@ -5307,17 +5398,18 @@
         "src/gateway/server-methods/config.ts"
       ],
       "requires": [
+        "config-case-event-include-concurrent-edit",
         "config-includes-split"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-includes-split:fixture} --out {run}/include-concurrent-original.json --start-gateway --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-include-concurrent-edit:fixture} --out {run}/include-concurrent-original.json --start-gateway --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method config.get --params '{}' --out {run}/ic-base.json --timeout 15000",
         "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw-from {persona:config-includes-split:includePatch} --base-from {run}/ic-base.json --background --handle {run}/ic.json --timeout 45000",
         "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file {persona:config-includes-split:intermediatePath} --set-from {persona:config-includes-split:intermediatePatch} --timeout 30000",
         "node {kovaRoot}/support/verify/config-write.mjs --env {env} --wait {run}/ic.json --timeout 60000",
         "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/include-concurrent-original.json --out {run}/include-concurrent-observed.json --timeout 30000",
         "node {kovaRoot}/support/verify/config-applied-wait.mjs --env {env} --timeout 45000",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak* --out {run}/event-include-concurrent-edit-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/include-concurrent-original.json --out {run}/event-include-concurrent-edit-state.json --timeout 30000",
         "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/include-concurrent-original.json --start-gateway --timeout 60000"
       ],
       "checkpoint": [
@@ -5362,20 +5454,21 @@
         "src/gateway/server-methods/config.ts"
       ],
       "requires": [
+        "config-case-event-env-readonly",
         "config-readonly-host",
         "config-reload-patches",
         "config-set-targets",
         "plugins-bundled-and-external"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-readonly-host:pendingRepairs} --out {run}/event-env-readonly-original.json --start-gateway --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-env-readonly:fixture} --out {run}/event-env-readonly-original.json --start-gateway --timeout 60000",
         "node {kovaRoot}/support/verify/service-env.mjs --env {env} --set OPENCLAW_CONFIG_READONLY=1 --timeout 90000",
         "ocm @{env} -- config get gateway.mode --json",
         "ocm @{env} -- config validate --json",
         "ocm @{env} -- config set {persona:config-set-targets:path} {persona:config-set-targets:value}",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method config.get --params '{}' --out {run}/ro-base.json --timeout 15000",
         "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw-from {persona:config-reload-patches:none} --base-from {run}/ro-base.json --timeout 60000",
-        "ocm @{env} -- plugins install {persona:plugins-bundled-and-external:externalPluginPackage}",
+        "ocm @{env} -- plugins install {persona:plugins-bundled-and-external:externalPluginPackage} --force",
         "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/event-env-readonly-original.json --out {run}/event-env-readonly-observed.json --timeout 30000",
         "node {kovaRoot}/support/verify/service-env.mjs --env {env} --unset OPENCLAW_CONFIG_READONLY --timeout 90000",
         "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/event-env-readonly-original.json --start-gateway --timeout 60000"
@@ -5421,11 +5514,12 @@
         "src/gateway/server-methods/config.ts"
       ],
       "requires": [
+        "config-case-event-env-roenvvars",
         "config-readonly-host",
         "config-set-targets"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-readonly-host:pendingRepairs} --out {run}/event-env-roenvvars-original.json --start-gateway --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-env-roenvvars:fixture} --out {run}/event-env-roenvvars-original.json --start-gateway --timeout 60000",
         "ocm @{env} -- config set env.vars.OPENCLAW_CONFIG_READONLY '\"1\"' --strict-json",
         "ocm @{env} -- config set {persona:config-set-targets:path} {persona:config-set-targets:value}",
         "ocm @{env} -- config unset env.vars.OPENCLAW_CONFIG_READONLY",
@@ -5473,12 +5567,13 @@
         "src/gateway/server-methods/config.ts"
       ],
       "requires": [
+        "config-case-event-env-roreload",
         "config-readonly-host",
         "config-reload-patches",
         "config-set-targets"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-readonly-host:pendingRepairs} --out {run}/event-env-roreload-original.json --start-gateway --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-env-roreload:fixture} --out {run}/event-env-roreload-original.json --start-gateway --timeout 60000",
         "node {kovaRoot}/support/verify/service-env.mjs --env {env} --set OPENCLAW_CONFIG_READONLY=1 --timeout 90000",
         "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --set-from {persona:config-reload-patches:none} --timeout 30000",
         "node {kovaRoot}/support/verify/config-applied-wait.mjs --env {env} --timeout 45000",
@@ -5666,15 +5761,16 @@
         "src/config/zod-schema.ts"
       ],
       "requires": [
+        "config-case-event-secret-inactiveref",
         "config-secret-refs"
       ],
       "commands": [
-        "ocm @{env} -- config patch --file {persona:config-secret-refs:inactiveMismatch}",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-secret-inactiveref:fixture} --out {run}/inactive-secret-original.json --timeout 60000",
         "ocm @{env} -- config validate --json",
-        "ocm @{env} -- config patch --file {persona:config-secret-refs:inactiveMismatch} --dry-run --json",
-        "ocm service restart {env} --json",
+        "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
-        "ocm @{env} -- config patch --file {persona:config-secret-refs:inactiveMismatchUndo}"
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/inactive-secret-original.json --out {run}/inactive-secret-observed.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/inactive-secret-original.json --start-gateway --timeout 60000"
       ],
       "checkpoint": [
         "responses",
@@ -5682,7 +5778,7 @@
         "timing",
         "state:openclaw.json"
       ],
-      "timeoutMs": 210000,
+      "timeoutMs": 270000,
       "browser": false,
       "slow": false
     },
@@ -5945,12 +6041,12 @@
         "src/commands/configure*.ts"
       ],
       "requires": [
-        "config-fixture-fleet-no-system-agent",
+        "config-case-event-configure-nosystemagent",
         "config-fixtures",
         "configure-answers"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-fixture-fleet-no-system-agent:path} --out {run}/no-system-agent-original.json --start-gateway --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-configure-nosystemagent:fixture} --out {run}/no-system-agent-original.json --start-gateway --timeout 60000",
         "node {kovaRoot}/support/verify/cli-pty.mjs --env {env} --command 'configure --section model' --answers {persona:configure-answers:nosystemagent} --timeout 120000",
         "ocm @{env} -- config get gateway --json",
         "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/no-system-agent-original.json --out {run}/no-system-agent-result.json --timeout 30000",
@@ -7670,15 +7766,16 @@
         "src/gateway/server-methods/config.ts"
       ],
       "requires": [
+        "config-case-event-include-incroot",
         "config-include-unsupported"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-include-unsupported:rootInclude} --out {run}/incroot-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-include-incroot:fixture} --out {run}/incroot-original.json --timeout 60000 --start-gateway",
         "node {kovaRoot}/support/verify/config-applied-wait.mjs --env {env} --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method config.get --params '{}' --out {run}/incroot-base.json --timeout 15000",
         "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw-from {persona:config-include-unsupported:rootIncludePatch} --base-from {run}/incroot-base.json --timeout 45000",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --out {run}/event-include-incroot-state.json --timeout 30000",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/incroot-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/incroot-original.json --out {run}/event-include-incroot-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/incroot-original.json --timeout 60000 --start-gateway",
         "node {kovaRoot}/support/verify/config-applied-wait.mjs --env {env} --timeout 45000"
       ],
       "checkpoint": [
@@ -7720,15 +7817,16 @@
         "src/gateway/server-methods/config.ts"
       ],
       "requires": [
+        "config-case-event-include-incarrayentry",
         "config-include-unsupported"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-include-unsupported:arrayEntryInclude} --out {run}/incarrayentry-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-include-incarrayentry:fixture} --out {run}/incarrayentry-original.json --timeout 60000 --start-gateway",
         "node {kovaRoot}/support/verify/config-applied-wait.mjs --env {env} --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method config.get --params '{}' --out {run}/incarrayentry-base.json --timeout 15000",
         "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw-from {persona:config-include-unsupported:arrayEntryIncludePatch} --base-from {run}/incarrayentry-base.json --timeout 45000",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --out {run}/event-include-incarrayentry-state.json --timeout 30000",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/incarrayentry-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/incarrayentry-original.json --out {run}/event-include-incarrayentry-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/incarrayentry-original.json --timeout 60000 --start-gateway",
         "node {kovaRoot}/support/verify/config-applied-wait.mjs --env {env} --timeout 45000"
       ],
       "checkpoint": [
@@ -7770,15 +7868,16 @@
         "src/gateway/server-methods/config.ts"
       ],
       "requires": [
+        "config-case-event-include-incarraywrite",
         "config-include-unsupported"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-include-unsupported:includeArray} --out {run}/incarraywrite-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-include-incarraywrite:fixture} --out {run}/incarraywrite-original.json --timeout 60000 --start-gateway",
         "node {kovaRoot}/support/verify/config-applied-wait.mjs --env {env} --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method config.get --params '{}' --out {run}/incarraywrite-base.json --timeout 15000",
         "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw-from {persona:config-include-unsupported:includeArrayPatch} --base-from {run}/incarraywrite-base.json --timeout 45000",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --out {run}/event-include-incarraywrite-state.json --timeout 30000",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/incarraywrite-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/incarraywrite-original.json --out {run}/event-include-incarraywrite-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/incarraywrite-original.json --timeout 60000 --start-gateway",
         "node {kovaRoot}/support/verify/config-applied-wait.mjs --env {env} --timeout 45000"
       ],
       "checkpoint": [
@@ -7820,15 +7919,16 @@
         "src/gateway/server-methods/config.ts"
       ],
       "requires": [
+        "config-case-event-include-incsiblingwrite",
         "config-include-unsupported"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-include-unsupported:siblingOverride} --out {run}/incsiblingwrite-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-include-incsiblingwrite:fixture} --out {run}/incsiblingwrite-original.json --timeout 60000 --start-gateway",
         "node {kovaRoot}/support/verify/config-applied-wait.mjs --env {env} --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method config.get --params '{}' --out {run}/incsiblingwrite-base.json --timeout 15000",
         "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw-from {persona:config-include-unsupported:siblingOverridePatch} --base-from {run}/incsiblingwrite-base.json --timeout 45000",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --out {run}/event-include-incsiblingwrite-state.json --timeout 30000",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/incsiblingwrite-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/incsiblingwrite-original.json --out {run}/event-include-incsiblingwrite-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/incsiblingwrite-original.json --timeout 60000 --start-gateway",
         "node {kovaRoot}/support/verify/config-applied-wait.mjs --env {env} --timeout 45000"
       ],
       "checkpoint": [
@@ -7870,15 +7970,16 @@
         "src/gateway/server-methods/config.ts"
       ],
       "requires": [
+        "config-case-event-include-incshared",
         "config-include-unsupported"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-include-unsupported:sharedFile} --out {run}/incshared-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-include-incshared:fixture} --out {run}/incshared-original.json --timeout 60000 --start-gateway",
         "node {kovaRoot}/support/verify/config-applied-wait.mjs --env {env} --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method config.get --params '{}' --out {run}/incshared-base.json --timeout 15000",
         "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw-from {persona:config-include-unsupported:sharedFilePatch} --base-from {run}/incshared-base.json --timeout 45000",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --out {run}/event-include-incshared-state.json --timeout 30000",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/incshared-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/incshared-original.json --out {run}/event-include-incshared-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/incshared-original.json --timeout 60000 --start-gateway",
         "node {kovaRoot}/support/verify/config-applied-wait.mjs --env {env} --timeout 45000"
       ],
       "checkpoint": [
@@ -7920,15 +8021,16 @@
         "src/gateway/server-methods/config.ts"
       ],
       "requires": [
+        "config-case-event-include-incspan",
         "config-include-unsupported"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-include-unsupported:spanningBoundary} --out {run}/incspan-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-include-incspan:fixture} --out {run}/incspan-original.json --timeout 60000 --start-gateway",
         "node {kovaRoot}/support/verify/config-applied-wait.mjs --env {env} --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method config.get --params '{}' --out {run}/incspan-base.json --timeout 15000",
         "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw-from {persona:config-include-unsupported:spanningBoundaryPatch} --base-from {run}/incspan-base.json --timeout 45000",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --out {run}/event-include-incspan-state.json --timeout 30000",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/incspan-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/incspan-original.json --out {run}/event-include-incspan-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/incspan-original.json --timeout 60000 --start-gateway",
         "node {kovaRoot}/support/verify/config-applied-wait.mjs --env {env} --timeout 45000"
       ],
       "checkpoint": [
@@ -7970,15 +8072,16 @@
         "src/gateway/server-methods/config.ts"
       ],
       "requires": [
+        "config-case-event-include-incnested",
         "config-include-unsupported"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-include-unsupported:nestedUnderMerged} --out {run}/incnested-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-include-incnested:fixture} --out {run}/incnested-original.json --timeout 60000 --start-gateway",
         "node {kovaRoot}/support/verify/config-applied-wait.mjs --env {env} --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method config.get --params '{}' --out {run}/incnested-base.json --timeout 15000",
         "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw-from {persona:config-include-unsupported:nestedUnderMergedPatch} --base-from {run}/incnested-base.json --timeout 45000",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --out {run}/event-include-incnested-state.json --timeout 30000",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/incnested-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/incnested-original.json --out {run}/event-include-incnested-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/incnested-original.json --timeout 60000 --start-gateway",
         "node {kovaRoot}/support/verify/config-applied-wait.mjs --env {env} --timeout 45000"
       ],
       "checkpoint": [
@@ -8020,15 +8123,16 @@
         "src/gateway/server-methods/config.ts"
       ],
       "requires": [
+        "config-case-event-include-incdirective",
         "config-include-unsupported"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-include-unsupported:nestedDirective} --out {run}/incdirective-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-include-incdirective:fixture} --out {run}/incdirective-original.json --timeout 60000 --start-gateway",
         "node {kovaRoot}/support/verify/config-applied-wait.mjs --env {env} --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method config.get --params '{}' --out {run}/incdirective-base.json --timeout 15000",
         "node {kovaRoot}/support/verify/config-write.mjs --env {env} --method config.patch --raw-from {persona:config-include-unsupported:nestedDirectivePatch} --base-from {run}/incdirective-base.json --timeout 45000",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --out {run}/event-include-incdirective-state.json --timeout 30000",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/incdirective-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/incdirective-original.json --out {run}/event-include-incdirective-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/incdirective-original.json --timeout 60000 --start-gateway",
         "node {kovaRoot}/support/verify/config-applied-wait.mjs --env {env} --timeout 45000"
       ],
       "checkpoint": [
@@ -8071,10 +8175,11 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-env-rodoctor",
         "config-readonly-host"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-readonly-host:pendingRepairs} --out {run}/event-env-rodoctor-original.json --start-gateway --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-env-rodoctor:fixture} --out {run}/event-env-rodoctor-original.json --start-gateway --timeout 60000",
         "node {kovaRoot}/support/verify/service-env.mjs --env {env} --set OPENCLAW_CONFIG_READONLY=1 --timeout 90000",
         "ocm @{env} -- doctor --fix",
         "ocm @{env} -- doctor --json",
@@ -8122,10 +8227,11 @@
         "src/gateway/server-startup-config*.ts"
       ],
       "requires": [
+        "config-case-event-env-rolegacy",
         "config-readonly-host"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-readonly-host:pendingRepairs} --out {run}/event-env-rolegacy-original.json --start-gateway --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-env-rolegacy:fixture} --out {run}/event-env-rolegacy-original.json --timeout 60000",
         "node {kovaRoot}/support/verify/service-env.mjs --env {env} --set OPENCLAW_CONFIG_READONLY=1 --timeout 90000",
         "ocm @{env} -- doctor --fix",
         "ocm @{env} -- doctor --json",
@@ -9026,11 +9132,12 @@
         "src/gateway/server-startup-config*.ts"
       ],
       "requires": [
+        "config-case-event-startup-invalidstart",
         "config-invalid-fixture"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-invalid-fixture:unknownKey} --out {run}/invalidstart-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-startup-invalidstart:fixture} --out {run}/invalidstart-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
@@ -9039,9 +9146,9 @@
         "ocm @{env} -- status --json",
         "ocm @{env} -- sessions --json",
         "ocm logs {env} --tail 400",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.last-good --out {run}/event-startup-invalidstart-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/invalidstart-original.json --out {run}/event-startup-invalidstart-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/invalidstart-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/invalidstart-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -9086,11 +9193,12 @@
         "src/gateway/server-startup-config*.ts"
       ],
       "requires": [
+        "config-case-event-startup-inclegacy",
         "config-include-legacy-keys"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-include-legacy-keys:path} --out {run}/inclegacy-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-startup-inclegacy:fixture} --out {run}/inclegacy-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
@@ -9143,19 +9251,20 @@
         "src/gateway/server-startup-config*.ts"
       ],
       "requires": [
+        "config-case-event-startup-newer",
         "config-newer-version"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-newer-version:path} --out {run}/newer-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-startup-newer:fixture} --out {run}/newer-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
         "ocm @{env} -- config file --json",
         "ocm logs {env} --tail 400",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.last-good --out {run}/event-startup-newer-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/newer-original.json --out {run}/event-startup-newer-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/newer-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/newer-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -9201,20 +9310,21 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-lkgrestore",
         "config-clobbered-history",
         "config-invalid-fixture"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-invalid-fixture:unknownKey} --out {run}/lkgrestore-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-lkgrestore:fixture} --out {run}/lkgrestore-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-lkgrestore-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/lkgrestore-original.json --out {run}/event-doctor-lkgrestore-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/lkgrestore-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/lkgrestore-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -9314,11 +9424,12 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-incdoctor",
         "config-include-legacy-keys"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-include-legacy-keys:mixedBoundary} --out {run}/incdoctor-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-incdoctor:fixture} --out {run}/incdoctor-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
@@ -9372,11 +9483,12 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-schemafirst",
         "config-legacy-keys"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-legacy-keys:withStateMigration} --out {run}/schemafirst-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-schemafirst:fixture} --out {run}/schemafirst-original.json --timeout 60000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
@@ -9431,19 +9543,20 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-ownerlost",
         "config-session-store-owner-lost"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-session-store-owner-lost:path} --out {run}/ownerlost-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-ownerlost:fixture} --out {run}/ownerlost-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-ownerlost-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/ownerlost-original.json --out {run}/event-doctor-ownerlost-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/ownerlost-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/ownerlost-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -9489,19 +9602,20 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-repairthrows",
         "plugin-repair-throws"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:plugin-repair-throws:config} --out {run}/repairthrows-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-repairthrows:fixture} --out {run}/repairthrows-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-repairthrows-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/repairthrows-original.json --out {run}/event-doctor-repairthrows-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/repairthrows-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/repairthrows-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -9547,19 +9661,20 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-autonormalize",
         "config-legacy-keys"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-legacy-keys:path} --out {run}/autonormalize-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-autonormalize:fixture} --out {run}/autonormalize-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-autonormalize-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/autonormalize-original.json --out {run}/event-doctor-autonormalize-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/autonormalize-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/autonormalize-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -9605,19 +9720,20 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-ownerambig",
         "config-owner-ambiguous-history"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-owner-ambiguous-history:path} --out {run}/ownerambig-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-ownerambig:fixture} --out {run}/ownerambig-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-ownerambig-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/ownerambig-original.json --out {run}/event-doctor-ownerambig-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/ownerambig-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/ownerambig-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -9663,19 +9779,20 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-retiredformat",
         "config-retired-format"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-retired-format:path} --out {run}/retiredformat-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-retiredformat:fixture} --out {run}/retiredformat-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-retiredformat-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/retiredformat-original.json --out {run}/event-doctor-retiredformat-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/retiredformat-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/retiredformat-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -9721,19 +9838,20 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-retiredkeys",
         "config-retired-keys"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-retired-keys:path} --out {run}/retiredkeys-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-retiredkeys:fixture} --out {run}/retiredkeys-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-retiredkeys-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/retiredkeys-original.json --out {run}/event-doctor-retiredkeys-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/retiredkeys-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/retiredkeys-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -9779,19 +9897,20 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-matrixprivnet",
         "config-retired-keys"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-retired-keys:matrixFlat} --out {run}/matrixprivnet-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-matrixprivnet:fixture} --out {run}/matrixprivnet-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-matrixprivnet-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/matrixprivnet-original.json --out {run}/event-doctor-matrixprivnet-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/matrixprivnet-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/matrixprivnet-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -9810,7 +9929,7 @@
     {
       "id": "event-doctor-taskflow",
       "kind": "event",
-      "intent": "The Gateway starts and Doctor runs with leftover TaskFlow Webhooks plugin settings, observing the warning and the removal.",
+      "intent": "Doctor removes retired Webhooks plugin settings; the resulting config and subsequent startup are observed.",
       "paths": [
         "src/commands/doctor/legacy-config-repair.ts",
         "src/commands/doctor/shared/automatic-config-repair.ts",
@@ -9837,20 +9956,21 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-taskflow",
         "config-retired-keys"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-retired-keys:taskflow} --out {run}/taskflow-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-taskflow:fixture} --out {run}/taskflow-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
         "ocm logs {env} --tail 400",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-taskflow-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/taskflow-original.json --out {run}/event-doctor-taskflow-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/taskflow-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/taskflow-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -9896,19 +10016,20 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-taskflowallow",
         "config-retired-keys"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-retired-keys:taskflowOnlyAllow} --out {run}/taskflowallow-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-taskflowallow:fixture} --out {run}/taskflowallow-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-taskflowallow-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/taskflowallow-original.json --out {run}/event-doctor-taskflowallow-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/taskflowallow-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/taskflowallow-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -9954,19 +10075,20 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-taskflownone",
         "config-retired-keys"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-retired-keys:taskflowNoneLeft} --out {run}/taskflownone-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-taskflownone:fixture} --out {run}/taskflownone-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-taskflownone-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/taskflownone-original.json --out {run}/event-doctor-taskflownone-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/taskflownone-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/taskflownone-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -10012,19 +10134,20 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-aliascollide",
         "config-retired-keys"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-retired-keys:aliasCollision} --out {run}/aliascollide-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-aliascollide:fixture} --out {run}/aliascollide-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-aliascollide-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/aliascollide-original.json --out {run}/event-doctor-aliascollide-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/aliascollide-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/aliascollide-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -10070,11 +10193,12 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-cronpin",
         "config-legacy-agents-list"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-legacy-agents-list:ownerlessCron} --out {run}/cronpin-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-cronpin:fixture} --out {run}/cronpin-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
@@ -10128,11 +10252,12 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-cronsqlowner",
         "config-legacy-agents-list"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-legacy-agents-list:sqlOwnerCron} --out {run}/cronsqlowner-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-cronsqlowner:fixture} --out {run}/cronsqlowner-original.json --timeout 60000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
@@ -10187,19 +10312,20 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-unbound",
         "config-legacy-agents-list"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-legacy-agents-list:unboundAccounts} --out {run}/unbound-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-unbound:fixture} --out {run}/unbound-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-unbound-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/unbound-original.json --out {run}/event-doctor-unbound-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/unbound-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/unbound-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -10218,7 +10344,7 @@
     {
       "id": "event-doctor-rosterreads",
       "kind": "event",
-      "intent": "A replaced binary starts on a populated agents.list roster before Doctor, then Doctor runs, observing the refused start and the migrated roster.",
+      "intent": "Doctor inspects and repairs a populated legacy roster; the repaired config and subsequent startup are observed.",
       "paths": [
         "src/commands/doctor/legacy-config-repair.ts",
         "src/commands/doctor/shared/automatic-config-repair.ts",
@@ -10245,19 +10371,20 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-rosterreads",
         "config-legacy-agents-list"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-legacy-agents-list:path} --out {run}/rosterreads-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-rosterreads:fixture} --out {run}/rosterreads-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-rosterreads-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/rosterreads-original.json --out {run}/event-doctor-rosterreads-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/rosterreads-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/rosterreads-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -10303,19 +10430,20 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-rosterorder",
         "config-legacy-agents-list"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-legacy-agents-list:path} --out {run}/rosterorder-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-rosterorder:fixture} --out {run}/rosterorder-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-rosterorder-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/rosterorder-original.json --out {run}/event-doctor-rosterorder-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/rosterorder-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/rosterorder-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -10361,19 +10489,20 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-systemagent",
         "config-legacy-agents-list"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-legacy-agents-list:multiAgentNoOwner} --out {run}/systemagent-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-systemagent:fixture} --out {run}/systemagent-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-systemagent-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/systemagent-original.json --out {run}/event-doctor-systemagent-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/systemagent-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/systemagent-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -10419,19 +10548,20 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-acctowner",
         "config-legacy-agents-list"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-legacy-agents-list:multiAgentAccounts} --out {run}/acctowner-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-acctowner:fixture} --out {run}/acctowner-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-acctowner-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/acctowner-original.json --out {run}/event-doctor-acctowner-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/acctowner-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/acctowner-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -10457,12 +10587,13 @@
         "src/commands/config-*.ts"
       ],
       "requires": [
+        "config-case-event-cron-owner-write-refused",
         "config-fixtures",
         "config-legacy-agents-list"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-legacy-agents-list:ownerlessCron} --out {run}/cr-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-cron-owner-write-refused:fixture} --out {run}/cr-original.json --timeout 60000",
         "ocm @{env} -- config set --batch-file {persona:config-legacy-agents-list:dropOwnerBatch}",
         "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/cr-original.json --out {run}/event-cron-owner-write-refused-state.json --timeout 30000",
         "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/cr-original.json --timeout 60000",
@@ -10506,12 +10637,13 @@
         "src/config/zod-schema.ts"
       ],
       "requires": [
+        "config-case-event-cron-owner-restricted-view",
         "config-legacy-agents-list",
         "profile-read-only"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-legacy-agents-list:ownerlessCron} --out {run}/crv-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-cron-owner-restricted-view:fixture} --out {run}/crv-original.json --timeout 60000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --profile {persona:profile-read-only:profileId} --method cron.list --params '{}' --timeout 15000",
@@ -10561,11 +10693,12 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-rosterinclude",
         "config-include-legacy-keys"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-include-legacy-keys:rosterInclude} --out {run}/rosterinclude-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-rosterinclude:fixture} --out {run}/rosterinclude-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
@@ -10619,11 +10752,12 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-memincludes",
         "config-include-legacy-keys"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-include-legacy-keys:memorySearchInclude} --out {run}/memincludes-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-memincludes:fixture} --out {run}/memincludes-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
@@ -10677,11 +10811,12 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-policyinclude",
         "config-include-legacy-keys"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-include-legacy-keys:policyInclude} --out {run}/policyinclude-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-policyinclude:fixture} --out {run}/policyinclude-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
@@ -10735,19 +10870,20 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
-        "channel-multi-account"
+        "channel-multi-account",
+        "config-case-event-doctor-acctmaps"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:channel-multi-account:path} --out {run}/acctmaps-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-acctmaps:fixture} --out {run}/acctmaps-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-acctmaps-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/acctmaps-original.json --out {run}/event-doctor-acctmaps-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/acctmaps-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/acctmaps-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -10793,19 +10929,20 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
-        "channel-multi-account"
+        "channel-multi-account",
+        "config-case-event-doctor-wadefault"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:channel-multi-account:waPolicyDefault} --out {run}/wadefault-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-wadefault:fixture} --out {run}/wadefault-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-wadefault-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/wadefault-original.json --out {run}/event-doctor-wadefault-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/wadefault-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/wadefault-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -10851,19 +10988,20 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-deferredprivnet",
         "plugin-configured-missing"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:plugin-configured-missing:privnet} --out {run}/deferredprivnet-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-deferredprivnet:fixture} --out {run}/deferredprivnet-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-deferredprivnet-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/deferredprivnet-original.json --out {run}/event-doctor-deferredprivnet-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/deferredprivnet-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/deferredprivnet-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -10909,19 +11047,20 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
-        "channel-webhook-legacy"
+        "channel-webhook-legacy",
+        "config-case-event-doctor-webhookpin"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:channel-webhook-legacy:existingInstall} --out {run}/webhookpin-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-webhookpin:fixture} --out {run}/webhookpin-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-webhookpin-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/webhookpin-original.json --out {run}/event-doctor-webhookpin-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/webhookpin-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/webhookpin-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -10967,19 +11106,20 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
-        "channel-webhook-legacy"
+        "channel-webhook-legacy",
+        "config-case-event-doctor-webhookkeep"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:channel-webhook-legacy:pinRemoved} --out {run}/webhookkeep-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-webhookkeep:fixture} --out {run}/webhookkeep-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-webhookkeep-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/webhookkeep-original.json --out {run}/event-doctor-webhookkeep-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/webhookkeep-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/webhookkeep-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -11025,11 +11165,12 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
-        "channel-webhook-legacy"
+        "channel-webhook-legacy",
+        "config-case-event-doctor-webhookstartup"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:channel-webhook-legacy:markerOnly} --out {run}/webhookstartup-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-webhookstartup:fixture} --out {run}/webhookstartup-original.json --timeout 60000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
@@ -11083,19 +11224,20 @@
       ],
       "requires": [
         "channel-webhook-legacy",
+        "config-case-event-doctor-tgwebhookurl",
         "gateway-public-origin"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:channel-webhook-legacy:telegramPublicOrigin} --out {run}/tgwebhookurl-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-tgwebhookurl:fixture} --out {run}/tgwebhookurl-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-tgwebhookurl-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/tgwebhookurl-original.json --out {run}/event-doctor-tgwebhookurl-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/tgwebhookurl-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/tgwebhookurl-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -11141,19 +11283,20 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
-        "channel-webhook-legacy"
+        "channel-webhook-legacy",
+        "config-case-event-doctor-teamsenv"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:channel-webhook-legacy:teamsEnvOnly} --out {run}/teamsenv-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-teamsenv:fixture} --out {run}/teamsenv-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-teamsenv-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/teamsenv-original.json --out {run}/event-doctor-teamsenv-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/teamsenv-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/teamsenv-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -11199,19 +11342,20 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-talkinherit",
         "config-legacy-keys"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-legacy-keys:voiceCallTalk} --out {run}/talkinherit-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-talkinherit:fixture} --out {run}/talkinherit-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-talkinherit-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/talkinherit-original.json --out {run}/event-doctor-talkinherit-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/talkinherit-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/talkinherit-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -11257,19 +11401,20 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-pluginmissing",
         "plugin-configured-missing"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:plugin-configured-missing:path} --out {run}/pluginmissing-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-pluginmissing:fixture} --out {run}/pluginmissing-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-pluginmissing-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/pluginmissing-original.json --out {run}/event-doctor-pluginmissing-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/pluginmissing-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/pluginmissing-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -11315,19 +11460,20 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-plugindeferred",
         "plugin-configured-missing"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:plugin-configured-missing:path} --out {run}/plugindeferred-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-plugindeferred:fixture} --out {run}/plugindeferred-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-plugindeferred-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/plugindeferred-original.json --out {run}/event-doctor-plugindeferred-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/plugindeferred-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/plugindeferred-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -11373,19 +11519,20 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-pluginsettled",
         "plugin-configured-missing"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:plugin-configured-missing:emptyConfig} --out {run}/pluginsettled-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-pluginsettled:fixture} --out {run}/pluginsettled-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-pluginsettled-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/pluginsettled-original.json --out {run}/event-doctor-pluginsettled-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/pluginsettled-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/pluginsettled-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -11489,22 +11636,23 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-july",
         "config-july-2026-fixture"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-july-2026-fixture:path} --out {run}/july-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-july:fixture} --out {run}/july-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --out {run}/event-doctor-july-pass1-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/july-original.json --out {run}/event-doctor-july-pass1-state.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
         "ocm @{env} -- doctor --fix",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --out {run}/event-doctor-july-pass2-state.json --timeout 30000",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-july-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/july-original.json --out {run}/event-doctor-july-pass2-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/july-original.json --out {run}/event-doctor-july-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/july-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/july-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -11550,19 +11698,20 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-llamaserver",
         "config-july-2026-fixture"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-july-2026-fixture:localEmbeddings} --out {run}/llamaserver-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-llamaserver:fixture} --out {run}/llamaserver-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-llamaserver-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/llamaserver-original.json --out {run}/event-doctor-llamaserver-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/llamaserver-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/llamaserver-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -11608,19 +11757,20 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-ghtoken",
         "config-legacy-keys"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-legacy-keys:copilotGenericToken} --out {run}/ghtoken-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-ghtoken:fixture} --out {run}/ghtoken-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-ghtoken-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/ghtoken-original.json --out {run}/event-doctor-ghtoken-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/ghtoken-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/ghtoken-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -11666,19 +11816,20 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-alsoallow",
         "config-legacy-keys"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-legacy-keys:alsoAllow} --out {run}/alsoallow-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-alsoallow:fixture} --out {run}/alsoallow-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-alsoallow-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/alsoallow-original.json --out {run}/event-doctor-alsoallow-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/alsoallow-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/alsoallow-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -11724,19 +11875,20 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-utility",
         "config-legacy-keys"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-legacy-keys:utilitySeparation} --out {run}/utility-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-utility:fixture} --out {run}/utility-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-utility-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/utility-original.json --out {run}/event-doctor-utility-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/utility-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/utility-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -11782,19 +11934,20 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-preservefirst",
         "config-legacy-keys"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-legacy-keys:path} --out {run}/preservefirst-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-preservefirst:fixture} --out {run}/preservefirst-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-preservefirst-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/preservefirst-original.json --out {run}/event-doctor-preservefirst-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/preservefirst-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/preservefirst-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -11840,11 +11993,12 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-bundletransport",
         "plugin-bundle-unknown-transport"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:plugin-bundle-unknown-transport:fixture} --out {run}/bundletransport-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-bundletransport:fixture} --out {run}/bundletransport-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
@@ -11898,20 +12052,21 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-prefixed",
         "config-clobbered-history",
         "config-invalid-fixture"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-invalid-fixture:prefixed} --out {run}/prefixed-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-prefixed:fixture} --out {run}/prefixed-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --path openclaw.json.bak --path openclaw.json.clobbered.* --out {run}/event-doctor-prefixed-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/prefixed-original.json --out {run}/event-doctor-prefixed-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/prefixed-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/prefixed-original.json --timeout 30000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -11957,11 +12112,12 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-doctor-nolkg",
         "config-invalid-fixture"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-invalid-fixture:noLastGood} --out {run}/nolkg-original.json --timeout 30000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-nolkg:fixture} --out {run}/nolkg-original.json --timeout 30000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
@@ -12015,11 +12171,12 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-state-schema8",
         "legacy-state-retired"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:legacy-state-retired:schema8} --out {run}/event-state-schema8-state-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-state-schema8:fixture} --out {run}/event-state-schema8-state-original.json --timeout 60000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
@@ -12072,11 +12229,12 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-state-tgsidecars",
         "legacy-state-retired"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:legacy-state-retired:tgsidecars} --out {run}/event-state-tgsidecars-state-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-state-tgsidecars:fixture} --out {run}/event-state-tgsidecars-state-original.json --timeout 60000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
@@ -12129,11 +12287,12 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-state-tgoffset",
         "legacy-state-retired"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:legacy-state-retired:tgoffset} --out {run}/event-state-tgoffset-state-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-state-tgoffset:fixture} --out {run}/event-state-tgoffset-state-original.json --timeout 60000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
@@ -12186,11 +12345,12 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-state-extstub",
         "legacy-state-retired"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:legacy-state-retired:extstub} --out {run}/event-state-extstub-state-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-state-extstub:fixture} --out {run}/event-state-extstub-state-original.json --timeout 60000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
@@ -12243,11 +12403,12 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-state-discordretired",
         "legacy-state-retired"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:legacy-state-retired:discordretired} --out {run}/event-state-discordretired-state-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-state-discordretired:fixture} --out {run}/event-state-discordretired-state-original.json --timeout 60000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
@@ -12300,11 +12461,12 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-state-devicepair",
         "legacy-state-retired"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:legacy-state-retired:devicepair} --out {run}/event-state-devicepair-state-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-state-devicepair:fixture} --out {run}/event-state-devicepair-state-original.json --timeout 60000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
@@ -12357,11 +12519,12 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-state-discordjson",
         "legacy-state-retired"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:legacy-state-retired:discordjson} --out {run}/event-state-discordjson-state-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-state-discordjson:fixture} --out {run}/event-state-discordjson-state-original.json --timeout 60000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
@@ -12414,11 +12577,12 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-state-voicejsonl",
         "legacy-state-retired"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:legacy-state-retired:voicejsonl} --out {run}/event-state-voicejsonl-state-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-state-voicejsonl:fixture} --out {run}/event-state-voicejsonl-state-original.json --timeout 60000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
@@ -12471,11 +12635,12 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-state-cronownerless",
         "legacy-state-retired"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:legacy-state-retired:cronownerless} --out {run}/event-state-cronownerless-state-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-state-cronownerless:fixture} --out {run}/event-state-cronownerless-state-original.json --timeout 60000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
@@ -12528,11 +12693,12 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-state-cronjson",
         "legacy-state-retired"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:legacy-state-retired:cronjson} --out {run}/event-state-cronjson-state-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-state-cronjson:fixture} --out {run}/event-state-cronjson-state-original.json --timeout 60000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
@@ -12585,11 +12751,12 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-state-queuejson",
         "legacy-state-retired"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:legacy-state-retired:queuejson} --out {run}/event-state-queuejson-state-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-state-queuejson:fixture} --out {run}/event-state-queuejson-state-original.json --timeout 60000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
@@ -12642,11 +12809,12 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-state-retiredfiles",
         "legacy-state-retired"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:legacy-state-retired:retiredfiles} --out {run}/event-state-retiredfiles-state-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-state-retiredfiles:fixture} --out {run}/event-state-retiredfiles-state-original.json --timeout 60000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
@@ -12699,11 +12867,12 @@
         "src/flows/doctor-health-contribution-runners.config.ts"
       ],
       "requires": [
+        "config-case-event-state-oauthsidecar",
         "legacy-state-retired"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:legacy-state-retired:oauthsidecar} --out {run}/event-state-oauthsidecar-state-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-state-oauthsidecar:fixture} --out {run}/event-state-oauthsidecar-state-original.json --timeout 60000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm service start {env} --json",
@@ -12734,11 +12903,12 @@
         "src/gateway/server-startup-config*.ts"
       ],
       "requires": [
+        "config-case-event-state-startup-retired",
         "legacy-state-retired"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:legacy-state-retired:retiredfiles} --out {run}/event-state-startup-retired-state-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-state-startup-retired:fixture} --out {run}/event-state-startup-retired-state-original.json --timeout 60000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm @{env} -- status --json",
@@ -12768,19 +12938,20 @@
         "src/gateway/server-startup-config*.ts"
       ],
       "requires": [
+        "config-case-event-guard-headless",
         "config-invalid-fixture",
         "config-legacy-keys"
       ],
       "commands": [
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --replace-from {persona:config-legacy-keys:path} --out {run}/gh-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-guard-headless:fixture} --out {run}/gh-original.json --timeout 60000",
         "ocm @{env} -- sessions --json",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000",
         "ocm logs {env} --tail 400",
-        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --path openclaw.json --out {run}/event-guard-headless-state.json --timeout 30000",
+        "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/gh-original.json --out {run}/event-guard-headless-state.json --timeout 30000",
         "ocm service stop {env} --json",
-        "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --restore-from {run}/gh-original.json --timeout 60000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --restore-from {run}/gh-original.json --timeout 60000",
         "ocm service start {env} --json",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run} --timeout-ms 60000"
       ],
@@ -12936,12 +13107,12 @@
         "src/gateway/server-startup-config*.ts"
       ],
       "requires": [
+        "config-case-event-interactive-startup-offers-doctor",
         "config-fixture-files",
-        "config-fixture-legacy-includes",
         "config-fixtures"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-fixture-legacy-includes:path} --out {run}/event-interactive-startup-offers-doctor-saved.json --timeout 50000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-interactive-startup-offers-doctor:fixture} --out {run}/event-interactive-startup-offers-doctor-saved.json --timeout 50000",
         "node {kovaRoot}/support/verify/cli-pty.mjs --env {env} --command 'status' --answers {persona:config-fixture-files:acceptDoctorAnswers} --timeout 70000",
         "ocm service start {env} --json",
         "ocm logs {env} --tail 300",
@@ -12973,12 +13144,12 @@
       ],
       "requires": [
         "config-backups-present",
+        "config-case-event-doctor-restores-last-known-good",
         "config-clobbered-history",
-        "config-fixture-broken-after-good",
         "config-fixtures"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-fixture-broken-after-good:path} --out {run}/event-doctor-restores-last-known-good-saved.json --timeout 50000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-restores-last-known-good:fixture} --out {run}/event-doctor-restores-last-known-good-saved.json --timeout 50000",
         "node {kovaRoot}/support/verify/config-file-edit.mjs --env {env} --file openclaw.json --mode prefix --text 'kova-prefix' --out {run}/prefix.json --timeout 30000",
         "ocm @{env} -- doctor --fix",
         "ocm @{env} -- doctor --json",
@@ -13010,11 +13181,11 @@
         "src/gateway/server-startup-config*.ts"
       ],
       "requires": [
-        "config-fixture-legacy-single-file",
+        "config-case-event-doctor-normalizes-legacy",
         "config-fixtures"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-fixture-legacy-single-file:path} --out {run}/event-doctor-normalizes-legacy-saved.json --timeout 50000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-normalizes-legacy:fixture} --out {run}/event-doctor-normalizes-legacy-saved.json --timeout 50000",
         "ocm @{env} -- doctor --non-interactive",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --non-interactive --json",
@@ -13046,11 +13217,11 @@
         "src/gateway/server-startup-config*.ts"
       ],
       "requires": [
-        "config-fixture-july-replay",
+        "config-case-event-doctor-second-pass",
         "config-fixtures"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-fixture-july-replay:path} --out {run}/event-doctor-second-pass-saved.json --timeout 50000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-second-pass:fixture} --out {run}/event-doctor-second-pass-saved.json --timeout 50000",
         "ocm @{env} -- doctor --fix --non-interactive",
         "node {kovaRoot}/support/verify/state-snapshot.mjs --env {env} --paths-from {run}/event-doctor-second-pass-saved.json --out {run}/doctor-second-pass-1.json --timeout 30000",
         "ocm @{env} -- doctor --json",
@@ -13085,11 +13256,11 @@
         "src/gateway/server-startup-config*.ts"
       ],
       "requires": [
-        "config-fixture-retired-inputs",
+        "config-case-event-doctor-refuses-retired",
         "config-fixtures"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-fixture-retired-inputs:path} --out {run}/event-doctor-refuses-retired-saved.json --timeout 50000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-refuses-retired:fixture} --out {run}/event-doctor-refuses-retired-saved.json --timeout 50000",
         "ocm @{env} -- doctor --json",
         "ocm @{env} -- doctor --fix",
         "ocm @{env} -- doctor --json",
@@ -13121,11 +13292,11 @@
         "src/gateway/server-startup-config*.ts"
       ],
       "requires": [
-        "config-fixture-webhook-listeners",
+        "config-case-event-webhook-startup-refused",
         "config-fixtures"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-fixture-webhook-listeners:path} --out {run}/event-webhook-startup-refused-saved.json --timeout 50000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-webhook-startup-refused:fixture} --out {run}/event-webhook-startup-refused-saved.json --timeout 50000",
         "ocm service start {env} --json",
         "ocm logs {env} --tail 200",
         "ocm @{env} -- doctor --fix",
@@ -13159,12 +13330,12 @@
         "src/gateway/server-startup-config*.ts"
       ],
       "requires": [
-        "config-fixture-plugin-migration-pending",
+        "config-case-event-doctor-pending-plugin-migration",
         "config-fixtures",
         "plugin-configured-missing"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-fixture-plugin-migration-pending:path} --out {run}/event-doctor-pending-plugin-migration-saved.json --timeout 50000",
+        "node {kovaRoot}/support/verify/stage-state-fixture.mjs --env {env} --fixture {persona:config-case-event-doctor-pending-plugin-migration:fixture} --out {run}/event-doctor-pending-plugin-migration-saved.json --timeout 50000",
         "ocm @{env} -- doctor --fix",
         "ocm @{env} -- doctor --json",
         "ocm service start {env} --json",

@@ -1,18 +1,18 @@
 # Comparison: config
 
-Union: 291 entry points, 460 conditions under 63 condition headings
+Union: 291 entry points, 459 conditions under 63 condition headings
 
 | Run | Entry points found | Conditions found | Condition headings found |
 |---|---|---|---|
-| 1 | 284/291 (97.6%) | 427/460 (92.8%) | 62/63 (98.4%) |
-| 2 | 287/291 (98.6%) | 415/460 (90.2%) | 62/63 (98.4%) |
+| 1 | 284/291 (97.6%) | 426/459 (92.81%) | 62/63 (98.4%) |
+| 2 | 287/291 (98.6%) | 413/459 (89.98%) | 62/63 (98.4%) |
 
 Both runs satisfy acceptance: at least nine tenths of the reconciled union of entry points and of condition headings. Condition-row shares are reported separately. Revision 7e80556f503d26ddde64e274bfb50cbbec7830f5; area input file verify/areas/config.json as committed; procedure revision 4 (below). The template, derivation.md and coverage.md in this directory are the reconciliation of these two runs.
 
 ## How the shares were counted
 
 - Entry points: one list per run (placed or excluded), files matched by path and every other entry point by name. Run 1 alone listed 4: the segmented On/Off/Auto choice (run 2 folded it into the choice field), the Import theme card (run 2 listed only the import field and button), extensions/matrix/src/matrix/monitor/startup.ts (run 2 judged its injected `replaceConfigFile` callback not a call of the listed symbol) and src/agents/tools/gateway-tool.ts as a file (run 2 counted only its two tool actions). Run 2 alone listed 7: the Settings navigation Retry (run 1 listed it as a shell control) and the Setup wizard section and five new-entry draft controls of the collection editor (run 1 did not enumerate them).
-- Conditions: matched heading by heading through `## Headings walked`, pairing rows by meaning, then reviewing every unpaired row and every pair whose wording differed. Where one run named a state inside a broader row of the other, the two count as one condition (derivation.md, Reconciliation). Run 1's 45 conditions that run 2 did not list sit mostly in the retired-config list of docs/gateway/doctor/config-migrations.md (run 1 took one row per retired input, run 2 one row for the list), its webhook listener and missing-plugin sections, and the attention chips and footer statements of the Settings section. Run 2's 33 sit mostly in docs/cli/config.md (values, paths, validate and dry-run failure statements) and in single statements of the hot-reload and Redaction sections.
+- Conditions: matched heading by heading through `## Headings walked`, pairing rows by meaning, then reviewing every unpaired row and every pair whose wording differed. Where one run named a state inside a broader row of the other, the two count as one condition (derivation.md, Reconciliation). Run 1's 46 conditions that run 2 did not list sit mostly in the retired-config list of docs/gateway/doctor/config-migrations.md (run 1 took one row per retired input, run 2 one row for the list), its webhook listener and missing-plugin sections, and the attention chips and footer statements of the Settings section. Run 2's 33 sit mostly in docs/cli/config.md (values, paths, validate and dry-run failure statements) and in single statements of the hot-reload and Redaction sections.
 - Condition headings: a heading under which either run found a condition. Each run missed one: run 1 recorded nothing under docs/cli/config.md "If dry-run fails" (it read the list of failure kinds as the outcome of the dry-run operation), and run 2 nothing under "--dry-run --json fields" (it read the field list as an output format).
 
 The remaining round 4 difference is granularity inside sections both runs read and these two headings, which each run read but recorded differently.
@@ -33,7 +33,7 @@ Every round read the same OpenClaw revision. Both runs of a round read the same 
 | 1 | revision 1 | bound named the neighbouring areas only | 355/438 (81.1%), 306/438 (69.9%) | estimated about 70% and 93% of about 56 | 32/37 (86.5%), 28/37 (75.7%) | under nine tenths |
 | 2 | revision 2 | bound gained counting rules (Gateway methods, CLI commands, tool actions, a search for code from other areas, redaction sinks, Control UI controls) | 290/294 (98.6%), 280/294 (95.2%) | run 1 not computed; run 2 at most 76.5% (the union was at least run 1's 183) | 55/60 (91.7%), 53/60 (88.3%) | under nine tenths |
 | 3 | revision 3 | search list moved into `search` | 276/279 (98.9%), 274/279 (98.2%) | 93.3%, 82.8% of 209 | 66/68 (97.1%), 58/68 (85.3%) | under nine tenths |
-| 4 | revision 4 | bound names, per document, the sections that are this area's | 284/291 (97.6%), 287/291 (98.6%) | 92.8%, 90.2% of 460 | 62/63 (98.4%), 62/63 (98.4%) | accepted |
+| 4 | revision 4 | bound names, per document, the sections that are this area's | 284/291 (97.6%), 287/291 (98.6%) | 92.81%, 89.98% of 459 | 62/63 (98.4%), 62/63 (98.4%) | accepted |
 
 The round 1 and round 3 entry-point unions were recounted from their preserved enumerations. Names and source paths identify entries; aliases and different labels for the same control are matched. Explicitly combined controls count at the finer granularity: for example text and number fields, Form and Raw switches, quiet-hours start and end, and the Settings shortcut and menu item. A generic group that does not name its controls stays a separate entry. This is why a run's credited count can exceed its original row count. Round 2 keeps its recorded reconciliation, including the removal of six search hits that were not calls. The earlier condition-row estimates remain estimates; they are not the heading-based acceptance measure. Rounds 1 and 2 had no heading walk; their condition headings are recovered from the headings each condition cites as its source. Multiple named headings in one citation are counted separately; page-title introductions and shortened versions of the same FAQ question are matched. Quoted values inside a heading, such as "lan" and "tailnet", do not count as headings. These recounts replace the earlier 39- and 67-heading estimates. Rounds 3 and 4 count them from `## Headings walked`.
 
@@ -56,3 +56,5 @@ The round 3 entry-point residual is five caller files found only by run 1 (the a
 Coverage limits after reconciliation include dependent consumer behavior that the saved phases do not drive. Those conditions stay in the reconciled derivation and in the heading census; coverage.md identifies them as uncovered. A config write and a subsequent config read alone do not establish terminal, connection, authentication, admission or plugin-work consequences.
 
 The final condition count also merges two composite/contained duplicates: the same-store handoff statement into condition 45, and messages.tts migration into condition 337. Both source citations and each run's membership are retained. Condition identifiers remain stable rather than shifting the later coverage references.
+
+After the full composite-condition reconciliation, the condition-row shares are 426/459 (92.81%) and 413/459 (89.98%). The latter is a known condition-row shortfall after the last round, mainly the remaining differences in migration detail and Settings statements. Acceptance remains the entry-point and condition-heading measures, both above nine tenths. The composite/contained matches and the retained unique states are listed in derivation.md; no new derivation was run.
