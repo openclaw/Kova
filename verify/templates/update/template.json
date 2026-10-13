@@ -345,7 +345,11 @@
         "src/flows/doctor-health-contributions-*.ts",
         "src/cli/update-cli.ts",
         "src/cli/update-option-specs.ts",
-        "src/cli/update-cli/shared.ts"
+        "src/cli/update-cli/shared.ts",
+        "src/cli/update-cli/update-command*.ts",
+        "src/cli/program/register.maintenance.ts",
+        "src/commands/doctor.ts",
+        "src/flows/doctor-health*.ts"
       ],
       "requires": [
         "approvals-legacy-json",
@@ -577,7 +581,12 @@
         "src/commands/doctor/shared/update-phase.ts",
         "src/cli/update-cli.ts",
         "src/cli/update-option-specs.ts",
-        "src/cli/update-cli/shared.ts"
+        "src/cli/update-cli/shared.ts",
+        "src/plugins/install-record*.ts",
+        "src/plugins/installed-plugin-index*.ts",
+        "src/plugins/capability-*.ts",
+        "src/cli/program/register.maintenance.ts",
+        "src/flows/doctor-health*.ts"
       ],
       "requires": [
         "plugin-capability-widened",
@@ -716,7 +725,7 @@
       "commands": [
         "node {kovaRoot}/support/verify/release-feed.mjs --env {env} --from {run}/release-feed.json --mode serve --timeout 30000 --background --handle {run}/release-feed-event-restart-ready-check-fails.json",
         "node {kovaRoot}/support/verify/env-fault.mjs --env {env} --fault occupy-gateway-port --background --handle {run}/fault-port.json --duration-ms 600000",
-        "ocm @{env} -- gateway restart",
+        "ocm @{env} -- gateway restart --json",
         "node {kovaRoot}/support/verify/env-fault.mjs --wait {run}/fault-port.json --timeout 90000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-port --timeout 120000",
         "node {kovaRoot}/support/verify/release-feed.mjs --wait {run}/release-feed-event-restart-ready-check-fails.json --timeout 30000"
@@ -779,7 +788,8 @@
         "src/infra/update-run-reconciliation*.ts",
         "src/cli/update-cli.ts",
         "src/cli/update-option-specs.ts",
-        "src/cli/update-cli/shared.ts"
+        "src/cli/update-cli/shared.ts",
+        "src/cli/update-cli/update-command*.ts"
       ],
       "requires": [
         "update-history-stale"
@@ -855,7 +865,10 @@
         "src/infra/update-package-manager.ts",
         "src/cli/update-cli.ts",
         "src/cli/update-option-specs.ts",
-        "src/cli/update-cli/shared.ts"
+        "src/cli/update-cli/shared.ts",
+        "src/cli/program/register.maintenance.ts",
+        "src/commands/doctor.ts",
+        "src/flows/doctor-health*.ts"
       ],
       "requires": [
         "gateway-second-instance",
@@ -898,7 +911,10 @@
       "intent": "An npm installation is replaced with the side's package while its Gateway runs, and on its maintenance tick the Gateway records the replacement, stops admitting work and hands over to its service; separately, the side runtime is started and replaced with side-next to exercise its own detection code, and the replacement record, drain, status and Doctor reports are observed.",
       "paths": [
         "src/gateway/stale-install.ts",
-        "src/infra/package-lifecycle.ts"
+        "src/infra/package-lifecycle.ts",
+        "src/cli/program/register.maintenance.ts",
+        "src/commands/doctor.ts",
+        "src/flows/doctor-health*.ts"
       ],
       "requires": [
         "install-npm-global"
@@ -952,7 +968,10 @@
         "src/infra/restart*.ts",
         "src/process/gateway-work-admission.ts",
         "src/cli/daemon-cli/register-service-commands.ts",
-        "src/cli/daemon-cli/lifecycle.ts"
+        "src/cli/daemon-cli/lifecycle.ts",
+        "src/gateway/server-run-shutdown.ts",
+        "src/gateway/chat-abort*.ts",
+        "src/auto-reply/reply/reply-run-registry*.ts"
       ],
       "requires": [
         "mock-provider-held-turn",
@@ -962,7 +981,7 @@
         "node {kovaRoot}/support/verify/release-feed.mjs --env {env} --from {run}/release-feed.json --mode serve --timeout 30000 --background --handle {run}/release-feed-event-restart-drain-expiry.json",
         "node {kovaRoot}/support/verify/read-installation-state.mjs --env {env} --path state/openclaw.sqlite --table gateway_boot_lifecycle --out {run}/boot-before-event-restart-drain-expiry-1.json --timeout 30000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 60000 --timeout 70000 --background --handle {run}/held-event-restart-drain-expiry-operation.json",
-        "ocm @{env} -- gateway restart --wait 5s",
+        "ocm @{env} -- gateway restart --wait 5s --json",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/held-event-restart-drain-expiry-operation.json --timeout 70000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-drain --timeout 120000 --after-state-from {run}/boot-before-event-restart-drain-expiry-1.json",
         "node {kovaRoot}/support/verify/release-feed.mjs --wait {run}/release-feed-event-restart-drain-expiry.json --timeout 30000"
@@ -1224,7 +1243,10 @@
         "src/infra/restart*.ts",
         "src/process/gateway-work-admission.ts",
         "src/cli/daemon-cli/register-service-commands.ts",
-        "src/cli/daemon-cli/lifecycle.ts"
+        "src/cli/daemon-cli/lifecycle.ts",
+        "src/gateway/server-run-shutdown.ts",
+        "src/gateway/chat-abort*.ts",
+        "src/auto-reply/reply/reply-run-registry*.ts"
       ],
       "requires": [
         "mock-provider-held-turn",
@@ -1297,7 +1319,12 @@
         "src/infra/restart*.ts",
         "src/process/gateway-work-admission.ts",
         "src/system-agent/operations-execution-helpers.ts",
-        "src/gateway/methods/core-descriptors.ts"
+        "src/gateway/methods/core-descriptors.ts",
+        "src/gateway/server-request-lifecycle.ts",
+        "src/gateway/server/ws-connection/message-handler.ts",
+        "src/gateway/server-run-shutdown.ts",
+        "src/gateway/chat-abort*.ts",
+        "src/auto-reply/reply/reply-run-registry*.ts"
       ],
       "requires": [
         "mock-provider-held-turn",
@@ -1307,7 +1334,7 @@
         "node {kovaRoot}/support/verify/release-feed.mjs --env {env} --from {run}/release-feed.json --mode serve --timeout 30000 --background --handle {run}/release-feed-restart-gateway.json",
         "node {kovaRoot}/support/verify/read-installation-state.mjs --env {env} --path state/openclaw.sqlite --table gateway_boot_lifecycle --out {run}/boot-before-restart-gateway-1.json --timeout 30000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 60000 --timeout 70000 --background --handle {run}/held-restart-gateway-1.json",
-        "ocm @{env} -- gateway restart --safe",
+        "ocm @{env} -- gateway restart --safe --json",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/held-restart-gateway-1.json --timeout 70000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-safe --timeout 120000 --after-state-from {run}/boot-before-restart-gateway-1.json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method gateway.restart.preflight --params '{}' --timeout 30000",
@@ -1329,7 +1356,7 @@
         "node {kovaRoot}/support/verify/read-installation-state.mjs --env {env} --path state/openclaw.sqlite --table gateway_boot_lifecycle --out {run}/boot-before-restart-gateway-5.json --timeout 30000",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key {persona:session-main-rolling:key} --hold-ms 60000 --timeout 70000 --background --handle {run}/held-restart-gateway-10.json",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message 'Are you still there?' --when-gateway-draining --background --handle {run}/drain-message.json",
-        "ocm @{env} -- gateway restart --wait 30s",
+        "ocm @{env} -- gateway restart --wait 30s --json",
         "node {kovaRoot}/support/verify/session-turn-hold.mjs --wait {run}/held-restart-gateway-10.json --timeout 70000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/ready-plain --timeout 120000 --after-state-from {run}/boot-before-restart-gateway-5.json",
         "node {kovaRoot}/support/verify/read-installation-state.mjs --env {env} --path state/openclaw.sqlite --table gateway_boot_lifecycle --out {run}/boot-before-restart-gateway-6.json --timeout 30000",
@@ -1424,7 +1451,9 @@
         "ui/src/pages/chat/chat-outbox*.ts",
         "ui/src/lib/chat/outbox-store.ts",
         "ui/src/lib/chat/outbox*.ts",
-        "ui/src/app/boot-record.ts"
+        "ui/src/app/boot-record.ts",
+        "ui/src/pages/chat/chat-send*.ts",
+        "ui/src/pages/chat/chat-queue*.ts"
       ],
       "requires": [
         "session-main-rolling",
@@ -1472,7 +1501,10 @@
         "src/cron/active-jobs.ts",
         "src/gateway/server-cron.ts",
         "src/cli/daemon-cli/register-service-commands.ts",
-        "src/cli/daemon-cli/lifecycle.ts"
+        "src/cli/daemon-cli/lifecycle.ts",
+        "src/gateway/server-run-shutdown.ts",
+        "src/gateway/chat-abort*.ts",
+        "src/auto-reply/reply/reply-run-registry*.ts"
       ],
       "requires": [
         "cron-job-isolated",
@@ -1519,7 +1551,12 @@
         "src/infra/restart*.ts",
         "src/process/gateway-work-admission.ts",
         "src/cli/daemon-cli/register-service-commands.ts",
-        "src/cli/daemon-cli/lifecycle.ts"
+        "src/cli/daemon-cli/lifecycle.ts",
+        "src/gateway/server-request-lifecycle.ts",
+        "src/gateway/server/ws-connection/message-handler.ts",
+        "src/gateway/server-run-shutdown.ts",
+        "src/gateway/chat-abort*.ts",
+        "src/auto-reply/reply/reply-run-registry*.ts"
       ],
       "requires": [
         "mock-provider-held-turn",
@@ -1598,7 +1635,9 @@
         "src/gateway/server-methods/restart*.ts",
         "src/gateway/server-restart-sentinel*.ts",
         "src/infra/restart*.ts",
-        "src/gateway/server-channel*.ts"
+        "src/gateway/server-channel*.ts",
+        "src/gateway/server-core-runtime.ts",
+        "src/gateway/server-startup-early.ts"
       ],
       "requires": [
         "channels-test-accounts"
@@ -1813,7 +1852,10 @@
         "src/state/agent-database-admission.ts",
         "src/gateway/server-runtime-state-prepare.ts",
         "src/cli/program/config-guard.ts",
-        "src/commands/startup-config-preflight.ts"
+        "src/commands/startup-config-preflight.ts",
+        "src/cli/program/register.maintenance.ts",
+        "src/commands/doctor.ts",
+        "src/flows/doctor-health*.ts"
       ],
       "requires": [
         "agents-three-configured",
@@ -1902,7 +1944,8 @@
         "src/infra/session-sqlite-migration-manifest.ts",
         "src/cli/update-cli.ts",
         "src/cli/update-option-specs.ts",
-        "src/cli/update-cli/shared.ts"
+        "src/cli/update-cli/shared.ts",
+        "src/cli/update-cli/update-command*.ts"
       ],
       "requires": [
         "recovery-originals-retained"
