@@ -1408,7 +1408,7 @@
         "reply",
         "elapsedMs"
       ],
-      "side": "write",
+      "side": "destructive",
       "background": false,
       "status": "toWrite",
       "creates": []
