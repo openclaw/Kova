@@ -108,7 +108,7 @@
       "support/verify/heartbeat-wake.mjs  (heartbeat wake of the main session; --env --timeout)",
       "support/verify/http-get.mjs  (one GET against a Gateway HTTP route, with Gateway credentials or none, path resolved from a flow's recorded URLs when --from is given; --env --path --from --auth --timeout)",
       "support/verify/plugin-source-edit.mjs  (edits an installed, linked or bundled plugin's files on the Gateway host and restores the saved copy; modes bundled-dist-touch, cleanup-fails, manifest-bump, marker, payload-tamper, register-throws, gateway-start-fails, service-start-fails, skill-file-edit, ui-asset-broken; --env --plugin --mode --restore; cleanup-fails toggles a fixture-owned marker that the already-loaded cleanup callback reads on every invocation, without editing loaded code; --restore clears that marker so retained cleanup can be retried; gateway-start-fails makes the replacement fixture gateway_start hook throw, leaving service startup successful; gateway-stop-hold arms a fixture-owned marker read by the active gateway_stop hook, which reports entry and waits for explicit release (at most 25000 ms); --out saves the marker identity, --wait-entered-from polls that exact invocation and records its entry plus the live core:plugin-lifecycle/global state lease owner, --verify-held-from records that invocation still pending after the competing RPC (exit 2 if not), and --release-from releases and removes only that marker; --timeout bounds each helper call; bundled-dist-touch refuses unless the caller proves the selected runtime copy is exclusively owned by this clone and its edited files share no inode or writable symlink destination with the original runtime; bundled-plugin-reload owns its restoration)",
-      "support/verify/plugin-reload-wait.mjs  (openclaw plugins reload <id> --wait under a terminal, sending Ctrl-C after the given delay; --env --plugin --cancel-after-ms --timeout)",
+      "support/verify/plugin-reload-wait.mjs  (runs openclaw plugins reload <id> --wait under a terminal; --env --plugin --held-work-from --timeout; reads the supplied admitted-tool handle, records the Gateway log cursor immediately before starting the sole reload, then waits for a newly appended Plugin replacement queued behind message naming this plugin, a positive retained/admitted work count and waiting until they finish or the request is cancelled; the same held-work handle must still be pending. Only this observed drain entry permits scenario Ctrl-C, never a startup delay. Records the barrier, terminal output, cancellation and CLI settlement; absent handle/log metadata exits 2, a product drain-entry timeout records the outcome and exits 1. Always terminates and joins its own CLI within the bound on failure; cleanup termination is distinguished from scenario cancellation)",
       "support/verify/config-change.mjs  (openclaw config patch built from one named change, saving the previous values of the paths it touches to --out for a later --restore-from; changes: fixture-config-unknown-key (plugins.entries.<plugin>.config.kovaUnknownKey = true), fixture-config-change (plugins.entries.<plugin>.config.kovaMarker = a new marker), plugins-allow-restrictive (plugins.allow = [<plugin>]), plugins-deny-entry (plugins.deny adds <plugin>), plugins-disabled and plugins-enabled (plugins.enabled), memory-slot-unknown (plugins.slots.memory = an id no plugin has), reload-mode-off and reload-mode-hybrid (gateway.reload.mode), ui-lab-on and ui-lab-off (gateway.controlUi.experimental.customPlugins), cron-disabled and cron-enabled (cron.enabled), cron-toggle (negates the effective cron.enabled value, using the product default when absent, so both writes in the reconciliation phase change the value; --out preserves original presence), approvals-plugin-forwarding and approvals-plugin-forwarding-off (approvals.plugin.enabled), fixture-conversation-access-off and fixture-conversation-access-on (plugins.entries.<plugin>.hooks.allowConversationAccess), fixture-hook-timeout-short (plugins.entries.<plugin>.hooks.timeoutMs = 1), tools-allow-add (tools.allow adds <tool>), load-path-add (plugins.load.paths adds <path>); --env --change --plugin --tool --path --out --save-paths --restore-from --timeout; --snapshot-only with --save-paths saves the exact prior values and presence without applying a change; a subtree snapshot preserves all nested keys, so --restore-from restores it exactly, including removing additions made by the browser flow)",
       "support/verify/config-file-edit.mjs  (writes one value into openclaw.json without validation, or restores the saved copy; --env --set --restore --timeout; --inline-plugins --out saves the root and single-file plugins include layout, reads the resolved plugins object and writes that same object inline without changing logical config; rejects root-level, nested or multi-file includes with exit 2; --restore-layout-from restores the saved include ownership while retaining current logical plugin values, including the newly installed artifact, and preserves all unrelated config)",
       "support/verify/gateway-kill.mjs  (SIGKILL of the running Gateway process; --env --timeout)",
@@ -1709,7 +1709,9 @@
       "paths": [
         "src/gateway/server-plugin-reload-cleanup.ts",
         "src/gateway/server-plugin-reload-recovery.ts",
-        "src/gateway/server-retained-plugin-cleanup.ts"
+        "src/gateway/server-retained-plugin-cleanup.ts",
+        "src/plugins/host-hook-cleanup.ts",
+        "src/plugins/plugin-instance.ts"
       ],
       "requires": [
         "plugin-fixture-surfaces"
@@ -2905,7 +2907,7 @@
     {
       "id": "event-reload-wait-cancelled",
       "kind": "event",
-      "intent": "A user reloads the fixture plugin with --wait while a held plugin tool call keeps admitted work draining, and cancels the wait before publication, observing the restored previous generation and the held call's result.",
+      "intent": "A user reloads the fixture plugin with --wait, observes that request queued behind the admitted held tool, then cancels before publication. After the held call settles, a new tool call records whether the previous generation accepts work again.",
       "paths": [
         "src/cli/plugins-reload-command.ts",
         "src/gateway/server-plugin-reload*.ts",
@@ -2925,16 +2927,17 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool {persona:plugin-fixture-surfaces:slowToolName} --args '{\"holdMs\":60000}' --timeout 70000 --background --handle {run}/reload-cancel-hold.json --admission-method {persona:plugin-fixture-surfaces:holdStatusMethod}",
-        "node {kovaRoot}/support/verify/plugin-reload-wait.mjs --env {env} --plugin {persona:plugin-fixture-surfaces:pluginId} --cancel-after-ms 5000 --timeout 30000",
+        "node {kovaRoot}/support/verify/plugin-reload-wait.mjs --env {env} --plugin {persona:plugin-fixture-surfaces:pluginId} --held-work-from {run}/reload-cancel-hold.json --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.list --params '{}' --timeout 30000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --wait {run}/reload-cancel-hold.json --timeout 70000"
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --wait {run}/reload-cancel-hold.json --timeout 70000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool {persona:plugin-fixture-surfaces:toolName} --args '{\"input\":\"VERIFY_AFTER_CANCEL\"}' --timeout 45000"
       ],
       "checkpoint": [
         "responses",
         "logs",
         "timing"
       ],
-      "timeoutMs": 200000,
+      "timeoutMs": 260000,
       "browser": false,
       "slow": false
     },
