@@ -1,13 +1,14 @@
 # Coverage: update
 
 Operations with retained phases: 11/21 (some retained operations have fewer entry points)
-Conditions described by retained phases: 67/520 (354 ambient, 166 event)
+Conditions described by retained phases: 66/520 (354 ambient, 166 event)
 Entry points inventoried: 203 placed/310 (107 excluded); executable coverage has not been measured
 Breaks mapped to retained phases: 0/6; all six are outside reach under OCM supervision
 
-A condition is counted here only when a retained phase describes its concrete setup and observation; runtime execution remains unproven. Reconciliation credits applicable phases from either run and excludes claims whose required inputs or actions were lost. There are 67 described conditions and 453 explicit gaps below. Phases: 37 (1 setup, 11 operation, 25 event). These are declarative descriptions, not executed results.
+A condition is counted here only when a retained phase describes its concrete setup and observation; runtime execution remains unproven. Reconciliation credits applicable phases from either run and excludes claims whose required inputs or actions were lost. There are 66 described conditions and 454 explicit gaps below. Phases: 37 (1 setup, 11 operation, 25 event). These are declarative descriptions, not executed results.
 
 Uncovered:
+- Condition 242, Retired subagents/runs.json, plugins/installs.json, sandbox JSON registries and room-to-groupChannel records: restart-sentinel.json blocks the combined fixture before the plugin-index check; no independent fixture reaches the other cases.
 - Condition 225, Reachable Gateway with recorded channel warnings (channelIssues, blocked channel startup): No retained fixture establishes recorded channel warnings on a reachable Gateway.
 - Condition 245, Legacy cron JSON stores (jobs.json, jobs-state.json, runs/*.jsonl) refused; candidate admission reports it: The combined retired-state fixture fails the earlier runtime-file preflight before Doctor reaches the retired cron JSON check.
 - Condition 246, Pre-July JSON delivery queue files refused: restart-sentinel.json in the combined fixture is rejected before Doctor reaches delivery-queue detection; startup continuation does not prove this refusal.
@@ -467,9 +468,9 @@ Phases that depend on each script still to be written (support.toWrite):
 - support/verify/release-feed.mjs: 37 phases
 - support/ensure-gateway-running.mjs: 20 phases
 - support/verify/restore-update-fixture.mjs: 13 phases
+- support/verify/read-installation-state.mjs: 12 phases
 - support/verify/env-fault.mjs: 8 phases
 - support/verify/gateway-call.mjs: 8 phases
-- support/verify/read-installation-state.mjs: 7 phases
 - support/verify/stop-gateway.mjs: 7 phases
 - support/verify/manual-package-replace.mjs: 4 phases
 - support/verify/session-turn-hold.mjs: 4 phases
@@ -660,3 +661,5 @@ Product outcomes remain comparable: after successful fault setup, absent thaw re
 Persona-consumption order follows the catalogue metadata: session-holding phases precede chat operations that consume the same session, and installation observations precede operations that consume the same installation trait. Setup and file-writer dependencies remain first; recovery retirement remains last. The supported command metadata was checked through the catalogue resolver from [PR #174](https://github.com/openclaw/Kova/pull/174); full planning still requires its deferred registrations. Cleanup phases include the inventory, retirement and destination-verification implementations in their selectors. The valid-config retired-files export establishes startup continuation; later Doctor refusals blocked by its runtime-file preflight are not credited.
 
 The forced-restart case holds its turn for 360,000 ms, exceeding the pinned 300,000 ms allowance, with a 700,000 ms phase bound. The CLI rejects combining --force with --wait, so the case preserves its actual forced path. Busy-restart selectors include work admission, active-work accounting, drain waiting and shutdown-budget computation. The redundant Doctor invocation over the combined retired-state export is removed: its first refusal cannot establish the later cron, delivery-queue or OAuth checks.
+
+Asynchronous restarts are observed against a bounded snapshot of gateway_boot_lifecycle before each held-work variant. Health checks in this mode require a new active boot/owner generation, observe rather than repair the service, and record a missing transition as a normal timeout. Missing drain after valid setup likewise remains a product observation. Cron cancellation and shutdown-budget owners select their corresponding scenarios, and restart-policy owners select the disabled-policy case. Installation triage is a normal diagnostic control; it does not claim failed-update discovery without the required failed restart sentinel.
