@@ -1,13 +1,14 @@
 # Coverage: update
 
 Operations with retained phases: 11/21 (some retained operations have fewer entry points)
-Conditions described by retained phases: 66/520 (354 ambient, 166 event)
+Conditions described by retained phases: 65/520 (354 ambient, 166 event)
 Entry points inventoried: 203 placed/310 (107 excluded); executable coverage has not been measured
 Breaks mapped to retained phases: 0/6; all six are outside reach under OCM supervision
 
-A condition is counted here only when a retained phase describes its concrete setup and observation; runtime execution remains unproven. Reconciliation credits applicable phases from either run and excludes claims whose required inputs or actions were lost. There are 66 described conditions and 454 explicit gaps below. Phases: 37 (1 setup, 11 operation, 25 event). These are declarative descriptions, not executed results.
+A condition is counted here only when a retained phase describes its concrete setup and observation; runtime execution remains unproven. Reconciliation credits applicable phases from either run and excludes claims whose required inputs or actions were lost. There are 65 described conditions and 455 explicit gaps below. Phases: 37 (1 setup, 11 operation, 25 event). These are declarative descriptions, not executed results.
 
 Uncovered:
+- Condition 219, Recovery destination changes during cleanup with readers: reader presence alone does not guarantee a change between verification passes. The retained reader scenario records either outcome; a deterministic between-check mutation fixture is missing.
 - Condition 242, Retired subagents/runs.json, plugins/installs.json, sandbox JSON registries and room-to-groupChannel records: restart-sentinel.json blocks the combined fixture before the plugin-index check; no independent fixture reaches the other cases.
 - Condition 225, Reachable Gateway with recorded channel warnings (channelIssues, blocked channel startup): No retained fixture establishes recorded channel warnings on a reachable Gateway.
 - Condition 245, Legacy cron JSON stores (jobs.json, jobs-state.json, runs/*.jsonl) refused; candidate admission reports it: The combined retired-state fixture fails the earlier runtime-file preflight before Doctor reaches the retired cron JSON check.
@@ -467,8 +468,8 @@ Uncovered:
 Phases that depend on each script still to be written (support.toWrite):
 - support/verify/release-feed.mjs: 37 phases
 - support/ensure-gateway-running.mjs: 20 phases
-- support/verify/restore-update-fixture.mjs: 13 phases
-- support/verify/read-installation-state.mjs: 12 phases
+- support/verify/restore-update-fixture.mjs: 17 phases
+- support/verify/read-installation-state.mjs: 13 phases
 - support/verify/env-fault.mjs: 8 phases
 - support/verify/gateway-call.mjs: 8 phases
 - support/verify/stop-gateway.mjs: 7 phases
@@ -494,32 +495,32 @@ Persona additions:
 - checkout-dirty: A second Git checkout environment like install-git-checkout with one uncommitted edit in a tracked file (env) (inventory only; not required by a retained phase)
 - coding-agent-stub: a stub coding agent CLI on PATH (codex) that records the prompt it receives and exits (agent)
 - config-include-files: Config split across $include files, with the agent roster in an included file (none) (inventory only; not required by a retained phase)
-- config-legacy-roster: A second environment whose config keeps an agents.list roster with a default marker, unprefixed toolsBySender keys and an ownerless cron job (env)
-- config-retired-keys: A second environment whose config carries retired keys (agents.defaults.llm, routing.allowFrom, top-level heartbeat) (env)
+- config-legacy-roster: A second environment whose config keeps an agents.list roster with a default marker, unprefixed toolsBySender keys and an ownerless cron job (env, fixture)
+- config-retired-keys: A second environment whose config carries retired keys (agents.defaults.llm, routing.allowFrom, top-level heartbeat) (env, fixture)
 - cron-job-update: An isolated cron job created by the operator whose scheduled prompt asks the agent to update OpenClaw through the gateway tool (jobId) (inventory only; not required by a retained phase)
-- history-stale-run: the update ledger holds an identityless running row inactive for more than 30 minutes and an untouched 2026.9.2-era admission older than 24 hours (no keys)
+- history-stale-run: the update ledger holds an identityless running row inactive for more than 30 minutes and an untouched 2026.9.2-era admission older than 24 hours (fixture)
 - install-bun-global: A second environment with OpenClaw installed globally by Bun at the persona's pinned release, its Gateway running on Bun (env) (inventory only; not required by a retained phase)
 - install-dist-edited: A local edit in one packaged dist file of the install-npm-global environment (none) (inventory only; not required by a retained phase)
 - install-git-checkout: A second environment running from a Git checkout on the dev channel whose tracking remote is a local mirror of the side's source (env) (inventory only; not required by a retained phase)
-- install-npm-global: A second environment with OpenClaw installed globally by npm at the persona's pinned release under a user prefix configured in ~/.npmrc, its Gateway a managed user service, holding a copy of the persona's state (env)
-- install-pnpm-global: A second environment with OpenClaw installed globally by pnpm at the persona's pinned release (env)
+- install-npm-global: A second environment with OpenClaw installed globally by npm at the persona's pinned release under a user prefix configured in ~/.npmrc, its Gateway a managed user service, holding a copy of the persona's state (env, fixture)
+- install-pnpm-global: A second environment with OpenClaw installed globally by pnpm at the persona's pinned release (env, fixture)
 - install-tarball-extracted: A second environment running from an extracted package tarball with no package-tool owner (env) (inventory only; not required by a retained phase)
-- node-host-headless: A headless node host paired to the Gateway, running the persona's pinned release with its default plugins (nodeId)
+- node-host-headless: A headless node host paired to the Gateway, running the persona's pinned release with its default plugins (nodeId, fixture)
 - plugin-capability-widened: An external plugin whose version in the release feed declares an added capability (none)
 - plugin-compat-excluded: An installed external plugin whose declared compatibility range excludes the side's version (none)
 - plugin-migration-pending: An installed plugin with a recorded pending state migration and retained inputs (none)
 - plugin-payload-missing: A configured plugin whose installed payload directory was removed (none)
 - plugin-pin-outdated: An official plugin pinned to an older exact release that drifts from the installed core (none)
 - plugin-record-missing: A configured official plugin present in config with no install record (none)
-- recovery-originals-retained: Migration recovery originals and pre-startup-migration backups recorded by an earlier successful update, plus an older npm snapshot directory (none)
+- recovery-originals-retained: An immutable complete installation/user-state export with eligible owner-recorded recovery originals, protected pre-startup captures and an older npm snapshot directory; every cleanup attempt restores its own copy (fixture)
 - service-definition-outdated: A native service definition written by an older installer (TimeoutStopSec=30, KillMode=control-group) with one operator drop-in (inventory only; outside reach and not required by a retained phase)
 - state-legacy-migratable: a fixture of legacy state Doctor can migrate: a legacy agents.list roster with a default marker and ownerless cron jobs with null, deliver and mixed-case delivery modes, legacy auth field shapes in JSON and SQLite, a policy-free exec-approvals.json stub and a legacy default-agent SQLite policy, a legacy workspace setup file, session rows with flat pending-delivery fields and provider aliases, orphan task_delivery_state rows, Codex-native task rows, historical ACP metadata keys, unprefixed toolsBySender keys, flat channel allowPrivateNetwork keys, inherited Voice Call realtime settings, a multi-account channel without a default and a policy-only WhatsApp accounts.default, retired TaskFlow Webhooks settings, messages.tts settings, an ownerAllowFrom entry that lost its user: kind, a database without claw provenance columns, shared auth in the main agent database, retired MCP OAuth files, a deleted agent's retained store, pending Skill Workshop proposals, a damaged legacy sessions.json entry, a missing plugins.load.paths entry and a configured plugin that is not installed, Matrix state needing the dedupe scan, an enabled webhook channel account without legacyWebhook, an ACP agent with a separate harness model, legacy Discord dm.policy, stale per-agent OAuth shadows and a legacy audit archive changed other than by append; plus a config file with legacy keys for startup (path, configPath)
 - state-legacy-retired: a fixture of retired pre-July state: plugins/installs.json, cron jobs.json with jobs-state.json and run logs, a JSON delivery queue, restart-sentinel.json, retired config keys, OAuth credential sidecars, retired settings.json keys and a ~/.clawdbot directory (path; filesPath is a separate export containing only retired state files and a valid supported configuration, without the retired config keys; startup uses filesPath)
-- state-retired-json: A second environment holding retired pre-July JSON state: restart-sentinel.json, plugins/installs.json and a legacy cron jobs.json store (env)
+- state-retired-json: A second environment holding retired pre-July JSON state: restart-sentinel.json, plugins/installs.json and a legacy cron jobs.json store (env, fixture)
 - store-orphan-delivery-rows: Shared-database task_delivery_state rows whose parent tasks are missing (none) (inventory only; not required by a retained phase)
 - update-history-failed: Update history holding a failed run with a config failure followed by a later success, and a failed run within the last 24 hours (runId)
 - update-history-long: An update run whose history reached the 128-step and 16 KiB compaction limit (runId)
-- update-history-stale: A second environment whose update history holds an identityless legacy admission older than 24 hours and an active row inactive for over 30 minutes whose driver is dead (env)
+- update-history-stale: A second environment whose update history holds an identityless legacy admission older than 24 hours and an active row inactive for over 30 minutes whose driver is dead (env, fixture)
 - channel-owner-route: commands.ownerAllowFrom names the test channel's direct-user target of a DM peer (peer) (named for an uncovered condition; not required by a phase)
 - config-includes-split: the config split across $include files (path) (named for an uncovered condition; not required by a phase)
 - config-invalid-field: a staged config fixture with an invalid field (path) (named for an uncovered condition; not required by a phase)
@@ -663,3 +664,7 @@ Persona-consumption order follows the catalogue metadata: session-holding phases
 The forced-restart case holds its turn for 360,000 ms, exceeding the pinned 300,000 ms allowance, with a 700,000 ms phase bound. The CLI rejects combining --force with --wait, so the case preserves its actual forced path. Busy-restart selectors include work admission, active-work accounting, drain waiting and shutdown-budget computation. The redundant Doctor invocation over the combined retired-state export is removed: its first refusal cannot establish the later cron, delivery-queue or OAuth checks.
 
 Asynchronous restarts are observed against a bounded snapshot of gateway_boot_lifecycle before each held-work variant. Health checks in this mode require a new active boot/owner generation, observe rather than repair the service, and record a missing transition as a normal timeout. Missing drain after valid setup likewise remains a product observation. Cron cancellation and shutdown-budget owners select their corresponding scenarios, and restart-policy owners select the disabled-policy case. Installation triage is a normal diagnostic control; it does not claim failed-update discovery without the required failed restart sentinel.
+
+Recovery observations and isolation: crash-loop checks include the suppression, recovery and persistence owners. They capture the initial boot rows, observe the breaker interval and wait up to 420,000 ms for a new recovery row, then record channel state. Existing old recovery rows cannot satisfy that observation. Outbox checks select the reconnect reconciliation and replay owners. Each cleanup attempt independently restores its recovery-originals export, so an earlier successful cleanup cannot erase a later attempt’s input. Reader polling is not treated as guaranteed destination mutation.
+
+The crash-loop phase independently restores update-baseline-fixture before observing its initial boot rows. That export must have settled boot history, with no recent unclean boots or unrecovered breaker marker, so another selected scenario cannot supply the trip being measured. The fixture remains unavailable until the persona supplies that starting state.
