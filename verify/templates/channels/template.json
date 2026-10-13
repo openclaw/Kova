@@ -122,9 +122,13 @@
     "channel-group-joinable",
     "channel-group-long-id",
     "channel-groups-mixed",
+    "channel-guarded-record-target",
     "channel-identity-audit",
     "channel-ingress-aged-pending",
     "channel-ingress-dead-letters",
+    "channel-ingress-legacy-host",
+    "channel-ingress-monitor-fixture",
+    "channel-ingress-pre-adoption-gates",
     "channel-interactive-message",
     "channel-markdown-tables",
     "channel-mode-target",
@@ -336,15 +340,15 @@
       "support/verify/channel-bound-control.mjs  (sendDurableMessageBatch through the conformance transport to create a callback control; retain the creator as originSubject in the callback record keyed by the generated control/message identity, then capture that record with the response; this is a missing conformance capability using the existing channel ingress SDK, not a new OpenClaw RPC; callbacks read this retained origin and pass the independently authenticated actor to ingress.resolve with authMode origin-subject; --channel --env --label --origin-subject --out --peer --timeout)",
       "support/verify/channel-capabilities-observe.mjs  (channels capabilities and kova.channelProbe.status plus the packaged adapter capability declarations; records the declarations without comparing them to a required set; --artifact-dir --env --timeout)",
       "support/verify/channel-configured-turn.mjs  (config.get and config.patch on the disposable environment: apply explicit --root-patch and account --channel-patch plus optional agents.defaults changes, record configuration adoption, deliver the actual Telegram/Discord fixture or --admission sdk conformance inbound, join it, and restore all changed keys including absent values in finally; bindings arrays and group maps are replaced for the scoped case and restored without merging stale rules; --parent-peer supplies the actual thread-parent identity to resolveAgentRoute; --routing-owner forwards the supplied configured agent as ResolveAgentRouteInput.defaultAgentId at the actual conformance admission route call; --omit-routing-owner leaves that property absent and must not synthesize an owner from the primary clone, cached account context or first roster entry; a persona --env names that separately cloned environment, whose configuration and admission runtime are used throughout, including restoration; record the effective bindings, relevant roster/owner facts and actual route or product error without asserting the selected result; --account --admission --agent --agent-defaults --artifact-dir --bot-authored --channel --channel-patch --chat-type --env --mention --omit-routing-owner --parent-peer --peer --quote-from --root-patch --routing-owner --sender --text --timeout)",
-      "support/verify/channel-dead-letter-resubmit.mjs  (openclaw channels dead-letters resubmit twice for a dedicated failed event: for pending, stop the disposable Gateway so no drain consumes the first resubmission; for claimed, keep the event payload on the configured held-response path until the second request returns; observe the actual channel_ingress_events row before the second call, retain the hold through it, record both CLI responses and row states, then release the held response and restore the service in finally; if the requested active interval is not captured, report unavailable evidence rather than a completed-event observation; --account --channel --env --event-id --state --timeout)",
+      "support/verify/channel-dead-letter-resubmit.mjs  (openclaw channels dead-letters resubmit twice for one dedicated native failed event; pending mode saves the original service state, stops the disposable Gateway through both commands and restores that service state with Gateway health and cleanup in finally; claimed mode arms a pre-adoption gate before the first resubmission, using the conformance native monitor deliver callback or the Telegram shim getFile response for the actual media payload retained in that event; await both entered-gate evidence and the exact native claimed row/token/owner, retain the same gate through the second CLI response and state read, then release or cancel and join in finally; never hold a model response as a substitute for a native claim, change stored payloads, synthesize queue state or suppress native lease refresh; a missing fixture, existing terminal state, changed claim, expired transport request or uncaptured interval records unavailable evidence; --account --channel --env --event-id --state --timeout)",
       "support/verify/channel-debounce-overlap.mjs  (config.get and config.patch for messages.inbound.byChannel on the named channel, then two actual Telegram shim updates: start text without awaiting its turn, observe buffered admission, inject the media or command after --gap-ms while the configured --debounce-ms window is still pending, join both results, and restore configuration in finally; record admission timestamps, both dispatches and deliveries; --account --channel --debounce-ms --env --first-text --gap-ms --peer --second-kind --second-media --second-text --timeout)",
-      "support/verify/channel-inbound-turn.mjs  (one inbound platform event and the turn, deliveries and observations it produces: kova.channelProbe.inject and kova.channelProbe.observations on Kova's conformance channel, the Telegram shim update queue, the Discord fixture gateway events, or a real test account on any other channel (message in a direct chat, group or thread; join, reaction, button callback, native command, presence, invite, startup snapshot, relogin or bridge-restart events); in background mode timeout bounds admission and handle creation, the held mock response remains active until joined, and a timed-out join cancels and records the pending operation; --admission sdk requires the future conformance-plugin capability that resolves the requested account, direct or group conversation, sender, mention and command facts through runtime.channel.inbound.ingress.resolve and buildContext before runChannelInboundEvent, preserving the exact returned channelIngress result rather than forcing CommandAuthorized; --question-from reads the captured pending question and native prompt for callback selection or a Force Reply answer; --conversation-from uses the exact captured spawned-child conversation, --parent-peer supplies its real parent, and a subject-bound callback uses only the creator retained in the captured control record, not button text or a caller-supplied authorization boolean; --peer-file reads the native peer identifier from a persona-owned UTF-8 file without shell interpolation; queued background inputs return after admission without waiting for the active turn, and --wait releases only its own held response before joining that handle; --account --ack-policy --admission --after-ms --artifact-dir --background --bot-authored --callback-from --callback-label --channel --chat-type --conversation-from --env --event --event-id --handle --interval-ms --location --media --mention --out --peer --peer-file --question-from --quote-from --reaction --repeat --replay-from --reply-to --same-id --sender --sticker --text --thread --timeout --wait)",
+      "support/verify/channel-inbound-turn.mjs  (one inbound platform event and the turn, deliveries and observations it produces: kova.channelProbe.inject and kova.channelProbe.observations on Kova's conformance channel, the Telegram shim update queue, the Discord fixture gateway events, or a real test account on any other channel (message in a direct chat, group or thread; join, reaction, button callback, native command, presence, invite, startup snapshot, relogin or bridge-restart events); in background mode timeout bounds admission and handle creation, the held mock response remains active until joined, and a timed-out join cancels and records the pending operation; --admission sdk requires the future conformance-plugin capability that resolves the requested account, direct or group conversation, sender, mention and command facts through runtime.channel.inbound.ingress.resolve and buildContext before runChannelInboundEvent, preserving the exact returned channelIngress result rather than forcing CommandAuthorized; --question-from reads the captured pending question and native prompt for callback selection or a Force Reply answer; --conversation-from uses the exact captured spawned-child conversation, --parent-peer supplies its real parent, and a subject-bound callback uses only the creator retained in the captured control record, not button text or a caller-supplied authorization boolean; --peer-file reads the native peer identifier from a persona-owned UTF-8 file without shell interpolation; queued background inputs return after admission without waiting for the active turn, and --wait reads channel and operation identity from that captured handle, refuses conflicting routing flags, and releases only its own held response before joining; detached-completion-crash requires a real supplied Codex harness, captures its actual child completion and matching parent restartRecoveryHarnessCompletion and recovery identity plus an active held parent provider request before killing the verified owned Gateway; spawn acceptance alone never signals that boundary, and missing capture is unavailable evidence; bound the whole sequence and release all fixture holds, cancel or join owned work and, only if killed, restart the same disposable service in finally; --account --ack-policy --admission --after-ms --artifact-dir --background --bot-authored --callback-from --callback-label --channel --chat-type --conversation-from --env --event --event-id --handle --interval-ms --location --media --mention --out --peer --peer-file --question-from --quote-from --reaction --repeat --replay-from --reply-to --same-id --sender --sticker --text --thread --timeout --wait)",
       "support/verify/channel-platform-fault.mjs  (arm a fault on the Telegram shim or the Discord fixture for the next calls of one platform method (429 with retry_after, 5xx, network error, lost response, hang, stall, 401, BOT_COMMANDS_TOO_MUCH, parse error, edit failure, message too old, missing access, reject after first chunk, not dispatched); --channel --count --env --fault --method --timeout)",
       "support/verify/channel-platform-shim.mjs  (start the Telegram platform shim (support/channels/telegram) or the Discord fixture (support/channels/discord) and point the env channel account at it; --wait joins the owned shim, --stop terminates it, and cancellation always closes its sockets; --account --background --channel --env --handle --stop --timeout --wait)",
       "support/verify/channel-probe-fault.mjs  (arm a fault on Kova's conformance channel for its next outbound sends, ingress handling or probe hooks (fail, suppress, partial, ambiguous, defer, not-dispatched, transform-suppress, hang-probe, hang-capabilities, ingress-* and the other names phases pass), through a kova.channelProbe fault method the probe plugin would add; --count --env --fault --timeout)",
       "support/verify/channel-probe-observe.mjs  (kova.channelProbe.reset, inject and observations for one recorded case through the installed conformance channel; records raw RPC, delivery, acknowledgement and preview data without evaluating expected outcomes; --artifact-dir --case --env --timeout)",
       "support/verify/channel-reply-payload.mjs  (sendDurableMessageBatch from openclaw/plugin-sdk/channel-outbound through the conformance transport inside its existing runtime context, with the exact --payload including text, presentationTextMode and presentation; --data-blocks text selects a conformance adapter with no native chart or table renderer so core performs the documented authored fallback; record delivered payloads without comparing an expected body; --channel --data-blocks --env --payload --peer --timeout)",
-      "support/verify/channel-restart-overlap.mjs  (one graceful OCM service restart concurrent with kova.channelProbe.inject: start restart asynchronously, observe the draining interval, submit the inbound before releasing the held turn, then join restart and record both results and lifecycle timing; --env --held-from --peer --text --timeout)",
+      "support/verify/channel-restart-overlap.mjs  (one graceful OCM service restart concurrent with kova.channelProbe.inject: first observe the matching held provider request and actual active recovery identity from --held-from, then start restart asynchronously, observe the draining interval, submit the inbound before releasing the held turn, then join restart and record both results and lifecycle timing; --env --held-from --peer --text --timeout)",
       "support/verify/channel-startup-inspection.mjs  (start the existing OCM service restart asynchronously and capture its real agent-schema-inspection child; verify the child process identity, parent chain, executable entrypoint and disposable environment ownership before SIGSTOP, wait for the real deferred-inspection report for --inspection-agent after the 5000 ms foreground cutoff, inject while that pending interval remains active, and always SIGCONT the exact owned child before cancellation cleanup or completion; bound capture and pause separately, join restart and recovery, and report an uncaptured interval as unavailable evidence; no synthetic product hook or inspection-state rewrite; --capture-timeout --channel --env --hold-ms --inspection-agent --peer --text --timeout)",
       "support/verify/channel-workflow-observe.mjs  (the packaged channel adapter inbound route and outbound delivery for the recorded declared-workflows case set against its existing shim; records raw observations without evaluating the case expectations; --artifact-dir --case-set --channel --env --tier --timeout)",
       "support/verify/cli-wizard.mjs  (an interactive OpenClaw CLI wizard (configure --section channels, channels add <channel>) under a pseudo-terminal with scripted answers and a bounded lifetime; --answers --command --env --timeout)",
@@ -356,7 +360,7 @@
       "support/verify/gateway-freeze.mjs  (pause the env's Gateway process with SIGSTOP for a duration (--freeze-ms) or keep its event loop busy (--busy-ms), then resume it; --busy-ms --env --freeze-ms --timeout)",
       "support/verify/gateway-kill.mjs  (SIGKILL (or another --signal) of the env's Gateway process mid-work, then a restart by the service supervisor; --repeat kills within the crash-loop window, --during-recovery kills again while recovery runs; --during-recovery --env --interval-ms --repeat --signal --timeout)",
       "support/verify/gateway-logs.mjs  (ocm logs for the disposable environment; returns the captured log lines as JSON; --env --tail)",
-      "support/verify/gateway-supervisor-stop.mjs  (stop the env's Gateway through its service supervisor with a shortened stop timeout; --env --stop-timeout-ms --timeout)",
+      "support/verify/gateway-supervisor-stop.mjs  (stop the env's Gateway through its service supervisor with a shortened stop timeout; --held-from requires the matching actual held provider request and persisted active recovery identity before stopping; a missed interval is unavailable and does not signal; --env --held-from --stop-timeout-ms --timeout)",
       "support/verify/gateway-suspension.mjs  (gateway.suspend.prepare with requestId, drain and terminalPolicy; a background owner records the returned suspensionId in a private handle, --status-from calls gateway.suspend.status with that id while preparation drains asynchronously, and --wait --resume calls gateway.suspend.resume with the same id; keep the owner active until resume and resume in finally on cancellation; redact the suspension token from printed responses; --background --drain --env --handle --request-id --resume --status-from --terminal-policy --timeout --wait)",
       "support/verify/heartbeat-wake.mjs  (wake the main agent's heartbeat once through the Gateway and wait for its run and channel delivery; --env --timeout)",
       "support/verify/message-cli.mjs  (one fixed OpenClaw message CLI action, thread-create or thread-reply, via ocm on the selected disposable environment; record its JSON and normalize the returned native thread id into --out; --thread-from reads that captured id for the reply, never a pre-existing persona thread; --action --channel --env --json --message --out --target --thread-from --thread-name --timeout)",
@@ -364,8 +368,12 @@
       "support/verify/question-response.mjs  (question.resolve with id read from the captured pending-question handle and canonical QuestionAnswers passed by --answers, followed by recording the returned resolution; no session-key guessing or synthetic question id; --answers --env --question-from --timeout)",
       "support/verify/state-db-fault.mjs  (a one-shot fault in the shared state database for one table (write failure, changed claim identity, stolen claim); --count --env --fault --table --timeout)",
       "support/verify/telegram-shim-scenario.mjs  (Kova's Telegram platform shim (support/channels/telegram) with one scripted platform behaviour named by --scenario, driving the Telegram adapter's inbound and outbound through OpenClaw and printing the shim's call transcript; --artifact-dir --env --scenario --timeout)",
-      "support/verify/ingress-aged-retry.mjs  (observe one dedicated native pending ingress event genuinely older than 24 hours with seven prior failed attempts and its normal retry eligible; verify original received_at and attempts from channel_ingress_events before releasing its isolated transport failure gate for the final failed attempt, then record the native dead-letter transition; the fixture remains gated through setup so no earlier phase consumes it, and this helper owns release and cleanup; absent, changed, already terminal or insufficiently aged fixture state makes this observation unavailable, never successful; do not insert or backdate rows, alter retry policy, advance clocks or use dead-letter resubmit because it resets age and attempts; --artifact-dir --env --event-id --timeout)",
-      "support/verify/channel-delivery-exhaustion.mjs  (one fresh inbound reply through the Telegram shim or SDK-admitted conformance channel, followed by the existing Gateway outbound recovery scheduler; own a dedicated account/peer fault fixture that consistently produces a retryable no-send failure, retain its exact newly created outbound queue id and completion owner, and record native attempt counters, timestamps, recovery states, failed settlement, owner projection and platform observations until the row reaches its terminal state or the deadline; leave maxRetries, backoff, availableAt and all recorded timestamps unchanged; --restarts performs the specified OCM service restarts only after distinct observed completed failures, with the external fixture fault remaining armed before startup recovery; fault state is outside the restarted Gateway and restored in finally, not a reset in-memory counter; unexpected success, ambiguous-send custody, permanent rejection, missing row identity or failure to obtain the requested interval is recorded as unavailable evidence, never manufactured exhaustion; bound initial admission, each restart/join and final observation within the single timeout, and on timeout or interruption quiesce the owned disposable Gateway before clearing a fault while a delivery is pending, retain its identity and transfer that clone to normal disposable-environment cleanup without restarting it; --account --artifact-dir --channel --env --peer --restarts --text --timeout)"
+      "support/verify/ingress-aged-retry.mjs  (observe one dedicated native pending ingress event older than 24 hours with seven prior failed attempts and its normal retry eligible; verify original received_at and attempts from channel_ingress_events before releasing its isolated transport failure gate for the final failed attempt, then record the native dead-letter transition; the fixture remains gated through setup so no earlier phase consumes it, and this helper owns release and cleanup; absent, changed, already terminal or insufficiently aged fixture state makes this observation unavailable, never successful; do not insert or backdate rows, alter retry policy, advance clocks or use dead-letter resubmit because it resets age and attempts; --artifact-dir --env --event-id --timeout)",
+      "support/verify/channel-delivery-exhaustion.mjs  (one fresh inbound reply through the Telegram shim or SDK-admitted conformance channel, followed by the existing Gateway outbound recovery scheduler; own a dedicated account/peer fault fixture that consistently produces a retryable no-send failure, retain its exact newly created outbound queue id and completion owner, and record native attempt counters, timestamps, recovery states, failed settlement, owner projection and platform observations until the row reaches its terminal state or the deadline; leave maxRetries, backoff, availableAt and all recorded timestamps unchanged; --restarts performs the specified OCM service restarts only after distinct observed completed failures, with the external fixture fault remaining armed before startup recovery; fault state is outside the restarted Gateway and restored in finally, not a reset in-memory counter; unexpected success, ambiguous-send custody, permanent rejection, missing row identity or failure to obtain the requested interval is recorded as unavailable evidence, never manufactured exhaustion; bound initial admission, each restart/join and final observation within the single timeout, and on timeout or interruption quiesce the owned disposable Gateway before clearing a fault while a delivery is pending, retain its identity and transfer that clone to normal disposable-environment cleanup without restarting it; --account --artifact-dir --channel --env --peer --restarts --text --timeout)",
+      "support/verify/channel-login-overlap.mjs  (use the real login-capable WhatsApp adapter on a dedicated test account; establish and observe an actual pending channels.start owner before completing channels login through its existing auth.login path, record the successful login and attempted runtime reconciliation while that same start remains owned, then release and join the start; admission of a background RPC alone is not proof of ownership or overlap; if a bounded pending start and successful real login cannot be supplied, the observation is unavailable; preserve credential redaction, retain only nonsecret status, and cancel or release the owned pending operation on timeout or interruption; --account --artifact-dir --channel --env --timeout)",
+      "support/verify/channel-ingress-lifecycle.mjs  (the installed SDK createChannelIngressMonitor and its runtime-supplied native account queue, with channel-owned inspectAsync and deliver callbacks that retain exact event, lane and native claim identities; scoped asynchronous fixture gates record callback entry and release without blocking the Gateway event loop or rewriting queue state; async-preference records companion selection during admission and claim validation; async-admission-order holds the first same-lane inspection before normal durable append; admission-inspection-stop-join and claim-inspection-stop-grace start native stop and waitForIdle without blocking gate release, with the latter recording the supported separate-delivery-grace option; claim-inspection-shutdown and claim-inspection-cancel observe the actual post-await stop/abort guard before delivery; claim-inspection-capacity uses the existing configured startLimit and distinct lanes; claim-inspection-activity records onActivityChange through transfer to real delivery and idle; standard-raw-sync uses the actual synchronous raw-event convenience monitor; legacy-host-sync-fallback requires an already supplied older host and otherwise records unavailable evidence, never simulating a host or installing a runtime; adoption-watchdog uses a native pre-adoption deliver gate, onDeferred, zero onDeferredHeartbeat calls and no adoption-finalizing callback, leaving automatic claim refresh intact and waiting for the unchanged real watchdog; join or cancel every accepted admission, claim inspection and delivery and release every gate in finally, including interruption and native abort, without manufacturing completion; telegram-pre-adoption-restart owns creation of a fresh native Telegram media update with a fixture-owned file identity and a narrowly scoped shim getFile response gate; arm the gate before injection, await the actual matching request and exact claimed native queue row/token before requesting the native restart. Release/cancel the transport gate on the native shutdown abort so graceful shutdown can join, record native cancellation/retryable disposition, join restart and health, then permit replay of the same admitted event with the gate disarmed. Do not reinject it as a different fresh event or treat a held model as the claim boundary. A request timeout, changed claim or uncaptured interval is unavailable evidence. probe-pre-adoption-stop-start owns a fresh SDK-admitted event and its runtime-supplied native queue. The conformance deliver callback records the actual claim and calls onDeferred before awaiting an abort-aware pre-adoption gate; no model dispatch, onAdopted or onAdoptionFinalizing occurs while gated. The helper waits for that gate receipt and matching native claimed row, then starts OCM service stop. Native cancellation unblocks the callback and settles or leaves the row retryable; record the stopped state before service start, disarm this one-event gate before replay, join start/health and the original event lifecycle. Stop/start and fault cleanup are owned by this single helper invocation. deferred-slots-lane-policy first captures native deferred states, never infers them from model latency or input count. The conformance fixture uses the installed monitor with its configured startLimit and channel-supported deferredLaneOccupancy hold/release variants, calls real onDeferred on actual claimed events and retains callback gates before adoption; use distinct native lanes to record configured capacity and the additional released-slot budget rather than six same-peer inputs as a capacity proxy. Do not call these Telegram adapter internals: they are explicit shared-monitor variants within this already promised hold/release observation. For the Telegram policy-change portion, an adopted held-model turn is only a predecessor barrier. Submit owned followups in the background and capture their actual native pre-adoption/deferred handoff plus matching claimed row identities before applying the supplied real lane-policy config patch. Retain those claims through committed configuration adoption, release the predecessor/gates, then record native claim eligibility and lane decisions under the new policy. Use the native adapter lifecycle/available observations; if its deferred handoff cannot be captured by supported fixture capabilities, record this Telegram variant unavailable rather than guessing it from a claimed row alone or replacing it with conformance evidence. No hidden product hooks or SQL state rewrites are authorized. The helper reads and saves all keys touched by the lane-policy file before mutation, including absent values, joins native config adoption, and restores them in finally after all owned callbacks and turns are released/cancelled and joined. It also removes only its scoped fixture faults and restores the original service state. Every startup, request gate, deferred hold, config adoption and cleanup fits inside the single helper timeout. Timed-out capture never proceeds to the disruptive action. Gateway stop/restart cases run after selected phases that require the ambient held turn; otherwise that ambient setup must be recreated before such phases, not assumed to survive.; each case owns its scoped fixture monitor and native account queue, never stopping the separate ambient monitor; --artifact-dir --case --channel --env --heartbeat --timeout --peer --lane-policy-file --barrier-text)",
+      "support/verify/channel-guarded-record.mjs  (resolve the real channel/account/group peer and agent/session keys through native ingress/routing; require the persona exact-peer binding with session.groupScope per-group and refuse a shared-main route or existing record/last-route target without deleting it; call runtime.channel.session.recordInboundSession with createIfMissing false and a real updateLastRoute for the same absent conversation, joining native metadata and last-route writes and recording exact-key state before and after; record-only forbids an agent turn or another session-creation path; missing or changed fixture prerequisites produce unavailable evidence; --account --chat-type --channel --create-if-missing --env --out --peer --record-only --timeout)",
+      "support/verify/channel-interrupt-at-boundary.mjs  (one bounded inbound-and-interruption flow through the same conformance SDK admission or Telegram update queue as channel-inbound-turn; owns the input, a scoped harness response hold, read-only correlated product state capture, and the interruption; starts capture before admission and signals only after the selected boundary is actually observed; native-send-started requires the matching final native request plus its delivery_queue_entries id, producerClaimId, platformSendAttemptId and platform_send_started_at; saved-final-send-started additionally requires the matching session pendingFinalDelivery replayable text, intentId and queued delivery id; tool-send-outcome-pending scripts exactly one model-facing message send through the normal admitted source turn using --tool-args, captures its run and tool-call ids, persisted terminal-pending receipt state, matching native receipt and still-withheld result, and excludes an already-recorded terminal outcome; native-send-live-lease requires a normal completed reply rather than a held model, the matching actual native send, exact queue owner, requiresProducerClaim, availableAt, and an observed renewal of that same owner, with more time remaining than freeze-ms; active-turn-recovery-claim requires the exact held provider request and matching persisted restartRecoveryDeliveryRunId, source run and delivery context; active-turn-without-replay-input additionally captures absent reconstructible ingress under the existing scoped fault without fabricating database rows; recorded-unacknowledged-input requires the conformance manual-ack policy, persisted input and matching recovery identity with no ack callback recorded; kill restarts the same owned service through OCM after recording interruption, including the final kill, and joins Gateway health within the overall deadline; --repeat waits for a distinct resumed execution of that same recovery identity before every further kill, including real restart between attempts, and stops if another eligible attempt never appears; all gates are bounded within --timeout, preserve their raw correlated observations, and report an unavailable boundary without signaling when it is missed; native holds belong only to the harness Telegram response or conformance outbound callback, model holds belong only to the mock provider, with no added OpenClaw RPC or internal hook; final-only native gates suppress fixture streaming for this scope through supported configuration and restore it afterward, excluding typing, draft and progress sends; wrapper writes a channel-inbound-turn-compatible --handle once as the only writer, transfers that input to its existing later join when present, and otherwise joins or cancels it itself; verified env-owned Gateway PID and process-start identity are checked immediately before signaling, and freeze always receives SIGCONT before cleanup, including timeout and interruption; all response holds, pending requests, timers, provider scripts and temporary configuration are released/restored in finally, bounded background custody is compatible with the later join, and cleanup never rewrites product queue/session state; POSIX process pause requires a supported disposable environment, otherwise records unavailable evidence; --ack-policy --admission --artifact-dir --boundary --channel --chat-type --env --freeze-ms --gate-timeout --handle --interrupt --mention --peer --repeat --text --timeout --tool-args)"
     ]
   },
   "phases": [
@@ -466,7 +474,7 @@
         "channel-telegram-shim"
       ],
       "commands": [
-        "ocm @{env} -- channels add --channel telegram --account {persona:channel-telegram-shim:newAccount} --token {persona:channel-telegram-shim:spareToken}",
+        "ocm @{env} -- channels add --channel telegram --account {persona:channel-telegram-shim:newAccount} --token {persona:channel-telegram-shim:newAccountToken}",
         "ocm @{env} -- channels list --json",
         "ocm @{env} -- channels status --json"
       ],
@@ -619,7 +627,7 @@
         "channel-telegram-shim"
       ],
       "commands": [
-        "ocm @{env} -- channels add --channel telegram --account {persona:channel-telegram-shim:tokenAccount} --token {persona:channel-telegram-shim:spareToken} --name Spare",
+        "ocm @{env} -- channels add --channel telegram --account {persona:channel-telegram-shim:tokenAccount} --token {persona:channel-telegram-shim:tokenAccountToken} --name Spare",
         "ocm @{env} -- config get channels.telegram --json",
         "ocm @{env} -- channels status --json",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow channels-setup-wizard --artifact-dir {run}/screens --timeout 150000"
@@ -1020,38 +1028,6 @@
         "timing"
       ],
       "timeoutMs": 60000,
-      "browser": false,
-      "slow": false
-    },
-    {
-      "id": "check-channel-status-offline",
-      "kind": "operation",
-      "intent": "A user checks channel status and lists pairing requests while the Gateway is stopped, observing the config-only summaries and the offline pairing listing.",
-      "paths": [
-        "src/cli/channel-auth.ts",
-        "src/cli/channel-options.ts",
-        "src/cli/channels-cli*.ts",
-        "src/cli/pairing-cli.ts",
-        "src/cli/pairing-command-format.ts",
-        "src/commands/channels.ts",
-        "src/commands/channels/**",
-        "src/gateway/server-methods/channel-pairing.ts",
-        "src/pairing/pairing-*.ts"
-      ],
-      "requires": [],
-      "commands": [
-        "ocm @{env} -- gateway stop",
-        "ocm @{env} -- channels status --json",
-        "ocm @{env} -- pairing list kova-channel-probe --json",
-        "node {kovaRoot}/support/verify/ocm-service.mjs --env {env} --action start",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/check-channel-status-offline --timeout-ms 120000"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing"
-      ],
-      "timeoutMs": 135000,
       "browser": false,
       "slow": false
     },
@@ -1525,35 +1501,6 @@
         "state:state/openclaw.sqlite"
       ],
       "timeoutMs": 180000,
-      "browser": false,
-      "slow": false
-    },
-    {
-      "id": "decide-dm-access-offline",
-      "kind": "operation",
-      "intent": "An operator stops the Gateway and lists and approves a pairing request offline; outputs and the pairing table are recorded.",
-      "paths": [
-        "src/cli/pairing-cli.ts",
-        "src/cli/pairing-command-format.ts",
-        "src/gateway/server-methods/channel-pairing.ts",
-        "src/pairing/pairing-*.ts"
-      ],
-      "requires": [
-        "channel-dm-pairing"
-      ],
-      "commands": [
-        "node {kovaRoot}/support/verify/ocm-service.mjs --env {env} --action stop",
-        "ocm @{env} -- pairing approve telegram {persona:channel-dm-pairing:offlineCode}",
-        "node {kovaRoot}/support/verify/ocm-service.mjs --env {env} --action start",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/gateway-ready-after-offline-pairing --timeout-ms 120000"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing",
-        "state:state/openclaw.sqlite"
-      ],
-      "timeoutMs": 240000,
       "browser": false,
       "slow": false
     },
@@ -4521,12 +4468,12 @@
         "channel-telegram-shim"
       ],
       "commands": [
-        "ocm @{env} -- message react --channel discord --target channel:{persona:channel-discord-fixture:channelId} --message-id {persona:channel-discord-fixture:messageId} --emoji thumbsup --json",
-        "ocm @{env} -- message react --channel discord --target channel:{persona:channel-discord-fixture:channelId} --message-id {persona:channel-discord-fixture:messageId} --emoji thumbsup --remove --json",
+        "ocm @{env} -- message react --channel discord --target channel:{persona:channel-discord-fixture:channelId} --message-id {persona:channel-discord-fixture:messageId} --emoji \ud83d\udc4d --json",
+        "ocm @{env} -- message react --channel discord --target channel:{persona:channel-discord-fixture:channelId} --message-id {persona:channel-discord-fixture:messageId} --emoji \ud83d\udc4d --remove --json",
         "ocm @{env} -- message reactions --channel discord --target channel:{persona:channel-discord-fixture:channelId} --message-id {persona:channel-discord-fixture:messageId} --json",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:channel-telegram-shim:dmSessionKey} --tool message --args '{\"action\":\"react\",\"channel\":\"telegram\",\"target\":\"{persona:channel-telegram-shim:dmChatId}\",\"messageId\":\"{persona:channel-telegram-shim:messageId}\",\"emoji\":\"thumbsup\"}' --timeout 40000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:channel-telegram-shim:dmSessionKey} --tool message --args '{\"action\":\"react\",\"channel\":\"telegram\",\"target\":\"{persona:channel-telegram-shim:dmChatId}\",\"messageId\":\"{persona:channel-telegram-shim:messageId}\",\"emoji\":\"\ud83d\udc4d\"}' --timeout 40000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:channel-discord-fixture:channelSessionKey} --tool message --args '{\"action\":\"reactions\",\"channel\":\"discord\",\"target\":\"channel:{persona:channel-discord-fixture:channelId}\",\"messageId\":\"{persona:channel-discord-fixture:messageId}\"}' --timeout 30000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel telegram --chat-type direct --peer {persona:channel-telegram-shim:dmChatId} --event reaction --reaction thumbsup --reply-to bot-last --artifact-dir {run}/reaction-notification --timeout 120000",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel telegram --chat-type direct --peer {persona:channel-telegram-shim:dmChatId} --event reaction --reaction \ud83d\udc4d --reply-to bot-last --artifact-dir {run}/reaction-notification --timeout 120000",
         "node {kovaRoot}/support/verify/channel-probe-observe.mjs --env {env} --case native-action.react --artifact-dir {run}/react-case --timeout 60000"
       ],
       "checkpoint": [
@@ -4627,11 +4574,11 @@
         "session-main-rolling"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool message --args '{\"action\":\"react\",\"channel\":\"nextcloud-talk\",\"to\":\"{persona:channel-real-accounts:nextcloud-talkPeer}\",\"messageId\":\"{persona:channel-real-accounts:nextcloud-talkMessageId}\",\"emoji\":\"thumbsup\",\"remove\":true}' --timeout 50000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool message --args '{\"action\":\"react\",\"channel\":\"whatsapp\",\"to\":\"{persona:channel-real-accounts:whatsappPeer}\",\"messageId\":\"{persona:channel-real-accounts:whatsappMessageId}\",\"emoji\":\"thumbsup\",\"remove\":true}' --timeout 50000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool message --args '{\"action\":\"react\",\"channel\":\"signal\",\"to\":\"{persona:channel-real-accounts:signalPeer}\",\"messageId\":\"{persona:channel-real-accounts:signalMessageId}\",\"emoji\":\"thumbsup\",\"remove\":true}' --timeout 50000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool message --args '{\"action\":\"react\",\"channel\":\"imessage\",\"to\":\"{persona:channel-real-accounts:imessagePeer}\",\"messageId\":\"{persona:channel-real-accounts:imessageMessageId}\",\"emoji\":\"thumbsup\",\"remove\":true}' --timeout 50000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool message --args '{\"action\":\"react\",\"channel\":\"feishu\",\"to\":\"{persona:channel-real-accounts:feishuPeer}\",\"messageId\":\"{persona:channel-real-accounts:feishuMessageId}\",\"emoji\":\"thumbsup\",\"remove\":true}' --timeout 50000"
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool message --args '{\"action\":\"react\",\"channel\":\"nextcloud-talk\",\"to\":\"{persona:channel-real-accounts:nextcloud-talkPeer}\",\"messageId\":\"{persona:channel-real-accounts:nextcloud-talkMessageId}\",\"emoji\":\"\ud83d\udc4d\",\"remove\":true}' --timeout 50000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool message --args '{\"action\":\"react\",\"channel\":\"whatsapp\",\"to\":\"{persona:channel-real-accounts:whatsappPeer}\",\"messageId\":\"{persona:channel-real-accounts:whatsappMessageId}\",\"emoji\":\"\ud83d\udc4d\",\"remove\":true}' --timeout 50000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool message --args '{\"action\":\"react\",\"channel\":\"signal\",\"to\":\"{persona:channel-real-accounts:signalPeer}\",\"messageId\":\"{persona:channel-real-accounts:signalMessageId}\",\"emoji\":\"\ud83d\udc4d\",\"remove\":true}' --timeout 50000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool message --args '{\"action\":\"react\",\"channel\":\"imessage\",\"to\":\"{persona:channel-real-accounts:imessagePeer}\",\"messageId\":\"{persona:channel-real-accounts:imessageMessageId}\",\"emoji\":\"\ud83d\udc4d\",\"remove\":true}' --timeout 50000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-main-rolling:key} --tool message --args '{\"action\":\"react\",\"channel\":\"feishu\",\"to\":\"{persona:channel-real-accounts:feishuPeer}\",\"messageId\":\"{persona:channel-real-accounts:feishuMessageId}\",\"emoji\":\"THUMBSUP\",\"remove\":true}' --timeout 50000"
       ],
       "checkpoint": [
         "responses",
@@ -5560,39 +5507,6 @@
       "slow": false
     },
     {
-      "id": "recover-undelivered-replies",
-      "kind": "operation",
-      "intent": "A user restarts the Gateway with replies queued and session deliveries pending while the channel send path was failing, observing the outbound and session delivery recovery passes.",
-      "paths": [
-        "extensions/telegram/src/**",
-        "src/infra/delivery-queue*.ts",
-        "src/infra/delivery-recovery*.ts",
-        "src/infra/message-tool-run-outcome-store*.ts",
-        "src/infra/outbound/delivery-queue*.ts",
-        "src/infra/session-delivery-queue*.ts"
-      ],
-      "requires": [
-        "channel-telegram-shim"
-      ],
-      "commands": [
-        "node {kovaRoot}/support/verify/channel-platform-fault.mjs --env {env} --channel telegram --fault server-error --count 5 --method sendMessage --timeout 9000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel telegram --chat-type direct --peer {persona:channel-telegram-shim:dmChatId} --text 'reply after restart' --artifact-dir {run}/queued-reply --timeout 110000",
-        "ocm @{env} -- gateway restart",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/recover-undelivered-replies --timeout-ms 110000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method channels.status --params '{}' --after-ms 20000 --timeout 55000",
-        "node {kovaRoot}/support/verify/gateway-logs.mjs --env {env} --tail 400"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing",
-        "state:state/openclaw.sqlite"
-      ],
-      "timeoutMs": 299000,
-      "browser": false,
-      "slow": false
-    },
-    {
       "id": "vote-in-live-poll",
       "kind": "operation",
       "intent": "A user votes for the first option of an existing Matrix poll through the message tool; the response is recorded.",
@@ -5750,6 +5664,88 @@
       "slow": false
     },
     {
+      "id": "ingress-async-preference",
+      "kind": "operation",
+      "intent": "A user sends an inbound event while the channel supplies both inspection callbacks; the callbacks chosen during native admission and claim validation are recorded.",
+      "paths": [
+        "src/channels/message/ingress-monitor*.ts",
+        "src/channels/message/ingress-drain*.ts",
+        "src/channels/message/ingress-queue*.ts",
+        "src/plugin-sdk/channel-outbound.ts",
+        "src/plugin-sdk/channel-ingress-runtime.ts"
+      ],
+      "requires": [
+        "channel-ingress-monitor-fixture"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/channel-ingress-lifecycle.mjs --env {env} --case async-preference --channel kova-channel-probe --artifact-dir {run}/ingress-async-preference --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:state/openclaw.sqlite"
+      ],
+      "timeoutMs": 150000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "ingress-legacy-host-sync-fallback",
+      "kind": "operation",
+      "intent": "A user sends an inbound event on a older host whose SDK ignores the asynchronous inspection companion; native callback selection and delivery are recorded, or unavailable evidence is reported when no such host is supplied.",
+      "paths": [
+        "src/channels/message/ingress-monitor*.ts",
+        "src/channels/message/ingress-drain*.ts",
+        "src/channels/message/ingress-queue*.ts",
+        "src/plugin-sdk/channel-outbound.ts",
+        "src/plugin-sdk/channel-ingress-runtime.ts"
+      ],
+      "requires": [
+        "channel-ingress-monitor-fixture",
+        "channel-ingress-legacy-host"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/channel-ingress-lifecycle.mjs --env {env} --case legacy-host-sync-fallback --channel kova-channel-probe --artifact-dir {run}/ingress-legacy-host-sync-fallback --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:state/openclaw.sqlite"
+      ],
+      "timeoutMs": 150000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "ingress-standard-raw-sync",
+      "kind": "operation",
+      "intent": "A user sends an inbound event through the standard raw-event convenience monitor; synchronous inspection, durable admission and delivery are recorded.",
+      "paths": [
+        "src/channels/message/ingress-monitor*.ts",
+        "src/channels/message/ingress-drain*.ts",
+        "src/channels/message/ingress-queue*.ts",
+        "src/plugin-sdk/channel-outbound.ts",
+        "src/plugin-sdk/channel-ingress-runtime.ts"
+      ],
+      "requires": [
+        "channel-ingress-monitor-fixture"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/channel-ingress-lifecycle.mjs --env {env} --case standard-raw-sync --channel kova-channel-probe --artifact-dir {run}/ingress-standard-raw-sync --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:state/openclaw.sqlite"
+      ],
+      "timeoutMs": 150000,
+      "browser": false,
+      "slow": false
+    },
+    {
       "id": "event-hot-reload-account",
       "kind": "event",
       "intent": "A user adds a Telegram account to config while the Gateway runs with hot reload, observing the account starting without a restart and its first inbound reply.",
@@ -5770,7 +5766,7 @@
         "channel-telegram-shim"
       ],
       "commands": [
-        "ocm @{env} -- channels add --channel telegram --account {persona:channel-telegram-shim:hotReloadAccount} --token {persona:channel-telegram-shim:spareToken}",
+        "ocm @{env} -- channels add --channel telegram --account {persona:channel-telegram-shim:hotReloadAccount} --token {persona:channel-telegram-shim:hotReloadToken}",
         "ocm @{env} -- channels status --json",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel telegram --account {persona:channel-telegram-shim:hotReloadAccount} --chat-type direct --peer {persona:channel-telegram-shim:dmChatId} --text 'hello after hot reload' --artifact-dir {run}/hot-reload --timeout 90000"
       ],
@@ -6198,7 +6194,7 @@
     {
       "id": "event-guarded-inbound-record-no-session",
       "kind": "event",
-      "intent": "The conformance channel records a guarded inbound event for a conversation that has no session; session rows are recorded.",
+      "intent": "The conformance channel records an inbound observation for its dedicated absent per-group session with createIfMissing false; resolved route, native recording results and exact-key session state are recorded without starting an agent turn.",
       "paths": [
         "src/auto-reply/dispatch*.ts",
         "src/auto-reply/inbound*.ts",
@@ -6213,11 +6209,11 @@
       ],
       "requires": [
         "channel-probe-admission",
-        "channel-probe-conversations"
+        "channel-probe-conversations",
+        "channel-guarded-record-target"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:freshPeer} --text 'Reply with exact ASCII text KOVA_GUARDED_OK only.' --out {run}/guarded.json --timeout 120000",
-        "ocm @{env} -- sessions --json --active 5"
+        "node {kovaRoot}/support/verify/channel-guarded-record.mjs --env {env} --channel kova-channel-probe --account default --chat-type group --peer {persona:channel-probe-conversations:guardedPeer} --create-if-missing false --record-only --out {run}/guarded.json --timeout 120000"
       ],
       "checkpoint": [
         "responses",
@@ -6434,7 +6430,7 @@
         "mock-provider-held-turn"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --wait {run}/mid-turn-config.json --timeout 130000"
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --wait {run}/mid-turn-config.json --timeout 130000"
       ],
       "checkpoint": [
         "responses",
@@ -7320,7 +7316,7 @@
         "channel-probe-conversations"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --wait {run}/round-cancel.json --timeout 60000"
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --wait {run}/round-cancel.json --timeout 60000"
       ],
       "checkpoint": [
         "responses",
@@ -8424,7 +8420,7 @@
       ],
       "commands": [
         "ocm @{env} -- config patch --file {persona:channel-config-variants:singleAccountPatch}",
-        "ocm @{env} -- channels add --channel telegram --account {persona:channel-telegram-shim:promotedAccount} --token {persona:channel-telegram-shim:spareToken}",
+        "ocm @{env} -- channels add --channel telegram --account {persona:channel-telegram-shim:promotedAccount} --token {persona:channel-telegram-shim:promotedToken}",
         "ocm @{env} -- config get channels.telegram --json",
         "ocm @{env} -- channels status --json"
       ],
@@ -8438,42 +8434,11 @@
       "slow": false
     },
     {
-      "id": "event-login-while-owned-prepare",
-      "kind": "event",
-      "intent": "To prepare the recorded login while owned flow, a user starts its preceding commands; their responses and saved handles are recorded.",
-      "paths": [
-        "extensions/telegram/src/**",
-        "src/cli/channel-auth.ts",
-        "src/cli/channel-options.ts",
-        "src/cli/channels-cli*.ts",
-        "src/commands/channels.ts",
-        "src/commands/channels/**",
-        "src/gateway/server-methods/channels*.ts",
-        "src/infra/channel-*.ts",
-        "src/infra/channels-status-issues.ts"
-      ],
-      "requires": [
-        "channel-telegram-shim",
-        "channels-test-accounts"
-      ],
-      "commands": [
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method channels.start --params '{\"channel\":\"telegram\",\"accountId\":\"{persona:channel-telegram-shim:account}\"}' --timeout 60000 --background --handle {run}/start-inflight.json",
-        "ocm @{env} -- channels login --channel telegram --account {persona:channel-telegram-shim:account}"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing"
-      ],
-      "timeoutMs": 180000,
-      "browser": false,
-      "slow": false
-    },
-    {
       "id": "event-login-while-owned",
       "kind": "event",
-      "intent": "An operator logs in an account while a start is in flight for it; output and status are recorded.",
+      "intent": "An operator completes WhatsApp login while an observed start still owns the same account; the login result and runtime reconciliation are recorded. This requires a real login-capable test account and controlled pending start.",
       "paths": [
+        "extensions/whatsapp/src/**",
         "src/cli/channel-auth.ts",
         "src/cli/channel-options.ts",
         "src/cli/channels-cli*.ts",
@@ -8484,11 +8449,10 @@
         "src/infra/channels-status-issues.ts"
       ],
       "requires": [
-        "channel-telegram-shim",
-        "channels-test-accounts"
+        "channel-real-accounts"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --wait {run}/start-inflight.json --timeout 60000",
+        "node {kovaRoot}/support/verify/channel-login-overlap.mjs --env {env} --channel whatsapp --account {persona:channel-real-accounts:whatsappAccount} --artifact-dir {run}/login-owned --timeout 150000",
         "ocm @{env} -- channels status --json"
       ],
       "checkpoint": [
@@ -9265,7 +9229,7 @@
         "channel-probe-conversations"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --wait {run}/pending-batch.json --timeout 120000",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --wait {run}/pending-batch.json --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-logs.mjs --env {env} --tail 400"
       ],
       "checkpoint": [
@@ -9325,8 +9289,8 @@
         "mock-provider-held-turn"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --wait {run}/active-run.json --timeout 120000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --wait {run}/active-followup-1.json --timeout 60000"
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --wait {run}/active-run.json --timeout 120000",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --wait {run}/active-followup-1.json --timeout 60000"
       ],
       "checkpoint": [
         "responses",
@@ -9882,9 +9846,9 @@
         "mock-provider-held-turn"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --wait {run}/steer-run.json --timeout 90000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --wait {run}/steered-followup-1.json --timeout 60000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --wait {run}/steered-followup-2.json --timeout 60000"
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --wait {run}/steer-run.json --timeout 90000",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --wait {run}/steered-followup-1.json --timeout 60000",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --wait {run}/steered-followup-2.json --timeout 60000"
       ],
       "checkpoint": [
         "responses",
@@ -11322,7 +11286,7 @@
         "channel-real-accounts"
       ],
       "commands": [
-        "ocm @{env} -- message react --channel whatsapp --target {persona:channel-real-accounts:whatsappGroupJid} --message-id {persona:channel-real-accounts:whatsappMessageId} --emoji thumbsup --json"
+        "ocm @{env} -- message react --channel whatsapp --target {persona:channel-real-accounts:whatsappGroupJid} --message-id {persona:channel-real-accounts:whatsappMessageId} --emoji \ud83d\udc4d --json"
       ],
       "checkpoint": [
         "responses",
@@ -12097,7 +12061,7 @@
         "config-channel-patches"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --wait {run}/auth-revoked.json --timeout 120000"
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --wait {run}/auth-revoked.json --timeout 120000"
       ],
       "checkpoint": [
         "responses",
@@ -12634,8 +12598,8 @@
         "mock-provider-held-turn"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --wait {run}/mixed-run.json --timeout 120000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --wait {run}/mixed-followup-1.json --timeout 60000"
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --wait {run}/mixed-run.json --timeout 120000",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --wait {run}/mixed-followup-1.json --timeout 60000"
       ],
       "checkpoint": [
         "responses",
@@ -12965,74 +12929,9 @@
       "slow": false
     },
     {
-      "id": "event-dead-letter-resubmit-telegram-pending",
-      "kind": "event",
-      "intent": "A user resubmits a dedicated failed telegram event, keeps the resulting row pending until a second resubmission finishes, and then releases processing; both CLI results and queue states are recorded.",
-      "paths": [
-        "extensions/telegram/src/**",
-        "src/channels/transport/**",
-        "src/cli/channel-auth.ts",
-        "src/cli/channel-options.ts",
-        "src/cli/channels-cli*.ts",
-        "src/commands/channels.ts",
-        "src/commands/channels/**",
-        "src/commands/doctor-channel-ingress.ts"
-      ],
-      "requires": [
-        "channel-ingress-dead-letters",
-        "channel-probe-conversations",
-        "channel-telegram-shim"
-      ],
-      "commands": [
-        "node {kovaRoot}/support/verify/channel-dead-letter-resubmit.mjs --env {env} --channel telegram --account default --event-id {persona:channel-ingress-dead-letters:pendingTelegramEventId} --state pending --timeout 120000"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing",
-        "state:state/openclaw.sqlite"
-      ],
-      "timeoutMs": 150000,
-      "browser": false,
-      "slow": false
-    },
-    {
-      "id": "event-dead-letter-resubmit-probe-pending",
-      "kind": "event",
-      "intent": "A user resubmits a dedicated failed kova-channel-probe event, keeps the resulting row pending until a second resubmission finishes, and then releases processing; both CLI results and queue states are recorded.",
-      "paths": [
-        "extensions/telegram/src/**",
-        "src/channels/transport/**",
-        "src/cli/channel-auth.ts",
-        "src/cli/channel-options.ts",
-        "src/cli/channels-cli*.ts",
-        "src/commands/channels.ts",
-        "src/commands/channels/**",
-        "src/commands/doctor-channel-ingress.ts"
-      ],
-      "requires": [
-        "channel-ingress-dead-letters",
-        "channel-probe-admission",
-        "channel-probe-conversations",
-        "channel-telegram-shim"
-      ],
-      "commands": [
-        "node {kovaRoot}/support/verify/channel-dead-letter-resubmit.mjs --env {env} --channel kova-channel-probe --account default --event-id {persona:channel-ingress-dead-letters:pendingProbeEventId} --state pending --timeout 120000"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing",
-        "state:state/openclaw.sqlite"
-      ],
-      "timeoutMs": 150000,
-      "browser": false,
-      "slow": false
-    },
-    {
       "id": "event-dead-letter-resubmit-telegram-claimed",
       "kind": "event",
-      "intent": "A user resubmits a dedicated failed telegram event, keeps the resulting row claimed until a second resubmission finishes, and then releases processing; both CLI results and queue states are recorded.",
+      "intent": "A dedicated native failed event is resubmitted and held before adoption while the second resubmit returns; both CLI responses and the unchanged native claim identity are recorded before gate release.",
       "paths": [
         "extensions/telegram/src/**",
         "src/channels/transport/**",
@@ -13045,9 +12944,9 @@
       ],
       "requires": [
         "channel-ingress-dead-letters",
+        "channel-ingress-pre-adoption-gates",
         "channel-probe-conversations",
-        "channel-telegram-shim",
-        "mock-provider-held-turn"
+        "channel-telegram-shim"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/channel-dead-letter-resubmit.mjs --env {env} --channel telegram --account default --event-id {persona:channel-ingress-dead-letters:claimedTelegramEventId} --state claimed --timeout 120000"
@@ -13065,7 +12964,7 @@
     {
       "id": "event-dead-letter-resubmit-probe-claimed",
       "kind": "event",
-      "intent": "A user resubmits a dedicated failed kova-channel-probe event, keeps the resulting row claimed until a second resubmission finishes, and then releases processing; both CLI results and queue states are recorded.",
+      "intent": "A dedicated native failed event is resubmitted and held before adoption while the second resubmit returns; both CLI responses and the unchanged native claim identity are recorded before gate release.",
       "paths": [
         "extensions/telegram/src/**",
         "src/channels/transport/**",
@@ -13078,10 +12977,10 @@
       ],
       "requires": [
         "channel-ingress-dead-letters",
+        "channel-ingress-pre-adoption-gates",
         "channel-probe-admission",
         "channel-probe-conversations",
-        "channel-telegram-shim",
-        "mock-provider-held-turn"
+        "channel-telegram-shim"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/channel-dead-letter-resubmit.mjs --env {env} --channel kova-channel-probe --account default --event-id {persona:channel-ingress-dead-letters:claimedProbeEventId} --state claimed --timeout 120000"
@@ -13252,23 +13151,27 @@
       "slow": false
     },
     {
-      "id": "event-ingress-deferred-slots-prepare",
+      "id": "event-ingress-deferred-slots",
       "kind": "event",
-      "intent": "To prepare the recorded ingress deferred slots flow, a user starts its preceding commands; their responses and saved handles are recorded.",
+      "intent": "A user leaves several native ingress claims deferred and changes the lane policy while a captured claim waits; configured slot occupancy, policy adoption and later claim decisions are recorded.",
       "paths": [
         "extensions/telegram/src/**",
         "src/channels/transport/**",
-        "src/commands/doctor-channel-ingress.ts"
+        "src/commands/doctor-channel-ingress.ts",
+        "src/channels/message/ingress-monitor*.ts",
+        "src/channels/message/ingress-drain*.ts",
+        "src/channels/message/ingress-queue*.ts",
+        "src/plugin-sdk/channel-outbound.ts"
       ],
       "requires": [
-        "channel-probe-conversations",
         "channel-telegram-shim",
+        "channel-ingress-monitor-fixture",
+        "channel-ingress-pre-adoption-gates",
         "config-channel-patches",
         "mock-provider-held-turn"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel telegram --chat-type direct --peer {persona:channel-telegram-shim:dmChatId} --text '{persona:mock-provider-held-turn:marker}' --repeat 6 --interval-ms 50 --artifact-dir {run}/deferred-slots --timeout 120000 --background --handle {run}/deferred-slots.json",
-        "ocm @{env} -- config patch --file {persona:config-channel-patches:queueLanePolicyChanged}"
+        "node {kovaRoot}/support/verify/channel-ingress-lifecycle.mjs --env {env} --case deferred-slots-lane-policy --channel telegram --peer {persona:channel-telegram-shim:dmChatId} --lane-policy-file {persona:config-channel-patches:queueLanePolicyChanged} --barrier-text {persona:mock-provider-held-turn:marker} --artifact-dir {run}/deferred-slots-lane-policy --timeout 270000"
       ],
       "checkpoint": [
         "responses",
@@ -13276,35 +13179,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 285000,
-      "browser": false,
-      "slow": false
-    },
-    {
-      "id": "event-ingress-deferred-slots",
-      "kind": "event",
-      "intent": "A user defers several ingress deliveries at once and changes the channel lane policy while a claim waits, observing start slots held or released per lane and the claims taken under the current lane policy.",
-      "paths": [
-        "src/channels/transport/**",
-        "src/commands/doctor-channel-ingress.ts"
-      ],
-      "requires": [
-        "channel-probe-admission",
-        "channel-probe-conversations",
-        "channel-telegram-shim",
-        "config-channel-patches",
-        "mock-provider-held-turn"
-      ],
-      "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --wait {run}/deferred-slots.json --timeout 150000"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing",
-        "state:state/openclaw.sqlite"
-      ],
-      "timeoutMs": 285000,
+      "timeoutMs": 300000,
       "browser": false,
       "slow": false
     },
@@ -13346,18 +13221,18 @@
     {
       "id": "event-ingress-adoption-watchdog",
       "kind": "event",
-      "intent": "A user leaves a deferred claim without heartbeat renewal, observing the adoption watchdog timeout.",
+      "intent": "A conformance event remains natively claimed before adoption without deferred heartbeat renewal; the unchanged adoption watchdog, cancellation and native retry disposition are recorded.",
       "paths": [
-        "extensions/telegram/src/**",
-        "src/channels/transport/**",
-        "src/commands/doctor-channel-ingress.ts"
+        "src/channels/message/ingress-monitor*.ts",
+        "src/channels/message/ingress-drain*.ts",
+        "src/channels/message/ingress-queue*.ts",
+        "src/plugin-sdk/channel-outbound.ts"
       ],
       "requires": [
-        "channel-telegram-shim",
-        "mock-provider-held-turn"
+        "channel-ingress-monitor-fixture"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel telegram --chat-type direct --peer {persona:channel-telegram-shim:dmChatId} --text '{persona:mock-provider-held-turn:marker}' --artifact-dir {run}/watchdog --timeout 200000"
+        "node {kovaRoot}/support/verify/channel-ingress-lifecycle.mjs --env {env} --case adoption-watchdog --channel kova-channel-probe --heartbeat none --artifact-dir {run}/watchdog --timeout 420000"
       ],
       "checkpoint": [
         "responses",
@@ -13365,9 +13240,9 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 215000,
+      "timeoutMs": 450000,
       "browser": false,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-preview-retained-or-unused",
@@ -14418,12 +14293,22 @@
     {
       "id": "event-crash-after-detached-completion",
       "kind": "event",
-      "intent": "The Gateway crashes after a Codex completion entered a parent turn with a channel route; logs and observations are recorded.",
+      "intent": "The Gateway crashes only after a real Codex completion is captured as admitted to its channel-routed parent recovery turn; the completion identity, active parent request and recovery observations are recorded. This requires the external harness fixture.",
       "paths": [
+        "src/auto-reply/reply/origin*.ts",
+        "src/auto-reply/reply/route*.ts",
+        "src/auto-reply/reply/routing*.ts",
+        "src/auto-reply/reply/source*.ts",
+        "src/auto-reply/source*.ts",
+        "src/channels/conversation-resolution.ts",
+        "src/channels/route-projection.ts",
         "src/infra/delivery-queue*.ts",
         "src/infra/delivery-recovery*.ts",
+        "src/infra/message-tool-run-outcome-store*.ts",
         "src/infra/outbound/**",
-        "src/infra/session-delivery-queue*.ts"
+        "src/infra/outbound/delivery-queue*.ts",
+        "src/infra/session-delivery-queue*.ts",
+        "src/routing/**"
       ],
       "requires": [
         "channel-probe-admission",
@@ -14799,6 +14684,509 @@
       "slow": false
     },
     {
+      "id": "ingress-async-admission-order",
+      "kind": "event",
+      "intent": "A user sends two same-lane events while the first asynchronous admission inspection is pending; accepted callback order and native durable appends are recorded before and after releasing the inspection.",
+      "paths": [
+        "src/channels/message/ingress-monitor*.ts",
+        "src/channels/message/ingress-drain*.ts",
+        "src/channels/message/ingress-queue*.ts",
+        "src/plugin-sdk/channel-outbound.ts",
+        "src/plugin-sdk/channel-ingress-runtime.ts"
+      ],
+      "requires": [
+        "channel-ingress-monitor-fixture"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/channel-ingress-lifecycle.mjs --env {env} --case async-admission-order --channel kova-channel-probe --artifact-dir {run}/ingress-async-admission-order --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:state/openclaw.sqlite"
+      ],
+      "timeoutMs": 150000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "ingress-admission-inspection-stop-join",
+      "kind": "event",
+      "intent": "A channel stops while an accepted asynchronous admission inspection remains pending; stop and idle joins, eventual durable append and final native state are recorded.",
+      "paths": [
+        "src/channels/message/ingress-monitor*.ts",
+        "src/channels/message/ingress-drain*.ts",
+        "src/channels/message/ingress-queue*.ts",
+        "src/plugin-sdk/channel-outbound.ts",
+        "src/plugin-sdk/channel-ingress-runtime.ts"
+      ],
+      "requires": [
+        "channel-ingress-monitor-fixture"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/channel-ingress-lifecycle.mjs --env {env} --case admission-inspection-stop-join --channel kova-channel-probe --artifact-dir {run}/ingress-admission-inspection-stop-join --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:state/openclaw.sqlite"
+      ],
+      "timeoutMs": 150000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "ingress-claim-inspection-stop-grace",
+      "kind": "event",
+      "intent": "A channel with its own delivery grace stops while native claim inspection remains pending; inspection joins and final native state are recorded independently of delivery grace.",
+      "paths": [
+        "src/channels/message/ingress-monitor*.ts",
+        "src/channels/message/ingress-drain*.ts",
+        "src/channels/message/ingress-queue*.ts",
+        "src/plugin-sdk/channel-outbound.ts",
+        "src/plugin-sdk/channel-ingress-runtime.ts"
+      ],
+      "requires": [
+        "channel-ingress-monitor-fixture"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/channel-ingress-lifecycle.mjs --env {env} --case claim-inspection-stop-grace --channel kova-channel-probe --artifact-dir {run}/ingress-claim-inspection-stop-grace --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:state/openclaw.sqlite"
+      ],
+      "timeoutMs": 150000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "ingress-claim-inspection-shutdown",
+      "kind": "event",
+      "intent": "A channel stops after native claim inspection begins and before it returns; cancellation, delivery callbacks and the native claim disposition are recorded.",
+      "paths": [
+        "src/channels/message/ingress-monitor*.ts",
+        "src/channels/message/ingress-drain*.ts",
+        "src/channels/message/ingress-queue*.ts",
+        "src/plugin-sdk/channel-outbound.ts",
+        "src/plugin-sdk/channel-ingress-runtime.ts"
+      ],
+      "requires": [
+        "channel-ingress-monitor-fixture"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/channel-ingress-lifecycle.mjs --env {env} --case claim-inspection-shutdown --channel kova-channel-probe --artifact-dir {run}/ingress-claim-inspection-shutdown --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:state/openclaw.sqlite"
+      ],
+      "timeoutMs": 150000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "ingress-claim-inspection-cancel",
+      "kind": "event",
+      "intent": "An owned ingress monitor receives its ordinary abort signal while native claim inspection is pending; post-inspection cancellation, delivery callbacks and native state are recorded.",
+      "paths": [
+        "src/channels/message/ingress-monitor*.ts",
+        "src/channels/message/ingress-drain*.ts",
+        "src/channels/message/ingress-queue*.ts",
+        "src/plugin-sdk/channel-outbound.ts",
+        "src/plugin-sdk/channel-ingress-runtime.ts"
+      ],
+      "requires": [
+        "channel-ingress-monitor-fixture"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/channel-ingress-lifecycle.mjs --env {env} --case claim-inspection-cancel --channel kova-channel-probe --artifact-dir {run}/ingress-claim-inspection-cancel --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:state/openclaw.sqlite"
+      ],
+      "timeoutMs": 150000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "ingress-claim-inspection-capacity",
+      "kind": "event",
+      "intent": "A user sends more distinct-lane events than the configured start capacity while inspections hold native claims; pending rows, active claims and the next admission after a slot is released are recorded.",
+      "paths": [
+        "src/channels/message/ingress-monitor*.ts",
+        "src/channels/message/ingress-drain*.ts",
+        "src/channels/message/ingress-queue*.ts",
+        "src/plugin-sdk/channel-outbound.ts",
+        "src/plugin-sdk/channel-ingress-runtime.ts"
+      ],
+      "requires": [
+        "channel-ingress-monitor-fixture"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/channel-ingress-lifecycle.mjs --env {env} --case claim-inspection-capacity --channel kova-channel-probe --artifact-dir {run}/ingress-claim-inspection-capacity --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:state/openclaw.sqlite"
+      ],
+      "timeoutMs": 150000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "ingress-claim-inspection-activity",
+      "kind": "event",
+      "intent": "A native claim inspection remains pending and then transfers to an observable delivery; activity notifications, claim settlement and delivery completion are recorded through idle.",
+      "paths": [
+        "src/channels/message/ingress-monitor*.ts",
+        "src/channels/message/ingress-drain*.ts",
+        "src/channels/message/ingress-queue*.ts",
+        "src/plugin-sdk/channel-outbound.ts",
+        "src/plugin-sdk/channel-ingress-runtime.ts"
+      ],
+      "requires": [
+        "channel-ingress-monitor-fixture"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/channel-ingress-lifecycle.mjs --env {env} --case claim-inspection-activity --channel kova-channel-probe --artifact-dir {run}/ingress-claim-inspection-activity --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:state/openclaw.sqlite"
+      ],
+      "timeoutMs": 150000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "finish-channel-turn-in-flight",
+      "kind": "event",
+      "intent": "After the selected channel observations, the background channel turn in flight operation is joined and any remaining task-owned work is stopped; its final responses and logs are recorded.",
+      "paths": [
+        "extensions/a2a/src/**",
+        "extensions/buzz/src/**",
+        "extensions/clickclack/src/**",
+        "extensions/discord/src/**",
+        "extensions/feishu/src/**",
+        "extensions/googlechat/src/**",
+        "extensions/imessage/src/**",
+        "extensions/irc/src/**",
+        "extensions/line/src/**",
+        "extensions/matrix/src/**",
+        "extensions/mattermost/src/**",
+        "extensions/msteams/src/**",
+        "extensions/nextcloud-talk/src/**",
+        "extensions/nostr/src/**",
+        "extensions/raft/src/**",
+        "extensions/reef/src/**",
+        "extensions/signal/src/**",
+        "extensions/slack/src/**",
+        "extensions/sms/src/**",
+        "extensions/synology-chat/src/**",
+        "extensions/telegram/src/**",
+        "extensions/tlon/src/**",
+        "extensions/twitch/src/**",
+        "extensions/whatsapp/src/**",
+        "extensions/x/src/**",
+        "extensions/zalo/src/**",
+        "extensions/zalouser/src/**",
+        "src/agents/tools/message-tool*.ts",
+        "src/auto-reply/chunk*.ts",
+        "src/auto-reply/dispatch*.ts",
+        "src/auto-reply/envelope*.ts",
+        "src/auto-reply/group*.ts",
+        "src/auto-reply/inbound*.ts",
+        "src/auto-reply/media*.ts",
+        "src/auto-reply/reply/block*.ts",
+        "src/auto-reply/reply/channel*.ts",
+        "src/auto-reply/reply/conversation*.ts",
+        "src/auto-reply/reply/dispatch*.ts",
+        "src/auto-reply/reply/group*.ts",
+        "src/auto-reply/reply/history*.ts",
+        "src/auto-reply/reply/inbound*.ts",
+        "src/auto-reply/reply/mentions*.ts",
+        "src/auto-reply/reply/message*.ts",
+        "src/auto-reply/reply/origin*.ts",
+        "src/auto-reply/reply/progress*.ts",
+        "src/auto-reply/reply/route*.ts",
+        "src/auto-reply/reply/routing*.ts",
+        "src/auto-reply/reply/source*.ts",
+        "src/auto-reply/reply/typing*.ts",
+        "src/auto-reply/send*.ts",
+        "src/auto-reply/sender*.ts",
+        "src/auto-reply/source*.ts",
+        "src/channels/*/**",
+        "src/channels/account-*.ts",
+        "src/channels/ack-reactions.ts",
+        "src/channels/allow-from.ts",
+        "src/channels/allowlist-match.ts",
+        "src/channels/allowlists/**",
+        "src/channels/command-gating.ts",
+        "src/channels/conversation-binding-route-facts.ts",
+        "src/channels/conversation-resolution.ts",
+        "src/channels/direct-dm*.ts",
+        "src/channels/draft-stream*.ts",
+        "src/channels/inbound-debounce-policy.ts",
+        "src/channels/inbound-event/**",
+        "src/channels/join-intro/**",
+        "src/channels/location.ts",
+        "src/channels/mention-gating.ts",
+        "src/channels/mention-pattern-policy.ts",
+        "src/channels/message-access/**",
+        "src/channels/model-overrides.ts",
+        "src/channels/native-command-session-targets.ts",
+        "src/channels/plugins/**",
+        "src/channels/plugins/message-action*.ts",
+        "src/channels/progress-*.ts",
+        "src/channels/reply-prefix.ts",
+        "src/channels/route-projection.ts",
+        "src/channels/sender-label.ts",
+        "src/channels/status-reaction*.ts",
+        "src/channels/status/**",
+        "src/channels/streaming*.ts",
+        "src/channels/thread-binding*.ts",
+        "src/channels/transport/**",
+        "src/channels/turn/**",
+        "src/channels/typing*.ts",
+        "src/cli/channel-auth.ts",
+        "src/cli/channel-options.ts",
+        "src/cli/channels-cli*.ts",
+        "src/cli/directory-cli.ts",
+        "src/cli/message-*.ts",
+        "src/cli/outbound-send-deps.ts",
+        "src/cli/pairing-cli.ts",
+        "src/cli/pairing-command-format.ts",
+        "src/cli/program/message/**",
+        "src/cli/program/register.message.ts",
+        "src/cli/send-runtime/**",
+        "src/commands/channel-setup/**",
+        "src/commands/channels.ts",
+        "src/commands/channels/**",
+        "src/commands/configure.channels.ts",
+        "src/commands/doctor-channel-ingress.ts",
+        "src/commands/message.ts",
+        "src/flows/channel-setup*.ts",
+        "src/gateway/server-agent-database-startup.ts",
+        "src/gateway/server-methods/channel-pairing.ts",
+        "src/gateway/server-methods/channels*.ts",
+        "src/gateway/server-methods/message-*.ts",
+        "src/gateway/server-methods/send*.ts",
+        "src/gateway/server-methods/users-channel-identities.ts",
+        "src/gateway/server-methods/web.ts",
+        "src/infra/channel-*.ts",
+        "src/infra/channels-status-issues.ts",
+        "src/infra/delivery-queue*.ts",
+        "src/infra/delivery-recovery*.ts",
+        "src/infra/gateway-boot-lifecycle.kernel.ts",
+        "src/infra/message-tool-run-outcome-store*.ts",
+        "src/infra/outbound/**",
+        "src/infra/outbound/account-scoped-conversation-bindings.ts",
+        "src/infra/outbound/current-conversation-bindings*.ts",
+        "src/infra/outbound/delivery-queue*.ts",
+        "src/infra/outbound/format*.ts",
+        "src/infra/outbound/markdown*.ts",
+        "src/infra/outbound/message-action*.ts",
+        "src/infra/session-delivery-queue*.ts",
+        "src/pairing/pairing-*.ts",
+        "src/plugin-sdk/channel-*.ts",
+        "src/plugin-sdk/channel-ingress-runtime.ts",
+        "src/plugin-sdk/channel-outbound.ts",
+        "src/poll-params.ts",
+        "src/polls.ts",
+        "src/routing/**",
+        "src/state/agent-database-startup.ts",
+        "src/state/openclaw-agent-schema-inspection-worker.ts",
+        "src/state/openclaw-database-preflight-agent-scheduler.ts",
+        "ui/src/lib/channels/**",
+        "ui/src/pages/channels/**"
+      ],
+      "requires": [],
+      "commands": [
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --wait {run}/channel-turn-in-flight.json --timeout 60000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing"
+      ],
+      "timeoutMs": 60000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "event-dead-letter-resubmit-telegram-pending",
+      "kind": "event",
+      "intent": "A user resubmits a dedicated failed telegram event, keeps the resulting row pending until a second resubmission finishes, and then releases processing; both CLI results and queue states are recorded.",
+      "paths": [
+        "extensions/telegram/src/**",
+        "src/channels/transport/**",
+        "src/cli/channel-auth.ts",
+        "src/cli/channel-options.ts",
+        "src/cli/channels-cli*.ts",
+        "src/commands/channels.ts",
+        "src/commands/channels/**",
+        "src/commands/doctor-channel-ingress.ts"
+      ],
+      "requires": [
+        "channel-ingress-dead-letters",
+        "channel-probe-conversations",
+        "channel-telegram-shim"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/channel-dead-letter-resubmit.mjs --env {env} --channel telegram --account default --event-id {persona:channel-ingress-dead-letters:pendingTelegramEventId} --state pending --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:state/openclaw.sqlite"
+      ],
+      "timeoutMs": 150000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "event-dead-letter-resubmit-probe-pending",
+      "kind": "event",
+      "intent": "A user resubmits a dedicated failed kova-channel-probe event, keeps the resulting row pending until a second resubmission finishes, and then releases processing; both CLI results and queue states are recorded.",
+      "paths": [
+        "extensions/telegram/src/**",
+        "src/channels/transport/**",
+        "src/cli/channel-auth.ts",
+        "src/cli/channel-options.ts",
+        "src/cli/channels-cli*.ts",
+        "src/commands/channels.ts",
+        "src/commands/channels/**",
+        "src/commands/doctor-channel-ingress.ts"
+      ],
+      "requires": [
+        "channel-ingress-dead-letters",
+        "channel-probe-admission",
+        "channel-probe-conversations",
+        "channel-telegram-shim"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/channel-dead-letter-resubmit.mjs --env {env} --channel kova-channel-probe --account default --event-id {persona:channel-ingress-dead-letters:pendingProbeEventId} --state pending --timeout 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:state/openclaw.sqlite"
+      ],
+      "timeoutMs": 150000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "check-channel-status-offline",
+      "kind": "operation",
+      "intent": "A user checks channel status and lists pairing requests while the Gateway is stopped, observing the config-only summaries and the offline pairing listing.",
+      "paths": [
+        "src/cli/channel-auth.ts",
+        "src/cli/channel-options.ts",
+        "src/cli/channels-cli*.ts",
+        "src/cli/pairing-cli.ts",
+        "src/cli/pairing-command-format.ts",
+        "src/commands/channels.ts",
+        "src/commands/channels/**",
+        "src/gateway/server-methods/channel-pairing.ts",
+        "src/pairing/pairing-*.ts"
+      ],
+      "requires": [],
+      "commands": [
+        "ocm @{env} -- gateway stop",
+        "ocm @{env} -- channels status --json",
+        "ocm @{env} -- pairing list kova-channel-probe --json",
+        "node {kovaRoot}/support/verify/ocm-service.mjs --env {env} --action start",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/check-channel-status-offline --timeout-ms 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing"
+      ],
+      "timeoutMs": 135000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "decide-dm-access-offline",
+      "kind": "operation",
+      "intent": "An operator stops the Gateway and lists and approves a pairing request offline; outputs and the pairing table are recorded.",
+      "paths": [
+        "src/cli/pairing-cli.ts",
+        "src/cli/pairing-command-format.ts",
+        "src/gateway/server-methods/channel-pairing.ts",
+        "src/pairing/pairing-*.ts"
+      ],
+      "requires": [
+        "channel-dm-pairing"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/ocm-service.mjs --env {env} --action stop",
+        "ocm @{env} -- pairing approve telegram {persona:channel-dm-pairing:offlineCode}",
+        "node {kovaRoot}/support/verify/ocm-service.mjs --env {env} --action start",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/gateway-ready-after-offline-pairing --timeout-ms 120000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:state/openclaw.sqlite"
+      ],
+      "timeoutMs": 240000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "recover-undelivered-replies",
+      "kind": "operation",
+      "intent": "A user restarts the Gateway with replies queued and session deliveries pending while the channel send path was failing, observing the outbound and session delivery recovery passes.",
+      "paths": [
+        "extensions/telegram/src/**",
+        "src/infra/delivery-queue*.ts",
+        "src/infra/delivery-recovery*.ts",
+        "src/infra/message-tool-run-outcome-store*.ts",
+        "src/infra/outbound/delivery-queue*.ts",
+        "src/infra/session-delivery-queue*.ts"
+      ],
+      "requires": [
+        "channel-telegram-shim"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/channel-platform-fault.mjs --env {env} --channel telegram --fault server-error --count 5 --method sendMessage --timeout 9000",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel telegram --chat-type direct --peer {persona:channel-telegram-shim:dmChatId} --text 'reply after restart' --artifact-dir {run}/queued-reply --timeout 110000",
+        "ocm @{env} -- gateway restart",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/recover-undelivered-replies --timeout-ms 110000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method channels.status --params '{}' --after-ms 20000 --timeout 55000",
+        "node {kovaRoot}/support/verify/gateway-logs.mjs --env {env} --tail 400"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:state/openclaw.sqlite"
+      ],
+      "timeoutMs": 299000,
+      "browser": false,
+      "slow": false
+    },
+    {
       "id": "event-restart-during-broadcast-round",
       "kind": "event",
       "intent": "The Gateway restarts while a broadcast round is running; observations, logs and status after restart are recorded.",
@@ -15104,22 +15492,24 @@
     {
       "id": "event-delivery-producer-vanished",
       "kind": "event",
-      "intent": "A user kills the Gateway while a delivery is claimed, observing recovery waiting for the lease to expire.",
+      "intent": "The Gateway owning a Telegram reply is killed after its exact native send and renewed delivery lease are captured; recovery and queue observations follow the lease interval.",
       "paths": [
         "extensions/telegram/src/**",
         "src/infra/delivery-queue*.ts",
         "src/infra/delivery-recovery*.ts",
         "src/infra/message-tool-run-outcome-store*.ts",
+        "src/infra/outbound/**",
         "src/infra/outbound/delivery-queue*.ts",
         "src/infra/session-delivery-queue*.ts"
       ],
       "requires": [
         "channel-delivery-queued",
+        "channel-probe-conversations",
         "channel-telegram-shim"
       ],
       "commands": [
-        "ocm @{env} -- message send --channel telegram --target {persona:channel-delivery-queued:slowChatId} --message 'claimed' --json",
-        "node {kovaRoot}/support/verify/gateway-kill.mjs --env {env} --timeout 120000",
+        "node {kovaRoot}/support/verify/channel-interrupt-at-boundary.mjs --env {env} --channel telegram --chat-type direct --peer {persona:channel-telegram-shim:dmChatId} --text 'Reply with exact ASCII text KOVA_PRODUCER_VANISHED_OK only.' --boundary native-send-live-lease --interrupt kill --gate-timeout 70000 --timeout 125000 --artifact-dir {run}/delivery-producer-vanished",
+        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/gateway-ready-after-producer-vanished --timeout-ms 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method channels.status --params '{}' --after-ms 65000 --timeout 90000"
       ],
       "checkpoint": [
@@ -15128,15 +15518,17 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 225000,
+      "timeoutMs": 295000,
       "browser": false,
       "slow": false
     },
     {
       "id": "event-producer-vanished",
       "kind": "event",
-      "intent": "The process delivering a reply is killed mid-delivery; queue rows and logs are recorded.",
+      "intent": "The Gateway owning a native delivery is killed only after its exact queue identity and a live renewed producer lease are captured; queue state and interruption timing are recorded.",
       "paths": [
+        "src/config/sessions/pending-final-delivery*.ts",
+        "src/config/sessions/restart-recovery*.ts",
         "src/infra/delivery-queue*.ts",
         "src/infra/delivery-recovery*.ts",
         "src/infra/outbound/**",
@@ -15144,12 +15536,10 @@
       ],
       "requires": [
         "channel-probe-admission",
-        "channel-probe-conversations",
-        "mock-provider-held-turn"
+        "channel-probe-conversations"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --text '{persona:mock-provider-held-turn:marker}' --timeout 100000 --background --handle {run}/vanish.json",
-        "node {kovaRoot}/support/verify/gateway-kill.mjs --env {env} --timeout 60000",
+        "node {kovaRoot}/support/verify/channel-interrupt-at-boundary.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --text 'Reply with exact ASCII text KOVA_DELIVERY_BOUNDARY_OK only.' --handle {run}/vanish.json --boundary native-send-live-lease --interrupt kill --gate-timeout 110000 --timeout 170000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/gateway-ready-after-vanish --timeout-ms 60000",
         "node {kovaRoot}/support/verify/gateway-logs.mjs --env {env} --tail 400"
       ],
@@ -15166,12 +15556,15 @@
     {
       "id": "event-delivery-started-unreconciled-prepare",
       "kind": "event",
-      "intent": "To prepare the recorded delivery started unreconciled flow, a user starts its preceding commands; their responses and saved handles are recorded.",
+      "intent": "The Gateway is killed only after the matching native send request and its persisted delivery owner are captured; request, queue state and interruption timing are recorded.",
       "paths": [
         "extensions/telegram/src/**",
+        "src/config/sessions/pending-final-delivery*.ts",
+        "src/config/sessions/restart-recovery*.ts",
         "src/infra/delivery-queue*.ts",
         "src/infra/delivery-recovery*.ts",
         "src/infra/message-tool-run-outcome-store*.ts",
+        "src/infra/outbound/**",
         "src/infra/outbound/delivery-queue*.ts",
         "src/infra/session-delivery-queue*.ts"
       ],
@@ -15180,9 +15573,7 @@
         "channel-telegram-shim"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-platform-fault.mjs --env {env} --channel telegram --fault hang --count 1 --method sendMessage --timeout 7000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel telegram --chat-type direct --peer {persona:channel-telegram-shim:dmChatId} --text 'reply then crash' --artifact-dir {run}/started-unreconciled --timeout 92000 --background --handle {run}/started-unreconciled.json",
-        "node {kovaRoot}/support/verify/gateway-kill.mjs --env {env} --timeout 92000"
+        "node {kovaRoot}/support/verify/channel-interrupt-at-boundary.mjs --env {env} --channel telegram --chat-type direct --peer {persona:channel-telegram-shim:dmChatId} --text 'reply then crash' --artifact-dir {run}/started-unreconciled --handle {run}/started-unreconciled.json --boundary native-send-started --interrupt kill --gate-timeout 120000 --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -15212,7 +15603,7 @@
         "channel-telegram-shim"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --wait {run}/started-unreconciled.json --timeout 92000"
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --wait {run}/started-unreconciled.json --timeout 92000"
       ],
       "checkpoint": [
         "responses",
@@ -15227,8 +15618,10 @@
     {
       "id": "event-gateway-stall-under-lease-prepare",
       "kind": "event",
-      "intent": "To prepare the recorded gateway stall under lease flow, a user starts its preceding commands; their responses and saved handles are recorded.",
+      "intent": "A completed reply enters native delivery; after the exact queue owner and a live renewed lease are captured, the Gateway is paused for 30 seconds and resumed, recording delivery and lease state.",
       "paths": [
+        "src/config/sessions/pending-final-delivery*.ts",
+        "src/config/sessions/restart-recovery*.ts",
         "src/infra/delivery-queue*.ts",
         "src/infra/delivery-recovery*.ts",
         "src/infra/outbound/**",
@@ -15236,12 +15629,10 @@
       ],
       "requires": [
         "channel-probe-admission",
-        "channel-probe-conversations",
-        "mock-provider-held-turn"
+        "channel-probe-conversations"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --text '{persona:mock-provider-held-turn:marker}' --timeout 150000 --background --handle {run}/lease-stall.json",
-        "node {kovaRoot}/support/verify/gateway-freeze.mjs --env {env} --freeze-ms 30000 --timeout 60000"
+        "node {kovaRoot}/support/verify/channel-interrupt-at-boundary.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --text 'Reply with exact ASCII text KOVA_DELIVERY_BOUNDARY_OK only.' --handle {run}/lease-stall.json --boundary native-send-live-lease --interrupt freeze --gate-timeout 150000 --timeout 240000 --freeze-ms 30000"
       ],
       "checkpoint": [
         "responses",
@@ -15265,11 +15656,10 @@
       ],
       "requires": [
         "channel-probe-admission",
-        "channel-probe-conversations",
-        "mock-provider-held-turn"
+        "channel-probe-conversations"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --wait {run}/lease-stall.json --timeout 60000",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --wait {run}/lease-stall.json --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-logs.mjs --env {env} --tail 400"
       ],
       "checkpoint": [
@@ -15525,30 +15915,23 @@
     {
       "id": "event-shutdown-with-unadopted-ingress",
       "kind": "event",
-      "intent": "The Gateway stops while an ingress event is accepted but not adopted; ingress rows and observations are recorded.",
+      "intent": "A user stops and starts the Gateway after a conformance event has entered a captured native pre-adoption claim; cancellation, retryable state and subsequent processing are recorded.",
       "paths": [
-        "src/auto-reply/dispatch*.ts",
-        "src/auto-reply/inbound*.ts",
-        "src/auto-reply/reply/dispatch*.ts",
-        "src/auto-reply/reply/inbound*.ts",
-        "src/channels/*/**",
-        "src/infra/delivery-queue*.ts",
-        "src/infra/delivery-recovery*.ts",
-        "src/infra/outbound/**",
-        "src/infra/session-delivery-queue*.ts",
-        "src/plugin-sdk/channel-*.ts"
+        "src/channels/inbound-event/**",
+        "src/channels/turn/**",
+        "src/channels/message/ingress-monitor*.ts",
+        "src/channels/message/ingress-drain*.ts",
+        "src/channels/message/ingress-queue*.ts",
+        "src/plugin-sdk/channel-outbound.ts"
       ],
       "requires": [
         "channel-probe-admission",
-        "channel-probe-conversations"
+        "channel-probe-conversations",
+        "channel-ingress-monitor-fixture",
+        "channel-ingress-pre-adoption-gates"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-probe-fault.mjs --env {env} --fault ingress-defer-delivery --count 1 --timeout 30000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --text 'Reply with exact ASCII text KOVA_UNADOPTED_OK only.' --timeout 60000 --background --handle {run}/unadopted.json",
-        "node {kovaRoot}/support/verify/ocm-service.mjs --env {env} --action stop",
-        "node {kovaRoot}/support/verify/ocm-service.mjs --env {env} --action start",
-        "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/gateway-ready-after-unadopted --timeout-ms 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method kova.channelProbe.observations --params '{}' --timeout 30000"
+        "node {kovaRoot}/support/verify/channel-ingress-lifecycle.mjs --env {env} --case probe-pre-adoption-stop-start --channel kova-channel-probe --peer {persona:channel-probe-conversations:dmPeer} --artifact-dir {run}/probe-pre-adoption-stop-start --timeout 270000"
       ],
       "checkpoint": [
         "responses",
@@ -15561,50 +15944,24 @@
       "slow": false
     },
     {
-      "id": "event-ingress-shutdown-prepare",
-      "kind": "event",
-      "intent": "To prepare the recorded ingress shutdown flow, a user starts its preceding commands; their responses and saved handles are recorded.",
-      "paths": [
-        "extensions/telegram/src/**",
-        "src/channels/transport/**",
-        "src/commands/doctor-channel-ingress.ts"
-      ],
-      "requires": [
-        "channel-probe-conversations",
-        "channel-telegram-shim",
-        "mock-provider-held-turn"
-      ],
-      "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel telegram --chat-type direct --peer {persona:channel-telegram-shim:dmChatId} --text '{persona:mock-provider-held-turn:marker}' --artifact-dir {run}/ingress-shutdown --timeout 120000 --background --handle {run}/ingress-shutdown.json",
-        "ocm @{env} -- gateway restart"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing",
-        "state:state/openclaw.sqlite"
-      ],
-      "timeoutMs": 285000,
-      "browser": false,
-      "slow": false
-    },
-    {
       "id": "event-ingress-shutdown",
       "kind": "event",
-      "intent": "A user stops the Gateway while a Telegram update is admitted but not adopted, observing the update retryable on the next start.",
+      "intent": "A user restarts the Gateway only after a fresh Telegram media update is natively claimed and held before adoption; shutdown disposition and replay on the next start are recorded.",
       "paths": [
         "extensions/telegram/src/**",
         "src/channels/transport/**",
-        "src/commands/doctor-channel-ingress.ts"
+        "src/commands/doctor-channel-ingress.ts",
+        "src/channels/message/ingress-monitor*.ts",
+        "src/channels/message/ingress-drain*.ts",
+        "src/channels/message/ingress-queue*.ts",
+        "src/plugin-sdk/channel-outbound.ts"
       ],
       "requires": [
-        "channel-probe-admission",
-        "channel-probe-conversations",
         "channel-telegram-shim",
-        "mock-provider-held-turn"
+        "channel-ingress-pre-adoption-gates"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --wait {run}/ingress-shutdown.json --timeout 150000"
+        "node {kovaRoot}/support/verify/channel-ingress-lifecycle.mjs --env {env} --case telegram-pre-adoption-restart --channel telegram --peer {persona:channel-telegram-shim:dmChatId} --artifact-dir {run}/telegram-pre-adoption-restart --timeout 270000"
       ],
       "checkpoint": [
         "responses",
@@ -15612,7 +15969,7 @@
         "timing",
         "state:state/openclaw.sqlite"
       ],
-      "timeoutMs": 285000,
+      "timeoutMs": 300000,
       "browser": false,
       "slow": false
     },
@@ -15765,8 +16122,10 @@
     {
       "id": "event-tool-only-turn-without-ingress-claim",
       "kind": "event",
-      "intent": "A tool-only turn whose channel-ingress claim cannot be reconstructed is interrupted; observations are recorded.",
+      "intent": "A tool-only turn with a held model request is interrupted only after its recovery identity and absent replay input are captured; observations are recorded.",
       "paths": [
+        "src/config/sessions/pending-final-delivery*.ts",
+        "src/config/sessions/restart-recovery*.ts",
         "src/infra/delivery-queue*.ts",
         "src/infra/delivery-recovery*.ts",
         "src/infra/message-tool-run-outcome-store*.ts",
@@ -15781,15 +16140,15 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/channel-probe-fault.mjs --env {env} --fault drop-ingress-claim --count 1 --timeout 30000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type group --peer {persona:config-visible-replies-tool:toolOnlyGroup} --mention --text '{persona:mock-provider-held-turn:marker}' --timeout 60000 --background --handle {run}/no-claim.json",
-        "node {kovaRoot}/support/verify/gateway-kill.mjs --env {env} --timeout 60000",
+        "node {kovaRoot}/support/verify/channel-interrupt-at-boundary.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type group --peer {persona:config-visible-replies-tool:toolOnlyGroup} --mention --text '{persona:mock-provider-held-turn:marker}' --handle {run}/no-claim.json --boundary active-turn-without-replay-input --interrupt kill --gate-timeout 70000 --timeout 100000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/gateway-ready-after-no-claim --timeout-ms 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method kova.channelProbe.observations --params '{}' --timeout 30000"
       ],
       "checkpoint": [
         "responses",
         "logs",
-        "timing"
+        "timing",
+        "state:state/openclaw.sqlite"
       ],
       "timeoutMs": 300000,
       "browser": false,
@@ -15884,43 +16243,6 @@
       "timeoutMs": 1200000,
       "browser": false,
       "slow": true
-    },
-    {
-      "id": "event-completion-channel-route",
-      "kind": "event",
-      "intent": "A user kills the Gateway while a sub-agent completion is admitted to a channel-routed parent turn, observing the completion continued without restarting the child.",
-      "paths": [
-        "src/auto-reply/reply/origin*.ts",
-        "src/auto-reply/reply/route*.ts",
-        "src/auto-reply/reply/routing*.ts",
-        "src/auto-reply/reply/source*.ts",
-        "src/auto-reply/source*.ts",
-        "src/channels/conversation-resolution.ts",
-        "src/channels/route-projection.ts",
-        "src/infra/delivery-queue*.ts",
-        "src/infra/delivery-recovery*.ts",
-        "src/infra/message-tool-run-outcome-store*.ts",
-        "src/infra/outbound/delivery-queue*.ts",
-        "src/infra/session-delivery-queue*.ts",
-        "src/routing/**"
-      ],
-      "requires": [
-        "channel-telegram-shim"
-      ],
-      "commands": [
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:channel-telegram-shim:dmSessionKey} --tool sessions_spawn --args '{\"task\":\"Report done after a short wait.\",\"runTimeoutSeconds\":60}' --timeout 103000 --out {run}/event-completion-channel-route-spawn.json",
-        "node {kovaRoot}/support/verify/gateway-kill.mjs --env {env} --timeout 103000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method channels.status --params '{}' --after-ms 60000 --timeout 77000"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing",
-        "state:state/openclaw.sqlite"
-      ],
-      "timeoutMs": 298000,
-      "browser": false,
-      "slow": false
     },
     {
       "id": "event-uncertain-pending-final",
@@ -16042,7 +16364,7 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --text '{persona:mock-provider-held-turn:marker}' --timeout 120000 --background --handle {run}/deadline-turn.json",
-        "node {kovaRoot}/support/verify/gateway-supervisor-stop.mjs --env {env} --stop-timeout-ms 15000 --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-supervisor-stop.mjs --env {env} --stop-timeout-ms 15000 --timeout 60000 --held-from {run}/deadline-turn.json",
         "node {kovaRoot}/support/verify/ocm-service.mjs --env {env} --action start",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/gateway-ready-after-deadline-stop --timeout-ms 60000",
         "node {kovaRoot}/support/verify/gateway-logs.mjs --env {env} --tail 400",
@@ -16113,13 +16435,15 @@
     {
       "id": "event-crash-replays-unacked-inbound",
       "kind": "event",
-      "intent": "The Gateway is killed after accepting conformance messages it had not acknowledged; observations and logs are recorded.",
+      "intent": "An admitted conformance input is interrupted only after its persisted recovery input and withheld manual acknowledgement are captured; recovery observations are recorded.",
       "paths": [
         "src/auto-reply/dispatch*.ts",
         "src/auto-reply/inbound*.ts",
         "src/auto-reply/reply/dispatch*.ts",
         "src/auto-reply/reply/inbound*.ts",
         "src/channels/*/**",
+        "src/config/sessions/pending-final-delivery*.ts",
+        "src/config/sessions/restart-recovery*.ts",
         "src/infra/delivery-queue*.ts",
         "src/infra/delivery-recovery*.ts",
         "src/infra/outbound/**",
@@ -16131,8 +16455,7 @@
         "channel-probe-conversations"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --ack-policy manual --text 'Reply with exact ASCII text KOVA_UNACKED_OK only.' --timeout 60000 --background --handle {run}/unacked.json",
-        "node {kovaRoot}/support/verify/gateway-kill.mjs --env {env} --timeout 60000",
+        "node {kovaRoot}/support/verify/channel-interrupt-at-boundary.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --ack-policy manual --text 'Reply with exact ASCII text KOVA_UNACKED_OK only.' --handle {run}/unacked.json --boundary recorded-unacknowledged-input --interrupt kill --gate-timeout 90000 --timeout 130000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/gateway-ready-after-unacked-crash --timeout-ms 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method kova.channelProbe.observations --params '{}' --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-logs.mjs --env {env} --tail 400"
@@ -16140,7 +16463,8 @@
       "checkpoint": [
         "responses",
         "logs",
-        "timing"
+        "timing",
+        "state:state/openclaw.sqlite"
       ],
       "timeoutMs": 300000,
       "browser": false,
@@ -16149,7 +16473,7 @@
     {
       "id": "event-inbound-replay-after-crash-prepare",
       "kind": "event",
-      "intent": "To prepare the recorded inbound replay after crash flow, a user starts its preceding commands; their responses and saved handles are recorded.",
+      "intent": "A Telegram turn is interrupted only after the matching held model request and persisted recovery input are captured; this records interrupted-turn recovery, while native transport acknowledgement timing remains separately unestablished.",
       "paths": [
         "extensions/telegram/src/**",
         "src/auto-reply/dispatch*.ts",
@@ -16160,6 +16484,10 @@
         "src/channels/transport/**",
         "src/channels/turn/**",
         "src/commands/doctor-channel-ingress.ts",
+        "src/config/sessions/pending-final-delivery*.ts",
+        "src/config/sessions/restart-recovery*.ts",
+        "src/infra/delivery-queue*.ts",
+        "src/infra/outbound/**",
         "src/plugin-sdk/channel-*.ts"
       ],
       "requires": [
@@ -16168,8 +16496,7 @@
         "mock-provider-held-turn"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel telegram --chat-type direct --peer {persona:channel-telegram-shim:dmChatId} --text '{persona:mock-provider-held-turn:marker}' --artifact-dir {run}/replay-crash --timeout 81000 --background --handle {run}/replay-crash.json",
-        "node {kovaRoot}/support/verify/gateway-kill.mjs --env {env} --timeout 81000"
+        "node {kovaRoot}/support/verify/channel-interrupt-at-boundary.mjs --env {env} --channel telegram --chat-type direct --peer {persona:channel-telegram-shim:dmChatId} --text '{persona:mock-provider-held-turn:marker}' --artifact-dir {run}/replay-crash --handle {run}/replay-crash.json --boundary active-turn-recovery-claim --interrupt kill --gate-timeout 120000 --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -16184,7 +16511,7 @@
     {
       "id": "event-inbound-replay-after-crash",
       "kind": "event",
-      "intent": "A user kills the Gateway with unacknowledged Telegram updates, observing the updates replayed after admission.",
+      "intent": "The interrupted Telegram turn is joined and its native recovery observations are recorded. The separate manual-ack conformance flow supplies the unacknowledged-input condition; Telegram acknowledgement timing is not established by a held model.",
       "paths": [
         "extensions/telegram/src/**",
         "src/auto-reply/dispatch*.ts",
@@ -16204,7 +16531,7 @@
         "mock-provider-held-turn"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --wait {run}/replay-crash.json --timeout 122000"
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --wait {run}/replay-crash.json --timeout 122000"
       ],
       "checkpoint": [
         "responses",
@@ -16219,12 +16546,14 @@
     {
       "id": "event-undelivered-final-resumed-prepare",
       "kind": "event",
-      "intent": "To prepare the recorded undelivered final resumed flow, a user starts its preceding commands; their responses and saved handles are recorded.",
+      "intent": "A final reply is produced and persisted before its matching native send is held; the Gateway is then killed and the saved final and delivery identity are recorded.",
       "paths": [
         "extensions/telegram/src/**",
         "src/auto-reply/reply/channel*.ts",
         "src/auto-reply/reply/message*.ts",
         "src/auto-reply/send*.ts",
+        "src/config/sessions/pending-final-delivery*.ts",
+        "src/config/sessions/restart-recovery*.ts",
         "src/infra/delivery-queue*.ts",
         "src/infra/delivery-recovery*.ts",
         "src/infra/message-tool-run-outcome-store*.ts",
@@ -16237,9 +16566,7 @@
         "channel-telegram-shim"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-platform-fault.mjs --env {env} --channel telegram --fault hang --count 1 --method sendMessage --timeout 6000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel telegram --chat-type direct --peer {persona:channel-telegram-shim:dmChatId} --text 'finish then crash' --artifact-dir {run}/final-not-sent --timeout 79000 --background --handle {run}/final-not-sent.json",
-        "node {kovaRoot}/support/verify/gateway-kill.mjs --env {env} --timeout 79000"
+        "node {kovaRoot}/support/verify/channel-interrupt-at-boundary.mjs --env {env} --channel telegram --chat-type direct --peer {persona:channel-telegram-shim:dmChatId} --text 'finish then crash' --artifact-dir {run}/final-not-sent --handle {run}/final-not-sent.json --boundary saved-final-send-started --interrupt kill --gate-timeout 120000 --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -16272,7 +16599,7 @@
         "channel-telegram-shim"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --wait {run}/final-not-sent.json --timeout 119000"
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --wait {run}/final-not-sent.json --timeout 119000"
       ],
       "checkpoint": [
         "responses",
@@ -16287,13 +16614,15 @@
     {
       "id": "event-recovered-turn-resumption-notice",
       "kind": "event",
-      "intent": "The Gateway is killed during a conformance turn and comes back; observations and logs are recorded.",
+      "intent": "The Gateway is killed only after the matching held model request and persisted recovery identity are captured; the interrupted turn and recovery observations are recorded.",
       "paths": [
         "src/auto-reply/dispatch*.ts",
         "src/auto-reply/inbound*.ts",
         "src/auto-reply/reply/dispatch*.ts",
         "src/auto-reply/reply/inbound*.ts",
         "src/channels/*/**",
+        "src/config/sessions/pending-final-delivery*.ts",
+        "src/config/sessions/restart-recovery*.ts",
         "src/infra/delivery-queue*.ts",
         "src/infra/delivery-recovery*.ts",
         "src/infra/outbound/**",
@@ -16306,8 +16635,7 @@
         "mock-provider-held-turn"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --text '{persona:mock-provider-held-turn:marker}' --timeout 60000 --background --handle {run}/recover-turn.json",
-        "node {kovaRoot}/support/verify/gateway-kill.mjs --env {env} --timeout 60000",
+        "node {kovaRoot}/support/verify/channel-interrupt-at-boundary.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --text '{persona:mock-provider-held-turn:marker}' --handle {run}/recover-turn.json --boundary active-turn-recovery-claim --interrupt kill --gate-timeout 90000 --timeout 130000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/gateway-ready-after-recover-crash --timeout-ms 90000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method kova.channelProbe.observations --params '{}' --after-ms 30000 --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-logs.mjs --env {env} --tail 400"
@@ -16315,7 +16643,8 @@
       "checkpoint": [
         "responses",
         "logs",
-        "timing"
+        "timing",
+        "state:state/openclaw.sqlite"
       ],
       "timeoutMs": 300000,
       "browser": false,
@@ -16324,12 +16653,14 @@
     {
       "id": "event-recovery-resumption-notice-prepare",
       "kind": "event",
-      "intent": "To prepare the recorded recovery resumption notice flow, a user starts its preceding commands; their responses and saved handles are recorded.",
+      "intent": "The Gateway is killed only after the matching held model request and persisted recovery identity are captured; the interrupted turn and recovery observations are recorded.",
       "paths": [
         "extensions/telegram/src/**",
         "src/auto-reply/reply/channel*.ts",
         "src/auto-reply/reply/message*.ts",
         "src/auto-reply/send*.ts",
+        "src/config/sessions/pending-final-delivery*.ts",
+        "src/config/sessions/restart-recovery*.ts",
         "src/infra/delivery-queue*.ts",
         "src/infra/delivery-recovery*.ts",
         "src/infra/message-tool-run-outcome-store*.ts",
@@ -16344,13 +16675,13 @@
         "plugin-message-hooks"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel telegram --chat-type direct --peer {persona:channel-telegram-shim:dmChatId} --text '{persona:mock-provider-held-turn:marker}' --artifact-dir {run}/resume-notice --timeout 77000 --background --handle {run}/resume-notice.json",
-        "node {kovaRoot}/support/verify/gateway-kill.mjs --env {env} --timeout 77000"
+        "node {kovaRoot}/support/verify/channel-interrupt-at-boundary.mjs --env {env} --channel telegram --chat-type direct --peer {persona:channel-telegram-shim:dmChatId} --text '{persona:mock-provider-held-turn:marker}' --artifact-dir {run}/resume-notice --handle {run}/resume-notice.json --boundary active-turn-recovery-claim --interrupt kill --gate-timeout 120000 --timeout 180000"
       ],
       "checkpoint": [
         "responses",
         "logs",
-        "timing"
+        "timing",
+        "state:state/openclaw.sqlite"
       ],
       "timeoutMs": 298000,
       "browser": false,
@@ -16380,7 +16711,7 @@
         "plugin-message-hooks"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --wait {run}/resume-notice.json --timeout 129000"
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --wait {run}/resume-notice.json --timeout 129000"
       ],
       "checkpoint": [
         "responses",
@@ -16394,13 +16725,15 @@
     {
       "id": "event-recovery-budget-exhausted",
       "kind": "event",
-      "intent": "A conformance session's turn is interrupted three times in a row; observations and logs are recorded.",
+      "intent": "The same turn is interrupted three times, each only after a new recovery attempt has its matching held model request and persisted recovery identity captured; attempt identities and subsequent observations are recorded.",
       "paths": [
         "src/auto-reply/dispatch*.ts",
         "src/auto-reply/inbound*.ts",
         "src/auto-reply/reply/dispatch*.ts",
         "src/auto-reply/reply/inbound*.ts",
         "src/channels/*/**",
+        "src/config/sessions/pending-final-delivery*.ts",
+        "src/config/sessions/restart-recovery*.ts",
         "src/infra/delivery-queue*.ts",
         "src/infra/delivery-recovery*.ts",
         "src/infra/outbound/**",
@@ -16413,8 +16746,7 @@
         "mock-provider-held-turn"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --text '{persona:mock-provider-held-turn:marker}' --timeout 60000 --background --handle {run}/tomb-turn.json",
-        "node {kovaRoot}/support/verify/gateway-kill.mjs --env {env} --repeat 3 --during-recovery --timeout 110000",
+        "node {kovaRoot}/support/verify/channel-interrupt-at-boundary.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --text '{persona:mock-provider-held-turn:marker}' --handle {run}/tomb-turn.json --boundary active-turn-recovery-claim --interrupt kill --gate-timeout 120000 --timeout 180000 --repeat 3",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/gateway-ready-after-tombstone --timeout-ms 60000",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type direct --peer {persona:channel-probe-conversations:dmPeer} --repeat 2 --interval-ms 1000 --text 'Reply with exact ASCII text KOVA_AFTER_TOMBSTONE_OK only.' --timeout 40000",
         "node {kovaRoot}/support/verify/gateway-logs.mjs --env {env} --tail 400"
@@ -16422,7 +16754,8 @@
       "checkpoint": [
         "responses",
         "logs",
-        "timing"
+        "timing",
+        "state:state/openclaw.sqlite"
       ],
       "timeoutMs": 300000,
       "browser": false,
@@ -16431,8 +16764,10 @@
     {
       "id": "event-crash-between-tool-send-and-outcome",
       "kind": "event",
-      "intent": "The Gateway is killed after a message-tool send but before the provider outcome; observations and logs are recorded.",
+      "intent": "An admitted source turn invokes a scripted message send; the native receipt is captured while its return is withheld and the matching persisted terminal intent is pending, then the Gateway is killed.",
       "paths": [
+        "src/config/sessions/pending-final-delivery*.ts",
+        "src/config/sessions/restart-recovery*.ts",
         "src/infra/delivery-queue*.ts",
         "src/infra/delivery-recovery*.ts",
         "src/infra/message-tool-run-outcome-store*.ts",
@@ -16442,12 +16777,11 @@
       "requires": [
         "channel-probe-admission",
         "channel-probe-conversations",
-        "config-visible-replies-tool"
+        "config-visible-replies-tool",
+        "mock-provider-tool-calls"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-probe-fault.mjs --env {env} --fault hang-after-send --count 1 --timeout 30000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type group --peer {persona:config-visible-replies-tool:toolOnlyGroup} --mention --text 'Reply with exact ASCII text KOVA_TOOL_SEND_CRASH_OK only.' --timeout 60000 --background --handle {run}/tool-send.json",
-        "node {kovaRoot}/support/verify/gateway-kill.mjs --env {env} --timeout 60000",
+        "node {kovaRoot}/support/verify/channel-interrupt-at-boundary.mjs --env {env} --channel kova-channel-probe --admission sdk --chat-type group --peer {persona:config-visible-replies-tool:toolOnlyGroup} --mention --text 'Send the requested final reply through the message tool.' --handle {run}/tool-send.json --tool-args '{\"action\":\"send\",\"message\":\"KOVA_TOOL_BOUNDARY_OK\"}' --boundary tool-send-outcome-pending --interrupt kill --gate-timeout 100000 --timeout 140000",
         "node {kovaRoot}/support/ensure-gateway-running.mjs --env {env} --artifact-dir {run}/gateway-ready-after-tool-send-crash --timeout-ms 90000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method kova.channelProbe.observations --params '{}' --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-logs.mjs --env {env} --tail 400"
@@ -16465,14 +16799,17 @@
     {
       "id": "event-message-tool-intent-unknown-prepare",
       "kind": "event",
-      "intent": "To prepare the recorded message tool intent unknown flow, a user starts its preceding commands; their responses and saved handles are recorded.",
+      "intent": "An admitted source turn invokes a scripted message send; the native receipt is captured while its return is withheld and the matching persisted terminal intent is pending, then the Gateway is killed.",
       "paths": [
         "extensions/telegram/src/**",
         "src/agents/tools/message-tool*.ts",
         "src/channels/plugins/message-action*.ts",
+        "src/config/sessions/pending-final-delivery*.ts",
+        "src/config/sessions/restart-recovery*.ts",
         "src/infra/delivery-queue*.ts",
         "src/infra/delivery-recovery*.ts",
         "src/infra/message-tool-run-outcome-store*.ts",
+        "src/infra/outbound/**",
         "src/infra/outbound/delivery-queue*.ts",
         "src/infra/outbound/message-action*.ts",
         "src/infra/session-delivery-queue*.ts"
@@ -16484,9 +16821,7 @@
         "mock-provider-tool-calls"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-platform-fault.mjs --env {env} --channel telegram --fault hang --count 1 --method sendMessage --timeout 6000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel telegram --chat-type group --peer {persona:config-visible-replies-tool:telegramGroupId} --text '{persona:mock-provider-tool-calls:progressMarker}' --mention --artifact-dir {run}/intent-unknown --timeout 79000 --background --handle {run}/intent-unknown.json",
-        "node {kovaRoot}/support/verify/gateway-kill.mjs --env {env} --timeout 79000"
+        "node {kovaRoot}/support/verify/channel-interrupt-at-boundary.mjs --env {env} --channel telegram --chat-type group --peer {persona:config-visible-replies-tool:telegramGroupId} --text 'Send the requested final reply through the message tool.' --mention --artifact-dir {run}/intent-unknown --handle {run}/intent-unknown.json --tool-args '{\"action\":\"send\",\"message\":\"KOVA_TOOL_BOUNDARY_OK\"}' --boundary tool-send-outcome-pending --interrupt kill --gate-timeout 120000 --timeout 180000"
       ],
       "checkpoint": [
         "responses",
@@ -16520,7 +16855,7 @@
         "mock-provider-tool-calls"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --wait {run}/intent-unknown.json --timeout 119000"
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --wait {run}/intent-unknown.json --timeout 119000"
       ],
       "checkpoint": [
         "responses",
@@ -16535,12 +16870,14 @@
     {
       "id": "event-recovered-reply-hook-prepare",
       "kind": "event",
-      "intent": "To prepare the recorded recovered reply hook flow, a user starts its preceding commands; their responses and saved handles are recorded.",
+      "intent": "The Gateway is killed only after the matching held model request and persisted recovery identity are captured; the interrupted turn and recovery observations are recorded.",
       "paths": [
         "extensions/telegram/src/**",
         "src/auto-reply/reply/channel*.ts",
         "src/auto-reply/reply/message*.ts",
         "src/auto-reply/send*.ts",
+        "src/config/sessions/pending-final-delivery*.ts",
+        "src/config/sessions/restart-recovery*.ts",
         "src/infra/delivery-queue*.ts",
         "src/infra/delivery-recovery*.ts",
         "src/infra/message-tool-run-outcome-store*.ts",
@@ -16555,13 +16892,13 @@
         "plugin-message-hooks"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel telegram --chat-type direct --peer {persona:plugin-message-hooks:telegramChatId} --text '{persona:mock-provider-held-turn:marker}' --artifact-dir {run}/recovered-hook --timeout 77000 --background --handle {run}/recovered-hook.json",
-        "node {kovaRoot}/support/verify/gateway-kill.mjs --env {env} --timeout 77000"
+        "node {kovaRoot}/support/verify/channel-interrupt-at-boundary.mjs --env {env} --channel telegram --chat-type direct --peer {persona:plugin-message-hooks:telegramChatId} --text '{persona:mock-provider-held-turn:marker}' --artifact-dir {run}/recovered-hook --handle {run}/recovered-hook.json --boundary active-turn-recovery-claim --interrupt kill --gate-timeout 120000 --timeout 180000"
       ],
       "checkpoint": [
         "responses",
         "logs",
-        "timing"
+        "timing",
+        "state:state/openclaw.sqlite"
       ],
       "timeoutMs": 298000,
       "browser": false,
@@ -16590,7 +16927,7 @@
         "plugin-message-hooks"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --wait {run}/recovered-hook.json --timeout 129000"
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --wait {run}/recovered-hook.json --timeout 129000"
       ],
       "checkpoint": [
         "responses",
@@ -17001,7 +17338,7 @@
         "session-main-rolling"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --channel kova-channel-probe --wait {run}/active-plugin.json --timeout 30000"
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --wait {run}/active-plugin.json --timeout 30000"
       ],
       "checkpoint": [
         "responses",
@@ -17453,161 +17790,6 @@
       "slow": false
     },
     {
-      "id": "finish-channel-turn-in-flight",
-      "kind": "event",
-      "intent": "After the selected channel observations, the background channel turn in flight operation is joined and any remaining task-owned work is stopped; its final responses and logs are recorded.",
-      "paths": [
-        "extensions/a2a/src/**",
-        "extensions/buzz/src/**",
-        "extensions/clickclack/src/**",
-        "extensions/discord/src/**",
-        "extensions/feishu/src/**",
-        "extensions/googlechat/src/**",
-        "extensions/imessage/src/**",
-        "extensions/irc/src/**",
-        "extensions/line/src/**",
-        "extensions/matrix/src/**",
-        "extensions/mattermost/src/**",
-        "extensions/msteams/src/**",
-        "extensions/nextcloud-talk/src/**",
-        "extensions/nostr/src/**",
-        "extensions/raft/src/**",
-        "extensions/reef/src/**",
-        "extensions/signal/src/**",
-        "extensions/slack/src/**",
-        "extensions/sms/src/**",
-        "extensions/synology-chat/src/**",
-        "extensions/telegram/src/**",
-        "extensions/tlon/src/**",
-        "extensions/twitch/src/**",
-        "extensions/whatsapp/src/**",
-        "extensions/x/src/**",
-        "extensions/zalo/src/**",
-        "extensions/zalouser/src/**",
-        "src/agents/tools/message-tool*.ts",
-        "src/auto-reply/chunk*.ts",
-        "src/auto-reply/dispatch*.ts",
-        "src/auto-reply/envelope*.ts",
-        "src/auto-reply/group*.ts",
-        "src/auto-reply/inbound*.ts",
-        "src/auto-reply/media*.ts",
-        "src/auto-reply/reply/block*.ts",
-        "src/auto-reply/reply/channel*.ts",
-        "src/auto-reply/reply/conversation*.ts",
-        "src/auto-reply/reply/dispatch*.ts",
-        "src/auto-reply/reply/group*.ts",
-        "src/auto-reply/reply/history*.ts",
-        "src/auto-reply/reply/inbound*.ts",
-        "src/auto-reply/reply/mentions*.ts",
-        "src/auto-reply/reply/message*.ts",
-        "src/auto-reply/reply/origin*.ts",
-        "src/auto-reply/reply/progress*.ts",
-        "src/auto-reply/reply/route*.ts",
-        "src/auto-reply/reply/routing*.ts",
-        "src/auto-reply/reply/source*.ts",
-        "src/auto-reply/reply/typing*.ts",
-        "src/auto-reply/send*.ts",
-        "src/auto-reply/sender*.ts",
-        "src/auto-reply/source*.ts",
-        "src/channels/*/**",
-        "src/channels/account-*.ts",
-        "src/channels/ack-reactions.ts",
-        "src/channels/allow-from.ts",
-        "src/channels/allowlist-match.ts",
-        "src/channels/allowlists/**",
-        "src/channels/command-gating.ts",
-        "src/channels/conversation-binding-route-facts.ts",
-        "src/channels/conversation-resolution.ts",
-        "src/channels/direct-dm*.ts",
-        "src/channels/draft-stream*.ts",
-        "src/channels/inbound-debounce-policy.ts",
-        "src/channels/inbound-event/**",
-        "src/channels/join-intro/**",
-        "src/channels/location.ts",
-        "src/channels/mention-gating.ts",
-        "src/channels/mention-pattern-policy.ts",
-        "src/channels/message-access/**",
-        "src/channels/model-overrides.ts",
-        "src/channels/native-command-session-targets.ts",
-        "src/channels/plugins/**",
-        "src/channels/plugins/message-action*.ts",
-        "src/channels/progress-*.ts",
-        "src/channels/reply-prefix.ts",
-        "src/channels/route-projection.ts",
-        "src/channels/sender-label.ts",
-        "src/channels/status-reaction*.ts",
-        "src/channels/status/**",
-        "src/channels/streaming*.ts",
-        "src/channels/thread-binding*.ts",
-        "src/channels/transport/**",
-        "src/channels/turn/**",
-        "src/channels/typing*.ts",
-        "src/cli/channel-auth.ts",
-        "src/cli/channel-options.ts",
-        "src/cli/channels-cli*.ts",
-        "src/cli/directory-cli.ts",
-        "src/cli/message-*.ts",
-        "src/cli/outbound-send-deps.ts",
-        "src/cli/pairing-cli.ts",
-        "src/cli/pairing-command-format.ts",
-        "src/cli/program/message/**",
-        "src/cli/program/register.message.ts",
-        "src/cli/send-runtime/**",
-        "src/commands/channel-setup/**",
-        "src/commands/channels.ts",
-        "src/commands/channels/**",
-        "src/commands/configure.channels.ts",
-        "src/commands/doctor-channel-ingress.ts",
-        "src/commands/message.ts",
-        "src/flows/channel-setup*.ts",
-        "src/gateway/server-agent-database-startup.ts",
-        "src/gateway/server-methods/channel-pairing.ts",
-        "src/gateway/server-methods/channels*.ts",
-        "src/gateway/server-methods/message-*.ts",
-        "src/gateway/server-methods/send*.ts",
-        "src/gateway/server-methods/users-channel-identities.ts",
-        "src/gateway/server-methods/web.ts",
-        "src/infra/channel-*.ts",
-        "src/infra/channels-status-issues.ts",
-        "src/infra/delivery-queue*.ts",
-        "src/infra/delivery-recovery*.ts",
-        "src/infra/gateway-boot-lifecycle.kernel.ts",
-        "src/infra/message-tool-run-outcome-store*.ts",
-        "src/infra/outbound/**",
-        "src/infra/outbound/account-scoped-conversation-bindings.ts",
-        "src/infra/outbound/current-conversation-bindings*.ts",
-        "src/infra/outbound/delivery-queue*.ts",
-        "src/infra/outbound/format*.ts",
-        "src/infra/outbound/markdown*.ts",
-        "src/infra/outbound/message-action*.ts",
-        "src/infra/session-delivery-queue*.ts",
-        "src/pairing/pairing-*.ts",
-        "src/plugin-sdk/channel-*.ts",
-        "src/plugin-sdk/channel-ingress-runtime.ts",
-        "src/plugin-sdk/channel-outbound.ts",
-        "src/poll-params.ts",
-        "src/polls.ts",
-        "src/routing/**",
-        "src/state/agent-database-startup.ts",
-        "src/state/openclaw-agent-schema-inspection-worker.ts",
-        "src/state/openclaw-database-preflight-agent-scheduler.ts",
-        "ui/src/lib/channels/**",
-        "ui/src/pages/channels/**"
-      ],
-      "requires": [],
-      "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --wait {run}/channel-turn-in-flight.json --timeout 60000"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing"
-      ],
-      "timeoutMs": 60000,
-      "browser": false,
-      "slow": false
-    },
-    {
       "id": "finish-round-restart",
       "kind": "event",
       "intent": "After the selected channel observations, the background round restart operation is joined and any remaining task-owned work is stopped; its final responses and logs are recorded.",
@@ -17649,35 +17831,6 @@
       "requires": [],
       "commands": [
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --wait {run}/vanish.json --timeout 60000"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing"
-      ],
-      "timeoutMs": 60000,
-      "browser": false,
-      "slow": false
-    },
-    {
-      "id": "finish-unadopted",
-      "kind": "event",
-      "intent": "After the selected channel observations, the background unadopted operation is joined and any remaining task-owned work is stopped; its final responses and logs are recorded.",
-      "paths": [
-        "src/auto-reply/dispatch*.ts",
-        "src/auto-reply/inbound*.ts",
-        "src/auto-reply/reply/dispatch*.ts",
-        "src/auto-reply/reply/inbound*.ts",
-        "src/channels/*/**",
-        "src/infra/delivery-queue*.ts",
-        "src/infra/delivery-recovery*.ts",
-        "src/infra/outbound/**",
-        "src/infra/session-delivery-queue*.ts",
-        "src/plugin-sdk/channel-*.ts"
-      ],
-      "requires": [],
-      "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --wait {run}/unadopted.json --timeout 60000"
       ],
       "checkpoint": [
         "responses",

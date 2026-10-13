@@ -422,7 +422,7 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 261 | Remote-mode Gateway: logout fails on a Gateway error | docs/cli/channels.md "Login and logout (interactive)" | event | config-gateway-remote, channels-test-accounts |
 | 262 | Logout while local Gateway unreachable falls back to local auth cleanup | docs/cli/channels.md "Login and logout (interactive)" | event | channel-telegram-shim, channels-test-accounts |
 | 263 | Logout of an account with no credentials leaves config unrewritten | docs/cli/channels.md "Login and logout (interactive)" | event | channel-probe-conversations, channels-test-accounts |
-| 264 | Login while another lifecycle operation owns the account, start skipped | docs/cli/channels.md "Login and logout (interactive)" | event | channels-test-accounts |
+| 264 | Login while another lifecycle operation owns the account, start skipped | docs/cli/channels.md "Login and logout (interactive)" | event | channel-real-accounts |
 | 265 | Interactive channel login from agent exec blocked | docs/cli/channels.md "Login and logout (interactive)" | event | channels-test-accounts |
 | 266 | Explicitly started account absent from static account list shown while owned | docs/cli/channels.md "Per-account recovery (non-destructive)" | ambient | channel-account-unlisted, channel-probe-conversations |
 | 267 | Host thaw after maintenance gap triggers channel recovery, retries expire after ten minutes | docs/cli/channels.md "Per-account recovery (non-destructive)"; docs/gateway/restart-recovery.md "Host sleep and process freezes" | event | channels-test-accounts |
@@ -784,13 +784,13 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 623 | Message-tool-only turn without durable ingress claim at recovery tombstoned | docs/gateway/restart-recovery.md "Restart recovery"; docs/gateway/restart-recovery.md "Automatic resume" | event | channel-group-allowlisted, config-visible-replies-tool, mock-provider-held-turn |
 | 624 | Queued outbound deliveries drained and undelivered replies retried after restart | docs/gateway/restart-recovery.md "What survives a restart" | event | channel-telegram-shim, channel-probe-conversations |
 | 625 | Delivery exhausting retry budget settles its session without resending | docs/gateway/restart-recovery.md "What survives a restart" | event | channel-telegram-shim, channel-probe-conversations |
-| 626 | Crash after detached completion entered a parent turn with a channel route | docs/gateway/restart-recovery.md "What survives a restart" | event | channel-telegram-shim |
+| 626 | Crash after detached completion entered a parent turn with a channel route | docs/gateway/restart-recovery.md "What survives a restart" | event | channel-real-accounts |
 | 627 | Pending final with uncertain delivery outcome noticed on next turn | docs/gateway/restart-recovery.md "What survives a restart"; docs/gateway/restart-recovery.md "Automatic resume" | event | channel-telegram-shim, channel-probe-conversations |
 | 628 | Requested restart fences new work while active turns drain | docs/gateway/restart-recovery.md "Graceful restarts drain first" | event | channel-probe-conversations, mock-provider-held-turn |
 | 629 | Interrupted external restart skips channel and plugin teardown for stop deadline | docs/gateway/restart-recovery.md "Systemd stop deadlines" | event | channel-probe-conversations |
 | 630 | Gateway suspended through gateway.suspend, channel recovery deferred | docs/gateway/restart-recovery.md "Host sleep and process freezes" | event | channels-test-accounts |
 | 631 | Channel turn in flight on a main session records recovery delivery claim | docs/gateway/restart-recovery.md "How interrupted work is detected" | ambient | mock-provider-held-turn |
-| 632 | Unacknowledged inbound replayed after crash waits for writable admission | docs/gateway/restart-recovery.md "How interrupted work is detected" | event | channel-telegram-shim, mock-provider-held-turn, channel-probe-conversations |
+| 632 | Unacknowledged inbound replayed after crash waits for writable admission | docs/gateway/restart-recovery.md "How interrupted work is detected" | event | channel-probe-admission, channel-probe-conversations |
 | 633 | Final reply produced but undelivered before restart included in resumed turn | docs/gateway/restart-recovery.md "Automatic resume" | event | channel-telegram-shim |
 | 634 | Recovered turn on a channel route sends resumption notice and final on same route | docs/gateway/restart-recovery.md "Automatic resume" | event | channel-telegram-shim, mock-provider-held-turn, channel-probe-conversations |
 | 635 | Telegram typing renewed while a recovered turn runs | docs/gateway/restart-recovery.md "Automatic resume" | event | channel-telegram-shim, mock-provider-held-turn |
@@ -804,6 +804,16 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 643 | Background process completion already polled during a channel turn, notice not repeated | added at step 6 from PR [OpenClaw #138188](https://github.com/openclaw/openclaw/pull/138188) (no listed document); none (break [OpenClaw #138188](https://github.com/openclaw/openclaw/pull/138188)) | event | channel-probe-conversations, mock-provider-tool-calls, config-heartbeat-short |
 | 644 | Retired Microsoft Teams JSON state on disk, doctor explains recovery | added at step 6 from PR [OpenClaw #163850](https://github.com/openclaw/openclaw/pull/163850) (no listed document); none (break [OpenClaw #163850](https://github.com/openclaw/openclaw/pull/163850)) | ambient | channel-teams-retired-state |
 | 645 | Queued channel turn cancelled while the active turn's bound plugin work runs | none (break [OpenClaw #164230](https://github.com/openclaw/openclaw/pull/164230)) | event | mock-provider-held-turn |
+| 646 | A host supporting an asynchronous inspection companion selects it for admission and claim validation | docs/plugins/sdk-channel-outbound.md "Durable ingress monitors" | ambient | channel-ingress-monitor-fixture |
+| 647 | An older host ignores the asynchronous companion and uses the synchronous fallback | docs/plugins/sdk-channel-outbound.md "Durable ingress monitors" | ambient | channel-ingress-monitor-fixture, channel-ingress-legacy-host |
+| 648 | The standard raw-event convenience monitor keeps synchronous inspection | docs/plugins/sdk-channel-outbound.md "Durable ingress monitors" | ambient | channel-ingress-monitor-fixture |
+| 649 | Pending asynchronous admission inspection preserves the accepted admission order | docs/plugins/sdk-channel-outbound.md "Durable ingress monitors" | event | channel-ingress-monitor-fixture |
+| 650 | Shutdown or waitForIdle joins accepted admission inspection and its pending durable append | docs/plugins/sdk-channel-outbound.md "Durable ingress monitors" | event | channel-ingress-monitor-fixture |
+| 651 | Pending claim inspection remains joined when the channel owns separate delivery grace | docs/plugins/sdk-channel-outbound.md "Durable ingress monitors" | event | channel-ingress-monitor-fixture |
+| 652 | Shutdown during claim inspection is rechecked before delivery | docs/plugins/sdk-channel-outbound.md "Durable ingress monitors" | event | channel-ingress-monitor-fixture |
+| 653 | Claim cancellation during inspection is rechecked before delivery | docs/plugins/sdk-channel-outbound.md "Durable ingress monitors" | event | channel-ingress-monitor-fixture |
+| 654 | Pending claim inspections occupy the existing start slots | docs/plugins/sdk-channel-outbound.md "Durable ingress monitors" | event | channel-ingress-monitor-fixture |
+| 655 | Pending claim inspections keep activity busy until inspection finishes or transfers to delivery | docs/plugins/sdk-channel-outbound.md "Durable ingress monitors" | event | channel-ingress-monitor-fixture |
 
 ## Headings walked
 docs/channels/index.md "Chat channels": none
@@ -1147,7 +1157,7 @@ docs/plugins/sdk-channel-ingress.md "Redaction": 564
 docs/plugins/sdk-channel-ingress.md "Verification": none
 docs/plugins/sdk-channel-ingress.md "Related": none
 docs/plugins/sdk-channel-outbound.md "Channel outbound API": none
-docs/plugins/sdk-channel-outbound.md "Durable ingress monitors": 565, 566, 567, 568, 569, 570, 571
+docs/plugins/sdk-channel-outbound.md "Durable ingress monitors": 565, 566, 567, 568, 569, 570, 571, 646, 647, 648, 649, 650, 651, 652, 653, 654, 655
 docs/plugins/sdk-channel-outbound.md "One turn, several durable claims": 572, 573
 docs/plugins/sdk-channel-outbound.md "Start slots and deferral": 574
 docs/plugins/sdk-channel-outbound.md "Deferred claim heartbeats": 575
@@ -1509,11 +1519,11 @@ ui/src/lib/channels/index.ts ("channels.logout", "channels.pairing.approve", "ch
 Every other operation was found by both runs; the reconciled name is the clearer of the two.
 
 ### Phases
-Template totals: 528 phases (2 setup, 159 operation, 367 event). These are commands to be recorded by a future run, not observations from an executed template.
+Template totals: 533 phases (2 setup, 162 operation, 369 event). These are commands to be recorded by a future run, not observations from an executed template.
 The two setup phases retain the recorded several-channels and held-turn conditions. The held-turn wrapper has an explicit admission-only startup timeout and a later bounded join that releases the mock response; it must report interruptions across Gateway restarts, rather than claiming that the same turn remains active through them.
 The operation choices retain the finer command families described above: 10 bases came from run 1 and 26 from run 2. Commands from the other run remain only for a different entry point, variant, condition or required output. Five whole phases were folded into existing flows: noninteractive configure (unsupported flags, already covered by the recorded interactive flow), the second repeated status-summary phase, the second repeated heartbeat phase, the duplicate identity-link flow and the duplicate authorized-command event. Twelve repeated reads without a state transition and three duplicate recorded probe cases were removed. The mutation case was removed from the history-reading phase because the edit operation already records it.
 The event content preserves the initial merge's 123 single-base selections, 51 merged selections, 28 pairs separated for timeout or platform reach, and 90 event phases found by only one run. All 280 event conditions remain represented. The 19 event flows for conditions the union classifies as ambient remain as ways to exercise those conditions.
-Forty-one preceding-command steps make saved-output dependencies explicit between phases. Fifteen final joins account for background handles that otherwise had no reader; setup-service joins match all relevant paths so selection of a channel phase also selects their cleanup. A join depends on its writer and needs no additional persona content of its own.
+Preceding-command steps make saved-output dependencies explicit between phases. Bounded final joins account for background handles that otherwise had no reader; setup-service joins match all relevant paths so selection of a channel phase also selects their cleanup. A join depends on its writer and needs no additional persona content of its own.
 Order follows setup, user operations and events, with content-consuming operations after their readers and restart, crash and recovery flows late. The final joins observe completion or cancellation of the task-owned background work and stop the shim services. Each output file has one writer and every file reader follows its writer.
 
 ### Persona traits
@@ -1541,7 +1551,7 @@ The recorded inbound-during-restart flow used a synchronous restart followed by 
 The setup paths and background lifetimes require careful handling across selected phases. Restart flows retain their own held-turn handles where recorded. A future executor must record any loss of the ambient held-turn condition instead of treating every subsequent phase as still busy.
 
 ### Enumeration counts and evidence limits
-The reconciled inventory contains 435 entry points, 347 placed and 88 excluded, and 645 conditions. Run 1 found 399 of the entry points and 592 of the conditions; run 2 found 378 of the entry points and 590 of the conditions. Explicit combined labels receive credit for the controls they name: channel and account filters, wizard answer fields, the setup Open link control and the detail Docs link. Presentation button, select and question-choice callbacks remain three distinct entry points.
+The recorded-run reconciliation contained 435 entry points, 347 placed and 88 excluded, and 645 conditions. Run 1 found 399 of the entry points and 592 of the conditions; run 2 found 378 of the entry points and 590 of the conditions. Explicit combined labels receive credit for the controls they name: channel and account filters, wizard answer fields, the setup Open link control and the detail Docs link. Presentation button, select and question-choice callbacks remain three distinct entry points.
 Run 2 remains below the required nine-tenths share of entry points. Reconciliation preserves the recorded coverage but cannot satisfy that acceptance criterion without another independently authorized derivation. Neither run nor this reconciliation supplies runtime observations for the proposed template.
 
 The legacy-plugin add flow passes a credential-store name to its declared observation wrapper. A real credential is never a persona key or a command string, and the wrapper must not print it. The shim token keys are synthetic local fixture identifiers.
@@ -1573,3 +1583,11 @@ The remaining non-thread spawn calls retain their returned child identifiers as 
 The native-ID and concurrency pass retains live Matrix identifiers in persona-provided files, captures the actual live Discord thread through reply and cleanup, and submits held-turn follow-ups before joining them. Named Telegram account additions use synthetic fixture tokens rather than default-account environment credentials. Outbound retry exhaustion observes native scheduled attempts within explicit slow bounds. Generic ingress exhaustion additionally requires a genuinely aged pending event; the missing aged fixture is recorded instead of treating a short fresh-event run as exhaustion.
 
 The cross-phase consolidation also retains each repeated atomic probe or shim scenario once: reply context, media final, command and callback buttons, outbound echo, partial final edit, four receive-ack modes, Telegram declared workflows and Discord adapter observation. Their canonical flows keep the selection-path union and required event kind. The duplicate combined direct-chat phase is removed after moving its unique session listing to the retained Telegram flow. Routing shares its common tiers and retains a separate direct wildcard and the two explicit session-scope variants; fallback and no-owner observations use distinct actual owner inputs.
+
+Conditions 646–655 were added during source review from the asynchronous inspection sentences under docs/plugins/sdk-channel-outbound.md "Durable ingress monitors". Both recorded derivations cited this heading but omitted these ten states. Neither receives discovery credit for them. They cover companion selection and compatibility, synchronous convenience behavior, ordered admission, stop/idle joins, claim cancellation, start capacity and activity. The original 645-condition reconciliation remains historical; the corrected inventory has 655 conditions, with 368 ambient and 287 event. The older-host compatibility case remains outside reach on the pinned current host.
+
+Claimed-resubmission observations now hold the native event before adoption, using an SDK delivery gate or the actual Telegram media hydration request. Watchdog observation keeps native lease refresh but supplies no deferred-heartbeat renewal and waits beyond the real five-minute deadline. Guarded recording targets a dedicated absent per-group session through the actual recorder with createIfMissing false; no agent dispatch creates that session first.
+
+Interruptions wait for captured native send, persistence, producer-lease or active recovery boundaries. A model held before output does not supply a delivery lease, and admission completion does not prove a send started. Native unacknowledged-input coverage uses the manual-ack conformance route; the Telegram sibling records only interrupted-turn recovery. The unsupported generic-spawn substitute for detached Codex completion is folded into the real-harness phase, whose missing platform prerequisite remains explicit.
+
+The related ingress shutdown and deferred-slot flows also capture actual native claim/callback state before stopping or patching. Their whole sequences own release, cancellation, configuration restoration and service recovery. Pending-state resubmissions join the late disruptive section after the ambient held turn is finished. Detached helper handles are removed when their complete lifecycle moves inside a single bounded wrapper.

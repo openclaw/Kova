@@ -6,7 +6,9 @@ Date: 2026-10-13
 State: reconciled with a known shortfall after the permitted rerun.
 The procedure's nine-tenths acceptance was not met.
 
-Union: 435 entry points, 645 conditions, 258 condition-bearing document headings.
+Union: 435 entry points, 655 conditions, 258 condition-bearing document headings.
+The recorded-run reconciliation contained 645 conditions; source review added ten
+documented inspection conditions that neither run found.
 
 | Round | Run | Entry points found | Condition headings found |
 |---|---|---|---|
@@ -88,3 +90,10 @@ corrected denominator includes eight reconciliation corrections with no individu
 run credit. This correction applies to both rounds: it supersedes the intermediate
 319/325 and 299/325, and 400/428 and 379/428 figures. It is a correction of recorded
 granularity, without another derivation run.
+
+Source review added conditions 646–655 for asynchronous ingress inspection under
+"Durable ingress monitors", a heading both runs had already found. No derivation
+was rerun and neither receives discovery credit for these additions. Against the
+corrected 655-condition inventory, the supplemental condition-by-meaning shares
+are 592/655 (90.4%) and 590/655 (90.1%). The entry-point and condition-heading
+acceptance shares above are unchanged.
