@@ -1,13 +1,13 @@
 # Comparison: plugins
 
-Union: 382 entry points, 187 conditions, 183 condition headings
+Union: 378 entry points, 187 conditions, 183 condition headings
 
 | Run | Entry points found | Conditions found | Condition headings found |
 |---|---|---|---|
-| 1 | 362/382 | 166/187 | 178/183 |
-| 2 | 355/382 | 133/187 | 152/183 |
+| 1 | 357/378 | 166/187 | 178/183 |
+| 2 | 347/378 | 133/187 | 152/183 |
 
-Run 1 found 94.8% of the entry points, 88.8% of the conditions and 97.3% of the condition headings; run 2 found 92.9%, 71.1% and 83.1%. Entry points clear nine tenths for both runs. Condition headings clear it for run 1 only. This is a known shortfall: this derivation was limited to four rounds (a limit set for this derivation; the procedure itself sets none), the fourth round did not close the gap, and the template is published from the best round with the shortfall stated here.
+Run 1 found 94.4% of the entry points, 88.8% of the conditions and 97.3% of the condition headings; run 2 found 91.8%, 71.1% and 83.1%. Entry points clear nine tenths for both runs. Condition headings clear it for run 1 only. This is a known shortfall: this derivation was limited to four rounds (a limit set for this derivation; the procedure itself sets none), the fourth round did not close the gap, and the template is published from the selected reconciled round with the shortfall stated here.
 
 ## How the numbers are counted
 
@@ -21,19 +21,21 @@ Each round is two independent runs of steps 1 to 7 on the same area input file a
 
 | Round | Area input file | Procedure revision | Entry points found | Condition headings found | Conditions found |
 |---|---|---|---|---|---|
-| 1 | first version: 30 documents, no search list | rules of #169 at 7ac9313 (no search rule for other areas' code, no granularity rule, no headings walk) | 315/347 and 316/347 (90.8%, 91.1%) | 62/76 and 61/76 (81.6%, 80.3%) | 67/78 and 66/78 (85.9%, 84.6%) |
-| 2 | adds `docs/plugins/sdk-overview/host-hooks.md` (one run had added it from a link) and bound decisions on runtime and deployment variants and on labels that exist only in locale files | rules of #169 at a4dc35c (adds: other areas' code found by search, one entry point per file; one condition per state or event with its own consequence) | 365/398 and 354/398 (91.7%, 88.9%) | 81/103 and 86/103 (78.6%, 83.5%) | 94/114 and 94/114 (82.5%, 82.5%) |
-| 3 (this template) | this file: adds the `search` list (21 symbols, 25 literals) with its scope, the HTTP routes, and one name per `api.register*` method | rules of #169 at c3c28a3 (adds: both runs search the input file's list; every listed document walked heading by heading) | 362/382 and 355/382 (94.8%, 92.9%) | 178/183 and 152/183 (97.3%, 83.1%) | 166/187 and 133/187 (88.8%, 71.1%) |
-| 4 | same as round 3 | rules of #169 at a4ebba8 (adds: each sentence or list item under a heading read in turn) | 339/399 and 378/399 (85.0%, 94.7%) | 157/184 and 148/184 (85.3%, 80.4%) | not reconciled by meaning: 199 and 335 conditions listed |
+| 1 | first version: 30 documents, no search list | rules of #169 at 7ac9313 (no search rule for other areas' code, no granularity rule, no headings walk) | 315/370 and 321/370 (85.1%, 86.8%) | 62/76 and 61/76 (81.6%, 80.3%) | 67/78 and 66/78 (85.9%, 84.6%) |
+| 2 | adds `docs/plugins/sdk-overview/host-hooks.md` (one run had added it from a link) and bound decisions on runtime and deployment variants and on labels that exist only in locale files | rules of #169 at a4dc35c (adds: other areas' code found by search, one entry point per file; one condition per state or event with its own consequence) | 358/390 and 338/390 (91.8%, 86.7%) | 81/103 and 86/103 (78.6%, 83.5%) | 94/114 and 94/114 (82.5%, 82.5%) |
+| 3 (this template) | this file: adds the `search` list (21 symbols, 25 literals) with its scope, the HTTP routes, and one name per `api.register*` method | rules of #169 at c3c28a3 (adds: both runs search the input file's list; every listed document walked heading by heading) | 357/378 and 347/378 (94.4%, 91.8%) | 178/183 and 152/183 (97.3%, 83.1%) | 166/187 and 133/187 (88.8%, 71.1%) |
+| 4 | same as round 3 | rules of #169 at a4ebba8 (adds: each sentence or list item under a heading read in turn) | 328/390 and 373/390 (84.1%, 95.6%) | 157/184 and 148/184 (85.3%, 80.4%) | not reconciled by meaning: 199 and 335 conditions listed |
 
-Round 4's first attempt was stopped before either run wrote output and was replaced by two fresh runs on the pinned revision; its numbers are those of the fresh runs. Round 3 is published under the heading-by-heading rules of c3c28a3, before the sentence-by-sentence revision: its lower run is higher than every other round's lower run on entry points (92.9%) and on condition headings (83.1%), and it is the latest round reconciled by meaning.
+Round 4's first attempt was stopped before either run wrote output and was replaced by two fresh runs on the pinned revision; its numbers are those of the fresh runs. Round 3 is published under the heading-by-heading rules of c3c28a3, before the sentence-by-sentence revision: its lower run found 91.8% of entry points and 83.1% of condition headings. It remains the latest round reconciled by meaning; the recorded template is retained.
 
 ## Residual cause
 
-From round 3 on, the area input file no longer explains the gap: both runs read the same documents and searched the same list, and both clear nine tenths of the entry points. In round 3 both runs found conditions under 147 of the 183 condition headings. The remaining difference is reading: which passages a run treats as a lasting state or an event with its own consequence, and how many conditions it draws from one passage. Reading sentence by sentence (round 4) widened the gap instead of closing it: one run listed 199 conditions and the other 335 from the same headings, and the lower run's entry points fell to 85.0%.
+From round 3 on, the area input file no longer explains the gap: both runs read the same documents and searched the same list, and both clear nine tenths of the entry points. In round 3 both runs found conditions under 147 of the 183 condition headings. The remaining difference is reading: which passages a run treats as a lasting state or an event with its own consequence, and how many conditions it draws from one passage. Reading sentence by sentence (round 4) widened the gap instead of closing it: one run listed 199 conditions and the other 335 from the same headings, and the lower run's entry-point share was 84.1%.
 
 The procedure gives no fixed count of conditions per sentence, so the share depends on the reader. Measuring at heading level removes the count from the comparison and leaves only whether a run read a passage as holding a condition at all; round 3's run 2 still misses 31 headings run 1 found, 13 of them in `docs/plugins/tool-plugins.md` (its quickstart, generated metadata and troubleshooting entries), the rest spread over `feature-plugins.md` ("Host capabilities", "Contribute and replace views", "Dock a conversation"), the bundle formats in `bundles.md`, and one or two headings in each of ten other documents.
 
 Reconciliation excludes the emitted broadcasts `plugins.changed`, `plugins.install.progress`, `plugins.controlUi.changed`, `plugin.approval.requested` and `plugin.approval.resolved` from all four rounds, and `plugin.approval.removed` from round 4. They were listed for explanation by the runs but are not entry points. The figures above use the preserved run outputs with those exclusions applied; no additional run was made.
 
 Reconciliation also expands every explicitly listed CLI command, chat command name and API method in combined labels. Run 1 of round 3 listed `openclaw config get`, `openclaw update status`, `openclaw update repair` and `clawhub login`; run 2 did not. Both runs listed all three run-context methods and both scheduling methods. `/new` and `/reset` are separate names found only by run 1. Earlier and later rounds receive the same treatment for their explicitly listed chat aliases, Gateway methods and scaffold commands. Flags do not add an entry point. These corrections use the saved outputs and preserve which run found each name; they do not add a derivation run.
+
+The entry-point reconciliation also separates explicitly named controls and route forms while preserving each saved run's discovery credit. Control state labels and selector values do not create additional controls. Unnamed data-dependent collections remain documented as observations but are not counted as invented group entries; shared shell controls retain their single excluded entry. The raw observations were preserved, and no additional derivation run was made.

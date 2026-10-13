@@ -2,7 +2,7 @@
 
 Operations: 34/34
 Conditions: 138/187 (134 ambient, 53 event)
-Entry points: 333/382 (49 excluded)
+Entry points: 330/378 (48 excluded)
 Breaks mapped: 7/18
 
 Uncovered:
@@ -104,7 +104,7 @@ Uncovered:
 - config.get, config.schema, config.set, config.patch (entry point, excluded): consumed from config (the plugin settings editor and Advanced tab read and write config through them)
 - openclaw-plugin-inspector (entry point, excluded): external package, not shipped by the product
 - api.on (entry point, excluded): registration mechanism for typed hooks; each hook name is counted under its operation
-- UI Logbook plugin page controls (ui/src/pages/plugin/logbook-view.ts) (entry point, excluded): owned by the Logbook plugin's feature area (bound)
+- UI Logbook plugin page controls (ui/src/pages/plugin/logbook-view.ts) (uncounted observation): owned by the Logbook plugin's feature area (bound); the saved description names no concrete control, so it contributes no entry to the total
 - UI settings navigation, sidebar, theme and account controls around the plugin pages (entry point, excluded): shell
 
 Persona additions:
@@ -135,7 +135,7 @@ Persona additions:
 - plugin-legacy-enabled-unreviewed: a third-party plugin enabled before capability acceptance existed, with no acceptance record (pluginId)
 - plugin-registry-stale: a persisted plugin registry older than the current config and manifests ((none))
 - plugin-authoring-workspace: a built tool plugin project and a built feature plugin project, and a plugin id for a new scaffold (toolId, toolProjectDir, featureProjectDir)
-- codex-harness-native-plugins: a Codex-mode agent with codexPlugins enabled and one configured native plugin, and its session (agentId, sessionKey, pluginKey)
+- codex-harness-native-plugins: the Codex runtime plugin installed and enabled, registering /codex; a Codex-mode agent with codexPlugins enabled, one configured native plugin and its session. The Codex app-server is unsigned-in and has no real account credentials, so management commands record availability and authorization replies (agentId, sessionKey, pluginKey)
 - config-plugin-approvals-forwarded: approvals.plugin forwarding to the DM test channel (none); from run 2, required by event-plugin-approvals-forwarded-to-chat
 - channels-test-accounts (key addition): a sender id that has never paired with the DM channel (unpairedPeer); from run 2
 - config-plugins-include: the plugins section authored through a single-file $include (none); required by enable-and-disable-plugin

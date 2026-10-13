@@ -1145,9 +1145,11 @@
         "extensions/codex/src/command-plugin*.ts",
         "extensions/codex/src/command-plugins-*.ts",
         "extensions/codex/src/native-plugin-tool.ts",
-        "extensions/codex/src/app-server/**"
+        "extensions/codex/src/app-server/**",
+        "extensions/codex/index.ts"
       ],
       "requires": [
+        "codex-harness-native-plugins",
         "mock-provider-scripted",
         "session-plugin-tools"
       ],
@@ -1176,7 +1178,8 @@
         "extensions/codex/src/command-plugin*.ts",
         "extensions/codex/src/command-plugins-*.ts",
         "extensions/codex/src/native-plugin-tool.ts",
-        "extensions/codex/src/app-server/**"
+        "extensions/codex/src/app-server/**",
+        "extensions/codex/index.ts"
       ],
       "requires": [
         "codex-harness-native-plugins",
