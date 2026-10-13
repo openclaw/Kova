@@ -162,3 +162,5 @@ Registration-method discovery requires a saved method entry. Rendered content do
 
 - config-reload-hybrid: the running Gateway starts with gateway.reload.mode set to hybrid; passive config-driven phases require this ambient state. The explicit off-mode phase saves and restores it when selected together.
 - channel-unpaired-plugin-probe: a dedicated never-paired peer on the conformance channel, distinct from every approval/delivery peer, used only by the plugin message-interception probe (peer). The channel account itself comes from channels-test-accounts.
+
+File discovery refers to the concrete named file at the pinned revision; caller and implementation ownership relationships do not supply additional file entries.
