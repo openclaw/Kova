@@ -4,7 +4,7 @@ export async function runCatalogueCommand(flags) {
   const [action, ...extra] = flags._;
   if (!["list", "check"].includes(action) || extra.length) throw new Error("usage: kova catalogue <list|check> --product <name>");
   for (const key of Object.keys(flags)) {
-    if (!["_", "product", "json", "plain", ...(action === "check" ? ["templates", "personas"] : [])].includes(key)) throw new Error(`unknown catalogue option: --${key.replaceAll("_", "-")}`);
+    if (!["_", "product", "json", "plain", "ascii", "no_progress", ...(action === "check" ? ["templates", "personas"] : [])].includes(key)) throw new Error(`unknown catalogue option: --${key.replaceAll("_", "-")}`);
   }
   const { catalogue, findings } = await loadCatalogue(flags.product);
   if (findings.length) throw new Error(`invalid catalogue: ${findings.map((finding) => `${finding.at}: ${finding.message}`).join("; ")}`);

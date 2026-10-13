@@ -256,19 +256,34 @@ test("real CLI lists the bundled catalogue and exits nonzero on planted findings
   const paths = await inputs(t);
   const cli = fileURLToPath(new URL("../bin/kova.mjs", import.meta.url));
   const run = (...args) => spawnSync(process.execPath, [cli, "catalogue", ...args], { encoding: "utf8" });
+  const assertCommonOptions = (args, expected) => {
+    for (const option of ["--ascii", "--no-progress"]) {
+      const result = run(...args, option);
+      assert.equal(result.status, expected.status, result.stderr);
+      assert.equal(result.stdout, expected.stdout);
+      assert.equal(result.stderr, expected.stderr);
+    }
+  };
   const list = run("list", "--product", "openclaw", "--json");
   assert.equal(list.status, 0, list.stderr);
   assert.equal(JSON.parse(list.stdout).schema, "kova.verify.catalogue.v1");
+  assertCommonOptions(["list", "--product", "openclaw", "--json"], list);
+  const listArgs = ["list", "--product", "openclaw"];
+  assertCommonOptions(listArgs, run(...listArgs));
   const args = ["check", "--product", "openclaw", "--templates", paths.templates, "--personas", paths.personas, "--json"];
   const pass = run(...args);
   assert.equal(pass.status, 0, pass.stderr);
   assert.equal(JSON.parse(pass.stdout).commandCount, 3);
+  assertCommonOptions(args, pass);
+  assertCommonOptions(args.slice(0, -1), run(...args.slice(0, -1)));
   await writeFile(paths.template, JSON.stringify({ schema: "kova.verify.template.v1", phases: [{ commands: ["ocm @{env} -- nonexistent --json", "ocm @{env} -- status --unlisted", "ocm @{env} -- config get {bad} --json", "ocm @{env} -- sessions --json cleanup --dry-run"] }] }));
   const fail = run(...args);
   assert.equal(fail.status, 1, fail.stderr);
   assert.deepEqual(JSON.parse(fail.stdout).findings.map((finding) => finding.code), ["unlisted-command", "unlisted-flag", "placeholder", "flag-placement"]);
+  assertCommonOptions(args, fail);
   const plain = run(...args.slice(0, -1));
   assert.equal(plain.status, 1);
   assert.match(plain.stdout, /^FAIL: 6 commands, 4 findings/);
+  assertCommonOptions(args.slice(0, -1), plain);
   for (const invalid of [["list", "--product", "../openclaw"], ["check", "--product", "openclaw"], ["list", "extra", "--product", "openclaw"], ["list", "--product", "openclaw", "--unknown"]]) assert.equal(run(...invalid).status, 1);
 });
