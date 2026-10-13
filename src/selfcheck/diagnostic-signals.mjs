@@ -28,7 +28,7 @@ export async function diagnosticTriggerValidationCheck(tmp) {
     await writeFile(join(binDir, "ocm"), `#!/bin/sh
 printf '%s env=%s\\n' "$*" "\${KOVA_FAKE_WRAPPER_ENV:-}" >> "$KOVA_FAKE_OCM_LOG"
 if [ "\${KOVA_FAKE_OCM_HANG:-}" = "1" ]; then exec sleep 10; fi
-if [ -n "\${KOVA_FAKE_OCM_DELAY:-}" ]; then echo diagnostic-ocm-delay >&2; /usr/bin/time -p sleep "$KOVA_FAKE_OCM_DELAY"; fi
+if [ -n "\${KOVA_FAKE_OCM_DELAY:-}" ]; then sleep "$KOVA_FAKE_OCM_DELAY"; fi
 while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do shift; done
 [ "$#" -gt 0 ] || exit 2
 shift
@@ -54,7 +54,6 @@ function reportName(signal) {
 }
 process.on("SIGUSR2", () => {
   const currentSignal = ++signalCount;
-  if (currentSignal === 3) console.error(JSON.stringify({diagnosticTiming:"child-signal",at:Date.now()}));
   const outputHome = currentSignal === 1
     ? path.join(home, "depth-1", "depth-2", "depth-3", "depth-4", "depth-5")
     : home;
@@ -99,7 +98,6 @@ process.on("SIGUSR2", () => {
   const reportPath = path.join(outputHome, reportName(currentSignal));
   setTimeout(() => {
     fs.mkdirSync(outputHome, { recursive: true });
-    if (currentSignal === 3) console.error(JSON.stringify({diagnosticTiming:"child-write-start",at:Date.now()}));
     fs.writeFileSync(heapPath, "{\\"heap\\":");
     if (currentSignal === 3) {
       return;
@@ -133,7 +131,6 @@ process.on("SIGUSR2", () => {
   }, 400);
   setTimeout(() => {
     fs.appendFileSync(heapPath, "\\"fresh\\"}\\n");
-    if (currentSignal === 3) console.error(JSON.stringify({diagnosticTiming:"child-write-end",at:Date.now()}));
     if (currentSignal !== 3) {
       fs.appendFileSync(reportPath, "\\"fresh\\":true}\\n");
     }
@@ -145,7 +142,6 @@ setInterval(() => {}, 1000);
       env: process.env,
       stdio: ["ignore", "pipe", "pipe"]
     });
-    child.stderr.on("data", (data) => process.stderr.write(data));
     await waitForChildReady(child);
     // This case validates filtering and retention. Separate minimum-deadline
     // coverage below keeps loaded macOS CI from turning it into a timing test.
@@ -188,7 +184,7 @@ setInterval(() => {}, 1000);
     const heapOnly = await triggerDiagnosticSession("kova-self-check", child.pid, 5000, root, {
       heapSnapshot: true,
       diagnosticReport: true,
-      commandEnv: { KOVA_FAKE_OCM_DELAY: "0.6", KOVA_DIAGNOSTIC_TIMING: "1" }
+      commandEnv: { KOVA_FAKE_OCM_DELAY: "0.6" }
     });
     assertEqual(heapOnly.heapSnapshot.commandStatus, 0, "partial trigger keeps successful command status");
     assertEqual(heapOnly.heapSnapshot.artifacts.length, 1, "emitted heap survives missing report");
