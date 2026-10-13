@@ -109,7 +109,7 @@
       "support/verify/http-get.mjs  (one GET against a Gateway HTTP route, with Gateway credentials or none, path resolved from a flow's recorded URLs when --from is given; --env --path --from --auth --timeout)",
       "support/verify/plugin-source-edit.mjs  (edits an installed, linked or bundled plugin's files on the Gateway host and restores the saved copy; modes bundled-dist-touch, cleanup-fails, manifest-bump, marker, payload-tamper, register-throws, gateway-start-fails, service-start-fails, skill-file-edit, ui-asset-broken; --env --plugin --mode --restore; cleanup-fails toggles a fixture-owned marker that the already-loaded cleanup callback reads on every invocation, without editing loaded code; --restore clears that marker so retained cleanup can be retried; gateway-start-fails makes the replacement fixture gateway_start hook throw, leaving service startup successful; gateway-stop-hold arms a fixture-owned marker read by the active gateway_stop hook, which reports entry and waits for explicit release (at most 25000 ms); --out saves the marker identity, --wait-entered-from polls that exact invocation and records its entry plus the live core:plugin-lifecycle/global state lease owner, --verify-held-from records that invocation still pending after the competing RPC (exit 2 if not), and --release-from releases and removes only that marker; --timeout bounds each helper call; bundled-dist-touch refuses unless the caller proves the selected runtime copy is exclusively owned by this clone and its edited files share no inode or writable symlink destination with the original runtime; bundled-plugin-reload owns its restoration)",
       "support/verify/plugin-reload-wait.mjs  (openclaw plugins reload <id> --wait under a terminal, sending Ctrl-C after the given delay; --env --plugin --cancel-after-ms --timeout)",
-      "support/verify/config-change.mjs  (openclaw config patch built from one named change, saving the previous values of the paths it touches to --out for a later --restore-from; changes: fixture-config-unknown-key (plugins.entries.<plugin>.config.kovaUnknownKey = true), fixture-config-change (plugins.entries.<plugin>.config.kovaMarker = a new marker), fixture-break-register (plugins.entries.<plugin>.config.kovaBreakRegister = true), plugins-allow-restrictive (plugins.allow = [<plugin>]), plugins-deny-entry (plugins.deny adds <plugin>), plugins-disabled and plugins-enabled (plugins.enabled), memory-slot-unknown (plugins.slots.memory = an id no plugin has), reload-mode-off and reload-mode-hybrid (gateway.reload.mode), ui-lab-on and ui-lab-off (gateway.controlUi.experimental.customPlugins), cron-disabled and cron-enabled (cron.enabled), cron-toggle (negates the effective cron.enabled value, using the product default when absent, so both writes in the reconciliation phase change the value; --out preserves original presence), approvals-plugin-forwarding and approvals-plugin-forwarding-off (approvals.plugin.enabled), fixture-conversation-access-off and fixture-conversation-access-on (plugins.entries.<plugin>.hooks.allowConversationAccess), fixture-hook-timeout-short (plugins.entries.<plugin>.hooks.timeoutMs = 1), tools-allow-add (tools.allow adds <tool>), load-path-add (plugins.load.paths adds <path>); --env --change --plugin --tool --path --out --save-paths --restore-from --timeout; --snapshot-only with --save-paths saves the exact prior values and presence without applying a change; a subtree snapshot preserves all nested keys, so --restore-from restores it exactly, including removing additions made by the browser flow)",
+      "support/verify/config-change.mjs  (openclaw config patch built from one named change, saving the previous values of the paths it touches to --out for a later --restore-from; changes: fixture-config-unknown-key (plugins.entries.<plugin>.config.kovaUnknownKey = true), fixture-config-change (plugins.entries.<plugin>.config.kovaMarker = a new marker), plugins-allow-restrictive (plugins.allow = [<plugin>]), plugins-deny-entry (plugins.deny adds <plugin>), plugins-disabled and plugins-enabled (plugins.enabled), memory-slot-unknown (plugins.slots.memory = an id no plugin has), reload-mode-off and reload-mode-hybrid (gateway.reload.mode), ui-lab-on and ui-lab-off (gateway.controlUi.experimental.customPlugins), cron-disabled and cron-enabled (cron.enabled), cron-toggle (negates the effective cron.enabled value, using the product default when absent, so both writes in the reconciliation phase change the value; --out preserves original presence), approvals-plugin-forwarding and approvals-plugin-forwarding-off (approvals.plugin.enabled), fixture-conversation-access-off and fixture-conversation-access-on (plugins.entries.<plugin>.hooks.allowConversationAccess), fixture-hook-timeout-short (plugins.entries.<plugin>.hooks.timeoutMs = 1), tools-allow-add (tools.allow adds <tool>), load-path-add (plugins.load.paths adds <path>); --env --change --plugin --tool --path --out --save-paths --restore-from --timeout; --snapshot-only with --save-paths saves the exact prior values and presence without applying a change; a subtree snapshot preserves all nested keys, so --restore-from restores it exactly, including removing additions made by the browser flow)",
       "support/verify/config-file-edit.mjs  (writes one value into openclaw.json without validation, or restores the saved copy; --env --set --restore --timeout; --inline-plugins --out saves the root and single-file plugins include layout, reads the resolved plugins object and writes that same object inline without changing logical config; rejects root-level, nested or multi-file includes with exit 2; --restore-layout-from restores the saved include ownership while retaining current logical plugin values, including the newly installed artifact, and preserves all unrelated config)",
       "support/verify/gateway-kill.mjs  (SIGKILL of the running Gateway process; --env --timeout)",
       "support/verify/clawhub-reachability.mjs  (points the Gateway's ClawHub endpoint at an unreachable address and restores it, restarting the service; --env --mode --timeout)",
@@ -1212,7 +1212,9 @@
       "paths": [
         "src/gateway/server-methods/plugins-mutations.ts",
         "src/gateway/server-methods/plugins-lifecycle-error.ts",
-        "src/cli/plugins-lifecycle-client.ts"
+        "src/cli/plugins-lifecycle-client.ts",
+        "src/plugins/plugin-lifecycle-lease.ts",
+        "src/state/openclaw-state-lease-acquisition.ts"
       ],
       "requires": [
         "plugin-concurrency-peer",
@@ -1541,7 +1543,8 @@
       "paths": [
         "src/plugins/uninstall*.ts",
         "src/gateway/config-reload.ts",
-        "src/plugins/management-uninstall.ts"
+        "src/plugins/management-uninstall.ts",
+        "src/plugins/source-cleanup.ts"
       ],
       "requires": [
         "mock-provider-tool-calls",
@@ -1643,7 +1646,9 @@
       "intent": "A user cancels a turn while a Claude bundle's LSP servers are starting for it, observing cancelled startup and released servers.",
       "paths": [
         "src/plugins/bundle*.ts",
-        "src/agents/agent-bundle-lsp-*.ts"
+        "src/agents/agent-bundle-lsp-*.ts",
+        "src/agents/embedded-agent-runner/run/attempt-bundle-tools.ts",
+        "src/process/owned-stdio.ts"
       ],
       "requires": [
         "mock-provider-scripted",
@@ -1668,43 +1673,15 @@
       "slow": false
     },
     {
-      "id": "event-replacement-fails-before-publication",
-      "kind": "event",
-      "intent": "A user reloads the fixture plugin after its new code throws during registration, observing the rejected replacement, automatic recovery of the captured previous code and config, and diagnostics without executing the failed code.",
-      "paths": [
-        "src/gateway/server-plugin-reload*.ts",
-        "src/plugins/runtime/**"
-      ],
-      "requires": [
-        "plugin-fixture-surfaces"
-      ],
-      "commands": [
-        "node {kovaRoot}/support/verify/plugin-source-edit.mjs --env {env} --plugin {persona:plugin-fixture-surfaces:pluginId} --mode register-throws",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.reload --params '{\"plugins\":[{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}]}' --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.list --params '{}' --timeout 30000",
-        "ocm @{env} -- health --json",
-        "node {kovaRoot}/support/verify/plugin-source-edit.mjs --env {env} --plugin {persona:plugin-fixture-surfaces:pluginId} --mode register-throws --restore",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.reload --params '{\"plugins\":[{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}]}' --timeout 120000",
-        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --change fixture-break-register --plugin {persona:plugin-fixture-surfaces:pluginId} --out {run}/event-replacement-fails-before-publication-fixture-config.json --timeout 15000",
-        "node {kovaRoot}/support/verify/config-change.mjs --env {env} --restore-from {run}/event-replacement-fails-before-publication-fixture-config.json --timeout 15000"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing",
-        "state:tmp/plugin-captures"
-      ],
-      "timeoutMs": 300000,
-      "browser": false,
-      "slow": false
-    },
-    {
       "id": "event-replacement-fails-after-publication",
       "kind": "event",
       "intent": "A user reloads the fixture plugin whose gateway_start hook throws after the new generation is published, observing committed details, the republished model catalogs and the visible failure.",
       "paths": [
         "src/gateway/server-plugin-reload*.ts",
-        "src/gateway/server-plugin-runtime-generation.ts"
+        "src/gateway/server-plugin-runtime-generation.ts",
+        "src/plugins/hooks.ts",
+        "src/plugins/lifecycle.ts",
+        "src/gateway/server-methods/plugins-lifecycle-error.ts"
       ],
       "requires": [
         "plugin-fixture-surfaces"
@@ -1936,7 +1913,10 @@
       "paths": [
         "src/gateway/server-plugin-reload*.ts",
         "src/plugins/bundled*.ts",
-        "extensions/**"
+        "extensions/**",
+        "src/plugins/plugin-shared-module-loader.ts",
+        "src/plugins/plugin-runtime-artifact-identity.ts",
+        "src/plugins/lifecycle.ts"
       ],
       "requires": [
         "plugins-bundled-and-external"
@@ -2223,7 +2203,8 @@
         "src/gateway/server-startup-plugins.ts",
         "src/plugins/plugin-source-capture*.ts",
         "src/plugins/plugin-lifecycle-lease*.ts",
-        "src/state/openclaw-state-lease*.ts"
+        "src/state/openclaw-state-lease*.ts",
+        "src/infra/state-lease-process-owner.ts"
       ],
       "requires": [
         "plugin-fixture-surfaces"
@@ -2248,6 +2229,44 @@
         "state:state/openclaw.sqlite"
       ],
       "timeoutMs": 260000,
+      "browser": false,
+      "slow": false
+    },
+    {
+      "id": "event-replacement-fails-before-publication",
+      "kind": "event",
+      "intent": "A user reloads the fixture after registration throws, then inspects and calls the automatically recovered instance before restoring the source or requesting a new reload, observing rejected replacement, retained behavior and recovery diagnostics.",
+      "paths": [
+        "src/gateway/server-plugin-reload*.ts",
+        "src/plugins/runtime/**",
+        "src/plugins/loader-runtime-candidate.ts",
+        "src/plugins/loader-records.ts",
+        "src/plugins/plugin-runtime-artifact-binding.ts",
+        "src/plugins/plugin-instance.ts"
+      ],
+      "requires": [
+        "mock-provider-tool-calls",
+        "plugin-fixture-surfaces",
+        "session-plugin-tools"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/plugin-source-edit.mjs --env {env} --plugin {persona:plugin-fixture-surfaces:pluginId} --mode register-throws",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.reload --params '{\"plugins\":[{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}]}' --timeout 90000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.list --params '{}' --timeout 30000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.inspect --params '{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}' --timeout 30000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool {persona:plugin-fixture-surfaces:toolName} --args '{\"input\":\"VERIFY_AFTER_FAILURE\"}' --timeout 45000",
+        "ocm @{env} -- status --json",
+        "ocm @{env} -- health --json",
+        "node {kovaRoot}/support/verify/plugin-source-edit.mjs --env {env} --plugin {persona:plugin-fixture-surfaces:pluginId} --mode register-throws --restore",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.reload --params '{\"plugins\":[{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}]}' --timeout 90000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing",
+        "state:tmp/plugin-captures"
+      ],
+      "timeoutMs": 300000,
       "browser": false,
       "slow": false
     },
@@ -2858,7 +2877,8 @@
         "src/gateway/config-reload-plugin-drain.ts",
         "src/plugins/runtime/**",
         "src/plugins/plugin-instance.ts",
-        "src/plugins/plugin-instance-settlement.ts"
+        "src/plugins/plugin-instance-settlement.ts",
+        "src/plugins/host-hook-cleanup-timeout.ts"
       ],
       "requires": [
         "mock-provider-tool-calls",
@@ -2891,7 +2911,12 @@
         "src/gateway/server-plugin-reload*.ts",
         "src/plugins/plugin-instance.ts",
         "src/plugins/plugin-instance-settlement.ts",
-        "src/cli/plugins-lifecycle-client.ts"
+        "src/cli/plugins-lifecycle-client.ts",
+        "src/cli/signal-exit-barrier.ts",
+        "src/gateway/call.ts",
+        "src/gateway/server/ws-connection/authenticated-request-dispatch.ts",
+        "src/plugins/management-mutations.ts",
+        "src/gateway/config-reload.ts"
       ],
       "requires": [
         "mock-provider-tool-calls",
@@ -3113,7 +3138,10 @@
       "intent": "A user edits a bundled skill file in place while its preview is open and reopens it, observing the retired cache and the edited body on reopen.",
       "paths": [
         "ui/src/pages/plugins/skill-preview.ts",
-        "src/gateway/server-methods/plugins.ts"
+        "src/gateway/server-methods/plugins.ts",
+        "src/plugins/management-skill-read.ts",
+        "src/skills/loading/plugin-skills.ts",
+        "src/skills/loading/plugin-skill-bundle.ts"
       ],
       "requires": [
         "plugin-fixture-surfaces"
@@ -3129,34 +3157,6 @@
       ],
       "timeoutMs": 150000,
       "browser": true,
-      "slow": false
-    },
-    {
-      "id": "event-replacement-fails-before-publication-continued",
-      "kind": "event",
-      "intent": "A user inspects the fixture, calls its tool and reads status after the preceding failed replacement, recording whether the retained instance remains usable.",
-      "paths": [
-        "src/gateway/server-plugin-reload*.ts",
-        "src/plugins/runtime/**"
-      ],
-      "requires": [
-        "mock-provider-tool-calls",
-        "plugin-fixture-surfaces",
-        "session-plugin-tools"
-      ],
-      "commands": [
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.inspect --params '{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}' --timeout 30000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-plugin-tools:key} --tool {persona:plugin-fixture-surfaces:toolName} --args '{\"input\":\"VERIFY_AFTER_FAILURE\"}' --timeout 45000",
-        "ocm @{env} -- status --json"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing",
-        "state:tmp/plugin-captures"
-      ],
-      "timeoutMs": 80000,
-      "browser": false,
       "slow": false
     },
     {
@@ -3268,7 +3268,11 @@
       "paths": [
         "src/plugins/session*.ts",
         "src/plugins/runtime/**",
-        "src/plugins/registry-runtime-session-ownership.ts"
+        "src/plugins/registry-runtime-session-ownership.ts",
+        "src/plugins/host-hook-cleanup.ts",
+        "src/gateway/session-reset-service.ts",
+        "src/config/sessions/session-accessor.lifecycle.ts",
+        "src/config/sessions/plugin-host-cleanup.ts"
       ],
       "requires": [
         "mock-provider-scripted",
@@ -3296,7 +3300,9 @@
       "paths": [
         "src/gateway/server-methods/plugins-mutations.ts",
         "src/gateway/server-methods/plugins-lifecycle-error.ts",
-        "src/cli/plugins-lifecycle-client.ts"
+        "src/cli/plugins-lifecycle-client.ts",
+        "src/plugins/plugin-lifecycle-lease.ts",
+        "src/state/openclaw-state-lease-acquisition.ts"
       ],
       "requires": [
         "clawhub-registry-local",
@@ -3611,7 +3617,12 @@
         "src/plugin-state/**",
         "src/gateway/server-startup-plugins.ts",
         "src/plugins/active-payload-verification.ts",
-        "src/plugins/payload-verification.ts"
+        "src/plugins/payload-verification.ts",
+        "src/commands/startup-config-preflight.ts",
+        "src/commands/doctor-config-preflight-plugin-verification.ts",
+        "src/plugins/runtime-degraded-state.ts",
+        "src/plugins/loader-runtime-candidate.ts",
+        "src/plugins/loader-records.ts"
       ],
       "requires": [
         "plugin-fixture-surfaces"

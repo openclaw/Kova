@@ -98,8 +98,6 @@ api.scheduleSessionTurn (plugin call): not a registration method; owned by cron
 api.unscheduleSessionTurnsByTag (plugin call): not a registration method; owned by cron
 api.onConversationBindingResolved (plugin call): not a registration method; conversation bindings owned by channels
 registerSandboxBackend (openclaw/plugin-sdk/sandbox) (plugin call): SDK module function, not an api.register* method; owned by sandbox
-session discussion provider (openclaw/plugin-sdk/session-discussion) (plugin call): SDK module function; owned by the btw side-discussion tool
-api.runtime.* helpers (plugin call): consumed from the area each helper wraps (bound)
 Broadcast events plugins.changed, plugins.install.progress, plugins.controlUi.changed, plugin.approval.requested, plugin.approval.resolved: internal; the product emits them, they are not entry points (not counted)
 /plugin (singular): alias of /plugins
 tools.catalog: consumed from agents (plugin tool previews)
@@ -892,7 +890,7 @@ names: run 2's Control UI flow names, patch file names and script forms rewritte
 search list: run 1 reported the openclaw tool actions plugin_install, plugin_activate_artifact and plugin_uninstall and the /plugins chat command handlers; run 2 reported the plugin_activate_artifact literal, the parsePluginsCommand symbol and the codex_plugins literal; both entry points are already placed from the documents; the input file is unchanged, since both runs searched it as written
 breaks: the seven mapped breaks are mapped by both runs; 145553, which run 2 mapped, is not mapped (correction below)
 correction after both runs: the input file's glob src/infra/plugin-activation.ts named no file at 7e80556f; the module is ui/src/lib/plugin-activation.ts, so the glob in the input file, the template paths and the Bounds line above name that file. Phase path globs that matched no file were corrected the same way: src/plugins/skill*.ts -> src/plugins/management-skill-read.ts (preview-plugin-skill), src/agents/**/lsp*.ts -> src/agents/agent-bundle-lsp-*.ts (event-turn-cancel-during-bundle-lsp-startup), and src/cron/**/plugin*.ts removed from plugin-hooks-follow-lifecycle (only test files match it). No entry point or condition came from these globs.
-counting: entry points are counted one per control, method, command, route or call site; a line in Operations or Excluded entry points that names two controls counts two, which gives the 378 in coverage.md and comparison.md after the recorded command, control and route corrections
+counting: entry points are counted one per control, method, command, route or call site; a line in Operations or Excluded entry points that names two controls counts two, which gives the 376 in coverage.md and comparison.md after the recorded command, control, route and collection corrections
 /btw (chat command): entry point from run 1 only; kept as run 1 listed it
 /new (chat command): entry point from run 1 only; kept as run 1 listed it
 /reset (chat command): entry point from run 1 only; kept as run 1 listed it
@@ -918,7 +916,7 @@ openclaw skills search (CLI command): entry point from run 1 only; kept as run 1
 openclaw tool action plugin_install: entry point from run 1 only; kept as run 1 listed it
 openclaw tool action plugin_uninstall: entry point from run 1 only; kept as run 1 listed it
 plugin.surface.refresh (Gateway method): entry point from run 1 only; kept as run 1 listed it
-session discussion provider (openclaw/plugin-sdk/session-discussion) (plugin call): entry point from run 1 only; kept as run 1 listed it
+session discussion provider (openclaw/plugin-sdk/session-discussion) (plugin call): uncounted observation; the saved family/provider description names no individual method or call site
 correction after review: configure-plugin-settings-in-control-ui: restores configure-plugin-settings-in-control-ui-fixture-config.json at the end of the phase
 correction after review: use-plugin-tools-in-turns: restores use-plugin-tools-in-turns-tools-allow.json at the end of the phase
 correction after review: event-cron-reconciled-and-changed: cron-reload-touch dropped; its cron-disabled and cron-enabled changes already reload cron config
@@ -983,7 +981,7 @@ correction after review: system-agent operations run through the operator chat f
 correction after review: channel delivery starts through inbound channel dispatch; the uninstall race uses a managed removal target; active cleanup failure is controlled by a marker read by the live callback.
 correction after review: catalog detail uses a discovery id, skill reads declare installed source, filesystem probes use OPENCLAW_STATE_DIR, and the normal-turn join allows its full remaining hold time.
 correction after review: destructive ordering includes CLI, Gateway and tool removals, so the capability-widening phase precedes uninstall; CLI-only read-only policy and the unexercised redactor boundary remain uncovered.
-correction after review: the entry-point arithmetic excludes emitted broadcast events and counts each explicitly named command and method separately: round 1 315/370 and 319/370; round 2 358/390 and 338/390; round 3 354/378 and 347/378; round 4 328/390 and 373/390.
+correction after review: the entry-point arithmetic excludes emitted broadcast events and counts each explicitly named command and method separately: round 1 314/369 and 317/369; round 2 358/385 and 333/385; round 3 352/376 and 346/376; round 4 328/389 and 372/389.
 correction after review: every named config change saves and restores its exact preceding values; update and capability-widening operations precede removal even though both are destructive operations.
 
 correction after review: session compaction and reset use a created session instead of consuming shared persona state; artifact activation temporarily inlines the plugins section and restores its include ownership without losing newly installed values; the multi-entry package starts installed and unreviewed.
@@ -1021,16 +1019,22 @@ Plugin dashboard widget "Retry": entry point from run 1 only; the displayed widg
 host.ui.registerWidget: entry point from run 2 only; recorded as an API method.
 host.ui.registerAction: entry point from run 2 only; the generic action locations in run 1 did not name this API method or a concrete contributed control.
 Plugin tab query and slug routes: both runs named both route forms; parameter values do not add routes.
-counting correction: round 1 315/370 and 319/370; round 2 358/390 and 338/390; round 3 354/378 and 347/378; round 4 328/390 and 373/390.
+counting correction: round 1 314/369 and 317/369; round 2 358/385 and 333/385; round 3 352/376 and 346/376; round 4 328/389 and 372/389.
 
 correction after review: capability widening selects the consent and surface-summary owners; cancellation selects the CLI abort/signal owner. Hot replacement establishes hybrid reload before the fixture change and restores the exact preceding reload mode and presence afterward.
 host.ui.registerPage: entry point from run 2 only; explicitly named as a browser registration API.
 host.ui.registerPanel: entry point from run 2 only; explicitly named as a browser registration API.
 host.ui.registerAccessory: entry point from run 2 only; explicitly named as a browser registration API.
 counting correction: run 1's rendered Plugin page is its already listed plugin-tab route, not discovery of host.ui.registerPage. Its Plugin session panel and Plugin session header accessory describe static content without an additional named action; they do not discover registration methods. The same distinction removes run 2's panel/accessory API credit in round 1. Saved descriptions remain in the reconciliation evidence; no source output was changed.
-counting correction: round 1 315/370 and 319/370; round 2 358/390 and 338/390; round 3 354/378 and 347/378; round 4 328/390 and 373/390.
+counting correction: round 1 314/369 and 317/369; round 2 358/385 and 333/385; round 3 352/376 and 346/376; round 4 328/389 and 372/389.
 
 correction after review: passive config-driven phases require the hybrid reload persona state. Cron reconciliation additionally saves/sets/restores reload mode and waits for a new cron_reconciled event with reason reload after each config write, before proceeding. The unpaired message probe uses its own peer trait, preserving destructive channel-command ordering without consuming shared approval-account prerequisites.
 The cron change toggles the current effective enabled value, so an initially disabled scheduler still receives a real config transition; its selectors include the hot-reload plan, scheduler replacement and reconciliation-hook owners.
 
 correction after review: the hot-replacement phase selects the plugin planning and application owners, while approval scenarios select the shared delivery-route owner as well as the agent-side transport.
+
+correction after review: retained-instance inspection and the tool probe now run immediately after failed replacement, before restoring source or issuing a successful reload. The separate continuation is merged into that event; two unobserved config toggles are removed. Each idle-fixture reload has a 90000 ms budget; the merged 285000 ms of timed commands fits the 300000 ms phase bound. The template now has 94 phases, with all operations and conditions retained.
+Lifecycle selectors include the actual registration-error, recovery-custody, callback-error, session-cleanup, timeout, cancellation-relay, contention, dead-holder, removal-reference, quarantine, bundled-identity, fresh-skill-read and LSP process-cleanup owners for the existing scenarios.
+counting correction: api.runtime.* is an unnamed method family, and the session-discussion provider/module label names no method. Their ownership exclusions remain explanatory; neither is counted as one synthetic entry. The explicit runtime helper names already listed remain counted. In round 4, info and open were explicitly named and remain separate methods.
+counting correction: round 2's plugin-defined methods/routes/commands/tools collection, unnamed native-page routes, unnamed contributed action item and README/overview content description add no concrete control or route. Run 2 explicitly named host.ui.openPanel, which is retained under that API identity; run 1 did not name it. Round 1's Logbook wildcard/view descriptions add no concrete file, route or control; its mixed Doctor description retains the named CLI command without crediting an unnamed repair file. Shared shell and the named help commands remain counted.
+counting correction: round 1 314/369 and 317/369; round 2 358/385 and 333/385; round 3 352/376 and 346/376; round 4 328/389 and 372/389.
