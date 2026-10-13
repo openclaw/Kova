@@ -67,6 +67,7 @@
     "plugin-catalog-tool-calls",
     "plugin-concurrency-peer",
     "plugin-credential-synthetic",
+    "plugin-delivery-inactive-peer",
     "plugin-disabled-with-config",
     "plugin-fixture-feature-ui",
     "plugin-fixture-surfaces",
@@ -1516,31 +1517,43 @@
     {
       "id": "event-durable-final-reply-across-reload",
       "kind": "event",
-      "intent": "A channel turn is admitted and its mock response remains held until an unrelated plugin reload finishes. The driver then explicitly releases and joins that exact response, recording final delivery through the retained channel registration.",
+      "intent": "Record an initially disabled peer, then admit a channel turn and hold its mock response. Enable that peer, which has no live instance in the admitted generation, and record its completed publication while the same response remains pending. Release and join that exact response, recording final delivery through the retained channel registration, then disable the peer. A failed publication never counts as the intended interleaving.",
       "paths": [
         "src/gateway/server-plugin-reload-channels.ts",
-        "src/gateway/plugin-channel-reload-targets.ts",
         "src/channels/turn/durable-delivery-runtime.ts",
-        "src/channels/turn/durable-delivery.ts"
+        "src/channels/turn/durable-delivery.ts",
+        "src/gateway/server-plugin-reload.ts",
+        "src/gateway/server-plugin-reload-cleanup.ts",
+        "src/gateway/server-plugin-runtime-generation.ts",
+        "src/plugins/management-mutations.ts",
+        "src/plugins/loader-registration-plan.ts",
+        "src/plugins/loader-runtime-candidate.ts",
+        "src/plugins/loader-runtime-core.ts",
+        "src/plugins/plugin-invocation-scope.ts",
+        "src/plugins/plugin-metadata-lifecycle.ts",
+        "src/plugins/registry-lifecycle.ts",
+        "src/agents/prepared-model-runtime.plugin-lifetime.ts"
       ],
       "requires": [
         "channels-test-accounts",
         "mock-provider-held-turn",
-        "plugin-fixture-surfaces",
-        "session-channel-held"
+        "session-channel-held",
+        "plugin-delivery-inactive-peer"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --chat-type direct --peer {persona:session-channel-held:peer} --text VERIFY_FINAL_REPLY --hold-until-release --max-hold-ms 90000 --timeout 120000 --background --handle {run}/final-reply.json",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.reload --params '{\"plugins\":[{\"pluginId\":\"{persona:plugin-fixture-surfaces:pluginId}\"}]}' --timeout 60000 --after-ms 2000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.inspect --params '{\"pluginId\":\"{persona:plugin-delivery-inactive-peer:pluginId}\"}' --timeout 30000",
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --chat-type direct --peer {persona:session-channel-held:peer} --text VERIFY_FINAL_REPLY --hold-until-release --max-hold-ms 90000 --timeout 100000 --background --handle {run}/final-reply.json",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.setEnabled --params '{\"pluginId\":\"{persona:plugin-delivery-inactive-peer:pluginId}\",\"enabled\":true}' --timeout 60000",
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --release-from {run}/final-reply.json --timeout 5000",
-        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --wait {run}/final-reply.json --timeout 60000"
+        "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --wait {run}/final-reply.json --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method plugins.setEnabled --params '{\"pluginId\":\"{persona:plugin-delivery-inactive-peer:pluginId}\",\"enabled\":false}' --timeout 40000"
       ],
       "checkpoint": [
         "responses",
         "logs",
         "timing"
       ],
-      "timeoutMs": 270000,
+      "timeoutMs": 300000,
       "browser": false,
       "slow": false
     },
