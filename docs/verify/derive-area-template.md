@@ -256,10 +256,11 @@ Rules:
   `product: <command>  (<what>; <flags>)`.
 - Placeholders in commands are `{env}`, `{kovaRoot}`, `{run}` and
   `{persona:<trait>:<key>}` for an identifier the persona provides (a session
-  key, an agent id, a file path). No other placeholder and no invented
-  literal: a value that names persona content comes from a placeholder, while
-  an OpenClaw constant, such as the default agent id `main`, is written as it
-  is. A command that needs a value an earlier command produced reads it
+  key, an agent id, a file path); `{env}`, `{kovaRoot}` and `{run}` only
+  outside quotes (see [Commands](plan-and-verdict.md#commands)). No other
+  placeholder and no invented literal: a value that names persona content
+  comes from a placeholder, while an OpenClaw constant, such as the default
+  agent id `main`, is written as it is. A command that needs a value an earlier command produced reads it
   from a file that command wrote under `{run}`; the script that reads it owns
   that resolution.
 - Persona traits are named `<noun>-<qualifier>` in lower-case hyphenated

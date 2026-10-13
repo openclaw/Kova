@@ -225,8 +225,10 @@ any other difference in the same phase and signal is classed on its own.
 
 - `change.paths` lists every changed path, before the ignore globs are applied.
 - Each entry in `phases` carries the full phase as its source defines it, with
-  its qualified id, in run order, with `{persona:…}` and `{kovaRoot}` already
-  replaced; `{env}` and `{run}` are replaced per clone when the plan runs. The
+  its qualified id, in run order, with `{persona:…}` already replaced;
+  `{kovaRoot}`, `{env}` and `{run}` are replaced by `run`, from the Kova that
+  runs the plan and per clone, so the scripts that run are always the ones
+  the cache key describes. The
   example shows only `id` and `from`, and assumes the catalogue has the
   generic Gateway caller.
 - `from` records where every phase came from: `standard`, `template:<area>`,
@@ -325,13 +327,18 @@ Phase commands are shell command strings, run the way Kova runs scenario
 commands. So that the catalogue bounds what a phase runs, a phase command may
 contain `$`, a backtick, `;`, `|`, `&`, `<`, `>` or a line break only inside a
 single-quoted argument, where the shell does not interpret them; the catalogue
-check refuses any other occurrence. `{env}`, `{kovaRoot}` and `{run}` are
-replaced shell-quoted. A
-`{persona:<trait>:<key>}` value is replaced as it is; a persona key value
-therefore uses only letters, digits and `.`, `_`, `-`, `:`, `/`, `@`, which
-are safe both as a shell word and inside a JSON string (see
-[Persona](persona.md#rules)). `{kovaRoot}` is the root of the Kova checkout or
-installation running the plan.
+check refuses any other occurrence.
+
+`{env}`, `{kovaRoot}` and `{run}` are replaced shell-quoted, so they may appear
+only outside quotes, as a shell word or the start of one (`{run}/turn.json`);
+the catalogue check refuses them inside a quoted argument. A script that needs
+a run file's content inside JSON reads it through a `--*-from` flag instead. A
+`{persona:<trait>:<key>}` value is replaced as it is and may appear anywhere,
+including inside a single-quoted JSON argument: a persona key value uses only
+letters, digits and `.`, `_`, `-`, `:`, `/`, `@`, which are safe both as a
+shell word and inside a JSON string (see [Persona](persona.md#rules)).
+`{kovaRoot}` is the root of the Kova checkout or installation running the
+plan.
 
 ## Checkpoint Form
 
@@ -364,7 +371,7 @@ item. A row is one phase, one signal and one item:
 | `responses` | one JSON node, by command index and JSON pointer (`0/result/items/0/title`) | a leaf's value; a container's type (`array` or `object`) with its length or its sorted key list |
 | `logs` | one normalized log line, by its text | the number of times it appears |
 | `timing` | one command, by index; its bound is its `--timeout`, or the phase's `timeoutMs` when it has none | whether it reached its bound |
-| `state` | a JSON or JSON5 file: one node, by path and JSON pointer; a JSON Lines file: one node, by path, line number and JSON pointer (`sessions/<id-1>.jsonl:12/message/text`); any other text file: one line, by path and line number; any other file: the file, by path | as for `responses`; the normalized line text; the content hash |
+| `state` | a JSON or JSON5 file: one node, by path and JSON pointer; a JSON Lines file: one node, by path, line number and JSON pointer (`sessions/<id:…>.jsonl:12/message/text`); any other text file: one line, by path and line number; any other file: the file, by path | as for `responses`; the normalized line text; the content hash |
 | `doctor` | one Doctor finding, by its code or text | present or not |
 | `screen` | the screenshot (`at` is empty) | its content hash |
 
@@ -372,22 +379,26 @@ Before items are built, every checkpoint is normalized:
 
 - Text lines (log lines, text stdout and text state files): timestamps,
   durations, process ids and port numbers become fixed tokens.
-- Generated ids: an id (a UUID, or a run of eight or more hexadecimal
-  characters) that does not occur in the persona export was generated during
-  the run. Each clone maps its generated ids to numbered tokens, `<id-1>`,
-  `<id-2>`, …, in a fixed order: by the first phase, in plan order, whose
-  checkpoint contains the id; within it, by the first command output that
-  contains it (command index, then JSON pointer); and for an id seen only in
-  state, by the path and then the first normalized line of the file holding
-  it. The map applies everywhere: file paths, JSON object keys, JSON values and
-  text lines. A session created by the same command therefore has the same
-  token on every clone, whatever order files were written in. Ids from the
-  persona export stay as they are.
+- Generated ids: a generated id is a string value, not present in the persona
+  export, at a JSON field named `id` or ending in `Id` or `_id` (such as
+  `sessionId` or `runId`). Other values, hashes and digests included, are
+  never treated as ids and are compared as they are. Each generated id is
+  replaced by a token named after where it was first produced, not by a
+  count: `<id:<qualified phase>/<command index>/<JSON pointer>>` for an id
+  first seen in a command's output, and
+  `<id:<qualified phase>/<path pattern>/<first line>>` for an id first seen in
+  a state file, where the path pattern is the file's path with the id removed
+  and the first line is the file's first normalized line. The same
+  replacement applies wherever the id appears again: file paths, JSON object
+  keys, JSON values and text lines. A resource created by the same command, or
+  first written as the same kind of file with the same opening line, has the
+  same token on every clone, and a new id elsewhere shifts nothing. When two
+  ids would get the same token, both keep their token with a suffix in their
+  order of appearance in that output or listing.
 
 An item one side has and the other lacks has the value `{"absent": true}` on
-the side that lacks it. Absolute
-durations, RSS and CPU are recorded but never compared; timing only compares
-whether a bound was reached.
+the side that lacks it. Absolute durations, RSS and CPU are recorded but never
+compared; timing only compares whether a bound was reached.
 
 ## Noise Floor
 
