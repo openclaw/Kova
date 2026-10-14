@@ -2,7 +2,7 @@ import { lstat, open, rename, rm } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { artifactsDir } from "../paths.mjs";
-import { validateCatalogue } from "../catalogue.mjs";
+import { createCatalogueResolver, validateCatalogue } from "../catalogue.mjs";
 import { canonicalJSON, sha256 } from "./plan.mjs";
 import { checkpointRows, readBytes, readJSON, recordedDirectory } from "./rows.mjs";
 import { readDeclaredIds, normalizeDeclaredIds } from "./normalize.mjs";
@@ -73,11 +73,13 @@ export async function compareRecordedRun(directory) {
   // capturing that checkpoint subsequently fails. The run-wide list also
   // includes missing checkpoints and cannot make that distinction.
   let noiseExcluded = 0, exitTwo = names.some((name) => run.clones[name].incomplete?.length > 0);
+  const resolveEntry = createCatalogueResolver(catalogue);
   for (const phase of plan.phases) {
     const copies = {};
     const commandCount = phase.commands.length * (["standard/use-target", "standard/start-gateway", "standard/stop-gateway"].includes(phase.id) ? run.personaExports?.length ?? 1 : 1);
+    const commandEntries = phase.commands.map((command) => resolveEntry(command, { standard: phase.from === "standard" }).id);
     for (const name of names) {
-      copies[name] = await checkpointRows(join(directory, name, "checkpoints", phase.id), phase, standard, normalize[name], commandCount);
+      copies[name] = await checkpointRows(join(directory, name, "checkpoints", phase.id), phase, standard, normalize[name], commandCount, commandEntries);
       if (copies[name].exitTwo) { exitTwo = true; incomplete.add(phase.id); }
       if (run.clones[name].incomplete?.includes(phase.id) || run.clones[name].captureErrors?.[phase.id]) incomplete.add(phase.id);
     }

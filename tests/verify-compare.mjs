@@ -49,7 +49,7 @@ async function fixture(t, options = {}) {
   t.after(() => rm(home, { recursive: true, force: true }));
   const directory = join(home, "artifacts", "verify", "sample");
   await mkdir(directory, { recursive: true });
-  const phases = options.phases ?? [{ id: phaseId, from: "template:sessions", commands: [command], checkpoint: ["responses", "timing", "logs", "doctor", ...(options.state ? ["state:files"] : [])] }];
+  const phases = options.phases ?? [{ id: phaseId, from: "template:sessions", commands: [command], checkpoint: ["responses", "timing", "logs", ...(options.state ? ["state:files"] : [])] }];
   const plan = { schema: "kova.verify.plan.v1", change: { repo: "openclaw/openclaw", baseline: "a".repeat(40), change: "b".repeat(40), paths: ["src/example.ts"] }, persona: { id: "sample", version: "1" }, intent: { goal: "Return the new title.", protected: "Existing records.", expects: structuredClone(options.expects ?? []) }, phases, phasesSha256: sha256(canonicalJSON(phases)), withheld: [], unmapped: [], ignored: [] };
   await writeJSON(join(directory, "plan.json"), plan);
   const run = { schema: "kova.verify.run.v1", id: "sample", plan: { sha256: sha256(await readFile(join(directory, "plan.json"))) }, targets: { baseline: { commit: plan.change.baseline }, change: { commit: plan.change.change } }, clones: Object.fromEntries(names.map((name) => [name, { started: true, phases: Object.fromEntries(phases.map((phase) => [phase.id, "recorded"])) }])) };
@@ -69,7 +69,6 @@ async function fixture(t, options = {}) {
       await writeJSON(join(path, "responses.json"), { 0: data.response ?? { title: "old" } });
       await writeJSON(join(path, "timing.json"), [{ durationMs: 1000 * (index + 1), reachedBound: data.bound ?? false }]);
       await writeFile(join(path, "logs.txt"), data.logs ?? "");
-      await writeJSON(join(path, "doctor.json"), [{ findings: data.findings ?? [] }]);
       if (options.state) { await mkdir(join(path, "state", "files"), { recursive: true }); await options.state(join(path, "state", "files"), name, index, phase); }
       if (phase.checkpoint.includes("screen")) await writeFile(join(path, "screen.png"), data.screen ?? "image");
     }
@@ -103,9 +102,9 @@ test("shared failures win before expectations, including different warning count
   const f = await fixture(t, { copies: Object.fromEntries(names.map((name) => [name, { ...data, ...(name === "change-1" ? { logs: "WARN shared\nWARN shared\n" } : {}) }])), expects: [{ phase: phaseId, signal: "commands", at: "0/exit", change: 1 }] });
   const result = await f.compare();
   assert.equal(result.verdict, "good-to-go");
-  assert.equal(result.rows.length, 5);
+  assert.equal(result.rows.length, 4);
   assert.ok(result.rows.every((row) => row.class === "not-caused"));
-  assert.equal(result.issues.length, 5);
+  assert.equal(result.issues.length, 4);
   await compareVerification({ run: "sample" }, { home: join(f.home, "artifacts") });
   assert.match(await readFile(join(f.directory, "issues.md"), "utf8"), /baseline 1; change-1 2/);
 });
@@ -113,7 +112,7 @@ test("shared failures win before expectations, including different warning count
 test("baseline-only failures are fixed before intended or flaky", async (t) => {
   const f = await fixture(t, { copies: { baseline: { exit: 1, bound: true, logs: "ERROR old\n", findings: [{ code: "old" }] } }, expects: [{ phase: phaseId, signal: "commands", at: "0/exit", change: 0 }] });
   const result = await f.compare();
-  assert.equal(result.rows.length, 4);
+  assert.equal(result.rows.length, 3);
   assert.ok(result.rows.every((row) => row.class === "fixed"));
   assert.equal(result.verdict, "good-to-go");
 });
@@ -199,7 +198,14 @@ test("exit 2 on any copy overrides a break even when its item is noise", async (
 
 test("missing checkpoints record fixed, break, and incomplete cases", async (t) => {
   const baselineMissing = await fixture(t, { missing: ["baseline"] });
-  assert.equal((await baselineMissing.compare()).rows.find((row) => row.signal === "checkpoint").class, "fixed");
+  const recovered = await baselineMissing.compare();
+  assert.equal(recovered.verdict, "good-to-go");
+  assert.deepEqual(recovered.rows.map((row) => [row.signal, row.class]), [["checkpoint", "fixed"]]);
+  const oneMissing = await fixture(t, { missing: ["change-1"], copies: { "change-2": { response: { title: "new" } } } });
+  const uncertain = await oneMissing.compare();
+  assert.equal(uncertain.verdict, "unresolved");
+  assert.ok(uncertain.rows.every((row) => row.class === "flaky"));
+  assert.deepEqual(uncertain.rows.find((row) => row.signal === "responses").clones, ["change-2"]);
   const changesMissing = await fixture(t, { missing: ["change-1", "change-2"] });
   assert.equal((await changesMissing.compare()).verdict, "breaks");
   const bothMissing = await fixture(t, { missing: ["baseline", "change-1", "change-2"] });
@@ -233,7 +239,7 @@ test("breaks precede not-started and incomplete; withheld and unmapped remain in
 });
 
 test("catalogue ids normalize values, keys, paths and embedded references, but existing ids stay", async (t) => {
-  const copies = Object.fromEntries(names.map((name, i) => [name, { response: { result: { id: `new-${i}` }, ref: `prefix:new-${i}`, keys: { [`new-${i}`]: true } }, stdout: `new-${i}\n`, logs: `INFO new-${i}\n` }]));
+  const copies = Object.fromEntries(names.map((name, i) => [name, { response: { result: { id: `new-${i}` }, ref: `prefix:new-${i}`, keys: { [`new-${i}`]: true } }, logs: `INFO new-${i}\n` }]));
   const f = await fixture(t, { copies, creates: ["/result/id"], state: async (path, name, i) => writeJSON(join(path, `new-${i}.json`), { id: `new-${i}` }) });
   assert.equal((await f.compare()).verdict, "good-to-go");
   const old = await fixture(t, { copies, creates: ["/result/id"], initial: async (path) => writeJSON(join(path, "persona.json"), { reference: "prefix:new-0" }) });
@@ -432,4 +438,86 @@ test("secondary environment commands compare through the actual checkpoint write
   const result = await f.compare();
   assert.equal(result.verdict, "good-to-go");
   assert.deepEqual(result.rows, []);
+});
+
+
+test("response recordings require exactly the JSON command outputs", async (t) => {
+  const f = await fixture(t);
+  const response = join(f.directory, "change-1/checkpoints", phaseId, "responses.json");
+  for (const invalid of [false, 1, null, [], [{ title: "old" }], {}, { 1: {} }, { "00": {} }, { 0: {}, 1: {} }]) {
+    await writeJSON(response, invalid);
+    await assert.rejects(f.compare(), /invalid response checkpoint/);
+  }
+  await writeJSON(response, { 0: { title: "old" } });
+  assert.equal((await f.compare()).verdict, "good-to-go");
+  for (const name of names) {
+    const checkpoint = join(f.directory, name, "checkpoints", phaseId);
+    const commands = JSON.parse(await readFile(join(checkpoint, "commands.json")));
+    commands[0].stdout = "ordinary text\n";
+    await writeJSON(join(checkpoint, "commands.json"), commands);
+    await writeJSON(join(checkpoint, "responses.json"), {});
+  }
+  assert.equal((await f.compare()).verdict, "good-to-go");
+  await writeJSON(response, { 0: null });
+  await assert.rejects(f.compare(), /invalid response checkpoint/);
+});
+
+test("the CLI rejects a FIFO recording without waiting for a writer", { skip: process.platform === "win32" }, async (t) => {
+  const f = await fixture(t);
+  const file = join(f.directory, "run.json");
+  await rm(file);
+  assert.equal(spawnSync("mkfifo", [file]).status, 0);
+  const result = spawnSync(process.execPath, ["bin/kova.mjs", "verify", "compare", "--run", "sample", "--json"], { cwd: new URL("..", import.meta.url), env: { ...process.env, KOVA_HOME: f.home }, encoding: "utf8", timeout: 5000 });
+  assert.equal(result.error, undefined);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /not a regular file/);
+});
+
+test("missing declared SQLite columns remain product differences", async (t) => {
+  for (const column of ["id", "owner", "created"]) {
+    const f = await fixture(t, { stateIds: [{ path: "files/store.sqlite", table: "records", column: "id", recordKey: "owner", order: "created" }], state: async (path, name, index) => {
+      const db = new DatabaseSync(join(path, "store.sqlite"));
+      try {
+        db.exec("CREATE TABLE records (row_key TEXT PRIMARY KEY, owner TEXT, id TEXT, created INTEGER)");
+        db.prepare("INSERT INTO records VALUES ('stable', 'same-owner', ?, 1)").run(`generated-${index}`);
+        if (name.startsWith("change")) db.exec(`ALTER TABLE records DROP COLUMN "${column}"`);
+      } finally { db.close(); }
+    } });
+    const result = await f.compare();
+    assert.equal(result.verdict, "breaks", column);
+    assert.ok(result.rows.some((row) => row.at.endsWith(`/${column}`) && row.class === "break"), column);
+  }
+});
+
+test("mixed phases consume actual Doctor formats through the checkpoint writer", async (t) => {
+  const doctor = "ocm @{env} -- doctor --json";
+  const sqlite = "ocm @{env} -- doctor --session-sqlite inspect --session-sqlite-all-agents --json";
+  const repair = "node {kovaRoot}/support/run-doctor-repair.mjs --env {env}";
+  const phase = { id: phaseId, from: "template:sessions", commands: [command, doctor, sqlite, repair, doctor], checkpoint: ["doctor"] };
+  const f = await fixture(t, { phases: [phase] });
+  const shipped = JSON.parse(await readFile(new URL("../catalogue/openclaw.json", import.meta.url)));
+  await writeJSON(join(f.directory, "catalogue.json"), { ...shipped, entries: [...shipped.entries, entry] });
+  for (const name of names) {
+    const changed = name.startsWith("change");
+    const output = [
+      { findings: ["unrelated output"] },
+      { schemaVersion: 1, ok: false, findings: [{ checkId: "check", message: "shared" }, { checkId: "check", message: changed ? "new" : "fixed" }], warnings: [{ checkId: "warning", message: "shared warning" }] },
+      { mode: "inspect", targets: ["main", "other"].map((agentId) => ({ agentId, issues: [{ code: "transcript_missing", sessionKey: "stable", message: "Missing transcript" }] })) },
+      { schemaVersion: "kova.doctorRepair.v1", errors: changed ? ["Repair failed"] : [] },
+      changed ? { unexpected: true } : { findings: [] }
+    ];
+    const directory = join(f.directory, name);
+    await rm(join(directory, "checkpoints"), { recursive: true });
+    await writeCheckpoint({ phase, directory, results: output.map((value, index) => ({ command: phase.commands[index], status: index === 3 && changed ? 1 : 0, stdout: JSON.stringify(value), stderr: "", durationMs: 1 })) });
+  }
+  const result = await f.compare();
+  assert.equal(result.verdict, "breaks");
+  assert.ok(!result.rows.some((row) => row.at.includes("unrelated")));
+  assert.equal(result.rows.find((row) => row.at === "shared").class, "not-caused");
+  assert.equal(result.rows.find((row) => row.at === "shared warning").class, "not-caused");
+  assert.equal(result.rows.find((row) => row.at === "fixed").class, "fixed");
+  assert.equal(result.rows.find((row) => row.at === "new").class, "break");
+  assert.equal(result.rows.find((row) => row.at === "Repair failed").class, "break");
+  assert.equal(result.rows.filter((row) => row.at.includes("transcript_missing") && row.class === "not-caused").length, 2);
+  assert.ok(result.rows.some((row) => row.at === "4/output/unexpected" && row.class === "break"));
 });

@@ -14,7 +14,7 @@ const quote = (name) => `"${name.replaceAll('"', '""')}"`;
 const sqlValue = (value) => typeof value === "bigint" ? (value >= Number.MIN_SAFE_INTEGER && value <= Number.MAX_SAFE_INTEGER ? Number(value) : { integer: String(value) }) : value instanceof Uint8Array ? { sha256: sha256(value) } : value;
 
 export async function readBytes(path, prefixLength) {
-  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
     if (!(await file.stat()).isFile()) throw new Error(`recording is not a regular file: ${path}`);
     if (prefixLength !== undefined) {
@@ -149,7 +149,7 @@ export function rowBuilder(normalize = (value) => value) {
   return { items, add, nodes };
 }
 
-export async function checkpointRows(directory, phase, standard, normalize, commandCount = phase.commands.length) {
+export async function checkpointRows(directory, phase, standard, normalize, commandCount = phase.commands.length, commandEntries = []) {
   const b = rowBuilder(normalize);
   const exists = await recordedDirectory(directory);
   b.add("checkpoint", [], exists);
@@ -169,6 +169,8 @@ export async function checkpointRows(directory, phase, standard, normalize, comm
   for (const signal of new Set(phase.checkpoint)) {
     if (signal === "responses") {
       const responses = await readJSON(join(directory, "responses.json"));
+      const expected = commands.flatMap((command, index) => command.stdout === null ? [String(index)] : []);
+      if (!responses || typeof responses !== "object" || Array.isArray(responses) || Object.keys(responses).length !== expected.length || expected.some((index) => !Object.hasOwn(responses, index))) throw new Error(`${phase.id}: invalid response checkpoint command indices`);
       for (const [index, value] of Object.entries(responses)) b.nodes("responses", value, [index]);
     } else if (signal === "timing") {
       const timing = await readJSON(join(directory, "timing.json"));
@@ -184,16 +186,27 @@ export async function checkpointRows(directory, phase, standard, normalize, comm
       for (const [line, { count, failure }] of lines) b.add("logs", [line], count, { failure });
     } else if (signal === "doctor") {
       const outputs = await readJSON(join(directory, "doctor.json"));
-      if (!Array.isArray(outputs)) throw new Error(`${phase.id}: invalid Doctor checkpoint`);
+      if (!Array.isArray(outputs) || outputs.length !== commands.length) throw new Error(`${phase.id}: invalid Doctor checkpoint`);
       const findings = new Map();
-      for (const output of outputs) {
-        const values = typeof output === "string" ? output.split(/\r?\n/).filter(Boolean) : output?.findings;
-        if (!Array.isArray(values)) throw new Error(`${phase.id}: Doctor output has no findings array`);
-        for (const finding of values) {
+      for (const [index, output] of outputs.entries()) {
+        const entry = commandEntries[index % phase.commands.length];
+        if (!["doctor", "doctor-repair"].includes(entry)) continue;
+        let values;
+        if (typeof output === "string") values = output.split(/\r?\n/).filter(Boolean).map((finding) => ({ finding }));
+        else if (Array.isArray(output?.findings) && (output.warnings === undefined || Array.isArray(output.warnings))) values = [...output.findings, ...(output.warnings ?? [])].map((finding) => ({ finding }));
+        else if (Array.isArray(output?.targets) && output.targets.every((target) => typeof target?.agentId === "string" && Array.isArray(target.issues))) values = output.targets.flatMap((target) => target.issues.map((finding) => ({ finding, scope: [target.agentId, finding?.sessionKey ?? null] })));
+        else if (entry === "doctor-repair" && output?.schemaVersion === "kova.doctorRepair.v1" && Array.isArray(output.errors)) values = output.errors.map((finding) => ({ finding }));
+        // Unknown product output is evidence, not malformed recording metadata.
+        if (!values || values.some(({ finding }) => typeof finding !== "string" && (!finding || typeof finding !== "object" || Array.isArray(finding)))) {
+          b.nodes("doctor", output, [String(index), "output"]);
+          continue;
+        }
+        for (const { finding, scope } of values) {
           const text = normalizeText(normalize(typeof finding === "string" ? finding : finding.message ?? canonicalJSON(finding)));
           // checkId identifies a check, which can report several distinct findings.
-          const code = typeof finding === "object" && finding.code;
-          findings.set(code ? normalize(code) : text, text);
+          const code = typeof finding === "object" && typeof finding.code === "string" && finding.code;
+          const at = code ? normalize(code) : text;
+          findings.set(scope ? canonicalJSON([...scope.map((value) => typeof value === "string" ? normalize(value) : value), at]) : at, text);
         }
       }
       for (const [at, summary] of findings) b.add("doctor", [at], true, { failure: true, summary });

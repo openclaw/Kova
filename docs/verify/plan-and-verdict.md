@@ -553,6 +553,13 @@ patches and attachment temporary files stay inside the disposable environment,
 are excluded from observations and are removed with the environment. Valid
 Gateway credential references remain metadata and are never resolved for capture.
 
+Only commands whose saved catalogue entry is `doctor` or `doctor-repair`
+contribute Doctor findings. Their recorded output may contain `findings` and
+`warnings`, SQLite `targets[].issues`, or the repair helper's `errors`. SQLite
+finding codes are scoped by agent and session key. Other commands in the same
+phase do not contribute Doctor findings. Unrecognized Doctor output remains
+comparable JSON data under `<command index>/output` instead of being discarded.
+
 ### State items
 
 `state:<path>` names a file or directory relative to the clone's OpenClaw
@@ -604,7 +611,9 @@ state directory. Each file in it becomes items by its kind:
 - any other file: one item, addressed by path, valued by its SHA-256 content
   hash.
 
-Invalid product JSON is compared as text. A compressed column that cannot be
+A missing declared SQLite column remains a state difference; normalization
+leaves affected values unchanged when its identity or ordering columns are
+unavailable. Invalid product JSON is compared as text. A compressed column that cannot be
 decoded is compared by its content hash, so corrupted content still produces a
 difference. Invalid checkpoint metadata such as `commands.json` refuses the
 comparison instead of inventing command results.
@@ -698,6 +707,10 @@ one of two things:
   or the same Doctor finding; a command that exits non-zero with a different
   code on each side is a difference. An error or warning line present on both
   sides is a shared failure whatever its count on each side.
+
+When a checkpoint is absent, compare its presence alone; there is no content
+to pair beneath it. Content seen on only one available change copy cannot
+establish a repeated difference while the other copy's checkpoint is absent.
 
 A phase is **incomplete** when the baseline clone and a change clone both lack
 its checkpoint, or when either noise clone lacks it: without the noise runs,

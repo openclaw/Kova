@@ -39,7 +39,9 @@ export async function readDeclaredIds(directory, phases, standard, catalogue) {
       if (file.kind !== "sqlite") continue;
       for (const declaration of standard.stateIds.filter((item) => matchesGlob(file.path, item.path) && item.table === file.table)) {
         for (const row of file.rows) {
-          if (![declaration.column, declaration.recordKey, ...(declaration.order ? [declaration.order] : [])].every((column) => Object.hasOwn(row.values, column))) throw new Error(`declared id column is missing: ${file.path}:${file.table}/${declaration.column}`);
+          // Missing product columns must remain comparable. Without the declared
+          // identity/order fields, keep this row's values instead of guessing IDs.
+          if (![declaration.column, declaration.recordKey, ...(declaration.order ? [declaration.order] : [])].every((column) => Object.hasOwn(row.values, column))) continue;
           const id = row.values[declaration.column].raw;
           if (typeof id !== "string" || !id) continue;
           const key = row.values[declaration.recordKey].raw;
