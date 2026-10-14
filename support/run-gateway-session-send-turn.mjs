@@ -13,6 +13,10 @@ import {
 } from "./openclaw-runtime.mjs";
 
 const startedAtEpochMs = Date.now();
+let runId = null;
+let replyRunId = null;
+
+class RunAssociationUnavailableError extends Error {}
 
 try {
   const args = parseSupportArgs(process.argv.slice(2));
@@ -40,29 +44,56 @@ try {
       sessionCreateFinishedAtEpochMs = Date.now();
     }
     const canonicalKey = created?.key ?? sessionKey;
+    const idempotencyKey = `kova-gateway-session-${randomUUID()}`;
     const sendStartedAtEpochMs = Date.now();
     const sent = await gatewayCall(gatewayTransport, "sessions.send", {
         key: canonicalKey,
         message,
         thinking: "off",
         timeoutMs,
-        idempotencyKey: `kova-gateway-session-${randomUUID()}`
+        idempotencyKey
       }, Math.min(timeoutMs, 60000));
     const sendFinishedAtEpochMs = Date.now();
-    const runId = typeof sent?.runId === "string" ? sent.runId : null;
+    if (typeof sent?.runId !== "string" || !sent.runId.trim()) {
+      throw new Error("sessions.send returned no run id");
+    }
+    if (sent.runId !== idempotencyKey) {
+      throw new Error("sessions.send returned a different run id from the submitted idempotency key");
+    }
+    runId = sent.runId;
+    const deadline = sendStartedAtEpochMs + timeoutMs;
+    const completions = new Map();
+    let completionError = null;
+    const trackCompletion = (id) => {
+      if (!completions.has(id)) {
+        const pending = waitForRunCompletion({ gatewayTransport, runId: id, deadline });
+        void pending.catch((error) => { completionError ??= error; });
+        completions.set(id, pending);
+      }
+      return completions.get(id);
+    };
+    const completion = trackCompletion(runId);
 
     const history = await waitForAssistantText({
       gatewayTransport,
       sessionKey: canonicalKey,
       expectedText,
-      timeoutMs,
-      minAssistantCount
+      deadline,
+      runId,
+      minAssistantCount,
+      trackCompletion,
+      waitForCompletions: () => Promise.all(completions.values()),
+      readCompletionError: () => completionError
     });
+    replyRunId = history.replyRunId;
+    const completedAt = await Promise.all([completion, trackCompletion(replyRunId)]);
+    const runCompletedAtEpochMs = Math.max(...completedAt);
     const finishedAtEpochMs = Date.now();
-    const activeFinishedAtEpochMs = history.assistantMatchedAtEpochMs ?? finishedAtEpochMs;
+    const activeFinishedAtEpochMs = Math.max(history.assistantMatchedAtEpochMs ?? finishedAtEpochMs, runCompletedAtEpochMs);
 
     finishJson({
       ok: true,
+      recordStatus: "PASS",
       surface: "gateway-session-send-turn",
       method: "sessions.send",
       createSession,
@@ -74,6 +105,7 @@ try {
       },
       sessionKey: canonicalKey,
       runId,
+      replyRunId,
       startedAtEpochMs,
       sessionCreateStartedAtEpochMs,
       sessionCreateFinishedAtEpochMs,
@@ -104,9 +136,15 @@ try {
     gatewayTransport.client?.close();
   }
 } catch (error) {
-  const failure = classifyGatewaySessionFailure(error);
+  const failure = error instanceof RunAssociationUnavailableError
+    ? { failureDomain: "kova-harness", recordStatus: "BLOCKED" }
+    : runId === null
+      ? classifyGatewaySessionFailure(error)
+      : { failureDomain: "openclaw", recordStatus: "FAIL" };
   failJson(error, {
     surface: "gateway-session-send-turn",
+    runId,
+    replyRunId,
     finishedAtEpochMs: Date.now(),
     failureDomain: failure.failureDomain,
     recordStatus: failure.recordStatus,
@@ -114,8 +152,32 @@ try {
   });
 }
 
-async function waitForAssistantText({ gatewayTransport, sessionKey, expectedText, timeoutMs, minAssistantCount }) {
-  const deadline = Date.now() + timeoutMs;
+async function waitForRunCompletion({ gatewayTransport, runId, deadline }) {
+  while (Date.now() < deadline) {
+    const remainingMs = deadline - Date.now();
+    const result = await gatewayCall(gatewayTransport, "agent.wait", {
+      runId,
+      timeoutMs: Math.min(10000, remainingMs)
+    }, remainingMs + 1000);
+    if (result?.runId !== runId) {
+      throw new Error("agent.wait returned a different or missing run id");
+    }
+    if (result.status === "error" || (result.error && !(result.status === "timeout" && result.pendingError === true))) {
+      throw new Error(result.error || `Gateway session run ${runId} failed`);
+    }
+    if (result.status === "ok") {
+      return Date.now();
+    }
+    if (result.status !== "pending" && result.status !== "timeout") {
+      throw new Error(`Gateway session run ${runId} ended with status ${JSON.stringify(result.status)}`);
+    }
+    await sleep(Math.min(100, Math.max(0, deadline - Date.now())));
+  }
+  throw new Error(`timed out waiting for Gateway session run ${runId}`);
+}
+
+async function waitForAssistantText({ gatewayTransport, sessionKey, expectedText, deadline, runId, minAssistantCount, trackCompletion, waitForCompletions, readCompletionError }) {
+  let associationObserved = false;
   let lastAssistantText = "";
   let assistantTextEvidence = null;
   let lastHistoryError = null;
@@ -124,24 +186,39 @@ async function waitForAssistantText({ gatewayTransport, sessionKey, expectedText
   let pollCount = 0;
   let errorCount = 0;
   while (Date.now() < deadline) {
+    if (readCompletionError()) throw readCompletionError();
     try {
-      pollCount += 1;
-      const history = await gatewayCall(gatewayTransport, "chat.history", { sessionKey, limit: 16 }, Math.min(15000, Math.max(1000, deadline - Date.now())));
+      const readHistory = async (params) => {
+        pollCount += 1;
+        return await gatewayCall(gatewayTransport, "chat.history", params, Math.min(15000, Math.max(1, deadline - Date.now())));
+      };
+      const history = await readHistory({ sessionKey, limit: 16 });
       lastHistoryError = null;
       const messages = history?.messages ?? [];
       assistantTexts = extractAssistantTexts(messages);
       assistantTextEvidence = summarizeAssistantTextEvidence(messages);
-      lastAssistantText = assistantTexts.at(-1) ?? "";
-      const eligibleAssistantTexts = assistantTexts.slice(Math.max(0, minAssistantCount - 1));
-      if (assistantFirstSeenAtEpochMs === null && eligibleAssistantTexts.length > 0) {
+      const replies = await findSubmittedReplies({ history, sessionKey, runId, deadline, readHistory });
+      associationObserved ||= replies.length > 0;
+      for (const reply of replies) {
+        replyRunId = reply.__openclaw?.runId || runId;
+        trackCompletion(replyRunId);
+      }
+      const runAssistantTexts = extractAssistantTexts(replies);
+      lastAssistantText = runAssistantTexts.at(-1) ?? "";
+      const eligibleReplies = assistantTexts.length >= minAssistantCount ? replies : [];
+      if (assistantFirstSeenAtEpochMs === null && runAssistantTexts.length > 0) {
         assistantFirstSeenAtEpochMs = Date.now();
       }
-      const matchedAssistantText = eligibleAssistantTexts.find((text) => textEquals(text, expectedText));
-      if (matchedAssistantText) {
+      const matchedReply = eligibleReplies.find((reply) => {
+        const text = extractAssistantVisibleText(reply).trim();
+        return text.length > 0 && textEquals(text, expectedText);
+      });
+      if (matchedReply) {
         return {
+          replyRunId: matchedReply.__openclaw?.runId || runId,
           assistantTexts,
           lastAssistantText,
-          matchedAssistantText,
+          matchedAssistantText: extractAssistantVisibleText(matchedReply).trim(),
           assistantFirstSeenAtEpochMs,
           assistantMatchedAtEpochMs: Date.now(),
           pollCount,
@@ -154,13 +231,49 @@ async function waitForAssistantText({ gatewayTransport, sessionKey, expectedText
       lastHistoryError = error;
       errorCount += 1;
     }
-    await sleep(500);
+    await sleep(Math.min(500, Math.max(0, deadline - Date.now())));
+  }
+  await waitForCompletions();
+  if (readCompletionError()) throw readCompletionError();
+  if (!associationObserved) {
+    const error = new RunAssociationUnavailableError(
+      `Gateway did not provide an authoritative association between submitted run ${runId} and an assistant reply; queued execution ownership cannot be inferred`
+    );
+    error.assistantTextEvidence = assistantTextEvidence;
+    throw error;
   }
   const error = new Error(
-    `timed out waiting for Gateway session assistant text exactly equal to ${JSON.stringify(expectedText)}; last=${JSON.stringify(lastAssistantText)}; lastHistoryError=${JSON.stringify(lastHistoryError?.message ?? null)}`
+    `timed out waiting for Gateway session run ${runId} assistant text exactly equal to ${JSON.stringify(expectedText)}; last=${JSON.stringify(lastAssistantText)}; lastHistoryError=${JSON.stringify(lastHistoryError?.message ?? null)}`
   );
   error.assistantTextEvidence = assistantTextEvidence;
   throw error;
+}
+
+async function findSubmittedReplies({ history, sessionKey, runId, deadline, readHistory }) {
+  let page = history;
+  let offset = 0;
+  while (Date.now() < deadline) {
+    const replies = (page.messages ?? []).filter((message) => isAssistantMessage(message) && (
+      message?.__openclaw?.runId === runId || messageIdempotencyKey(message) === runId
+    ));
+    if (replies.length > 0) return replies;
+    // Input order and consumption receipts do not bind a queued execution.
+    // Only explicit reply identity can establish ownership, on any page.
+    if (page.hasMore !== true || !history.sessionId) return [];
+    if (!Number.isSafeInteger(page.nextOffset) || page.nextOffset <= offset) {
+      throw new Error("Gateway history returned a non-advancing page offset");
+    }
+    offset = page.nextOffset;
+    page = await readHistory({ sessionKey, limit: 16, offset });
+    if (page.sessionId !== history.sessionId) {
+      throw new Error("Gateway session changed while reading turn history");
+    }
+  }
+  return [];
+}
+
+function messageIdempotencyKey(message) {
+  return message?.__openclaw?.idempotencyKey ?? message?.idempotencyKey;
 }
 
 async function gatewayCall(gatewayTransport, method, params, timeoutMs) {
@@ -256,7 +369,12 @@ function summarizeAssistantTextEvidence(messages) {
 
 function isAssistantMessage(message) {
   const role = assistantRole(message).toLowerCase();
-  return role.includes("assistant") || role.includes("agent");
+  return !isInputMessage(message) && (role.includes("assistant") || role.includes("agent"));
+}
+
+function isInputMessage(message) {
+  return assistantRole(message).toLowerCase() === "user" ||
+    ["external_user", "inter_session", "internal_system"].includes(message?.provenance?.kind);
 }
 
 function assistantRole(message) {
