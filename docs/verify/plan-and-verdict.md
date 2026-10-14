@@ -654,7 +654,9 @@ TEXT values; numeric components and fallback rowids are never string IDs. Stored
 virtual generated columns in ordinary SQLite tables are included. Empty text,
 JSONL and SQLite files and empty tables retain presence items. JSONL records
 decode independently; malformed lines remain distinct text evidence while valid
-lines still supply their values and persona-existing IDs. Declared TEXT IDs
+lines still supply their values and persona-existing IDs. Invalid UTF-8 is
+handled per line and retained as an `invalidJSONLBytes` hash, so a damaged
+record cannot discard intact records. Declared TEXT IDs
 retain their exact spelling even when already present in the persona.
 
 ### Normalization
@@ -700,7 +702,10 @@ as it is. There are two declarations:
   token gains a further part, `.<m>`, the id's position among those tied ids
   by the table's rowid, counting from 1; ids without a tie carry no `.<m>`.
   The record-key value uses canonical JSON spelling, including quotes for
-  strings, so numeric and TEXT owners remain distinct.
+  strings, so numeric and TEXT owners remain distinct. Ordering preserves
+  stored values: NULL first, then numbers, TEXT and BLOB; numbers compare
+  numerically without rounding large integers or truncating fractions, and
+  TEXT/BLOB compare their bytes.
   The token names the owning record; only ties depend on rowid order. A record key that is
   itself a generated id must be declared too, and is replaced first.
 
