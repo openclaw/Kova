@@ -241,7 +241,7 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 13 | Slack multi-person DMs follow group routing policy mention rules and group-session behavior | docs/channels/index.md "Delivery notes" | ambient | none |
 | 14 | WhatsApp setup is shown before its plugin package is installed and the channel loads the package only when active | docs/channels/index.md "Delivery notes" | ambient | config-channel-not-installed |
 | 15 | Two bots replying to each other, stopped by bot loop protection | docs/channels/index.md "Delivery notes"; docs/channels/bot-loop-protection.md "Bot loop protection"; docs/channels/bot-loop-protection.md "Defaults"; docs/gateway/config-channels/community-chat.md "Discord" | event | channel-bot-peer |
-| 16 | Bot-authored inbound accepted (allowBots) | docs/channels/bot-loop-protection.md "Bot loop protection"; docs/channels/bot-loop-protection.md "Internal agent group rounds" | ambient | channel-bot-peer |
+| 16 | Bot-authored inbound accepted by allowBots, including the Discord and Slack default under mention and access rules | docs/channels/bot-loop-protection.md "Bot loop protection"; docs/channels/bot-loop-protection.md "Internal agent group rounds" | ambient | channel-bot-peer |
 | 17 | Ambient room events: unmentioned room chatter recorded as quiet context | docs/channels/index.md "Delivery notes"; docs/channels/groups.md "Groups"; docs/channels/ambient-room-events.md "Ambient room events"; docs/channels/ambient-room-events.md "Recommended setup"; docs/concepts/messages.md "Silent replies"; docs/gateway/config-channels/mention-gating-and-history.md "Group chat mention gating"; docs/channels/groups.md "Scope configured mention patterns" | ambient | channel-group-ambient, channel-ambient-room |
 | 18 | Several channels running at once, each chat routed on its own | docs/channels/index.md "Notes"; docs/cli/message.md "Channel selection"; docs/cli/pairing.md "pairing list"; docs/channels/channel-routing.md "Channels & routing"; docs/cli/message.md "Broadcast" | ambient | channels-test-accounts |
 | 19 | DM pairing and allowlists enforced on unknown senders | docs/channels/index.md "Notes"; docs/gateway/config-channels/shared-policies.md "DM and group access" | ambient | channels-test-accounts |
@@ -577,8 +577,8 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 349 | Telegram streaming off: final-only with progress chatter suppressed | docs/concepts/streaming.md "Tool-progress preview updates"; docs/concepts/streaming.md "Preview streaming modes" | ambient | config-streaming-mode, channel-streaming-modes |
 | 350 | Preview streaming partial | docs/concepts/streaming.md "Preview streaming modes"; docs/concepts/progress-drafts.md "Choose a mode" | ambient | config-streaming-mode, channel-streaming-modes |
 | 351 | Block preview updates in chunked steps and Telegram rotates at the preview chunk size | docs/concepts/streaming.md "Preview streaming modes"; docs/concepts/progress-drafts.md "Choose a mode" | ambient | config-streaming-mode, channel-streaming-modes |
-| 352 | Preview streaming progress | docs/concepts/streaming.md "Preview streaming modes"; docs/concepts/streaming.md "Channel mapping"; docs/concepts/progress-drafts.md "Progress drafts"; docs/concepts/progress-drafts.md "Choose a mode" | ambient | channel-telegram-shim, channel-streaming-modes |
-| 353 | Microsoft Teams or Mattermost block mode, rotating posts without native preview | docs/concepts/streaming.md "Preview streaming modes" | ambient | none |
+| 352 | Preview streaming progress, including the default when streaming is unset on Discord Telegram and Slack | docs/concepts/streaming.md "Preview streaming modes"; docs/concepts/streaming.md "Channel mapping"; docs/concepts/progress-drafts.md "Progress drafts"; docs/concepts/progress-drafts.md "Choose a mode" | ambient | channel-telegram-shim, channel-streaming-modes |
+| 353 | Microsoft Teams block mode disables native preview streaming and uses regular block delivery | docs/concepts/streaming.md "Preview streaming modes" | ambient | none |
 | 354 | Slack native streaming transport in partial mode | docs/concepts/streaming.md "Channel mapping" | ambient | none |
 | 355 | Slack top-level DMs without a reply thread show no thread-style preview | docs/concepts/streaming.md "Channel mapping" | ambient | none |
 | 356 | Slack native agent card in reply threads during progress | docs/concepts/streaming.md "Slack" | ambient | none |
@@ -643,9 +643,9 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 415 | Details disclosure native with richMessages, flattened elsewhere | docs/concepts/markdown-formatting.md "Collapsible details" | event | channel-telegram-shim, mock-provider-markdown-reply |
 | 416 | Stray final markers outside code are removed while enclosed answer text is retained | docs/concepts/markdown-formatting.md "Common gotchas" | event | channel-probe-conversations, mock-provider-markdown-reply |
 | 417 | Slack angle-bracket tokens surviving escaping | docs/concepts/markdown-formatting.md "Common gotchas" | ambient | none |
-| 418 | Channel send transient failure retried per request with jittered backoff | docs/concepts/retry.md "Defaults" | event | channel-telegram-shim |
+| 418 | Channel send transient failure retried per request with at most three total attempts and jittered backoff | docs/concepts/retry.md "Defaults" | event | channel-telegram-shim |
 | 419 | Composite outbound flow failing mid-way, completed steps not retried | docs/concepts/retry.md "Notes" | event | channel-probe-conversations, channel-telegram-shim |
-| 420 | Discord Gateway WebSocket reconnect loop | docs/concepts/retry.md "Defaults" | event | channel-discord-fixture |
+| 420 | Discord Gateway WebSocket reconnect loop permits up to fifty attempts with exponential backoff from two seconds to a thirty-second cap | docs/concepts/retry.md "Defaults" | event | channel-discord-fixture |
 | 421 | Discord send or REST call 429, timeout or 5xx retried | docs/concepts/retry.md "Discord" | event | channel-discord-fixture |
 | 422 | Telegram text send outcome ambiguous after sending, not replayed | docs/concepts/retry.md "Telegram" | event | channel-telegram-shim |
 | 423 | Telegram send rejected by flood control retried after retry_after | docs/concepts/retry.md "Telegram" | event | channel-telegram-shim |
@@ -654,7 +654,7 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 426 | Telegram HTML parse error falls back to plain text without retry | docs/concepts/retry.md "Telegram" | event | channel-telegram-shim, mock-provider-markdown-reply |
 | 427 | Durable delivery producer claim expired or replaced, budget not charged | docs/concepts/retry.md "Durable outbound delivery" | event | channel-probe-conversations |
 | 428 | Vanished delivery producer recovered after last lease expires | docs/concepts/retry.md "Durable outbound delivery" | event | channel-delivery-queued, channel-probe-conversations |
-| 429 | Send started when lease expired, reconciled before replay | docs/concepts/retry.md "Durable outbound delivery" | event | channel-telegram-shim, channel-probe-conversations |
+| 429 | Send started when its lease expired requires reconciliation before replay; an unreplaced owner can record a late result without another send | docs/concepts/retry.md "Durable outbound delivery" | event | channel-telegram-shim, channel-probe-conversations |
 | 430 | Producer leases renew through brief Gateway stalls | docs/concepts/retry.md "Durable outbound delivery" | ambient | channel-delivery-queued, channel-probe-conversations |
 | 431 | Control UI reaction on a channel-origin prompt mirrored to the channel | docs/tools/reactions.md "Reactions" | event | channel-probe-conversations |
 | 432 | Reaction with trackToolCalls reused for the status reaction lifecycle | docs/tools/reactions.md "How it works" | event | channel-discord-fixture, mock-provider-tool-calls |
@@ -666,7 +666,7 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 438 | Feishu clearAll reaction semantics | docs/tools/reactions.md "Channel behavior" | ambient | none |
 | 439 | reactionLevel off | docs/tools/reactions.md "Reaction level" | ambient | config-reaction-level-off, channel-reaction-level |
 | 440 | reactionLevel ack | docs/tools/reactions.md "Reaction level" | ambient | channel-reaction-level |
-| 441 | reactionLevel minimal | docs/tools/reactions.md "Reaction level" | ambient | channel-telegram-shim, channel-reaction-level |
+| 441 | reactionLevel minimal, including the default on Telegram WhatsApp and Signal | docs/tools/reactions.md "Reaction level" | ambient | channel-telegram-shim, channel-reaction-level |
 | 442 | reactionLevel extensive | docs/tools/reactions.md "Reaction level" | ambient | channel-reaction-level |
 | 443 | Channel starts automatically because its config section exists | docs/gateway/config-channels.md "Channels" | event | channels-test-accounts |
 | 444 | Channel or account enabled false, not started | docs/gateway/config-channels.md "Channels" | ambient | config-channel-disabled, channel-accounts-multiple |
@@ -723,7 +723,7 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 495 | Discord human presence arrivals routed as system events with reconnect suppression and burst limits | docs/gateway/config-channels/community-chat.md "Discord" | event | none |
 | 496 | Mutable name or tag allowlist matching re-enabled | docs/gateway/config-channels/community-chat.md "Discord"; docs/gateway/config-channels/workplace-chat.md "Google Chat" | ambient | config-name-matching |
 | 497 | Reaction notifications off | docs/tools/reactions.md "Channel behavior"; docs/gateway/config-channels/personal-messaging.md "Signal"; docs/gateway/config-channels/community-chat.md "Discord"; docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | channel-telegram-shim |
-| 498 | Reaction notifications own | docs/tools/reactions.md "Channel behavior"; docs/gateway/config-channels/personal-messaging.md "Signal"; docs/gateway/config-channels/community-chat.md "Discord"; docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | channel-telegram-shim |
+| 498 | Reaction notifications own, including the unset default and events for reactions to bot messages | docs/tools/reactions.md "Channel behavior"; docs/gateway/config-channels/personal-messaging.md "Signal"; docs/gateway/config-channels/community-chat.md "Discord"; docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | channel-telegram-shim |
 | 499 | Reaction notifications all | docs/tools/reactions.md "Channel behavior"; docs/gateway/config-channels/personal-messaging.md "Signal"; docs/gateway/config-channels/community-chat.md "Discord"; docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | channel-telegram-shim |
 | 500 | Reaction notifications allowlist | docs/tools/reactions.md "Channel behavior"; docs/gateway/config-channels/personal-messaging.md "Signal"; docs/gateway/config-channels/community-chat.md "Discord"; docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | channel-discord-fixture |
 | 501 | Matrix HTTP traffic, status checks and live directory lookups use the same explicit proxy policy | docs/gateway/config-channels/community-chat.md "Matrix" | ambient | none |
@@ -1259,6 +1259,27 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 1031 | Slack configured typingReaction shortcodes replace the quiet-progress default | docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | none |
 | 1032 | Discord emoji discovery without guildId derives the current server from the channel | docs/gateway/config-channels/community-chat.md "Discord" | ambient | none |
 | 1033 | DM-specific modelByChannel peer keys do not affect group or thread model selection | docs/gateway/config-channels/shared-policies.md "Channel model overrides" | ambient | none |
+| 1034 | Mattermost block mode rotates native previews between completed text and tool activity while retaining earlier posts | docs/concepts/streaming.md "Preview streaming modes"; docs/concepts/streaming.md "Channel mapping"; docs/concepts/streaming.md "Mattermost"; docs/concepts/progress-drafts.md "Channel behavior" | ambient | none |
+| 1035 | Named-tool failed item rows and command exits use ordinary rolling progress capacity and scroll out with newer activity | docs/concepts/progress-drafts.md "Line limits" | event | none |
+| 1036 | Blocked and error progress states and unnamed failures retain bounded priority over ordinary tool activity | docs/concepts/progress-drafts.md "Line limits" | event | none |
+| 1037 | A progress plan reserves one rolling activity slot when activity is present | docs/concepts/progress-drafts.md "Line limits" | ambient | none |
+| 1038 | Long progress prose prefers a word boundary while details preserve their suffix with a middle ellipsis | docs/concepts/progress-drafts.md "Line limits" | ambient | none |
+| 1039 | Media from a superseded deferred answer is delivered without its obsolete caption | docs/concepts/streaming.md "Media delivery with block streaming" | event | none |
+| 1040 | Clearing an otherwise empty Teams progress card replaces its interim preview with the progress label | docs/concepts/streaming.md "Progress draft rendering" | event | none |
+| 1041 | Clearing an otherwise empty Teams progress card with label false retains the interim preview until a later update or final reply | docs/concepts/streaming.md "Progress draft rendering" | event | none |
+| 1042 | Slack detects an org-wide Enterprise Grid installation from native auth.test without an installation-mode setting | docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | none |
+| 1043 | Enterprise Slack DMs retain disabled open allowlist and workspace-scoped pairing policies | docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | none |
+| 1044 | Enterprise Slack user policies distinguish org-wide stable IDs from workspace-qualified user IDs | docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | none |
+| 1045 | Enterprise Slack mention-pattern channel scopes require workspace-qualified channel targets | docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | none |
+| 1046 | Enterprise Slack static route bindings use workspace-qualified peers or a matching explicit workspace when the peer is absent or wildcard | docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | none |
+| 1047 | Enterprise Slack retains direct Socket Mode and HTTP ordinary message and mention admission | docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | none |
+| 1048 | Enterprise Slack retains common reaction pin member channel and presentation-interaction event registrations | docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | none |
+| 1049 | Authenticated Enterprise Slack delivery accepts workspace-qualified actions proactive sends and deferred delivery | docs/gateway/config-channels/workplace-chat.md "Slack" | event | none |
+| 1050 | Enterprise Slack does not register channel-ID-change event handling | docs/gateway/config-channels/workplace-chat.md "Slack" | event | none |
+| 1051 | Enterprise Slack does not register Agent lifecycle events | docs/gateway/config-channels/workplace-chat.md "Slack" | event | none |
+| 1052 | Enterprise Slack does not register Assistant lifecycle events | docs/gateway/config-channels/workplace-chat.md "Slack" | event | none |
+| 1053 | Enterprise Slack rejects runtime current-conversation bindings while retaining static route selection | docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | none |
+| 1054 | Configured mention fallback regexes match case-insensitively | docs/channels/groups.md "Scope configured mention patterns" | ambient | none |
 
 ## Headings walked
 docs/channels/index.md "Chat channels": none
@@ -1292,7 +1313,7 @@ docs/channels/groups.md "Pattern: personal DMs + public groups (single agent)": 
 docs/channels/groups.md "Display labels": 87, 935, 936
 docs/channels/groups.md "Group policy": 54, 57, 88, 89, 90, 91, 92, 93, 94, 95
 docs/channels/groups.md "Mention gating (default)": 55, 59, 96, 97, 98, 99, 898, 899, 900, 901, 902
-docs/channels/groups.md "Scope configured mention patterns": 17, 74, 75, 100, 101, 102, 103, 104, 105, 106, 107, 896, 908
+docs/channels/groups.md "Scope configured mention patterns": 17, 74, 75, 100, 101, 102, 103, 104, 105, 106, 107, 896, 908, 1054
 docs/channels/groups.md "Group/channel tool restrictions (optional)": 108, 109, 110, 937, 938, 939
 docs/channels/groups.md "Group allowlists": 54, 90, 94, 111
 docs/channels/groups.md "Activation (owner-only)": 112
@@ -1466,22 +1487,22 @@ docs/concepts/messages.md "Related": none
 docs/concepts/streaming.md "Streaming and chunking": 315, 332
 docs/concepts/streaming.md "Control UI startup status": none (owned by sessions)
 docs/concepts/streaming.md "Block streaming (channel messages)": 315, 316, 318, 333, 334, 335, 336
-docs/concepts/streaming.md "Media delivery with block streaming": 337, 338, 339, 340, 341
+docs/concepts/streaming.md "Media delivery with block streaming": 337, 338, 339, 340, 341, 1039
 docs/concepts/streaming.md "Chunking algorithm (low/high bounds)": 316, 342, 343, 977, 978, 979, 980, 981
 docs/concepts/streaming.md "Coalescing (merge streamed blocks)": 344, 980, 982, 983, 984
 docs/concepts/streaming.md "Human-like pacing between blocks": 317, 985, 986
 docs/concepts/streaming.md ""Stream chunks or everything"": 129, 315, 319, 334, 345, 346, 347, 365
-docs/concepts/streaming.md "Preview streaming modes": 318, 348, 349, 350, 351, 352, 353, 391
-docs/concepts/streaming.md "Channel mapping": 352, 353, 354, 355, 356, 357, 358
+docs/concepts/streaming.md "Preview streaming modes": 318, 348, 349, 350, 351, 352, 353, 391, 1034
+docs/concepts/streaming.md "Channel mapping": 352, 353, 354, 355, 356, 357, 358, 1034
 docs/concepts/streaming.md "Legacy key migration": 318
 docs/concepts/streaming.md "Runtime behavior": none
 docs/concepts/streaming.md "Telegram": 315, 320, 350, 351, 352, 360, 361, 362, 363, 364, 365, 366, 391
 docs/concepts/streaming.md "Discord": 315, 351, 352, 365, 367, 368, 369
 docs/concepts/streaming.md "Slack": 356, 357, 358, 359, 962, 963, 964, 965, 967
-docs/concepts/streaming.md "Mattermost": 353, 370, 371
+docs/concepts/streaming.md "Mattermost": 370, 371, 1034
 docs/concepts/streaming.md "Matrix": 370, 371
 docs/concepts/streaming.md "Tool-progress preview updates": 348, 349, 367, 372, 373, 374, 969, 970
-docs/concepts/streaming.md "Progress draft rendering": 375, 376, 377, 378, 379, 382
+docs/concepts/streaming.md "Progress draft rendering": 375, 376, 377, 378, 379, 382, 1040, 1041
 docs/concepts/streaming.md "Commentary progress lane": 378, 379, 382
 docs/concepts/streaming.md "Related": none
 docs/concepts/progress-drafts.md "Progress drafts": 352, 367, 381
@@ -1494,9 +1515,9 @@ docs/concepts/progress-drafts.md "Detail mode": 384
 docs/concepts/progress-drafts.md "Command/exec text": 367, 372, 374, 1019
 docs/concepts/progress-drafts.md "Commentary lane": 378, 379, 382, 1015
 docs/concepts/progress-drafts.md "Status headline": 385, 386, 387, 388, 1015, 1018, 1019, 1020
-docs/concepts/progress-drafts.md "Line limits": 378, 379, 382
+docs/concepts/progress-drafts.md "Line limits": 378, 379, 382, 1035, 1036, 1037, 1038
 docs/concepts/progress-drafts.md "Show the tool log": 367, 372, 374, 380, 1013, 1014
-docs/concepts/progress-drafts.md "Channel behavior": 353, 356, 357, 358, 389, 390, 966
+docs/concepts/progress-drafts.md "Channel behavior": 353, 356, 357, 358, 389, 390, 966, 1034
 docs/concepts/progress-drafts.md "Finalization": 350, 362, 364, 368, 369, 391, 392, 393, 394, 966
 docs/concepts/progress-drafts.md "Troubleshooting": 129, 348, 349, 366, 392, 393, 394
 docs/concepts/progress-drafts.md "Related": none
@@ -1563,7 +1584,7 @@ docs/gateway/config-channels/shared-policies.md "Channel defaults and heartbeat"
 docs/gateway/config-channels/shared-policies.md "Multi-account (all channels)": 21, 22, 43, 256, 257, 258, 469, 470, 960, 961
 docs/gateway/config-channels/workplace-chat.md "Configuration — workplace chat channels": none
 docs/gateway/config-channels/workplace-chat.md "Google Chat": 469, 496, 507
-docs/gateway/config-channels/workplace-chat.md "Slack": 2, 16, 21, 22, 92, 173, 219, 274, 318, 356, 357, 358, 359, 435, 449, 488, 497, 498, 499, 500, 508, 509, 510, 511, 512, 513, 514, 515, 516, 517, 518, 1030, 1031
+docs/gateway/config-channels/workplace-chat.md "Slack": 2, 16, 21, 22, 92, 173, 219, 274, 318, 356, 357, 358, 359, 435, 449, 488, 497, 498, 499, 500, 508, 509, 510, 511, 512, 513, 514, 515, 516, 517, 518, 1030, 1031, 1042, 1043, 1044, 1045, 1046, 1047, 1048, 1049, 1050, 1051, 1052, 1053
 docs/gateway/config-channels/workplace-chat.md "Mattermost": 21, 22, 59, 449, 519, 520, 521, 522
 docs/gateway/config-channels/workplace-chat.md "Microsoft Teams": 449
 docs/gateway/protocol/rpc-system-and-channels.md "Gateway protocol system and channel methods": none
@@ -2217,7 +2238,7 @@ The presentation, ingress and inbound consumer reconciliations add 67 in-scope c
 
 The message CLI and channel-index audit adds conditions 816–847 for strict selectors, action scope and compatibility, native cleanup, delivery limits and bounded join history. The formatting audit adds conditions 848–874 for code whitespace, nested boundaries, lexical preservation, rendered sizes, default selection and formatter edits. Existing per-channel join suppression, broadcast outcome and renderer/link/default/list-prefix meanings retain their IDs and historical credit; conditions 3, 292, 406, 408, 409 and 413 are partial because supplied inputs do not cover every recorded alternative. Native block-table and code fallback observations keep condition 411 covered. Poll bounds remain provider-specific: Telegram supports up to 12 options and Discord up to 10.
 
-The current inventory has 1033 conditions: 528 ambient and 505 event. Coverage is 415 fully planned and 618 wholly or partly outside reach. The current heading inventory has 269 headings. The per-round condition-heading denominators and original condition discovery credit are unchanged. Corrected named-entry totals and shares are recorded separately in comparison.md. These source corrections add no derivation run or observation helper. Plugin installation mechanics and configuration writes performed by plugin installation or automatic enabling remain outside this area; selected-channel setup and credential-resolution consequences remain included.
+The current inventory has 1054 conditions: 540 ambient and 514 event. Coverage is 408 fully planned and 646 wholly or partly outside reach. The current heading inventory has 269 headings. The per-round condition-heading denominators and original condition discovery credit are unchanged. Corrected named-entry totals and shares are recorded separately in comparison.md. These source corrections add no derivation run or observation helper. Plugin installation mechanics and configuration writes performed by plugin installation or automatic enabling remain outside this area; selected-channel setup and credential-resolution consequences remain included.
 
 The channel RPC reconciliation adds conditions 875–884 for omitted-account selection, explicit manual-parameter rejection, QR provider selection and opaque correlation, and the public/CLI pairing response and selector distinctions. Existing manual-start suppression meanings retain their original credit; condition 277 is partial because no supplied ambient-suppressed account exercises explicit bypass. The current WhatsApp provider returns no opaque sessionKey, so conditional forwarding language does not cover that missing case. Pairing codes and QR/session secrets remain memory-only; checking native response shape must occur before safe projection without retaining those values. No new provider, helper, account or derivation run is introduced.
 
@@ -2263,4 +2284,4 @@ The four separately named controls are Setup wizard confirmation: Yes, Setup wiz
 
 Original alternatives are restored on their existing condition IDs. Conditions 310, 317, 321, 344, 402, 450, 455, 457 and 492 are partial where the supplied inputs omit a recorded counterpart; condition 193 was already partial and receives no additional deduction. Native history selection uses the observed route peer to disambiguate candidate session keys; the default applies only when that evidence is missing or no longer matches. The current recipe supplies a peer, so an ambiguous static session description alone cannot establish the fallback. No command, helper, fixture or native state change is added by this inventory correction.
 
-The combined reconciliation has 1033 conditions, 415 fully planned and 618 wholly or partly outside reach: 528 ambient and 505 event. The current heading inventory is 269; historical heading denominators 245/258 and original condition numerators 592/590 remain unchanged. Current source-only additions total 388 conditions beyond the original 645. Final entry shares are 413/460 (89.8%) and 383/460 (83.3%), both below nine tenths; round 1 shares are 317/339 (93.5%) and 297/339 (87.6%). The current entry inventory is 460: 317 placed and 143 excluded. Supplemental condition shares are 592/1033 (57.3%) and 590/1033 (57.1%). Original records and discovery credit remain unchanged. The existing quote and stopped-account recipes observe their native decisions at the corrected boundary; unsupported recorded alternatives remain partial. No new derivation or template execution was performed.
+The combined reconciliation has 1054 conditions, 408 fully planned and 646 wholly or partly outside reach: 540 ambient and 514 event. The current heading inventory is 269; historical heading denominators 245/258 and the original 645-condition comparison with numerators 592/590 remain unchanged. Current source-only additions total 408 conditions. Separating the second final run’s explicit Teams/Mattermost record adds one more current condition with credit to that run only; supplemental meaning numerators are therefore 592/591. Final entry shares are 413/460 (89.8%) and 383/460 (83.3%), both below nine tenths; round 1 shares are 317/339 (93.5%) and 297/339 (87.6%). The current entry inventory is 460: 317 placed and 143 excluded. Supplemental condition shares are 592/1054 (56.2%) and 591/1054 (56.1%). Original raw records and the acceptance measurements are preserved. Unsupported recorded alternatives remain partial. No new derivation or template execution was performed.
