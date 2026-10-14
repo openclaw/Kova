@@ -19,7 +19,7 @@ export const probeRequestSchemas = {
       inboundEventId: string, targetId: string, senderId: string, senderName: string,
       from: string, chatType: { type: "string", enum: ["direct", "group"] },
       replyToId: { anyOf: [string, { type: "null" }] }, threadId: string,
-      silent: boolean, manualAck: boolean, sourceReplyDeliveryMode: string,
+      silent: boolean, manualAck: boolean, wasMentioned: boolean, sourceReplyDeliveryMode: string,
       ackPolicy: { type: "string", enum: ["after_receive_record", "after_agent_dispatch", "after_durable_send", "manual"] },
       requiredCapabilities: object, botLoopProtection: object
     }

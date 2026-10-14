@@ -7378,6 +7378,10 @@
       "wraps": "check second environment",
       "command": "node {kovaRoot}/support/persona/second-environment.mjs check --env {env}",
       "flags": {
+        "--companion-env": {
+          "description": "Imported companion environment to check after cloning.",
+          "value": "required"
+        },
         "--env": {
           "description": "OCM environment name",
           "value": "required"

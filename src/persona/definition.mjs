@@ -11,6 +11,51 @@ const key = /^[a-zA-Z][a-zA-Z0-9_]*$/;
 export const keyValue = /^[a-zA-Z0-9._:/@-]+$/;
 export const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
+function runtimeVersion(value) {
+  const match = typeof value === "string" && /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/.exec(value);
+  if (!match) throw new Error("OpenClaw runtime must be an exact release or prerelease version");
+  const prerelease = match[4]?.split(".") ?? [];
+  if (prerelease.some((part) => /^\d+$/.test(part) && part.length > 1 && part.startsWith("0"))) throw new Error("OpenClaw prerelease numbers must not have leading zeroes");
+  return { core: match.slice(1, 4).map(BigInt), prerelease };
+}
+
+function compareRuntimeVersions(left, right) {
+  const a = runtimeVersion(left), b = runtimeVersion(right);
+  for (let index = 0; index < 3; index++) {
+    if (a.core[index] !== b.core[index]) return a.core[index] < b.core[index] ? -1 : 1;
+  }
+  if (!a.prerelease.length || !b.prerelease.length) return a.prerelease.length ? -1 : b.prerelease.length ? 1 : 0;
+  for (let index = 0; index < Math.max(a.prerelease.length, b.prerelease.length); index++) {
+    const x = a.prerelease[index], y = b.prerelease[index];
+    if (x === y) continue;
+    if (x === undefined || y === undefined) return x === undefined ? -1 : 1;
+    const xNumeric = /^\d+$/.test(x), yNumeric = /^\d+$/.test(y);
+    if (xNumeric && yNumeric) return BigInt(x) < BigInt(y) ? -1 : 1;
+    if (xNumeric !== yNumeric) return xNumeric ? -1 : 1;
+    return x < y ? -1 : 1;
+  }
+  return 0;
+}
+
+/** Select from the fully validated dependency order; withheld content has no keys. */
+export function selectRuntimeTraits(loaded, version = loaded.definition.runtime.selector.slice(4)) {
+  runtimeVersion(version);
+  const traits = [], withheld = new Map();
+  for (const trait of loaded.traits) {
+    const dependencies = trait.needs.filter((dependency) => withheld.has(dependency)).toSorted();
+    const minimumRuntime = [trait.minimumRuntime, ...dependencies.map((dependency) => withheld.get(dependency).minimumRuntime)]
+      .filter(Boolean).reduce((highest, minimum) => !highest || compareRuntimeVersions(minimum, highest) > 0 ? minimum : highest, undefined);
+    if (minimumRuntime && compareRuntimeVersions(version, minimumRuntime) < 0) {
+      withheld.set(trait.id, {
+        minimumRuntime,
+        reason: `requires OpenClaw ${minimumRuntime}; bound runtime is ${version}${dependencies.length ? `; withheld dependencies: ${dependencies.join(", ")}` : ""}`,
+        ...(dependencies.length ? { dependencies } : {}),
+      });
+    } else traits.push(trait);
+  }
+  return { ...loaded, traits, withheldTraits: Object.fromEntries(withheld) };
+}
+
 export async function loadDefinition(path, options = {}) {
   const absolute = resolve(path);
   const bytes = await readFile(absolute);
@@ -22,7 +67,8 @@ export async function loadDefinition(path, options = {}) {
 
 export function validateDefinition(definition, catalogue) {
   if (!object(definition) || definition.schema !== "kova.verify.persona.v1" || !id.test(definition.id ?? "") || !text(definition.title) || !text(definition.objective)) throw new Error("invalid persona definition");
-  if (!object(definition.runtime) || !/^npm:\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/.test(definition.runtime.selector ?? "") || !text(definition.runtime.policy)) throw new Error("persona runtime must pin an exact npm version and describe its policy");
+  if (!object(definition.runtime) || typeof definition.runtime.selector !== "string" || !definition.runtime.selector.startsWith("npm:") || !text(definition.runtime.policy)) throw new Error("persona runtime must pin an exact npm version and describe its policy");
+  try { runtimeVersion(definition.runtime.selector.slice(4)); } catch { throw new Error("persona runtime must pin an exact npm version and describe its policy"); }
   if (!Array.isArray(definition.credentials) || definition.credentials.length) throw new Error("persona builds currently require an empty credentials list; use the local mock provider and conformance channel");
   if (!Array.isArray(definition.traits) || !definition.traits.length) throw new Error("persona traits must be a nonempty array");
   const byId = new Map();
@@ -30,6 +76,9 @@ export function validateDefinition(definition, catalogue) {
   for (const trait of definition.traits) {
     if (!object(trait) || !id.test(trait.id ?? "") || byId.has(trait.id)) throw new Error("persona trait ids must be unique lower-case hyphenated names");
     if (!text(trait.content) || !object(trait.keys) || Object.entries(trait.keys).some(([name, description]) => !key.test(name) || !text(description))) throw new Error(`trait ${trait.id}: invalid content or keys`);
+    if (trait.minimumRuntime !== undefined) {
+      try { runtimeVersion(trait.minimumRuntime); } catch { throw new Error(`trait ${trait.id}: minimumRuntime must be an exact OpenClaw version`); }
+    }
     if (!Array.isArray(trait.needs) || trait.needs.some((name) => !id.test(name)) || new Set(trait.needs).size !== trait.needs.length || !Array.isArray(trait.builder) || !trait.builder.length || !text(trait.check)) throw new Error(`trait ${trait.id}: invalid needs, builder or check`);
     byId.set(trait.id, trait);
     for (const command of [...trait.builder, trait.check]) commands.push({ command, source: definition.id, at: trait.id });

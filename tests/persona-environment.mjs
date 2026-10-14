@@ -4,12 +4,16 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { checkCatalog, checkCron, catalogThread, catalogWord } from "../support/persona/environment-content.mjs";
-import { cleanupCompanion } from "../support/persona/companion-environment.mjs";
+import { checkCompanion, cleanupCompanion } from "../support/persona/companion-environment.mjs";
 
 test("catalog checks require complete content, not merely a discovered filename", async () => {
   const listing = { catalogs: [{ id: "claude", hosts: [{ hostId: "gateway:local", sessions: [{ threadId: catalogThread }] }] }] };
   const content = { threadId: catalogThread, items: [{ text: catalogWord }, { text: "Saved reply." }] };
-  const rpc = async ({ method }) => method.endsWith("list") ? listing : content;
+  const rpc = async ({ method, params }) => {
+    if (method.endsWith("list")) return listing;
+    assert.ok(params.limit >= 1 && params.limit <= 50, "the Anthropic catalog provider accepts pages of at most 50 items");
+    return content;
+  };
   assert.equal((await checkCatalog(rpc)).threadId, catalogThread);
   content.nextCursor = "another-page";
   await assert.rejects(checkCatalog(rpc), /incomplete/);
@@ -45,4 +49,26 @@ test("a copied companion record cannot delete the source environment", async (t)
   await cleanupCompanion("source-persona", call);
   assert.ok(calls.some((command) => command === "ocm env destroy 'source-persona-second' --yes --json"));
   assert.ok(!calls.some((command) => command.includes("destroy 'source-persona'")));
+});
+
+test("companion checks use an explicit imported destination without reading the protected source", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "persona-companion-check-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, "kova-persona"));
+  await writeFile(join(root, "kova-persona", "companion-environment.json"), JSON.stringify({ source: "source-persona", env: "source-persona-second" }));
+  const env = { name: "primary-copy", defaultRuntime: "release-runtime", gatewayPort: 12000 };
+  const calls = [];
+  const metadata = { name: "companion-copy", defaultRuntime: "release-runtime", gatewayPort: 12001, protected: false };
+  const inspect = async (command) => { calls.push(command); return { stdout: JSON.stringify(metadata) }; };
+  const context = { env, state: root, args: { "companion-env": "companion-copy" } };
+  assert.deepEqual(await checkCompanion(context, inspect), { env: "companion-copy" });
+  assert.deepEqual(calls, ["ocm env show 'companion-copy' --json"]);
+  metadata.gatewayPort = env.gatewayPort;
+  await assert.rejects(checkCompanion(context, inspect), /port differs/);
+  metadata.gatewayPort = 12001;
+  metadata.name = "source-persona-second";
+  await assert.rejects(checkCompanion({ env, state: root }, inspect), /protection/);
+  metadata.protected = true;
+  assert.deepEqual(await checkCompanion({ env, state: root }, inspect), { env: "source-persona-second" });
+  await assert.rejects(checkCompanion({ ...context, args: { "companion-env": env.name } }, inspect), /destination/);
 });

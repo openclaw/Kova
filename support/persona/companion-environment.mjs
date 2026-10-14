@@ -32,12 +32,14 @@ export async function createCompanion({ env, state }) {
   return { env: name };
 }
 
-export async function checkCompanion({ env, state }) {
+export async function checkCompanion({ env, state, args = {} }, inspect = call) {
   const record = await savedContent(state, "companion-environment.json");
   if (typeof record.source !== "string" || record.env !== `${record.source}-second` || record.env === env.name) throw new Error("companion environment identity is invalid");
-  const metadata = JSON.parse((await call(`ocm env show ${quoteShell(record.env)} --json`)).stdout);
-  if (metadata.name !== record.env || !metadata.protected || metadata.defaultRuntime !== env.defaultRuntime || metadata.gatewayPort === env.gatewayPort) throw new Error("companion runtime, protection or port differs");
-  return { env: record.env };
+  const target = args["companion-env"] ?? record.env;
+  if (typeof target !== "string" || !/^[a-z][a-z0-9-]{0,127}$/.test(target) || target === env.name) throw new Error("companion destination is invalid");
+  const metadata = JSON.parse((await inspect(`ocm env show ${quoteShell(target)} --json`)).stdout);
+  if (metadata.name !== target || (target === record.env && !metadata.protected) || metadata.defaultRuntime !== env.defaultRuntime || metadata.gatewayPort === env.gatewayPort) throw new Error("companion runtime, protection or port differs");
+  return { env: target };
 }
 
 /** A copied record never grants permission to remove the original companion. */

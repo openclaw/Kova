@@ -117,6 +117,13 @@ const plugin = {
       return thread ? { conversationId: thread, ...(parent ? { parentConversationId: parent } : {}) }
         : { conversationId: normalizeKovaTarget(conversationId) ?? parent ?? conversationId };
     },
+    resolveDeliveryTarget: (conversation) => {
+      const bound = bindingState?.deliveryTarget(conversation);
+      if (bound) return bound;
+      return isKovaTarget(conversation.conversationId) && conversation.parentConversationId === undefined
+        ? { to: conversation.conversationId }
+        : null;
+    },
     targetResolver: {
       looksLikeId: (raw, normalized) =>
         isKovaTarget(normalizeKovaTarget(normalized ?? raw)),
@@ -315,6 +322,7 @@ async function injectProbeInbound(params = {}) {
     `kova-probe-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const targetId = optionalProbeString(params.targetId) ?? TARGET_ID;
   const chatType = params.chatType ?? (targetId.startsWith("group:") ? "group" : "direct");
+  const wasMentioned = params.wasMentioned;
   if (!isKovaTarget(targetId) || (chatType === "group") !== targetId.startsWith("group:")) throw new Error("channel probe target and chat type differ");
   const replyToId = params.replyToId === null ? null : optionalProbeString(params.replyToId);
   const threadId = optionalProbeString(params.threadId);
@@ -346,6 +354,7 @@ async function injectProbeInbound(params = {}) {
       inboundEventId,
       targetId,
       chatType,
+      wasMentioned,
       replyToId,
       threadId,
       silent,
@@ -382,6 +391,7 @@ async function injectProbeInbound(params = {}) {
       message,
       targetId,
       chatType,
+      wasMentioned,
       replyToId,
       threadId,
       silent,
@@ -532,6 +542,7 @@ async function runOpenClawModelTurn({
   inboundEventId,
   targetId = TARGET_ID,
   chatType = "direct",
+  wasMentioned,
   replyToId,
   threadId,
   silent,
@@ -569,7 +580,7 @@ async function runOpenClawModelTurn({
     SessionKey: route.sessionKey,
     AccountId: ACCOUNT_ID,
     ChatType: chatType,
-    ...(chatType === "group" ? { GroupSubject: "Kova notebook group", GroupChannel: targetId, WasMentioned: true } : {}),
+    ...(chatType === "group" ? { GroupSubject: "Kova notebook group", GroupChannel: targetId, ...(wasMentioned === undefined ? {} : { WasMentioned: wasMentioned }) } : {}),
     SenderName: senderName,
     SenderId: senderId,
     Provider: CHANNEL_ID,

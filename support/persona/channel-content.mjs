@@ -3,6 +3,7 @@ import { lstat, realpath } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { EntryError } from "./common.mjs";
+import { redactLogText } from "../../src/collectors/logs.mjs";
 import { makeSession, sendSessionMessage, sessionRequests } from "./session-content.mjs";
 import { readStoredSession, requireSessionContentRuntime } from "./session-store-read.mjs";
 import { probeRequestSchemas, validateProbeRequest } from "../plugins/kova-channel-probe/protocol.js";
@@ -30,8 +31,9 @@ export const channelRequestCases = {
   status: [[]], bindings: [[], ["agent:main:subagent:11111111-1111-4111-8111-111111111111"]],
   inject: [
     [{ message: "Notebook entry.", targetId: channelContent.mainPeer, inboundEventId: "persona-channel-input", senderId: channelContent.human, chatType: "direct" }],
-    [{ message: "Group entry.", targetId: channelContent.groupPeer, inboundEventId: "persona-group-input", senderId: channelContent.human, chatType: "group" }],
-    [{ message: "Thread entry.", targetId: channelContent.groupPeer, threadId: "kova-thread-11111111-1111-4111-8111-111111111111", chatType: "group" }]
+    [{ message: "Group entry.", targetId: channelContent.groupPeer, inboundEventId: "persona-group-input", senderId: channelContent.human, chatType: "group", wasMentioned: true }],
+    [{ message: "Group chatter.", targetId: channelContent.groupPeer, chatType: "group", wasMentioned: false }],
+    [{ message: "Thread entry.", targetId: channelContent.groupPeer, threadId: "kova-thread-11111111-1111-4111-8111-111111111111", chatType: "group", wasMentioned: true }]
   ]
 };
 
@@ -41,15 +43,26 @@ const text = (message) => typeof message?.content === "string" ? message.content
 const messages = (stored) => stored.events.filter(({ event }) => event.type === "message").map(({ event }) => event.message);
 const origin = (entry) => entry.delivery?.kind === "external" ? entry.delivery.origin : entry.origin;
 
+function toolReceipt(message, name) {
+  if (message?.role !== "toolResult") return undefined;
+  if (message.toolName === name && message.details && typeof message.details === "object") return message.details;
+  if (message.toolName === "tool_call" && message.details?.tool?.name === name) return message.details.result?.details;
+  return undefined;
+}
+
 export function findToolReceipt(stored, name, runId) {
-  const results = messages(stored).flatMap((message) => {
-    if (message?.role !== "toolResult" || message.__openclaw?.runId !== runId) return [];
-    if (message.toolName === name && message.details && typeof message.details === "object") return [message.details];
-    if (message.toolName === "tool_call" && message.details?.tool?.name === name) return [message.details.result?.details];
-    return [];
-  }).filter(Boolean);
+  const results = messages(stored).filter((message) => message.__openclaw?.runId === runId).map((message) => toolReceipt(message, name)).filter(Boolean);
   if (results.length !== 1) throw new Error(`accepted turn has no unique ${name} receipt`);
   return results[0];
+}
+
+export function requireAcceptedSpawn(receipt, description) {
+  if (receipt?.status === "accepted" && keyPattern.test(receipt.childSessionKey ?? "") && typeof receipt.runId === "string" && receipt.runId.length > 0) return receipt;
+  const status = ["accepted", "error", "forbidden"].includes(receipt?.status) ? receipt.status : "invalid";
+  const reason = typeof receipt?.error === "string"
+    ? redactLogText(receipt.error.slice(0, 8192)).replace(/[\u0000-\u001f\u007f]+/g, " ").trim().slice(0, 512)
+    : "The tool result is missing an accepted child session and run identity.";
+  throw new Error(`${description}: sessions_spawn status=${status}; ${reason}`);
 }
 
 export async function readChannelState(state, { watcher, target, parent } = {}) {
@@ -115,9 +128,9 @@ async function waitRun(rpc, runId) {
   if (result.status !== "ok") throw new EntryError(`channel input did not complete: ${result.status ?? "missing status"}`, result.status === "timeout" ? 3 : 1);
 }
 
-export async function injectChannelMessage(rpc, { peer, message, chatType = "direct", threadId, sender = channelContent.human, onRun }) {
+export async function injectChannelMessage(rpc, { peer, message, chatType = "direct", wasMentioned, threadId, sender = channelContent.human, onRun }) {
   const inboundEventId = `kova-persona-${randomUUID()}`;
-  const result = await rpc(channelRequests.inject({ message, targetId: peer, inboundEventId, senderId: sender, senderName: "Notebook participant", chatType, ...(threadId ? { threadId } : {}) }));
+  const result = await rpc(channelRequests.inject({ message, targetId: peer, inboundEventId, senderId: sender, senderName: "Notebook participant", chatType, ...(wasMentioned === undefined ? {} : { wasMentioned }), ...(threadId ? { threadId } : {}) }));
   const observed = result?.observation;
   if (result?.ok !== true || observed?.inboundEvent?.id !== inboundEventId || observed.dispatched !== true || !keyPattern.test(observed.routeSessionKey ?? "")) throw new Error("channel input did not reach its routed session");
   await waitRun(rpc, observed.runId);
@@ -161,12 +174,12 @@ export async function fillMainSession({ rpc, turns = 90 }) {
 export async function fillGroupSession({ rpc, turns = 40 }) {
   let key;
   for (let index = 0; index < turns; index++) {
-    const current = await injectChannelMessage(rpc, { peer: channelContent.groupPeer, chatType: "group", message: `KOVA_GROUP_NOTE_${index + 1}: Add the group observation. Reply with KOVA_AGENT_OK.` });
+    const current = await injectChannelMessage(rpc, { peer: channelContent.groupPeer, chatType: "group", wasMentioned: true, message: `KOVA_GROUP_NOTE_${index + 1}: Add the group observation. Reply with KOVA_AGENT_OK.` });
     if (key && current !== key) throw new Error("group route changed while filling its history");
     key = current;
   }
   await rpc(channelRequests.label(key, channelContent.groupLabel));
-  return { key, peer: channelContent.human };
+  return { key, peer: channelContent.groupPeer };
 }
 
 export async function fillPairSession({ rpc, state, toolModel }) {
@@ -197,13 +210,12 @@ export async function spawnThreadSubagent({ rpc, state, parent, toolModel }) {
   await rpc(sessionRequests.patchModel(parent, toolModel));
   let parentRunId;
   const routed = await injectChannelMessage(rpc, {
-    peer: channelContent.groupPeer, chatType: "group",
+    peer: channelContent.groupPeer, chatType: "group", wasMentioned: true,
     onRun: (runId) => { parentRunId = runId; },
     message: toolPrompt("sessions_spawn", { task: "Reply with KOVA_AGENT_OK.", label: channelContent.threadLabel, model: toolModel, thread: true, mode: "session", cleanup: "keep", context: "isolated" })
   });
   if (routed !== parent) throw new Error("thread spawn did not run in its requested parent session");
-  const receipt = findToolReceipt(await readStoredSession(state, parent), "sessions_spawn", parentRunId);
-  if (receipt.status !== "accepted" || !keyPattern.test(receipt.childSessionKey ?? "")) throw new Error("thread spawn has no accepted child receipt");
+  const receipt = requireAcceptedSpawn(findToolReceipt(await readStoredSession(state, parent), "sessions_spawn", parentRunId), "thread spawn");
   await waitRun(rpc, receipt.runId);
   const binding = await waitFor(async () => {
     const { bindings } = await rpc(channelRequests.bindings());
@@ -213,7 +225,7 @@ export async function spawnThreadSubagent({ rpc, state, parent, toolModel }) {
     const { session } = await rpc(sessionRequests.describe(binding.targetSessionKey));
     return session && !["running", "queued"].includes(session.status);
   }, "thread child completion");
-  const childKey = await injectChannelMessage(rpc, { peer: binding.conversation.parentConversationId, threadId: binding.conversation.conversationId, chatType: "group", message: "KOVA_BOUND_THREAD: Continue this thread notebook. Reply with KOVA_AGENT_OK." });
+  const childKey = await injectChannelMessage(rpc, { peer: binding.conversation.parentConversationId, threadId: binding.conversation.conversationId, chatType: "group", wasMentioned: true, message: "KOVA_BOUND_THREAD: Continue this thread notebook. Reply with KOVA_AGENT_OK." });
   if (childKey !== binding.targetSessionKey) throw new Error("bound thread did not route to its child session");
   return checkChannelSessions({ rpc, state, kind: "session-thread-bound", key: childKey });
 }
@@ -225,8 +237,7 @@ export async function spawnChildren({ rpc, state, parent = channelContent.parent
     ["kova-persona-yield-history", toolPrompt("sessions_yield", { waitFor: "message", message: "Waiting for the next notebook instruction." })]
   ]) {
     const runId = await sendSessionMessage(rpc, parent, toolPrompt("sessions_spawn", { task, label, model: toolModel, mode: "run", cleanup: "keep", context: "isolated" }));
-    const receipt = findToolReceipt(await readStoredSession(state, parent), "sessions_spawn", runId);
-    if (receipt.status !== "accepted" || !receipt.runId || !keyPattern.test(receipt.childSessionKey ?? "")) throw new Error("root turn has no accepted child receipt");
+    const receipt = requireAcceptedSpawn(findToolReceipt(await readStoredSession(state, parent), "sessions_spawn", runId), "root spawn");
     const child = await waitFor(async () => {
       const { children } = await readChannelState(state, { parent });
       return children.find((value) => value.runId === receipt.runId && value.childSessionKey === receipt.childSessionKey && value.label === label && (value.pauseReason === "sessions_yield" || value.execution?.status === "terminal"));
@@ -271,16 +282,18 @@ export async function checkChannelSessions({ rpc, state, kind, key, readSession 
     if (savedMessages.filter((message) => message.role === "assistant" && text(message).includes("KOVA_AGENT_OK")).length < 40) throw new Error("group notebook replies are incomplete");
     const { watches } = await readState(state, { watcher: channelContent.mainKey, target: key });
     if (!watches.some((watch) => watch.watcher_session_key === channelContent.mainKey && watch.target_session_key === key && watch.provenance === "ambient-group")) throw new Error("main session does not watch the group");
-    return { key, peer: channelContent.human };
+    return { key, peer: peer.to };
   }
   if (kind === "session-thread-bound") {
     const result = await rpc(channelRequests.bindings(key));
     const bindings = result.bindings?.filter((binding) => binding.targetSessionKey === key && binding.targetKind === "subagent" && binding.status === "active" && binding.conversation?.channel === channelContent.channel && binding.conversation?.accountId === channelContent.account);
     if (bindings?.length !== 1 || bindings[0].conversation.parentConversationId !== channelContent.groupPeer || !savedMessages.some((message) => message.role === "user" && text(message).includes("KOVA_BOUND_THREAD"))) throw new Error("saved child-thread binding or routed history is absent");
     const parent = await keyFor(rpc, undefined, channelContent.groupLabel);
-    const { children } = await readState(state, { parent });
-    if (!children.some((child) => child.childSessionKey === key && child.requesterSessionKey === parent && child.spawnMode === "session")) throw new Error("bound child has no saved parent relationship");
-    return { key, peer: bindings[0].conversation.conversationId };
+    if (stored.entry.spawnedBy !== parent || stored.entry.parentSessionKey !== parent) throw new Error("bound child has no saved parent relationship");
+    const parentStored = await readSession(state, parent, { allWindows: true });
+    const spawnReceipts = messages(parentStored).map((message) => toolReceipt(message, "sessions_spawn")).filter((receipt) => receipt?.status === "accepted" && receipt.childSessionKey === key && receipt.mode === "session" && typeof receipt.runId === "string" && receipt.runId.length > 0);
+    if (spawnReceipts.length !== 1) throw new Error("bound child has no unique saved session-mode spawn receipt");
+    return { key, peer: `${bindings[0].conversation.parentConversationId}/thread:${bindings[0].conversation.conversationId}` };
   }
   const { children } = await readState(state, { parent: key });
   const selected = ["kova-persona-finished", "kova-persona-yield-history"].map((label) => children.find((child) => child.label === label));

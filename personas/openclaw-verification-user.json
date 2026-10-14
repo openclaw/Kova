@@ -353,7 +353,7 @@
       "content": "Human group messages are saved with the main session watching their activity.",
       "keys": {
         "key": "group session key",
-        "peer": "human group sender"
+        "peer": "Saved group destination, including the group: prefix."
       },
       "needs": [
         "session-main-rolling"
@@ -368,7 +368,7 @@
       "content": "A completed subagent has a persistent binding to a child conversation on the local conformance channel.",
       "keys": {
         "key": "bound child session",
-        "peer": "child conversation peer"
+        "peer": "Saved group and thread address: group:<parent>/thread:<threadId>."
       },
       "needs": [
         "session-group-watched",
@@ -416,6 +416,7 @@
     {
       "id": "sessions-organized-mixed",
       "content": "Saved pinned, snoozed, grouped, colored, unread, child and forked sessions, plus historical rows for every archive reason.",
+      "minimumRuntime": "2026.10.3",
       "keys": {
         "pinnedKey": "pinned session",
         "snoozedKey": "snoozed session",
@@ -443,10 +444,12 @@
         "agentId": "research agent"
       },
       "needs": [
-        "sessions-organized-mixed",
-        "agents-three-configured"
+        "agents-three-configured",
+        "mock-provider-scripted",
+        "config-hand-edited"
       ],
       "builder": [
+        "ocm @{env} -- config set session.maintenance '{\"mode\":\"warn\",\"maxEntries\":5000,\"pruneAfter\":\"30d\",\"archiveDashboardAfter\":\"7d\",\"preserveRecent\":false}' --strict-json",
         "node {kovaRoot}/support/persona/make-many-sessions.mjs near-cap --env {env} --agent {persona:agents-three-configured:secondAgentId}"
       ],
       "check": "node {kovaRoot}/support/persona/check-collections.mjs sessions-thousands-near-cap --env {env} --agent {persona:agents-three-configured:secondAgentId}"
@@ -472,9 +475,11 @@
         "key": "stale dashboard session"
       },
       "needs": [
-        "sessions-organized-mixed"
+        "mock-provider-scripted",
+        "config-hand-edited"
       ],
       "builder": [
+        "ocm @{env} -- config set session.maintenance '{\"mode\":\"warn\",\"maxEntries\":5000,\"pruneAfter\":\"30d\",\"archiveDashboardAfter\":\"7d\",\"preserveRecent\":false}' --strict-json",
         "node {kovaRoot}/support/persona/organize-sessions.mjs stale-dashboard --env {env} --agent main"
       ],
       "check": "node {kovaRoot}/support/persona/check-collections.mjs sessions-stale-dashboard --env {env} --agent main"
@@ -529,6 +534,7 @@
     {
       "id": "session-imported-draft",
       "content": "The imported catalog notebook is a draft readable by its creator and hidden from another non-admin operator.",
+      "minimumRuntime": "2026.10.3",
       "keys": {
         "key": "imported session"
       },

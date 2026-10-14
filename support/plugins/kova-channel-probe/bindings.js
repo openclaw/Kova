@@ -200,6 +200,12 @@ export async function openProbeBindings(runtime, signal, bindingApi) {
   registerSessionBindingAdapter(adapter);
   return {
     read: async () => { await pending; return store.read(); },
+    deliveryTarget: ({ conversationId, parentConversationId }) => {
+      if (closed || signal.aborted) return null;
+      const record = records.get(conversationId);
+      if (!record || record.status !== "active" || (parentConversationId !== undefined && parentConversationId !== record.conversation.parentConversationId)) return null;
+      return { to: record.conversation.parentConversationId, threadId: record.conversation.conversationId };
+    },
     stop: async () => { closed = true; unregisterSessionBindingAdapter({ channel: CHANNEL_ID, accountId: ACCOUNT_ID, adapter }); await pending; }
   };
 }

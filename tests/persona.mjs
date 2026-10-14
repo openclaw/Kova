@@ -13,9 +13,9 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { loadCatalogue, parseCatalogueCommand } from "../src/catalogue.mjs";
-import { loadDefinition, validateDefinition, resolveCommand, readKeys } from "../src/persona/definition.mjs";
+import { loadDefinition, validateDefinition, resolveCommand, readKeys, selectRuntimeTraits } from "../src/persona/definition.mjs";
 import { createForegroundGateway } from "../src/persona/gateway.mjs";
-import { buildPersona, verifyPersona, hashFile } from "../src/persona/lifecycle.mjs";
+import { buildPersona, verifyPersona, hashFile, checkPersonaTraits } from "../src/persona/lifecycle.mjs";
 
 const source = new URL("../personas/openclaw-verification-user.json", import.meta.url);
 const definition = JSON.parse(await readFile(source, "utf8"));
@@ -45,11 +45,62 @@ test("dependency order and catalogue validation run before any environment is cr
     [(d) => d.traits[0].check = d.traits[0].builder[0], /read command/],
     [(d) => d.traits[0].builder[0] = "ocm @{env} -- config get {persona:missing:key} --json", /unresolved dependency/],
     [(d) => d.runtime.selector = "npm:latest", /exact npm/],
+    [(d) => d.traits[0].minimumRuntime = ">=2026.10.3", /minimumRuntime/],
+    [(d) => d.traits[0].minimumRuntime = "2026.10.3-beta.01", /minimumRuntime/],
+    [(d) => d.traits[0].minimumRuntime = 2026, /minimumRuntime/],
     [(d) => d.credentials.push("external-account"), /empty credentials/],
   ]) {
     const invalid = structuredClone(definition); change(invalid);
     assert.throws(() => validateDefinition(invalid, catalogue), pattern);
   }
+});
+
+test("the pinned persona validates all definitions and withholds exactly two newer-runtime traits", () => {
+  const traits = validateDefinition(definition, catalogue);
+  assert.equal(traits.length, 41);
+  assert.equal(definition.runtime.selector, "npm:2026.9.9");
+  const selected = selectRuntimeTraits({ definition, traits });
+  assert.equal(selected.traits.length, 39);
+  assert.deepEqual(Object.keys(selected.withheldTraits).sort(), ["session-imported-draft", "sessions-organized-mixed"]);
+  for (const row of Object.values(selected.withheldTraits)) assert.equal(row.minimumRuntime, "2026.10.3");
+  for (const id of ["sessions-thousands-near-cap", "sessions-stale-dashboard"]) {
+    const trait = selected.traits.find((item) => item.id === id);
+    assert.ok(trait);
+    assert.ok(!trait.needs.includes("sessions-organized-mixed"));
+    assert.ok(trait.builder[0].includes("config set session.maintenance"));
+    assert.ok(trait.builder[0].includes('"mode":"warn"'));
+  }
+  assert.equal(selectRuntimeTraits({ definition, traits }, "2026.10.3").traits.length, 41);
+});
+
+test("minimum runtime comparison respects release boundaries and prerelease precedence", () => {
+  for (const [version, minimumRuntime, runnable] of [
+    ["2026.10.2", "2026.10.3", false],
+    ["2026.10.3-beta.10", "2026.10.3", false],
+    ["2026.10.3", "2026.10.3", true],
+    ["2026.10.4-beta.1", "2026.10.3", true],
+    ["2026.10.3-beta.2", "2026.10.3-beta.10", false],
+    ["2026.10.3-beta.10", "2026.10.3-beta.2", true],
+    ["2026.10.3-beta", "2026.10.3-beta.1", false],
+    ["2026.10.3-1", "2026.10.3-alpha", false],
+    ["2027.1.1", "2026.10.3", true],
+  ]) {
+    const candidate = structuredClone(lifecycleDefinition);
+    candidate.runtime.selector = `npm:${version}`;
+    candidate.traits.find((trait) => trait.id === "config-hand-edited").minimumRuntime = minimumRuntime;
+    const selected = selectRuntimeTraits({ definition: candidate, traits: validateDefinition(candidate, catalogue) });
+    assert.equal(selected.traits.some((trait) => trait.id === "config-hand-edited"), runnable, `${version} / ${minimumRuntime}`);
+  }
+});
+
+test("withholding propagates through dependencies while unrelated traits remain runnable", () => {
+  const candidate = structuredClone(lifecycleDefinition);
+  candidate.traits.find((trait) => trait.id === "mock-provider-scripted").minimumRuntime = "2026.10.3";
+  const selected = selectRuntimeTraits({ definition: candidate, traits: validateDefinition(candidate, catalogue) });
+  assert.deepEqual(selected.traits.map((trait) => trait.id), ["agents-three-configured", "config-hand-edited"]);
+  assert.deepEqual(selected.withheldTraits["channels-test-accounts"].dependencies, ["mock-provider-scripted"]);
+  assert.deepEqual(selected.withheldTraits["plugins-bundled-and-external"].dependencies, ["channels-test-accounts"]);
+  assert.equal(selected.withheldTraits["plugins-bundled-and-external"].minimumRuntime, "2026.10.3");
 });
 
 test("placeholder quoting preserves spaces and keys are exactly the declared JSON fields", () => {
@@ -67,6 +118,7 @@ async function fixture(t) {
   await writeFile(path, JSON.stringify(lifecycleDefinition));
   const calls = [];
   let failTrait = null, failDestroy = false, failProvision = null, occupied = false;
+  let runtimeVersion = "2026.9.9";
   let keysFor = (trait) => foundationKeys[trait];
   const environments = new Set(), runs = new Set();
   t.after(async () => { for (const run of runs) await rm(run, { recursive: true, force: true }); });
@@ -92,9 +144,11 @@ async function fixture(t) {
       const envRoot = join(root, "envs", tokens[3]);
       stdout = JSON.stringify({ name: tokens[3], root: envRoot, stateDir: join(envRoot, ".openclaw") });
     }
-    if (tokens[0] === "ocm" && tokens[1] === "runtime" && tokens[2] === "show") stdout = JSON.stringify({ name: "test-runtime", sourceKind: "installed", releaseVersion: "2026.9.9", sourceIntegrity: `sha512-${Buffer.alloc(64).toString("base64")}` });
+    if (tokens[0] === "ocm" && tokens[1] === "runtime" && tokens[2] === "show") stdout = JSON.stringify({ name: "test-runtime", sourceKind: "installed", releaseVersion: runtimeVersion, sourceIntegrity: `sha512-${Buffer.alloc(64).toString("base64")}` });
     if (tokens[0] === "ocm" && tokens[1] === "env" && tokens[2] === "export") await writeFile(tokens[tokens.indexOf("--output") + 1], "test export bytes");
-    const trait = checkTraits[tokens[1]?.split("/").at(-1)];
+    const trait = tokens[1]?.endsWith("/check-profile.mjs") && tokens[2] === "paired"
+      ? "cli-profile-paired"
+      : checkTraits[tokens[1]?.split("/").at(-1)];
     if (trait) {
       if (trait === failTrait) return { status: 1, stderr: "planted missing content" };
       const env = tokens[tokens.indexOf("--env") + 1];
@@ -102,7 +156,7 @@ async function fixture(t) {
     }
     return { command, status: 0, stdout, stderr: "" };
   };
-  return { root, path, calls, execute, environments, keysFor: (fn) => { keysFor = fn; }, failProvision: (kind) => { failProvision = kind; }, occupy: () => { occupied = true; }, gatewayFactory: (env) => ({ assertOwned: async () => {}, start: async () => { calls.push(["foreground-start", env]); }, stop: async () => { calls.push(["foreground-stop", env]); } }), fail: (trait) => { failTrait = trait; }, failCleanup: () => { failDestroy = true; } };
+  return { root, path, calls, execute, environments, runtime: (version) => { runtimeVersion = version; }, keysFor: (fn) => { keysFor = fn; }, failProvision: (kind) => { failProvision = kind; }, occupy: () => { occupied = true; }, gatewayFactory: (env) => ({ assertOwned: async () => {}, start: async () => { calls.push(["foreground-start", env]); }, stop: async () => { calls.push(["foreground-stop", env]); } }), fail: (trait) => { failTrait = trait; }, failCleanup: () => { failDestroy = true; } };
 }
 
 test("build exports only checked content, verifies an import and keeps only the durable environment", async (t) => {
@@ -114,6 +168,7 @@ test("build exports only checked content, verifies an import and keeps only the 
   assert.equal(manifest.env.sha256, await hashFile(manifest.env.export));
   assert.equal(manifest.env.includeState, true);
   assert.ok(f.calls.find((c) => c[0] === "ocm" && c[2] === "export").includes("--include-state"));
+  assert.equal(f.calls.filter((c) => c[0] === "ocm" && c[2] === "snapshot" && c[3] === "create" && c[4] === manifest.env.name).length, 1);
   assert.deepEqual(Object.fromEntries(Object.entries(manifest.traits).map(([id, row]) => [id, row.keys])), foundationKeys);
   const destroyed = f.calls.filter((c) => c[0] === "ocm" && c[2] === "destroy");
   assert.equal(destroyed.length, 1);
@@ -124,12 +179,140 @@ test("build exports only checked content, verifies an import and keeps only the 
   assert.notEqual(destroyed[0][3], manifest.env.name);
   assert.equal(f.calls.filter((c) => checkTraits[c[1]?.split("/").at(-1)]).length, 10);
   assert.equal(f.calls.filter((c) => c[1]?.endsWith("add-agent.mjs")).length, 2);
+  assert.deepEqual(manifest.withheldTraits, {});
+  const legacyManifest = { ...manifest };
+  delete legacyManifest.withheldTraits;
+  await writeFile(join(out, "persona.json"), JSON.stringify(legacyManifest));
   f.calls.length = 0;
   const verify = await verifyPersona(join(out, "persona.json"), { execute: f.execute, gatewayFactory: f.gatewayFactory });
   assert.equal(verify.ok, true);
+  assert.deepEqual(verify.withheldTraits, {});
   assert.ok(!f.calls.some((c) => c.some((arg) => arg.endsWith("configure-openclaw-mock-auth.mjs"))));
   assert.ok(f.calls.some((c) => c.includes("models.providers.openai.baseUrl")));
   await assert.rejects(buildPersona(f.path, out, { executeBuild: true, execute: f.execute, gatewayFactory: f.gatewayFactory }), /empty/);
+});
+
+test("gated builds skip unsupported commands and verify only justified omissions", async (t) => {
+  const f = await fixture(t);
+  const candidate = structuredClone(lifecycleDefinition);
+  candidate.traits.find((trait) => trait.id === "channels-test-accounts").minimumRuntime = "2026.10.3";
+  await writeFile(f.path, JSON.stringify(candidate));
+  const out = join(f.root, "gated");
+  const manifestPath = join(out, "persona.json");
+  const options = { execute: f.execute, gatewayFactory: f.gatewayFactory };
+  const manifest = await buildPersona(f.path, out, { ...options, executeBuild: true });
+  assert.deepEqual(Object.keys(manifest.traits).sort(), ["agents-three-configured", "config-hand-edited", "mock-provider-scripted"]);
+  assert.deepEqual(Object.keys(manifest.withheldTraits).sort(), ["channels-test-accounts", "plugins-bundled-and-external"]);
+  assert.equal(manifest.withheldTraits["channels-test-accounts"].minimumRuntime, "2026.10.3");
+  assert.deepEqual(manifest.withheldTraits["plugins-bundled-and-external"].dependencies, ["channels-test-accounts"]);
+  assert.ok(!f.calls.some((call) => call.includes("plugins")));
+  assert.ok(!f.calls.some((call) => call[1]?.endsWith("check-channels.mjs") || call[1]?.endsWith("check-plugins.mjs")));
+  assert.ok(f.calls.some((call) => call[2] === "import"));
+  assert.deepEqual((await verifyPersona(manifestPath, options)).withheldTraits, manifest.withheldTraits);
+  for (const change of [
+    (value) => { delete value.traits["agents-three-configured"]; },
+    (value) => { delete value.withheldTraits; },
+    (value) => { delete value.withheldTraits["channels-test-accounts"]; },
+    (value) => { value.withheldTraits["channels-test-accounts"].minimumRuntime = "2026.9.9"; },
+    (value) => { value.withheldTraits["channels-test-accounts"].reason = "unverified claim"; },
+    (value) => { value.withheldTraits["plugins-bundled-and-external"].dependencies = ["config-hand-edited"]; },
+    (value) => { value.withheldTraits["channels-test-accounts"].keys = { dmChannel: "invented" }; },
+    (value) => { value.traits["channels-test-accounts"] = { keys: foundationKeys["channels-test-accounts"], checkedAt: new Date().toISOString() }; },
+    (value) => { delete value.traits["config-hand-edited"]; value.withheldTraits["config-hand-edited"] = value.withheldTraits["channels-test-accounts"]; },
+    (value) => { value.runtime.resolved = `2026.10.3@${value.runtime.resolved.split("@")[1]}`; },
+  ]) {
+    const altered = structuredClone(manifest);
+    change(altered);
+    await writeFile(manifestPath, JSON.stringify(altered));
+    f.calls.length = 0;
+    await assert.rejects(verifyPersona(manifestPath, options), /withheld|traits differ|bound runtime differs/);
+    assert.equal(f.calls.length, 0, "invalid withholding must fail before provisioning");
+  }
+});
+
+test("gated CLI dry plans show withholding without scheduling its builders", async (t) => {
+  const f = await fixture(t);
+  const candidate = structuredClone(lifecycleDefinition);
+  candidate.traits.find((trait) => trait.id === "channels-test-accounts").minimumRuntime = "2026.10.3";
+  await writeFile(f.path, JSON.stringify(candidate));
+  const out = join(f.root, "dry-gated");
+  const args = ["bin/kova.mjs", "persona", "build", "--definition", f.path, "--out", out];
+  const json = spawnSync(process.execPath, [...args, "--json"], { encoding: "utf8" });
+  assert.equal(json.status, 0, json.stderr);
+  const plan = JSON.parse(json.stdout);
+  assert.deepEqual(plan.traits.map((trait) => trait.id), ["agents-three-configured", "mock-provider-scripted", "config-hand-edited"]);
+  assert.deepEqual(Object.keys(plan.withheldTraits).sort(), ["channels-test-accounts", "plugins-bundled-and-external"]);
+  const plain = spawnSync(process.execPath, args, { encoding: "utf8" });
+  assert.equal(plain.status, 0, plain.stderr);
+  assert.match(plain.stdout, /WITHHELD channels-test-accounts: requires OpenClaw 2026\.10\.3/);
+  assert.match(plain.stdout, /WITHHELD plugins-bundled-and-external:/);
+  assert.doesNotMatch(plain.stdout, /check-channels\.mjs|check-plugins\.mjs|plugins install/);
+  await assert.rejects(access(out));
+});
+
+test("the exact minimum bound release builds the previously withheld content", async (t) => {
+  const f = await fixture(t);
+  const candidate = structuredClone(lifecycleDefinition);
+  candidate.runtime.selector = "npm:2026.10.3";
+  candidate.traits.find((trait) => trait.id === "channels-test-accounts").minimumRuntime = "2026.10.3";
+  await writeFile(f.path, JSON.stringify(candidate));
+  f.runtime("2026.10.3");
+  const options = { executeBuild: true, execute: f.execute, gatewayFactory: f.gatewayFactory };
+  const manifest = await buildPersona(f.path, join(f.root, "minimum"), options);
+  assert.match(manifest.runtime.resolved, /^2026\.10\.3@sha512-/);
+  assert.deepEqual(manifest.withheldTraits, {});
+  assert.deepEqual(Object.keys(manifest.traits).sort(), Object.keys(foundationKeys).sort());
+  assert.ok(f.calls.some((call) => call[1]?.endsWith("check-channels.mjs")));
+  f.calls.length = 0;
+  f.runtime("2026.9.9");
+  await assert.rejects(buildPersona(f.path, join(f.root, "wrong-bound-runtime"), options), /no exact version/);
+  assert.ok(!f.calls.some((call) => call[1]?.endsWith("add-agent.mjs")));
+});
+
+test("paired personas protect and export their environment, verify an import, and never snapshot", async (t) => {
+  const f = await fixture(t);
+  const pairedTrait = definition.traits.find((trait) => trait.id === "cli-profile-paired");
+  assert.ok(pairedTrait);
+  await writeFile(f.path, JSON.stringify({ ...lifecycleDefinition, traits: [...lifecycleDefinition.traits, pairedTrait] }));
+  f.keysFor((trait) => trait === "cli-profile-paired" ? { profile: "verify-cli" } : foundationKeys[trait]);
+  const rebound = [];
+  const execute = async (command, options) => {
+    if (!command.includes("/src/persona/provenance.mjs")) {
+      const tokens = parseCatalogueCommand(command).tokens;
+      assert.ok(!(tokens[0] === "ocm" && tokens[1] === "env" && tokens[2] === "snapshot"), "paired builds must not request an OCM snapshot");
+    }
+    return f.execute(command, options);
+  };
+  const out = join(f.root, "paired");
+  const manifest = await buildPersona(f.path, out, {
+    executeBuild: true, execute, gatewayFactory: f.gatewayFactory,
+    rebindPairedProfile: async (metadata, state) => {
+      assert.ok(f.environments.has(metadata.name));
+      assert.equal(state, join(metadata.root, ".openclaw"));
+      assert.ok(f.calls.some((call) => call[0] === "foreground-start" && call[1] === metadata.name));
+      rebound.push(metadata.name);
+      f.calls.push(["paired-rebind", metadata.name]);
+      return { profile: "verify-cli" };
+    },
+  });
+  assert.deepEqual(manifest.traits["cli-profile-paired"].keys, { profile: "verify-cli" });
+  assert.deepEqual(JSON.parse(await readFile(join(out, "persona.json"), "utf8")), manifest);
+  assert.equal(manifest.env.sha256, await hashFile(manifest.env.export));
+  assert.equal(manifest.env.includeState, true);
+  const imported = f.calls.filter((call) => call[0] === "ocm" && call[2] === "import");
+  assert.equal(imported.length, 1);
+  const clone = imported[0][imported[0].indexOf("--name") + 1];
+  assert.notEqual(clone, manifest.env.name);
+  assert.deepEqual(rebound, [clone]);
+  assert.ok(f.calls.some((call) => call[0] === "ocm" && call[2] === "protect" && call[3] === manifest.env.name && call[4] === "on"));
+  assert.ok(f.calls.some((call) => call[0] === "ocm" && call[2] === "export" && call[3] === manifest.env.name && call.includes("--include-state")));
+  assert.ok(f.calls.some((call) => call[0] === "ocm" && call[2] === "destroy" && call[3] === clone));
+  assert.deepEqual([...f.environments], [manifest.env.name]);
+  assert.equal(f.calls.filter((call) => call[1]?.endsWith("/pair-cli-profile.mjs")).length, 1);
+  const pairedChecks = f.calls.filter((call) => call[1]?.endsWith("/check-profile.mjs") && call[2] === "paired");
+  assert.equal(pairedChecks.length, 2);
+  assert.equal(pairedChecks[1][pairedChecks[1].indexOf("--env") + 1], clone);
+  assert.ok(f.calls.findIndex((call) => call[0] === "paired-rebind") < f.calls.indexOf(pairedChecks[1]));
 });
 
 test("a failing trait names the trait, destroys the incomplete environment and publishes no manifest", async (t) => {
@@ -365,3 +548,58 @@ for (const mode of ["build", "verify", "verify-cleanup", "build-create", "verify
     }
   });
 }
+
+
+test("imported trait preparation rebinds pairing, switches identity, and checks remapped companions", async () => {
+  const selected = ["gateway-multi-user-profiles", "session-shared-readonly", "cli-profile-paired", "catalog-claude-transcript", "gateway-second-instance"].map((id) => definition.traits.find((trait) => trait.id === id));
+  const events = [];
+  const keys = Object.fromEntries(selected.map((trait) => [trait.id, Object.fromEntries(Object.keys(trait.keys).map((key) => [key, key === "env" ? "companion-copy" : `saved-${key}`]))]));
+  const context = { env: "primary-copy", run: "/tmp/check-copy", kovaRoot: "/kova", traits: Object.fromEntries(selected.map((trait) => [trait.id, { keys: keys[trait.id] }])) };
+  const call = async (command) => {
+    assert.equal(command, "ocm env show 'primary-copy' --json");
+    return { stdout: JSON.stringify({ name: context.env, root: "/env/copy", stateDir: "/env/copy/state" }) };
+  };
+  const gateway = { identityMode: async (enabled, existing) => { events.push(["identity", enabled, existing]); }, assertOwned: async () => { events.push(["owned"]); } };
+  let index = 0;
+  const result = await checkPersonaTraits({ traits: selected }, context, call, {
+    gateway,
+    rebind: async (metadata, state) => { events.push(["rebind", metadata.name, state]); },
+    checkCommand: async (command) => {
+      const trait = selected[index++];
+      events.push(["check", trait.id]);
+      if (trait.id === "gateway-second-instance") assert.ok(command.endsWith(" --companion-env 'companion-copy'"));
+      return { stdout: JSON.stringify(keys[trait.id]) };
+    },
+  });
+  assert.deepEqual(events[0], ["rebind", "primary-copy", "/env/copy/state"]);
+  assert.deepEqual(events.filter(([event]) => event === "identity").map(([, enabled]) => enabled), [true, true, false, false, false, false]);
+  assert.deepEqual(result["gateway-second-instance"].keys, { env: "companion-copy" });
+  assert.equal(index, selected.length);
+});
+
+test("companion construction copies only stopped Gateway state and resumes the primary for checks", async () => {
+  const trait = definition.traits.find((value) => value.id === "gateway-second-instance");
+  const events = [];
+  let running = true;
+  const gateway = {
+    assertOwned: async () => { assert.ok(running); },
+    identityMode: async () => {},
+    stop: async () => { running = false; events.push("stop"); },
+    start: async () => { running = true; events.push("start"); },
+  };
+  const call = async (command) => {
+    if (command.includes("second-environment.mjs' create") || command.includes("second-environment.mjs create")) {
+      assert.equal(running, false, "an active primary ownership lease would be copied");
+      events.push("clone");
+    }
+    if (command.includes("env show")) return { stdout: JSON.stringify({ root: "/nonexistent-persona-copy", stateDir: "/nonexistent-persona-copy/.openclaw" }) };
+    if (command.startsWith("cat ")) return { stdout: "12345" };
+    return { stdout: "" };
+  };
+  const context = { env: "primary-copy", run: "/tmp/companion-check", kovaRoot: "/kova", traits: {} };
+  await checkPersonaTraits({ traits: [trait] }, context, call, {
+    build: true, gateway,
+    checkCommand: async () => { assert.ok(running); events.push("check"); return { stdout: JSON.stringify({ env: "primary-copy-second" }) }; },
+  });
+  assert.deepEqual(events, ["stop", "clone", "stop", "start", "check"]);
+});

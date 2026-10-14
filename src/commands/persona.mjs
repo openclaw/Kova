@@ -16,4 +16,7 @@ export async function runPersonaCommand(flags) {
     console.log(`DRY-RUN: build ${result.persona} on ${result.runtime} into ${result.out}`);
     for (const trait of result.traits) console.log(`${trait.id}\n  build: ${trait.builder.join("\n  build: ")}\n  check: ${trait.check}`);
   } else console.log(`PASS: ${result.persona} ${result.version}${result.env ? ` (${result.env.name})` : ""}`);
+  if (!flags.json && action !== "show") {
+    for (const [id, withheld] of Object.entries(result.withheldTraits ?? {})) console.log(`WITHHELD ${id}: ${withheld.reason}`);
+  }
 }
