@@ -1,4 +1,5 @@
 import { CallError } from "./background.mjs";
+import { revealSidebarSession } from "./control-ui-session-flows.mjs";
 
 const heldMessage = "VERIFY_HOLD";
 const replyMessage = "Reply with exact ASCII text KOVA_AGENT_OK only.";
@@ -108,7 +109,7 @@ export const chatFlows = {
   },
 
   "home-subagents-panel": async (context) => {
-    await context.step("open-home", () => context.navigate("/chat/main"));
+    await context.step("open-home", () => context.navigate("/chat?session=main"));
     await context.step("open-subagents", () => openPanel(activePane(context.page), "Subagents"));
     return { concerns: ["The Subagents panel is scoped to main Home; its children must be prepared there."] };
   },
@@ -119,7 +120,10 @@ export const chatFlows = {
     // action from another page before navigating to the parent.
     await context.step("open-session-list", () => context.navigate("/sessions"));
     const row = context.page.locator(`.sidebar-recent-session[data-session-key=${cssString(context.sessionKey)}]`);
-    await context.step("parent-menu", () => row.click({ button: "right" }));
+    await context.step("parent-menu", async () => {
+      await revealSidebarSession(context.page, context.sessionKey);
+      await row.click({ button: "right" });
+    });
     await context.step("mark-parent-read", () => context.page.getByRole("menuitem", { name: "Mark as read", exact: true }).click());
     await context.step("open-parent", () => row.locator(".sidebar-recent-session__link").click());
   },
@@ -162,6 +166,7 @@ export const chatFlows = {
     await context.step("session-hovercard", async () => {
       await context.page.keyboard.press("Escape");
       await context.page.mouse.move(700, 20);
+      await revealSidebarSession(context.page, context.sessionKey);
       await row.hover();
       await row.locator(".sidebar-recent-session__link").focus();
       await context.page.locator(".session-progress-hovercard").waitFor({ state: "visible" });
@@ -199,8 +204,9 @@ export const chatFlows = {
       context.captureValue("effortChoice", values[next]);
     });
     await context.step("enable-fast-mode", async () => {
-      await pane.locator("[data-chat-thinking-select]").click();
-      await pane.locator('[data-chat-speed-option="on"]').click();
+      const fast = pane.locator('[data-chat-speed-option="on"]');
+      if (!(await fast.isVisible())) await pane.locator("[data-chat-thinking-select]").click();
+      await fast.click();
     });
     return { concerns: ["Requires the existing openai/mock-tools and openai/gpt-5.5 models; finishes on openai/gpt-5.5 with the adjacent effort level and fast mode enabled."] };
   },
@@ -315,6 +321,8 @@ export const chatFlows = {
     await context.step("reconnect-existing-page", () => context.waitConnected());
     await context.step("send-after-reconnect", async () => {
       const pane = activePane(context.page);
+      if (await pane.evaluate((element) => element.sessionKey) !== context.requireSession()) throw new CallError("retained page session does not match the requested session");
+      context.captureValue("sessionKey", context.requireSession());
       await composer(pane).fill(replyMessage);
       await pane.locator(".agent-chat__composer-actions .chat-send-btn--send").click();
     });

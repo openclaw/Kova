@@ -230,7 +230,8 @@ Every result contains `flow`, `steps`, `screens`, `requests`, `elapsedMs`,
 `createdIds`, `sessionKey`, `url`, `handoff` and `error`. Steps record action,
 completion status and elapsed time. Requests contain method, completion status
 and elapsed time, plus a canonical error code for a failed request; request
-bodies and arbitrary responses are omitted. Screens
+bodies and arbitrary responses are omitted. The flow waits for observed RPC
+replies within its timeout; streaming events do not extend that wait. Screens
 are PNG paths below `--artifact-dir`. Optional identities, public chat URLs and
 base64url resume handoffs are null until observed. The script records actions
 and errors without deciding whether screen content is correct.
@@ -257,7 +258,9 @@ are refused. `--wait` closes the browser, waits for cleanup, and prints its last
 flow result. The original timeout bounds the retained browser's entire lifetime;
 later calls cannot extend it. Cancellation closes the owned browser. A retained
 browser keeps its original locale. `open-session-keep-open` and
-`reconnect-and-send` require a handle.
+`reconnect-and-send` require a handle. Reconnection requires an existing
+browser and refuses to send if its selected session differs from the requested
+key.
 
 | Flow | Actions and required data |
 | --- | --- |
@@ -273,7 +276,7 @@ browser keeps its original locale. `open-session-keep-open` and
 | `export-markdown-and-copy` | Download Markdown using `/export`, then copy the conversation from its menu. |
 | `fork-from-message` | Fork an idle session from its last user message. |
 | `continue-in-terminal` | Open the terminal dialog and record its credential-free resume handoff. |
-| `sidebar-delete-nested-child` | Expand the selected child's ancestors and delete the child. |
+| `sidebar-delete-nested-child` | Reveal and delete a persistent nested child; subagent-only rows belong to the Subagents panel. |
 | `delete-then-switch-gateway` | Delete the selected session and pair to `--gateway-env`. |
 | `resume-in-new-session` | Follow Resume in new session on a prepared recovery source. |
 | `open-by-link` | Open and reload the selected session's link. |
@@ -285,7 +288,7 @@ browser keeps its original locale. `open-session-keep-open` and
 | `parent-mark-read-after-child` | Mark an unread parent read from its menu before opening it. |
 | `comment-on-selection` | Select assistant text, attach a comment, submit and inspect its comment chip. |
 | `talk-to-home-dock` | Open Home beside another session, attach selected text, send and open Home fully. |
-| `sidebar-hovercard-and-attention` | Hover the selected session and open Inbox. |
+| `sidebar-hovercard-and-attention` | Reveal the selected sidebar row, show its hovercard and open Inbox. |
 | `goal-composer-and-pill` | Start a goal through the composer and open its details. |
 | `composer-model-effort-fast` | Select mock-tools, return to gpt-5.5, change one effort level and enable fast mode. |
 | `send-then-stop` | Submit VERIFY_HOLD to the scripted provider and stop generation. |
