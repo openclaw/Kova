@@ -1,6 +1,6 @@
 import { open, readdir, lstat } from "node:fs/promises";
 import { constants } from "node:fs";
-import { join, matchesGlob } from "node:path";
+import { isAbsolute, join, matchesGlob } from "node:path";
 import { zstdDecompressSync } from "node:zlib";
 import JSON5 from "json5";
 import { sha256, canonicalJSON } from "./plan.mjs";
@@ -49,7 +49,15 @@ export async function recordedDirectory(path) {
 }
 const textLines = (text) => text ? text.replace(/\r?\n$/, "").split(/\r?\n/) : [];
 
-export async function* stateFiles(directory, standard, prefix = "") {
+export async function* checkpointStateFiles(directory, phase, standard) {
+  const selected = phase.checkpoint.filter((signal) => signal.startsWith("state:")).map((signal) => signal.slice(6));
+  if (!selected.length) return;
+  if (selected.some((path) => !path || isAbsolute(path) || path.includes("\\") || path.includes("\0") || path.split("/").some((part) => !part || part === "." || part === ".."))) throw new Error(`${phase.id}: invalid recorded state selection`);
+  if (!await recordedDirectory(directory)) throw new Error(`${phase.id}: missing state checkpoint directory`);
+  yield* stateFiles(directory, standard, "", selected);
+}
+
+export async function* stateFiles(directory, standard, prefix = "", selected = null) {
   let entries;
   try {
     if (!await recordedDirectory(directory)) { if (!prefix) return; throw new Error(`missing state directory: ${directory}`); }
@@ -58,9 +66,12 @@ export async function* stateFiles(directory, standard, prefix = "") {
   catch (error) { if (error.code === "ENOENT" && !prefix) return; throw error; }
   for (const entry of entries.sort((a, b) => a.name < b.name ? -1 : 1)) {
     const path = prefix ? `${prefix}/${entry.name}` : entry.name;
+    const includes = (root) => path === root || path.startsWith(`${root}/`);
+    if (selected && !selected.some((root) => includes(root) || root.startsWith(`${path}/`))) continue;
     const file = join(directory, entry.name);
     if (entry.isSymbolicLink()) throw new Error(`recorded state must not contain symbolic links: ${path}`);
-    if (entry.isDirectory()) { yield* stateFiles(file, standard, path); continue; }
+    if (entry.isDirectory()) { yield* stateFiles(file, standard, path, selected); continue; }
+    if (selected && !selected.some(includes)) continue;
     if (!entry.isFile()) throw new Error(`recorded state is not a regular file: ${path}`);
     if (/-wal$|-shm$/.test(entry.name)) {
       try { if ((await readBytes(file.slice(0, -4), 16)).equals(Buffer.from("SQLite format 3\0"))) continue; }
@@ -299,8 +310,7 @@ export async function checkpointRows(directory, phase, standard, normalization, 
     } else if (signal === "screen") b.add("screen", [], sha256(await readBytes(join(directory, "screen.png"))));
   }
   if (phase.checkpoint.some((signal) => signal.startsWith("state:"))) {
-    if (!await recordedDirectory(join(directory, "state"))) throw new Error(`${phase.id}: missing state checkpoint directory`);
-    for await (const file of stateFiles(join(directory, "state"), standard)) {
+    for await (const file of checkpointStateFiles(join(directory, "state"), phase, standard)) {
       const path = file.path.split("/").map((part) => pointerPart(normalize(part)));
       const dynamic = path.map((_, index) => index);
       if (file.kind === "sqlite") {
