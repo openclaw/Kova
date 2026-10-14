@@ -61,7 +61,7 @@ These descriptions are retained from the historical derivation. A plan checks th
 - session-interrupted-inputs: a session with queued, cancelled and interrupted pending inputs retained (key)
 - session-long-compacted: a session of thousands of messages with compaction entries and a reset boundary (key, sessionId, shortId, anchorMessageId, searchWord, searchPrefix); D named it session-long-history
 - session-main-rolling: the main session with history from several channels and a DM peer id (key, peer)
-- session-orchestrator-idle: an idle root session allowed to spawn (key; cancelRunId and yieldingChildKey are recorded by the spawn phases)
+- session-orchestrator-idle: an idle root session allowed to spawn (key); child run ids and keys are read from spawn outputs during the run
 - session-pair-watched: two idle sessions on the same agent (keyA, keyB, peerB, sessionIdB)
 - session-progress-card: a session holding a saved progress card (key)
 - session-pruned-projections: a session with cache-ttl pruning projections recorded in its transcript (key, sessionId); D named it session-pruned-tool-results
@@ -124,6 +124,18 @@ Historical limits:
 - `share-session` adds a suggestion and resolves the persona's stored pending
   suggestion. The new suggestion's resolution is not claimed. Public sharing
   uses the durable session id as its concurrency expectation.
+- Subagent cancellation, continuation and waits read their generated identities
+  from earlier `sessions_spawn` outputs through `agent-tool-turn --from`.
+  Each output has one writer. The caller session and accepted spawn result must
+  match before a run id or child session key is used; no child identity comes
+  from a persona key. Waits receive a nonempty `runIds` array and use at most
+  60 seconds, as the pinned tool requires.
+- Ambient held-turn, rolling-session and idle-orchestrator prerequisites are
+  declared by setup. Later phases retain their own direct persona inputs but
+  do not repeat those ambient traits as unused reads. Setup selection and
+  withholding still propagate every missing prerequisite. This avoids false
+  read-before-destroy constraints without changing the planner's ordering rules
+  or any catalogue side classification.
 
 The current 179 Gateway requests include two added identity reads and exclude
 the two GitHub status requests. The two existing background joins remain.

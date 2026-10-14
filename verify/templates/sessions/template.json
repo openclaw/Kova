@@ -104,7 +104,7 @@
       "support/run-doctor-repair.mjs  (openclaw doctor --fix with its output captured; --env)",
       "support/run-gateway-session-send-turn.mjs  (sessions.create and sessions.send, then chat history; --session-key --create-session --message --timeout --env)",
       "support/run-tui-message-turn.mjs  (openclaw tui turn; --session --message --timeout --env)",
-      "support/verify/agent-tool-turn.mjs  (a turn whose scripted reply calls one session tool, then chat.history with tools; --session-key --tool --args --out --timeout --background --handle --wait --session-from --merge-from --env)",
+      "support/verify/agent-tool-turn.mjs  (a turn whose scripted reply calls one session tool, then chat.history with tools; --session-key --tool --args --out --timeout --background --handle --wait --session-from --merge-from --from --env)",
       "support/verify/channel-inbound-turn.mjs  (inbound channel dispatch through session routing; --chat-type --peer --text --timeout --env)",
       "support/verify/chat-history-read.mjs  (chat.startup, chat.history with cursors, chat.message.get, sessions.messages.subscribe; --session-key --limit --message-id --follow-delta --timeout --wait --env --background --handle)",
       "support/verify/chat-send.mjs  (chat.send then chat.history for the reply; --session-key --message --queue-mode --intent --expected-leaf --incognito-handle --timeout --background --handle --wait --session-from --after-ms --env)",
@@ -216,7 +216,6 @@
         "src/gateway/server-methods/session-create-spawn.ts"
       ],
       "requires": [
-        "mock-provider-held-turn",
         "mock-provider-tool-calls",
         "session-orchestrator-idle"
       ],
@@ -245,7 +244,6 @@
         "src/gateway/server-methods/session-create-spawn.ts"
       ],
       "requires": [
-        "mock-provider-held-turn",
         "mock-provider-tool-calls"
       ],
       "commands": [
@@ -330,7 +328,6 @@
         "src/gateway/server-methods/sessions-messaging.ts"
       ],
       "requires": [
-        "mock-provider-held-turn",
         "session-group-watched",
         "session-main-rolling"
       ],
@@ -387,9 +384,7 @@
         "src/gateway/server-methods/sessions-read.ts"
       ],
       "requires": [
-        "config-reset-idle-short",
-        "mock-provider-held-turn",
-        "session-main-rolling"
+        "config-reset-idle-short"
       ],
       "commands": [
         "node {kovaRoot}/support/run-cron-runtime-smoke.mjs --env {env} --artifact-dir {run}/cron-smoke --timeout 150000",
@@ -424,10 +419,8 @@
       ],
       "requires": [
         "agents-multiple-with-global-key",
-        "mock-provider-held-turn",
         "mock-provider-tool-calls",
-        "session-main-rolling",
-        "session-orchestrator-idle"
+        "session-main-rolling"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.title.prepare --params '{\"agentId\":\"{persona:agents-multiple-with-global-key:agentId}\",\"message\":\"Plan the release checklist for the session verification harness\"}' --timeout 120000",
@@ -471,12 +464,10 @@
         "src/gateway/server-methods/chat-transcript-inject.ts"
       ],
       "requires": [
-        "mock-provider-held-turn",
         "mock-provider-tool-calls",
         "session-group-watched",
         "session-interrupted-inputs",
-        "session-main-rolling",
-        "session-orchestrator-idle"
+        "session-main-rolling"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-main-rolling:key} --message \"Queued follow-up: reply with KOVA_FOLLOWUP_OK.\" --queue-mode followup --timeout 30000",
@@ -513,7 +504,6 @@
         "ui/src/pages/chat/chat-pane-sharing-actions.ts"
       ],
       "requires": [
-        "mock-provider-held-turn",
         "session-main-rolling",
         "session-with-worktree"
       ],
@@ -552,7 +542,6 @@
         "src/config/sessions/**"
       ],
       "requires": [
-        "mock-provider-held-turn",
         "session-interrupted-inputs",
         "session-long-compacted",
         "session-main-rolling",
@@ -598,7 +587,6 @@
         "ui/src/components/app-sidebar*.ts"
       ],
       "requires": [
-        "mock-provider-held-turn",
         "session-long-compacted",
         "session-main-rolling",
         "session-pruned-projections"
@@ -629,7 +617,6 @@
         "src/agents/tools/sessions-resolution.ts"
       ],
       "requires": [
-        "mock-provider-held-turn",
         "mock-provider-tool-calls",
         "session-interrupted-inputs",
         "session-long-compacted",
@@ -661,9 +648,7 @@
         "ui/src/pages/chat/browser-annotation-*.ts"
       ],
       "requires": [
-        "mock-provider-held-turn",
-        "session-long-compacted",
-        "session-main-rolling"
+        "session-long-compacted"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow comment-on-selection --session-key {persona:session-long-compacted:key} --artifact-dir {run}/comment --timeout 120000"
@@ -731,8 +716,6 @@
       ],
       "requires": [
         "cli-profile-paired",
-        "mock-provider-held-turn",
-        "session-main-rolling",
         "sessions-organized-mixed"
       ],
       "commands": [
@@ -784,11 +767,9 @@
       "requires": [
         "agents-multiple-with-global-key",
         "gateway-multi-user-profiles",
-        "mock-provider-held-turn",
         "mock-provider-tool-calls",
         "session-imported-draft",
         "session-long-compacted",
-        "session-main-rolling",
         "session-shared-readonly",
         "sessions-organized-mixed",
         "sessions-synthetic-automation",
@@ -837,11 +818,9 @@
       ],
       "requires": [
         "agents-multiple-with-global-key",
-        "mock-provider-held-turn",
         "mock-provider-tool-calls",
         "session-imported-draft",
         "session-long-compacted",
-        "session-main-rolling",
         "transcripts-cold-stored"
       ],
       "commands": [
@@ -880,7 +859,6 @@
         "src/cli/program/register.status-health-sessions.ts"
       ],
       "requires": [
-        "mock-provider-held-turn",
         "mock-provider-tool-calls",
         "session-group-watched",
         "session-long-compacted",
@@ -926,11 +904,9 @@
         "src/gateway/server-methods/chat-send-goal-retry.ts"
       ],
       "requires": [
-        "mock-provider-held-turn",
         "mock-provider-tool-calls",
         "session-goal-active",
         "session-group-watched",
-        "session-main-rolling",
         "session-pair-watched"
       ],
       "commands": [
@@ -1025,9 +1001,7 @@
       ],
       "requires": [
         "gateway-multi-user-profiles",
-        "mock-provider-held-turn",
         "mock-provider-tool-calls",
-        "session-main-rolling",
         "session-orchestrator-idle",
         "session-pair-watched",
         "session-with-worktree",
@@ -1081,7 +1055,6 @@
       "requires": [
         "mock-provider-held-turn",
         "mock-provider-tool-calls",
-        "session-main-rolling",
         "sessions-organized-mixed"
       ],
       "commands": [
@@ -1128,10 +1101,8 @@
         "ui/src/pages/chat/**"
       ],
       "requires": [
-        "mock-provider-held-turn",
         "mock-provider-tool-calls",
         "session-group-watched",
-        "session-main-rolling",
         "session-pair-watched"
       ],
       "commands": [
@@ -1173,7 +1144,6 @@
         "ui/src/pages/chat/**"
       ],
       "requires": [
-        "mock-provider-held-turn",
         "mock-provider-tool-calls",
         "session-main-rolling",
         "session-workspace-changes"
@@ -1225,8 +1195,6 @@
       ],
       "requires": [
         "gateway-multi-user-profiles",
-        "mock-provider-held-turn",
-        "session-main-rolling",
         "session-public-shared",
         "session-shared-readonly"
       ],
@@ -1277,7 +1245,6 @@
         "ui/src/pages/chat/**"
       ],
       "requires": [
-        "mock-provider-held-turn",
         "session-long-compacted",
         "session-main-rolling",
         "transcripts-cold-stored"
@@ -1317,9 +1284,7 @@
         "src/agents/tools/sessions-send*.ts"
       ],
       "requires": [
-        "mock-provider-held-turn",
         "mock-provider-tool-calls",
-        "session-main-rolling",
         "session-pair-watched"
       ],
       "commands": [
@@ -1354,22 +1319,21 @@
         "src/gateway/server-methods/session-create-spawn.ts"
       ],
       "requires": [
-        "mock-provider-held-turn",
         "mock-provider-tool-calls",
         "session-orchestrator-idle"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool agents_list --args '{}' --timeout 60000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool sessions_spawn --args '{\"task\":\"Reply with exact ASCII text KOVA_CHILD_OK only.\",\"context\":\"fork\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool sessions_spawn --args '{\"task\":\"Hold your reply open for four minutes, then reply with KOVA_CHILD_OK.\",\"context\":\"fork\",\"runTimeoutSeconds\":280}' --timeout 120000 --out {run}/cancel-child.json",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool sessions_spawn --args '{\"task\":\"Reply with exact ASCII text KOVA_CHILD_OK only.\",\"visible\":true,\"worktree\":true,\"group\":\"Review queue\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool subagents --args '{\"action\":\"list\"}' --timeout 60000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool subagents --args '{\"action\":\"cancel\",\"runId\":\"{persona:session-orchestrator-idle:cancelRunId}\"}' --timeout 60000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool subagents --args '{\"action\":\"cancel\"}' --from {run}/cancel-child.json --timeout 60000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool sessions_yield --args '{}' --timeout 60000",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --message \"/subagents info 1\" --timeout 60000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow home-subagents-panel --artifact-dir {run}/subagents --timeout 120000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/subagent-parent.json --tool sessions_spawn --args '{\"task\":\"Kova child task\",\"visible\":true,\"group\":\"Kova\",\"label\":\"kova-visible-child\"}' --out {run}/visible-child.json --timeout 200000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/subagent-parent.json --tool sessions_spawn --args '{\"task\":\"Kova child task\",\"context\":\"fork\"}' --out {run}/hidden-child.json --timeout 200000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/subagent-parent.json --tool subagents --args '{\"action\":\"wait\"}' --merge-from {run}/hidden-child.json --timeout 250000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/subagent-parent.json --tool subagents --args '{\"action\":\"wait\"}' --from {run}/hidden-child.json --timeout 250000",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-from {run}/subagent-parent.json --message \"/subagents list\" --timeout 120000",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-from {run}/subagent-parent.json --message \"/subagents log 1 20\" --timeout 120000"
       ],
@@ -1396,9 +1360,7 @@
         "src/auto-reply/reply/session*.ts"
       ],
       "requires": [
-        "mock-provider-held-turn",
         "mock-provider-tool-calls",
-        "session-orchestrator-idle",
         "session-thread-bound"
       ],
       "commands": [
@@ -1475,7 +1437,6 @@
         "src/cli/program/register.status-health-sessions.ts"
       ],
       "requires": [
-        "mock-provider-held-turn",
         "session-long-compacted",
         "session-main-rolling",
         "session-with-worktree"
@@ -1512,11 +1473,8 @@
         "ui/src/pages/chat/chat-abort-request.ts"
       ],
       "requires": [
-        "mock-provider-held-turn",
         "mock-provider-tool-calls",
         "session-group-watched",
-        "session-main-rolling",
-        "session-orchestrator-idle",
         "session-pair-watched"
       ],
       "commands": [
@@ -1558,7 +1516,6 @@
         "src/cli/program/register.status-health-sessions.ts"
       ],
       "requires": [
-        "mock-provider-held-turn",
         "session-group-watched",
         "session-imported-draft",
         "session-long-compacted",
@@ -1600,11 +1557,8 @@
         "src/cli/program/register.status-health-sessions.ts"
       ],
       "requires": [
-        "mock-provider-held-turn",
         "mock-provider-tool-calls",
         "session-group-watched",
-        "session-main-rolling",
-        "session-orchestrator-idle",
         "sessions-organized-mixed",
         "sessions-stale-peer-dm-rows",
         "sessions-thousands-near-cap",
@@ -1650,11 +1604,9 @@
       ],
       "requires": [
         "config-heartbeat-short",
-        "mock-provider-held-turn",
         "mock-provider-tool-calls",
         "session-group-watched",
-        "session-main-rolling",
-        "session-orchestrator-idle"
+        "session-main-rolling"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --chat-type group --peer {persona:session-group-watched:peer} --text \"Group chatter without a mention.\" --timeout 60000",
@@ -1682,8 +1634,7 @@
         "src/gateway/session-*.ts"
       ],
       "requires": [
-        "session-group-watched",
-        "session-main-rolling"
+        "session-group-watched"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --wait {run}/turn-in-flight.json --timeout 280000",
@@ -1713,9 +1664,7 @@
         "src/auto-reply/reply/session*.ts"
       ],
       "requires": [
-        "cron-job-isolated",
-        "mock-provider-held-turn",
-        "session-main-rolling"
+        "cron-job-isolated"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/cron-isolated-run.mjs --env {env} --job-id {persona:cron-job-isolated:jobId} --timeout 120000",
@@ -1789,21 +1738,20 @@
         "ui/src/components/session-attention*.ts"
       ],
       "requires": [
-        "mock-provider-held-turn",
         "mock-provider-tool-calls",
         "session-orchestrator-idle"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool sessions_spawn --args '{\"task\":\"Report KOVA_YIELD_OK, then yield with waitFor message.\",\"runTimeoutSeconds\":120}' --timeout 90000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool sessions_spawn --args '{\"task\":\"Report KOVA_YIELD_OK, then yield with waitFor message.\",\"runTimeoutSeconds\":120}' --timeout 90000 --out {run}/yielding-child.json",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/subagent-parent.json --tool sessions_yield --args '{\"waitFor\":\"message\"}' --timeout 200000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/subagent-parent.json --tool sessions_send --args '{\"message\":\"Reply with exact ASCII text KOVA_AGENT_OK only.\",\"mode\":\"followup\",\"timeoutSeconds\":0}' --merge-from {run}/hidden-child.json --timeout 200000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/subagent-parent.json --tool sessions_send --args '{\"message\":\"Reply with exact ASCII text KOVA_AGENT_OK only.\",\"mode\":\"followup\",\"timeoutSeconds\":0}' --from {run}/hidden-child.json --timeout 200000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --wait {run}/subagents-working.json --timeout 280000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method chat.history --session-from {run}/subagent-parent.json --params '{\"limit\":20}' --timeout 30000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/subagent-parent.json --tool subagents --args '{\"action\":\"list\"}' --timeout 200000",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-from {run}/subagent-parent.json --message \"/subagents list\" --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --session-from {run}/subagent-parent.json --timeout 30000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow parent-mark-read-after-child --session-from {run}/subagent-parent.json --artifact-dir {run}/ui/subagent-read --timeout 150000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool sessions_send --args '{\"sessionKey\":\"{persona:session-orchestrator-idle:yieldingChildKey}\",\"message\":\"Continue and finish.\",\"timeoutSeconds\":0}' --timeout 60000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --tool sessions_send --args '{\"message\":\"Continue and finish.\",\"timeoutSeconds\":0}' --from {run}/yielding-child.json --timeout 60000",
         "node {kovaRoot}/support/verify/chat-history-read.mjs --env {env} --session-key {persona:session-orchestrator-idle:key} --limit 20 --timeout 60000 --wait {run}/subagents.json"
       ],
       "checkpoint": [
@@ -1978,8 +1926,7 @@
         "src/gateway/server-methods/sessions-goal.ts"
       ],
       "requires": [
-        "session-long-compacted",
-        "session-main-rolling"
+        "session-long-compacted"
       ],
       "commands": [
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-from {run}/new-session.json --message /new --timeout 200000",
@@ -2197,9 +2144,7 @@
         "src/agents/sessions/agent-session-compaction.ts"
       ],
       "requires": [
-        "mock-provider-held-turn",
         "session-group-watched",
-        "session-main-rolling",
         "transcripts-cold-stored"
       ],
       "commands": [
@@ -2230,18 +2175,15 @@
       ],
       "requires": [
         "config-subagent-archive-fast",
-        "mock-provider-held-turn",
-        "mock-provider-tool-calls",
-        "session-main-rolling",
-        "session-orchestrator-idle"
+        "mock-provider-tool-calls"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:config-subagent-archive-fast:parentKey} --tool sessions_spawn --args '{\"task\":\"Reply with exact ASCII text KOVA_CHILD_OK only.\"}' --timeout 120000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:config-subagent-archive-fast:parentKey} --tool subagents --args '{\"action\":\"wait\",\"timeoutSeconds\":90}' --timeout 150000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:config-subagent-archive-fast:parentKey} --tool sessions_spawn --args '{\"task\":\"Reply with exact ASCII text KOVA_CHILD_OK only.\"}' --timeout 120000 --out {run}/auto-archive-child.json",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:config-subagent-archive-fast:parentKey} --tool subagents --args '{\"action\":\"wait\",\"timeoutSeconds\":60}' --from {run}/auto-archive-child.json --timeout 150000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:config-subagent-archive-fast:parentKey} --tool subagents --args '{\"action\":\"list\"}' --timeout 60000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"archived\":\"all\",\"search\":\"subagent\",\"limit\":50}' --timeout 120000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/subagent-parent.json --tool sessions_spawn --args '{\"task\":\"Kova child task\"}' --out {run}/archive-child.json --timeout 200000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/subagent-parent.json --tool subagents --args '{\"action\":\"wait\"}' --merge-from {run}/archive-child.json --timeout 200000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/subagent-parent.json --tool subagents --args '{\"action\":\"wait\"}' --from {run}/archive-child.json --timeout 200000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --session-from {run}/archive-child.json --after-ms 90000 --timeout 30000"
       ],
       "checkpoint": [
@@ -2299,12 +2241,10 @@
         "src/agents/tools/sessions-tool*.ts"
       ],
       "requires": [
-        "mock-provider-held-turn",
         "mock-provider-tool-calls",
         "session-goal-active",
         "session-long-compacted",
         "session-main-rolling",
-        "session-orchestrator-idle",
         "session-pair-watched",
         "session-progress-card"
       ],
@@ -2352,11 +2292,9 @@
       ],
       "requires": [
         "agents-multiple-with-global-key",
-        "mock-provider-held-turn",
         "mock-provider-tool-calls",
         "session-imported-draft",
         "session-long-compacted",
-        "session-main-rolling",
         "session-pair-watched",
         "session-pruned-projections",
         "sessions-organized-mixed"
@@ -2435,7 +2373,6 @@
         "mock-provider-tool-calls",
         "session-interrupted-inputs",
         "session-main-rolling",
-        "session-orchestrator-idle",
         "session-pruned-projections",
         "sessions-organized-mixed"
       ],
@@ -2479,10 +2416,7 @@
         "ui/src/lib/sessions/recover.ts",
         "ui/src/pages/chat/**"
       ],
-      "requires": [
-        "mock-provider-held-turn",
-        "session-main-rolling"
-      ],
+      "requires": [],
       "commands": [
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.recover --params '{\"key\":\"agent:main:main\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow resume-in-new-session --session-key agent:main:main --artifact-dir {run}/ui/recover --timeout 150000"

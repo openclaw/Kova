@@ -1163,7 +1163,7 @@
           "value": "required"
         },
         "--out": {
-          "description": "file under {run} to write the result to",
+          "description": "File under {run} to write sessionKey, toolCall (name and args) and the raw toolResult with its details",
           "value": "required"
         },
         "--timeout": {
@@ -1193,9 +1193,14 @@
         "--env": {
           "description": "OCM environment name",
           "value": "required"
+        },
+        "--from": {
+          "description": "Earlier output from this entry with toolCall.name sessions_spawn and toolResult.details.status accepted; require its sessionKey to match the caller, read details.runId into subagents cancel runId or wait runIds (one item), or details.childSessionKey into sessions_send sessionKey; refuse missing, mismatched or prefilled target identities",
+          "value": "required"
         }
       },
       "prints": [
+        "sessionKey",
         "toolCall",
         "toolResult",
         "reply",

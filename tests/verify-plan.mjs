@@ -138,7 +138,7 @@ test("loader reads the shipped sessions template and standard commands pass the 
   const all = checkCatalogueCommands(inputs.catalogue, sessions.phases.flatMap((item) => item.commands.map((command) => ({ command }))));
   assert.deepEqual(all.filter((item) => item.code !== "toWrite"), []);
   assert.ok(all.some((item) => item.code === "toWrite"));
-  assert.doesNotMatch(JSON.stringify(sessions.phases), /\{persona:[^}:]+:(?:processId|instanceId|inputId|queuedInputId)\}/);
+  assert.doesNotMatch(JSON.stringify(sessions.phases), /\{persona:[^}:]+:(?:processId|instanceId|inputId|queuedInputId|cancelRunId|yieldingChildKey)\}/);
   const missingIdentities = selectPhases({ ...inputs, paths: ["src/gateway/server-methods/sessions-sharing.ts", "src/gateway/server-methods/session-processes.ts"], persona: { traits: {
     "session-shared-readonly": { keys: {} }, "session-workspace-changes": { keys: {} },
   } } });
@@ -147,6 +147,77 @@ test("loader reads the shipped sessions template and standard commands pass the 
     for (const key of keys) assert.ok(withheld?.missing.includes(key), key);
   }
   assert.throws(() => validateTemplate({ ...sessions, phases: [sessions.phases[0], sessions.phases[0]] }), /duplicate phase/);
+});
+
+test("sessions creation and subagent plans order available helpers without redundant ambient reads", async () => {
+  const inputs = await loadPlanInputs();
+  const sessions = inputs.templates.find((item) => item.id === "sessions");
+  const traits = Object.fromEntries(sessions.requires.map((trait) => [trait, { keys: {} }]));
+  for (const phase of sessions.phases) for (const command of phase.commands) {
+    for (const [, trait, key] of command.matchAll(/\{persona:([^}:]+):([^}]+)\}/g)) {
+      traits[trait].keys[key] = `fixture-${trait}-${key}`;
+    }
+  }
+  // Availability is simulated; planning executes none of these unfinished helpers.
+  const catalogue = { ...inputs.catalogue, entries: inputs.catalogue.entries.map((entry) => ({ ...entry, status: "existing" })) };
+  for (const [path, operation] of [["src/gateway/server-methods/sessions-create.ts", "start-new-session"], ["src/agents/tools/subagents-tool.ts", "run-subagents"]]) {
+    const result = selectPhases({ ...inputs, catalogue, paths: [path], persona: { traits } });
+    assert.deepEqual(result.withheld, [], path);
+    const order = ids(result);
+    assert.ok(order.indexOf("sessions/setup-subagents-working") < order.indexOf(`sessions/${operation}`), path);
+    for (const missing of ["mock-provider-held-turn", "session-main-rolling", "session-orchestrator-idle"]) {
+      const incomplete = { ...traits }; delete incomplete[missing];
+      const withheld = selectPhases({ ...inputs, catalogue, paths: [path], persona: { traits: incomplete } });
+      assert.ok(withheld.withheld.some((phase) => phase.id === `sessions/${operation}` && phase.missing.some((reason) => reason === `trait:${missing}` || reason.startsWith("phase:sessions/setup-"))), `${path}: ${missing}`);
+    }
+  }
+});
+
+test("sessions subagent consumers read identities from earlier spawn outputs", async () => {
+  const { templates, catalogue } = await loadPlanInputs();
+  const sessions = templates.find((item) => item.id === "sessions");
+  const outputs = new Map();
+  let consumers = 0, waits = 0;
+  for (const phase of sessions.phases) for (const command of phase.commands) {
+    const { tokens } = parseCatalogueCommand(command);
+    if (tokens[1] !== "{kovaRoot}/support/verify/agent-tool-turn.mjs") continue;
+    const flag = (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined;
+    if (flag("--wait")) continue;
+    const tool = flag("--tool"), args = JSON.parse(flag("--args"));
+    const caller = flag("--session-key") ?? flag("--session-from");
+    if (flag("--from")) {
+      const producer = outputs.get(flag("--from"));
+      assert.equal(producer?.tool, "sessions_spawn", phase.id);
+      assert.equal(producer.caller, caller, `${phase.id}: spawn must belong to the caller`);
+      // Actual spawn tools return generated identities in jsonResult(...).details.
+      const result = { status: "accepted", runId: "fixture-run", childSessionKey: "agent:main:fixture-child" };
+      if (tool === "subagents") {
+        const field = args.action === "wait" ? "runIds" : "runId";
+        assert.ok(["wait", "cancel"].includes(args.action), phase.id);
+        assert.equal(args[field], undefined, phase.id);
+        args[field] = field === "runIds" ? [result.runId] : result.runId;
+      } else {
+        assert.equal(tool, "sessions_send", phase.id);
+        assert.equal(args.sessionKey, undefined, phase.id);
+        args.sessionKey = result.childSessionKey;
+      }
+      consumers += 1;
+    }
+    if (tool === "subagents" && args.action === "wait") {
+      assert.ok(Array.isArray(args.runIds) && args.runIds.length > 0, phase.id);
+      assert.ok(args.timeoutSeconds === undefined || (Number.isInteger(args.timeoutSeconds) && args.timeoutSeconds >= 0 && args.timeoutSeconds <= 60), phase.id);
+      waits += 1;
+    }
+    if (flag("--out")) {
+      assert.ok(!outputs.has(flag("--out")), `${phase.id}: duplicate output`);
+      outputs.set(flag("--out"), { tool, caller });
+    }
+  }
+  assert.equal(consumers, 6);
+  assert.equal(waits, 3);
+  const entry = catalogue.entries.find((item) => item.id === "agent-tool-turn");
+  assert.ok(entry.flags["--from"]);
+  assert.ok(entry.prints.includes("sessionKey"));
 });
 
 test("sessions caller paths select the phases that exercise them", async () => {
