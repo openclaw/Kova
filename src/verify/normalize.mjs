@@ -2,7 +2,8 @@ import { isAbsolute, join, matchesGlob } from "node:path";
 import { createCatalogueResolver, parseCatalogueCommand } from "../catalogue.mjs";
 import { quoteShell } from "../commands.mjs";
 import { canonicalJSON } from "./plan.mjs";
-import { readJSON, recordedDirectory, stateFiles } from "./rows.mjs";
+import { readCommandResponses, readJSON, recordedDirectory, stateFiles } from "./rows.mjs";
+import { createdIds } from "./ids.mjs";
 
 function idPattern(ids) {
   const keys = [...ids].sort((a, b) => b.length - a.length || (a < b ? -1 : 1));
@@ -10,7 +11,7 @@ function idPattern(ids) {
 }
 
 function recordedOperation(record, planned, expected, resolveEntry) {
-  if (!record || typeof record !== "object" || typeof record.command !== "string" || !record.command.trim() || typeof record.stderr !== "string" || typeof record.timedOut !== "boolean" || !Number.isFinite(record.durationMs) || record.durationMs < 0) throw new Error("invalid recorded command metadata");
+  if (!record || typeof record !== "object" || typeof record.command !== "string" || !record.command.trim() || typeof record.stderr !== "string" || typeof record.timedOut !== "boolean" || !Number.isFinite(record.durationMs) || record.durationMs < 0 || !(record.exit === null || Number.isInteger(record.exit)) || !(record.stdout === null || typeof record.stdout === "string")) throw new Error("invalid recorded command metadata");
   // Resolution refusals retain the original planned command and exit 2.
   if (record.command === planned) return;
   const parsed = parseCatalogueCommand(record.command, { standard: true });
@@ -41,19 +42,29 @@ export async function readDeclaredIds(directory, phases, standard, catalogue) {
     try { commands = await readJSON(join(checkpoint, "commands.json")); }
     catch (error) { if (error.code !== "ENOENT") throw error; continue; }
     if (!Array.isArray(commands)) throw new Error(`${phase.id}: invalid command recording`);
-    recorded++;
-    for (const [index, command] of commands.entries()) {
+    const entries = commands.map((command, index) => {
       const entry = resolveEntry(phase.commands[index % phase.commands.length], { standard: phase.from === "standard" });
       if (!entry) throw new Error(`${phase.id}: recorded catalogue does not resolve command ${index}`);
       recordedOperation(command, phase.commands[index % phase.commands.length], entry, resolveEntry);
+      return entry;
+    });
+    const responses = phase.checkpoint.includes("responses") ? await readCommandResponses(checkpoint, commands, phase.id) : null;
+    recorded++;
+    for (const [index, command] of commands.entries()) {
+      const entry = entries[index];
       if (!Array.isArray(command.createdIds)) throw new Error(`${phase.id}: recording lacks createdIds; rerun verify run`);
+      const pointers = new Map();
       for (const { pointer, value } of command.createdIds) {
         if (typeof pointer !== "string" || typeof value !== "string" || !value || !entry.creates.some((declared) => {
           const parts = declared.split("/"), actual = pointer.split("/");
           return parts.length === actual.length && parts.every((part, i) => part === actual[i] || part === "*" && /^(0|[1-9][0-9]*)$/.test(actual[i]));
         })) throw new Error(`${phase.id}: invalid declared creation id`);
-        if (!candidates.has(value)) candidates.set(value, `<id:${phase.id}/${index}${pointer}>`);
+        if (pointers.has(pointer) && pointers.get(pointer) !== value) throw new Error(`${phase.id}: contradictory createdIds for one pointer`);
+        pointers.set(pointer, value);
       }
+      if (command.stdout !== null && pointers.size) throw new Error(`${phase.id}: createdIds require a JSON command output`);
+      if (responses && canonicalJSON(Object.fromEntries(pointers)) !== canonicalJSON(Object.fromEntries(createdIds(responses[index], entry.creates).map(({ pointer, value }) => [pointer, value])))) throw new Error(`${phase.id}: createdIds do not match the selected response`);
+      for (const [pointer, value] of pointers) if (!candidates.has(value)) candidates.set(value, `<id:${phase.id}/${index}${pointer}>`);
     }
     for await (const file of stateFiles(join(checkpoint, "state"), standard)) {
       if (file.kind !== "sqlite") continue;
@@ -81,7 +92,7 @@ export function normalizeDeclaredIds({ candidates, records, allIds }, protectedI
   const pattern = idPattern([...allIds].filter((id) => !protectedIds.has(id)));
   const normalize = pattern ? (value) => value.replace(pattern, (id) => candidates.get(id) ?? id) : (value) => value;
   const pending = [...records.values()];
-  for (const record of pending) record.dependencies = pattern ? [...`${record.path}\0${record.key}`.matchAll(pattern)].map(([id]) => id) : [];
+  for (const record of pending) record.dependencies = pattern ? [...`${record.path}\0${typeof record.key === "string" ? record.key : ""}`.matchAll(pattern)].map(([id]) => id) : [];
   while (pending.length) {
     let changed = false;
     for (let index = 0; index < pending.length;) {

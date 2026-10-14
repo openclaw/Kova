@@ -460,6 +460,9 @@ credential databases still fail capture.
 Each `commands.json` entry also has `createdIds`, an array of
 `{"pointer": "/createdIds/0", "value": "<id>"}` entries selected by the command's
 catalogue `creates` declarations. Wildcards become concrete array indices.
+A concrete pointer cannot name conflicting values. When responses are selected,
+comparison re-derives the creation IDs from those outputs and requires the same
+pointer/value assignments before using them for normalization.
 These values are retained even when `responses` is not selected, without
 retaining the rest of an unselected response. Secondary environment lifecycle
 commands follow the primary commands in the same checkpoint, with their own
@@ -634,9 +637,14 @@ are compared as data without loading native extensions; virtual modules are
 not invoked. The declaration is addressed by the database path and table name.
 JSON5 non-finite numbers are retained as `{"number": "NaN"}`,
 `{"number": "Infinity"}` or `{"number": "-Infinity"}` instead of becoming null;
-SQLite non-finite numbers use the same marker in their decoded values.
+SQLite non-finite numbers use the same marker in their decoded values. Large
+SQLite integers and BLOBs use `{"integer": "<decimal>"}` and
+`{"sha256": "<hash>"}` at the column address. These scalar markers are atomic,
+so they cannot be confused with a product JSON object or normalized as IDs.
 Declared TEXT identities retain their string identity even when their bytes
 also parse as a JSON number; ordinary SQL and JSON numbers stay numeric.
+Primary-key strings normalize before the key is serialized; numeric key
+components and fallback rowids are never treated as string IDs.
 
 ### Normalization
 

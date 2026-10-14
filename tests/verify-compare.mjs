@@ -313,7 +313,7 @@ test("corrupted product JSON and compressed content remain differences", async (
   const result = await f.compare();
   assert.equal(result.verdict, "breaks");
   assert.ok(result.rows.some((row) => row.at.startsWith("files/config.json/")));
-  assert.ok(result.rows.some((row) => row.at.endsWith("event_zstd/sha256")));
+  assert.ok(result.rows.some((row) => row.at.endsWith("event_zstd") && row.change.sha256));
 });
 
 test("normalizes volatile text only, leaving ordinary identifiers and values intact", () => {
@@ -571,12 +571,13 @@ test("helper durations do not become differences when the two noise values happe
 });
 
 test("digit-only TEXT identities normalize without changing ordinary SQL or JSON numbers", async (t) => {
-  const ids = ["baseline-id", "12345678", "87654321", "first-noise-id", "second-noise-id"];
+  const ids = ["baseline-id", "12345678", "9007199254740993", "first-noise-id", "second-noise-id"];
   const f = await fixture(t, { stateIds: [{ path: "files/store.sqlite", table: "records", column: "id", recordKey: "owner" }], state: async (path, name, index) => {
     const db = new DatabaseSync(join(path, "store.sqlite"));
     try {
-      db.exec("CREATE TABLE records (id TEXT PRIMARY KEY, owner TEXT, reference TEXT, ordinary INTEGER, payload TEXT)");
-      db.prepare("INSERT INTO records VALUES (?, 'same-owner', ?, 12345678, ?)").run(ids[index], `prefix:${ids[index]}`, JSON.stringify({ count: 12345678, ref: ids[index] }));
+      db.exec("CREATE TABLE records (id TEXT PRIMARY KEY, owner INTEGER, reference TEXT, ordinary INTEGER, payload TEXT)");
+      db.exec("CREATE TABLE fixed (id INTEGER PRIMARY KEY, big INTEGER); CREATE TABLE compound (label TEXT, id INTEGER, PRIMARY KEY (label, id)); CREATE TABLE unkeyed (value TEXT); INSERT INTO fixed VALUES (12345678, 9007199254740993); INSERT INTO fixed VALUES (9007199254740993, 12345678); INSERT INTO compound VALUES ('constant', 12345678); INSERT INTO unkeyed (rowid, value) VALUES (12345678, 'constant')");
+      db.prepare("INSERT INTO records VALUES (?, 12345678, ?, 12345678, ?)").run(ids[index], `prefix:${ids[index]}`, JSON.stringify({ count: 12345678, ref: ids[index] }));
     } finally { db.close(); }
   } });
   assert.equal((await f.compare()).verdict, "good-to-go");
@@ -616,7 +617,7 @@ test("virtual SQLite declarations and persisted backing data compare without loa
   const f = await fixture(t, { creates: ["/id"], copies: Object.fromEntries(names.map((name) => [name, { response: { id: `generated-${name}` } }])), originalFiles: { "memory.sqlite": await readFile(join(source, "memory.sqlite")) }, state: async (path, name) => make(join(path, "memory.sqlite"), name.startsWith("change")) });
   const result = await f.compare();
   assert.equal(result.verdict, "breaks");
-  assert.ok(result.rows.some((row) => row.at === "files/memory.sqlite:vectors_chunks/1/data/sha256" && row.class === "break"));
+  assert.ok(result.rows.some((row) => row.at === "files/memory.sqlite:vectors_chunks/1/data" && row.class === "break"));
 });
 
 
@@ -666,7 +667,7 @@ test("command metadata and operation identity reject stale recordings", async (t
     await writeJSON(path, [{ ...original[0], command }]);
     await assert.rejects(f.compare(), /recorded command/);
   }
-  for (const changed of [{ stderr: null }, { timedOut: "false" }, { durationMs: -1 }, { durationMs: null }]) {
+  for (const changed of [{ stderr: null }, { timedOut: "false" }, { durationMs: -1 }, { durationMs: null }, { exit: "0" }, { stdout: 1 }]) {
     await writeJSON(path, [{ ...original[0], ...changed }]);
     await assert.rejects(f.compare(), /recorded command metadata/);
   }
@@ -729,4 +730,40 @@ test("supported observation durations stay separate from configuration and media
   const result = await media.compare();
   assert.equal(result.verdict, "breaks");
   assert.ok(result.rows.some((row) => row.at === "0/attachment/durationMs"));
+});
+
+
+test("creation metadata is consistent per pointer and with selected responses", async (t) => {
+  const f = await fixture(t, { creates: ["/id"], copies: Object.fromEntries(names.map((name) => [name, { response: { id: `generated-${name}`, title: name.startsWith("change") ? "new" : "old" } }])) });
+  assert.equal((await f.compare()).verdict, "breaks");
+  const records = [];
+  for (const name of names) {
+    const path = join(f.directory, name, "checkpoints", phaseId, "commands.json");
+    const commands = JSON.parse(await readFile(path)); records.push({ name, path, commands });
+    await writeJSON(path, [{ ...commands[0], createdIds: [...commands[0].createdIds, { pointer: "/id", value: name.startsWith("change") ? "new" : "old" }] }]);
+  }
+  await assert.rejects(f.compare(), /contradictory createdIds/);
+  for (const { name, path, commands } of records) await writeJSON(path, [{ ...commands[0], createdIds: [{ pointer: "/id", value: name.startsWith("change") ? "new" : "old" }] }]);
+  await assert.rejects(f.compare(), /createdIds do not match/);
+  for (const { path, commands } of records) await writeJSON(path, [{ ...commands[0], createdIds: [] }]);
+  await assert.rejects(f.compare(), /createdIds do not match/);
+  for (const { path, commands } of records) await writeJSON(path, [{ ...commands[0], createdIds: [...commands[0].createdIds, ...commands[0].createdIds] }]);
+  assert.equal((await f.compare()).verdict, "breaks");
+});
+
+test("encoded SQLite scalars cannot collide with product JSON objects", async (t) => {
+  const bytes = Buffer.from([1, 2, 3]);
+  const f = await fixture(t, { state: async (path, name) => {
+    const db = new DatabaseSync(join(path, "values.sqlite"));
+    try {
+      db.exec("CREATE TABLE records (id INTEGER PRIMARY KEY, value)");
+      const insert = db.prepare("INSERT INTO records VALUES (?, ?)");
+      insert.run(1, name.startsWith("change") ? bytes : JSON.stringify({ sha256: sha256(bytes) }));
+      insert.run(2, name.startsWith("change") ? 9007199254740993n : JSON.stringify({ integer: "9007199254740993" }));
+    } finally { db.close(); }
+  } });
+  const result = await f.compare();
+  assert.equal(result.verdict, "breaks");
+  assert.ok(result.rows.some((row) => row.at === "files/values.sqlite:records/1/value" && row.change.sha256));
+  assert.ok(result.rows.some((row) => row.at === "files/values.sqlite:records/2/value" && row.change.integer));
 });

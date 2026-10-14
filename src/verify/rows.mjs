@@ -27,6 +27,12 @@ export async function readBytes(path, prefixLength) {
   } finally { await file.close(); }
 }
 export async function readJSON(path) { return JSON.parse((await readBytes(path)).toString("utf8")); }
+export async function readCommandResponses(directory, commands, phase) {
+  const responses = await readJSON(join(directory, "responses.json"));
+  const expected = commands.flatMap((command, index) => command.stdout === null ? [String(index)] : []);
+  if (!responses || typeof responses !== "object" || Array.isArray(responses) || Object.keys(responses).length !== expected.length || expected.some((index) => !Object.hasOwn(responses, index))) throw new Error(`${phase}: invalid response checkpoint command indices`);
+  return responses;
+}
 export async function recordedDirectory(path) {
   try {
     const metadata = await lstat(path);
@@ -98,7 +104,8 @@ export async function* stateFile(file, path, standard) {
               try { values[column.name] = { raw: value, value: JSON.parse(value) }; continue; }
               catch { /* Keep text that is not JSON, including damaged product data. */ }
             }
-            values[column.name] = { raw: sqlValue(value), value: sqlValue(value) };
+            const scalar = sqlValue(value);
+            values[column.name] = { raw: scalar, value: scalar, encoded: scalar !== null && typeof scalar === "object" };
           }
           rows.push({ rowid: sqlValue(identity), values });
         }
@@ -208,9 +215,7 @@ export async function checkpointRows(directory, phase, standard, normalization, 
   }
   for (const signal of new Set(phase.checkpoint)) {
     if (signal === "responses") {
-      const responses = await readJSON(join(directory, "responses.json"));
-      const expected = commands.flatMap((command, index) => command.stdout === null ? [String(index)] : []);
-      if (!responses || typeof responses !== "object" || Array.isArray(responses) || Object.keys(responses).length !== expected.length || expected.some((index) => !Object.hasOwn(responses, index))) throw new Error(`${phase.id}: invalid response checkpoint command indices`);
+      const responses = await readCommandResponses(directory, commands, phase.id);
       for (const [index, value] of Object.entries(responses)) {
         const entry = commandEntries[Number(index) % phase.commands.length];
         b.nodes("responses", responseData(value, entry), [index]);
@@ -263,15 +268,20 @@ export async function checkpointRows(directory, phase, standard, normalization, 
       if (file.kind === "sqlite") {
         path[path.length - 1] += `:${pointerPart(file.table)}`;
         for (const row of file.rows) {
-          const keys = file.primary.map((key) => row.values[key].raw);
+          const keys = file.primary.map((key) => row.values[key].raw).map((value) => typeof value === "string" ? normalize(value) : value);
           const key = keys.length === 1 ? (typeof keys[0] === "string" ? keys[0] : canonicalJSON(keys[0])) : keys.length ? canonicalJSON(keys) : canonicalJSON(row.rowid);
           if (!file.primary.length && row.rowid === null) throw new Error(`state table has no addressable key: ${file.path}:${file.table}`);
-          const segments = [...path, pointerPart(normalize(key))];
+          const segments = [...path, pointerPart(key)];
           const dynamicKeys = [...dynamic, path.length];
           b.add("state", segments, true, { dynamic: dynamicKeys });
           for (const [column, value] of Object.entries(row.values)) {
             const identity = typeof value.raw === "string" ? normalizeId(value.raw) : value.raw;
-            b.nodes("state", identity !== value.raw ? identity : value.value, [...segments, pointerPart(column)], dynamicKeys);
+            const normalized = identity !== value.raw;
+            const at = [...segments, pointerPart(column)];
+            // Formatted numeric/BLOB markers and already-normalized tokens are
+            // not product JSON strings and must not be normalized a second time.
+            if (normalized || value.encoded) b.add("state", at, normalized ? identity : value.value, { dynamic: dynamicKeys });
+            else b.nodes("state", value.value, at, dynamicKeys);
           }
         }
       } else if (file.kind === "sqlite-schema") {
