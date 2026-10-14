@@ -1236,7 +1236,8 @@
         "toolResult",
         "reply",
         "elapsedMs",
-        "createdIds"
+        "createdIds",
+        "error"
       ],
       "side": "destructive",
       "background": true,
@@ -1291,7 +1292,8 @@
       "prints": [
         "pages",
         "messages",
-        "elapsedMs"
+        "elapsedMs",
+        "error"
       ],
       "side": "read",
       "background": true,
@@ -1390,7 +1392,8 @@
       "prints": [
         "status",
         "document",
-        "preview"
+        "preview",
+        "error"
       ],
       "side": "read",
       "background": false,
@@ -1428,7 +1431,8 @@
         "resolved",
         "output",
         "elapsedMs",
-        "createdIds"
+        "createdIds",
+        "error"
       ],
       "side": "read",
       "background": false,
@@ -1468,7 +1472,8 @@
         "sessionKey",
         "reply",
         "elapsedMs",
-        "createdIds"
+        "createdIds",
+        "error"
       ],
       "side": "destructive",
       "background": false,
@@ -1499,7 +1504,8 @@
       "prints": [
         "sessionKey",
         "result",
-        "elapsedMs"
+        "elapsedMs",
+        "error"
       ],
       "side": "write",
       "background": false,
@@ -1524,7 +1530,8 @@
       "prints": [
         "woke",
         "notices",
-        "elapsedMs"
+        "elapsedMs",
+        "error"
       ],
       "side": "write",
       "background": false,

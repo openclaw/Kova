@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { execFile, spawnSync } from "node:child_process";
 import { promisify } from "node:util";
-import { fileURLToPath } from "node:url";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { CallError } from "../support/verify/background.mjs";
+import { CallError, cleanupGatewayHandle } from "../support/verify/background.mjs";
 import { scriptMain } from "../support/verify/script.mjs";
 import { definition as chat } from "../support/verify/chat-send.mjs";
 import { definition as hold } from "../support/verify/session-turn-hold.mjs";
@@ -18,8 +18,15 @@ import { definition as heartbeat } from "../support/verify/heartbeat-wake.mjs";
 import { definition as channel, inboundParams } from "../support/verify/channel-inbound-turn.mjs";
 import { definition as publicThread } from "../support/verify/public-thread-read.mjs";
 import { definition as resume } from "../support/verify/run-resume.mjs";
+import { executePausedFixture, parseFixtureArgs, stageSessionStoreFixtureMain } from "../support/verify/stage-session-store-fixture.mjs";
 import { loadGatewaySchemaAssertions } from "./helpers/gateway-schemas.mjs";
 const schemas = await loadGatewaySchemaAssertions();
+const catalogue = JSON.parse(await readFile(new URL("../catalogue/openclaw.json", import.meta.url), "utf8"));
+function assertResultKeys(id, output) {
+  const entry = catalogue.entries.find((entry) => entry.id === id);
+  assert.ok(entry, id);
+  assert.deepEqual(Object.keys(JSON.parse(JSON.stringify(output))).sort(), [...entry.prints].sort(), `${id} result must match catalogue prints exactly`);
+}
 const key = "agent:main:example";
 async function directory(t) {
   const path = await mkdtemp(join(tmpdir(), "kova-verify-scripts-"));
@@ -36,6 +43,7 @@ async function run(definition, flags, rpc, context) {
     }
   });
   for (const { method, params } of requests) schemas.check(method, params);
+  assertResultKeys(definition.id, result.output);
   return result;
 }
 function turnRpc({ toolResult = false } = {}) {
@@ -220,12 +228,97 @@ test("script entrypoints distinguish malformed input, product error and own time
   for (const definition of [chat, hold, tool, history, goal, cron, heartbeat, channel, publicThread, resume]) {
     const result = await scriptMain(definition, ["--unlisted", "x"]);
     assert.equal(result.exitCode, 2, definition.id);
-    for (const field of Object.keys(definition.empty())) assert.ok(Object.hasOwn(result.output, field), `${definition.id} ${field}`);
+    assertResultKeys(definition.id, result.output);
+    assert.equal(typeof result.output.error, "string");
   }
   const refused = await run(heartbeat, [], async () => { throw new CallError("product refusal", 1); });
   assert.equal(refused.exitCode, 1);
   const timed = await run(heartbeat, ["--timeout", "5"], async (method, params, ctx) => { await ctx.pause(50); ctx.remaining(); });
   assert.equal(timed.exitCode, 3);
+});
+
+const resultCases = [
+  [chat, ["--session-key", key, "--message", "hello"]],
+  [hold, ["--session-key", key, "--hold-ms", "1"]],
+  [tool, ["--session-key", key, "--tool", "sessions_spawn", "--args", '{"task":"example"}']],
+  [history, ["--session-key", key]],
+  [goal, ["--session-key", key, "--goal-id", "goal-one", "--action", "pause"]],
+  [cron, ["--job-id", "job-one"]],
+  [heartbeat, []],
+  [channel, ["--chat-type", "direct", "--peer", "example", "--text", "hello"]],
+  [publicThread, ["--session-key", key]],
+  [resume, ["--query", key]]
+];
+
+test("each script's failed operation retains exactly its declared result fields", async () => {
+  const refuse = async () => { throw new CallError("product refusal", 1); };
+  for (const [definition, flags] of resultCases) {
+    const result = await run(definition, flags, refuse, { pty: refuse });
+    assert.equal(result.exitCode, 1, definition.id);
+    assert.equal(result.output.error, "product refusal", definition.id);
+  }
+});
+
+test("background starts keep handle fields and joined results match catalogue prints", async (t) => {
+  const root = await directory(t);
+  const background = resultCases.filter(([definition]) => catalogue.entries.find((entry) => entry.id === definition.id).background);
+  assert.deepEqual(background.map(([definition]) => definition.id), ["chat-send", "session-turn-hold", "agent-tool-turn", "chat-history-read"]);
+  for (const [definition, flags] of background) {
+    const worker = join(root, `${definition.id}.mjs`);
+    await writeFile(worker, `
+import { definition } from ${JSON.stringify(definition.url)};
+import { executeScript } from ${JSON.stringify(new URL("../support/verify/script.mjs", import.meta.url).href)};
+import { CallError, serveOperation } from ${JSON.stringify(new URL("../support/verify/background.mjs", import.meta.url).href)};
+${turnRpc.toString()}
+await serveOperation(async (options, context) => {
+  await context.publish({ pid: process.pid });
+  const turn = turnRpc({ toolResult: definition.id === "agent-tool-turn" });
+  return executeScript(definition, options, { signal: context.signal, rpc: async (method, params) => {
+    if (options.env === "kova-scripts-refused") throw new CallError("product refusal", 1);
+    if (method === "chat.startup") return { messages: [], hasMore: false };
+    return turn(method, params);
+  } });
+});
+`);
+    for (const failed of [false, true]) {
+      const handle = join(root, `${definition.id}-${failed}.json`);
+      const env = failed ? "kova-scripts-refused" : "kova-scripts-example";
+      try {
+        const started = await scriptMain({ ...definition, url: pathToFileURL(worker).href }, ["--env", env, ...flags, "--background", "--handle", handle, "--timeout", "10000"]);
+        assert.equal(started.exitCode, 0, JSON.stringify(started.output));
+        assert.deepEqual(Object.keys(started.output).sort(), ["entry", "env", "ref", "startedAt"]);
+        assert.equal(started.output.entry, definition.id);
+        assert.equal(started.output.env, env);
+        assert.ok(Number.isFinite(Date.parse(started.output.startedAt)));
+        assert.deepEqual(JSON.parse(await readFile(handle, "utf8")), started.output);
+        const joined = await scriptMain(definition, ["--wait", handle, "--env", env, "--timeout", "10000"]);
+        assert.equal(joined.exitCode, failed ? 1 : 0, JSON.stringify(joined.output));
+        assertResultKeys(definition.id, joined.output);
+        assert.equal(joined.output.error, failed ? "product refusal" : null);
+      } finally { await cleanupGatewayHandle(handle); }
+    }
+  }
+});
+
+test("fixture swap, restore and failure results match their catalogue prints", async (t) => {
+  const root = await realpath(await directory(t)), agentDir = join(root, ".openclaw/agents/main/agent");
+  await mkdir(join(agentDir, "fixtures"), { recursive: true });
+  const configPath = join(root, ".openclaw/openclaw.json"), db = join(agentDir, "openclaw-agent.sqlite"), fixture = join(agentDir, "fixtures/corrupt.sqlite");
+  await writeFile(configPath, "{}"); await writeFile(db, "original database"); await writeFile(fixture, "corrupt fixture");
+  const options = parseFixtureArgs(["--env", "kova-scripts-example", "--agent", "main", "--fixture", fixture, "--gateway-handle", join(root, "gateway.json"), "--timeout", "10000"]);
+  const runtime = { root, configPath, gatewayPort: 12345 };
+  const results = [
+    await executePausedFixture(options, runtime, { doctor: async () => ({ status: 0, stdout: "recovered", stderr: "" }) }),
+    await executePausedFixture({ ...options, fixture: undefined, restore: true }, runtime),
+    await executePausedFixture(options, runtime, { doctor: async () => ({ status: 1, stdout: "", stderr: "refused" }) }),
+    await stageSessionStoreFixtureMain(["--unknown"])
+  ];
+  assert.deepEqual(results.map((result) => result.exitCode), [0, 0, 1, 2]);
+  for (const result of results) {
+    assertResultKeys("stage-session-store-fixture", result.output);
+    assert.equal(result.output.error === null, result.exitCode === 0);
+  }
+  assert.equal(await readFile(db, "utf8"), "original database");
 });
 
 test("verification scripts emit requests accepted by the pinned Gateway schemas", (t) => schemas.report(t));
