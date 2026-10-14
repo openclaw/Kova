@@ -319,6 +319,14 @@ check scripts must be present in the running Kova installation. This version
 accepts credential-free mock personas. Checkpoints preserve the selected state
 verbatim, so generated evidence stays private like the persona export.
 
+The persona definition and its configured programs must be trusted. Copies have
+separate environments, stores and ports, but execution has no OS-level boundary.
+Programmable configuration is accepted: configured MCP servers, hooks and other
+programs retain the host user's permissions, including access outside the copy.
+Destination checks and working directories do not confine those programs, even
+when they run during persona checks or Doctor. Use a credential-free definition
+with only the mock provider and Kova's own plugins.
+
 Relative `KOVA_HOME` paths are resolved before execution. Gateway authentication
 comes from the selected copy's JSON/JSON5 configuration, with no fallback to
 another environment's configuration or token. Include-based, environment-derived
