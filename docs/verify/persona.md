@@ -138,7 +138,16 @@ commands (see [Commands](plan-and-verdict.md#commands)).
   "schema": "kova.verify.persona-manifest.v1",
   "persona": "openclaw-verification-user",
   "version": "<build time as YYYYMMDDTHHMMSSZ>",
-  "runtime": { "selector": "npm:2026.9.9", "resolved": "<exact version and digest>" },
+  "runtime": {
+    "selector": "npm:2026.9.9",
+    "resolved": "<exact version and digest>",
+    "ocm": {
+      "binary": "<absolute path to the native OCM executable>",
+      "version": "<OCM --version output>",
+      "sha256": "<hash of that executable>",
+      "commit": "<commit reported by the executable, when available>"
+    }
+  },
   "definition": { "path": "<the file given to --definition>", "sha256": "<its hash>" },
   "env": { "name": "<durable env name>", "root": "<original environment root>", "export": "<path to the .ocm-env.tar>", "includeState": true, "sha256": "<hash>" },
   "doctor": "<Doctor output after the build>",
@@ -147,6 +156,16 @@ commands (see [Commands](plan-and-verdict.md#commands)).
   }
 }
 ```
+
+`runtime.ocm` is recorded by the build itself. This corrects the earlier manifest
+form, which identified the OpenClaw runtime but omitted the OCM used to create and
+export it. `binary` resolves symlinks and the supported npm launcher to the native
+executable; an OCM transport is inspected under its configured user, environment
+and working directory. Unknown script launchers are refused. `version` preserves
+the executable's trimmed `--version` output, and `commit` is omitted unless that
+output reports a commit. The build never infers a commit from a nearby checkout.
+`show` includes this saved record; it does not validate or select the recorded OCM
+for later invocations. Older manifests without `runtime.ocm` remain readable.
 
 ## Commands
 
@@ -196,7 +215,8 @@ kova persona show   --persona <manifest> --json
 
 What `kova persona build` does:
 
-1. Create a fresh environment on the pinned runtime, configure the mock provider
+1. Record the selected OCM executable before creating an environment. Create a
+   fresh environment on the pinned runtime, configure the mock provider
    and start a foreground Gateway owned by the build process. No OCM service is
    installed or started. Restart that Gateway after each trait builder so checks
    observe its current configuration.
@@ -214,7 +234,8 @@ What `kova persona build` does:
 6. Verify once from a clone: import the export into a throwaway environment,
    start it, run every check and destroy it.
 
-The final `persona.json` is published only after that import check succeeds.
+The final `persona.json` is published only after that import check succeeds and
+the OCM executable's path, version and hash still match the initial record.
 `runtime.resolved` is `<exact version>@<npm sha512 integrity>` from OCM's runtime
 receipt. Definition and export paths are absolute when built; readers also accept
 paths relative to the manifest. Each check prints exactly its declared keys as

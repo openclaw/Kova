@@ -1,3 +1,5 @@
+import "./persona-provenance.mjs";
+import "./persona-support.mjs";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mkdtemp, readFile, writeFile, rm, access, mkdir } from "node:fs/promises";
@@ -12,6 +14,7 @@ import { buildPersona, verifyPersona, hashFile } from "../src/persona/lifecycle.
 const source = new URL("../personas/openclaw-verification-user.json", import.meta.url);
 const definition = JSON.parse(await readFile(source, "utf8"));
 const { catalogue } = await loadCatalogue("openclaw");
+const checkTraits = Object.fromEntries(definition.traits.map((trait) => [trait.check.split("/").at(-1).split(" ")[0], trait.id]));
 const foundationKeys = {
   "agents-three-configured": { mainAgentId: "main", secondAgentId: "research", thirdAgentId: "idle" },
   "mock-provider-scripted": { modelId: "openai/gpt-5.5" },
@@ -61,6 +64,7 @@ async function fixture(t) {
   const environments = new Set(), runs = new Set();
   t.after(async () => { for (const run of runs) await rm(run, { recursive: true, force: true }); });
   const execute = async (command) => {
+    if (command.includes("/src/persona/provenance.mjs")) return { status: 0, stdout: JSON.stringify({ binary: "/fixture/native-ocm", version: "0.3.3", sha256: "a".repeat(64) }), stderr: "" };
     const tokens = parseCatalogueCommand(command).tokens;
     calls.push(tokens);
     let stdout = tokens[0] === "cat" ? "12345\n" : "";
@@ -83,8 +87,8 @@ async function fixture(t) {
     }
     if (tokens[0] === "ocm" && tokens[1] === "runtime" && tokens[2] === "show") stdout = JSON.stringify({ name: "test-runtime", sourceKind: "installed", releaseVersion: "2026.9.9", sourceIntegrity: `sha512-${Buffer.alloc(64).toString("base64")}` });
     if (tokens[0] === "ocm" && tokens[1] === "env" && tokens[2] === "export") await writeFile(tokens[tokens.indexOf("--output") + 1], "test export bytes");
-    if (tokens[1]?.endsWith("check-foundation.mjs")) {
-      const trait = tokens[tokens.indexOf("--trait") + 1];
+    const trait = checkTraits[tokens[1]?.split("/").at(-1)];
+    if (trait) {
       if (trait === failTrait) return { status: 1, stderr: "planted missing content" };
       const env = tokens[tokens.indexOf("--env") + 1];
       stdout = JSON.stringify(keysFor(trait, join(root, "envs", env)));
@@ -99,6 +103,7 @@ test("build exports only checked content, verifies an import and keeps only the 
   const out = join(f.root, "built");
   const manifest = await buildPersona(f.path, out, { executeBuild: true, execute: f.execute, gatewayFactory: f.gatewayFactory });
   assert.equal(manifest.schema, "kova.verify.persona-manifest.v1");
+  assert.deepEqual(manifest.runtime.ocm, { binary: "/fixture/native-ocm", version: "0.3.3", sha256: "a".repeat(64) });
   assert.equal(manifest.env.sha256, await hashFile(manifest.env.export));
   assert.equal(manifest.env.includeState, true);
   assert.ok(f.calls.find((c) => c[0] === "ocm" && c[2] === "export").includes("--include-state"));
@@ -110,8 +115,8 @@ test("build exports only checked content, verifies an import and keeps only the 
   assert.ok(f.calls.slice(0, exportIndex).some((c) => c[0] === "foreground-stop" && c[1] === manifest.env.name));
   assert.match(destroyed[0][3], /^kova-persona-verify-/);
   assert.notEqual(destroyed[0][3], manifest.env.name);
-  assert.equal(f.calls.filter((c) => c[1]?.endsWith("check-foundation.mjs")).length, 10);
-  assert.equal(f.calls.filter((c) => c[1]?.endsWith("build-foundation.mjs")).length, 5);
+  assert.equal(f.calls.filter((c) => checkTraits[c[1]?.split("/").at(-1)]).length, 10);
+  assert.equal(f.calls.filter((c) => c[1]?.endsWith("add-agent.mjs")).length, 2);
   f.calls.length = 0;
   const verify = await verifyPersona(join(out, "persona.json"), { execute: f.execute, gatewayFactory: f.gatewayFactory });
   assert.equal(verify.ok, true);
@@ -268,6 +273,7 @@ for (const mode of ["build", "verify", "verify-cleanup", "build-create", "verify
       const [mode, input, root] = process.argv.slice(1);
       let exists = false, name, waiting = false;
       const execute = async (command, options) => {
+        if (command.includes("/src/persona/provenance.mjs")) return { status: 0, stdout: JSON.stringify({ binary: "/fixture/native-ocm", version: "0.3.3", sha256: "a".repeat(64) }), stderr: "" };
         const c = parseCatalogueCommand(command).tokens;
         const op = c[0] === 'ocm' && c[1] === 'env' ? c[2] : null;
         let stdout = c[0] === 'cat' ? '12345' : '';
@@ -290,7 +296,8 @@ for (const mode of ["build", "verify", "verify-cleanup", "build-create", "verify
         }
         if (c[1] === 'start') stdout = JSON.stringify({envName:c[2], defaultRuntime:'test-runtime'});
         if (c[1] === 'runtime' && c[2] === 'show') stdout = JSON.stringify({name:'test-runtime',sourceKind:'installed',releaseVersion:'2026.9.9',sourceIntegrity:'sha512-' + Buffer.alloc(64).toString('base64')});
-        if (c[1]?.endsWith('check-foundation.mjs')) stdout = JSON.stringify(${JSON.stringify(foundationKeys)}[c[c.indexOf('--trait') + 1]]);
+        const trait = ${JSON.stringify(checkTraits)}[c[1]?.split('/').at(-1)];
+        if (trait) stdout = JSON.stringify(${JSON.stringify(foundationKeys)}[trait]);
         if (mode !== 'verify-cleanup' && !waiting && (c.includes('models.providers.openai.baseUrl') || c.some(v => v.endsWith('configure-openclaw-mock-auth.mjs')))) {
           waiting = true;
           await writeFile(join(root, 'waiting'), 'yes');

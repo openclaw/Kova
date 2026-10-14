@@ -19,9 +19,10 @@
       },
       "needs": [],
       "builder": [
-        "node {kovaRoot}/support/persona/build-foundation.mjs --env {env} --trait agents-three-configured"
+        "node {kovaRoot}/support/persona/add-agent.mjs --env {env} --name research",
+        "node {kovaRoot}/support/persona/add-agent.mjs --env {env} --name idle"
       ],
-      "check": "node {kovaRoot}/support/persona/check-foundation.mjs --env {env} --trait agents-three-configured"
+      "check": "node {kovaRoot}/support/persona/check-agents.mjs --env {env}"
     },
     {
       "id": "mock-provider-scripted",
@@ -33,9 +34,9 @@
         "agents-three-configured"
       ],
       "builder": [
-        "node {kovaRoot}/support/persona/build-foundation.mjs --env {env} --trait mock-provider-scripted"
+        "node {kovaRoot}/support/persona/write-mock-script.mjs --env {env}"
       ],
-      "check": "node {kovaRoot}/support/persona/check-foundation.mjs --env {env} --trait mock-provider-scripted"
+      "check": "node {kovaRoot}/support/persona/check-mock-provider.mjs --env {env}"
     },
     {
       "id": "channels-test-accounts",
@@ -48,9 +49,9 @@
         "mock-provider-scripted"
       ],
       "builder": [
-        "node {kovaRoot}/support/persona/build-foundation.mjs --env {env} --trait channels-test-accounts"
+        "ocm @{env} -- plugins install {kovaRoot}/support/plugins/kova-channel-probe --force --accept-capabilities"
       ],
-      "check": "node {kovaRoot}/support/persona/check-foundation.mjs --env {env} --trait channels-test-accounts"
+      "check": "node {kovaRoot}/support/persona/check-channels.mjs --env {env}"
     },
     {
       "id": "plugins-bundled-and-external",
@@ -62,9 +63,9 @@
         "channels-test-accounts"
       ],
       "builder": [
-        "node {kovaRoot}/support/persona/build-foundation.mjs --env {env} --trait plugins-bundled-and-external"
+        "ocm @{env} -- plugins enable memory-core"
       ],
-      "check": "node {kovaRoot}/support/persona/check-foundation.mjs --env {env} --trait plugins-bundled-and-external"
+      "check": "node {kovaRoot}/support/persona/check-plugins.mjs --env {env}"
     },
     {
       "id": "config-hand-edited",
@@ -74,15 +75,22 @@
         "agents-three-configured"
       ],
       "builder": [
-        "node {kovaRoot}/support/persona/build-foundation.mjs --env {env} --trait config-hand-edited"
+        "ocm @{env} -- config set logging.redactPatterns '[\"KOVA_PRIVATE_[A-Z]+\"]' --strict-json",
+        "ocm @{env} -- config set session.dmScope per-channel-peer",
+        "ocm @{env} -- agents set-identity --agent research --name 'Research Notebook' --json"
       ],
-      "check": "node {kovaRoot}/support/persona/check-foundation.mjs --env {env} --trait config-hand-edited"
+      "check": "node {kovaRoot}/support/persona/check-config.mjs --env {env}"
     }
   ],
   "support": {
     "existing": [
-      "support/persona/build-foundation.mjs",
-      "support/persona/check-foundation.mjs",
+      "support/persona/add-agent.mjs",
+      "support/persona/write-mock-script.mjs",
+      "support/persona/check-agents.mjs",
+      "support/persona/check-mock-provider.mjs",
+      "support/persona/check-channels.mjs",
+      "support/persona/check-plugins.mjs",
+      "support/persona/check-config.mjs",
       "support/persona/check-mock-script.mjs",
       "support/configure-openclaw-mock-auth.mjs",
       "support/write-mock-ai-provider-script.mjs"

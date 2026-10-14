@@ -10,6 +10,7 @@ import { captureTargetIdentity } from "../target-identity.mjs";
 import { buildAuthPreparePhase, buildAuthSetupPhase, mockProviderCleanupCommand, mockAiProviderServeCommand, mockProviderPortCommand } from "../auth.mjs";
 import { createForegroundGateway } from "./gateway.mjs";
 import { keyValue, loadDefinition, readKeys, resolveCommand } from "./definition.mjs";
+import { captureOcmProvenance } from "./provenance.mjs";
 
 const q = quoteShell;
 const auth = { mode: "mock", setup: true, mockProvider: {} };
@@ -195,6 +196,7 @@ async function buildPersonaInScope(definitionPath, outputPath, options, signal) 
   const gateway = (options.gatewayFactory ?? createForegroundGateway)(env, call, { signal });
   let createAttempted = false, completed = false, failure, result;
   try {
+    const ocm = await captureOcmProvenance(call);
     await mkdir(run, { mode: 0o700 });
     await requireFreshEnvironment(env, call);
     createAttempted = true;
@@ -212,7 +214,7 @@ async function buildPersonaInScope(definitionPath, outputPath, options, signal) 
     await call(`ocm env export ${q(env)} --include-state --output ${q(archive)} --json`, "export persona");
     const manifest = {
       schema: "kova.verify.persona-manifest.v1", persona: loaded.definition.id, version: versionId,
-      runtime: { selector: loaded.definition.runtime.selector, resolved },
+      runtime: { selector: loaded.definition.runtime.selector, resolved, ocm },
       definition: { path: loaded.path, sha256: loaded.sha256 },
       env: { name: env, root: metadata.root, export: archive, includeState: true, sha256: await hashFile(archive) },
       doctor: doctor.stdout, traits,
@@ -222,6 +224,8 @@ async function buildPersonaInScope(definitionPath, outputPath, options, signal) 
     signal.throwIfAborted();
     await verifyPersona(candidate, options);
     signal.throwIfAborted();
+    const finalOcm = await captureOcmProvenance(call);
+    if (["binary", "version", "sha256", "commit"].some(key => ocm[key] !== finalOcm[key])) throw new Error("OCM executable changed during persona build");
     await link(candidate, join(out, "persona.json"));
     completed = true;
     result = manifest;

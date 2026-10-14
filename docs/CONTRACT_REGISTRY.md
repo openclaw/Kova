@@ -176,3 +176,10 @@ Every check runs against that copy and cleanup destroys it even when a check fai
 Builds publish the manifest only after all build checks and an import check pass.
 The durable environment remains protected; exports are private artifacts and are
 excluded from Git. See [Persona](verify/persona.md) for the full forms.
+
+Persona support operations have individual catalogue entries with fixed success
+fields. Their failures print `{ "error": { "code": "product|usage|timeout",
+"message": "..." } }` on stdout, with exit 1, 2 or 3 respectively.
+New persona manifests record `runtime.ocm` with the selected executable path,
+reported version and binary SHA-256, plus a commit when that executable reports
+one. `show` prints the saved record; it does not verify the current executable.
