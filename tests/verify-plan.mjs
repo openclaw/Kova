@@ -285,6 +285,46 @@ test("reindex searches follow actual import and rewind operations on recorded ta
   assert.equal(searched.get("sessions.create"), 2);
 });
 
+test("reset and recovery observations consume explicit prepared conditions", async () => {
+  const { templates, catalogue } = await loadPlanInputs();
+  const phases = templates.find((item) => item.id === "sessions").phases;
+  const commands = (id) => phases.find((phase) => phase.id === id).commands.map((command) => {
+    const { tokens } = parseCatalogueCommand(command);
+    const flag = (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined;
+    return { tokens, flag };
+  });
+  const reset = commands("event-reset-clears-session-state");
+  const boundary = reset.findIndex(({ flag }) => flag("--message") === "/new");
+  const source = reset[boundary].flag("--session-from");
+  assert.ok(source && source !== "{run}/new-session.json");
+  assert.ok(reset.slice(0, boundary).some(({ flag }) => flag("--method") === "sessions.create" && flag("--out") === source));
+  assert.ok(reset.slice(0, boundary).some(({ flag }) => flag("--tool") === "create_goal" && flag("--session-from") === source));
+  assert.ok(reset.slice(0, boundary).some(({ flag }) => flag("--method") === "progressCard.put" && flag("--session-from") === source));
+  const recovery = commands("event-recovery-after-restart");
+  const prepare = recovery.findIndex(({ tokens }) => tokens[1] === "{kovaRoot}/support/verify/restart-for-recovery.mjs");
+  assert.ok(prepare >= 0);
+  const target = recovery[prepare].flag("--out");
+  assert.ok(recovery.slice(0, prepare).some(({ flag }) => flag("--method") === "sessions.create" && flag("--out") === recovery[prepare].flag("--session-from")));
+  const consumers = recovery.slice(prepare + 1).filter(({ flag }) => flag("--method") === "sessions.recover" || flag("--flow") === "resume-in-new-session");
+  assert.equal(consumers.length, 2);
+  assert.ok(consumers.every(({ flag }) => flag("--session-from") === target));
+  assert.equal(catalogue.entries.find((entry) => entry.id === "restart-for-recovery").status, "toWrite");
+});
+
+test("creation contracts declare generated IDs without treating reads as creation", async () => {
+  const { catalogue } = await loadPlanInputs();
+  for (const id of ["agent-tool-turn", "chat-send", "session-turn-hold", "control-ui", "goal-control", "session-send-turn", "run-resume", "channel-inbound-turn", "gateway-sessions-create", "gateway-sessions-catalog-import", "restart-for-recovery"]) {
+    const entry = catalogue.entries.find((item) => item.id === id);
+    assert.ok(entry.prints.includes("createdIds"), id);
+    assert.deepEqual(entry.creates, ["/createdIds/*"], id);
+  }
+  const recover = catalogue.entries.find((entry) => entry.id === "gateway-sessions-recover");
+  assert.deepEqual(recover.creates, ["/result/key", "/result/sessionId", "/result/continuation/runId"]);
+  for (const id of ["gateway-sessions-list", "gateway-sessions-describe", "gateway-sessions-search"]) {
+    assert.deepEqual(catalogue.entries.find((entry) => entry.id === id).creates, [], id);
+  }
+});
+
 test("spawn output resolves the child through the Gateway session-file reader", async (t) => {
   const helper = process.env.KOVA_GATEWAY_CALLER ?? join(root, "support/verify/gateway-call.mjs");
   try { await access(helper); } catch (error) {
@@ -469,7 +509,7 @@ test("sessions Gateway requests match the pinned OpenClaw schemas", async (t) =>
     const validator = validators.get(name);
     if (!validator.Check(params)) failures.push(`${label}: ${JSON.stringify(validator.Errors(params))}`);
   }
-  assert.equal(requests, 184);
+  assert.equal(requests, 187);
   assert.equal(joins, 2);
   t.diagnostic(`${requests} Gateway requests and ${joins} handle joins checked at ${revision}`);
   assert.deepEqual(failures, []);

@@ -583,3 +583,13 @@ their returned session keys. A lifecycle-admission check requires an observed
 `expectedSessionId` for archive/snooze patches, including every bulk target.
 The explicit RPC-send setup supplies the cross-session target and records its
 canonical key instead of relying on another independently selected phase.
+
+
+The reset and recovery corrections establish their own prerequisites: a goal
+and card on a dedicated reset target, and an observed unrecovered tombstone
+produced through a declared bounded native-recovery helper. Both use earlier
+result files instead of assuming an independently selected phase ran. Creation
+contracts identify generated child, run, goal and successor identities without
+claiming creation for read results. The helper remains unfinished; the checks
+cover records, ordering and 187 Gateway request shapes, not live recovery or
+comparison. These corrections do not change the historical coverage totals.

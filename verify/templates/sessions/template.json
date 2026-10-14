@@ -61,6 +61,7 @@
     "gateway-second-instance",
     "mock-provider-held-turn",
     "mock-provider-overflow",
+    "mock-provider-scripted",
     "mock-provider-single-slot",
     "mock-provider-tool-calls",
     "session-at-compaction-threshold",
@@ -116,7 +117,8 @@
       "support/verify/public-thread-read.mjs  (anonymous HTTP read of a public session thread and its share preview; --session-key --env)",
       "support/verify/run-resume.mjs  (openclaw resume under a pseudo-terminal; --query --handoff-from --url-from --timeout --env)",
       "support/verify/session-turn-hold.mjs  (sessions.send with a reply the persona's mock holds open; --session-key --hold-ms --progress-cards --timeout --background --handle --wait --env)",
-      "support/verify/stage-session-store-fixture.mjs  (gateway stop, staging of a persona fixture into an agent directory, Doctor, start; --agent --fixture --env)"
+      "support/verify/stage-session-store-fixture.mjs  (gateway stop, staging of a persona fixture into an agent directory, Doctor, start; --agent --fixture --env)",
+      "support/verify/restart-for-recovery.mjs  (native restart-recovery exhaustion with the scripted mock; temporarily deny model admission, interrupt a fresh root turn through OCM, observe an unrecovered tombstone and restore configuration before publishing the target; no database edits; --env --session-from --out --timeout)"
     ]
   },
   "phases": [
@@ -1901,7 +1903,7 @@
     {
       "id": "event-reset-clears-session-state",
       "kind": "event",
-      "intent": "A user resets the new session with /new while it carries a goal and a progress card, then resets Home with /reset and a client resets through sessions.reset with an expected session id, so the reset boundary, cleared goal and card, re-primed memory and the retained searchable history are observed.",
+      "intent": "Create a dedicated run-owned session, establish a goal and progress card on it, then reset it with /new and observe clearing; also reset Home with /reset and the retained long session through sessions.reset, observing reset boundaries and retained searchable history.",
       "paths": [
         "src/auto-reply/reply/session-reset-*.ts",
         "src/auto-reply/reply/session-rollover-state.ts",
@@ -1914,9 +1916,12 @@
         "session-long-compacted"
       ],
       "commands": [
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-from {run}/new-session.json --message /new --timeout 200000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method progressCard.get --session-from {run}/new-session.json --params '{}' --timeout 30000",
-        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-from {run}/new-session.json --message /goal --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"agentId\":\"main\",\"displayName\":\"Kova reset state\"}' --out {run}/reset-session.json --timeout 60000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/reset-session.json --tool create_goal --args '{\"objective\":\"Retain this goal until the reset\"}' --out {run}/reset-goal.json --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method progressCard.put --session-from {run}/reset-session.json --params '{\"plan\":[{\"step\":\"Retain this card until the reset\",\"status\":\"in_progress\"}]}' --out {run}/reset-card.json --timeout 30000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-from {run}/reset-session.json --message /new --timeout 200000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method progressCard.get --session-from {run}/reset-session.json --params '{}' --timeout 30000",
+        "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-from {run}/reset-session.json --message /goal --timeout 120000",
         "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key agent:main:main --message /reset --timeout 200000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.describe --params '{\"key\":\"{persona:session-long-compacted:key}\"}' --out {run}/reset-describe.json --timeout 30000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.reset --params '{\"key\":\"{persona:session-long-compacted:key}\"}' --merge-from {run}/reset-describe.json --timeout 120000",
@@ -1930,7 +1935,7 @@
         "state:agents/main/agent/openclaw-agent.sqlite",
         "state:agents/main/sessions"
       ],
-      "timeoutMs": 820000,
+      "timeoutMs": 970000,
       "browser": false,
       "slow": true
     },
@@ -2499,17 +2504,21 @@
     {
       "id": "event-recovery-after-restart",
       "kind": "event",
-      "intent": "After the restart interrupted Home's turn, a client asks the Gateway to recover Home and a user chooses Resume in new session in WebChat, so the recovery result and the replacement session are observed.",
+      "intent": "Prepare a fresh root session with an observed unrecovered restart tombstone through the bounded native restart-recovery flow, then recover that recorded source through the Gateway and WebChat entry points, observing the replacement session.",
       "paths": [
         "src/gateway/server-methods/sessions-recover.ts",
         "src/gateway/server-methods/session-recovery-continuation.ts",
         "ui/src/lib/sessions/recover.ts",
         "ui/src/pages/chat/**"
       ],
-      "requires": [],
+      "requires": [
+        "mock-provider-scripted"
+      ],
       "commands": [
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.recover --params '{\"key\":\"agent:main:main\"}' --timeout 120000",
-        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow resume-in-new-session --session-key agent:main:main --artifact-dir {run}/ui/recover --timeout 150000"
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"agentId\":\"main\",\"displayName\":\"Kova recovery source\"}' --out {run}/recovery-source.json --timeout 60000",
+        "node {kovaRoot}/support/verify/restart-for-recovery.mjs --env {env} --session-from {run}/recovery-source.json --out {run}/recovery-target.json --timeout 300000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.recover --session-from {run}/recovery-target.json --params '{}' --out {run}/recovered-session.json --timeout 120000",
+        "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow resume-in-new-session --session-from {run}/recovery-target.json --artifact-dir {run}/ui/recover --timeout 150000"
       ],
       "checkpoint": [
         "responses",
@@ -2517,9 +2526,9 @@
         "timing",
         "screen"
       ],
-      "timeoutMs": 300000,
+      "timeoutMs": 630000,
       "browser": true,
-      "slow": false
+      "slow": true
     },
     {
       "id": "event-corrupt-store-quarantine",

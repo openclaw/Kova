@@ -137,7 +137,8 @@ Historical limits:
   read-before-destroy constraints without changing the planner's ordering rules
   or any catalogue side classification.
 
-The current 184 Gateway requests include two added identity reads and exclude
+The current 187 Gateway requests include explicit reset and recovery preparation
+and two added identity reads, and exclude
 the two GitHub status requests and a duplicate transcript search already present
 in `search-history`. Deletion still records its response, the deleted transcript
 read and the agent database checkpoint. The two existing background joins remain.
@@ -180,3 +181,26 @@ Archive and snooze mutations require `expectedSessionId` beyond their parameter
 schemas. Bulk archive reads the RPC target's id from its earlier description,
 and the stored archived target uses its matching persona id. Every lifecycle
 row is checked, including bulk rows, against that pinned admission requirement.
+
+
+## Reset, recovery and generated identities
+
+The reset phase creates its own session, creates a goal and publishes a progress
+card on that same recorded target before `/new`. It therefore does not depend
+on unrelated goal or card phases being selected.
+
+Recovery first creates a fresh root session. The declared `restart-for-recovery`
+helper must arrange a native interrupted turn, exhaust bounded admission retries,
+restore the temporary mock-model configuration and observe an unrecovered
+tombstone before publishing the source identity. A plain restart can recover
+automatically and is insufficient. The Gateway and WebChat requests read that
+observed source. This helper is `toWrite`; the phase remains withheld until it
+exists, and these records provide no live recovery evidence.
+
+Creation-capable helper contracts declare observed `createdIds` in stable
+operation order for comparison. Spawn outputs include the child key and run ID;
+goal creation includes the goal ID. Reads, references and reused identities do
+not declare creation. Gateway creation and catalog import distinguish newly
+generated identities from explicit or adopted keys and re-imports. Recovery
+records the returned successor key, session ID and accepted continuation run ID.
+These are output contracts, not an implementation of execution or comparison.

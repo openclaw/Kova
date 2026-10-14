@@ -103,3 +103,9 @@ separating three persona-read groups from runtime-result consumers, plus an
 explicit RPC target setup. The phase
 order follows the planner dependencies, and the duplicate deletion-time search
 is covered by the identical search-history command. The template labels these limits; it does not claim a fresh source enumeration or current-rule acceptance.
+
+
+The current reset and recovery records explicitly prepare their target state,
+and creation-capable command records declare generated identities. The added
+recovery preparation helper is unfinished, so that phase remains withheld.
+These contract repairs are not another derivation round or live execution proof.

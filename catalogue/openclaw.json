@@ -1027,7 +1027,7 @@
     {
       "id": "chat-send",
       "kind": "script",
-      "wraps": "chat.send then chat.history for the reply",
+      "wraps": "chat.send then chat.history for the reply; createdIds reports only observed ids of resources or recorded operations newly created by this flow, in stable operation order; reads and reused identities contribute none",
       "command": "node {kovaRoot}/support/verify/chat-send.mjs --env {env} --session-key <key> --message '<text>' --timeout <ms>",
       "flags": {
         "--session-key": {
@@ -1087,17 +1087,20 @@
         "receipt",
         "reply",
         "elapsedMs",
-        "error"
+        "error",
+        "createdIds"
       ],
       "side": "destructive",
       "background": true,
       "status": "toWrite",
-      "creates": []
+      "creates": [
+        "/createdIds/*"
+      ]
     },
     {
       "id": "session-turn-hold",
       "kind": "script",
-      "wraps": "sessions.send with a reply the persona's mock holds open",
+      "wraps": "sessions.send with a reply the persona's mock holds open; createdIds reports only observed ids of resources or recorded operations newly created by this flow, in stable operation order; reads and reused identities contribute none",
       "command": "node {kovaRoot}/support/verify/session-turn-hold.mjs --env {env} --session-key <key> --hold-ms <ms> --background --handle {run}/<name>.json",
       "flags": {
         "--session-key": {
@@ -1137,12 +1140,15 @@
         "runId",
         "sessionKey",
         "reply",
-        "elapsedMs"
+        "elapsedMs",
+        "createdIds"
       ],
       "side": "write",
       "background": true,
       "status": "toWrite",
-      "creates": []
+      "creates": [
+        "/createdIds/*"
+      ]
     },
     {
       "id": "agent-tool-turn",
@@ -1163,7 +1169,7 @@
           "value": "required"
         },
         "--out": {
-          "description": "File under {run} recording callerSessionKey, toolCall (name and args), raw toolResult, reply and elapsedMs; an accepted sessions_spawn also exposes its childSessionKey as top-level sessionKey for --session-from consumers; never put the caller in sessionKey",
+          "description": "File under {run} recording callerSessionKey, toolCall (name and args), raw toolResult, reply and elapsedMs; an accepted sessions_spawn also exposes its childSessionKey as top-level sessionKey for --session-from consumers; never put the caller in sessionKey; stdout and files include createdIds in stable operation order: accepted sessions_spawn childSessionKey then runId, successful create_goal goal.id, and other newly created resource/operation ids actually returned by the requested tool; exclude ids merely read, referenced or reused",
           "value": "required"
         },
         "--timeout": {
@@ -1205,12 +1211,15 @@
         "toolCall",
         "toolResult",
         "reply",
-        "elapsedMs"
+        "elapsedMs",
+        "createdIds"
       ],
       "side": "destructive",
       "background": true,
       "status": "toWrite",
-      "creates": []
+      "creates": [
+        "/createdIds/*"
+      ]
     },
     {
       "id": "chat-history-read",
@@ -1268,7 +1277,7 @@
     {
       "id": "control-ui",
       "kind": "script",
-      "wraps": "one named Control UI flow in a headless browser",
+      "wraps": "one named Control UI flow in a headless browser; createdIds reports only observed ids of resources or recorded operations newly created by this flow, in stable operation order; reads and reused identities contribute none",
       "command": "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow <name> --artifact-dir {run}/screens --timeout <ms>",
       "flags": {
         "--flow": {
@@ -1317,12 +1326,15 @@
         "steps",
         "screens",
         "requests",
-        "elapsedMs"
+        "elapsedMs",
+        "createdIds"
       ],
       "side": "destructive",
       "background": false,
       "status": "toWrite",
-      "creates": []
+      "creates": [
+        "/createdIds/*"
+      ]
     },
     {
       "id": "public-thread-read",
@@ -1352,7 +1364,7 @@
     {
       "id": "run-resume",
       "kind": "script",
-      "wraps": "openclaw resume under a pseudo-terminal",
+      "wraps": "openclaw resume under a pseudo-terminal; createdIds reports only observed ids of resources or recorded operations newly created by this flow, in stable operation order; reads and reused identities contribute none",
       "command": "node {kovaRoot}/support/verify/run-resume.mjs --env {env} --query '<text>' --timeout <ms>",
       "flags": {
         "--query": {
@@ -1379,17 +1391,20 @@
       "prints": [
         "resolved",
         "output",
-        "elapsedMs"
+        "elapsedMs",
+        "createdIds"
       ],
       "side": "read",
       "background": false,
       "status": "toWrite",
-      "creates": []
+      "creates": [
+        "/createdIds/*"
+      ]
     },
     {
       "id": "channel-inbound-turn",
       "kind": "script",
-      "wraps": "inbound channel dispatch through session routing",
+      "wraps": "inbound channel dispatch through session routing; createdIds reports only observed ids of resources or recorded operations newly created by this flow, in stable operation order; reads and reused identities contribute none",
       "command": "node {kovaRoot}/support/verify/channel-inbound-turn.mjs --env {env} --chat-type <direct|group|thread> --peer <id> --text '<text>' --timeout <ms>",
       "flags": {
         "--chat-type": {
@@ -1416,12 +1431,15 @@
       "prints": [
         "sessionKey",
         "reply",
-        "elapsedMs"
+        "elapsedMs",
+        "createdIds"
       ],
       "side": "destructive",
       "background": false,
       "status": "toWrite",
-      "creates": []
+      "creates": [
+        "/createdIds/*"
+      ]
     },
     {
       "id": "cron-isolated-run",
@@ -1480,7 +1498,7 @@
     {
       "id": "goal-control",
       "kind": "script",
-      "wraps": "sessions.goal.update and sessions.goal.clear with fresh operation ids",
+      "wraps": "sessions.goal.update and sessions.goal.clear with fresh operation ids; createdIds reports only observed ids of resources or recorded operations newly created by this flow, in stable operation order; reads and reused identities contribute none",
       "command": "node {kovaRoot}/support/verify/goal-control.mjs --env {env} --session-key <key> --action <name> --timeout <ms>",
       "flags": {
         "--session-key": {
@@ -1515,12 +1533,15 @@
       "prints": [
         "goal",
         "operationId",
-        "elapsedMs"
+        "elapsedMs",
+        "createdIds"
       ],
       "side": "destructive",
       "background": false,
       "status": "toWrite",
-      "creates": []
+      "creates": [
+        "/createdIds/*"
+      ]
     },
     {
       "id": "stage-session-store-fixture",
@@ -1582,7 +1603,7 @@
     {
       "id": "session-send-turn",
       "kind": "script",
-      "wraps": "sessions.create and sessions.send, then chat history",
+      "wraps": "sessions.create and sessions.send, then chat history; createdIds reports only observed ids of resources or recorded operations newly created by this flow, in stable operation order; reads and reused identities contribute none",
       "command": "node {kovaRoot}/support/run-gateway-session-send-turn.mjs --env {env} --session-key <key> --message '<text>' --timeout <ms>",
       "flags": {
         "--session-key": {
@@ -1609,12 +1630,15 @@
       "prints": [
         "sessionKey",
         "reply",
-        "elapsedMs"
+        "elapsedMs",
+        "createdIds"
       ],
       "side": "destructive",
       "background": false,
       "status": "toWrite",
-      "creates": []
+      "creates": [
+        "/createdIds/*"
+      ]
     },
     {
       "id": "tui-message-turn",
@@ -3659,7 +3683,7 @@
           "value": "required"
         },
         "--out": {
-          "description": "file under {run} to write the result to",
+          "description": "file under {run} to write the result to; stdout and files include createdIds: result.sessionKey only when result.created is true; re-imports contribute no new identity",
           "value": "required"
         },
         "--background": {
@@ -3695,12 +3719,15 @@
         "method",
         "result",
         "error",
-        "elapsedMs"
+        "elapsedMs",
+        "createdIds"
       ],
       "side": "write",
       "background": true,
       "status": "toWrite",
-      "creates": []
+      "creates": [
+        "/createdIds/*"
+      ]
     },
     {
       "id": "gateway-sessions-cleanup",
@@ -4031,7 +4058,7 @@
           "value": "required"
         },
         "--out": {
-          "description": "file under {run} to write the result to",
+          "description": "file under {run} to write the result to; stdout and files include createdIds: When key is omitted, result.key and any result.sessionId; also result.runId only when runStarted is true. An explicitly supplied key and adopted session identities are not newly generated",
           "value": "required"
         },
         "--background": {
@@ -4067,12 +4094,15 @@
         "method",
         "result",
         "error",
-        "elapsedMs"
+        "elapsedMs",
+        "createdIds"
       ],
       "side": "destructive",
       "background": true,
       "status": "toWrite",
-      "creates": []
+      "creates": [
+        "/createdIds/*"
+      ]
     },
     {
       "id": "gateway-sessions-delete",
@@ -5694,7 +5724,11 @@
       "side": "write",
       "background": true,
       "status": "toWrite",
-      "creates": []
+      "creates": [
+        "/result/key",
+        "/result/sessionId",
+        "/result/continuation/runId"
+      ]
     },
     {
       "id": "gateway-sessions-reset",
@@ -8816,6 +8850,44 @@
       "side": "write",
       "background": false,
       "status": "existing"
+    },
+    {
+      "id": "restart-for-recovery",
+      "kind": "script",
+      "wraps": "Native restart-recovery flow on a fresh run-owned root session: start a held mock turn, temporarily make its mock model unavailable before restart recovery admission, restart through OCM, let the bounded native admission retries reach a tombstone, restore exact model configuration and Gateway health, then publish the observed unrecovered source. Never edit product database state or send a new foreground turn after observing the tombstone. Timeout/error publishes no usable target.",
+      "command": "node {kovaRoot}/support/verify/restart-for-recovery.mjs --env {env} --session-from {run}/<source>.json --out {run}/<target>.json --timeout <ms>",
+      "flags": {
+        "--env": {
+          "description": "OCM run clone only",
+          "value": "required"
+        },
+        "--session-from": {
+          "description": "Earlier successful sessions.create output for a fresh root session; bind the observed source key and sessionId",
+          "value": "required"
+        },
+        "--out": {
+          "description": "File under {run}; write only the exact source identity observed with restartRecoveryStatus tombstoned and no recovered successor, after restoring configuration; a failed preparation has error and no sessionKey",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Overall milliseconds including interruption, native retries, restoration and observation",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "sessionKey",
+        "sessionId",
+        "restartRecoveryStatus",
+        "createdIds",
+        "elapsedMs",
+        "error"
+      ],
+      "creates": [
+        "/createdIds/*"
+      ],
+      "side": "destructive",
+      "background": false,
+      "status": "toWrite"
     }
   ]
 }
