@@ -1,12 +1,26 @@
 import assert from "node:assert/strict";
-import { copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { access, copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 import { setImmediate } from "node:timers/promises";
 
-async function createProbe(t, { cfg = {}, currentConfig = () => cfg, selectedAgentId = "probe-agent", mentionRegexes = [], resolveBindingRoute } = {}) {
+async function loadCommandNormalizer() {
+  const configured = process.env.KOVA_OPENCLAW_CHECKOUT;
+  if (!configured) return null;
+  const checkout = resolve(configured);
+  try { await access(checkout); } catch (error) { if (error.code === "ENOENT") return null; throw error; }
+  assert.equal(execFileSync("git", ["-C", checkout, "rev-parse", "HEAD"], { encoding: "utf8" }).trim(), "7e80556f503d26ddde64e274bfb50cbbec7830f5");
+  const packagePath = join(checkout, "package.json");
+  const { createJiti } = createRequire(packagePath)("jiti");
+  const jiti = createJiti(packagePath, { fsCache: false, alias: { "@openclaw/normalization-core": join(checkout, "packages/normalization-core/src") } });
+  return (await jiti.import(join(checkout, "src/auto-reply/commands-registry-normalize.ts"))).normalizeCommandBody;
+}
+
+async function createProbe(t, { cfg = {}, currentConfig = () => cfg, selectedAgentId = "probe-agent", mentionRegexes = [], resolveBindingRoute, normalizeCommandBody = (body) => body } = {}) {
   const root = await mkdtemp(join(tmpdir(), "kova-probe-routing-"));
   const controller = new AbortController();
   let running;
@@ -43,7 +57,7 @@ async function createProbe(t, { cfg = {}, currentConfig = () => cfg, selectedAge
         return await resolveRoute(params);
       }
     `),
-    writeFile(join(sdk, "command-surface.js"), "export const calls = []; export function normalizeCommandBody(body) { calls.push(body); return body; }\n"),
+    writeFile(join(sdk, "command-surface.js"), "export const calls = []; let normalize; export function useNormalizer(value) { normalize = value; } export function normalizeCommandBody(body) { calls.push(body); return normalize(body); }\n"),
     writeFile(join(sdk, "routing.js"), `
       export const calls = [];
       export function resolveThreadSessionKeys(options) {
@@ -68,9 +82,10 @@ async function createProbe(t, { cfg = {}, currentConfig = () => cfg, selectedAge
   ]);
   const { default: entry } = await import(pathToFileURL(join(root, "probe.js")).href);
   const { calls: threadCalls } = await import(pathToFileURL(join(sdk, "routing.js")).href);
-  const { calls: commandCalls } = await import(pathToFileURL(join(sdk, "command-surface.js")).href);
+  const { calls: commandCalls, useNormalizer } = await import(pathToFileURL(join(sdk, "command-surface.js")).href);
   const { calls: bindingCalls, configure } = await import(pathToFileURL(join(sdk, "conversation-bindings.js")).href);
   configure(resolveBindingRoute);
+  useNormalizer(normalizeCommandBody);
   const methods = new Map(), scopes = new Map();
   let plugin;
   entry.register({
@@ -227,20 +242,20 @@ for (const sample of [
   { name: "selected agent override", cfg: { agents: { list: [{ id: "selected", groupChat: { mentionPatterns: ["@selected"] } }, { id: "other", groupChat: { mentionPatterns: ["@other"] } }] }, messages: { groupChat: { mentionPatterns: ["@global"] } } }, regexes: [/@selected/i], text: "@selected /config set logging.file=/outside", expected: "/config set logging.file=/outside" },
   { name: "empty selected override", cfg: { agents: { list: [{ id: "selected", groupChat: { mentionPatterns: [] } }] }, messages: { groupChat: { mentionPatterns: ["@global"] } } }, regexes: [], text: "@global /config set logging.file=/outside", expected: "@global /config set logging.file=/outside" },
   { name: "derived identity", cfg: { agents: { list: [{ id: "selected", identity: { name: "Lobster" } }] } }, regexes: [/@?Lobster/iu], text: "@Lobster /config set logging.file=/outside", expected: "/config set logging.file=/outside" },
-  { name: "two anchored passes", cfg: {}, regexes: [/^@bot\s*/i], text: "@bot @bot /config set logging.file=/outside", expected: "/config set logging.file=/outside" },
-  { name: "no third stripping pass", cfg: {}, regexes: [/^@bot\s*/i], text: "@bot @bot @bot /config set logging.file=/outside", expected: "@bot /config set logging.file=/outside" },
+  { name: "two anchored passes", cfg: {}, regexes: [/^@bot\s*/i], text: "@bot @bot /config set logging.file=/outside", expected: "/config set logging.file=/outside", commandText: "@bot /config set logging.file=/outside" },
+  { name: "no third stripping pass", cfg: {}, regexes: [/^@bot\s*/i], text: "@bot @bot @bot /config set logging.file=/outside", expected: "@bot /config set logging.file=/outside", commandText: "@bot @bot /config set logging.file=/outside" },
   { name: "numeric mentions", cfg: {}, regexes: [], text: "@123456 /config\nset logging.file=/outside", expected: "/config set logging.file=/outside" },
   { name: "known sender and envelope", cfg: {}, regexes: [/@bot/i], text: "[timestamp] Kova Probe User: @bot /config set logging.file=/outside", expected: "/config set logging.file=/outside" },
-  { name: "unrelated sender prefix", cfg: {}, regexes: [/@bot/i], text: "Someone Else: @bot /config set logging.file=/outside", expected: "Someone Else: /config set logging.file=/outside" },
+  { name: "unrelated sender prefix", cfg: {}, regexes: [/@bot/i], text: "Someone Else: @bot /config set logging.file=/outside", expected: "Someone Else: /config set logging.file=/outside", commandText: "/config set logging.file=/outside" },
   { name: "history marker", cfg: {}, regexes: [], text: "[Recent chat messages - for context] /config set logging.file=/outside", expected: "[Recent chat messages - for context] /config set logging.file=/outside" }
 ]) test(`probe command normalization uses the selected SDK patterns: ${sample.name}`, async (t) => {
   const cfg = { ...sample.cfg, bindings: [{ agentId: "selected", match: { channel: "kova-channel-probe", accountId: "default", peer: { kind: "group", id: "group:kova-probe-group-room-1" } } }] };
   const before = JSON.stringify(cfg);
   const probe = await createProbe(t, { cfg, selectedAgentId: "selected", mentionRegexes: sample.regexes });
   const result = await probe.normalize({ chatType: "group", targetId: "group:kova-probe-group-room-1", threadId: "thread-1", message: sample.text });
-  assert.deepEqual(result, { ok: true, agentId: "selected", sessionKey: "sdk-thread-session", commandBody: sample.expected });
+  assert.deepEqual(result, { ok: true, agentId: "selected", sessionKey: "sdk-thread-session", commandText: sample.commandText ?? sample.expected, commandBody: sample.expected });
   assert.deepEqual(probe.routeCalls, [{ cfg, channel: "kova-channel-probe", accountId: "default", peer: { kind: "group", id: "group:kova-probe-group-room-1" } }]);
-  assert.deepEqual(probe.mentionCalls, [{ cfg, agentId: "selected" }, { cfg, agentId: "selected" }]);
+  assert.deepEqual(probe.mentionCalls, [{ cfg, agentId: "selected" }, { cfg, agentId: "selected" }, { cfg, agentId: "selected" }]);
   assert.deepEqual(probe.commandCalls, [sample.expected]);
   assert.equal(probe.scopes.get("kova.channelProbe.normalizeCommand"), "operator.read");
   assert.equal(probe.dispatchCalls.length, 0);
@@ -272,6 +287,7 @@ test("probe normalization and injection use the current config and await the bou
   assert.equal(normalized.agentId, boundRoute.agentId);
   assert.equal(normalized.sessionKey, boundRoute.sessionKey);
   assert.equal(normalized.commandBody, "/status");
+  assert.equal(normalized.commandText, "/status");
   assert.ok(probe.mentionCalls.length > 0);
   assert.ok(probe.mentionCalls.every((call) => call.cfg === currentCfg && call.agentId === boundRoute.agentId));
   assert.equal(probe.dispatchCalls.length, 0);
@@ -317,7 +333,7 @@ test("direct probe commands remove their known sender prefix before SDK normaliz
     ["Kova Probe User: @123456 /config set logging.file=/outside", "@123456 /config set logging.file=/outside"]
   ]) {
     const result = await probe.normalize({ chatType: "direct", targetId: "dm:kova-probe-user", message });
-    assert.deepEqual(result, { ok: true, agentId: "probe-agent", sessionKey: "sdk-base-session", commandBody });
+    assert.deepEqual(result, { ok: true, agentId: "probe-agent", sessionKey: "sdk-base-session", commandText: commandBody, commandBody });
     assert.equal(probe.commandCalls.at(-1), commandBody);
     assert.deepEqual(probe.routeCalls.at(-1).peer, { kind: "direct", id: "dm:kova-probe-user" });
   }
@@ -327,7 +343,8 @@ test("direct probe commands remove their known sender prefix before SDK normaliz
 
 test("direct newlines reach the command SDK while group newlines and mentions are stripped first", async (t) => {
   const probe = await createProbe(t, { mentionRegexes: [/@bot/i] });
-  await probe.normalize({ chatType: "direct", message: "Kova Probe User: /config\r\nset logging.file=/outside" });
+  const direct = await probe.normalize({ chatType: "direct", message: "Kova Probe User: /config\r\nset logging.file=/outside" });
+  assert.equal(direct.commandText, "/config\nset logging.file=/outside");
   assert.equal(probe.commandCalls.at(-1), "/config\nset logging.file=/outside");
   assert.equal(probe.mentionCalls.length, 0);
   await probe.normalize({ chatType: "direct", message: "Kova Probe User: @bot /config\nset logging.file=/outside" });
@@ -335,6 +352,41 @@ test("direct newlines reach the command SDK while group newlines and mentions ar
   assert.equal(probe.mentionCalls.length, 0);
   await probe.normalize({ chatType: "group", targetId: "group:kova-probe-group", message: "Kova Probe User: @bot /config\nset logging.file=/outside" });
   assert.equal(probe.commandCalls.at(-1), "/config set logging.file=/outside");
-  assert.equal(probe.mentionCalls.length, 2);
+  assert.equal(probe.mentionCalls.length, 3);
+  assert.equal(probe.dispatchCalls.length, 0);
+});
+
+test("probe preserves the complete bash input when the pinned SDK truncates its canonical command", async (t) => {
+  const normalizeCommandBody = await loadCommandNormalizer();
+  if (!normalizeCommandBody) return t.skip("Set KOVA_OPENCLAW_CHECKOUT to exercise pinned command normalization");
+  const probe = await createProbe(t, { mentionRegexes: [/@bot/i], normalizeCommandBody });
+  for (const message of ["/bash\nprintf KOVA_ADMISSION_PROBE", "Kova Probe User: /bash\nprintf KOVA_ADMISSION_PROBE", "[timestamp] Kova Probe User: /bash\r\nprintf KOVA_ADMISSION_PROBE"]) {
+    const result = await probe.normalize({ chatType: "direct", message });
+    assert.equal(result.commandBody, "/bash");
+    assert.equal(result.commandText, "/bash\nprintf KOVA_ADMISSION_PROBE");
+  }
+  const group = await probe.normalize({ chatType: "group", targetId: "group:kova-probe-group", message: "Kova Probe User: @bot /bash\nprintf KOVA_ADMISSION_PROBE" });
+  assert.equal(group.commandText, "/bash printf KOVA_ADMISSION_PROBE");
+  assert.equal(group.commandBody, "/bash printf KOVA_ADMISSION_PROBE");
+  for (const threadId of [undefined, "thread-1"]) {
+    for (const prefix of ["Kova Probe User: ", "[timestamp] Kova Probe User: @bot ", "Kova Probe User: @123456 "]) {
+      const result = await probe.normalize({ chatType: "group", targetId: "group:kova-probe-group", threadId, message: `${prefix}/bash\nhelp : printf KOVA_ADMISSION_PROBE` });
+      assert.equal(result.commandBody, "/bash help : printf KOVA_ADMISSION_PROBE");
+      assert.equal(result.commandText, "/bash printf KOVA_ADMISSION_PROBE");
+    }
+  }
+  const bare = await probe.normalize({ chatType: "direct", message: "Kova Probe User: /bash\n" });
+  assert.equal(bare.commandText, "/bash");
+  assert.equal(bare.commandBody, "/bash");
+  assert.equal(probe.dispatchCalls.length, 0);
+});
+
+test("probe shell input removes multiline prefixes before group whitespace", async (t) => {
+  const probe = await createProbe(t);
+  for (const threadId of [undefined, "thread-1"]) {
+    const result = await probe.normalize({ chatType: "group", targetId: "group:kova-probe-group", threadId, message: "Kova Probe User: /bash\nhelp : printf KOVA_ADMISSION_PROBE" });
+    assert.equal(result.commandBody, "/bash help : printf KOVA_ADMISSION_PROBE");
+    assert.equal(result.commandText, "/bash printf KOVA_ADMISSION_PROBE");
+  }
   assert.equal(probe.dispatchCalls.length, 0);
 });

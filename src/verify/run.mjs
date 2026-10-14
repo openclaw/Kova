@@ -224,12 +224,19 @@ function inspectSessionMessage(message) {
   }
   body = body.replace(/^(?:@?Kova Gateway RPC|Kova Gateway RPC \(@Kova Gateway RPC\)):[ \t]*/i, "").replace(/\\n/g, " ").trim();
   // Shell requests consume the whole message, including later lines.
-  const bash = /^\/bash(?:\s*:\s*|\s+|$)([\s\S]*)$/i.exec(body);
-  let program = bash?.[1];
-  if (!bash && body.startsWith("!")) program = body.slice(1).trimStart().replace(/^:/, "");
-  if (program !== undefined && program.trim()) {
-    const action = program.trimStart().match(/^\S+/)?.[0].toLowerCase();
-    if (!["help", "poll", "stop"].includes(action)) throw new Error("executable messages cannot establish an owned program boundary");
+  const shellBodies = [body];
+  if (/^\/bash(?:\s|:|$)/i.test(body) || body.startsWith("!")) {
+    const stripped = body.replace(/^[ \t]*(?!\/)[^\n:]{1,120}:\s+/gm, "").trim();
+    if (stripped !== body) shellBodies.push(stripped);
+  }
+  for (const shellBody of shellBodies) {
+    const bash = /^\/bash(?:\s*:\s*|\s+|$)([\s\S]*)$/i.exec(shellBody);
+    let program = bash?.[1];
+    if (!bash && shellBody.startsWith("!")) program = shellBody.slice(1).trimStart().replace(/^:/, "");
+    if (program !== undefined && program.trim()) {
+      const action = program.trimStart().match(/^\S+/)?.[0].toLowerCase();
+      if (!["help", "poll", "stop"].includes(action)) throw new Error("executable messages cannot establish an owned program boundary");
+    }
   }
   body = body.split("\n", 1)[0].trim().replace(/^\/(config|debug)\s*:\s*/i, "/$1 ");
   const command = /^\/(config|debug)(?:\s+([\s\S]*))?$/i.exec(body);
@@ -358,9 +365,13 @@ export async function validateRunDestinations(command, context) {
       const env = option(tokens, "--env");
       let message = option(tokens, messageFlag);
       if (messageFlag === "--text") {
+        inspectSessionMessage(message);
         if (typeof context.normalizeProbeCommand !== "function") throw new Error("channel commands require probe command normalization");
         const normalized = await context.normalizeProbeCommand(env, inboundParams({ text: message, peer: option(tokens, "--peer"), "chat-type": option(tokens, "--chat-type") }));
-        if (normalized?.ok !== true || typeof normalized.commandBody !== "string" || typeof normalized.agentId !== "string" || !normalized.agentId || typeof normalized.sessionKey !== "string" || !normalized.sessionKey) throw new Error("probe command normalization is unavailable");
+        if (normalized?.ok !== true || typeof normalized.commandBody !== "string" || typeof normalized.commandText !== "string" || typeof normalized.agentId !== "string" || !normalized.agentId || typeof normalized.sessionKey !== "string" || !normalized.sessionKey) throw new Error("probe command normalization is unavailable");
+        // Bash consumes the full input even when the command SDK returns a short
+        // canonical verb. Configuration admission still uses the canonical form.
+        if (normalized.commandBody === "/bash" || normalized.commandBody.startsWith("/bash ") || normalized.commandBody.startsWith("!")) inspectSessionMessage(normalized.commandText);
         message = normalized.commandBody;
       }
       await validateMessage(message, env);

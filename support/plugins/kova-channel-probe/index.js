@@ -567,6 +567,14 @@ function anchorProbeCommand(text) {
   return text.slice(start);
 }
 
+function stripProbeShellPrefixes(text) {
+  if (["[Chat messages since your last reply - for context]", "[Recent chat messages - for context]"].some((marker) => text.trimStart().startsWith(marker))) return text.trim();
+  const afterEnvelope = text.replace(/^(?:[ \t]*\[[^\]\n]+\][ \t]*)+/, "");
+  const senderPrefix = afterEnvelope === text ? /^[ \t]*(?!\/)[^\n:]{1,120}:\s+/gm : /^[ \t]*[^\n:]{1,120}:\s+/gm;
+  const stripped = afterEnvelope.replace(senderPrefix, "").replace(/\\n/g, " ").trim();
+  return stripped.replace(stripped.startsWith("/") ? /[ \t]+/g : /\s+/g, " ");
+}
+
 async function normalizeProbeCommand(params) {
   if (!objectOrNull(params) || Object.keys(params).some((key) => !["message", "targetId", "chatType", "threadId", "wasMentioned"].includes(key))) throw new Error("invalid probe command normalization parameters");
   validateProbeRequest("kova.channelProbe.inject", params);
@@ -590,7 +598,11 @@ async function normalizeProbeCommand(params) {
   const trigger = strip(anchorProbeCommand(text)).replace(/\\n/g, " ").trim();
   const { normalizeCommandBody } = await import("openclaw/plugin-sdk/command-surface");
   if (activeRuntime !== current || current.abortSignal.aborted) throw new Error("probe runtime changed during command normalization");
-  return { agentId: route.agentId, sessionKey: route.sessionKey, commandBody: normalizeCommandBody(strip(trigger)) };
+  const commandBody = normalizeCommandBody(strip(trigger));
+  // The shell handler starts from the original context and removes structural
+  // prefixes before its single mention pass, while command selection strips twice.
+  const commandText = strip(stripProbeShellPrefixes(text));
+  return { agentId: route.agentId, sessionKey: route.sessionKey, commandText, commandBody };
 }
 
 async function resolveProbeRoute(runtime, cfg, { chatType, targetId, threadId }) {

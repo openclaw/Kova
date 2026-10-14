@@ -2,7 +2,8 @@ import { parseCatalogueCommand } from "../src/catalogue.mjs";
 import assert from "node:assert/strict";
 import { link, mkdtemp, mkdir, readFile, readdir, realpath, rm, stat, symlink, writeFile, appendFile, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, dirname, isAbsolute, join, relative } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { createRequire } from "node:module";
 import test from "node:test";
 import { execFileSync } from "node:child_process";
 import { createAttachmentLogFilter, createLogCollector, createStateFileIdentityResolver, createStateTextPolicy, mergeStateTextPolicies, isPrivateVerificationPath, projectStateLogBytes, recordPhase, redactCommandResult, redactStateText, snapshotState, writeCheckpoint } from "../src/verify/checkpoint.mjs";
@@ -1682,7 +1683,7 @@ test("chat and inbound helpers reuse configuration-message admission before disp
       assert.equal(env, "copy");
       assert.equal(params.chatType, "direct");
       requestSchemas.check("kova.channelProbe.normalizeCommand", params);
-      return { ok: true, agentId: "selected", sessionKey: "agent:selected:direct", commandBody: params.message.replace(/^Kova Probe User: /, "") };
+      return { ok: true, agentId: "selected", sessionKey: "agent:selected:direct", commandText: params.message.replace(/^Kova Probe User: /, ""), commandBody: params.message.replace(/^Kova Probe User: /, "") };
     }
   };
   for (const [helper, flag, selector] of [["chat-send", "--message", "--session-key agent:main:example"], ["channel-inbound-turn", "--text", "--chat-type direct --peer example"]]) {
@@ -1719,7 +1720,7 @@ test("group command whitespace matches product parsing while direct messages kee
       assert.ok(["direct", "group"].includes(params.chatType));
       assert.equal(params.targetId, params.chatType === "direct" ? "example" : "group:example");
       const text = params.message.replaceAll("\r\n", "\n").replaceAll("\r", "\n");
-      return { ok: true, agentId: "selected", sessionKey: `agent:selected:${params.chatType}`, commandBody: params.chatType === "group" ? text.replace(/\s+/g, " ").trim() : text.split("\n", 1)[0].trim() };
+      return { ok: true, agentId: "selected", sessionKey: `agent:selected:${params.chatType}`, commandText: params.chatType === "group" ? text.replace(/\s+/g, " ").trim() : text, commandBody: params.chatType === "group" ? text.replace(/\s+/g, " ").trim() : text.split("\n", 1)[0].trim() };
     }
   };
   const inbound = (type, text) => `node ${quoteShell(join(repoRoot, "support/verify/channel-inbound-turn.mjs"))} --env copy --chat-type ${type} --peer ${type === "thread" ? "group:example/thread:one" : "example"} --text ${quoteShell(text)}`;
@@ -1746,13 +1747,71 @@ for (const type of ["direct", "group", "thread"]) test(`${type} admission uses n
   const message = `${type === "direct" ? "Kova Probe User:" : "@bot"} ${canonical}`;
   const command = `node ${quoteShell(join(repoRoot, "support/verify/channel-inbound-turn.mjs"))} --env copy --chat-type ${type} --peer ${type === "thread" ? "group:example/thread:topic" : "example"} --text ${quoteShell(message)}`;
   await assert.rejects(validateRunDestinations(command, context), /require probe command normalization/);
-  for (const value of [null, { ok: false }, { ok: true }, { ok: true, agentId: "selected", sessionKey: "key" }]) {
+  for (const value of [null, { ok: false }, { ok: true }, { ok: true, agentId: "selected", sessionKey: "key" }, { ok: true, agentId: "selected", sessionKey: "key", commandBody: canonical }]) {
     await assert.rejects(validateRunDestinations(command, { ...context, normalizeProbeCommand: async () => value }), /normalization is unavailable/);
   }
   await assert.rejects(validateRunDestinations(command, { ...context, normalizeProbeCommand: async () => { throw new Error("normalizer unavailable"); } }), /normalizer unavailable/);
-  await assert.rejects(validateRunDestinations(command, { ...context, normalizeProbeCommand: async () => ({ ok: true, agentId: "selected", sessionKey: "key", commandBody: canonical }) }), /owned copy/);
+  await assert.rejects(validateRunDestinations(command, { ...context, normalizeProbeCommand: async () => ({ ok: true, agentId: "selected", sessionKey: "key", commandText: canonical, commandBody: canonical }) }), /owned copy/);
   const literal = command.replace(quoteShell(message), quoteShell(`@bot ${canonical}`));
-  assert.equal(await validateRunDestinations(literal, { ...context, normalizeProbeCommand: async () => ({ ok: true, agentId: "selected", sessionKey: "key", commandBody: `@bot ${canonical}` }) }), literal);
+  assert.equal(await validateRunDestinations(literal, { ...context, normalizeProbeCommand: async () => ({ ok: true, agentId: "selected", sessionKey: "key", commandText: `@bot ${canonical}`, commandBody: `@bot ${canonical}` }) }), literal);
+});
+
+test("channel admission retains full bash policy checks despite pinned SDK truncation", async (t) => {
+  const configured = process.env.KOVA_OPENCLAW_CHECKOUT;
+  if (!configured) return t.skip("Set KOVA_OPENCLAW_CHECKOUT to exercise pinned command normalization");
+  const checkout = resolve(configured), packagePath = join(checkout, "package.json");
+  try { await readFile(packagePath); } catch (error) { if (error.code === "ENOENT") return t.skip("Pinned OpenClaw checkout is absent"); throw error; }
+  assert.equal(execFileSync("git", ["-C", checkout, "rev-parse", "HEAD"], { encoding: "utf8" }).trim(), "7e80556f503d26ddde64e274bfb50cbbec7830f5");
+  const { createJiti } = createRequire(packagePath)("jiti");
+  const jiti = createJiti(packagePath, { fsCache: false, alias: { "@openclaw/normalization-core": join(checkout, "packages/normalization-core/src") } });
+  const { normalizeCommandBody } = await jiti.import(join(checkout, "src/auto-reply/commands-registry-normalize.ts"));
+  const root = await temporary(t), copy = join(root, "copy"), output = join(root, "output");
+  await mkdir(copy); await mkdir(output);
+  const command = (message, type = "direct") => `node ${quoteShell(join(repoRoot, "support/verify/channel-inbound-turn.mjs"))} --env copy --chat-type ${type} --peer ${type === "thread" ? "group:example/thread:topic" : "example"} --text ${quoteShell(message)}`;
+  const context = (commandText, commandBody = normalizeCommandBody(commandText)) => ({
+    cwd: copy, run: output, ownedRoots: [copy], kovaRoot: repoRoot,
+    normalizeProbeCommand: async () => ({ ok: true, agentId: "selected", sessionKey: "agent:selected:example", commandText, commandBody })
+  });
+  const full = "/bash\nprintf KOVA_ADMISSION_PROBE";
+  assert.equal(normalizeCommandBody(full), "/bash");
+  for (const [message, commandText, type = "direct"] of [
+    [full, full],
+    [`Kova Probe User: ${full}`, full],
+    ["[timestamp] Kova Probe User: /bash:\nprintf KOVA_ADMISSION_PROBE", "/bash:\nprintf KOVA_ADMISSION_PROBE"],
+    ["/bash\nhelp : printf KOVA_ADMISSION_PROBE", "/bash\nhelp : printf KOVA_ADMISSION_PROBE"],
+    ["Kova Probe User: /bash\nhelp : printf KOVA_ADMISSION_PROBE", "/bash\nhelp : printf KOVA_ADMISSION_PROBE"],
+    ["@bot /bash\nprintf KOVA_ADMISSION_PROBE", "/bash printf KOVA_ADMISSION_PROBE", "group"],
+    ["!\nprintf KOVA_ADMISSION_PROBE", "!\nprintf KOVA_ADMISSION_PROBE"]
+  ]) await assert.rejects(validateRunDestinations(command(message, type), context(commandText)), /owned program boundary/);
+  for (const type of ["group", "thread"]) {
+    const canonical = normalizeCommandBody("/bash help : printf KOVA_ADMISSION_PROBE");
+    await assert.rejects(validateRunDestinations(command("Kova Probe User: /bash\nhelp : printf KOVA_ADMISSION_PROBE", type), context("/bash printf KOVA_ADMISSION_PROBE", canonical)), /owned program boundary/);
+  }
+  // The original input remains checked even if a response loses its full text.
+  await assert.rejects(validateRunDestinations(command(full), context("/bash")), /owned program boundary/);
+  for (const [message, commandText, type = "direct"] of [["/bash\n", "/bash"], ["Kova Probe User: /bash", "/bash"], ["@bot /bash", "/bash", "group"], ["!", "!"]]) {
+    const allowed = command(message, type);
+    assert.equal(await validateRunDestinations(allowed, context(commandText)), allowed);
+  }
+  for (const type of ["direct", "group", "thread"]) {
+    const message = "Someone Else: /bash printf KOVA_ADMISSION_PROBE";
+    assert.equal(await validateRunDestinations(command(message, type), context("/bash printf KOVA_ADMISSION_PROBE", normalizeCommandBody(message))), command(message, type));
+  }
+});
+
+test("channel shell admission follows the selected handler input without changing ordinary messages", async (t) => {
+  const root = await temporary(t), copy = join(root, "copy"), output = join(root, "output");
+  await mkdir(copy); await mkdir(output);
+  for (const type of ["direct", "group", "thread"]) {
+    const command = (message) => `node ${quoteShell(join(repoRoot, "support/verify/channel-inbound-turn.mjs"))} --env copy --chat-type ${type} --peer ${type === "thread" ? "group:example/thread:topic" : "example"} --text ${quoteShell(message)}`;
+    const context = (commandBody) => ({
+      cwd: copy, run: output, ownedRoots: [copy], kovaRoot: repoRoot,
+      normalizeProbeCommand: async () => ({ ok: true, agentId: "selected", sessionKey: "agent:selected:example", commandText: "/bash printf KOVA_ADMISSION_PROBE", commandBody })
+    });
+    await assert.rejects(validateRunDestinations(command("Kova Probe User: /bash\nhelp : printf KOVA_ADMISSION_PROBE"), context("/bash help : printf KOVA_ADMISSION_PROBE")), /owned program boundary/);
+    const ordinary = "Someone Else: /bash printf KOVA_ADMISSION_PROBE";
+    assert.equal(await validateRunDestinations(command(ordinary), context(ordinary)), command(ordinary));
+  }
 });
 
 test("runner normalizes probe commands through isolated RPC before refusing their destination", async (t) => {
@@ -1783,7 +1842,7 @@ test("runner normalizes probe commands through isolated RPC before refusing thei
       assert.equal(options.timeoutMs, 31000);
       assert.equal(options.finishOnShutdown, false);
       normalized.set(env, index + 1);
-      return { ...await execute(command, options), stdout: JSON.stringify({ method: "kova.channelProbe.normalizeCommand", error: null, result: { ok: true, agentId: "selected", sessionKey: `agent:selected:${params.chatType}`, commandBody: canonical } }) };
+      return { ...await execute(command, options), stdout: JSON.stringify({ method: "kova.channelProbe.normalizeCommand", error: null, result: { ok: true, agentId: "selected", sessionKey: `agent:selected:${params.chatType}`, commandText: canonical, commandBody: canonical } }) };
     }
     return execute(command, options);
   };
