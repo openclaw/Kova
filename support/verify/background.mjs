@@ -1,6 +1,6 @@
 import { fork } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { lstat, mkdir, readFile, realpath, rename, unlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, realpath, rename, rm, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
@@ -145,6 +145,65 @@ export async function joinOperation(handlePath, { timeoutMs = 120000, method, en
   }
 }
 
+// An operation may accept another bounded call while retaining its resources.
+// The existing descriptor, expiry and stop owner still govern its lifetime.
+export async function requestOperation(handlePath, options, { entry, timeoutMs = 120000, env, signal } = {}) {
+  const operation = await readOperation(handlePath);
+  if (operation.entry !== entry || (env && operation.env !== env)) throw new CallError("background handle does not match this call");
+  if (!operation.handle?.ref?.acceptsRequests) throw new CallError("background operation does not accept calls");
+  if (await optionalJson(join(operation.directory, "result.json"))) throw new CallError("background operation has finished");
+  const directory = join(operation.directory, "request");
+  try { await mkdir(directory, { mode: 0o700 }); }
+  catch (error) { if (error.code === "EEXIST") throw new CallError("background operation already has a caller"); throw error; }
+  let completed = false;
+  let submitted = false;
+  const expiresAt = Math.min(Date.now() + positiveMs(timeoutMs), Date.parse(operation.expiresAt));
+  try {
+    signal?.throwIfAborted();
+    await atomicJson(join(directory, "call.json"), { id: randomUUID(), options, expiresAt });
+    submitted = true;
+    while (true) {
+      signal?.throwIfAborted();
+      const result = await optionalJson(join(directory, "result.json"));
+      if (result) { completed = true; return result; }
+      if (await optionalJson(join(operation.directory, "result.json"))) { completed = true; throw new CallError("background operation ended before replying", 1); }
+      if (Date.now() >= expiresAt) throw new CallError("background call timeout", 3);
+      await sleep(Math.min(50, expiresAt - Date.now()), undefined, { signal });
+    }
+  } catch (error) {
+    throw signal?.aborted ? signal.reason : error;
+  } finally {
+    if (completed || !submitted) await rm(directory, { recursive: true, force: true });
+    else await writeFile(join(directory, "cancel"), "cancel\n", { mode: 0o600 });
+  }
+}
+
+export async function serveOperationRequests(context, callback) {
+  const directory = join(context.operation.directory, "request");
+  let handled;
+  while (true) {
+    context.signal.throwIfAborted();
+    const call = await optionalJson(join(directory, "call.json"));
+    if (call && call.id !== handled) {
+      handled = call.id;
+      const controller = new AbortController();
+      const timeout = Math.max(1, call.expiresAt - Date.now());
+      const active = AbortSignal.any([context.signal, controller.signal, AbortSignal.timeout(Math.min(timeout, 2147483647))]);
+      const poll = setInterval(async () => {
+        try { await lstat(join(directory, "cancel")); controller.abort(new CallError("background caller cancelled", 3)); }
+        catch (error) { if (error.code !== "ENOENT") controller.abort(error); }
+      }, 50);
+      let result;
+      try { result = await callback(call.options, { signal: active }); }
+      catch (error) { result = failure(context.operation.method, error); }
+      finally { clearInterval(poll); }
+      await atomicJson(join(directory, "result.json"), result);
+      if (active.aborted) throw active.reason;
+    }
+    await sleep(50, undefined, { signal: context.signal });
+  }
+}
+
 export async function cleanupGatewayHandle(handlePath, { timeoutMs = 30000 } = {}) {
   let operation;
   try { operation = await readOperation(handlePath); } catch (error) { if (error.code === "ENOENT") return null; throw error; }
@@ -267,7 +326,7 @@ export async function serveOperation(callback, { signal } = {}) {
       }
     });
   } catch (error) {
-    result = failure(operation.method, error, Date.parse(operation.startedAt));
+    result = failure(operation.method, controller.signal.aborted ? controller.signal.reason : error, Date.parse(operation.startedAt));
   } finally {
     clearTimeout(timer);
     clearInterval(poll);
