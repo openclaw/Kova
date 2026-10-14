@@ -70,7 +70,7 @@
     {
       "id": "use-target",
       "commands": [
-        "ocm upgrade {env} --runtime {target} --json"
+        "ocm start {env} --runtime {target} --no-service --json"
       ],
       "checkpoint": [
         "responses",

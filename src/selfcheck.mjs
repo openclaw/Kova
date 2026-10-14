@@ -326,7 +326,7 @@ async function runScopedSelfCheck(flags, scope, workspace) {
       assertEqual(data.auth?.method, "mock", "setup auth default");
       assertArrayNotEmpty(data.checks, "setup checks");
       const nodeCheck = data.checks.find((check) => check.id === "node-version");
-      assertEqual(nodeCheck?.expected, ">= 22.5.0", "setup Node minimum");
+      assertEqual(nodeCheck?.expected, ">= 22.19.0", "setup Node minimum");
       assertEqual(nodeCheck?.status, "PASS", "setup Node compatibility");
     }));
     checks.push(await inlineCheck("run-id-collision-resistance", () => {

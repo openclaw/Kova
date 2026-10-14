@@ -200,3 +200,31 @@ symbolic for cloning. Each run file has one producing phase. The catalogue
 checks the written commands before persona substitution; unfinished entries
 withhold phases and other findings refuse the output. See the
 [plan form](verify/plan-and-verdict.md#plan-form) for the complete contract.
+
+## Verification Runs And Checkpoints
+
+`kova verify run` writes `schema: "kova.verify.run.v1"` with its id, the saved
+plan's path and SHA-256, Kova and OCM identities, both target selectors/commits/
+versions, and five `clones`: `baseline`, `change-1`, `change-2`, `noise-1` and
+`noise-2`. Each copy records `started`, `cached`, and a map from qualified phase
+id to `recorded` or `no checkpoint`. `incomplete`, `notStarted`, errors and
+`cleanupErrors` retain execution failures. No comparison verdict is inferred.
+
+Each recorded phase has `commands.json`, an array in command order with
+`command`, `exit`, `stdout`, `stderr`, `durationMs` and `timedOut`. JSON stdout is
+stored by command index in `responses.json`; the corresponding command stdout
+is null. Requested signals add incremental `logs.txt`, `timing.json`
+(`durationMs`, `reachedBound`), selected files under `state/`, `doctor.json`, and
+`screen.png`. Doctor output is an array in command order, preserving JSON or
+text when the command fails to print JSON. Screenshots must be PNG files under
+the copy's output directory. A checkpoint is published only when every requested
+capture succeeds; partial directories are discarded.
+
+SQLite files are copied through the read-only online backup API and the copies
+use standalone journals. WAL and shared-memory side files are not independent
+state signals. `initial-state/` records selected state before the first phase,
+so ids from the persona remain distinguishable from newly generated ids. The
+saved `standard.json` retains `stateIds` and `compressed` declarations and
+`catalogue.json` retains command `creates` declarations for comparison.
+
+See the [run and checkpoint forms](verify/plan-and-verdict.md#running-the-plan).

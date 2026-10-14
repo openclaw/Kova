@@ -53,11 +53,10 @@ phases, each in the template phase form without `kind`, `paths` or
 `requires`; they alone may use the `{target}` placeholder, the installed OCM
 runtime name prepared for the side's target selector:
 
-- before: `use-target` switches the clone to the side's target runtime,
-  `start-gateway` starts the owned foreground Gateway and writes
-  `{run}/gateway.json`, and `status-before` reads status;
+- before: `use-target` binds the clone with `ocm start --no-service` to the side's target runtime,
+  `start-gateway` starts an owned foreground Gateway through its catalogue entry, `status-before` reads status;
 - after: `status-after` reads status, `doctor` runs Doctor, `stop-gateway`
-  joins that handle to stop the owned Gateway, `snapshot` snapshots the state.
+  stops and joins the owned Gateway through its handle, `snapshot` snapshots the state.
 
 The persona is always built with an OpenClaw no newer than either side, so
 starting the Gateway on the side's runtime is an existing installation being
@@ -321,7 +320,7 @@ any other difference in the same phase and signal is classed on its own.
 5. Records a checkpoint after every phase on every clone.
 6. Reports a clone that fails before its first phase completes as
    `not started`.
-7. Caches the baseline clone's directory and the two noise directories under
+7. Caches the baseline clone's checkpoints and initial state and the two noise copies under
    that key, in `verify/cache/<key hash>/` in Kova's artifact store.
 8. Writes `run.json` and destroys the clones.
 
@@ -331,10 +330,10 @@ by default), laid out as:
 ```text
 verify/<run id>/
   run.json
-  baseline/      the baseline clone's directory, or a link to the cached one
+  baseline/      the baseline clone's directory, or copied cached checkpoints
   change-1/      the first change clone's directory
   change-2/      the second change clone's directory
-  noise-1/       the first noise clone's directory, or a link to the cached one
+  noise-1/       the first noise clone's directory, or copied cached checkpoints
   noise-2/       the second
   verdict.json   written by compare
   issues.md      written by compare
@@ -410,7 +409,7 @@ responses.json  with responses: the JSON each command printed on stdout, by comm
 logs.txt        with logs: Gateway and agent log lines since the previous checkpoint
 timing.json     with timing: each command's duration and whether it reached its bound
 state/          with state:<path>: a snapshot of that path in the clone's OpenClaw state directory
-doctor.json     with doctor: Doctor's JSON output
+doctor.json     with doctor: each command's Doctor JSON output, or its text on failure
 screen.png      with screen: the last browser screenshot, when a browser step ran
 ```
 
@@ -632,3 +631,36 @@ The standard Gateway lifecycle uses the task-owned foreground start/stop entries
 with `--no-service` runtime preparation. It does not install or start an OCM
 service. A phase that pauses the Gateway for a database fixture reads the same
 `{run}/gateway.json` handle; that file has one producing standard phase.
+
+## Recorded Inputs And Cleanup
+
+A run saves the exact plan bytes as `plan.json` and points `run.json` at that
+copy, retaining the original path as `plan.source`. It also saves `standard.json`
+and `catalogue.json`; comparison therefore uses the declarations that produced
+the checkpoints. Each clone's `initial-state/` contains the selected state
+before its first phase, including the persona's existing ids. Compressed SQLite
+columns remain intact in the database copy, alongside their saved codec
+declarations, for comparison to decode.
+
+Standard Gateway lifecycle entries use a handle under the clone's output
+directory. The start entry waits for the owned process and authenticated Gateway
+identity; the stop entry joins that process. The startup timeout does not limit
+later phases. A separate six-hour maximum bounds an abandoned Gateway. Run
+cleanup requests termination through the owned handle and waits for completion;
+it never sends a signal to a process id merely read from a handle. OCM start
+commands require `--no-service`, and `ocm service` commands are refused.
+Secondary persona environments receive their own target binding and Gateway
+handles during the standard lifecycle phases.
+
+The run records `incomplete` and `notStarted` lists as well as per-copy errors.
+A command that exits 2 marks the phase incomplete even if its checkpoint was
+recorded. Failed cleanup is retained in `cleanupErrors`; the evidence stays on
+disk and the command exits nonzero. All imported environments and newly built
+runtimes are removed on successful cleanup. The persona is never destroyed.
+
+The cache stores only complete baseline/noise checkpoints and initial state,
+with content hashes. A malformed, missing or changed cache is not reused. An
+active cache writer causes another run to bypass that cache. Secondary persona
+environments are exported before each run and their hashes must also match the
+cached copies. These checks preserve the five-part cache key while preventing
+reuse after secondary content changes.

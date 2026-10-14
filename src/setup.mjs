@@ -14,7 +14,7 @@ import { artifactsDir, credentialsDir, liveEnvPath, providersPath, reportsDir, r
 import { configureCredentialProvider, ensureCredentialStore } from "./auth.mjs";
 import { renderSetup } from "./reporting/render-setup.mjs";
 
-const requiredNodeVersion = "22.5.0";
+const requiredNodeVersion = "22.19.0";
 
 export async function runSetup(flags = {}) {
   rejectRemovedSetupFlags(flags);

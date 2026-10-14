@@ -1,6 +1,6 @@
 # CLI Reference
 
-Kova requires Node.js 22.5.0 or newer. `kova setup` checks this prerequisite.
+Kova requires Node.js 22.19.0 or newer. `kova setup` checks this prerequisite.
 
 Kova's human-facing commands render a dashboard by default. Add `--json` for
 the stable machine contract, `--plain` for compact text, `--no-progress` to
@@ -24,6 +24,7 @@ options accept only a bare flag, `=true`, or `=false`.
 | `kova inventory plan` | Find OpenClaw capabilities that Kova does not model. |
 | `kova inventory repeated-work` | Find duplicate scenario commands and collector pressure. |
 | `kova verify plan` | Assemble phases for a change from templates and a persona manifest. |
+| `kova verify run` | Execute a plan on disposable persona copies and record checkpoints. |
 | `kova catalogue list` | List the fixed command forms for a product. |
 | `kova catalogue check` | Check template and persona commands against a product catalogue. |
 | `kova persona build` | Build a protected OpenClaw environment and checked export. |
@@ -39,7 +40,7 @@ options accept only a bare flag, `=true`, or `=false`.
 | `kova report paste <run-id>` | Create a fixer-ready handoff. |
 | `kova cleanup` | Remove stale Kova-owned environments or artifacts. |
 
-`kova verify run` and `kova verify compare` are forthcoming; [Kova Verify](verify/README.md) describes them.
+`kova verify compare` is forthcoming; [Kova Verify](verify/README.md) describes them.
 
 ## Personas
 
@@ -296,5 +297,40 @@ a missing or ambiguous file producer, or conflicting order refuses the plan
 without replacing the output file. No phase command or model runs during planning.
 
 The [plan contract](verify/plan-and-verdict.md) defines the JSON output,
-dependencies and persona resolution. `verify run` and `verify compare` are
-specified there but are not implemented by this command.
+dependencies and persona resolution. `verify run` executes the saved plan;
+`verify compare` is specified there and remains forthcoming.
+
+## Verification runs
+
+```sh
+kova verify run --plan plan.json \
+  --target-baseline local-build:/path/to/baseline \
+  --target-change local-build:/path/to/change --execute --json
+```
+
+Without `--execute`, this validates the plan, persona and targets and prints the
+proposed phases and copies. It creates no environments or output directories.
+Both targets must be clean OpenClaw checkouts at exactly the commits in the
+plan. Their versions must be at least the persona's pinned runtime version.
+The persona must have a checked `--include-state` export, and its definition's
+check scripts must be present in the running Kova installation.
+
+Execution builds package runtimes through OCM, imports five disposable copies
+(one baseline, two change and two baseline noise copies), checks the persona
+content and runs the phases in order on each copy. Persona-provided environments
+are exported and imported separately for each copy. Their keys resolve to those
+copies. Gateway processes run in the foreground without managed services.
+Plans containing `ocm service` commands are refused; update those phases to the
+foreground catalogue entries before running them.
+
+Results are under `$KOVA_HOME/artifacts/verify/<id>/`, including `run.json`, the
+exact plan, comparison declarations, catalogue and per-copy checkpoints. A
+command exiting 2 makes its phase incomplete. Failure before the first phase
+completes leaves the copy marked not started. These observations are recorded
+for comparison; the run command does not decide the product verdict.
+
+The baseline and noise checkpoints can be reused when their cache key and
+content hashes match. A dirty Kova checkout bypasses the cache. Secondary
+persona exports are checked again before reuse. Execution removes its imported
+environments and temporary runtimes, preserving the persona and the evidence.
+A cleanup failure is recorded in `run.json` and makes the command exit nonzero.
