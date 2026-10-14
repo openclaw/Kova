@@ -318,6 +318,7 @@ test("corrupted product JSON and compressed content remain differences", async (
 
 test("normalizes volatile text only, leaving ordinary identifiers and values intact", () => {
   assert.equal(normalizeText("2026-10-14T10:22:33.123Z pid=22 port: 9000 http://localhost:9000 took 23ms model=abc123 hash=00ff"), "<time> pid=<pid> port: <port> http://localhost:<port> took <duration> model=abc123 hash=00ff");
+  assert.equal(normalizeText("ws://[::1]:18789/path https://[2001:db8::1]:2345/path"), "ws://[::1]:<port>/path https://[2001:db8::1]:<port>/path");
 });
 
 test("rejects edited plans, duplicate expectations and malformed checkpoint files", async (t) => {
@@ -899,4 +900,39 @@ test("JSONL preserves valid records and malformed text as distinct evidence", as
   assert.equal(result.verdict, "breaks");
   assert.ok(result.rows.some(row => row.at === "files/events.jsonl/0/value" && row.baseline === 1 && row.change === 2));
   assert.ok(result.rows.some(row => row.at === "files/events.jsonl/1" && row.baseline.invalidJSONL === "broken" && row.change === "broken"));
+});
+
+test("RSS and CPU observations preserve warning severity and configured bounds", async (t) => {
+  for (const reason of ["heap_threshold", "rss_threshold"]) {
+    const log = (reading, overrides = {}) => {
+      const fields = { level: "warning", reason, rss: `${reading} GiB`, rssBytes: reading * 1073741824, heap: "800 MiB", used: reason === "rss_threshold" ? `${reading} GiB` : "800 MiB", usedBytes: reason === "rss_threshold" ? reading * 1073741824 : 838860800, thresholdRatio: reason === "rss_threshold" ? `${reading * 100}%` : "104.17%", thresholdBytes: 805306368, limitBytes: 1006632960, cpuCoreRatio: reading / 10, eventLoopUtilization: reading / 10, cpuUserMs: reading, cpuSystemMs: reading, cpuTotalMs: reading * 2, eventLoopDelayP99Ms: reading, eventLoopDelayMaxMs: reading, active: 1, ...overrides };
+      return JSON.stringify({ level: "warn", message: `memory pressure: ${Object.entries(fields).map(([key, value]) => `${key}=${value}`).join(" ")}` });
+    };
+    const f = await fixture(t, { copies: Object.fromEntries(names.map(name => [name, { logs: log(name.startsWith("change") ? 2 : 1) }])) });
+    const shared = await f.compare();
+    assert.equal(shared.verdict, "good-to-go"); assert.equal(shared.rows[0].class, "not-caused");
+    for (const changed of [{ level: "critical" }, { thresholdBytes: 900000000 }, { limitBytes: 2000000000 }, { active: 2 }]) {
+      for (const name of ["change-1", "change-2"]) await writeFile(join(f.directory, name, "checkpoints", phaseId, "logs.txt"), log(2, changed));
+      assert.equal((await f.compare()).verdict, "breaks");
+    }
+  }
+  assert.equal(normalizeText("Gateway event loop: ok max=10ms p99=5ms util=0.2 cpu=0.3"), "Gateway event loop: ok max=<duration> p99=<duration> util=<cpu> cpu=<cpu>");
+});
+
+test("native Node warning prefixes normalize without hiding warning codes or messages", async (t) => {
+  const warning = (code) => {
+    const result = spawnSync(process.execPath, ["-e", `process.emitWarning('same failure', {type:'ExampleWarning',code:${JSON.stringify(code)}})`], { encoding: "utf8", env: { ...process.env, NODE_OPTIONS: "", NODE_NO_WARNINGS: "" } });
+    assert.equal(result.status, 0); assert.match(result.stderr, /^\(node:\d+\)/); return result.stderr;
+  };
+  const warnings = Object.fromEntries(names.map(name => [name, warning("KOVA_TEST")]));
+  for (const serialized of [false, true]) {
+    const f = await fixture(t, { copies: Object.fromEntries(names.map(name => [name, { logs: serialized ? JSON.stringify({ level: "warn", message: warnings[name] }) : warnings[name] }])) });
+    const shared = await f.compare();
+    assert.equal(shared.verdict, "good-to-go"); assert.equal(shared.rows[0].class, "not-caused");
+    for (const name of ["change-1", "change-2"]) {
+      const changed = warning("NEW_WARNING");
+      await writeFile(join(f.directory, name, "checkpoints", phaseId, "logs.txt"), serialized ? JSON.stringify({ level: "warn", message: changed }) : changed);
+    }
+    assert.equal((await f.compare()).verdict, "breaks");
+  }
 });

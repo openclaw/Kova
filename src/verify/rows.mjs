@@ -17,6 +17,7 @@ const measuredMilliseconds = new RegExp(String.raw`(\b(?:${[
   "durationMs", "elapsedMs", "handlerElapsedMs", "admissionWaitMs",
   "prepareSyncMs", "rowSyncMs", "yieldWaitMs", "prepareThreadCpuMs", "rowThreadCpuMs", "responseThreadCpuMs",
   "completionDelayMs", "mutationQueueWaitMs", "lifecycleQueueWaitMs", "queueWaitMs", "writerExecutionMs",
+  "cpuUserMs", "cpuSystemMs", "cpuTotalMs", "eventLoopDelayP99Ms", "eventLoopDelayMaxMs",
   "nativeMs", "serviceMs", "admissionMs", "nodeInventoryMs", "referencePlanningMs", "orphanPlanningMs", "markerScanMs"
 ].join("|")})["']?\s*[:=]\s*)-?\d+(?:\.\d+)?(?:e[+-]?\d+)?\b`, "gi");
 
@@ -154,6 +155,9 @@ export function normalizeText(text, normalize = (value) => value) {
     }
   } catch { /* Plain and damaged text remains comparable. */ }
   if (!structured) text = normalize(text);
+  if (/memory pressure:.*\breason=rss_threshold\b/.test(text)) text = text
+    .replace(/(\b(?:used|usedBytes)["']?\s*[:=]\s*)\d+(?:\.\d+)?(?:\s*(?:[KMGT]i?B|B))?\b/gi, "$1<rss>")
+    .replace(/(\bthresholdRatio=)\d+(?:\.\d+)?%/g, "$1<rss>");
   return text
     .replace(/\b\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)?\b/g, "<time>")
     .replace(/\b\d\d:\d\d:\d\d(?:\.\d+)?\b/g, "<time>")
@@ -162,16 +166,19 @@ export function normalizeText(text, normalize = (value) => value) {
     // key=value logs. Preserve phase names, outcomes, counts and configuration.
     .replace(measuredMilliseconds, "$1<duration>")
     .replace(/(\bphaseDurationsMs["']?\s*[:=]\s*)\{([^{}]*)\}/g, (_, prefix, fields) => `${prefix}{${fields.replace(/(:\s*)-?\d+(?:\.\d+)?(?:e[+-]?\d+)?(?=\s*[,}]|\s*$)/gi, "$1<duration>")}}`)
+    .replace(/(\b(?:rss|rssBytes)["']?\s*[:=]\s*)\d+(?:\.\d+)?(?:e[+-]?\d+)?(?:\s*(?:[KMGT]i?B|B))?\b/gi, "$1<rss>")
+    .replace(/(\b(?:cpu|cpuCoreRatio|eventLoopUtilization|util)["']?\s*[:=]\s*)\d+(?:\.\d+)?(?:e[+-]?\d+)?\b%?/gi, "$1<cpu>")
+    .replace(/\(node:\d+\)/g, "(node:<pid>)")
     .replace(/(\b(?:pid|ppid|processId)["']?\s*[:= ]\s*)\d+\b/gi, "$1<pid>")
     .replace(/(\b(?:port|gatewayPort)["']?\s*[:= ]\s*)\d+\b/gi, "$1<port>")
-    .replace(/((?:https?|wss?):\/\/[^\s/:"']+:)\d+\b/g, "$1<port>");
+    .replace(/((?:https?|wss?):\/\/(?:\[[^\]\s]+\]|[^\s/:"']+):)\d+\b/g, "$1<port>");
 }
 
 function warning(line) {
   try {
     const data = JSON.parse(line);
     return /^(?:warn|warning|error|fatal)$/i.test(data.level ?? data._meta?.logLevelName ?? "");
-  } catch { return /(?:^|\s|\[)(?:WARN(?:ING)?|ERROR|FATAL)(?:\]|\s|:)/i.test(line); }
+  } catch { return /(?:^|\s|\[)(?:WARN(?:ING)?|ERROR|FATAL)(?:\]|\s|:)/i.test(line) || /^\(node:\d+\)\s+(?:\[[^\]]+\]\s+)?[A-Za-z]*Warning:/i.test(line); }
 }
 
 export function rowBuilder(normalize = (value) => value) {
