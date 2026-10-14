@@ -57,6 +57,10 @@ export function validateRunPlan(plan, catalogue) {
   if (plan?.schema !== "kova.verify.plan.v1" || !/^[0-9a-f]{40}$/.test(plan.change?.baseline ?? "") || !/^[0-9a-f]{40}$/.test(plan.change?.change ?? "")) throw new Error("invalid verification plan identity");
   if (!Array.isArray(plan.phases) || !plan.phases.length) throw new Error("cannot run an empty verification plan");
   if (sha256(canonicalJSON(plan.phases)) !== plan.phasesSha256) throw new Error("plan phase hash differs");
+  const binding = plan.phases[0];
+  if (binding.id !== "standard/use-target" || binding.from !== "standard" || canonicalJSON(binding.commands) !== canonicalJSON(["ocm start {env} --runtime {target} --no-service --json"])) throw new Error("plan must begin with the standard target binding");
+  const isClone = (value) => value === "{env}" || /^\{persona:[^:]+:env\}$/.test(value ?? "");
+  const handles = new Set(plan.phases.flatMap((phase) => phase.commands.map((command) => option(parseCatalogueCommand(command, { standard: phase.from === "standard" }).tokens, "--handle"))).filter(Boolean));
   const ids = new Set();
   const resolver = createCatalogueResolver(catalogue);
   for (const phase of plan.phases) {
@@ -74,10 +78,24 @@ export function validateRunPlan(plan, catalogue) {
       const timeout = Number(option(tokens, "--timeout") ?? phase.timeoutMs), delay = Number(option(tokens, "--after-ms") ?? 0);
       if (!Number.isSafeInteger(timeout) || timeout < 1 || !Number.isSafeInteger(delay) || delay < 0 || timeout + delay + 1000 > 2147483647) throw new Error(`${phase.id}: invalid command timeout or delay`);
       if (tokens[0] === "ocm" && tokens[1] === "service") throw new Error(`${phase.id}: managed service commands cannot run in verification clones`);
-      if (entry.kind === "ocm" && !tokens.includes("{env}") && !tokens.some((token) => /^\{persona:[^:]+:env\}$/.test(token))) throw new Error(`${phase.id}: OCM command must target a clone`);
+      if (tokens[0] === "ocm") {
+        if (tokens[1]?.startsWith("@")) {
+          if (!isClone(tokens[1].slice(1))) throw new Error(`${phase.id}: OpenClaw command must target a clone`);
+        } else {
+          const operands = { "ocm-env-show": 3, "ocm-env-exec": 3, "ocm-env-snapshot-create": 4, "ocm-start": 2, "ocm-logs": 2, "ocm-upgrade": 2 };
+          if (!Object.hasOwn(operands, entry.id) || !isClone(tokens[operands[entry.id]])) throw new Error(`${phase.id}: OCM operation must target an owned clone and cannot create environments`);
+          if (["ocm-start", "ocm-upgrade"].includes(entry.id) && option(tokens, "--runtime") !== "{target}") throw new Error(`${phase.id}: runtime binding must use the planned target`);
+        }
+      }
       for (const flag of ["--out", "--handle", "--wait", "--from", "--session-from", "--merge-from"]) {
         const value = option(tokens, flag);
         if (value !== undefined && (!value.startsWith("{run}/") || value.slice(6).split(/[\\/]/).some((part) => !part || part === "." || part === ".."))) throw new Error(`${phase.id}: ${flag} must stay under {run}`);
+      }
+      for (const flag of ["--out", "--handle"]) {
+        const value = option(tokens, flag);
+        if (value === undefined) continue;
+        const parts = value.slice(6).split("/");
+        if (/^(checkpoints|initial-state|\.persona|extra-\d+|mock-\d+)$/.test(parts[0]) || parts.some((part) => part.endsWith(".d") || /^persona-gateway-\d+\.json$/.test(part)) || flag === "--out" && handles.has(value)) throw new Error(`${phase.id}: output overlaps protected evidence or a background operation`);
       }
       if (entry.kind === "ocm" && tokens[1] === "start" && !tokens.includes("--no-service")) throw new Error(`${phase.id}: OCM start requires --no-service`);
     }
@@ -159,10 +177,8 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
     return result;
   };
   const call = invoke(true), cleanupCall = invoke(false);
-  const ocm = (await call("ocm --version")).stdout.trim();
-  const key = cacheKey({ baseline: targets.baseline.commit, manifest: plan.persona.sha256, phases: plan.phasesSha256, kova: identity.revision, ocm });
-  const cache = join(home, "verify/cache", key);
-  const record = { schema: "kova.verify.run.v1", id, plan: { path: join(directory, "plan.json"), sha256: prepared.planHash, source: prepared.planPath }, kova: identity.revision, ocm, targets, clones: Object.fromEntries(names.map((name) => [name, { cached: false, started: false, phases: Object.fromEntries(plan.phases.map((phase) => [phase.id, "no checkpoint"])) }])), incomplete: [], notStarted: [], cleanupErrors: [], cache: { key, enabled: !identity.dirty } };
+  let key, cache;
+  const record = { schema: "kova.verify.run.v1", id, plan: { path: join(directory, "plan.json"), sha256: prepared.planHash, source: prepared.planPath }, kova: identity.revision, ocm: null, targets, clones: Object.fromEntries(names.map((name) => [name, { cached: false, started: false, phases: Object.fromEntries(plan.phases.map((phase) => [phase.id, "no checkpoint"])) }])), incomplete: [], notStarted: [], cleanupErrors: [], cache: { key: null, enabled: false } };
   await writeFile(record.plan.path, planBytes, { mode: 0o600 });
   await writeFile(join(directory, "standard.json"), json(standard), { mode: 0o600 });
   await writeFile(join(directory, "catalogue.json"), json(catalogue), { mode: 0o600 });
@@ -171,6 +187,10 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
   let cached;
   let cacheLocked = false;
   try {
+    record.ocm = (await call("ocm --version")).stdout.trim();
+    key = cacheKey({ baseline: targets.baseline.commit, manifest: plan.persona.sha256, phases: plan.phasesSha256, kova: identity.revision, ocm: record.ocm });
+    cache = join(home, "verify/cache", key);
+    record.cache = { key, enabled: !identity.dirty };
     await mkdir(join(directory, ".persona"), { mode: 0o700 });
     const persona = await stagePersona(prepared.persona, join(directory, ".persona"), call);
     for (const [name, extra] of persona.extra) for (const target of Object.values(targets)) if (compareVersions(target.version, extra.version) < 0) throw new Error(`target is older than persona environment ${name}: ${extra.version}`);
@@ -247,7 +267,7 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
             if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) throw new Error(`invalid command timeout in ${phase.id}`);
             const delay = Number(option(tokens, "--after-ms") ?? 0);
             if (!Number.isSafeInteger(delay) || delay < 0) throw new Error(`invalid command delay in ${phase.id}`);
-            const result = await call(resolveRunCommand(command, commandContext), { timeoutMs: timeoutMs + delay + (entry.kind === "gateway" || entry.kind === "script" ? 1000 : 0), allowFailure: true });
+            const result = await call(resolveRunCommand(command, commandContext), { timeoutMs: timeoutMs + delay + (entry.kind === "gateway" || entry.kind === "script" ? 1000 : 0), allowFailure: true, finishOnShutdown: false });
             result.reachedBound = result.timedOut || (["gateway", "script"].includes(entry.kind) && result.status === 3);
             results.push(result);
           }
@@ -258,12 +278,20 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
             summary.incomplete.push(phase.id);
             if (!record.incomplete.includes(phase.id)) record.incomplete.push(phase.id);
           }
-          await writeCheckpoint({ phase, directory: clone.directory, results, stateDirectory: metadata.stateDir, collectLogs: logs, screenPath });
-          summary.phases[phase.id] = "recorded";
-          if (!summary.started) {
-            if (results.some((result) => result.status !== 0 || result.timedOut)) break;
-            summary.started = true;
+          const failedBeforeStart = !summary.started && results.some((result) => result.status !== 0 || result.timedOut);
+          if (phase.id === "standard/use-target" && !failedBeforeStart) for (const commandContext of contexts) {
+            const bound = JSON.parse((await call(`ocm env show ${q(commandContext.env)} --json`)).stdout);
+            if (bound.name !== commandContext.env || bound.defaultRuntime !== context.target) throw new Error("clone did not bind the planned target runtime");
           }
+          if (!failedBeforeStart) summary.started = true;
+          try {
+            await writeCheckpoint({ phase, directory: clone.directory, results, stateDirectory: metadata.stateDir, collectLogs: logs, screenPath });
+            summary.phases[phase.id] = "recorded";
+          } catch (error) {
+            (summary.captureErrors ??= {})[phase.id] = error.message;
+            if (!record.incomplete.includes(phase.id)) record.incomplete.push(phase.id);
+          }
+          if (failedBeforeStart) break;
         }
       } catch (error) { summary.error = error.message; }
     }));

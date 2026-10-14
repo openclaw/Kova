@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promises";
+import { link, mkdtemp, readFile, rm, writeFile, mkdir, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -46,6 +46,44 @@ test("foreground Gateway start joins without requesting stop", async (t) => {
   await atomicJson(join(operation.directory, "result.json"), completed);
   assert.deepEqual(await gatewayLifecycleMain(["start", "--wait", handle]), completed);
   await assert.rejects(readFile(join(operation.directory, "stop")), (error) => error.code === "ENOENT");
+});
+
+test("output aliases cannot replace saved evidence or background records", async (t) => {
+  const root = await directory(t);
+  const handle = join(root, "call.json");
+  const operation = { schema: "kova.gateway.operation.v1", id: "operation", entry: "gateway-health", method: "health", handlePath: handle, directory: `${handle}.d` };
+  const completed = { output: { method: "health", result: { ok: false }, error: null, elapsedMs: 1 }, exitCode: 0, cleanupComplete: true };
+  await atomicJson(join(operation.directory, "operation.json"), operation);
+  await atomicJson(join(operation.directory, "result.json"), completed);
+  await atomicJson(handle, { entry: operation.entry, ref: { id: operation.id, directory: operation.directory } });
+  const evidence = join(root, "earlier.json");
+  await atomicJson(evidence, { retained: true });
+  await link(evidence, join(root, "hard-alias.json"));
+  await symlink(evidence, join(root, "file-alias.json"));
+  await symlink(root, join(root, "directory-alias"), "dir");
+  const original = new Map(await Promise.all([handle, evidence, join(operation.directory, "operation.json"), join(operation.directory, "result.json")].map(async (path) => [path, await readFile(path, "utf8")])));
+  const joinArgs = ["--method", "health", "--wait", handle, "--timeout", "100"];
+  for (const out of [handle, join(operation.directory, "operation.json"), join(operation.directory, "result.json"), join(operation.directory, "stop"), evidence, join(root, "hard-alias.json"), join(root, "file-alias.json"), join(root, "directory-alias", "call.json"), join(root, "directory-alias", "call.json.d", "stop")]) {
+    const result = await gatewayCallMain([...joinArgs, "--out", out]);
+    assert.equal(result.exitCode, 2, out);
+  }
+  const active = join(root, "active.json.d");
+  await atomicJson(join(active, "operation.json"), { ...operation, directory: active, handlePath: join(root, "active.json") });
+  assert.equal((await gatewayCallMain([...joinArgs, "--out", join(active, "result.json")])).exitCode, 2);
+  const nestedHandle = await gatewayLifecycleMain(["start", "--env", "unused", "--handle", join(active, "result.json"), "--timeout", "100"]);
+  assert.equal(nestedHandle.exitCode, 2);
+  await assert.rejects(readFile(join(active, "result.json")), { code: "ENOENT" });
+  for (const [path, bytes] of original) assert.equal(await readFile(path, "utf8"), bytes);
+  await assert.rejects(readFile(join(operation.directory, "stop")), { code: "ENOENT" });
+  const fresh = join(root, "fresh.json");
+  const aliasedFresh = join(root, "directory-alias", "fresh.json");
+  const conflictingStart = await gatewayCallMain(["--env", "unused", "--method", "health", "--background", "--handle", fresh, "--out", aliasedFresh]);
+  assert.equal(conflictingStart.exitCode, 2);
+  await assert.rejects(readFile(join(`${fresh}.d`, "operation.json")), { code: "ENOENT" });
+  const output = join(root, "new-results", "joined.json");
+  const concurrent = await Promise.all([gatewayCallMain([...joinArgs, "--out", output]), gatewayCallMain([...joinArgs, "--out", output])]);
+  assert.deepEqual(concurrent.map((result) => result.exitCode).sort(), [0, 2]);
+  assert.deepEqual(JSON.parse(await readFile(output, "utf8")), completed.output);
 });
 
 test("result files preserve selectors and reject stale or ambiguous identities", async (t) => {

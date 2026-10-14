@@ -4,6 +4,8 @@ import { buildPlan, writePlan } from "../verify/plan.mjs";
 export async function runVerifyCommand(flags) {
   const [action, ...extra] = flags._;
   if (action === "run" && !extra.length) {
+    const [major, minor] = process.versions.node.split(".").map(Number);
+    if (major < 22 || major === 22 && minor < 19) throw new Error("verify run requires Node.js 22.19.0 or newer for SQLite checkpoints");
     const required = ["plan", "target_baseline", "target_change"];
     for (const name of Object.keys(flags)) if (!["_", ...required, "execute", "json", "plain", "ascii", "no_progress", "color", "width", "align"].includes(name)) throw new Error(`unknown verify run option: --${name.replaceAll("_", "-")}`);
     for (const name of required) if (typeof flags[name] !== "string" || !flags[name].trim()) throw new Error(`--${name.replaceAll("_", "-")} requires a value`);
