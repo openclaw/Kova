@@ -95,7 +95,7 @@ export async function runForegroundGateway(options, context, dependencies = {}) 
         healthy = response.ok;
       } catch { context.signal.throwIfAborted(); }
       if (healthy) {
-        const opening = connect(runtime, { timeoutMs: remaining() });
+        const opening = connect(runtime, { timeoutMs: remaining(), authFromRuntimeConfig: true });
         opening.then((value) => { if (context.signal.aborted) value.client.close(); }, () => {});
         connection = await abortable(opening, context.signal);
         const snapshot = await abortable(connection.client.request("config.get", {}, { timeoutMs: Math.min(5000, remaining()) }), context.signal, () => connection.client.close());

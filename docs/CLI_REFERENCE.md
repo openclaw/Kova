@@ -319,6 +319,11 @@ check scripts must be present in the running Kova installation. This version
 accepts credential-free mock personas. Checkpoints preserve the selected state
 verbatim, so generated evidence stays private like the persona export.
 
+Relative `KOVA_HOME` paths are resolved before execution. Gateway authentication
+comes from the selected copy's JSON/JSON5 configuration, with no fallback to
+another environment's configuration or token. Include-based, environment-derived
+and SecretRef-derived Gateway authentication is refused with an explicit error.
+
 Execution builds package runtimes through OCM, imports five disposable copies
 (one baseline, two change and two baseline noise copies), checks the persona
 content and runs the phases in order on each copy. Persona-provided environments
@@ -330,7 +335,8 @@ foreground without managed services. Product file logs are collected as well as
 console output. Repeated destination flags are refused. Config patches must
 keep path values inside the copies and cannot remove the owned log destination
 or introduce includes or paths dependent on the shell environment. Gateway request parameters, including response-file inputs, are resolved once
-before their destinations are checked. Explicit session working directories and
+before their destinations are checked. Config patch commands read private copies
+of the validated bytes. Explicit session working directories and
 file paths must be absolute paths in the copied environments; ambiguous relative
 file paths and project, catalog or remote creation selectors are refused.
 Session file writes cannot replace the copied configuration. Product destinations

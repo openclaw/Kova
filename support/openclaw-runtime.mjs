@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import JSON5 from "json5";
 import { resolveGatewayEndpoint } from "./gateway-endpoint.mjs";
 import { ocmInvocation, readOcmArtifactSync, resolveOcmTransport } from "../src/ocm/transport.mjs";
 import { relativeOcmArtifactPath } from "../src/ocm/diagnostics.mjs";
@@ -107,11 +108,11 @@ export function runOcmJson(args, { timeoutMs = 30000 } = {}) {
   }
 }
 
-export async function openDirectGatewayRpcClient(runtimeContext, { timeoutMs = 15000 } = {}) {
+export async function openDirectGatewayRpcClient(runtimeContext, { timeoutMs = 15000, authFromRuntimeConfig = false } = {}) {
   if (typeof WebSocket !== "function") {
     throw new Error("direct Gateway RPC requires WebSocket support");
   }
-  const token = readGatewayAuthToken(runtimeContext);
+  const token = readGatewayAuthToken(runtimeContext, { authFromRuntimeConfig });
   if (!token) {
     throw new Error("direct Gateway RPC requires a gateway auth token");
   }
@@ -334,20 +335,25 @@ function formatGatewayRpcError(method, error) {
   return `${method}${code}: ${message}`;
 }
 
-function readGatewayAuthToken({ root, envName }) {
-  const configPath = process.env.OPENCLAW_CONFIG_PATH || join(root, ".openclaw", "openclaw.json");
-  const transported = readTransportedGatewayConfig({ root, envName }, configPath);
+function readGatewayAuthToken({ root, envName, configPath: runtimeConfigPath }, { authFromRuntimeConfig = false } = {}) {
+  const configPath = authFromRuntimeConfig
+    ? runtimeConfigPath ?? join(root, ".openclaw", "openclaw.json")
+    : process.env.OPENCLAW_CONFIG_PATH || join(root, ".openclaw", "openclaw.json");
+  const parseConfig = authFromRuntimeConfig ? JSON5.parse : JSON.parse;
+  const transported = readTransportedGatewayConfig({ root, envName }, configPath, parseConfig);
   if (transported) {
+    if (authFromRuntimeConfig) return readLiteralGatewayAuthToken(transported);
     return trimToNonEmptyString(transported.gateway?.auth?.token) ??
       trimToNonEmptyString(transported.gateway?.remote?.token);
   }
-  const envToken = trimToNonEmptyString(process.env.OPENCLAW_GATEWAY_TOKEN);
+  const envToken = authFromRuntimeConfig ? null : trimToNonEmptyString(process.env.OPENCLAW_GATEWAY_TOKEN);
   let config;
   try {
-    config = JSON.parse(readFileSync(configPath, "utf8"));
+    config = parseConfig(readFileSync(configPath, "utf8"));
   } catch {
     return envToken;
   }
+  if (authFromRuntimeConfig) return readLiteralGatewayAuthToken(config);
 
   const authToken = trimToNonEmptyString(config?.gateway?.auth?.token);
   if (authToken) {
@@ -359,11 +365,27 @@ function readGatewayAuthToken({ root, envName }) {
   return trimToNonEmptyString(config?.gateway?.remote?.token);
 }
 
-export function readTransportedGatewayConfig({ root, envName }, configPath = join(root, ".openclaw", "openclaw.json")) {
+function readLiteralGatewayAuthToken(config) {
+  for (const section of [config, config?.gateway, config?.gateway?.auth, config?.gateway?.remote]) {
+    if (section && typeof section === "object" && Object.hasOwn(section, "$include")) {
+      throw new Error("verification Gateway auth requires literal credentials; config includes in the auth path are unsupported");
+    }
+  }
+  for (const value of [config?.gateway?.auth?.token, config?.gateway?.remote?.token]) {
+    if (value !== undefined && value !== null && (typeof value !== "string" || value.includes("${"))) {
+      throw new Error("verification Gateway auth requires literal credentials; referenced or environment-derived tokens are unsupported");
+    }
+    const token = trimToNonEmptyString(value);
+    if (token) return token;
+  }
+  return null;
+}
+
+export function readTransportedGatewayConfig({ root, envName }, configPath = join(root, ".openclaw", "openclaw.json"), parseConfig = JSON.parse) {
   if (!resolveOcmTransport()) return null;
   if (!envName) throw new Error("cross-user Gateway config requires --env");
   // Candidate paths are interpreted only by B's bounded export, never read as A.
-  const config = JSON.parse(readOcmArtifactSync(envName, relativeOcmArtifactPath(configPath, root), {
+  const config = parseConfig(readOcmArtifactSync(envName, relativeOcmArtifactPath(configPath, root), {
     maxBytes: 1024 * 1024, timeoutMs: 10000
   }).toString("utf8"));
   if (!config || typeof config !== "object" || Array.isArray(config)) {
