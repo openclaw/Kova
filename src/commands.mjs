@@ -230,6 +230,28 @@ export function runCommand(command, options = {}) {
   });
 }
 
+export function spawnOwnedProcess(command, args, options = {}) {
+  const child = spawn(command, args, {
+    ...options,
+    detached: process.platform !== "win32",
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  const untrack = trackDetachedChild(child);
+  const closed = new Promise((resolve) => {
+    child.once("error", (error) => resolve({ error }));
+    child.once("close", (status, signal) => resolve({ status, signal }));
+  });
+  return {
+    child,
+    closed,
+    async stop() {
+      if (child.pid) await terminateTimedOutProcess(child);
+      await closed;
+      untrack();
+    }
+  };
+}
+
 function trackDetachedChild(child) {
   if (process.platform === "win32") {
     return () => {};

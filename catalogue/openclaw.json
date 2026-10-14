@@ -1995,7 +1995,7 @@
       ],
       "side": "read",
       "background": false,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -6409,6 +6409,58 @@
       "background": true,
       "status": "toWrite",
       "creates": []
+    },
+    {
+      "id": "persona-build-foundation",
+      "kind": "script",
+      "wraps": "builds the five OpenClaw foundation traits",
+      "command": "node {kovaRoot}/support/persona/build-foundation.mjs --env {env} --trait <id>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--trait": {
+          "description": "foundation trait id",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "built"
+      ],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-check-foundation",
+      "kind": "script",
+      "wraps": "reads the five OpenClaw foundation traits",
+      "command": "node {kovaRoot}/support/persona/check-foundation.mjs --env {env} --trait <id>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--trait": {
+          "description": "foundation trait id",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "mainAgentId",
+        "secondAgentId",
+        "thirdAgentId",
+        "modelId",
+        "dmChannel",
+        "groupChannel",
+        "externalPluginId"
+      ],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "existing"
     }
   ]
 }
