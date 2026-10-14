@@ -1,6 +1,7 @@
 import { lstat, realpath } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import * as zlib from "node:zlib";
+import { EntryError } from "./common.mjs";
 
 const MAX_EVENTS = 50000;
 const MAX_BYTES = 64 * 1024 * 1024;
@@ -9,6 +10,11 @@ const MAX_WINDOWS = 1024;
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const agentKey = /^agent:([a-z0-9][a-z0-9_-]{0,63}):[^\s\u0000-\u001f\u007f]+$/;
 const uuidSuffix = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+
+export function requireSessionContentRuntime() {
+  const [major, minor] = process.versions.node.split(".").map(Number);
+  if (major < 22 || (major === 22 && minor < 19)) throw new EntryError("session content requires Node.js 22.19.0 or newer", 2);
+}
 
 export function sessionKeyShortId(key, length = 8) {
   if (typeof key !== "string" || !agentKey.test(key)) throw new Error("a canonical agent session key is required");
@@ -74,6 +80,7 @@ function readPayload(row) {
 }
 
 export async function readStoredSession(state, key, { maxEvents = MAX_EVENTS, maxBytes = MAX_BYTES, allWindows = false } = {}) {
+  requireSessionContentRuntime();
   const matched = typeof key === "string" && key.match(agentKey);
   if (!matched) throw new Error("a canonical agent session key is required");
   boundedInteger(maxEvents, MAX_EVENTS, "maximum event count");

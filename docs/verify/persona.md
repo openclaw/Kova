@@ -27,7 +27,7 @@ belong to each verification run rather than the durable persona.
 Large history is built from five thousand completed mock turns. Builds can take
 tens of minutes; each builder has a two-hour limit. Checks inspect real saved
 history through a bounded, read-only SQLite snapshot, including compressed
-records. Kova requires Node.js 22.19.0 or newer.
+records. The session-content builders and checks require Node.js 22.19.0 or newer.
 
 Persona traits are separate from the `traits` of Kova states in `states/*.json`.
 A state models one user condition for one scenario and is set up inside a

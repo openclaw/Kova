@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { requireSessionContentRuntime } from "./session-store-read.mjs";
 import { runEntry, EntryError } from "./common.mjs";
 import { readSessionKeys, withSessionClient, sessionRequests } from "./session-content.mjs";
 import { checkSessionExtra, sessionExtraKinds } from "./session-extras.mjs";
@@ -15,6 +16,7 @@ await runEntry({ key: { type: "string", pattern: /^agent:[a-z0-9][a-z0-9_-]*:[a-
     return readSessionKeys(rpc, key);
   });
 }, argv, (args) => {
+  requireSessionContentRuntime();
   if (Boolean(args.key) === Boolean(args.label)) throw new EntryError("exactly one of --key and --label is required", 2);
   if (kind && ![...sessionExtraKinds, ...historyKinds].includes(kind)) throw new EntryError("unknown session content kind", 2);
 });

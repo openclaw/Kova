@@ -1,10 +1,12 @@
 #!/usr/bin/env node
+import { requireSessionContentRuntime } from "./session-store-read.mjs";
 import { runEntry, EntryError } from "./common.mjs";
 import { buildSessionExtras, sessionExtraKinds } from "./session-extras.mjs";
 import { buildHistoryContent, historyKinds } from "./session-history.mjs";
 import { makeSession, withSessionClient } from "./session-content.mjs";
 
 export function sessionOptions(args) {
+  requireSessionContentRuntime();
   const number = (name, fallback, max) => {
     const value = args[name] ?? fallback;
     if (!/^\d+$/.test(String(value)) || !Number.isSafeInteger(Number(value)) || Number(value) < 1 || Number(value) > max) throw new EntryError(`--${name} must be an integer from 1 to ${max}`, 2);
