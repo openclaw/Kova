@@ -6,10 +6,10 @@ Date: 2026-10-13
 State: reconciled with a known shortfall after the permitted rerun.
 The procedure's nine-tenths acceptance was not met.
 
-Union: 437 entry points, 656 conditions, 258 condition-bearing document headings.
+Union: 437 entry points, 661 conditions, 258 condition-bearing document headings.
 The recorded-run reconciliation contained 645 conditions; source inspection added
-ten asynchronous-inspection conditions and one reused-result condition without
-recorded-run discovery credit. Ownership replacement remains part of recorded
+ten asynchronous-inspection conditions, one reused-result condition and five
+outbound target-prefix conditions without recorded-run discovery credit. Ownership replacement remains part of recorded
 condition525; its full meaning and discovery credit are restored, not counted again.
 
 | Round | Run | Entry points found | Condition headings found |
@@ -113,13 +113,15 @@ entries. This is an accounting correction to recorded inputs, without a new
 independent derivation. Both rounds retain the stated acceptance shortfall.
 
 Source inspection added conditions646–655 for asynchronous ingress inspection
-under "Durable ingress monitors" and condition656 for reusing an already consumed
-ingress result under "Result" and "Core helpers". These were already
-condition-bearing headings; no derivation was rerun and no discovery credit is
-added for the supplemental conditions. Condition525 retains its originally
-recorded context and plugin/Gateway ownership alternatives; marking its missing
-ownership observation partial changes planned coverage only. Against the corrected
-656-condition inventory, the supplemental condition-by-meaning shares use the
-unchanged historical numerators: 592/656 (90.2%) and 590/656 (89.9%). The historical
-645-condition comparison, entry-point shares and condition-heading acceptance
-shares above are unchanged.
+under "Durable ingress monitors", condition656 for reusing an already consumed
+ingress result under "Result" and "Core helpers", and conditions657–661 for outbound
+target-prefix selection, matching, rejection and adapter-local grammar under
+"Outbound target prefixes". These were already condition-bearing headings; no
+derivation was rerun and no discovery credit is added for the supplemental
+conditions. Condition525 retains its originally recorded context and
+plugin/Gateway ownership alternatives; marking its missing ownership observation
+partial changes planned coverage only. Against the corrected661-condition
+inventory, the supplemental condition-by-meaning shares use the unchanged
+historical numerators: 592/661 (89.6%) and 590/661 (89.3%). The historical645-condition
+comparison, entry-point shares and condition-heading acceptance shares above are
+unchanged.
