@@ -427,13 +427,16 @@ test("destination validation rejects duplicate flags and config path escapes bef
     { logging: { file: null } },
     { logging: null },
     { agents: { defaults: { workspace: durable } } },
+    { plugins: { load: { paths: [durable] } } },
     { $include: join(copy, "other.json") }
   ]) {
     await writeFile(path, JSON.stringify(patch));
     await assert.rejects(validateRunDestinations(command, context), /owned|ownership/);
   }
-  await writeFile(path, JSON.stringify({ logging: { file: join(copy, "product.log"), level: "debug" }, profile: "default" }));
-  await validateRunDestinations(command, context);
+  const patch = { logging: { file: join(copy, "product.log"), level: "debug" }, messages: { responsePrefix: "/verified", ackReaction: "~" }, profile: "default", plugins: { load: { paths: [join(copy, "plugin")] } } };
+  await writeFile(path, JSON.stringify(patch));
+  const prepared = parseCatalogueCommand(await validateRunDestinations(command, context), { standard: true }).tokens;
+  assert.deepEqual(JSON.parse(await readFile(prepared[prepared.indexOf("--file") + 1], "utf8")), patch);
 });
 
 test("persona checks receive the same command admission as phase commands", async (t) => {

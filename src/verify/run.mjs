@@ -195,11 +195,13 @@ export async function validateRunDestinations(command, context) {
     const inspect = async (value, key = "") => {
       if (key === "$include") throw new Error("config patch includes cannot establish destination ownership");
       if (value !== null && typeof value === "object") {
-        for (const [child, entry] of Object.entries(value)) await inspect(entry, child);
+        for (const [child, entry] of Object.entries(value)) await inspect(entry, Array.isArray(value) ? key : child);
       } else if (typeof value === "string") {
-        const pathKey = /^(?:path|file|dir|directory|workspace|root|cwd|store)$|(?:Path|File|Dir|Directory|Workspace|Root|Cwd|Store)$/.test(key);
-        if (value.includes("${") || value.startsWith("~") || pathKey && !isAbsolute(value)) throw new Error("config patch paths must be direct absolute owned paths");
-        if (isAbsolute(value)) await productDestination(value);
+        const pathKey = /^(?:paths?|files?|dirs?|director(?:y|ies)|workspaces?|roots?|cwds?|stores?)$|(?:Paths?|Files?|Dirs?|Director(?:y|ies)|Workspaces?|Roots?|Cwds?|Stores?)$/.test(key);
+        if (pathKey) {
+          if (value.includes("${") || value.startsWith("~") || !isAbsolute(value)) throw new Error("config patch paths must be direct absolute owned paths");
+          await productDestination(value);
+        }
       }
     };
     if (patch?.logging === null || patch?.logging && Object.hasOwn(patch.logging, "file") && typeof patch.logging.file !== "string") throw new Error("config patch must preserve the owned product log destination");

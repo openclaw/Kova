@@ -432,6 +432,32 @@ test("an import that creates its environment before failing remains owned for cl
   assert.equal(f.removed.length, 2);
 });
 
+test("rotation beyond retained history cannot publish a complete log checkpoint", async (t) => {
+  const f = await fixture(t), copy = f.clone("rotated-logs");
+  try {
+    await copy.prepare();
+    const config = JSON5.parse(await readFile(copy.metadata.configPath, "utf8")), file = config.logging.file;
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(file, "first\n");
+    await copy.observeProductLogs();
+    const rotate = async (line) => {
+      const part = (index) => file.replace(/\.log$/, `.${index}.log`);
+      await rm(part(5), { force: true });
+      for (let index = 4; index >= 0; index--) {
+        try { await rename(index ? part(index) : file, part(index + 1)); }
+        catch (error) { if (error.code !== "ENOENT") throw error; }
+      }
+      await writeFile(file, `${line}\n`);
+    };
+    for (let index = 1; index <= 5; index++) { await rotate(index); await copy.observeProductLogs(); }
+    assert.equal(await copy.collectProductLogs(), "first\n1\n2\n3\n4\n5\n");
+    for (let index = 6; index <= 11; index++) await rotate(index);
+    await assert.rejects(writeCheckpoint({ phase: { id: "intent/lost-logs", checkpoint: ["logs"] }, directory: copy.directory, results: [], collectLogs: copy.collectProductLogs }), /rotation lost continuity/);
+    await assert.rejects(readFile(join(copy.directory, "checkpoints/intent/lost-logs/logs.txt")), { code: "ENOENT" });
+    assert.equal(await copy.collectProductLogs(), "6\n7\n8\n9\n10\n11\n");
+  } finally { await copy.cleanup(); }
+});
+
 test("clone-owned file logs reach checkpoints with silent consoles, rotation and destination changes", async (t) => {
   const explicit = new Map();
   const f = await fixture(t, { configureImported: async (metadata, source) => {

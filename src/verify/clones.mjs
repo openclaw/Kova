@@ -100,16 +100,45 @@ async function prepareProductLogs(metadata) {
     } finally { await rm(temporary, { force: true }); }
   }
   const files = new Set();
-  const observe = async () => { files.add(activeLogFile((await readCloneLogging(metadata)).file)); };
-  const collect = createLogCollector(async () => {
-    await observe();
-    return [...files].flatMap((file) => {
-      const extension = extname(file), base = file.slice(0, file.length - extension.length);
-      return [...[5, 4, 3, 2, 1].map((index) => `${base}.${index}${extension}`), file];
-    });
-  }, { validatePath: (path) => ownedCloneFile(metadata, path), trackIdentity: true });
+  const anchors = new Map(), active = new Map();
+  const pathsFor = (file) => {
+    const extension = extname(file), base = file.slice(0, file.length - extension.length);
+    return [...[5, 4, 3, 2, 1].map((index) => `${base}.${index}${extension}`), file];
+  };
+  const observe = async (baseline = false) => {
+    files.add(activeLogFile((await readCloneLogging(metadata)).file));
+    const errors = [];
+    for (const file of files) {
+      const found = new Map();
+      for (const path of pathsFor(file)) {
+        await ownedCloneFile(metadata, path);
+        try {
+          const stat = await lstat(path);
+          found.set(path, `${stat.dev}:${stat.ino}:${stat.birthtimeMs}`);
+        } catch (error) { if (error.code !== "ENOENT") throw error; }
+      }
+      const prior = anchors.get(file), oldest = found.values().next().value;
+      const lost = !baseline && (prior ? ![...found.values()].includes(prior) : found.has(pathsFor(file)[0]));
+      if (lost) errors.push(file);
+      // Keep the earliest possibly unread file until checkpoint publication.
+      // After a loss, a later phase can still capture the surviving diagnostics.
+      if (baseline || !prior || lost) anchors.set(file, baseline ? found.get(file) ?? oldest : oldest);
+      active.set(file, found.get(file) ?? oldest);
+    }
+    if (errors.length) throw new Error(`product log rotation lost continuity: ${errors.join(", ")}`);
+  };
+  const reader = createLogCollector(() => [...files].flatMap(pathsFor), { validatePath: (path) => ownedCloneFile(metadata, path), trackIdentity: true });
   // Imported history predates this copy's product commands.
-  (await collect.prepare({ skipExisting: true })).commit();
+  await observe(true);
+  (await reader.prepare({ skipExisting: true })).commit();
+  const prepare = async (options) => {
+    await observe();
+    const capturedAnchors = new Map(active);
+    const capture = await reader.prepare(options);
+    await observe();
+    return { ...capture, commit() { capture.commit(); for (const [file, key] of capturedAnchors) anchors.set(file, key); } };
+  };
+  const collect = Object.assign(async () => { const capture = await prepare(); capture.commit(); return capture.text; }, { prepare });
   return Object.assign(collect, { configPaths, observe });
 }
 
