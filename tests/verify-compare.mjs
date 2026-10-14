@@ -996,3 +996,31 @@ test("decoded array positions do not invent existing persona IDs", async (t) => 
     assert.equal((await f.compare()).verdict, existed ? "breaks" : "good-to-go");
   }
 });
+
+test("embedded IDs in preserved TEXT keys normalize once while prefixes remain meaningful", async (t) => {
+  const id = name => name.startsWith("change") ? "generated-after" : "generated-before";
+  const f = await fixture(t, { creates: ["/id"], copies: Object.fromEntries(names.map(name => [name, { response: { id: id(name) } }])), state: async (path, name) => {
+    const db = new DatabaseSync(join(path, "store.sqlite"));
+    try { db.exec("CREATE TABLE records (key TEXT PRIMARY KEY, reference TEXT)"); db.prepare("INSERT INTO records VALUES (?, ?)").run(`session:${id(name)}`, `prefix:${id(name)}`); } finally { db.close(); }
+  } });
+  assert.equal((await f.compare()).verdict, "good-to-go");
+  for (const name of ["change-1", "change-2"]) {
+    const db = new DatabaseSync(join(f.directory, name, "checkpoints", phaseId, "state/files/store.sqlite"));
+    try { db.prepare("UPDATE records SET key = ?").run(`different:${id(name)}`); } finally { db.close(); }
+  }
+  assert.equal((await f.compare()).verdict, "breaks");
+});
+
+test("state ID tokens preserve record-owner value types", async (t) => {
+  const f = await fixture(t, { stateIds: [{ path: "files/store.sqlite", table: "records", column: "id", recordKey: "owner" }], state: async (path, name) => {
+    const db = new DatabaseSync(join(path, "store.sqlite"));
+    try {
+      db.exec("CREATE TABLE records (id TEXT PRIMARY KEY, owner BLOB, value TEXT)");
+      const insert = db.prepare("INSERT INTO records VALUES (?, ?, ?)");
+      for (const [index, owner] of [1, "1", null, "null"].entries()) insert.run(`generated-${name}-${index}`, owner, index === 1 && name.startsWith("change") ? "new" : "old");
+    } finally { db.close(); }
+  } });
+  const result = await f.compare();
+  assert.equal(result.verdict, "breaks"); assert.equal(result.rows.length, 1);
+  assert.equal(result.rows[0].baseline, "old"); assert.equal(result.rows[0].change, "new");
+});

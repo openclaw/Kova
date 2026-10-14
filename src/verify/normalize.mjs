@@ -108,7 +108,7 @@ export function normalizeDeclaredIds({ candidates, records, allIds }, protectedI
           const { id, rowid } = ids[i];
           if (protectedIds.has(id) || candidates.has(id)) continue;
           if (end - offset > 1 && rowid === null) throw new Error(`declared id tie needs rowid: ${record.path}/${record.field}`);
-          const key = typeof record.key === "string" ? normalize(record.key) : canonicalJSON(record.key);
+          const key = canonicalJSON(typeof record.key === "string" ? normalize(record.key) : record.key);
           candidates.set(id, `<id:${normalize(record.path)}#${key}/${record.field}/${ordinal}${end - offset > 1 ? `.${i - offset + 1}` : ""}>`);
         }
         offset = end;

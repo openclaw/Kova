@@ -697,6 +697,8 @@ as it is. There are two declarations:
   the same `order` value (or there is no `order`), they share `<n>` and each
   token gains a further part, `.<m>`, the id's position among those tied ids
   by the table's rowid, counting from 1; ids without a tie carry no `.<m>`.
+  The record-key value uses canonical JSON spelling, including quotes for
+  strings, so numeric and TEXT owners remain distinct.
   The token names the owning record; only ties depend on rowid order. A record key that is
   itself a generated id must be declared too, and is replaced first.
 
