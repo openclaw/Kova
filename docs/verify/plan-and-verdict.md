@@ -674,8 +674,13 @@ directory was recorded. File bytes and metadata, permissions, links and other
 directory metadata remain significant; the raw archive hash remains intact.
 
 Phase commands execute in their copy's workspace, with filesystem paths resolved
-against that copy before execution. Log checkpoints include both Gateway console
+against that copy before execution. Config patches check known host filesystem
+settings in their configuration context; URL prefixes and inline text remain
+ordinary values. Provider-owned settings retain their provider's validation.
+Log checkpoints include both Gateway console
 streams and the copy's OpenClaw file logs, using file identity and byte offsets
-through rotation. A copy that rotates past uncaptured file history reports an
+through rotation. Before a config patch switches the file destination, existing
+bytes are excluded without consuming unread output from earlier destinations.
+Date-based filenames keep their offsets across midnight. A copy that rotates past uncaptured file history reports an
 incomplete checkpoint instead of caching partial logs. An absent product log path is set inside the disposable copy;
 an explicit owned path is preserved. The persona's configuration is unchanged.

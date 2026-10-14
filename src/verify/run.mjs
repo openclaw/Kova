@@ -119,6 +119,40 @@ async function physicalPath(path) {
   }
 }
 
+const agentConfigPrefixes = ["agents.defaults", "agents.entries.*", "agents.list.*"];
+// Host files in the pinned configuration contract. URL prefixes, provider
+// aliases, remote/container paths and inline content are not host paths.
+const configFilePatterns = [
+  "logging.file", "worktreeRoot", "session.store", "gateway.controlUi.root",
+  "gateway.tls.certPath", "gateway.tls.keyPath", "gateway.tls.caPath", "gateway.remote.sshIdentity",
+  "proxy.tls.caFile", "desktop.host.passwordFile", "browser.executablePath",
+  "browser.profiles.*.executablePath", "browser.profiles.*.userDataDir",
+  "hooks.internal.load.extraDirs.*", "skills.load.extraDirs.*",
+  "skills.load.allowSymlinkTargets.*", "plugins.load.paths.*", "memory.search.extraPaths.*",
+  "memory.search.extraPaths.*.path", "memory.search.store.vector.extensionPath",
+  "secrets.providers.*.path", "secrets.providers.*.command", "secrets.providers.*.trustedDirs.*",
+  "models.providers.*.localService.command", "models.providers.*.localService.cwd",
+  "env.vars.OPENCLAW_CACHE_TRACE_FILE", "env.OPENCLAW_CACHE_TRACE_FILE",
+  "tools.exec.pathPrepend.*", "tools.exec.safeBinTrustedDirs.*", "security.installPolicy.exec.trustedDirs.*",
+  ...["mcp", "nodeHost.mcp"].flatMap((prefix) => ["cwd", "clientCert", "clientKey"].map((field) => `${prefix}.servers.*.${field}`)),
+  ...agentConfigPrefixes.flatMap((prefix) => ["workspace", "cwd", "repoRoot", "agentDir", "runtime.acp.cwd", "sandbox.workspaceRoot", "sandbox.ssh.identityFile", "sandbox.ssh.certificateFile", "sandbox.ssh.knownHostsFile", "tools.exec.pathPrepend.*", "tools.exec.safeBinTrustedDirs.*"].map((field) => `${prefix}.${field}`)),
+  "bindings.*.acp.cwd",
+  ...Object.entries({
+    telegram: ["tokenFile", "webhookCertPath", "trustedLocalFileRoots.*"], whatsapp: ["authDir"],
+    googlechat: ["serviceAccountFile"], signal: ["transport.configPath", "transport.socketPath"],
+    imessage: ["dbPath", "attachmentRoots.*"], irc: ["passwordFile", "nickserv.passwordFile"],
+    msteams: ["certificatePath"], line: ["tokenFile", "secretFile"], zalo: ["tokenFile"], "nextcloud-talk": ["botSecretFile", "apiPasswordFile"]
+  }).flatMap(([channel, fields]) => fields.flatMap((field) => [`channels.${channel}.${field}`, `channels.${channel}.accounts.*.${field}`]))
+].map((pattern) => pattern.split("."));
+const configExecutablePatterns = [
+  "gateway.terminal.shell", "browser.profiles.*.mcpCommand", "security.installPolicy.exec.command",
+  "tools.media.models.*.command", "tools.links.models.*.command",
+  ...["mcp", "nodeHost.mcp"].map((prefix) => `${prefix}.servers.*.command`),
+  ...agentConfigPrefixes.map((prefix) => `${prefix}.sandbox.ssh.command`),
+  ...[["signal", "transport.cliPath"], ["imessage", "cliPath"]].flatMap(([channel, field]) => [`channels.${channel}.${field}`, `channels.${channel}.accounts.*.${field}`])
+].map((pattern) => pattern.split("."));
+const configPathMatches = (path, pattern) => path.length === pattern.length && pattern.every((part, index) => part === "*" || part === path[index]);
+
 export async function validateRunDestinations(command, context) {
   const tokens = parseCatalogueCommand(command, { standard: true }).tokens;
   const roots = await Promise.all([context.run, ...(context.ownedRoots ?? [])].map(physicalPath));
@@ -192,20 +226,80 @@ export async function validateRunDestinations(command, context) {
   if (tokens[0] === "ocm" && tokens[1]?.startsWith("@") && tokens[3] === "config" && tokens[4] === "patch") {
     const bytes = await readFile(await owned(option(tokens, "--file")));
     const patch = JSON5.parse(bytes.toString("utf8"));
-    const inspect = async (value, key = "") => {
-      if (key === "$include") throw new Error("config patch includes cannot establish destination ownership");
+    let existingConfig;
+    const configuration = async () => existingConfig ??= await context.readConfiguration?.(tokens[1].slice(1));
+    const directFile = async (value) => {
+      if (typeof value !== "string" || value.includes("${") || value.includes("\0") || value.startsWith("~") || !isAbsolute(value)) throw new Error("config patch paths must be direct absolute owned paths");
+      return await productDestination(value);
+    };
+    let hookPaths;
+    const resolveHookPaths = async () => {
+      if (hookPaths) return hookPaths;
+      const selected = await context.configurationPath?.(tokens[1].slice(1));
+      if (typeof selected !== "string") throw new Error("config patch hook modules require the selected configuration path");
+      const configPath = await directFile(selected);
+      const copyRoot = productRoots.filter((root) => inside(root, configPath)).sort((a, b) => b.length - a.length)[0];
+      const root = join(dirname(configPath), "hooks", "transforms");
+      const physicalRoot = await productDestination(root);
+      if (!inside(copyRoot, physicalRoot)) throw new Error("config patch hook paths must stay inside the selected owned copy");
+      const contained = async (base, target) => {
+        if (typeof target !== "string" || target.includes("${") || target.includes("\0") || target.trim().startsWith("~")) throw new Error("config patch hook paths require directly authored paths");
+        const resolved = resolve(base, target.trim());
+        if (!inside(base, resolved)) throw new Error("config patch hook path escapes its configured root");
+        const physical = await productDestination(resolved);
+        if (!inside(await physicalPath(base), physical)) throw new Error("config patch hook path escapes its configured root");
+        return resolved;
+      };
+      let transformsDir = patch.hooks?.transformsDir;
+      if (transformsDir === undefined) {
+        const hooks = (await configuration())?.hooks;
+        if (hooks && Object.hasOwn(hooks, "$include")) throw new Error("config patch hook paths require a directly authored transformsDir");
+        transformsDir = hooks?.transformsDir;
+      }
+      const base = transformsDir == null ? root : await contained(root, transformsDir);
+      return hookPaths = { base, contained };
+    };
+    const inspect = async (value, path = [], inline = false) => {
+      if (path.at(-1) === "$include") throw new Error("config patch includes cannot establish destination ownership");
       if (value !== null && typeof value === "object") {
-        for (const [child, entry] of Object.entries(value)) await inspect(entry, Array.isArray(value) ? key : child);
-      } else if (typeof value === "string") {
-        const pathKey = /^(?:paths?|files?|dirs?|director(?:y|ies)|workspaces?|roots?|cwds?|stores?)$|(?:Paths?|Files?|Dirs?|Director(?:y|ies)|Workspaces?|Roots?|Cwds?|Stores?)$/.test(key);
-        if (pathKey) {
-          if (value.includes("${") || value.startsWith("~") || !isAbsolute(value)) throw new Error("config patch paths must be direct absolute owned paths");
-          await productDestination(value);
+        // This object form is inline template data, not a configuration tree.
+        inline ||= configPathMatches(path, ["messages", "usageTemplate"]);
+        for (const [child, entry] of Object.entries(value)) await inspect(entry, [...path, child], inline);
+      } else if (typeof value === "string" && !inline) {
+        let isFile = configFilePatterns.some((pattern) => configPathMatches(path, pattern)) || configPathMatches(path, ["messages", "usageTemplate"]);
+        if (configExecutablePatterns.some((pattern) => configPathMatches(path, pattern))) isFile = !/^[A-Za-z0-9_+][A-Za-z0-9._+-]*$/.test(value.trim());
+        if (configPathMatches(path, ["memory", "search", "local", "modelPath"])) isFile = !/^(?:hf:|https?:\/\/)/i.test(value);
+        if (configPathMatches(path, ["storage", "locations", "*", "settings", "path"])) {
+          let provider = patch.storage.locations[path[2]].provider;
+          if (provider === undefined) provider = (await configuration())?.storage?.locations?.[path[2]]?.provider;
+          if (typeof provider !== "string") throw new Error("config patch storage paths require a known provider");
+          isFile = provider === "filesystem";
         }
+        if (configPathMatches(path, ["storage", "locations", "*", "provider"]) && value === "filesystem") {
+          const location = patch.storage.locations[path[2]];
+          if (location.settings !== null && location.settings?.path === undefined) {
+            const current = (await configuration())?.storage?.locations?.[path[2]];
+            if (current?.$include || current?.settings?.$include) throw new Error("config patch storage paths require directly authored settings");
+            if (typeof current?.settings?.path === "string") await directFile(current.settings.path);
+          }
+        }
+        if (agentConfigPrefixes.some((prefix) => ["docker", "browser"].some((kind) => configPathMatches(path, [...prefix.split("."), "sandbox", kind, "binds", "*"])))) {
+          // Match the product's host:container[:options] split, including drive letters.
+          const separator = value.indexOf(":", /^[A-Za-z]:[\\/]/.test(value) ? 2 : 0);
+          await directFile(separator < 0 ? value : value.slice(0, separator));
+        }
+        if (configPathMatches(path, ["hooks", "transformsDir"])) await resolveHookPaths();
+        if (configPathMatches(path, ["hooks", "mappings", "*", "transform", "module"])) {
+          if (!value.trim() || isAbsolute(value.trim()) || value.includes(":") || value.trim().startsWith("~") || value.split(/[\\/]/).includes("..")) throw new Error("config patch hook modules must be safe relative paths");
+          const { base, contained } = await resolveHookPaths();
+          await contained(base, value);
+        }
+        if (isFile) await directFile(value);
       }
     };
     if (patch?.logging === null || patch?.logging && Object.hasOwn(patch.logging, "file") && typeof patch.logging.file !== "string") throw new Error("config patch must preserve the owned product log destination");
     await inspect(patch);
+    if (typeof patch?.logging?.file === "string") await context.prepareLogDestination?.(tokens[1].slice(1), patch.logging.file);
     const inputDirectory = join(context.run, ".inputs");
     await mkdir(inputDirectory, { mode: 0o700 }).catch((error) => { if (error.code !== "EEXIST") throw error; });
     const inputStat = await lstat(inputDirectory);
