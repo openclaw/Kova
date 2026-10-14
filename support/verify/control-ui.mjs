@@ -18,8 +18,8 @@ function emptyOutput(flow) {
   return { flow: flow ?? null, steps: [], screens: [], requests: [], elapsedMs: 0, createdIds: [], sessionKey: null, url: null, handoff: null, error: null };
 }
 
-function errorResult(flow, error, startedAt = Date.now()) {
-  const exitCode = error?.name === "TimeoutError" ? 3 : error?.exitCode ?? 1;
+function errorResult(flow, error, startedAt = Date.now(), deadline = Infinity) {
+  const exitCode = Date.now() >= deadline || error?.name === "TimeoutError" ? 3 : error?.exitCode ?? 1;
   return { output: { ...emptyOutput(flow), elapsedMs: Date.now() - startedAt, error: exitCode === 3 ? "Control UI timeout" : error instanceof CallError ? error.message : "Control UI operation failed" }, exitCode };
 }
 
@@ -270,7 +270,7 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
           if (output.requests.some((request) => request.status === "error")) output.error ??= "Gateway returned an error";
           if (output.error) exitCode = 1;
         } catch (error) {
-          const failure = errorResult(call.flow, active.aborted ? active.reason : error, began);
+          const failure = errorResult(call.flow, active.aborted ? active.reason : error, began, began + call.timeoutMs);
           exitCode = failure.exitCode; output.error = failure.output.error;
           if (!closed && !active.aborted) await shot("error").catch(() => {});
           if (exitCode === 3) await close();
@@ -295,17 +295,18 @@ export async function executeControlUi(options, controls = {}) {
   const signal = AbortSignal.any([AbortSignal.timeout(options.timeoutMs), ...[controls.signal].filter(Boolean)]);
   const bounded = { ...controls, signal };
   try { session = await createControlUiBrowser(options, bounded); result = await session.run({ ...options, timeoutMs: Math.max(1, options.timeoutMs - (Date.now() - began)) }, bounded); }
-  catch (error) { result = errorResult(options.flow, error, began); }
+  catch (error) { result = errorResult(options.flow, signal.aborted ? signal.reason : error, began, began + options.timeoutMs); }
   finally { await session?.close(); }
   result.output.elapsedMs = Date.now() - began;
   return result;
 }
 
-async function runRetainedBrowser(options, context) {
-  const began = Date.now();
+export async function runRetainedBrowser(options, context, { createBrowser = createControlUiBrowser } = {}) {
+  const began = Date.now(), deadline = Date.parse(context.operation.expiresAt);
   let session, last;
   try {
-    session = await createControlUiBrowser(options, { signal: context.signal });
+    if (Date.now() >= deadline) throw new CallError("Control UI startup timeout", 3);
+    session = await createBrowser({ ...options, timeoutMs: Math.max(1, deadline - Date.now()) }, { signal: context.signal });
     last = await session.run({ ...options, timeoutMs: Math.max(1, Date.parse(context.operation.expiresAt) - Date.now()) }, { signal: context.signal });
     last.output.elapsedMs = Date.now() - began;
     if (options.out) await writeGatewayOutput(options, last.output);
@@ -321,15 +322,23 @@ async function runRetainedBrowser(options, context) {
       } catch (error) { return errorResult(call?.flow, error); }
     });
   } catch (error) {
-    if (context.signal.aborted && context.signal.reason?.message === "background operation stopped") return last ?? errorResult(options.flow, error);
-    return errorResult(options.flow, context.signal.aborted ? context.signal.reason : error);
+    const stopped = context.signal.aborted && context.signal.reason?.message === "background operation stopped";
+    if (last && (last.exitCode !== 0 || stopped)) return last;
+    const failure = errorResult(last?.output.flow ?? options.flow, context.signal.aborted ? context.signal.reason : error, began, deadline);
+    if (last) failure.output = { ...last.output, error: failure.output.error };
+    return failure;
   } finally {
     try { await session?.close(); }
-    catch { return { ...errorResult(options.flow, new CallError("Browser cleanup failed", 1)), cleanupComplete: false, cleanupError: "Browser closure was not confirmed" }; }
+    catch {
+      const failure = errorResult(last?.output.flow ?? options.flow, new CallError("Browser cleanup failed", 1), began);
+      if (last) failure.output = { ...last.output, error: failure.output.error };
+      return { ...failure, cleanupComplete: false, cleanupError: "Browser closure was not confirmed" };
+    }
   }
 }
 
 export async function controlUiMain(argv, controls = {}) {
+  const began = Date.now();
   let options;
   try {
     options = parseControlUiArgs(argv);
@@ -347,7 +356,7 @@ export async function controlUiMain(argv, controls = {}) {
     } else result = await executeControlUi(options, controls);
     if (options.out) await writeGatewayOutput(options, result.output);
     return result;
-  } catch (error) { return errorResult(options?.flow, error); }
+  } catch (error) { return errorResult(options?.flow, error, began); }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === filename) {
