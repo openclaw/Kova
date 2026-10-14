@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { setTimeout as sleep } from "node:timers/promises";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { openDirectGatewayRpcClient } from "../support/openclaw-runtime.mjs";
 import { atomicJson, CallError, cleanupGatewayHandle, joinOperation, startOperation } from "../support/verify/background.mjs";
 import { executeGatewayCall, gatewayCallMain, parseGatewayCallArgs, resolveGatewayParams } from "../support/verify/gateway-call.mjs";
 import { gatewayLifecycleMain, parseGatewayLifecycleArgs, runForegroundGateway } from "../support/verify/gateway-lifecycle.mjs";
@@ -240,6 +241,83 @@ test("RPC records product results without deciding their correctness and closes 
   assert.ok(delayed.output.elapsedMs >= 25);
 });
 
+test("verification authenticates from its selected config while legacy credential precedence stays unchanged", async (t) => {
+  const root = await directory(t);
+  const selectedRoot = join(root, "selected"), configPath = join(selectedRoot, "custom-config.json");
+  const parentConfig = join(root, "parent-config.json");
+  const runtimeContext = { envName: "selected", root: selectedRoot, configPath, gatewayPort: 12345 };
+  await atomicJson(join(selectedRoot, ".openclaw/openclaw.json"), { gateway: { auth: { token: "fixture-default-root" } } });
+  await atomicJson(configPath, { gateway: { auth: { token: "fixture-selected-config" } } });
+  await atomicJson(parentConfig, { gateway: { auth: { token: "fixture-parent-config" } } });
+  const keys = ["OPENCLAW_CONFIG_PATH", "OPENCLAW_GATEWAY_TOKEN", "KOVA_OCM_TRANSPORT_JSON", "KOVA_NETWORK_FRONTAGE_ENABLED"];
+  const previousEnv = new Map(keys.map((key) => [key, process.env[key]]));
+  const previousSocket = globalThis.WebSocket;
+  class Socket extends EventTarget {
+    static OPEN = 1;
+    static frames = [];
+    constructor() {
+      super();
+      this.readyState = Socket.OPEN;
+      queueMicrotask(() => this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({ type: "event", event: "connect.challenge" }) })));
+    }
+    send(raw) {
+      const frame = JSON.parse(raw);
+      Socket.frames.push(frame);
+      queueMicrotask(() => this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({ type: "res", id: frame.id, ok: true, payload: { ok: true } }) })));
+    }
+    close() { this.readyState = 3; }
+  }
+  const tokenFor = async (options) => {
+    const before = Socket.frames.length;
+    const connection = await openDirectGatewayRpcClient(runtimeContext, options);
+    try { return Socket.frames.slice(before).find((frame) => frame.method === "connect").params.auth.token; }
+    finally { connection.client.close(); }
+  };
+  try {
+    globalThis.WebSocket = Socket;
+    delete process.env.KOVA_OCM_TRANSPORT_JSON;
+    delete process.env.KOVA_NETWORK_FRONTAGE_ENABLED;
+    process.env.OPENCLAW_CONFIG_PATH = parentConfig;
+    process.env.OPENCLAW_GATEWAY_TOKEN = "fixture-parent-env";
+    const result = await executeGatewayCall({ env: "selected", method: "health", params: {}, timeoutMs: 1000 }, { prepare: () => runtimeContext });
+    assert.equal(result.exitCode, 0);
+    assert.equal(Socket.frames.find((frame) => frame.method === "connect").params.auth.token, "fixture-selected-config");
+    assert.equal(process.env.OPENCLAW_CONFIG_PATH, parentConfig);
+    assert.equal(process.env.OPENCLAW_GATEWAY_TOKEN, "fixture-parent-env");
+    assert.equal(await tokenFor(), "fixture-parent-config");
+    await atomicJson(parentConfig, { gateway: { remote: { token: "fixture-parent-remote" } } });
+    assert.equal(await tokenFor(), "fixture-parent-env");
+    delete process.env.OPENCLAW_GATEWAY_TOKEN;
+    assert.equal(await tokenFor(), "fixture-parent-remote");
+    process.env.OPENCLAW_GATEWAY_TOKEN = "fixture-parent-env";
+    await atomicJson(configPath, { gateway: { remote: { token: "fixture-selected-remote" } } });
+    assert.equal(await tokenFor({ authFromRuntimeConfig: true }), "fixture-selected-remote");
+    await writeFile(configPath, "{ gateway: { auth: { token: 'fixture-selected-json5' } } }\n");
+    assert.equal(await tokenFor({ authFromRuntimeConfig: true }), "fixture-selected-json5");
+    for (const gateway of [
+      { $include: "gateway.json", remote: { token: "fixture-unproven-fallback" } },
+      { auth: { $include: "auth.json" }, remote: { token: "fixture-unproven-fallback" } },
+      { auth: { token: "${PARENT_TOKEN}" } },
+      { auth: { token: { source: "env", provider: "default", id: "PARENT_TOKEN" } } }
+    ]) {
+      await atomicJson(configPath, { gateway });
+      await assert.rejects(tokenFor({ authFromRuntimeConfig: true }), /requires literal credentials/);
+    }
+    delete process.env.OPENCLAW_CONFIG_PATH;
+    assert.equal(await tokenFor(), "fixture-default-root");
+    await atomicJson(configPath, {});
+    const before = Socket.frames.length;
+    await assert.rejects(tokenFor({ authFromRuntimeConfig: true }), /requires a gateway auth token/);
+    assert.equal(Socket.frames.length, before, "missing selected credentials must not fall back to parent credentials");
+  } finally {
+    globalThis.WebSocket = previousSocket;
+    for (const [key, value] of previousEnv) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
 test("elapsed deadlines classify synchronous environment lookup failures as timeouts", async () => {
   const options = { env: "test", method: "health", params: {}, timeoutMs: 20, afterMs: 0 };
   const prepare = () => {
@@ -347,7 +425,10 @@ test("foreground Gateway checks config identity, preserves logs and stops its ow
       return { file: process.execPath, args: ["-e", "console.log('gateway output'); console.error('gateway error'); setInterval(() => {}, 1000)"], env: process.env };
     },
     fetch: async () => ({ ok: true, body: { cancel: async () => {} } }),
-    connect: async () => ({ client: { close() {}, async request(method) { methods.push(method); return { path: expectedPath }; } } })
+    connect: async (_runtime, settings) => {
+      assert.equal(settings.authFromRuntimeConfig, true);
+      return { client: { close() {}, async request(method) { methods.push(method); return { path: expectedPath }; } } };
+    }
   };
   const stopped = await runForegroundGateway(options, context, dependencies);
   assert.equal(stopped.exitCode, 0);

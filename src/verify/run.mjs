@@ -100,7 +100,7 @@ export function validateRunPlan(plan, catalogue) {
         const value = option(tokens, flag);
         if (value === undefined) continue;
         const parts = value.slice(6).split("/");
-        if (/^(checkpoints|initial-state|\.persona|extra-\d+|mock-\d+)$/.test(parts[0]) || parts.some((part) => part.endsWith(".d") || /^persona-gateway-\d+\.json$/.test(part)) || flag === "--out" && handles.has(value)) throw new Error(`${phase.id}: output overlaps protected evidence or a background operation`);
+        if (/^(checkpoints|initial-state|\.persona|\.inputs|extra-\d+|mock-\d+)$/.test(parts[0]) || parts.some((part) => part.endsWith(".d") || /^persona-gateway-\d+\.json$/.test(part)) || flag === "--out" && handles.has(value)) throw new Error(`${phase.id}: output overlaps protected evidence or a background operation`);
       }
       if (entry.kind === "ocm" && tokens[1] === "start" && !tokens.includes("--no-service")) throw new Error(`${phase.id}: OCM start requires --no-service`);
     }
@@ -143,7 +143,7 @@ export async function validateRunDestinations(command, context) {
       const physical = await owned(value, outputRoot);
       if (["--out", "--handle"].includes(flag)) {
         const parts = relative(outputRoot[0], physical).split(sep);
-        if (/^(checkpoints|initial-state|\.persona|extra-\d+|mock-\d+)$/.test(parts[0]) || parts.some((part) => part.endsWith(".d") || /^persona-gateway-\d+\.json$/.test(part))) throw new Error("output overlaps protected evidence or a background operation");
+        if (/^(checkpoints|initial-state|\.persona|\.inputs|extra-\d+|mock-\d+)$/.test(parts[0]) || parts.some((part) => part.endsWith(".d") || /^persona-gateway-\d+\.json$/.test(part))) throw new Error("output overlaps protected evidence or a background operation");
       }
     }
   }
@@ -190,7 +190,8 @@ export async function validateRunDestinations(command, context) {
     await productDestination(join(workspace, ".openclaw", "trajectory-exports", output ?? ""));
   }
   if (tokens[0] === "ocm" && tokens[1]?.startsWith("@") && tokens[3] === "config" && tokens[4] === "patch") {
-    const patch = JSON5.parse(await readFile(await owned(option(tokens, "--file")), "utf8"));
+    const bytes = await readFile(await owned(option(tokens, "--file")));
+    const patch = JSON5.parse(bytes.toString("utf8"));
     const inspect = async (value, key = "") => {
       if (key === "$include") throw new Error("config patch includes cannot establish destination ownership");
       if (value !== null && typeof value === "object") {
@@ -203,6 +204,19 @@ export async function validateRunDestinations(command, context) {
     };
     if (patch?.logging === null || patch?.logging && Object.hasOwn(patch.logging, "file") && typeof patch.logging.file !== "string") throw new Error("config patch must preserve the owned product log destination");
     await inspect(patch);
+    const inputDirectory = join(context.run, ".inputs");
+    await mkdir(inputDirectory, { mode: 0o700 }).catch((error) => { if (error.code !== "EEXIST") throw error; });
+    const inputStat = await lstat(inputDirectory);
+    if (!inputStat.isDirectory() || inputStat.isSymbolicLink() || !inside(outputRoot[0], await physicalPath(inputDirectory))) throw new Error("config input storage must be an owned directory");
+    const frozenPath = join(inputDirectory, `${randomUUID()}.json`);
+    await writeFile(frozenPath, bytes, { flag: "wx", mode: 0o400 });
+    const frozen = [];
+    for (let index = 0; index < tokens.length; index++) {
+      if (tokens[index] === "--file") { frozen.push("--file", frozenPath); index++; }
+      else if (tokens[index].startsWith("--file=")) frozen.push("--file", frozenPath);
+      else frozen.push(tokens[index]);
+    }
+    return frozen.map(q).join(" ");
   }
   return command;
 }
@@ -258,6 +272,7 @@ export async function runVerification(options, dependencies = {}) {
 
 async function executeRun(prepared, { execute = runCommand, home = artifactsDir, signal, cloneFactory = createClone, cleanupHandle = cleanupGatewayHandle } = {}) {
   const { plan, planBytes, catalogue, targets, root, identity, standard } = prepared;
+  home = resolve(home);
   const id = `${new Date().toISOString().replace(/[:.]/g, "-")}-${randomUUID()}`;
   const directory = join(home, "verify", id);
   await mkdir(directory, { recursive: true, mode: 0o700 });
@@ -278,7 +293,7 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
     if (cancelable) signal?.throwIfAborted();
     const result = await bind(command, () => {
       if (cancelable) signal?.throwIfAborted();
-      return execute(command, { timeoutMs: 300000, finishOnShutdown: true, maxOutputChars: 16 * 1024 * 1024, env: { KOVA_OPENCLAW_CONFIG_CONTRACT: "canonical" }, ...options });
+      return execute(command, { timeoutMs: 300000, finishOnShutdown: true, maxOutputChars: 16 * 1024 * 1024, ...options, env: { ...options.env, KOVA_OPENCLAW_CONFIG_CONTRACT: "canonical", OPENCLAW_CONFIG_PATH: "", OPENCLAW_GATEWAY_TOKEN: "" } });
     });
     if (cancelable) signal?.throwIfAborted();
     if (!options.allowFailure && (result.status !== 0 || result.signal || result.timedOut || result.outputBudget?.truncated)) throw new Error(`command failed (${result.status}): ${command}: ${result.stderr || result.stdout}`);

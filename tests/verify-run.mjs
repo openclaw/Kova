@@ -2,7 +2,7 @@ import { parseCatalogueCommand } from "../src/catalogue.mjs";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, writeFile, appendFile, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, relative } from "node:path";
 import test from "node:test";
 import { execFileSync } from "node:child_process";
 import { createLogCollector, recordPhase, snapshotState, writeCheckpoint } from "../src/verify/checkpoint.mjs";
@@ -504,4 +504,61 @@ test("failed response dependencies preserve diagnostics and incomplete baselines
     assert.equal(recovered.clones.baseline.cached, faultyCopy !== "baseline");
     assert.equal(f.removed.length, faultyCopy === "baseline" ? 10 : 7);
   }
+});
+
+
+test("configuration patches execute immutable checked bytes and reserve their storage", async (t) => {
+  const root = await temporary(t), copy = join(root, "copy"), output = join(root, "output"), durable = join(root, "durable");
+  for (const path of [copy, output, durable]) await mkdir(path);
+  const context = { cwd: copy, run: output, ownedRoots: [copy] }, patch = join(copy, "patch.json5");
+  const approved = `{logging:{level:'debug',file:${JSON.stringify(join(copy, "product.log"))}}}`;
+  await writeFile(patch, approved);
+  const prepared = await validateRunDestinations(`ocm @copy -- config patch --file ${quoteShell(patch)}`, context);
+  const tokens = parseCatalogueCommand(prepared, { standard: true }).tokens, frozen = tokens[tokens.indexOf("--file") + 1];
+  assert.notEqual(frozen, patch);assert.equal(dirname(frozen), join(output, ".inputs"));
+  await writeFile(patch, JSON.stringify({ logging: { file: join(durable, "injected.log") } }));
+  assert.equal(await readFile(frozen, "utf8"), approved);
+  await assert.rejects(validateRunDestinations(`node /helper --out ${quoteShell(join(output, ".inputs/other.json"))}`, context), /protected evidence/);
+  await assert.rejects(validateRunDestinations(`ocm @copy -- config patch --file ${quoteShell(patch)}`, context), /owned copy/);
+  const second = join(root, "second");await mkdir(second);await symlink(durable, join(second, ".inputs"));
+  await writeFile(patch, approved);
+  await assert.rejects(validateRunDestinations(`ocm @copy -- config patch --file ${quoteShell(patch)}`, { ...context, run: second }), /owned directory/);
+});
+
+test("relative artifact roots become absolute before clone preparation and dispatch", async (t) => {
+  const f = await fixture(t), makeClone = f.dependencies.cloneFactory;
+  f.dependencies.home = relative(process.cwd(), join(f.root, "relative-home"));
+  assert.equal(isAbsolute(f.dependencies.home), false);
+  f.dependencies.cloneFactory = (options) => {
+    assert.equal(isAbsolute(options.directory), true);
+    assert.equal(isAbsolute(options.persona.archive), true);
+    return makeClone(options);
+  };
+  const result = await runVerification({ ...f.options, execute: true }, f.dependencies);
+  assert.deepEqual(result.notStarted, []);assert.deepEqual(result.incomplete, []);
+  assert.equal(isAbsolute(result.path), true);assert.equal(isAbsolute(result.plan.path), true);
+  assert.equal(f.removed.length, 5);
+});
+
+
+test("verification child commands cannot inherit another environment's Gateway credentials", async (t) => {
+  const f = await fixture(t), execute = f.dependencies.execute;
+  const previous = { config: process.env.OPENCLAW_CONFIG_PATH, token: process.env.OPENCLAW_GATEWAY_TOKEN };
+  t.after(() => {
+    for (const [name, value] of [["OPENCLAW_CONFIG_PATH", previous.config], ["OPENCLAW_GATEWAY_TOKEN", previous.token]]) {
+      if (value === undefined) delete process.env[name]; else process.env[name] = value;
+    }
+  });
+  process.env.OPENCLAW_CONFIG_PATH = join(f.root, "unrelated-config.json");
+  process.env.OPENCLAW_GATEWAY_TOKEN = "synthetic-unrelated-token";
+  f.dependencies.execute = (command, options) => {
+    assert.equal(options.env.OPENCLAW_CONFIG_PATH, "");
+    assert.equal(options.env.OPENCLAW_GATEWAY_TOKEN, "");
+    assert.equal(options.env.KOVA_OPENCLAW_CONFIG_CONTRACT, "canonical");
+    return execute(command, options);
+  };
+  const result = await runVerification({ ...f.options, execute: true }, f.dependencies);
+  assert.deepEqual(result.notStarted, []);assert.deepEqual(result.incomplete, []);
+  assert.equal(process.env.OPENCLAW_GATEWAY_TOKEN, "synthetic-unrelated-token");
+  assert.equal(process.env.OPENCLAW_CONFIG_PATH, join(f.root, "unrelated-config.json"));
 });

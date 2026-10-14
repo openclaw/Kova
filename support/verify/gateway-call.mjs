@@ -134,7 +134,7 @@ export async function executeGatewayCall(options, { signal, prepare = prepareOpe
       return Math.max(1, deadline - Date.now());
     };
     const runtime = prepare(options.env, { timeoutMs: remaining() });
-    const opening = connect(runtime, { timeoutMs: remaining() });
+    const opening = connect(runtime, { timeoutMs: remaining(), authFromRuntimeConfig: true });
     opening.then((connection) => { if (activeSignal.aborted) connection.client.close(); }, () => {});
     ({ client } = await abortable(opening, activeSignal));
     const result = await abortable(client.request(options.method, params, { timeoutMs: remaining() }), activeSignal, () => client.close());
