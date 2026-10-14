@@ -325,7 +325,7 @@ export async function checkpointRows(directory, phase, standard, normalization, 
             const at = [...segments, pointerPart(column)];
             // Formatted numeric/BLOB markers and already-normalized tokens are
             // not product JSON strings and must not be normalized a second time.
-            if (declared || value.encoded) b.add("state", at, declared ? identity : value.value, { dynamic: dynamicKeys });
+            if (declared || value.encoded) b.add("state", at, declared ? normalize(value.raw) : value.value, { dynamic: dynamicKeys });
             else b.nodes("state", value.value, at, dynamicKeys);
           }
         }
