@@ -6,12 +6,25 @@ from that export for every run.
 Templates name what they need from it as traits; phases read concrete values
 from it through `{persona:<trait>:<key>}`.
 
-The OpenClaw persona, `openclaw-verification-user`, initially contains five
-foundation traits: three agents, a scripted mock model provider, Kova's
-conformance channel, bundled and external plugins with an install record, and
-custom configuration. Session history, saved sessions, older database content and
-scheduled jobs are future additions. Content is produced through OpenClaw's
-commands and Kova's existing mock support.
+The OpenClaw persona, `openclaw-verification-user`, contains five foundation
+traits and fourteen session, configuration and mock-provider traits. Its saved
+content includes long compacted history with a reset boundary, a measured
+pre-compaction context, pruned tool-result projections, an active goal, a
+progress card, cancelled and interrupted inputs, an expired idle session and a
+publicly shared session. Local mock models provide held streaming replies,
+explicit tool calls, serial requests and one-time overflow responses.
+Content is produced through OpenClaw's commands and checked again on an import.
+
+`session-with-worktree` and `session-workspace-changes` remain pending until OCM
+relocates their stored paths during import. They are not in the build definition
+and phases requiring them remain withheld. `session-shared-readonly` also awaits
+its multi-user identity prerequisite. Live queued inputs and process identifiers
+belong to each verification run rather than the durable persona.
+
+Large history is built from five thousand completed mock turns. Builds can take
+tens of minutes; each builder has a two-hour limit. Checks inspect real saved
+history through a bounded, read-only SQLite snapshot, including compressed
+records. Kova requires Node.js 22.19.0 or newer.
 
 Persona traits are separate from the `traits` of Kova states in `states/*.json`.
 A state models one user condition for one scenario and is set up inside a

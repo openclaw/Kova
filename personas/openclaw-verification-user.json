@@ -1,7 +1,7 @@
 {
   "schema": "kova.verify.persona.v1",
   "id": "openclaw-verification-user",
-  "title": "An OpenClaw installation with agents, plugins and custom settings",
+  "title": "An OpenClaw installation with saved session history and local mock models",
   "objective": "Provide reusable OpenClaw content for verification on isolated copies.",
   "runtime": {
     "selector": "npm:2026.9.9",
@@ -80,6 +80,212 @@
         "ocm @{env} -- agents set-identity --agent research --name 'Research Notebook' --json"
       ],
       "check": "node {kovaRoot}/support/persona/check-config.mjs --env {env}"
+    },
+    {
+      "id": "mock-provider-held-turn",
+      "content": "A local mock reply publishes a progress card and streams a held reply for ninety seconds.",
+      "keys": {
+        "marker": "the message that holds the reply"
+      },
+      "needs": [
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/write-mock-ai-provider-script.mjs --env {env} --add-held-turn --marker VERIFY_HOLD --hold-ms 90000 --progress-card"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-mock-trait.mjs held-turn --env {env}"
+    },
+    {
+      "id": "mock-provider-tool-calls",
+      "content": "A local mock model executes the advertised tool and JSON arguments requested by a message.",
+      "keys": {
+        "modelId": "the tool-calling mock model"
+      },
+      "needs": [
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/write-mock-ai-provider-script.mjs --env {env} --add-tool-call-model --model-id mock-tools",
+        "ocm @{env} -- config set tools.profile full"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-mock-trait.mjs tool-calls --env {env}"
+    },
+    {
+      "id": "mock-provider-single-slot",
+      "content": "The idle agent uses a local mock model that admits one request at a time.",
+      "keys": {
+        "agentId": "the agent using the serial mock model"
+      },
+      "needs": [
+        "agents-three-configured",
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/write-mock-ai-provider-script.mjs --env {env} --add-single-slot-model --model-id mock-serial"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-mock-trait.mjs single-slot --env {env}"
+    },
+    {
+      "id": "mock-provider-overflow",
+      "content": "A saved session can trigger one local context-overflow response followed by recovery.",
+      "keys": {
+        "key": "the session used for overflow requests"
+      },
+      "needs": [
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/write-mock-ai-provider-script.mjs --env {env} --add-overflow-once --marker VERIFY_OVERFLOW",
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-overflow --messages 4"
+      ],
+      "check": "node {kovaRoot}/support/persona/check-mock-trait.mjs overflow --env {env}"
+    },
+    {
+      "id": "session-long-compacted",
+      "content": "A long notebook with at least five thousand messages, semantic compaction entries and a reset boundary.",
+      "keys": {
+        "key": "session key",
+        "sessionId": "current session id",
+        "shortId": "unique short session key",
+        "anchorMessageId": "the stored search message id",
+        "searchWord": "one unique search word",
+        "searchPrefix": "a repeated search prefix"
+      },
+      "needs": [
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --label kova-persona-long-compacted --messages 5000 --compact-every 1500 --reset-once --plant-word VERIFYWORD-ONCE --plant-prefix VERIFYPFX"
+      ],
+      "check": "node {kovaRoot}/support/persona/session-keys.mjs session-long-compacted --env {env} --label kova-persona-long-compacted"
+    },
+    {
+      "id": "session-at-compaction-threshold",
+      "content": "A session whose measured prompt estimate is between 93 and 97 percent of its compaction threshold.",
+      "keys": {
+        "key": "session key"
+      },
+      "needs": [
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-near-cap --messages 1 --kind session-at-compaction-threshold"
+      ],
+      "check": "node {kovaRoot}/support/persona/session-keys.mjs session-at-compaction-threshold --env {env} --key agent:main:verify-near-cap"
+    },
+    {
+      "id": "session-pruned-projections",
+      "content": "A session with saved cache-TTL tool-result projections and retained original tool content.",
+      "keys": {
+        "key": "session key",
+        "sessionId": "current session id"
+      },
+      "needs": [
+        "mock-provider-tool-calls"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-pruned --messages 2 --kind session-pruned-projections --tool-model {persona:mock-provider-tool-calls:modelId}"
+      ],
+      "check": "node {kovaRoot}/support/persona/session-keys.mjs session-pruned-projections --env {env} --key agent:main:verify-pruned"
+    },
+    {
+      "id": "session-goal-active",
+      "content": "A session with an active saved notebook goal.",
+      "keys": {
+        "key": "session key",
+        "goalId": "the saved goal id"
+      },
+      "needs": [
+        "mock-provider-tool-calls"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-goal --messages 3 --kind session-goal-active --tool-model {persona:mock-provider-tool-calls:modelId}"
+      ],
+      "check": "node {kovaRoot}/support/persona/session-keys.mjs session-goal-active --env {env} --key agent:main:verify-goal"
+    },
+    {
+      "id": "session-progress-card",
+      "content": "A session with a saved progress card containing three items.",
+      "keys": {
+        "key": "session key"
+      },
+      "needs": [
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-card --messages 2 --kind session-progress-card"
+      ],
+      "check": "node {kovaRoot}/support/persona/session-keys.mjs session-progress-card --env {env} --key agent:main:verify-card"
+    },
+    {
+      "id": "session-interrupted-inputs",
+      "content": "A session retaining one cancelled input and one input interrupted by Gateway shutdown.",
+      "keys": {
+        "key": "session key"
+      },
+      "needs": [
+        "mock-provider-held-turn"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-pending --messages 1 --kind session-interrupted-inputs"
+      ],
+      "check": "node {kovaRoot}/support/persona/session-keys.mjs session-interrupted-inputs --env {env} --key agent:main:verify-pending"
+    },
+    {
+      "id": "session-public-shared",
+      "content": "A saved session with a local public-read grant enabled.",
+      "keys": {
+        "key": "session key"
+      },
+      "needs": [
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-public --messages 6 --kind session-public-shared"
+      ],
+      "check": "node {kovaRoot}/support/persona/session-keys.mjs session-public-shared --env {env} --key agent:main:verify-public"
+    },
+    {
+      "id": "config-subagent-archive-fast",
+      "content": "A parent session and a one-minute automatic subagent archive interval.",
+      "keys": {
+        "parentKey": "the saved parent session"
+      },
+      "needs": [
+        "mock-provider-tool-calls"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-parent --messages 2 --kind config-subagent-archive-fast"
+      ],
+      "check": "node {kovaRoot}/support/persona/session-keys.mjs config-subagent-archive-fast --env {env} --key agent:main:verify-parent"
+    },
+    {
+      "id": "config-reset-idle-short",
+      "content": "A saved session and a one-minute idle reset policy.",
+      "keys": {
+        "key": "session key"
+      },
+      "needs": [
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-idle --messages 3 --kind config-reset-idle-short"
+      ],
+      "check": "node {kovaRoot}/support/persona/session-keys.mjs config-reset-idle-short --env {env} --key agent:main:verify-idle"
+    },
+    {
+      "id": "session-idle-expired",
+      "content": "A completed notebook session with retained history older than its one-minute idle reset window.",
+      "keys": {
+        "key": "session key"
+      },
+      "needs": [
+        "config-reset-idle-short"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-idle-old --messages 3 --kind session-idle-expired"
+      ],
+      "check": "node {kovaRoot}/support/persona/session-keys.mjs session-idle-expired --env {env} --key agent:main:verify-idle-old"
     }
   ],
   "support": {
@@ -93,7 +299,10 @@
       "support/persona/check-config.mjs",
       "support/persona/check-mock-script.mjs",
       "support/configure-openclaw-mock-auth.mjs",
-      "support/write-mock-ai-provider-script.mjs"
+      "support/write-mock-ai-provider-script.mjs",
+      "support/persona/make-session.mjs",
+      "support/persona/session-keys.mjs",
+      "support/persona/check-mock-trait.mjs"
     ],
     "toWrite": [],
     "fixtures": []

@@ -1,3 +1,5 @@
+import "./persona-extras.mjs";
+import "./persona-mock.mjs";
 import "./persona-provenance.mjs";
 import "./persona-support.mjs";
 import assert from "node:assert/strict";
@@ -13,8 +15,9 @@ import { buildPersona, verifyPersona, hashFile } from "../src/persona/lifecycle.
 
 const source = new URL("../personas/openclaw-verification-user.json", import.meta.url);
 const definition = JSON.parse(await readFile(source, "utf8"));
+const lifecycleDefinition = { ...definition, traits: definition.traits.slice(0, 5) };
 const { catalogue } = await loadCatalogue("openclaw");
-const checkTraits = Object.fromEntries(definition.traits.map((trait) => [trait.check.split("/").at(-1).split(" ")[0], trait.id]));
+const checkTraits = Object.fromEntries(lifecycleDefinition.traits.map((trait) => [trait.check.split("/").at(-1).split(" ")[0], trait.id]));
 const foundationKeys = {
   "agents-three-configured": { mainAgentId: "main", secondAgentId: "research", thirdAgentId: "idle" },
   "mock-provider-scripted": { modelId: "openai/gpt-5.5" },
@@ -57,7 +60,7 @@ async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), "kova-persona-test-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const path = join(root, "definition.json");
-  await writeFile(path, JSON.stringify(definition));
+  await writeFile(path, JSON.stringify(lifecycleDefinition));
   const calls = [];
   let failTrait = null, failDestroy = false, failProvision = null, occupied = false;
   let keysFor = (trait) => foundationKeys[trait];

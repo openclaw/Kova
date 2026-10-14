@@ -7,11 +7,11 @@ export class EntryError extends Error {
   constructor(message, exitCode = 1) { super(message); this.exitCode = exitCode; }
 }
 
-export async function runEntry(options, operation) {
+export async function runEntry(options, operation, argv = process.argv.slice(2), validate) {
   try {
     let args;
     try {
-      args = parseArgs({ options: { env: { type: "string" }, ...Object.fromEntries(Object.entries(options).map(([key, value]) => [key, { type: value.type }])) }, strict: true, allowPositionals: false }).values;
+      args = parseArgs({ args: argv, options: { env: { type: "string" }, ...Object.fromEntries(Object.entries(options).map(([key, value]) => [key, { type: value.type }])) }, strict: true, allowPositionals: false }).values;
       for (const key of ["env", ...Object.keys(options).filter((key) => options[key].required)]) {
         if (!args[key]?.trim()) throw new Error(`--${key} is required`);
       }
@@ -20,6 +20,7 @@ export async function runEntry(options, operation) {
       }
       if (args.timeout !== undefined && (!/^\d+$/.test(args.timeout) || !Number.isSafeInteger(Number(args.timeout)) || Number(args.timeout) < 1)) throw new Error("--timeout must be a positive number of milliseconds");
     } catch (error) { throw new EntryError(error.message, 2); }
+    try { validate?.(args); } catch (error) { throw new EntryError(error.message, 2); }
     const env = await commandJson(["ocm", "env", "show", args.env, "--json"]);
     const state = env.stateDir ?? join(env.root, ".openclaw");
     const result = await operation({ args, env, state, workspace: env.workspaceDir ?? join(state, "workspace") });
@@ -40,6 +41,10 @@ async function command(args) {
   if (result.timedOut) throw new EntryError(`${args[0]} command timed out`, 3);
   if (result.status || result.signal || result.outputBudget?.truncated) throw new EntryError(`${args[0]} command failed: ${result.stderr || result.stdout}`);
   return result.stdout;
+}
+
+export async function productCommand(env, args) {
+  return command(["ocm", `@${env}`, "--", ...args]);
 }
 
 export async function productJson(env, args) {

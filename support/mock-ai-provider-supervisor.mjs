@@ -1,22 +1,32 @@
 #!/usr/bin/env node
 import { randomUUID } from "node:crypto";
-import { access, rename, rm, writeFile } from "node:fs/promises";
+import { access, rename, rm, writeFile, readFile, appendFile } from "node:fs/promises";
+import { Readable } from "node:stream";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { setTimeout as sleep } from "node:timers/promises";
 import { createMockAiProviderServer } from "mock-ai-provider/dist/server/create-server.js";
 import { listen } from "mock-ai-provider/dist/server/listen.js";
+import { readRequestBody, writeJson } from "mock-ai-provider/dist/shared/http.js";
+import { renderResponse, renderResponseStreamEvents } from "mock-ai-provider/dist/providers/openai/responses/render-responses.js";
+import { renderChatCompletion } from "mock-ai-provider/dist/providers/openai/chat/render-chat-completions.js";
+import { writeChatCompletionStream } from "mock-ai-provider/dist/providers/openai/chat/render-chat-completion-stream.js";
+import { readMockTraits, selectMockReply } from "./persona/mock-content.mjs";
 import {
   mockProviderOwnerRecord,
   mockProviderStopFile,
   removeMockProviderOwnerFile
 } from "../src/process-safety.mjs";
 
-const options = parseArgs(process.argv.slice(2));
-const owner = mockProviderOwnerRecord(process.pid, randomUUID());
-
-try {
-  await supervise(options, owner);
-} catch (error) {
-  process.stderr.write(`${error.stack ?? error.message}\n`);
-  process.exitCode = 1;
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const options = parseArgs(process.argv.slice(2));
+  const owner = mockProviderOwnerRecord(process.pid, randomUUID());
+  try {
+    await supervise(options, owner);
+  } catch (error) {
+    process.stderr.write(`${error.stack ?? error.message}\n`);
+    process.exitCode = 1;
+  }
 }
 
 async function supervise({ scriptPath, requestLog, serverLog, pidFile }, owner) {
@@ -46,6 +56,7 @@ async function supervise({ scriptPath, requestLog, serverLog, pidFile }, owner) 
       requestLogPath: requestLog,
       openAiAuth: { strict: false }
     });
+    attachPersonaReplies(server, JSON.parse(await readFile(scriptPath, "utf8")), requestLog);
     const serverClosed = new Promise((resolve) => {
       server.once("close", resolve);
     });
@@ -101,6 +112,140 @@ async function supervise({ scriptPath, requestLog, serverLog, pidFile }, owner) 
     await removeControlFile(startupLog);
     await cleanupControlFiles(pidFile, owner);
   }
+}
+
+export function attachPersonaReplies(server, script, requestLog) {
+  const traits = readMockTraits(script);
+  if (!traits.version) return;
+  const original = server.listeners("request");
+  if (original.length !== 1) throw new Error("unexpected mock provider request handler count");
+  const fallback = original[0];
+  const overflowTriggers = new Set();
+  const serial = createSerialAdmission();
+  server.removeListener("request", fallback);
+  server.on("request", (req, res) => {
+    const path = new URL(req.url, "http://127.0.0.1").pathname;
+    if (req.method !== "POST" || !["/v1/responses", "/v1/chat/completions", "/responses", "/chat/completions"].includes(path)) {
+      fallback(req, res);
+      return;
+    }
+    void handle(req, res, path).catch((error) => {
+      if (!res.destroyed && !res.writableEnded) {
+        if (res.headersSent) res.destroy();
+        else writeJson(res, error.statusCode ?? 400, { error: { message: error.message, type: "invalid_request_error" } });
+      }
+    });
+  });
+
+  async function handle(req, res, path) {
+    const receivedAtEpochMs = Date.now();
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    res.once("close", abort);
+    let release;
+    try {
+      const raw = await readRequestBody(req);
+      controller.signal.throwIfAborted();
+      const body = JSON.parse(raw);
+      if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("request body must be an object");
+      if (body.model === traits.singleSlotModel?.modelId) release = await serial.acquire(controller.signal);
+      controller.signal.throwIfAborted();
+      const admittedAtEpochMs = Date.now();
+      const reply = selectMockReply(traits, body, overflowTriggers);
+      if (!reply) {
+        const replay = Readable.from([Buffer.from(raw)]);
+        Object.assign(replay, { method: req.method, url: req.url, headers: req.headers, socket: req.socket });
+        fallback(replay, res);
+        return;
+      }
+      if (reply.delayMs) await sleep(reply.delayMs, undefined, { signal: controller.signal });
+      const status = reply.respond.type === "error" ? reply.respond.status : 200;
+      await writePersonaReply(res, body, reply, path.endsWith("/responses"), controller.signal);
+      const respondedAtEpochMs = Date.now();
+      await appendFile(requestLog, `${JSON.stringify({
+        schemaVersion: "mock-ai-provider.request.v1", requestId: randomUUID(), method: "POST", path,
+        providerId: "openai", apiSurface: path.endsWith("/responses") ? "responses" : "chat.completions",
+        model: body.model, stream: body.stream === true, status,
+        receivedAt: new Date(receivedAtEpochMs).toISOString(), receivedAtEpochMs,
+        admittedAtEpochMs, respondedAt: new Date(respondedAtEpochMs).toISOString(), respondedAtEpochMs,
+        durationMs: respondedAtEpochMs - receivedAtEpochMs, bodyBytes: Buffer.byteLength(raw),
+        matchedScriptStep: "kova-persona", responseType: reply.respond.type,
+        toolCallsEmitted: reply.respond.toolCalls?.length ?? 0,
+        finalTextEmitted: reply.respond.type === "final-text" ? reply.respond.text : null,
+        errorClass: reply.respond.errorType ?? null,
+      })}\n`, "utf8");
+    } finally {
+      release?.();
+      res.off("close", abort);
+    }
+  }
+}
+
+export function createSerialAdmission(limit = 32) {
+  let occupied = false;
+  const pending = [];
+  const release = () => {
+    const next = pending.shift();
+    if (next) {
+      next.signal.removeEventListener("abort", next.abort);
+      next.resolve(release);
+    } else occupied = false;
+  };
+  return {
+    acquire(signal) {
+      signal.throwIfAborted();
+      if (!occupied) {
+        occupied = true;
+        return Promise.resolve(release);
+      }
+      if (pending.length >= limit) throw Object.assign(new Error("mock model request queue is full"), { statusCode: 429 });
+      return new Promise((resolve, reject) => {
+        const entry = { resolve, reject, signal, abort: () => {
+          const index = pending.indexOf(entry);
+          if (index !== -1) pending.splice(index, 1);
+          reject(signal.reason);
+        } };
+        pending.push(entry);
+        signal.addEventListener("abort", entry.abort, { once: true });
+      });
+    },
+  };
+}
+
+async function writePersonaReply(res, body, reply, responses, signal) {
+  if (reply.respond.type === "error") {
+    const { message, code, errorType: type, status } = reply.respond;
+    writeJson(res, status, { error: { message, type, code } });
+    return;
+  }
+  if (!body.stream) {
+    if (reply.holdMs) await sleep(reply.holdMs, undefined, { signal });
+    const rendered = responses ? renderResponse(body, reply) : renderChatCompletion(body, reply);
+    writeJson(res, 200, rendered.body);
+    return;
+  }
+  const frames = [];
+  if (responses) {
+    for (const event of renderResponseStreamEvents(body, reply).events) frames.push({ text: `data: ${JSON.stringify(event)}\n\n`, content: event.type === "response.output_text.delta" });
+    frames.push({ text: "data: [DONE]\n\n", content: false });
+  } else {
+    writeChatCompletionStream({ requestBody: body, step: reply, headers: {}, res: {
+      writeHead() {}, end() {}, write(text) {
+        const data = text.slice(6).trim();
+        const parsed = data === "[DONE]" ? null : JSON.parse(data);
+        frames.push({ text, content: typeof parsed?.choices?.[0]?.delta?.content === "string" });
+      },
+    } });
+  }
+  res.writeHead(200, { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", connection: "keep-alive" });
+  const contentCount = frames.filter((frame) => frame.content).length;
+  const spacing = reply.holdMs ? reply.holdMs / Math.max(1, contentCount) : 0;
+  for (const frame of frames) {
+    signal.throwIfAborted();
+    res.write(frame.text);
+    if (frame.content && spacing) await sleep(spacing, undefined, { signal });
+  }
+  res.end();
 }
 
 async function closeServer(server) {

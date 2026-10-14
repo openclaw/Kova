@@ -14,7 +14,7 @@ import { artifactsDir, credentialsDir, liveEnvPath, providersPath, reportsDir, r
 import { configureCredentialProvider, ensureCredentialStore } from "./auth.mjs";
 import { renderSetup } from "./reporting/render-setup.mjs";
 
-const requiredNodeMajor = 22;
+const requiredNode = [22, 19, 0];
 
 export async function runSetup(flags = {}) {
   rejectRemovedSetupFlags(flags);
@@ -426,15 +426,16 @@ async function promptSecret(question, output = process.stdout) {
 }
 
 function nodeVersionCheck() {
-  const major = Number(process.versions.node.split(".")[0]);
-  const ok = major >= requiredNodeMajor;
+  const actual = process.versions.node.split(".").map(Number);
+  const difference = actual.map((part, index) => part - requiredNode[index]).find((part) => part !== 0) ?? 0;
+  const ok = difference >= 0;
   return {
     id: "node-version",
     required: true,
     status: ok ? "PASS" : "FAIL",
-    expected: `>= ${requiredNodeMajor}`,
+    expected: `>= ${requiredNode.join(".")}`,
     actual: process.version,
-    message: ok ? `Node ${process.version}` : `Node ${process.version}; expected >= ${requiredNodeMajor}`
+    message: ok ? `Node ${process.version}` : `Node ${process.version}; expected >= ${requiredNode.join(".")}`
   };
 }
 

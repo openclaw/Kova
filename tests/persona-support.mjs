@@ -1,3 +1,5 @@
+import "./persona-store-read.mjs";
+import "./persona-gateway-schema.mjs";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mkdtemp, writeFile, rm, mkdir, readFile } from "node:fs/promises";
@@ -8,7 +10,7 @@ import { loadCatalogue, resolveCatalogueEntry } from "../src/catalogue.mjs";
 
 const definition = JSON.parse(await readFile(new URL("../personas/openclaw-verification-user.json", import.meta.url), "utf8"));
 const { catalogue } = await loadCatalogue("openclaw");
-const scripts = ["add-agent", "write-mock-script", "check-agents", "check-mock-provider", "check-channels", "check-plugins", "check-config", "check-mock-script"];
+const scripts = ["add-agent", "write-mock-script", "check-agents", "check-mock-provider", "check-channels", "check-plugins", "check-config", "check-mock-script", "make-session", "session-keys"];
 function invoke(name, args, env = process.env) {
   return spawnSync(process.execPath, [new URL(`../support/persona/${name}.mjs`, import.meta.url).pathname, ...args], { env, encoding: "utf8", timeout: 10000 });
 }
@@ -27,6 +29,20 @@ test("persona support commands report malformed calls as JSON with exit 2", () =
       assert.equal(JSON.parse(result.stdout).error.code, "usage");
       assert.equal(result.stderr, "");
     }
+  }
+  for (const [name, args] of [
+    ["make-session", ["--env", "unused", "--messages", "1"]],
+    ["make-session", ["--env", "unused", "--messages", "1", "--key", "agent:main:example", "--kind", "unknown"]],
+    ["session-keys", ["unknown", "--env", "unused", "--key", "agent:main:example"]],
+  ]) {
+    const malformed = invoke(name, args);
+    assert.equal(malformed.status, 2, malformed.stderr);
+    assert.equal(JSON.parse(malformed.stdout).error.code, "usage");
+  }
+  for (const args of [["--add-held-turn", "--marker", "VERIFY_HOLD", "--hold-ms", "90000"], ["--env", "unused"], ["--env", "unused", "--add-held-turn", "--marker", "VERIFY_HOLD", "--hold-ms", "NaN"]]) {
+    const malformed = spawnSync(process.execPath, [new URL("../support/write-mock-ai-provider-script.mjs", import.meta.url).pathname, ...args], { encoding: "utf8" });
+    assert.equal(malformed.status, 2, malformed.stderr);
+    assert.equal(JSON.parse(malformed.stdout).error.code, "usage");
   }
   const result = invoke("check-channels", ["--env", "unused", "--timeout", "0"]);
   assert.equal(result.status, 2);
@@ -48,6 +64,11 @@ test("mock table commands emit their fixed success shape and JSON product errors
   result = invoke("write-mock-script", ["--env", "fixture"], env);
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(Object.keys(JSON.parse(result.stdout)), ["path"]);
+  result = spawnSync(process.execPath, [new URL("../support/write-mock-ai-provider-script.mjs", import.meta.url).pathname, "--env", "fixture", "--add-held-turn", "--marker", "VERIFY_HOLD", "--hold-ms", "90000", "--progress-card"], { env, encoding: "utf8" });
+  assert.equal(result.status, 0, result.stdout || result.stderr);
+  assert.deepEqual(Object.keys(JSON.parse(result.stdout)), ["path"]);
+  const saved = JSON.parse(await readFile(join(root, "workspace", "kova-persona", "mock-script.json"), "utf8"));
+  assert.deepEqual(saved.kovaPersona.heldTurn, { marker: "VERIFY_HOLD", holdMs: 90000, progressCard: true });
   result = invoke("check-mock-script", ["--env", "fixture", "--marker", "KOVA_AGENT_OK"], env);
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(Object.keys(JSON.parse(result.stdout)), ["present", "entry"]);

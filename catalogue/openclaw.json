@@ -1745,12 +1745,8 @@
       "id": "mock-script",
       "kind": "script",
       "wraps": "the mock provider's scripted reply table",
-      "command": "node {kovaRoot}/support/write-mock-ai-provider-script.mjs --env {env} --script <file>",
+      "command": "node {kovaRoot}/support/write-mock-ai-provider-script.mjs --env {env}",
       "flags": {
-        "--script": {
-          "description": "reply table file",
-          "value": "required"
-        },
         "--add-held-turn": {
           "description": "add a held reply",
           "value": "none"
@@ -1789,11 +1785,11 @@
         }
       },
       "prints": [
-        "entries"
+        "path"
       ],
       "side": "write",
       "background": false,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -1857,72 +1853,20 @@
           "description": "prefix planted several times",
           "value": "required"
         },
-        "--fill-to-threshold": {
-          "description": "fraction of the compaction threshold",
-          "value": "required"
-        },
-        "--tool-turns": {
-          "description": "tool-calling turns",
-          "value": "required"
-        },
-        "--prune-ttl": {
-          "description": "cache TTL in minutes",
-          "value": "required"
-        },
-        "--goal": {
-          "description": "goal text",
-          "value": "required"
-        },
-        "--progress-card": {
-          "description": "steps",
-          "value": "required"
-        },
-        "--pending": {
-          "description": "queued,cancelled,interrupted",
-          "value": "required"
-        },
-        "--age-minutes": {
-          "description": "age of last interaction",
-          "value": "required"
-        },
-        "--age-days": {
-          "description": "age in days",
-          "value": "required"
-        },
-        "--share": {
-          "description": "read-only | suggest | draft",
-          "value": "required"
-        },
-        "--member": {
-          "description": "profile id",
-          "value": "required"
-        },
-        "--suggestion": {
-          "description": "suggestion text",
-          "value": "required"
-        },
-        "--public": {
-          "description": "public access",
-          "value": "none"
-        },
-        "--dashboard": {
-          "description": "dashboard session",
-          "value": "none"
-        },
-        "--worktree": {
-          "description": "repository path",
-          "value": "required"
-        },
-        "--watched-by": {
-          "description": "watcher key",
-          "value": "required"
-        },
-        "--global-and-qualified": {
-          "description": "store under both key spellings",
-          "value": "none"
-        },
         "--env": {
           "description": "OCM environment name",
+          "value": "required"
+        },
+        "--label": {
+          "description": "Label for a generated session key",
+          "value": "required"
+        },
+        "--kind": {
+          "description": "Saved session content kind",
+          "value": "required"
+        },
+        "--tool-model": {
+          "description": "Configured local model for tool requests",
           "value": "required"
         }
       },
@@ -1932,7 +1876,7 @@
       ],
       "side": "write",
       "background": false,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -1945,37 +1889,22 @@
           "description": "session key",
           "value": "required"
         },
-        "--children": {
-          "description": "include children",
-          "value": "none"
-        },
-        "--workspace": {
-          "description": "include workspace facts",
-          "value": "none"
-        },
-        "--cold": {
-          "description": "include cold-storage entry ids",
-          "value": "none"
-        },
-        "--organized": {
-          "description": "the organized set",
-          "value": "none"
-        },
         "--env": {
           "description": "OCM environment name",
+          "value": "required"
+        },
+        "--label": {
+          "description": "Saved session label",
           "value": "required"
         }
       },
       "prints": [
         "key",
-        "sessionId",
-        "shortId",
-        "entryIds",
-        "plantedWords"
+        "sessionId"
       ],
       "side": "read",
       "background": false,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -6613,6 +6542,359 @@
         }
       },
       "prints": [],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-check-mock-provider-held-turn",
+      "kind": "script",
+      "wraps": "read the mock-provider-held-turn saved content and keys",
+      "command": "node {kovaRoot}/support/persona/check-mock-trait.mjs held-turn --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "marker"
+      ],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-check-mock-provider-tool-calls",
+      "kind": "script",
+      "wraps": "read the mock-provider-tool-calls saved content and keys",
+      "command": "node {kovaRoot}/support/persona/check-mock-trait.mjs tool-calls --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "modelId"
+      ],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-check-mock-provider-single-slot",
+      "kind": "script",
+      "wraps": "read the mock-provider-single-slot saved content and keys",
+      "command": "node {kovaRoot}/support/persona/check-mock-trait.mjs single-slot --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "agentId"
+      ],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-check-mock-provider-overflow",
+      "kind": "script",
+      "wraps": "read the mock-provider-overflow saved content and keys",
+      "command": "node {kovaRoot}/support/persona/check-mock-trait.mjs overflow --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key"
+      ],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-check-session-long-compacted",
+      "kind": "script",
+      "wraps": "read the session-long-compacted saved content and keys",
+      "command": "node {kovaRoot}/support/persona/session-keys.mjs session-long-compacted --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--key": {
+          "description": "Session key",
+          "value": "required"
+        },
+        "--label": {
+          "description": "Saved session label",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key",
+        "sessionId",
+        "shortId",
+        "anchorMessageId",
+        "searchWord",
+        "searchPrefix"
+      ],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-check-session-at-compaction-threshold",
+      "kind": "script",
+      "wraps": "read the session-at-compaction-threshold saved content and keys",
+      "command": "node {kovaRoot}/support/persona/session-keys.mjs session-at-compaction-threshold --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--key": {
+          "description": "Session key",
+          "value": "required"
+        },
+        "--label": {
+          "description": "Saved session label",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key"
+      ],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-check-session-pruned-projections",
+      "kind": "script",
+      "wraps": "read the session-pruned-projections saved content and keys",
+      "command": "node {kovaRoot}/support/persona/session-keys.mjs session-pruned-projections --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--key": {
+          "description": "Session key",
+          "value": "required"
+        },
+        "--label": {
+          "description": "Saved session label",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key",
+        "sessionId"
+      ],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-check-session-goal-active",
+      "kind": "script",
+      "wraps": "read the session-goal-active saved content and keys",
+      "command": "node {kovaRoot}/support/persona/session-keys.mjs session-goal-active --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--key": {
+          "description": "Session key",
+          "value": "required"
+        },
+        "--label": {
+          "description": "Saved session label",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key",
+        "goalId"
+      ],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-check-session-progress-card",
+      "kind": "script",
+      "wraps": "read the session-progress-card saved content and keys",
+      "command": "node {kovaRoot}/support/persona/session-keys.mjs session-progress-card --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--key": {
+          "description": "Session key",
+          "value": "required"
+        },
+        "--label": {
+          "description": "Saved session label",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key"
+      ],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-check-session-interrupted-inputs",
+      "kind": "script",
+      "wraps": "read the session-interrupted-inputs saved content and keys",
+      "command": "node {kovaRoot}/support/persona/session-keys.mjs session-interrupted-inputs --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--key": {
+          "description": "Session key",
+          "value": "required"
+        },
+        "--label": {
+          "description": "Saved session label",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key"
+      ],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-check-session-public-shared",
+      "kind": "script",
+      "wraps": "read the session-public-shared saved content and keys",
+      "command": "node {kovaRoot}/support/persona/session-keys.mjs session-public-shared --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--key": {
+          "description": "Session key",
+          "value": "required"
+        },
+        "--label": {
+          "description": "Saved session label",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key"
+      ],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-check-config-subagent-archive-fast",
+      "kind": "script",
+      "wraps": "read the config-subagent-archive-fast saved content and keys",
+      "command": "node {kovaRoot}/support/persona/session-keys.mjs config-subagent-archive-fast --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--key": {
+          "description": "Session key",
+          "value": "required"
+        },
+        "--label": {
+          "description": "Saved session label",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "parentKey"
+      ],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-check-config-reset-idle-short",
+      "kind": "script",
+      "wraps": "read the config-reset-idle-short saved content and keys",
+      "command": "node {kovaRoot}/support/persona/session-keys.mjs config-reset-idle-short --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--key": {
+          "description": "Session key",
+          "value": "required"
+        },
+        "--label": {
+          "description": "Saved session label",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key"
+      ],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-check-session-idle-expired",
+      "kind": "script",
+      "wraps": "read the session-idle-expired saved content and keys",
+      "command": "node {kovaRoot}/support/persona/session-keys.mjs session-idle-expired --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--key": {
+          "description": "Session key",
+          "value": "required"
+        },
+        "--label": {
+          "description": "Saved session label",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key"
+      ],
       "creates": [],
       "side": "read",
       "background": false,
