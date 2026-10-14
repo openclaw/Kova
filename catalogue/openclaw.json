@@ -2394,7 +2394,7 @@
       ],
       "side": "destructive",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -2456,7 +2456,7 @@
       ],
       "side": "read",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -2518,7 +2518,7 @@
       ],
       "side": "write",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": [
         "/result/messageId"
       ]
@@ -2582,7 +2582,7 @@
       ],
       "side": "read",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -2644,7 +2644,7 @@
       ],
       "side": "read",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -2706,7 +2706,7 @@
       ],
       "side": "read",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -2768,7 +2768,7 @@
       ],
       "side": "read",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -2830,7 +2830,7 @@
       ],
       "side": "destructive",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -2892,7 +2892,7 @@
       ],
       "side": "destructive",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -2954,7 +2954,7 @@
       ],
       "side": "write",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -3016,7 +3016,7 @@
       ],
       "side": "read",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -3078,7 +3078,7 @@
       ],
       "side": "read",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -3140,7 +3140,7 @@
       ],
       "side": "destructive",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -3202,7 +3202,7 @@
       ],
       "side": "destructive",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -3273,7 +3273,7 @@
       ],
       "side": "write",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": [
         "/result/suggestion/id"
       ]
@@ -3337,7 +3337,7 @@
       ],
       "side": "read",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -3399,7 +3399,7 @@
       ],
       "side": "destructive",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -3461,7 +3461,7 @@
       ],
       "side": "write",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -3523,7 +3523,7 @@
       ],
       "side": "destructive",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -3585,7 +3585,7 @@
       ],
       "side": "write",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -3647,7 +3647,7 @@
       ],
       "side": "write",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -3709,7 +3709,7 @@
       ],
       "side": "read",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -3771,7 +3771,7 @@
       ],
       "side": "destructive",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -3834,7 +3834,7 @@
       ],
       "side": "write",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": [
         "/createdIds/*"
       ]
@@ -3898,7 +3898,7 @@
       ],
       "side": "destructive",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -3960,7 +3960,7 @@
       ],
       "side": "destructive",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -4022,7 +4022,7 @@
       ],
       "side": "write",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -4084,7 +4084,7 @@
       ],
       "side": "destructive",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -4146,7 +4146,7 @@
       ],
       "side": "read",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -4209,7 +4209,7 @@
       ],
       "side": "destructive",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": [
         "/createdIds/*"
       ]
@@ -4273,7 +4273,7 @@
       ],
       "side": "destructive",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -4335,7 +4335,7 @@
       ],
       "side": "read",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -4397,7 +4397,7 @@
       ],
       "side": "read",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -4459,7 +4459,7 @@
       ],
       "side": "read",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -4521,7 +4521,7 @@
       ],
       "side": "read",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -4583,7 +4583,7 @@
       ],
       "side": "read",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -4645,7 +4645,7 @@
       ],
       "side": "write",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -4707,7 +4707,7 @@
       ],
       "side": "destructive",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -4769,7 +4769,7 @@
       ],
       "side": "write",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": [
         "/result/sessionKey"
       ]
@@ -4833,7 +4833,7 @@
       ],
       "side": "read",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -4895,7 +4895,7 @@
       ],
       "side": "read",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -4957,7 +4957,7 @@
       ],
       "side": "read",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -5019,7 +5019,7 @@
       ],
       "side": "destructive",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -5081,7 +5081,7 @@
       ],
       "side": "read",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -5143,7 +5143,7 @@
       ],
       "side": "destructive",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -5205,7 +5205,7 @@
       ],
       "side": "write",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -5267,7 +5267,7 @@
       ],
       "side": "write",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -5348,7 +5348,7 @@
       ],
       "side": "read",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -5410,7 +5410,7 @@
       ],
       "side": "write",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -5472,7 +5472,7 @@
       ],
       "side": "write",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -5534,7 +5534,7 @@
       ],
       "side": "write",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -5600,7 +5600,7 @@
       ],
       "side": "write",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -5662,7 +5662,7 @@
       ],
       "side": "read",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -5724,7 +5724,7 @@
       ],
       "side": "read",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -5790,7 +5790,7 @@
       ],
       "side": "destructive",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -5852,7 +5852,7 @@
       ],
       "side": "write",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": [
         "/result/key",
         "/result/sessionId",
@@ -5918,7 +5918,7 @@
       ],
       "side": "destructive",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -5980,7 +5980,7 @@
       ],
       "side": "read",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -6042,7 +6042,7 @@
       ],
       "side": "destructive",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -6108,7 +6108,7 @@
       ],
       "side": "read",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -6183,7 +6183,7 @@
       ],
       "side": "write",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -6245,7 +6245,7 @@
       ],
       "side": "write",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -6307,7 +6307,7 @@
       ],
       "side": "read",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -6369,7 +6369,7 @@
       ],
       "side": "write",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -6431,7 +6431,7 @@
       ],
       "side": "read",
       "background": true,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -9067,7 +9067,7 @@
       "creates": [],
       "side": "write",
       "background": true,
-      "status": "toWrite"
+      "status": "existing"
     },
     {
       "id": "foreground-gateway-stop",
@@ -9093,7 +9093,7 @@
       "creates": [],
       "side": "destructive",
       "background": false,
-      "status": "toWrite"
+      "status": "existing"
     },
     {
       "id": "session-status-cursor",

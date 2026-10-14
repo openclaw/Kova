@@ -19,12 +19,15 @@ const GATEWAY_OPERATOR_SCOPES = [
   "operator.talk-secrets"
 ];
 
-export function prepareOpenClawRuntimeFromOcmEnv(envName) {
+export function prepareOpenClawRuntimeFromOcmEnv(envName, { timeoutMs = 60000 } = {}) {
   if (!envName) {
     throw new Error("--env is required");
   }
-  const status = runOcmJson(["env", "status", envName, "--json"]);
-  const resolved = runOcmJson(["env", "resolve", envName, "--json", "--", "status"]);
+  const deadline = Date.now() + timeoutMs;
+  const remaining = () => Math.max(1, Math.min(30000, deadline - Date.now()));
+  const status = runOcmJson(["env", "status", envName, "--json"], { timeoutMs: remaining() });
+  if (Date.now() >= deadline) throw new Error("OCM environment lookup timeout");
+  const resolved = runOcmJson(["env", "resolve", envName, "--json", "--", "status"], { timeoutMs: remaining() });
   const root = readRequiredString(status.root, "ocm env status root");
   const port = Number(status.gatewayPort);
   const binaryPath = readRequiredString(resolved.binaryPath, "ocm env resolve binaryPath");
@@ -38,6 +41,7 @@ export function prepareOpenClawRuntimeFromOcmEnv(envName) {
   return {
     envName,
     root,
+    configPath: status.configPath ?? join(root, ".openclaw", "openclaw.json"),
     gatewayPort: port,
     binaryPath,
     packageRoot,
@@ -80,14 +84,14 @@ export function readTimeoutMs(value, defaultMs) {
   return parsed;
 }
 
-export function runOcmJson(args) {
+export function runOcmJson(args, { timeoutMs = 30000 } = {}) {
   let stdout = "";
   try {
     const invocation = ocmInvocation(args);
     stdout = execFileSync(invocation.file, invocation.args, {
       env: invocation.env,
       encoding: "utf8",
-      timeout: 30000,
+      timeout: timeoutMs,
       maxBuffer: 1024 * 1024,
       killSignal: "SIGKILL",
       stdio: ["ignore", "pipe", "pipe"]
@@ -103,7 +107,7 @@ export function runOcmJson(args) {
   }
 }
 
-export async function openDirectGatewayRpcClient(runtimeContext) {
+export async function openDirectGatewayRpcClient(runtimeContext, { timeoutMs = 15000 } = {}) {
   if (typeof WebSocket !== "function") {
     throw new Error("direct Gateway RPC requires WebSocket support");
   }
@@ -117,7 +121,7 @@ export async function openDirectGatewayRpcClient(runtimeContext) {
     url: gateway.url,
     token
   });
-  await client.connect();
+  await client.connect(timeoutMs);
   return {
     client,
     transport: "direct-gateway-rpc"

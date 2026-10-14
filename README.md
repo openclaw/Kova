@@ -2,7 +2,7 @@
 
 [![CI](https://img.shields.io/github/actions/workflow/status/openclaw/Kova/ci.yml?branch=main&style=flat-square&label=ci)](https://github.com/openclaw/Kova/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/openclaw/Kova?style=flat-square)](https://github.com/openclaw/Kova/releases/latest)
-[![Node.js](https://img.shields.io/badge/node-%E2%89%A522.5.0-339933?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/node-%E2%89%A522.19.0-339933?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-555?style=flat-square)](https://github.com/openclaw/Kova/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/openclaw/Kova?style=flat-square)](LICENSE)
 
@@ -18,7 +18,7 @@ agent, plugin, TUI, MCP, browser, and long-running behavior before a release.
 
 ## Install
 
-Kova requires Node.js 22.5.0 or newer. Real scenarios use
+Kova requires Node.js 22.19.0 or newer. Real scenarios use
 [OCM](https://github.com/shakkernerd/ocm) to provision isolated OpenClaw
 environments; the installer can install it at the same time:
 
@@ -144,7 +144,7 @@ state, build runtimes, upgrade installations, or inspect services.
 - [Scenario hierarchy](docs/SCENARIO_HIERARCHY.md) defines ownership across runtime paths.
 - [Diagnostics contract](docs/DIAGNOSTICS_CONTRACT.md) describes OpenClaw timeline evidence.
 - [Report schema](docs/REPORT_SCHEMA.md) documents reports, comparisons, bundles, and gates.
-- [Kova Verify](docs/verify/README.md) describes the forthcoming check of one OpenClaw change against its baseline, run from a long-lived user installation.
+- [Kova Verify](docs/verify/README.md) describes planning and recording one OpenClaw change against its baseline from a long-lived user installation; comparison remains forthcoming.
 - [Changelog](CHANGELOG.md) records release changes.
 
 ## Development
@@ -177,7 +177,7 @@ checks in `self-check`; CI installs this prerequisite automatically.
 CI runs the full check suite and release-install smoke test on Node.js 22, 24,
 and 26 on Linux, and Node.js 24 on macOS. The website has a separate type-check,
 test, and production-build job. `.node-version` pins the development, website,
-hydration, and release-build runtime without changing the Node.js 22.5.0 CLI floor.
+hydration, and release-build runtime without changing the Node.js 22.19.0 CLI floor.
 
 ## License
 
