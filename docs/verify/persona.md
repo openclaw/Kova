@@ -140,7 +140,7 @@ commands (see [Commands](plan-and-verdict.md#commands)).
   "version": "<build time as YYYYMMDDTHHMMSSZ>",
   "runtime": { "selector": "npm:2026.9.9", "resolved": "<exact version and digest>" },
   "definition": { "path": "<the file given to --definition>", "sha256": "<its hash>" },
-  "env": { "name": "<durable env name>", "export": "<path to the .ocm-env.tar>", "includeState": true, "sha256": "<hash>" },
+  "env": { "name": "<durable env name>", "root": "<original environment root>", "export": "<path to the .ocm-env.tar>", "includeState": true, "sha256": "<hash>" },
   "doctor": "<Doctor output after the build>",
   "traits": {
     "<trait id>": { "keys": { "<key>": "<value>" }, "checkedAt": "<time>" }
@@ -161,7 +161,8 @@ kova persona show   --persona <manifest> --json
   Its output directory must be empty. The generated environment name begins with
   `kova-persona-`. Failed builds remove their incomplete environment; a successful
   build keeps it protected and stopped. Cleanup failure is reported with the
-  affected environment name.
+  affected environment name. SIGINT and SIGTERM stop new work and await cleanup
+  of the owned Gateway, mock provider and incomplete environment.
 - `verify` checks the export's hash, imports it into a clone, runs every check
   of the definition the manifest records on the clone, and destroys the clone. It
   rebinds the saved mock provider's loopback URL while retaining the model defaults
@@ -218,7 +219,10 @@ receipt. Definition and export paths are absolute when built; readers also accep
 paths relative to the manifest. Each check prints exactly its declared keys as
 strings. A check that exits unsuccessfully, prints malformed JSON, omits a key or
 returns an unsafe value refuses the build. Clone verification compares stable
-identifiers with the manifest; OCM may remap environment-local paths on import.
+identifiers with the manifest. For absolute keys inside `env.root`, verification
+changes only that root to the imported environment root and compares the remaining
+path. Other keys must match exactly. Older manifests without `env.root` are accepted
+only when they contain no absolute keys.
 
 ## Maintenance
 

@@ -15,6 +15,8 @@ const shutdownTerminationGraceMs = 1000;
 const redactionMarker = "[REDACTED]";
 const shutdownSignals = ["SIGHUP", "SIGINT", "SIGQUIT", "SIGTERM"];
 const activeDetachedChildren = new Set();
+const cleanupChildren = new Set();
+const shutdownScopes = new Set();
 const shutdownSignalHandlers = new Map(
   shutdownSignals.map((signal) => [signal, () => {
     void forwardShutdownSignal(signal);
@@ -31,6 +33,25 @@ export function runWithCommandEnv(env, callback) {
     },
     callback
   );
+}
+
+export async function runWithShutdownScope(callback) {
+  const controller = new AbortController();
+  if (shutdownInProgress) controller.abort(new Error("process is shutting down"));
+  let finish;
+  const settled = new Promise((resolve) => { finish = resolve; });
+  const scope = { controller, settled };
+  shutdownScopes.add(scope);
+  installShutdownHandlers();
+  try {
+    return await callback(controller.signal);
+  } finally {
+    shutdownScopes.delete(scope);
+    finish();
+    if (activeDetachedChildren.size === 0 && shutdownScopes.size === 0 && !shutdownInProgress) {
+      uninstallShutdownHandlers();
+    }
+  }
 }
 
 export function checkCommand(command, args, options = {}) {
@@ -90,7 +111,7 @@ export function runCommand(command, options = {}) {
       stdio: accountCpu ? ["ignore", "pipe", "pipe", "ipc"] : ["ignore", "pipe", "pipe"],
       detached: process.platform !== "win32"
     });
-    const stopTrackingChild = trackDetachedChild(child);
+    const stopTrackingChild = trackDetachedChild(child, options.shutdownCleanup === true);
 
     const createSampler = () => options.resourceSample
       ? startResourceSampler(child.pid, {
@@ -252,11 +273,12 @@ export function spawnOwnedProcess(command, args, options = {}) {
   };
 }
 
-function trackDetachedChild(child) {
+function trackDetachedChild(child, cleanup = false) {
   if (process.platform === "win32") {
     return () => {};
   }
   activeDetachedChildren.add(child);
+  if (cleanup) cleanupChildren.add(child);
   installShutdownHandlers();
   let tracked = true;
   return () => {
@@ -265,7 +287,8 @@ function trackDetachedChild(child) {
     }
     tracked = false;
     activeDetachedChildren.delete(child);
-    if (activeDetachedChildren.size === 0 && !shutdownInProgress) {
+    cleanupChildren.delete(child);
+    if (activeDetachedChildren.size === 0 && shutdownScopes.size === 0 && !shutdownInProgress) {
       uninstallShutdownHandlers();
     }
   };
@@ -298,7 +321,9 @@ async function forwardShutdownSignal(signal) {
     return;
   }
   shutdownInProgress = true;
-  const children = [...activeDetachedChildren];
+  const scopes = [...shutdownScopes];
+  for (const scope of scopes) scope.controller.abort(new Error(`interrupted by ${signal}`));
+  const children = [...activeDetachedChildren].filter((child) => !scopes.length || !cleanupChildren.has(child));
   for (const child of children) {
     try {
       signalProcessTree(child, signal);
@@ -313,7 +338,9 @@ async function forwardShutdownSignal(signal) {
       // Fall through to the forced pass.
     }
   }));
-  const forcedChildren = forceKillActiveChildren();
+  const forcedChildren = scopes.length
+    ? forceKillChildren(children.filter((child) => activeDetachedChildren.has(child)))
+    : forceKillActiveChildren();
   await Promise.all(forcedChildren.map(async (child) => {
     try {
       await waitForProcessTreeExit(child, shutdownTerminationGraceMs);
@@ -321,11 +348,19 @@ async function forwardShutdownSignal(signal) {
       // The exit hook makes one final synchronous kill pass.
     }
   }));
+  if (scopes.length) {
+    await Promise.all(scopes.map((scope) => scope.settled));
+    forceKillActiveChildren();
+    await new Promise((resolve) => setImmediate(resolve));
+  }
   process.exit(signalExitCode(signal));
 }
 
 function forceKillActiveChildren() {
-  const children = [...activeDetachedChildren];
+  return forceKillChildren([...activeDetachedChildren]);
+}
+
+function forceKillChildren(children) {
   for (const child of children) {
     try {
       signalProcessTree(child, "SIGKILL");

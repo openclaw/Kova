@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtemp, readFile, writeFile, rm, access } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, rm, access, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { spawnSync } from "node:child_process";
+import { join, dirname } from "node:path";
+import { spawn, spawnSync } from "node:child_process";
 import { loadCatalogue, parseCatalogueCommand } from "../src/catalogue.mjs";
 import { loadDefinition, validateDefinition, resolveCommand, readKeys } from "../src/persona/definition.mjs";
 import { createForegroundGateway } from "../src/persona/gateway.mjs";
@@ -56,24 +56,42 @@ async function fixture(t) {
   const path = join(root, "definition.json");
   await writeFile(path, JSON.stringify(definition));
   const calls = [];
-  let failTrait = null, failDestroy = false;
+  let failTrait = null, failDestroy = false, failProvision = null, occupied = false;
+  let keysFor = (trait) => foundationKeys[trait];
+  const environments = new Set(), runs = new Set();
+  t.after(async () => { for (const run of runs) await rm(run, { recursive: true, force: true }); });
   const execute = async (command) => {
     const tokens = parseCatalogueCommand(command).tokens;
     calls.push(tokens);
     let stdout = tokens[0] === "cat" ? "12345\n" : "";
+    const operation = tokens[0] === "ocm" && tokens[1] === "env" ? tokens[2] : null;
+    if (operation === "create" || operation === "import") {
+      const env = operation === "create" ? tokens[3] : tokens[tokens.indexOf("--name") + 1];
+      environments.add(env);
+      if (operation === "import") runs.add(dirname(tokens[3]));
+      if (operation === failProvision) return { status: 1, stderr: "planted post-commit provisioning failure" };
+    }
+    if (operation === "destroy") {
+      if (failDestroy) return { status: 1, stderr: "planted cleanup refusal" };
+      environments.delete(tokens[3]);
+    }
     if (tokens[0] === "ocm" && tokens[1] === "start") stdout = JSON.stringify({ envName: tokens[2], defaultRuntime: "test-runtime", defaultLauncher: null });
-    if (tokens[0] === "ocm" && tokens[1] === "env" && tokens[2] === "show") stdout = JSON.stringify({ root, stateDir: join(root, ".openclaw") });
+    if (operation === "show") {
+      if (!environments.has(tokens[3]) && !occupied) return { status: 1, stderr: `ocm: environment "${tokens[3]}" does not exist` };
+      const envRoot = join(root, "envs", tokens[3]);
+      stdout = JSON.stringify({ name: tokens[3], root: envRoot, stateDir: join(envRoot, ".openclaw") });
+    }
     if (tokens[0] === "ocm" && tokens[1] === "runtime" && tokens[2] === "show") stdout = JSON.stringify({ name: "test-runtime", sourceKind: "installed", releaseVersion: "2026.9.9", sourceIntegrity: `sha512-${Buffer.alloc(64).toString("base64")}` });
     if (tokens[0] === "ocm" && tokens[1] === "env" && tokens[2] === "export") await writeFile(tokens[tokens.indexOf("--output") + 1], "test export bytes");
     if (tokens[1]?.endsWith("check-foundation.mjs")) {
       const trait = tokens[tokens.indexOf("--trait") + 1];
       if (trait === failTrait) return { status: 1, stderr: "planted missing content" };
-      stdout = JSON.stringify(foundationKeys[trait]);
+      const env = tokens[tokens.indexOf("--env") + 1];
+      stdout = JSON.stringify(keysFor(trait, join(root, "envs", env)));
     }
-    if (tokens[0] === "ocm" && tokens[2] === "destroy" && failDestroy) return { status: 1, stderr: "planted cleanup refusal" };
     return { command, status: 0, stdout, stderr: "" };
   };
-  return { root, path, calls, execute, gatewayFactory: (env) => ({ start: async () => { calls.push(["foreground-start", env]); }, stop: async () => { calls.push(["foreground-stop", env]); } }), fail: (trait) => { failTrait = trait; }, failCleanup: () => { failDestroy = true; } };
+  return { root, path, calls, execute, environments, keysFor: (fn) => { keysFor = fn; }, failProvision: (kind) => { failProvision = kind; }, occupy: () => { occupied = true; }, gatewayFactory: (env) => ({ assertOwned: async () => {}, start: async () => { calls.push(["foreground-start", env]); }, stop: async () => { calls.push(["foreground-stop", env]); } }), fail: (trait) => { failTrait = trait; }, failCleanup: () => { failDestroy = true; } };
 }
 
 test("build exports only checked content, verifies an import and keeps only the durable environment", async (t) => {
@@ -153,10 +171,12 @@ test("foreground Gateway restarts and failed health checks stop their owned proc
   const root = await mkdtemp(join(tmpdir(), "kova-persona-gateway-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const pidFile = join(root, "pid");
-  const call = async () => ({ stdout: JSON.stringify({ gatewayPort: port }) });
+  const configPath = join(root, ".openclaw", "openclaw.json");
+  const call = async () => ({ stdout: JSON.stringify({ root, configPath, gatewayPort: port }) });
+  const connect = async () => ({ client: { request: async () => ({ path: configPath }), close() {} } });
   const source = 'require("fs").writeFileSync(process.argv[2],String(process.pid));require("http").createServer((q,s)=>{s.writeHead(q.url==="/readyz"?Number(process.argv[3]):200);s.end("health")}).listen(Number(process.argv[1]),"127.0.0.1")';
   const invocation = (status) => () => ({ file: process.execPath, args: ["-e", source, String(port), pidFile, String(status)], env: process.env });
-  const gateway = createForegroundGateway("kova-persona-fixture", call, { invocation: invocation(200), timeoutMs: 5000 });
+  const gateway = createForegroundGateway("kova-persona-fixture", call, { connect, invocation: invocation(200), timeoutMs: 5000 });
   t.after(() => gateway.stop());
   await gateway.start();
   const first = Number(await readFile(pidFile, "utf8"));
@@ -164,11 +184,161 @@ test("foreground Gateway restarts and failed health checks stop their owned proc
   const second = Number(await readFile(pidFile, "utf8"));
   assert.notEqual(first, second);
   assert.throws(() => process.kill(first, 0), { code: "ESRCH" });
+  process.kill(second, "SIGTERM");
+  for (const deadline = Date.now() + 5000; Date.now() < deadline;) {
+    try { process.kill(second, 0); } catch (error) { if (error.code === "ESRCH") break; throw error; }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  await assert.rejects(gateway.assertOwned(), /owned Gateway exited/);
   await gateway.stop();
   assert.throws(() => process.kill(second, 0), { code: "ESRCH" });
-  const unhealthy = createForegroundGateway("kova-persona-fixture", call, { invocation: invocation(503), timeoutMs: 1000 });
+  const wrong = createForegroundGateway("kova-persona-fixture", call, { connect: async () => ({ client: { request: async () => ({ path: "/another/environment/openclaw.json" }), close() {} } }), invocation: invocation(200), timeoutMs: 5000 });
+  t.after(() => wrong.stop());
+  await assert.rejects(wrong.start(), /does not belong/);
+  const wrongPid = Number(await readFile(pidFile, "utf8"));
+  assert.throws(() => process.kill(wrongPid, 0), { code: "ESRCH" });
+  const unhealthy = createForegroundGateway("kova-persona-fixture", call, { connect, invocation: invocation(503), timeoutMs: 1000 });
   t.after(() => unhealthy.stop());
   await assert.rejects(unhealthy.start(), /did not become healthy/);
   const failed = Number(await readFile(pidFile, "utf8"));
   assert.throws(() => process.kill(failed, 0), { code: "ESRCH" });
 });
+
+for (const operation of ["create", "import"]) {
+  test(`a late ${operation} error reconciles and removes the environment`, async (t) => {
+    const f = await fixture(t), out = join(f.root, "failed");
+    f.failProvision(operation);
+    await assert.rejects(buildPersona(f.path, out, { executeBuild: true, execute: f.execute, gatewayFactory: f.gatewayFactory }), /post-commit provisioning failure/);
+    assert.equal(f.environments.size, 0);
+    await assert.rejects(access(join(out, "persona.json")));
+  });
+}
+
+test("an existing generated name is refused without destroying that environment", async (t) => {
+  const f = await fixture(t); f.occupy();
+  await assert.rejects(buildPersona(f.path, join(f.root, "occupied"), { executeBuild: true, execute: f.execute, gatewayFactory: f.gatewayFactory }), /already exists/);
+  assert.ok(!f.calls.some((c) => c[0] === "ocm" && ["create", "destroy", "protect"].includes(c[2])));
+});
+
+test("absolute keys preserve their relative identity across import", async (t) => {
+  const f = await fixture(t), out = join(f.root, "paths");
+  const pathKeys = (leaf) => (trait, root) => trait === "agents-three-configured"
+    ? { ...foundationKeys[trait], mainAgentId: leaf.startsWith("/") ? leaf : join(root, leaf) }
+    : foundationKeys[trait];
+  f.keysFor(pathKeys("file-a"));
+  await buildPersona(f.path, out, { executeBuild: true, execute: f.execute, gatewayFactory: f.gatewayFactory });
+  f.keysFor(pathKeys("file-b"));
+  await assert.rejects(verifyPersona(join(out, "persona.json"), { execute: f.execute, gatewayFactory: f.gatewayFactory }), /mainAgentId differs/);
+  f.keysFor((trait) => foundationKeys[trait]);
+  await assert.rejects(verifyPersona(join(out, "persona.json"), { execute: f.execute, gatewayFactory: f.gatewayFactory }), /mainAgentId differs/);
+  const manifest = JSON.parse(await readFile(join(out, "persona.json"), "utf8"));
+  delete manifest.env.root;
+  await writeFile(join(out, "persona.json"), JSON.stringify(manifest));
+  f.calls.length = 0;
+  await assert.rejects(verifyPersona(join(out, "persona.json"), { execute: f.execute, gatewayFactory: f.gatewayFactory }), /require env.root/);
+  assert.equal(f.calls.length, 0);
+});
+
+test("an unrelated listening Gateway is rejected without stopping it", async (t) => {
+  const { createServer } = await import("node:http");
+  const server = createServer((req, res) => { res.writeHead(200); res.end("ready"); });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const port = server.address().port;
+  let spawned = false;
+  const gateway = createForegroundGateway("kova-persona-fixture", async () => ({ stdout: JSON.stringify({ gatewayPort: port }) }), { invocation: () => { spawned = true; throw new Error("must not spawn"); } });
+  await assert.rejects(gateway.start(), /already has a listener/);
+  assert.equal(spawned, false);
+  assert.equal(server.listening, true);
+});
+
+for (const mode of ["build", "verify", "verify-cleanup"]) {
+  test(`SIGTERM awaits ${mode} environment and provider cleanup between commands`, async (t) => {
+    const f = await fixture(t), built = join(f.root, "built");
+    await buildPersona(f.path, built, { executeBuild: true, execute: f.execute, gatewayFactory: f.gatewayFactory });
+    const root = join(f.root, `interrupt-${mode}`);
+    await mkdir(root);
+    const driver = `
+      import { buildPersona, verifyPersona } from ${JSON.stringify(new URL("../src/persona/lifecycle.mjs", import.meta.url).href)};
+      import { parseCatalogueCommand } from ${JSON.stringify(new URL("../src/catalogue.mjs", import.meta.url).href)};
+      import { runCommand, quoteShell } from ${JSON.stringify(new URL("../src/commands.mjs", import.meta.url).href)};
+      import { writeFile, rm } from 'node:fs/promises';
+      import { dirname, join } from 'node:path';
+      import { setTimeout as sleep } from 'node:timers/promises';
+      const [mode, input, root] = process.argv.slice(1);
+      let exists = false, name, waiting = false;
+      const execute = async (command, options) => {
+        const c = parseCatalogueCommand(command).tokens;
+        const op = c[0] === 'ocm' && c[1] === 'env' ? c[2] : null;
+        let stdout = c[0] === 'cat' ? '12345' : '';
+        if (op === 'create' || op === 'import') {
+          exists = true; name = op === 'create' ? c[3] : c[c.indexOf('--name') + 1];
+          await writeFile(join(root, 'state.json'), JSON.stringify({name}));
+          if (op === 'import') await writeFile(join(root, 'copy.json'), JSON.stringify({run: dirname(c[3])}));
+        }
+        if (op === 'show') {
+          if (!exists) return {status:1, stderr:'ocm: environment "' + c[3] + '" does not exist'};
+          stdout = JSON.stringify({name, root});
+        }
+        if (c[1] === 'start') stdout = JSON.stringify({envName:c[2], defaultRuntime:'test-runtime'});
+        if (c[1] === 'runtime' && c[2] === 'show') stdout = JSON.stringify({name:'test-runtime',sourceKind:'installed',releaseVersion:'2026.9.9',sourceIntegrity:'sha512-' + Buffer.alloc(64).toString('base64')});
+        if (c[1]?.endsWith('check-foundation.mjs')) stdout = JSON.stringify(${JSON.stringify(foundationKeys)}[c[c.indexOf('--trait') + 1]]);
+        if (mode !== 'verify-cleanup' && !waiting && (c.includes('models.providers.openai.baseUrl') || c.some(v => v.endsWith('configure-openclaw-mock-auth.mjs')))) {
+          waiting = true;
+          await writeFile(join(root, 'waiting'), 'yes');
+          await sleep(400);
+        }
+        if (op === 'destroy') {
+          if (mode === 'verify-cleanup') {
+            const script = "setTimeout(()=>require('fs').writeFileSync(" + JSON.stringify(join(root, 'cleanup-child-finished')) + ",'done'),400)";
+            const pending = runCommand(quoteShell(process.execPath) + ' -e ' + quoteShell(script), options);
+            await writeFile(join(root, 'waiting'), 'yes');
+            const result = await pending;
+            if (result.status !== 0) return result;
+          } else await sleep(200);
+          exists = false;
+          await rm(join(root, 'state.json'));
+          await writeFile(join(root, 'destroyed'), 'yes');
+        }
+        if (c.some(v => v.endsWith('stop-mock-ai-provider.mjs'))) {
+          await sleep(100);
+          await writeFile(join(root, 'provider-stopped'), 'yes');
+        }
+        return {status:0,stdout,stderr:''};
+      };
+      const options = {execute, gatewayFactory: () => ({start:async()=>{},stop:async()=>{},assertOwned:async()=>{}})};
+      try {
+        if (mode === 'build') await buildPersona(input, join(root, 'output'), {...options,executeBuild:true});
+        else await verifyPersona(input, options);
+      } catch (error) { process.stderr.write(error.message); process.exitCode = 1; }
+    `;
+    const child = spawn(process.execPath, ["--input-type=module", "-e", driver, mode, mode === "build" ? f.path : join(built, "persona.json"), root], { stdio: ["ignore", "pipe", "pipe"] });
+    t.after(() => child.kill("SIGKILL"));
+    let output = "";
+    child.stdout.on("data", (chunk) => { output += chunk; });
+    child.stderr.on("data", (chunk) => { output += chunk; });
+    const closed = new Promise((resolve, reject) => { child.once("error", reject); child.once("close", (code, signal) => resolve({ code, signal })); });
+    let waiting = false;
+    for (const deadline = Date.now() + 10000; Date.now() < deadline;) {
+      try { await access(join(root, "waiting")); waiting = true; break; } catch (error) { if (error.code !== "ENOENT") throw error; }
+      if (child.exitCode !== null || child.signalCode !== null) break;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.ok(waiting, output);
+    child.kill("SIGTERM");
+    let timer;
+    const result = await Promise.race([closed, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("interrupted persona did not finish cleanup")), 10000); })]).finally(() => clearTimeout(timer));
+    assert.equal(result.code, 143, output);
+    await access(join(root, "destroyed"));
+    await access(join(root, "provider-stopped"));
+    await assert.rejects(access(join(root, "state.json")));
+    if (mode !== "build") {
+      const copy = JSON.parse(await readFile(join(root, "copy.json"), "utf8"));
+      await assert.rejects(access(copy.run));
+      if (mode === "verify-cleanup") await access(join(root, "cleanup-child-finished"));
+    } else {
+      await assert.rejects(access(join(root, "output", "persona.json")));
+      await assert.rejects(access(join(root, "output", ".building")));
+    }
+  });
+}

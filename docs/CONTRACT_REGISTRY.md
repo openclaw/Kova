@@ -167,7 +167,7 @@ an environment. The initial definition has five foundation traits and no credent
 `kova persona build` writes `persona.json` with
 `schema: "kova.verify.persona-manifest.v1"`, persona id, UTC build version, runtime
 selector and exact version with npm integrity, definition path and SHA-256,
-durable environment name, export path, `includeState: true` and SHA-256, Doctor
+durable environment name and source `root`, export path, `includeState: true` and SHA-256, Doctor
 output, and a trait map whose entries contain `keys` and `checkedAt`. Keys are strings restricted to
 letters, digits and `.`, `_`, `-`, `:`, `/`, `@`.
 
