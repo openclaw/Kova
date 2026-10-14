@@ -105,7 +105,7 @@ test("mock table commands emit their fixed success shape and JSON product errors
   assert.equal(result.stderr, "");
 });
 
-test("session connection failures keep timeout and ordinary errors distinct in the JSON protocol", async (t) => {
+test("session connection and request failures keep timeout and product errors distinct in the JSON protocol", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "kova-persona-connect-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const bin = join(root, "bin"); await mkdir(bin);
@@ -125,6 +125,39 @@ test("session connection failures keep timeout and ordinary errors distinct in t
     const result = spawnSync(process.execPath, ["--input-type=module", "-e", code], { env: { ...env, KOVA_TEST_CONNECT_MESSAGE: message }, encoding: "utf8", timeout: 10000 });
     assert.equal(result.status, status, result.stdout || result.stderr);
     assert.deepEqual(JSON.parse(result.stdout), { error: { code: errorCode, message } });
+    assert.equal(result.stderr, "");
+  }
+  const requestCode = `
+    import { DirectGatewayRpcClient } from ${JSON.stringify(new URL("../support/openclaw-runtime.mjs", import.meta.url).href)};
+    import { withSessionClient } from ${JSON.stringify(new URL("../support/persona/session-content.mjs", import.meta.url).href)};
+    import { runEntry } from ${JSON.stringify(new URL("../support/persona/common.mjs", import.meta.url).href)};
+    let closed = false;
+    DirectGatewayRpcClient.prototype.connect = async function () {
+      this.ws = {
+        readyState: WebSocket.OPEN,
+        close() { closed = true; },
+        send: (payload) => {
+          if (!process.env.KOVA_TEST_REQUEST_MESSAGE) return;
+          const {id} = JSON.parse(payload);
+          void this.handleMessage({data: JSON.stringify({type: "res", id, ok: false,
+            error: {code: "INVALID_REQUEST", message: process.env.KOVA_TEST_REQUEST_MESSAGE}})});
+        }
+      };
+    };
+    const request = DirectGatewayRpcClient.prototype.request;
+    DirectGatewayRpcClient.prototype.request = function (method, params) {
+      return request.call(this, method, params, {timeoutMs: 5});
+    };
+    await runEntry({}, ({env}) => withSessionClient(env, (rpc) => rpc({method: "sessions.patch", params: {key: "agent:main:fixture", model: "openai/timeout"}})), ["--env", "fixture"]);
+    if (!closed) throw new Error("request failure did not close its client");
+  `;
+  for (const message of ["", "model not allowed: openai/timeout", "model not allowed: openai/ordinary", "gateway direct RPC request timeout for sessions.patch"]) {
+    const result = spawnSync(process.execPath, ["--input-type=module", "-e", requestCode], { env: { ...env, KOVA_TEST_REQUEST_MESSAGE: message }, encoding: "utf8", timeout: 10000 });
+    assert.equal(result.status, message ? 1 : 3, result.stdout || result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), { error: {
+      code: message ? "product" : "timeout",
+      message: message ? `sessions.patch INVALID_REQUEST: ${message}` : "gateway direct RPC request timeout for sessions.patch"
+    } });
     assert.equal(result.stderr, "");
   }
 });

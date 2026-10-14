@@ -26,7 +26,7 @@ export async function withSessionClient(env, operation) {
     return await operation(async (request) => {
       try { return await handle.client.request(request.method, request.params, { timeoutMs: 150000 }); }
       catch (error) {
-        if (/timeout/i.test(error.message)) throw new EntryError(error.message, 3);
+        if (error.message === `gateway direct RPC request timeout for ${request.method}`) throw new EntryError(error.message, 3);
         throw error;
       }
     });
