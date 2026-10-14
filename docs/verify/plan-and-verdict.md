@@ -632,6 +632,8 @@ comparison instead of inventing command results.
 
 A selected state recording requires its `state/` directory even when all
 selected product paths were absent. A missing recording directory is refused.
+Only the phase's selected files/directories contribute state rows or discovered
+IDs; stale unselected state is ignored by both readers.
 SQLite virtual table declarations and their ordinary persisted backing tables
 are compared as data without loading native extensions; virtual modules are
 not invoked. The declaration is addressed by the database path and table name.

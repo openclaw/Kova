@@ -1024,3 +1024,21 @@ test("state ID tokens preserve record-owner value types", async (t) => {
   assert.equal(result.verdict, "breaks"); assert.equal(result.rows.length, 1);
   assert.equal(result.rows[0].baseline, "old"); assert.equal(result.rows[0].change, "new");
 });
+
+test("unselected state cannot supply IDs or rows that hide response differences", async (t) => {
+  for (const selected of [[], ["state:kept"], ["state:files/selected.txt"], ["state:files"]]) {
+    const f = await fixture(t, { phases: [{ id: phaseId, from: "template:sessions", commands: [command], checkpoint: ["responses", ...selected] }], stateIds: [{ path: "files/store.sqlite", table: "records", column: "id", recordKey: "owner" }], copies: Object.fromEntries(names.map(name => [name, { response: { title: name.startsWith("change") ? "new-title" : "old-title" } }])) });
+    for (const name of names) {
+      const path = join(f.directory, name, "checkpoints", phaseId, "state/files"); await mkdir(path, { recursive: true });
+      const db = new DatabaseSync(join(path, "store.sqlite"));
+      try { db.exec("CREATE TABLE records (id TEXT PRIMARY KEY, owner TEXT)"); db.prepare("INSERT INTO records VALUES (?, ?)").run(name.startsWith("change") ? "new-title" : "old-title", "stable-owner"); }
+      finally { db.close(); }
+    }
+    const result = await f.compare();
+    if (selected.includes("state:files")) assert.equal(result.verdict, "good-to-go");
+    else {
+      assert.equal(result.verdict, "breaks");
+      assert.deepEqual(result.rows.map(row => [row.signal, row.at, row.baseline, row.change]), [["responses", "0/title", "old-title", "new-title"]]);
+    }
+  }
+});

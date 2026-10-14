@@ -2,7 +2,7 @@ import { isAbsolute, join, matchesGlob } from "node:path";
 import { createCatalogueResolver, parseCatalogueCommand } from "../catalogue.mjs";
 import { quoteShell } from "../commands.mjs";
 import { canonicalJSON } from "./plan.mjs";
-import { readCommandResponses, readJSON, recordedDirectory, stateFiles } from "./rows.mjs";
+import { checkpointStateFiles, readCommandResponses, readJSON, recordedDirectory } from "./rows.mjs";
 import { createdIds } from "./ids.mjs";
 
 function idPattern(ids) {
@@ -66,7 +66,7 @@ export async function readDeclaredIds(directory, phases, standard, catalogue) {
       if (responses && canonicalJSON(Object.fromEntries(pointers)) !== canonicalJSON(Object.fromEntries(createdIds(responses[index], entry.creates).map(({ pointer, value }) => [pointer, value])))) throw new Error(`${phase.id}: createdIds do not match the selected response`);
       for (const [pointer, value] of pointers) if (!candidates.has(value)) candidates.set(value, `<id:${phase.id}/${index}${pointer}>`);
     }
-    for await (const file of stateFiles(join(checkpoint, "state"), standard)) {
+    for await (const file of checkpointStateFiles(join(checkpoint, "state"), phase, standard)) {
       if (file.kind !== "sqlite") continue;
       for (const declaration of standard.stateIds.filter((item) => matchesGlob(file.path, item.path) && item.table === file.table)) {
         for (const row of file.rows) {
