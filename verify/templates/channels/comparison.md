@@ -6,7 +6,7 @@ Date: 2026-10-13
 State: reconciled with a known shortfall after the permitted rerun.
 The procedure's nine-tenths acceptance was not met.
 
-Union: 437 entry points, 895 conditions, 267 current condition-bearing document headings.
+Union: 438 entry points, 895 conditions, 267 current condition-bearing document headings.
 The recorded final-round reconciliation contained 645 conditions and 258
 condition-bearing headings. Later reconciliation adds 250 in-scope current
 conditions. These additions receive no extra discovery credit. Unsupported
@@ -22,8 +22,8 @@ original IDs and credit; missing observations affect planned coverage.
 |---|---|---|---|
 | 1 | 1 | 317/334 (94.9%) | 214/245 (87.3%) |
 | 1 | 2 | 297/334 (88.9%) | 227/245 (92.7%) |
-| 2 | 1 | 399/437 (91.3%) | 246/258 (95.3%) |
-| 2 | 2 | 379/437 (86.7%) | 248/258 (96.1%) |
+| 2 | 1 | 399/438 (91.1%) | 246/258 (95.3%) |
+| 2 | 2 | 379/438 (86.5%) | 248/258 (96.1%) |
 
 An entry point is found when a run lists it, placed or excluded with a reason. The recorded sendAttachment action is retained as excluded compatibility evidence: iMessage advertises upload-file instead. All four recorded runs named both spellings, so this changes placement only and preserves their separate historical discovery records. Source inspection moved 36 non-executable search matches from placed to excluded internal evidence, including 17 additional records identified by checking every one of the 116 code-search matches that remained placed. Each recorded discovery remains counted for the run that listed it, so the union and all discovery shares are unchanged.
 Equivalent names identify the same entry point. A combined entry receives credit
@@ -52,7 +52,7 @@ literals, with the sentence-by-sentence rule and clarified bounds. The public
 phase, command and reconciliation requirements from
 [the derivation procedure](../../../docs/verify/derive-area-template.md) were
 applied when combining the results. Both runs passed the heading measure. The
-second run's 86.7% entry-point share remains below nine tenths. Historical
+second run's 86.5% entry-point share remains below nine tenths. Historical
 procedure versions are identified by these recorded changes; immutable revision
 hashes were not retained for them.
 
@@ -119,7 +119,7 @@ Replacing one HTTP family with three methods adds two entries to each round's
 corrected inventory. Round 1 loses its former generic-family credit for each run;
 round 2 retains the first run's credit count and adds one for the second. These
 figures supersede 318/332 and 298/332, and 399/435 and 378/435. GET is a source-review
-addition with no run credit. The final inventory has 312 placed and 125 excluded
+addition with no run credit. The final inventory has 313 placed and 125 excluded
 entries. This is an accounting correction to recorded inputs, without a new
 independent derivation. Both rounds retain the stated acceptance shortfall.
 
@@ -143,3 +143,5 @@ final-round numerators: 592/895 (66.1%) and 590/895 (65.9%). The historical
 645-condition comparison, entry-point shares and per-round condition-heading
 acceptance shares above remain unchanged. Planned coverage is a separate
 measure in coverage.md.
+
+The channel configuration Advanced settings disclosure is one named control with show and hide states. Both runs in round 1 explicitly listed it, so their existing 334-entry comparison and discovery counts remain unchanged. Neither final-round run listed it: generic config fields, the separate Nostr profile advanced toggle and excluded app-shell settings do not establish discovery of this disclosure. Restoring it adds one placed entry to the current inventory, with no final-round credit. The current union is 438 entries, 313 placed and 125 excluded; round 2 entry shares are 399/438 (91.1%) and 379/438 (86.5%), superseding 399/437 (91.3%) and 379/437 (86.7%). The recorded source inventories, per-round condition-heading denominators and known acceptance shortfall are unchanged. No new derivation run was performed.
