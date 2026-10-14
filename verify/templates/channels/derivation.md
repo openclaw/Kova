@@ -210,7 +210,7 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | --- | --- | --- | --- | --- |
 | 1 | Channel account added on a running Gateway, applied by hot reload | docs/channels/index.md "Which channel should I connect first?"; docs/cli/channels.md "Add / remove accounts" | event | channel-telegram-shim, channels-test-accounts |
 | 2 | Bot joins an allowed group and posts one room introduction | docs/channels/index.md "Group join introductions"; docs/gateway/config-channels/personal-messaging.md "Telegram"; docs/gateway/config-channels/personal-messaging.md "LINE"; docs/gateway/config-channels/community-chat.md "Discord"; docs/gateway/config-channels/community-chat.md "Matrix"; docs/gateway/config-channels/workplace-chat.md "Slack" | event | channel-group-joinable, channel-groups-mixed |
-| 3 | Join introductions turned off (joinIntro false) | docs/channels/index.md "Group join introductions" | ambient | config-join-intro-off, channel-groups-mixed |
+| 3 | Join introductions turned off per channel or account (joinIntro false) | docs/channels/index.md "Group join introductions" | ambient | config-join-intro-off, channel-groups-mixed |
 | 4 | Room history unavailable at join, introduced from metadata only | docs/channels/index.md "Group join introductions" | ambient | channel-group-joinable, channel-groups-mixed |
 | 5 | Discord join with no qualifying text channel, skip recorded | docs/channels/index.md "Group join introductions"; docs/gateway/config-channels/community-chat.md "Discord" | event | channel-discord-fixture |
 | 6 | Durable 90-day join-introduction claim, not repeated on reconnect or restart | docs/channels/index.md "Group join introductions" | ambient | channel-group-introduced, channel-groups-mixed |
@@ -220,18 +220,18 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 10 | Introduction turn on untrusted room content: no tools, 60-second bound | docs/channels/index.md "Group join introductions" | event | channel-group-joinable, channel-groups-mixed |
 | 11 | Join into a room the access policy does not allow, no introduction | docs/channels/index.md "Group join introductions" | event | channel-group-joinable, channel-groups-mixed |
 | 12 | Telegram reply with markdown image syntax converted to media reply | docs/channels/index.md "Delivery notes" | ambient | mock-provider-markdown-reply |
-| 13 | Slack multi-person DM routed as a group chat | docs/channels/index.md "Delivery notes" | ambient | none |
-| 14 | Channel plugin installed on demand, loaded only when the channel is active (WhatsApp) | docs/channels/index.md "Delivery notes" | ambient | config-channel-not-installed |
+| 13 | Slack multi-person DMs follow group routing policy mention rules and group-session behavior | docs/channels/index.md "Delivery notes" | ambient | none |
+| 14 | WhatsApp setup is shown before its plugin package is installed and the channel loads the package only when active | docs/channels/index.md "Delivery notes" | ambient | config-channel-not-installed |
 | 15 | Two bots replying to each other, stopped by bot loop protection | docs/channels/index.md "Delivery notes"; docs/channels/bot-loop-protection.md "Bot loop protection"; docs/channels/bot-loop-protection.md "Defaults"; docs/gateway/config-channels/community-chat.md "Discord" | event | channel-bot-peer |
 | 16 | Bot-authored inbound accepted (allowBots) | docs/channels/bot-loop-protection.md "Bot loop protection"; docs/channels/bot-loop-protection.md "Internal agent group rounds" | ambient | channel-bot-peer |
 | 17 | Ambient room events: unmentioned room chatter recorded as quiet context | docs/channels/index.md "Delivery notes"; docs/channels/groups.md "Groups"; docs/channels/ambient-room-events.md "Ambient room events"; docs/channels/ambient-room-events.md "Recommended setup"; docs/concepts/messages.md "Silent replies"; docs/gateway/config-channels/mention-gating-and-history.md "Group chat mention gating" | ambient | channel-group-ambient, channel-ambient-room |
-| 18 | Several channels running at once, each chat routed on its own | docs/channels/index.md "Notes"; docs/cli/message.md "Channel selection"; docs/cli/pairing.md "pairing list"; docs/channels/channel-routing.md "Channels & routing" | ambient | channels-test-accounts |
+| 18 | Several channels running at once, each chat routed on its own | docs/channels/index.md "Notes"; docs/cli/message.md "Channel selection"; docs/cli/pairing.md "pairing list"; docs/channels/channel-routing.md "Channels & routing"; docs/cli/message.md "Broadcast" | ambient | channels-test-accounts |
 | 19 | DM pairing and allowlists enforced on unknown senders | docs/channels/index.md "Notes"; docs/gateway/config-channels/shared-policies.md "DM and group access" | ambient | channels-test-accounts |
 | 20 | DM scope main: DMs from every channel converge on the main session | docs/channels/channel-routing.md "Channels & routing"; docs/channels/groups.md "Session keys"; docs/channels/channel-routing.md "Session key shapes (examples)" | ambient | session-main-rolling |
 | 21 | Several accounts on one channel with an explicit default account | docs/channels/channel-routing.md "Key terms"; docs/cli/pairing.md "Commands"; docs/gateway/config-channels/shared-policies.md "Multi-account (all channels)" | ambient | channel-multi-account, channel-accounts-multiple |
 | 22 | Several accounts on one channel without a default, first normalized id used | docs/channels/channel-routing.md "Key terms"; docs/gateway/config-channels/personal-messaging.md "WhatsApp"; docs/gateway/config-channels/personal-messaging.md "Telegram" | ambient | channel-multi-account-no-default, channel-accounts-multiple |
 | 23 | Plugin send receipt reporting failure, suppression or dry run leaves stored route unchanged | docs/channels/channel-routing.md "Outbound target prefixes"; docs/cli/message.md "Send" | event | channel-probe-conversations |
-| 24 | Confirmed partial send establishes route, remains a failed delivery and does not mirror content as fully delivered | docs/channels/channel-routing.md "Outbound target prefixes"; docs/cli/message.md "Send"; docs/plugins/sdk-channel-inbound.md "Delivery settlement contract"; docs/plugins/sdk-channel-outbound.md "Progress and preview delivery ownership"; docs/tools/agent-send.md "Behavior" | event | channel-telegram-shim, mock-provider-long-reply, channel-probe-conversations |
+| 24 | Confirmed partial send keeps its accepted message identifier and establishes the route while delivery remains failed with nonzero CLI exit and no fully delivered mirror | docs/channels/channel-routing.md "Outbound target prefixes"; docs/cli/message.md "Send"; docs/plugins/sdk-channel-inbound.md "Delivery settlement contract"; docs/plugins/sdk-channel-outbound.md "Progress and preview delivery ownership"; docs/tools/agent-send.md "Behavior" | event | channel-telegram-shim, mock-provider-long-reply, channel-probe-conversations |
 | 25 | DM scope per-peer | docs/channels/channel-routing.md "Session key shapes (examples)" | ambient | dm-scope-isolated |
 | 26 | DM scope per-channel-peer | docs/channels/channel-routing.md "Session key shapes (examples)"; docs/tools/agent-send.md "Behavior" | ambient | config-dm-scope-per-channel-peer, dm-scope-isolated |
 | 27 | DM scope per-account-channel-peer | docs/channels/channel-routing.md "Session key shapes (examples)" | ambient | config-dm-scope-per-account, dm-scope-isolated |
@@ -489,17 +489,17 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 279 | Channel without live capability checks reports check unavailable | docs/cli/channels.md "Capabilities check" | ambient | channels-test-accounts |
 | 280 | Several directory entries sharing one name, active match preferred | docs/cli/channels.md "Resolve names to IDs" | ambient | channel-discord-fixture |
 | 281 | Message actions, directory lookups and pairing approval select the unique eligible channel when the channel option is omitted | docs/cli/message.md "Channel selection"; docs/cli/directory.md "Common flags"; docs/cli/pairing.md "pairing approve" | ambient | channels-test-accounts |
-| 282 | Gateway-owned message action while the Gateway is unreachable fails | docs/cli/message.md "Channel selection" | event | channels-test-accounts |
-| 283 | Target name missing from directory cache resolved by live lookup | docs/cli/message.md "Target formats (-t, --target)" | event | channel-discord-fixture |
-| 284 | Local message action runs plugin shutdown hooks within 2.5-second budget | docs/cli/message.md "Common flags" | event | channel-probe-conversations, channels-test-accounts |
-| 285 | Plugin disposal pending at exit defers state database drain | docs/cli/message.md "Common flags" | event | channel-probe-conversations, channels-test-accounts |
+| 282 | Gateway-owned message actions require a reachable Gateway while local actions retain local preparation | docs/cli/message.md "Channel selection" | event | channels-test-accounts |
+| 283 | Target name missing from directory cache uses live lookup where the channel supports it | docs/cli/message.md "Target formats (-t, --target)" | event | channel-discord-fixture |
+| 284 | Local message actions run plugin shutdown hooks within 2.5 seconds including after action failure | docs/cli/message.md "Common flags" | event | channel-probe-conversations, channels-test-accounts |
+| 285 | Pending plugin disposal defers state database drain until settlement and preserves unfinished work without another foreground wait | docs/cli/message.md "Common flags" | event | channel-probe-conversations, channels-test-accounts |
 | 286 | Unresolved SecretRef on an unrelated channel does not block a targeted action | docs/cli/message.md "SecretRef resolution"; docs/cli/directory.md "Notes" | ambient | config-channel-secret-missing, channel-accounts-multiple |
-| 287 | Unresolved SecretRef on the selected channel fails closed | docs/cli/message.md "SecretRef resolution"; docs/cli/directory.md "Notes" | ambient | channel-accounts-multiple |
-| 288 | Send suppressed by a message hook, nonzero exit | docs/cli/message.md "Send"; docs/tools/agent-send.md "Behavior" | event | plugin-message-hooks |
+| 287 | Unresolved SecretRef on the selected channel or account fails the message action closed | docs/cli/message.md "SecretRef resolution"; docs/cli/directory.md "Notes" | ambient | channel-accounts-multiple |
+| 288 | Message-hook suppression is explained by the CLI and produces a nonzero exit | docs/cli/message.md "Send"; docs/tools/agent-send.md "Behavior" | event | plugin-message-hooks |
 | 289 | Consecutive photos to Telegram grouped into an album | docs/cli/message.md "Send" | event | channel-telegram-shim |
 | 290 | Presentation chart and table blocks without native support sent as text | docs/cli/message.md "Send"; docs/plugins/message-presentation.md "Core render flow"; docs/plugins/message-presentation.md "Contract" | ambient | channel-interactive-message, channel-probe-conversations |
 | 291 | Telegram Mini App buttons rendered only in private chats | docs/cli/message.md "Send" | ambient | channel-interactive-message |
-| 292 | Broadcast send where a target fails, is suppressed or partially delivers | docs/cli/message.md "Broadcast" | event | channel-group-allowlisted, channel-probe-conversations, channel-accounts-multiple |
+| 292 | A failed suppressed or partially delivered broadcast target causes nonzero exit while every target result is retained | docs/cli/message.md "Broadcast" | event | channel-group-allowlisted, channel-probe-conversations, channel-accounts-multiple |
 | 293 | Empty directory lists name the queried channel and account in text and return an empty JSON array | docs/cli/directory.md "Common flags"; docs/cli/directory.md "Notes" | ambient | channel-probe-conversations, channel-groups-mixed |
 | 294 | Directory results backed by config allowlists and groups | docs/cli/directory.md "Notes" | ambient | channel-group-allowlisted, channel-groups-mixed |
 | 295 | WhatsApp live group listing while another process owns the session | docs/cli/directory.md "Notes" | ambient | none |
@@ -613,17 +613,17 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 403 | typingMode thinking | docs/concepts/typing-indicators.md "Modes" | ambient | config-typing-mode, channel-typing-modes |
 | 404 | typingMode message | docs/concepts/typing-indicators.md "Modes" | ambient | config-typing-mode, channel-typing-modes |
 | 405 | Per-agent typingMode override | docs/concepts/typing-indicators.md "Configuration" | ambient | config-typing-agent-override |
-| 406 | Reply with Markdown styles rendered into each channel's native markup | docs/concepts/markdown-formatting.md "Markdown formatting"; docs/concepts/markdown-formatting.md "Pipeline" | event | channel-discord-fixture, channel-telegram-shim, mock-provider-markdown-reply |
-| 407 | Reply containing raw inline HTML kept or escaped per renderer | docs/concepts/markdown-formatting.md "Pipeline" | event | channel-telegram-shim, mock-provider-markdown-reply, channel-probe-conversations |
+| 406 | Markdown styles render through Telegram, Discord, Slack, Signal, Matrix and WhatsApp native output | docs/concepts/markdown-formatting.md "Markdown formatting"; docs/concepts/markdown-formatting.md "Pipeline" | event | channel-discord-fixture, channel-telegram-shim, mock-provider-markdown-reply |
+| 407 | Raw inline HTML is interpreted by HTML-aware renderers and kept literal or escaped elsewhere | docs/concepts/markdown-formatting.md "Pipeline" | event | channel-telegram-shim, mock-provider-markdown-reply, channel-probe-conversations |
 | 408 | Markdown links rewritten per channel link policy | docs/concepts/markdown-formatting.md "Link policy"; docs/concepts/markdown-formatting.md "Pipeline" | event | channel-discord-fixture, channel-telegram-shim, mock-provider-markdown-reply |
-| 409 | markdown.tables code | docs/concepts/markdown-formatting.md "Table handling" | ambient | mock-provider-markdown-reply, channel-mode-target |
+| 409 | Markdown tables use aligned code blocks for explicit code mode or the fallback default | docs/concepts/markdown-formatting.md "Table handling" | ambient | mock-provider-markdown-reply, channel-mode-target |
 | 410 | markdown.tables bullets | docs/concepts/markdown-formatting.md "Table handling" | ambient | mock-provider-markdown-reply, config-tables-bullets |
-| 411 | markdown.tables block | docs/concepts/markdown-formatting.md "Table handling" | ambient | mock-provider-markdown-reply, config-tables-block |
+| 411 | Markdown block tables stay native when supported and fall back to code otherwise | docs/concepts/markdown-formatting.md "Table handling" | ambient | mock-provider-markdown-reply, config-tables-block |
 | 412 | markdown.tables off | docs/concepts/markdown-formatting.md "Table handling" | ambient | mock-provider-markdown-reply, config-tables-off |
-| 413 | Chunk boundary inside a styled span, style reopened | docs/concepts/markdown-formatting.md "Chunking rules" | event | channel-telegram-shim, mock-provider-long-reply |
+| 413 | Formatted reply chunks reopen inline styles and keep list prefixes and fences whole | docs/concepts/markdown-formatting.md "Chunking rules" | event | channel-telegram-shim, mock-provider-long-reply |
 | 414 | Spoiler markers rendered on Signal and Telegram, plain elsewhere | docs/concepts/markdown-formatting.md "Spoilers" | event | channel-discord-fixture, channel-telegram-shim, mock-provider-markdown-reply |
 | 415 | Details disclosure native with richMessages, flattened elsewhere | docs/concepts/markdown-formatting.md "Collapsible details" | event | channel-telegram-shim, mock-provider-markdown-reply |
-| 416 | Stray <final> markers removed outside code | docs/concepts/markdown-formatting.md "Common gotchas" | event | channel-probe-conversations, mock-provider-markdown-reply |
+| 416 | Stray final markers outside code are removed while enclosed answer text is retained | docs/concepts/markdown-formatting.md "Common gotchas" | event | channel-probe-conversations, mock-provider-markdown-reply |
 | 417 | Slack angle-bracket tokens surviving escaping | docs/concepts/markdown-formatting.md "Common gotchas" | ambient | none |
 | 418 | Channel send transient failure retried per request with jittered backoff | docs/concepts/retry.md "Defaults" | event | channel-telegram-shim |
 | 419 | Composite outbound flow failing mid-way, completed steps not retried | docs/concepts/retry.md "Notes" | event | channel-probe-conversations, channel-telegram-shim |
@@ -640,7 +640,7 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 430 | Producer leases renew through brief Gateway stalls | docs/concepts/retry.md "Durable outbound delivery" | ambient | channel-delivery-queued, channel-probe-conversations |
 | 431 | Control UI reaction on a channel-origin prompt mirrored to the channel | docs/tools/reactions.md "Reactions" | event | channel-probe-conversations |
 | 432 | Reaction with trackToolCalls reused for the status reaction lifecycle | docs/tools/reactions.md "How it works" | event | channel-discord-fixture, mock-provider-tool-calls |
-| 433 | Nextcloud Talk reaction removal rejected (add-only) | docs/tools/reactions.md "Channel behavior" | ambient | none |
+| 433 | Nextcloud Talk reaction removal rejected (add-only) | docs/tools/reactions.md "Channel behavior"; docs/cli/message.md "Core" | ambient | none |
 | 434 | WhatsApp single bot reaction slot, new replaces old | docs/tools/reactions.md "Channel behavior" | event | channel-real-accounts |
 | 435 | Signal inbound reaction notifications (reactionNotifications) | docs/tools/reactions.md "Channel behavior"; docs/gateway/config-channels/personal-messaging.md "Signal"; docs/gateway/config-channels/community-chat.md "Discord"; docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | none |
 | 436 | Telegram react and emoji-list gated by actions.reactions | docs/tools/reactions.md "Channel behavior"; docs/gateway/config-channels/personal-messaging.md "Telegram"; docs/gateway/config-channels/community-chat.md "Discord" | ambient | config-telegram-reactions-off |
@@ -1023,13 +1023,72 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 813 | Live pairing commands require the authenticated local state owner administrative scope and the method owner capability | docs/cli/pairing.md "openclaw pairing" | ambient | none |
 | 814 | Host-thaw deferral and abandonment diagnostics occur once per thaw | docs/cli/channels.md "Per-account recovery (non-destructive)" | event | none |
 | 815 | Time waiting for work admission to reopen counts toward the ten-minute host-thaw retry expiry | docs/cli/channels.md "Per-account recovery (non-destructive)" | event | none |
+| 816 | Message CLI rejects explicit empty or whitespace account selection | docs/cli/message.md "Common flags" | event | none |
+| 817 | Message CLI rejects explicit empty or whitespace channel selection | docs/cli/message.md "Common flags" | event | none |
+| 818 | Discord bodies captions poll context and component text preserve initial indentation while ordinary delivery trims trailing whitespace | docs/cli/message.md "Common flags" | ambient | none |
+| 819 | Legacy message read include-thread input is accepted without changing the read | docs/cli/message.md "Core" | event | none |
+| 820 | Oversized readable join history requests at most 100 messages and keeps a 12000-character snapshot by dropping oldest messages first | docs/channels/index.md "Group join introductions" | ambient | none |
+| 821 | Join introduction account setting overrides channel setting and omission defaults to enabled | docs/channels/index.md "Group join introductions" | ambient | none |
+| 822 | Discord join introduction chooses an eligible system channel before another eligible text channel | docs/channels/index.md "Group join introductions" | event | none |
+| 823 | Direct messages never trigger group join introductions | docs/channels/index.md "Group join introductions" | event | none |
+| 824 | Group join introductions do not require a message mention | docs/channels/index.md "Group join introductions" | event | none |
+| 825 | Channel-prefixed message targets select their owning channel without an explicit channel option | docs/cli/message.md "Channel selection" | ambient | none |
+| 826 | Message channel omission with several configured channels requires disambiguation | docs/cli/message.md "Channel selection" | ambient | none |
+| 827 | Message CLI owner selection uses System Agent then retained legacy or sole configured owner | docs/cli/message.md "Agent ownership" | ambient | none |
+| 828 | Message CLI does not accept an agent override option | docs/cli/message.md "Agent ownership" | event | none |
+| 829 | Message read skips local plugin shutdown hooks | docs/cli/message.md "Common flags" | event | none |
+| 830 | Executable message cleanup has a five-second state-worker drain budget and cleanup warnings preserve the action result | docs/cli/message.md "Common flags" | event | none |
+| 831 | Message SecretRef resolution narrows to selected channel and account and otherwise spans configured channels | docs/cli/message.md "SecretRef resolution" | ambient | none |
+| 832 | Signal group reactions require the original target author identifier | docs/cli/message.md "Core" | event | none |
+| 833 | Removing a named reaction requires an emoji value | docs/cli/message.md "Core" | event | none |
+| 834 | Omitting the reaction emoji clears own reactions where the channel supports it | docs/cli/message.md "Core" | event | none |
+| 835 | Slack exact message reads combine the message timestamp with its thread timestamp for a thread reply | docs/cli/message.md "Core" | event | none |
+| 836 | Teams unpin uses the pin-list resource identifier instead of the chat message identifier | docs/cli/message.md "Core" | event | none |
+| 837 | Matrix permissions are available only with encryption and allowed verification actions under native owner checks | docs/cli/message.md "Core" | ambient | none |
+| 838 | Discord search infers the guild from channel-id when guild-id is omitted | docs/cli/message.md "Core" | ambient | none |
+| 839 | Teams CLI search requires an explicit Graph team and channel scope | docs/cli/message.md "Core" | ambient | none |
+| 840 | Matrix and Teams CLI member lookup requires an explicit room or Graph channel because no current conversation is available | docs/cli/message.md "Member info" | ambient | none |
+| 841 | Reaction listings render labels counts and available users in text while JSON retains the channel result | docs/cli/message.md "Core" | ambient | none |
+| 842 | Slack force-document image delivery preserves original image bytes | docs/cli/message.md "Send" | ambient | none |
+| 843 | Telegram and WhatsApp force-document delivery sends image GIF and video input as documents to avoid compression | docs/cli/message.md "Send" | ambient | none |
+| 844 | Poll option count respects documented minimum and the selected channel maximum | docs/cli/message.md "Poll" | ambient | none |
+| 845 | Telegram poll duration in seconds is bounded from 5 through 604800 | docs/cli/message.md "Poll" | ambient | none |
+| 846 | Telegram Mini App button input accepts the legacy web_app spelling as well as webApp | docs/cli/message.md "Send" | ambient | none |
+| 847 | Repeated message media attachments retain their supplied order | docs/cli/message.md "Send" | event | none |
+| 848 | Inline code in table cells preserves parsed leading and trailing spaces in every enabled table mode | docs/concepts/markdown-formatting.md "Table handling" | event | none |
+| 849 | An all-space inline code span keeps its space content | docs/concepts/markdown-formatting.md "Common gotchas" | event | none |
+| 850 | A non-all-space code span removes one surrounding space only when both ends contain one | docs/concepts/markdown-formatting.md "Common gotchas" | event | none |
+| 851 | Blockquote prefixes remain indivisible at Markdown chunk boundaries | docs/concepts/markdown-formatting.md "Chunking rules" | event | none |
+| 852 | Paragraph blocks inside one list item remain separated in Markdown output | docs/concepts/markdown-formatting.md "Chunking rules" | event | none |
+| 853 | Headings inside a list item remain separated from adjacent blocks | docs/concepts/markdown-formatting.md "Chunking rules" | event | none |
+| 854 | Code blocks inside a list item remain separated from adjacent blocks | docs/concepts/markdown-formatting.md "Chunking rules" | event | none |
+| 855 | Paragraphs nested inside a quoted list item remain separated | docs/concepts/markdown-formatting.md "Chunking rules" | event | none |
+| 856 | Markdown style and link offsets around supplementary Unicode characters use UTF-16 coordinates | docs/concepts/markdown-formatting.md "Pipeline"; docs/concepts/markdown-formatting.md "Common gotchas" | event | none |
+| 857 | Markdown markers and entities inside raw inline HTML attributes remain lexical content | docs/concepts/markdown-formatting.md "Pipeline" | event | none |
+| 858 | Recognized inline HTML comments preserve their embedded Markdown markers and entities | docs/concepts/markdown-formatting.md "Pipeline" | event | none |
+| 859 | Markdown and bare URLs inside HTML container bodies retain normal parsing and linkification | docs/concepts/markdown-formatting.md "Pipeline" | event | none |
+| 860 | Rendered-size chunk decisions include channel escaping and rewritten-link expansion | docs/concepts/markdown-formatting.md "Pipeline"; docs/concepts/markdown-formatting.md "Chunking rules" | event | none |
+| 861 | Matrix selects native block tables when no table-mode override is configured | docs/concepts/markdown-formatting.md "Table handling" | ambient | none |
+| 862 | Mattermost leaves table parsing off when no table-mode override is configured | docs/concepts/markdown-formatting.md "Table handling" | ambient | none |
+| 863 | Signal and WhatsApp select bullet tables when no table-mode override is configured | docs/concepts/markdown-formatting.md "Table handling" | ambient | none |
+| 864 | Telegram selects block tables by default and resolves them according to rich-message capability | docs/concepts/markdown-formatting.md "Table handling" | ambient | none |
+| 865 | Slack bare URLs remain bare instead of being linked a second time | docs/concepts/markdown-formatting.md "Pipeline"; docs/concepts/markdown-formatting.md "Link policy" | event | none |
+| 866 | Signal omits the appended URL when the link label already matches it | docs/concepts/markdown-formatting.md "Link policy" | event | none |
+| 867 | Channel reply guidance advertises collapsible details only on a supporting reply surface | docs/concepts/markdown-formatting.md "Collapsible details" | ambient | none |
+| 868 | Fenced code retains a trailing newline so the closing marker stays on its own line | docs/concepts/markdown-formatting.md "Chunking rules"; docs/concepts/markdown-formatting.md "Common gotchas" | event | none |
+| 869 | Literal final-marker examples inside inline code survive reply cleanup | docs/concepts/markdown-formatting.md "Common gotchas" | event | none |
+| 870 | Literal final-marker examples inside fenced code survive reply cleanup | docs/concepts/markdown-formatting.md "Common gotchas" | event | none |
+| 871 | Nested valid final markers outside code are removed while their enclosed answer text remains | docs/concepts/markdown-formatting.md "Common gotchas" | event | none |
+| 872 | Disjoint Markdown text edits use UTF-16 source coordinates and remap boundaries at and after edit ends | docs/concepts/markdown-formatting.md "Adding or updating a channel formatter" | event | none |
+| 873 | Insertions at the same Markdown source position retain caller order | docs/concepts/markdown-formatting.md "Adding or updating a channel formatter" | event | none |
+| 874 | Same-position Markdown insertions precede a replacement beginning there | docs/concepts/markdown-formatting.md "Adding or updating a channel formatter" | event | none |
 
 ## Headings walked
 docs/channels/index.md "Chat channels": none
 docs/channels/index.md "Which channel should I connect first?": 1
 docs/channels/index.md "Supported channels": none
 docs/channels/index.md "Related communication plugins": none (owned by talk)
-docs/channels/index.md "Group join introductions": 2, 3, 4, 5, 6, 7, 8, 9, 10, 11
+docs/channels/index.md "Group join introductions": 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 820, 821, 822, 823, 824
 docs/channels/index.md "Delivery notes": 12, 13, 14, 15, 16, 17, 174
 docs/channels/index.md "Notes": 18, 19
 docs/channels/channel-routing.md "Channels & routing": 18, 20
@@ -1179,22 +1238,22 @@ docs/cli/channels.md "Resolve names to IDs": 239, 273, 274, 280, 777
 docs/cli/channels.md "Related": none
 docs/cli/channels.md "Channels": none
 docs/cli/message.md "openclaw message": none
-docs/cli/message.md "Channel selection": 18, 246, 281, 282
-docs/cli/message.md "Agent ownership": 241
+docs/cli/message.md "Channel selection": 18, 246, 281, 282, 825, 826
+docs/cli/message.md "Agent ownership": 241, 827, 828
 docs/cli/message.md "Target formats (-t, --target)": 283
-docs/cli/message.md "Common flags": 284, 285
-docs/cli/message.md "SecretRef resolution": 274, 286, 287
+docs/cli/message.md "Common flags": 284, 285, 816, 817, 818, 829, 830
+docs/cli/message.md "SecretRef resolution": 274, 286, 287, 831
 docs/cli/message.md "Actions": none
-docs/cli/message.md "Core": none
-docs/cli/message.md "Member info": none
-docs/cli/message.md "Send": 23, 24, 288, 289, 290, 291
-docs/cli/message.md "Poll": none
+docs/cli/message.md "Core": 433, 819, 832, 833, 834, 835, 836, 837, 838, 839, 841
+docs/cli/message.md "Member info": 840
+docs/cli/message.md "Send": 23, 24, 288, 289, 290, 291, 842, 843, 846, 847
+docs/cli/message.md "Poll": 844, 845
 docs/cli/message.md "Threads": none
 docs/cli/message.md "Emojis": none
 docs/cli/message.md "Stickers": none
 docs/cli/message.md "Roles, channels, voice, events (Discord)": none
 docs/cli/message.md "Moderation (Discord)": none
-docs/cli/message.md "Broadcast": 292
+docs/cli/message.md "Broadcast": 18, 292
 docs/cli/message.md "Related": none
 docs/cli/message.md "Message": none
 docs/cli/directory.md "openclaw directory": none
@@ -1271,15 +1330,15 @@ docs/concepts/typing-indicators.md "Configuration": 405
 docs/concepts/typing-indicators.md "Notes": 395, 399, 400, 403, 404
 docs/concepts/typing-indicators.md "Related": none
 docs/concepts/markdown-formatting.md "Markdown formatting": 406, 413
-docs/concepts/markdown-formatting.md "Pipeline": 406, 407, 408
+docs/concepts/markdown-formatting.md "Pipeline": 406, 407, 408, 856, 857, 858, 859, 860, 865
 docs/concepts/markdown-formatting.md "IR example": none
-docs/concepts/markdown-formatting.md "Table handling": 363, 409, 410, 411, 412
-docs/concepts/markdown-formatting.md "Chunking rules": 413
-docs/concepts/markdown-formatting.md "Link policy": 406, 408
+docs/concepts/markdown-formatting.md "Table handling": 363, 409, 410, 411, 412, 848, 861, 862, 863, 864
+docs/concepts/markdown-formatting.md "Chunking rules": 413, 851, 852, 853, 854, 855, 860, 868
+docs/concepts/markdown-formatting.md "Link policy": 406, 408, 865, 866
 docs/concepts/markdown-formatting.md "Spoilers": 414
-docs/concepts/markdown-formatting.md "Collapsible details": 415
-docs/concepts/markdown-formatting.md "Adding or updating a channel formatter": none
-docs/concepts/markdown-formatting.md "Common gotchas": 406, 408, 416, 417
+docs/concepts/markdown-formatting.md "Collapsible details": 415, 867
+docs/concepts/markdown-formatting.md "Adding or updating a channel formatter": 872, 873, 874
+docs/concepts/markdown-formatting.md "Common gotchas": 406, 408, 416, 417, 849, 850, 856, 868, 869, 870, 871
 docs/concepts/markdown-formatting.md "Related": none
 docs/concepts/retry.md "Goals": 419
 docs/concepts/retry.md "Defaults": 418, 420
@@ -1729,7 +1788,7 @@ ui/src/lib/channels/index.ts ("channels.logout", "channels.pairing.approve", "ch
 Every other operation was found by both runs; the reconciled name is the clearer of the two.
 
 ### Phases
-Template totals: 484 phases (2 setup, 158 operation, 324 event). These are commands to be recorded by a future run, not observations from an executed template.
+Template totals: 485 phases (2 setup, 159 operation, 324 event). These are commands to be recorded by a future run, not observations from an executed template.
 The two setup phases retain the recorded several-channels and held-turn conditions. The held-turn wrapper has an explicit admission-only startup timeout and a later bounded join that releases the mock response; it must report interruptions across Gateway restarts, rather than claiming that the same turn remains active through them.
 The operation choices retain the finer command families described above: 10 bases came from run 1 and 26 from run 2. Commands from the other run remain only for a different entry point, variant, condition or required output. Five whole phases were folded into existing flows: noninteractive configure (unsupported flags, already covered by the recorded interactive flow), the second repeated status-summary phase, the second repeated heartbeat phase, the duplicate identity-link flow and the duplicate authorized-command event. Twelve repeated reads without a state transition and three duplicate recorded probe cases were removed. The mutation case was removed from the history-reading phase because the edit operation already records it.
 The event content preserves the initial merge's 123 single-base selections, 51 merged selections, 28 pairs separated for timeout or platform reach, and 90 event phases found by only one run. All 280 event conditions remain represented. The 19 event flows for conditions the union classifies as ambient remain as ways to exercise those conditions.
@@ -1959,4 +2018,6 @@ The inbound consumer audit restores recorded quote, cache, media, internal-sourc
 
 The presentation, ingress and inbound consumer reconciliations add 67 in-scope current conditions. Typed exec/plugin approval delivery and resolution are owned by approvals and excluded by the area bound. The channel-routing audit adds conditions 772–774, including guarded recording on an existing session, competing routing tiers and broadcast defaults. The CLI audit adds conditions 775–815 and restores earlier composite meanings. Condition 803 restores logout ordering already recorded in the second run of round 1; its original credit stays there and neither final run gains credit. Conditions 29, 31, 32, 45, 239, 241, 259, 263, 269, 281 and 293 are partial because the supplied observations omit part of the recorded meaning.
 
-The current inventory has 815 conditions: 423 ambient and 392 event. Coverage is 485 fully planned and 330 wholly or partly outside reach. The current heading inventory has 261 headings, including the directory Groups and pairing approve headings restored by the CLI audit. Every original entry-point share, per-round heading denominator and historical discovery credit is unchanged. These corrections add no derivation run, phase or helper. Plugin installation mechanics and configuration writes performed by plugin installation or automatic enabling remain outside this area; selected-channel setup and credential-resolution consequences remain included.
+The message CLI and channel-index audit adds conditions 816–847 for strict selectors, action scope and compatibility, native cleanup, delivery limits and bounded join history. The formatting audit adds conditions 848–874 for code whitespace, nested boundaries, lexical preservation, rendered sizes, default selection and formatter edits. Existing per-channel join suppression, broadcast outcome and renderer/link/default/list-prefix meanings retain their IDs and historical credit; conditions 3, 292, 406, 408, 409 and 413 are partial because supplied inputs do not cover every recorded alternative. Native block-table and code fallback observations keep condition 411 covered. Poll bounds remain provider-specific: Telegram supports up to 12 options and Discord up to 10.
+
+The current inventory has 874 conditions: 445 ambient and 429 event. Coverage is 479 fully planned and 395 wholly or partly outside reach. The current heading inventory has 265 headings. Every original entry-point share, per-round heading denominator and historical discovery credit is unchanged. These source corrections add no derivation run or observation helper. Plugin installation mechanics and configuration writes performed by plugin installation or automatic enabling remain outside this area; selected-channel setup and credential-resolution consequences remain included.
