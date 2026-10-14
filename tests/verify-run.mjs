@@ -439,6 +439,89 @@ test("destination validation rejects duplicate flags and config path escapes bef
   assert.deepEqual(JSON.parse(await readFile(prepared[prepared.indexOf("--file") + 1], "utf8")), patch);
 });
 
+test("configuration paths retain their full context across objects, arrays and provider settings", async (t) => {
+  const root = await temporary(t), copy = join(root, "copy"), durable = join(root, "durable"), output = join(root, "output");
+  for (const path of [copy, durable, output]) await mkdir(path);
+  await symlink(durable, join(copy, "alias"));
+  const path = join(copy, "patch.json5"), command = `ocm @copy -- config patch --file ${quoteShell(path)}`;
+  let configuration = { storage: { locations: { backup: { provider: "filesystem", settings: { path: join(copy, "backup") } } } } };
+  const context = { cwd: copy, run: output, ownedRoots: [copy], readConfiguration: async (env) => { assert.equal(env, "copy"); return configuration; } };
+  const validate = async (patch) => {
+    await writeFile(path, JSON.stringify(patch));
+    return await validateRunDestinations(command, context);
+  };
+  const ordinary = {
+    gateway: { controlUi: { basePath: "/control", root: join(copy, "ui") } },
+    hooks: { path: "/events", mappings: [{ match: { path: "/incoming" } }], gmail: { serve: { path: "/gmail" }, tailscale: { path: "/gmail" } } },
+    channels: { telegram: { webhookPath: "/telegram" }, "nextcloud-talk": { webhookPath: "/talk", botSecretFile: join(copy, "bot-secret") }, slack: { accounts: { example: { webhookPath: "/slack/events" } } } },
+    secrets: { defaults: { file: "local-provider", store: "local-store" } },
+    messages: { usageTemplate: { segments: [{ type: "text", text: "/a/plain/message", path: durable, file: durable }] } },
+    memory: { search: { local: { modelPath: "HF:example/model.gguf" } } }
+  };
+  const prepared = parseCatalogueCommand(await validate(ordinary), { standard: true }).tokens;
+  assert.deepEqual(await readJSON(prepared[prepared.indexOf("--file") + 1]), ordinary);
+  for (const patch of [
+    { gateway: { controlUi: { root: durable } } },
+    { channels: { "nextcloud-talk": { botSecretFile: join(durable, "secret") } } },
+    { channels: { "nextcloud-talk": { accounts: { example: { apiPasswordFile: join(copy, "alias/password") } } } } },
+    { env: { vars: { OPENCLAW_CACHE_TRACE_FILE: join(durable, "cache.jsonl") } } },
+    { env: { OPENCLAW_CACHE_TRACE_FILE: join(durable, "cache.jsonl") } },
+    { agents: { entries: { example: { cwd: durable } } } },
+    { memory: { search: { extraPaths: [{ path: durable, pattern: "*.md" }] } } },
+    { security: { installPolicy: { exec: { trustedDirs: [durable] } } } },
+    { secrets: { providers: { local: { source: "file", path: durable } } } },
+    { messages: { usageTemplate: { $include: join(copy, "other.json") } } },
+    { messages: { usageTemplate: durable } },
+    { storage: { locations: { backup: { settings: { path: durable } } } } }
+  ]) await assert.rejects(validate(patch), /owned|ownership/);
+  await validate({ storage: { locations: { backup: { settings: { path: join(copy, "next-backup") } } } } });
+  configuration = { storage: { locations: { backup: { provider: "custom", settings: { path: durable } } } } };
+  await validate({ storage: { locations: { backup: { settings: { path: "/remote/object-prefix" } } } } });
+  await assert.rejects(validate({ storage: { locations: { backup: { provider: "filesystem" } } } }), /owned copy/);
+  await assert.rejects(validate({ storage: { locations: { unknown: { settings: { path: durable } } } } }), /known provider/);
+});
+
+test("hook modules, mount sources and executable selectors use their own path contracts", async (t) => {
+  const root = await temporary(t), copy = join(root, "copy"), durable = join(root, "durable"), output = join(root, "output");
+  for (const path of [copy, durable, output]) await mkdir(path);
+  const configPath = join(copy, ".openclaw/openclaw.json"), transforms = join(dirname(configPath), "hooks/transforms");
+  await mkdir(join(transforms, "custom"), { recursive: true });
+  await writeFile(configPath, "{}");
+  await symlink(durable, join(transforms, "outside"));
+  const path = join(copy, "patch.json5"), command = `ocm @copy -- config patch --file ${quoteShell(path)}`;
+  const context = {
+    cwd: copy, run: output, ownedRoots: [copy],
+    configurationPath: async (env) => { assert.equal(env, "copy"); return configPath; },
+    readConfiguration: async (env) => { assert.equal(env, "copy"); return { hooks: { transformsDir: "custom" } }; }
+  };
+  const validate = async (patch) => {
+    await writeFile(path, JSON.stringify(patch));
+    return await validateRunDestinations(command, context);
+  };
+  const patch = {
+    hooks: { mappings: [{ match: { path: "incoming" }, transform: { module: "map.mjs" } }] },
+    agents: { entries: { example: { sandbox: { docker: { binds: [`${copy}:/workspace:ro`] }, browser: { binds: [`${copy}:/browser:ro`] } } } } },
+    mcp: { servers: { example: { command: "node" }, local: { command: join(copy, "mcp-server") } } },
+    channels: { signal: { transport: { kind: "managed-native", cliPath: "signal-cli" } }, imessage: { cliPath: "imsg" } },
+    gateway: { terminal: { shell: "bash" } }, browser: { profiles: { example: { mcpCommand: "node" } } }
+  };
+  const prepared = parseCatalogueCommand(await validate(patch), { standard: true }).tokens;
+  assert.deepEqual(await readJSON(prepared[prepared.indexOf("--file") + 1]), patch);
+  await validate({ hooks: { transformsDir: "custom", mappings: [{ transform: { module: "nested/map.mjs" } }] } });
+  for (const rejected of [
+    { hooks: { transformsDir: "outside", mappings: [{ transform: { module: "map.mjs" } }] } },
+    { hooks: { transformsDir: ".", mappings: [{ transform: { module: "outside/map.mjs" } }] } },
+    { hooks: { mappings: [{ transform: { module: "../map.mjs" } }] } },
+    { hooks: { mappings: [{ transform: { module: join(durable, "map.mjs") } }] } },
+    { agents: { defaults: { sandbox: { docker: { binds: [`${durable}:/workspace:ro`] } } } } },
+    { agents: { entries: { example: { sandbox: { browser: { binds: [`${durable}:/browser:ro`] } } } } } },
+    { mcp: { servers: { example: { command: join(durable, "mcp-server") } } } },
+    { channels: { signal: { transport: { cliPath: join(durable, "signal-cli") } } } },
+    { browser: { profiles: { example: { mcpCommand: "../outside-command" } } } },
+    { models: { providers: { example: { localService: { command: "server" } } } } }
+  ]) await assert.rejects(validate(rejected), /owned|safe relative|configured root/);
+});
+
 test("persona checks receive the same command admission as phase commands", async (t) => {
   const f = await fixture(t), manifestPath = join(f.root, "persona.json");
   const definitionPath = join(f.root, "definition.json"), definition = await readJSON(definitionPath);

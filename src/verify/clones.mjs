@@ -1,6 +1,6 @@
 import { createReadStream } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
-import { copyFile, lstat, mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { copyFile, lstat, mkdir, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import { Transform } from "node:stream";
 import { isDeepStrictEqual } from "node:util";
@@ -79,8 +79,12 @@ async function inventoryCloneConfigPaths(metadata, configPath, config) {
   return [...files];
 }
 
+function isRollingLogFile(file) {
+  return /^openclaw-(?:YYYY-MM-DD|\d{4}-\d{2}-\d{2})\.log$/.test(basename(file));
+}
+
 function activeLogFile(file) {
-  if (!/^openclaw-(?:YYYY-MM-DD|\d{4}-\d{2}-\d{2})\.log$/.test(basename(file))) return file;
+  if (!isRollingLogFile(file)) return file;
   const date = new Date();
   const today = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
   return join(dirname(file), `openclaw-${today}.log`);
@@ -99,14 +103,36 @@ async function prepareProductLogs(metadata) {
       await rename(temporary, settings.configPath);
     } finally { await rm(temporary, { force: true }); }
   }
-  const files = new Set();
+  const files = new Set(), rollingDirectories = new Set();
   const anchors = new Map(), active = new Map();
   const pathsFor = (file) => {
     const extension = extname(file), base = file.slice(0, file.length - extension.length);
     return [...[5, 4, 3, 2, 1].map((index) => `${base}.${index}${extension}`), file];
   };
-  const observe = async (baseline = false) => {
-    files.add(activeLogFile((await readCloneLogging(metadata)).file));
+  const reader = createLogCollector(() => [...files].flatMap(pathsFor), { validatePath: (path) => ownedCloneFile(metadata, path), trackIdentity: true });
+  const prepareDestination = async (path) => {
+    const configured = await ownedCloneFile(metadata, path), file = activeLogFile(configured);
+    const directory = dirname(file);
+    if (isRollingLogFile(configured) && !rollingDirectories.has(directory)) {
+      let entries;
+      try { entries = await readdir(directory); }
+      catch (error) { if (error.code !== "ENOENT") throw error; entries = []; }
+      // A later date can already exist in the import. Seed its history now,
+      // but only watch dates that become active so retention is not a loss.
+      await reader.seed(entries.filter((name) => /^openclaw-\d{4}-\d{2}-\d{2}(?:\.[1-5])?\.log$/.test(name)).map((name) => join(directory, name)));
+      rollingDirectories.add(directory);
+    }
+    if (!files.has(file)) {
+      await reader.seed(pathsFor(file));
+      files.add(file);
+    }
+  };
+  const observe = async () => {
+    const configured = (await readCloneLogging(metadata)).file, current = activeLogFile(configured);
+    if (!files.has(current)) {
+      if (!isRollingLogFile(configured) || !rollingDirectories.has(dirname(current))) throw new Error("product log destination changed without a captured baseline");
+      files.add(current);
+    }
     const errors = [];
     for (const file of files) {
       const found = new Map();
@@ -117,20 +143,19 @@ async function prepareProductLogs(metadata) {
           found.set(path, `${stat.dev}:${stat.ino}:${stat.birthtimeMs}`);
         } catch (error) { if (error.code !== "ENOENT") throw error; }
       }
-      const prior = anchors.get(file), oldest = found.values().next().value;
-      const lost = !baseline && (prior ? ![...found.values()].includes(prior) : found.has(pathsFor(file)[0]));
+      const prior = anchors.get(file), oldest = found.get(pathsFor(file)[0]);
+      const lost = prior ? ![...found.values()].includes(prior) : oldest && !reader.hasIdentity(oldest);
       if (lost) errors.push(file);
       // Keep the earliest possibly unread file until checkpoint publication.
       // After a loss, a later phase can still capture the surviving diagnostics.
-      if (baseline || !prior || lost) anchors.set(file, baseline ? found.get(file) ?? oldest : oldest);
-      active.set(file, found.get(file) ?? oldest);
+      if (!prior || lost) anchors.set(file, [...found.values()].find((key) => !reader.hasIdentity(key)) ?? found.get(file));
+      active.set(file, found.get(file));
     }
     if (errors.length) throw new Error(`product log rotation lost continuity: ${errors.join(", ")}`);
   };
-  const reader = createLogCollector(() => [...files].flatMap(pathsFor), { validatePath: (path) => ownedCloneFile(metadata, path), trackIdentity: true });
   // Imported history predates this copy's product commands.
-  await observe(true);
-  (await reader.prepare({ skipExisting: true })).commit();
+  await prepareDestination(settings.file);
+  await observe();
   const prepare = async (options) => {
     await observe();
     const capturedAnchors = new Map(active);
@@ -139,7 +164,7 @@ async function prepareProductLogs(metadata) {
     return { ...capture, commit() { capture.commit(); for (const [file, key] of capturedAnchors) anchors.set(file, key); } };
   };
   const collect = Object.assign(async () => { const capture = await prepare(); capture.commit(); return capture.text; }, { prepare });
-  return Object.assign(collect, { configPaths, observe });
+  return Object.assign(collect, { configPaths, observe, prepareDestination });
 }
 
 export async function hashFile(path) {
@@ -311,7 +336,18 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
     if (sourceRoot) roots.push([sourceRoot, value.root]);
     return { metadata: value, binding: { ...binding, command } };
   }
-  const context = () => ({ env: metadata.name, run: directory, kovaRoot: root, traits, roots, cwd: metadata.workspaceDir ?? metadata.root, ownedRoots: copies.map((copy) => copy.root), configPaths: [...new Set([...productLogs.values()].flatMap((collect) => collect.configPaths))] });
+  const prepareLogDestination = async (env, path) => {
+    const collect = productLogs.get(env);
+    if (!collect) throw new Error("log destination must belong to an owned environment");
+    await collect.prepareDestination(path);
+  };
+  const configurationPath = async (env) => {
+    const copy = copies.find((value) => value.name === env);
+    if (!copy) throw new Error("configuration must belong to an owned environment");
+    return ownedCloneFile(copy, copy.configPath ?? join(copy.stateDir, "openclaw.json"));
+  };
+  const readConfiguration = async (env) => JSON5.parse(await readFile(await configurationPath(env), "utf8"));
+  const context = () => ({ env: metadata.name, run: directory, kovaRoot: root, traits, roots, cwd: metadata.workspaceDir ?? metadata.root, ownedRoots: copies.map((copy) => copy.root), configPaths: [...new Set([...productLogs.values()].flatMap((collect) => collect.configPaths))], prepareLogDestination, readConfiguration, configurationPath });
   async function mockProvider(value) {
     const saved = join(value.workspaceDir ?? join(value.stateDir, "workspace"), "kova-persona/mock-script.json");
     let script;

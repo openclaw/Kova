@@ -8,6 +8,8 @@ import { pipeline } from "node:stream/promises";
 import { extract as extractTar, pack as packTar } from "tar-stream";
 import JSON5 from "json5";
 import { parseCatalogueCommand } from "../src/catalogue.mjs";
+import { validateRunDestinations } from "../src/verify/run.mjs";
+import { quoteShell } from "../src/commands.mjs";
 import { repoRoot } from "../src/paths.mjs";
 import { createClone, hashEnvironmentExport, hashFile, resolveRunCommand, stagePersona } from "../src/verify/clones.mjs";
 import { combineLogCollectors, createLogCollector, writeCheckpoint } from "../src/verify/checkpoint.mjs";
@@ -495,10 +497,12 @@ test("clone-owned file logs reach checkpoints with silent consoles, rotation and
     assert.doesNotMatch(text, /imported history/);
     assert.equal(await copy.collectProductLogs(), "");
     const intermediateFile = join(primary.stateDir, "intermediate.log");
+    await copy.context().prepareLogDestination(copy.metadata.name, intermediateFile);
     primaryConfig.logging.file = intermediateFile;
     await writeFile(primary.configPath, JSON.stringify(primaryConfig));
     await copy.observeProductLogs();
     await writeFile(intermediateFile, "intermediate file-only error\n");
+    await copy.context().prepareLogDestination(copy.metadata.name, primaryFile);
     primaryConfig.logging.file = primaryFile;
     await writeFile(primary.configPath, JSON.stringify(primaryConfig));
     await copy.observeProductLogs();
@@ -513,6 +517,7 @@ test("clone-owned file logs reach checkpoints with silent consoles, rotation and
     assert.match(rotated, /new active file/);
     assert.doesNotMatch(rotated, /imported history|file-only auxiliary error/);
     const changedFile = join(primary.stateDir, "changed.log");
+    await copy.context().prepareLogDestination(copy.metadata.name, changedFile);
     primaryConfig.logging.file = changedFile;
     await writeFile(primary.configPath, JSON.stringify(primaryConfig));
     await writeFile(changedFile, "changed destination error\n");
@@ -561,6 +566,57 @@ test("clone-owned file logs reach checkpoints with silent consoles, rotation and
     assert.equal(await readFile(shared, "utf8"), "unowned content\n");
   } finally { await copy.cleanup(); }
   for (const source of [f.primary, f.extra]) assert.deepEqual(await filesUnder(source.root), f.originalFiles.get(source.name));
+});
+
+test("config patches skip existing destination history without consuming unread logs", async (t) => {
+  const f = await fixture(t), copy = f.clone("log-baselines");
+  try {
+    await copy.prepare();
+    const metadata = copy.metadata, config = JSON5.parse(await readFile(metadata.configPath, "utf8"));
+    const original = config.logging.file, alternate = join(metadata.stateDir, "alternate.log");
+    await mkdir(dirname(original), { recursive: true });
+    await writeFile(original, "previous checkpoint\n");
+    assert.equal(await copy.collectProductLogs(), "previous checkpoint\n");
+    await appendFile(original, "unread original\n");
+    for (let index = 0; index <= 5; index++) await writeFile(index ? alternate.replace(/\.log$/, `.${index}.log`) : alternate, "imported history\n");
+    const patch = join(copy.directory, "switch.json");
+    await writeFile(patch, JSON.stringify({ logging: { file: alternate } }));
+    await validateRunDestinations(`ocm @${metadata.name} -- config patch --file ${quoteShell(patch)}`, copy.context());
+    config.logging.file = alternate;
+    await writeFile(metadata.configPath, JSON.stringify(config));
+    await appendFile(alternate, "new alternate\n");
+    await copy.observeProductLogs();
+    // Revisiting an already observed destination must not reset its cursor.
+    await writeFile(patch, JSON.stringify({ logging: { file: original } }));
+    await validateRunDestinations(`ocm @${metadata.name} -- config patch --file ${quoteShell(patch)}`, copy.context());
+    config.logging.file = original;
+    await writeFile(metadata.configPath, JSON.stringify(config));
+    const result = await writeCheckpoint({ phase: { id: "intent/switched-logs", checkpoint: ["logs"] }, directory: copy.directory, results: [], collectLogs: copy.collectProductLogs });
+    assert.equal(await readFile(join(result.path, "logs.txt"), "utf8"), "unread original\nnew alternate\n");
+    assert.equal(await copy.collectProductLogs(), "");
+  } finally { await copy.cleanup(); }
+});
+
+test("date-based product logs preserve preexisting offsets across midnight", async (t) => {
+  const first = new Date(2026, 9, 14, 23, 59), next = new Date(2026, 9, 15, 0, 1);
+  t.mock.timers.enable({ apis: ["Date"], now: first });
+  const f = await fixture(t, { configureImported: async (metadata) => {
+    const directory = join(metadata.stateDir, "logs");
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, "openclaw-2026-10-14.log"), "old first date\n");
+    await writeFile(join(directory, "openclaw-2026-10-15.log"), "old next date\n");
+    await writeFile(metadata.configPath, JSON.stringify({ logging: { file: join(directory, "openclaw-YYYY-MM-DD.log") } }));
+  } });
+  const copy = f.clone("rolling-logs");
+  try {
+    await copy.prepare();
+    const directory = join(copy.metadata.stateDir, "logs");
+    await appendFile(join(directory, "openclaw-2026-10-14.log"), "before midnight\n");
+    t.mock.timers.setTime(next.getTime());
+    await appendFile(join(directory, "openclaw-2026-10-15.log"), "after midnight\n");
+    assert.equal(await copy.collectProductLogs(), "before midnight\nafter midnight\n");
+    assert.equal(await copy.collectProductLogs(), "");
+  } finally { await copy.cleanup(); }
 });
 
 test("external imported log destinations are refused before product startup", async (t) => {

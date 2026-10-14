@@ -147,11 +147,11 @@ export async function recordPhase(options) {
 
 export function createLogCollector(paths, { validatePath, trackIdentity = false } = {}) {
   const offsets = new Map();
-  const prepare = async ({ maxBytes = 16 * 1024 * 1024, skipExisting = false } = {}) => {
+  const prepare = async ({ maxBytes = 16 * 1024 * 1024, skipExisting = false, onlyNew = false, selectedPaths } = {}) => {
     const chunks = [];
     const pendingOffsets = new Map(offsets);
     let bytes = 0;
-    const selected = typeof paths === "function" ? await paths() : paths;
+    const selected = selectedPaths ?? (typeof paths === "function" ? await paths() : paths);
     for (const path of new Set(selected)) {
       await validatePath?.(path);
       let file;
@@ -165,6 +165,7 @@ export function createLogCollector(paths, { validatePath, trackIdentity = false 
         if (!metadata.isFile() || (validatePath && metadata.nlink !== 1)) throw new Error(`log is not an unaliased regular file: ${path}`);
         const key = trackIdentity ? `${metadata.dev}:${metadata.ino}:${metadata.birthtimeMs}` : path;
         const previous = pendingOffsets.get(key);
+        if (skipExisting && onlyNew && previous) continue;
         const start = skipExisting ? metadata.size : previous && previous.dev === metadata.dev && previous.ino === metadata.ino && previous.size <= metadata.size ? previous.size : 0;
         bytes += metadata.size - start;
         if (bytes > maxBytes) throw new Error("log capture exceeds the 16 MiB output budget");
@@ -181,7 +182,11 @@ export function createLogCollector(paths, { validatePath, trackIdentity = false 
     if (bytes > maxBytes) throw new Error("log capture exceeds the 16 MiB output budget");
     return { text, bytes, commit() { for (const [key, value] of pendingOffsets) offsets.set(key, value); } };
   };
-  return Object.assign(async () => { const result = await prepare(); result.commit(); return result.text; }, { prepare });
+  return Object.assign(async () => { const result = await prepare(); result.commit(); return result.text; }, {
+    prepare,
+    hasIdentity: (key) => offsets.has(key),
+    async seed(selectedPaths) { (await prepare({ skipExisting: true, onlyNew: true, selectedPaths })).commit(); }
+  });
 }
 
 export function combineLogCollectors(collectors) {
