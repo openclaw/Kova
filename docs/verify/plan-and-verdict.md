@@ -496,7 +496,9 @@ A command's bound is its `--timeout`, or the product's own timeout flag for a
 `product` command that has one, or the phase's `timeoutMs` when it has
 neither. An item one side has and the other lacks has the value
 `{"absent": true}` on the side that lacks it. Absolute durations, RSS and CPU
-are recorded but never compared.
+are recorded but never compared. This includes the top-level `elapsedMs` and
+`durationMs` measurements emitted by Kova's Gateway and script helpers; their
+product payloads remain comparable.
 
 The Gateway caller removes public-sharing bearer tokens from sharing and
 membership responses before stdout, output files and background records are
@@ -618,6 +620,14 @@ decoded is compared by its content hash, so corrupted content still produces a
 difference. Invalid checkpoint metadata such as `commands.json` refuses the
 comparison instead of inventing command results.
 
+A selected state recording requires its `state/` directory even when all
+selected product paths were absent. A missing recording directory is refused.
+SQLite virtual table declarations and their ordinary persisted backing tables
+are compared as data without loading native extensions; virtual modules are
+not invoked. The declaration is addressed by the database path and table name.
+Declared TEXT identities retain their string identity even when their bytes
+also parse as a JSON number; ordinary SQL and JSON numbers stay numeric.
+
 ### Normalization
 
 Before items are built, every checkpoint is normalized.
@@ -667,6 +677,12 @@ addresses, which the noise runs cannot pair. Compare finds every address
 segment that differs between the two noise runs, lists its pattern in the
 verdict's `undeclared` list, and drops the items under it; the fix is to
 declare that id.
+
+The recorded target runtime name becomes `<runtime:target>` on each copy,
+including embedded references. Its source is `run.json.targets`; for a cached
+baseline or noise copy, it is the resolved `--runtime` in that copy's original
+standard target-binding command. Only that requested binding is normalized:
+a response naming a different runtime still differs.
 
 ## Noise Floor
 

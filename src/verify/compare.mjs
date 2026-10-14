@@ -2,7 +2,7 @@ import { lstat, open, rename, rm } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { artifactsDir } from "../paths.mjs";
-import { createCatalogueResolver, validateCatalogue } from "../catalogue.mjs";
+import { createCatalogueResolver, parseCatalogueCommand, validateCatalogue } from "../catalogue.mjs";
 import { canonicalJSON, sha256 } from "./plan.mjs";
 import { checkpointRows, readBytes, readJSON, recordedDirectory } from "./rows.mjs";
 import { readDeclaredIds, normalizeDeclaredIds } from "./normalize.mjs";
@@ -50,6 +50,25 @@ async function inputs(directory) {
   return { run, plan, standard, catalogue };
 }
 
+async function targetRuntime(directory, run, plan, name) {
+  const side = name.startsWith("change") ? "change" : "baseline";
+  if (run.targets[side].runtime !== undefined) {
+    if (typeof run.targets[side].runtime !== "string" || !run.targets[side].runtime) throw new Error("invalid recorded target runtime");
+    return run.targets[side].runtime;
+  }
+  // Cached copies retain their original resolved binding command. No new
+  // baseline runtime is built or named in the later run's target metadata.
+  if (!run.clones[name].cached) return null;
+  const phase = plan.phases.find((phase) => phase.id === "standard/use-target");
+  if (!phase) throw new Error("cached copy lacks its target binding phase");
+  const planned = parseCatalogueCommand(phase.commands[0], { standard: true }).tokens;
+  const commands = await readJSON(join(directory, name, "checkpoints", phase.id, "commands.json"));
+  const resolved = parseCatalogueCommand(commands[0]?.command, { standard: true }).tokens;
+  const at = resolved.indexOf("--runtime");
+  if (planned[planned.indexOf("--runtime") + 1] !== "{target}" || resolved[0] !== "ocm" || resolved[1] !== "start" || at < 0 || !resolved[at + 1]) throw new Error("invalid cached target binding command");
+  return resolved[at + 1];
+}
+
 export async function compareRecordedRun(directory) {
   const { run, plan, standard, catalogue } = await inputs(directory);
   const identities = {};
@@ -66,7 +85,12 @@ export async function compareRecordedRun(directory) {
   const existing = Object.values(identities).some((value) => value.recorded)
     ? await personaExistingIds(directory, run.personaExports, new Set(Object.values(identities).flatMap((value) => [...value.allIds])), standard)
     : new Set();
-  const normalize = Object.fromEntries(names.map((name) => [name, normalizeDeclaredIds(identities[name], existing)]));
+  const normalize = {};
+  for (const name of names) {
+    const ids = normalizeDeclaredIds(identities[name], existing);
+    const runtime = await targetRuntime(directory, run, plan, name);
+    normalize[name] = { ...ids, text: (value) => runtime ? ids.text(value).replaceAll(runtime, "<runtime:target>") : ids.text(value) };
+  }
   const rows = [], undeclared = new Set(), incomplete = new Set(run.incomplete ?? []);
   const notStarted = names.filter((name) => !run.clones[name].started);
   // Per-copy incomplete lists are recorded when a command exits 2, even if
@@ -77,7 +101,7 @@ export async function compareRecordedRun(directory) {
   for (const phase of plan.phases) {
     const copies = {};
     const commandCount = phase.commands.length * (["standard/use-target", "standard/start-gateway", "standard/stop-gateway"].includes(phase.id) ? run.personaExports?.length ?? 1 : 1);
-    const commandEntries = phase.commands.map((command) => resolveEntry(command, { standard: phase.from === "standard" }).id);
+    const commandEntries = phase.commands.map((command) => resolveEntry(command, { standard: phase.from === "standard" }));
     for (const name of names) {
       copies[name] = await checkpointRows(join(directory, name, "checkpoints", phase.id), phase, standard, normalize[name], commandCount, commandEntries);
       if (copies[name].exitTwo) { exitTwo = true; incomplete.add(phase.id); }

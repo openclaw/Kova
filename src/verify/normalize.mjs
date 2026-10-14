@@ -87,7 +87,7 @@ export function normalizeDeclaredIds({ candidates, records, allIds }, protectedI
     }
     if (!changed) throw new Error("cyclic or unresolved generated record keys in stateIds");
   }
-  return normalize;
+  return { text: normalize, id: (value) => candidates.get(value) ?? value };
 }
 
 function compare(a, b) {

@@ -63,6 +63,12 @@ export async function* stateFile(file, path, standard) {
     try {
       const tables = db.prepare("SELECT name, sql FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all();
       for (const table of tables) {
+        // Virtual modules can execute native code and may be unavailable here.
+        // Their declarations and ordinary persisted backing tables remain data.
+        if (/^\s*CREATE\s+VIRTUAL\s+TABLE\b/i.test(table.sql)) {
+          yield { path, kind: "sqlite-schema", table: table.name, value: table.sql };
+          continue;
+        }
         const columns = db.prepare(`PRAGMA table_info(${quote(table.name)})`).all();
         const primary = columns.filter((c) => c.pk).sort((a, b) => a.pk - b.pk).map((c) => c.name);
         const rowid = /\bWITHOUT\s+ROWID\b/i.test(table.sql) ? null : ["rowid", "_rowid_", "oid"].find((name) => !columns.some((c) => c.name.toLowerCase() === name));
@@ -149,7 +155,8 @@ export function rowBuilder(normalize = (value) => value) {
   return { items, add, nodes };
 }
 
-export async function checkpointRows(directory, phase, standard, normalize, commandCount = phase.commands.length, commandEntries = []) {
+export async function checkpointRows(directory, phase, standard, normalization, commandCount = phase.commands.length, commandEntries = []) {
+  const { text: normalize, id: normalizeId } = normalization;
   const b = rowBuilder(normalize);
   const exists = await recordedDirectory(directory);
   b.add("checkpoint", [], exists);
@@ -171,7 +178,13 @@ export async function checkpointRows(directory, phase, standard, normalize, comm
       const responses = await readJSON(join(directory, "responses.json"));
       const expected = commands.flatMap((command, index) => command.stdout === null ? [String(index)] : []);
       if (!responses || typeof responses !== "object" || Array.isArray(responses) || Object.keys(responses).length !== expected.length || expected.some((index) => !Object.hasOwn(responses, index))) throw new Error(`${phase.id}: invalid response checkpoint command indices`);
-      for (const [index, value] of Object.entries(responses)) b.nodes("responses", value, [index]);
+      for (const [index, value] of Object.entries(responses)) {
+        const entry = commandEntries[Number(index) % phase.commands.length];
+        // These are Kova helper envelope measurements, not product payloads.
+        const comparable = ["gateway", "script"].includes(entry?.kind) && value && typeof value === "object" && !Array.isArray(value)
+          ? Object.fromEntries(Object.entries(value).filter(([key]) => !["elapsedMs", "durationMs"].includes(key))) : value;
+        b.nodes("responses", comparable, [index]);
+      }
     } else if (signal === "timing") {
       const timing = await readJSON(join(directory, "timing.json"));
       if (!Array.isArray(timing) || timing.length !== commands.length || timing.some((item) => typeof item.reachedBound !== "boolean")) throw new Error(`${phase.id}: invalid timing checkpoint`);
@@ -189,7 +202,7 @@ export async function checkpointRows(directory, phase, standard, normalize, comm
       if (!Array.isArray(outputs) || outputs.length !== commands.length) throw new Error(`${phase.id}: invalid Doctor checkpoint`);
       const findings = new Map();
       for (const [index, output] of outputs.entries()) {
-        const entry = commandEntries[index % phase.commands.length];
+        const entry = commandEntries[index % phase.commands.length]?.id;
         if (!["doctor", "doctor-repair"].includes(entry)) continue;
         let values;
         if (typeof output === "string") values = output.split(/\r?\n/).filter(Boolean).map((finding) => ({ finding }));
@@ -202,7 +215,7 @@ export async function checkpointRows(directory, phase, standard, normalize, comm
           continue;
         }
         for (const { finding, scope } of values) {
-          const text = normalizeText(normalize(typeof finding === "string" ? finding : finding.message ?? canonicalJSON(finding)));
+          const text = normalizeText(normalize(typeof finding === "string" ? finding : typeof finding.message === "string" ? finding.message : canonicalJSON(finding)));
           // checkId identifies a check, which can report several distinct findings.
           const code = typeof finding === "object" && typeof finding.code === "string" && finding.code;
           const at = code ? normalize(code) : text;
@@ -213,6 +226,7 @@ export async function checkpointRows(directory, phase, standard, normalize, comm
     } else if (signal === "screen") b.add("screen", [], sha256(await readBytes(join(directory, "screen.png"))));
   }
   if (phase.checkpoint.some((signal) => signal.startsWith("state:"))) {
+    if (!await recordedDirectory(join(directory, "state"))) throw new Error(`${phase.id}: missing state checkpoint directory`);
     for await (const file of stateFiles(join(directory, "state"), standard)) {
       const path = file.path.split("/").map((part) => pointerPart(normalize(part)));
       const dynamic = path.map((_, index) => index);
@@ -225,8 +239,14 @@ export async function checkpointRows(directory, phase, standard, normalize, comm
           const segments = [...path, pointerPart(normalize(key))];
           const dynamicKeys = [...dynamic, path.length];
           b.add("state", segments, true, { dynamic: dynamicKeys });
-          for (const [column, value] of Object.entries(row.values)) b.nodes("state", value.value, [...segments, pointerPart(column)], dynamicKeys);
+          for (const [column, value] of Object.entries(row.values)) {
+            const identity = typeof value.raw === "string" ? normalizeId(value.raw) : value.raw;
+            b.nodes("state", identity !== value.raw ? identity : value.value, [...segments, pointerPart(column)], dynamicKeys);
+          }
         }
+      } else if (file.kind === "sqlite-schema") {
+        path[path.length - 1] += `:${pointerPart(file.table)}`;
+        b.add("state", path, normalize(file.value), { dynamic });
       } else if (file.kind === "json") b.nodes("state", file.value, path, dynamic);
       else if (file.kind === "jsonl") file.value.forEach((value, index) => { if (value !== undefined) b.nodes("state", value, [...path, String(index)], dynamic); });
       else if (file.kind === "text") file.value.forEach((line, index) => b.add("state", [...path, String(index)], normalizeText(normalize(line)), { dynamic }));
