@@ -6,7 +6,7 @@ import JSON5 from "json5";
 import { runWithShutdownScope, spawnOwnedProcess } from "../../src/commands.mjs";
 import { ocmInvocation, resolveOcmTransport } from "../../src/ocm/transport.mjs";
 import { abortable, atomicJson, CallError, parseFlags, positiveMs, readOperation } from "./background.mjs";
-import { requestGatewayFixture } from "./gateway-lifecycle.mjs";
+import { requestGatewayFixture } from "./gateway-fixture-client.mjs";
 
 const suffixes = ["", "-wal", "-shm", "-journal"];
 const backupName = ".kova-session-store-backup";

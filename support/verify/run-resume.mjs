@@ -1,3 +1,4 @@
+import { stripVTControlCharacters } from "node:util";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -23,22 +24,23 @@ export async function resumeArguments(o, ctx) {
     let url;
     try { url = new URL(source.url); } catch { throw new CallError("--url-from requires a url"); }
     if (url.username || url.password || url.search || url.hash) throw new CallError("session URL must not contain credentials, a query or a fragment");
-    const parts = /\/(?:chat|dashboard)\/([^/]+)(?:\/(.*))?$/.exec(url.pathname);
+    const parts = /\/(?:chat|dashboard)\/([^/]+)(?:\/(.*))?$/.exec(url.pathname.replace(/\/+$/, ""));
     if (!parts) throw new CallError("session URL must contain an agent session path");
     const decode = (s) => s === "~dot" ? "." : s === "~dotdot" ? ".." : decodeURIComponent(s.startsWith("~~") ? s.slice(1) : s);
+    const rawRest = parts[2] === undefined ? [] : parts[2].split("/");
+    const exact = rawRest[0] === "~key";
+    if (exact && rawRest.length === 1) throw new CallError("exact session URL requires a key");
     let agent, rest;
-    try { agent = decode(parts[1]); rest = parts[2] === undefined ? [] : parts[2].split("/").map(decode); }
+    try { agent = decode(parts[1]); rest = rawRest.slice(exact ? 1 : 0).map(decode); }
     catch { throw new CallError("invalid session URL encoding"); }
-    const exact = rest[0] === "~key";
-    if (exact) rest.shift();
     let key;
     if (!rest.length) {
       const found = await ctx.rpc("sessions.resolve", { key: "main", agentId: agent });
       key = found?.key;
     } else {
-      const short = !exact && rest.length === 1 ? /^(?:.*-)?([0-9a-f]{8,32})$/i.exec(rest[0]) : null;
+      const short = !exact && rest.length === 1 ? /^(?:(.*)-)?([0-9a-f]{8,32})$/i.exec(rest[0]) : null;
       if (short) {
-        const found = await ctx.rpc("sessions.resolve", { shortId: short[1], agentId: agent });
+        const found = await ctx.rpc("sessions.resolve", { shortId: short[2], ...(short[1] ? { slugHint: short[1] } : {}), agentId: agent });
         key = found?.key;
       } else key = `agent:${agent}:${rest.join(":")}`;
     }
@@ -80,7 +82,7 @@ export async function resumePty(args, ctx) {
     owned.child.stderr.on("data", capture);
     const ended = await abortable(owned.closed, ctx.signal);
     if (ended.error) throw ended.error;
-    const result = { resolved: output.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "").match(/agent ([^\s()]+)(?: \([^)]*\))? - session ([^\r\n]+)/)?.slice(1, 3) ?? null, output, createdIds: [] };
+    const result = { resolved: stripVTControlCharacters(output).match(/agent ([^\s()]+)(?: \([^)]*\))? - session ([^\r\n]+)/)?.slice(1, 3).map((value) => value.trim()) ?? null, output, createdIds: [] };
     if (ended.status === 124) throw new CallError("resume terminal timeout", 3);
     if (ended.status !== 0) throw Object.assign(new CallError(`openclaw resume exited ${ended.status ?? ended.signal}`, 1), { output: result });
     return result;

@@ -216,7 +216,7 @@ test("accepted turn evidence survives a later product refusal", async () => {
 
 test("resume resolves main and short session URLs before handing them to the TUI", async (t) => {
   const dir = await directory(t), source = join(dir, "url.json");
-  for (const [url, selector] of [["http://127.0.0.1:18789/chat/main", { key: "main", agentId: "main" }], ["http://127.0.0.1:18789/chat/main/notebook-01234567", { shortId: "01234567", agentId: "main" }]]) {
+  for (const [url, selector] of [["http://127.0.0.1:18789/chat/main", { key: "main", agentId: "main" }], ["http://127.0.0.1:18789/chat/main/notebook-01234567", { shortId: "01234567", slugHint: "notebook", agentId: "main" }]]) {
     await writeFile(source, JSON.stringify({ url }));
     const result = await run(resume, ["--url-from", source], async (method, params) => { assert.equal(method, "sessions.resolve"); assert.deepEqual(params, selector); return { key }; }, {
       runtime: () => ({ gatewayPort: 18789 }), pty: async () => ({ resolved: key, output: "attached", createdIds: [] })
@@ -256,7 +256,7 @@ test("resume launches OpenClaw under an actual PTY and waits for connection", as
   const dir = await directory(t), binary = join(dir, "ocm");
   await writeFile(binary, `#!${process.execPath}
 if (!process.stdin.isTTY || !process.stdout.isTTY) process.exit(5);
-console.log("openclaw tui - ws://127.0.0.1:1234 - agent main - session sample");
+console.log("openclaw tui - ws://127.0.0.1:1234 - agent main - session sample   " + String.fromCharCode(27) + "]8;;" + String.fromCharCode(7));
 let connected=false;
 setTimeout(()=>{connected=true;console.log("gateway connected");},150);
 process.stdin.on("data",(input)=>{if(input.toString().includes("/exit"))process.exit(connected?0:6);});
@@ -268,4 +268,19 @@ process.stdin.on("data",(input)=>{if(input.toString().includes("/exit"))process.
   assert.equal(result.exitCode, 0, JSON.stringify(result.output));
   assert.match(result.output.output, /gateway connected/);
   assert.deepEqual(result.output.resolved, ["main", "sample"]);
+});
+
+test("resume recognizes an exact URL marker before decoding literal tildes", async (t) => {
+  const dir = await directory(t), source = join(dir, "literal-url.json");
+  for (const [suffix, expected] of [["~~key", "~key"], ["~key/~~key", "~key"], ["~dot", "."], ["~~dot", "~dot"]]) {
+    await writeFile(source, JSON.stringify({ url: `http://127.0.0.1:18789/chat/main/${suffix}` }));
+    let handoff;
+    const result = await run(resume, ["--url-from", source], () => assert.fail("literal URLs must not resolve main or a short id"), {
+      runtime: () => ({ gatewayPort: 18789 }), pty: async (args) => { handoff = JSON.parse(Buffer.from(args.at(-1), "base64url").toString()); return { resolved: handoff.sessionKey, output: "attached", createdIds: [] }; }
+    });
+    assert.equal(result.exitCode, 0, JSON.stringify(result.output));
+    assert.equal(handoff.sessionKey, `agent:main:${expected}`);
+  }
+  await writeFile(source, JSON.stringify({ url: "http://127.0.0.1:18789/chat/main/~key" }));
+  assert.equal((await run(resume, ["--url-from", source], () => assert.fail("missing exact key"), { runtime: () => ({ gatewayPort: 18789 }) })).exitCode, 2);
 });

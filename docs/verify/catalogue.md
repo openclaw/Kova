@@ -247,7 +247,9 @@ foreground Gateway. The fixture must already be staged inside the selected agent
 including its `fixtures/` subdirectory. The script pauses that Gateway, retains the current
 database and its SQLite sidecars, swaps in the fixture, runs Doctor's SQLite
 recovery command and restarts through the same owner. `--restore` restores the
-retained file set. A failed preparation rolls back before restart. Custom or
+retained file set. A failed preparation rolls back before restart. Timeout
+cleanup remains bounded and may continue through rollback and restart before
+the script returns. Custom or
 shared stores and remote OCM transports are refused before mutation. No managed
 service is started or stopped.
 
