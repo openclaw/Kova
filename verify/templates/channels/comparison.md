@@ -6,15 +6,16 @@ Date: 2026-10-13
 State: reconciled with a known shortfall after the permitted rerun.
 The procedure's nine-tenths acceptance was not met.
 
-Union: 437 entry points, 704 conditions, 259 current condition-bearing document headings.
-The recorded-run reconciliation contained 645 conditions and 258 condition-bearing
-headings. Source inspection added 59 conditions without historical discovery credit,
-including 32 from the full outbound SDK heading audit and seven from the complete
-bot-loop document audit. Existing outbound adapters
-is the one newly condition-bearing heading in the current source inventory.
-The historical round 2 heading denominator remains 258. Original composite meanings
-retain their existing IDs and credit; missing observation variants affect planned
-coverage, not historical discovery.
+Union: 437 entry points, 772 conditions, 259 current condition-bearing document headings.
+The recorded final-round reconciliation contained 645 conditions and 258
+condition-bearing headings. Later reconciliation adds 127 current conditions,
+including the presentation, ingress and inbound consumer corrections. These
+additions receive no extra discovery credit. Unsupported dynamic-group failure
+is restored from the earlier round, where it was already counted; neither final
+run receives credit for it. Existing outbound adapters remains the one newly
+condition-bearing heading in the current source inventory. The historical round
+2 heading denominator stays 258. Restored composite meanings keep their original
+IDs and credit; missing observations affect planned coverage.
 
 | Round | Run | Entry points found | Condition headings found |
 |---|---|---|---|
@@ -121,16 +122,19 @@ addition with no run credit. The final inventory has 312 placed and 125 excluded
 entries. This is an accounting correction to recorded inputs, without a new
 independent derivation. Both rounds retain the stated acceptance shortfall.
 
-Source inspection added conditions 646–665 in the earlier bounded corrections and
-conditions 666–697 in the full outbound SDK heading audit, and conditions 698–704
-in the complete bot-loop document audit. No derivation was rerun
-and none of these 59 additions receives recorded-run discovery credit. The newly
-condition-bearing Existing outbound adapters heading brings the current source
-inventory to 259 headings; it does not change the historical 258-heading denominator
-or either run’s recorded heading credit. Restoring original composites under their
-existing IDs does not create another condition or another discovery credit.
-Against the corrected 704-condition inventory, supplemental condition-by-meaning
-shares use the unchanged historical numerators:592/704 (84.1%) and
-590/704 (83.8%). The historical 645-condition comparison,
-entry-point shares and per-round condition-heading acceptance shares above remain
-unchanged. Current planned coverage is separate and appears in coverage.md.
+Earlier corrections added conditions 646–704. The presentation, ingress and
+inbound consumer audits add conditions 705–772 to the current inventory, without
+another derivation run or additional historical discovery credit. The
+unsupported dynamic-group condition was already recorded in the first run of
+round 1; its existing credit and that round’s union remain unchanged. Neither
+final run receives discovery credit for this restored condition or the other
+current additions.
+
+The current inventory still contains 259 condition-bearing headings, including
+Existing outbound adapters. This does not change the historical 258-heading
+union or either final run’s recorded heading credit. Restored composites stay
+under their existing IDs. Against the current 772-condition inventory, the
+supplemental condition-by-meaning shares use unchanged final-round numerators:
+592/772 (76.7%) and 590/772 (76.4%). The historical 645-condition comparison,
+entry-point shares and per-round condition-heading acceptance shares above
+remain unchanged. Planned coverage is a separate measure in coverage.md.
