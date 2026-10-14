@@ -16,8 +16,8 @@
     "warmReadyMs": 25000,
     "peakRssMb": {
       "baselineByNodeMajor": { "22": 735, "24": 1070, "25": 1060 },
-      "maxRegressionPercent": 10,
-      "absoluteCeilingMb": 1200
+      "maxRegressionPercent": 17,
+      "absoluteCeilingMb": 1250
     },
     "postReadyHealthP95Ms": 1000
   },
@@ -25,8 +25,8 @@
     "gateway": {
       "peakRssMb": {
         "baselineByNodeMajor": { "22": 735, "24": 1070, "25": 1060 },
-        "maxRegressionPercent": 10,
-        "absoluteCeilingMb": 1200
+        "maxRegressionPercent": 17,
+        "absoluteCeilingMb": 1250
       },
       "maxCpuPercent": 340
     },

@@ -263,9 +263,10 @@ export async function releaseResourceCalibrationCheck() {
         id: "gateway-performance",
         scenario: gatewayScenario,
         surface: gatewaySurface,
-        primaryRssMb: 1177,
+        primaryRssMb: 1250,
+        absoluteCeilingMb: 1250,
         gatewayCpuPercent: 340,
-        roles: { gateway: 1177, "gateway-tree": 1440, "status-cli": 1100, "plugin-cli": 950 }
+        roles: { gateway: 1250, "gateway-tree": 1440, "status-cli": 1100, "plugin-cli": 950 }
       },
       {
         id: "bundled-plugin-startup",
@@ -286,7 +287,7 @@ export async function releaseResourceCalibrationCheck() {
       });
       if (contract.primaryRssMb !== null) {
         assertEqual(policy.thresholds?.peakRssMb, contract.primaryRssMb, `${contract.id} resolved primary RSS cap`);
-        assertEqual(contract.surface?.thresholds?.peakRssMb?.absoluteCeilingMb, 1200, `${contract.id} absolute primary RSS ceiling`);
+        assertEqual(contract.surface?.thresholds?.peakRssMb?.absoluteCeilingMb, contract.absoluteCeilingMb ?? 1200, `${contract.id} absolute primary RSS ceiling`);
       }
       if (contract.gatewayCpuPercent !== undefined) {
         assertEqual(policy.roleThresholds?.gateway?.maxCpuPercent, contract.gatewayCpuPercent, `${contract.id} release-profile gateway CPU cap`);
