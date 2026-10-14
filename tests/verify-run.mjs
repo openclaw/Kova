@@ -427,7 +427,6 @@ test("destination validation rejects duplicate flags and config path escapes bef
     { logging: { file: null } },
     { logging: null },
     { agents: { defaults: { workspace: durable } } },
-    { plugins: { load: { paths: [durable] } } },
     { $include: join(copy, "other.json") }
   ]) {
     await writeFile(path, JSON.stringify(patch));
@@ -474,7 +473,6 @@ test("configuration paths retain their full context across objects, arrays and p
     { channels: { feishu: { accounts: { example: { tts: { prefsPath: join(copy, "alias/preferences.json") } } } } } },
     { agents: { entries: { example: { cwd: durable } } } },
     { memory: { search: { extraPaths: [{ path: durable, pattern: "*.md" }] } } },
-    { security: { installPolicy: { exec: { trustedDirs: [durable] } } } },
     { secrets: { providers: { local: { source: "file", path: durable } } } },
     { messages: { usageTemplate: { $include: join(copy, "other.json") } } },
     { messages: { usageTemplate: durable } },
@@ -507,6 +505,8 @@ test("message configuration writes share destination checks and prepare log coll
   for (const message of ["/config", "/config get logging.file", "/debug show", "/config-check set logging.file=/outside", "Explain /config set logging.file=/outside", "/config set logging={broken"]) await admit({ message });
   for (const message of ["/bash", "!", "/BASH: help", "!poll owned-job", "/bash stop owned-job", "Explain /bash pwd"]) await admit({ message });
   await admit({ message: "/config set gateway.controlUi.basePath='/control'" });
+  await admit({ message: "/debug set hooks.transformsDir=\"custom\"" });
+  await admit({ message: `/config set mcp.servers.probe.command=${JSON.stringify(process.execPath)}` });
   await admit({ task: `/config set agents.entries.main.tts.prefsPath=${JSON.stringify(join(copy, "preferences.json"))}`, message: `/config set logging.file=${JSON.stringify(external)}` });
   for (const message of [`/CoNfIg: SET logging.file=${JSON.stringify(nextLog)}`, `/debug set logging.file=${JSON.stringify(nextLog)}`]) await admit({ message });
   assert.deepEqual(preparedLogs, [{ env: "copy", path: nextLog }, { env: "copy", path: nextLog }]);
@@ -525,7 +525,7 @@ test("message configuration writes share destination checks and prepare log coll
     `\u0001[fixture] Kova Gateway RPC: /CONFIG : set logging.file='${external}'\nignored`,
     `/config\\nset\\nlogging.file=${JSON.stringify(external)}`,
     "/config unset logging.file", "/config unset logging", '/config set logging={"level":"debug"}', '/debug set logging=[]',
-    "/debug set storage.locations.backup.provider=filesystem", '/debug set hooks.transformsDir="custom"',
+    "/debug set storage.locations.backup.provider=filesystem",
     "/bash printf changed", "/BASH: printf changed", "/bash\nprintf changed", "/bash\\nprintf changed",
     "!printf changed", "! printf changed", "! : printf changed", "!!printf changed", "!poll; printf changed",
     "[fixture] Kova Gateway RPC: /bash printf changed"
@@ -539,45 +539,33 @@ test("message configuration writes share destination checks and prepare log coll
   await admit({ sessionKey: "example", question: `/config set logging.file=${JSON.stringify(external)}` }, "sessions.companion.ask");
 });
 
-test("hook modules, mount sources and executable selectors use their own path contracts", async (t) => {
-  const root = await temporary(t), copy = join(root, "copy"), durable = join(root, "durable"), output = join(root, "output");
-  for (const path of [copy, durable, output]) await mkdir(path);
-  const configPath = join(copy, ".openclaw/openclaw.json"), transforms = join(dirname(configPath), "hooks/transforms");
-  await mkdir(join(transforms, "custom"), { recursive: true });
-  await writeFile(configPath, "{}");
-  await symlink(durable, join(transforms, "outside"));
+test("trusted program selectors pass unchanged while writable mount sources stay owned", async (t) => {
+  const root = await temporary(t), copy = join(root, "copy"), external = join(root, "programs"), output = join(root, "output");
+  for (const path of [copy, external, output]) await mkdir(path);
   const path = join(copy, "patch.json5"), command = `ocm @copy -- config patch --file ${quoteShell(path)}`;
-  const context = {
-    cwd: copy, run: output, ownedRoots: [copy],
-    configurationPath: async (env) => { assert.equal(env, "copy"); return configPath; },
-    readConfiguration: async (env) => { assert.equal(env, "copy"); return { hooks: { transformsDir: "custom" } }; }
-  };
-  const validate = async (patch) => {
-    await writeFile(path, JSON.stringify(patch));
-    return await validateRunDestinations(command, context);
-  };
+  const context = { cwd: copy, run: output, ownedRoots: [copy] };
   const patch = {
-    hooks: { mappings: [{ match: { path: "incoming" }, transform: { module: "map.mjs" } }] },
-    agents: { entries: { example: { sandbox: { docker: { binds: [`${copy}:/workspace:ro`] }, browser: { binds: [`${copy}:/browser:ro`] } } } } },
-    mcp: { servers: { example: { command: "node" }, local: { command: join(copy, "mcp-server") } } },
-    channels: { signal: { transport: { kind: "managed-native", cliPath: "signal-cli" } }, imessage: { cliPath: "imsg" } },
-    gateway: { terminal: { shell: "bash" } }, browser: { profiles: { example: { mcpCommand: "node" } } }
+    hooks: { transformsDir: "custom", mappings: [{ transform: { module: "map.mjs" } }], internal: { load: { extraDirs: [external] } } },
+    plugins: { load: { paths: [external] } }, skills: { load: { extraDirs: [external], allowSymlinkTargets: [external] } },
+    memory: { search: { store: { vector: { extensionPath: join(external, "vector.so") } } } },
+    agents: { entries: { example: { sandbox: { docker: { binds: [`${copy}:/workspace:ro`] }, browser: { binds: [`${copy}:/browser:ro`] }, ssh: { command: "/usr/bin/ssh" } }, tools: { exec: { pathPrepend: [external], safeBinTrustedDirs: [external] } } } } },
+    mcp: { servers: { example: { command: "node" }, absolute: { command: process.execPath, args: ["-e", "process.exit(0)"] } } },
+    nodeHost: { mcp: { servers: { example: { command: process.execPath } } } },
+    channels: { signal: { transport: { cliPath: join(external, "signal-cli") } }, imessage: { cliPath: join(external, "imsg") } },
+    gateway: { terminal: { shell: "/bin/bash" } },
+    browser: { executablePath: join(external, "browser"), profiles: { example: { executablePath: join(external, "browser"), mcpCommand: "../external-command" } } },
+    models: { providers: { example: { localService: { command: process.execPath } } } },
+    secrets: { providers: { example: { source: "exec", command: process.execPath, trustedDirs: [external] } } },
+    security: { installPolicy: { exec: { command: process.execPath, trustedDirs: [external] } } },
+    tools: { exec: { pathPrepend: [external], safeBinTrustedDirs: [external] }, media: { models: [{ command: process.execPath }] }, links: { models: [{ command: process.execPath }] } }
   };
-  const prepared = parseCatalogueCommand(await validate(patch), { standard: true }).tokens;
+  await writeFile(path, JSON.stringify(patch));
+  const prepared = parseCatalogueCommand(await validateRunDestinations(command, context), { standard: true }).tokens;
   assert.deepEqual(await readJSON(prepared[prepared.indexOf("--file") + 1]), patch);
-  await validate({ hooks: { transformsDir: "custom", mappings: [{ transform: { module: "nested/map.mjs" } }] } });
-  for (const rejected of [
-    { hooks: { transformsDir: "outside", mappings: [{ transform: { module: "map.mjs" } }] } },
-    { hooks: { transformsDir: ".", mappings: [{ transform: { module: "outside/map.mjs" } }] } },
-    { hooks: { mappings: [{ transform: { module: "../map.mjs" } }] } },
-    { hooks: { mappings: [{ transform: { module: join(durable, "map.mjs") } }] } },
-    { agents: { defaults: { sandbox: { docker: { binds: [`${durable}:/workspace:ro`] } } } } },
-    { agents: { entries: { example: { sandbox: { browser: { binds: [`${durable}:/browser:ro`] } } } } } },
-    { mcp: { servers: { example: { command: join(durable, "mcp-server") } } } },
-    { channels: { signal: { transport: { cliPath: join(durable, "signal-cli") } } } },
-    { browser: { profiles: { example: { mcpCommand: "../outside-command" } } } },
-    { models: { providers: { example: { localService: { command: "server" } } } } }
-  ]) await assert.rejects(validate(rejected), /owned|safe relative|configured root/);
+  for (const kind of ["docker", "browser"]) {
+    await writeFile(path, JSON.stringify({ agents: { defaults: { sandbox: { [kind]: { binds: [`${external}:/workspace`] } } } } }));
+    await assert.rejects(validateRunDestinations(command, context), /owned/);
+  }
 });
 
 test("persona checks receive the same command admission as phase commands", async (t) => {
