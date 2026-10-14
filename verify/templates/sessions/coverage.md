@@ -204,3 +204,11 @@ not declare creation. Gateway creation and catalog import distinguish newly
 generated identities from explicit or adopted keys and re-imports. Recovery
 records the returned successor key, session ID and accepted continuation run ID.
 These are output contracts, not an implementation of execution or comparison.
+
+
+State-generated transcript event IDs, including reset boundaries, are declared
+from `transcript_event_identities.event_id`, owned by `session_id` and ordered
+by `seq`. The owner session ID is declared first through `session_windows`.
+The pinned reset producer and storage schema check that repeated equivalent
+boundaries have the same declared address tokens while retained persona IDs
+stay literal. This is declaration proof, not an executed comparison verdict.

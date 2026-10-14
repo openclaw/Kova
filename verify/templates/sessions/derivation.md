@@ -593,3 +593,11 @@ contracts identify generated child, run, goal and successor identities without
 claiming creation for read results. The helper remains unfinished; the checks
 cover records, ordering and 187 Gateway request shapes, not live recovery or
 comparison. These corrections do not change the historical coverage totals.
+
+
+State-generated transcript event IDs, including reset boundaries, are declared
+from `transcript_event_identities.event_id`, owned by `session_id` and ordered
+by `seq`. The owner session ID is declared first through `session_windows`.
+The pinned reset producer and storage schema check that repeated equivalent
+boundaries have the same declared address tokens while retained persona IDs
+stay literal. This is declaration proof, not an executed comparison verdict.

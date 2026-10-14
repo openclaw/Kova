@@ -366,6 +366,60 @@ test("sessions caller paths select the phases that exercise them", async () => {
   }
 });
 
+test("state declarations identify reset boundary addresses in pinned storage", async (t) => {
+  const { standard } = await loadPlanInputs();
+  const declaration = standard.stateIds.find((item) => item.table === "transcript_event_identities");
+  assert.deepEqual(declaration, {
+    path: "agents/*/agent/openclaw-agent.sqlite", table: "transcript_event_identities",
+    column: "event_id", recordKey: "session_id", order: "seq",
+  });
+  const owner = standard.stateIds.find((item) => item.column === declaration.recordKey);
+  assert.equal(owner?.table, "session_windows");
+  assert.equal(owner.recordKey, "session_key");
+  const checkout = process.env.KOVA_OPENCLAW_CHECKOUT;
+  if (!checkout) return t.skip("Set KOVA_OPENCLAW_CHECKOUT to exercise the pinned reset producer and storage schema");
+  assert.equal(execFileSync("git", ["-C", checkout, "rev-parse", "HEAD"], { encoding: "utf8" }).trim(), "7e80556f503d26ddde64e274bfb50cbbec7830f5");
+  const { createJiti } = createRequire(join(resolve(checkout), "package.json"))("jiti");
+  const jiti = createJiti(join(resolve(checkout), "package.json"), {
+    fsCache: false, alias: { "@openclaw/normalization-core": join(resolve(checkout), "packages/normalization-core/src") },
+  });
+  const { buildSessionResetBoundaryEvent, createSessionResetBoundaryId } = await jiti.import(join(resolve(checkout), "src/config/sessions/session-reset-boundary-event.ts"));
+  const schema = await readFile(join(checkout, "src/state/openclaw-agent-schema.sql"), "utf8");
+  const { DatabaseSync } = await import("node:sqlite");
+  const collect = () => {
+    const db = new DatabaseSync(":memory:");
+    try {
+      db.exec("PRAGMA foreign_keys = OFF");
+      for (const table of [owner.table, declaration.table]) {
+        const statement = schema.match(new RegExp(String.raw`CREATE TABLE IF NOT EXISTS ${table} \([\s\S]*?\) STRICT;`))?.[0];
+        assert.ok(statement, table);
+        db.exec(statement);
+      }
+      const sessionId = createSessionResetBoundaryId();
+      db.prepare("INSERT INTO session_windows (session_id, session_key, created_at, updated_at) VALUES (?, ?, 1, 1)").run(sessionId, "agent:main:reset-probe");
+      const events = [{ id: "persona-message", type: "message", parentId: null }];
+      const insert = db.prepare("INSERT INTO transcript_event_identities (session_id, event_id, seq, event_type, parent_id, created_at) VALUES (?, ?, ?, ?, ?, ?)");
+      for (let seq = 1; seq <= 2; seq++) {
+        const event = buildSessionResetBoundaryEvent({ events, context: "clear", reason: "reset", boundaryId: createSessionResetBoundaryId() });
+        insert.run(sessionId, event.id, seq, event.type, event.parentId, 100 + seq);
+        events.push(event);
+      }
+      // Check the declared address mapping on real schema rows; this is not the compare implementation.
+      const ownerRow = db.prepare(`SELECT ${owner.column} AS id, ${owner.recordKey} AS owner FROM ${owner.table}`).get();
+      const ownerToken = `<id:${owner.path}#${ownerRow.owner}/${owner.column}/1>`;
+      const rows = db.prepare(`SELECT ${declaration.column} AS id, ${declaration.recordKey} AS owner, ${declaration.order} AS sequence, event_type, parent_id FROM ${declaration.table} ORDER BY ${declaration.order}, rowid`).all();
+      const replacements = new Map([[ownerRow.id, ownerToken], ...rows.map((row, index) => [row.id, `<id:${declaration.path}#${ownerToken}/${declaration.column}/${index + 1}>`])]);
+      const normalized = rows.map((row) => [replacements.get(row.owner), replacements.get(row.id), row.event_type, replacements.get(row.parent_id) ?? row.parent_id]);
+      assert.equal(normalized[0][3], "persona-message");
+      assert.equal(normalized[1][3], normalized[0][1]);
+      return { ids: rows.map((row) => row.id), normalized };
+    } finally { db.close(); }
+  };
+  const first = collect(), second = collect();
+  assert.notDeepEqual(first.ids, second.ids);
+  assert.deepEqual(first.normalized, second.normalized);
+});
+
 test("sessions Gateway requests match the pinned OpenClaw schemas", async (t) => {
   const checkout = process.env.KOVA_OPENCLAW_CHECKOUT;
   if (!checkout) return t.skip("Set KOVA_OPENCLAW_CHECKOUT to the pinned OpenClaw checkout");
