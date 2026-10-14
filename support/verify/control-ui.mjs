@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -13,8 +13,6 @@ const flags = ["env", "flow", "session-key", "session-from", "incognito-handle",
 const creationFlows = new Set(["new-session-page", "new-session-incognito", "palette-background-session", "palette-background-start"]);
 const requestLimit = 20000;
 const errorCodes = new Set(["NOT_LINKED", "NOT_PAIRED", "AGENT_TIMEOUT", "INVALID_REQUEST", "FORBIDDEN", "APPROVAL_NOT_FOUND", "UNAVAILABLE"]);
-const catalogue = JSON.parse(await readFile(new URL("../../catalogue/openclaw.json", import.meta.url), "utf8"));
-const writes = new Set(catalogue.entries.filter((entry) => entry.kind === "gateway" && entry.side !== "read").map((entry) => entry.wraps));
 
 function emptyOutput(flow) {
   return { flow: flow ?? null, steps: [], screens: [], requests: [], elapsedMs: 0, createdIds: [], sessionKey: null, url: null, handoff: null, error: null };
@@ -35,6 +33,7 @@ export function parseControlUiArgs(argv) {
     for (const name of ["env", "flow", "artifact-dir"]) if (!options[name]?.trim()) throw new CallError(`--${name} is required`);
     if (!Object.hasOwn(controlUiFlows, options.flow)) throw new CallError("unknown Control UI flow");
     if (options.background && !options.handle) throw new CallError("--background requires --handle");
+    if (options.flow === "reconnect-and-send" && options.background) throw new CallError("reconnect-and-send requires an existing browser handle");
     if (options["session-key"] && options["session-from"]) throw new CallError("choose --session-key or --session-from");
     if (["open-session-keep-open", "reconnect-and-send"].includes(options.flow) && !options.handle) throw new CallError(`${options.flow} requires a retained browser --handle`);
     if (options.locale) {
@@ -61,11 +60,14 @@ export async function resolveControlUiSession(options) {
 // Pairing URLs, auth frames, message bodies and arbitrary responses stay private.
 export function observeControlUiSocket(socket, getOutput, { onRequest, connecting = () => {}, connected = () => {}, disconnected = () => {} } = {}) {
   const pending = new Map();
+  let retired = false;
   const finish = () => {
+    retired = true;
     for (const { request, startedAt } of pending.values()) { request.status = "closed"; request.elapsedMs = Date.now() - startedAt; }
     pending.clear();
   };
   socket.on("framesent", ({ payload }) => {
+    if (retired) return;
     let frame;
     try { frame = JSON.parse(String(payload)); } catch { return; }
     if (frame.type !== "req" || typeof frame.method !== "string") return;
@@ -81,6 +83,7 @@ export function observeControlUiSocket(socket, getOutput, { onRequest, connectin
     pending.set(frame.id, { request, output, startedAt: Date.now() });
   });
   socket.on("framereceived", ({ payload }) => {
+    if (retired) return;
     let frame;
     try { frame = JSON.parse(String(payload)); } catch { return; }
     if (frame.type !== "res") return;
@@ -144,13 +147,23 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
   signal?.addEventListener("abort", abort, { once: true });
   const observePage = (target) => {
     connection.set(target, false);
+    const sockets = new Set();
+    let pageClosed = false;
+    target.once("close", () => {
+      pageClosed = true;
+      for (const state of sockets) state.finish();
+      sockets.clear(); connection.delete(target);
+    });
     target.on("websocket", (socket) => {
+      if (pageClosed) return;
       const state = { socket, connected: false };
       state.finish = observeControlUiSocket(socket, () => currentOutput, {
         connecting: () => { connection.get(target)?.finish?.(); connection.set(target, state); },
         onRequest, connected: () => { if (connection.get(target) === state) state.connected = true; },
         disconnected: () => { if (connection.get(target) === state) state.connected = false; }
       });
+      sockets.add(state);
+      socket.once("close", () => sockets.delete(state));
     });
   };
   try {
@@ -203,23 +216,30 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
           const requireSession = () => { if (!sessionKey) throw new CallError("this flow requires --session-key or --session-from"); return sessionKey; };
           const sessionUrl = (key) => `${uiRoot}/chat?session=${encodeURIComponent(key)}`;
           let pairedDestination;
-          const navigate = async (path) => {
+          const waitForDocument = () => page.locator(".sidebar-footer-bar, #settings-session-storage, main[data-public-session]:not([data-entry-pending])").first().waitFor({ state: "visible" });
+          const reload = async () => {
+            connection.get(page)?.finish?.(); connection.set(page, null);
+            await page.reload(); await waitForDocument();
+          };
+          const navigate = async (path, { waitForGateway = true } = {}) => {
             const destination = uiUrl(path);
             if (destination === pairedDestination) { pairedDestination = undefined; return; }
             pairedDestination = undefined;
-            connection.get(page)?.finish?.(); connection.set(page, null); await page.goto(destination); await waitConnected();
+            connection.get(page)?.finish?.(); connection.set(page, null); await page.goto(destination);
+            if (waitForGateway) await waitConnected();
+            await waitForDocument();
           };
           if (page.url() === "about:blank") await step("connect", async () => {
             const path = call.flow.startsWith("new-session-") ? "/new?agent=main"
               : call.flow.includes("session-storage") ? "/settings/ai-agents?section=session"
                 : call.flow === "parent-mark-read-after-child" ? "/sessions"
-                  : sessionKey ? sessionUrl(sessionKey) : "/chat/main";
+                  : sessionKey ? sessionUrl(sessionKey) : "/chat?session=main";
             pairedDestination = uiUrl(path);
             const destination = new URL(pairedDestination);
             for (const [key, value] of initialUrl.searchParams) if (!destination.searchParams.has(key)) destination.searchParams.set(key, value);
             destination.hash = initialUrl.hash;
             await page.goto(destination.href); await waitConnected();
-            await page.locator(".sidebar-footer-bar").waitFor({ state: "visible" });
+            await page.locator(call.flow.includes("session-storage") ? "#settings-session-storage" : ".sidebar-footer-bar").waitFor({ state: "visible" });
           });
           else await step("retained-browser", async () => {});
           const pairGateway = async () => {
@@ -229,7 +249,7 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
             connection.set(page, null); await page.goto(next.browserUrl); await waitConnected();
           };
           await controlUiFlows[call.flow]({ page, step, options: call, sessionKey, origin: initialUrl.origin,
-            requireSession, sessionUrl, navigate, openSession: () => navigate(sessionUrl(requireSession())), waitConnected, pairGateway,
+            requireSession, sessionUrl, navigate, reload, openSession: () => navigate(sessionUrl(requireSession())), waitConnected, pairGateway,
             captureValue(name, value) {
               if (["progressRefreshState", "effortChoice", "storageAgeSequence"].includes(name)) {
                 output.steps.at(-1).observation = { name, value }; return;
@@ -240,9 +260,9 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
             },
             async newPage(url) { const other = await context.newPage(); await other.goto(url); return other; }
           });
-          // Wait for the catalogue's writes, while background UI reads may
-          // remain open independently of the action being observed.
-          while (output.requests.some((request) => request.status === "pending" && writes.has(request.method))) {
+          // RPC replies are finite; streaming updates arrive as separate events.
+          // Include UI writes such as chat.send absent from the RPC catalogue.
+          while (output.requests.some((request) => request.status === "pending")) {
             remaining(); await sleep(Math.min(25, remaining()), undefined, { signal: active });
           }
           if (output.requests.some((request) => request.status === "error")) output.error ??= "Gateway returned an error";
@@ -272,7 +292,7 @@ export async function executeControlUi(options, controls = {}) {
   let session, result;
   const signal = AbortSignal.any([AbortSignal.timeout(options.timeoutMs), ...[controls.signal].filter(Boolean)]);
   const bounded = { ...controls, signal };
-  try { session = await createControlUiBrowser(options, bounded); result = await session.run(options, bounded); }
+  try { session = await createControlUiBrowser(options, bounded); result = await session.run({ ...options, timeoutMs: Math.max(1, options.timeoutMs - (Date.now() - began)) }, bounded); }
   catch (error) { result = errorResult(options.flow, error, began); }
   finally { await session?.close(); }
   result.output.elapsedMs = Date.now() - began;
@@ -284,7 +304,7 @@ async function runRetainedBrowser(options, context) {
   let session, last;
   try {
     session = await createControlUiBrowser(options, { signal: context.signal });
-    last = await session.run(options, { signal: context.signal });
+    last = await session.run({ ...options, timeoutMs: Math.max(1, Date.parse(context.operation.expiresAt) - Date.now()) }, { signal: context.signal });
     last.output.elapsedMs = Date.now() - began;
     if (options.out) await writeGatewayOutput(options, last.output);
     if (last.exitCode !== 0) return last;

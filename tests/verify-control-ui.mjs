@@ -64,6 +64,7 @@ test("Control UI CLI rejects malformed calls before opening a browser", async (t
     ["--wait", join(root, "handle.json"), "--env", "fixture"],
     ["--env", "fixture", "--flow", "unlisted-flow", "--artifact-dir", root],
     ["--env", "fixture", "--flow", "reconnect-and-send", "--artifact-dir", root],
+    ["--env", "fixture", "--flow", "reconnect-and-send", "--artifact-dir", root, "--background", "--handle", join(root, "browser.json")],
     ["--env", "fixture", "--flow", "open-session-keep-open", "--artifact-dir", root],
   ];
   for (const args of cases) {
@@ -286,7 +287,7 @@ test("browser cancellation waits for browser.close before returning", { timeout:
   page.setDefaultNavigationTimeout = () => {};
   page.goto = async () => { navigation.resolve(); await new Promise(() => {}); };
   page.screenshot = async () => {};
-  page.locator = () => ({ waitFor: async () => {} });
+  page.locator = () => ({ first() { return this; }, waitFor: async () => {} });
   context.grantPermissions = async () => {};
   context.newPage = async () => { context.emit("page", page); return page; };
   let closeCount = 0, returned = false;
@@ -321,7 +322,7 @@ test("navigation retires requests from the replaced Gateway socket even without 
   const addresses = [];
   page.url = () => address;
   page.setDefaultTimeout = page.setDefaultNavigationTimeout = () => {};
-  page.locator = () => ({ waitFor: async () => {} });
+  page.locator = () => ({ first() { return this; }, waitFor: async () => {} });
   page.screenshot = async () => Buffer.from("synthetic capture");
   page.goto = async (url) => {
     address = url;
@@ -340,7 +341,52 @@ test("navigation retires requests from the replaced Gateway socket even without 
     launch: async () => ({ newContext: async () => context, close: async () => {} }),
   });
   assert.equal(result.exitCode, 0);
-  assert.equal(navigations, 3);
+  assert.equal(navigations, 2);
   assert.ok(addresses.every((url) => new URL(url).pathname.startsWith("/console/")));
   assert.equal(result.output.requests.find(({ method }) => method === "sessions.patch").status, "closed");
+});
+
+test("browser completion joins send receipts and retires a closed tab without a socket event", async (t) => {
+  const root = await temporary(t), page = new EventEmitter(), context = new EventEmitter(), socket = new EventEmitter();
+  let receiptReturned = false, closedAfterReceipt = false;
+  const locator = { first() { return this; }, locator() { return this; }, evaluate: async () => "agent:main:fixture", fill: async () => {}, click: async () => {
+    send(socket, "send", "chat.send", { sessionKey: "agent:main:fixture", message: "example" });
+    const tab = new EventEmitter(), tabSocket = new EventEmitter();
+    context.emit("page", tab); tab.emit("websocket", tabSocket);
+    send(tabSocket, "connect", "connect"); reply(tabSocket, "connect", {});
+    send(tabSocket, "history", "chat.history", { sessionKey: "agent:main:fixture" });
+    tab.emit("close");
+    send(tabSocket, "late-history", "chat.history", { sessionKey: "agent:main:fixture" });
+    setTimeout(() => { receiptReturned = true; reply(socket, "send", { status: "started", runId: "created-run" }); }, 100);
+  } };
+  page.url = () => "http://127.0.0.1:12345/chat";
+  page.setDefaultTimeout = page.setDefaultNavigationTimeout = () => {};
+  page.locator = () => locator;
+  page.screenshot = async () => Buffer.from("synthetic capture");
+  context.grantPermissions = async () => {};
+  context.newPage = async () => {
+    context.emit("page", page); page.emit("websocket", socket);
+    send(socket, "connect", "connect"); reply(socket, "connect", {});
+    return page;
+  };
+  const result = await executeControlUi({ env: "fixture", flow: "reconnect-and-send", "session-key": "agent:main:fixture", "artifact-dir": root, timeoutMs: 3000 }, {
+    prepare: () => ({ packageRoot: root }),
+    ocm: () => ({ ok: true, browserUrl: "http://127.0.0.1:12345/" }),
+    launch: async () => ({ newContext: async () => context, close: async () => { closedAfterReceipt = receiptReturned; } }),
+  });
+  assert.equal(result.exitCode, 0);
+  assert.equal(closedAfterReceipt, true);
+  assert.deepEqual(result.output.requests.filter(({ method }) => method === "chat.history").map(({ status }) => status), ["closed"]);
+  assert.deepEqual(result.output.createdIds, ["created-run"]);
+  assert.equal(result.output.requests.find(({ method }) => method === "chat.send").status, "result");
+});
+
+test("reconnect refuses a different session before sending", async () => {
+  let sent = false;
+  const pane = { first() { return this; }, evaluate: async () => "agent:main:actual", locator: () => ({ fill: async () => { sent = true; } }) };
+  await assert.rejects(controlUiFlows["reconnect-and-send"]({
+    requireSession: () => "agent:main:different", waitConnected: async () => {},
+    step: async (_name, action) => action(), page: { locator: () => pane },
+  }), (error) => error.exitCode === 2 && /does not match/.test(error.message));
+  assert.equal(sent, false);
 });

@@ -12,6 +12,28 @@ function rowFor(page, key) {
   return page.locator(`openclaw-app-sidebar .sidebar-recent-session[data-session-key=${cssString(key)}]`).first();
 }
 
+export async function revealSidebarSession(page, key) {
+  const row = rowFor(page, key);
+  const sidebar = page.locator("openclaw-app-sidebar");
+  while (!(await row.isVisible())) {
+    // Sections, roster pages and child trees each have their own native
+    // disclosure. Scrolling alone does not load or reveal those rows.
+    const controls = [
+      sidebar.locator('.sidebar-session-group-toggle[aria-expanded="false"]:visible'),
+      sidebar.getByRole("button", { name: "Show more", exact: true }),
+      sidebar.locator('.sidebar-session-pagination--roster button'),
+      sidebar.locator('[data-child-session-toggle][aria-expanded="false"]:visible'),
+      sidebar.locator('[data-show-more-children]:visible'),
+    ];
+    let next;
+    for (const control of controls) if (await control.count()) { next = control.first(); break; }
+    if (!next) { await row.waitFor({ state: "visible" }); break; }
+    await next.click();
+    await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => done())));
+  }
+  return row;
+}
+
 function captureUrl(context) {
   const url = new URL(context.page.url());
   // Pairing parameters never belong in the result.
@@ -24,7 +46,7 @@ async function openSelected(context) {
 }
 
 async function openRowMenu(context) {
-  const row = rowFor(context.page, context.requireSession());
+  const row = await revealSidebarSession(context.page, context.requireSession());
   await row.click({ button: "right" });
   const menu = context.page.locator("openclaw-session-menu");
   await menu.locator("wa-dropdown-item").first().waitFor({ state: "visible" });
@@ -82,7 +104,7 @@ async function startSession(context, incognito = false) {
 }
 
 async function backgroundSession(context) {
-  await context.step("open-home", () => context.navigate("/chat/main"));
+  await context.step("open-home", () => context.navigate("/chat?session=main"));
   await context.step("open-palette", () => context.page.keyboard.press("ControlOrMeta+K"));
   const palette = context.page.locator("openclaw-command-palette");
   await context.step("compose", () => palette.locator(".cmd-palette__input").fill(initialMessage));
@@ -94,17 +116,6 @@ async function sharingMenu(page) {
   return page.locator(activePane).locator(".chat-pane__sharing-menu");
 }
 
-async function expandToRow(context) {
-  const row = rowFor(context.page, context.requireSession());
-  let index = 0;
-  while (!(await row.isVisible())) {
-    const next = context.page.locator("openclaw-app-sidebar [data-child-session-toggle][aria-expanded=false]:visible").first();
-    if (!(await next.count())) break;
-    await context.step(`expand-parent-${++index}`, () => next.click());
-  }
-  await row.waitFor({ state: "visible" });
-  return row;
-}
 
 async function deleteSelected(context) {
   await context.step("delete-menu", async () => {
@@ -148,7 +159,7 @@ export const sessionFlows = {
   "new-session-incognito": (context) => startSession(context, true),
 
   "sidebar-browse-and-filter": async (context) => {
-    await context.step("open-home", () => context.navigate("/chat/main"));
+    await context.step("open-home", () => context.navigate("/chat?session=main"));
     await sidebarStatus(context, "All");
     await sidebarStatus(context, "Archived");
     await sidebarStatus(context, "Active");
@@ -157,7 +168,7 @@ export const sessionFlows = {
   },
 
   "palette-and-page-search": async (context) => {
-    await context.step("open-home", () => context.navigate("/chat/main"));
+    await context.step("open-home", () => context.navigate("/chat?session=main"));
     await context.step("open-palette", () => context.page.keyboard.press("ControlOrMeta+K"));
     await context.step("palette-search", () => context.page.locator("openclaw-command-palette .cmd-palette__input").fill("KOVA"));
     await context.step("close-palette", () => context.page.keyboard.press("Escape"));
@@ -230,11 +241,13 @@ export const sessionFlows = {
   },
 
   "catalog-import-row": async (context) => {
-    await context.step("open-home", () => context.navigate("/chat/main"));
+    await context.step("open-home", () => context.navigate("/chat?session=main"));
     await context.step("open-catalog", async () => {
       const toggle = context.page.getByRole("button", { name: "Claude Code", exact: true });
       if ((await toggle.getAttribute("aria-expanded")) === "false") await toggle.click();
-      await context.page.locator('[data-session-section="catalog:claude"] [data-catalog-session-menu]').first().click();
+      const row = context.page.locator('[data-session-section="catalog:claude"] .sidebar-recent-session').filter({ has: context.page.locator("[data-catalog-session-menu]") }).first();
+      await row.hover();
+      await row.locator("[data-catalog-session-menu]").click();
     });
     await context.step("import", () => context.page.locator('openclaw-catalog-session-menu wa-dropdown-item[value="import"]').click());
     await context.step("open-imported-session", () => context.page.locator(".app-toast").getByRole("button", { name: "Open imported session", exact: true }).click());
@@ -297,7 +310,7 @@ export const sessionFlows = {
 
   "sidebar-delete-nested-child": async (context) => {
     await openSelected(context);
-    await expandToRow(context);
+    await context.step("reveal-child", () => revealSidebarSession(context.page, context.requireSession()));
     await deleteSelected(context);
   },
 
@@ -322,8 +335,8 @@ export const sessionFlows = {
 
   "open-by-link": async (context) => {
     const url = context.sessionUrl(context.requireSession());
-    await context.step("open-link", () => context.page.goto(url));
-    await context.step("reload-link", () => context.page.reload());
+    await context.step("open-link", () => context.navigate(url));
+    await context.step("reload-link", () => context.reload());
     captureUrl(context);
   },
 
@@ -340,10 +353,10 @@ export const sessionFlows = {
       ["missing", `/chat/main/~key/${pathSegment(`kova-missing-${Date.now()}`)}`],
     ];
     for (const [form, path] of links) {
-      await context.step(`link-${form}`, () => context.navigate(path));
+      await context.step(`link-${form}`, () => context.navigate(path, { waitForGateway: false }));
     }
-    await context.step("revisit-link", () => context.page.goto(context.sessionUrl(key)));
-    await context.step("reload-link", () => context.page.reload());
+    await context.step("revisit-link", () => context.navigate(context.sessionUrl(key)));
+    await context.step("reload-link", () => context.reload());
     const tab = await context.newPage(context.sessionUrl(key));
     try {
       await context.step("new-tab-link", () => tab.locator(".sidebar-footer-bar").waitFor({ state: "visible" }), { screen: tab });
