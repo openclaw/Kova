@@ -6,12 +6,13 @@ Date: 2026-10-13
 State: reconciled with a known shortfall after the permitted rerun.
 The procedure's nine-tenths acceptance was not met.
 
-Union: 437 entry points, 697 conditions, 259 current condition-bearing document headings.
-The recorded-run reconciliation contained 645 conditions and258 condition-bearing
-headings. Source inspection added 52 conditions without historical discovery credit,
-including 32 from the full outbound SDK heading audit. Existing outbound adapters
+Union: 437 entry points, 704 conditions, 259 current condition-bearing document headings.
+The recorded-run reconciliation contained 645 conditions and 258 condition-bearing
+headings. Source inspection added 59 conditions without historical discovery credit,
+including 32 from the full outbound SDK heading audit and seven from the complete
+bot-loop document audit. Existing outbound adapters
 is the one newly condition-bearing heading in the current source inventory.
-The historical round 2 heading denominator remains258. Original composite meanings
+The historical round 2 heading denominator remains 258. Original composite meanings
 retain their existing IDs and credit; missing observation variants affect planned
 coverage, not historical discovery.
 
@@ -121,14 +122,15 @@ entries. This is an accounting correction to recorded inputs, without a new
 independent derivation. Both rounds retain the stated acceptance shortfall.
 
 Source inspection added conditions 646–665 in the earlier bounded corrections and
-conditions 666–697 in the full outbound SDK heading audit. No derivation was rerun
-and none of these 52 additions receives recorded-run discovery credit. The newly
+conditions 666–697 in the full outbound SDK heading audit, and conditions 698–704
+in the complete bot-loop document audit. No derivation was rerun
+and none of these 59 additions receives recorded-run discovery credit. The newly
 condition-bearing Existing outbound adapters heading brings the current source
 inventory to 259 headings; it does not change the historical 258-heading denominator
 or either run’s recorded heading credit. Restoring original composites under their
 existing IDs does not create another condition or another discovery credit.
-Against the corrected697-condition inventory, supplemental condition-by-meaning
-shares use the unchanged historical numerators:592/697 (84.9%) and
-590/697 (84.6%). The historical 645-condition comparison,
+Against the corrected 704-condition inventory, supplemental condition-by-meaning
+shares use the unchanged historical numerators:592/704 (84.1%) and
+590/704 (83.8%). The historical 645-condition comparison,
 entry-point shares and per-round condition-heading acceptance shares above remain
 unchanged. Current planned coverage is separate and appears in coverage.md.
