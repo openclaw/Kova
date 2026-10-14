@@ -257,16 +257,7 @@ function responseData(value, entry) {
     "cron-list": ["jobs.*.state.lastDurationMs"]
   };
   paths.push(...(operationPaths[entry?.id] ?? []));
-  if (!paths.length) return value;
-  const result = structuredClone(value);
-  const remove = (object, [part, ...rest]) => {
-    if (!object || typeof object !== "object") return;
-    for (const key of part === "*" ? Object.keys(object) : [part]) {
-      if (rest.length) remove(object[key], rest); else delete object[key];
-    }
-  };
-  for (const path of paths) remove(result, path.split("."));
-  return result;
+  return omitMeasurements(value, paths);
 }
 
 const record = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -319,7 +310,7 @@ function subagentListText(text, value) {
 function toolMeasurements(value, tool) {
   if (!record(value)) return value;
   if (tool === "exec") return omitMeasurements(value, ["durationMs"]);
-  if (tool === "process") return omitMeasurements(value, ["sessions.*.runtimeMs"]);
+  if (tool === "process") return omitMeasurements(value, ["idleMs", "sessions.*.runtimeMs", "sessions.*.idleMs"]);
   if (tool === "cron") return omitMeasurements(value, ["jobs.*.state.lastDurationMs", "state.lastDurationMs", "entries.*.durationMs", "run.durationMs"]);
   if (tool !== "subagents" || value.action !== "list") return value;
   const result = mapFields(value, ["active.*", "recent.*"], (entry) => {
@@ -425,9 +416,10 @@ function persistedRowMeasurements(file, row) {
     if (file.table === "transcript_events") {
       json("event_json", transcriptMeasurements);
       json("event_zstd", transcriptMeasurements);
-      const original = row.values.event_zstd?.raw;
-      if (!file.primary.includes("event_utf8_bytes") && typeof original === "string" && measurement(values.event_utf8_bytes?.value) && Buffer.byteLength(original) === values.event_utf8_bytes.value && values.event_zstd !== row.values.event_zstd) {
-        const length = Buffer.byteLength(values.event_zstd.raw);
+      const payload = typeof row.values.event_json?.raw === "string" ? "event_json" : "event_zstd";
+      const original = row.values[payload]?.raw;
+      if (!file.primary.includes("event_utf8_bytes") && typeof original === "string" && measurement(values.event_utf8_bytes?.value) && Buffer.byteLength(original) === values.event_utf8_bytes.value && values[payload] !== row.values[payload]) {
+        const length = Buffer.byteLength(values[payload].raw);
         values = { ...values, event_utf8_bytes: { ...values.event_utf8_bytes, value: length, raw: length } };
       }
     }

@@ -1179,37 +1179,40 @@ test("persisted execution measurements do not hide outcomes, bounds or user payl
 
 test("persisted exec tool measurements stay separate from user and media durations", async (t) => {
   const phase = { id: phaseId, from: "template:sessions", commands: [command], checkpoint: ["state:agents"] };
-  for (const mode of ["measurement", "payload"]) {
+  for (const mode of ["measurement", "payload", "waiting", "corrupt-length"]) {
     const f = await fixture(t, { phases: [phase], state: async (files, name) => {
       const root = join(files, "../agents/main");
       await mkdir(join(root, "sessions"), { recursive: true });
       await mkdir(join(root, "agent"), { recursive: true });
-      const duration = name.startsWith("change") ? 20 : 10;
+      const changed = name.startsWith("change"), duration = changed ? 200 : 10;
+      const input = { idleMs: duration, waitingForInput: changed && mode === "waiting", inputWaitIdleMs: 5000 };
       const messages = [
         { type: "message", message: { role: "toolResult", toolName: "exec", details: { durationMs: duration, exitCode: 0 }, content: [{ type: "text", text: "done" }] } },
         { type: "message", message: { role: "user", details: { durationMs: mode === "payload" ? duration : 1 }, content: [{ type: "audio", durationMs: mode === "payload" ? duration : 1 }] } },
-        { type: "message", message: { role: "toolResult", toolName: "process", details: { status: "completed", sessions: [{ sessionId: "existing", status: "completed", runtimeMs: duration }] }, content: [{ type: "text", text: `existing completed ${duration}ms :: echo durationMs=1` }] } }
+        { type: "message", message: { role: "toolResult", toolName: "process", details: { status: "completed", sessions: [{ sessionId: "existing", status: "completed", runtimeMs: duration, ...input }] }, content: [{ type: "text", text: `existing completed ${duration}ms :: echo durationMs=1` }] } }
       ];
       const subagents = { action: "list", status: "ok", active: [], recent: [{ index: 1, label: "task", runtimeMs: duration, runtime: `${duration}ms`, execution: { state: "completed" } }], text: `active subagents:\n(none)\n\nrecent (last 30m):\n1. task (model, ${duration}ms) done` };
       messages.push({ type: "message", message: { role: "toolResult", toolName: "subagents", details: subagents, content: [{ type: "text", text: JSON.stringify(subagents) }] } });
+      messages.push({ type: "message", message: { role: "toolResult", toolName: "process", details: { status: "running", sessionId: "existing", ...input }, content: [{ type: "text", text: "same output" }] } });
       for (const filename of ["existing.jsonl", "existing.jsonl.bak", "existing.jsonl.reset.2026-10-14", "existing.jsonl.deleted.2026-10-14"])
         await writeFile(join(root, "sessions", filename), messages.map((message) => JSON.stringify(message)).join("\n"));
       const db = new DatabaseSync(join(root, "agent/openclaw-agent.sqlite"));
       try {
-        db.exec("CREATE TABLE transcript_events (seq INTEGER PRIMARY KEY, event_json TEXT, event_zstd BLOB)");
+        db.exec("CREATE TABLE transcript_events (seq INTEGER PRIMARY KEY, event_json TEXT, event_zstd BLOB, event_utf8_bytes INTEGER)");
         for (const [index, event] of messages.entries()) {
           const raw = JSON.stringify(event);
-          db.prepare("INSERT INTO transcript_events VALUES (?, ?, ?)").run(index, raw, zstdCompressSync(Buffer.from(raw)));
+          db.prepare("INSERT INTO transcript_events VALUES (?, ?, ?, ?)").run(index, index % 2 === 0 ? raw : null, index % 2 === 1 ? zstdCompressSync(Buffer.from(raw)) : null, Buffer.byteLength(raw) + (mode === "corrupt-length" && changed ? 1 : 0));
         }
       } finally { db.close(); }
     }, compressed: [{ path: "agents/*/agent/openclaw-agent.sqlite", table: "transcript_events", column: "event_zstd", codec: "zstd" }] });
     const result = await f.compare();
     assert.equal(result.verdict, mode === "measurement" ? "good-to-go" : "breaks");
     if (mode === "measurement") assert.deepEqual(result.rows, []);
-    else {
+    else if (mode === "payload") {
       assert.ok(result.rows.some((row) => row.at.endsWith("/durationMs")));
       assert.ok(result.rows.every((row) => row.at.includes("/1/")));
-    }
+    } else if (mode === "waiting") assert.ok(result.rows.some((row) => row.at.endsWith("/waitingForInput")));
+    else assert.ok(result.rows.every((row) => row.at.endsWith("/event_utf8_bytes")));
   }
 });
 
@@ -1242,5 +1245,17 @@ test("derived measurement hashes retain counts and corruption evidence", async (
     assert.equal(result.verdict, mode === "measurements" ? "good-to-go" : "breaks");
     if (mode === "count") assert.ok(result.rows.some((row) => row.at.endsWith("/latency/count")));
     if (mode === "corrupt") assert.ok(result.rows.some((row) => row.at.includes("diagnostic_events")));
+  }
+});
+
+
+test("malformed response measurements remain comparable", async (t) => {
+  const phase = { id: phaseId, from: "template:sessions", commands: ["ocm @{env} -- status --json"], checkpoint: ["responses"] };
+  for (const latency of [20, "broken", { error: "invalid measurement" }, null, false, []]) {
+    const f = await fixture(t, { phases: [phase], copies: Object.fromEntries(names.map((name) => [name, { response: { gateway: { reachable: true, connectLatencyMs: name.startsWith("change") ? latency : 10 } } }])) });
+    await writeJSON(join(f.directory, "catalogue.json"), JSON.parse(await readFile(new URL("../catalogue/openclaw.json", import.meta.url))));
+    const result = await f.compare();
+    assert.equal(result.verdict, typeof latency === "number" ? "good-to-go" : "breaks");
+    if (typeof latency !== "number") assert.ok(result.rows.some((row) => row.at === "0/gateway/connectLatencyMs"));
   }
 });
