@@ -6,16 +6,16 @@ Date: 2026-10-13
 State: reconciled with a known shortfall after the permitted rerun.
 The procedure's nine-tenths acceptance was not met.
 
-Union: 437 entry points, 772 conditions, 259 current condition-bearing document headings.
+Union: 437 entry points, 815 conditions, 261 current condition-bearing document headings.
 The recorded final-round reconciliation contained 645 conditions and 258
-condition-bearing headings. Later reconciliation adds 127 current conditions,
-including the presentation, ingress and inbound consumer corrections. These
-additions receive no extra discovery credit. Unsupported dynamic-group failure
-is restored from the earlier round, where it was already counted; neither final
-run receives credit for it. Existing outbound adapters remains the one newly
-condition-bearing heading in the current source inventory. The historical round
-2 heading denominator stays 258. Restored composite meanings keep their original
-IDs and credit; missing observations affect planned coverage.
+condition-bearing headings. Later reconciliation adds 170 in-scope current
+conditions. These additions receive no extra discovery credit. Unsupported
+dynamic-group failure and live logout ordering are restored from the earlier
+round, where they were already counted; neither final run receives credit.
+Existing outbound adapters, directory Groups and pairing approve are the three
+additional condition-bearing headings in the current inventory. The historical
+round 2 heading denominator stays 258. Restored composite meanings keep their
+original IDs and credit; missing observations affect planned coverage.
 
 | Round | Run | Entry points found | Condition headings found |
 |---|---|---|---|
@@ -122,19 +122,20 @@ addition with no run credit. The final inventory has 312 placed and 125 excluded
 entries. This is an accounting correction to recorded inputs, without a new
 independent derivation. Both rounds retain the stated acceptance shortfall.
 
-Earlier corrections added conditions 646–704. The presentation, ingress and
-inbound consumer audits add conditions 705–772 to the current inventory, without
-another derivation run or additional historical discovery credit. The
-unsupported dynamic-group condition was already recorded in the first run of
-round 1; its existing credit and that round’s union remain unchanged. Neither
-final run receives discovery credit for this restored condition or the other
-current additions.
+Earlier corrections added conditions 646–704. Presentation, ingress and inbound
+consumer audits add in-scope conditions 705–771, channel routing adds 772–774,
+and CLI reconciliation adds 775–815. No additional derivation run was performed.
+Typed exec/plugin approval delivery and resolution are excluded by the area
+bound and do not enter the current denominator. Unsupported dynamic-group
+failure and live logout ordering were recorded in round 1; their existing
+credit and that round’s union remain unchanged. Neither final run receives
+credit for those restored conditions or the other current additions.
 
-The current inventory still contains 259 condition-bearing headings, including
-Existing outbound adapters. This does not change the historical 258-heading
-union or either final run’s recorded heading credit. Restored composites stay
-under their existing IDs. Against the current 772-condition inventory, the
-supplemental condition-by-meaning shares use unchanged final-round numerators:
-592/772 (76.7%) and 590/772 (76.4%). The historical 645-condition comparison,
-entry-point shares and per-round condition-heading acceptance shares above
-remain unchanged. Planned coverage is a separate measure in coverage.md.
+The current inventory contains 261 condition-bearing headings. This does not
+change the historical 258-heading union or either final run’s recorded heading
+credit. Restored composites retain their original credit. Against the current
+815-condition inventory, supplemental condition-by-meaning shares use unchanged
+final-round numerators: 592/815 (72.6%) and 590/815 (72.4%). The historical
+645-condition comparison, entry-point shares and per-round condition-heading
+acceptance shares above remain unchanged. Planned coverage is a separate
+measure in coverage.md.

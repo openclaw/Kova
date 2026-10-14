@@ -225,7 +225,7 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 15 | Two bots replying to each other, stopped by bot loop protection | docs/channels/index.md "Delivery notes"; docs/channels/bot-loop-protection.md "Bot loop protection"; docs/channels/bot-loop-protection.md "Defaults"; docs/gateway/config-channels/community-chat.md "Discord" | event | channel-bot-peer |
 | 16 | Bot-authored inbound accepted (allowBots) | docs/channels/bot-loop-protection.md "Bot loop protection"; docs/channels/bot-loop-protection.md "Internal agent group rounds" | ambient | channel-bot-peer |
 | 17 | Ambient room events: unmentioned room chatter recorded as quiet context | docs/channels/index.md "Delivery notes"; docs/channels/groups.md "Groups"; docs/channels/ambient-room-events.md "Ambient room events"; docs/channels/ambient-room-events.md "Recommended setup"; docs/concepts/messages.md "Silent replies"; docs/gateway/config-channels/mention-gating-and-history.md "Group chat mention gating" | ambient | channel-group-ambient, channel-ambient-room |
-| 18 | Several channels running at once, each chat routed on its own | docs/channels/index.md "Notes"; docs/cli/message.md "Channel selection"; docs/cli/pairing.md "pairing list" | ambient | channels-test-accounts |
+| 18 | Several channels running at once, each chat routed on its own | docs/channels/index.md "Notes"; docs/cli/message.md "Channel selection"; docs/cli/pairing.md "pairing list"; docs/channels/channel-routing.md "Channels & routing" | ambient | channels-test-accounts |
 | 19 | DM pairing and allowlists enforced on unknown senders | docs/channels/index.md "Notes"; docs/gateway/config-channels/shared-policies.md "DM and group access" | ambient | channels-test-accounts |
 | 20 | DM scope main: DMs from every channel converge on the main session | docs/channels/channel-routing.md "Channels & routing"; docs/channels/groups.md "Session keys"; docs/channels/channel-routing.md "Session key shapes (examples)" | ambient | session-main-rolling |
 | 21 | Several accounts on one channel with an explicit default account | docs/channels/channel-routing.md "Key terms"; docs/cli/pairing.md "Commands"; docs/gateway/config-channels/shared-policies.md "Multi-account (all channels)" | ambient | channel-multi-account, channel-accounts-multiple |
@@ -236,10 +236,10 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 26 | DM scope per-channel-peer | docs/channels/channel-routing.md "Session key shapes (examples)"; docs/tools/agent-send.md "Behavior" | ambient | config-dm-scope-per-channel-peer, dm-scope-isolated |
 | 27 | DM scope per-account-channel-peer | docs/channels/channel-routing.md "Session key shapes (examples)" | ambient | config-dm-scope-per-account, dm-scope-isolated |
 | 28 | Route binding overriding DM scope for its peers | docs/channels/channel-routing.md "Session key shapes (examples)" | ambient | config-bindings-tiers |
-| 29 | External DMs sharing main history under a per-account direct-chat runtime key | docs/channels/channel-routing.md "Session key shapes (examples)" | ambient | session-main-rolling |
+| 29 | External DMs sharing main history use a per-account direct-chat runtime key for sandbox and tool policy | docs/channels/channel-routing.md "Session key shapes (examples)" | ambient | session-main-rolling |
 | 30 | Group scope per-group | docs/channels/channel-routing.md "Session key shapes (examples)"; docs/channels/groups.md "Session keys" | ambient | session-group-watched, channel-groups-mixed |
-| 31 | Group scope main globally | docs/channels/channel-routing.md "Session key shapes (examples)" | ambient | config-group-scope-main, config-bindings-tiers |
-| 32 | Binding overriding group scope for selected rooms | docs/channels/channel-routing.md "Session key shapes (examples)"; docs/channels/groups.md "Session keys" | ambient | config-bindings-tiers |
+| 31 | Global group scope main shares context while mention gating and replies remain on the originating room | docs/channels/channel-routing.md "Session key shapes (examples)" | ambient | config-group-scope-main, config-bindings-tiers |
+| 32 | Binding group-scope override wins over global scope while room mention gating and reply origin are preserved | docs/channels/channel-routing.md "Session key shapes (examples)"; docs/channels/groups.md "Session keys" | ambient | config-bindings-tiers |
 | 33 | Slack or Discord thread keyed as its own session | docs/channels/channel-routing.md "Session key shapes (examples)" | ambient | channel-thread-session, channel-groups-mixed |
 | 34 | Telegram forum topic keyed into the group session | docs/channels/channel-routing.md "Session key shapes (examples)"; docs/channels/groups.md "Session keys" | ambient | channel-telegram-forum, channel-groups-mixed |
 | 35 | Non-owner DM while main DM route is pinned to the single allowFrom owner | docs/channels/channel-routing.md "Main DM route pinning" | event | channel-dm-owner-pinned, channel-telegram-shim |
@@ -252,12 +252,12 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 42 | Slack team binding | docs/channels/channel-routing.md "Routing rules (how an agent is chosen)" | ambient | none |
 | 43 | Account binding | docs/channels/channel-routing.md "Routing rules (how an agent is chosen)"; docs/gateway/config-channels/shared-policies.md "Multi-account (all channels)" | ambient | config-bindings-tiers |
 | 44 | Channel-wide binding (accountId *) | docs/channels/channel-routing.md "Routing rules (how an agent is chosen)" | ambient | config-bindings-tiers |
-| 45 | No binding matches, fallback owner used | docs/channels/channel-routing.md "Routing rules (how an agent is chosen)" | ambient | config-bindings-tiers |
+| 45 | Unbound routing uses a caller-supplied owner, sole configured owner or retained legacy owner | docs/channels/channel-routing.md "Routing rules (how an agent is chosen)" | ambient | config-bindings-tiers |
 | 46 | Several agents with no owner and no matching binding, no agent picked | docs/channels/channel-routing.md "Routing rules (how an agent is chosen)" | ambient | env-explicit-fleet-no-owner, config-bindings-tiers |
 | 47 | Binding with several match fields, all must match | docs/channels/channel-routing.md "Routing rules (how an agent is chosen)" | ambient | config-bindings-tiers |
 | 48 | Legacy default-agent markers awaiting doctor --fix | docs/channels/channel-routing.md "Routing rules (how an agent is chosen)" | ambient | config-legacy-default-markers, config-legacy-route-markers |
 | 49 | No agent roster, single main agent receives every route | docs/channels/channel-routing.md "Routing rules (how an agent is chosen)" | ambient | env-fresh-no-roster |
-| 50 | Broadcast group running several agents for one room message | docs/channels/channel-routing.md "Broadcast groups (run multiple agents)"; docs/channels/broadcast-groups.md "Overview"; docs/plugins/sdk-channel-inbound.md "Agent group dispatch" | ambient | channel-broadcast-group |
+| 50 | A broadcast group runs several agents for one room message, each in its own participant session | docs/channels/channel-routing.md "Broadcast groups (run multiple agents)"; docs/channels/broadcast-groups.md "Overview"; docs/plugins/sdk-channel-inbound.md "Agent group dispatch" | ambient | channel-broadcast-group |
 | 51 | Legacy WhatsApp broadcast array with single-pass fan-out | docs/channels/channel-routing.md "Broadcast groups (run multiple agents)"; docs/channels/broadcast-groups.md "Overview"; docs/channels/broadcast-groups.md "Basic setup" | ambient | none |
 | 52 | ACP binding on a broadcast room stays exclusive and bypasses fan-out | docs/channels/channel-routing.md "Broadcast groups (run multiple agents)"; docs/channels/broadcast-groups.md "Message flow"; docs/channels/broadcast-groups.md "Routing"; docs/plugins/sdk-channel-inbound.md "Agent group dispatch" | ambient | config-acp-binding, channel-broadcast-group |
 | 53 | Inbound reply to an earlier message carries reply context | docs/channels/channel-routing.md "Reply context" | event | channel-probe-conversations |
@@ -333,17 +333,17 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 123 | Bot's own delivered message echoed back skipped | docs/channels/group-messages.md "Known considerations"; docs/channels/bot-loop-protection.md "Defaults"; docs/channels/bot-loop-protection.md "Internal agent group rounds" | event | channel-groups-mixed |
 | 124 | Allowed group that has never triggered a run has no session row | docs/channels/group-messages.md "Known considerations" | ambient | channel-groups-mixed |
 | 125 | Typing starts immediately under message-tool-only visible replies | docs/channels/group-messages.md "Known considerations"; docs/concepts/typing-indicators.md "Defaults" | ambient | config-visible-replies-tool |
-| 126 | Mention of a broadcast participant satisfies the room mention gate | docs/channels/broadcast-groups.md "Overview" | event | channel-broadcast-group, channel-group-allowlisted |
+| 126 | Mention of a broadcast participant satisfies the room mention gate | docs/channels/broadcast-groups.md "Overview"; docs/channels/channel-routing.md "Broadcast groups (run multiple agents)" | event | channel-broadcast-group, channel-group-allowlisted |
 | 127 | Broadcast turn budget smaller than eligible participants, configured order decides | docs/channels/broadcast-groups.md "Agent group threads"; docs/plugins/sdk-channel-inbound.md "Agent group dispatch"; docs/channels/bot-loop-protection.md "Internal agent group rounds" | ambient | channel-broadcast-group |
-| 128 | Qualified WhatsApp broadcast key takes precedence over unqualified | docs/channels/broadcast-groups.md "Agent group threads" | ambient | none |
+| 128 | Qualified WhatsApp broadcast key takes precedence over unqualified | docs/channels/broadcast-groups.md "Agent group threads"; docs/channels/channel-routing.md "Broadcast groups (run multiple agents)" | ambient | none |
 | 129 | Preview and progress drafts disabled for qualified broadcast group threads | docs/channels/broadcast-groups.md "Agent group threads"; docs/concepts/streaming.md ""Stream chunks or everything"" | ambient | channel-broadcast-group |
-| 130 | Inbound mentioning some participants selects only them for round one | docs/channels/broadcast-groups.md "Mention selection" | event | channel-broadcast-group, channel-group-allowlisted |
-| 131 | Inbound mentioning no participant selects all | docs/channels/broadcast-groups.md "Mention selection" | event | channel-broadcast-group, channel-group-allowlisted |
+| 130 | Inbound mentioning some participants selects only them for round one | docs/channels/broadcast-groups.md "Mention selection"; docs/channels/channel-routing.md "Broadcast groups (run multiple agents)" | event | channel-broadcast-group, channel-group-allowlisted |
+| 131 | Inbound mentioning no participant selects all | docs/channels/broadcast-groups.md "Mention selection"; docs/channels/channel-routing.md "Broadcast groups (run multiple agents)" | event | channel-broadcast-group, channel-group-allowlisted |
 | 132 | Broadcast mentionGating false selects all participants | docs/channels/broadcast-groups.md "Mention selection" | ambient | config-broadcast-gating-off, channel-broadcast-group |
 | 133 | Follow-up round with bounded digest of sibling finals | docs/channels/broadcast-groups.md "Bounded follow-up rounds"; docs/plugins/sdk-channel-inbound.md "Agent group dispatch" | event | channel-broadcast-group, channel-group-allowlisted |
 | 134 | All participants pass, broadcast thread ends | docs/channels/broadcast-groups.md "Bounded follow-up rounds"; docs/plugins/sdk-channel-inbound.md "Agent group dispatch" | event | channel-broadcast-group, channel-group-allowlisted |
 | 135 | Sibling finals over the digest limits | docs/channels/broadcast-groups.md "Bounded follow-up rounds"; docs/plugins/sdk-channel-inbound.md "Agent group dispatch" | event | channel-broadcast-group |
-| 136 | maxRounds or maxTurns reached or cancelled, no further turns | docs/channels/broadcast-groups.md "Bounded follow-up rounds"; docs/channels/bot-loop-protection.md "Internal agent group rounds"; docs/plugins/sdk-channel-inbound.md "Agent group dispatch" | event | channel-broadcast-group, channel-group-allowlisted, channel-paired-sender |
+| 136 | maxRounds or maxTurns reached or cancelled, no further turns | docs/channels/broadcast-groups.md "Bounded follow-up rounds"; docs/channels/bot-loop-protection.md "Internal agent group rounds"; docs/plugins/sdk-channel-inbound.md "Agent group dispatch"; docs/channels/channel-routing.md "Broadcast groups (run multiple agents)" | event | channel-broadcast-group, channel-group-allowlisted, channel-paired-sender |
 | 137 | Gateway restart during a broadcast round loses round and budget | docs/channels/broadcast-groups.md "Bounded follow-up rounds"; docs/channels/broadcast-groups.md "Limitations"; docs/channels/bot-loop-protection.md "Internal agent group rounds" | event | channel-broadcast-group, channel-group-allowlisted |
 | 138 | Broadcast strategy sequential | docs/channels/broadcast-groups.md "Processing strategy" | ambient | channel-broadcast-group |
 | 139 | Multi-participant broadcast replies labelled with participant name | docs/channels/broadcast-groups.md "Participant labels" | ambient | channel-broadcast-group |
@@ -399,13 +399,13 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 189 | Sender with a pending request DMs again, no new pairing message | docs/channels/pairing.md "1) DM pairing (inbound chat access)" | event | channel-pairing-pending, channel-dm-pairing, channel-pairing-fixtures |
 | 190 | Three pending pairing requests on one account, further requests ignored | docs/channels/pairing.md "1) DM pairing (inbound chat access)"; docs/gateway/config-channels/shared-policies.md "DM and group access" | ambient | channel-pairing-cap, channel-dm-pairing, channel-pairing-fixtures |
 | 191 | No command owner configured, approval bootstraps the first owner | docs/channels/pairing.md "Approve from the Control UI"; docs/channels/pairing.md "Approve from the CLI"; docs/channels/pairing.md "Set up an owner without DM pairing"; docs/cli/pairing.md "Owner bootstrap"; docs/gateway/protocol/rpc-system-and-channels.md "Channel DM pairing" | ambient | config-no-command-owner, channel-dm-pairing, channel-pairing-fixtures |
-| 192 | Dismissed pairing request sender requests access again | docs/channels/pairing.md "Approve from the Control UI" | event | channel-pairing-pending, channel-dm-pairing, channel-pairing-fixtures |
-| 193 | Command owner already configured, later approvals grant DM access only | docs/channels/pairing.md "Approve from the CLI"; docs/channels/pairing.md "Set up an owner without DM pairing" | ambient | channel-paired-sender, channel-dm-pairing, channel-pairing-fixtures |
+| 192 | Dismissed pairing request sender requests access again | docs/channels/pairing.md "Approve from the Control UI"; docs/cli/pairing.md "openclaw pairing" | event | channel-pairing-pending, channel-dm-pairing, channel-pairing-fixtures |
+| 193 | Command owner already configured, later approvals grant DM access only | docs/channels/pairing.md "Approve from the CLI"; docs/channels/pairing.md "Set up an owner without DM pairing"; docs/cli/pairing.md "Owner bootstrap" | ambient | channel-paired-sender, channel-dm-pairing, channel-pairing-fixtures |
 | 194 | Manually allowlisted non-owner sends an owner-only command | docs/channels/pairing.md "Approve from the CLI" | event | config-dm-policy-allowlist |
-| 195 | Pairing requests and approved senders stored per channel and account | docs/channels/pairing.md "Where the state lives" | ambient | channel-paired-sender, channel-dm-pairing, channel-pairing-fixtures |
+| 195 | Pairing requests and approved senders stored per channel and account | docs/channels/pairing.md "Where the state lives"; docs/cli/pairing.md "Commands" | ambient | channel-paired-sender, channel-dm-pairing, channel-pairing-fixtures |
 | 196 | Legacy pairing and allowFrom JSON files not read until doctor --fix imports them | docs/channels/pairing.md "Where the state lives" | ambient | channel-pairing-legacy-files, channel-pairing-fixtures |
 | 197 | Connected channel account probe reports works or audit ok | docs/channels/troubleshooting.md "Command ladder" | ambient | channels-test-accounts |
-| 198 | Channel plugin failed to load after an update (corrupted dependencies) | docs/channels/troubleshooting.md "After an update"; docs/cli/channels.md "Common commands" | ambient | channel-plugin-deps-corrupt, channel-plugin-broken, channel-plugin-load-broken |
+| 198 | Configured channel plugin load or registration failure stays visible with blocked lifecycle and plugin error | docs/channels/troubleshooting.md "After an update"; docs/cli/channels.md "Common commands" | ambient | channel-plugin-deps-corrupt, channel-plugin-broken, channel-plugin-load-broken |
 | 199 | WhatsApp connected, no DM replies while sender awaits pairing | docs/channels/troubleshooting.md "WhatsApp failure signatures" | ambient | none |
 | 200 | WhatsApp group messages ignored by mention gating | docs/channels/troubleshooting.md "WhatsApp failure signatures" | ambient | none |
 | 201 | WhatsApp QR login times out with 408 behind unreachable proxy | docs/channels/troubleshooting.md "WhatsApp failure signatures" | event | none |
@@ -446,41 +446,41 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 236 | Matrix cross-signing or bootstrap state wrong | docs/channels/troubleshooting.md "Matrix failure signatures" | ambient | none |
 | 237 | Crash-loop breaker suppresses channel auto-start after repeated unclean boots | docs/channels/troubleshooting.md "Gateway up but channel never connects"; docs/gateway/protocol/rpc-system-and-channels.md "Channels and login helpers"; docs/gateway/restart-recovery.md "Safety valves and observability" | ambient | channel-probe-conversations |
 | 238 | Unclean-boot window drains, deferred channel auto-start resumes | docs/channels/troubleshooting.md "Gateway up but channel never connects"; docs/gateway/restart-recovery.md "Safety valves and observability" | event | channel-probe-conversations |
-| 239 | Bundled channels without an account and catalog channels not on disk | docs/cli/channels.md "Common commands" | ambient | channels-test-accounts |
-| 240 | Disabled channel plugin stays installed in inventory | docs/cli/channels.md "Common commands" | ambient | config-channel-plugin-disabled, channel-plugin-load-broken |
-| 241 | Explicit multi-agent fleet without a System Agent owner, no plugin discovery workspace | docs/cli/channels.md "Common commands"; docs/cli/message.md "Agent ownership" | ambient | agents-three-configured, channel-accounts-multiple |
+| 239 | Unconfigured bundled and absent catalog channels appear with --all, while name resolution does not install missing channels | docs/cli/channels.md "Common commands"; docs/cli/channels.md "Resolve names to IDs" | ambient | channels-test-accounts |
+| 240 | Disabled channel plugins remain installed, with unconfigured installed channels shown as available by --all | docs/cli/channels.md "Common commands" | ambient | config-channel-plugin-disabled, channel-plugin-load-broken |
+| 241 | An explicit fleet without a discovery owner lists shared inventory with a diagnostic; guided add asks for an owner while non-interactive setup requires one | docs/cli/channels.md "Common commands"; docs/cli/message.md "Agent ownership" | ambient | agents-three-configured, channel-accounts-multiple |
 | 242 | Workspace-scoped channel plugin discovered through the selected agent's workspace | docs/cli/channels.md "Common commands" | ambient | channel-workspace-plugin |
 | 243 | Installed channel plugin with untracked or inconsistent provenance omits docsPath | docs/cli/channels.md "Common commands" | ambient | channel-plugin-untracked, channel-plugin-load-broken |
 | 244 | Unknown configuration and stale connections kept in recorded channel status | docs/cli/channels.md "Status / capabilities / resolve / logs" | ambient | channels-test-accounts |
-| 245 | Channel probe exceeding per-channel deadline returns recorded state with warning | docs/cli/channels.md "Status / capabilities / resolve / logs" | event | channel-probe-conversations |
+| 245 | A channel probe exceeding its deadline returns recorded state with a warning while other channels still return | docs/cli/channels.md "Status / capabilities / resolve / logs" | event | channel-probe-conversations |
 | 246 | Gateway unreachable, channel status falls back to config-only summary | docs/cli/channels.md "Status / capabilities / resolve / logs"; docs/cli/channels.md "Troubleshooting"; docs/cli/message.md "Channel selection" | ambient | channels-test-accounts |
-| 247 | Channel status during Gateway startup reported as starting | docs/cli/channels.md "Status / capabilities / resolve / logs" | event | channels-test-accounts |
-| 248 | Inbound event exhausting retry policy retained as dead letter | docs/cli/channels.md "Inbound dead letters" | event | channel-ingress-aged-pending, channel-ingress-dead-letters, channel-probe-conversations |
+| 247 | Channel status at an unfinished startup deadline returns non-failing starting status with its observed startup phase | docs/cli/channels.md "Status / capabilities / resolve / logs" | event | channels-test-accounts |
+| 248 | Retry-exhausted inbound events retain dead-letter payloads and are reported by health and Doctor | docs/cli/channels.md "Inbound dead letters" | event | channel-ingress-aged-pending, channel-ingress-dead-letters, channel-probe-conversations |
 | 249 | Dead letter resubmitted while pending or claimed refused | docs/cli/channels.md "Inbound dead letters" | event | channel-ingress-dead-letters, channel-probe-conversations |
 | 250 | Completed inbound event not resubmittable | docs/cli/channels.md "Inbound dead letters" | ambient | channel-ingress-dead-letters, channel-probe-conversations |
 | 251 | Dead-letter rows from before payload retention listed but not resubmittable | docs/cli/channels.md "Inbound dead letters" | ambient | channel-dead-letters-legacy, channel-ingress-dead-letters |
 | 252 | Connected quiet account after provider restart has no session row | docs/cli/channels.md "Inbound dead letters" | ambient | channel-discord-fixture, channels-test-accounts |
 | 253 | Removing or disabling an account while its listener runs stops the listener first | docs/cli/channels.md "Add / remove accounts" | event | channel-telegram-shim, channels-test-accounts |
-| 254 | Third-party channel plugin on the legacy shared setup adapter | docs/cli/channels.md "Add / remove accounts" | ambient | none |
-| 255 | Guided channels add in a non-TTY shell exits immediately | docs/cli/channels.md "Add / remove accounts" | event | none |
+| 254 | A third-party channel using the legacy setup adapter receives compatibility flags only for that selected channel | docs/cli/channels.md "Add / remove accounts" | ambient | none |
+| 255 | Guided channel add without a TTY exits immediately and points to that channel help | docs/cli/channels.md "Add / remove accounts" | event | none |
 | 256 | Non-default account added to single-account top-level config promotes values | docs/cli/channels.md "Add / remove accounts"; docs/gateway/config-channels/shared-policies.md "Multi-account (all channels)" | event | channel-single-account-toplevel, channels-test-accounts |
 | 257 | Mixed named-account and top-level config awaiting doctor --fix | docs/cli/channels.md "Add / remove accounts"; docs/gateway/config-channels/shared-policies.md "Multi-account (all channels)" | ambient | config-mixed-account, config-legacy-route-markers |
 | 258 | Channel-only binding without accountId matches the default account | docs/cli/channels.md "Add / remove accounts"; docs/gateway/config-channels/shared-policies.md "Multi-account (all channels)" | ambient | config-bindings-tiers |
-| 259 | CLI state or config path differs from the local Gateway service, login or add refuse to write | docs/cli/channels.md "Login and logout (interactive)" | ambient | cli-profile-mismatched |
-| 260 | Remote-mode Gateway: login saves auth locally | docs/cli/channels.md "Login and logout (interactive)" | ambient | config-gateway-remote |
+| 259 | Proven CLI state or config mismatch blocks add/login writes, while remote or unverifiable paths produce a warning | docs/cli/channels.md "Login and logout (interactive)" | ambient | cli-profile-mismatched |
+| 260 | Remote-mode channel login saves auth locally without restarting the remote runtime | docs/cli/channels.md "Login and logout (interactive)" | ambient | config-gateway-remote |
 | 261 | Remote-mode Gateway: logout fails on a Gateway error | docs/cli/channels.md "Login and logout (interactive)" | event | config-gateway-remote, env-channel-remote-auth |
 | 262 | Logout while local Gateway unreachable falls back to local auth cleanup | docs/cli/channels.md "Login and logout (interactive)" | event | channel-telegram-shim, channels-test-accounts |
-| 263 | Logout of an account with no credentials leaves config unrewritten | docs/cli/channels.md "Login and logout (interactive)" | event | channel-probe-conversations, channels-test-accounts |
-| 264 | Login while another lifecycle operation owns the account, start skipped | docs/cli/channels.md "Login and logout (interactive)" | event | channel-real-accounts |
+| 263 | Logout with no saved credentials preserves authored config and can warn that other credentials remain active | docs/cli/channels.md "Login and logout (interactive)" | event | channel-probe-conversations, channels-test-accounts |
+| 264 | After login, an account start skipped or owned elsewhere reports its reason while saved auth remains | docs/cli/channels.md "Login and logout (interactive)" | event | channel-real-accounts |
 | 265 | Interactive channel login from agent exec blocked | docs/cli/channels.md "Login and logout (interactive)" | event | channels-test-accounts |
-| 266 | Explicitly started account absent from static account list shown while owned | docs/cli/channels.md "Per-account recovery (non-destructive)" | ambient | channel-account-unlisted, channel-probe-conversations |
-| 267 | Host thaw after maintenance gap triggers channel recovery, retries expire after ten minutes | docs/cli/channels.md "Per-account recovery (non-destructive)"; docs/gateway/restart-recovery.md "Host sleep and process freezes" | event | channels-test-accounts |
-| 268 | Host thaw while CPU-busy skips thaw recovery | docs/cli/channels.md "Per-account recovery (non-destructive)"; docs/gateway/restart-recovery.md "Host sleep and process freezes" | event | channels-test-accounts |
-| 269 | Start or stop while another task owns the account returns retry | docs/cli/channels.md "Per-account recovery (non-destructive)" | event | channels-test-accounts |
+| 266 | Explicitly started accounts outside the static list appear while owned and disappear after successful stop | docs/cli/channels.md "Per-account recovery (non-destructive)" | ambient | channel-account-unlisted, channel-probe-conversations |
+| 267 | Host thaw refreshes health and presence and recovers idle channels, with restart retries expiring ten minutes after detection | docs/cli/channels.md "Per-account recovery (non-destructive)"; docs/gateway/restart-recovery.md "Host sleep and process freezes" | event | channels-test-accounts |
+| 268 | A host-thaw gap at least half consumed by process CPU logs event-loop load and skips thaw recovery | docs/cli/channels.md "Per-account recovery (non-destructive)"; docs/gateway/restart-recovery.md "Host sleep and process freezes" | event | channels-test-accounts |
+| 269 | Account start returns retry while a task, start or stop still owns that account | docs/cli/channels.md "Per-account recovery (non-destructive)" | event | channels-test-accounts |
 | 270 | Disabled channel account skipped without resolving credentials | docs/cli/channels.md "Per-account recovery (non-destructive)" | ambient | config-channel-account-disabled, channel-accounts-multiple |
 | 271 | Unconfigured or unlinked channel account skipped at start | docs/cli/channels.md "Per-account recovery (non-destructive)" | ambient | config-channel-account-unconfigured, channel-accounts-multiple |
 | 272 | Unsupported channel account skipped at start | docs/cli/channels.md "Per-account recovery (non-destructive)" | ambient | channel-accounts-multiple |
-| 273 | Enabled account with unavailable configured secret, start returns an error | docs/cli/channels.md "Per-account recovery (non-destructive)" | ambient | config-channel-secret-missing, channel-accounts-multiple |
+| 273 | Enabled accounts with unavailable configured secrets fail start without using another credential | docs/cli/channels.md "Per-account recovery (non-destructive)" | ambient | config-channel-secret-missing, channel-accounts-multiple |
 | 274 | SecretRef credential unavailable in the command path reported as degraded | docs/cli/channels.md "Troubleshooting"; docs/cli/channels.md "Resolve names to IDs"; docs/cli/message.md "SecretRef resolution"; docs/gateway/config-channels/workplace-chat.md "Slack"; docs/cli/channels.md "Per-account recovery (non-destructive)" | ambient | config-channel-secret-missing, channel-accounts-multiple |
 | 275 | Manually stopped account suppresses automatic start | docs/cli/channels.md "Per-account recovery (non-destructive)" | ambient | channel-account-stopped, channel-accounts-multiple |
 | 276 | Automatic start suppressed (autostart-suppressed) | docs/cli/channels.md "Per-account recovery (non-destructive)" | ambient | channel-accounts-multiple |
@@ -488,27 +488,27 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 278 | Stalled capability check step reported while other accounts continue | docs/cli/channels.md "Capabilities check" | event | channel-probe-conversations |
 | 279 | Channel without live capability checks reports check unavailable | docs/cli/channels.md "Capabilities check" | ambient | channels-test-accounts |
 | 280 | Several directory entries sharing one name, active match preferred | docs/cli/channels.md "Resolve names to IDs" | ambient | channel-discord-fixture |
-| 281 | Exactly one channel configured, selected by default for message actions | docs/cli/message.md "Channel selection" | ambient | channels-test-accounts |
+| 281 | Message actions, directory lookups and pairing approval select the unique eligible channel when the channel option is omitted | docs/cli/message.md "Channel selection"; docs/cli/directory.md "Common flags"; docs/cli/pairing.md "pairing approve" | ambient | channels-test-accounts |
 | 282 | Gateway-owned message action while the Gateway is unreachable fails | docs/cli/message.md "Channel selection" | event | channels-test-accounts |
 | 283 | Target name missing from directory cache resolved by live lookup | docs/cli/message.md "Target formats (-t, --target)" | event | channel-discord-fixture |
 | 284 | Local message action runs plugin shutdown hooks within 2.5-second budget | docs/cli/message.md "Common flags" | event | channel-probe-conversations, channels-test-accounts |
 | 285 | Plugin disposal pending at exit defers state database drain | docs/cli/message.md "Common flags" | event | channel-probe-conversations, channels-test-accounts |
-| 286 | Unresolved SecretRef on an unrelated channel does not block a targeted action | docs/cli/message.md "SecretRef resolution" | ambient | config-channel-secret-missing, channel-accounts-multiple |
-| 287 | Unresolved SecretRef on the selected channel fails closed | docs/cli/message.md "SecretRef resolution" | ambient | channel-accounts-multiple |
+| 286 | Unresolved SecretRef on an unrelated channel does not block a targeted action | docs/cli/message.md "SecretRef resolution"; docs/cli/directory.md "Notes" | ambient | config-channel-secret-missing, channel-accounts-multiple |
+| 287 | Unresolved SecretRef on the selected channel fails closed | docs/cli/message.md "SecretRef resolution"; docs/cli/directory.md "Notes" | ambient | channel-accounts-multiple |
 | 288 | Send suppressed by a message hook, nonzero exit | docs/cli/message.md "Send"; docs/tools/agent-send.md "Behavior" | event | plugin-message-hooks |
 | 289 | Consecutive photos to Telegram grouped into an album | docs/cli/message.md "Send" | event | channel-telegram-shim |
 | 290 | Presentation chart and table blocks without native support sent as text | docs/cli/message.md "Send"; docs/plugins/message-presentation.md "Core render flow"; docs/plugins/message-presentation.md "Contract" | ambient | channel-interactive-message, channel-probe-conversations |
 | 291 | Telegram Mini App buttons rendered only in private chats | docs/cli/message.md "Send" | ambient | channel-interactive-message |
 | 292 | Broadcast send where a target fails, is suppressed or partially delivers | docs/cli/message.md "Broadcast" | event | channel-group-allowlisted, channel-probe-conversations, channel-accounts-multiple |
-| 293 | Directory listing with no entries names the channel and account | docs/cli/directory.md "Common flags"; docs/cli/directory.md "Notes" | ambient | channel-probe-conversations, channel-groups-mixed |
+| 293 | Empty directory lists name the queried channel and account in text and return an empty JSON array | docs/cli/directory.md "Common flags"; docs/cli/directory.md "Notes" | ambient | channel-probe-conversations, channel-groups-mixed |
 | 294 | Directory results backed by config allowlists and groups | docs/cli/directory.md "Notes" | ambient | channel-group-allowlisted, channel-groups-mixed |
 | 295 | WhatsApp live group listing while another process owns the session | docs/cli/directory.md "Notes" | ambient | none |
-| 296 | Installed channel plugin without directory support | docs/cli/directory.md "Notes" | ambient | channel-probe-conversations |
-| 297 | Channel without a self resolver reports self-identity-unsupported | docs/cli/directory.md "Self ("me")" | ambient | channel-telegram-shim |
-| 298 | Self lookup returns no identity | docs/cli/directory.md "Self ("me")" | ambient | env-msteams-empty-self |
+| 296 | An installed channel without directory support reports unsupported operation without reinstalling or upgrading it | docs/cli/directory.md "Notes" | ambient | channel-probe-conversations |
+| 297 | A channel without a self resolver returns successful empty output with self-identity-unsupported | docs/cli/directory.md "Self ("me")" | ambient | channel-telegram-shim |
+| 298 | An implemented self lookup returning no identity reports plugin-returned-no-self-identity rather than an unsupported resolver | docs/cli/directory.md "Self ("me")" | ambient | env-msteams-empty-self |
 | 299 | No Gateway owns the state directory, pairing commands take offline ownership | docs/cli/pairing.md "openclaw pairing" | ambient | channel-dm-pairing, channel-pairing-fixtures |
 | 300 | Listing pairing requests prunes expired or excess requests | docs/cli/pairing.md "openclaw pairing"; docs/gateway/protocol/rpc-system-and-channels.md "Channel DM pairing" | event | none, channel-pairing-fixtures |
-| 301 | Pairing RPC to older Gateway, missing credentials, refusal or uncertain reply, no local fallback | docs/cli/pairing.md "openclaw pairing"; docs/gateway/protocol/rpc-system-and-channels.md "Channel DM pairing" | event | channel-pairing-pending, channel-dm-pairing, channel-pairing-fixtures |
+| 301 | Pairing RPC to an older Gateway, missing credentials, refusal or uncertain reply never falls back locally and does not bootstrap or notify after an unacknowledged approval | docs/cli/pairing.md "openclaw pairing"; docs/gateway/protocol/rpc-system-and-channels.md "Channel DM pairing" | event | channel-pairing-pending, channel-dm-pairing, channel-pairing-fixtures |
 | 302 | Senders approved before first-owner bootstrap with no command owner, doctor warns | docs/cli/pairing.md "Owner bootstrap" | ambient | channel-paired-before-bootstrap, channel-pairing-fixtures |
 | 303 | Channel redelivers a message after reconnect, deduplicated | docs/concepts/messages.md "Inbound dedupe" | event | channel-telegram-shim, channel-probe-conversations |
 | 304 | Inbound dedupe cache entry expired or evicted | docs/concepts/messages.md "Inbound dedupe" | event | channel-probe-conversations |
@@ -809,7 +809,7 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 599 | Reusable button kept available after successful interaction | docs/plugins/message-presentation.md "Contract" | event | channel-interactive-message |
 | 600 | Controls over action limits drop lower priorities and retain labels as text when no controls fit | docs/plugins/message-presentation.md "Contract"; docs/plugins/message-presentation.md "Renderer contract" | event | channel-interactive-message, channel-telegram-shim |
 | 601 | Adapter cannot render a presentation, conservative text fallback | docs/plugins/message-presentation.md "Core render flow"; docs/plugins/message-presentation.md "Button value fallback visibility"; docs/plugins/message-presentation.md "Provider mapping" | event | channel-interactive-message, channel-probe-conversations |
-| 602 | Unsupported controls show command text and URLs while callback, approval and legacy values stay label-only | docs/plugins/message-presentation.md "Core render flow"; docs/plugins/message-presentation.md "Button value fallback visibility"; docs/plugins/message-presentation.md "Provider mapping" | event | channel-interactive-message, channel-probe-conversations |
+| 602 | Unsupported controls show command text and URLs while callback and legacy values stay label-only | docs/plugins/message-presentation.md "Core render flow"; docs/plugins/message-presentation.md "Button value fallback visibility"; docs/plugins/message-presentation.md "Provider mapping" | event | channel-interactive-message, channel-probe-conversations |
 | 603 | Authored fallback text is dropped for native data rendering and sent verbatim when all data blocks degrade | docs/plugins/message-presentation.md "Degradation rules" | event | channel-interactive-message, channel-probe-conversations |
 | 604 | Telegram inline buttons unavailable, text fallback | docs/plugins/message-presentation.md "Degradation rules" | ambient | config-telegram-inline-buttons-off |
 | 605 | Optional delivery pin failing leaves message intact | docs/plugins/message-presentation.md "Degradation rules" | event | channel-telegram-shim |
@@ -910,76 +910,119 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 700 | Opposite directions between the same two bots share one pair budget within the same scope and conversation | docs/channels/bot-loop-protection.md "Bot loop protection" | event | none |
 | 701 | Bot-pair budgets remain isolated by native account or scope, conversation and participant pair | docs/channels/bot-loop-protection.md "Bot loop protection"; docs/channels/bot-loop-protection.md "Channel support" | ambient | none |
 | 702 | Feishu bot-pair protection uses only the shared channels.defaults baseline | docs/channels/bot-loop-protection.md "Configure shared defaults"; docs/channels/bot-loop-protection.md "Channel support" | ambient | none |
-| 703 | Several physical messages from one group participant turn do not consume extra coordinator turns | docs/channels/bot-loop-protection.md "Internal agent group rounds"; docs/plugins/sdk-channel-inbound.md "Agent group dispatch" | event | none |
-| 704 | Internal group coordinator budgets are isolated by channel, account, conversation, thread and root message | docs/channels/bot-loop-protection.md "Internal agent group rounds"; docs/plugins/sdk-channel-inbound.md "Agent group dispatch" | event | none |
+| 703 | Several physical messages from one group participant turn do not consume extra coordinator turns | docs/channels/bot-loop-protection.md "Internal agent group rounds"; docs/plugins/sdk-channel-inbound.md "Agent group dispatch"; docs/channels/channel-routing.md "Broadcast groups (run multiple agents)" | event | none |
+| 704 | Internal group coordinator budgets are isolated by channel, account, conversation, thread and root message | docs/channels/bot-loop-protection.md "Internal agent group rounds"; docs/plugins/sdk-channel-inbound.md "Agent group dispatch"; docs/channels/channel-routing.md "Broadcast groups (run multiple agents)" | event | none |
 | 705 | An unaccepted Mattermost question click gives private feedback without changing the prompt | docs/plugins/message-presentation.md "Contract" | event | none |
 | 706 | An accepted Mattermost question click retires its prompt | docs/plugins/message-presentation.md "Contract" | event | none |
-| 707 | A typed approval control resolves the durable approval using its explicit kind and decision | docs/plugins/message-presentation.md "Contract" | event | none |
-| 708 | Question shapes without native single-choice support fall back to readable answer text | docs/plugins/message-presentation.md "Contract" | event | none |
-| 709 | A hosted-widget-only action falls back to its label without exposing a nonexistent URL | docs/plugins/message-presentation.md "Button value fallback visibility" | event | none |
-| 710 | Unsupported presentation styles degrade to a safe default without failing the send | docs/plugins/message-presentation.md "Contract" | ambient | none |
-| 711 | Control ordering preserves authored order when all fit or priorities tie | docs/plugins/message-presentation.md "Contract" | event | none |
-| 712 | A native table exposes the selected column as row headers | docs/plugins/message-presentation.md "Contract" | ambient | none |
-| 713 | Per-delivery presentation capabilities override the static baseline by account and formatting | docs/plugins/message-presentation.md "Renderer contract" | ambient | none |
-| 714 | Whole-card text fallback preserves original labels after native adaptation | docs/plugins/message-presentation.md "Core render flow" | event | none |
-| 715 | Channel-local reply or preview delivery preserves presentation fallback before text projection | docs/plugins/message-presentation.md "Core render flow" | event | none |
-| 716 | Manual-command guidance appears only when the rendered fallback shows a command | docs/plugins/message-presentation.md "Button value fallback visibility" | event | none |
-| 717 | A Feishu native card renders its title once in the header | docs/plugins/message-presentation.md "Provider mapping" | ambient | none |
-| 718 | A rejected Feishu native button URL leaves label text without the rejected target | docs/plugins/message-presentation.md "Provider mapping" | event | none |
-| 719 | Matrix presentation carries text fallback and structured event data rather than native controls | docs/plugins/message-presentation.md "Provider mapping" | ambient | none |
-| 720 | Mattermost select and divider presentation blocks degrade to text | docs/plugins/message-presentation.md "Provider mapping" | ambient | none |
-| 721 | Microsoft Teams includes authored message text with its presentation card | docs/plugins/message-presentation.md "Provider mapping" | ambient | none |
-| 722 | Slack renders chart and table presentations as native data blocks | docs/plugins/message-presentation.md "Provider mapping" | ambient | none |
-| 723 | Slack preserves legacy provider-native blocks from existing reply producers | docs/plugins/message-presentation.md "Provider mapping" | ambient | none |
-| 724 | An explicit typed presentation action takes precedence over legacy boundary fields | docs/plugins/message-presentation.md "Presentation vs InteractiveReply" | event | none |
-| 725 | A non-scalar typed presentation action cannot reveal a legacy shadow value | docs/plugins/message-presentation.md "Presentation vs InteractiveReply" | event | none |
-| 726 | A referenced dynamic access group without a supported membership resolver fails closed | docs/plugins/sdk-channel-ingress.md "Access groups" | ambient | none |
-| 727 | A weak secondary identifier does not weaken a separately matched verified identifier of the same kind | docs/plugins/sdk-channel-ingress.md "Identifier authentication" | event | none |
-| 728 | A matched allowlist entry and subject identifier use the weaker exact-pair authentication claim | docs/plugins/sdk-channel-ingress.md "Identifier authentication" | event | none |
-| 729 | An omitted per-message authentication map retains the identity descriptor static claims | docs/plugins/sdk-channel-ingress.md "Identifier authentication" | ambient | none |
-| 730 | An entry accepted by several identity fields is classified by the strongest static accepting claim | docs/plugins/sdk-channel-ingress.md "Identifier authentication" | ambient | none |
-| 731 | An entry accepted by no identity field has no static authentication classification | docs/plugins/sdk-channel-ingress.md "Identifier authentication" | ambient | none |
-| 732 | Wildcard entries are excluded from static identifier-authentication classification | docs/plugins/sdk-channel-ingress.md "Identifier authentication" | ambient | none |
-| 733 | Pairing-store approvals are excluded from the configured mutable-identifier security check | docs/plugins/sdk-channel-ingress.md "Identifier authentication" | ambient | none |
-| 734 | Symbolic access-group references are not counted as mutable identifiers by the security check | docs/plugins/sdk-channel-ingress.md "Identifier authentication" | ambient | none |
-| 735 | Explicit identifier authentication takes precedence over deprecated dangerous fields | docs/plugins/sdk-channel-ingress.md "Identifier authentication" | ambient | none |
-| 736 | Explicit minimum identifier authentication takes precedence over deprecated mutable-matching policy | docs/plugins/sdk-channel-ingress.md "Identifier authentication" | ambient | none |
-| 737 | A decision-only ingress result without context binding cannot serve as host execution provenance | docs/plugins/sdk-channel-ingress.md "Runtime resolver" | event | none |
-| 738 | Legacy standalone ingress helpers retain attribution within their trusted active native callback | docs/plugins/sdk-channel-ingress.md "Runtime resolver" | event | none |
-| 739 | A reusable resolver retains its creating plugin identity when invoked from another plugin | docs/plugins/sdk-channel-ingress.md "Runtime resolver" | event | none |
-| 740 | Product participant identity preserves the supplied remote service domain and distinct identity kind | docs/plugins/sdk-channel-ingress.md "Product participant identity" | ambient | none |
-| 741 | Accepted product participant facts remain independent of disabled execution-identity audit collection | docs/plugins/sdk-channel-ingress.md "Product participant identity" | ambient | none |
-| 742 | Proven product participation does not itself grant channel access | docs/plugins/sdk-channel-ingress.md "Product participant identity" | event | none |
-| 743 | A verified identifier claim does not itself establish execution-identity assurance | docs/plugins/sdk-channel-ingress.md "Identifier authentication" | ambient | none |
-| 744 | A trusted route-scoped event uses route-only authorization while preserving route gates | docs/plugins/sdk-channel-ingress.md "Event modes" | event | none |
-| 745 | A plugin-owned internal event uses none event authorization without sender reauthorization | docs/plugins/sdk-channel-ingress.md "Event modes" | event | none |
-| 746 | Absent or false optional ingress-route branches are omitted from the route descriptor list | docs/plugins/sdk-channel-ingress.md "Routes and activation" | ambient | none |
-| 747 | Multiple ingress route descriptors are evaluated in declared precedence order | docs/plugins/sdk-channel-ingress.md "Routes and activation" | ambient | none |
-| 748 | An ingress result without a command policy reports commandAccess.requested false | docs/plugins/sdk-channel-ingress.md "Result" | event | none |
-| 749 | A structurally similar or copied public ingress result does not gain host authority | docs/plugins/sdk-channel-ingress.md "Result" | event | none |
-| 750 | A queued contribution with missing or unminted evidence makes participant attribution unknown | docs/plugins/sdk-channel-ingress.md "Result" | event | none |
-| 751 | Queued contributions retain attribution only when every contribution is valid for the same participant | docs/plugins/sdk-channel-ingress.md "Result" | event | none |
-| 752 | Channel-owned sender and chat metadata reaches plugin hooks through channelContext | docs/plugins/sdk-channel-inbound.md "Core helpers" | ambient | none |
-| 753 | Explicit self-quote body suppression removes self-authored quote text | docs/plugins/sdk-channel-inbound.md "Core helpers" | ambient | none |
-| 754 | Explicit self-quote media inclusion preserves media that the default skips | docs/plugins/sdk-channel-inbound.md "Core helpers" | ambient | none |
-| 755 | Already accepted binding controls and close results settle after authorization revocation while later effects are blocked | docs/plugins/sdk-channel-inbound.md "Core helpers" | event | none |
-| 756 | Inbound drop logging without a once key emits each message diagnostic | docs/plugins/sdk-channel-inbound.md "Core helpers" | event | none |
-| 757 | Group-setting diagnostics identify the authored root or account groups map without replacing inherited policies | docs/plugins/sdk-channel-inbound.md "Core helpers" | ambient | none |
-| 758 | Media placeholder type selection follows explicit kind, MIME type and path or URL extension in that order | docs/plugins/sdk-channel-inbound.md "Core helpers" | ambient | none |
-| 759 | Ordered inbound media facts preserve per-attachment transcription, message identity and workspace association | docs/plugins/sdk-channel-inbound.md "Core helpers" | event | none |
-| 760 | History without recent mode retains canonical enrichment and the defensive 20-entry prompt cap | docs/plugins/sdk-channel-inbound.md "Platform-selected history windows" | ambient | none |
-| 761 | Routed direct, durable and exceptional provider delivery each assign exactly one message_sending owner | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract" | ambient | none |
-| 762 | Caller-assembled compatibility reply dispatch preserves its caller-provided dispatcher ownership | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract"; docs/plugins/sdk-channel-inbound.md "Migration" | ambient | none |
-| 763 | Terminal delivery observation uses provider-accepted content and falls back to prepared content when content is omitted | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract" | event | none |
-| 764 | Terminal message_sent identity comes from the actual receipt primary provider message | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract" | event | none |
-| 765 | A non-visible native delivery result emits no successful message_sent observation | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract" | event | none |
-| 766 | Core terminal observation for non-durable delivery requires adapter opt-in while durable delivery retains its single shared owner | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract" | ambient | none |
-| 767 | A finalization promise that rejects before reply dispatch settles is observed immediately and preserves failed delivery | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract" | event | none |
-| 768 | onDelivered receives the settled result only after finalization and terminal observation | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract" | event | none |
-| 769 | Settled suppression reaches onDelivered without a successful terminal event or visible queued reply | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract" | event | none |
-| 770 | Empty or surrounding-whitespace record-session overrides are rejected | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract" | event | none |
-| 771 | Inbound session metadata writing is joined before dispatch can create or use the session store | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract" | event | none |
-| 772 | Asynchronous record-error reporting is tracked while reporting and session maintenance remain outside foreground completion | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract" | event | none |
+| 707 | Question shapes without native single-choice support fall back to readable answer text | docs/plugins/message-presentation.md "Contract" | event | none |
+| 708 | A hosted-widget-only action falls back to its label without exposing a nonexistent URL | docs/plugins/message-presentation.md "Button value fallback visibility" | event | none |
+| 709 | Unsupported presentation styles degrade to a safe default without failing the send | docs/plugins/message-presentation.md "Contract" | ambient | none |
+| 710 | Control ordering preserves authored order when all fit or priorities tie | docs/plugins/message-presentation.md "Contract" | event | none |
+| 711 | A native table exposes the selected column as row headers | docs/plugins/message-presentation.md "Contract" | ambient | none |
+| 712 | Per-delivery presentation capabilities override the static baseline by account and formatting | docs/plugins/message-presentation.md "Renderer contract" | ambient | none |
+| 713 | Whole-card text fallback preserves original labels after native adaptation | docs/plugins/message-presentation.md "Core render flow" | event | none |
+| 714 | Channel-local reply or preview delivery preserves presentation fallback before text projection | docs/plugins/message-presentation.md "Core render flow" | event | none |
+| 715 | Manual-command guidance appears only when the rendered fallback shows a command | docs/plugins/message-presentation.md "Button value fallback visibility" | event | none |
+| 716 | A Feishu native card renders its title once in the header | docs/plugins/message-presentation.md "Provider mapping" | ambient | none |
+| 717 | A rejected Feishu native button URL leaves label text without the rejected target | docs/plugins/message-presentation.md "Provider mapping" | event | none |
+| 718 | Matrix presentation carries text fallback and structured event data rather than native controls | docs/plugins/message-presentation.md "Provider mapping" | ambient | none |
+| 719 | Mattermost select and divider presentation blocks degrade to text | docs/plugins/message-presentation.md "Provider mapping" | ambient | none |
+| 720 | Microsoft Teams includes authored message text with its presentation card | docs/plugins/message-presentation.md "Provider mapping" | ambient | none |
+| 721 | Slack renders chart and table presentations as native data blocks | docs/plugins/message-presentation.md "Provider mapping" | ambient | none |
+| 722 | Slack preserves legacy provider-native blocks from existing reply producers | docs/plugins/message-presentation.md "Provider mapping" | ambient | none |
+| 723 | An explicit typed presentation action takes precedence over legacy boundary fields | docs/plugins/message-presentation.md "Presentation vs InteractiveReply" | event | none |
+| 724 | A non-scalar question or link action cannot reveal a legacy shadow value | docs/plugins/message-presentation.md "Presentation vs InteractiveReply" | event | none |
+| 725 | A referenced dynamic access group without a supported membership resolver fails closed | docs/plugins/sdk-channel-ingress.md "Access groups" | ambient | none |
+| 726 | A weak secondary identifier does not weaken a separately matched verified identifier of the same kind | docs/plugins/sdk-channel-ingress.md "Identifier authentication" | event | none |
+| 727 | A matched allowlist entry and subject identifier use the weaker exact-pair authentication claim | docs/plugins/sdk-channel-ingress.md "Identifier authentication" | event | none |
+| 728 | An omitted per-message authentication map retains the identity descriptor static claims | docs/plugins/sdk-channel-ingress.md "Identifier authentication" | ambient | none |
+| 729 | An entry accepted by several identity fields is classified by the strongest static accepting claim | docs/plugins/sdk-channel-ingress.md "Identifier authentication" | ambient | none |
+| 730 | An entry accepted by no identity field has no static authentication classification | docs/plugins/sdk-channel-ingress.md "Identifier authentication" | ambient | none |
+| 731 | Wildcard entries are excluded from static identifier-authentication classification | docs/plugins/sdk-channel-ingress.md "Identifier authentication" | ambient | none |
+| 732 | Pairing-store approvals are excluded from the configured mutable-identifier security check | docs/plugins/sdk-channel-ingress.md "Identifier authentication" | ambient | none |
+| 733 | Symbolic access-group references are not counted as mutable identifiers by the security check | docs/plugins/sdk-channel-ingress.md "Identifier authentication" | ambient | none |
+| 734 | Explicit identifier authentication takes precedence over deprecated dangerous fields | docs/plugins/sdk-channel-ingress.md "Identifier authentication" | ambient | none |
+| 735 | Explicit minimum identifier authentication takes precedence over deprecated mutable-matching policy | docs/plugins/sdk-channel-ingress.md "Identifier authentication" | ambient | none |
+| 736 | A decision-only ingress result without context binding cannot serve as host execution provenance | docs/plugins/sdk-channel-ingress.md "Runtime resolver" | event | none |
+| 737 | Legacy standalone ingress helpers retain attribution within their trusted active native callback | docs/plugins/sdk-channel-ingress.md "Runtime resolver" | event | none |
+| 738 | A reusable resolver retains its creating plugin identity when invoked from another plugin | docs/plugins/sdk-channel-ingress.md "Runtime resolver" | event | none |
+| 739 | Product participant identity preserves the supplied remote service domain and distinct identity kind | docs/plugins/sdk-channel-ingress.md "Product participant identity" | ambient | none |
+| 740 | Accepted product participant facts remain independent of disabled execution-identity audit collection | docs/plugins/sdk-channel-ingress.md "Product participant identity" | ambient | none |
+| 741 | Proven product participation does not itself grant channel access | docs/plugins/sdk-channel-ingress.md "Product participant identity" | event | none |
+| 742 | A verified identifier claim does not itself establish execution-identity assurance | docs/plugins/sdk-channel-ingress.md "Identifier authentication" | ambient | none |
+| 743 | A trusted route-scoped event uses route-only authorization while preserving route gates | docs/plugins/sdk-channel-ingress.md "Event modes" | event | none |
+| 744 | A plugin-owned internal event uses none event authorization without sender reauthorization | docs/plugins/sdk-channel-ingress.md "Event modes" | event | none |
+| 745 | Absent or false optional ingress-route branches are omitted from the route descriptor list | docs/plugins/sdk-channel-ingress.md "Routes and activation" | ambient | none |
+| 746 | Multiple ingress route descriptors are evaluated in declared precedence order | docs/plugins/sdk-channel-ingress.md "Routes and activation" | ambient | none |
+| 747 | An ingress result without a command policy reports commandAccess.requested false | docs/plugins/sdk-channel-ingress.md "Result" | event | none |
+| 748 | A structurally similar or copied public ingress result does not gain host authority | docs/plugins/sdk-channel-ingress.md "Result" | event | none |
+| 749 | A queued contribution with missing or unminted evidence makes participant attribution unknown | docs/plugins/sdk-channel-ingress.md "Result" | event | none |
+| 750 | Queued contributions retain attribution only when every contribution is valid for the same participant | docs/plugins/sdk-channel-ingress.md "Result" | event | none |
+| 751 | Channel-owned sender and chat metadata reaches plugin hooks through channelContext | docs/plugins/sdk-channel-inbound.md "Core helpers" | ambient | none |
+| 752 | Explicit self-quote body suppression removes self-authored quote text | docs/plugins/sdk-channel-inbound.md "Core helpers" | ambient | none |
+| 753 | Explicit self-quote media inclusion preserves media that the default skips | docs/plugins/sdk-channel-inbound.md "Core helpers" | ambient | none |
+| 754 | Already accepted binding controls and close results settle after authorization revocation while later effects are blocked | docs/plugins/sdk-channel-inbound.md "Core helpers" | event | none |
+| 755 | Inbound drop logging without a once key emits each message diagnostic | docs/plugins/sdk-channel-inbound.md "Core helpers" | event | none |
+| 756 | Group-setting diagnostics identify the authored root or account groups map without replacing inherited policies | docs/plugins/sdk-channel-inbound.md "Core helpers" | ambient | none |
+| 757 | Media placeholder type selection follows explicit kind, MIME type and path or URL extension in that order | docs/plugins/sdk-channel-inbound.md "Core helpers" | ambient | none |
+| 758 | Ordered inbound media facts preserve per-attachment transcription, message identity and workspace association | docs/plugins/sdk-channel-inbound.md "Core helpers" | event | none |
+| 759 | History without recent mode retains canonical enrichment and the defensive 20-entry prompt cap | docs/plugins/sdk-channel-inbound.md "Platform-selected history windows" | ambient | none |
+| 760 | Routed direct, durable and exceptional provider delivery each assign exactly one message_sending owner | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract" | ambient | none |
+| 761 | Caller-assembled compatibility reply dispatch preserves its caller-provided dispatcher ownership | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract"; docs/plugins/sdk-channel-inbound.md "Migration" | ambient | none |
+| 762 | Terminal delivery observation uses provider-accepted content and falls back to prepared content when content is omitted | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract" | event | none |
+| 763 | Terminal message_sent identity comes from the actual receipt primary provider message | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract" | event | none |
+| 764 | A non-visible native delivery result emits no successful message_sent observation | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract" | event | none |
+| 765 | Core terminal observation for non-durable delivery requires adapter opt-in while durable delivery retains its single shared owner | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract" | ambient | none |
+| 766 | A finalization promise that rejects before reply dispatch settles is observed immediately and preserves failed delivery | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract" | event | none |
+| 767 | onDelivered receives the settled result only after finalization and terminal observation | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract" | event | none |
+| 768 | Settled suppression reaches onDelivered without a successful terminal event or visible queued reply | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract" | event | none |
+| 769 | Empty or surrounding-whitespace record-session overrides are rejected | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract" | event | none |
+| 770 | Inbound session metadata writing is joined before dispatch can create or use the session store | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract" | event | none |
+| 771 | Asynchronous record-error reporting is tracked while reporting and session maintenance remain outside foreground completion | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract" | event | none |
+| 772 | Guarded inbound recording can update metadata and eligible lastRoute on an existing session | docs/channels/channel-routing.md "Guarded inbound recording" | event | none |
+| 773 | Bindings matching several routing tiers select the first matching documented priority tier | docs/channels/channel-routing.md "Routing rules (how an agent is chosen)" | ambient | none |
+| 774 | Qualified broadcast entries without selection or budget overrides use mention selection, one round and a participant-count turn budget | docs/channels/channel-routing.md "Broadcast groups (run multiple agents)" | ambient | none |
+| 775 | Explicit blank channel-account options are rejected instead of selecting default or broader scope | docs/cli/channels.md "Common commands"; docs/cli/channels.md "Status / capabilities / resolve / logs"; docs/cli/channels.md "Inbound dead letters" | event | none |
+| 776 | Login and logout reject explicit blank channel values rather than treating them as omitted | docs/cli/channels.md "Login and logout (interactive)" | event | none |
+| 777 | A leaf channel-command agent option overrides the parent agent option | docs/cli/channels.md "Common commands"; docs/cli/channels.md "Resolve names to IDs" | ambient | none |
+| 778 | Channel logs reject blank, zero, negative or non-integer line limits while omission keeps the default | docs/cli/channels.md "Status / capabilities / resolve / logs" | event | none |
+| 779 | Channel log subsystem and module filters accept exact roots or slash descendants and exclude unrelated similarly prefixed names | docs/cli/channels.md "Status / capabilities / resolve / logs" | ambient | none |
+| 780 | Directory rejects explicit empty or whitespace channel selection before bootstrap or lookup | docs/cli/directory.md "Common flags" | event | none |
+| 781 | Directory rejects explicit empty or whitespace account selection before account setup or lookup | docs/cli/directory.md "Common flags" | event | none |
+| 782 | Directory peers, groups and members reject invalid positive-integer limits before lookup | docs/cli/directory.md "Common flags" | event | none |
+| 783 | Directory group members rejects missing or blank group identifiers before plugin setup or lookup | docs/cli/directory.md "Groups" | event | none |
+| 784 | Pairing list and approve reject explicit blank accounts instead of removing their account restriction | docs/cli/pairing.md "Commands" | event | none |
+| 785 | Dead-letter account selection gives an explicit leaf option precedence over its parent option | docs/cli/channels.md "Inbound dead letters" | ambient | none |
+| 786 | Dead-letter commands with omitted account select the literal default account | docs/cli/channels.md "Inbound dead letters" | ambient | none |
+| 787 | Capability account or target options require a specific channel rather than omitted or all-channel scope | docs/cli/channels.md "Status / capabilities / resolve / logs"; docs/cli/channels.md "Capabilities check" | event | none |
+| 788 | Capability timeout defaults to ten seconds and supplied larger bounds are capped at thirty seconds | docs/cli/channels.md "Status / capabilities / resolve / logs"; docs/cli/channels.md "Capabilities check" | ambient | none |
+| 789 | Recorded channel status uses stored lifecycle and secret-free metadata without live status hooks or operational credential resolution | docs/cli/channels.md "Status / capabilities / resolve / logs" | ambient | none |
+| 790 | A reachable Gateway status error exits nonzero instead of becoming a config-only unreachable fallback | docs/cli/channels.md "Status / capabilities / resolve / logs" | event | none |
+| 791 | Channel status and probe read existing local device auth without creating identity or persisting returned tokens | docs/cli/channels.md "Status / capabilities / resolve / logs" | ambient | none |
+| 792 | Channels status rejects unsupported deep mode | docs/cli/channels.md "Status / capabilities / resolve / logs" | event | none |
+| 793 | JSON channel inventory is local chat-account metadata and does not contact Gateway or run channel setup or runtime code | docs/cli/channels.md "Common commands" | ambient | none |
+| 794 | Verified official channel metadata exposes validated root-relative docsPath while JSON entries retain labels | docs/cli/channels.md "Common commands" | ambient | none |
+| 795 | Successful dead-letter resubmission preserves event identity and retained payload metadata and lane while resetting failure attempts and queue age | docs/cli/channels.md "Inbound dead letters" | event | none |
+| 796 | Environment-backed channel add rejects missing plugin-declared variables before writing config | docs/cli/channels.md "Add / remove accounts" | event | none |
+| 797 | Selected-channel help and setup parsing expose only that channel declared options without loading its runtime | docs/cli/channels.md "Add / remove accounts" | ambient | none |
+| 798 | A modern selected channel rejects undeclared compatibility setup flags through its own parser | docs/cli/channels.md "Add / remove accounts" | event | none |
+| 799 | Guided add with a selected channel opens its setup directly and Back returns to the full channel picker | docs/cli/channels.md "Add / remove accounts" | event | none |
+| 800 | Confirming guided bind-now writes the chosen account-scoped routing bindings | docs/cli/channels.md "Add / remove accounts" | event | none |
+| 801 | Non-interactive account add preserves existing bindings without creating routing bindings automatically | docs/cli/channels.md "Add / remove accounts" | event | none |
+| 802 | Top-level channel values promote into the sole named account or named default before falling back to accounts.default | docs/cli/channels.md "Add / remove accounts" | ambient | none |
+| 803 | Reachable-Gateway logout stops the selected listener before clearing saved auth | docs/cli/channels.md "Login and logout (interactive)"; docs/gateway/protocol/rpc-system-and-channels.md "Channels and login helpers" | event | none |
+| 804 | Omitted login or logout channel is inferred only from the unique configured channel supporting that action | docs/cli/channels.md "Login and logout (interactive)" | ambient | none |
+| 805 | Per-account stop and start require administrative authority and retain pairing and credentials | docs/cli/channels.md "Per-account recovery (non-destructive)" | ambient | none |
+| 806 | Start and stop result booleans describe runtime snapshots rather than transition completion or provider health | docs/cli/channels.md "Per-account recovery (non-destructive)" | event | none |
+| 807 | Runtime-owned accounts absent from the static list remain excluded from default selection and automatic recovery cohorts | docs/cli/channels.md "Per-account recovery (non-destructive)" | ambient | none |
+| 808 | Busy host-thaw checks leave ordinary work admission open | docs/cli/channels.md "Per-account recovery (non-destructive)" | event | none |
+| 809 | Ordinary channel health monitoring continues after the host-thaw retry window expires | docs/cli/channels.md "Per-account recovery (non-destructive)" | event | none |
+| 810 | Discord voice capability targets report the required view connect speak send and history permission checks | docs/cli/channels.md "Capabilities check" | ambient | none |
+| 811 | Directory failure in JSON mode exits nonzero with the canonical cli_error envelope rather than a successful empty list | docs/cli/directory.md "Common flags" | event | none |
+| 812 | Omitting pairing account lists across channel accounts and approves using the matching request account | docs/cli/pairing.md "Commands"; docs/cli/pairing.md "pairing approve" | ambient | none |
+| 813 | Live pairing commands require the authenticated local state owner administrative scope and the method owner capability | docs/cli/pairing.md "openclaw pairing" | ambient | none |
+| 814 | Host-thaw deferral and abandonment diagnostics occur once per thaw | docs/cli/channels.md "Per-account recovery (non-destructive)" | event | none |
+| 815 | Time waiting for work admission to reopen counts toward the ten-minute host-thaw retry expiry | docs/cli/channels.md "Per-account recovery (non-destructive)" | event | none |
 
 ## Headings walked
 docs/channels/index.md "Chat channels": none
@@ -989,14 +1032,14 @@ docs/channels/index.md "Related communication plugins": none (owned by talk)
 docs/channels/index.md "Group join introductions": 2, 3, 4, 5, 6, 7, 8, 9, 10, 11
 docs/channels/index.md "Delivery notes": 12, 13, 14, 15, 16, 17, 174
 docs/channels/index.md "Notes": 18, 19
-docs/channels/channel-routing.md "Channels & routing": 20
+docs/channels/channel-routing.md "Channels & routing": 18, 20
 docs/channels/channel-routing.md "Key terms": 21, 22
 docs/channels/channel-routing.md "Outbound target prefixes": 23, 24, 657, 658, 659, 660, 661
 docs/channels/channel-routing.md "Session key shapes (examples)": 20, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34
 docs/channels/channel-routing.md "Main DM route pinning": 35
-docs/channels/channel-routing.md "Guarded inbound recording": 36
-docs/channels/channel-routing.md "Routing rules (how an agent is chosen)": 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49
-docs/channels/channel-routing.md "Broadcast groups (run multiple agents)": 50, 51, 52
+docs/channels/channel-routing.md "Guarded inbound recording": 36, 772
+docs/channels/channel-routing.md "Routing rules (how an agent is chosen)": 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 773
+docs/channels/channel-routing.md "Broadcast groups (run multiple agents)": 50, 51, 52, 126, 128, 130, 131, 136, 703, 704, 774
 docs/channels/channel-routing.md "Config overview": none
 docs/channels/channel-routing.md "Session storage": none (owned by sessions)
 docs/channels/channel-routing.md "WebChat behavior": none (owned by sessions)
@@ -1124,15 +1167,15 @@ docs/channels/troubleshooting.md "Matrix failure signatures": 232, 233, 234, 235
 docs/channels/troubleshooting.md "Gateway up but channel never connects": 237, 238, 640
 docs/channels/troubleshooting.md "Related": none
 docs/cli/channels.md "openclaw channels": none
-docs/cli/channels.md "Common commands": 198, 239, 240, 241, 242, 243
-docs/cli/channels.md "Status / capabilities / resolve / logs": 244, 245, 246, 247
-docs/cli/channels.md "Inbound dead letters": 248, 249, 250, 251, 252
-docs/cli/channels.md "Add / remove accounts": 1, 253, 254, 255, 256, 257, 258
-docs/cli/channels.md "Login and logout (interactive)": 259, 260, 261, 262, 263, 264, 265
-docs/cli/channels.md "Per-account recovery (non-destructive)": 237, 238, 266, 267, 268, 269, 270, 271, 272, 273, 274, 275, 276, 277, 640
+docs/cli/channels.md "Common commands": 198, 239, 240, 241, 242, 243, 775, 777, 793, 794
+docs/cli/channels.md "Status / capabilities / resolve / logs": 244, 245, 246, 247, 775, 778, 779, 787, 788, 789, 790, 791, 792
+docs/cli/channels.md "Inbound dead letters": 248, 249, 250, 251, 252, 775, 785, 786, 795
+docs/cli/channels.md "Add / remove accounts": 1, 253, 254, 255, 256, 257, 258, 796, 797, 798, 799, 800, 801, 802
+docs/cli/channels.md "Login and logout (interactive)": 259, 260, 261, 262, 263, 264, 265, 776, 803, 804
+docs/cli/channels.md "Per-account recovery (non-destructive)": 237, 238, 266, 267, 268, 269, 270, 271, 272, 273, 274, 275, 276, 277, 640, 805, 806, 807, 808, 809, 814, 815
 docs/cli/channels.md "Troubleshooting": 246, 273, 274
-docs/cli/channels.md "Capabilities check": 278, 279
-docs/cli/channels.md "Resolve names to IDs": 239, 273, 274, 280
+docs/cli/channels.md "Capabilities check": 278, 279, 787, 788, 810
+docs/cli/channels.md "Resolve names to IDs": 239, 273, 274, 280, 777
 docs/cli/channels.md "Related": none
 docs/cli/channels.md "Channels": none
 docs/cli/message.md "openclaw message": none
@@ -1155,19 +1198,19 @@ docs/cli/message.md "Broadcast": 292
 docs/cli/message.md "Related": none
 docs/cli/message.md "Message": none
 docs/cli/directory.md "openclaw directory": none
-docs/cli/directory.md "Common flags": 281, 293, 294
-docs/cli/directory.md "Notes": 286, 293, 294, 295, 296
+docs/cli/directory.md "Common flags": 281, 293, 294, 780, 781, 782, 811
+docs/cli/directory.md "Notes": 286, 287, 293, 294, 295, 296
 docs/cli/directory.md "Using results with message send": none
 docs/cli/directory.md "ID formats by channel": none
 docs/cli/directory.md "Self ("me")": 297, 298
 docs/cli/directory.md "Peers (contacts/users)": none
-docs/cli/directory.md "Groups": none
+docs/cli/directory.md "Groups": 783
 docs/cli/directory.md "Related": none
 docs/cli/directory.md "Directory": none
-docs/cli/pairing.md "openclaw pairing": 188, 190, 192, 299, 300, 301
-docs/cli/pairing.md "Commands": 21, 195
+docs/cli/pairing.md "openclaw pairing": 188, 190, 192, 299, 300, 301, 813
+docs/cli/pairing.md "Commands": 21, 195, 784, 812
 docs/cli/pairing.md "pairing list": 18
-docs/cli/pairing.md "pairing approve": none
+docs/cli/pairing.md "pairing approve": 281, 812
 docs/cli/pairing.md "Owner bootstrap": 191, 193, 301, 302
 docs/cli/pairing.md "Related": none
 docs/cli/pairing.md "Pairing CLI": none
@@ -1291,7 +1334,7 @@ docs/gateway/protocol/rpc-system-and-channels.md "Gateway protocol system and ch
 docs/gateway/protocol/rpc-system-and-channels.md "System and identity": none (owned by gateway core)
 docs/gateway/protocol/rpc-system-and-channels.md "Models and usage": none (owned by models and usage)
 docs/gateway/protocol/rpc-system-and-channels.md "Memory": none (owned by memory)
-docs/gateway/protocol/rpc-system-and-channels.md "Channels and login helpers": 237, 266, 269, 270, 271, 272, 275, 276, 277, 523, 524
+docs/gateway/protocol/rpc-system-and-channels.md "Channels and login helpers": 237, 266, 269, 270, 271, 272, 275, 276, 277, 523, 524, 803
 docs/gateway/protocol/rpc-system-and-channels.md "Channel DM pairing": 188, 190, 191, 300, 301
 docs/gateway/protocol/rpc-system-and-channels.md "Plugin management": none (owned by plugins)
 docs/gateway/protocol/rpc-system-and-channels.md "Catalog detail and client confirmation": none (owned by plugins)
@@ -1302,23 +1345,23 @@ docs/gateway/protocol/rpc-system-and-channels.md "Upstream contracts and gaps": 
 docs/gateway/protocol/rpc-system-and-channels.md "Messaging and logs": none
 docs/gateway/protocol/rpc-system-and-channels.md "Operator terminal": none (owned by terminal)
 docs/plugins/sdk-channel-inbound.md "Channel inbound API": none
-docs/plugins/sdk-channel-inbound.md "Core helpers": 525, 526, 527, 528, 529, 530, 531, 532, 656, 752, 753, 754, 755, 756, 757, 758, 759
-docs/plugins/sdk-channel-inbound.md "Platform-selected history windows": 533, 534, 760
+docs/plugins/sdk-channel-inbound.md "Core helpers": 525, 526, 527, 528, 529, 530, 531, 532, 656, 751, 752, 753, 754, 755, 756, 757, 758
+docs/plugins/sdk-channel-inbound.md "Platform-selected history windows": 533, 534, 759
 docs/plugins/sdk-channel-inbound.md "Agent group dispatch": 50, 52, 127, 133, 134, 135, 136, 137, 179, 703, 704
 docs/plugins/sdk-channel-inbound.md "Internal turn sources": 535, 536
 docs/plugins/sdk-channel-inbound.md "Receive acknowledgment policy": 537, 538, 539, 540
-docs/plugins/sdk-channel-inbound.md "Delivery settlement contract": 24, 288, 541, 542, 543, 544, 545, 546, 547, 548, 549, 550, 761, 762, 763, 764, 765, 766, 767, 768, 769, 770, 771, 772
-docs/plugins/sdk-channel-inbound.md "Migration": 551, 762
+docs/plugins/sdk-channel-inbound.md "Delivery settlement contract": 24, 288, 541, 542, 543, 544, 545, 546, 547, 548, 549, 550, 760, 761, 762, 763, 764, 765, 766, 767, 768, 769, 770, 771
+docs/plugins/sdk-channel-inbound.md "Migration": 551, 761
 docs/plugins/sdk-channel-inbound.md "Related": none
 docs/plugins/sdk-channel-ingress.md "Channel ingress API": none
-docs/plugins/sdk-channel-ingress.md "Runtime resolver": 525, 552, 737, 738, 739
-docs/plugins/sdk-channel-ingress.md "Product participant identity": 553, 740, 741, 742
-docs/plugins/sdk-channel-ingress.md "Result": 525, 554, 555, 656, 748, 749, 750, 751
-docs/plugins/sdk-channel-ingress.md "Identifier authentication": 556, 557, 558, 559, 727, 728, 729, 730, 731, 732, 733, 734, 735, 736, 743
+docs/plugins/sdk-channel-ingress.md "Runtime resolver": 525, 552, 736, 737, 738
+docs/plugins/sdk-channel-ingress.md "Product participant identity": 553, 739, 740, 741
+docs/plugins/sdk-channel-ingress.md "Result": 525, 554, 555, 656, 747, 748, 749, 750
+docs/plugins/sdk-channel-ingress.md "Identifier authentication": 556, 557, 558, 559, 726, 727, 728, 729, 730, 731, 732, 733, 734, 735, 742
 docs/plugins/sdk-channel-ingress.md "Bundled channel declarations": 556, 557
-docs/plugins/sdk-channel-ingress.md "Access groups": 156, 158, 726
-docs/plugins/sdk-channel-ingress.md "Event modes": 560, 561, 744, 745
-docs/plugins/sdk-channel-ingress.md "Routes and activation": 58, 96, 97, 98, 99, 562, 563, 746, 747
+docs/plugins/sdk-channel-ingress.md "Access groups": 156, 158, 725
+docs/plugins/sdk-channel-ingress.md "Event modes": 560, 561, 743, 744
+docs/plugins/sdk-channel-ingress.md "Routes and activation": 58, 96, 97, 98, 99, 562, 563, 745, 746
 docs/plugins/sdk-channel-ingress.md "Redaction": 564
 docs/plugins/sdk-channel-ingress.md "Verification": none
 docs/plugins/sdk-channel-ingress.md "Related": none
@@ -1340,14 +1383,14 @@ docs/plugins/sdk-channel-outbound.md "Compatibility dispatch": none
 docs/plugins/sdk-channel-outbound.md "Migrating from channel-message": 591
 docs/plugins/sdk-channel-outbound.md "Related": none
 docs/plugins/message-presentation.md "Message presentation": none
-docs/plugins/message-presentation.md "Contract": 290, 592, 593, 594, 595, 596, 597, 598, 599, 600, 705, 706, 707, 708, 710, 711, 712
+docs/plugins/message-presentation.md "Contract": 290, 592, 593, 594, 595, 596, 597, 598, 599, 600, 705, 706, 707, 709, 710, 711
 docs/plugins/message-presentation.md "Producer examples": none
-docs/plugins/message-presentation.md "Renderer contract": 363, 600, 713
-docs/plugins/message-presentation.md "Core render flow": 290, 601, 602, 714, 715
+docs/plugins/message-presentation.md "Renderer contract": 363, 600, 712
+docs/plugins/message-presentation.md "Core render flow": 290, 601, 602, 713, 714
 docs/plugins/message-presentation.md "Degradation rules": 290, 603, 604, 605, 606
-docs/plugins/message-presentation.md "Button value fallback visibility": 601, 602, 709, 716
-docs/plugins/message-presentation.md "Provider mapping": 353, 601, 602, 604, 717, 718, 719, 720, 721, 722, 723
-docs/plugins/message-presentation.md "Presentation vs InteractiveReply": 607, 608, 724, 725
+docs/plugins/message-presentation.md "Button value fallback visibility": 601, 602, 708, 715
+docs/plugins/message-presentation.md "Provider mapping": 353, 601, 602, 604, 716, 717, 718, 719, 720, 721, 722
+docs/plugins/message-presentation.md "Presentation vs InteractiveReply": 607, 608, 723, 724
 docs/plugins/message-presentation.md "Delivery pin": 605, 606, 609, 610
 docs/plugins/message-presentation.md "Plugin author checklist": none
 docs/plugins/message-presentation.md "Related docs": none
@@ -1908,10 +1951,12 @@ The full source audit of docs/plugins/sdk-channel-outbound.md compares every hea
 
 The complete bot-loop document audit adds seven source-inspection conditions 698–704: human and single-bot exemptions, bidirectional pair identity, scoped pair budgets, Feishu shared-only configuration, physical-message-independent coordinator accounting and scoped coordinator budgets. None receives recorded-run discovery credit. Key-by-key override precedence and the unchanged transport pair guard were already explicit in the second final run; they are restored within 177 and 179. The current continuation/dedupe observation remains, while the omitted pair-guard observation makes 179 partial. Existing self-message, admission, budget and restart meanings are cross-referenced without creating duplicates. All affected headings already belong to the current 259-heading inventory; historical headings and discovery shares remain unchanged.
 
-The presentation audit restores recorded meanings within conditions 593–596, 600, 602, 603, 608 and 610. The second final run already described Mattermost retaining externally settled prompts and LINE notices under its condition 471, so those alternatives remain in condition 594 without another ID or discovery credit. Conditions 705–725 add distinct interaction, renderer, capability and action-resolution behavior. Conditions 595, 600, 602, 603, 608 and 610 are partial where the supplied observations omit recorded alternatives.
+The presentation audit restores recorded meanings within conditions 593–596, 600, 602, 603, 608 and 610. The second final run already described Mattermost retaining externally settled prompts and LINE notices under its condition 471, so those alternatives remain in condition 594 without another ID or discovery credit. Conditions 705–724 add distinct interaction, renderer, capability and action-resolution behavior. Conditions 595, 600, 602, 603, 608 and 610 are partial where the supplied observations omit recorded alternatives.
 
-The ingress audit restores qualifiers within conditions 552–554, 556, 559 and 563. Conditions 726–751 add current inventory entries. Condition 726 restores unsupported dynamic-group failure from the first run of round 1; its existing credit and that round’s union are unchanged, and neither final run receives credit for it. The remaining additions describe distinct authentication, authority, participation and route states. Conditions 553, 554, 556 and 563 are partial; the existing batched-context observation already supplies the last-source identity required by condition 552.
+The ingress audit restores qualifiers within conditions 552–554, 556, 559 and 563. Conditions 725–750 add current inventory entries. Condition 725 restores unsupported dynamic-group failure from the first run of round 1; its existing credit and that round’s union are unchanged, and neither final run receives credit for it. The remaining additions describe distinct authentication, authority, participation and route states. Conditions 553, 554, 556 and 563 are partial; the existing batched-context observation already supplies the last-source identity required by condition 552.
 
-The inbound consumer audit restores recorded quote, cache, media, internal-source and settlement qualifiers without changing their IDs or discovery credit. Conditions 752–772 record separate hook, media, history, callback and recorder behavior. Conditions 530, 535 and 543 are partial, while condition 536 has no supplied legacy-only producer. Native heartbeat uses a typed internal source and does not establish legacy Provider translation. Existing media-only input includes an undownloadable attachment, so condition 531 retains its planned coverage. Shared group-dispatch behavior is cross-referenced to existing conditions instead of counted again.
+The inbound consumer audit restores recorded quote, cache, media, internal-source and settlement qualifiers without changing their IDs or discovery credit. Conditions 751–771 record separate hook, media, history, callback and recorder behavior. Conditions 530, 535 and 543 are partial, while condition 536 has no supplied legacy-only producer. Native heartbeat uses a typed internal source and does not establish legacy Provider translation. Existing media-only input includes an undownloadable attachment, so condition 531 retains its planned coverage. Shared group-dispatch behavior is cross-referenced to existing conditions instead of counted again.
 
-These reconciliations add 68 current conditions without new phases, helpers, fixtures, runtime evidence or derivation runs. The current inventory has 772 conditions: 404 ambient and 368 event. Coverage is 496 fully planned and 276 wholly or partly outside reach. The current heading inventory remains 259; every original entry-point share, per-round heading denominator and historical discovery credit is unchanged.
+The presentation, ingress and inbound consumer reconciliations add 67 in-scope current conditions. Typed exec/plugin approval delivery and resolution are owned by approvals and excluded by the area bound. The channel-routing audit adds conditions 772–774, including guarded recording on an existing session, competing routing tiers and broadcast defaults. The CLI audit adds conditions 775–815 and restores earlier composite meanings. Condition 803 restores logout ordering already recorded in the second run of round 1; its original credit stays there and neither final run gains credit. Conditions 29, 31, 32, 45, 239, 241, 259, 263, 269, 281 and 293 are partial because the supplied observations omit part of the recorded meaning.
+
+The current inventory has 815 conditions: 423 ambient and 392 event. Coverage is 485 fully planned and 330 wholly or partly outside reach. The current heading inventory has 261 headings, including the directory Groups and pairing approve headings restored by the CLI audit. Every original entry-point share, per-round heading denominator and historical discovery credit is unchanged. These corrections add no derivation run, phase or helper. Plugin installation mechanics and configuration writes performed by plugin installation or automatic enabling remain outside this area; selected-channel setup and credential-resolution consequences remain included.
