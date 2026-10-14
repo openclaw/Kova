@@ -482,9 +482,9 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 272 | Unsupported channel account skipped at start | docs/cli/channels.md "Per-account recovery (non-destructive)" | ambient | channel-accounts-multiple |
 | 273 | Enabled accounts with unavailable configured secrets fail start without using another credential | docs/cli/channels.md "Per-account recovery (non-destructive)" | ambient | config-channel-secret-missing, channel-accounts-multiple |
 | 274 | SecretRef credential unavailable in the command path reported as degraded | docs/cli/channels.md "Troubleshooting"; docs/cli/channels.md "Resolve names to IDs"; docs/cli/message.md "SecretRef resolution"; docs/gateway/config-channels/workplace-chat.md "Slack"; docs/cli/channels.md "Per-account recovery (non-destructive)" | ambient | config-channel-secret-missing, channel-accounts-multiple |
-| 275 | Manually stopped account suppresses automatic start | docs/cli/channels.md "Per-account recovery (non-destructive)" | ambient | channel-account-stopped, channel-accounts-multiple |
-| 276 | Automatic start suppressed (autostart-suppressed) | docs/cli/channels.md "Per-account recovery (non-destructive)" | ambient | channel-accounts-multiple |
-| 277 | Automatic start suppressed (ambient-suppressed) | docs/cli/channels.md "Per-account recovery (non-destructive)" | ambient | channel-accounts-multiple |
+| 275 | Manually stopped accounts suppress automatic start while explicit channel start can bypass that suppression | docs/cli/channels.md "Per-account recovery (non-destructive)"; docs/gateway/protocol/rpc-system-and-channels.md "Channels and login helpers" | ambient | channel-account-stopped, channel-accounts-multiple |
+| 276 | Autostart-suppressed accounts remain stopped automatically while explicit channel start can bypass that suppression | docs/cli/channels.md "Per-account recovery (non-destructive)"; docs/gateway/protocol/rpc-system-and-channels.md "Channels and login helpers" | ambient | channel-accounts-multiple |
+| 277 | Ambient-suppressed accounts remain stopped automatically while explicit channel start can bypass that suppression | docs/cli/channels.md "Per-account recovery (non-destructive)"; docs/gateway/protocol/rpc-system-and-channels.md "Channels and login helpers" | ambient | channel-accounts-multiple |
 | 278 | Stalled capability check step reported while other accounts continue | docs/cli/channels.md "Capabilities check" | event | channel-probe-conversations |
 | 279 | Channel without live capability checks reports check unavailable | docs/cli/channels.md "Capabilities check" | ambient | channels-test-accounts |
 | 280 | Several directory entries sharing one name, active match preferred | docs/cli/channels.md "Resolve names to IDs" | ambient | channel-discord-fixture |
@@ -730,8 +730,8 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 520 | Mattermost chatmode onmessage | docs/gateway/config-channels/workplace-chat.md "Mattermost" | ambient | none |
 | 521 | Mattermost chatmode onchar | docs/gateway/config-channels/workplace-chat.md "Mattermost" | ambient | none |
 | 522 | Mattermost slash command registration failed, callbacks rejected | docs/gateway/config-channels/workplace-chat.md "Mattermost" | event | none |
-| 523 | web.login.start without a channel selects first QR-capable provider | docs/gateway/protocol/rpc-system-and-channels.md "Channels and login helpers" | event | channel-real-accounts |
-| 524 | QR login completes in web.login.wait and starts the channel | docs/gateway/protocol/rpc-system-and-channels.md "Channels and login helpers" | event | none |
+| 523 | QR login start and wait with omitted channel select the first loaded QR-capable provider | docs/gateway/protocol/rpc-system-and-channels.md "Channels and login helpers" | event | channel-real-accounts |
+| 524 | A connected QR wait result starts the selected channel account | docs/gateway/protocol/rpc-system-and-channels.md "Channels and login helpers" | event | none |
 | 525 | Channel ingress result presented after context or plugin/Gateway ownership changes does not gain host authority | docs/plugins/sdk-channel-ingress.md "Runtime resolver"; docs/plugins/sdk-channel-inbound.md "Core helpers"; docs/plugins/sdk-channel-ingress.md "Result" | event | channel-probe-conversations, mock-provider-held-turn |
 | 526 | Inbound reply whose parent cannot be fetched still carries its reference and available quote facts | docs/plugins/sdk-channel-inbound.md "Core helpers" | event | channel-telegram-shim, channel-probe-conversations |
 | 527 | Quoted bot text is context only, does not admit a bot turn | docs/plugins/sdk-channel-inbound.md "Core helpers" | event | channel-bot-peer, channel-probe-conversations |
@@ -1012,15 +1012,15 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 802 | Top-level channel values promote into the sole named account or named default before falling back to accounts.default | docs/cli/channels.md "Add / remove accounts" | ambient | none |
 | 803 | Reachable-Gateway logout stops the selected listener before clearing saved auth | docs/cli/channels.md "Login and logout (interactive)"; docs/gateway/protocol/rpc-system-and-channels.md "Channels and login helpers" | event | none |
 | 804 | Omitted login or logout channel is inferred only from the unique configured channel supporting that action | docs/cli/channels.md "Login and logout (interactive)" | ambient | none |
-| 805 | Per-account stop and start require administrative authority and retain pairing and credentials | docs/cli/channels.md "Per-account recovery (non-destructive)" | ambient | none |
-| 806 | Start and stop result booleans describe runtime snapshots rather than transition completion or provider health | docs/cli/channels.md "Per-account recovery (non-destructive)" | event | none |
+| 805 | Per-account stop and start require administrative authority and retain pairing and credentials | docs/cli/channels.md "Per-account recovery (non-destructive)"; docs/gateway/protocol/rpc-system-and-channels.md "Channels and login helpers" | ambient | none |
+| 806 | Start and stop result booleans describe runtime snapshots rather than transition completion or provider health | docs/cli/channels.md "Per-account recovery (non-destructive)"; docs/gateway/protocol/rpc-system-and-channels.md "Channels and login helpers" | event | none |
 | 807 | Runtime-owned accounts absent from the static list remain excluded from default selection and automatic recovery cohorts | docs/cli/channels.md "Per-account recovery (non-destructive)" | ambient | none |
 | 808 | Busy host-thaw checks leave ordinary work admission open | docs/cli/channels.md "Per-account recovery (non-destructive)" | event | none |
 | 809 | Ordinary channel health monitoring continues after the host-thaw retry window expires | docs/cli/channels.md "Per-account recovery (non-destructive)" | event | none |
 | 810 | Discord voice capability targets report the required view connect speak send and history permission checks | docs/cli/channels.md "Capabilities check" | ambient | none |
 | 811 | Directory failure in JSON mode exits nonzero with the canonical cli_error envelope rather than a successful empty list | docs/cli/directory.md "Common flags" | event | none |
-| 812 | Omitting pairing account lists across channel accounts and approves using the matching request account | docs/cli/pairing.md "Commands"; docs/cli/pairing.md "pairing approve" | ambient | none |
-| 813 | Live pairing commands require the authenticated local state owner administrative scope and the method owner capability | docs/cli/pairing.md "openclaw pairing" | ambient | none |
+| 812 | CLI pairing account omission spans channel accounts while an explicit account restricts list and code lookup | docs/cli/pairing.md "Commands"; docs/cli/pairing.md "pairing approve"; docs/gateway/protocol/rpc-system-and-channels.md "Channel DM pairing" | ambient | none |
+| 813 | Live pairing commands require the authenticated local state owner administrative scope and the method owner capability | docs/cli/pairing.md "openclaw pairing"; docs/gateway/protocol/rpc-system-and-channels.md "Channel DM pairing" | ambient | none |
 | 814 | Host-thaw deferral and abandonment diagnostics occur once per thaw | docs/cli/channels.md "Per-account recovery (non-destructive)" | event | none |
 | 815 | Time waiting for work admission to reopen counts toward the ten-minute host-thaw retry expiry | docs/cli/channels.md "Per-account recovery (non-destructive)" | event | none |
 | 816 | Message CLI rejects explicit empty or whitespace account selection | docs/cli/message.md "Common flags" | event | none |
@@ -1082,6 +1082,16 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 872 | Disjoint Markdown text edits use UTF-16 source coordinates and remap boundaries at and after edit ends | docs/concepts/markdown-formatting.md "Adding or updating a channel formatter" | event | none |
 | 873 | Insertions at the same Markdown source position retain caller order | docs/concepts/markdown-formatting.md "Adding or updating a channel formatter" | event | none |
 | 874 | Same-position Markdown insertions precede a replacement beginning there | docs/concepts/markdown-formatting.md "Adding or updating a channel formatter" | event | none |
+| 875 | Omitting accountId from channel start or stop selects the default account | docs/gateway/protocol/rpc-system-and-channels.md "Channels and login helpers" | ambient | none |
+| 876 | Channel start rejects a caller-supplied manual parameter while applying manual override internally | docs/gateway/protocol/rpc-system-and-channels.md "Channels and login helpers" | event | none |
+| 877 | Explicit QR channel selection normalizes its canonical identifier or alias and selects only that provider | docs/gateway/protocol/rpc-system-and-channels.md "Channels and login helpers" | event | none |
+| 878 | An unavailable or QR-unsupported explicitly selected provider does not fall back to another QR provider | docs/gateway/protocol/rpc-system-and-channels.md "Channels and login helpers" | event | none |
+| 879 | QR wait forwards a returned opaque sessionKey unchanged to the same selected provider | docs/gateway/protocol/rpc-system-and-channels.md "Channels and login helpers" | event | none |
+| 880 | Public DM pairing list responses expose request identifiers and sender metadata without pairing codes | docs/gateway/protocol/rpc-system-and-channels.md "Channel DM pairing" | ambient | none |
+| 881 | Capability-qualified CLI pairing responses retain raw request codes and request metadata | docs/gateway/protocol/rpc-system-and-channels.md "Channel DM pairing" | ambient | none |
+| 882 | Pairing approval rejects a request combining code and requestId selectors | docs/gateway/protocol/rpc-system-and-channels.md "Channel DM pairing" | event | none |
+| 883 | CLI pairing approval with no matching pending code returns null from the owner | docs/gateway/protocol/rpc-system-and-channels.md "Channel DM pairing" | event | none |
+| 884 | Successful CLI pairing approval runs owner bootstrap and optional notification client-side only after owner acknowledgement | docs/gateway/protocol/rpc-system-and-channels.md "Channel DM pairing" | event | none |
 
 ## Headings walked
 docs/channels/index.md "Chat channels": none
@@ -1393,8 +1403,8 @@ docs/gateway/protocol/rpc-system-and-channels.md "Gateway protocol system and ch
 docs/gateway/protocol/rpc-system-and-channels.md "System and identity": none (owned by gateway core)
 docs/gateway/protocol/rpc-system-and-channels.md "Models and usage": none (owned by models and usage)
 docs/gateway/protocol/rpc-system-and-channels.md "Memory": none (owned by memory)
-docs/gateway/protocol/rpc-system-and-channels.md "Channels and login helpers": 237, 266, 269, 270, 271, 272, 275, 276, 277, 523, 524, 803
-docs/gateway/protocol/rpc-system-and-channels.md "Channel DM pairing": 188, 190, 191, 300, 301
+docs/gateway/protocol/rpc-system-and-channels.md "Channels and login helpers": 237, 266, 269, 270, 271, 272, 275, 276, 277, 523, 524, 803, 805, 806, 875, 876, 877, 878, 879
+docs/gateway/protocol/rpc-system-and-channels.md "Channel DM pairing": 188, 190, 191, 300, 301, 812, 813, 880, 881, 882, 883, 884
 docs/gateway/protocol/rpc-system-and-channels.md "Plugin management": none (owned by plugins)
 docs/gateway/protocol/rpc-system-and-channels.md "Catalog detail and client confirmation": none (owned by plugins)
 docs/gateway/protocol/rpc-system-and-channels.md "ClawHub catalog discovery": none (owned by plugins)
@@ -2020,4 +2030,6 @@ The presentation, ingress and inbound consumer reconciliations add 67 in-scope c
 
 The message CLI and channel-index audit adds conditions 816–847 for strict selectors, action scope and compatibility, native cleanup, delivery limits and bounded join history. The formatting audit adds conditions 848–874 for code whitespace, nested boundaries, lexical preservation, rendered sizes, default selection and formatter edits. Existing per-channel join suppression, broadcast outcome and renderer/link/default/list-prefix meanings retain their IDs and historical credit; conditions 3, 292, 406, 408, 409 and 413 are partial because supplied inputs do not cover every recorded alternative. Native block-table and code fallback observations keep condition 411 covered. Poll bounds remain provider-specific: Telegram supports up to 12 options and Discord up to 10.
 
-The current inventory has 874 conditions: 445 ambient and 429 event. Coverage is 479 fully planned and 395 wholly or partly outside reach. The current heading inventory has 265 headings. Every original entry-point share, per-round heading denominator and historical discovery credit is unchanged. These source corrections add no derivation run or observation helper. Plugin installation mechanics and configuration writes performed by plugin installation or automatic enabling remain outside this area; selected-channel setup and credential-resolution consequences remain included.
+The current inventory has 884 conditions: 448 ambient and 436 event. Coverage is 478 fully planned and 406 wholly or partly outside reach. The current heading inventory has 265 headings. Every original entry-point share, per-round heading denominator and historical discovery credit is unchanged. These source corrections add no derivation run or observation helper. Plugin installation mechanics and configuration writes performed by plugin installation or automatic enabling remain outside this area; selected-channel setup and credential-resolution consequences remain included.
+
+The channel RPC reconciliation adds conditions 875–884 for omitted-account selection, explicit manual-parameter rejection, QR provider selection and opaque correlation, and the public/CLI pairing response and selector distinctions. Existing manual-start suppression meanings retain their original credit; condition 277 is partial because no supplied ambient-suppressed account exercises explicit bypass. The current WhatsApp provider returns no opaque sessionKey, so conditional forwarding language does not cover that missing case. Pairing codes and QR/session secrets remain memory-only; checking native response shape must occur before safe projection without retaining those values. No new provider, helper, account or derivation run is introduced.
