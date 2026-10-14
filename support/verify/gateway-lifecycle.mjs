@@ -55,8 +55,10 @@ export async function runForegroundGateway(options, context, dependencies = {}) 
   let runtime;
   let pending;
   const prepare = dependencies.prepare ?? prepareOpenClawRuntimeFromOcmEnv;
-  const finishRequest = async (request, result) => {
+  const finishRequest = async (request, result, recoveryComplete = false) => {
     const { restart, ...publicResult } = result;
+    const operation = await readOperation(context.operation.handlePath);
+    await atomicJson(context.operation.handlePath, { ...operation.handle, ref: { ...operation.handle.ref, fixtureRecoveryComplete: recoveryComplete } });
     await unlink(join(context.operation.directory, "fixture-request.json"));
     await unlink(join(context.operation.directory, `fixture-cancel-${request.id}.json`)).catch((error) => { if (error.code !== "ENOENT") throw error; });
     await atomicJson(join(context.operation.directory, `fixture-result-${request.id}.json`), publicResult);
@@ -128,7 +130,7 @@ export async function runForegroundGateway(options, context, dependencies = {}) 
               signal.throwIfAborted();
             }
             pending.result.output.started = true;
-            await finishRequest(pending.request, pending.result);
+            await finishRequest(pending.request, pending.result, true);
             pending = undefined;
           }
           running = true;

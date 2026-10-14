@@ -66,6 +66,17 @@ function validateOcmSnapshotBoundary(tokens, label = "command") {
   }
 }
 
+export async function assertFixtureRecoveryComplete(handlePath) {
+  let pending = false;
+  try { await lstat(join(`${handlePath}.d`, "fixture-request.json")); pending = true; }
+  catch (error) { if (error.code !== "ENOENT") throw error; }
+  if (pending) throw new Error("fixture cleanup unresolved");
+  let handle;
+  try { handle = await readJSON(handlePath); }
+  catch (error) { if (error.code !== "ENOENT" && !(error instanceof SyntaxError)) throw error; }
+  if (handle?.ref?.fixtureRecoveryComplete === false) throw new Error("fixture recovery unresolved");
+}
+
 export function validateRunPlan(plan, catalogue) {
   if (plan?.schema !== "kova.verify.plan.v1" || !/^[0-9a-f]{40}$/.test(plan.change?.baseline ?? "") || !/^[0-9a-f]{40}$/.test(plan.change?.change ?? "")) throw new Error("invalid verification plan identity");
   if (!Array.isArray(plan.phases) || !plan.phases.length) throw new Error("cannot run an empty verification plan");
@@ -198,7 +209,7 @@ function configSetPath(raw) {
 
 // The two configuration commands use dot paths and JSON-or-string values at
 // OpenClaw 7e80556f. Other message text stays with its product handler.
-function inspectSessionMessage(message) {
+function inspectSessionMessage(message, group = false) {
   if (typeof message !== "string" || message.includes("\0")) return;
   let body = [...message.normalize("NFC")].filter((char) => {
     const code = char.charCodeAt(0);
@@ -211,6 +222,8 @@ function inspectSessionMessage(message) {
     body = body.slice(prefix[0].length);
   }
   body = body.replace(/^(?:@?Kova Gateway RPC|Kova Gateway RPC \(@Kova Gateway RPC\)):[ \t]*/i, "").replace(/\\n/g, " ").trim();
+  // Group command parsing collapses whitespace before selecting a command line.
+  if (group) body = body.replace(/\s+/g, " ").trim();
   // Shell requests consume the whole message, including later lines.
   const bash = /^\/bash(?:\s*:\s*|\s+|$)([\s\S]*)$/i.exec(body);
   let program = bash?.[1];
@@ -314,8 +327,8 @@ export async function validateRunDestinations(command, context) {
     if (typeof patch?.logging?.file === "string") await context.prepareLogDestination?.(env, patch.logging.file);
     await context.observeCredentialPaths?.(env);
   };
-  const validateMessage = async (message, env) => {
-    const mutation = inspectSessionMessage(message);
+  const validateMessage = async (message, env, group = false) => {
+    const mutation = inspectSessionMessage(message, group);
     if (!mutation) return;
     if (mutation.debug && mutation.action === "unset" && runtimeConfigPathPatterns.some((pattern) => mutation.path.every((part, index) => pattern[index] === "*" || pattern[index] === part))) throw new Error("debug storage path changes require observable runtime configuration");
     if (mutation.debug && (mutation.action === "reset" || mutation.action === "unset" && mutation.path[0] === "logging")) {
@@ -342,7 +355,10 @@ export async function validateRunDestinations(command, context) {
     const helper = tokens[1];
     const messageFlag = helper === join(context.kovaRoot ?? "", "support/verify/chat-send.mjs") ? "--message"
       : helper === join(context.kovaRoot ?? "", "support/verify/channel-inbound-turn.mjs") ? "--text" : null;
-    if (messageFlag && option(tokens, "--wait") === undefined) await validateMessage(option(tokens, messageFlag), option(tokens, "--env"));
+    if (messageFlag && option(tokens, "--wait") === undefined) {
+      const group = messageFlag === "--text" && ["group", "thread"].includes(option(tokens, "--chat-type"));
+      await validateMessage(option(tokens, messageFlag), option(tokens, "--env"), group);
+    }
   }
   if (tokens[0] === "node" && tokens[1] === join(context.kovaRoot ?? "", "support/verify/gateway-call.mjs")) {
     const options = parseGatewayCallArgs(tokens.slice(2));
@@ -657,13 +673,11 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
             result.reachedBound = result.timedOut || (["gateway", "script"].includes(entry.kind) && result.status === 3);
             results.push(result);
             if (fixtureHandle) {
-              let pending = false;
-              try { await lstat(join(`${fixtureHandle}.d`, "fixture-request.json")); pending = true; }
-              catch (error) { if (error.code !== "ENOENT") throw error; }
-              if (pending) {
+              try { await assertFixtureRecoveryComplete(fixtureHandle); }
+              catch (error) {
                 summary.incomplete.push(phase.id);
                 if (!record.incomplete.includes(phase.id)) record.incomplete.push(phase.id);
-                throw new Error(`fixture cleanup unresolved in ${phase.id}; later commands and checkpoints were not run`);
+                throw new Error(`${error.message} in ${phase.id}; later commands and checkpoints were not run`);
               }
             }
             // Retain a destination even if another command restores the prior config.

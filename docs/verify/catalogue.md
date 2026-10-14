@@ -229,7 +229,9 @@ same handle and join protocol as the generic Gateway caller.
 history. Replies are included only when the returned message identifies that
 run; unrelated historical answers are not substituted. `agent-tool-turn` records
 only tool calls and results associated with the submitted run. An absent
-association remains visible as an empty reply or missing tool result.
+association remains visible as an empty reply or missing tool result. The tool
+entry reads the matching raw result through `sessions.get`, preserving product
+metadata separately from command stdout.
 
 `session-turn-hold --hold-ms` controls the mock response for that call. It sends
 a `KOVA_VERIFY_HOLD` message containing the duration and progress-card choice.

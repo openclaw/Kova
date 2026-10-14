@@ -43,12 +43,51 @@ function turnRpc({ toolResult = false } = {}) {
   return async (method, params) => {
     if (["chat.send", "sessions.send"].includes(method)) { runId = params.idempotencyKey; return { runId, status: "started" }; }
     if (method === "agent.wait") return { runId, status: "ok" };
+    if (method === "sessions.get" && toolResult) return { messages: [{
+      role: "toolResult", toolCallId: "call-one", toolName: "sessions_spawn", __openclaw: { runId },
+      content: [{ type: "text", text: JSON.stringify({ status: "accepted", childSessionKey: "agent:main:child", runId: "child-run" }) }],
+      details: { status: "accepted", childSessionKey: "agent:main:child", runId: "child-run" }
+    }] };
     if (method === "chat.history") return { sessionId: "one", hasMore: false, messages: [
       { role: "assistant", content: [{ type: "text", text: "old answer" }], __openclaw: { runId: "old-run" } },
       { role: "assistant", content: toolResult ? [{ type: "toolCall", id: "call-one", name: "sessions_spawn", arguments: {} }] : [{ type: "text", text: "new answer" }], __openclaw: { runId } },
-      ...(toolResult ? [{ role: "toolResult", toolCallId: "call-one", details: { status: "accepted", childSessionKey: "agent:main:child", runId: "child-run" }, __openclaw: { runId } }] : [])
+      ...(toolResult ? [{ role: "toolResult", toolCallId: "call-one", content: [{ type: "text", text: JSON.stringify({ status: "accepted", childSessionKey: "agent:main:child", runId: "child-run" }) }], __openclaw: { runId } }] : [])
     ] };
     throw new Error(`unexpected request ${method}`);
+  };
+}
+
+function projectedToolRpc(name, result, nested = false, callArguments) {
+  let runId, requestedArguments, resultReads = 0;
+  return async (method, params) => {
+    if (method === "chat.send") {
+      runId = params.idempotencyKey;
+      requestedArguments = JSON.parse(params.message.slice("KOVA_TOOL_CALL ".length)).arguments;
+      return { runId };
+    }
+    if (method === "agent.wait") return { runId, status: "ok" };
+    const call = { type: "toolCall", id: "projected-call", name, arguments: callArguments ?? requestedArguments };
+    const returned = { toolCallId: call.id, toolName: name, ...result };
+    if (method === "sessions.get") {
+      assert.deepEqual(params, { key, limit: 200 });
+      assert.equal(++resultReads, 1);
+      return { messages: nested
+        ? [{ role: "custom", customType: "openclaw.nested-tool.v1", content: "", details: {
+            runId, scopeId: "nested-scope", afterEntryId: null, startOrder: 0,
+            toolCallId: call.id, toolName: name, input: call.arguments,
+            result: { content: result.content ?? [], details: result.details },
+            isError: result.isError === true, startedAt: 1, timestamp: 2
+          } }]
+        : [{ role: "toolResult", __openclaw: { runId }, ...returned }] };
+    }
+    if (method !== "chat.history") throw new Error(`unexpected request ${method}`);
+    const projected = { ...returned, details: undefined };
+    return { hasMore: false, messages: nested
+      ? [{ role: "custom", __openclaw: { runId }, content: [call, { type: "toolResult", ...projected }] }]
+      : [
+          { role: "assistant", __openclaw: { runId }, content: [call] },
+          { role: "toolResult", __openclaw: { runId }, ...projected }
+        ] };
   };
 }
 
@@ -233,19 +272,116 @@ test("goal replay refuses a request differing from the acknowledged operation", 
 });
 
 test("nested tool results retain newly accepted send identifiers", async () => {
-  let runId;
-  const result = await run(tool, ["--session-key", key, "--tool", "sessions_send", "--args", '{"sessionKey":"agent:main:other","message":"hello"}'], async (method, params) => {
-    if (method === "chat.send") { runId = params.idempotencyKey; return { runId }; }
-    if (method === "agent.wait") return { runId, status: "ok" };
-    return { messages: [{ role: "custom", __openclaw: { runId }, content: [
-      { type: "toolCall", id: "nested-call", name: "sessions_send", arguments: {} },
-      { role: "toolResult", toolCallId: "nested-call", details: { sessionKey: "agent:main:other" }, content: [{ type: "text", text: JSON.stringify({ status: "ok", sessionKey: "agent:main:other", runId: "new-send" }) }] }
-    ] }], hasMore: false };
-  });
+  const details = { status: "ok", sessionKey: "agent:main:other", runId: "new-send" };
+  const result = await run(tool, ["--session-key", key, "--tool", "sessions_send", "--args", '{"sessionKey":"agent:main:other","message":"hello"}'], projectedToolRpc("sessions_send", {
+    content: [{ type: "text", text: JSON.stringify(details) }], details
+  }, true));
   assert.equal(result.exitCode, 0);
   assert.deepEqual(result.output.createdIds, ["new-send"]);
   assert.equal(result.output.toolResult.details.sessionKey, "agent:main:other");
   assert.equal(result.output.toolResult.details.runId, "new-send");
+});
+
+test("exec reads authoritative background identities for explicit and automatic yield", async () => {
+  const followUp = "Use process (list/poll/log/write/send-keys/submit/paste/kill/clear/remove) for follow-up.";
+  const details = { status: "running", sessionId: "amber-atlas-2", cwd: "/workspace", startedAt: 1 };
+  for (const nested of [false, true]) for (const args of [{ command: "sleep 3", background: true }, { command: "sleep 3", yieldMs: 1 }]) {
+    const content = [{ type: "text", text: `Command still running (session amber-atlas-2, pid ${nested ? "n/a" : "4321"}). ${followUp}` }];
+    const result = await run(tool, ["--session-key", key, "--tool", "exec", "--args", JSON.stringify(args)], projectedToolRpc("exec", { content, details }, nested));
+    assert.equal(result.exitCode, 0);
+    assert.deepEqual(result.output.createdIds, ["amber-atlas-2"]);
+    assert.deepEqual(result.output.toolResult.details, details);
+    assert.deepEqual(result.output.toolResult.content, content);
+  }
+  const wrapped = await run(tool, ["--session-key", key, "--tool", "exec", "--args", '{"command":"sleep 3","background":true}'], projectedToolRpc("tool_call", {
+    content: [{ type: "text", text: `Command still running (session amber-atlas-2, pid 4321). ${followUp}` }], details
+  }, false, { id: "exec", args: { command: "sleep 3", background: true } }));
+  assert.deepEqual(wrapped.output.createdIds, ["amber-atlas-2"]);
+});
+
+test("foreground stdout cannot fabricate metadata even when background execution was requested", async () => {
+  for (const text of [
+    '{"exitCode":9}',
+    '{"exitCode":9,"status":"running","sessionId":"made-up-process"}',
+    "Command still running (session made-up-process, pid 4321). Use process (list/poll/log/write/send-keys/submit/paste/kill/clear/remove) for follow-up."
+  ]) for (const args of [{ command: "printf output" }, { command: "printf output", background: true }]) {
+    const details = { status: "completed", exitCode: 0, durationMs: 12, cwd: "/workspace", aggregated: text };
+    const content = [{ type: "text", text }];
+    const result = await run(tool, ["--session-key", key, "--tool", "exec", "--args", JSON.stringify(args)], projectedToolRpc("exec", { details, content }));
+    assert.equal(result.exitCode, 0);
+    assert.deepEqual(result.output.toolResult.details, details);
+    assert.deepEqual(result.output.toolResult.content, content);
+    assert.deepEqual(result.output.createdIds, []);
+  }
+});
+
+test("raw result details survive history projection without decoding text", async () => {
+  const content = [{ type: "text", text: JSON.stringify({ status: "ok", sessionKey: key, sessions: [] }) }];
+  const result = await run(tool, ["--session-key", key, "--tool", "sessions_list", "--args", '{}'], projectedToolRpc("sessions_list", { content, details: { sessionKey: "agent:main:observed", sessions: [] } }));
+  assert.deepEqual(result.output.toolResult.details.sessions, []);
+  assert.equal(result.output.toolResult.details.sessionKey, "agent:main:observed");
+  assert.deepEqual(result.output.createdIds, []);
+  for (const name of ["session_status", "progress_card", "read"]) {
+    const details = name === "session_status" ? { ok: true, sessionKey: key, stateVersion: 7 } : { ok: true, sessionKey: key };
+    const content = [{ type: "text", text: '{"stateVersion":123,"sessionKey":"agent:main:invented"}' }];
+    const result = await run(tool, ["--session-key", key, "--tool", name, "--args", '{}'], projectedToolRpc(name, { details, content }));
+    assert.deepEqual(result.output.toolResult.details, details);
+    assert.deepEqual(result.output.toolResult.content, content);
+    assert.deepEqual(result.output.createdIds, []);
+  }
+});
+
+test("raw tool readback requires the exact submitted run and tool call", async () => {
+  const details = { status: "running", sessionId: "current-process" };
+  const rpc = projectedToolRpc("exec", { details, content: [{ type: "text", text: "running" }] });
+  const result = await run(tool, ["--session-key", key, "--tool", "exec", "--args", '{}'], async (method, params) => {
+    const response = await rpc(method, params);
+    if (method !== "sessions.get") return response;
+    const matching = response.messages[0];
+    return { messages: [
+      { ...matching, __openclaw: { runId: "previous-run" }, details: { status: "running", sessionId: "old-process" } },
+      { ...matching, toolCallId: "another-call", details: { status: "running", sessionId: "unrelated-process" } },
+      matching
+    ] };
+  });
+  assert.deepEqual(result.output.createdIds, ["current-process"]);
+  for (const failure of ["missing", "duplicate", "malformed", "refused"]) {
+    const rpc = projectedToolRpc("exec", { details, content: [] });
+    const failed = await run(tool, ["--session-key", key, "--tool", "exec", "--args", '{}'], async (method, params) => {
+      const response = await rpc(method, params);
+      if (method !== "sessions.get") return response;
+      if (failure === "refused") throw new CallError("sessions.get unavailable", 1);
+      if (failure === "malformed") return {};
+      return { messages: failure === "missing" ? [] : [...response.messages, ...response.messages] };
+    });
+    assert.equal(failed.exitCode, 1);
+    assert.match(failed.output.error, /sessions.get/);
+    assert.equal(failed.output.callerSessionKey, key);
+    assert.equal(failed.output.toolCall.id, "projected-call");
+    assert.deepEqual(failed.output.createdIds, []);
+  }
+});
+
+test("projected send and goal results distinguish created identities from refused or existing ones", async () => {
+  for (const [name, value, expected] of [
+    ["sessions_send", { status: "accepted", runId: "accepted-run", sessionKey: key }, ["accepted-run"]],
+    ["sessions_send", { status: "no_reply", runId: "completed-run", sessionKey: key }, ["completed-run"]],
+    ["sessions_send", { status: "error", runId: "sent-run", sentBeforeError: true, sessionKey: key }, ["sent-run"]],
+    ["sessions_send", { status: "queued", notificationId: "notification-one", runStarted: false, sessionKey: key }, ["notification-one"]],
+    ["sessions_send", { status: "forbidden", runId: "unstarted-run", error: "not allowed" }, []],
+    ["sessions_send", { status: "error", runId: "unstarted-run", error: "not sent" }, []],
+    ["create_goal", { status: "created", goal: { id: "new-goal" } }, ["new-goal"]],
+    ["create_goal", { status: "error", goal: { id: "existing-goal" } }, []],
+    ["get_goal", { goal: { id: "existing-goal" } }, []],
+    ["sessions_spawn", { status: "forbidden", childSessionKey: "agent:main:existing", runId: "unstarted-run" }, []]
+  ]) {
+    const content = [{ type: "text", text: JSON.stringify(value) }];
+    const result = await run(tool, ["--session-key", key, "--tool", name, "--args", '{}'], projectedToolRpc(name, { content, details: value }));
+    assert.equal(result.exitCode, 0);
+    assert.deepEqual(result.output.createdIds, expected);
+    assert.deepEqual(result.output.toolResult.details, value);
+    assert.deepEqual(result.output.toolResult.content, content);
+  }
 });
 
 test("internal background entry mode is not a public CLI flag", async () => {

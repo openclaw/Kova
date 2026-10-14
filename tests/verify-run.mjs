@@ -7,7 +7,7 @@ import test from "node:test";
 import { execFileSync } from "node:child_process";
 import { createAttachmentLogFilter, createLogCollector, createStateFileIdentityResolver, createStateTextPolicy, mergeStateTextPolicies, isPrivateVerificationPath, projectStateLogBytes, recordPhase, redactCommandResult, redactStateText, snapshotState, writeCheckpoint } from "../src/verify/checkpoint.mjs";
 import { quoteShell, runCommand } from "../src/commands.mjs";
-import { runVerification, compareVersions, prepareRun, validateRunPlan, validateTarget, validateRunDestinations as validateRawRunDestinations } from "../src/verify/run.mjs";
+import { runVerification, compareVersions, prepareRun, validateRunPlan, validateTarget, assertFixtureRecoveryComplete, validateRunDestinations as validateRawRunDestinations } from "../src/verify/run.mjs";
 import { resolveRunCommand } from "../src/verify/clones.mjs";
 import { canonicalJSON, sha256 } from "../src/verify/plan.mjs";
 import { repoRoot } from "../src/paths.mjs";
@@ -985,7 +985,7 @@ test("fixture commands retain their cleanup budget before later commands and che
   }
 });
 
-test("pending fixture cleanup stops its clone before later commands or checkpoints", async (t) => {
+for (const state of ["pending", "failed-recovery"]) test(`${state} fixture cleanup stops its clone before later commands or checkpoints`, async (t) => {
   const f = await fixture(t), execute = f.dependencies.execute;
   f.plan.phases[1].commands = [
     "node {kovaRoot}/support/verify/stage-session-store-fixture.mjs --env {env} --agent main --restore --gateway-handle {run}/gateway.json --timeout 25",
@@ -998,21 +998,34 @@ test("pending fixture cleanup stops its clone before later commands or checkpoin
     if (tokens[1]?.endsWith("/support/verify/stage-session-store-fixture.mjs")) {
       const handle = tokens[tokens.indexOf("--gateway-handle") + 1];
       await mkdir(`${handle}.d`, { recursive: true });
-      await writeFile(join(`${handle}.d`, "fixture-request.json"), '{}');
-      return { ...await execute(command, options), status: 124, timedOut: true };
+      if (state === "pending") await writeFile(join(`${handle}.d`, "fixture-request.json"), '{}');
+      else await writeFile(handle, JSON.stringify({ ref: { fixtureRecoveryComplete: false } }));
+      return { ...await execute(command, options), status: state === "pending" ? 124 : 1, timedOut: state === "pending", stdout: '{"staged":{"restored":false},"doctor":{"status":0},"started":false,"error":"restore failed"}' };
     }
     if (tokens[1]?.startsWith("@")) assert.fail("commands after unresolved fixture cleanup must not run");
     return execute(command, options);
   };
   const result = await runVerification({ ...f.options, execute: true }, f.dependencies);
   for (const [name, clone] of Object.entries(result.clones)) {
-    assert.match(clone.error, /fixture cleanup unresolved/);
+    assert.match(clone.error, /fixture (cleanup|recovery) unresolved/);
     for (const phase of ["second", "diagnostic"]) {
       assert.equal(clone.phases[`standard/${phase}`], "no checkpoint");
       await assert.rejects(readFile(join(dirname(result.path), name, `checkpoints/standard/${phase}/commands.json`)), { code: "ENOENT" });
     }
   }
+  await assert.rejects(readFile(join(f.dependencies.home, "verify/cache", result.cache.key, "cache.json")), { code: "ENOENT" });
   assert.equal(f.removed.length, 5);
+});
+
+test("fixture admission requires an explicit unresolved owner state", async (t) => {
+  const root = await temporary(t), handle = join(root, "gateway.json");
+  await assertFixtureRecoveryComplete(handle);
+  await writeFile(handle, "malformed preflight input");
+  await assertFixtureRecoveryComplete(handle);
+  await writeFile(handle, JSON.stringify({ ref: {} }));
+  await assertFixtureRecoveryComplete(handle);
+  await writeFile(handle, JSON.stringify({ ref: { fixtureRecoveryComplete: true } }));
+  await assertFixtureRecoveryComplete(handle);
 });
 
 test("fixture handles stay under run outputs and cleanup time fits the command limit", async (t) => {
@@ -1684,6 +1697,27 @@ test("chat and inbound helpers reuse configuration-message admission before disp
     await validateRunDestinations(command("/debug reset"), context);
     assert.deepEqual(prepared.slice(before), [{ env: "copy", path: nextLog }, { env: "copy", path: diskLog }, { env: "copy", path: diskLog }]);
   }
+});
+
+test("group command whitespace matches product parsing while direct messages keep their first line", async (t) => {
+  const root = await temporary(t), copy = join(root, "copy"), output = join(root, "output"), external = join(root, "external");
+  for (const path of [copy, output, external]) await mkdir(path);
+  const prepared = [], outside = join(external, "product.log");
+  const context = { cwd: copy, run: output, ownedRoots: [copy], kovaRoot: repoRoot, prepareLogDestination: async (env, path) => { prepared.push({ env, path }); } };
+  const inbound = (type, text) => `node ${quoteShell(join(repoRoot, "support/verify/channel-inbound-turn.mjs"))} --env copy --chat-type ${type} --peer ${type === "thread" ? "group:example/thread:one" : "example"} --text ${quoteShell(text)}`;
+  for (const message of [`/config\nset logging.file=${JSON.stringify(outside)}`, `/debug\r\n\tset logging.file=${JSON.stringify(outside)}`, `/config\t\n set logging.file=${JSON.stringify(outside)}`]) {
+    for (const type of ["group", "thread"]) await assert.rejects(validateRunDestinations(inbound(type, message), context), /owned copy/);
+    const direct = inbound("direct", message);
+    assert.equal(await validateRunDestinations(direct, context), direct);
+    const chat = `node ${quoteShell(join(repoRoot, "support/verify/chat-send.mjs"))} --env copy --session-key agent:main:example --message ${quoteShell(message)}`;
+    assert.equal(await validateRunDestinations(chat, context), chat);
+  }
+  assert.deepEqual(prepared, []);
+  for (const type of ["group", "thread"]) {
+    const command = inbound(type, `/config\nset logging.file=${JSON.stringify(join(copy, "two  words.log"))}`);
+    assert.equal(await validateRunDestinations(command, context), command);
+  }
+  assert.deepEqual(prepared, [{ env: "copy", path: join(copy, "two words.log") }, { env: "copy", path: join(copy, "two words.log") }]);
 });
 
 test("trusted program selectors pass unchanged while writable mount sources stay owned", async (t) => {

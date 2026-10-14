@@ -34,13 +34,21 @@ export async function toolArguments(o, ctx, caller) {
   return args;
 }
 
-function resultDetails(message) {
-  const projected = message?.details && typeof message.details === "object" && !Array.isArray(message.details) ? message.details : null;
-  for (const part of message?.content ?? []) {
-    if (part.type !== "text") continue;
-    try { const value = JSON.parse(part.text); if (value && typeof value === "object" && !Array.isArray(value)) return { ...projected, ...value }; } catch {}
+function readToolResult(response, runId, call) {
+  if (!Array.isArray(response?.messages)) throw new CallError("sessions.get did not return messages", 1);
+  const candidates = response.messages.filter((message) => message?.__openclaw?.runId === runId)
+    .flatMap((message) => [message, ...(Array.isArray(message.content) ? message.content : [])]);
+  for (const message of response.messages) {
+    if (message?.role !== "custom" || message.customType !== "openclaw.nested-tool.v1" || message.details?.runId !== runId) continue;
+    const { input, result, ...callData } = message.details;
+    if (result && typeof result === "object" && !Array.isArray(result)) candidates.push({ ...callData, ...result, type: "toolResult" });
   }
-  return projected;
+  const matches = candidates.filter((message) => message &&
+    (["toolResult", "tool"].includes(message.role) || message.type === "toolResult") &&
+    (message.toolCallId ?? message.tool_call_id) === call.id &&
+    (message.toolName === undefined || message.toolName === call.name));
+  if (matches.length !== 1) throw new CallError("bounded sessions.get read must contain exactly one result for the submitted run and tool call", 1);
+  return matches[0];
 }
 
 export const definition = {
@@ -55,21 +63,25 @@ export const definition = {
   async run(o, ctx) {
     const caller = await sessionKey(o, ctx);
     const args = await toolArguments(o, ctx, caller);
-    const sent = await sendTurn(ctx, caller, `KOVA_TOOL_CALL ${JSON.stringify({ name: o.tool, arguments: args })}`);
+    ctx.record?.({ callerSessionKey: caller });
+    const sent = await sendTurn({ ...ctx, record: undefined }, caller, `KOVA_TOOL_CALL ${JSON.stringify({ name: o.tool, arguments: args })}`);
     const calls = sent.messages.flatMap((m) => Array.isArray(m.content) ? m.content : []).filter((part) => part.type === "toolCall" && (part.name === o.tool || part.name === "tool_call" && part.arguments?.id === o.tool));
     const call = calls.at(-1);
-    const results = [...sent.messages, ...sent.messages.flatMap((m) => Array.isArray(m.content) ? m.content : [])];
-    const result = call ? results.find((m) => ["toolResult", "tool"].includes(m.role) && (m.toolCallId ?? m.tool_call_id) === call.id) : null;
-    const details = resultDetails(result);
+    const toolCall = call ? { ...call, name: o.tool, args } : null;
+    ctx.record?.({ toolCall, reply: sent.reply });
+    const result = call ? readToolResult(await ctx.rpc("sessions.get", { key: caller, limit: 200 }), sent.receipt.runId, call) : null;
+    const details = result?.details ?? null;
     const createdIds = [];
     let child = null;
-    if (o.tool === "sessions_spawn" && details?.status === "accepted") {
+    if (o.tool === "sessions_spawn" && details?.status === "accepted" && result?.isError !== true) {
       child = nonempty(details.childSessionKey) ? details.childSessionKey : null;
       createdIds.push(...[child, details.runId].filter(nonempty));
-    } else if (o.tool === "sessions_send" && nonempty(details?.runId) && result?.isError !== true) createdIds.push(details.runId);
-    else if (o.tool === "exec" && details?.status === "running" && nonempty(details?.sessionId)) createdIds.push(details.sessionId);
-    else if (o.tool === "create_goal" && nonempty(details?.goal?.id) && result?.isError !== true) createdIds.push(details.goal.id);
-    return { callerSessionKey: caller, sessionKey: child, toolCall: call ? { ...call, name: o.tool, args } : null, toolResult: result ? { ...result, details } : null, reply: sent.reply, createdIds };
+    } else if (o.tool === "sessions_send") {
+      if (details?.status === "queued" && details.runStarted === false && nonempty(details.notificationId) && result?.isError !== true) createdIds.push(details.notificationId);
+      else if (nonempty(details?.runId) && ((["accepted", "ok", "no_reply"].includes(details.status) && result?.isError !== true) || details.sentBeforeError === true)) createdIds.push(details.runId);
+    } else if (o.tool === "exec" && details?.status === "running" && nonempty(details?.sessionId) && result?.isError !== true) createdIds.push(details.sessionId);
+    else if (o.tool === "create_goal" && details?.status === "created" && nonempty(details?.goal?.id) && result?.isError !== true) createdIds.push(details.goal.id);
+    return { callerSessionKey: caller, sessionKey: child, toolCall, toolResult: result ? { ...result, details } : null, reply: sent.reply, createdIds };
   }
 };
 await entrypoint(definition);

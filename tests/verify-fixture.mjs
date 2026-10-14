@@ -10,6 +10,7 @@ import { atomicJson, CallError, cleanupGatewayHandle, startOperation } from "../
 import { requestGatewayFixture, runForegroundGateway } from "../support/verify/gateway-lifecycle.mjs";
 import { executePausedFixture, inspectFixtureTarget, parseFixtureArgs, stageSessionStoreFixtureMain } from "../support/verify/stage-session-store-fixture.mjs";
 import { loadGatewaySchemaAssertions } from "./helpers/gateway-schemas.mjs";
+import { assertFixtureRecoveryComplete } from "../src/verify/run.mjs";
 
 const schemas = await loadGatewaySchemaAssertions();
 
@@ -247,6 +248,9 @@ for (const retry of [true, false]) test(`failed automatic restore retains the st
   assert.match(failed.output.error, /restore failed/);
   const backup = failed.output.staged.backup;
   assert.equal(await readFile(join(backup, "original"), "utf8"), "original database");
+  await assert.rejects(readFile(join(gateway.directory, "fixture-request.json")), { code: "ENOENT" });
+  assert.equal(JSON.parse(await readFile(gateway.handlePath, "utf8")).ref.fixtureRecoveryComplete, false);
+  await assert.rejects(assertFixtureRecoveryComplete(gateway.handlePath), /fixture recovery unresolved/);
   await assert.rejects(readFile(join(gateway.directory, "result.json")), { code: "ENOENT" });
   assert.throws(() => process.kill(gateway.handle.ref.pid, 0), { code: "ESRCH" });
   if (retry) {
@@ -257,6 +261,8 @@ for (const retry of [true, false]) test(`failed automatic restore retains the st
     assert.equal(restored.output.started, true);
     assert.equal(await readFile(data.db, "utf8"), "original database");
     assert.equal(await readFile(`${data.db}-wal`, "utf8"), "original wal");
+    assert.equal(JSON.parse(await readFile(gateway.handlePath, "utf8")).ref.fixtureRecoveryComplete, true);
+    await assertFixtureRecoveryComplete(gateway.handlePath);
   }
   const current = JSON.parse(await readFile(gateway.handlePath, "utf8"));
   assert.equal(current.ref.id, gateway.handle.ref.id);
