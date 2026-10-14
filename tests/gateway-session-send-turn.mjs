@@ -9,13 +9,13 @@ const queuedRunId = "queued-execution";
 const foreignRunId = "foreign-execution";
 
 export function runGatewaySessionSendTurnChecks() {
-  for (const scenario of ["stale-ack", "prefixed-error", "overflow", "early-error", "success", "new-session", "early-reply", "injected", "blank-reply", "wrong-reply", "min-count", "missing-run", "wrong-wait-run", "queued", "queued-paged", "queued-session-change", "queued-retry-success", "queued-retry-error", "collected", "queued-error", "queued-other-input", "queued-forwarded", "queued-cron", "queued-hidden-input", "queued-old-reply", "timeout"]) {
+  for (const scenario of ["stale-ack", "prefixed-error", "overflow", "early-error", "success", "new-session", "early-reply", "injected", "blank-reply", "wrong-reply", "min-count", "missing-run", "wrong-wait-run", "queued", "queued-paged", "queued-session-change", "queued-retry-success", "queued-retry-error", "collected", "queued-error", "queued-other-input", "queued-forwarded", "queued-cron", "queued-hidden-input", "queued-hidden-completion", "queued-explicit", "queued-submitted-error", "direct-paged", "queued-old-reply", "timeout"]) {
     const result = spawnSync(process.execPath, [
       "--import", fileURLToPath(import.meta.url), helper,
       "--env", "fixture", "--session-key", "existing-session",
       "--expected-text", scenario === "blank-reply" ? "" : "KOVA_AGENT_OK",
       "--create-session", scenario === "new-session" ? "true" : "false",
-      "--min-assistant-count", scenario === "new-session" || (scenario === "queued-paged" || scenario === "queued-session-change") ? "1" : scenario === "min-count" ? "6" : "2", "--timeout", "1500"
+      "--min-assistant-count", scenario === "new-session" || scenario === "direct-paged" || (scenario === "queued-paged" || scenario === "queued-session-change") ? "1" : scenario === "min-count" ? "6" : "2", "--timeout", "1500"
     ], {
       encoding: "utf8", timeout: 10000,
       env: {
@@ -29,18 +29,27 @@ export function runGatewaySessionSendTurnChecks() {
     });
     assert.ifError(result.error);
     const receipt = JSON.parse(result.stdout);
-    if (["success", "queued", "queued-paged", "queued-retry-success", "collected", "new-session", "early-reply", "injected"].includes(scenario)) {
+    if (["success", "queued-explicit", "queued-retry-success", "direct-paged", "new-session", "early-reply", "injected"].includes(scenario)) {
       assert.equal(result.status, 0, `${scenario}: ${receipt.error}`);
       assert.equal(receipt.ok, true);
+      assert.equal(receipt.recordStatus, "PASS");
       assert.match(receipt.runId, /^kova-gateway-session-[a-f0-9-]+$/);
       assert.equal(receipt.replyRunId, scenario.startsWith("queued") || scenario === "collected" ? queuedRunId : receipt.runId);
       assert.equal(receipt.finalAssistantVisibleText, "KOVA_AGENT_OK");
-      assert.equal(receipt.assistantMessageCount, scenario === "new-session" || scenario === "queued-paged" ? 1 : 5);
+      assert.equal(receipt.assistantMessageCount, scenario === "new-session" ? 1 : scenario === "direct-paged" ? 16 : 5);
       assert.ok(receipt.activeTurnMs >= 100, "wait for the submitted run to finish");
       if (scenario === "early-reply") {
         assert.ok(receipt.assistantFirstSeenAtEpochMs < receipt.activeFinishedAtEpochMs);
         assert.ok(receipt.assistantMatchedAtEpochMs < receipt.activeFinishedAtEpochMs);
       }
+    } else if ((scenario.startsWith("queued") && !["queued-retry-error", "queued-submitted-error"].includes(scenario)) || scenario === "collected") {
+      assert.equal(result.status, 1, scenario);
+      assert.equal(receipt.ok, false);
+      assert.equal(receipt.recordStatus, "BLOCKED");
+      assert.equal(receipt.failureDomain, "kova-harness");
+      assert.match(receipt.runId, /^kova-gateway-session-[a-f0-9-]+$/);
+      assert.equal(receipt.replyRunId, null, "never guess a queued execution id");
+      assert.match(receipt.error, /authoritative association.*submitted run/);
     } else {
       assert.equal(receipt.ok, false, `${scenario}: historical replies must never satisfy a new run`);
       assert.equal(result.status, 1);
@@ -48,7 +57,7 @@ export function runGatewaySessionSendTurnChecks() {
       else assert.match(receipt.runId, /^kova-gateway-session-[a-f0-9-]+$/);
       assert.equal(receipt.failureDomain, "openclaw");
       assert.equal(receipt.recordStatus, "FAIL");
-      if (["overflow", "early-error", "queued-error", "queued-retry-error"].includes(scenario)) assert.equal(receipt.error, "context overflow from submitted run");
+      if (["overflow", "early-error", "queued-submitted-error", "queued-retry-error"].includes(scenario)) assert.equal(receipt.error, "context overflow from submitted run");
       if (["wrong-reply", "blank-reply", "min-count", "queued-other-input", "queued-old-reply", "queued-session-change", "queued-forwarded", "queued-cron", "queued-hidden-input"].includes(scenario)) assert.match(receipt.error, /timed out/);
       if (scenario === "missing-run" || scenario === "stale-ack") assert.match(receipt.error, /run id/i);
       if (scenario === "wrong-wait-run") assert.match(receipt.error, /run id/i);
@@ -100,12 +109,12 @@ if (process.env.KOVA_SEND_TURN_FIXTURE) {
         return queueMicrotask(() => reply(scenario === "missing-run" ? {} : { runId: scenario === "stale-ack" ? "historical-0" : submittedRunId }));
       }
       if (method === "agent.wait") {
-        assert.ok(params.runId === submittedRunId || (queued && [queuedRunId, foreignRunId].includes(params.runId)) || (scenario === "stale-ack" && params.runId === "historical-0"));
+        assert.ok(params.runId === submittedRunId || ((scenario === "queued-explicit" || scenario.startsWith("queued-retry")) && params.runId === queuedRunId), "wait only on explicitly associated runs");
         this.waitCount += 1;
         if (params.runId === queuedRunId) this.executionWaitCount += 1;
         const retrying = scenario.startsWith("queued-retry") && params.runId === queuedRunId && this.executionWaitCount === 1;
         if (retrying) return setTimeout(() => reply({ runId: params.runId, status: "timeout", pendingError: true, error: "transient failure during retry" }), 120);
-        const failed = scenario === "prefixed-error" || scenario === "overflow" || scenario === "early-error" || (["queued-error", "queued-retry-error"].includes(scenario) && params.runId === queuedRunId);
+        const failed = scenario === "prefixed-error" || scenario === "overflow" || scenario === "early-error" || scenario === "queued-submitted-error" || (["queued-error", "queued-retry-error"].includes(scenario) && params.runId === queuedRunId);
         return setTimeout(() => {
           this.completed = true;
           reply({
@@ -139,11 +148,13 @@ if (process.env.KOVA_SEND_TURN_FIXTURE) {
           if (scenario === "queued-paged" || scenario === "queued-session-change") messages.push(...Array.from({ length: 20 }, () => ({ role: "toolResult", content: "tool output" })));
         }
         const message = assistant(queued ? queuedRunId : submittedRunId, ["wrong-reply", "queued-old-reply", "queued-error"].includes(scenario) ? "WRONG" : "KOVA_AGENT_OK");
-        if (["queued-forwarded", "queued-cron", "queued-hidden-input"].includes(scenario)) message.__openclaw.runId = foreignRunId;
+        if (["queued-forwarded", "queued-cron", "queued-hidden-input", "queued-hidden-completion"].includes(scenario)) message.__openclaw.runId = foreignRunId;
         if (scenario === "queued-hidden-input") message.__openclaw.turnBoundary = true;
         if (scenario === "blank-reply") message.content = [];
         if (scenario === "injected") message.__openclaw = { idempotencyKey: submittedRunId };
+        if (scenario === "queued-explicit" || scenario.startsWith("queued-retry")) message.__openclaw.idempotencyKey = submittedRunId;
         messages.push(message);
+        if (scenario === "direct-paged") messages.push(...Array.from({ length: 20 }, () => assistant(foreignRunId)));
       }
       const offset = params.offset ?? 0;
       const end = Math.max(0, messages.length - offset);

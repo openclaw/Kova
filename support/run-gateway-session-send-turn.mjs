@@ -16,6 +16,8 @@ const startedAtEpochMs = Date.now();
 let runId = null;
 let replyRunId = null;
 
+class RunAssociationUnavailableError extends Error {}
+
 try {
   const args = parseSupportArgs(process.argv.slice(2));
   rejectUnsupportedArgs(args, ["env", "message", "expected-text", "timeout", "session-key", "create-session", "min-assistant-count"]);
@@ -80,6 +82,7 @@ try {
       runId,
       minAssistantCount,
       trackCompletion,
+      waitForCompletions: () => Promise.all(completions.values()),
       readCompletionError: () => completionError
     });
     replyRunId = history.replyRunId;
@@ -90,6 +93,7 @@ try {
 
     finishJson({
       ok: true,
+      recordStatus: "PASS",
       surface: "gateway-session-send-turn",
       method: "sessions.send",
       createSession,
@@ -132,9 +136,11 @@ try {
     gatewayTransport.client?.close();
   }
 } catch (error) {
-  const failure = runId === null
-    ? classifyGatewaySessionFailure(error)
-    : { failureDomain: "openclaw", recordStatus: "FAIL" };
+  const failure = error instanceof RunAssociationUnavailableError
+    ? { failureDomain: "kova-harness", recordStatus: "BLOCKED" }
+    : runId === null
+      ? classifyGatewaySessionFailure(error)
+      : { failureDomain: "openclaw", recordStatus: "FAIL" };
   failJson(error, {
     surface: "gateway-session-send-turn",
     runId,
@@ -170,7 +176,8 @@ async function waitForRunCompletion({ gatewayTransport, runId, deadline }) {
   throw new Error(`timed out waiting for Gateway session run ${runId}`);
 }
 
-async function waitForAssistantText({ gatewayTransport, sessionKey, expectedText, deadline, runId, minAssistantCount, trackCompletion, readCompletionError }) {
+async function waitForAssistantText({ gatewayTransport, sessionKey, expectedText, deadline, runId, minAssistantCount, trackCompletion, waitForCompletions, readCompletionError }) {
+  let associationObserved = false;
   let lastAssistantText = "";
   let assistantTextEvidence = null;
   let lastHistoryError = null;
@@ -185,12 +192,13 @@ async function waitForAssistantText({ gatewayTransport, sessionKey, expectedText
         pollCount += 1;
         return await gatewayCall(gatewayTransport, "chat.history", params, Math.min(15000, Math.max(1, deadline - Date.now())));
       };
-      const history = await readHistory({ sessionKey, limit: 16, inputRunIds: [runId] });
+      const history = await readHistory({ sessionKey, limit: 16 });
       lastHistoryError = null;
       const messages = history?.messages ?? [];
       assistantTexts = extractAssistantTexts(messages);
       assistantTextEvidence = summarizeAssistantTextEvidence(messages);
-      const replies = await findSubmittedReplies({ history, sessionKey, runId, expectedText, deadline, readHistory });
+      const replies = await findSubmittedReplies({ history, sessionKey, runId, deadline, readHistory });
+      associationObserved ||= replies.length > 0;
       for (const reply of replies) {
         replyRunId = reply.__openclaw?.runId || runId;
         trackCompletion(replyRunId);
@@ -225,7 +233,15 @@ async function waitForAssistantText({ gatewayTransport, sessionKey, expectedText
     }
     await sleep(Math.min(500, Math.max(0, deadline - Date.now())));
   }
+  await waitForCompletions();
   if (readCompletionError()) throw readCompletionError();
+  if (!associationObserved) {
+    const error = new RunAssociationUnavailableError(
+      `Gateway did not provide an authoritative association between submitted run ${runId} and an assistant reply; queued execution ownership cannot be inferred`
+    );
+    error.assistantTextEvidence = assistantTextEvidence;
+    throw error;
+  }
   const error = new Error(
     `timed out waiting for Gateway session run ${runId} assistant text exactly equal to ${JSON.stringify(expectedText)}; last=${JSON.stringify(lastAssistantText)}; lastHistoryError=${JSON.stringify(lastHistoryError?.message ?? null)}`
   );
@@ -233,40 +249,16 @@ async function waitForAssistantText({ gatewayTransport, sessionKey, expectedText
   throw error;
 }
 
-async function findSubmittedReplies({ history, sessionKey, runId, expectedText, deadline, readHistory }) {
-  const direct = (history.messages ?? []).filter((message) => isAssistantMessage(message) && (
-    message?.__openclaw?.runId === runId || messageIdempotencyKey(message) === runId
-  ));
-  if (direct.length > 0) return direct;
-
-  const receipt = history.inputReceipts?.find((input) => input.runId === runId);
-  if (receipt?.state === "pending") return [];
-  const inputId = receipt?.state === "consumed" ? receipt.consumedByEventId : null;
-  // A queued input can execute under another id. Its durable user message
-  // identifies the reply segment; later input boundaries end that segment.
+async function findSubmittedReplies({ history, sessionKey, runId, deadline, readHistory }) {
   let page = history;
   let offset = 0;
-  let latestReply = null;
-  let matchingReply = null;
   while (Date.now() < deadline) {
-    const messages = page.messages ?? [];
-    for (let index = messages.length - 1; index >= 0; index -= 1) {
-      const message = messages[index];
-      if (isInputMessage(message)) {
-        if (messageIdempotencyKey(message) === `${runId}:user` ||
-            (inputId && message?.__openclaw?.id === inputId)) {
-          return [matchingReply ?? latestReply].filter(Boolean);
-        }
-        latestReply = null;
-        matchingReply = null;
-      } else if (message?.__openclaw?.turnBoundary === true) {
-        latestReply = null;
-        matchingReply = null;
-      } else if (isAssistantMessage(message) && typeof message?.__openclaw?.runId === "string" && message.__openclaw.runId) {
-        latestReply ??= message;
-        if (textEquals(extractAssistantVisibleText(message), expectedText)) matchingReply ??= message;
-      }
-    }
+    const replies = (page.messages ?? []).filter((message) => isAssistantMessage(message) && (
+      message?.__openclaw?.runId === runId || messageIdempotencyKey(message) === runId
+    ));
+    if (replies.length > 0) return replies;
+    // Input order and consumption receipts do not bind a queued execution.
+    // Only explicit reply identity can establish ownership, on any page.
     if (page.hasMore !== true || !history.sessionId) return [];
     if (!Number.isSafeInteger(page.nextOffset) || page.nextOffset <= offset) {
       throw new Error("Gateway history returned a non-advancing page offset");
