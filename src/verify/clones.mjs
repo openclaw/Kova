@@ -1,7 +1,7 @@
 import { createReadStream } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
 import { copyFile, lstat, mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
-import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import { Transform } from "node:stream";
 import { isDeepStrictEqual } from "node:util";
 import { pipeline } from "node:stream/promises";
@@ -53,6 +53,32 @@ async function readCloneLogging(metadata, { allowDefault = false } = {}) {
   return { config, configPath, file, defaulted: logging.file === undefined };
 }
 
+async function inventoryCloneConfigPaths(metadata, configPath, config) {
+  const files = new Set([configPath]);
+  const parsedFiles = new Map([[configPath, config]]);
+  const visit = async (value, source, ancestors, depth) => {
+    if (value === null || typeof value !== "object") return;
+    if (!Array.isArray(value) && Object.hasOwn(value, "$include")) {
+      const include = value.$include;
+      if (typeof include !== "string" && !Array.isArray(include)) throw new Error("clone config include must be a string or array of strings");
+      for (const entry of Array.isArray(include) ? include : [include]) {
+        if (typeof entry !== "string" || !entry) throw new Error("clone config include paths must be non-empty strings");
+        if (depth >= 10) throw new Error("clone config exceeds the maximum include depth of 10");
+        const path = await ownedCloneFile(metadata, resolve(dirname(source), entry));
+        if (ancestors.has(path)) throw new Error("clone config contains an include cycle");
+        if (!parsedFiles.has(path)) parsedFiles.set(path, JSON5.parse(await readFile(path, "utf8")));
+        files.add(path);
+        await visit(parsedFiles.get(path), path, new Set([...ancestors, path]), depth + 1);
+      }
+    }
+    for (const [key, child] of Object.entries(value)) {
+      if (key !== "$include") await visit(child, source, ancestors, depth);
+    }
+  };
+  await visit(config, configPath, new Set([configPath]), 0);
+  return [...files];
+}
+
 function activeLogFile(file) {
   if (!/^openclaw-(?:YYYY-MM-DD|\d{4}-\d{2}-\d{2})\.log$/.test(basename(file))) return file;
   const date = new Date();
@@ -62,6 +88,7 @@ function activeLogFile(file) {
 
 async function prepareProductLogs(metadata) {
   const settings = await readCloneLogging(metadata, { allowDefault: true });
+  const configPaths = await inventoryCloneConfigPaths(metadata, settings.configPath, settings.config);
   if (settings.defaulted) {
     settings.config.logging = { ...settings.config.logging, file: settings.file };
     const temporary = join(dirname(settings.configPath), `.kova-log-config-${randomUUID()}.json`);
@@ -82,7 +109,7 @@ async function prepareProductLogs(metadata) {
   }, { validatePath: (path) => ownedCloneFile(metadata, path), trackIdentity: true });
   // Imported history predates this copy's product commands.
   (await collect.prepare({ skipExisting: true })).commit();
-  return collect;
+  return Object.assign(collect, { configPaths });
 }
 
 export async function hashFile(path) {
@@ -94,6 +121,8 @@ export async function hashFile(path) {
 export async function hashEnvironmentExport(path) {
   const raw = createHash("sha256");
   const entries = new Map();
+  const sqliteParents = new Set();
+  const sqliteMagic = Buffer.from("SQLite format 3\0");
   const extractor = extractTar();
   let metadataSeen = false;
   extractor.on("entry", (header, stream, next) => {
@@ -103,6 +132,7 @@ export async function hashEnvironmentExport(path) {
       if (entries.has(name) || (name !== "meta/env.json" && name !== "root" && !name.startsWith("root/"))) throw new Error("invalid environment export entry");
       const fields = JSON.parse(JSON.stringify(header));
       fields.name = name;
+      delete fields.byteOffset;
       const content = createHash("sha256");
       if (name === "meta/env.json") {
         if (metadataSeen || header.type !== "file" || header.size > 1024 * 1024) throw new Error("invalid environment export metadata");
@@ -117,7 +147,13 @@ export async function hashEnvironmentExport(path) {
         content.update(normalized);
         metadataSeen = true;
       } else {
-        for await (const chunk of stream) content.update(chunk);
+        const prefix = Buffer.alloc(sqliteMagic.length);
+        let prefixBytes = 0;
+        for await (const chunk of stream) {
+          if (prefixBytes < prefix.length) prefixBytes += chunk.copy(prefix, prefixBytes, 0, prefix.length - prefixBytes);
+          content.update(chunk);
+        }
+        if (header.type === "file" && prefixBytes === prefix.length && prefix.equals(sqliteMagic)) sqliteParents.add(posix.dirname(name));
       }
       entries.set(name, { header: fields, sha256: content.digest("hex") });
     })().then(() => next(), (error) => next(error));
@@ -126,6 +162,12 @@ export async function hashEnvironmentExport(path) {
     transform(chunk, encoding, callback) { raw.update(chunk); callback(null, chunk); }
   }), extractor);
   if (!metadataSeen || entries.get("root")?.header.type !== "directory") throw new Error("environment export is missing metadata or root directory");
+  // SQLite snapshot reads can create excluded WAL/SHM siblings after OCM has
+  // emitted their parent header. Only that directory's mtime is capture noise.
+  for (const parent of sqliteParents) {
+    const entry = entries.get(parent);
+    if (entry?.header.type === "directory") delete entry.header.mtime;
+  }
   return {
     sha256: raw.digest("hex"),
     contentSha256: sha256(canonicalJSON([...entries].sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)))
@@ -239,7 +281,7 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
     if (sourceRoot) roots.push([sourceRoot, value.root]);
     return { metadata: value, binding: { ...binding, command } };
   }
-  const context = () => ({ env: metadata.name, run: directory, kovaRoot: root, traits, roots, cwd: metadata.workspaceDir ?? metadata.root, ownedRoots: copies.map((copy) => copy.root) });
+  const context = () => ({ env: metadata.name, run: directory, kovaRoot: root, traits, roots, cwd: metadata.workspaceDir ?? metadata.root, ownedRoots: copies.map((copy) => copy.root), configPaths: [...new Set([...productLogs.values()].flatMap((collect) => collect.configPaths))] });
   async function mockProvider(value) {
     const saved = join(value.workspaceDir ?? join(value.stateDir, "workspace"), "kova-persona/mock-script.json");
     let script;
@@ -295,8 +337,8 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
         for (const trait of persona.definition.traits) {
           signal?.throwIfAborted();
           const commandContext = context();
-          const command = resolveRunCommand(trait.check, commandContext);
-          await validateCommand?.(command, commandContext);
+          let command = resolveRunCommand(trait.check, commandContext);
+          if (validateCommand) command = await validateCommand(command, commandContext) ?? command;
           const result = await call(command, { cwd: commandContext.cwd });
           const keys = JSON.parse(result.stdout);
           if (JSON.stringify(Object.keys(keys).sort()) !== JSON.stringify(Object.keys(trait.keys).sort())) throw new Error(`trait ${trait.id}: check keys differ from definition`);

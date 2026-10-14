@@ -329,8 +329,13 @@ use a working directory inside their copy, and filesystem destinations are check
 foreground without managed services. Product file logs are collected as well as
 console output. Repeated destination flags are refused. Config patches must
 keep path values inside the copies and cannot remove the owned log destination
-or introduce includes or paths dependent on the shell environment. Log offsets
-advance only after a complete checkpoint is published. An unset `logging.file`
+or introduce includes or paths dependent on the shell environment. Gateway request parameters, including response-file inputs, are resolved once
+before their destinations are checked. Explicit session working directories and
+file paths must be absolute paths in the copied environments; ambiguous relative
+file paths and project, catalog or remote creation selectors are refused.
+Session file writes cannot replace the copied configuration. Product destinations
+cannot overlap recorded evidence. Ordinary request text remains unchanged.
+Log offsets advance only after a complete checkpoint is published. An unset `logging.file`
 receives a path inside the clone; an explicit path must be absolute and clone-owned. Includes and environment
 substitutions in log configuration are refused instead of reading shared logs.
 Log capture above 16 MiB marks the checkpoint incomplete.

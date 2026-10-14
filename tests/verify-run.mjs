@@ -346,7 +346,8 @@ test("commands run in distinct owned working directories and reject aliased dest
   const probe = `${quoteShell(process.execPath)} -e ${quoteShell("console.log(process.cwd())")}`;
   for (const cwd of [first, second]) assert.equal((await runCommand(probe, { cwd })).stdout.trim(), await realpath(cwd));
   const command = "ocm @copy -- sessions export-trajectory --session-key existing --output result --json";
-  const context = { cwd: first, run: first, ownedRoots: [first] };
+  const output = join(root, "output"); await mkdir(output);
+  const context = { cwd: first, run: output, ownedRoots: [first] };
   await validateRunDestinations(command, context);
   await assert.rejects(validateRunDestinations(`${command} --workspace ${quoteShell(`${root}/./durable`)}`, context), /owned copy/);
   await symlink(durable, join(first, "linked"));
@@ -379,15 +380,16 @@ test("the runner confines product destinations before execution and routes each 
 
 
 test("destination validation rejects duplicate flags and config path escapes before execution", async (t) => {
-  const root = await temporary(t), copy = join(root, "copy"), durable = join(root, "durable");
-  await mkdir(copy); await mkdir(durable);
-  const context = { cwd: copy, run: copy, ownedRoots: [copy] };
+  const root = await temporary(t), copy = join(root, "copy"), durable = join(root, "durable"), output = join(root, "output");
+  await mkdir(copy); await mkdir(durable); await mkdir(output);
+  const context = { cwd: copy, run: output, ownedRoots: [copy] };
   for (const flag of ["--workspace", "--output"]) {
     await assert.rejects(validateRunDestinations(`ocm @copy -- sessions export-trajectory --session-key existing ${flag} safe ${flag} ${quoteShell(durable)}`, context), /repeated/);
   }
   const path = join(copy, "patch.json5"), command = `ocm @copy -- config patch --file ${quoteShell(path)}`;
   for (const patch of [
     { logging: { file: `${root}/./durable/injected.log` } },
+    { logging: { file: join(output, "checkpoints/standard/use-target/commands.json") } },
     { logging: { file: "~/shared.log" } },
     { logging: { file: "../shared.log" } },
     { logging: { file: null } },
@@ -412,4 +414,46 @@ test("persona checks receive the same command admission as phase commands", asyn
   f.plan.persona.sha256 = sha256(saved); await f.save();
   await assert.rejects(runVerification({ ...f.options, execute: true }, f.dependencies), /--out must stay/);
   assert.deepEqual(f.created, []); assert.deepEqual(f.calls, []);
+});
+
+test("Gateway payload paths are checked after merging and the admitted payload is frozen", async (t) => {
+  const root = await temporary(t), copy = join(root, "copy"), output = join(root, "output"), durable = join(root, "durable");
+  for (const path of [copy, output, durable]) await mkdir(path);
+  const context = { cwd: copy, run: output, ownedRoots: [copy], kovaRoot: repoRoot, configPaths: [join(copy, "openclaw.json"), join(copy, "custom-config.json")] };
+  const helper = `node ${quoteShell(join(repoRoot, "support/verify/gateway-call.mjs"))} --env copy`;
+  const call = (method, params, extra = "") => `${helper} --method ${method} --params ${quoteShell(JSON.stringify(params))} ${extra}`;
+  for (const method of ["sessions.create", "sessions.groups.update"]) {
+    await assert.rejects(validateRunDestinations(call(method, { cwd: `${root}/./durable` }), context), /owned copy/);
+    await assert.rejects(validateRunDestinations(call(method, { cwd: output }), context), /owned copy/);
+  }
+  const path = join(output, "input.json");
+  await writeFile(path, JSON.stringify({ result: { cwd: durable } }));
+  await assert.rejects(validateRunDestinations(call("sessions.create", {}, `--merge-from ${quoteShell(path)}`), context), /owned copy/);
+  await writeFile(path, JSON.stringify({ result: { cwd: copy, message: "/ordinary text" } }));
+  const frozen = await validateRunDestinations(call("sessions.create", {}, `--merge-from ${quoteShell(path)}`), context);
+  await writeFile(path, JSON.stringify({ result: { cwd: durable } }));
+  const tokens = parseCatalogueCommand(frozen, { standard: true }).tokens;
+  assert.equal(tokens.includes("--merge-from"), false);
+  assert.deepEqual(JSON.parse(tokens[tokens.indexOf("--params") + 1]), { cwd: await realpath(copy), message: "/ordinary text" });
+  for (const method of ["sessions.files.get", "sessions.files.set", "sessions.files.assets", "sessions.files.list"]) {
+    await assert.rejects(validateRunDestinations(call(method, { path: "../durable/file" }), context), /absolute owned/);
+    await assert.rejects(validateRunDestinations(call(method, { path: `${root}/./durable/file` }), context), /owned copy/);
+  }
+  for (const file of ["openclaw.json", "custom-config.json"]) await assert.rejects(validateRunDestinations(call("sessions.files.set", { path: join(copy, file), content: "{}" }), context), /configuration/);
+  await validateRunDestinations(call("sessions.files.set", { path: join(copy, "notes.txt"), content: "/ordinary content" }), context);
+  await mkdir(join(copy, "examples"));
+  await validateRunDestinations(call("sessions.files.set", { path: join(copy, "examples/openclaw.json"), content: "{}" }), context);
+  await assert.rejects(validateRunDestinations(call("sessions.files.assets", { path: join(copy, "page.html"), refs: ["%2e%2e/durable/style.css?x#y"] }), context), /owned copy/);
+  await validateRunDestinations(call("sessions.files.assets", { path: join(copy, "page.html"), refs: ["./style.css?x#y"] }), context);
+  for (const field of ["projectId", "catalogId", "execNode"]) await assert.rejects(validateRunDestinations(call("sessions.create", { [field]: "external" }), context), /unsupported/);
+});
+
+test("resolved helper outputs cannot enter checkpoint directories through aliases", async (t) => {
+  const root = await temporary(t), copy = join(root, "copy"), output = join(root, "output");
+  await mkdir(copy); await mkdir(join(output, "checkpoints"), { recursive: true });
+  await symlink(join(output, "checkpoints"), join(output, "alias"));
+  const context = { cwd: copy, run: output, ownedRoots: [copy] };
+  await assert.rejects(validateRunDestinations(`node /helper --out ${quoteShell(join(output, "alias/new.json"))}`, context), /protected evidence/);
+  const patch = join(output, "patch.json");await writeFile(patch, JSON.stringify({ logging: { file: join(output, "checkpoints/commands.json") } }));
+  await assert.rejects(validateRunDestinations(`ocm @copy -- config patch --file ${quoteShell(patch)}`, context), /owned copy/);
 });
