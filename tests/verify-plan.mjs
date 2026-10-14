@@ -138,6 +138,7 @@ test("loader reads the shipped sessions template and standard commands pass the 
   const all = checkCatalogueCommands(inputs.catalogue, sessions.phases.flatMap((item) => item.commands.map((command) => ({ command }))));
   assert.deepEqual(all.filter((item) => item.code !== "toWrite"), []);
   assert.ok(all.some((item) => item.code === "toWrite"));
+  assert.doesNotMatch(JSON.stringify(sessions.phases), /\{persona:[^}:]+:(?:processId|instanceId|inputId|queuedInputId)\}/);
   const missingIdentities = selectPhases({ ...inputs, paths: ["src/gateway/server-methods/sessions-sharing.ts", "src/gateway/server-methods/session-processes.ts"], persona: { traits: {
     "session-shared-readonly": { keys: {} }, "session-workspace-changes": { keys: {} },
   } } });
@@ -201,13 +202,19 @@ test("sessions Gateway requests match the pinned OpenClaw schemas", async (t) =>
   };
   const { templates } = await loadPlanInputs();
   const sessions = templates.find((item) => item.id === "sessions");
-  const handles = new Map(), validators = new Map(), failures = [], outputs = new Map();
+  const handles = new Map(), validators = new Map(), failures = [], outputs = new Map(), processStarts = new Map();
   let requests = 0, joins = 0;
   for (const phase of sessions.phases) for (const command of phase.commands) {
     const { tokens, findings } = parseCatalogueCommand(command);
     assert.deepEqual(findings, [], phase.id);
-    if (tokens[1] !== "{kovaRoot}/support/verify/gateway-call.mjs") continue;
     const flag = (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined;
+    if (tokens[1] === "{kovaRoot}/support/verify/agent-tool-turn.mjs" && flag("--tool") === "exec") {
+      const args = JSON.parse(flag("--args"));
+      assert.equal(args.background, true, phase.id);
+      assert.ok(args.timeoutSeconds > 0, phase.id);
+      processStarts.set(phase.id, flag("--session-key"));
+    }
+    if (tokens[1] !== "{kovaRoot}/support/verify/gateway-call.mjs") continue;
     const method = flag("--method"), label = `${phase.id}: ${method}`;
     if (flag("--wait")) {
       assert.equal(handles.get(flag("--wait")), method, label);
@@ -259,9 +266,12 @@ test("sessions Gateway requests match the pinned OpenClaw schemas", async (t) =>
       } else if (method === "sessions.processes.stop") {
         assert.equal(source.method, "sessions.processes.list", label);
         assert.equal(source.result.sessionId, params.sessionId, label);
-        const matches = source.result.processes.filter((item) => item.processId === params.processId);
+        assert.equal(source.result.truncated, false, label);
+        const matches = source.result.processes.filter((item) => item.status === "running" && item.canStop);
         assert.equal(matches.length, 1, `${label}: process identity must match exactly once`);
+        assert.equal(params.processId, undefined, `${label}: process id must come from the read`);
         assert.equal(params.instanceId, undefined, `${label}: incarnation must come from the read`);
+        params.processId = matches[0].processId;
         params.instanceId = matches[0].instanceId;
       } else assert.fail(`${label}: missing --from contract`);
     }
@@ -270,10 +280,13 @@ test("sessions Gateway requests match the pinned OpenClaw schemas", async (t) =>
       const result = method === "sessions.describe" ? { session: { key: params.key, sessionId: "fixture-session" } }
         : method === "sessions.processes.list" ? {
           sessionId: "{persona:session-workspace-changes:sessionId}",
-          processes: [{ processId: "{persona:session-workspace-changes:processId}", instanceId: "fixture-incarnation", name: "fixture", status: "running", startedAt: 1, tail: "", truncated: false, canStop: true }],
+          processes: [{ processId: "fixture-process", instanceId: "fixture-incarnation", name: "fixture", status: "running", startedAt: 1, tail: "", truncated: false, canStop: true }],
           truncated: false,
         } : undefined;
-      if (method === "sessions.processes.list") assert.ok(Compile(schemas.SessionsProcessesListResultSchema).Check(result), label);
+      if (method === "sessions.processes.list") {
+        assert.equal(processStarts.get(phase.id), params.key, `${label}: process must start earlier in this phase and session`);
+        assert.ok(Compile(schemas.SessionsProcessesListResultSchema).Check(result), label);
+      }
       outputs.set(flag("--out"), { phase: phase.id, method, params, result });
     }
     if (!validators.has(name)) validators.set(name, Compile(schema));

@@ -69,7 +69,7 @@ These descriptions are retained from the historical derivation. A plan checks th
 - session-shared-readonly: a session shared read-only with a member profile and one pending suggestion (key, suggestionId)
 - session-thread-bound: a sub-agent session bound to a channel thread (key, peer)
 - session-with-worktree: a session bound to a managed worktree (key, workspaceDir)
-- session-workspace-changes: a session with workspace files, an HTML file with a relative asset, uncommitted changes and a running process (key, filePath, fileHash, htmlPath, assetRef, processId); D folded this and session-with-worktree into session-worktree-bound
+- session-workspace-changes: a session with workspace files, an HTML file with a relative asset and uncommitted changes (key, filePath, fileHash, htmlPath, assetRef); its process is started during the run, not retained in the persona. D folded this and session-with-worktree into session-worktree-bound
 - sessions-organized-mixed: pinned, snoozed, archived (manual, age-retention, cap reasons), grouped, colored, unread, nested-child and fork rows (pinnedKey, snoozedKey, snoozedSessionId, archivedKey, archivedSessionId, childKey, forkKey, shortId); D named the archived and pinned parts session-archived and session-pinned
 - sessions-stale-dashboard: dashboard sessions inactive longer than archiveDashboardAfter (key)
 - sessions-stale-lock-files: legacy write-lock files with dead and live owners under the agent session directory
@@ -96,15 +96,19 @@ Historical limits:
 ## Current schema requirements and limits
 
 - `session-workspace-changes` must expose `sessionId` as well as its existing
-  `key` and `processId`. `session-shared-readonly` must expose `sessionId`,
+  `key`. `session-shared-readonly` must expose `sessionId`,
   `memberIdentityId` and its existing `suggestionId`. The declarations are in
   [Persona](../../../docs/verify/persona.md#sessions-identity-keys). Missing keys
   withhold the affected phases; this document does not claim they are built.
-- `session-files-changes` writes `workspace-processes.json` with
-  `sessions.processes.list` before stopping the matching process. The stop
-  reads its `instanceId` through `--from` and requires the observed session id
-  to match the persona's `sessionId`. It retains the separate main-session
-  process listing. A missing or ambiguous process cannot supply an identity.
+- `session-files-changes` uses the scripted tool-call provider to start a bounded
+  background process with `exec` in the run, then writes
+  `workspace-processes.json` once with `sessions.processes.list`. The stop reads
+  both `processId` and `instanceId` through `--from` and requires the observed
+  session id to match the persona's `sessionId`. It retains the separate
+  main-session process listing. A truncated list, no stoppable running process
+  or more than one such process cannot supply an identity. No process or
+  queued-input identifier is read from the persona; queued messages are sent
+  during the run.
 - `browse-sessions` describes the new session into `involvement-describe.json`
   before reading its current session id through `--from` for
   `sessions.setInvolvement`. `hidden: true` removes it from the signed-in

@@ -5609,7 +5609,7 @@
           "value": "required"
         },
         "--from": {
-          "description": "Earlier sessions.processes.list result file under {run}; require its sessionId to match --params, select exactly one process matching processId and read instanceId from that row; refuse missing or ambiguous identities",
+          "description": "Earlier sessions.processes.list result file under {run}; require its sessionId to match --params and a non-truncated list, select exactly one running process with canStop true, and read processId and instanceId from that row; refuse missing, ambiguous or prefilled process identities",
           "value": "required"
         }
       },

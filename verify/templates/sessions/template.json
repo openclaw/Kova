@@ -1157,7 +1157,7 @@
     {
       "id": "session-files-changes",
       "kind": "operation",
-      "intent": "A user lists, previews, edits files and reveals the workspace of a session with workspace changes, lists and stops its processes, reads its diff and GitHub publication options while other sessions run, observing file contents, hashes, process rows and diff output.",
+      "intent": "A user lists, previews, edits files and reveals the workspace of a session with workspace changes, starts a bounded process, lists and stops it, reads its diff and GitHub publication options while other sessions run, observing file contents, hashes, process rows and diff output.",
       "paths": [
         "src/gateway/server-methods/sessions-files.ts",
         "src/gateway/server-methods/session-processes.ts",
@@ -1174,6 +1174,7 @@
       ],
       "requires": [
         "mock-provider-held-turn",
+        "mock-provider-tool-calls",
         "session-main-rolling",
         "session-workspace-changes"
       ],
@@ -1184,8 +1185,9 @@
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.files.assets --params '{\"sessionKey\":\"{persona:session-workspace-changes:key}\",\"path\":\"{persona:session-workspace-changes:htmlPath}\",\"refs\":[\"./style.css\"]}' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.files.reveal --params '{\"key\":\"{persona:session-workspace-changes:key}\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.processes.list --params '{\"key\":\"{persona:session-main-rolling:key}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-workspace-changes:key} --tool exec --args '{\"command\":\"sleep 600\",\"background\":true,\"timeoutSeconds\":660}' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.processes.list --params '{\"key\":\"{persona:session-workspace-changes:key}\"}' --out {run}/workspace-processes.json --timeout 120000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.processes.stop --params '{\"processId\":\"{persona:session-workspace-changes:processId}\",\"key\":\"{persona:session-workspace-changes:key}\",\"sessionId\":\"{persona:session-workspace-changes:sessionId}\"}' --from {run}/workspace-processes.json --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.processes.stop --params '{\"key\":\"{persona:session-workspace-changes:key}\",\"sessionId\":\"{persona:session-workspace-changes:sessionId}\"}' --from {run}/workspace-processes.json --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.diff --params '{\"sessionKey\":\"{persona:session-workspace-changes:key}\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.github.options --params '{\"sessionKey\":\"{persona:session-workspace-changes:key}\"}' --timeout 120000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.github.options --params '{\"sessionKey\":\"{persona:session-workspace-changes:key}\",\"agentId\":\"main\"}' --timeout 30000",
@@ -1198,7 +1200,7 @@
         "state:agents/main/agent/openclaw-agent.sqlite",
         "screen"
       ],
-      "timeoutMs": 1380000,
+      "timeoutMs": 1500000,
       "browser": true,
       "slow": true
     },

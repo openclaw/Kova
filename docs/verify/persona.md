@@ -232,8 +232,7 @@ that need them.
   {
     "id": "session-workspace-changes",
     "keys": {
-      "sessionId": "the durable session id for key",
-      "processId": "the process recorded for that session"
+      "sessionId": "the durable session id for key"
     }
   },
   {
@@ -247,9 +246,12 @@ that need them.
 ]
 ```
 
-A sharing identity is distinct from a human profile id. A process incarnation
-is observed during a run: `sessions.processes.stop` reads `instanceId` from the
-earlier `sessions.processes.list` output for the matching process and session.
+A sharing identity is distinct from a human profile id. Processes and queued
+inputs belong to a run, not a durable persona. The sessions phase starts its
+process during the run, then `sessions.processes.stop` reads both `processId`
+and `instanceId` from the earlier `sessions.processes.list` output for the
+matching session. A truncated list, no stoppable running process or more than
+one such process cannot supply an identity.
 Likewise, `sessions.setInvolvement` reads `expectedSessionId` from an earlier
 `sessions.describe` output for the newly created session. These observations
 are passed through the catalogue entry's `--from` input, not stored as persona
