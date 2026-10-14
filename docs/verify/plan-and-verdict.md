@@ -648,8 +648,12 @@ SQLite integers and BLOBs use `{"integer": "<decimal>"}` and
 so they cannot be confused with a product JSON object or normalized as IDs.
 Declared TEXT identities retain their string identity even when their bytes
 also parse as a JSON number; ordinary SQL and JSON numbers stay numeric.
-Primary-key strings normalize before the key is serialized; numeric key
-components and fallback rowids are never treated as string IDs. Stored and
+Primary-key values use their canonical JSON spelling (including quotes around
+strings), so integer `1`, text `"1"`, NULL and text `"null"` have distinct
+addresses. Composite keys use a JSON array. Keys containing NULL include the
+rowid as `{"key": <key>, "rowid": <rowid>}` because SQLite permits repeated
+NULL keys. Primary-key strings normalize before serialization and retain their
+TEXT values; numeric components and fallback rowids are never string IDs. Stored and
 virtual generated columns in ordinary SQLite tables are included. Empty text,
 JSONL and SQLite files and empty tables retain presence items. JSONL records
 decode independently; malformed lines remain distinct text evidence while valid

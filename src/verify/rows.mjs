@@ -306,10 +306,15 @@ export async function checkpointRows(directory, phase, standard, normalization, 
       if (file.kind === "sqlite") {
         path[path.length - 1] += `:${pointerPart(file.table)}`;
         b.add("state", path, { type: "table" }, { dynamic });
-        const idColumns = new Set(standard.stateIds.filter((entry) => entry.table === file.table && matchesGlob(file.path, entry.path)).map((entry) => entry.column));
+        const idColumns = new Set([...file.primary, ...standard.stateIds.filter((entry) => entry.table === file.table && matchesGlob(file.path, entry.path)).map((entry) => entry.column)]);
         for (const row of file.rows) {
           const keys = file.primary.map((key) => row.values[key].raw).map((value) => typeof value === "string" ? normalize(value) : value);
-          const key = keys.length === 1 ? (typeof keys[0] === "string" ? keys[0] : canonicalJSON(keys[0])) : keys.length ? canonicalJSON(keys) : canonicalJSON(row.rowid);
+          const primaryKey = keys.length === 1 ? keys[0] : keys;
+          // SQLite permits multiple NULL primary keys in rowid tables. Preserve
+          // SQL storage types and use rowid only to disambiguate those NULL keys.
+          const nullable = keys.includes(null);
+          if (nullable && row.rowid === null) throw new Error(`nullable state key needs rowid: ${file.path}:${file.table}`);
+          const key = canonicalJSON(nullable ? { key: primaryKey, rowid: row.rowid } : keys.length ? primaryKey : row.rowid);
           if (!file.primary.length && row.rowid === null) throw new Error(`state table has no addressable key: ${file.path}:${file.table}`);
           const segments = [...path, pointerPart(key)];
           const dynamicKeys = [...dynamic, path.length];
