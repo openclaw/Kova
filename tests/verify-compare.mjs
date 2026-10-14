@@ -1042,3 +1042,44 @@ test("unselected state cannot supply IDs or rows that hide response differences"
     }
   }
 });
+
+test("binary-damaged JSONL retains existing IDs and exact damaged-line evidence", async (t) => {
+  const record = Buffer.from(String.raw`{"id":"persona\u002dexisting\u002did"}` + "\n");
+  const sameRecord = Buffer.concat([record.subarray(0, record.length - 2), Buffer.from(',"note":"'), Buffer.from([255]), Buffer.from('"}\n')]);
+  for (const history of [Buffer.concat([record, Buffer.from([0, 10])]), Buffer.concat([Buffer.from([255, 10]), record]), sameRecord]) {
+    const f = await fixture(t, { creates: ["/id"], originalFiles: { "history.jsonl": history }, copies: Object.fromEntries(names.map(name => [name, { response: { id: name.startsWith("change") ? "persona-existing-id" : `generated-${name}` } }])) });
+    const result = await f.compare();
+    assert.equal(result.verdict, "breaks"); assert.equal(result.rows[0].change, "persona-existing-id");
+  }
+  const f = await fixture(t, { state: async (path, name) => writeFile(join(path, "events.jsonl"), Buffer.concat([Buffer.from('{"valid":true}\n'), Buffer.from([name.startsWith("change") ? 254 : 255, 10])])) });
+  const result = await f.compare();
+  assert.equal(result.verdict, "breaks"); assert.equal(result.rows.length, 1);
+  assert.equal(result.rows[0].at, "files/events.jsonl/1");
+  assert.equal(result.rows[0].baseline.invalidJSONLBytes, sha256(Buffer.from([255])));
+  assert.equal(result.rows[0].change.invalidJSONLBytes, sha256(Buffer.from([254])));
+});
+
+test("state ID ordering supports mixed numeric, text, BLOB and NULL values", async (t) => {
+  for (const [changedIndex, ordinal] of [[2, "3.2"], [5, "7"]]) {
+    const f = await fixture(t, { stateIds: [{ path: "files/store.sqlite", table: "records", column: "id", recordKey: "owner", order: "position" }], state: async (path, name) => {
+      const db = new DatabaseSync(join(path, "store.sqlite"));
+      try {
+        db.exec("CREATE TABLE records (id TEXT PRIMARY KEY, owner TEXT, position BLOB, value TEXT)");
+        const insert = db.prepare("INSERT INTO records VALUES (?, 'stable-owner', ?, ?)");
+        for (const [index, position] of [9007199254740993n, 1.5, 1.5, "1.5", Buffer.from("z"), Buffer.from("a"), null, null].entries()) insert.run(`generated-${name}-${index}`, position, index === changedIndex && name.startsWith("change") ? "new" : "old");
+      } finally { db.close(); }
+    } });
+    const result = await f.compare();
+    assert.equal(result.verdict, "breaks"); assert.equal(result.rows.length, 1);
+    assert.equal(result.rows[0].change, "new");
+    const key = JSON.parse(result.rows[0].at.split("/")[2].replaceAll("~1", "/").replaceAll("~0", "~"));
+    assert.ok(key.endsWith(`/id/${ordinal}>`), key);
+  }
+});
+
+test("invalid JSONL decoding does not invent replacement-character identities", async (t) => {
+  for (const history of [Buffer.from([255, 10]), Buffer.from('"�"\n')]) {
+    const f = await fixture(t, { creates: ["/id"], originalFiles: { "history.jsonl": history }, copies: Object.fromEntries(names.map(name => [name, { response: { id: name.startsWith("change") ? "�" : `generated-${name}` } }])) });
+    assert.equal((await f.compare()).verdict, history[0] === 255 ? "good-to-go" : "breaks");
+  }
+});

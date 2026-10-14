@@ -72,14 +72,15 @@ export async function readDeclaredIds(directory, phases, standard, catalogue) {
         for (const row of file.rows) {
           // Missing product columns must remain comparable. Without the declared
           // identity/order fields, keep this row's values instead of guessing IDs.
-          if (![declaration.column, declaration.recordKey, ...(declaration.order ? [declaration.order] : [])].every((column) => Object.hasOwn(row.values, column))) continue;
+          const ordered = declaration.order !== undefined;
+          if (![declaration.column, declaration.recordKey, ...(ordered ? [declaration.order] : [])].every((column) => Object.hasOwn(row.values, column))) continue;
           const id = row.values[declaration.column].raw;
           if (typeof id !== "string" || !id) continue;
           const key = row.values[declaration.recordKey].raw;
           const group = canonicalJSON([file.path, declaration.column, key, declaration.order ?? null]);
-          if (!records.has(group)) records.set(group, { path: file.path, field: declaration.column, key, ordered: Boolean(declaration.order), ids: new Map() });
+          if (!records.has(group)) records.set(group, { path: file.path, field: declaration.column, key, ordered, ids: new Map() });
           const values = records.get(group).ids;
-          if (!values.has(id)) values.set(id, { id, order: declaration.order ? row.values[declaration.order].raw : null, rowid: row.rowid });
+          if (!values.has(id)) values.set(id, { id, order: ordered ? row.values[declaration.order].orderValue : null, rowid: row.rowid });
         }
       }
     }
@@ -122,12 +123,14 @@ export function normalizeDeclaredIds({ candidates, records, allIds }, protectedI
 }
 
 function compare(a, b) {
+  a = a?.integer ? BigInt(a.integer) : a;
+  b = b?.integer ? BigInt(b.integer) : b;
   if (a === b) return 0;
   if (a === null) return -1;
   if (b === null) return 1;
-  if (a?.integer || b?.integer) {
-    const x = BigInt(a?.integer ?? a), y = BigInt(b?.integer ?? b);
-    return x < y ? -1 : x > y ? 1 : 0;
-  }
+  const rank = (value) => ["number", "bigint"].includes(typeof value) ? 0 : typeof value === "string" ? 1 : 2;
+  if (rank(a) !== rank(b)) return rank(a) - rank(b);
+  if (typeof a === "string") return Buffer.compare(Buffer.from(a), Buffer.from(b));
+  if (a instanceof Uint8Array) return Buffer.compare(a, b);
   return a < b ? -1 : a > b ? 1 : 0;
 }

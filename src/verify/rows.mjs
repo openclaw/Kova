@@ -96,6 +96,7 @@ export async function* stateFile(file, path, standard) {
           continue;
         }
         const columns = db.prepare(`PRAGMA table_xinfo(${quote(table.name)})`).all();
+        const ordered = new Set((standard.stateIds ?? []).filter((item) => item.table === table.name && matchesGlob(path, item.path) && item.order !== undefined).map((item) => item.order));
         const primary = columns.filter((c) => c.pk).sort((a, b) => a.pk - b.pk).map((c) => c.name);
         const rowid = /\bWITHOUT\s+ROWID\b/i.test(table.sql) ? null : ["rowid", "_rowid_", "oid"].find((name) => !columns.some((c) => c.name.toLowerCase() === name));
         let alias = "__kova_rowid";
@@ -109,6 +110,7 @@ export async function* stateFile(file, path, standard) {
           const values = Object.create(null);
           for (const column of columns) {
             let value = result[column.name];
+            const order = ordered.has(column.name) ? { orderValue: value instanceof Uint8Array ? Buffer.from(value) : value } : {};
             const compressed = standard.compressed.find((item) => matchesGlob(path, item.path) && item.table === table.name && item.column === column.name);
             if (compressed && value !== null) {
               if (compressed.codec !== "zstd") throw new Error(`unsupported compressed state: ${path}:${table.name}/${column.name}`);
@@ -120,11 +122,11 @@ export async function* stateFile(file, path, standard) {
               }
             }
             if (typeof value === "string") {
-              try { values[column.name] = { raw: value, value: JSON.parse(value) }; continue; }
+              try { values[column.name] = { raw: value, value: JSON.parse(value), ...order }; continue; }
               catch { /* Keep text that is not JSON, including damaged product data. */ }
             }
             const scalar = sqlValue(value);
-            values[column.name] = { raw: scalar, value: scalar, encoded: scalar !== null && typeof scalar === "object" };
+            values[column.name] = { raw: scalar, value: scalar, encoded: scalar !== null && typeof scalar === "object", ...order };
           }
           rows.push({ rowid: sqlValue(identity), values });
         }
@@ -134,21 +136,31 @@ export async function* stateFile(file, path, standard) {
     return;
   }
   const bytes = await readBytes(file);
+  if (/\.jsonl$/i.test(path)) {
+    const value = [], malformed = new Set(), binary = new Map();
+    const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+    for (let start = 0; start <= bytes.length;) {
+      const newline = bytes.indexOf(10, start), end = newline < 0 ? bytes.length : newline;
+      const line = bytes.subarray(start, newline >= 0 && bytes[end - 1] === 13 ? end - 1 : end);
+      const index = value.length;
+      let text;
+      try { text = decoder.decode(line); }
+      catch { binary.set(index, sha256(line)); text = line.toString("utf8"); }
+      if (!start) text = text.replace(/^\uFEFF/, "");
+      if (!text.trim()) value.push(undefined);
+      else try { value.push(JSON.parse(text)); }
+      catch { malformed.add(index); value.push(binary.has(index) ? undefined : text); }
+      if (newline < 0) break;
+      start = newline + 1;
+    }
+    yield { path, kind: "jsonl", value, malformed, binary }; return;
+  }
   let text;
   try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
   catch { yield { path, kind: "binary", value: sha256(bytes) }; return; }
   if (text.includes("\0")) { yield { path, kind: "binary", value: sha256(bytes) }; return; }
   try {
     if (/\.json5?$/i.test(path)) { yield { path, kind: "json", value: JSON5.parse(text) }; return; }
-    if (/\.jsonl$/i.test(path)) {
-      const malformed = new Set();
-      const value = text.split(/\r?\n/).map((line, index) => {
-        if (!line.trim()) return undefined;
-        try { return JSON.parse(line); }
-        catch { malformed.add(index); return line; }
-      });
-      yield { path, kind: "jsonl", value, malformed }; return;
-    }
   } catch { /* Invalid product JSON is compared as text, not discarded. */ }
   yield { path, kind: "text", value: textLines(text) };
 }
@@ -346,9 +358,10 @@ export async function checkpointRows(directory, phase, standard, normalization, 
       else if (file.kind === "jsonl") {
         b.add("state", path, { type: "jsonl" }, { dynamic });
         file.value.forEach((value, index) => {
-          if (value === undefined) return;
           const at = [...path, String(index)];
-          if (file.malformed.has(index)) b.add("state", at, { invalidJSONL: normalizeText(value, normalize) }, { dynamic });
+          if (file.binary.has(index)) b.add("state", at, { invalidJSONLBytes: file.binary.get(index) }, { dynamic });
+          else if (value === undefined) return;
+          else if (file.malformed.has(index)) b.add("state", at, { invalidJSONL: normalizeText(value, normalize) }, { dynamic });
           else b.nodes("state", value, at, dynamic);
         });
       } else if (file.kind === "text") {
