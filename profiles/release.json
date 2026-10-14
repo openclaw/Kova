@@ -108,7 +108,7 @@
         "thresholds": {
           "coldAgentTurnMs": 45000,
           "warmAgentTurnMs": 15000,
-          "coldPreProviderMs": 10000,
+          "coldPreProviderMs": 15000,
           "warmPreProviderMs": 2500,
           "providerFinalMs": 3000,
           "agentCleanupMs": 5000,
