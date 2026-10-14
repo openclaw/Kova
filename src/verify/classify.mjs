@@ -63,6 +63,9 @@ export function noiseFloor(first, second) {
 export function compareItems({ phase, baseline, changes, noise, expects }) {
   const rows = [];
   const excluded = new Set();
+  const checkpoint = itemKey("checkpoint", "");
+  const baselineRecorded = baseline.get(checkpoint)?.value !== false;
+  const recorded = changes.map((items) => items.get(checkpoint)?.value !== false);
   const keys = new Set([...baseline.keys(), ...changes.flatMap((items) => [...items.keys()])]);
   const predictions = new Map(expects.filter((expected) => expected.phase === phase).map((expected) => [itemKey(expected.signal, expected.at), expected]));
   for (const key of [...keys].sort()) {
@@ -70,8 +73,11 @@ export function compareItems({ phase, baseline, changes, noise, expects }) {
     const representative = before ?? changes[0].get(key) ?? changes[1].get(key);
     const expected = predictions.get(key);
     for (let i = 0; i < 2; i++) {
+      // Only the checkpoint itself can be compared when a whole side is absent.
+      if (key !== checkpoint && (!baselineRecorded || !recorded[i])) continue;
       const after = changes[i].get(key);
-      const category = classify({ baseline: before, change: after, other: changes[1 - i].get(key), expected, signal: representative.signal });
+      const other = key === checkpoint || recorded[1 - i] ? changes[1 - i].get(key) : before;
+      const category = classify({ baseline: before, change: after, other, expected, signal: representative.signal });
       if (!category) continue;
       if (noise.excludes(representative)) { excluded.add(canonicalJSON([key, category, valueOf(after)])); continue; }
       const row = { phase, signal: representative.signal, at: representative.at, clones: [`change-${i + 1}`], baseline: valueOf(before), change: valueOf(after), class: category, explainedBy: category === "intended" ? "intent:goal" : null };
