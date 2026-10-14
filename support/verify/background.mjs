@@ -180,9 +180,17 @@ export async function requestOperation(handlePath, options, { entry, timeoutMs =
 
 export async function serveOperationRequests(context, callback) {
   const directory = join(context.operation.directory, "request");
+  const checkCancellation = async () => {
+    try { await lstat(join(directory, "cancel")); }
+    catch (error) { if (error.code === "ENOENT") return; throw error; }
+    throw new CallError("background caller cancelled", 3);
+  };
   let handled;
   while (true) {
     context.signal.throwIfAborted();
+    // The caller owns acknowledgement after publication, so cancellation
+    // remains actionable until it removes the request directory.
+    await checkCancellation();
     const call = await optionalJson(join(directory, "call.json"));
     if (call && call.id !== handled) {
       handled = call.id;
@@ -190,8 +198,8 @@ export async function serveOperationRequests(context, callback) {
       const timeout = Math.max(1, call.expiresAt - Date.now());
       const active = AbortSignal.any([context.signal, controller.signal, AbortSignal.timeout(Math.min(timeout, 2147483647))]);
       const poll = setInterval(async () => {
-        try { await lstat(join(directory, "cancel")); controller.abort(new CallError("background caller cancelled", 3)); }
-        catch (error) { if (error.code !== "ENOENT") controller.abort(error); }
+        try { await checkCancellation(); }
+        catch (error) { controller.abort(error); }
       }, 50);
       let result;
       try { result = await callback(call.options, { signal: active }); }
