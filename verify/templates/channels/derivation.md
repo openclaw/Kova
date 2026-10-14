@@ -1117,6 +1117,14 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 907 | A channel history limit overrides the global group-history limit with account values only where supported | docs/channels/ambient-room-events.md "History" | ambient | none |
 | 908 | Standalone private assistant text from room events without message-tool output is excluded from later chat history | docs/channels/groups.md "Scope configured mention patterns" | event | none |
 | 909 | Omitted requireMentionInBotThreads preserves ordinary mention requirements and implicit-reply facts in a confirmed bot-created thread | docs/channels/groups.md "Bot-created threads" | ambient | none |
+| 910 | An inbound location without source is inferred as live when isLive is true | docs/channels/location.md "Context fields" | event | none |
+| 911 | An inbound location without source or live status is inferred as place when a name or address is present | docs/channels/location.md "Context fields" | event | none |
+| 912 | An inbound location without source live status name or address is inferred as pin | docs/channels/location.md "Context fields" | event | none |
+| 913 | Inbound coordinate text uses six decimal places independently of structured numeric coordinates | docs/channels/location.md "Text formatting" | event | none |
+| 914 | Finite location accuracy is rounded to whole meters in coordinate text | docs/channels/location.md "Text formatting" | event | none |
+| 915 | Absent optional location fields are omitted from fenced prompt metadata | docs/channels/location.md "Text formatting"; docs/channels/location.md "Context fields" | event | none |
+| 916 | Matrix geo_uri uncertainty parameter u becomes structured location accuracy | docs/channels/location.md "Channel notes" | event | none |
+| 917 | Matrix geo_uri altitude is ignored while latitude and longitude remain the location | docs/channels/location.md "Channel notes" | event | none |
 
 ## Headings walked
 docs/channels/index.md "Chat channels": none
@@ -1219,10 +1227,10 @@ docs/channels/bot-loop-protection.md "Override per channel, account, or room": 1
 docs/channels/bot-loop-protection.md "Channel support": 178, 701, 702
 docs/channels/bot-loop-protection.md "Internal agent group rounds": 16, 123, 127, 133, 134, 136, 137, 173, 179, 703, 704
 docs/channels/location.md "Channel location parsing": 180, 181, 182
-docs/channels/location.md "Text formatting": 180, 181, 182
-docs/channels/location.md "Context fields": 180, 181, 182
+docs/channels/location.md "Text formatting": 180, 181, 182, 913, 914, 915
+docs/channels/location.md "Context fields": 180, 181, 182, 910, 911, 912, 915
 docs/channels/location.md "Outbound payloads": 183, 184, 185
-docs/channels/location.md "Channel notes": 180, 181, 182
+docs/channels/location.md "Channel notes": 180, 181, 182, 916, 917
 docs/channels/location.md "Related": none
 docs/channels/pairing.md "Pairing": none
 docs/channels/pairing.md "1) DM pairing (inbound chat access)": 157, 186, 187, 188, 189, 190
@@ -2055,7 +2063,7 @@ The presentation, ingress and inbound consumer reconciliations add 67 in-scope c
 
 The message CLI and channel-index audit adds conditions 816–847 for strict selectors, action scope and compatibility, native cleanup, delivery limits and bounded join history. The formatting audit adds conditions 848–874 for code whitespace, nested boundaries, lexical preservation, rendered sizes, default selection and formatter edits. Existing per-channel join suppression, broadcast outcome and renderer/link/default/list-prefix meanings retain their IDs and historical credit; conditions 3, 292, 406, 408, 409 and 413 are partial because supplied inputs do not cover every recorded alternative. Native block-table and code fallback observations keep condition 411 covered. Poll bounds remain provider-specific: Telegram supports up to 12 options and Discord up to 10.
 
-The current inventory has 909 conditions: 466 ambient and 443 event. Coverage is 467 fully planned and 442 wholly or partly outside reach. The current heading inventory has 268 headings. Every original entry-point share, per-round heading denominator and historical discovery credit is unchanged. These source corrections add no derivation run or observation helper. Plugin installation mechanics and configuration writes performed by plugin installation or automatic enabling remain outside this area; selected-channel setup and credential-resolution consequences remain included.
+The current inventory has 917 conditions: 466 ambient and 451 event. Coverage is 465 fully planned and 452 wholly or partly outside reach. The current heading inventory has 268 headings. Every original entry-point share, per-round heading denominator and historical discovery credit is unchanged. These source corrections add no derivation run or observation helper. Plugin installation mechanics and configuration writes performed by plugin installation or automatic enabling remain outside this area; selected-channel setup and credential-resolution consequences remain included.
 
 The channel RPC reconciliation adds conditions 875–884 for omitted-account selection, explicit manual-parameter rejection, QR provider selection and opaque correlation, and the public/CLI pairing response and selector distinctions. Existing manual-start suppression meanings retain their original credit; condition 277 is partial because no supplied ambient-suppressed account exercises explicit bypass. The current WhatsApp provider returns no opaque sessionKey, so conditional forwarding language does not cover that missing case. Pairing codes and QR/session secrets remain memory-only; checking native response shape must occur before safe projection without retaining those values. No new provider, helper, account or derivation run is introduced.
 
@@ -2078,3 +2086,7 @@ The thread-ownership observation is withdrawn because a supplied thread identifi
 The finite bot-created-thread correction adds the omitted requireMentionInBotThreads state as one current condition. Confirmed ownership with no effective override preserves the ordinary mention requirement and implicit-reply facts; unknown ownership remains condition 62. Neither original pair explicitly recorded the omitted-setting branch, and no supplied recipe establishes it. No historical discovery credit, heading denominator or runtime flow changes.
 
 Live Discord collection observations for guild threads, channels, emoji and events, shared-channel recent history and guild search are withdrawn because other comparison clones change those same remote collections. Matched-ID filtering does not isolate returnedCount, native totals, omitted counts or result windows. Independent fixture lists/search remain, as do native creation and captured-object follow-ups with their explicitly restricted live result projection. IRC identification and ordinary inbound entry identities remain inventoried without an executable live recipe; supplied environments must already exclude enabled/configured IRC before any Gateway start. No historical discovery, condition meaning or inventory row is removed, and no remote identity, restoration, locking or runner scheduling mechanism is added.
+
+The complete bounded location-document correction adds eight current conditions for omitted-source inference, numeric text formatting, optional prompt-field omission and Matrix geo_uri parameters. These meanings receive no historical discovery credit. Existing 181 is partial because the Telegram extractor does not supply location captions, and 184 is partial because no mixed-media input is supplied. Native message-tool location omission remains an observed result, distinct from other origins that reject mixed payloads. Current and recorded heading denominators are unchanged; no new derivation, input or runtime flow is added.
+
+The existing fixed native CLI wrappers now have explicit bounded result projections for all 36 heads and 133 current invocations. Broad native inventory/status output is retained only as named safe environmental summaries; explicit original arguments or actual creation results supply narrower identity scope. No hidden persona manifest, extra native request, command change or observed runtime result is introduced. Original source inventory, condition coverage and historical credit are unchanged.

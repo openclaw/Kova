@@ -6,9 +6,9 @@ Date: 2026-10-13
 State: reconciled with a known shortfall after the permitted rerun.
 The procedure's nine-tenths acceptance was not met.
 
-Union: 438 entry points, 909 conditions, 268 current condition-bearing document headings.
+Union: 438 entry points, 917 conditions, 268 current condition-bearing document headings.
 The recorded final-round reconciliation contained 645 conditions and 258
-condition-bearing headings. Later reconciliation adds 264 in-scope current
+condition-bearing headings. Later reconciliation adds 272 in-scope current
 conditions. These additions receive no extra discovery credit. Unsupported
 dynamic-group failure and live logout ordering are restored from the earlier
 round, where they were already counted; neither final run receives credit.
@@ -138,8 +138,8 @@ credit for those restored conditions or the other current additions.
 The current inventory contains 268 condition-bearing headings. This does not
 change the historical 258-heading union or either final run’s recorded heading
 credit. Restored composites retain their original credit. Against the current
-909-condition inventory, supplemental condition-by-meaning shares use unchanged
-final-round numerators: 592/909 (65.1%) and 590/909 (64.9%). The historical
+917-condition inventory, supplemental condition-by-meaning shares use unchanged
+final-round numerators: 592/917 (64.6%) and 590/917 (64.3%). The historical
 645-condition comparison, entry-point shares and per-round condition-heading
 acceptance shares above remain unchanged. Planned coverage is a separate
 measure in coverage.md.
@@ -153,3 +153,5 @@ The bounded implicit-mention and ambient-history correction adds 10 current cond
 The thread-ownership observation is withdrawn because a supplied thread identifier does not establish missing native owner evidence; condition 62 remains inventoried and outside planned reach. The directly related conformance unknown-owner input is also removed. One current condition records private room-event assistant text being excluded from later history. Immediate quiet output 164 and the rolling room window 170 retain their separate meanings. All original discovery credit and historical heading denominators remain unchanged; no new derivation or runtime flow is claimed.
 
 The finite bot-created-thread correction adds the omitted requireMentionInBotThreads state as one current condition. Confirmed ownership with no effective override preserves the ordinary mention requirement and implicit-reply facts; unknown ownership remains condition 62. Neither original pair explicitly recorded the omitted-setting branch, and no supplied recipe establishes it. No historical discovery credit, heading denominator or runtime flow changes.
+
+The complete bounded location-document correction adds eight current conditions for omitted-source inference, numeric text formatting, optional prompt-field omission and Matrix geo_uri parameters. These meanings receive no historical discovery credit. Existing 181 is partial because the Telegram extractor does not supply location captions, and 184 is partial because no mixed-media input is supplied. Native message-tool location omission remains an observed result, distinct from other origins that reject mixed payloads. Current and recorded heading denominators are unchanged; no new derivation, input or runtime flow is added.
