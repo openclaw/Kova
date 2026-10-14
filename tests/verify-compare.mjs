@@ -809,3 +809,62 @@ test("embedded command-queue durations retain shared errors and distinguish chan
   for (const name of ["change-1", "change-2"]) await writeFile(join(f.directory, name, "checkpoints", phaseId, "logs.txt"), log(20, "new failure"));
   assert.equal((await f.compare()).verdict, "breaks");
 });
+
+test("empty files and empty SQLite databases and tables retain state presence", async (t) => {
+  for (const file of ["marker.txt", "events.jsonl", "invalid.json", "empty.sqlite", "table.sqlite"]) for (const added of [false, true]) {
+    const f = await fixture(t, { state: async (path, name) => {
+      if (name.startsWith("change") !== added) return;
+      if (file.endsWith("sqlite")) {
+        const db = new DatabaseSync(join(path, file));
+        try { db.exec(file === "table.sqlite" ? "CREATE TABLE empty (id INTEGER PRIMARY KEY)" : "VACUUM"); } finally { db.close(); }
+      } else await writeFile(join(path, file), "");
+    } });
+    const result = await f.compare();
+    assert.equal(result.verdict, "breaks", `${file}: ${added}`);
+    assert.ok(result.rows.some(row => row.at === `files/${file}` && row.class === "break"));
+  }
+});
+
+test("serialized log strings normalize process ids without hiding runtime or error changes", async (t) => {
+  const log = (pid, extra = {}) => JSON.stringify({ level: "info", message: `native runtime: ${JSON.stringify({ pid, platform: "linux", arch: "x64", node: "24.21.0", ...extra })}` });
+  const f = await fixture(t, { copies: Object.fromEntries(names.map((name, index) => [name, { logs: log(41000 + index) }])) });
+  assert.equal((await f.compare()).verdict, "good-to-go");
+  for (const name of ["change-1", "change-2"]) await writeFile(join(f.directory, name, "checkpoints", phaseId, "logs.txt"), log(50000, { node: "unexpected" }));
+  assert.equal((await f.compare()).verdict, "breaks");
+});
+
+test("recorded copy bindings normalize cached and secondary paths without hiding destinations", async (t) => {
+  const start = "ocm start {env} --runtime {target} --no-service --json";
+  const gateway = "node {kovaRoot}/support/verify/gateway-lifecycle.mjs start --env {env} --handle {run}/gateway.json --timeout 120000";
+  const phases = [{ id: "standard/use-target", from: "standard", commands: [start], checkpoint: ["responses", "logs"] }, { id: "standard/start-gateway", from: "standard", commands: [gateway], checkpoint: ["responses", "logs"] }];
+  const f = await fixture(t, { phases });
+  await writeJSON(join(f.directory, "catalogue.json"), JSON.parse(await readFile(new URL("../catalogue/openclaw.json", import.meta.url))));
+  await writeFile(join(f.directory, ".persona/secondary.ocm-env.tar"), await readFile(join(f.directory, f.run.personaExports[0].path)));
+  f.run.personaExports.push({ ...f.run.personaExports[0], path: ".persona/secondary.ocm-env.tar" });
+  f.run.targets.change.runtime = "shared-runtime";
+  for (const name of names) {
+    const env = `kova-run-owned-${name}`;
+    f.run.clones[name].env = env;
+    f.run.clones[name].cached = !name.startsWith("change");
+    const directory = join(f.directory, name), root = `/original-recording/${name}`;
+    await rm(join(directory, "checkpoints"), { recursive: true });
+    for (const phase of phases) await writeCheckpoint({ phase, directory, collectLogs: async () => [0, 1].map(index => JSON.stringify({ level: "info", message: `log file: /tmp/ocm/envs/${index ? `${env}-extra` : env}/root/.openclaw/logs/kova-product.log` })).join("\n"), results: [0, 1].map(index => {
+      const environment = index ? `${env}-extra` : env, run = index ? `${root}/extra-1` : root;
+      return { command: phase.commands[0].replace("{env}", environment).replace("{target}", "shared-runtime").replace("{kovaRoot}", "/source").replace("{run}", run), status: 0, stdout: JSON.stringify({ envName: environment, defaultRuntime: "shared-runtime", root: `/tmp/ocm/envs/${environment}`, ...(phase.id === "standard/start-gateway" ? { handle: `${run}/gateway.json` } : {}) }), stderr: "", durationMs: 1 };
+    }) });
+  }
+  await f.savePlan();
+  assert.equal((await f.compare()).verdict, "good-to-go");
+  for (const name of ["change-1", "change-2"]) await writeFile(join(f.directory, name, "checkpoints/standard/start-gateway/logs.txt"), `INFO log file: /tmp/ocm/envs/${f.run.clones[name].env}/root/.openclaw/logs/wrong.log`);
+  assert.equal((await f.compare()).verdict, "breaks");
+});
+
+test("removing an empty SQLite table differs even when both database files remain", async (t) => {
+  const f = await fixture(t, { state: async (path, name) => {
+    const db = new DatabaseSync(join(path, "empty.sqlite"));
+    try { db.exec(name.startsWith("change") ? "VACUUM" : "CREATE TABLE removed (id INTEGER PRIMARY KEY)"); } finally { db.close(); }
+  } });
+  const result = await f.compare();
+  assert.equal(result.verdict, "breaks");
+  assert.deepEqual(result.rows.map(row => row.at), ["files/empty.sqlite:removed"]);
+});
