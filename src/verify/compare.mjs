@@ -69,6 +69,36 @@ async function targetRuntime(directory, run, plan, name) {
   return resolved[at + 1];
 }
 
+async function copyBindings(directory, run, plan, name) {
+  const environment = run.clones[name].env;
+  if (environment === undefined) return (value) => value;
+  const validEnvironment = (value) => typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(value);
+  if (!validEnvironment(environment)) throw new Error("invalid recorded environment binding");
+  const bindings = new Map([[environment, "<env:0>"]]);
+  for (const phase of plan.phases.filter((phase) => ["standard/use-target", "standard/start-gateway"].includes(phase.id))) {
+    const checkpoint = join(directory, name, "checkpoints", phase.id);
+    if (!await recordedDirectory(checkpoint)) continue;
+    let commands;
+    try { commands = await readJSON(join(checkpoint, "commands.json")); }
+    catch (error) { if (error.code === "ENOENT") continue; throw error; }
+    for (const [index, command] of commands.entries()) {
+      const bindingIndex = Math.floor(index / phase.commands.length);
+      const planned = parseCatalogueCommand(phase.commands[index % phase.commands.length], { standard: true }).tokens;
+      const tokens = parseCatalogueCommand(command.command, { standard: true }).tokens;
+      if (phase.id === "standard/use-target" && planned[0] === "ocm" && planned[1] === "start" && planned[2] === "{env}" && validEnvironment(tokens[2])) {
+        if (!index && tokens[2] !== environment) throw new Error("recorded environment does not match its target binding");
+        bindings.set(tokens[2], `<env:${bindingIndex}>`);
+      }
+      if (phase.id === "standard/start-gateway" && planned[planned.indexOf("--handle") + 1] === "{run}/gateway.json") {
+        const handle = tokens[tokens.indexOf("--handle") + 1];
+        if (typeof handle === "string" && /^(?:\/|[a-z]:[\\/]).*[\\/]gateway\.json$/i.test(handle)) bindings.set(handle.slice(0, -"/gateway.json".length), `<run:${bindingIndex}>`);
+      }
+    }
+  }
+  const pattern = new RegExp(`(?<![a-zA-Z0-9_.-])(?:${[...bindings.keys()].sort((a, b) => b.length - a.length).map((value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})(?![a-zA-Z0-9_.-])`, "g");
+  return (value) => value.replace(pattern, (binding) => bindings.get(binding));
+}
+
 export async function compareRecordedRun(directory) {
   const { run, plan, standard, catalogue } = await inputs(directory);
   const identities = {};
@@ -89,7 +119,8 @@ export async function compareRecordedRun(directory) {
   for (const name of names) {
     const ids = normalizeDeclaredIds(identities[name], existing);
     const runtime = await targetRuntime(directory, run, plan, name);
-    normalize[name] = { ...ids, text: (value) => runtime ? ids.text(value).replaceAll(runtime, "<runtime:target>") : ids.text(value) };
+    const bindings = await copyBindings(directory, run, plan, name);
+    normalize[name] = { ...ids, text: (value) => bindings(runtime ? ids.text(value).replaceAll(runtime, "<runtime:target>") : ids.text(value)) };
   }
   const rows = [], undeclared = new Set(), incomplete = new Set(run.incomplete ?? []);
   const notStarted = names.filter((name) => !run.clones[name].started);

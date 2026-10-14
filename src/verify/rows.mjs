@@ -74,6 +74,7 @@ export async function* stateFile(file, path, standard) {
     const { DatabaseSync } = await import("node:sqlite");
     const db = new DatabaseSync(file, { readOnly: true });
     try {
+      yield { path, kind: "sqlite-file", value: { type: "sqlite" } };
       const tables = db.prepare("SELECT name, sql FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all();
       for (const table of tables) {
         // Virtual modules can execute native code and may be unavailable here.
@@ -132,7 +133,19 @@ export async function* stateFile(file, path, standard) {
   yield { path, kind: "text", value: textLines(text) };
 }
 
-export function normalizeText(text) {
+export function normalizeText(text, normalize = (value) => value) {
+  let structured = false;
+  try {
+    const value = JSON.parse(text);
+    if (value && typeof value === "object") {
+      const visit = (item) => typeof item === "string" ? normalizeText(item, normalize)
+        : Array.isArray(item) ? item.map(visit)
+          : item && typeof item === "object" ? Object.fromEntries(Object.entries(item).map(([key, child]) => [normalize(key), visit(child)])) : item;
+      text = JSON.stringify(visit(value));
+      structured = true;
+    }
+  } catch { /* Plain and damaged text remains comparable. */ }
+  if (!structured) text = normalize(text);
   return text
     .replace(/\b\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)?\b/g, "<time>")
     .replace(/\b\d\d:\d\d:\d\d(?:\.\d+)?\b/g, "<time>")
@@ -218,7 +231,7 @@ export async function checkpointRows(directory, phase, standard, normalization, 
     b.add("commands", [String(index), "exit"], command.exit, { failure: command.exit !== 0 || command.timedOut === true });
     const lines = new Map();
     for (const line of textLines(command.stdout ?? "")) {
-      const text = normalizeText(normalize(line));
+      const text = normalizeText(line, normalize);
       lines.set(text, (lines.get(text) ?? 0) + 1);
     }
     for (const [line, count] of lines) b.add("commands", [String(index), "stdout", line], count);
@@ -237,7 +250,7 @@ export async function checkpointRows(directory, phase, standard, normalization, 
     } else if (signal === "logs") {
       const lines = new Map();
       for (const raw of textLines((await readBytes(join(directory, "logs.txt"))).toString("utf8"))) {
-        const line = normalizeText(normalize(raw));
+        const line = normalizeText(raw, normalize);
         const previous = lines.get(line);
         lines.set(line, { count: (previous?.count ?? 0) + 1, failure: previous?.failure || warning(raw) });
       }
@@ -260,7 +273,7 @@ export async function checkpointRows(directory, phase, standard, normalization, 
           continue;
         }
         for (const { finding, scope } of values) {
-          const text = normalizeText(normalize(typeof finding === "string" ? finding : typeof finding.message === "string" ? finding.message : canonicalJSON(finding)));
+          const text = normalizeText(typeof finding === "string" ? finding : typeof finding.message === "string" ? finding.message : canonicalJSON(finding), normalize);
           // checkId identifies a check, which can report several distinct findings.
           const code = typeof finding === "object" && typeof finding.code === "string" && finding.code;
           const at = code ? normalize(code) : text;
@@ -277,6 +290,7 @@ export async function checkpointRows(directory, phase, standard, normalization, 
       const dynamic = path.map((_, index) => index);
       if (file.kind === "sqlite") {
         path[path.length - 1] += `:${pointerPart(file.table)}`;
+        b.add("state", path, { type: "table" }, { dynamic });
         for (const row of file.rows) {
           const keys = file.primary.map((key) => row.values[key].raw).map((value) => typeof value === "string" ? normalize(value) : value);
           const key = keys.length === 1 ? (typeof keys[0] === "string" ? keys[0] : canonicalJSON(keys[0])) : keys.length ? canonicalJSON(keys) : canonicalJSON(row.rowid);
@@ -298,8 +312,13 @@ export async function checkpointRows(directory, phase, standard, normalization, 
         path[path.length - 1] += `:${pointerPart(file.table)}`;
         b.add("state", path, normalize(file.value), { dynamic });
       } else if (file.kind === "json") b.nodes("state", file.value, path, dynamic);
-      else if (file.kind === "jsonl") file.value.forEach((value, index) => { if (value !== undefined) b.nodes("state", value, [...path, String(index)], dynamic); });
-      else if (file.kind === "text") file.value.forEach((line, index) => b.add("state", [...path, String(index)], normalizeText(normalize(line)), { dynamic }));
+      else if (file.kind === "jsonl") {
+        b.add("state", path, { type: "jsonl" }, { dynamic });
+        file.value.forEach((value, index) => { if (value !== undefined) b.nodes("state", value, [...path, String(index)], dynamic); });
+      } else if (file.kind === "text") {
+        b.add("state", path, { type: "text" }, { dynamic });
+        file.value.forEach((line, index) => b.add("state", [...path, String(index)], normalizeText(line, normalize), { dynamic }));
+      }
       else b.add("state", path, file.value, { dynamic });
     }
   }
