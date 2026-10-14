@@ -13,8 +13,11 @@ and channel message path.
 The helper succeeds only after the submitted run completes successfully and its
 own reply exactly matches the expected text. Earlier matching replies cannot
 satisfy a new send. The JSON `runId` identifies the submitted run on both success
-and failure (`null` when no run id was returned); a failed run preserves the
-Gateway's error text. Existing timing, history and assistant-text fields remain.
+and failure (`null` when the submission identity could not be verified); a failed run preserves the
+Gateway's error text. `replyRunId` identifies the reply's execution when a queued
+input runs under a different id; that execution must also finish successfully.
+Gateway-authored replies can instead carry the submitted idempotency key.
+Existing timing, history and assistant-text fields remain.
 `--min-assistant-count` still requires that many visible assistant messages in
 the returned history, in addition to a matching reply from the submitted run.
 

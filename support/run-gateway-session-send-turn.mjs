@@ -14,6 +14,7 @@ import {
 
 const startedAtEpochMs = Date.now();
 let runId = null;
+let replyRunId = null;
 
 try {
   const args = parseSupportArgs(process.argv.slice(2));
@@ -41,23 +42,35 @@ try {
       sessionCreateFinishedAtEpochMs = Date.now();
     }
     const canonicalKey = created?.key ?? sessionKey;
+    const idempotencyKey = `kova-gateway-session-${randomUUID()}`;
     const sendStartedAtEpochMs = Date.now();
     const sent = await gatewayCall(gatewayTransport, "sessions.send", {
         key: canonicalKey,
         message,
         thinking: "off",
         timeoutMs,
-        idempotencyKey: `kova-gateway-session-${randomUUID()}`
+        idempotencyKey
       }, Math.min(timeoutMs, 60000));
     const sendFinishedAtEpochMs = Date.now();
-    runId = typeof sent?.runId === "string" && sent.runId.trim() ? sent.runId : null;
-    if (runId === null) {
+    if (typeof sent?.runId !== "string" || !sent.runId.trim()) {
       throw new Error("sessions.send returned no run id");
     }
+    if (sent.runId !== idempotencyKey) {
+      throw new Error("sessions.send returned a different run id from the submitted idempotency key");
+    }
+    runId = sent.runId;
     const deadline = sendStartedAtEpochMs + timeoutMs;
-    const completion = waitForRunCompletion({ gatewayTransport, runId, deadline });
+    const completions = new Map();
     let completionError = null;
-    void completion.catch((error) => { completionError = error; });
+    const trackCompletion = (id) => {
+      if (!completions.has(id)) {
+        const pending = waitForRunCompletion({ gatewayTransport, runId: id, deadline });
+        void pending.catch((error) => { completionError ??= error; });
+        completions.set(id, pending);
+      }
+      return completions.get(id);
+    };
+    const completion = trackCompletion(runId);
 
     const history = await waitForAssistantText({
       gatewayTransport,
@@ -66,9 +79,12 @@ try {
       deadline,
       runId,
       minAssistantCount,
+      trackCompletion,
       readCompletionError: () => completionError
     });
-    const runCompletedAtEpochMs = await completion;
+    replyRunId = history.replyRunId;
+    const completedAt = await Promise.all([completion, trackCompletion(replyRunId)]);
+    const runCompletedAtEpochMs = Math.max(...completedAt);
     const finishedAtEpochMs = Date.now();
     const activeFinishedAtEpochMs = Math.max(history.assistantMatchedAtEpochMs ?? finishedAtEpochMs, runCompletedAtEpochMs);
 
@@ -85,6 +101,7 @@ try {
       },
       sessionKey: canonicalKey,
       runId,
+      replyRunId,
       startedAtEpochMs,
       sessionCreateStartedAtEpochMs,
       sessionCreateFinishedAtEpochMs,
@@ -119,6 +136,7 @@ try {
   failJson(error, {
     surface: "gateway-session-send-turn",
     runId,
+    replyRunId,
     finishedAtEpochMs: Date.now(),
     failureDomain: failure.failureDomain,
     recordStatus: failure.recordStatus,
@@ -150,7 +168,7 @@ async function waitForRunCompletion({ gatewayTransport, runId, deadline }) {
   throw new Error(`timed out waiting for Gateway session run ${runId}`);
 }
 
-async function waitForAssistantText({ gatewayTransport, sessionKey, expectedText, deadline, runId, minAssistantCount, readCompletionError }) {
+async function waitForAssistantText({ gatewayTransport, sessionKey, expectedText, deadline, runId, minAssistantCount, trackCompletion, readCompletionError }) {
   let lastAssistantText = "";
   let assistantTextEvidence = null;
   let lastHistoryError = null;
@@ -161,24 +179,36 @@ async function waitForAssistantText({ gatewayTransport, sessionKey, expectedText
   while (Date.now() < deadline) {
     if (readCompletionError()) throw readCompletionError();
     try {
-      pollCount += 1;
-      const history = await gatewayCall(gatewayTransport, "chat.history", { sessionKey, limit: 16 }, Math.min(15000, Math.max(1000, deadline - Date.now())));
+      const readHistory = async (params) => {
+        pollCount += 1;
+        return await gatewayCall(gatewayTransport, "chat.history", params, Math.min(15000, Math.max(1, deadline - Date.now())));
+      };
+      const history = await readHistory({ sessionKey, limit: 16, inputRunIds: [runId] });
       lastHistoryError = null;
       const messages = history?.messages ?? [];
       assistantTexts = extractAssistantTexts(messages);
       assistantTextEvidence = summarizeAssistantTextEvidence(messages);
-      const runAssistantTexts = extractAssistantTexts(messages.filter((message) => message?.__openclaw?.runId === runId));
+      const replies = await findSubmittedReplies({ history, sessionKey, runId, expectedText, deadline, readHistory });
+      for (const reply of replies) {
+        replyRunId = reply.__openclaw?.runId || runId;
+        trackCompletion(replyRunId);
+      }
+      const runAssistantTexts = extractAssistantTexts(replies);
       lastAssistantText = runAssistantTexts.at(-1) ?? "";
-      const eligibleAssistantTexts = assistantTexts.length >= minAssistantCount ? runAssistantTexts : [];
-      if (assistantFirstSeenAtEpochMs === null && eligibleAssistantTexts.length > 0) {
+      const eligibleReplies = assistantTexts.length >= minAssistantCount ? replies : [];
+      if (assistantFirstSeenAtEpochMs === null && runAssistantTexts.length > 0) {
         assistantFirstSeenAtEpochMs = Date.now();
       }
-      const matchedAssistantText = eligibleAssistantTexts.find((text) => textEquals(text, expectedText));
-      if (matchedAssistantText) {
+      const matchedReply = eligibleReplies.find((reply) => {
+        const text = extractAssistantVisibleText(reply).trim();
+        return text.length > 0 && textEquals(text, expectedText);
+      });
+      if (matchedReply) {
         return {
+          replyRunId: matchedReply.__openclaw?.runId || runId,
           assistantTexts,
           lastAssistantText,
-          matchedAssistantText,
+          matchedAssistantText: extractAssistantVisibleText(matchedReply).trim(),
           assistantFirstSeenAtEpochMs,
           assistantMatchedAtEpochMs: Date.now(),
           pollCount,
@@ -199,6 +229,51 @@ async function waitForAssistantText({ gatewayTransport, sessionKey, expectedText
   );
   error.assistantTextEvidence = assistantTextEvidence;
   throw error;
+}
+
+async function findSubmittedReplies({ history, sessionKey, runId, expectedText, deadline, readHistory }) {
+  const direct = (history.messages ?? []).filter((message) => isAssistantMessage(message) && (
+    message?.__openclaw?.runId === runId || messageIdempotencyKey(message) === runId
+  ));
+  if (direct.length > 0) return direct;
+
+  const receipt = history.inputReceipts?.find((input) => input.runId === runId);
+  if (receipt?.state === "pending") return [];
+  const inputId = receipt?.state === "consumed" ? receipt.consumedByEventId : null;
+  // A queued input can execute under another id. Its durable user message
+  // identifies the reply segment; other user messages end that segment.
+  let page = history;
+  let offset = 0;
+  let latestReply = null;
+  let matchingReply = null;
+  while (Date.now() < deadline) {
+    const messages = page.messages ?? [];
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (assistantRole(message).toLowerCase() === "user") {
+        if (messageIdempotencyKey(message) === `${runId}:user` ||
+            (inputId && message?.__openclaw?.id === inputId)) {
+          return [matchingReply ?? latestReply].filter(Boolean);
+        }
+        latestReply = null;
+        matchingReply = null;
+      } else if (isAssistantMessage(message) && typeof message?.__openclaw?.runId === "string" && message.__openclaw.runId) {
+        latestReply ??= message;
+        if (textEquals(extractAssistantVisibleText(message), expectedText)) matchingReply ??= message;
+      }
+    }
+    if (page.hasMore !== true || !history.sessionId) return [];
+    if (!Number.isSafeInteger(page.nextOffset) || page.nextOffset <= offset) {
+      throw new Error("Gateway history returned a non-advancing page offset");
+    }
+    offset = page.nextOffset;
+    page = await readHistory({ sessionKey, sessionId: history.sessionId, limit: 16, offset });
+  }
+  return [];
+}
+
+function messageIdempotencyKey(message) {
+  return message?.__openclaw?.idempotencyKey ?? message?.idempotencyKey;
 }
 
 async function gatewayCall(gatewayTransport, method, params, timeoutMs) {
