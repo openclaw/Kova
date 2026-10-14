@@ -977,3 +977,22 @@ test("SQLite reserved-prefix filtering retains similarly named application table
     assert.deepEqual(result.rows.map(row => row.at), [`files/store.sqlite:${table}/1/value`]);
   }
 });
+
+test("SQLite presence markers never become persona-existing identities", async (t) => {
+  const scratch = await mkdtemp(join(tmpdir(), "kova-source-marker-")); t.after(() => rm(scratch, { recursive: true, force: true }));
+  const path = join(scratch, "original.db"), db = new DatabaseSync(path);
+  try { db.exec("VACUUM"); } finally { db.close(); }
+  const bytes = await readFile(path);
+  for (const id of ["sqlite", "type"]) for (const existed of [false, true]) {
+    assert.equal(bytes.includes(Buffer.from(id)), false);
+    const f = await fixture(t, { creates: ["/id"], originalFiles: { "original.db": bytes, ...(existed ? { "content.txt": id } : {}) }, copies: Object.fromEntries(names.map(name => [name, { response: { id: name.startsWith("change") ? id : `generated-${name}` } }])) });
+    assert.equal((await f.compare()).verdict, existed ? "breaks" : "good-to-go");
+  }
+});
+
+test("decoded array positions do not invent existing persona IDs", async (t) => {
+  for (const existed of [false, true]) {
+    const f = await fixture(t, { creates: ["/id"], originalFiles: { "list.json": JSON.stringify([...Array(8).fill("same"), ...(existed ? ["7"] : [])]) }, copies: Object.fromEntries(names.map(name => [name, { response: { id: name.startsWith("change") ? "7" : `generated-${name}` } }])) });
+    assert.equal((await f.compare()).verdict, existed ? "breaks" : "good-to-go");
+  }
+});

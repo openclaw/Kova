@@ -75,6 +75,7 @@ function membership(candidates) {
   const value = (input) => {
     if (complete()) return;
     if (typeof input === "string") text.scan(input);
+    else if (Array.isArray(input)) { for (const child of input) value(child); }
     else if (input !== null && typeof input === "object") {
       for (const [key, child] of Object.entries(input)) { text.scan(key); value(child); }
     }
@@ -146,7 +147,7 @@ async function scanFile(stream, name, scan, standard, scratch) {
               // BLOB fingerprints are comparison metadata, not source strings.
               if (typeof cell.raw === "string") { scan.text(cell.raw); scan.value(cell.value); }
             }
-          } else if (decoded.kind !== "binary") scan.value(decoded.value);
+          } else if (!["binary", "sqlite-file"].includes(decoded.kind)) scan.value(decoded.value);
           if (scan.complete()) break;
         }
       } catch { throw new Error("cannot decode persona export state; check the source database and compressed-column declarations"); }
