@@ -6,9 +6,10 @@ import { fileURLToPath } from "node:url";
 const helper = fileURLToPath(new URL("../support/run-gateway-session-send-turn.mjs", import.meta.url));
 let submittedRunId;
 const queuedRunId = "queued-execution";
+const foreignRunId = "foreign-execution";
 
 export function runGatewaySessionSendTurnChecks() {
-  for (const scenario of ["stale-ack", "overflow", "early-error", "success", "new-session", "early-reply", "injected", "blank-reply", "wrong-reply", "min-count", "missing-run", "wrong-wait-run", "queued", "queued-paged", "queued-session-change", "queued-retry-success", "queued-retry-error", "collected", "queued-error", "queued-other-input", "queued-old-reply", "timeout"]) {
+  for (const scenario of ["stale-ack", "prefixed-error", "overflow", "early-error", "success", "new-session", "early-reply", "injected", "blank-reply", "wrong-reply", "min-count", "missing-run", "wrong-wait-run", "queued", "queued-paged", "queued-session-change", "queued-retry-success", "queued-retry-error", "collected", "queued-error", "queued-other-input", "queued-forwarded", "queued-cron", "queued-hidden-input", "queued-old-reply", "timeout"]) {
     const result = spawnSync(process.execPath, [
       "--import", fileURLToPath(import.meta.url), helper,
       "--env", "fixture", "--session-key", "existing-session",
@@ -48,10 +49,11 @@ export function runGatewaySessionSendTurnChecks() {
       assert.equal(receipt.failureDomain, "openclaw");
       assert.equal(receipt.recordStatus, "FAIL");
       if (["overflow", "early-error", "queued-error", "queued-retry-error"].includes(scenario)) assert.equal(receipt.error, "context overflow from submitted run");
-      if (["wrong-reply", "blank-reply", "min-count", "queued-other-input", "queued-old-reply", "queued-session-change"].includes(scenario)) assert.match(receipt.error, /timed out/);
+      if (["wrong-reply", "blank-reply", "min-count", "queued-other-input", "queued-old-reply", "queued-session-change", "queued-forwarded", "queued-cron", "queued-hidden-input"].includes(scenario)) assert.match(receipt.error, /timed out/);
       if (scenario === "missing-run" || scenario === "stale-ack") assert.match(receipt.error, /run id/i);
       if (scenario === "wrong-wait-run") assert.match(receipt.error, /run id/i);
       if (scenario === "timeout") assert.match(receipt.error, /timed out/);
+      if (scenario === "prefixed-error") assert.equal(receipt.error, "ocm failed inside the submitted run");
     }
     console.log(`PASS Gateway session send ${scenario}`);
   }
@@ -98,19 +100,19 @@ if (process.env.KOVA_SEND_TURN_FIXTURE) {
         return queueMicrotask(() => reply(scenario === "missing-run" ? {} : { runId: scenario === "stale-ack" ? "historical-0" : submittedRunId }));
       }
       if (method === "agent.wait") {
-        assert.ok(params.runId === submittedRunId || (queued && params.runId === queuedRunId) || (scenario === "stale-ack" && params.runId === "historical-0"));
+        assert.ok(params.runId === submittedRunId || (queued && [queuedRunId, foreignRunId].includes(params.runId)) || (scenario === "stale-ack" && params.runId === "historical-0"));
         this.waitCount += 1;
         if (params.runId === queuedRunId) this.executionWaitCount += 1;
         const retrying = scenario.startsWith("queued-retry") && params.runId === queuedRunId && this.executionWaitCount === 1;
         if (retrying) return setTimeout(() => reply({ runId: params.runId, status: "timeout", pendingError: true, error: "transient failure during retry" }), 120);
-        const failed = scenario === "overflow" || scenario === "early-error" || (["queued-error", "queued-retry-error"].includes(scenario) && params.runId === queuedRunId);
+        const failed = scenario === "prefixed-error" || scenario === "overflow" || scenario === "early-error" || (["queued-error", "queued-retry-error"].includes(scenario) && params.runId === queuedRunId);
         return setTimeout(() => {
           this.completed = true;
           reply({
             runId: scenario === "wrong-wait-run" ? "another-run" : params.runId,
             status: failed ? "error" : scenario === "timeout" ? "timeout" :
               scenario === "queued" && this.waitCount === 1 ? "pending" : "ok",
-            ...(failed ? { error: "context overflow from submitted run" } : {})
+            ...(failed ? { error: scenario === "prefixed-error" ? "ocm failed inside the submitted run" : "context overflow from submitted run" } : {})
           });
         }, 120);
       }
@@ -126,9 +128,19 @@ if (process.env.KOVA_SEND_TURN_FIXTURE) {
         if (queued) {
           messages.push({ role: "user", content: "new input", __openclaw: { id: "input-event", idempotencyKey: scenario === "collected" ? "aggregate:user" : `${submittedRunId}:user` } });
           if (scenario === "queued-other-input") messages.push({ role: "user", content: "another input" });
+          if (scenario === "queued-forwarded") messages.push({
+            role: "assistant", content: "forwarded input",
+            provenance: { kind: "inter_session", sourceTool: "sessions_send", sourceSessionKey: "agent:other:main" }
+          });
+          if (scenario === "queued-cron") messages.push({
+            role: "assistant", content: "scheduled input", __openclaw: { turnBoundary: true },
+            provenance: { kind: "internal_system", sourceTool: "cron", sourceSessionKey: "agent:main:cron:job:run:input", jobId: "job", runId: "cron-input" }
+          });
           if (scenario === "queued-paged" || scenario === "queued-session-change") messages.push(...Array.from({ length: 20 }, () => ({ role: "toolResult", content: "tool output" })));
         }
         const message = assistant(queued ? queuedRunId : submittedRunId, ["wrong-reply", "queued-old-reply", "queued-error"].includes(scenario) ? "WRONG" : "KOVA_AGENT_OK");
+        if (["queued-forwarded", "queued-cron", "queued-hidden-input"].includes(scenario)) message.__openclaw.runId = foreignRunId;
+        if (scenario === "queued-hidden-input") message.__openclaw.turnBoundary = true;
         if (scenario === "blank-reply") message.content = [];
         if (scenario === "injected") message.__openclaw = { idempotencyKey: submittedRunId };
         messages.push(message);

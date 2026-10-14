@@ -132,7 +132,9 @@ try {
     gatewayTransport.client?.close();
   }
 } catch (error) {
-  const failure = classifyGatewaySessionFailure(error);
+  const failure = runId === null
+    ? classifyGatewaySessionFailure(error)
+    : { failureDomain: "openclaw", recordStatus: "FAIL" };
   failJson(error, {
     surface: "gateway-session-send-turn",
     runId,
@@ -241,7 +243,7 @@ async function findSubmittedReplies({ history, sessionKey, runId, expectedText, 
   if (receipt?.state === "pending") return [];
   const inputId = receipt?.state === "consumed" ? receipt.consumedByEventId : null;
   // A queued input can execute under another id. Its durable user message
-  // identifies the reply segment; other user messages end that segment.
+  // identifies the reply segment; later input boundaries end that segment.
   let page = history;
   let offset = 0;
   let latestReply = null;
@@ -250,11 +252,14 @@ async function findSubmittedReplies({ history, sessionKey, runId, expectedText, 
     const messages = page.messages ?? [];
     for (let index = messages.length - 1; index >= 0; index -= 1) {
       const message = messages[index];
-      if (assistantRole(message).toLowerCase() === "user") {
+      if (isInputMessage(message)) {
         if (messageIdempotencyKey(message) === `${runId}:user` ||
             (inputId && message?.__openclaw?.id === inputId)) {
           return [matchingReply ?? latestReply].filter(Boolean);
         }
+        latestReply = null;
+        matchingReply = null;
+      } else if (message?.__openclaw?.turnBoundary === true) {
         latestReply = null;
         matchingReply = null;
       } else if (isAssistantMessage(message) && typeof message?.__openclaw?.runId === "string" && message.__openclaw.runId) {
@@ -372,7 +377,12 @@ function summarizeAssistantTextEvidence(messages) {
 
 function isAssistantMessage(message) {
   const role = assistantRole(message).toLowerCase();
-  return role.includes("assistant") || role.includes("agent");
+  return !isInputMessage(message) && (role.includes("assistant") || role.includes("agent"));
+}
+
+function isInputMessage(message) {
+  return assistantRole(message).toLowerCase() === "user" ||
+    ["external_user", "inter_session", "internal_system"].includes(message?.provenance?.kind);
 }
 
 function assistantRole(message) {
