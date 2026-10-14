@@ -877,15 +877,20 @@ test("malformed JSONL records do not hide valid escaped persona identities", asy
   }
 });
 
-test("protected numeric TEXT identities retain their exact values", async (t) => {
+test("protected numeric TEXT identities retain their exact values with or without record keys", async (t) => {
   const baselineId = "9007199254740992", changeId = "9007199254740993";
-  const f = await fixture(t, { originalFiles: { "original-ids.json": JSON.stringify([baselineId, changeId]) }, stateIds: [{ path: "files/store.sqlite", table: "records", column: "id", recordKey: "owner" }], state: async (path, name) => {
-    const db = new DatabaseSync(join(path, "store.sqlite"));
-    try { db.exec("CREATE TABLE records (record_key TEXT PRIMARY KEY, owner TEXT, id TEXT)"); db.prepare("INSERT INTO records VALUES (?, ?, ?)").run("stable", "same-owner", name.startsWith("change") ? changeId : baselineId); }
-    finally { db.close(); }
-  } });
-  const result = await f.compare();
-  assert.equal(result.verdict, "breaks"); assert.equal(result.rows[0].baseline, baselineId); assert.equal(result.rows[0].change, changeId);
+  for (const withOwner of [true, false]) {
+    const f = await fixture(t, { originalFiles: { "original-ids.json": JSON.stringify([baselineId, changeId]) }, stateIds: [{ path: "files/store.sqlite", table: "records", column: "id", recordKey: "owner" }], state: async (path, name) => {
+      const db = new DatabaseSync(join(path, "store.sqlite"));
+      try {
+        db.exec(`CREATE TABLE records (record_key TEXT PRIMARY KEY, id TEXT${withOwner ? ", owner TEXT" : ""})`);
+        db.prepare("INSERT INTO records (record_key, id) VALUES (?, ?)").run("stable", name.startsWith("change") ? changeId : baselineId);
+        if (withOwner) db.exec("UPDATE records SET owner = 'same-owner'");
+      } finally { db.close(); }
+    } });
+    const result = await f.compare();
+    assert.equal(result.verdict, "breaks"); assert.equal(result.rows[0].baseline, baselineId); assert.equal(result.rows[0].change, changeId);
+  }
 });
 
 test("JSONL preserves valid records and malformed text as distinct evidence", async (t) => {
