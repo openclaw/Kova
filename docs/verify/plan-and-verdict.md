@@ -457,6 +457,25 @@ credential store: ordinary SQLite files keep their schema, row IDs and values,
 including tables whose names match native credential tables. Unreadable native
 credential databases still fail capture.
 
+Each `commands.json` entry also has `createdIds`, an array of
+`{"pointer": "/createdIds/0", "value": "<id>"}` entries selected by the command's
+catalogue `creates` declarations. Wildcards become concrete array indices.
+These values are retained even when `responses` is not selected, without
+retaining the rest of an unselected response. Secondary environment lifecycle
+commands follow the primary commands in the same checkpoint, with their own
+command indices.
+
+`run.json` has a `personaExports` array of `{ "path": ".persona/persona.ocm-env.tar",
+"sha256": "<hash>" }` references. These are the complete, immutable source
+exports already used to create the copies, including each secondary persona
+environment's export. They remain in the run directory, one copy per source.
+Compare verifies their hashes and searches their paths, text, JSON and SQLite
+content, including declared compressed columns, for the ids it is about to
+normalize. Thus an existing id outside selected state checkpoints is still
+protected. The archive is read as data; links are never followed and no product
+command is executed. Recordings without these sources or `createdIds` must be
+rerun before comparison.
+
 ## Rows
 
 Compare splits every checkpoint into items and compares the sides item by
@@ -585,6 +604,11 @@ state directory. Each file in it becomes items by its kind:
 - any other file: one item, addressed by path, valued by its SHA-256 content
   hash.
 
+Invalid product JSON is compared as text. A compressed column that cannot be
+decoded is compared by its content hash, so corrupted content still produces a
+difference. Invalid checkpoint metadata such as `commands.json` refuses the
+comparison instead of inventing command results.
+
 ### Normalization
 
 Before items are built, every checkpoint is normalized.
@@ -651,6 +675,14 @@ hold a noisy item. The verdict records how many rows the noise set removed.
 `kova verify compare --run <run id> [--json]` reads `run.json`, the plan it
 names and the clone directories, and writes `verdict.json` and `issues.md` into
 the run's directory; with `--json` it also prints the verdict.
+
+Comparison requires Node.js 22.19.0 or newer. It reads the saved `plan.json`
+beside `run.json`, checks its hash and target commits, and uses that run's saved
+catalogue and standard file. Moving a complete run directory between machines
+does not require its original absolute plan path. Changed or malformed inputs
+are refused; a missing checkpoint remains an observed absence. The comparison
+does not execute any phase command or read a threshold. A completed comparison
+exits zero for every verdict; input and recording errors exit nonzero.
 
 Compare builds rows for the baseline clone against each change clone. A row is
 one of two things:
@@ -758,7 +790,8 @@ A run saves the exact plan bytes as `plan.json` and points `run.json` at that
 copy, retaining the original path as `plan.source`. It also saves `standard.json`
 and `catalogue.json`; comparison therefore uses the declarations that produced
 the checkpoints. Each clone's `initial-state/` contains the selected state
-before its first phase, including the persona's existing ids. Compressed SQLite
+before its first phase. The complete persona exports provide original ids even
+outside those selected paths. Compressed SQLite
 columns remain intact in the database copy, alongside their saved codec
 declarations, for comparison to decode.
 

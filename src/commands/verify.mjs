@@ -3,6 +3,17 @@ import { buildPlan, writePlan } from "../verify/plan.mjs";
 
 export async function runVerifyCommand(flags) {
   const [action, ...extra] = flags._;
+  if (action === "compare" && !extra.length) {
+    const [major, minor] = process.versions.node.split(".").map(Number);
+    if (major < 22 || major === 22 && minor < 19) throw new Error("verify compare requires Node.js 22.19.0 or newer for SQLite checkpoints");
+    for (const name of Object.keys(flags)) if (!["_", "run", "json", "plain", "ascii", "no_progress", "color", "width", "align"].includes(name)) throw new Error(`unknown verify compare option: --${name.replaceAll("_", "-")}`);
+    if (typeof flags.run !== "string" || !flags.run.trim()) throw new Error("--run requires a value");
+    const { compareVerification } = await import("../verify/compare.mjs");
+    const result = await compareVerification({ run: flags.run });
+    if (flags.json) console.log(JSON.stringify(result, null, 2));
+    else console.log(`${result.verdict}: ${result.rows.length} rows, ${result.issues.length} shared failures. Wrote verdict.json and issues.md for ${result.run}.`);
+    return;
+  }
   if (action === "run" && !extra.length) {
     const [major, minor] = process.versions.node.split(".").map(Number);
     if (major < 22 || major === 22 && minor < 19) throw new Error("verify run requires Node.js 22.19.0 or newer for SQLite checkpoints");
