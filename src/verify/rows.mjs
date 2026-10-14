@@ -13,6 +13,12 @@ export const equal = (a, b) => canonicalJSON(a) === canonicalJSON(b);
 const quote = (name) => `"${name.replaceAll('"', '""')}"`;
 const finiteValue = (value) => typeof value === "number" && !Number.isFinite(value) ? { number: String(value) } : value;
 const sqlValue = (value) => typeof value === "bigint" ? (value >= Number.MIN_SAFE_INTEGER && value <= Number.MAX_SAFE_INTEGER ? Number(value) : { integer: String(value) }) : value instanceof Uint8Array ? { sha256: sha256(value) } : finiteValue(value);
+const measuredMilliseconds = new RegExp(String.raw`(\b(?:${[
+  "durationMs", "elapsedMs", "handlerElapsedMs", "admissionWaitMs",
+  "prepareSyncMs", "rowSyncMs", "yieldWaitMs", "prepareThreadCpuMs", "rowThreadCpuMs", "responseThreadCpuMs",
+  "completionDelayMs", "mutationQueueWaitMs", "lifecycleQueueWaitMs", "queueWaitMs", "writerExecutionMs",
+  "nativeMs", "serviceMs", "admissionMs", "nodeInventoryMs", "referencePlanningMs", "orphanPlanningMs", "markerScanMs"
+].join("|")})["']?\s*[:=]\s*)-?\d+(?:\.\d+)?(?:e[+-]?\d+)?\b`, "gi");
 
 export async function readBytes(path, prefixLength) {
   const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
@@ -133,7 +139,7 @@ export function normalizeText(text) {
     .replace(/\b\d+(?:\.\d+)?\s*(?:ms|µs|us|ns|seconds?|secs?|s|minutes?|mins?)\b/g, "<duration>")
     // OpenClaw diagnostics also print bare numeric measurements in JSON and
     // key=value logs. Preserve phase names, outcomes, counts and configuration.
-    .replace(/(\b(?:elapsedMs|handlerElapsedMs|admissionWaitMs|prepareSyncMs|rowSyncMs|yieldWaitMs|prepareThreadCpuMs|rowThreadCpuMs|responseThreadCpuMs)["']?\s*[:=]\s*)-?\d+(?:\.\d+)?(?:e[+-]?\d+)?\b/gi, "$1<duration>")
+    .replace(measuredMilliseconds, "$1<duration>")
     .replace(/(\bphaseDurationsMs["']?\s*[:=]\s*)\{([^{}]*)\}/g, (_, prefix, fields) => `${prefix}{${fields.replace(/(:\s*)-?\d+(?:\.\d+)?(?:e[+-]?\d+)?(?=\s*[,}]|\s*$)/gi, "$1<duration>")}}`)
     .replace(/(\b(?:pid|ppid|processId)["']?\s*[:= ]\s*)\d+\b/gi, "$1<pid>")
     .replace(/(\b(?:port|gatewayPort)["']?\s*[:= ]\s*)\d+\b/gi, "$1<port>")

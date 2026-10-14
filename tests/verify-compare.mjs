@@ -771,14 +771,14 @@ test("encoded SQLite scalars cannot collide with product JSON objects", async (t
 test("numeric diagnostic log durations preserve shared warnings and meaningful fields", async (t) => {
   for (const style of ["json", "console"]) {
     const log = (ms, overrides = {}) => {
-      const fields = { operation: "sessions.list", handlerElapsedMs: ms, elapsedMs: ms, admissionWaitMs: ms, prepareSyncMs: ms, rowSyncMs: ms, yieldWaitMs: ms, prepareThreadCpuMs: ms, rowThreadCpuMs: ms, responseThreadCpuMs: ms, phaseDurationsMs: { setup: ms, response: ms }, handlerOutcome: "returned", responseOutcome: "ok", selectedRowCount: 1, timeoutMs: 5000, ...overrides };
+      const fields = { operation: "sessions.list", handlerElapsedMs: ms, elapsedMs: ms, durationMs: ms, admissionWaitMs: ms, completionDelayMs: ms, mutationQueueWaitMs: ms, lifecycleQueueWaitMs: ms, queueWaitMs: ms, writerExecutionMs: ms, nativeMs: ms, serviceMs: ms, admissionMs: ms, nodeInventoryMs: ms, referencePlanningMs: ms, orphanPlanningMs: ms, markerScanMs: ms, prepareSyncMs: ms, rowSyncMs: ms, yieldWaitMs: ms, prepareThreadCpuMs: ms, rowThreadCpuMs: ms, responseThreadCpuMs: ms, phaseDurationsMs: { setup: ms, response: ms }, handlerOutcome: "returned", responseOutcome: "ok", selectedRowCount: 1, timeoutMs: 5000, busyTimeoutMs: 5000, nextWakeAtMs: 123456789, delayMs: 5000, ...overrides };
       return style === "json" ? JSON.stringify({ level: "warn", message: "slow session list", ...fields }) : `WARN slow session list ${Object.entries(fields).map(([key, value]) => `${key}=${JSON.stringify(value)}`).join(" ")}`;
     };
     const f = await fixture(t, { copies: Object.fromEntries(names.map(name => [name, { logs: log(name.startsWith("change") ? 6000 : 5000) }])) });
     const shared = await f.compare();
     assert.equal(shared.verdict, "good-to-go");
     assert.equal(shared.rows.length, 1); assert.equal(shared.rows[0].class, "not-caused");
-    for (const changed of [{ handlerOutcome: "threw" }, { responseOutcome: "error" }, { selectedRowCount: 2 }, { timeoutMs: 6000 }, { phaseDurationsMs: { unexpected: 6000 } }]) {
+    for (const changed of [{ handlerOutcome: "threw" }, { responseOutcome: "error" }, { selectedRowCount: 2 }, { timeoutMs: 6000 }, { busyTimeoutMs: 6000 }, { nextWakeAtMs: 123456790 }, { delayMs: 6000 }, { phaseDurationsMs: { unexpected: 6000 } }]) {
       for (const name of ["change-1", "change-2"]) await writeFile(join(f.directory, name, "checkpoints", phaseId, "logs.txt"), log(6000, changed));
       assert.equal((await f.compare()).verdict, "breaks");
     }
@@ -799,4 +799,13 @@ test("SQLite virtual and stored generated columns remain comparable", async (t) 
     assert.equal(result.verdict, "breaks");
     assert.deepEqual(result.rows.map(row => [row.at, row.baseline, row.change, row.class]), [["files/generated.sqlite:records/1/derived", "mixed", "MIXED", "break"]]);
   }
+});
+
+test("embedded command-queue durations retain shared errors and distinguish changed failures", async (t) => {
+  const log = (ms, error = "same failure") => JSON.stringify({ level: "error", message: `lane task error: lane=main durationMs=${ms} error=${JSON.stringify(error)}` });
+  const f = await fixture(t, { copies: Object.fromEntries(names.map(name => [name, { logs: log(name.startsWith("change") ? 20 : 10) }])) });
+  const shared = await f.compare();
+  assert.equal(shared.verdict, "good-to-go"); assert.equal(shared.rows[0].class, "not-caused");
+  for (const name of ["change-1", "change-2"]) await writeFile(join(f.directory, name, "checkpoints", phaseId, "logs.txt"), log(20, "new failure"));
+  assert.equal((await f.compare()).verdict, "breaks");
 });

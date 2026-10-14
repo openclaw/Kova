@@ -654,7 +654,8 @@ Before items are built, every checkpoint is normalized.
 Text lines (log lines, text stdout and text state lines): timestamps become
 `<time>`, durations `<duration>`, process ids `<pid>` and port numbers
 `<port>`. Known numeric diagnostic fields (elapsed, admission wait, session
-projection and thread CPU times, and `phaseDurationsMs` values) also become
+projection and thread CPU times, lifecycle/writer queue and SQLite admission
+times, worktree/command durations, and `phaseDurationsMs` values) also become
 `<duration>` in JSON and key=value logs; phase names, outcomes, counts and
 configured timeouts remain comparable.
 
