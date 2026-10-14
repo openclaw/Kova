@@ -467,6 +467,8 @@ test("configuration paths retain their full context across objects, arrays and p
     { env: { vars: { OPENCLAW_CACHE_TRACE_FILE: join(durable, "cache.jsonl") } } },
     { env: { OPENCLAW_CACHE_TRACE_FILE: join(durable, "cache.jsonl") } },
     { env: { vars: { OPENCLAW_TTS_PREFS: join(durable, "preferences.json") } } },
+    { env: { vars: { " OPENCLAW_TTS_PREFS ": join(durable, "preferences.json") } } },
+    { env: { " OPENCLAW_CACHE_TRACE_FILE ": join(durable, "cache.jsonl") } },
     { agents: { entries: { main: { tts: { prefsPath: join(durable, "preferences.json") } } } } },
     { channels: { feishu: { tts: { prefsPath: join(durable, "preferences.json") } } } },
     { channels: { feishu: { accounts: { example: { tts: { prefsPath: join(copy, "alias/preferences.json") } } } } } },
@@ -484,6 +486,7 @@ test("configuration paths retain their full context across objects, arrays and p
   await assert.rejects(validate({ storage: { locations: { backup: { provider: "filesystem" } } } }), /owned copy/);
   await assert.rejects(validate({ storage: { locations: { unknown: { settings: { path: durable } } } } }), /known provider/);
   await validate({ agents: { entries: { main: { tts: { prefsPath: join(copy, "preferences.json") } } } } });
+  await validate({ env: { vars: { " OPENCLAW_TTS_PREFS ": join(copy, "preferences.json") } } });
 });
 
 test("message configuration writes share destination checks and prepare log collection before dispatch", async (t) => {

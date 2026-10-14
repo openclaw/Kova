@@ -261,6 +261,10 @@ export async function validateRunDestinations(command, context) {
         for (const [child, entry] of Object.entries(value)) await inspect(entry, [...path, child], inline);
       } else if (typeof value === "string" && !inline) {
         let isFile = configFilePatterns.some((pattern) => configPathMatches(path, pattern)) || configPathMatches(path, ["messages", "usageTemplate"]);
+        if (path[0] === "env" && (path.length === 2 || path.length === 3 && path[1] === "vars")) {
+          const key = path.at(-1).trim();
+          if (["OPENCLAW_TTS_PREFS", "OPENCLAW_CACHE_TRACE_FILE"].includes(process.platform === "win32" ? key.toUpperCase() : key)) isFile = true;
+        }
         if (configExecutablePatterns.some((pattern) => configPathMatches(path, pattern))) isFile = !/^[A-Za-z0-9_+][A-Za-z0-9._+-]*$/.test(value.trim());
         if (configPathMatches(path, ["memory", "search", "local", "modelPath"])) isFile = !/^(?:hf:|https?:\/\/)/i.test(value);
         if (configPathMatches(path, ["storage", "locations", "*", "settings", "path"])) {
