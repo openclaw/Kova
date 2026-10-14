@@ -6,9 +6,17 @@ exposed that path.
 ## Gateway Session
 
 `gateway-session-send-turn` is the shared Gateway session messaging benchmark.
-It calls `sessions.create`, `sessions.send`, and `chat.history` directly over
+It calls `sessions.create`, `sessions.send`, `agent.wait`, and `chat.history` directly over
 Gateway RPC with mock auth/provider. Use it for the core Control UI, dashboard,
 and channel message path.
+
+The helper succeeds only after the submitted run completes successfully and its
+own reply exactly matches the expected text. Earlier matching replies cannot
+satisfy a new send. The JSON `runId` identifies the submitted run on both success
+and failure (`null` when no run id was returned); a failed run preserves the
+Gateway's error text. Existing timing, history and assistant-text fields remain.
+`--min-assistant-count` still requires that many visible assistant messages in
+the returned history, in addition to a matching reply from the submitted run.
 
 This scenario owns:
 

@@ -13,6 +13,7 @@ import {
 } from "./openclaw-runtime.mjs";
 
 const startedAtEpochMs = Date.now();
+let runId = null;
 
 try {
   const args = parseSupportArgs(process.argv.slice(2));
@@ -49,17 +50,27 @@ try {
         idempotencyKey: `kova-gateway-session-${randomUUID()}`
       }, Math.min(timeoutMs, 60000));
     const sendFinishedAtEpochMs = Date.now();
-    const runId = typeof sent?.runId === "string" ? sent.runId : null;
+    runId = typeof sent?.runId === "string" && sent.runId.trim() ? sent.runId : null;
+    if (runId === null) {
+      throw new Error("sessions.send returned no run id");
+    }
+    const deadline = sendStartedAtEpochMs + timeoutMs;
+    const completion = waitForRunCompletion({ gatewayTransport, runId, deadline });
+    let completionError = null;
+    void completion.catch((error) => { completionError = error; });
 
     const history = await waitForAssistantText({
       gatewayTransport,
       sessionKey: canonicalKey,
       expectedText,
-      timeoutMs,
-      minAssistantCount
+      deadline,
+      runId,
+      minAssistantCount,
+      readCompletionError: () => completionError
     });
+    const runCompletedAtEpochMs = await completion;
     const finishedAtEpochMs = Date.now();
-    const activeFinishedAtEpochMs = history.assistantMatchedAtEpochMs ?? finishedAtEpochMs;
+    const activeFinishedAtEpochMs = Math.max(history.assistantMatchedAtEpochMs ?? finishedAtEpochMs, runCompletedAtEpochMs);
 
     finishJson({
       ok: true,
@@ -107,6 +118,7 @@ try {
   const failure = classifyGatewaySessionFailure(error);
   failJson(error, {
     surface: "gateway-session-send-turn",
+    runId,
     finishedAtEpochMs: Date.now(),
     failureDomain: failure.failureDomain,
     recordStatus: failure.recordStatus,
@@ -114,8 +126,31 @@ try {
   });
 }
 
-async function waitForAssistantText({ gatewayTransport, sessionKey, expectedText, timeoutMs, minAssistantCount }) {
-  const deadline = Date.now() + timeoutMs;
+async function waitForRunCompletion({ gatewayTransport, runId, deadline }) {
+  while (Date.now() < deadline) {
+    const remainingMs = deadline - Date.now();
+    const result = await gatewayCall(gatewayTransport, "agent.wait", {
+      runId,
+      timeoutMs: Math.min(10000, remainingMs)
+    }, remainingMs + 1000);
+    if (result?.runId !== runId) {
+      throw new Error("agent.wait returned a different or missing run id");
+    }
+    if (result.status === "error" || result.error) {
+      throw new Error(result.error || `Gateway session run ${runId} failed`);
+    }
+    if (result.status === "ok") {
+      return Date.now();
+    }
+    if (result.status !== "pending" && result.status !== "timeout") {
+      throw new Error(`Gateway session run ${runId} ended with status ${JSON.stringify(result.status)}`);
+    }
+    await sleep(Math.min(100, Math.max(0, deadline - Date.now())));
+  }
+  throw new Error(`timed out waiting for Gateway session run ${runId}`);
+}
+
+async function waitForAssistantText({ gatewayTransport, sessionKey, expectedText, deadline, runId, minAssistantCount, readCompletionError }) {
   let lastAssistantText = "";
   let assistantTextEvidence = null;
   let lastHistoryError = null;
@@ -124,6 +159,7 @@ async function waitForAssistantText({ gatewayTransport, sessionKey, expectedText
   let pollCount = 0;
   let errorCount = 0;
   while (Date.now() < deadline) {
+    if (readCompletionError()) throw readCompletionError();
     try {
       pollCount += 1;
       const history = await gatewayCall(gatewayTransport, "chat.history", { sessionKey, limit: 16 }, Math.min(15000, Math.max(1000, deadline - Date.now())));
@@ -131,8 +167,9 @@ async function waitForAssistantText({ gatewayTransport, sessionKey, expectedText
       const messages = history?.messages ?? [];
       assistantTexts = extractAssistantTexts(messages);
       assistantTextEvidence = summarizeAssistantTextEvidence(messages);
-      lastAssistantText = assistantTexts.at(-1) ?? "";
-      const eligibleAssistantTexts = assistantTexts.slice(Math.max(0, minAssistantCount - 1));
+      const runAssistantTexts = extractAssistantTexts(messages.filter((message) => message?.__openclaw?.runId === runId));
+      lastAssistantText = runAssistantTexts.at(-1) ?? "";
+      const eligibleAssistantTexts = assistantTexts.length >= minAssistantCount ? runAssistantTexts : [];
       if (assistantFirstSeenAtEpochMs === null && eligibleAssistantTexts.length > 0) {
         assistantFirstSeenAtEpochMs = Date.now();
       }
@@ -154,10 +191,11 @@ async function waitForAssistantText({ gatewayTransport, sessionKey, expectedText
       lastHistoryError = error;
       errorCount += 1;
     }
-    await sleep(500);
+    await sleep(Math.min(500, Math.max(0, deadline - Date.now())));
   }
+  if (readCompletionError()) throw readCompletionError();
   const error = new Error(
-    `timed out waiting for Gateway session assistant text exactly equal to ${JSON.stringify(expectedText)}; last=${JSON.stringify(lastAssistantText)}; lastHistoryError=${JSON.stringify(lastHistoryError?.message ?? null)}`
+    `timed out waiting for Gateway session run ${runId} assistant text exactly equal to ${JSON.stringify(expectedText)}; last=${JSON.stringify(lastAssistantText)}; lastHistoryError=${JSON.stringify(lastHistoryError?.message ?? null)}`
   );
   error.assistantTextEvidence = assistantTextEvidence;
   throw error;
