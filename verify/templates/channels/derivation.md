@@ -116,7 +116,8 @@ src/plugins/compat/session-persistence-records.ts (resolveAgentRoute): internal:
 src/plugins/hook-types.ts (openclaw pairing): internal: The matched pairing command is a type-property comment.
 src/system-agent/operations-execute.ts (openclaw channels): internal: Both channel command strings are rendered guidance; both branches return applied:false instead of executing a wizard.
 src/infra/exec-control-command-guard.ts (openclaw channels): internal: The guard detects an attempted login and throws with a guidance string before dispatch; the matched literal does not invoke channels.
-Discord voice channels: owned by talk (bound); distinct from the Discord inbound monitor
+Discord /vc join: owned by talk (bound); the recorded native voice command is separate from inbound messaging
+Discord voice auto-join callback: owned by talk (bound); the recorded automatic voice entry remains separate from the join command
 qqbot (docs/channels/index.md, no source in this checkout): external plugin, no source at this revision (bound)
 wechat (docs/channels/index.md, no source in this checkout): external plugin, no source at this revision (bound)
 wecom (docs/channels/index.md, no source in this checkout): external plugin, no source at this revision (bound)
@@ -166,22 +167,39 @@ extensions/qa-lab/src/qa-transport.ts ("channels.status"): test-only (bound: qa-
 extensions/qa-lab/src/suite-runtime-flow.ts (resolveAgentRoute): test-only (bound: qa-lab and qa-channel)
 Channel status, presence and health broadcast events to clients: internal: broadcast events are not entry points
 Control UI shell controls (navigation, theme, account, settings panel): shell
-wizard.start / wizard.next / wizard.cancel (setup wizard steps): consumed from onboarding wizard
-config.get / config.schema / config.patch (channel config form): consumed from config
-plugins install triggered by channels add: consumed from plugins (bound)
+wizard.start: consumed from onboarding wizard (Channels setup dependency)
+wizard.next: consumed from onboarding wizard (Channels setup dependency)
+wizard.cancel: consumed from onboarding wizard (Channels setup dependency)
+config.get: consumed from config (channel configuration dependency)
+config.schema: consumed from config (channel configuration dependency)
+config.patch: consumed from config (channel configuration dependency)
+config.set: consumed from config (Channels Save and form persistence)
+openclaw plugins install: consumed from plugins (bound); channel setup may invoke this command
 /activation: owned by commands (bound: slash command parsing and execution)
-/session unbind, /session idle, /session max-age, /agents (thread bindings): owned by sessions (bound: thread-bound subagent sessions)
-openclaw devices / openclaw nodes / /pair (node and device pairing): owned by nodes (bound)
-conversations_list / conversations_send / conversations_turn tools and conversations.* methods: owned by sessions (bound); files found by search that call them are listed above as from sessions
-Exec and plugin approval delivery and approval reactions: owned by approvals (bound)
-openclaw agents bind / unbind / bindings: owned by agents
-openclaw gateway call channels.start / channels.stop: generic Gateway caller; the methods are listed above
-chat.send and the Control UI chat: owned by sessions (bound: webchat is not a channel)
-session.reactions.*: owned by sessions (bound); sessions-reactions.ts found by search is listed above
-openclaw update --channel and release channels: owned by update (bound)
-Adapter-specific features on docs/channels/<id>.md pages (whatsapp_login tool, matrix verify, Slack slash command, Discord components): outside this template (bound: adapter pages are not read)
+/session unbind: owned by sessions (bound: conversation binding and session commands)
+/session idle: owned by sessions (bound: conversation binding and session commands)
+/session max-age: owned by sessions (bound: conversation binding and session commands)
+/agents: owned by sessions (bound: conversation binding and session commands)
+openclaw devices: owned by nodes (bound: device pairing)
+openclaw nodes: owned by nodes (bound: node operations)
+/pair: owned by nodes (bound: device pairing)
+conversations_list tool: owned by sessions (bound); the separately recorded source-file callers remain listed above
+conversations_send tool: owned by sessions (bound); the separately recorded source-file callers remain listed above
+conversations_turn tool: owned by sessions (bound); the separately recorded source-file callers remain listed above
+openclaw agents bind: owned by agents
+openclaw agents unbind: owned by agents
+openclaw agents bindings: owned by agents
+openclaw gateway call: generic Gateway caller; channels.start and channels.stop are method arguments already listed above
+chat.send: owned by sessions (bound); the Control UI chat is the WebChat route already excluded above
+openclaw update: owned by update (bound); --channel is an option, not another entry point
+whatsapp_login tool: outside this template (bound: adapter-specific features); one registered tool
+openclaw matrix verify: outside this template (bound: adapter-specific features); the recorded verification command
+Slack slash command callback: outside this template (bound: adapter-specific features); one registered incoming command callback
 plugins.list (Channels page plugin presentation): consumed from plugins
-kova.channelProbe.status, reset, inject, observations: harness, not an entry point (bound): Kova conformance channel
+kova.channelProbe.status: harness, not a product entry point (bound): Kova conformance channel
+kova.channelProbe.reset: harness, not a product entry point (bound): Kova conformance channel
+kova.channelProbe.inject: harness, not a product entry point (bound): Kova conformance channel
+kova.channelProbe.observations: harness, not a product entry point (bound): Kova conformance channel
 config/test-mock-exports-baseline.txt: test-only
 qa/scenarios/channels/native-command-session-target.yaml: test-only
 qa/scenarios/channels/telegram-startup-getme-live.yaml: test-only
@@ -1562,10 +1580,16 @@ Only records of kind known-broken whose change touches a production path inside 
 645. Queued channel successor cancelled while its already-started bound plugin work remains pending: needed by [OpenClaw #164230](https://github.com/openclaw/openclaw/pull/164230), stated in no document
 
 ## Reconciliation
+The excluded-entry reconciliation distinguishes named methods, commands, tools and callbacks from ownership prose. The conversations and session-reaction wildcard labels, generic approval delivery/reaction wording and generic Discord-component wording do not create additional entries. Their existing owning-area exclusions and recorded source-file callers remain. Control UI chat is the existing WebChat route. Gateway-call method arguments and the update command option do not add commands. Shell controls and emitted broadcasts retain the procedure's single excluded record; file-search matches retain one record per file. The Channels Save dependency config.set is added from source with no original-run discovery credit. This entry inventory correction does not change the area bound, conditions, commands, phases or observations.
+
 Entry points and conditions taken from only one run are listed one by one; operations, phases, persona traits and commands are summarised with every decision that changed or merged them.
 
 ### Entry points from one run only
-Discord voice channels: from run 1 only; kept as a distinct excluded talk surface, separate from the Discord inbound monitor
+config.get: from run 1 only; explicitly named in its combined configuration-method entry; run 2 named only a generic dependency
+config.schema: from run 1 only; explicitly named in its combined configuration-method entry; run 2 named only a generic dependency
+config.patch: from run 1 only; explicitly named in its combined configuration-method entry; run 2 named only a generic dependency
+Discord /vc join: from run 1 only; individually named in the recorded entry and retained as excluded for the reason listed above
+Discord voice auto-join callback: from run 1 only; individually named in the recorded entry and retained as excluded for the reason listed above
 Channels page route (/channels): from run 1 only; placed by run 1 in "Check channel status and health"; kept because reconciliation never drops an entry point either run found
 DM access request: Sender details: from run 1 only; placed by run 1 in "Decide who may message the agent"; kept because reconciliation never drops an entry point either run found
 openclaw agent --deliver: from run 1 only; placed by run 1 in "Deliver agent, cron, heartbeat and sub-agent output to a chat"; kept because reconciliation never drops an entry point either run found
@@ -1602,24 +1626,38 @@ ui/src/i18n/.i18n/vi.tm.jsonl ("channels.pairing.approve", "channels.pairing.dis
 ui/src/i18n/.i18n/zh-CN.tm.jsonl ("channels.pairing.approve", "channels.pairing.dismiss"): from run 1 only; excluded by run 1 (translation strings, not a code path); kept so the entry point stays accounted for
 ui/src/i18n/.i18n/zh-TW.tm.jsonl ("channels.pairing.approve", "channels.pairing.dismiss"): from run 1 only; excluded by run 1 (translation strings, not a code path); kept so the entry point stays accounted for
 Channel status, presence and health broadcast events to clients: from run 1 only; excluded by run 1 (internal: broadcast events are not entry points); kept so the entry point stays accounted for
-plugins install triggered by channels add: from run 1 only; excluded by run 1 (consumed from plugins (bound)); kept so the entry point stays accounted for
+openclaw plugins install: from run 1 only; individually named in the recorded entry and retained as excluded for the reason listed above
 /activation: from run 1 only; excluded by run 1 (owned by commands (bound: slash command parsing and execution)); kept so the entry point stays accounted for
-/session unbind, /session idle, /session max-age, /agents (thread bindings): from run 1 only; excluded by run 1 (owned by sessions (bound: thread-bound subagent sessions)); kept so the entry point stays accounted for
-openclaw devices / openclaw nodes / /pair (node and device pairing): from run 1 only; excluded by run 1 (owned by nodes (bound)); kept so the entry point stays accounted for
-conversations_list / conversations_send / conversations_turn tools and conversations.* methods: from run 1 only; excluded by run 1 (owned by sessions (bound); files found by search that call them are listed above as from sessions); kept so the entry point stays accounted for
-Exec and plugin approval delivery and approval reactions: from run 1 only; excluded by run 1 (owned by approvals (bound)); kept so the entry point stays accounted for
-openclaw agents bind / unbind / bindings: from run 1 only; excluded by run 1 (owned by agents); kept so the entry point stays accounted for
-openclaw gateway call channels.start / channels.stop: from run 1 only; excluded by run 1 (generic Gateway caller; the methods are listed above); kept so the entry point stays accounted for
-chat.send and the Control UI chat: from run 1 only; excluded by run 1 (owned by sessions (bound: webchat is not a channel)); kept so the entry point stays accounted for
-session.reactions.*: from run 1 only; excluded by run 1 (owned by sessions (bound); sessions-reactions.ts found by search is listed above); kept so the entry point stays accounted for
-openclaw update --channel and release channels: from run 1 only; excluded by run 1 (owned by update (bound)); kept so the entry point stays accounted for
-Adapter-specific features on docs/channels/<id>.md pages (whatsapp_login tool, matrix verify, Slack slash command, Discord components): from run 1 only; excluded by run 1 (outside this template (bound: adapter pages are not read)); kept so the entry point stays accounted for
+/session unbind: from run 1 only; individually named in the recorded entry and retained as excluded for the reason listed above
+/session idle: from run 1 only; individually named in the recorded entry and retained as excluded for the reason listed above
+/session max-age: from run 1 only; individually named in the recorded entry and retained as excluded for the reason listed above
+/agents: from run 1 only; individually named in the recorded entry and retained as excluded for the reason listed above
+openclaw devices: from run 1 only; individually named in the recorded entry and retained as excluded for the reason listed above
+openclaw nodes: from run 1 only; individually named in the recorded entry and retained as excluded for the reason listed above
+/pair: from run 1 only; individually named in the recorded entry and retained as excluded for the reason listed above
+conversations_list tool: from run 1 only; individually named in the recorded entry and retained as excluded for the reason listed above
+conversations_send tool: from run 1 only; individually named in the recorded entry and retained as excluded for the reason listed above
+conversations_turn tool: from run 1 only; individually named in the recorded entry and retained as excluded for the reason listed above
+
+openclaw agents bind: from run 1 only; individually named in the recorded entry and retained as excluded for the reason listed above
+openclaw agents unbind: from run 1 only; individually named in the recorded entry and retained as excluded for the reason listed above
+openclaw agents bindings: from run 1 only; individually named in the recorded entry and retained as excluded for the reason listed above
+openclaw gateway call: from run 1 only; individually named in the recorded entry and retained as excluded for the reason listed above
+chat.send: from run 1 only; individually named in the recorded entry and retained as excluded for the reason listed above
+
+openclaw update: from run 1 only; individually named in the recorded entry and retained as excluded for the reason listed above
+whatsapp_login tool: from run 1 only; individually named in the recorded entry and retained as excluded for the reason listed above
+openclaw matrix verify: from run 1 only; individually named in the recorded entry and retained as excluded for the reason listed above
+Slack slash command callback: from run 1 only; individually named in the recorded entry and retained as excluded for the reason listed above
 DM access requests refresh: from run 2 only; placed by run 2 in "Decide who may message the agent"; kept because reconciliation never drops an entry point either run found
 Setup wizard reveal secret toggle: from run 2 only; placed by run 2 in "Set up a channel account"; kept because reconciliation never drops an entry point either run found
 Nostr profile HTTP PUT /api/channels/nostr/<account>/profile: from run 2 only, explicitly named inside its combined HTTP entry; placed in "Set the bot's profile and presence". The original combined label receives separate credit for this named method.
 Nostr profile HTTP POST /api/channels/nostr/<account>/profile/import: from run 2 only, explicitly named inside its combined HTTP entry; placed in "Set the bot's profile and presence". The original combined label receives separate credit for this named method.
 plugins.list (Channels page plugin presentation): from run 2 only; excluded by run 2 (consumed from plugins); kept so the entry point stays accounted for
-kova.channelProbe.status, reset, inject, observations: from run 2 only; excluded by run 2 (harness, not an entry point (bound): Kova conformance channel); kept so the entry point stays accounted for
+kova.channelProbe.status: from run 2 only; individually named in the recorded entry and retained as excluded for the reason listed above
+kova.channelProbe.reset: from run 2 only; individually named in the recorded entry and retained as excluded for the reason listed above
+kova.channelProbe.inject: from run 2 only; individually named in the recorded entry and retained as excluded for the reason listed above
+kova.channelProbe.observations: from run 2 only; individually named in the recorded entry and retained as excluded for the reason listed above
 config/test-mock-exports-baseline.txt: from run 2 only; excluded by run 2 (test-only); kept so the entry point stays accounted for
 qa/scenarios/channels/native-command-session-target.yaml: from run 2 only; excluded by run 2 (test-only); kept so the entry point stays accounted for
 qa/scenarios/channels/telegram-startup-getme-live.yaml: from run 2 only; excluded by run 2 (test-only); kept so the entry point stays accounted for
@@ -2080,7 +2118,7 @@ The presentation, ingress and inbound consumer reconciliations add 67 in-scope c
 
 The message CLI and channel-index audit adds conditions 816–847 for strict selectors, action scope and compatibility, native cleanup, delivery limits and bounded join history. The formatting audit adds conditions 848–874 for code whitespace, nested boundaries, lexical preservation, rendered sizes, default selection and formatter edits. Existing per-channel join suppression, broadcast outcome and renderer/link/default/list-prefix meanings retain their IDs and historical credit; conditions 3, 292, 406, 408, 409 and 413 are partial because supplied inputs do not cover every recorded alternative. Native block-table and code fallback observations keep condition 411 covered. Poll bounds remain provider-specific: Telegram supports up to 12 options and Discord up to 10.
 
-The current inventory has 934 conditions: 474 ambient and 460 event. Coverage is 454 fully planned and 480 wholly or partly outside reach. The current heading inventory has 268 headings. Every original entry-point share, per-round heading denominator and historical discovery credit is unchanged. These source corrections add no derivation run or observation helper. Plugin installation mechanics and configuration writes performed by plugin installation or automatic enabling remain outside this area; selected-channel setup and credential-resolution consequences remain included.
+The current inventory has 934 conditions: 474 ambient and 460 event. Coverage is 449 fully planned and 485 wholly or partly outside reach. The current heading inventory has 268 headings. The per-round condition-heading denominators and original condition discovery credit are unchanged. Corrected named-entry totals and shares are recorded separately in comparison.md. These source corrections add no derivation run or observation helper. Plugin installation mechanics and configuration writes performed by plugin installation or automatic enabling remain outside this area; selected-channel setup and credential-resolution consequences remain included.
 
 The channel RPC reconciliation adds conditions 875–884 for omitted-account selection, explicit manual-parameter rejection, QR provider selection and opaque correlation, and the public/CLI pairing response and selector distinctions. Existing manual-start suppression meanings retain their original credit; condition 277 is partial because no supplied ambient-suppressed account exercises explicit bypass. The current WhatsApp provider returns no opaque sessionKey, so conditional forwarding language does not cover that missing case. Pairing codes and QR/session secrets remain memory-only; checking native response shape must occur before safe projection without retaining those values. No new provider, helper, account or derivation run is introduced.
 
@@ -2111,3 +2149,7 @@ The existing fixed native CLI wrappers now have explicit bounded result projecti
 The finite Discord presence and bounded location-metadata correction adds 17 current conditions without historical discovery credit. The earlier reconnect-suppression and burst-limit qualifiers remain on condition 495 under its existing credit. The two unsupported human-arrival inputs are removed, while the separate bot set-presence action remains. Current source headings were already condition-bearing, so 268 current headings and historical denominators 245/258 are unchanged. The targeted native notification wake can run without a recurring heartbeat schedule; event queueing, wake handling and a visible greeting remain distinct outcomes.
 
 Conformance allowlist command support is distinct from ingress admission. The native default add/remove target is both, and the config-edit adapter gate runs before either config or store mutation. The current probe exposes neither that adapter nor pairing; --store is therefore not a fallback. The unsupported positive add and roundtrip are withdrawn. Existing list inputs retain native authorization/unsupported-capability replies, without claiming populated lists or mutation. Supplied policy/config-patch and Telegram observations remain. Pairing capability reconciliation preserves the original recorded providers. Seven conformance-only request/retention/UI/refusal phases and their standalone collectors are withdrawn because the probe has no native pairing adapter; its declared ingress support does not add one. The five original Telegram cases remain with their existing inputs and cleanup. Conditions 186, 189, 192, 193 and 195 additionally lack a complete planned observation; 191 retains its explicitly recorded Telegram first-owner case, and 205 and 299 retain their Telegram start/offline cases. Conditions 188, 190, 196, 300, 301, 302, 560 and 880–884 remain incomplete without another deduction. Decide who may message remains one covered operation through Telegram CLI; its UI, direct requestId approval/dismissal and conformance subcases receive no positive credit. Required-trait labels in the source condition table preserve the original documented inputs even when their unavailable executable declarations are removed; they are not active template requirements. All source identities, entry placement and historical credit remain unchanged.
+
+Process scope limits conformance output evidence. The native message CLI invokes its own local adapter, whose in-memory outbound records are not the Gateway records. Its JSON keeps native results and receipts but omits deliveredText. kova.channelProbe.observations enumerates records created only by completed conformance inbound calls, using their captured record offsets and target; it is not a general outbound log, and restarting loses those records. The template retains native CLI inputs/results and removes all twenty unbound bare reads. Even where a real inbound producer precedes the read, the separate gateway-call process receives no captured inbound identity or offsets; phase proximity is not custody. Each existing inbound owner retains its own original scoped capture. No separate reader infers scope from earlier cron/CLI output, later sends, another target or ambient setup. Existing runtime-owned payload, heartbeat, inbound, native stored-state and Telegram fixture captures remain independent evidence under their original contracts. No new recorder, API, producer, warmup, cross-process bridge or output field is added. Conditions 290, 322, 323, 597 and 636 lose complete planned credit; 602 and 608 remain incomplete. Generic fallback 601 retains only the existing runtime-owned authored-fallback producer; this process-scope correction preserves the source inventory and historical credit and does not change operation or entry totals.
+
+The fixed native CLI projections follow their actual diagnostic container shapes: status configDiagnostics is an object with an issues array; health reachability belongs to its native nested gateway object; capability diagnostic tones follow the native display-line literals. Native absence, starting output and uncollected audit objects remain distinct from an empty successful report. Only the existing bounded count, type, presence and boolean facts are retained; paths and diagnostic contents remain excluded.

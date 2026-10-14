@@ -6,7 +6,7 @@ Date: 2026-10-13
 State: reconciled with a known shortfall after the permitted rerun.
 The procedure's nine-tenths acceptance was not met.
 
-Union: 438 entry points, 934 conditions, 268 current condition-bearing document headings.
+Union: 456 entry points, 934 conditions, 268 current condition-bearing document headings.
 The recorded final-round reconciliation contained 645 conditions and 258
 condition-bearing headings. Later reconciliation adds 289 in-scope current
 conditions. These additions receive no extra discovery credit. Unsupported
@@ -20,12 +20,12 @@ original IDs and credit; missing observations affect planned coverage.
 
 | Round | Run | Entry points found | Condition headings found |
 |---|---|---|---|
-| 1 | 1 | 317/334 (94.9%) | 214/245 (87.3%) |
-| 1 | 2 | 297/334 (88.9%) | 227/245 (92.7%) |
-| 2 | 1 | 399/438 (91.1%) | 246/258 (95.3%) |
-| 2 | 2 | 379/438 (86.5%) | 248/258 (96.1%) |
+| 1 | 1 | 317/335 (94.6%) | 214/245 (87.3%) |
+| 1 | 2 | 297/335 (88.7%) | 227/245 (92.7%) |
+| 2 | 1 | 413/456 (90.6%) | 246/258 (95.3%) |
+| 2 | 2 | 383/456 (84.0%) | 248/258 (96.1%) |
 
-An entry point is found when a run lists it, placed or excluded with a reason. The recorded sendAttachment action is retained as excluded compatibility evidence: iMessage advertises upload-file instead. All four recorded runs named both spellings, so this changes placement only and preserves their separate historical discovery records. Source inspection moved 36 non-executable search matches from placed to excluded internal evidence, including 17 additional records identified by checking every one of the 116 code-search matches that remained placed. Each recorded discovery remains counted for the run that listed it, so the union and all discovery shares are unchanged.
+An entry point is found when a run lists it, placed or excluded with a reason. The recorded sendAttachment action is retained as excluded compatibility evidence: iMessage advertises upload-file instead. All four recorded runs named both spellings, so this changes placement only and preserves their separate historical discovery records. Source inspection moved 36 non-executable search matches from placed to excluded internal evidence, including 17 additional records identified by checking every one of the 116 code-search matches that remained placed. That placement-only correction retained each recorded discovery for the run that listed it; its then-current union and discovery shares did not change. The later named-entry correction below supersedes those entry totals.
 Equivalent names identify the same entry point. A combined entry receives credit
 for each control, callback or HTTP method and path it explicitly names. A
 method-unspecified route family does not establish discovery of an individual
@@ -52,7 +52,7 @@ literals, with the sentence-by-sentence rule and clarified bounds. The public
 phase, command and reconciliation requirements from
 [the derivation procedure](../../../docs/verify/derive-area-template.md) were
 applied when combining the results. Both runs passed the heading measure. The
-second run's 86.5% entry-point share remains below nine tenths. Historical
+second run's corrected 84.0% entry-point share remains below nine tenths. Historical
 procedure versions are identified by these recorded changes; immutable revision
 hashes were not retained for them.
 
@@ -119,8 +119,8 @@ Replacing one HTTP family with three methods adds two entries to each round's
 corrected inventory. Round 1 loses its former generic-family credit for each run;
 round 2 retains the first run's credit count and adds one for the second. These
 figures supersede 318/332 and 298/332, and 399/435 and 378/435. GET is a source-review
-addition with no run credit. The final inventory has 313 placed and 125 excluded
-entries. This is an accounting correction to recorded inputs, without a new
+addition with no run credit. That earlier accounting recorded 313 placed and 125 excluded
+entries; the later excluded-entry correction below supersedes its total. This is an accounting correction to recorded inputs, without a new
 independent derivation. Both rounds retain the stated acceptance shortfall.
 
 Earlier corrections added conditions 646–704. Presentation, ingress and inbound
@@ -140,11 +140,11 @@ change the historical 258-heading union or either final run’s recorded heading
 credit. Restored composites retain their original credit. Against the current
 934-condition inventory, supplemental condition-by-meaning shares use unchanged
 final-round numerators: 592/934 (63.4%) and 590/934 (63.2%). The historical
-645-condition comparison, entry-point shares and per-round condition-heading
-acceptance shares above remain unchanged. Planned coverage is a separate
+645-condition comparison and per-round condition-heading
+acceptance shares above remain unchanged. Entry-point arithmetic is corrected below. Planned coverage is a separate
 measure in coverage.md.
 
-The channel configuration Advanced settings disclosure is one named control with show and hide states. Both runs in round 1 explicitly listed it, so their existing 334-entry comparison and discovery counts remain unchanged. Neither final-round run listed it: generic config fields, the separate Nostr profile advanced toggle and excluded app-shell settings do not establish discovery of this disclosure. Restoring it adds one placed entry to the current inventory, with no final-round credit. The current union is 438 entries, 313 placed and 125 excluded; round 2 entry shares are 399/438 (91.1%) and 379/438 (86.5%), superseding 399/437 (91.3%) and 379/437 (86.7%). The recorded source inventories, per-round condition-heading denominators and known acceptance shortfall are unchanged. No new derivation run was performed.
+The channel configuration Advanced settings disclosure is one named control with show and hide states. Both runs in round 1 explicitly listed it, so their then-current 334-entry comparison and discovery counts did not change at that correction. Neither final-round run listed it: generic config fields, the separate Nostr profile advanced toggle and excluded app-shell settings do not establish discovery of this disclosure. Restoring it adds one placed entry to the current inventory, with no final-round credit. That restoration produced a union of 438 entries, 313 placed and 125 excluded; its round 2 entry shares were 399/438 (91.1%) and 379/438 (86.5%), superseding 399/437 (91.3%) and 379/437 (86.7%). The later excluded-entry correction below supersedes those entry figures. The recorded source inventories, per-round condition-heading denominators and known acceptance shortfall are unchanged. No new derivation run was performed.
 
 The finite iMessage section correction adds one current condition: an admitted group reply returns to the same native chat_id. All four preserved runs recorded the iMessage specifics heading as none, so neither historical condition credit nor either recorded heading denominator changes. The current inventory gains that condition-bearing heading; no new derivation or live iMessage observation is claimed.
 
@@ -158,4 +158,10 @@ The complete bounded location-document correction adds eight current conditions 
 
 The finite Discord presence and bounded location-metadata correction adds 17 current conditions without historical discovery credit. The earlier reconnect-suppression and burst-limit qualifiers remain on condition 495 under its existing credit. The two unsupported human-arrival inputs are removed, while the separate bot set-presence action remains. Current source headings were already condition-bearing, so 268 current headings and historical denominators 245/258 are unchanged. The targeted native notification wake can run without a recurring heartbeat schedule; event queueing, wake handling and a visible greeting remain distinct outcomes.
 
-Pairing capability reconciliation withdraws seven conformance-only recipes and five complete-condition credits because the supplied probe has no native pairing adapter. The five originally recorded Telegram cases remain. Current planned coverage is 454/934; the 934-condition inventory, all historical discovery credit and every per-round acceptance measurement are unchanged.
+Pairing capability reconciliation withdraws seven conformance-only recipes and five complete-condition credits because the supplied probe has no native pairing adapter. The five originally recorded Telegram cases remain. Current planned coverage is 449/934; the 934-condition inventory, all historical discovery credit and every per-round acceptance measurement are unchanged.
+
+The finite excluded-entry correction applies the one-method, command, tool or callback rule to every excluded row. Named wizard, configuration, session-command, node-command, agent-binding, fixture-method and Discord voice entries are split. The recorded adapter-feature label yields its named WhatsApp login tool, Matrix verification command and Slack slash callback; generic component wording adds no extra control. The generic approval boundary and session-reaction wildcard are removed from the counted list while their ownership exclusions and source-file callers remain. Gateway-call method arguments, the update option and the already listed WebChat route do not add entries. Shell controls, emitted broadcasts and file-search records keep the procedure's stated granularity.
+
+The first round already named each wizard and recorded configuration method individually. Its only denominator change here is the source-confirmed config.set dependency, which neither run listed: 317/335 (94.6%) and 297/335 (88.7%). In the second round both runs explicitly named all three wizard methods, but only the first named config.get, config.schema and config.patch. The second run's generic reads-and-patches label earns no individual-method credit. Every other added discovery credit comes from an explicit name in its original combined record; unnamed families earn none. The source-only config.set entry receives no credit in either round and adds one entry to each source-completed denominator.
+
+The corrected second-round counts are 413/456 (90.6%) and 383/456 (84.0%), with 351 entries named by both runs. The current inventory has 456 entries: 313 placed and 143 excluded. These figures supersede 317/334, 297/334, 399/438 and 379/438. Original record files remain unchanged; all earlier alias, test-file, Nostr control/HTTP and Advanced settings corrections are preserved. Condition and heading inventories and their discovery credit are unchanged. No new derivation run or observation was performed, and the known entry-point shortfall remains.
