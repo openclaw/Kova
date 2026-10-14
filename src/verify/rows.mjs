@@ -87,18 +87,21 @@ export async function* stateFile(file, path, standard, format) {
     const db = new DatabaseSync(file, { readOnly: true });
     try {
       yield { path, kind: "sqlite-file", value: { type: "sqlite" } };
+      const shapes = new Map(db.prepare("PRAGMA main.table_list").all().map((table) => [table.name, table]));
       const tables = db.prepare("SELECT name, sql FROM sqlite_schema WHERE type = 'table' AND lower(name) NOT GLOB 'sqlite_*' ORDER BY name").all();
       for (const table of tables) {
+        const shape = shapes.get(table.name);
+        if (!shape) throw new Error(`missing SQLite table metadata: ${table.name}`);
         // Virtual modules can execute native code and may be unavailable here.
         // Their declarations and ordinary persisted backing tables remain data.
-        if (/^\s*CREATE\s+VIRTUAL\s+TABLE\b/i.test(table.sql)) {
+        if (shape.type === "virtual") {
           yield { path, kind: "sqlite-schema", table: table.name, value: table.sql };
           continue;
         }
         const columns = db.prepare(`PRAGMA table_xinfo(${quote(table.name)})`).all();
         const ordered = new Set((standard.stateIds ?? []).filter((item) => item.table === table.name && matchesGlob(path, item.path) && item.order !== undefined).map((item) => item.order));
         const primary = columns.filter((c) => c.pk).sort((a, b) => a.pk - b.pk).map((c) => c.name);
-        const rowid = /\bWITHOUT\s+ROWID\b/i.test(table.sql) ? null : ["rowid", "_rowid_", "oid"].find((name) => !columns.some((c) => c.name.toLowerCase() === name));
+        const rowid = shape.wr ? null : ["rowid", "_rowid_", "oid"].find((name) => !columns.some((c) => c.name.toLowerCase() === name));
         let alias = "__kova_rowid";
         while (columns.some((column) => column.name === alias)) alias += "_";
         const statement = db.prepare(`SELECT ${rowid ? `${quote(rowid)} AS ${quote(alias)}, ` : ""}* FROM ${quote(table.name)}`);
@@ -111,6 +114,10 @@ export async function* stateFile(file, path, standard, format) {
           for (const column of columns) {
             let value = result[column.name];
             const order = ordered.has(column.name) ? { orderValue: value instanceof Uint8Array ? Buffer.from(value) : value } : {};
+            // The usage envelope authenticates its separate encoded body. Keep
+            // that one buffer for checkpoint normalization, without changing
+            // the complete values consumed by persona identity discovery.
+            const source = agentDatabase(path) && table.name === "cache_entries" && column.name === "blob" && value instanceof Uint8Array ? { sourceBytes: value } : {};
             const compressed = standard.compressed.find((item) => matchesGlob(path, item.path) && item.table === table.name && item.column === column.name);
             if (compressed && value !== null) {
               if (compressed.codec !== "zstd") throw new Error(`unsupported compressed state: ${path}:${table.name}/${column.name}`);
@@ -122,11 +129,11 @@ export async function* stateFile(file, path, standard, format) {
               }
             }
             if (typeof value === "string") {
-              try { values[column.name] = { raw: value, value: JSON.parse(value), ...order }; continue; }
+              try { values[column.name] = { raw: value, value: JSON.parse(value), ...order, ...source }; continue; }
               catch { /* Keep text that is not JSON, including damaged product data. */ }
             }
             const scalar = sqlValue(value);
-            values[column.name] = { raw: scalar, value: scalar, encoded: scalar !== null && typeof scalar === "object", ...order };
+            values[column.name] = { raw: scalar, value: scalar, encoded: scalar !== null && typeof scalar === "object", ...order, ...source };
           }
           rows.push({ rowid: sqlValue(identity), values });
         }
@@ -142,7 +149,7 @@ export async function* stateFile(file, path, standard, format) {
     try { yield { path, kind: "json", value: JSON5.parse(bytes.toString("utf8")) }; return; }
     catch { format = "jsonl"; }
   }
-  if (format === "jsonl" || /\.jsonl$/i.test(path)) {
+  if (format === "jsonl" || /\.jsonl$/i.test(path) || sessionTranscript(path)) {
     const value = [], malformed = new Set(), binary = new Map();
     const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
     for (let start = 0; start <= bytes.length;) {
@@ -166,7 +173,7 @@ export async function* stateFile(file, path, standard, format) {
   catch { yield { path, kind: "binary", value: sha256(bytes) }; return; }
   if (text.includes("\0")) { yield { path, kind: "binary", value: sha256(bytes) }; return; }
   try {
-    if (/\.json5?$/i.test(path)) { yield { path, kind: "json", value: JSON5.parse(text) }; return; }
+    if (/\.json5?$/i.test(path) || sessionIndex(path)) { yield { path, kind: "json", value: JSON5.parse(text) }; return; }
   } catch { /* Invalid product JSON is compared as text, not discarded. */ }
   yield { path, kind: "text", value: textLines(text) };
 }
@@ -262,6 +269,232 @@ function responseData(value, entry) {
   return result;
 }
 
+const record = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+const measurement = (value) => typeof value === "number" && Number.isFinite(value);
+const agentDatabase = (path) => /^agents\/[^/]+\/agent\/openclaw-agent\.sqlite$/.test(path);
+const sessionTranscript = (path) => /^agents\/[^/]+\/sessions\/[^/]+\.jsonl(?:\.bak(?:\.[^/]+)?|\.(?:reset|deleted)\.[^/]+)?$/.test(path);
+const sessionIndex = (path) => /^(?:agents\/[^/]+\/)?sessions\/sessions\.json(?:\.bak)?$/.test(path);
+const removed = Symbol("removed measurement");
+
+// These paths name producer-owned fields, never arbitrary keys in product payloads.
+// Copy only changed branches so the original recording remains available to ID discovery.
+function mapFields(value, paths, transform) {
+  const visit = (value, [part, ...rest]) => {
+    if (!value || typeof value !== "object") return value;
+    let result = value;
+    for (const key of part === "*" ? Object.keys(value) : [part]) {
+      if (!Object.hasOwn(value, key)) continue;
+      const next = rest.length ? visit(value[key], rest) : transform(value[key]);
+      if (next === value[key]) continue;
+      if (result === value) result = Array.isArray(value) ? value.slice() : { ...value };
+      if (next === removed) delete result[key]; else result[key] = next;
+    }
+    return result;
+  };
+  return paths.reduce((result, path) => visit(result, path.split(".")), value);
+}
+const omitMeasurements = (value, paths, nullable = false) => mapFields(value, paths, (value) => measurement(value) || nullable && value === null ? removed : value);
+
+function hasFormattedRuntime(entry) {
+  return record(entry) && measurement(entry.runtimeMs) && entry.runtimeMs >= 0 && typeof entry.runtime === "string" &&
+    (entry.runtime === "n/a" ? entry.runtimeMs === 0 : /^(?:\d+ms|(?=\d)(?:\d+d)?(?:\d+h)?(?:\d+m)?(?:\d+s)?)$/.test(entry.runtime));
+}
+
+function subagentListText(text, value) {
+  if (typeof text !== "string") return text;
+  const entries = [value.active, value.recent].flatMap((entries) => Array.isArray(entries) ? entries : []);
+  return text.split("\n").map((line) => {
+    for (const entry of entries) {
+      if (!hasFormattedRuntime(entry)) continue;
+      const prefix = `${entry.index}. ${entry.taskName ? `${entry.taskName}: ` : ""}${entry.label} (`;
+      if (!line.startsWith(prefix)) continue;
+      const start = line.indexOf(`, ${entry.runtime}`, prefix.length);
+      const end = start + 2 + entry.runtime.length;
+      if (start >= 0 && [",", ")"].includes(line[end])) return `${line.slice(0, start + 2)}<duration>${line.slice(end)}`;
+    }
+    return line;
+  }).join("\n");
+}
+
+function toolMeasurements(value, tool) {
+  if (!record(value)) return value;
+  if (tool === "exec") return omitMeasurements(value, ["durationMs"]);
+  if (tool === "process") return omitMeasurements(value, ["sessions.*.runtimeMs"]);
+  if (tool === "cron") return omitMeasurements(value, ["jobs.*.state.lastDurationMs", "state.lastDurationMs", "entries.*.durationMs", "run.durationMs"]);
+  if (tool !== "subagents" || value.action !== "list") return value;
+  const result = mapFields(value, ["active.*", "recent.*"], (entry) => {
+    const next = omitMeasurements(entry, ["runtimeMs"]);
+    if (!hasFormattedRuntime(entry)) return next;
+    return mapFields(next, ["runtime"], () => removed);
+  });
+  return mapFields(result, ["text"], (text) => subagentListText(text, value));
+}
+
+function transcriptMeasurements(event) {
+  if (!record(event) || event.type !== "message" || event.message?.role !== "toolResult") return event;
+  const { message } = event;
+  const details = toolMeasurements(message.details, message.toolName);
+  let content = message.content;
+  if (["cron", "subagents"].includes(message.toolName) && Array.isArray(content)) content = content.map((part) => {
+    if (part?.type !== "text" || typeof part.text !== "string") return part;
+    try {
+      const value = JSON.parse(part.text), next = toolMeasurements(value, message.toolName);
+      const text = JSON.stringify(next);
+      return text === part.text ? part : { ...part, text };
+    } catch { return part; }
+  });
+  // Process list text repeats the measured runtime in a fixed prefix; command
+  // output after the separator remains untouched, including media and timeouts.
+  if (message.toolName === "process" && Array.isArray(message.details?.sessions) && Array.isArray(content)) content = content.map((part) => {
+    if (part?.type !== "text" || typeof part.text !== "string") return part;
+    const text = part.text.split("\n").map((line) => {
+      for (const session of message.details.sessions) {
+        if (!measurement(session?.runtimeMs) || typeof session.status !== "string") continue;
+        const prefix = `${session.sessionId} ${session.status.padEnd(9)} `;
+        if (line.startsWith(prefix)) return prefix + line.slice(prefix.length).replace(/^(?:n\/a|\d+(?:\.\d+)?(?:ms|s|m|h|d)(?:\s*\d+(?:\.\d+)?(?:ms|s|m|h|d))*)(?= |$)/, "<duration>");
+      }
+      return line;
+    }).join("\n");
+    return text === part.text ? part : { ...part, text };
+  });
+  if (details === message.details && (!Array.isArray(content) || content.every((part, index) => part === message.content[index]))) return event;
+  return { ...event, message: { ...message, ...(details === message.details ? {} : { details }), ...(content === message.content ? {} : { content }) } };
+}
+
+function usageRollupMeasurements(value) {
+  return mapFields(value, ["buckets.*.latency"], (latency) => {
+    if (!record(latency)) return latency;
+    let result = omitMeasurements(latency, ["min", "max", "sum"]);
+    // Centroid membership/counts depend on the measured latency distribution.
+    // Its independent total sample count and all usage/work counts remain data.
+    if (Array.isArray(latency.centroids) && latency.centroids.every((entry) => record(entry) && Object.keys(entry).every((key) => ["count", "value"].includes(key)) && Number.isSafeInteger(entry.count) && entry.count > 0 && measurement(entry.value))) {
+      result = { ...result };
+      delete result.centroids;
+    }
+    return result;
+  });
+}
+
+function decodedUsageMeasurements(values) {
+  const envelope = values.value_json?.value, bytes = values.blob?.sourceBytes;
+  if (!record(envelope) || envelope.version !== 6 || envelope.format !== 1 || typeof envelope.pricingFingerprint !== "string" || !record(envelope.checkpoint) || !["jsonl", "sqlite"].includes(envelope.checkpoint.kind) || !record(envelope.body) || !bytes) return null;
+  const body = envelope.body;
+  if (!["identity", "zstd"].includes(body.encoding) || ![body.bytes, body.storedBytes, body.utf16Length].every((value) => Number.isSafeInteger(value) && value > 0) || typeof body.sha256 !== "string" || bytes.byteLength !== body.storedBytes) return null;
+  try {
+    const raw = body.encoding === "zstd" ? zstdDecompressSync(bytes, { maxOutputLength: body.bytes }) : bytes;
+    if (raw.byteLength !== body.bytes || sha256(raw) !== body.sha256) return null;
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(raw);
+    if (text.length !== body.utf16Length) return null;
+    const rollup = JSON.parse(text);
+    if (!record(rollup) || !record(rollup.buckets) || !record(rollup.untimestamped)) return null;
+    const normalized = usageRollupMeasurements(rollup);
+    // The producer may choose compression based on the body size. Once the
+    // original sizes/hash are verified, compare decoded content instead of
+    // measurement-dependent compression, lengths and digest aliases.
+    const normalizedBody = { ...body, encoding: "decoded-json" };
+    for (const key of ["bytes", "storedBytes", "utf16Length", "sha256"]) delete normalizedBody[key];
+    return { envelope: { ...envelope, body: normalizedBody }, rollup: normalized };
+  } catch { return null; }
+}
+
+function quarantineIdentity(value) {
+  return JSON.stringify({
+    sourceIndex: value.sourceIndex, reason: value.reason, job: value.job ?? null,
+    raw: value.raw ?? null, state: value.state ?? null,
+    updatedAtMs: value.updatedAtMs ?? null, scheduleIdentity: value.scheduleIdentity ?? null
+  });
+}
+
+function persistedRowMeasurements(file, row) {
+  let values = row.values;
+  const json = (column, transform) => {
+    const cell = values[column];
+    if (!cell || cell.encoded || file.primary.includes(column)) return;
+    const value = transform(cell.value);
+    if (value !== cell.value) values = { ...values, [column]: { ...cell, value, raw: JSON.stringify(value) } };
+  };
+  const omitColumn = (column) => {
+    const cell = values[column];
+    if (!file.primary.includes(column) && cell && (measurement(cell.value) || cell.value === null)) {
+      values = { ...values };
+      delete values[column];
+    }
+  };
+  if (agentDatabase(file.path)) {
+    if (file.table === "session_nodes") json("entry_json", (value) => omitMeasurements(value, ["runtimeMs"]));
+    if (file.table === "transcript_events") {
+      json("event_json", transcriptMeasurements);
+      json("event_zstd", transcriptMeasurements);
+      const original = row.values.event_zstd?.raw;
+      if (!file.primary.includes("event_utf8_bytes") && typeof original === "string" && measurement(values.event_utf8_bytes?.value) && Buffer.byteLength(original) === values.event_utf8_bytes.value && values.event_zstd !== row.values.event_zstd) {
+        const length = Buffer.byteLength(values.event_zstd.raw);
+        values = { ...values, event_utf8_bytes: { ...values.event_utf8_bytes, value: length, raw: length } };
+      }
+    }
+    if (file.table === "cache_entries") {
+      if (values.scope?.raw === "session-cost-usage-rollup-v2") json("value_json", (value) => mapFields(value, ["rollup"], usageRollupMeasurements));
+      if (values.scope?.raw === "session-cost-usage-rollup-v3" && !file.primary.some((column) => ["blob", "value_json"].includes(column))) {
+        const decoded = decodedUsageMeasurements(values);
+        if (decoded) {
+          json("value_json", () => decoded.envelope);
+          values = { ...values, blob: { ...values.blob, value: decoded.rollup, encoded: false } };
+        }
+      }
+    }
+  }
+  if (file.path === "state/openclaw.sqlite") {
+    if (file.table === "subagent_runs") json("payload_json", (value) => omitMeasurements(value, ["accumulatedRuntimeMs", "execution.outcome.elapsedMs", "parentCompletion.accumulatedRuntimeMs", "parentCompletion.execution.outcome.elapsedMs"]));
+    if (file.table === "cron_jobs") json("state_json", (value) => omitMeasurements(value, ["lastDurationMs"]));
+    if (file.table === "task_runs" && values.runtime?.raw === "cron") json("detail_json", (value) => value?.kind === "cron-run" ? omitMeasurements(value, ["durationMs"]) : value);
+    if (file.table === "cron_run_logs") {
+      omitColumn("duration_ms");
+      json("entry_json", (value) => omitMeasurements(value, ["durationMs"]));
+    }
+    if (["audit_events", "outbound_message_progress"].includes(file.table)) omitColumn("duration_ms");
+    if (file.table === "update_runs") omitColumn("downtime_ms");
+    if (file.table === "gateway_restart_sentinel") {
+      json("stats_json", (value) => omitMeasurements(value, ["durationMs", "steps.*.durationMs"], true));
+      json("payload_json", (value) => omitMeasurements(value, ["stats.durationMs", "stats.steps.*.durationMs"], true));
+    }
+    if (file.table === "diagnostic_events" && typeof values.scope?.raw === "string" && values.scope.raw.startsWith("cron.quarantine:") && record(values.payload_json?.value)) {
+      const payload = values.payload_json.value;
+      // A bad digest is product evidence. Only a hash produced from the exact
+      // retained payload can be replaced by the corresponding normalized hash.
+      if (values.event_key?.raw === sha256(quarantineIdentity(payload))) {
+        json("payload_json", (value) => omitMeasurements(value, ["state.lastDurationMs"]));
+        if (values.payload_json !== row.values.payload_json) {
+          const key = sha256(quarantineIdentity(values.payload_json.value));
+          values = { ...values, event_key: { ...values.event_key, raw: key, value: key } };
+        }
+      }
+    }
+  }
+  return values === row.values ? row : { ...row, values };
+}
+
+function persistedRowsMeasurements(file) {
+  const rows = file.rows.map((row) => persistedRowMeasurements(file, row));
+  if (file.path !== "state/openclaw.sqlite" || file.table !== "diagnostic_events") return rows;
+  const groups = new Map();
+  for (const [index, row] of rows.entries()) {
+    if (typeof row.values.scope?.raw !== "string" || !row.values.scope.raw.startsWith("cron.quarantine:")) continue;
+    const key = canonicalJSON([row.values.scope.raw, row.values.event_key?.raw]);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(index);
+  }
+  for (const indexes of groups.values()) {
+    if (indexes.length < 2 || !indexes.some((index) => rows[index].values.event_key?.raw !== file.rows[index].values.event_key?.raw)) continue;
+    // Two retained quarantines can differ only by duration. Preserve their
+    // multiplicity without inventing a duplicate primary key after omission.
+    indexes.forEach((index, ordinal) => {
+      const row = rows[index], cell = row.values.event_key;
+      const key = `${cell.raw}#${ordinal + 1}`;
+      rows[index] = { ...row, values: { ...row.values, event_key: { ...cell, raw: key, value: key } } };
+    });
+  }
+  return rows;
+}
+
 export async function checkpointRows(directory, phase, standard, normalization, commandCount = phase.commands.length, commandEntries = []) {
   const { text: normalize, id: normalizeId } = normalization;
   const b = rowBuilder(normalize);
@@ -335,7 +568,7 @@ export async function checkpointRows(directory, phase, standard, normalization, 
         path[path.length - 1] += `:${pointerPart(file.table)}`;
         b.add("state", path, { type: "table" }, { dynamic });
         const idColumns = new Set([...file.primary, ...standard.stateIds.filter((entry) => entry.table === file.table && matchesGlob(file.path, entry.path)).map((entry) => entry.column)]);
-        for (const row of file.rows) {
+        for (const row of persistedRowsMeasurements(file)) {
           const keys = file.primary.map((key) => row.values[key].raw).map((value) => typeof value === "string" ? normalize(value) : value);
           const primaryKey = keys.length === 1 ? keys[0] : keys;
           // SQLite permits multiple NULL primary keys in rowid tables. Preserve
@@ -360,7 +593,7 @@ export async function checkpointRows(directory, phase, standard, normalization, 
       } else if (file.kind === "sqlite-schema") {
         path[path.length - 1] += `:${pointerPart(file.table)}`;
         b.add("state", path, normalize(file.value), { dynamic });
-      } else if (file.kind === "json") b.nodes("state", file.value, path, dynamic);
+      } else if (file.kind === "json") b.nodes("state", sessionIndex(file.path) ? omitMeasurements(file.value, ["*.runtimeMs"]) : file.value, path, dynamic);
       else if (file.kind === "jsonl") {
         b.add("state", path, { type: "jsonl" }, { dynamic });
         file.value.forEach((value, index) => {
@@ -368,7 +601,7 @@ export async function checkpointRows(directory, phase, standard, normalization, 
           if (file.binary.has(index)) b.add("state", at, { invalidJSONLBytes: file.binary.get(index) }, { dynamic });
           else if (value === undefined) return;
           else if (file.malformed.has(index)) b.add("state", at, { invalidJSONL: normalizeText(value, normalize) }, { dynamic });
-          else b.nodes("state", value, at, dynamic);
+          else b.nodes("state", sessionTranscript(file.path) ? transcriptMeasurements(value) : value, at, dynamic);
         });
       } else if (file.kind === "text") {
         b.add("state", path, { type: "text" }, { dynamic });

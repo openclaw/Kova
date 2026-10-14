@@ -1103,3 +1103,144 @@ test("retained archives and config backups preserve escaped persona IDs", async 
   const f = await fixture(t, { creates: ["/id"], originalFiles: { "short-backup": String.raw`"\u004fLD"` }, copies: Object.fromEntries(names.map(name => [name, { response: { id: name.startsWith("change") ? "OLD" : `generated-${name}` } }])) });
   assert.equal((await f.compare()).verdict, "breaks");
 });
+
+test("SQLite rowid behavior comes from table metadata instead of schema text", async (t) => {
+  const f = await fixture(t, { state: async (path, name) => {
+    const db = new DatabaseSync(join(path, "metadata.sqlite"));
+    try {
+      db.exec("CREATE TABLE ordinary (value TEXT DEFAULT 'WITHOUT ROWID'); CREATE TABLE actual (id TEXT PRIMARY KEY, value TEXT) WITHOUT /* retained schema comment */ ROWID");
+      db.prepare("INSERT INTO ordinary VALUES (?)").run(name.startsWith("change") ? "new" : "old");
+      db.prepare("INSERT INTO actual VALUES ('stable', ?)").run(name.startsWith("change") ? "new" : "old");
+    } finally { db.close(); }
+  } });
+  const result = await f.compare();
+  assert.equal(result.verdict, "breaks"); assert.equal(result.rows.length, 2);
+  assert.ok(result.rows.every(row => row.baseline === "old" && row.change === "new"));
+});
+
+test("persisted execution measurements do not hide outcomes, bounds or user payloads", async (t) => {
+  const phase = { id: phaseId, from: "template:sessions", commands: [command], checkpoint: ["state:agents", "state:state", "state:sessions"] };
+  const build = (mode) => fixture(t, { phases: [phase], state: async (files, name) => {
+    const root = join(files, "..");
+    const changed = name.startsWith("change");
+    const duration = changed ? 20 : 10;
+    const meaningful = mode === "outcome" && changed;
+    const session = { sessionId: "existing", runtimeMs: duration, status: meaningful ? "error" : "done", runTimeoutSeconds: meaningful ? 15 : 30, media: { durationMs: meaningful ? 2 : 1 } };
+    await mkdir(join(root, "agents/main/agent"), { recursive: true });
+    await mkdir(join(root, "agents/main/sessions"), { recursive: true });
+    await mkdir(join(root, "sessions"), { recursive: true });
+    await writeJSON(join(root, "agents/main/sessions/sessions.json"), { existing: session });
+    await writeJSON(join(root, "agents/main/sessions/sessions.json.bak"), { existing: session });
+    await writeJSON(join(root, "sessions/sessions.json"), { existing: session });
+    const agent = new DatabaseSync(join(root, "agents/main/agent/openclaw-agent.sqlite"));
+    try {
+      agent.exec("CREATE TABLE session_nodes (session_key TEXT PRIMARY KEY, entry_json TEXT)");
+      agent.prepare("INSERT INTO session_nodes VALUES (?, ?)").run("existing", JSON.stringify(session));
+    } finally { agent.close(); }
+    await mkdir(join(root, "state"), { recursive: true });
+    const state = new DatabaseSync(join(root, "state/openclaw.sqlite"));
+    try {
+      const tables = {
+        cron_jobs: ["state_json", { lastDurationMs: duration, lastStatus: meaningful ? "error" : "ok" }],
+        task_runs: ["detail_json", { kind: "cron-run", durationMs: duration, status: meaningful ? "error" : "ok" }],
+        subagent_runs: ["payload_json", { accumulatedRuntimeMs: duration, execution: { outcome: { elapsedMs: duration, status: meaningful ? "error" : "ok" } }, parentCompletion: { accumulatedRuntimeMs: duration, execution: { outcome: { elapsedMs: duration } } }, runTimeoutSeconds: 30 }],
+        gateway_restart_sentinel: ["stats_json", { durationMs: duration, steps: [{ durationMs: duration, status: meaningful ? "error" : "ok" }] }]
+      };
+      for (const [table, [column, value]] of Object.entries(tables)) {
+        state.exec(`CREATE TABLE ${table} (id TEXT PRIMARY KEY, runtime TEXT, ${column} TEXT)`);
+        state.prepare(`INSERT INTO ${table} VALUES (?, ?, ?)`).run("existing", "cron", JSON.stringify(value));
+      }
+      state.exec("ALTER TABLE gateway_restart_sentinel ADD COLUMN payload_json TEXT");
+      state.prepare("UPDATE gateway_restart_sentinel SET payload_json = ?").run(JSON.stringify({ stats: tables.gateway_restart_sentinel[1] }));
+      state.exec("CREATE TABLE cron_run_logs (id TEXT PRIMARY KEY, duration_ms INTEGER, entry_json TEXT)");
+      state.prepare("INSERT INTO cron_run_logs VALUES (?, ?, ?)").run("existing", duration, JSON.stringify({ durationMs: duration, status: "ok" }));
+      for (const [table, column] of [["audit_events", "duration_ms"], ["outbound_message_progress", "duration_ms"], ["update_runs", "downtime_ms"]]) {
+        state.exec(`CREATE TABLE ${table} (id TEXT PRIMARY KEY, ${column} INTEGER, status TEXT)`);
+        state.prepare(`INSERT INTO ${table} VALUES (?, ?, ?)`).run("existing", duration, meaningful ? "error" : "ok");
+      }
+      // A generic audit payload and a different task runtime own their data.
+      state.exec("CREATE TABLE diagnostic_events (id TEXT PRIMARY KEY, scope TEXT, payload_json TEXT)");
+      state.prepare("INSERT INTO diagnostic_events VALUES (?, ?, ?)").run("existing", "plugin", JSON.stringify({ durationMs: mode === "payload" ? duration : 1 }));
+      state.prepare("INSERT INTO task_runs VALUES (?, ?, ?)").run("other", "plugin", JSON.stringify({ durationMs: mode === "payload" ? duration : 1 }));
+    } finally { state.close(); }
+  } });
+  const measured = await (await build("measurements")).compare();
+  assert.equal(measured.verdict, "good-to-go");
+  assert.deepEqual(measured.rows, []);
+  const outcomes = await (await build("outcome")).compare();
+  assert.equal(outcomes.verdict, "breaks");
+  assert.ok(outcomes.rows.some((row) => row.at.endsWith("/status")));
+  assert.ok(outcomes.rows.some((row) => row.at.endsWith("/runTimeoutSeconds")));
+  assert.ok(outcomes.rows.some((row) => row.at.endsWith("/media/durationMs")));
+  const payload = await (await build("payload")).compare();
+  assert.equal(payload.verdict, "breaks");
+  assert.equal(payload.rows.filter((row) => row.at.endsWith("/durationMs")).length, 2);
+});
+
+test("persisted exec tool measurements stay separate from user and media durations", async (t) => {
+  const phase = { id: phaseId, from: "template:sessions", commands: [command], checkpoint: ["state:agents"] };
+  for (const mode of ["measurement", "payload"]) {
+    const f = await fixture(t, { phases: [phase], state: async (files, name) => {
+      const root = join(files, "../agents/main");
+      await mkdir(join(root, "sessions"), { recursive: true });
+      await mkdir(join(root, "agent"), { recursive: true });
+      const duration = name.startsWith("change") ? 20 : 10;
+      const messages = [
+        { type: "message", message: { role: "toolResult", toolName: "exec", details: { durationMs: duration, exitCode: 0 }, content: [{ type: "text", text: "done" }] } },
+        { type: "message", message: { role: "user", details: { durationMs: mode === "payload" ? duration : 1 }, content: [{ type: "audio", durationMs: mode === "payload" ? duration : 1 }] } },
+        { type: "message", message: { role: "toolResult", toolName: "process", details: { status: "completed", sessions: [{ sessionId: "existing", status: "completed", runtimeMs: duration }] }, content: [{ type: "text", text: `existing completed ${duration}ms :: echo durationMs=1` }] } }
+      ];
+      const subagents = { action: "list", status: "ok", active: [], recent: [{ index: 1, label: "task", runtimeMs: duration, runtime: `${duration}ms`, execution: { state: "completed" } }], text: `active subagents:\n(none)\n\nrecent (last 30m):\n1. task (model, ${duration}ms) done` };
+      messages.push({ type: "message", message: { role: "toolResult", toolName: "subagents", details: subagents, content: [{ type: "text", text: JSON.stringify(subagents) }] } });
+      for (const filename of ["existing.jsonl", "existing.jsonl.bak", "existing.jsonl.reset.2026-10-14", "existing.jsonl.deleted.2026-10-14"])
+        await writeFile(join(root, "sessions", filename), messages.map((message) => JSON.stringify(message)).join("\n"));
+      const db = new DatabaseSync(join(root, "agent/openclaw-agent.sqlite"));
+      try {
+        db.exec("CREATE TABLE transcript_events (seq INTEGER PRIMARY KEY, event_json TEXT, event_zstd BLOB)");
+        for (const [index, event] of messages.entries()) {
+          const raw = JSON.stringify(event);
+          db.prepare("INSERT INTO transcript_events VALUES (?, ?, ?)").run(index, raw, zstdCompressSync(Buffer.from(raw)));
+        }
+      } finally { db.close(); }
+    }, compressed: [{ path: "agents/*/agent/openclaw-agent.sqlite", table: "transcript_events", column: "event_zstd", codec: "zstd" }] });
+    const result = await f.compare();
+    assert.equal(result.verdict, mode === "measurement" ? "good-to-go" : "breaks");
+    if (mode === "measurement") assert.deepEqual(result.rows, []);
+    else {
+      assert.ok(result.rows.some((row) => row.at.endsWith("/durationMs")));
+      assert.ok(result.rows.every((row) => row.at.includes("/1/")));
+    }
+  }
+});
+
+test("derived measurement hashes retain counts and corruption evidence", async (t) => {
+  const phase = { id: phaseId, from: "template:sessions", commands: [command], checkpoint: ["state:agents", "state:state"] };
+  for (const mode of ["measurements", "count", "corrupt"]) {
+    const f = await fixture(t, { phases: [phase], state: async (files, name) => {
+      const root = join(files, "..");
+      const changed = name.startsWith("change"), duration = changed ? 200 : 10;
+      await mkdir(join(root, "agents/main/agent"), { recursive: true });
+      const db = new DatabaseSync(join(root, "agents/main/agent/openclaw-agent.sqlite"));
+      try {
+        db.exec("CREATE TABLE cache_entries (scope TEXT, key TEXT, value_json TEXT, blob BLOB, PRIMARY KEY(scope, key))");
+        const rollup = { buckets: { "0": { timestampMs: 1, latency: { count: mode === "count" && changed ? 2 : 1, min: duration, max: duration, sum: duration, centroids: [{ count: 1, value: duration }] }, messageCounts: { total: 1 } } }, untimestamped: {} };
+        const json = JSON.stringify(rollup), raw = Buffer.from(json), blob = zstdCompressSync(raw);
+        const envelope = { version: 6, format: 1, pricingFingerprint: "sample", checkpoint: { kind: "sqlite", maxSeq: 1, eventCount: 1, size: 10, mtimeMs: 1, anchorHash: "stable" }, scannedAt: 1, parsedRecords: 1, countedRecords: 1, body: { encoding: "zstd", bytes: raw.length, storedBytes: blob.length, utf16Length: json.length, sha256: mode === "corrupt" && changed ? "0".repeat(64) : sha256(raw) } };
+        db.prepare("INSERT INTO cache_entries VALUES (?, ?, ?, ?)").run("session-cost-usage-rollup-v3", "existing", JSON.stringify(envelope), blob);
+        db.prepare("INSERT INTO cache_entries VALUES (?, ?, ?, ?)").run("session-cost-usage-rollup-v2", "existing", JSON.stringify({ rollup }), null);
+      } finally { db.close(); }
+      await mkdir(join(root, "state"), { recursive: true });
+      const state = new DatabaseSync(join(root, "state/openclaw.sqlite"));
+      try {
+        state.exec("CREATE TABLE diagnostic_events (scope TEXT, event_key TEXT, payload_json TEXT, PRIMARY KEY(scope, event_key))");
+        const entry = { sourceIndex: 0, reason: "invalid", job: null, raw: null, state: { lastDurationMs: duration, lastStatus: "ok" }, updatedAtMs: null, scheduleIdentity: null };
+        const key = mode === "corrupt" && changed ? "0".repeat(64) : sha256(JSON.stringify(entry));
+        state.prepare("INSERT INTO diagnostic_events VALUES (?, ?, ?)").run("cron.quarantine:existing", key, JSON.stringify({ ...entry, quarantinedAtMs: 1 }));
+      } finally { state.close(); }
+    } });
+    const result = await f.compare();
+    assert.equal(result.verdict, mode === "measurements" ? "good-to-go" : "breaks");
+    if (mode === "count") assert.ok(result.rows.some((row) => row.at.endsWith("/latency/count")));
+    if (mode === "corrupt") assert.ok(result.rows.some((row) => row.at.includes("diagnostic_events")));
+  }
+});
