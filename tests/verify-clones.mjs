@@ -18,11 +18,11 @@ const runtime = "fixture-runtime";
 const checkScript = join(repoRoot, "support/fixture-copy-check.mjs");
 const lifecycleScript = join(repoRoot, "support/verify/gateway-lifecycle.mjs");
 
-async function writeArchive(path, metadata, files, { fileMode = 0o600 } = {}) {
+async function writeArchive(path, metadata, files, { fileMode = 0o600, headers = {} } = {}) {
   const archive = packTar();
   const completed = pipeline(archive, createWriteStream(path));
   const append = (name, type, contents = Buffer.alloc(0), mode = fileMode) => new Promise((accept, reject) => {
-    archive.entry({ name, type, mode, mtime: new Date(0), uid: 0, gid: 0 }, contents, (error) => error ? reject(error) : accept());
+    archive.entry({ name, type, mode, mtime: new Date(0), uid: 0, gid: 0, ...headers[name] }, contents, (error) => error ? reject(error) : accept());
   });
   try {
     await append("meta/env.json", "file", Buffer.from(`${JSON.stringify(metadata, null, 2)}\n`), 0o644);
@@ -269,7 +269,7 @@ async function fixture(t, { configureImported } = {}) {
   return { root, primary, extra, persona, manifest, originalFiles, environments, imports, exports, removed, calls, starts, checks, handles, clone, restage, failImport: (sourceName) => { failImportSource = sourceName; } };
 }
 
-test("captured export digests ignore only export time while retaining content and metadata", async (t) => {
+test("ordinary export digests ignore only export time while retaining content and metadata", async (t) => {
   const f = await fixture(t);
   const first = f.persona.extra.get(f.extra.name);
   const repeated = (await f.restage("repeated-export")).extra.get(f.extra.name);
@@ -292,6 +292,57 @@ test("captured export digests ignore only export time while retaining content an
   assert.deepEqual(await hashEnvironmentExport(first.archive), { sha256: first.sha256, contentSha256: first.contentSha256 });
   const changedContent = (await f.restage("changed-content")).extra.get(f.extra.name);
   assert.notEqual(changedContent.contentSha256, first.contentSha256);
+});
+
+test("SQLite capture normalizes only its parent directory mtime and tar position", async (t) => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const f = await fixture(t);
+  const saved = await readArchive(f.persona.extra.get(f.extra.name).archive);
+  const databasePath = join(f.root, "database.sqlite");
+  const database = new DatabaseSync(databasePath);
+  try { database.exec("CREATE TABLE records(value TEXT); INSERT INTO records VALUES ('original')"); }
+  finally { database.close(); }
+  const databaseFile = ".openclaw/state/session-data";
+  const ordinaryFile = ".openclaw/workspace/not-sqlite.sqlite";
+  const linkFile = ".openclaw/state/session-link";
+  const files = {
+    ...saved.files,
+    [databaseFile]: (await readFile(databasePath)).toString("base64"),
+    [ordinaryFile]: Buffer.from("ordinary file\n").toString("base64"),
+    [linkFile]: ""
+  };
+  const headers = { [`root/${linkFile}`]: { type: "symlink", linkname: "session-data" } };
+  const digest = async (label, changes = {}, contents = files) => {
+    const path = join(f.root, `${label}.tar`);
+    await writeArchive(path, saved.archiveMetadata, contents, { headers: { ...headers, ...changes } });
+    const value = await hashEnvironmentExport(path);
+    assert.equal(value.sha256, await hashFile(path));
+    return value;
+  };
+  const baseline = await digest("sqlite-baseline");
+  const parentChanged = await digest("sqlite-parent-time", { "root/.openclaw/state": { mtime: new Date(10000) } });
+  assert.notEqual(parentChanged.sha256, baseline.sha256);
+  assert.equal(parentChanged.contentSha256, baseline.contentSha256);
+  const reordered = await digest("sqlite-reordered", {}, Object.fromEntries(Object.entries(files).reverse()));
+  assert.notEqual(reordered.sha256, baseline.sha256);
+  assert.equal(reordered.contentSha256, baseline.contentSha256);
+  for (const [label, changes] of [
+    ["ordinary-directory-time", { "root/.openclaw/workspace": { mtime: new Date(10000) } }],
+    ["ancestor-directory-time", { "root/.openclaw": { mtime: new Date(10000) } }],
+    ["database-file-time", { [`root/${databaseFile}`]: { mtime: new Date(10000) } }],
+    ["ordinary-file-time", { [`root/${ordinaryFile}`]: { mtime: new Date(10000) } }],
+    ["sqlite-parent-mode", { "root/.openclaw/state": { mode: 0o755 } }],
+    ["database-file-mode", { [`root/${databaseFile}`]: { mode: 0o644 } }],
+    ["database-file-owner", { [`root/${databaseFile}`]: { uid: 7, gid: 9 } }],
+    ["link-target", { [`root/${linkFile}`]: { type: "symlink", linkname: "../workspace/not-sqlite.sqlite" } }]
+  ]) {
+    assert.notEqual((await digest(label, changes)).contentSha256, baseline.contentSha256, label);
+  }
+  const updated = new DatabaseSync(databasePath);
+  try { updated.exec("INSERT INTO records VALUES ('changed')"); }
+  finally { updated.close(); }
+  const changedBytes = { ...files, [databaseFile]: (await readFile(databasePath)).toString("base64") };
+  assert.notEqual((await digest("database-content", {}, changedBytes)).contentSha256, baseline.contentSha256);
 });
 
 test("extra environment snapshots are deduplicated and every run receives independent content and routing", async (t) => {
@@ -486,6 +537,74 @@ test("external imported log destinations are refused before product startup", as
     assert.equal(f.calls.filter((tokens) => tokens[0] === "ocm" && tokens[1] === "start").length, 0);
   } finally { await copy.cleanup(); }
   for (const source of [f.primary, f.extra]) assert.deepEqual(await filesUnder(source.root), f.originalFiles.get(source.name));
+});
+
+test("nested owned config includes are inventoried canonically without merging or rewriting them", async (t) => {
+  const expected = [], authored = new Map();
+  const f = await fixture(t, { configureImported: async (metadata) => {
+    const fragments = {
+      "parts/agents.json5": "{ defaults: { $include: './nested/defaults.json5' }, list: [{ $include: './nested/main.json5' }] }\n",
+      "parts/nested/defaults.json5": `{ workspace: ${JSON.stringify(metadata.workspaceDir)} }\n`,
+      "parts/nested/main.json5": "{ id: 'main' }\n"
+    };
+    for (const [name, content] of Object.entries(fragments)) {
+      const path = join(metadata.stateDir, name);
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, content);
+      authored.set(path, content);
+      expected.push(await realpathForTest(path));
+    }
+    await writeFile(metadata.configPath, JSON.stringify({ gateway: { mode: "local" }, agents: { $include: ["./parts/agents.json5"] } }));
+    expected.push(await realpathForTest(metadata.configPath));
+  } });
+  const copy = f.clone("nested-includes");
+  try {
+    await copy.prepare();
+    assert.deepEqual(new Set(copy.context().configPaths), new Set(expected));
+    for (const context of copy.contexts()) assert.deepEqual(new Set(context.configPaths), new Set(expected));
+    for (const [path, content] of authored) assert.equal(await readFile(path, "utf8"), content);
+    const config = JSON.parse(await readFile(copy.metadata.configPath, "utf8"));
+    assert.deepEqual(config.agents, { $include: ["./parts/agents.json5"] });
+    assert.ok(config.logging.file);
+  } finally { await copy.cleanup(); }
+  for (const source of [f.primary, f.extra]) assert.deepEqual(await filesUnder(source.root), f.originalFiles.get(source.name));
+});
+
+test("invalid, unowned, cyclic and excessive include graphs fail before product startup", async (t) => {
+  for (const [kind, message] of [
+    ["unowned", /inside its clone root/],
+    ["cycle", /include cycle/],
+    ["invalid", /string or array of strings/],
+    ["invalid-list", /non-empty strings/],
+    ["depth", /maximum include depth of 10/]
+  ]) {
+    const f = await fixture(t, { configureImported: async (metadata) => {
+      let include;
+      if (kind === "unowned") include = join(dirname(metadata.root), "outside.json");
+      else if (kind === "invalid") include = 42;
+      else if (kind === "invalid-list") include = [false];
+      else if (kind === "cycle") {
+        include = "./cycle-a.json";
+        await writeFile(join(metadata.stateDir, "cycle-a.json"), '{"$include":"./cycle-b.json"}');
+        await writeFile(join(metadata.stateDir, "cycle-b.json"), '{"$include":"./cycle-a.json"}');
+      } else {
+        include = "./depth-1.json";
+        for (let index = 1; index <= 11; index += 1) {
+          await writeFile(join(metadata.stateDir, `depth-${index}.json`), JSON.stringify(index < 11 ? { $include: `./depth-${index + 1}.json` } : { defaults: { workspace: metadata.workspaceDir } }));
+        }
+      }
+      await writeFile(metadata.configPath, JSON.stringify({ agents: { $include: include } }));
+    } });
+    const copy = f.clone(`includes-${kind}`);
+    try {
+      await assert.rejects(copy.prepare(), message);
+      assert.deepEqual(f.starts, []);
+      assert.deepEqual(f.checks, []);
+      assert.equal(f.calls.filter((tokens) => tokens[0] === "ocm" && tokens[1] === "start").length, 0);
+    } finally { await copy.cleanup(); }
+    assert.deepEqual(new Set(f.environments.keys()), new Set([f.primary.name, f.extra.name]));
+    for (const source of [f.primary, f.extra]) assert.deepEqual(await filesUnder(source.root), f.originalFiles.get(source.name));
+  }
 });
 
 test("trait commands are validated before execution with an owned cwd and clean up after refusal", async (t) => {

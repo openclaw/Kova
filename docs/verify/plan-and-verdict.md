@@ -661,10 +661,15 @@ runtimes are removed on successful cleanup. The persona is never destroyed.
 The cache stores only complete baseline/noise checkpoints and initial state,
 with content hashes. A malformed, missing or changed cache is not reused. An
 active cache writer causes another run to bypass that cache. Secondary persona
-environments are exported before each run and their hashes must also match the
-cached copies. These checks preserve the five-part cache key while preventing
+environments are exported before each run and their captured-content hashes must
+also match the cached copies. These checks preserve the five-part cache key while preventing
 reuse after secondary content changes.
 
+Auxiliary export content hashes exclude the capture time and archive byte offsets.
+They also exclude the modification time of a directory containing SQLite files:
+opening a database for export can create omitted WAL/SHM files after that
+directory was recorded. File bytes and metadata, permissions, links and other
+directory metadata remain significant; the raw archive hash remains intact.
 
 Phase commands execute in their copy's workspace, with filesystem paths resolved
 against that copy before execution. Log checkpoints include both Gateway console

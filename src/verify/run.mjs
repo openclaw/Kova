@@ -9,6 +9,7 @@ import { checkCatalogueCommands, createCatalogueResolver, loadCatalogue, parseCa
 import { canonicalJSON, sha256 } from "./plan.mjs";
 import { createClone, hashFile, readPersona, resolveRunCommand, stagePersona } from "./clones.mjs";
 import { combineLogCollectors, createLogCollector, snapshotState, writeCheckpoint } from "./checkpoint.mjs";
+import { parseGatewayCallArgs, resolveGatewayParams } from "../../support/verify/gateway-call.mjs";
 import { cleanupGatewayHandle } from "../../support/verify/gateway-lifecycle.mjs";
 
 const names = ["baseline", "change-1", "change-2", "noise-1", "noise-2"];
@@ -129,15 +130,63 @@ export async function validateRunDestinations(command, context) {
   };
   await owned(context.cwd);
   const outputRoot = [await physicalPath(context.run)];
+  const productRoots = await Promise.all((context.ownedRoots ?? []).map(physicalPath));
+  const productDestination = async (path) => {
+    const physical = await owned(path, productRoots);
+    if (inside(outputRoot[0], physical)) throw new Error("product destination cannot overlap verification evidence");
+    return physical;
+  };
   for (const flag of ["--out", "--handle", "--wait", "--from", "--session-from", "--merge-from"]) {
     const value = option(tokens, flag);
-    if (value !== undefined) await owned(value, outputRoot);
+    if (value !== undefined) {
+      const physical = await owned(value, outputRoot);
+      if (["--out", "--handle"].includes(flag)) {
+        const parts = relative(outputRoot[0], physical).split(sep);
+        if (/^(checkpoints|initial-state|\.persona|extra-\d+|mock-\d+)$/.test(parts[0]) || parts.some((part) => part.endsWith(".d") || /^persona-gateway-\d+\.json$/.test(part))) throw new Error("output overlaps protected evidence or a background operation");
+      }
+    }
+  }
+  if (tokens[0] === "node" && tokens[1] === join(context.kovaRoot ?? "", "support/verify/gateway-call.mjs")) {
+    const options = parseGatewayCallArgs(tokens.slice(2));
+    if (!options.wait) {
+      const params = await resolveGatewayParams(options, { signal: context.signal });
+      if (options.method === "sessions.create" && ["projectId", "catalogId", "execNode"].some((field) => params[field] != null)) throw new Error("Gateway creation requires a locally owned workspace; project, catalog and remote selectors are unsupported");
+      if (["sessions.patch", "sessions.patchMany"].includes(options.method) && (params.execNode != null || params.patch?.execNode != null)) throw new Error("Gateway execution must remain local to its owned copy");
+      const directPath = async (path) => {
+        if (typeof path !== "string" || !isAbsolute(path) || path.includes("${") || path.includes("\0")) throw new Error("Gateway file paths must be direct absolute owned paths");
+        return await productDestination(path);
+      };
+      if (["sessions.create", "sessions.groups.update"].includes(options.method) && params.cwd != null) params.cwd = await directPath(params.cwd);
+      if (/^sessions\.files\.(list|get|set|assets)$/.test(options.method) && params.path !== undefined) {
+        params.path = await directPath(params.path);
+        if (options.method === "sessions.files.set") {
+          const protectedFiles = await Promise.all((context.configPaths ?? []).map(physicalPath));
+          if (protectedFiles.includes(params.path)) throw new Error("session file writes cannot replace clone configuration; use config patch");
+        }
+        if (options.method === "sessions.files.assets") for (const ref of params.refs ?? []) {
+          let path;
+          try { path = decodeURIComponent(ref.trim().split(/[?#]/, 1)[0]).replaceAll("\\", "/"); } catch { continue; }
+          // The product rejects URL, absolute and fragment-only asset references.
+          if (!path || path.startsWith("/") || path.startsWith("~") || path.includes("\0") || /^[a-z][a-z\d+.-]*:/i.test(path)) continue;
+          await productDestination(resolve(dirname(params.path), path));
+        }
+      }
+      const frozen = [];
+      for (let index = 0; index < tokens.length; index++) {
+        const token = tokens[index];
+        if (["--params", "--session-from", "--merge-from", "--from"].some((flag) => token === flag || token.startsWith(`${flag}=`))) {
+          if (!token.includes("=")) index++;
+        } else frozen.push(token);
+      }
+      frozen.push("--params", JSON.stringify(params));
+      return frozen.map(q).join(" ");
+    }
   }
   if (tokens[0] === "ocm" && tokens[1]?.startsWith("@") && tokens[3] === "sessions" && tokens[4] === "export-trajectory") {
-    const workspace = await owned(option(tokens, "--workspace") ?? context.cwd);
+    const workspace = await productDestination(option(tokens, "--workspace") ?? context.cwd);
     const output = option(tokens, "--output");
     if (output !== undefined && (!output || output === "." || output === ".." || isAbsolute(output) || output.includes("/") || output.includes("\\"))) throw new Error("trajectory output must be a directory name");
-    await owned(join(workspace, ".openclaw", "trajectory-exports", output ?? ""));
+    await productDestination(join(workspace, ".openclaw", "trajectory-exports", output ?? ""));
   }
   if (tokens[0] === "ocm" && tokens[1]?.startsWith("@") && tokens[3] === "config" && tokens[4] === "patch") {
     const patch = JSON5.parse(await readFile(await owned(option(tokens, "--file")), "utf8"));
@@ -148,12 +197,13 @@ export async function validateRunDestinations(command, context) {
       } else if (typeof value === "string") {
         const pathKey = /^(?:path|file|dir|directory|workspace|root|cwd|store)$|(?:Path|File|Dir|Directory|Workspace|Root|Cwd|Store)$/.test(key);
         if (value.includes("${") || value.startsWith("~") || pathKey && !isAbsolute(value)) throw new Error("config patch paths must be direct absolute owned paths");
-        if (isAbsolute(value)) await owned(value);
+        if (isAbsolute(value)) await productDestination(value);
       }
     };
     if (patch?.logging === null || patch?.logging && Object.hasOwn(patch.logging, "file") && typeof patch.logging.file !== "string") throw new Error("config patch must preserve the owned product log destination");
     await inspect(patch);
   }
+  return command;
 }
 
 export function cacheKey({ baseline, manifest, phases, kova, ocm }) {
@@ -291,7 +341,7 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
       }
       const summary = record.clones[name];
       summary.incomplete = [];
-      const clone = cloneFactory({ name, directory: join(directory, name), persona, root, call, cleanupCall, cleanupHandle, signal, validateCommand: validateRunDestinations });
+      const clone = cloneFactory({ name, directory: join(directory, name), persona, root, call, cleanupCall, cleanupHandle, signal, validateCommand: (command, context) => validateRunDestinations(command, { ...context, signal }) });
       resources.push(clone);
       try {
         const metadata = await clone.prepare();
@@ -311,7 +361,7 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
         await snapshotState(metadata.stateDir, plan.phases.flatMap((phase) => phase.checkpoint.filter((name) => name.startsWith("state:")).map((name) => name.slice(6))), join(clone.directory, "initial-state"));
         for (const phase of plan.phases) {
           signal?.throwIfAborted();
-          const context = { cwd: metadata.root, ownedRoots: [metadata.root], ...clone.context(), standard: phase.from === "standard", target: targets[name.startsWith("change") ? "change" : "baseline"].runtime };
+          const context = { cwd: metadata.root, ownedRoots: [metadata.root], ...clone.context(), standard: phase.from === "standard", signal, target: targets[name.startsWith("change") ? "change" : "baseline"].runtime };
           const results = [];
           const contexts = ["standard/use-target", "standard/start-gateway", "standard/stop-gateway"].includes(phase.id) && clone.contexts ? clone.contexts().map((value) => ({ ...context, ...value })) : [context];
           for (const commandContext of contexts) for (const command of phase.commands) {
@@ -324,8 +374,7 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
             if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) throw new Error(`invalid command timeout in ${phase.id}`);
             const delay = Number(option(tokens, "--after-ms") ?? 0);
             if (!Number.isSafeInteger(delay) || delay < 0) throw new Error(`invalid command delay in ${phase.id}`);
-            const resolved = resolveRunCommand(command, commandContext);
-            await validateRunDestinations(resolved, commandContext);
+            const resolved = await validateRunDestinations(resolveRunCommand(command, commandContext), commandContext);
             const result = await call(resolved, { cwd: commandContext.cwd, timeoutMs: timeoutMs + delay + (entry.kind === "gateway" || entry.kind === "script" ? 1000 : 0), allowFailure: true, finishOnShutdown: false });
             result.reachedBound = result.timedOut || (["gateway", "script"].includes(entry.kind) && result.status === 3);
             results.push(result);
