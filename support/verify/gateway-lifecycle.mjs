@@ -183,7 +183,7 @@ export async function runForegroundGateway(options, context, dependencies = {}) 
         clearInterval(cancelPoll);
       }
       if (!context.signal.aborted && prepared.restart !== false) {
-        pending = { request, result: prepared, recovering: prepared.exitCode !== 0 && prepared.output.staged?.restored === true };
+        pending = { request, result: prepared, recovering: prepared.exitCode !== 0 };
         break;
       }
       await finishRequest(request, prepared);

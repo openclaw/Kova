@@ -186,6 +186,7 @@ async function faultingGateway(t, data, fault) {
   const fixtureModule = new URL("../support/verify/stage-session-store-fixture.mjs", import.meta.url).href;
   await writeFile(modulePath, `import { rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { atomicJson, serveOperation } from ${JSON.stringify(background)};
 import { runForegroundGateway } from ${JSON.stringify(lifecycle)};
 import { executePausedFixture } from ${JSON.stringify(fixtureModule)};
@@ -199,10 +200,11 @@ await serveOperation((options, context) => runForegroundGateway(options, context
   },
   fetch: async () => {
     if (launches === 2) await atomicJson(join(context.operation.directory, "restart-attempted.json"), { launches });
-    return { ok: launches !== 2, body: { cancel: async () => {} } };
+    return { ok: launches !== 2 || options.fault === "expire-before-swap", body: { cancel: async () => {} } };
   },
   connect: async () => ({ client: { close() {}, async request() { return { path: options.runtime.configPath }; } } }),
   fixture: async (input, runtime, controls) => {
+    if (options.fault === "expire-before-swap") await sleep(Math.max(1, controls.expiresAt - Date.now() + 1));
     if (input.restore && ++restores === 1 && options.fault === "restore") {
       await rm(options.db);
       await symlink(options.staged, options.db);
@@ -215,6 +217,26 @@ await serveOperation((options, context) => runForegroundGateway(options, context
   data.cleanup.push(() => cleanupGatewayHandle(handlePath, { timeoutMs: 10000 }));
   return { handle, directory: `${handlePath}.d`, handlePath };
 }
+
+test("expiry before fixture mutation restarts the unchanged database under the same owner", { timeout: 20000 }, async (t) => {
+  const data = await fixture(t);
+  const gateway = await faultingGateway(t, data, "expire-before-swap");
+  const result = await requestGatewayFixture({ ...data.options, timeoutMs: 25 });
+  assert.equal(result.exitCode, 3);
+  assert.equal(result.output.staged, null);
+  assert.equal(result.output.doctor, null);
+  assert.equal(result.output.started, true);
+  assert.equal(await readFile(data.db, "utf8"), "original database");
+  assert.equal(await readFile(`${data.db}-wal`, "utf8"), "original wal");
+  await inspectFixtureTarget(data.options, data.runtime);
+  await assert.rejects(readFile(join(gateway.directory, "result.json")), { code: "ENOENT" });
+  const current = JSON.parse(await readFile(gateway.handlePath, "utf8"));
+  assert.equal(current.ref.id, gateway.handle.ref.id);
+  assert.notEqual(current.ref.pid, gateway.handle.ref.pid);
+  assert.doesNotThrow(() => process.kill(current.ref.pid, 0));
+  assert.equal((await cleanupGatewayHandle(gateway.handlePath, { timeoutMs: 10000 })).exitCode, 0);
+  assert.throws(() => process.kill(current.ref.pid, 0), { code: "ESRCH" });
+});
 
 for (const retry of [true, false]) test(`failed automatic restore retains the stopped owner for ${retry ? "retry" : "final stop"}`, { timeout: 20000 }, async (t) => {
   const data = await fixture(t);
