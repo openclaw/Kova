@@ -60,6 +60,10 @@ test("Gateway flags reject malformed calls and accept method-specific joins", as
   const options = parseGatewayCallArgs(["--env=x", "--method=health", "--timeout=50", "--wait=x"]);
   assert.equal(options.method, "health");
   assert.equal(options.timeoutMs, 50);
+  const catalogue = JSON.parse(await readFile(new URL("../catalogue/openclaw.json", import.meta.url), "utf8"));
+  const fromMethods = catalogue.entries.filter((entry) => entry.kind === "gateway" && entry.flags["--from"]).map((entry) => entry.wraps);
+  assert.deepEqual(fromMethods.sort(), ["sessions.patchMany", "sessions.processes.stop", "sessions.search", "sessions.setInvolvement"]);
+  for (const method of fromMethods) assert.equal(parseGatewayCallArgs(["--env=x", `--method=${method}`, "--from=x"]).method, method);
   assert.equal((await gatewayCallMain(["--unknown"])).exitCode, 2);
   assert.equal(parseGatewayLifecycleArgs(["start", "--env=x", "--handle=x", "--background"]).action, "start");
   assert.equal(parseGatewayLifecycleArgs(["start", "--wait=x"]).action, "start");
@@ -147,14 +151,107 @@ test("result files preserve selectors and reject stale or ambiguous identities",
   assert.deepEqual(await resolveGatewayParams({ method: "sessions.setInvolvement", params: { key: "session-a", hidden: true }, from: described }), { key: "session-a", hidden: true, expectedSessionId: "id-a" });
   await assert.rejects(resolveGatewayParams({ method: "sessions.setInvolvement", params: { key: "session-b" }, from: described }), /does not describe/);
   await assert.rejects(resolveGatewayParams({ method: "sessions.list", params: {}, "session-from": session }), /no single-session selector/);
-  const row = { processId: "p-a", instanceId: "instance-a" };
-  const record = { method: "sessions.processes.list", result: { sessionId: "id-a", processes: [row] }, error: null };
+  const row = { processId: "p-a", instanceId: "instance-a", name: "fixture", status: "running", startedAt: 1, tail: "", truncated: true, canStop: true };
+  const otherRows = [{ ...row, processId: "finished", status: "completed" }, { ...row, processId: "unavailable", canStop: false }];
+  const record = { method: "sessions.processes.list", result: { sessionId: "id-a", processes: [...otherRows, row], truncated: false }, error: null };
   await atomicJson(processes, record);
-  const options = { method: "sessions.processes.stop", params: { key: "session-a", sessionId: "id-a", processId: "p-a" }, from: processes };
-  assert.equal((await resolveGatewayParams(options)).instanceId, "instance-a");
+  const options = { method: "sessions.processes.stop", params: { key: "session-a", sessionId: "id-a" }, from: processes };
+  assert.deepEqual(await resolveGatewayParams(options), { ...options.params, processId: "p-a", instanceId: "instance-a" });
+  assert.deepEqual(options.params, { key: "session-a", sessionId: "id-a" });
   await assert.rejects(resolveGatewayParams({ ...options, params: { ...options.params, sessionId: "id-b" } }), /does not identify/);
-  await atomicJson(processes, { ...record, result: { ...record.result, processes: [row, row] } });
-  await assert.rejects(resolveGatewayParams(options), /exactly one process/);
+  for (const identity of [{ processId: row.processId }, { instanceId: row.instanceId }, { processId: null }, { instanceId: "" }]) {
+    await assert.rejects(resolveGatewayParams({ ...options, params: { ...options.params, ...identity } }), /prefilled/);
+  }
+  for (const patch of [{ truncated: true }, { truncated: undefined }, { processes: [row, row] }, { processes: otherRows }, { processes: [{ ...row, instanceId: "" }] }, { processes: [{ ...row, processId: "" }] }]) {
+    await atomicJson(processes, { ...record, result: { ...record.result, ...patch } });
+    await assert.rejects(resolveGatewayParams(options), /non-truncated|exactly one process/);
+  }
+  for (const patch of [{ method: "sessions.describe" }, { error: "list failed" }, { error: undefined }]) {
+    await atomicJson(processes, { ...record, ...patch });
+    await assert.rejects(resolveGatewayParams(options), /does not identify|contains an error|error-free/);
+  }
+});
+
+test("batch patch binds only the uniquely described target without changing caller params", async (t) => {
+  const root = await directory(t), from = join(root, "described.json");
+  const session = { key: "agent:main:first", sessionId: "id-first", agentId: "main", lifecycleRevision: "revision-first", label: "example" };
+  const record = { method: "sessions.describe", result: { session }, error: null };
+  await atomicJson(from, record);
+  const targets = [{ key: "agent:main:second", expectedSessionId: "id-second" }, { key: session.key, agentId: "main" }];
+  const options = { method: "sessions.patchMany", params: { targets, patch: { archived: true } }, from };
+  const expected = { targets: [targets[0], { ...targets[1], expectedSessionId: session.sessionId }], patch: { archived: true } };
+  assert.deepEqual(await resolveGatewayParams(options), expected);
+  assert.equal(targets[1].expectedSessionId, undefined);
+  assert.deepEqual(await resolveGatewayParams({ ...options, params: expected }), expected);
+  let received;
+  const result = await executeGatewayCall({ ...options, env: "fixture", timeoutMs: 1000 }, {
+    prepare: () => ({}), connect: async () => ({ client: { close() {}, async request(method, params) { received = { method, params }; return { outcomes: [] }; } } })
+  });
+  assert.equal(result.exitCode, 0);
+  assert.deepEqual(received, { method: options.method, params: expected });
+  for (const rows of [[], [targets[0]], [targets[1], targets[1]], [{ ...targets[1], expectedSessionId: "stale" }], [{ ...targets[1], agentId: "other" }]]) {
+    await assert.rejects(resolveGatewayParams({ ...options, params: { ...options.params, targets: rows } }), /matching target|conflicts/);
+  }
+  for (const patch of [{ method: "sessions.create" }, { result: { session: null } }, { result: { session: { key: session.key } } }, { error: "describe failed" }, { error: undefined }]) {
+    await atomicJson(from, { ...record, ...patch });
+    await assert.rejects(resolveGatewayParams(options), /described session|contains an error|error-free/);
+  }
+});
+
+test("search reads exactly one created or imported session and refuses broader selectors", async (t) => {
+  const root = await directory(t), from = join(root, "session.json");
+  const key = "agent:main:example";
+  const records = [
+    { method: "sessions.create", result: { ok: true, key, sessionId: "id-example", runStarted: false }, error: null },
+    { method: "sessions.catalog.import", result: { sessionKey: key, importedItems: 0, totalItems: 1, complete: true, created: false }, error: null }
+  ];
+  const options = { method: "sessions.search", params: { query: "example", limit: 5 }, from };
+  const expected = { ...options.params, sessionKeys: [key] };
+  for (const record of records) {
+    await atomicJson(from, record);
+    assert.deepEqual(await resolveGatewayParams(options), expected);
+    assert.deepEqual(await resolveGatewayParams({ ...options, params: expected }), expected);
+    for (const selector of [{ scope: {} }, { scope: null }, { sessionKeys: [] }, { sessionKeys: ["other"] }, { sessionKeys: [key, key] }, { sessionKeys: key }, { key }, { sessionKey: key }]) {
+      await assert.rejects(resolveGatewayParams({ ...options, params: { ...options.params, ...selector } }), /scope|conflicts/);
+    }
+  }
+  for (const patch of [{ method: "sessions.describe" }, { result: {} }, { result: { key, sessionKey: "other" } }, { error: "creation failed" }, { error: undefined }]) {
+    await atomicJson(from, { ...records[0], ...patch });
+    await assert.rejects(resolveGatewayParams(options), /requires|contains an error/);
+  }
+});
+
+test("creation output lists only identities supported by the request and result", async (t) => {
+  const root = await directory(t), source = join(root, "adopted.json");
+  await atomicJson(source, { key: "agent:main:adopted" });
+  const created = { ok: true, key: "agent:main:generated", sessionId: "id-generated", runStarted: false };
+  const imported = { sessionKey: "agent:main:imported", importedItems: 1, totalItems: 1, complete: true, created: true };
+  const cases = [
+    { method: "sessions.create", params: {}, result: created, ids: [created.key, created.sessionId] },
+    { method: "sessions.create", params: {}, result: { ...created, sessionId: undefined }, ids: [created.key] },
+    { method: "sessions.create", params: {}, result: { ...created, runStarted: true, runId: "run-new" }, ids: [created.key, created.sessionId, "run-new"] },
+    { method: "sessions.create", params: {}, result: { ...created, runId: "run-reused" }, ids: [created.key, created.sessionId] },
+    { method: "sessions.create", params: { key: created.key }, result: created, ids: [] },
+    { method: "sessions.create", params: { key: created.key }, result: { ...created, runStarted: true, runId: "run-new" }, ids: ["run-new"] },
+    { method: "sessions.create", params: {}, "merge-from": source, result: { ...created, key: "agent:main:adopted" }, ids: [] },
+    { method: "sessions.catalog.import", params: {}, result: imported, ids: [imported.sessionKey] },
+    { method: "sessions.catalog.import", params: {}, result: { ...imported, importedItems: 0, created: false }, ids: [] }
+  ];
+  for (const entry of cases) {
+    const result = await executeGatewayCall({ ...entry, env: "fixture", timeoutMs: 1000 }, {
+      prepare: () => ({}), connect: async () => ({ client: { close() {}, async request() { return entry.result; } } })
+    });
+    assert.equal(result.exitCode, 0);
+    assert.deepEqual(result.output.result, entry.result);
+    assert.deepEqual(result.output.createdIds, entry.ids);
+  }
+  for (const method of ["sessions.create", "sessions.catalog.import"]) {
+    const failed = await executeGatewayCall({ method, params: {}, env: "fixture", timeoutMs: 1000 }, {
+      prepare: () => ({}), connect: async () => ({ client: { close() {}, async request() { throw new Error("product refused"); } } })
+    });
+    assert.equal(failed.exitCode, 1);
+    assert.deepEqual(failed.output.createdIds, []);
+  }
 });
 
 test("every catalogue Gateway method has the selector defined by its pinned request contract", async (t) => {

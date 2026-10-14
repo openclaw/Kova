@@ -7,6 +7,7 @@ import { abortable, CallError, failure, joinOperation, parseFlags, positiveMs, r
 
 const filename = fileURLToPath(import.meta.url);
 const allowed = ["env", "method", "params", "timeout", "out", "session-from", "merge-from", "after-ms", "from", "background", "handle", "wait"];
+const fromMethods = new Set(["sessions.patchMany", "sessions.processes.stop", "sessions.search", "sessions.setInvolvement"]);
 // Single-session selectors from the Gateway schemas at catalogue revision
 // 7e80556f. Collection, catalog and creation-preparation methods use --params.
 const keyMethods = new Set([
@@ -32,6 +33,16 @@ function object(value, label) {
 }
 
 function text(value) { return typeof value === "string" && value.length > 0; }
+
+function creationFields(method, params = {}, result) {
+  if (method === "sessions.create") {
+    const ids = Object.hasOwn(params, "key") ? [] : [result?.key, result?.sessionId];
+    if (result?.runStarted === true) ids.push(result.runId);
+    return { createdIds: ids.filter(text) };
+  }
+  if (method === "sessions.catalog.import") return { createdIds: result?.created === true && text(result.sessionKey) ? [result.sessionKey] : [] };
+  return {};
+}
 
 function payload(value) {
   object(value, "input file");
@@ -72,7 +83,7 @@ export function parseGatewayCallArgs(argv) {
     if (Boolean(options.background) !== Boolean(options.handle)) throw new CallError("--background and --handle are required together");
     try { options.params = object(JSON.parse(options.params ?? "{}"), "--params"); }
     catch (error) { throw new CallError(error.message); }
-    if (options.from && !["sessions.processes.stop", "sessions.setInvolvement"].includes(options.method)) throw new CallError("--from is unsupported for this method");
+    if (options.from && !fromMethods.has(options.method)) throw new CallError("--from is unsupported for this method");
   }
   for (const key of ["wait", "handle", "out", "session-from", "merge-from", "from"]) if (options[key]) options[key] = resolve(options[key]);
   return options;
@@ -100,12 +111,31 @@ export async function resolveGatewayParams(options, { signal } = {}) {
   if (options.from) {
     const record = await readJson(options.from, { signal });
     const source = payload(record);
+    if (fromMethods.has(options.method) && options.method !== "sessions.setInvolvement" && (record.error !== null || !Object.hasOwn(record, "result"))) throw new CallError("--from requires an error-free Gateway result");
     if (options.method === "sessions.processes.stop") {
-      if (record.method !== "sessions.processes.list" || !text(params.sessionId) || source.sessionId !== params.sessionId || !text(params.processId)) throw new CallError("--from does not identify this session and process");
-      const matches = Array.isArray(source.processes) ? source.processes.filter((row) => row.processId === params.processId) : [];
-      if (matches.length !== 1 || !text(matches[0].instanceId)) throw new CallError("--from requires exactly one process instance");
-      if (params.instanceId !== undefined && params.instanceId !== matches[0].instanceId) throw new CallError("--from conflicts with instanceId");
+      if (record.method !== "sessions.processes.list" || !text(params.sessionId) || source.sessionId !== params.sessionId) throw new CallError("--from does not identify this session");
+      if (Object.hasOwn(params, "processId") || Object.hasOwn(params, "instanceId")) throw new CallError("--from refuses prefilled processId or instanceId");
+      if (source.truncated !== false) throw new CallError("--from requires a non-truncated process list");
+      const matches = Array.isArray(source.processes) ? source.processes.filter((row) => row?.status === "running" && row.canStop === true) : [];
+      if (matches.length !== 1 || !text(matches[0].processId) || !text(matches[0].instanceId)) throw new CallError("--from requires exactly one process with status running and canStop true, including processId and instanceId");
+      params.processId = matches[0].processId;
       params.instanceId = matches[0].instanceId;
+    } else if (options.method === "sessions.patchMany") {
+      const session = source.session;
+      if (record.method !== "sessions.describe" || !text(session?.key) || !text(session?.sessionId)) throw new CallError("--from requires a described session key and sessionId");
+      const matches = Array.isArray(params.targets) ? params.targets.filter((target) => target?.key === session.key) : [];
+      if (matches.length !== 1) throw new CallError("--from requires exactly one matching target");
+      const target = matches[0];
+      if (target.expectedSessionId !== undefined && target.expectedSessionId !== session.sessionId) throw new CallError("--from conflicts with expectedSessionId");
+      if (target.agentId !== undefined && target.agentId !== session.agentId) throw new CallError("--from conflicts with agentId");
+      params.targets = params.targets.map((row) => row === target ? { ...row, expectedSessionId: session.sessionId } : row);
+    } else if (options.method === "sessions.search") {
+      if (!["sessions.create", "sessions.catalog.import"].includes(record.method)) throw new CallError("--from requires a sessions.create or sessions.catalog.import result");
+      const keys = [...new Set([source.key, source.sessionKey].filter(text))];
+      if (keys.length !== 1) throw new CallError("--from requires exactly one session key");
+      if (Object.hasOwn(params, "scope")) throw new CallError("--from cannot be combined with scope");
+      if (Object.hasOwn(params, "key") || Object.hasOwn(params, "sessionKey") || (params.sessionKeys !== undefined && (!Array.isArray(params.sessionKeys) || params.sessionKeys.length !== 1 || params.sessionKeys[0] !== keys[0]))) throw new CallError("--from conflicts with session selectors");
+      params.sessionKeys = keys;
     } else if (options.method === "sessions.setInvolvement") {
       const key = source.key ?? source.session?.key;
       if (record.method !== "sessions.describe" || !text(params.key) || key !== params.key || !text(source.session?.sessionId)) throw new CallError("--from does not describe this session");
@@ -138,10 +168,12 @@ export async function executeGatewayCall(options, { signal, prepare = prepareOpe
     opening.then((connection) => { if (activeSignal.aborted) connection.client.close(); }, () => {});
     ({ client } = await abortable(opening, activeSignal));
     const result = await abortable(client.request(options.method, params, { timeoutMs: remaining() }), activeSignal, () => client.close());
-    return { output: { method: options.method, result: result ?? null, error: null, elapsedMs: Date.now() - startedAt }, exitCode: 0 };
+    return { output: { method: options.method, result: result ?? null, error: null, elapsedMs: Date.now() - startedAt, ...creationFields(options.method, params, result) }, exitCode: 0 };
   } catch (error) {
-    if (deadlineSignal?.aborted || (deadline !== undefined && Date.now() >= deadline) || /^gateway direct RPC (connect|request) timeout /i.test(error?.message ?? "")) return failure(options.method, new CallError("Gateway call timeout", 3), startedAt);
-    return failure(options.method, signal?.aborted ? signal.reason : error, startedAt);
+    const timedOut = deadlineSignal?.aborted || (deadline !== undefined && Date.now() >= deadline) || /^gateway direct RPC (connect|request) timeout /i.test(error?.message ?? "");
+    const result = failure(options.method, timedOut ? new CallError("Gateway call timeout", 3) : signal?.aborted ? signal.reason : error, startedAt);
+    Object.assign(result.output, creationFields(options.method));
+    return result;
   } finally { client?.close(); }
 }
 

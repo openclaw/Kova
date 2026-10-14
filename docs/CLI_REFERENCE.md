@@ -352,6 +352,13 @@ Arbitrary `ocm env exec`, environment creation, and `ocm service` commands are
 refused in phase commands; update those phases to the
 foreground catalogue entries before running them.
 
+The Gateway caller uses `--from` to bind batch patches to described sessions,
+select one stoppable running process from a complete process list, or scope a
+search to a created or imported session. Conflicting identities are refused.
+Creation responses include `createdIds` according to the catalogue's request
+and response rules; explicitly supplied session keys and reused imports do not
+declare a new session identity.
+
 Results are under `$KOVA_HOME/artifacts/verify/<id>/`, including `run.json`, the
 exact plan, comparison declarations, catalogue and per-copy checkpoints. A
 command exiting 2 makes its phase incomplete. Failure before the first phase
