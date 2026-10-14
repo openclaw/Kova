@@ -9,7 +9,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { CallError, cleanupGatewayHandle, joinOperation, requestOperation, startOperation } from "../support/verify/background.mjs";
-import { controlUiMain, executeControlUi, observeControlUiSocket } from "../support/verify/control-ui.mjs";
+import { controlUiMain, createControlUiBrowser, executeControlUi, observeControlUiSocket } from "../support/verify/control-ui.mjs";
 import { controlUiFlows } from "../support/verify/control-ui-flows.mjs";
 import { loadGatewaySchemaAssertions } from "./helpers/gateway-schemas.mjs";
 
@@ -126,6 +126,48 @@ test("browser request recording excludes private payloads and attributes late re
   }
   assert.doesNotMatch(JSON.stringify([first, second]), /private-|duplicate-id|unrelated-id|existing-id/);
   assert.equal(second.requests.find(({ status }) => status === "error").errorCode, "UNAVAILABLE");
+});
+
+test("malformed browser envelopes leave pending requests and connection callbacks intact", () => {
+  const socket = new EventEmitter(), report = output("new-session-page"), observed = [];
+  let connecting = 0, connected = 0, disconnected = 0;
+  observeControlUiSocket(socket, report, {
+    onRequest: (method) => observed.push(method),
+    connecting: () => { connecting++; },
+    connected: () => { connected++; },
+    disconnected: () => { disconnected++; },
+  });
+  send(socket, "connect", "connect");
+  for (const payload of ["{", "null", "true", "42", '"text"', "[]", '[{"type":"req","id":"extra","method":"sessions.create"}]', '[{"type":"res","id":"connect","ok":true}]']) {
+    for (const event of ["framesent", "framereceived"]) {
+      assert.doesNotThrow(() => socket.emit(event, { payload }), `${event}: ${payload}`);
+    }
+  }
+  assert.deepEqual(observed, ["connect"]);
+  assert.equal(report.requests.length, 1);
+  assert.equal(report.requests[0].status, "pending");
+  assert.deepEqual(report.createdIds, []);
+  assert.deepEqual({ connecting, connected, disconnected }, { connecting: 1, connected: 0, disconnected: 0 });
+  reply(socket, "connect", {});
+  assert.equal(report.requests[0].status, "result");
+  assert.deepEqual({ connecting, connected, disconnected }, { connecting: 1, connected: 1, disconnected: 0 });
+});
+
+test("Markdown export refuses an existing file before any browser interaction", async (t) => {
+  const root = await temporary(t), destination = join(root, "conversation.md");
+  const original = Buffer.from("# Earlier export\n\nKeep this saved content.\n");
+  await writeFile(destination, original);
+  const actions = [];
+  await assert.rejects(controlUiFlows["export-markdown-and-copy"]({
+    options: { env: "fixture", "artifact-dir": root },
+    requireSession: () => "agent:main:fixture",
+    step: async (name) => {
+      actions.push(name);
+      throw new Error("Export interacted with the browser before checking its destination");
+    },
+  }), (error) => error instanceof CallError && error.exitCode === 2 && /already exists/.test(error.message));
+  assert.deepEqual(actions, []);
+  assert.deepEqual(await readFile(destination), original);
 });
 
 test("browser creation receipts distinguish new resources from reuse and failed requests", () => {
@@ -389,4 +431,61 @@ test("reconnect refuses a different session before sending", async () => {
     step: async (_name, action) => action(), page: { locator: () => pane },
   }), (error) => error.exitCode === 2 && /does not match/.test(error.message));
   assert.equal(sent, false);
+});
+
+for (const failSwitch of [false, true]) test(`retained browser rejects its original environment after ${failSwitch ? "failed" : "successful"} Gateway switching`, { timeout: 10000 }, async (t) => {
+  const root = await temporary(t), page = new EventEmitter(), context = new EventEmitter();
+  const actions = [], pairedEnvironments = [];
+  let address = "about:blank", closeCount = 0;
+  const locator = {
+    first() { return this; },
+    locator() { return this; },
+    getByRole() { return this; },
+    waitFor: async () => { actions.push("wait-for-control"); },
+    isVisible: async () => true,
+    click: async () => { actions.push("click"); },
+  };
+  page.url = () => address;
+  page.setDefaultTimeout = page.setDefaultNavigationTimeout = () => {};
+  page.locator = page.getByRole = () => locator;
+  page.keyboard = { press: async (key) => { actions.push(`key:${key}`); } };
+  page.screenshot = async () => { actions.push("screenshot"); return Buffer.from("synthetic capture"); };
+  page.goto = async (url) => {
+    actions.push(`navigate:${url}`);
+    address = url;
+    if (failSwitch && new URL(url).port === "13002") throw new Error("Second Gateway navigation failed");
+    const socket = new EventEmitter();
+    page.emit("websocket", socket);
+    send(socket, "connect", "connect");
+    reply(socket, "connect", {});
+  };
+  context.grantPermissions = async () => {};
+  context.newPage = async () => { context.emit("page", page); return page; };
+  const options = {
+    env: "gateway-a", flow: "delete-then-switch-gateway", "gateway-env": "gateway-b",
+    "session-key": "agent:main:same-key", "artifact-dir": join(root, "switch"), timeoutMs: 5000,
+  };
+  const session = await createControlUiBrowser(options, {
+    prepare: () => ({ packageRoot: root }),
+    ocm: ([environment]) => {
+      pairedEnvironments.push(environment);
+      assert.ok(["@gateway-a", "@gateway-b"].includes(environment));
+      return { ok: true, browserUrl: `http://127.0.0.1:${environment === "@gateway-a" ? "13001" : "13002"}/` };
+    },
+    launch: async () => ({ newContext: async () => context, close: async () => { closeCount++; } }),
+  });
+  try {
+    const switched = await session.run(options);
+    assert.equal(switched.exitCode, failSwitch ? 1 : 0);
+    assert.deepEqual(pairedEnvironments, ["@gateway-a", "@gateway-b"]);
+    assert.equal(new URL(address).port, "13002");
+    assert.equal(closeCount, 0);
+    const beforeReuse = [...actions];
+    await assert.rejects(session.run({
+      ...options, flow: "open-by-link", "artifact-dir": join(root, "reuse"),
+    }), (error) => error instanceof CallError && error.exitCode === 2 && /--wait/.test(error.message));
+    assert.deepEqual(actions, beforeReuse);
+    assert.deepEqual(pairedEnvironments, ["@gateway-a", "@gateway-b"]);
+  } finally { await session.close(); }
+  assert.equal(closeCount, 1);
 });

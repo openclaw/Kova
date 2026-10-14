@@ -1121,6 +1121,49 @@ test("persona checks cannot request explicit or automatic OCM snapshots", async 
   }
 });
 
+test("browser paths and second Gateways are refused before clone preparation or execution", async (t) => {
+  const f = await fixture(t);
+  const browser = "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow open-links-matrix --session-key agent:main:fixture --artifact-dir {run}/ui/links --incognito-handle {run}/incognito.json --timeout 1000";
+  const cases = [
+    [browser.replace("{run}/ui/links", "/outside/screens"), /--artifact-dir must stay under \{run\}/],
+    [browser.replace("{run}/ui/links", "{run}/../screens"), /--artifact-dir must stay under \{run\}/],
+    [browser.replace("{run}/incognito.json", "/outside/incognito.json"), /--incognito-handle must stay under \{run\}/],
+    [browser.replace("{run}/incognito.json", "{run}/../incognito.json"), /--incognito-handle must stay under \{run\}/],
+    ...["checkpoints/browser", "initial-state/browser", ".persona/browser", ".inputs/browser", "extra-0/browser", "mock-0/browser", "operation.json.d/screens", "persona-gateway-1.json/screens"].map((path) => [
+      browser.replace("{run}/ui/links", `{run}/${path}`), /protected evidence or a background operation/
+    ]),
+    [`${browser.replace("{run}/ui/links", "{run}/browser.json")} --background --handle {run}/browser.json`, /protected evidence or a background operation/],
+    ["node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow delete-then-switch-gateway --session-key agent:main:fixture --artifact-dir {run}/ui/switch --gateway-env durable --timeout 1000", /--gateway-env must name a clone placeholder/]
+  ];
+  for (const [command, expected] of cases) {
+    f.plan.phases[1].commands = [command];
+    await f.save();
+    await assert.rejects(runVerification({ ...f.options, execute: true }, f.dependencies), expected, command);
+  }
+  assert.deepEqual(f.calls, []);
+  assert.deepEqual(f.created, []);
+  await assert.rejects(readdir(f.dependencies.home), { code: "ENOENT" });
+});
+
+test("browser commands accept owned paths and resolve second Gateway clone placeholders", async (t) => {
+  const f = await fixture(t);
+  const browser = "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow open-links-matrix --session-key agent:main:fixture --artifact-dir {run}/ui/links --incognito-handle {run}/incognito.json --timeout 1000";
+  const switchGateway = "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow delete-then-switch-gateway --session-key agent:main:fixture --artifact-dir {run}/ui/switch --gateway-env {persona:second:env} --timeout 1000";
+  f.plan.phases[1].commands = [browser, switchGateway, switchGateway.replace("{persona:second:env}", "{env}")];
+  f.plan.phasesSha256 = sha256(canonicalJSON(f.plan.phases));
+  assert.doesNotThrow(() => validateRunPlan(f.plan, f.catalogue));
+  const context = { standard: true, env: "copy", run: join(f.root, "owned evidence"), kovaRoot: f.dependencies.root, traits: { second: { keys: { env: "copy-second" } } }, roots: [] };
+  const tokens = parseCatalogueCommand(resolveRunCommand(browser, context), { standard: true }).tokens;
+  assert.equal(tokens[tokens.indexOf("--artifact-dir") + 1], join(context.run, "ui/links"));
+  assert.equal(tokens[tokens.indexOf("--incognito-handle") + 1], join(context.run, "incognito.json"));
+  for (const [command, env] of [[switchGateway, "copy-second"], [switchGateway.replace("{persona:second:env}", "{env}"), "copy"]]) {
+    const resolved = parseCatalogueCommand(resolveRunCommand(command, context), { standard: true }).tokens;
+    assert.equal(resolved[resolved.indexOf("--gateway-env") + 1], env);
+  }
+  assert.deepEqual(f.calls, []);
+  assert.deepEqual(f.created, []);
+});
+
 test("unavailable OCM leaves a failure record with all copies not started", async (t) => {
   const f = await fixture(t);
   f.setFailure((command) => command === "ocm --version" ? 1 : 0);
@@ -1459,6 +1502,27 @@ test("resolved helper outputs cannot enter checkpoint directories through aliase
   await assert.rejects(validateRunDestinations(`node /helper --out ${quoteShell(join(output, "alias/new.json"))}`, context), /protected evidence/);
   const patch = join(output, "patch.json");await writeFile(patch, JSON.stringify({ logging: { file: join(output, "checkpoints/commands.json") } }));
   await assert.rejects(validateRunDestinations(`ocm @copy -- config patch --file ${quoteShell(patch)}`, context), /owned copy/);
+});
+
+test("resolved browser folders and incognito inputs honor physical run ownership", async (t) => {
+  const f = await fixture(t), copy = join(f.root, "copy"), output = join(f.root, "output"), durable = join(f.root, "durable");
+  for (const path of [copy, output, durable]) await mkdir(path);
+  await mkdir(join(output, "checkpoints"));
+  await symlink(durable, join(output, "escape"));
+  await symlink(join(output, "checkpoints"), join(output, "evidence-alias"));
+  const input = join(output, "incognito.json"), screens = join(output, "ui/screens");
+  const bytes = JSON.stringify({ sessionKey: "agent:main:dashboard:incognito-fixture" });
+  await writeFile(input, bytes);
+  await writeFile(join(durable, "incognito.json"), bytes);
+  const context = { cwd: copy, run: output, ownedRoots: [copy], kovaRoot: f.dependencies.root };
+  const command = (folder, handle) => `node ${quoteShell(join(context.kovaRoot, "support/verify/control-ui.mjs"))} --env copy --flow open-links-matrix --session-key agent:main:fixture --artifact-dir ${quoteShell(folder)} --incognito-handle ${quoteShell(handle)} --timeout 1000`;
+  await assert.rejects(validateRunDestinations(command(join(output, "escape/screens"), input), context), /owned copy/);
+  await assert.rejects(validateRunDestinations(command(screens, join(output, "escape/incognito.json")), context), /owned copy/);
+  await assert.rejects(validateRunDestinations(command(join(output, "evidence-alias/screens"), input), context), /protected evidence/);
+  const admitted = command(screens, input);
+  assert.equal(await validateRunDestinations(admitted, context), admitted);
+  assert.equal(await readFile(input, "utf8"), bytes);
+  await assert.rejects(readdir(screens), { code: "ENOENT" });
 });
 
 

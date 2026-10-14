@@ -70,7 +70,7 @@ export function observeControlUiSocket(socket, getOutput, { onRequest, connectin
     if (retired) return;
     let frame;
     try { frame = JSON.parse(String(payload)); } catch { return; }
-    if (frame.type !== "req" || typeof frame.method !== "string") return;
+    if (!frame || typeof frame !== "object" || Array.isArray(frame) || frame.type !== "req" || typeof frame.method !== "string") return;
     if (frame.method === "connect") connecting();
     onRequest?.(frame.method, frame.params);
     const output = typeof getOutput === "function" ? getOutput() : getOutput;
@@ -86,7 +86,7 @@ export function observeControlUiSocket(socket, getOutput, { onRequest, connectin
     if (retired) return;
     let frame;
     try { frame = JSON.parse(String(payload)); } catch { return; }
-    if (frame.type !== "res") return;
+    if (!frame || typeof frame !== "object" || Array.isArray(frame) || frame.type !== "res") return;
     const match = pending.get(frame.id);
     if (!match) return;
     pending.delete(frame.id);
@@ -140,7 +140,7 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
   const uiUrl = (path) => /^https?:\/\//.test(path) ? path : `${uiRoot}/${path.replace(/^\//, "")}`;
   const chromium = launch ? null : createRequire(join(runtime.packageRoot, "package.json"))("playwright-core").chromium;
   const browser = await (launch ?? ((settings) => chromium.launch(settings)))({ headless: true, channel: "chrome", timeout: budget() });
-  let currentOutput, closed = false, closing, page, context;
+  let currentOutput, closed = false, closing, page, context, switchedGateway = false;
   const connection = new Map();
   const close = () => { closed = true; return closing ??= browser.close(); };
   const abort = () => { void close().catch(() => {}); };
@@ -177,6 +177,7 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
       async close() { signal?.removeEventListener("abort", abort); await close(); },
       async run(call, { signal: callSignal } = {}) {
         if (closed) throw new CallError("retained browser is closed", 1);
+        if (switchedGateway) throw new CallError("retained browser cannot be reused after switching Gateways; close it with --wait");
         if (call.env !== options.env) throw new CallError("browser environment does not match this call");
         if (call.locale && call.locale !== options.locale) throw new CallError("retained browser locale cannot change");
         const output = emptyOutput(call.flow), began = Date.now();
@@ -246,7 +247,8 @@ export async function createControlUiBrowser(options, { signal, prepare = prepar
             if (!call["gateway-env"]) throw new CallError("this flow requires --gateway-env");
             const next = ocm([`@${call["gateway-env"]}`, "--", "dashboard", "--json"], { timeoutMs: remaining() });
             if (!next.ok || typeof next.browserUrl !== "string") throw new CallError("second Gateway did not return a browser pairing URL", 1);
-            connection.set(page, null); await page.goto(next.browserUrl); await waitConnected();
+            switchedGateway = true;
+            connection.get(page)?.finish?.(); connection.set(page, null); await page.goto(next.browserUrl); await waitConnected();
           };
           await controlUiFlows[call.flow]({ page, step, options: call, sessionKey, origin: initialUrl.origin,
             requireSession, sessionUrl, navigate, reload, openSession: () => navigate(sessionUrl(requireSession())), waitConnected, pairGateway,
