@@ -65,6 +65,8 @@ test("mock table commands emit their fixed success shape and JSON product errors
   result = invoke("write-mock-script", ["--env", "fixture"], env);
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(Object.keys(JSON.parse(result.stdout)), ["path"]);
+  const initial = JSON.parse(await readFile(join(root, "workspace", "kova-persona", "mock-script.json"), "utf8"));
+  assert.deepEqual(initial.kovaPersona, { version: 1 });
   result = spawnSync(process.execPath, [new URL("../support/write-mock-ai-provider-script.mjs", import.meta.url).pathname, "--env", "fixture", "--add-held-turn", "--marker", "VERIFY_HOLD", "--hold-ms", "90000", "--progress-card"], { env, encoding: "utf8" });
   assert.equal(result.status, 0, result.stdout || result.stderr);
   assert.deepEqual(Object.keys(JSON.parse(result.stdout)), ["path"]);

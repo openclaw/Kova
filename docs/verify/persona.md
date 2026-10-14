@@ -12,7 +12,8 @@ content includes long compacted history with a reset boundary, a measured
 pre-compaction context, pruned tool-result projections, an active goal, a
 progress card, cancelled and interrupted inputs, an expired idle session and a
 publicly shared session. Local mock models provide held streaming replies,
-explicit tool calls, serial requests and one-time overflow responses.
+explicit tool calls, serial requests and one-time overflow responses. The saved
+provider also returns structured summaries for OpenClaw compaction requests.
 The one-minute idle policy applies to thread sessions; direct and group sessions
 retain their prepared context. The overflow session selects `openai/mock-overflow`: its
 first provider request overflows, and recovery replies with `KOVA_AGENT_OK`.

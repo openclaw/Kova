@@ -46,7 +46,7 @@ async function requireFreshEnvironment(env, call) {
 
 async function destroyEnvironment(env, call) {
   if (!await environmentExists(env, call)) return;
-  await call(`ocm env protect ${q(env)} off --json`);
+  await call(`ocm env protect ${q(env)} off --json`, "unprotect persona environment", { timeoutMs: 120000 });
   await call(`ocm env destroy ${q(env)} --yes --json`, "destroy persona environment", { timeoutMs: 120000 });
 }
 

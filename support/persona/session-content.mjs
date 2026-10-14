@@ -34,7 +34,10 @@ export async function sendSessionMessage(rpc, key, message) {
   const sent = await rpc(sessionRequests.send(key, message, `kova-persona-${randomUUID()}`));
   if (typeof sent?.runId !== "string" || !sent.runId) throw new Error("session send returned no run id");
   const result = await rpc(sessionRequests.wait(sent.runId));
-  if (result.status !== "ok") throw new Error(`session turn did not complete: ${result.status ?? "missing status"}`);
+  if (result?.runId !== sent.runId || (result.terminalReceipt !== undefined && result.terminalReceipt?.runId !== sent.runId)) {
+    throw new Error("session completion receipt does not match the accepted run");
+  }
+  if (result.status !== "ok") throw new EntryError(`session turn did not complete: ${result.status ?? "missing status"}`, result.status === "timeout" ? 3 : 1);
   return sent.runId;
 }
 

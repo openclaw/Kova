@@ -34,18 +34,26 @@ test("progress card check requires persisted plan states as well as markdown", a
 test("pending creation uses acknowledged run ids and leaves restart settlement to its caller", async () => {
   const inputs = [];
   const stopped = [];
-  let sent = 0;
+  let sent = 0, preparationReads = 0;
   const rpc = fixture(async ({ method, params }) => {
     if (method === "chat.send") {
       const runId = `acknowledged-${++sent}`;
       if (sent > 1) {
+        assert.equal(preparationReads, 3, "followups require the accepted held run's live text");
         assert.equal(params.queueMode, "followup");
         inputs.push({ runId, state: "queued", queued: true, message: { role: "user", content: params.message } });
       }
       return { runId };
     }
     if (method === "progressCard.get") return { card: { markdown: "Mock reply is streaming; completion is pending." } };
-    if (method === "chat.history") return { pendingInputs: { items: inputs, total: inputs.length } };
+    if (method === "chat.history") {
+      if (sent === 1) preparationReads++;
+      return {
+        messages: [{ role: "assistant", content: "**VERIFY_HOLD**\n\nThe held reply is complete.", __openclaw: { runId: "older-run" } }],
+        inFlightRun: { runId: preparationReads === 1 ? "older-run" : "acknowledged-1", text: preparationReads === 2 ? "" : "**VERIFY_HOLD**" },
+        pendingInputs: { items: inputs, total: inputs.length }
+      };
+    }
     if (method === "chat.abort") {
       stopped.push(params.runId);
       const input = inputs.find((input) => input.runId === params.runId);

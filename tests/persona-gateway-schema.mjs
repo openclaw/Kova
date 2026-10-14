@@ -4,7 +4,7 @@ import { access } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
-import { sessionRequests, makeSession, readSessionKeys } from "../support/persona/session-content.mjs";
+import { sessionRequests, makeSession, readSessionKeys, sendSessionMessage } from "../support/persona/session-content.mjs";
 import { extraRequests } from "../support/persona/session-extras.mjs";
 
 const revision = "7e80556f503d26ddde64e274bfb50cbbec7830f5";
@@ -85,7 +85,7 @@ test("persona Gateway requests match the pinned OpenClaw schemas", async (t) => 
     switch (request.method) {
       case "sessions.create": return { key: request.params.key, sessionId };
       case "sessions.send": messagesAfterReset++; return { runId };
-      case "agent.wait": return { status: "ok" };
+      case "agent.wait": return { runId: request.params.runId, status: "ok" };
       case "sessions.compact": assert.ok(messagesAfterReset > 0, "compaction needs content after reset"); return { compacted: true };
       case "sessions.patch": return { ok: true };
       case "sessions.reset": messagesAfterReset = 0; return { ok: true };
@@ -108,7 +108,7 @@ test("compaction retries only an explicit pre-mutation busy response", async () 
   const rpc = async ({ method, params }) => {
     if (method === "sessions.create") return { key, sessionId };
     if (method === "sessions.send") { sends++; return { runId }; }
-    if (method === "agent.wait") return { status: "ok" };
+    if (method === "agent.wait") return { runId: params.runId, status: "ok" };
     if (method === "sessions.describe") return { session: { key, sessionId } };
     if (method === "sessions.compact") {
       if (++compactCalls === 1) throw new Error(`sessions.compact INVALID_REQUEST: Session ${key} has an active run; retry after it finishes.`);
@@ -123,4 +123,64 @@ test("compaction retries only an explicit pre-mutation busy response", async () 
     if (request.method === "sessions.compact") throw new Error("transport disconnected after request");
     return rpc(request);
   }, { key, messages: 2, compactEvery: 2 }), /transport disconnected/);
+});
+
+test("session sends wait for the accepted run even when old history already matches", async () => {
+  const acceptedRunId = "newly-accepted-run";
+  let release, waiting, finished = false, historyReads = 0;
+  const terminal = new Promise((resolve) => { release = resolve; });
+  const waitStarted = new Promise((resolve) => { waiting = resolve; });
+  const rpc = async ({ method, params }) => {
+    if (method === "sessions.send") {
+      assert.notEqual(params.idempotencyKey, acceptedRunId);
+      return { runId: acceptedRunId };
+    }
+    if (method === "agent.wait") {
+      assert.equal(params.runId, acceptedRunId);
+      waiting();
+      return terminal;
+    }
+    if (method === "chat.history") {
+      historyReads++;
+      return { messages: [{ role: "assistant", content: "KOVA_AGENT_OK", __openclaw: { runId: "older-run" } }] };
+    }
+    assert.fail(method);
+  };
+  const sent = sendSessionMessage(rpc, key, "Reply with KOVA_AGENT_OK.").then((result) => { finished = true; return result; });
+  await Promise.race([waitStarted, sent.then(() => assert.fail("turn returned before waiting for its accepted run"))]);
+  assert.equal(finished, false);
+  release({ runId: acceptedRunId, status: "ok" });
+  assert.equal(await sent, acceptedRunId);
+  assert.equal(historyReads, 0);
+});
+
+test("old matching replies cannot turn a failed or unrelated run receipt into success", async (t) => {
+  const acceptedRunId = "newly-accepted-run";
+  const cases = [
+    { name: "failed", receipt: { runId: acceptedRunId, status: "error", error: "new run failed" }, error: /did not complete: error/, exitCode: 1 },
+    { name: "timed out", receipt: { runId: acceptedRunId, status: "timeout" }, error: /did not complete: timeout/, exitCode: 3 },
+    { name: "pending", receipt: { runId: acceptedRunId, status: "pending" }, error: /did not complete: pending/, exitCode: 1 },
+    { name: "missing run identity", receipt: { status: "ok" }, error: /does not match the accepted run/ },
+    { name: "different run", receipt: { runId: "older-run", status: "ok" }, error: /does not match the accepted run/ },
+    { name: "different terminal receipt", receipt: { runId: acceptedRunId, status: "ok", terminalReceipt: { runId: "older-run" } }, error: /does not match the accepted run/ }
+  ];
+  for (const scenario of cases) await t.test(scenario.name, async () => {
+    let historyReads = 0, waits = 0;
+    const rpc = async ({ method, params }) => {
+      if (method === "sessions.send") return { runId: acceptedRunId };
+      if (method === "agent.wait") {
+        waits++;
+        assert.equal(params.runId, acceptedRunId);
+        return { terminalReply: { disposition: "visible", text: "KOVA_AGENT_OK" }, ...scenario.receipt };
+      }
+      if (method === "chat.history") {
+        historyReads++;
+        return { messages: [{ role: "assistant", content: "KOVA_AGENT_OK", __openclaw: { runId: "older-run" } }] };
+      }
+      assert.fail(method);
+    };
+    await assert.rejects(sendSessionMessage(rpc, key, "Reply with KOVA_AGENT_OK."), (error) => scenario.error.test(error.message) && (scenario.exitCode === undefined || error.exitCode === scenario.exitCode));
+    assert.equal(waits, 1);
+    assert.equal(historyReads, 0);
+  });
 });

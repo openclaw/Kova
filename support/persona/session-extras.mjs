@@ -104,11 +104,12 @@ async function accepted(rpc, request) {
 
 async function buildPending(rpc, key, marker) {
   try {
-    await accepted(rpc, extraRequests.chatSend(key, `${marker}: retain this reply until the Gateway restarts.`, randomUUID()));
-    // The held mock publishes this card before entering its delayed final reply.
+    const held = await accepted(rpc, extraRequests.chatSend(key, `${marker}: retain this reply until the Gateway restarts.`, randomUUID()));
+    // Observe this run's live stream; a saved card or older reply cannot prove it started.
     await waitFor(async () => {
-      const result = await rpc(extraRequests.progressGet(key));
-      return result?.card?.markdown === "Mock reply is streaming; completion is pending.";
+      const result = await rpc(extraRequests.pendingHistory(key));
+      const active = result?.inFlightRun;
+      return active?.runId === held && typeof active.text === "string" && active.text.trim().length > 0;
     }, "held mock reply");
     const cancelled = await accepted(rpc, extraRequests.chatSend(key, cancelledMarker, randomUUID(), "followup"));
     const interrupted = await accepted(rpc, extraRequests.chatSend(key, interruptedMarker, randomUUID(), "followup"));
