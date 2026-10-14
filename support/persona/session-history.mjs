@@ -90,7 +90,7 @@ export async function checkHistoryContent({ rpc, key, kind, state }) {
   if (unique.length !== 1 || userMessages.filter((event) => messageText(event.message).includes(prefix)).length < 2) throw new Error("long session search content is absent or ambiguous");
   const anchorMessageId = unique[0].id;
   if (typeof anchorMessageId !== "string" || !anchorMessageId) throw new Error("stored message has no durable entry id");
-  const fetched = await rpc(sessionRequests.message(key, session.sessionId, anchorMessageId));
+  const fetched = await rpc(sessionRequests.message(key, anchorMessageId));
   if (!fetched.ok || fetched.message?.role !== "user" || !messageText(fetched.message).includes(word)) throw new Error("saved anchor message is not visible through the Gateway");
   const shortId = sessionKeyShortId(key);
   const resolved = await rpc(sessionRequests.resolveShort(shortId));

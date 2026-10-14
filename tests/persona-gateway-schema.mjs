@@ -20,7 +20,7 @@ const sessionCases = {
   send: [[key, "Notebook entry.", "persona-schema-idempotency"]],
   wait: [[runId]],
   history: [[key], [key, 0], [key, 100]],
-  message: [[key, sessionId, "12345678"]],
+  message: [[key, "12345678"]],
   patchModel: [[key, "openai/mock-tools"], [key, "openai/mock-overflow"]],
   compact: [[key]],
   reset: [[key]],

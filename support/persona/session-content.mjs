@@ -11,7 +11,7 @@ export const sessionRequests = {
   send: (key, message, idempotencyKey) => ({ method: "sessions.send", params: { key, message, thinking: "off", timeoutMs: 120000, idempotencyKey } }),
   wait: (runId) => ({ method: "agent.wait", params: { runId, timeoutMs: 120000 } }),
   history: (key, offset = 0) => ({ method: "chat.history", params: { sessionKey: key, limit: 100, offset } }),
-  message: (key, sessionId, messageId) => ({ method: "chat.message.get", params: { sessionKey: key, sessionId, messageId } }),
+  message: (key, messageId) => ({ method: "chat.message.get", params: { sessionKey: key, messageId } }),
   patchModel: (key, model) => ({ method: "sessions.patch", params: { key, model } }),
   compact: (key) => ({ method: "sessions.compact", params: { key } }),
   reset: (key) => ({ method: "sessions.reset", params: { key, reason: "reset" } }),
