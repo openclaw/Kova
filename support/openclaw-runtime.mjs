@@ -122,7 +122,8 @@ export async function openDirectGatewayRpcClient(runtimeContext, { timeoutMs = 1
     url: gateway.url,
     token
   });
-  await client.connect(timeoutMs);
+  try { await client.connect(timeoutMs); }
+  catch (error) { client.close(); throw error; }
   return {
     client,
     transport: "direct-gateway-rpc"

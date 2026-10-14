@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
+import { createServer } from "node:http";
 import { link, mkdtemp, readFile, rm, writeFile, mkdir, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,6 +16,36 @@ import { gatewayLifecycleMain, parseGatewayLifecycleArgs, runForegroundGateway }
 
 const exec = promisify(execFile);
 const backgroundUrl = new URL("../support/verify/background.mjs", import.meta.url).href;
+
+test("a malformed connection frame closes the socket before the helper returns", async (t) => {
+  const root = await directory(t), configPath = join(root, "config.json");
+  await atomicJson(configPath, { gateway: { auth: { token: "fixture-connect-failure" } } });
+  const sockets = new Set(), server = createServer();
+  let closeFrames = 0;
+  server.on("upgrade", (request, socket) => {
+    sockets.add(socket);
+    socket.on("error", () => {});
+    socket.on("close", () => sockets.delete(socket));
+    socket.on("data", (bytes) => {
+      if ((bytes[0] & 15) === 8) { closeFrames++; socket.end(Buffer.from([0x88, 0])); }
+    });
+    const accept = createHash("sha1").update(request.headers["sec-websocket-key"] + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest("base64");
+    socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
+    socket.write(Buffer.from([0x81, 1, 0x7b]));
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(async () => { for (const socket of sockets) socket.destroy(); await new Promise((resolve) => server.close(resolve)); });
+  const source = `import { executeGatewayCall } from ${JSON.stringify(new URL("../support/verify/gateway-call.mjs", import.meta.url).href)};
+    const result = await executeGatewayCall({ env: "fixture", method: "health", params: {}, timeoutMs: 1000 }, { prepare: () => (${JSON.stringify({ root, configPath, gatewayPort: server.address().port })}) });
+    console.log(JSON.stringify(result)); process.exitCode = result.exitCode;`;
+  const env = { ...process.env };
+  delete env.KOVA_OCM_TRANSPORT_JSON; delete env.KOVA_NETWORK_FRONTAGE_ENABLED;
+  const result = await exec(process.execPath, ["--input-type=module", "-e", source], { env, timeout: 3000 }).catch((error) => error);
+  assert.equal(result.code, 1);
+  assert.notEqual(result.killed, true);
+  assert.equal(closeFrames, 1);
+  assert.equal(JSON.parse(result.stdout).exitCode, 1);
+});
 
 async function directory(t) {
   const path = await mkdtemp(join(tmpdir(), "kova-gateway-"));
