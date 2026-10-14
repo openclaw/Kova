@@ -56,13 +56,12 @@ export function parseScriptArgs(definition, argv) {
 
 export async function executeScript(definition, options, dependencies = {}) {
   const startedAt = Date.now();
-  const deadline = startedAt + options.timeoutMs;
-  const timeout = AbortSignal.timeout(options.timeoutMs);
-  const signal = dependencies.signal ? AbortSignal.any([timeout, dependencies.signal]) : timeout;
+  let deadline, timeout;
+  let signal = dependencies.signal;
   let runtime;
   const output = { ...definition.empty(), error: null };
   const context = {
-    signal,
+    get signal() { return signal; },
     record(value) { for (const [key, data] of Object.entries(value)) if (Object.hasOwn(output, key)) output[key] = data; },
     remaining() {
       signal.throwIfAborted();
@@ -85,14 +84,20 @@ export async function executeScript(definition, options, dependencies = {}) {
     ...dependencies.context
   };
   try {
+    if (options.afterMs) await sleep(options.afterMs, undefined, { signal });
+    signal?.throwIfAborted();
+    deadline = Date.now() + options.timeoutMs;
+    timeout = AbortSignal.timeout(options.timeoutMs);
+    signal = signal ? AbortSignal.any([timeout, signal]) : timeout;
     Object.assign(output, await definition.run(options, context));
     if (Object.hasOwn(output, "elapsedMs")) output.elapsedMs = Date.now() - startedAt;
     return { output, exitCode: 0 };
   } catch (error) {
     if (Object.hasOwn(output, "elapsedMs")) output.elapsedMs = Date.now() - startedAt;
     Object.assign(output, error?.output);
-    output.error = timeout.aborted ? "verification timeout" : String(error?.message ?? error);
-    return { output, exitCode: timeout.aborted ? 3 : error?.exitCode ?? 1 };
+    const reason = dependencies.signal?.aborted ? dependencies.signal.reason : error;
+    output.error = timeout?.aborted ? "verification timeout" : String(reason?.message ?? reason);
+    return { output, exitCode: timeout?.aborted ? 3 : reason?.exitCode ?? 1 };
   }
 }
 
@@ -104,7 +109,7 @@ export async function scriptMain(definition, argv, dependencies = {}) {
     let result;
     if (options.wait) result = await joinOperation(options.wait, { method: definition.id, env: options.env, timeoutMs: options.timeoutMs, signal: dependencies.signal });
     else if (options.background) {
-      return { output: await startOperation(fileURLToPath(definition.url), options, { entry: definition.id, method: definition.id, lifetimeMs: options.timeoutMs + 1000, signal: dependencies.signal }), exitCode: 0 };
+      return { output: await startOperation(fileURLToPath(definition.url), options, { entry: definition.id, method: definition.id, lifetimeMs: (options.afterMs ?? 0) + options.timeoutMs + 1000, signal: dependencies.signal }), exitCode: 0 };
     } else result = await executeScript(definition, options, dependencies);
     if (options.out) await writeGatewayOutput(options, result.output);
     return result;

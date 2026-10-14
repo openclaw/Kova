@@ -862,6 +862,7 @@ test("foreground Gateway checks config identity, preserves logs and stops its ow
 test("resolved Gateway helper fixtures have pinned schema coverage", (t) => requestSchemas.report(t));
 
 import "./verify-scripts.mjs";
+import "./verify-resume.mjs";
 import "./channel-probe-routing.mjs";
 import "./verify-fixture.mjs";
 import "./verify-mock-replies.mjs";

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -216,9 +216,9 @@ test("accepted turn evidence survives a later product refusal", async () => {
 
 test("resume resolves main and short session URLs before handing them to the TUI", async (t) => {
   const dir = await directory(t), source = join(dir, "url.json");
-  for (const [url, selector] of [["http://127.0.0.1:18789/chat/main", { key: "main", agentId: "main" }], ["http://127.0.0.1:18789/chat/main/notebook-01234567", { shortId: "01234567", slugHint: "notebook", agentId: "main" }]]) {
+  for (const [url, selector] of [["http://127.0.0.1:18789/chat/main", { key: "main", agentId: "main" }], ["http://127.0.0.1:18789/chat/main/notebook-01234567", { shortId: "01234567", slugHint: "notebook", agentId: "main", allowMissing: true }]]) {
     await writeFile(source, JSON.stringify({ url }));
-    const result = await run(resume, ["--url-from", source], async (method, params) => { assert.equal(method, "sessions.resolve"); assert.deepEqual(params, selector); return { key }; }, {
+    const result = await run(resume, ["--url-from", source], async (method, params) => { if (method === "agents.list") return { defaultId: "main", mainKey: "main", scope: "per-sender", agents: [] }; assert.equal(method, "sessions.resolve"); assert.deepEqual(params, selector); return { ok: true, key, agentId: "main" }; }, {
       runtime: () => ({ gatewayPort: 18789 }), pty: async () => ({ resolved: key, output: "attached", createdIds: [] })
     });
     assert.equal(result.exitCode, 0);
@@ -253,6 +253,9 @@ test("internal background entry mode is not a public CLI flag", async () => {
 });
 
 test("resume launches OpenClaw under an actual PTY and waits for connection", async (t) => {
+  const available = spawnSync("expect", ["-v"], { encoding: "utf8" });
+  if (available.error?.code === "ENOENT" && !process.env.CI) { t.skip("expect is not installed"); return; }
+  assert.equal(available.status, 0, available.error?.message ?? available.stderr);
   const dir = await directory(t), binary = join(dir, "ocm");
   await writeFile(binary, `#!${process.execPath}
 if (!process.stdin.isTTY || !process.stdout.isTTY) process.exit(5);
@@ -275,7 +278,13 @@ test("resume recognizes an exact URL marker before decoding literal tildes", asy
   for (const [suffix, expected] of [["~~key", "~key"], ["~key/~~key", "~key"], ["~dot", "."], ["~~dot", "~dot"]]) {
     await writeFile(source, JSON.stringify({ url: `http://127.0.0.1:18789/chat/main/${suffix}` }));
     let handoff;
-    const result = await run(resume, ["--url-from", source], () => assert.fail("literal URLs must not resolve main or a short id"), {
+    const result = await run(resume, ["--url-from", source], (method, params) => {
+      assert.notEqual(suffix, "~key/~~key", "exact paths must not resolve");
+      if (method === "agents.list") return { defaultId: "main", mainKey: "main", scope: "per-sender", agents: [] };
+      assert.equal(method, "sessions.resolve");
+      assert.deepEqual(params, { reference: { key: `agent:main:${expected}`, slug: expected }, agentId: "main", includeGlobal: true, includeUnknown: true, allowMissing: true });
+      return { ok: true, key: `agent:main:${expected}`, agentId: "main" };
+    }, {
       runtime: () => ({ gatewayPort: 18789 }), pty: async (args) => { handoff = JSON.parse(Buffer.from(args.at(-1), "base64url").toString()); return { resolved: handoff.sessionKey, output: "attached", createdIds: [] }; }
     });
     assert.equal(result.exitCode, 0, JSON.stringify(result.output));
@@ -283,4 +292,20 @@ test("resume recognizes an exact URL marker before decoding literal tildes", asy
   }
   await writeFile(source, JSON.stringify({ url: "http://127.0.0.1:18789/chat/main/~key" }));
   assert.equal((await run(resume, ["--url-from", source], () => assert.fail("missing exact key"), { runtime: () => ({ gatewayPort: 18789 }) })).exitCode, 2);
+});
+
+
+test("chat delay preserves the full call budget and supports cancellation before sending", async () => {
+  let calls = 0;
+  const delayed = await run(chat, ["--session-key", key, "--message", "hello", "--after-ms", "60", "--timeout", "30"], async () => { calls++; return { status: "accepted" }; });
+  assert.equal(delayed.exitCode, 0, JSON.stringify(delayed.output));
+  assert.equal(calls, 1);
+  assert.ok(delayed.output.elapsedMs >= 50);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new CallError("cancelled before send", 1)), 10);
+  try {
+    const cancelled = await scriptMain(chat, ["--env", "kova-scripts-probe", "--session-key", key, "--message", "hello", "--after-ms", "100", "--timeout", "30"], { signal: controller.signal, rpc: () => assert.fail("cancelled delay must not send") });
+    assert.equal(cancelled.exitCode, 1);
+    assert.equal(cancelled.output.error, "cancelled before send");
+  } finally { clearTimeout(timer); }
 });

@@ -8,6 +8,22 @@ import { spawnOwnedProcess } from "../../src/commands.mjs";
 import { ocmInvocation } from "../../src/ocm/transport.mjs";
 import { resolveGatewayEndpoint } from "../gateway-endpoint.mjs";
 
+function resolvedUrlKey(result) {
+  if (result?.ok === true && nonempty(result.key)) return result.key;
+  if (result?.ok === false && (result.candidates === undefined || Array.isArray(result.candidates))) {
+    if (result.candidates?.length) throw new CallError("session URL is ambiguous", 1);
+    return null;
+  }
+  throw new CallError("session URL resolution returned an invalid result", 1);
+}
+
+async function resolveUrlReference(ctx, agentId, key, slug) {
+  return resolvedUrlKey(await ctx.rpc("sessions.resolve", {
+    reference: { key, ...(slug ? { slug } : {}) }, agentId,
+    includeGlobal: true, includeUnknown: true, allowMissing: true
+  }));
+}
+
 export async function resumeArguments(o, ctx) {
   const selected = [o.query !== undefined, Boolean(o["handoff-from"]), Boolean(o["url-from"])].filter(Boolean).length;
   if (selected !== 1) throw new CallError("provide exactly one of --query, --handoff-from or --url-from");
@@ -33,21 +49,33 @@ export async function resumeArguments(o, ctx) {
     let agent, rest;
     try { agent = decode(parts[1]); rest = rawRest.slice(exact ? 1 : 0).map(decode); }
     catch { throw new CallError("invalid session URL encoding"); }
+    if (!agent || rest.some((segment) => !segment)) throw new CallError("session URL has an empty path segment");
+    agent = agent.trim().toLowerCase();
+    if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(agent)) agent = agent.replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64) || "main";
+    const expected = new URL(resolveGatewayEndpoint(ctx.runtime(), null, { protocol: "http" }).url);
+    if (url.origin !== expected.origin) throw new CallError("session URL belongs to another Gateway");
     let key;
     if (!rest.length) {
-      const found = await ctx.rpc("sessions.resolve", { key: "main", agentId: agent });
-      key = found?.key;
+      key = resolvedUrlKey(await ctx.rpc("sessions.resolve", { key: "main", agentId: agent }));
     } else {
-      const short = !exact && rest.length === 1 ? /^(?:(.*)-)?([0-9a-f]{8,32})$/i.exec(rest[0]) : null;
-      if (short) {
-        const found = await ctx.rpc("sessions.resolve", { shortId: short[2], ...(short[1] ? { slugHint: short[1] } : {}), agentId: agent });
-        key = found?.key;
-      } else key = `agent:${agent}:${rest.join(":")}`;
+      key = `agent:${agent}:${rest.join(":")}`;
+      if (!exact && rest.length === 1 && !["main", "global", "boot", "sessions"].includes(rest[0].toLowerCase())) {
+        const defaults = await ctx.rpc("agents.list", {});
+        if (!nonempty(defaults?.mainKey)) throw new CallError("Gateway did not return a configured main session key", 1);
+        if (rest[0].toLowerCase() !== defaults.mainKey.trim().toLowerCase()) {
+          const shortId = /^(?:.*-)?([0-9a-f]{8,32})$/iu.exec(rest[0])?.[1].toLowerCase();
+          if (shortId) {
+            const slugHint = rest[0].slice(0, rest[0].length - shortId.length).replace(/-+$/u, "");
+            const found = resolvedUrlKey(await ctx.rpc("sessions.resolve", {
+              shortId, ...(slugHint ? { slugHint } : {}), agentId: agent, allowMissing: true
+            }));
+            key = found ?? await resolveUrlReference(ctx, agent, key);
+          } else key = await resolveUrlReference(ctx, agent, key, rest[0]);
+        }
+      }
     }
     if (!nonempty(key)) throw new CallError("session URL did not resolve to a session", 1);
     handoff = { version: 1, sessionKey: key, gatewayUrl: resolveGatewayEndpoint(ctx.runtime(), null, { protocol: "ws" }).url };
-    const expected = new URL(resolveGatewayEndpoint(ctx.runtime(), null, { protocol: "http" }).url);
-    if (url.origin !== expected.origin) throw new CallError("session URL belongs to another Gateway");
   }
   object(handoff, "handoff");
   if (handoff.version !== 1 || !/^agent:[^:]+:.+$/.test(handoff.sessionKey ?? "") || Object.keys(handoff).some((key) => !["version", "sessionKey", "gatewayUrl"].includes(key))) throw new CallError("invalid handoff shape");

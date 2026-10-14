@@ -53,7 +53,8 @@ decides whether OpenClaw answered correctly; only the comparison does.
    The one exception is a marker string passed to OpenClaw as content, such as
    a message text.
 5. Timeouts are milliseconds everywhere, on a flag named `--timeout`. Product
-   commands that take their own timeout keep the product's flag.
+   commands that take their own timeout keep the product's flag. A chat send with
+   `--after-ms` waits before starting that call budget, including in background mode.
 6. Background entries follow the [background protocol](#background-protocol).
 7. Placeholders in a phase command are `{env}`, `{kovaRoot}`, `{run}` and
    `{persona:<trait>:<key>}`, plus `{target}` in standard phases only, and no
@@ -242,7 +243,10 @@ that file through `--from` with `--replay`, the same session, goal and action.
 The saved `request` contains the original operation id and issue time. Replay
 rejects a different target or changed content; it never creates another id.
 
-`stage-session-store-fixture` requires `--gateway-handle` for the clone's owned
+`stage-session-store-fixture` allows up to 150 seconds after its operation timeout
+for rollback and restart. The runner waits for that cleanup before subsequent
+commands or checkpoints; unresolved cleanup stops the clone. Cancellation also
+joins the bounded cleanup. It requires `--gateway-handle` for the clone's owned
 foreground Gateway. The fixture must already be staged inside the selected agent directory,
 including its `fixtures/` subdirectory. The script pauses that Gateway, retains the current
 database and its SQLite sidecars, swaps in the fixture, runs Doctor's SQLite

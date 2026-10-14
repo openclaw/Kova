@@ -293,4 +293,28 @@ setImmediate(async () => {
   assert.deepEqual(imported, { imported: true });
 });
 
+test("a cancelled fixture client waits for the owner result before rejecting", { timeout: 10000 }, async (t) => {
+  const { options } = await fixture(t);
+  const handlePath = options["gateway-handle"], directory = `${handlePath}.d`;
+  const operation = { schema: "kova.gateway.operation.v1", id: randomUUID(), env: options.env, entry: "foreground-gateway-start", method: "gateway.start", handlePath, directory, expiresAt: new Date(Date.now() + 10000).toISOString() };
+  await atomicJson(join(directory, "operation.json"), operation);
+  await atomicJson(handlePath, { entry: operation.entry, env: options.env, ref: { id: operation.id, directory } });
+  const controller = new AbortController();
+  let settled = false;
+  const request = requestGatewayFixture(options, { signal: controller.signal }).finally(() => { settled = true; });
+  const rejected = assert.rejects(request, (error) => error === controller.signal.reason);
+  const pending = await waitForFile(join(directory, "fixture-request.json"));
+  controller.abort(new CallError("caller cancelled", 1));
+  try {
+    await waitForFile(join(directory, `fixture-cancel-${pending.id}.json`));
+    await sleep(100);
+    assert.equal(settled, false, "cancellation must not release the client while cleanup is pending");
+  } finally {
+    await rm(join(directory, "fixture-request.json"));
+    await atomicJson(join(directory, `fixture-result-${pending.id}.json`), { output: { staged: { restored: true }, doctor: null, started: true, error: "fixture request interrupted" }, exitCode: 1 });
+    await rejected;
+  }
+  assert.equal(settled, true);
+});
+
 test("fixture lifecycle requests match pinned Gateway schemas", (t) => schemas.report(t));

@@ -12,6 +12,7 @@ import { combineLogCollectors, createAttachmentLogFilter, createLogCollector, is
 import { parseGatewayCallArgs, resolveGatewayParams } from "../../support/verify/gateway-call.mjs";
 import { CallError, failure as gatewayFailure } from "../../support/verify/background.mjs";
 import { cleanupGatewayHandle } from "../../support/verify/gateway-lifecycle.mjs";
+import { gatewayFixtureCleanupMs } from "../../support/verify/gateway-fixture-client.mjs";
 
 const names = ["baseline", "change-1", "change-2", "noise-1", "noise-2"];
 const baselineNames = ["baseline", "noise-1", "noise-2"];
@@ -89,7 +90,8 @@ export function validateRunPlan(plan, catalogue) {
       const environment = option(tokens, "--env");
       if (environment !== undefined && environment !== "{env}" && !/^\{persona:[^:]+:env\}$/.test(environment)) throw new Error(`${phase.id}: --env must name a clone placeholder`);
       const timeout = Number(option(tokens, "--timeout") ?? phase.timeoutMs), delay = Number(option(tokens, "--after-ms") ?? 0);
-      if (!Number.isSafeInteger(timeout) || timeout < 1 || !Number.isSafeInteger(delay) || delay < 0 || timeout + delay + 1000 > 2147483647) throw new Error(`${phase.id}: invalid command timeout or delay`);
+      const cleanupMs = entry.id === "stage-session-store-fixture" ? gatewayFixtureCleanupMs : 0;
+      if (!Number.isSafeInteger(timeout) || timeout < 1 || !Number.isSafeInteger(delay) || delay < 0 || timeout + delay + cleanupMs + 1000 > 2147483647) throw new Error(`${phase.id}: invalid command timeout or delay`);
       if (tokens[0] === "ocm" && tokens[1] === "service") throw new Error(`${phase.id}: managed service commands cannot run in verification clones`);
       if (tokens[0] === "ocm") {
         if (tokens[1]?.startsWith("@")) {
@@ -100,7 +102,7 @@ export function validateRunPlan(plan, catalogue) {
           if (entry.id === "ocm-start" && option(tokens, "--runtime") !== "{target}") throw new Error(`${phase.id}: runtime binding must use the planned target`);
         }
       }
-      for (const flag of ["--out", "--handle", "--wait", "--from", "--session-from", "--merge-from", "--target-from"]) {
+      for (const flag of ["--out", "--handle", "--wait", "--from", "--session-from", "--merge-from", "--target-from", "--gateway-handle"]) {
         const value = option(tokens, flag);
         if (value !== undefined && (!value.startsWith("{run}/") || value.slice(6).split(/[\\/]/).some((part) => !part || part === "." || part === ".."))) throw new Error(`${phase.id}: ${flag} must stay under {run}`);
       }
@@ -314,10 +316,11 @@ export async function validateRunDestinations(command, context) {
     if (typeof patch?.logging?.file === "string") await context.prepareLogDestination?.(env, patch.logging.file);
     await context.observeCredentialPaths?.(env);
   };
-  for (const flag of ["--out", "--handle", "--wait", "--from", "--session-from", "--merge-from", "--target-from"]) {
+  for (const flag of ["--out", "--handle", "--wait", "--from", "--session-from", "--merge-from", "--target-from", "--gateway-handle"]) {
     const value = option(tokens, flag);
     if (value !== undefined) {
       const physical = await owned(value, outputRoot);
+      if (flag === "--gateway-handle") await owned(`${value}.d`, outputRoot);
       if (["--out", "--handle"].includes(flag)) {
         const parts = relative(outputRoot[0], physical).split(sep);
         if (/^(checkpoints|initial-state|\.persona|\.inputs|extra-\d+|mock-\d+)$/.test(parts[0]) || parts.some((part) => part.endsWith(".d") || /^persona-gateway-\d+\.json$/.test(part))) throw new Error("output overlaps protected evidence or a background operation");
@@ -631,17 +634,32 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
             const delay = Number(option(tokens, "--after-ms") ?? 0);
             if (!Number.isSafeInteger(delay) || delay < 0) throw new Error(`invalid command delay in ${phase.id}`);
             const startedAt = Date.now();
-            let resolved = command, result;
-            try { resolved = resolveRunCommand(command, commandContext); resolved = await validateRunDestinations(resolved, commandContext); }
+            let resolved = command, result, fixtureHandle;
+            try {
+              resolved = resolveRunCommand(command, commandContext);
+              resolved = await validateRunDestinations(resolved, commandContext);
+              if (entry.id === "stage-session-store-fixture") fixtureHandle = option(parseCatalogueCommand(resolved, { standard: context.standard }).tokens, "--gateway-handle");
+            }
             catch (error) {
               signal?.throwIfAborted();
               const rejected = gatewayFailure(option(tokens, "--method") ?? entry.id, new CallError(error.message), startedAt);
               result = { command: resolved, status: rejected.exitCode, stdout: json(rejected.output), stderr: "", durationMs: Date.now() - startedAt, timedOut: false };
             }
-            result ??= await copyCall(resolved, { cwd: commandContext.cwd, timeoutMs: timeoutMs + delay + (entry.kind === "gateway" || entry.kind === "script" ? 1000 : 0), allowFailure: true, finishOnShutdown: false, observeResult });
+            const cleanupMs = entry.id === "stage-session-store-fixture" ? gatewayFixtureCleanupMs : 0;
+            result ??= await copyCall(resolved, { cwd: commandContext.cwd, timeoutMs: timeoutMs + delay + cleanupMs + (entry.kind === "gateway" || entry.kind === "script" ? 1000 : 0), allowFailure: true, finishOnShutdown: entry.id === "stage-session-store-fixture", observeResult });
             observeResult(result);
             result.reachedBound = result.timedOut || (["gateway", "script"].includes(entry.kind) && result.status === 3);
             results.push(result);
+            if (fixtureHandle) {
+              let pending = false;
+              try { await lstat(join(`${fixtureHandle}.d`, "fixture-request.json")); pending = true; }
+              catch (error) { if (error.code !== "ENOENT") throw error; }
+              if (pending) {
+                summary.incomplete.push(phase.id);
+                if (!record.incomplete.includes(phase.id)) record.incomplete.push(phase.id);
+                throw new Error(`fixture cleanup unresolved in ${phase.id}; later commands and checkpoints were not run`);
+              }
+            }
             // Retain a destination even if another command restores the prior config.
             try { await clone.observeProductLogs?.(resolved); } catch (error) { logErrors.push(error.message); }
           }

@@ -13,6 +13,7 @@ import { canonicalJSON, sha256 } from "../src/verify/plan.mjs";
 import { repoRoot } from "../src/paths.mjs";
 import { executeGatewayCall, parseGatewayCallArgs, resolveGatewayParams } from "../support/verify/gateway-call.mjs";
 import { loadGatewaySchemaAssertions } from "./helpers/gateway-schemas.mjs";
+import { gatewayFixtureCleanupMs } from "../support/verify/gateway-fixture-client.mjs";
 
 const requestSchemas = await loadGatewaySchemaAssertions();
 
@@ -928,6 +929,105 @@ test("each command observes log destinations and an observation failure preserve
     assert.equal(clone.phases["standard/diagnostic"], "recorded");
   }
   await assert.rejects(readFile(join(f.dependencies.home, "verify/cache", result.cache.key, "cache.json")), { code: "ENOENT" });
+});
+
+test("fixture commands retain their cleanup budget before later commands and checkpoints", { timeout: 10000 }, async (t) => {
+  const f = await fixture(t), execute = f.dependencies.execute;
+  f.plan.phases[1].commands = [
+    "node {kovaRoot}/support/verify/stage-session-store-fixture.mjs --env {env} --agent main --restore --gateway-handle {run}/gateway.json --timeout 25",
+    "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{}' --timeout 25",
+    "ocm @{env} -- status --json"
+  ];
+  f.plan.phases.push({ ...f.plan.phases[1], id: "standard/diagnostic", commands: ["ocm @{env} -- doctor --json"] });
+  await f.save();
+  let release, allEntered;
+  const cleanup = new Promise((accept) => { release = accept; });
+  const entered = new Promise((accept) => { allEntered = accept; });
+  const directories = new Set(), completed = new Set();
+  let later = 0;
+  f.dependencies.execute = async (command, options) => {
+    const tokens = parseCatalogueCommand(command, { standard: true }).tokens;
+    if (tokens[1]?.endsWith("/support/verify/stage-session-store-fixture.mjs")) {
+      assert.equal(options.timeoutMs, 25 + gatewayFixtureCleanupMs + 1000);
+      assert.equal(options.finishOnShutdown, true);
+      const handle = tokens[tokens.indexOf("--gateway-handle") + 1];
+      const directory = dirname(handle), pending = join(`${handle}.d`, "fixture-request.json");
+      await mkdir(dirname(pending), { recursive: true });
+      await writeFile(pending, '{}');
+      directories.add(directory);
+      if (directories.size === 5) allEntered();
+      await cleanup;
+      await rm(pending);
+      completed.add(directory);
+      return { ...await execute(command, options), status: 3, stdout: '{"staged":{"restored":true},"doctor":null,"started":true,"error":"fixture preparation timeout"}' };
+    }
+    if (tokens[1]?.endsWith("/support/verify/gateway-call.mjs") || tokens[1]?.startsWith("@")) {
+      assert.equal(completed.has(options.cwd), true, "later commands must follow fixture cleanup");
+      assert.equal(options.finishOnShutdown, false);
+      if (tokens[0] === "node") assert.equal(options.timeoutMs, 1025);
+      else assert.equal(options.timeoutMs, 5000);
+      later++;
+      if (tokens.includes("doctor")) await readFile(join(options.cwd, "checkpoints/standard/second/commands.json"));
+    }
+    return execute(command, options);
+  };
+  const running = runVerification({ ...f.options, execute: true }, f.dependencies);
+  try {
+    await Promise.race([entered, running.then(() => { throw new Error("run ended before fixture commands started"); })]);
+    assert.equal(later, 0);
+    for (const directory of directories) await assert.rejects(readFile(join(directory, "checkpoints/standard/second/commands.json")), { code: "ENOENT" });
+  } finally { release(); }
+  const result = await running;
+  assert.equal(later, 15);
+  for (const clone of Object.values(result.clones)) {
+    assert.equal(clone.phases["standard/second"], "recorded");
+    assert.equal(clone.phases["standard/diagnostic"], "recorded");
+  }
+});
+
+test("pending fixture cleanup stops its clone before later commands or checkpoints", async (t) => {
+  const f = await fixture(t), execute = f.dependencies.execute;
+  f.plan.phases[1].commands = [
+    "node {kovaRoot}/support/verify/stage-session-store-fixture.mjs --env {env} --agent main --restore --gateway-handle {run}/gateway.json --timeout 25",
+    "ocm @{env} -- status --json"
+  ];
+  f.plan.phases.push({ ...f.plan.phases[1], id: "standard/diagnostic", commands: ["ocm @{env} -- doctor --json"] });
+  await f.save();
+  f.dependencies.execute = async (command, options) => {
+    const tokens = parseCatalogueCommand(command, { standard: true }).tokens;
+    if (tokens[1]?.endsWith("/support/verify/stage-session-store-fixture.mjs")) {
+      const handle = tokens[tokens.indexOf("--gateway-handle") + 1];
+      await mkdir(`${handle}.d`, { recursive: true });
+      await writeFile(join(`${handle}.d`, "fixture-request.json"), '{}');
+      return { ...await execute(command, options), status: 124, timedOut: true };
+    }
+    if (tokens[1]?.startsWith("@")) assert.fail("commands after unresolved fixture cleanup must not run");
+    return execute(command, options);
+  };
+  const result = await runVerification({ ...f.options, execute: true }, f.dependencies);
+  for (const [name, clone] of Object.entries(result.clones)) {
+    assert.match(clone.error, /fixture cleanup unresolved/);
+    for (const phase of ["second", "diagnostic"]) {
+      assert.equal(clone.phases[`standard/${phase}`], "no checkpoint");
+      await assert.rejects(readFile(join(dirname(result.path), name, `checkpoints/standard/${phase}/commands.json`)), { code: "ENOENT" });
+    }
+  }
+  assert.equal(f.removed.length, 5);
+});
+
+test("fixture handles stay under run outputs and cleanup time fits the command limit", async (t) => {
+  const f = await fixture(t);
+  const command = (handle, timeout = 25) => `node {kovaRoot}/support/verify/stage-session-store-fixture.mjs --env {env} --agent main --restore --gateway-handle ${handle} --timeout ${timeout}`;
+  for (const [handle, timeout] of [["/outside/gateway.json", 25], ["{run}/../gateway.json", 25], ["{run}/gateway.json", 2147482647]]) {
+    f.plan.phases[1].commands = [command(handle, timeout)];
+    f.plan.phasesSha256 = sha256(canonicalJSON(f.plan.phases));
+    assert.throws(() => validateRunPlan(f.plan, f.catalogue), /gateway-handle|timeout/);
+  }
+  const root = await temporary(t), output = join(root, "output"), external = join(root, "external");
+  await mkdir(output); await mkdir(external);
+  await symlink(external, join(output, "gateway.json.d"));
+  await assert.rejects(validateRunDestinations(`node /helper --gateway-handle ${quoteShell(join(output, "gateway.json"))}`, { cwd: output, run: output, ownedRoots: [output] }), /owned copy/);
+  await assert.rejects(validateRunDestinations(`node /helper --gateway-handle ${quoteShell(join(external, "gateway.json"))}`, { cwd: output, run: output, ownedRoots: [output] }), /owned copy/);
 });
 
 test("target and phase identities refuse wrong commits, downgrades and service operations", async (t) => {

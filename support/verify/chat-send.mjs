@@ -10,7 +10,8 @@ export const definition = {
     if (o.intent !== undefined && o.intent !== "session-goal-start") throw new CallError("invalid --intent");
     if (o.message === undefined) throw new CallError("--message is required");
     if (o["queue-mode"] !== undefined && !["steer", "followup", "collect", "interrupt"].includes(o["queue-mode"])) throw new CallError("invalid --queue-mode");
-    if (o["after-ms"] !== undefined && (!Number.isSafeInteger(Number(o["after-ms"])) || Number(o["after-ms"]) < 0)) throw new CallError("invalid --after-ms");
+    o.afterMs = o["after-ms"] === undefined ? 0 : Number(o["after-ms"]);
+    if (!Number.isSafeInteger(o.afterMs) || o.afterMs < 0 || o.afterMs > 2147483647 - o.timeoutMs - 1000) throw new CallError("invalid --after-ms");
   },
   async run(o, ctx) {
     if (o["incognito-handle"]) {
@@ -20,7 +21,6 @@ export const definition = {
       o = { ...o, "session-key": key };
     }
     const key = await sessionKey(o, ctx);
-    if (o["after-ms"]) await ctx.pause(Number(o["after-ms"]));
     const params = {};
     for (const [flag, field] of [["queue-mode", "queueMode"], ["expected-leaf", "expectedLeafEntryId"]]) if (o[flag] !== undefined) params[field] = o[flag];
     if (o.intent) params.intent = { kind: o.intent, version: 1, issuedAtMs: Date.now() };
