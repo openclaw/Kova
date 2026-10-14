@@ -23,9 +23,9 @@ export async function hashFile(path) {
 }
 
 function executor(execute = runCommand, signal) {
-  return async (command, label = "persona command", { missingEnvironment } = {}) => {
+  return async (command, label = "persona command", { missingEnvironment, timeoutMs } = {}) => {
     signal?.throwIfAborted();
-    const result = await execute(command, { timeoutMs: signal ? 300000 : 30000, finishOnShutdown: true, maxOutputChars: 1000000, env: { KOVA_OPENCLAW_CONFIG_CONTRACT: "canonical" } });
+    const result = await execute(command, { timeoutMs: timeoutMs ?? (signal ? 300000 : 30000), finishOnShutdown: true, maxOutputChars: 1000000, env: { KOVA_OPENCLAW_CONFIG_CONTRACT: "canonical" } });
     signal?.throwIfAborted();
     if (missingEnvironment && result.status !== 0 && !result.signal && !result.timedOut && !result.outputBudget?.truncated && isMissingOcmResource(result, "environment", missingEnvironment)) return null;
     if (result.status !== 0 || result.signal || result.timedOut || result.outputBudget?.truncated) throw new Error(`${label} failed (exit ${result.status}): ${result.stderr?.trim() || result.stdout?.trim() || "no output"}`);
@@ -46,8 +46,8 @@ async function requireFreshEnvironment(env, call) {
 
 async function destroyEnvironment(env, call) {
   if (!await environmentExists(env, call)) return;
-  await call(`ocm env protect ${q(env)} off --json`);
-  await call(`ocm env destroy ${q(env)} --yes --json`, "destroy persona environment");
+  await call(`ocm env protect ${q(env)} off --json`, "unprotect persona environment", { timeoutMs: 120000 });
+  await call(`ocm env destroy ${q(env)} --yes --json`, "destroy persona environment", { timeoutMs: 120000 });
 }
 
 function relocatedKey(value, sourceRoot, targetRoot) {
@@ -98,7 +98,10 @@ async function checks(loaded, context, call, build, gateway) {
   for (const trait of loaded.traits) {
     await gateway.assertOwned();
     if (build) {
-      for (const command of trait.builder) await call(resolveCommand(command, context), `trait ${trait.id} builder`);
+      for (const command of trait.builder) await call(resolveCommand(command, context), `trait ${trait.id} builder`, { timeoutMs: 7200000 });
+      await gateway.stop();
+      await call(mockProviderCleanupCommand(join(context.run, "mock-openai")), "refresh mock provider");
+      await mockSetup(context.run, context.env, call, false);
       await gateway.start();
     }
     const result = await call(resolveCommand(trait.check, context), `trait ${trait.id} check`);
@@ -187,7 +190,7 @@ async function buildPersonaInScope(definitionPath, outputPath, options, signal) 
   if (!options.executeBuild) return plan;
   await mkdir(out, { recursive: true, mode: 0o700 });
   if ((await readdir(out)).length) throw new Error("persona output directory must be empty");
-  const env = `kova-persona-${suffix()}`;
+  const env = `kova-persona-traits-${suffix()}`;
   const lock = join(out, ".building");
   await writeFile(lock, `${JSON.stringify({ env, startedAt: new Date().toISOString() })}\n`, { flag: "wx", mode: 0o600 });
   const run = join(out, "build");

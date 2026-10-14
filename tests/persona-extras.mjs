@@ -1,0 +1,126 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { buildSessionExtras, checkSessionExtra, extraRequests } from "../support/persona/session-extras.mjs";
+import { EntryError } from "../support/persona/common.mjs";
+
+const key = "agent:main:persona-example";
+const sessionId = "persisted-session-id";
+
+function fixture(handler, fields = {}) {
+  return async (request) => request.method === "sessions.describe"
+    ? { session: { key, sessionId, ...fields } }
+    : handler(request);
+}
+
+test("goal check returns the saved goal identity and refuses terminal goals", async () => {
+  const goal = { id: "persisted-goal-id", status: "active", objective: "Keep the project notebook current." };
+  const rpc = fixture(() => assert.fail("unexpected request"), { goal });
+  assert.deepEqual(await checkSessionExtra({ rpc, key, kind: "session-goal-active" }), { key, goalId: goal.id });
+  goal.status = "complete";
+  await assert.rejects(checkSessionExtra({ rpc, key, kind: "session-goal-active" }), /goal is absent or differs/);
+});
+
+test("progress card check requires persisted plan states as well as markdown", async () => {
+  const input = extraRequests.progressPut(key).params;
+  const saved = { revision: 3, markdown: input.markdown, steps: input.plan };
+  const rpc = fixture(async ({ method }) => {
+    assert.equal(method, "progressCard.get");
+    return { card: saved };
+  });
+  assert.deepEqual(await checkSessionExtra({ rpc, key, kind: "session-progress-card" }), { key });
+  saved.steps[1].status = "completed";
+  await assert.rejects(checkSessionExtra({ rpc, key, kind: "session-progress-card" }), /progress card is absent or differs/);
+});
+
+test("pending creation uses acknowledged run ids and leaves restart settlement to its caller", async () => {
+  const inputs = [];
+  const stopped = [];
+  let sent = 0, preparationReads = 0;
+  const rpc = fixture(async ({ method, params }) => {
+    if (method === "chat.send") {
+      const runId = `acknowledged-${++sent}`;
+      if (sent > 1) {
+        assert.equal(preparationReads, 3, "followups require the accepted held run's live text");
+        assert.equal(params.queueMode, "followup");
+        inputs.push({ runId, state: "queued", queued: true, message: { role: "user", content: params.message } });
+      }
+      return { runId };
+    }
+    if (method === "progressCard.get") return { card: { markdown: "Mock reply is streaming; completion is pending." } };
+    if (method === "chat.history") {
+      if (sent === 1) preparationReads++;
+      return {
+        messages: [{ role: "assistant", content: "**VERIFY_HOLD**\n\nThe held reply is complete.", __openclaw: { runId: "older-run" } }],
+        inFlightRun: { runId: preparationReads === 1 ? "older-run" : "acknowledged-1", text: preparationReads === 2 ? "" : "**VERIFY_HOLD**" },
+        pendingInputs: { items: inputs, total: inputs.length }
+      };
+    }
+    if (method === "chat.abort") {
+      stopped.push(params.runId);
+      const input = inputs.find((input) => input.runId === params.runId);
+      assert.ok(input);
+      input.state = "cancelled";
+      delete input.queued;
+      return { aborted: true };
+    }
+    assert.fail(`unexpected request ${method}`);
+  });
+  assert.deepEqual(await buildSessionExtras({ rpc, key, options: { kind: "session-interrupted-inputs" } }), { key });
+  assert.deepEqual(stopped, ["acknowledged-2"]);
+  await assert.rejects(checkSessionExtra({ rpc, key, kind: "session-interrupted-inputs" }), /interrupted input is absent or still queued/);
+  inputs[1].state = "interrupted";
+  delete inputs[1].queued;
+  assert.deepEqual(await checkSessionExtra({ rpc, key, kind: "session-interrupted-inputs" }), { key });
+  inputs.splice(0, 1);
+  await assert.rejects(checkSessionExtra({ rpc, key, kind: "session-interrupted-inputs" }), /cancelled input is absent/);
+});
+
+test("public sharing checks never return bearer tokens or propagate token-bearing errors", async () => {
+  const token = "v1.private-test-token";
+  const rpc = fixture(async ({ method, params }) => {
+    assert.ok(["session.publicShare.set", "session.members.list"].includes(method));
+    if (method === "session.publicShare.set") assert.equal(params.expectedSessionId, sessionId);
+    return { ok: true, sessionKey: key, publicShare: { token, createdAt: 1 } };
+  });
+  const built = await buildSessionExtras({ rpc, key, options: { kind: "session-public-shared" } });
+  assert.deepEqual(built, { key });
+  assert.ok(!JSON.stringify(built).includes(token));
+  for (const [failure, exitCode] of [[new Error(token), 1], [new EntryError(token, 3), 3]]) {
+    const rejected = fixture(async () => { throw failure; });
+    for (const [operation, message] of [
+      [() => buildSessionExtras({ rpc: rejected, key, options: { kind: "session-public-shared" } }), "Gateway could not enable the saved public session share"],
+      [() => checkSessionExtra({ rpc: rejected, key, kind: "session-public-shared" }), "Gateway could not read the saved public session share"],
+    ]) await assert.rejects(operation, (error) => {
+      assert.equal(error.message, message);
+      assert.equal(error.exitCode, exitCode);
+      assert.ok(!JSON.stringify(error).includes(token));
+      assert.equal(error.cause, undefined);
+      return true;
+    });
+  }
+});
+
+test("idle check requires elapsed time and a saved completed turn", async () => {
+  const idleKey = `${key}:thread:idle`;
+  const policy = { reset: { mode: "none" }, resetByType: { direct: { mode: "none" }, group: { mode: "none" }, thread: { mode: "idle", idleMinutes: 1 } } };
+  const old = Date.now() - 61000;
+  const fields = { key: idleKey, lastInteractionAt: old, updatedAt: old };
+  const messages = [
+    { role: "user", content: "KOVA_IDLE_HISTORY", timestamp: old },
+    { role: "assistant", content: "KOVA_AGENT_OK", timestamp: old }
+  ];
+  const rpc = fixture(async ({ method }) => {
+    if (method === "config.get") return { config: { session: policy } };
+    if (method === "chat.history") return { messages };
+    assert.fail(`unexpected request ${method}`);
+  }, fields);
+  assert.deepEqual(await checkSessionExtra({ rpc, key: idleKey, kind: "session-idle-expired" }), { key: idleKey });
+  policy.resetByType.direct.mode = "idle";
+  await assert.rejects(checkSessionExtra({ rpc, key: idleKey, kind: "session-idle-expired" }), /direct and group resets disabled/);
+  policy.resetByType.direct.mode = "none";
+  fields.updatedAt = Date.now();
+  await assert.rejects(checkSessionExtra({ rpc, key: idleKey, kind: "session-idle-expired" }), /not reached/);
+  fields.updatedAt = old;
+  messages.pop();
+  await assert.rejects(checkSessionExtra({ rpc, key: idleKey, kind: "session-idle-expired" }), /completed notebook turn/);
+});
