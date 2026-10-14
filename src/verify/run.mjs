@@ -10,6 +10,7 @@ import { canonicalJSON, sha256 } from "./plan.mjs";
 import { createClone, hashFile, readPersona, resolveRunCommand, stagePersona } from "./clones.mjs";
 import { combineLogCollectors, createLogCollector, snapshotState, writeCheckpoint } from "./checkpoint.mjs";
 import { parseGatewayCallArgs, resolveGatewayParams } from "../../support/verify/gateway-call.mjs";
+import { CallError, failure as gatewayFailure } from "../../support/verify/background.mjs";
 import { cleanupGatewayHandle } from "../../support/verify/gateway-lifecycle.mjs";
 
 const names = ["baseline", "change-1", "change-2", "noise-1", "noise-2"];
@@ -310,7 +311,7 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
     if (cacheLocked) {
       try {
         const saved = await readJSON(join(cache, "cache.json"));
-        if (saved?.key === key && canonicalJSON(saved.extras) === canonicalJSON(extras) && canonicalJSON(saved.files) === canonicalJSON(await fingerprintDirectory(cache)) && baselineNames.every((name) => saved.clones?.[name]?.started && plan.phases.every((phase) => saved.clones[name].phases?.[phase.id] === "recorded"))) {
+        if (saved?.key === key && canonicalJSON(saved.extras) === canonicalJSON(extras) && canonicalJSON(saved.files) === canonicalJSON(await fingerprintDirectory(cache)) && baselineNames.every((name) => saved.clones?.[name]?.started && !saved.clones[name].incomplete?.length && plan.phases.every((phase) => saved.clones[name].phases?.[phase.id] === "recorded"))) {
           for (const name of baselineNames) await cp(join(cache, name), join(directory, name), { recursive: true, errorOnExist: true });
           cached = saved;
         }
@@ -374,8 +375,15 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
             if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) throw new Error(`invalid command timeout in ${phase.id}`);
             const delay = Number(option(tokens, "--after-ms") ?? 0);
             if (!Number.isSafeInteger(delay) || delay < 0) throw new Error(`invalid command delay in ${phase.id}`);
-            const resolved = await validateRunDestinations(resolveRunCommand(command, commandContext), commandContext);
-            const result = await call(resolved, { cwd: commandContext.cwd, timeoutMs: timeoutMs + delay + (entry.kind === "gateway" || entry.kind === "script" ? 1000 : 0), allowFailure: true, finishOnShutdown: false });
+            const startedAt = Date.now();
+            let resolved = command, result;
+            try { resolved = resolveRunCommand(command, commandContext); resolved = await validateRunDestinations(resolved, commandContext); }
+            catch (error) {
+              signal?.throwIfAborted();
+              const rejected = gatewayFailure(option(tokens, "--method") ?? entry.id, new CallError(error.message), startedAt);
+              result = { command: resolved, status: rejected.exitCode, stdout: json(rejected.output), stderr: "", durationMs: Date.now() - startedAt, timedOut: false };
+            }
+            result ??= await call(resolved, { cwd: commandContext.cwd, timeoutMs: timeoutMs + delay + (entry.kind === "gateway" || entry.kind === "script" ? 1000 : 0), allowFailure: true, finishOnShutdown: false });
             result.reachedBound = result.timedOut || (["gateway", "script"].includes(entry.kind) && result.status === 3);
             results.push(result);
           }
@@ -417,7 +425,7 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
       if (JSON.parse(inventory.stdout).some((entry) => entry.name === runtime)) await cleanupCall(`ocm runtime remove ${q(runtime)} --json`);
     } catch (error) { record.cleanupErrors.push(error.message); }
   }
-  if (!failure && cacheLocked && !cached && !record.cleanupErrors.length && baselineNames.every((name) => record.clones[name]?.started && !record.clones[name].error && plan.phases.every((phase) => record.clones[name].phases[phase.id] === "recorded"))) {
+  if (!failure && cacheLocked && !cached && !record.cleanupErrors.length && baselineNames.every((name) => record.clones[name]?.started && !record.clones[name].error && !record.clones[name].incomplete?.length && plan.phases.every((phase) => record.clones[name].phases[phase.id] === "recorded"))) {
     await mkdir(dirname(cache), { recursive: true, mode: 0o700 });
     const temporary = await mkdtemp(`${cache}.pending-`);
     try {

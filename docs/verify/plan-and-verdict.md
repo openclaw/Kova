@@ -659,7 +659,9 @@ disk and the command exits nonzero. All imported environments and newly built
 runtimes are removed on successful cleanup. The persona is never destroyed.
 
 The cache stores only complete baseline/noise checkpoints and initial state,
-with content hashes. A malformed, missing or changed cache is not reused. An
+with content hashes. Copies with incomplete phases are not cached and are
+executed again after their inputs recover. A malformed, missing or changed cache
+is not reused. An
 active cache writer causes another run to bypass that cache. Secondary persona
 environments are exported before each run and their captured-content hashes must
 also match the cached copies. These checks preserve the five-part cache key while preventing

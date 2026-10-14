@@ -2,7 +2,7 @@ import { parseCatalogueCommand } from "../src/catalogue.mjs";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, writeFile, appendFile, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
 import { execFileSync } from "node:child_process";
 import { createLogCollector, recordPhase, snapshotState, writeCheckpoint } from "../src/verify/checkpoint.mjs";
@@ -374,7 +374,12 @@ test("the runner confines product destinations before execution and routes each 
   const result = await runVerification({ ...f.options, execute: true }, f.dependencies);
   assert.equal(seen.size, 5);
   assert.equal(f.calls.some((command) => command.includes("'export-trajectory'")), false);
-  for (const copy of Object.values(result.clones)) assert.match(copy.error, /owned copy/);
+  for (const [name, copy] of Object.entries(result.clones)) {
+    assert.deepEqual(copy.incomplete, ["standard/second"]);
+    const checkpoint = join(dirname(result.path), name, "checkpoints/standard/second");
+    assert.equal((await readJSON(join(checkpoint, "commands.json")))[0].exit, 2);
+    assert.match((await readJSON(join(checkpoint, "responses.json")))[0].error, /owned copy/);
+  }
   assert.equal(f.removed.length, 5);
 });
 
@@ -456,4 +461,47 @@ test("resolved helper outputs cannot enter checkpoint directories through aliase
   await assert.rejects(validateRunDestinations(`node /helper --out ${quoteShell(join(output, "alias/new.json"))}`, context), /protected evidence/);
   const patch = join(output, "patch.json");await writeFile(patch, JSON.stringify({ logging: { file: join(output, "checkpoints/commands.json") } }));
   await assert.rejects(validateRunDestinations(`ocm @copy -- config patch --file ${quoteShell(patch)}`, context), /owned copy/);
+});
+
+
+test("failed response dependencies preserve diagnostics and incomplete baselines can recover", async (t) => {
+  for (const defect of ["error", "missing", "invalid"]) for (const faultyCopy of ["change-1", "baseline"]) {
+    const f = await fixture(t), makeClone = f.dependencies.cloneFactory;
+    let rejectInput = true;
+    f.dependencies.cloneFactory = (options) => {
+      const clone = makeClone(options), prepare = clone.prepare;
+      clone.prepare = async () => {
+        const metadata = await prepare(), faulty = options.name === faultyCopy && rejectInput;
+        const response = faulty && defect === "error" ? { error: "planted OpenClaw failure" } : { method: "sessions.describe", error: null, result: { session: { key: "agent:main:case", sessionId: "observed-id" } } };
+        if (!faulty || defect !== "missing") await writeFile(join(options.directory, "dependency.json"), faulty && defect === "invalid" ? "not JSON" : JSON.stringify(response));
+        return metadata;
+      };
+      return clone;
+    };
+    f.plan.phases[1] = { ...f.plan.phases[1], id: "intent/dependent-response", from: "intent:protected", commands: ["--merge-from", "--session-from"].map((flag) => `node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.patch --params '{"label":"updated"}' ${flag} {run}/dependency.json`) };
+    f.plan.phases.push({ ...f.plan.phases[0], id: "standard/diagnostic", commands: ["ocm @{env} -- doctor --json"] });
+    await f.save();
+    const result = await runVerification({ ...f.options, execute: true }, f.dependencies);
+    assert.deepEqual(result.notStarted, []);
+    assert.deepEqual(result.incomplete, ["intent/dependent-response"]);
+    for (const [name, copy] of Object.entries(result.clones)) {
+      assert.equal(copy.phases["intent/dependent-response"], "recorded");
+      assert.equal(copy.phases["standard/diagnostic"], "recorded");
+      assert.deepEqual(copy.incomplete, name === faultyCopy ? ["intent/dependent-response"] : []);
+    }
+    const path = join(dirname(result.path), faultyCopy, "checkpoints/intent/dependent-response");
+    const commands = await readJSON(join(path, "commands.json"));
+    assert.deepEqual(commands.map((row) => row.exit), [2, 2]);
+    assert.ok(commands.every((row) => !/\{(?:env|run|kovaRoot)\}/.test(row.command)));
+    assert.ok(Object.values(await readJSON(join(path, "responses.json"))).every((response) => typeof response.error === "string" && response.error));
+    assert.equal(f.calls.filter((command) => command.includes("'sessions.patch'")).length, 8);
+    assert.equal(f.calls.filter((command) => command.includes("'doctor'")).length, 5);
+    assert.equal(f.removed.length, 5);
+    rejectInput = false;
+    const recovered = await runVerification({ ...f.options, execute: true }, f.dependencies);
+    assert.deepEqual(recovered.incomplete, []);
+    assert.deepEqual(recovered.notStarted, []);
+    assert.equal(recovered.clones.baseline.cached, faultyCopy !== "baseline");
+    assert.equal(f.removed.length, faultyCopy === "baseline" ? 10 : 7);
+  }
 });

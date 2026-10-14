@@ -335,7 +335,8 @@ file paths must be absolute paths in the copied environments; ambiguous relative
 file paths and project, catalog or remote creation selectors are refused.
 Session file writes cannot replace the copied configuration. Product destinations
 cannot overlap recorded evidence. Ordinary request text remains unchanged.
-Log offsets advance only after a complete checkpoint is published. An unset `logging.file`
+Rejected command inputs are recorded with exit code 2; later phases still
+collect diagnostics. Log offsets advance only after a complete checkpoint is published. An unset `logging.file`
 receives a path inside the clone; an explicit path must be absolute and clone-owned. Includes and environment
 substitutions in log configuration are refused instead of reading shared logs.
 Log capture above 16 MiB marks the checkpoint incomplete.
