@@ -501,7 +501,7 @@ test("mixed phases consume actual Doctor formats through the checkpoint writer",
     const changed = name.startsWith("change");
     const output = [
       { findings: ["unrelated output"] },
-      { schemaVersion: 1, ok: false, findings: [{ checkId: "check", message: "shared" }, { checkId: "check", message: changed ? "new" : "fixed" }], warnings: [{ checkId: "warning", message: "shared warning" }] },
+      { schemaVersion: 1, ok: false, findings: [{ checkId: "check", message: "shared" }, { checkId: "check", message: changed ? "new" : "fixed" }, { checkId: "changed-type", message: changed ? 42 : "readable" }], warnings: [{ checkId: "warning", message: "shared warning" }] },
       { mode: "inspect", targets: ["main", "other"].map((agentId) => ({ agentId, issues: [{ code: "transcript_missing", sessionKey: "stable", message: "Missing transcript" }] })) },
       { schemaVersion: "kova.doctorRepair.v1", errors: changed ? ["Repair failed"] : [] },
       changed ? { unexpected: true } : { findings: [] }
@@ -520,4 +520,101 @@ test("mixed phases consume actual Doctor formats through the checkpoint writer",
   assert.equal(result.rows.find((row) => row.at === "Repair failed").class, "break");
   assert.equal(result.rows.filter((row) => row.at.includes("transcript_missing") && row.class === "not-caused").length, 2);
   assert.ok(result.rows.some((row) => row.at === "4/output/unexpected" && row.class === "break"));
+  assert.ok(result.rows.some((row) => row.at.includes('"message":42') && row.class === "break"));
+});
+
+
+test("recorded target bindings normalize fresh and cached copies but expose a wrong binding", async (t) => {
+  const start = "ocm start {env} --runtime {target} --no-service --json";
+  const show = "ocm env show {env} --json";
+  const phases = [{ id: "standard/use-target", from: "standard", commands: [start], checkpoint: ["responses"] }, { id: "standard/snapshot", from: "standard", commands: [show], checkpoint: ["responses"] }];
+  const f = await fixture(t, { phases });
+  await writeJSON(join(f.directory, "catalogue.json"), JSON.parse(await readFile(new URL("../catalogue/openclaw.json", import.meta.url))));
+  f.run.targets.baseline.runtime = "kova-run-11111111-1111-4111-8111-111111111111-baseline";
+  f.run.targets.change.runtime = "kova-run-22222222-2222-4222-8222-222222222222-change";
+  for (const name of names) {
+    const runtime = f.run.targets[name.startsWith("change") ? "change" : "baseline"].runtime;
+    const directory = join(f.directory, name);
+    await rm(join(directory, "checkpoints"), { recursive: true });
+    for (const phase of phases) await writeCheckpoint({ phase, directory, results: [{ command: phase.commands[0].replace("{env}", name).replace("{target}", runtime), status: 0, stdout: JSON.stringify({ defaultRuntime: runtime, bindingText: `prefix:${runtime}`, preserved: "value" }), stderr: "", durationMs: 1 }] });
+  }
+  await f.savePlan();
+  assert.equal((await f.compare()).verdict, "good-to-go");
+  delete f.run.targets.baseline.runtime;
+  for (const name of ["baseline", "noise-1", "noise-2"]) f.run.clones[name].cached = true;
+  await f.savePlan();
+  assert.equal((await f.compare()).verdict, "good-to-go");
+  for (const name of ["change-1", "change-2"]) {
+    const path = join(f.directory, name, "checkpoints/standard/snapshot/responses.json");
+    const response = JSON.parse(await readFile(path)); response[0].defaultRuntime = "wrong-runtime";
+    await writeJSON(path, response);
+  }
+  const result = await f.compare();
+  assert.equal(result.verdict, "breaks");
+  assert.deepEqual(result.rows.map((row) => [row.at, row.baseline, row.change]), [["0/defaultRuntime", "<runtime:target>", "wrong-runtime"]]);
+});
+
+test("helper durations do not become differences when the two noise values happen to agree", async (t) => {
+  const gateway = "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{}' --timeout 30000";
+  const phase = { id: phaseId, from: "template:sessions", commands: [gateway], checkpoint: ["responses", "timing"] };
+  const f = await fixture(t, { phases: [phase], copies: Object.fromEntries(names.map((name, index) => [name, { response: { method: "sessions.list", result: { elapsedMs: "product label" }, elapsedMs: name.startsWith("change") ? index + 10 : 10, durationMs: index + 1 } }])) });
+  await writeJSON(join(f.directory, "catalogue.json"), JSON.parse(await readFile(new URL("../catalogue/openclaw.json", import.meta.url))));
+  assert.equal((await f.compare()).verdict, "good-to-go");
+  for (const name of ["change-1", "change-2"]) {
+    const path = join(f.directory, name, "checkpoints", phaseId, "responses.json");
+    const response = JSON.parse(await readFile(path)); response[0].result.elapsedMs = "changed product label";
+    await writeJSON(path, response);
+  }
+  const result = await f.compare();
+  assert.equal(result.verdict, "breaks");
+  assert.equal(result.rows[0].at, "0/result/elapsedMs");
+});
+
+test("digit-only TEXT identities normalize without changing ordinary SQL or JSON numbers", async (t) => {
+  const ids = ["baseline-id", "12345678", "87654321", "first-noise-id", "second-noise-id"];
+  const f = await fixture(t, { stateIds: [{ path: "files/store.sqlite", table: "records", column: "id", recordKey: "owner" }], state: async (path, name, index) => {
+    const db = new DatabaseSync(join(path, "store.sqlite"));
+    try {
+      db.exec("CREATE TABLE records (id TEXT PRIMARY KEY, owner TEXT, reference TEXT, ordinary INTEGER, payload TEXT)");
+      db.prepare("INSERT INTO records VALUES (?, 'same-owner', ?, 12345678, ?)").run(ids[index], `prefix:${ids[index]}`, JSON.stringify({ count: 12345678, ref: ids[index] }));
+    } finally { db.close(); }
+  } });
+  assert.equal((await f.compare()).verdict, "good-to-go");
+  const db = new DatabaseSync(join(f.directory, "change-1/checkpoints", phaseId, "state/files/store.sqlite"));
+  try { db.exec("UPDATE records SET ordinary = 87654321"); } finally { db.close(); }
+  const result = await f.compare();
+  assert.equal(result.verdict, "unresolved");
+  assert.equal(result.rows[0].change, 87654321);
+  assert.ok(result.rows[0].at.endsWith("/ordinary"));
+});
+
+test("selected state requires its recording directory but permits absent product files", async (t) => {
+  const f = await fixture(t, { state: async () => {} });
+  for (const name of names) await rm(join(f.directory, name, "checkpoints", phaseId, "state/files"), { recursive: true });
+  assert.equal((await f.compare()).verdict, "good-to-go");
+  for (const name of names) await rm(join(f.directory, name, "checkpoints", phaseId, "state"), { recursive: true });
+  await assert.rejects(f.compare(), /missing state checkpoint directory/);
+});
+
+test("virtual SQLite declarations and persisted backing data compare without loading modules", async (t) => {
+  const source = await mkdtemp(join(tmpdir(), "kova-virtual-state-")); t.after(() => rm(source, { recursive: true, force: true }));
+  const make = async (path, changed) => {
+    const db = new DatabaseSync(path);
+    try {
+      db.exec("CREATE TABLE vectors_chunks (id INTEGER PRIMARY KEY, data BLOB); CREATE VIRTUAL TABLE vectors USING fts5(body)");
+      db.prepare("INSERT INTO vectors_chunks VALUES (1, ?)").run(Buffer.from(changed ? [2, 3] : [1, 2]));
+    } finally { db.close(); }
+    // Keep the SQLite file structurally valid while naming an unavailable module.
+    // Equal-length SQL preserves the schema record's encoded size and page layout.
+    const bytes = await readFile(path), before = Buffer.from("CREATE VIRTUAL TABLE vectors USING fts5(body)");
+    const offset = bytes.indexOf(before);
+    assert.ok(offset >= 0); assert.equal(bytes.indexOf(before, offset + 1), -1);
+    Buffer.from("CREATE VIRTUAL TABLE vectors USING vec0(body)").copy(bytes, offset);
+    await writeFile(path, bytes);
+  };
+  await make(join(source, "memory.sqlite"), false);
+  const f = await fixture(t, { creates: ["/id"], copies: Object.fromEntries(names.map((name) => [name, { response: { id: `generated-${name}` } }])), originalFiles: { "memory.sqlite": await readFile(join(source, "memory.sqlite")) }, state: async (path, name) => make(join(path, "memory.sqlite"), name.startsWith("change")) });
+  const result = await f.compare();
+  assert.equal(result.verdict, "breaks");
+  assert.ok(result.rows.some((row) => row.at === "files/memory.sqlite:vectors_chunks/1/data/sha256" && row.class === "break"));
 });
