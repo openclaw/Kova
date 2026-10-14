@@ -89,6 +89,7 @@ export async function writeCheckpoint({ phase, directory, results, stateDirector
   const destination = join(directory, "checkpoints", phase.id);
   await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
   const temporary = await mkdtemp(`${destination}.pending-`);
+  let logCapture;
   try {
     const responses = {};
     const commands = results.map((result, index) => {
@@ -107,7 +108,8 @@ export async function writeCheckpoint({ phase, directory, results, stateDirector
       else if (signal === "timing") await writeFile(join(temporary, "timing.json"), json(results.map((result) => ({ durationMs: result.durationMs, reachedBound: result.timedOut === true || result.reachedBound === true }))), { mode: 0o600 });
       else if (signal === "logs") {
         if (!collectLogs) throw new Error("log collector is required by checkpoint");
-        await writeFile(join(temporary, "logs.txt"), await collectLogs(), { mode: 0o600 });
+        logCapture ??= collectLogs.prepare ? await collectLogs.prepare() : { text: await collectLogs(), commit() {} };
+        await writeFile(join(temporary, "logs.txt"), logCapture.text, { mode: 0o600 });
       } else if (signal === "doctor") {
         await writeFile(join(temporary, "doctor.json"), json(results.map((result) => parseOutput(result.stdout).value)), { mode: 0o600 });
       } else if (signal === "screen") {
@@ -124,6 +126,7 @@ export async function writeCheckpoint({ phase, directory, results, stateDirector
     const paths = phase.checkpoint.filter((signal) => signal.startsWith("state:")).map((signal) => signal.slice(6));
     if (paths.length) await snapshotState(stateDirectory, paths, join(temporary, "state"));
     await rename(temporary, destination);
+    logCapture?.commit();
     return { path: destination, incomplete: commands.some((command) => command.exit === 2) };
   } catch (error) {
     await rm(temporary, { recursive: true, force: true });
@@ -177,6 +180,30 @@ export function createLogCollector(paths, { validatePath, trackIdentity = false 
     bytes = Buffer.byteLength(text);
     if (bytes > maxBytes) throw new Error("log capture exceeds the 16 MiB output budget");
     return { text, bytes, commit() { for (const [key, value] of pendingOffsets) offsets.set(key, value); } };
+  };
+  return Object.assign(async () => { const result = await prepare(); result.commit(); return result.text; }, { prepare });
+}
+
+export function combineLogCollectors(collectors) {
+  const prepare = async ({ maxBytes = 16 * 1024 * 1024 } = {}) => {
+    const selected = typeof collectors === "function" ? await collectors() : collectors;
+    const captures = [];
+    let bytes = 0;
+    let nonempty = false;
+    for (const collect of new Set(selected)) {
+      if (typeof collect.prepare !== "function") throw new Error("combined log readers must support deferred capture");
+      const capture = await collect.prepare({ maxBytes: maxBytes - bytes });
+      if (capture.bytes > 0) {
+        bytes += capture.bytes + (nonempty ? 1 : 0);
+        nonempty = true;
+        if (bytes > maxBytes) throw new Error("log capture exceeds the 16 MiB output budget");
+      }
+      captures.push(capture);
+    }
+    return {
+      text: captures.map((capture) => capture.text).filter(Boolean).join("\n"), bytes,
+      commit() { for (const capture of captures) capture.commit(); }
+    };
   };
   return Object.assign(async () => { const result = await prepare(); result.commit(); return result.text; }, { prepare });
 }

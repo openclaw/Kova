@@ -323,11 +323,15 @@ Execution builds package runtimes through OCM, imports five disposable copies
 (one baseline, two change and two baseline noise copies), checks the persona
 content and runs the phases in order on each copy. Persona-provided environments
 are exported and imported separately for each copy. Their keys resolve to those
-copies. Phase commands use a working directory inside their copy, and filesystem
-destinations are checked after resolving aliases. Gateway processes run in the
+copies. Imports and runtime preparation are serialized to respect shared runtime
+ownership; product phases remain parallel. Persona checks and phase commands
+use a working directory inside their copy, and filesystem destinations are checked after resolving aliases. Gateway processes run in the
 foreground without managed services. Product file logs are collected as well as
-console output. An unset `logging.file` receives a path inside the clone; an
-explicit path must be absolute and clone-owned. Includes and environment
+console output. Repeated destination flags are refused. Config patches must
+keep path values inside the copies and cannot remove the owned log destination
+or introduce includes or paths dependent on the shell environment. Log offsets
+advance only after a complete checkpoint is published. An unset `logging.file`
+receives a path inside the clone; an explicit path must be absolute and clone-owned. Includes and environment
 substitutions in log configuration are refused instead of reading shared logs.
 Log capture above 16 MiB marks the checkpoint incomplete.
 Plans must begin with the standard target binding. OCM operands must name the

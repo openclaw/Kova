@@ -10,7 +10,7 @@ import JSON5 from "json5";
 import { parseCatalogueCommand } from "../src/catalogue.mjs";
 import { repoRoot } from "../src/paths.mjs";
 import { createClone, hashEnvironmentExport, hashFile, resolveRunCommand, stagePersona } from "../src/verify/clones.mjs";
-import { writeCheckpoint } from "../src/verify/checkpoint.mjs";
+import { combineLogCollectors, createLogCollector, writeCheckpoint } from "../src/verify/checkpoint.mjs";
 
 const version = "2026.9.9";
 const integrity = `sha512-${Buffer.alloc(64, 0x42).toString("base64")}`;
@@ -172,7 +172,7 @@ async function fixture(t, { configureImported } = {}) {
       assert.ok(path.startsWith(`${metadata.root}${sep}`), "trait file must belong to that copy");
       assert.ok([...handles.values()].includes(env), "trait checks require the recorded Gateway start");
       const content = JSON.parse(await readFile(path, "utf8"));
-      checks.push({ env, path, marker: content.marker });
+      checks.push({ env, path, marker: content.marker, cwd: options.cwd });
       return response(command, { env, copy: path, marker: content.marker });
     }
     assert.equal(binary, "ocm", `unexpected command: ${command}`);
@@ -260,7 +260,7 @@ async function fixture(t, { configureImported } = {}) {
   const stagedDirectory = join(root, "staged persona");
   await mkdir(stagedDirectory);
   const persona = await stagePersona({ manifest, definition, archive }, stagedDirectory, call);
-  const clone = (name) => createClone({ name, directory: join(root, "runs", name), persona, root: repoRoot, call, cleanupCall: call, cleanupHandle });
+  const clone = (name, options = {}) => createClone({ name, directory: join(root, "runs", name), persona, root: repoRoot, call, cleanupCall: call, cleanupHandle, ...options });
   const restage = async (label) => {
     const directory = join(root, label);
     await mkdir(directory);
@@ -407,7 +407,11 @@ test("clone-owned file logs reach checkpoints with silent consoles, rotation and
     await mkdir(dirname(primaryFile), { recursive: true });
     await writeFile(primaryFile, "file-only primary error\n");
     await appendFile(extraFile, "file-only auxiliary error\n");
-    const checkpoint = await writeCheckpoint({ phase: { id: "intent/file-errors", checkpoint: ["logs"] }, directory: copy.directory, results: [], collectLogs: () => copy.collectProductLogs() });
+    await assert.rejects(writeCheckpoint({
+      phase: { id: "intent/rejected-file-errors", checkpoint: ["logs", "state:../outside"] },
+      directory: copy.directory, stateDirectory: primary.stateDir, results: [], collectLogs: copy.collectProductLogs
+    }), /invalid checkpoint state path/);
+    const checkpoint = await writeCheckpoint({ phase: { id: "intent/file-errors", checkpoint: ["logs"] }, directory: copy.directory, results: [], collectLogs: copy.collectProductLogs });
     const text = await readFile(join(checkpoint.path, "logs.txt"), "utf8");
     assert.match(text, /file-only primary error/);
     assert.match(text, /file-only auxiliary error/);
@@ -442,7 +446,7 @@ test("clone-owned file logs reach checkpoints with silent consoles, rotation and
     await writeFile(shared, "unowned content\n");
     primaryConfig.logging.file = shared;
     await writeFile(primary.configPath, JSON.stringify(primaryConfig));
-    await assert.rejects(writeCheckpoint({ phase: { id: "intent/unsafe-file", checkpoint: ["logs"] }, directory: copy.directory, results: [], collectLogs: () => copy.collectProductLogs() }), /inside its clone root/);
+    await assert.rejects(writeCheckpoint({ phase: { id: "intent/unsafe-file", checkpoint: ["logs"] }, directory: copy.directory, results: [], collectLogs: copy.collectProductLogs }), /inside its clone root/);
     await assert.rejects(readFile(join(copy.directory, "checkpoints/intent/unsafe-file/logs.txt")), { code: "ENOENT" });
     const alias = join(primary.stateDir, "alias.log");
     primaryConfig.logging.file = alias;
@@ -482,4 +486,92 @@ test("external imported log destinations are refused before product startup", as
     assert.equal(f.calls.filter((tokens) => tokens[0] === "ocm" && tokens[1] === "start").length, 0);
   } finally { await copy.cleanup(); }
   for (const source of [f.primary, f.extra]) assert.deepEqual(await filesUnder(source.root), f.originalFiles.get(source.name));
+});
+
+test("trait commands are validated before execution with an owned cwd and clean up after refusal", async (t) => {
+  const f = await fixture(t);
+  const validated = [];
+  const copy = f.clone("validated-checks", { validateCommand: async (command, context) => {
+    assert.equal(f.checks.length, validated.length, "each check must wait for its validation");
+    assert.equal(context.cwd, copy.metadata.workspaceDir);
+    assert.ok(context.ownedRoots.some((root) => context.cwd.startsWith(`${root}${sep}`)));
+    assert.equal(parseCatalogueCommand(command).tokens[1], checkScript);
+    validated.push({ command, cwd: context.cwd });
+  } });
+  try {
+    await copy.prepare();
+    assert.equal(validated.length, f.persona.definition.traits.length);
+    assert.deepEqual(f.checks.map((check) => check.cwd), validated.map((check) => check.cwd));
+  } finally { await copy.cleanup(); }
+  const before = f.checks.length;
+  const refused = f.clone("refused-checks", { validateCommand: async () => { throw new Error("trait destination refused"); } });
+  try {
+    await assert.rejects(refused.prepare(), /trait destination refused/);
+    assert.equal(f.checks.length, before);
+    assert.equal(f.handles.size, 0);
+  } finally { await refused.cleanup(); }
+  assert.deepEqual(new Set(f.environments.keys()), new Set([f.primary.name, f.extra.name]));
+  assert.deepEqual(new Set(f.removed), new Set(f.imports.map((value) => value.name)));
+});
+
+async function checkpointLogFixture(t) {
+  const directory = await mkdtemp(join(tmpdir(), "kova-checkpoint-logs-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const stdout = join(directory, "stdout.log"), product = join(directory, "product.log");
+  await writeFile(stdout, "console error\n");
+  await writeFile(product, "product error\n");
+  const collect = combineLogCollectors([createLogCollector([stdout]), combineLogCollectors([createLogCollector([product])])]);
+  const phase = { id: "intent/log-capture", checkpoint: ["logs"] };
+  return { directory, stdout, product, collect, options: { phase, directory, results: [], collectLogs: collect } };
+}
+
+test("screenshot and publication failures retain all log bytes for a later checkpoint", async (t) => {
+  const f = await checkpointLogFixture(t);
+  const screenPath = join(f.directory, "screen.png");
+  await writeFile(screenPath, "invalid screenshot");
+  const options = { ...f.options, screenPath, phase: { ...f.options.phase, browser: true, checkpoint: ["logs", "screen"] } };
+  await assert.rejects(writeCheckpoint(options), /not a PNG/);
+  assert.deepEqual(await readdir(join(f.directory, "checkpoints/intent")), []);
+  await appendFile(f.stdout, "after screenshot failure\n");
+  await writeFile(screenPath, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7xQAAAAASUVORK5CYII=", "base64"));
+  const destination = join(f.directory, "checkpoints/intent/log-capture");
+  await mkdir(destination);
+  await writeFile(join(destination, "retained.json"), "existing checkpoint");
+  await assert.rejects(writeCheckpoint(options), (error) => ["ENOTEMPTY", "EEXIST"].includes(error.code));
+  assert.equal(await readFile(join(destination, "retained.json"), "utf8"), "existing checkpoint");
+  assert.deepEqual(await readdir(join(f.directory, "checkpoints/intent")), ["log-capture"]);
+  await rm(destination, { recursive: true });
+  const published = await writeCheckpoint(options);
+  assert.equal(await readFile(join(published.path, "logs.txt"), "utf8"), "console error\nafter screenshot failure\n\nproduct error\n");
+  assert.equal(await f.collect(), "");
+  await appendFile(f.product, "after publication\n");
+  const next = await writeCheckpoint({ ...f.options, phase: { id: "intent/next", checkpoint: ["logs"] } });
+  assert.equal(await readFile(join(next.path, "logs.txt"), "utf8"), "after publication\n");
+});
+
+test("a later nested reader failure cannot consume earlier console or product logs", async (t) => {
+  const f = await checkpointLogFixture(t);
+  const later = join(f.directory, "later.log");
+  await mkdir(later);
+  const collect = combineLogCollectors([
+    createLogCollector([f.stdout]),
+    combineLogCollectors([createLogCollector([f.product]), createLogCollector([later])])
+  ]);
+  const options = { ...f.options, collectLogs: collect };
+  await assert.rejects(writeCheckpoint(options), /not a regular file/);
+  await rm(later, { recursive: true });
+  await writeFile(later, "later product error\n");
+  const published = await writeCheckpoint(options);
+  assert.equal(await readFile(join(published.path, "logs.txt"), "utf8"), "console error\n\nproduct error\n\nlater product error\n");
+  assert.equal(await collect(), "");
+});
+
+test("the combined budget rejects oversized capture without consuming any reader", async (t) => {
+  const f = await checkpointLogFixture(t);
+  await truncate(f.product, 16 * 1024 * 1024);
+  await assert.rejects(writeCheckpoint(f.options), /16 MiB output budget/);
+  await writeFile(f.product, "bounded product error\n");
+  const published = await writeCheckpoint(f.options);
+  assert.equal(await readFile(join(published.path, "logs.txt"), "utf8"), "console error\n\nbounded product error\n");
+  assert.equal(await f.collect(), "");
 });

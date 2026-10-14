@@ -1,13 +1,14 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
+import JSON5 from "json5";
+import { cp, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { artifactsDir, repoRoot } from "../paths.mjs";
 import { quoteShell as q, runCommand, runWithShutdownScope } from "../commands.mjs";
 import { checkCatalogueCommands, createCatalogueResolver, loadCatalogue, parseCatalogueCommand } from "../catalogue.mjs";
 import { canonicalJSON, sha256 } from "./plan.mjs";
 import { createClone, hashFile, readPersona, resolveRunCommand, stagePersona } from "./clones.mjs";
-import { createLogCollector, snapshotState, writeCheckpoint } from "./checkpoint.mjs";
+import { combineLogCollectors, createLogCollector, snapshotState, writeCheckpoint } from "./checkpoint.mjs";
 import { cleanupGatewayHandle } from "../../support/verify/gateway-lifecycle.mjs";
 
 const names = ["baseline", "change-1", "change-2", "noise-1", "noise-2"];
@@ -49,7 +50,9 @@ export async function validateTarget(selector, expectedCommit, personaVersion) {
 }
 
 function option(tokens, name) {
-  const index = tokens.findIndex((token) => token === name || token.startsWith(`${name}=`));
+  const matches = tokens.flatMap((token, index) => token === name || token.startsWith(`${name}=`) ? [index] : []);
+  if (matches.length > 1) throw new Error(`repeated ${name} is ambiguous`);
+  const index = matches[0] ?? -1;
   return index < 0 ? undefined : tokens[index].includes("=") ? tokens[index].slice(name.length + 1) : tokens[index + 1];
 }
 
@@ -120,6 +123,8 @@ export async function validateRunDestinations(command, context) {
   const owned = async (path, allowed = roots) => {
     const physical = await physicalPath(resolve(context.cwd, path));
     if (!allowed.some((root) => inside(root, physical))) throw new Error("command path must stay inside its owned copy");
+    try { const stat = await lstat(physical); if (stat.isFile() && stat.nlink !== 1) throw new Error("command path must be an unaliased owned file"); }
+    catch (error) { if (error.code !== "ENOENT") throw error; }
     return physical;
   };
   await owned(context.cwd);
@@ -134,7 +139,21 @@ export async function validateRunDestinations(command, context) {
     if (output !== undefined && (!output || output === "." || output === ".." || isAbsolute(output) || output.includes("/") || output.includes("\\"))) throw new Error("trajectory output must be a directory name");
     await owned(join(workspace, ".openclaw", "trajectory-exports", output ?? ""));
   }
-  if (tokens[0] === "ocm" && tokens[1]?.startsWith("@") && tokens[3] === "config" && tokens[4] === "patch") await owned(option(tokens, "--file"));
+  if (tokens[0] === "ocm" && tokens[1]?.startsWith("@") && tokens[3] === "config" && tokens[4] === "patch") {
+    const patch = JSON5.parse(await readFile(await owned(option(tokens, "--file")), "utf8"));
+    const inspect = async (value, key = "") => {
+      if (key === "$include") throw new Error("config patch includes cannot establish destination ownership");
+      if (value !== null && typeof value === "object") {
+        for (const [child, entry] of Object.entries(value)) await inspect(entry, child);
+      } else if (typeof value === "string") {
+        const pathKey = /^(?:path|file|dir|directory|workspace|root|cwd|store)$|(?:Path|File|Dir|Directory|Workspace|Root|Cwd|Store)$/.test(key);
+        if (value.includes("${") || value.startsWith("~") || pathKey && !isAbsolute(value)) throw new Error("config patch paths must be direct absolute owned paths");
+        if (isAbsolute(value)) await owned(value);
+      }
+    };
+    if (patch?.logging === null || patch?.logging && Object.hasOwn(patch.logging, "file") && typeof patch.logging.file !== "string") throw new Error("config patch must preserve the owned product log destination");
+    await inspect(patch);
+  }
 }
 
 export function cacheKey({ baseline, manifest, phases, kova, ocm }) {
@@ -168,6 +187,9 @@ export async function prepareRun(options, { root = repoRoot } = {}) {
   if (findings.length) throw new Error("invalid command catalogue");
   validateRunPlan(plan, catalogue);
   const persona = await readPersona(resolve(dirname(path), plan.persona.manifest), plan.persona.sha256, catalogue);
+  const checks = persona.definition.traits.map((trait, index) => ({ id: `persona/check-${index}`, from: "persona", timeoutMs: 300000, checkpoint: [], commands: [trait.check] }));
+  const validationPhases = [plan.phases[0], ...checks];
+  validateRunPlan({ ...plan, phases: validationPhases, phasesSha256: sha256(canonicalJSON(validationPhases)) }, catalogue);
   const version = persona.manifest.runtime.selector.slice(4);
   const targets = {
     baseline: await validateTarget(options.targetBaseline, plan.change.baseline, version),
@@ -188,18 +210,18 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
   const id = `${new Date().toISOString().replace(/[:.]/g, "-")}-${randomUUID()}`;
   const directory = join(home, "verify", id);
   await mkdir(directory, { recursive: true, mode: 0o700 });
-  const bindings = new Map();
+  let admission = Promise.resolve();
   const bind = async (command, perform) => {
     const tokens = parseCatalogueCommand(command, { standard: true }).tokens;
-    const runtime = tokens[0] === "ocm" && ["start", "upgrade"].includes(tokens[1]) ? option(tokens, "--runtime") ?? option(tokens, "--version") : undefined;
-    if (runtime === undefined) return await perform();
-    const previous = bindings.get(runtime) ?? Promise.resolve();
+    // Import reads runtime ownership while start/upgrade can change it, including aliases.
+    const preparesRuntime = tokens[0] === "ocm" && (["start", "upgrade"].includes(tokens[1]) || tokens[1] === "env" && tokens[2] === "import");
+    if (!preparesRuntime) return await perform();
+    const previous = admission;
     let release;
-    const current = new Promise((resolve) => { release = resolve; });
-    bindings.set(runtime, current);
+    admission = new Promise((resolve) => { release = resolve; });
     await previous;
     try { return await perform(); }
-    finally { release(); if (bindings.get(runtime) === current) bindings.delete(runtime); }
+    finally { release(); }
   };
   const invoke = (cancelable) => async (command, options = {}) => {
     if (cancelable) signal?.throwIfAborted();
@@ -269,13 +291,13 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
       }
       const summary = record.clones[name];
       summary.incomplete = [];
-      const clone = cloneFactory({ name, directory: join(directory, name), persona, root, call, cleanupCall, cleanupHandle, signal });
+      const clone = cloneFactory({ name, directory: join(directory, name), persona, root, call, cleanupCall, cleanupHandle, signal, validateCommand: validateRunDestinations });
       resources.push(clone);
       try {
         const metadata = await clone.prepare();
         summary.env = metadata.name;
         const logReaders = new Map();
-        const logs = async () => {
+        const logs = combineLogCollectors(async () => {
           for (const handle of clone.handles) {
             try {
               const value = await readJSON(handle);
@@ -284,10 +306,8 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
               if (paths.length && !logReaders.has(handle)) logReaders.set(handle, createLogCollector(paths));
             } catch (error) { if (error.code !== "ENOENT") throw error; }
           }
-          const text = (await Promise.all([...logReaders.values()].map((collect) => collect()).concat(clone.collectProductLogs ? [clone.collectProductLogs()] : []))).join("\n");
-          if (Buffer.byteLength(text) > 16 * 1024 * 1024) throw new Error("checkpoint logs exceed the 16 MiB capture limit");
-          return text;
-        };
+          return [...logReaders.values(), ...(clone.collectProductLogs ? [clone.collectProductLogs] : [])];
+        });
         await snapshotState(metadata.stateDir, plan.phases.flatMap((phase) => phase.checkpoint.filter((name) => name.startsWith("state:")).map((name) => name.slice(6))), join(clone.directory, "initial-state"));
         for (const phase of plan.phases) {
           signal?.throwIfAborted();
