@@ -336,7 +336,12 @@ console output. Repeated destination flags are refused. Config patches must
 keep path values inside the copies and cannot remove the owned log destination
 or introduce includes or paths dependent on the shell environment. Gateway request parameters, including response-file inputs, are resolved once
 before their destinations are checked. Config patch commands read private copies
-of the validated bytes. Explicit session working directories and
+of the validated bytes. Configuration writes in session-creation messages use
+the same destination checks, including TTS preferences and log-file changes.
+Debug changes to storage or hook paths that need unavailable runtime settings
+are refused. Inherited TTS and cache-output locations are cleared for child
+commands; explicit configuration values remain checked.
+Explicit session working directories and
 file paths must be absolute paths in the copied environments; ambiguous relative
 file paths and project, catalog or remote creation selectors are refused.
 Session file writes cannot replace the copied configuration. Product destinations
@@ -357,7 +362,9 @@ select one stoppable running process from a complete process list, or scope a
 search to a created or imported session. Conflicting identities are refused.
 Creation responses include `createdIds` according to the catalogue's request
 and response rules; explicitly supplied session keys and reused imports do not
-declare a new session identity.
+declare a new session identity. Each call releases its connection resources
+before returning, including after a malformed response, timeout or cancellation
+when the peer ignores closure.
 
 Results are under `$KOVA_HOME/artifacts/verify/<id>/`, including `run.json`, the
 exact plan, comparison declarations, catalogue and per-copy checkpoints. A

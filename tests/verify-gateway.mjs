@@ -17,21 +17,19 @@ import { gatewayLifecycleMain, parseGatewayLifecycleArgs, runForegroundGateway }
 const exec = promisify(execFile);
 const backgroundUrl = new URL("../support/verify/background.mjs", import.meta.url).href;
 
-test("a malformed connection frame closes the socket before the helper returns", async (t) => {
+for (const malformed of [true, false]) test(`an uncooperative ${malformed ? "malformed-frame" : "silent"} peer cannot retain the helper process`, async (t) => {
   const root = await directory(t), configPath = join(root, "config.json");
   await atomicJson(configPath, { gateway: { auth: { token: "fixture-connect-failure" } } });
   const sockets = new Set(), server = createServer();
-  let closeFrames = 0;
+  let upgrades = 0;
   server.on("upgrade", (request, socket) => {
-    sockets.add(socket);
+    upgrades++; sockets.add(socket);
     socket.on("error", () => {});
     socket.on("close", () => sockets.delete(socket));
-    socket.on("data", (bytes) => {
-      if ((bytes[0] & 15) === 8) { closeFrames++; socket.end(Buffer.from([0x88, 0])); }
-    });
+    socket.on("data", () => {});
     const accept = createHash("sha1").update(request.headers["sec-websocket-key"] + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest("base64");
     socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
-    socket.write(Buffer.from([0x81, 1, 0x7b]));
+    if (malformed) socket.write(Buffer.from([0x81, 1, 0x7b]));
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.after(async () => { for (const socket of sockets) socket.destroy(); await new Promise((resolve) => server.close(resolve)); });
@@ -41,10 +39,10 @@ test("a malformed connection frame closes the socket before the helper returns",
   const env = { ...process.env };
   delete env.KOVA_OCM_TRANSPORT_JSON; delete env.KOVA_NETWORK_FRONTAGE_ENABLED;
   const result = await exec(process.execPath, ["--input-type=module", "-e", source], { env, timeout: 3000 }).catch((error) => error);
-  assert.equal(result.code, 1);
+  assert.equal(result.code, malformed ? 1 : 3);
   assert.notEqual(result.killed, true);
-  assert.equal(closeFrames, 1);
-  assert.equal(JSON.parse(result.stdout).exitCode, 1);
+  assert.equal(upgrades, 1);
+  assert.equal(JSON.parse(result.stdout).exitCode, malformed ? 1 : 3);
 });
 
 async function directory(t) {
@@ -408,7 +406,7 @@ test("verification authenticates from its selected config while legacy credentia
     delete process.env.KOVA_NETWORK_FRONTAGE_ENABLED;
     process.env.OPENCLAW_CONFIG_PATH = parentConfig;
     process.env.OPENCLAW_GATEWAY_TOKEN = "fixture-parent-env";
-    const result = await executeGatewayCall({ env: "selected", method: "health", params: {}, timeoutMs: 1000 }, { prepare: () => runtimeContext });
+    const result = await executeGatewayCall({ env: "selected", method: "health", params: {}, timeoutMs: 1000 }, { prepare: () => runtimeContext, connect: openDirectGatewayRpcClient });
     assert.equal(result.exitCode, 0);
     assert.equal(Socket.frames.find((frame) => frame.method === "connect").params.auth.token, "fixture-selected-config");
     assert.equal(process.env.OPENCLAW_CONFIG_PATH, parentConfig);

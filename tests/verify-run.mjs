@@ -466,6 +466,10 @@ test("configuration paths retain their full context across objects, arrays and p
     { channels: { "nextcloud-talk": { accounts: { example: { apiPasswordFile: join(copy, "alias/password") } } } } },
     { env: { vars: { OPENCLAW_CACHE_TRACE_FILE: join(durable, "cache.jsonl") } } },
     { env: { OPENCLAW_CACHE_TRACE_FILE: join(durable, "cache.jsonl") } },
+    { env: { vars: { OPENCLAW_TTS_PREFS: join(durable, "preferences.json") } } },
+    { agents: { entries: { main: { tts: { prefsPath: join(durable, "preferences.json") } } } } },
+    { channels: { feishu: { tts: { prefsPath: join(durable, "preferences.json") } } } },
+    { channels: { feishu: { accounts: { example: { tts: { prefsPath: join(copy, "alias/preferences.json") } } } } } },
     { agents: { entries: { example: { cwd: durable } } } },
     { memory: { search: { extraPaths: [{ path: durable, pattern: "*.md" }] } } },
     { security: { installPolicy: { exec: { trustedDirs: [durable] } } } },
@@ -479,6 +483,52 @@ test("configuration paths retain their full context across objects, arrays and p
   await validate({ storage: { locations: { backup: { settings: { path: "/remote/object-prefix" } } } } });
   await assert.rejects(validate({ storage: { locations: { backup: { provider: "filesystem" } } } }), /owned copy/);
   await assert.rejects(validate({ storage: { locations: { unknown: { settings: { path: durable } } } } }), /known provider/);
+  await validate({ agents: { entries: { main: { tts: { prefsPath: join(copy, "preferences.json") } } } } });
+});
+
+test("message configuration writes share destination checks and prepare log collection before dispatch", async (t) => {
+  const root = await temporary(t), copy = join(root, "copy"), durable = join(root, "durable"), output = join(root, "output");
+  for (const path of [copy, durable, output]) await mkdir(path);
+  await symlink(durable, join(copy, "alias"));
+  const diskLog = join(copy, "disk.log"), nextLog = join(copy, "next.log"), external = join(durable, "changed.log"), preparedLogs = [];
+  const context = {
+    cwd: copy, run: output, ownedRoots: [copy], kovaRoot: repoRoot,
+    readConfiguration: async (env) => { assert.equal(env, "copy"); return { logging: { file: diskLog }, storage: { locations: { backup: { provider: "custom", settings: { path: durable } } } } }; },
+    prepareLogDestination: async (env, path) => { preparedLogs.push({ env, path }); }
+  };
+  const call = (params, extra = "", method = "sessions.create") => `node ${quoteShell(join(repoRoot, "support/verify/gateway-call.mjs"))} --env copy --method ${method} --params ${quoteShell(JSON.stringify(params))} ${extra}`;
+  const admit = async (params, method) => {
+    const tokens = parseCatalogueCommand(await validateRunDestinations(call(params, "", method), context), { standard: true }).tokens;
+    assert.deepEqual(JSON.parse(tokens[tokens.indexOf("--params") + 1]), params);
+  };
+  for (const message of ["/config", "/config get logging.file", "/debug show", "/config-check set logging.file=/outside", "Explain /config set logging.file=/outside", "/config set logging={broken"]) await admit({ message });
+  await admit({ message: "/config set gateway.controlUi.basePath='/control'" });
+  await admit({ task: `/config set agents.entries.main.tts.prefsPath=${JSON.stringify(join(copy, "preferences.json"))}`, message: `/config set logging.file=${JSON.stringify(external)}` });
+  for (const message of [`/CoNfIg: SET logging.file=${JSON.stringify(nextLog)}`, `/debug set logging.file=${JSON.stringify(nextLog)}`]) await admit({ message });
+  assert.deepEqual(preparedLogs, [{ env: "copy", path: nextLog }, { env: "copy", path: nextLog }]);
+  await admit({ message: "/debug unset logging.file" });
+  await admit({ message: "/debug reset" });
+  assert.deepEqual(preparedLogs.slice(2), [{ env: "copy", path: diskLog }, { env: "copy", path: diskLog }]);
+  const before = preparedLogs.length;
+  for (const message of [
+    `/config set logging.file=${JSON.stringify(external)}`,
+    `/debug set logging.file='${external}'`,
+    `/config set logging=${JSON.stringify({ level: "debug", file: external })}`,
+    `/config set agents.entries.main.tts=${JSON.stringify({ prefsPath: join(copy, "alias/preferences.json") })}`,
+    `/config set channels.feishu.accounts.example.tts.prefsPath=${JSON.stringify(external)}`,
+    `/config set env.vars.OPENCLAW_TTS_PREFS=${JSON.stringify(external)}`,
+    `/config set storage.locations.backup.provider=filesystem`,
+    `\u0001[fixture] Kova Gateway RPC: /CONFIG : set logging.file='${external}'\nignored`,
+    `/config\\nset\\nlogging.file=${JSON.stringify(external)}`,
+    "/config unset logging.file", "/config unset logging", '/config set logging={"level":"debug"}', '/debug set logging=[]',
+    "/debug set storage.locations.backup.provider=filesystem", '/debug set hooks.transformsDir="custom"'
+  ]) await assert.rejects(validateRunDestinations(call({ message }), context), /owned|observable runtime/);
+  assert.equal(preparedLogs.length, before);
+  const source = join(output, "message.json");
+  await writeFile(source, JSON.stringify({ task: `/config set logging.file=${JSON.stringify(external)}` }));
+  await assert.rejects(validateRunDestinations(call({ message: "safe" }, `--merge-from ${quoteShell(source)}`), context), /owned copy/);
+  await assert.rejects(validateRunDestinations(call({ task: "  ", message: `/config set logging.file=${JSON.stringify(external)}` }), context), /owned copy/);
+  await admit({ sessionKey: "example", question: `/config set logging.file=${JSON.stringify(external)}` }, "sessions.companion.ask");
 });
 
 test("hook modules, mount sources and executable selectors use their own path contracts", async (t) => {
@@ -654,24 +704,22 @@ test("relative artifact roots become absolute before clone preparation and dispa
 });
 
 
-test("verification child commands cannot inherit another environment's Gateway credentials", async (t) => {
+test("verification child commands cannot inherit Gateway credentials or diagnostic output paths", async (t) => {
   const f = await fixture(t), execute = f.dependencies.execute;
-  const previous = { config: process.env.OPENCLAW_CONFIG_PATH, token: process.env.OPENCLAW_GATEWAY_TOKEN };
+  const values = { OPENCLAW_CONFIG_PATH: join(f.root, "unrelated-config.json"), OPENCLAW_GATEWAY_TOKEN: "synthetic-unrelated-token", OPENCLAW_TTS_PREFS: join(f.root, "durable-preferences.json"), OPENCLAW_CACHE_TRACE_FILE: join(f.root, "durable-cache.jsonl") };
+  const previous = Object.fromEntries(Object.keys(values).map((name) => [name, process.env[name]]));
   t.after(() => {
-    for (const [name, value] of [["OPENCLAW_CONFIG_PATH", previous.config], ["OPENCLAW_GATEWAY_TOKEN", previous.token]]) {
+    for (const [name, value] of Object.entries(previous)) {
       if (value === undefined) delete process.env[name]; else process.env[name] = value;
     }
   });
-  process.env.OPENCLAW_CONFIG_PATH = join(f.root, "unrelated-config.json");
-  process.env.OPENCLAW_GATEWAY_TOKEN = "synthetic-unrelated-token";
+  Object.assign(process.env, values);
   f.dependencies.execute = (command, options) => {
-    assert.equal(options.env.OPENCLAW_CONFIG_PATH, "");
-    assert.equal(options.env.OPENCLAW_GATEWAY_TOKEN, "");
+    for (const name of Object.keys(values)) assert.equal(options.env[name], "");
     assert.equal(options.env.KOVA_OPENCLAW_CONFIG_CONTRACT, "canonical");
     return execute(command, options);
   };
   const result = await runVerification({ ...f.options, execute: true }, f.dependencies);
   assert.deepEqual(result.notStarted, []);assert.deepEqual(result.incomplete, []);
-  assert.equal(process.env.OPENCLAW_GATEWAY_TOKEN, "synthetic-unrelated-token");
-  assert.equal(process.env.OPENCLAW_CONFIG_PATH, join(f.root, "unrelated-config.json"));
+  for (const [name, value] of Object.entries(values)) assert.equal(process.env[name], value);
 });
