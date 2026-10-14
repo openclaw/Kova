@@ -787,7 +787,7 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 577 | Preview cleanup failure does not replace accepted delivery result | docs/plugins/sdk-channel-outbound.md "Progress and preview delivery ownership" | event | channel-telegram-shim, mock-provider-tool-calls, channel-streaming-modes |
 | 578 | Bot's own outbound message redelivered as inbound dropped within 30 seconds | docs/plugins/sdk-channel-outbound.md "Outbound echo suppression" | event | channel-probe-conversations |
 | 579 | HTML formatting sanitized for plain-text transport | docs/plugins/sdk-channel-outbound.md "Plain-text sanitization" | event | channel-probe-conversations |
-| 580 | Batch parts landing in conflicting provider threads | docs/plugins/sdk-channel-outbound.md "Delivery Evidence" | event | none |
+| 580 | Batch parts landing in conflicting provider threads | docs/plugins/sdk-channel-outbound.md "Delivery Evidence" | event | channel-probe-conversations |
 | 581 | Adapter intentionally omitting a send (not_sent) | docs/plugins/sdk-channel-outbound.md "Delivery Evidence" | event | channel-probe-conversations |
 | 582 | Permanent local preflight rejection not retried | docs/plugins/sdk-channel-outbound.md "Delivery Evidence" | event | channel-probe-conversations, channel-accounts-multiple |
 | 583 | Required durable send intent persistence failing stops delivery | docs/plugins/sdk-channel-outbound.md "Durable sends" | event | channel-probe-conversations |
@@ -869,6 +869,10 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 659 | A provider prefix belonging to a different explicitly selected outbound channel is rejected before adapter target normalization | docs/channels/channel-routing.md "Outbound target prefixes" | event | none |
 | 660 | A prefix not advertised by a runtime-visible channel plugin does not select an outbound provider | docs/channels/channel-routing.md "Outbound target prefixes" | event | none |
 | 661 | Target-kind and service prefixes stay within the selected channel grammar and do not select an outbound provider | docs/channels/channel-routing.md "Outbound target prefixes" | event | none |
+| 662 | New Telegram text and rich-text sends use fresh built-in HTTP connections rather than idle pooled sockets | docs/concepts/retry.md "Telegram" | event | none |
+| 663 | Telegram polling, edits and control requests retain built-in HTTP connection pooling | docs/concepts/retry.md "Telegram" | event | none |
+| 664 | Ordinary ingress delivery returning without an explicit handoff terminally adopts the no-dispatch event | docs/plugins/sdk-channel-outbound.md "Durable ingress monitors" | event | none |
+| 665 | Preview reset while an earlier completion is awaited fences that completion from the new generation | docs/plugins/sdk-channel-outbound.md "Progress and preview delivery ownership" | event | none |
 
 ## Headings walked
 docs/channels/index.md "Chat channels": none
@@ -1133,7 +1137,7 @@ docs/concepts/retry.md "Behavior": none
 docs/concepts/retry.md "Model providers": none (owned by models)
 docs/concepts/retry.md "Managed Git operations": none (owned by worktrees)
 docs/concepts/retry.md "Discord": 421
-docs/concepts/retry.md "Telegram": 422, 423, 424, 425, 426
+docs/concepts/retry.md "Telegram": 422, 423, 424, 425, 426, 662, 663
 docs/concepts/retry.md "Configuration": none
 docs/concepts/retry.md "Notes": 419
 docs/concepts/retry.md "Durable outbound delivery": 427, 428, 429, 430
@@ -1212,12 +1216,12 @@ docs/plugins/sdk-channel-ingress.md "Redaction": 564
 docs/plugins/sdk-channel-ingress.md "Verification": none
 docs/plugins/sdk-channel-ingress.md "Related": none
 docs/plugins/sdk-channel-outbound.md "Channel outbound API": none
-docs/plugins/sdk-channel-outbound.md "Durable ingress monitors": 565, 566, 567, 568, 569, 570, 571, 646, 647, 648, 649, 650, 651, 652, 653, 654, 655
+docs/plugins/sdk-channel-outbound.md "Durable ingress monitors": 565, 566, 567, 568, 569, 570, 571, 646, 647, 648, 649, 650, 651, 652, 653, 654, 655, 664
 docs/plugins/sdk-channel-outbound.md "One turn, several durable claims": 572, 573
 docs/plugins/sdk-channel-outbound.md "Start slots and deferral": 574
 docs/plugins/sdk-channel-outbound.md "Deferred claim heartbeats": 575
 docs/plugins/sdk-channel-outbound.md "Adapter": none
-docs/plugins/sdk-channel-outbound.md "Progress and preview delivery ownership": 24, 362, 368, 542, 543, 549, 576, 577
+docs/plugins/sdk-channel-outbound.md "Progress and preview delivery ownership": 24, 362, 368, 542, 543, 549, 576, 577, 665
 docs/plugins/sdk-channel-outbound.md "Outbound echo suppression": 578
 docs/plugins/sdk-channel-outbound.md "Plain-text sanitization": 579
 docs/plugins/sdk-channel-outbound.md "Delivery Evidence": 549, 580, 581, 582
@@ -1644,7 +1648,7 @@ The native-ID and concurrency pass retains live Matrix identifiers in persona-pr
 
 The cross-phase consolidation also retains each repeated atomic probe or shim scenario once: reply context, media final, command and callback buttons, outbound echo, partial final edit, four receive-ack modes, Telegram declared workflows and Discord adapter observation. Their canonical flows keep the selection-path union and required event kind. The duplicate combined direct-chat phase is removed after moving its unique session listing to the retained Telegram flow. Routing shares its common tiers and retains a separate direct wildcard and the two explicit session-scope variants; fallback and no-owner observations use distinct actual owner inputs.
 
-Conditions 646–655 were added during source review from the asynchronous inspection sentences under docs/plugins/sdk-channel-outbound.md "Durable ingress monitors". Both recorded derivations cited this heading but omitted these ten states, and neither receives discovery credit for them. Condition656 was subsequently added by source inspection for reuse of an already consumed ingress result, documented under docs/plugins/sdk-channel-ingress.md "Result" and docs/plugins/sdk-channel-inbound.md "Core helpers"; it also receives no recorded-run credit. The original 645-condition reconciliation remains historical. Source inspection subsequently adds five outbound target-prefix conditions657–661 under docs/channels/channel-routing.md "Outbound target prefixes", without recorded-run credit. The corrected inventory has 661 conditions, with 368 ambient and 293 event. The older-host compatibility case, reuse case and new target-prefix conditions are wholly or partly outside planned reach.
+Conditions 646–655 were added during source review from the asynchronous inspection sentences under docs/plugins/sdk-channel-outbound.md "Durable ingress monitors". Both recorded derivations cited this heading but omitted these ten states, and neither receives discovery credit for them. Condition656 was subsequently added by source inspection for reuse of an already consumed ingress result, documented under docs/plugins/sdk-channel-ingress.md "Result" and docs/plugins/sdk-channel-inbound.md "Core helpers"; it also receives no recorded-run credit. The original 645-condition reconciliation remains historical. Source inspection subsequently adds five outbound target-prefix conditions657–661 under docs/channels/channel-routing.md "Outbound target prefixes", without recorded-run credit. Source inspection also adds two built-in Telegram HTTP transport conditions 662–663 under docs/concepts/retry.md "Telegram", without recorded-run credit. Two additional SDK lifecycle conditions 664–665 cover ordinary no-handoff adoption and preview generation reset under their existing outbound SDK headings, also without recorded-run credit. The corrected inventory has 665 conditions, with 368 ambient and 297 event. The older-host compatibility case, reuse case, target-prefix conditions, Telegram transport conditions and the two SDK lifecycle conditions are wholly or partly outside planned reach.
 
 Claimed-resubmission observations now hold the native event before adoption, using an SDK delivery gate or the actual Telegram media hydration request. Watchdog observation keeps native lease refresh but supplies no deferred-heartbeat renewal and waits beyond the real five-minute deadline. Guarded recording targets a dedicated absent per-group session through the actual recorder with createIfMissing false; no agent dispatch creates that session first.
 
@@ -1788,3 +1792,7 @@ Native-adapter corrections retain the existing real-account observations while u
 The recorded meaning of condition525 includes ownership and lifetime changes: the first final run explicitly named another Gateway and a replacement plugin, and the second named plugin record and lifecycle epoch. Its shortened reconciled label had hidden these alternatives. Restoring that composite meaning preserves its existing discovery credit and the historical 645-condition union. The current context-mismatch phase retains a live owner and does not exercise ownership replacement, so525 is now partial. Native invalid handoffs lose host authority or yield unknown evidence; no unconditional context-builder exception is claimed. Reuse is a separate first-use check and is added as656 without new discovery credit or a new derivation run.
 
 Conditions657–661 are source-inspection additions from the existing outbound target-prefix heading. The original records under that heading describe receipt outcomes only: the earlier pair lists173 and13/14, and the final pair lists22/23 and17/18. Those receipt conditions remain23/24. No existing recorded composite contains provider-prefix selection, advertisement, mismatch rejection or target-kind/service grammar, so none of the additions receives historical discovery credit. Existing explicit Discord channel: targets cover part of661, but do not establish provider inference or its exclusion. No additional phase, helper, trait or execution is claimed.
+
+Conditions 662–663 are source-inspection additions from docs/concepts/retry.md "Telegram". New text and rich-text sends use fresh built-in HTTP connections, while polling, edits and control requests retain pooling. The recorded conditions under this heading cover retry eligibility, ambiguous sends, preview-edit retries and parse fallback; none records connection selection or reuse. Those existing meanings and discovery credits remain unchanged. Current application-level request observations do not establish the connection behavior, so both additions remain outside planned reach. No new phase, helper, trait or execution is claimed. Conditions 664–665 add the separate SDK lifecycle meanings: an ordinary no-handoff return terminally adopts its ingress claim, and preview reset fences an earlier awaited completion from the new generation. Original ingress records cover append, claim identity, duplicate admission, deferral, shutdown and explicit failure/cancellation/abandonment. Original preview records cover delivery, retention, cancellation and cleanup; none records the reset-overlap boundary. No original composite contains these missing meanings, and no discovery credit or planned observation is added.
+
+The sanitization and conflicting-provider-thread observations use explicit missing capabilities of the existing conformance fixture: a registered native sanitizer and two actual outbound acceptances within one SDK batch. No incoming-topic history substitutes for outbound receipt aggregation. Telegram emoji-list operations use an actual authorized inbound chat to establish the native trusted conversation and account, while the Slack file download carries no destination.

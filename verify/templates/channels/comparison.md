@@ -6,10 +6,11 @@ Date: 2026-10-13
 State: reconciled with a known shortfall after the permitted rerun.
 The procedure's nine-tenths acceptance was not met.
 
-Union: 437 entry points, 661 conditions, 258 condition-bearing document headings.
+Union: 437 entry points, 665 conditions, 258 condition-bearing document headings.
 The recorded-run reconciliation contained 645 conditions; source inspection added
-ten asynchronous-inspection conditions, one reused-result condition and five
-outbound target-prefix conditions without recorded-run discovery credit. Ownership replacement remains part of recorded
+ten asynchronous-inspection conditions, one reused-result condition, five
+outbound target-prefix conditions, two Telegram HTTP transport conditions and two
+SDK lifecycle conditions without recorded-run discovery credit. Ownership replacement remains part of recorded
 condition525; its full meaning and discovery credit are restored, not counted again.
 
 | Round | Run | Entry points found | Condition headings found |
@@ -61,6 +62,11 @@ The first run also added `docs/gateway/config-agents/messages-and-talk.md` under
 step 1. Its five condition-bearing headings are additions to the document set,
 rather than missed prescribed reading by the other run. They remain included in
 the all-heading denominator above.
+
+The original individual-condition inventories contained 201 and 289 records in
+round 1, and 586 and 511 records in round 2. These are raw recorded row counts;
+reconciliation splits combined meanings and joins equivalent conditions, so they
+are distinct from the following meaning-based coverage numerators.
 
 For context, the finer condition-by-meaning comparison was 253/320 (79.1%) and
 299/320 (93.4%) in round 1, and 592/645 (91.8%) and 590/645 (91.5%) in round 2.
@@ -116,12 +122,16 @@ Source inspection added conditions646–655 for asynchronous ingress inspection
 under "Durable ingress monitors", condition656 for reusing an already consumed
 ingress result under "Result" and "Core helpers", and conditions657–661 for outbound
 target-prefix selection, matching, rejection and adapter-local grammar under
-"Outbound target prefixes". These were already condition-bearing headings; no
+"Outbound target prefixes", plus conditions 662–663 for fresh and pooled Telegram
+HTTP connections under "Telegram", and conditions 664–665 for terminal no-handoff
+adoption and preview generation reset under "Durable ingress monitors" and
+"Progress and preview delivery ownership". These were already condition-bearing
+headings; no
 derivation was rerun and no discovery credit is added for the supplemental
 conditions. Condition525 retains its originally recorded context and
 plugin/Gateway ownership alternatives; marking its missing ownership observation
-partial changes planned coverage only. Against the corrected661-condition
+partial changes planned coverage only. Against the corrected 665-condition
 inventory, the supplemental condition-by-meaning shares use the unchanged
-historical numerators: 592/661 (89.6%) and 590/661 (89.3%). The historical645-condition
+historical numerators: 592/665 (89.0%) and 590/665 (88.7%). The historical645-condition
 comparison, entry-point shares and condition-heading acceptance shares above are
 unchanged.
