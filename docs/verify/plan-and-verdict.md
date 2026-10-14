@@ -505,10 +505,15 @@ product payloads remain comparable. Known status observations are also excluded:
 Gateway connection latency, health/heartbeat durations, channel probe durations,
 event-loop duration, utilization and CPU measurements, session/activity/auth
 ages, reported session runtimes, and cron execution durations. These exclusions
-are scoped to their known status, channels, sessions and cron response paths;
-media durations and configured timeouts are data, not execution measurements.
-Health outcomes,
-reasons, configured values and reached-bound evidence remain comparable.
+are scoped to their known response and persisted OpenClaw fields, including
+session runtimes, cron and subagent execution, delivery, update, and tool-result
+measurements. Valid encoded usage-cache measurements are decoded before comparison;
+malformed data and inconsistent content hashes remain evidence. Arbitrary user and
+plugin payloads, media durations and configured timeouts are data, not execution
+measurements. Health outcomes, reasons, configured values and reached-bound
+evidence remain comparable. The
+exclusions apply to decoded data; opaque binary files and undeclared compressed
+columns retain the content-hash comparison described below.
 
 The Gateway caller removes public-sharing bearer tokens from sharing and
 membership responses before stdout, output files and background records are
@@ -617,7 +622,8 @@ state directory. Each file in it becomes items by its kind:
   alone never identifies a credential. Public certificates remain intact. OAuth and external-provider credentials
   are outside the credential-free mock persona contract.
 - a JSON Lines file: one item per JSON node, addressed by path, line number
-  and JSON pointer.
+  and JSON pointer. This includes OpenClaw session transcript backups and
+  reset/deleted archives that retain JSON Lines content.
 - any other text file: one item per line, addressed by path and line number,
   valued by its normalized text.
 - any other file: one item, addressed by path, valued by its SHA-256 content
