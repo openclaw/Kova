@@ -17,7 +17,7 @@ documented inspection conditions that neither run found.
 | 2 | 1 | 399/437 (91.3%) | 246/258 (95.3%) |
 | 2 | 2 | 379/437 (86.7%) | 248/258 (96.1%) |
 
-An entry point is found when a run lists it, placed or excluded with a reason. Source inspection moved 19 non-executable search matches from placed to excluded internal evidence. Both runs already listed them, so the union and all discovery shares remain unchanged.
+An entry point is found when a run lists it, placed or excluded with a reason. Source inspection moved 36 non-executable search matches from placed to excluded internal evidence, including 17 additional records identified by checking every one of the 116 code-search matches that remained placed. Each recorded discovery remains counted for the run that listed it, so the union and all discovery shares are unchanged.
 Equivalent names identify the same entry point. A combined entry receives credit
 for each control, callback or HTTP method and path it explicitly names. A
 method-unspecified route family does not establish discovery of an individual
@@ -106,7 +106,7 @@ Replacing one HTTP family with three methods adds two entries to each round's
 corrected inventory. Round 1 loses its former generic-family credit for each run;
 round 2 retains the first run's credit count and adds one for the second. These
 figures supersede 318/332 and 298/332, and 399/435 and 378/435. GET is a source-review
-addition with no run credit. The final inventory has 330 placed and 107 excluded
+addition with no run credit. The final inventory has 313 placed and 124 excluded
 entries. This is an accounting correction to recorded inputs, without a new
 independent derivation. Both rounds retain the stated acceptance shortfall.
 
