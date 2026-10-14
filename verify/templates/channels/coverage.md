@@ -1,13 +1,30 @@
 # Coverage: channels
 
 Operations: 33/36
-Conditions: 478/884 (448 ambient, 436 event)
+Conditions: 472/895 (455 ambient, 440 event)
 Entry points: 312/437 (125 excluded)
 Breaks mapped: 3/6
 
 Counting rule: these counts describe the written plan after the declared helpers and persona additions exist; no phase has been executed as this template. An operation is covered when a phase performs it without a real platform account. An event condition is covered when its event flow can perform it without a real platform account. An ambient condition is covered by the persona content or the setup that supplies it. Entry points count as placed when assigned to one operation, even when a live adapter remains outside reach. Incomplete flows and account-dependent flows remain listed below; a combined condition is not counted as fully planned while one of its variants remains outside reach.
 
 Uncovered:
+- 126. An explicit mention of any qualified participant satisfies the Discord Slack or Telegram room mention gate even when ordinary routing selected another participant (condition): partial. event-participant-mention-satisfies-gate uses only kova-channel-probe. It does not supply the documented Discord Slack or Telegram adapter mention-admission path or establish a participant distinct from the ordinary routed owner on those platforms.
+- 129. Qualified group threads disable shared preview and progress drafts on Telegram Discord and Slack (condition): partial. message-agent-broadcast-room attempts progress through the conformance adapter. The shared preview gates described here live in the Telegram Discord and Slack adapter paths; their native qualified broadcast inputs are not supplied. Keep the conformance result but do not count it as native shared-draft suppression.
+- 133. Broadcast follow-up participants receive an attributed bounded digest containing only the preceding round sibling finals and may reply or pass (condition): partial. The existing roundScript supplies and captures distinct sibling final text. It supplies no separate controlled sibling session/tool-history marker whose absence could distinguish full-history leakage before safe output projection. Existing digest and limit observations remain; the complete final-only content boundary is partial.
+- 139. Discord Slack and Telegram label replies by configured participant count even when selection budget or silence leaves one responder (condition): partial. Current broadcast calls use the conformance adapter. Its caller supplies no groupThreadReplyFormatter; native Discord Slack and Telegram formatters are separate. The current label observation therefore does not establish the documented native label or configured-count behavior.
+- 143. Discord Slack and Telegram delivery and completion hooks use the responding participant session and media roots including single-participant entries (condition): partial. Current text/progress broadcast recipes have no participant-owned local media and no native Discord Slack or Telegram delivery/completion-hook owner comparison. Distinct participant session records alone do not establish media-root or hook identity, including the single-participant alternative.
+- 147. Broadcast participants share one account's transport rate limits (condition): partial. Current conformance participants share an account but no supplied native transport-rate-limit boundary is established. Shared account identity alone does not observe shared platform quota; no new platform fault or limiter is proposed.
+- 885. Broadcast follow-up eligibility includes prior final responders and participants addressed by sibling finals while excluding the others (condition): partial. roundScript makes every selected participant emit a non-silent final. It supplies the prior-responder path but no addressed nonresponder or initially unselected participant, and no unaddressed nonresponder exclusion. Native eligibility revisits the configured participant set.
+- 886. A broadcast participant turn that passes still consumes the coordinator turn budget (condition): partial. passMarker supplies all-pass termination, but no later eligible work distinguishes a consumed pass slot from a refunded slot. Termination 134 remains valid.
+- 887. A failed broadcast participant turn still consumes the coordinator turn budget (condition): partial. participantFailureScript supplies an error while others continue, but no bounded later round distinguishes charged versus refunded failed-turn budget. Error isolation 145 remains valid.
+- 888. Sequential broadcast participants do not receive earlier finals from their own current round (condition): outside planned reach. The sequential input records order, but supplies no distinct earlier-current-round final marker and later participant input exclusion check. Configured launch order 138 remains valid.
+- 889. Prose names and bare emoji do not select broadcast participants in the initial inbound message (condition): outside planned reach. Existing inputs use explicit mentions or text with no participant name. Neither supplies a participant name in prose or bare identity emoji as the competing selection input.
+- 890. Configured participant mention patterns override configured global mention patterns (condition): outside planned reach. The persona supplies participant patterns but no simultaneously configured conflicting global pattern list. Identity fallback and explicit empty-list suppression remain existing105 and are not counted by this addition.
+- 891. Disabling broadcast participant mention selection preserves channel mention policy sender access and command authorization (condition): partial. The no-selection fixture supplies admitted positive input. No supplied denied-sender, unmet channel mention or unauthorized command comparison runs under mentionGating false. Existing 132 selection of all participants remains valid.
+- 892. A qualified broadcast entry with one configured participant sends no participant name label (condition): outside planned reach. Current broadcast rooms have several participants; selecting only one from that room is not a one-configured-participant entry. No native Discord Slack or Telegram single-participant label observation is supplied.
+- 893. Default parallel broadcast launches reserved turns together and allows responses in any order (condition): partial. Existing explicitly parallel configuration exercises the coordinator, but no supplied omitted-strategy baseline and captured overlapping participant lifetimes establishes the whole default/concurrency meaning. Observing arbitrary output order alone is insufficient.
+- 894. An unqualified legacy broadcast key does not activate fan-out on a non-WhatsApp channel (condition): outside planned reach. Current qualified conformance entries do not supply an unqualified-key non-WhatsApp control. Legacy WhatsApp 51 and qualified-over-legacy precedence 128 remain separate.
+- 895. Qualified native broadcast threads retain final block and message-tool delivery while shared drafts are disabled (condition): partial. Current broadcast producer uses the conformance adapter, not native Discord Slack or Telegram qualified group delivery; it supplies no complete final/block/message-tool matrix under the native draft suppression boundary.
 - 277. Ambient-suppressed accounts remain stopped automatically while explicit channel start can bypass that suppression (condition): partial. The supplied multiple-account trait names autostart-suppressed, not ambient-suppressed. Existing manual stop/start and suppressedAccount requests preserve 275/276, but no supplied ambient-suppressed account is captured before explicit start to observe the restored originally recorded suppression alternative.
 - 875. Omitting accountId from channel start or stop selects the default account (condition): outside planned reach. Current start/stop observations supply explicit accountId. Existing default-account configuration 21 does not exercise omitted-account selection on these RPCs.
 - 876. Channel start rejects a caller-supplied manual parameter while applying manual override internally (condition): outside planned reach. No supplied channels.start request includes the unsupported manual property. Native protocol validation remains intact.
@@ -331,7 +348,7 @@ Uncovered:
 - 13. Slack multi-person DMs follow group routing policy mention rules and group-session behavior (condition): needs a Slack workspace
 - 14. WhatsApp setup is shown before its plugin package is installed and the channel loads the package only when active (condition): the on-demand WhatsApp plugin path requires a real account; written, outside reach
 - 42. Slack team binding (condition): needs a Slack workspace
-- 51. Legacy WhatsApp broadcast array with single-pass fan-out (condition): needs a WhatsApp phone
+- 51. Legacy WhatsApp broadcast arrays run one turn per listed participant without internal follow-up rounds or participant selection (condition): needs a WhatsApp phone
 - 67. Slack without channel membership or message event subscription (condition): needs a Slack workspace
 - 68. Microsoft Teams without ChannelMessage.Read.Group permission (condition): needs a Microsoft Teams tenant
 - 69. Google Chat interaction webhook gives no unmentioned messages or thread owners (condition): needs a Google Chat app
@@ -343,7 +360,7 @@ Uncovered:
 - 119. Ephemeral or view-once WhatsApp message unwrapped so a ping still triggers (condition): its event phase (event-whatsapp-group-pings) needs a real WhatsApp account; written, outside reach
 - 128. Qualified WhatsApp broadcast key takes precedence over unqualified (condition): needs a WhatsApp phone
 - 142. WhatsApp audio transcribed once before broadcast fan-out (condition): its event phase (event-broadcast-audio-once) needs a real WhatsApp account; written, outside reach
-- 144. WhatsApp group context buffer shared by broadcast agents and cleared after fan-out (condition): needs a WhatsApp phone
+- 144. WhatsApp broadcast participants share the peer group context buffer and clear it once after fan-out (condition): needs a WhatsApp phone
 - 155. Discord channel-audience access group resolved at authorization time (condition): needs a real Discord guild with member lookups (the fixture has no member intent)
 - 168. Slack channel allowlist keyed by name instead of ID never matches (condition): outside reach: Slack workspace
 - 172. Slack ambient room without history scope for its room type (condition): needs a Slack workspace
@@ -629,7 +646,7 @@ Every listed key identifies a value containing only letters, digits and . _ - : 
 Limits:
 - Phases that drive Kova's conformance channel (support/plugins/kova-channel-probe) cannot record at this revision, because the plugin imports openclaw/plugin-sdk/channel-message, which OpenClaw removed in favour of openclaw/plugin-sdk/channel-outbound; they are written as they will run once the plugin is updated.
 - In an isolated Kova home under /tmp with OCM 0.2.48 and Node 24.21.0, nine media and source-visible delivery rows of the probe scenario reported fewer deliveries than expected on OpenClaw 2026.9.9 and 2026.10.3, while the same code passed them with OCM 0.3.0 in an existing OCM store. The cause is not established (possibly /tmp to /private/tmp path resolution or the OCM version), so differences recorded by phases that drive media or source-visible delivery under such a setup are not yet attributable to the change.
-- The template declares 123 product-command or unavailable-wrapper forms; only the Gateway-start helper is an existing callable script here. The command catalogue is absent in this checkout. The template is a derived plan, and these dependencies must be implemented and registered before it can record observations.
+- The template declares 124 product-command or unavailable-wrapper forms; only the Gateway-start helper is an existing callable script here. The command catalogue is absent in this checkout. The template is a derived plan, and these dependencies must be implemented and registered before it can record observations.
 - Run 2 found 379/437 entry points, below the required nine-tenths share. The final condition-heading shares are 246/258 and 248/258, both above nine tenths; the finer condition-by-meaning shares are recorded separately in comparison.md. This reconciliation does not resolve the entry-enumeration acceptance gap.
 - The background held-turn contract bounds admission separately from its lifetime and releases on join. Gateway restarts can interrupt that ambient condition; later phases must record interruption, and the dedicated restart flows create their own handles where recorded. Runtime continuity and cancellation have not been demonstrated.
 - Repairing the conformance plugin import alone is insufficient for account, group, allowlist, mention and command-authorization observations. The present probe fixes default-account direct-chat facts and sets CommandAuthorized to true. The channel-probe-admission capability and --admission sdk wrapper path are additional unavailable prerequisites for those flows.
@@ -708,7 +725,7 @@ config-telegram-rich-messages:
 config-block-streaming:
 - telegramAccountId: Exact Telegram account for block mode, sharing access to the original specified peer and using a unique synthetic token.
 - agentId: Dedicated owner selected by this exact account and peer.
-- telegramAccountId uses mode off with streaming.block.enabled true; block break and chunk defaults are configured by the scoped wrapper, not by account identity. All synthetic Telegram tokens are distinct across simultaneously configured accounts.
+- telegramAccountId uses mode partial with streaming.block.enabled true; block break and chunk defaults are configured by the scoped wrapper, not by account identity. All synthetic Telegram tokens are distinct across simultaneously configured accounts.
 
 config-streaming-mode:
 - partialAccountId: Exact Telegram account serving partialChatId; select this bot identity at inbound transport, preserve AccountId through routing and outbound calls, with a unique synthetic shim token.
@@ -1959,7 +1976,7 @@ The presentation, ingress and inbound consumer reconciliations add 67 in-scope c
 
 The message CLI and channel-index audit adds conditions 816–847 for strict selectors, action scope and compatibility, native cleanup, delivery limits and bounded join history. The formatting audit adds conditions 848–874 for code whitespace, nested boundaries, lexical preservation, rendered sizes, default selection and formatter edits. Existing per-channel join suppression, broadcast outcome and renderer/link/default/list-prefix meanings retain their IDs and historical credit; conditions 3, 292, 406, 408, 409 and 413 are partial because supplied inputs do not cover every recorded alternative. Native block-table and code fallback observations keep condition 411 covered. Poll bounds remain provider-specific: Telegram supports up to 12 options and Discord up to 10.
 
-The current inventory has 884 conditions: 448 ambient and 436 event. Coverage is 478 fully planned and 406 wholly or partly outside reach. The current heading inventory has 265 headings. Every original entry-point share, per-round heading denominator and historical discovery credit is unchanged. These source corrections add no derivation run or observation helper. Plugin installation mechanics and configuration writes performed by plugin installation or automatic enabling remain outside this area; selected-channel setup and credential-resolution consequences remain included.
+The current inventory has 895 conditions: 455 ambient and 440 event. Coverage is 472 fully planned and 423 wholly or partly outside reach. The current heading inventory has 267 headings. Every original entry-point share, per-round heading denominator and historical discovery credit is unchanged. These source corrections add no derivation run or observation helper. Plugin installation mechanics and configuration writes performed by plugin installation or automatic enabling remain outside this area; selected-channel setup and credential-resolution consequences remain included.
 
 - mock-provider-tool-calls:polledCompletionWakeFile: Supplied nonsecret fixture lifetime descriptor with fixed embedded and mcp slots. Each identifies the existing source agent and channel/account/conversation route or native MCP grant/session reference, the expected canonical source-session scope, and the existing owned-clone teardown/exclusive-interval provenance. Runtime session/process/run IDs still come from the actual source operation and must match this scope. The source owner already has heartbeat.every 0m and heartbeat.timeoutSeconds 60 before clone startup, independent bounded provider capacity, and no unaccounted prior wake/cron/system-event work before its first case. Current case-generated automatic exec notifications are allowed and observed. Reuse requires previous owned terminal settlement and restored ambient custody. The interval also excludes unrelated recurring work from other owners, including the separate short-cadence fixture. No credential, config backup, callback, raw event, queued-wake ID or arbitrary execution program is contained in this file. No agent/account/grant, timer or service is provisioned by the helper. Missing custody or an execution that retains an unsettled clone is unavailable before exec input. (polledCompletionWakeFile)
 
@@ -1972,3 +1989,181 @@ Persistent account creation now has three separate native custody pairs: connect
 The two final deletes remain adjacent at the former combined cleanup position, after every actual user and existing fixture finalization. The connect-account disable/delete flow retains its original earlier late position and confirmation. Wizard/configure UI, ownerless-fleet wizard, promotion and reload-off flows remain atomic restoration owners; they do not supply these cross-phase captures. event-remove-while-listening and logout variants intentionally consume dedicated pre-supplied accounts and are not paired with unrelated new-account producers. Collision or uncertain creation never grants removal authority. A failed creation keeps native failure and cleanup custody with the existing disposable-clone teardown; no success or silent skip is fabricated. Condition, entry-point, historical discovery and break counts are unchanged; splitting the combined cleanup adds one operation phase only.
 
 The channel RPC reconciliation adds conditions 875–884 for omitted-account selection, explicit manual-parameter rejection, QR provider selection and opaque correlation, and the public/CLI pairing response and selector distinctions. Existing manual-start suppression meanings retain their original credit; condition 277 is partial because no supplied ambient-suppressed account exercises explicit bypass. The current WhatsApp provider returns no opaque sessionKey, so conditional forwarding language does not cover that missing case. Pairing codes and QR/session secrets remain memory-only; checking native response shape must occur before safe projection without retaining those values. No new provider, helper, account or derivation run is introduced.
+
+
+Telegram completed-block observations use streaming.mode partial with block.enabled true. Native Telegram treats off as disabling all stream delivery, so setting block.enabled alone cannot enable these cases. The explicit block setting suppresses answer-preview draft rendering while retaining completed-block callbacks; final-only off/false and intentional partial/block/progress preview variants remain separate. This applies to block breaks, newline chunking, coalescing, human delay, oversized text/fences, media repetition and streamed tables. The original controller, source account/agent, restoration, reply recipes and capture ownership remain.
+
+dm-scope-isolated supplies the exact conformance accountId selected by both inputs of message-agent-dm-isolated. Its peerId and channel-probe-conversations:dmPeer are distinct direct-chat peers admitted by that same account and routed to the same supplied agent under native session.dmScope per-peer. The control peer and channel-groups-mixed:allowedSender identify the same second person; both differ from the first person's canonical identity. Supplied identityLinks may include aliases within each person's group but must not link the two people together. The existing trait preparation/check establishes these actual account, binding, scope and identity facts before observation; no default-account fallback or post-input forced session result is accepted. The existing channel-safe-state case observes that selected account and the two actual routed identities. No new persona key or identity-link mutation is introduced by the observation.
+
+The legacy-plugin-compatibility recipe calls the explicit channel-account-add legacy form, never the rejected default head or a Telegram-only form. The outer --setup-credential forwards channel-real-accounts:legacyPluginCredential as a reference only. Its existing recipesFile descriptor must identify the installed artifact's real legacy setup adapter and supported native sensitive wizard path, exact owner/account choices and existing clone cleanup custody. A modern setupContract takes precedence over legacy setup and does not establish this compatibility observation. Native channel help still records selected-channel compatibility flags; guided native setup reaches the real legacy adapter and the following inbound retains runtime-alias/identifier observations. No new plugin, credential, permission, schema or service is prepared. Missing safe native credential/account prompting is unavailable, and the live/external account classification stays outside reach. The 210000ms recipe and220000ms phase budgets remain unchanged.
+
+## Bounded native CLI forms
+
+Native CLI timeout ownership: the fixed heads below execute one original CLI command each, through the same selected OCM environment. Their --timeout is an outer millisecond cap, not a new product option. Internal status/probe, model and send deadlines do not establish a whole-process bound. Each cap includes child cleanup and approved output capture; exhaustion is recorded as incomplete/timed-out evidence. The native actual exit remains in JSON, while script exit codes keep the catalogue contract. Native command, selector, condition, fixture account and real-account reach mappings are otherwise unchanged.
+
+The declared native forms below use one helper description per file and a distinct catalogue entry per literal head. The common required wrapper flags are --env and --timeout; both are removed before native execution. Listed flag values are scalar except the explicitly described broadcast targets. Repeated media, poll-option and sticker-id flags retain separate scalar values and order; sticker-id is not variadic. Native option names and their actual supplied values remain unchanged.
+
+| Helper and literal head | Native command | Side | Positional operands | Accepted native flags |
+|---|---|---|---|---|
+| `channel-cli.mjs channels-status` | `channels status` | read | none | `--channel <value>`, `--json`, `--probe` |
+| `channel-cli.mjs channels-list` | `channels list` | read | none | `--all`, `--json` |
+| `channel-cli.mjs config-get` | `config get` | read | `<path>` | `--json` |
+| `channel-cli.mjs health` | `health` | read | none | `--json` |
+| `channel-cli.mjs status` | `status` | read | none | `--all`, `--json` |
+| `channel-cli.mjs doctor` | `doctor` | read | none | `--json` |
+| `message-cli.mjs send` | `message send` | write | none | `--account <value>`, `--channel <value>`, `--dry-run`, `--json`, `--media <value> (repeatable)`, `--message <value>`, `--pin`, `--presentation <value>`, `--reply-to <value>`, `--silent`, `--target <value>` |
+| `channel-cli.mjs channels-capabilities` | `channels capabilities` | read | none | `--account <value>`, `--channel <value>`, `--json`, `--target <value>` |
+| `channel-cli.mjs channels-logs` | `channels logs` | read | none | `--channel <value>`, `--json`, `--lines <value>` |
+| `channel-cli.mjs directory-self` | `directory self` | read | none | `--account <value>`, `--channel <value>`, `--json` |
+| `channel-cli.mjs directory-peers-list` | `directory peers list` | read | none | `--account <value>`, `--channel <value>`, `--json`, `--limit <value>` |
+| `channel-cli.mjs directory-groups-list` | `directory groups list` | read | none | `--account <value>`, `--channel <value>`, `--json` |
+| `channel-cli.mjs directory-groups-members` | `directory groups members` | read | none | `--account <value>`, `--channel <value>`, `--group-id <value>`, `--json` |
+| `channel-cli.mjs channels-resolve` | `channels resolve` | read | `<entries...>` | `--account <value>`, `--channel <value>`, `--json`, `--kind <value>` |
+| `channel-cli.mjs security-audit` | `security audit` | read | none | `--json` |
+| `channel-cli.mjs agents-list` | `agents list` | read | none | `--json` |
+| `channel-cli.mjs plugins-list` | `plugins list` | read | none | `--json` |
+| `channel-cli.mjs matrix-verify-status` | `matrix verify status` | read | none | `--account <value>`, `--json` |
+| `channel-cli.mjs matrix-verify-backup-status` | `matrix verify backup status` | read | none | `--account <value>`, `--json` |
+| `channel-cli.mjs agent` | `agent` | write | none | `--agent <value>`, `--channel <value>`, `--deliver`, `--json`, `--message <value>`, `--reply-account <value>`, `--reply-channel <value>`, `--reply-to <value>`, `--session-key <value>`, `--to <value>` |
+| `message-cli.mjs broadcast` | `message broadcast` | write | none | `--account <value>`, `--channel <value>`, `--dry-run`, `--json`, `--message <value>`, `--targets <target...>` |
+| `message-cli.mjs poll` | `message poll` | write | none | `--channel <value>`, `--json`, `--poll-duration-seconds <value>`, `--poll-option <value> (repeatable)`, `--poll-question <value>`, `--target <value>` |
+| `message-cli.mjs react` | `message react` | write | none | `--account <value>`, `--channel <value>`, `--emoji <value>`, `--from-me`, `--json`, `--message-id <value>`, `--participant <value>`, `--target <value>` |
+| `message-cli.mjs react-remove` | `message react` | destructive | none | `--account <value>`, `--channel <value>`, `--emoji <value>`, `--from-me`, `--json`, `--message-id <value>`, `--participant <value>`, `--remove`, `--target <value>` |
+| `message-cli.mjs sticker-send` | `message sticker send` | write | none | `--account <value>`, `--channel <value>`, `--json`, `--sticker-id <value> (repeatable)`, `--target <value>` |
+| `message-cli.mjs pin` | `message pin` | write | none | `--account <value>`, `--channel <value>`, `--json`, `--message-id <value>`, `--target <value>` |
+| `message-cli.mjs unpin` | `message unpin` | destructive | none | `--account <value>`, `--channel <value>`, `--json`, `--message-id <value>`, `--target <value>` |
+| `message-cli.mjs permissions` | `message permissions` | read | none | `--account <value>`, `--channel <value>`, `--json`, `--target <value>` |
+| `channel-cli.mjs channels-add` | `channels add` | write | none | `--channel <value>` |
+| `message-cli.mjs role-add` | `message role add` | write | none | `--account <value>`, `--channel <value>`, `--guild-id <value>`, `--json`, `--role-id <value>`, `--user-id <value>` |
+| `message-cli.mjs role-remove` | `message role remove` | destructive | none | `--account <value>`, `--channel <value>`, `--guild-id <value>`, `--json`, `--role-id <value>`, `--user-id <value>` |
+| `message-cli.mjs kick` | `message kick` | destructive | none | `--account <value>`, `--channel <value>`, `--guild-id <value>`, `--json`, `--reason <value>`, `--user-id <value>` |
+| `message-cli.mjs ban` | `message ban` | destructive | none | `--account <value>`, `--channel <value>`, `--delete-days <value>`, `--guild-id <value>`, `--json`, `--reason <value>`, `--user-id <value>` |
+| `channel-cli.mjs agents-delete` | `agents delete` | destructive | `<id>` | `--force`, `--json` |
+| `message-cli.mjs delete` | `message delete` | destructive | none | `--account <value>`, `--channel <value>`, `--json`, `--message-id <value>`, `--target <value>` |
+| `channel-cli.mjs channels-logout` | `channels logout` | destructive | none | `--account <value>`, `--channel <value>` |
+
+Config-get accepts only the recorded paths channels, channels.telegram, agents, broadcast and channels.kova-channel-probe. Agents-delete uses exactly the existing task-owned participant ID. Resolve preserves the supplied one/two entries and their order. Broadcast --targets consumes its consecutive original targets until the next known option, with at least one value; the all-channel case retains --dry-run. Repeated --sticker-id and --poll-option each consume one value, with no bare additional operand. The catalogue uses only its existing none/required/optional value enum; native repetition and variadic grammar do not add schema fields. Required/optional and variadic positional forms must be preserved when these entries are registered.
+
+Setup's channels-status wrapper alone accepts --native-timeout-ms 10000 and forwards native --timeout 10000, inside its 30000ms total cap. Other native defaults remain; the agent's native timeout is seconds and is not replaced by a millisecond argument. All outer caps include process termination, safe projection and output. No timeout is a fixed sleep or a claim of successful native completion. A child ending does not prove its Gateway work ended; existing owned-work cleanup and uncertainty barriers remain.
+
+For only the added fixed native CLI heads, preserve nativeExitCode, nativeSignal and nativeTimedOut in projected JSON independently from wrapper exit. A wrapper grammar/scope failure is exit2 before native input. A native parse/usage failure is also wrapper exit2, even when the native process uses another code. Native exit2 always remains wrapper exit2 in these declared forms unless a later source-backed, form-specific non-usage mapping is explicitly added; this proposal adds no such exception. Ambiguous native exit2 or insufficient evidence to distinguish a malformed call from a valid product error stays unresolved2, never1 or0. Other nonzero native exits map to wrapper1 only after the fixed invocation passed its closed grammar/scope check and the captured response establishes a valid native product/transport error rather than usage failure; otherwise use unresolved2. A successful natural native result maps to0 without asserting its contents are expected. The helper's own total deadline maps to3, retaining any captured native status separately; a completed malformed result must not be relabeled timeout. Never equate the generic native error.type cli_error with either usage or a valid product failure: that envelope covers both. Recognize usage only from the pinned, exact command/parser diagnostic forms in private bounded memory and retain only a closed reason code, not raw diagnostic text. Unknown or unsafe diagnostics remain incomplete/unresolved, with no retry, flag rewriting or raw-output fallback. This amends the earlier blanket nonzero-native-to1 wording only for the new fixed heads and leaves unrelated helper contracts unchanged.
+
+The following affected phases use the complete explicit command-bound sum. Setup is never slow; ordinary phases above 300000ms are marked slow. Existing larger sufficient limits remain.
+
+| Phase | Sum of command bounds (ms) | Phase bound (ms) | Slow |
+|---|---:|---:|---|
+| `setup-channels-running` | 300000 | 300000 | false |
+| `connect-channel-account-cli` | 200000 | 205000 | false |
+| `connect-channel-account-configure` | 430000 | 435000 | true |
+| `setup-channel-account` | 200000 | 205000 | false |
+| `edit-channel-config-page-ui` | 250000 | 255000 | false |
+| `check-channel-status` | 520000 | 525000 | true |
+| `check-channel-status-broken-plugin` | 70000 | 120000 | false |
+| `list-channels-on-fresh-install` | 280000 | 285000 | false |
+| `list-channels-in-fleet-without-owner` | 340000 | 345000 | true |
+| `check-channel-status-under-states-1` | 100000 | 105000 | false |
+| `check-channel-capabilities` | 370000 | 375000 | true |
+| `check-channel-capabilities-for-target` | 130000 | 135000 | false |
+| `read-channel-logs` | 130000 | 135000 | false |
+| `stop-start-channel-account` | 490000 | 495000 | true |
+| `recover-channel-account` | 280000 | 285000 | false |
+| `look-up-directory` | 370000 | 375000 | true |
+| `look-up-channel-ids` | 310000 | 315000 | true |
+| `look-up-channel-ids-under-states` | 130000 | 135000 | false |
+| `change-allowed-senders` | 375000 | 380000 | true |
+| `message-agent-broadcast-room` | 130000 | 150000 | false |
+| `message-agent-routing-bindings` | 178000 | 183000 | false |
+| `message-agent-discord` | 262000 | 267000 | false |
+| `message-agent-sdk-contracts` | 430000 | 455000 | true |
+| `route-chats-audit-and-repair` | 130000 | 135000 | false |
+| `live-whatsapp-settings` | 490000 | 495000 | true |
+| `live-matrix-settings` | 370000 | 375000 | true |
+| `live-imessage-settings` | 380000 | 385000 | true |
+| `live-signal-settings` | 300000 | 305000 | true |
+| `live-acp-binding-on-broadcast-peer` | 110000 | 120000 | false |
+| `send-message` | 550000 | 555000 | true |
+| `send-message-under-states-input` | 655000 | 660000 | true |
+| `send-message-under-states` | 727000 | 732000 | true |
+| `send-message-cli-and-gateway` | 475000 | 480000 | true |
+| `send-to-several-chats` | 410000 | 415000 | true |
+| `broadcast-message-cli` | 190000 | 195000 | false |
+| `run-poll` | 260000 | 265000 | false |
+| `react-to-messages` | 530000 | 535000 | true |
+| `use-emoji-and-stickers` | 340000 | 345000 | true |
+| `manage-emoji-stickers` | 310000 | 315000 | true |
+| `pin-messages` | 430000 | 435000 | true |
+| `pin-messages-discord` | 320000 | 325000 | true |
+| `manage-server-channels-roles-members` | 280000 | 300000 | false |
+| `look-up-server` | 400000 | 405000 | true |
+| `deliver-from-jobs-and-agents` | 1485000 | 1490000 | true |
+| `event-hot-reload-account` | 230000 | 235000 | false |
+| `event-matrix-startup-snapshot-no-intro` | 140000 | 150000 | false |
+| `event-bot-pair-loop-suppressed` | 260000 | 265000 | false |
+| `event-send-receipt-failed-suppressed-dryrun` | 495000 | 500000 | true |
+| `event-tool-only-final-without-tool` | 140000 | 150000 | false |
+| `event-wa-unlisted-group` | 140000 | 145000 | false |
+| `event-follow-up-round` | 170000 | 180000 | false |
+| `event-broadcast-participant-fails` | 110000 | 120000 | false |
+| `event-room-event-turn` | 140000 | 150000 | false |
+| `event-whatsapp-qr-proxy-timeout` | 290000 | 295000 | false |
+| `event-whatsapp-relogin-loop` | 140000 | 180000 | false |
+| `event-whatsapp-request-timeout-loop` | 140000 | 180000 | false |
+| `event-telegram-send-network-error` | 170000 | 180000 | false |
+| `event-telegram-polling-stall` | 170000 | 180000 | false |
+| `event-qqbot-proactive-blocked` | 130000 | 160000 | false |
+| `event-inbound-retry-exhausted` | 315000 | 320000 | true |
+| `event-guided-add-non-tty` | 70000 | 75000 | false |
+| `event-login-while-owned` | 340000 | 345000 | true |
+| `event-explicit-start-unlisted-account` | 310000 | 315000 | true |
+| `event-directory-cache-miss` | 280000 | 285000 | false |
+| `event-chart-table-text-fallback` | 160000 | 165000 | false |
+| `event-whatsapp-groups-owned-elsewhere` | 70000 | 75000 | false |
+| `event-self-lookup-no-identity` | 70000 | 75000 | false |
+| `event-explicit-send-with-prefix` | 400000 | 405000 | true |
+| `event-required-answer-undelivered` | 265000 | 305000 | true |
+| `event-heartbeat-typing` | 410000 | 415000 | true |
+| `event-wa-reaction-slot` | 370000 | 375000 | true |
+| `event-telegram-supergroup-migration` | 220000 | 225000 | false |
+| `event-discord-mention-alias` | 250000 | 255000 | false |
+| `event-ingress-scope-changed` | 140000 | 180000 | false |
+| `event-repeated-drop-logged-once` | 80000 | 90000 | false |
+| `event-payload-suppressed-by-policy` | 460000 | 465000 | true |
+| `event-send-transform-suppressed` | 135000 | 140000 | false |
+| `event-ingress-duplicate-admission` | 265000 | 295000 | false |
+| `resubmit-failed-inbound` | 165000 | 170000 | false |
+| `event-ingress-defer-delivery` | 145000 | 190000 | false |
+| `event-ingress-abandon-delivery` | 145000 | 190000 | false |
+| `event-preview-cleanup-fails` | 260000 | 295000 | false |
+| `event-adapter-not-sent` | 280000 | 285000 | false |
+| `event-preflight-rejection` | 135000 | 140000 | false |
+| `event-mixed-batch-outcomes` | 430000 | 435000 | true |
+| `event-deferred-delivery-rejected` | 135000 | 140000 | false |
+| `event-invalid-chart-table` | 160000 | 165000 | false |
+| `event-telegram-disabled-control` | 280000 | 285000 | false |
+| `event-telegram-controls-over-limits` | 280000 | 285000 | false |
+| `event-presentation-text-fallback` | 160000 | 165000 | false |
+| `event-controls-fallback-visibility` | 160000 | 165000 | false |
+| `event-divider-only-presentation` | 160000 | 165000 | false |
+| `event-telegram-pin-chunked-message` | 280000 | 285000 | false |
+| `event-agent-reply-other-channel` | 670000 | 675000 | true |
+| `manage-member-roles` | 262000 | 300000 | false |
+| `moderate-member` | 370000 | 375000 | true |
+| `event-agent-requested-restart` | 265000 | 275000 | false |
+| `event-restart-during-broadcast-round` | 1160000 | 1165000 | true |
+| `event-agent-deleted-from-broadcast` | 230000 | 235000 | false |
+| `event-producer-vanished` | 920000 | 925000 | true |
+| `event-gateway-stall-under-lease` | 85000 | 310000 | true |
+| `event-restart-drains-channel-turns` | 1165000 | 1170000 | true |
+| `event-supervisor-stop-deadline` | 1975000 | 1980000 | true |
+| `event-crash-replays-unacked-inbound` | 970000 | 975000 | true |
+| `event-recovered-turn-resumption-notice` | 970000 | 975000 | true |
+| `event-crash-between-tool-send-and-outcome` | 950000 | 975000 | true |
+| `edit-delete-unsend-messages` | 160000 | 165000 | false |
+| `moderate-members` | 670000 | 675000 | true |
+| `log-out-channel-account` | 230000 | 270000 | false |
+| `remove-channel-account` | 260000 | 265000 | false |
+| `event-remove-while-listening` | 180000 | 185000 | false |
+| `event-logout-gateway-unreachable` | 1150000 | 1155000 | true |
+| `event-logout-without-credentials` | 270000 | 275000 | false |
+
+The broadcast reconciliation adds conditions 885–895 for follow-up eligibility, pass/error budget consumption, sequential-round input separation, configured mention precedence and native delivery distinctions. Existing physical-message accounting and coordinator-scope isolation remain conditions 703 and 704; bounded final-only digest isolation remains condition 133. They are cross-referenced rather than counted again. Conditions 126, 129, 133, 139, 143 and 147 are partial where conformance-only or text-only inputs omit the recorded native platform, shared quota, media-owner or sibling-history alternatives. Existing oversize digest recipes retain condition 135. New current Fields and Troubleshooting heading mappings receive no historical discovery credit. No derivation run or broadcast observation is added.

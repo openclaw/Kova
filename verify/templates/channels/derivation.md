@@ -258,8 +258,8 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 48 | Legacy default-agent markers awaiting doctor --fix | docs/channels/channel-routing.md "Routing rules (how an agent is chosen)" | ambient | config-legacy-default-markers, config-legacy-route-markers |
 | 49 | No agent roster, single main agent receives every route | docs/channels/channel-routing.md "Routing rules (how an agent is chosen)" | ambient | env-fresh-no-roster |
 | 50 | A broadcast group runs several agents for one room message, each in its own participant session | docs/channels/channel-routing.md "Broadcast groups (run multiple agents)"; docs/channels/broadcast-groups.md "Overview"; docs/plugins/sdk-channel-inbound.md "Agent group dispatch" | ambient | channel-broadcast-group |
-| 51 | Legacy WhatsApp broadcast array with single-pass fan-out | docs/channels/channel-routing.md "Broadcast groups (run multiple agents)"; docs/channels/broadcast-groups.md "Overview"; docs/channels/broadcast-groups.md "Basic setup" | ambient | none |
-| 52 | ACP binding on a broadcast room stays exclusive and bypasses fan-out | docs/channels/channel-routing.md "Broadcast groups (run multiple agents)"; docs/channels/broadcast-groups.md "Message flow"; docs/channels/broadcast-groups.md "Routing"; docs/plugins/sdk-channel-inbound.md "Agent group dispatch" | ambient | config-acp-binding, channel-broadcast-group |
+| 51 | Legacy WhatsApp broadcast arrays run one turn per listed participant without internal follow-up rounds or participant selection | docs/channels/channel-routing.md "Broadcast groups (run multiple agents)"; docs/channels/broadcast-groups.md "Overview"; docs/channels/broadcast-groups.md "Basic setup"; docs/channels/broadcast-groups.md "Fields"; docs/channels/broadcast-groups.md "Providers" | ambient | none |
+| 52 | ACP binding on a broadcast room stays exclusive and bypasses fan-out | docs/channels/channel-routing.md "Broadcast groups (run multiple agents)"; docs/channels/broadcast-groups.md "Message flow"; docs/channels/broadcast-groups.md "Routing"; docs/plugins/sdk-channel-inbound.md "Agent group dispatch"; docs/channels/broadcast-groups.md "Troubleshooting" | ambient | config-acp-binding, channel-broadcast-group |
 | 53 | Inbound reply to an earlier message carries reply context | docs/channels/channel-routing.md "Reply context" | event | channel-probe-conversations |
 | 54 | Default groupPolicy allowlist: unlisted group or sender blocked | docs/channels/groups.md "Beginner intro (2 minutes)"; docs/gateway/config-channels/shared-policies.md "DM and group access" | ambient | channel-group-allowlisted, channel-groups-mixed |
 | 55 | Group replies require a mention (requireMention default) | docs/channels/groups.md "Beginner intro (2 minutes)"; docs/gateway/config-channels/mention-gating-and-history.md "Group chat mention gating" | ambient | channel-group-allowlisted |
@@ -312,7 +312,7 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 102 | Regex mention patterns mode allow with denyIn rooms | docs/channels/groups.md "Scope configured mention patterns" | ambient | config-mention-patterns-scoped, channel-groups-mixed |
 | 103 | Account-level mention pattern policy overrides channel policy | docs/channels/groups.md "Scope configured mention patterns" | ambient | config-mention-account-policy, channel-groups-mixed |
 | 104 | Invalid or unsafe mention patterns ignored with a warning | docs/channels/groups.md "Scope configured mention patterns"; docs/channels/group-messages.md "Config example (WhatsApp)" | ambient | config-mention-pattern-invalid, channel-groups-mixed |
-| 105 | Mention patterns derived from agent identity when none set, suppressed by empty list | docs/channels/groups.md "Scope configured mention patterns"; docs/channels/group-messages.md "WhatsApp group messages" | ambient | channel-group-allowlisted, channel-groups-mixed |
+| 105 | Mention patterns derived from agent identity when none set, suppressed by empty list | docs/channels/groups.md "Scope configured mention patterns"; docs/channels/group-messages.md "WhatsApp group messages"; docs/channels/broadcast-groups.md "Mention selection" | ambient | channel-group-allowlisted, channel-groups-mixed |
 | 106 | Pending skipped messages kept as group history up to historyLimit | docs/channels/groups.md "Scope configured mention patterns"; docs/channels/group-messages.md "Behavior"; docs/channels/group-messages.md "Config example (WhatsApp)"; docs/channels/ambient-room-events.md "History"; docs/concepts/messages.md "Prompt bodies and history context" | ambient | channel-group-history, channel-groups-mixed |
 | 107 | Group history context disabled (historyLimit 0) | docs/channels/groups.md "Scope configured mention patterns"; docs/channels/ambient-room-events.md "History"; docs/concepts/messages.md "Prompt bodies and history context" | ambient | config-history-limit-zero, channel-groups-mixed |
 | 108 | Group or per-sender tool restrictions on a room | docs/channels/groups.md "Group/channel tool restrictions (optional)" | ambient | config-group-tools, channel-groups-mixed |
@@ -333,26 +333,26 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 123 | Bot's own delivered message echoed back skipped | docs/channels/group-messages.md "Known considerations"; docs/channels/bot-loop-protection.md "Defaults"; docs/channels/bot-loop-protection.md "Internal agent group rounds" | event | channel-groups-mixed |
 | 124 | Allowed group that has never triggered a run has no session row | docs/channels/group-messages.md "Known considerations" | ambient | channel-groups-mixed |
 | 125 | Typing starts immediately under message-tool-only visible replies | docs/channels/group-messages.md "Known considerations"; docs/concepts/typing-indicators.md "Defaults" | ambient | config-visible-replies-tool |
-| 126 | Mention of a broadcast participant satisfies the room mention gate | docs/channels/broadcast-groups.md "Overview"; docs/channels/channel-routing.md "Broadcast groups (run multiple agents)" | event | channel-broadcast-group, channel-group-allowlisted |
-| 127 | Broadcast turn budget smaller than eligible participants, configured order decides | docs/channels/broadcast-groups.md "Agent group threads"; docs/plugins/sdk-channel-inbound.md "Agent group dispatch"; docs/channels/bot-loop-protection.md "Internal agent group rounds" | ambient | channel-broadcast-group |
+| 126 | An explicit mention of any qualified participant satisfies the Discord Slack or Telegram room mention gate even when ordinary routing selected another participant | docs/channels/broadcast-groups.md "Overview"; docs/channels/channel-routing.md "Broadcast groups (run multiple agents)" | event | channel-broadcast-group, channel-group-allowlisted |
+| 127 | Broadcast turn budget smaller than eligible participants, configured order decides | docs/channels/broadcast-groups.md "Agent group threads"; docs/plugins/sdk-channel-inbound.md "Agent group dispatch"; docs/channels/bot-loop-protection.md "Internal agent group rounds"; docs/channels/broadcast-groups.md "Troubleshooting" | ambient | channel-broadcast-group |
 | 128 | Qualified WhatsApp broadcast key takes precedence over unqualified | docs/channels/broadcast-groups.md "Agent group threads"; docs/channels/channel-routing.md "Broadcast groups (run multiple agents)" | ambient | none |
-| 129 | Preview and progress drafts disabled for qualified broadcast group threads | docs/channels/broadcast-groups.md "Agent group threads"; docs/concepts/streaming.md ""Stream chunks or everything"" | ambient | channel-broadcast-group |
-| 130 | Inbound mentioning some participants selects only them for round one | docs/channels/broadcast-groups.md "Mention selection"; docs/channels/channel-routing.md "Broadcast groups (run multiple agents)" | event | channel-broadcast-group, channel-group-allowlisted |
+| 129 | Qualified group threads disable shared preview and progress drafts on Telegram Discord and Slack | docs/channels/broadcast-groups.md "Agent group threads"; docs/concepts/streaming.md ""Stream chunks or everything"" | ambient | channel-broadcast-group |
+| 130 | Inbound mentioning some participants selects only them for round one | docs/channels/broadcast-groups.md "Mention selection"; docs/channels/channel-routing.md "Broadcast groups (run multiple agents)"; docs/channels/broadcast-groups.md "Troubleshooting" | event | channel-broadcast-group, channel-group-allowlisted |
 | 131 | Inbound mentioning no participant selects all | docs/channels/broadcast-groups.md "Mention selection"; docs/channels/channel-routing.md "Broadcast groups (run multiple agents)" | event | channel-broadcast-group, channel-group-allowlisted |
 | 132 | Broadcast mentionGating false selects all participants | docs/channels/broadcast-groups.md "Mention selection" | ambient | config-broadcast-gating-off, channel-broadcast-group |
-| 133 | Follow-up round with bounded digest of sibling finals | docs/channels/broadcast-groups.md "Bounded follow-up rounds"; docs/plugins/sdk-channel-inbound.md "Agent group dispatch" | event | channel-broadcast-group, channel-group-allowlisted |
+| 133 | Broadcast follow-up participants receive an attributed bounded digest containing only the preceding round sibling finals and may reply or pass | docs/channels/broadcast-groups.md "Bounded follow-up rounds"; docs/plugins/sdk-channel-inbound.md "Agent group dispatch"; docs/channels/broadcast-groups.md "Session isolation"; docs/channels/broadcast-groups.md "Limitations" | event | channel-broadcast-group, channel-group-allowlisted |
 | 134 | All participants pass, broadcast thread ends | docs/channels/broadcast-groups.md "Bounded follow-up rounds"; docs/plugins/sdk-channel-inbound.md "Agent group dispatch" | event | channel-broadcast-group, channel-group-allowlisted |
-| 135 | Sibling finals over the digest limits | docs/channels/broadcast-groups.md "Bounded follow-up rounds"; docs/plugins/sdk-channel-inbound.md "Agent group dispatch" | event | channel-broadcast-group |
+| 135 | Broadcast sibling finals are truncated to 4000 characters per participant and 16000 characters in the combined digest | docs/channels/broadcast-groups.md "Bounded follow-up rounds"; docs/plugins/sdk-channel-inbound.md "Agent group dispatch" | event | channel-broadcast-group |
 | 136 | maxRounds or maxTurns reached or cancelled, no further turns | docs/channels/broadcast-groups.md "Bounded follow-up rounds"; docs/channels/bot-loop-protection.md "Internal agent group rounds"; docs/plugins/sdk-channel-inbound.md "Agent group dispatch"; docs/channels/channel-routing.md "Broadcast groups (run multiple agents)" | event | channel-broadcast-group, channel-group-allowlisted, channel-paired-sender |
 | 137 | Gateway restart during a broadcast round loses round and budget | docs/channels/broadcast-groups.md "Bounded follow-up rounds"; docs/channels/broadcast-groups.md "Limitations"; docs/channels/bot-loop-protection.md "Internal agent group rounds" | event | channel-broadcast-group, channel-group-allowlisted |
-| 138 | Broadcast strategy sequential | docs/channels/broadcast-groups.md "Processing strategy" | ambient | channel-broadcast-group |
-| 139 | Multi-participant broadcast replies labelled with participant name | docs/channels/broadcast-groups.md "Participant labels" | ambient | channel-broadcast-group |
+| 138 | Sequential broadcast strategy runs participants in configured order within each round and waits for each predecessor | docs/channels/broadcast-groups.md "Processing strategy"; docs/channels/broadcast-groups.md "Fields" | ambient | channel-broadcast-group |
+| 139 | Discord Slack and Telegram label replies by configured participant count even when selection budget or silence leaves one responder | docs/channels/broadcast-groups.md "Participant labels"; docs/channels/broadcast-groups.md "Troubleshooting" | ambient | channel-broadcast-group |
 | 140 | Deleting an agent listed in a broadcast entry prunes it | docs/channels/broadcast-groups.md "Basic setup" | event | channel-broadcast-group, channel-group-allowlisted |
 | 141 | Legacy agents.list roster awaiting doctor --fix before broadcast membership resolves | docs/channels/broadcast-groups.md "Basic setup" | ambient | config-legacy-agents-list |
 | 142 | WhatsApp audio transcribed once before broadcast fan-out | docs/channels/broadcast-groups.md "Message flow" | event | channel-real-accounts |
-| 143 | Broadcast delivery and hooks use the responding participant's session and media roots | docs/channels/broadcast-groups.md "Session isolation" | ambient | channel-broadcast-group |
-| 144 | WhatsApp group context buffer shared by broadcast agents and cleared after fan-out | docs/channels/broadcast-groups.md "Session isolation"; docs/channels/broadcast-groups.md "Basic setup" | ambient | none |
-| 145 | One broadcast agent fails while others continue | docs/channels/broadcast-groups.md "Best practices" | event | channel-broadcast-group, channel-group-allowlisted |
+| 143 | Discord Slack and Telegram delivery and completion hooks use the responding participant session and media roots including single-participant entries | docs/channels/broadcast-groups.md "Session isolation" | ambient | channel-broadcast-group |
+| 144 | WhatsApp broadcast participants share the peer group context buffer and clear it once after fan-out | docs/channels/broadcast-groups.md "Session isolation"; docs/channels/broadcast-groups.md "Basic setup" | ambient | none |
+| 145 | One broadcast participant failure is logged while the other participants continue | docs/channels/broadcast-groups.md "Best practices" | event | channel-broadcast-group, channel-group-allowlisted |
 | 146 | Broadcast entry takes priority over route binding for the same peer | docs/channels/broadcast-groups.md "Routing" | ambient | channel-broadcast-group |
 | 147 | Broadcast participants share one account's transport rate limits | docs/channels/broadcast-groups.md "Limitations" | ambient | channel-broadcast-group |
 | 148 | Access group defined but referenced by no allowlist grants nothing | docs/channels/access-groups.md "Access groups" | ambient | channel-access-groups |
@@ -386,7 +386,7 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 176 | Bot loop protection disabled | docs/channels/bot-loop-protection.md "Configure shared defaults" | ambient | config-bot-loop-disabled, channel-bot-peer |
 | 177 | botLoopProtection overridden per room, account or channel, with the narrowest supplied value winning for each key | docs/channels/bot-loop-protection.md "Override per channel, account, or room" | ambient | config-bot-loop-override, channel-bot-peer |
 | 178 | Channel without reliable inbound bot identity keeps only self-message and access filters | docs/channels/bot-loop-protection.md "Channel support" | ambient | channel-bot-identity-unknown, channel-probe-conversations |
-| 179 | Internal broadcast continuation has a distinct identity, is not suppressed as duplicate inbound and leaves transport pair-guard thresholds unchanged | docs/channels/bot-loop-protection.md "Internal agent group rounds"; docs/plugins/sdk-channel-inbound.md "Agent group dispatch" | event | channel-broadcast-group, channel-group-allowlisted |
+| 179 | Internal broadcast continuation has a distinct identity, is not suppressed as duplicate inbound and leaves transport pair-guard thresholds unchanged | docs/channels/bot-loop-protection.md "Internal agent group rounds"; docs/plugins/sdk-channel-inbound.md "Agent group dispatch"; docs/channels/broadcast-groups.md "Bounded follow-up rounds" | event | channel-broadcast-group, channel-group-allowlisted |
 | 180 | Inbound shared location pin normalized into coordinates and context | docs/channels/location.md "Channel location parsing"; docs/channels/location.md "Text formatting"; docs/channels/location.md "Context fields" | event | channel-telegram-shim |
 | 181 | Inbound named place or venue with name, address and caption as untrusted metadata | docs/channels/location.md "Text formatting"; docs/channels/location.md "Context fields"; docs/channels/location.md "Channel notes"; docs/channels/location.md "Channel location parsing" | event | channel-telegram-shim |
 | 182 | Inbound live location share | docs/channels/location.md "Text formatting"; docs/channels/location.md "Context fields"; docs/channels/location.md "Channel notes"; docs/channels/location.md "Channel location parsing" | event | channel-telegram-shim |
@@ -910,8 +910,8 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 700 | Opposite directions between the same two bots share one pair budget within the same scope and conversation | docs/channels/bot-loop-protection.md "Bot loop protection" | event | none |
 | 701 | Bot-pair budgets remain isolated by native account or scope, conversation and participant pair | docs/channels/bot-loop-protection.md "Bot loop protection"; docs/channels/bot-loop-protection.md "Channel support" | ambient | none |
 | 702 | Feishu bot-pair protection uses only the shared channels.defaults baseline | docs/channels/bot-loop-protection.md "Configure shared defaults"; docs/channels/bot-loop-protection.md "Channel support" | ambient | none |
-| 703 | Several physical messages from one group participant turn do not consume extra coordinator turns | docs/channels/bot-loop-protection.md "Internal agent group rounds"; docs/plugins/sdk-channel-inbound.md "Agent group dispatch"; docs/channels/channel-routing.md "Broadcast groups (run multiple agents)" | event | none |
-| 704 | Internal group coordinator budgets are isolated by channel, account, conversation, thread and root message | docs/channels/bot-loop-protection.md "Internal agent group rounds"; docs/plugins/sdk-channel-inbound.md "Agent group dispatch"; docs/channels/channel-routing.md "Broadcast groups (run multiple agents)" | event | none |
+| 703 | Several physical messages from one group participant turn do not consume extra coordinator turns | docs/channels/bot-loop-protection.md "Internal agent group rounds"; docs/plugins/sdk-channel-inbound.md "Agent group dispatch"; docs/channels/channel-routing.md "Broadcast groups (run multiple agents)"; docs/channels/broadcast-groups.md "Agent group threads"; docs/channels/broadcast-groups.md "Limitations" | event | none |
+| 704 | Internal group coordinator budgets are isolated by channel, account, conversation, thread and root message | docs/channels/bot-loop-protection.md "Internal agent group rounds"; docs/plugins/sdk-channel-inbound.md "Agent group dispatch"; docs/channels/channel-routing.md "Broadcast groups (run multiple agents)"; docs/channels/broadcast-groups.md "Bounded follow-up rounds" | event | none |
 | 705 | An unaccepted Mattermost question click gives private feedback without changing the prompt | docs/plugins/message-presentation.md "Contract" | event | none |
 | 706 | An accepted Mattermost question click retires its prompt | docs/plugins/message-presentation.md "Contract" | event | none |
 | 707 | Question shapes without native single-choice support fall back to readable answer text | docs/plugins/message-presentation.md "Contract" | event | none |
@@ -981,7 +981,7 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 771 | Asynchronous record-error reporting is tracked while reporting and session maintenance remain outside foreground completion | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract" | event | none |
 | 772 | Guarded inbound recording can update metadata and eligible lastRoute on an existing session | docs/channels/channel-routing.md "Guarded inbound recording" | event | none |
 | 773 | Bindings matching several routing tiers select the first matching documented priority tier | docs/channels/channel-routing.md "Routing rules (how an agent is chosen)" | ambient | none |
-| 774 | Qualified broadcast entries without selection or budget overrides use mention selection, one round and a participant-count turn budget | docs/channels/channel-routing.md "Broadcast groups (run multiple agents)" | ambient | none |
+| 774 | Qualified broadcast entries without selection or budget overrides use mention selection, one round and a participant-count turn budget | docs/channels/channel-routing.md "Broadcast groups (run multiple agents)"; docs/channels/broadcast-groups.md "Agent group threads"; docs/channels/broadcast-groups.md "Fields" | ambient | none |
 | 775 | Explicit blank channel-account options are rejected instead of selecting default or broader scope | docs/cli/channels.md "Common commands"; docs/cli/channels.md "Status / capabilities / resolve / logs"; docs/cli/channels.md "Inbound dead letters" | event | none |
 | 776 | Login and logout reject explicit blank channel values rather than treating them as omitted | docs/cli/channels.md "Login and logout (interactive)" | event | none |
 | 777 | A leaf channel-command agent option overrides the parent agent option | docs/cli/channels.md "Common commands"; docs/cli/channels.md "Resolve names to IDs" | ambient | none |
@@ -1092,6 +1092,17 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 882 | Pairing approval rejects a request combining code and requestId selectors | docs/gateway/protocol/rpc-system-and-channels.md "Channel DM pairing" | event | none |
 | 883 | CLI pairing approval with no matching pending code returns null from the owner | docs/gateway/protocol/rpc-system-and-channels.md "Channel DM pairing" | event | none |
 | 884 | Successful CLI pairing approval runs owner bootstrap and optional notification client-side only after owner acknowledgement | docs/gateway/protocol/rpc-system-and-channels.md "Channel DM pairing" | event | none |
+| 885 | Broadcast follow-up eligibility includes prior final responders and participants addressed by sibling finals while excluding the others | docs/channels/broadcast-groups.md "Bounded follow-up rounds" | event | none |
+| 886 | A broadcast participant turn that passes still consumes the coordinator turn budget | docs/channels/broadcast-groups.md "Agent group threads" | event | none |
+| 887 | A failed broadcast participant turn still consumes the coordinator turn budget | docs/channels/broadcast-groups.md "Agent group threads" | event | none |
+| 888 | Sequential broadcast participants do not receive earlier finals from their own current round | docs/channels/broadcast-groups.md "Bounded follow-up rounds"; docs/channels/broadcast-groups.md "Processing strategy" | ambient | none |
+| 889 | Prose names and bare emoji do not select broadcast participants in the initial inbound message | docs/channels/broadcast-groups.md "Mention selection" | event | none |
+| 890 | Configured participant mention patterns override configured global mention patterns | docs/channels/broadcast-groups.md "Mention selection" | ambient | none |
+| 891 | Disabling broadcast participant mention selection preserves channel mention policy sender access and command authorization | docs/channels/broadcast-groups.md "Mention selection"; docs/channels/broadcast-groups.md "Overview"; docs/channels/broadcast-groups.md "Message flow" | ambient | none |
+| 892 | A qualified broadcast entry with one configured participant sends no participant name label | docs/channels/broadcast-groups.md "Participant labels"; docs/channels/broadcast-groups.md "Session isolation" | ambient | none |
+| 893 | Default parallel broadcast launches reserved turns together and allows responses in any order | docs/channels/broadcast-groups.md "Processing strategy"; docs/channels/broadcast-groups.md "Fields"; docs/channels/broadcast-groups.md "Limitations" | ambient | none |
+| 894 | An unqualified legacy broadcast key does not activate fan-out on a non-WhatsApp channel | docs/channels/broadcast-groups.md "Providers"; docs/channels/broadcast-groups.md "Fields" | ambient | none |
+| 895 | Qualified native broadcast threads retain final block and message-tool delivery while shared drafts are disabled | docs/channels/broadcast-groups.md "Agent group threads" | ambient | none |
 
 ## Headings walked
 docs/channels/index.md "Chat channels": none
@@ -1140,30 +1151,30 @@ docs/channels/group-messages.md "How to use": 77, 88
 docs/channels/group-messages.md "Testing / verification": none
 docs/channels/group-messages.md "Known considerations": 122, 123, 124, 125
 docs/channels/group-messages.md "Related": none
-docs/channels/broadcast-groups.md "Overview": 50, 51, 126
+docs/channels/broadcast-groups.md "Overview": 50, 51, 126, 891
 docs/channels/broadcast-groups.md "Configuration": none
-docs/channels/broadcast-groups.md "Agent group threads": 50, 127, 128, 129
-docs/channels/broadcast-groups.md "Mention selection": 130, 131, 132
-docs/channels/broadcast-groups.md "Bounded follow-up rounds": 133, 134, 135, 136, 137, 138
-docs/channels/broadcast-groups.md "Participant labels": 139
+docs/channels/broadcast-groups.md "Agent group threads": 50, 127, 128, 129, 703, 774, 886, 887, 895
+docs/channels/broadcast-groups.md "Mention selection": 105, 130, 131, 132, 889, 890, 891
+docs/channels/broadcast-groups.md "Bounded follow-up rounds": 133, 134, 135, 136, 137, 138, 179, 704, 885, 888
+docs/channels/broadcast-groups.md "Participant labels": 139, 892
 docs/channels/broadcast-groups.md "Basic setup": 48, 51, 140, 141, 144
-docs/channels/broadcast-groups.md "Processing strategy": 138
+docs/channels/broadcast-groups.md "Processing strategy": 138, 888, 893
 docs/channels/broadcast-groups.md "Complete example": none
 docs/channels/broadcast-groups.md "How it works": none
-docs/channels/broadcast-groups.md "Message flow": 50, 51, 52, 54, 94, 138, 142, 144
-docs/channels/broadcast-groups.md "Session isolation": 50, 51, 143, 144
+docs/channels/broadcast-groups.md "Message flow": 50, 51, 52, 54, 94, 138, 142, 144, 891
+docs/channels/broadcast-groups.md "Session isolation": 50, 51, 133, 143, 144, 892
 docs/channels/broadcast-groups.md "Example: isolated sessions": none
 docs/channels/broadcast-groups.md "Use cases": none
 docs/channels/broadcast-groups.md "Best practices": 145
 docs/channels/broadcast-groups.md "Compatibility": none
-docs/channels/broadcast-groups.md "Providers": 51, 144
+docs/channels/broadcast-groups.md "Providers": 51, 144, 894
 docs/channels/broadcast-groups.md "Routing": 52, 146
-docs/channels/broadcast-groups.md "Troubleshooting": none
+docs/channels/broadcast-groups.md "Troubleshooting": 52, 127, 130, 139
 docs/channels/broadcast-groups.md "Examples": none
 docs/channels/broadcast-groups.md "API reference": none
 docs/channels/broadcast-groups.md "Config schema": none
-docs/channels/broadcast-groups.md "Fields": none
-docs/channels/broadcast-groups.md "Limitations": 137, 147
+docs/channels/broadcast-groups.md "Fields": 51, 138, 774, 893, 894
+docs/channels/broadcast-groups.md "Limitations": 133, 137, 147, 703, 893
 docs/channels/broadcast-groups.md "Related": none
 docs/channels/broadcast-groups.md "Broadcast groups": 51, 144
 docs/channels/access-groups.md "Access groups": 148
@@ -2030,6 +2041,10 @@ The presentation, ingress and inbound consumer reconciliations add 67 in-scope c
 
 The message CLI and channel-index audit adds conditions 816–847 for strict selectors, action scope and compatibility, native cleanup, delivery limits and bounded join history. The formatting audit adds conditions 848–874 for code whitespace, nested boundaries, lexical preservation, rendered sizes, default selection and formatter edits. Existing per-channel join suppression, broadcast outcome and renderer/link/default/list-prefix meanings retain their IDs and historical credit; conditions 3, 292, 406, 408, 409 and 413 are partial because supplied inputs do not cover every recorded alternative. Native block-table and code fallback observations keep condition 411 covered. Poll bounds remain provider-specific: Telegram supports up to 12 options and Discord up to 10.
 
-The current inventory has 884 conditions: 448 ambient and 436 event. Coverage is 478 fully planned and 406 wholly or partly outside reach. The current heading inventory has 265 headings. Every original entry-point share, per-round heading denominator and historical discovery credit is unchanged. These source corrections add no derivation run or observation helper. Plugin installation mechanics and configuration writes performed by plugin installation or automatic enabling remain outside this area; selected-channel setup and credential-resolution consequences remain included.
+The current inventory has 895 conditions: 455 ambient and 440 event. Coverage is 472 fully planned and 423 wholly or partly outside reach. The current heading inventory has 267 headings. Every original entry-point share, per-round heading denominator and historical discovery credit is unchanged. These source corrections add no derivation run or observation helper. Plugin installation mechanics and configuration writes performed by plugin installation or automatic enabling remain outside this area; selected-channel setup and credential-resolution consequences remain included.
 
 The channel RPC reconciliation adds conditions 875–884 for omitted-account selection, explicit manual-parameter rejection, QR provider selection and opaque correlation, and the public/CLI pairing response and selector distinctions. Existing manual-start suppression meanings retain their original credit; condition 277 is partial because no supplied ambient-suppressed account exercises explicit bypass. The current WhatsApp provider returns no opaque sessionKey, so conditional forwarding language does not cover that missing case. Pairing codes and QR/session secrets remain memory-only; checking native response shape must occur before safe projection without retaining those values. No new provider, helper, account or derivation run is introduced.
+
+All planned commands have explicit total execution bounds. Native CLI observations keep their installed command path and arguments under a fixed bounded wrapper; this introduces no condition, entry or observed result. The setup status diagnostic alone explicitly uses the supported native10000ms check limit inside its30000ms wrapper.
+
+The broadcast reconciliation adds conditions 885–895 for follow-up eligibility, pass/error budget consumption, sequential-round input separation, configured mention precedence and native delivery distinctions. Existing physical-message accounting and coordinator-scope isolation remain conditions 703 and 704; bounded final-only digest isolation remains condition 133. They are cross-referenced rather than counted again. Conditions 126, 129, 133, 139, 143 and 147 are partial where conformance-only or text-only inputs omit the recorded native platform, shared quota, media-owner or sibling-history alternatives. Existing oversize digest recipes retain condition 135. New current Fields and Troubleshooting heading mappings receive no historical discovery credit. No derivation run or broadcast observation is added.
