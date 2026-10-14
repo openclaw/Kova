@@ -251,3 +251,21 @@ test("internal background entry mode is not a public CLI flag", async () => {
   assert.equal(result.code, 2);
   assert.match(JSON.parse(result.stdout).error, /worker/);
 });
+
+test("resume launches OpenClaw under an actual PTY and waits for connection", async (t) => {
+  const dir = await directory(t), binary = join(dir, "ocm");
+  await writeFile(binary, `#!${process.execPath}
+if (!process.stdin.isTTY || !process.stdout.isTTY) process.exit(5);
+console.log("openclaw tui - ws://127.0.0.1:1234 - agent main - session sample");
+let connected=false;
+setTimeout(()=>{connected=true;console.log("gateway connected");},150);
+process.stdin.on("data",(input)=>{if(input.toString().includes("/exit"))process.exit(connected?0:6);});
+`, { mode: 0o755 });
+  const oldPath = process.env.PATH;
+  process.env.PATH = `${dir}:${oldPath}`;
+  t.after(() => { process.env.PATH = oldPath; });
+  const result = await scriptMain(resume, ["--env", "kova-scripts-fixture", "--query", key, "--timeout", "5000"]);
+  assert.equal(result.exitCode, 0, JSON.stringify(result.output));
+  assert.match(result.output.output, /gateway connected/);
+  assert.deepEqual(result.output.resolved, ["main", "sample"]);
+});

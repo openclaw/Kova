@@ -1,3 +1,6 @@
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { abortable, CallError } from "./background.mjs";
 import { entrypoint, nonempty, object, payload } from "./script.mjs";
 import { spawnOwnedProcess } from "../../src/commands.mjs";
@@ -64,19 +67,24 @@ expect {
 
 export async function resumePty(args, ctx) {
   const invocation = ocmInvocation(args);
-  const owned = spawnOwnedProcess("expect", ["-c", program, "--", String(Math.max(1, Math.ceil(ctx.remaining() / 1000))), invocation.file, ...invocation.args], { env: { ...invocation.env, TERM: "xterm-256color" } });
+  const directory = await mkdtemp(join(tmpdir(), "kova-resume-"));
+  let owned;
+
   let output = "";
-  const capture = (bytes) => { output = (output + bytes.toString()).slice(-1024 * 1024); };
-  owned.child.stdout.on("data", capture);
-  owned.child.stderr.on("data", capture);
+  const capture = (bytes) => { output = (output + bytes.toString()).slice(-1024 * 1024); ctx.record?.({ output }); };
   try {
+    const script = join(directory, "resume.exp");
+    await writeFile(script, program, { mode: 0o600, flag: "wx" });
+    owned = spawnOwnedProcess("expect", [script, String(Math.max(1, Math.ceil(ctx.remaining() / 1000))), invocation.file, ...invocation.args], { env: { ...invocation.env, TERM: "xterm-256color" } });
+    owned.child.stdout.on("data", capture);
+    owned.child.stderr.on("data", capture);
     const ended = await abortable(owned.closed, ctx.signal);
     if (ended.error) throw ended.error;
     const result = { resolved: output.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "").match(/agent ([^\s()]+)(?: \([^)]*\))? - session ([^\r\n]+)/)?.slice(1, 3) ?? null, output, createdIds: [] };
     if (ended.status === 124) throw new CallError("resume terminal timeout", 3);
     if (ended.status !== 0) throw Object.assign(new CallError(`openclaw resume exited ${ended.status ?? ended.signal}`, 1), { output: result });
     return result;
-  } finally { await owned.stop(); }
+  } finally { await owned?.stop(); await rm(directory, { recursive: true, force: true }); }
 }
 export const definition = {
   id: "run-resume", url: import.meta.url,

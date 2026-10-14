@@ -8,7 +8,7 @@ export const definition = {
     const id = o["job-id"];
     const job = await ctx.rpc("cron.get", { id });
     if ((job?.job ?? job)?.sessionTarget !== "isolated") throw new CallError("job must use an isolated session");
-    const result = await ctx.rpc("cron.run", { id, mode: "force", waitTimeoutMs: Math.min(60000, ctx.remaining()) });
+    const result = await ctx.rpc("cron.run", { jobId: id, mode: "force" });
     if (!nonempty(result?.runId) || result.ran === false) return { sessionKey: null, result };
     for (;;) {
       const runs = await ctx.rpc("cron.runs", { id, runId: result.runId, limit: 1 });
