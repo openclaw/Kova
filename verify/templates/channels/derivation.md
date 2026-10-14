@@ -416,7 +416,7 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 188 | Pairing request expires after one hour | docs/channels/pairing.md "1) DM pairing (inbound chat access)"; docs/gateway/config-channels/shared-policies.md "DM and group access" | event | channel-dm-pairing, channel-pairing-fixtures |
 | 189 | Sender with a pending request DMs again, no new pairing message | docs/channels/pairing.md "1) DM pairing (inbound chat access)" | event | channel-pairing-pending, channel-dm-pairing, channel-pairing-fixtures |
 | 190 | Three pending pairing requests on one account, further requests ignored | docs/channels/pairing.md "1) DM pairing (inbound chat access)"; docs/gateway/config-channels/shared-policies.md "DM and group access" | ambient | channel-pairing-cap, channel-dm-pairing, channel-pairing-fixtures |
-| 191 | No command owner configured, approval bootstraps the first owner | docs/channels/pairing.md "Approve from the Control UI"; docs/channels/pairing.md "Approve from the CLI"; docs/channels/pairing.md "Set up an owner without DM pairing"; docs/cli/pairing.md "Owner bootstrap"; docs/gateway/protocol/rpc-system-and-channels.md "Channel DM pairing" | ambient | config-no-command-owner, channel-dm-pairing, channel-pairing-fixtures |
+| 191 | No command owner configured, pairing approval bootstraps the first owner | docs/channels/pairing.md "Approve from the Control UI"; docs/channels/pairing.md "Approve from the CLI"; docs/cli/pairing.md "Owner bootstrap"; docs/gateway/protocol/rpc-system-and-channels.md "Channel DM pairing" | ambient | config-no-command-owner, channel-dm-pairing, channel-pairing-fixtures |
 | 192 | Dismissed pairing request sender requests access again | docs/channels/pairing.md "Approve from the Control UI"; docs/cli/pairing.md "openclaw pairing" | event | channel-pairing-pending, channel-dm-pairing, channel-pairing-fixtures |
 | 193 | Command owner already configured, later approvals grant DM access only and the setup wizard neither adds nor replaces an owner | docs/channels/pairing.md "Approve from the CLI"; docs/channels/pairing.md "Set up an owner without DM pairing"; docs/cli/pairing.md "Owner bootstrap" | ambient | channel-paired-sender, channel-dm-pairing, channel-pairing-fixtures |
 | 194 | Manually allowlisted non-owner sends an owner-only command | docs/channels/pairing.md "Approve from the CLI" | event | config-dm-policy-allowlist |
@@ -559,24 +559,24 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 331 | Delivery already confirmed or owned when reply recovery runs, no duplicate | docs/concepts/messages.md "Silent replies" | event | channel-probe-conversations |
 | 332 | Preview streaming active, temporary preview edited while reply generates | docs/concepts/streaming.md "Streaming and chunking" | ambient | channel-telegram-shim |
 | 333 | Block streaming flushing on each text_end | docs/concepts/streaming.md "Block streaming (channel messages)" | ambient | config-block-streaming |
-| 334 | Block streaming flushing at message_end | docs/concepts/streaming.md "Block streaming (channel messages)" | ambient | config-block-streaming, channel-streaming-modes |
+| 334 | Block streaming flushing at message_end can still emit several chunks | docs/concepts/streaming.md "Block streaming (channel messages)" | ambient | config-block-streaming, channel-streaming-modes |
 | 335 | Newline chunk mode, paragraph boundaries | docs/concepts/streaming.md "Block streaming (channel messages)" | ambient | config-chunk-newline, channel-streaming-modes |
 | 336 | Discord reply taller than maxLinesPerMessage split | docs/concepts/streaming.md "Block streaming (channel messages)"; docs/gateway/config-channels/community-chat.md "Discord" | event | channel-discord-fixture, mock-provider-long-reply |
-| 337 | before_agent_finalize hook deferring replies, later answer supersedes | docs/concepts/streaming.md "Media delivery with block streaming" | event | mock-provider-tool-calls, plugin-message-hooks |
+| 337 | Finalize hook defers assistant text and previews; later answer supersedes deferred output without retracting already sent replies | docs/concepts/streaming.md "Media delivery with block streaming" | event | mock-provider-tool-calls, plugin-message-hooks |
 | 338 | Media-bearing assistant message with block streaming off sent at boundary with caption | docs/concepts/streaming.md "Media delivery with block streaming" | event | channel-probe-conversations |
-| 339 | Media streamed early and repeated in final delivered once | docs/concepts/streaming.md "Media delivery with block streaming" | event | config-block-streaming, mock-provider-media-reply, channel-streaming-modes |
+| 339 | Media repeated in the final payload is delivered once while distinct new final text still sends | docs/concepts/streaming.md "Media delivery with block streaming" | event | config-block-streaming, mock-provider-media-reply, channel-streaming-modes |
 | 340 | Exact duplicate final payload suppressed | docs/concepts/streaming.md "Media delivery with block streaming" | event | channel-probe-conversations, mock-provider-media-reply, channel-streaming-modes |
 | 341 | Several steered inputs in one run each get their own answer | docs/concepts/streaming.md "Media delivery with block streaming" | event | channel-probe-conversations, mock-provider-held-turn |
 | 342 | Fenced code block forced to split, closed and reopened | docs/concepts/streaming.md "Chunking algorithm (low/high bounds)" | event | config-block-streaming, mock-provider-long-reply, channel-probe-conversations |
 | 343 | Markdown table kept in one chunk when it fits, else split at rows | docs/concepts/streaming.md "Chunking algorithm (low/high bounds)" | event | config-block-streaming, mock-provider-long-reply, channel-streaming-modes |
 | 344 | Block chunks coalesced on idle gaps, including Discord Signal and Slack defaults of 1500 characters and 1000 milliseconds | docs/concepts/streaming.md "Coalescing (merge streamed blocks)" | ambient | config-block-streaming, channel-streaming-modes |
 | 345 | Block streaming off (default), final replies only | docs/concepts/streaming.md ""Stream chunks or everything"" | ambient | config-streaming-mode |
-| 346 | Explicit Discord or Telegram preview mode over inherited block default | docs/concepts/streaming.md ""Stream chunks or everything"" | ambient | config-preview-over-block, channel-streaming-modes |
+| 346 | Explicit Discord or Telegram preview mode wins over inherited block default unless block.enabled is explicitly set | docs/concepts/streaming.md ""Stream chunks or everything"" | ambient | config-preview-over-block, channel-streaming-modes |
 | 347 | Reply-modifying hook prevents Telegram previews, blocks use hooked delivery | docs/concepts/streaming.md ""Stream chunks or everything"" | event | mock-provider-tool-calls, plugin-message-hooks |
 | 348 | Preview streaming off | docs/concepts/streaming.md "Preview streaming modes"; docs/concepts/progress-drafts.md "Choose a mode" | ambient | config-streaming-mode, channel-streaming-modes |
 | 349 | Telegram streaming off: final-only with progress chatter suppressed | docs/concepts/streaming.md "Tool-progress preview updates"; docs/concepts/streaming.md "Preview streaming modes" | ambient | config-streaming-mode, channel-streaming-modes |
 | 350 | Preview streaming partial | docs/concepts/streaming.md "Preview streaming modes"; docs/concepts/progress-drafts.md "Choose a mode" | ambient | config-streaming-mode, channel-streaming-modes |
-| 351 | Preview streaming block | docs/concepts/streaming.md "Preview streaming modes"; docs/concepts/progress-drafts.md "Choose a mode" | ambient | config-streaming-mode, channel-streaming-modes |
+| 351 | Block preview updates in chunked steps and Telegram rotates at the preview chunk size | docs/concepts/streaming.md "Preview streaming modes"; docs/concepts/progress-drafts.md "Choose a mode" | ambient | config-streaming-mode, channel-streaming-modes |
 | 352 | Preview streaming progress | docs/concepts/streaming.md "Preview streaming modes"; docs/concepts/streaming.md "Channel mapping"; docs/concepts/progress-drafts.md "Progress drafts"; docs/concepts/progress-drafts.md "Choose a mode" | ambient | channel-telegram-shim, channel-streaming-modes |
 | 353 | Microsoft Teams or Mattermost block mode, rotating posts without native preview | docs/concepts/streaming.md "Preview streaming modes" | ambient | none |
 | 354 | Slack native streaming transport in partial mode | docs/concepts/streaming.md "Channel mapping" | ambient | none |
@@ -591,7 +591,7 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 363 | Telegram plan previews as native checkboxes (richMessages) | docs/concepts/streaming.md "Telegram"; docs/plugins/message-presentation.md "Renderer contract" | ambient | config-telegram-rich-messages |
 | 364 | Final preview edit failing falls back to normal delivery and cleans preview | docs/concepts/streaming.md "Telegram"; docs/concepts/progress-drafts.md "Finalization" | event | config-streaming-mode, mock-provider-held-turn, mock-provider-long-reply |
 | 365 | Preview streaming skipped because block streaming explicitly enabled | docs/concepts/streaming.md "Telegram"; docs/concepts/streaming.md "Discord"; docs/concepts/streaming.md ""Stream chunks or everything"" | ambient | config-block-streaming, channel-streaming-modes |
-| 366 | Telegram selected-quote reply skips the answer preview | docs/concepts/streaming.md "Telegram"; docs/concepts/progress-drafts.md "Troubleshooting" | event | channel-telegram-shim |
+| 366 | Telegram incoming selected quote with replyToMode on skips the answer preview | docs/concepts/streaming.md "Telegram"; docs/concepts/progress-drafts.md "Troubleshooting" | event | channel-telegram-shim |
 | 367 | Progress draft with rolling tool log (progress.toolProgress) | docs/concepts/streaming.md "Discord"; docs/concepts/progress-drafts.md "Progress drafts"; docs/concepts/progress-drafts.md "Show the tool log"; docs/concepts/streaming.md "Tool-progress preview updates" | ambient | config-streaming-mode, channel-streaming-modes |
 | 368 | Error final keeps progress draft as the failed-turn record | docs/concepts/streaming.md "Discord"; docs/concepts/progress-drafts.md "Finalization"; docs/plugins/sdk-channel-outbound.md "Progress and preview delivery ownership" | event | channel-discord-fixture, mock-provider-failing |
 | 369 | Final media, error or explicit-reply payload cancels pending previews | docs/concepts/streaming.md "Discord"; docs/concepts/progress-drafts.md "Finalization" | event | channel-discord-fixture, mock-provider-media-reply, config-streaming-mode, mock-provider-long-reply, channel-streaming-modes |
@@ -620,7 +620,7 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 392 | Final answer with too many chunks sent through normal delivery | docs/concepts/progress-drafts.md "Finalization" | event | config-streaming-mode, mock-provider-long-reply, channel-streaming-modes |
 | 393 | Final answer with an approval prompt sent through normal delivery | docs/concepts/progress-drafts.md "Finalization" | event | channel-streaming-modes |
 | 394 | Old Telegram draft that cannot be edited, final sent fresh | docs/concepts/progress-drafts.md "Troubleshooting"; docs/concepts/progress-drafts.md "Finalization" | event | config-streaming-mode, mock-provider-held-turn, channel-streaming-modes |
-| 395 | Typing refreshed on keepalive cadence while a run is active | docs/concepts/typing-indicators.md "Typing indicators"; docs/concepts/typing-indicators.md "Notes" | ambient | mock-provider-held-turn, channel-typing-modes |
+| 395 | Typing refreshes on its keepalive cadence while a run is active with a default interval of six seconds | docs/concepts/typing-indicators.md "Typing indicators"; docs/concepts/typing-indicators.md "Notes" | ambient | mock-provider-held-turn, channel-typing-modes |
 | 396 | Typing starts when the model loop begins in a direct chat | docs/concepts/typing-indicators.md "Defaults" | event | channel-telegram-shim, mock-provider-held-turn, channel-typing-modes |
 | 397 | Typing starts immediately for a mentioned group message | docs/concepts/typing-indicators.md "Defaults" | event | channel-telegram-shim, channel-typing-modes |
 | 398 | Unmentioned group run typing waits for user-visible activity | docs/concepts/typing-indicators.md "Defaults" | event | channel-group-allowlisted, channel-group-always-on, channel-groups-mixed |
@@ -628,8 +628,8 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 400 | Heartbeat target none, unresolved, delivery-disabled or non-typing shows no typing | docs/concepts/typing-indicators.md "Notes"; docs/concepts/typing-indicators.md "Defaults" | ambient | config-heartbeat-no-target, config-heartbeat-short |
 | 401 | typingMode never | docs/concepts/typing-indicators.md "Modes" | ambient | config-typing-mode, channel-typing-modes |
 | 402 | typingMode instant, typing even for silent-token run | docs/concepts/typing-indicators.md "Modes" | ambient | config-typing-mode, channel-typing-modes |
-| 403 | typingMode thinking | docs/concepts/typing-indicators.md "Modes" | ambient | config-typing-mode, channel-typing-modes |
-| 404 | typingMode message | docs/concepts/typing-indicators.md "Modes" | ambient | config-typing-mode, channel-typing-modes |
+| 403 | typingMode thinking starts on the first reasoning delta or active execution | docs/concepts/typing-indicators.md "Modes" | ambient | config-typing-mode, channel-typing-modes |
+| 404 | typingMode message starts on visible reply activity including active execution while silent tokens do not count as text activity | docs/concepts/typing-indicators.md "Modes" | ambient | config-typing-mode, channel-typing-modes |
 | 405 | Per-agent typingMode override | docs/concepts/typing-indicators.md "Configuration" | ambient | config-typing-agent-override |
 | 406 | Markdown styles render through Telegram, Discord, Slack, Signal, Matrix and WhatsApp native output | docs/concepts/markdown-formatting.md "Markdown formatting"; docs/concepts/markdown-formatting.md "Pipeline" | event | channel-discord-fixture, channel-telegram-shim, mock-provider-markdown-reply |
 | 407 | Raw inline HTML is interpreted by HTML-aware renderers and kept literal or escaped elsewhere | docs/concepts/markdown-formatting.md "Pipeline" | event | channel-telegram-shim, mock-provider-markdown-reply, channel-probe-conversations |
@@ -690,7 +690,7 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 462 | channels.defaults.groupPolicy applies only where channel policy unset | docs/gateway/config-channels/shared-policies.md "DM and group access"; docs/gateway/config-channels/shared-policies.md "Channel defaults and heartbeat" | ambient | config-default-group-policy, channel-groups-mixed |
 | 463 | Channel, group, topic or DM peer pinned to a model (modelByChannel) | docs/gateway/config-channels/shared-policies.md "Channel model overrides" | ambient | config-model-by-channel, channel-model-pins |
 | 464 | Session /model override not replaced by modelByChannel | docs/gateway/config-channels/shared-policies.md "Channel model overrides" | ambient | config-model-override-session, channel-model-pins |
-| 465 | channels.defaults or modelByChannel changed, runtimes refreshed without restart | docs/gateway/config-channels/shared-policies.md "Channel model overrides"; docs/gateway/config-channels/shared-policies.md "Channel defaults and heartbeat" | event | channel-probe-conversations, config-channel-patches, channel-model-pins |
+| 465 | channels.defaults or modelByChannel changed, runtimes refreshed without restart while manually stopped accounts stay stopped | docs/gateway/config-channels/shared-policies.md "Channel model overrides"; docs/gateway/config-channels/shared-policies.md "Channel defaults and heartbeat" | event | channel-probe-conversations, config-channel-patches, channel-model-pins |
 | 466 | Heartbeat showOk true delivers HEARTBEAT_OK | docs/gateway/config-channels/shared-policies.md "Channel defaults and heartbeat" | ambient | config-heartbeat-short |
 | 467 | Heartbeat showAlerts false | docs/gateway/config-channels/shared-policies.md "Channel defaults and heartbeat" | ambient | config-heartbeat-alerts-off, config-heartbeat-short |
 | 468 | Heartbeat useIndicator false | docs/gateway/config-channels/shared-policies.md "Channel defaults and heartbeat" | ambient | config-heartbeat-indicator-off, config-heartbeat-short |
@@ -701,24 +701,24 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 473 | Legacy single-account WhatsApp auth directory awaiting doctor migration | docs/gateway/config-channels/personal-messaging.md "WhatsApp" | ambient | none |
 | 474 | Telegram token from tokenFile (symlink rejected) or TELEGRAM_BOT_TOKEN | docs/gateway/config-channels/personal-messaging.md "Telegram" | ambient | channel-telegram-shim |
 | 475 | Telegram apiRoot with /bot<TOKEN> suffix awaiting doctor --fix | docs/gateway/config-channels/personal-messaging.md "Telegram" | ambient | none |
-| 476 | Self-hosted Telegram Bot API in local mode with trusted file roots | docs/gateway/config-channels/personal-messaging.md "Telegram" | ambient | none |
+| 476 | Self-hosted Telegram Bot API in local mode reads trusted file roots and rejects other absolute paths | docs/gateway/config-channels/personal-messaging.md "Telegram" | ambient | none |
 | 477 | Telegram supergroup migration config write blocked by configWrites false | docs/gateway/config-channels/personal-messaging.md "Telegram" | event | channel-telegram-shim |
 | 478 | Signal pinned to one account identity at startup | docs/gateway/config-channels/personal-messaging.md "Signal" | ambient | none |
 | 479 | Retired BlueBubbles config not a supported runtime surface | docs/gateway/config-channels/personal-messaging.md "iMessage" | ambient | config-legacy-route-markers |
-| 480 | iMessage through SSH wrapper to a remote Messages Mac | docs/gateway/config-channels/personal-messaging.md "iMessage" | ambient | none |
+| 480 | iMessage through an SSH wrapper to a remote Messages Mac uses strict SSH and SCP, private outbound staging and best-effort cleanup that can leave owner-only residue on failure | docs/gateway/config-channels/personal-messaging.md "iMessage" | ambient | none |
 | 481 | iMessage reads work but sends fail with AppleEvents -1743 | docs/gateway/config-channels/personal-messaging.md "iMessage" | ambient | none |
 | 482 | iMessage send transport falls back from IMCore bridge to AppleScript | docs/gateway/config-channels/personal-messaging.md "iMessage" | event | none |
 | 483 | iMessage includeAttachments off by default | docs/gateway/config-channels/personal-messaging.md "iMessage" | ambient | none |
-| 484 | iMessage inbound recovery after bridge or Gateway restart | docs/gateway/config-channels/personal-messaging.md "iMessage" | event | channel-real-accounts |
+| 484 | iMessage inbound recovery after bridge or Gateway restart uses GUID dedupe and a stale-backlog age fence while honoring deprecated catchup settings | docs/gateway/config-channels/personal-messaging.md "iMessage" | event | channel-real-accounts |
 | 485 | iMessage group registry gate needs explicit chat_id or wildcard | docs/gateway/config-channels/personal-messaging.md "iMessage" | ambient | none |
 | 486 | Remote imsg v0.13.4 limits (poll votes need pollOptionId; no attachment replies to nonzero parts) | docs/gateway/config-channels/personal-messaging.md "iMessage" | ambient | none |
 | 487 | Direct Discord outbound call with explicit token, policy from selected account | docs/gateway/config-channels/community-chat.md "Discord" | event | channel-discord-fixture |
 | 488 | Discord action groups toggled gate message tool actions | docs/gateway/config-channels/community-chat.md "Discord" | ambient | none |
 | 489 | allowBots mentions: bot messages admitted only with an active bot mention | docs/gateway/config-channels/community-chat.md "Discord" | ambient | channel-bot-peer |
-| 490 | Discord message addressed to another identity dropped under ignoreOtherMentions | docs/gateway/config-channels/community-chat.md "Discord" | event | channel-discord-fixture |
+| 490 | Discord messages addressed to another identity are dropped under ignoreOtherMentions unless this bot is also mentioned | docs/gateway/config-channels/community-chat.md "Discord" | event | channel-discord-fixture |
 | 491 | Outbound @handle mapped to Discord user ids through mentionAliases | docs/gateway/config-channels/community-chat.md "Discord" | event | channel-discord-fixture |
 | 492 | Outbound Discord URLs suppress link previews while explicit embeds remain sent | docs/gateway/config-channels/community-chat.md "Discord" | ambient | channel-discord-fixture |
-| 493 | Interactive component callback after its TTL expired | docs/gateway/config-channels/community-chat.md "Discord" | event | channel-discord-fixture, channel-interactive-message |
+| 493 | Interactive component callbacks expire after their TTL including the Discord thirty-minute default | docs/gateway/config-channels/community-chat.md "Discord" | event | channel-discord-fixture, channel-interactive-message |
 | 494 | Discord bot presence follows runtime availability | docs/gateway/config-channels/community-chat.md "Discord" | ambient | none |
 | 495 | Discord human presence arrivals routed as system events with reconnect suppression and burst limits | docs/gateway/config-channels/community-chat.md "Discord" | event | none |
 | 496 | Mutable name or tag allowlist matching re-enabled | docs/gateway/config-channels/community-chat.md "Discord"; docs/gateway/config-channels/workplace-chat.md "Google Chat" | ambient | config-name-matching |
@@ -726,23 +726,23 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 498 | Reaction notifications own | docs/tools/reactions.md "Channel behavior"; docs/gateway/config-channels/personal-messaging.md "Signal"; docs/gateway/config-channels/community-chat.md "Discord"; docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | channel-telegram-shim |
 | 499 | Reaction notifications all | docs/tools/reactions.md "Channel behavior"; docs/gateway/config-channels/personal-messaging.md "Signal"; docs/gateway/config-channels/community-chat.md "Discord"; docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | channel-telegram-shim |
 | 500 | Reaction notifications allowlist | docs/tools/reactions.md "Channel behavior"; docs/gateway/config-channels/personal-messaging.md "Signal"; docs/gateway/config-channels/community-chat.md "Discord"; docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | channel-discord-fixture |
-| 501 | Matrix traffic through an explicit proxy | docs/gateway/config-channels/community-chat.md "Matrix" | ambient | none |
+| 501 | Matrix HTTP traffic, status checks and live directory lookups use the same explicit proxy policy | docs/gateway/config-channels/community-chat.md "Matrix" | ambient | none |
 | 502 | Matrix private-network homeserver | docs/gateway/config-channels/community-chat.md "Matrix" | ambient | none |
 | 503 | Matrix autoJoin off, invites ignored | docs/gateway/config-channels/community-chat.md "Matrix" | ambient | none |
 | 504 | Matrix autoJoin allowlist or always joins invited rooms | docs/gateway/config-channels/community-chat.md "Matrix" | event | none |
 | 505 | Matrix DMs isolated per room | docs/gateway/config-channels/community-chat.md "Matrix" | ambient | none |
-| 506 | IRC NickServ identification | docs/gateway/config-channels/community-chat.md "IRC" | ambient | none |
+| 506 | IRC NickServ identification or registration configured | docs/gateway/config-channels/community-chat.md "IRC" | ambient | none |
 | 507 | Google Chat service account from inline JSON, file or SecretRef | docs/gateway/config-channels/workplace-chat.md "Google Chat" | ambient | none |
 | 508 | Slack in Socket Mode | docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | none |
 | 509 | Slack in HTTP mode | docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | none |
 | 510 | Slack postAs user | docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | none |
-| 511 | Slack Enterprise Grid org-wide install | docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | none |
+| 511 | Slack Enterprise Grid org-wide install uses workspace-qualified channel policies and scoped targets, rejects mutable names and unsupported prefixes at startup, and leaves relay, App Home and configured ACP bindings unavailable | docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | none |
 | 512 | Retired Slack enterpriseOrgInstall key awaiting doctor --fix | docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | config-legacy-route-markers |
 | 513 | Slack group DM the app never joined unseen | docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | none |
-| 514 | Slack unfurls off for bot replies | docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | none |
+| 514 | Slack bot replies default to disabled link unfurls while media unfurls are omitted unless configured, with per-account overrides for both | docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | none |
 | 515 | Slack thread history per thread or shared (thread.historyScope) | docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | none |
 | 516 | New Slack threads inherit parent transcript | docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | none |
-| 517 | Existing thread messages fetched when a Slack thread session starts | docs/gateway/config-channels/workplace-chat.md "Slack" | event | channel-real-accounts |
+| 517 | Existing thread messages fetched when a Slack thread session starts, with initialHistoryLimit zero disabling the fetch | docs/gateway/config-channels/workplace-chat.md "Slack" | event | channel-real-accounts |
 | 518 | Temporary Slack typing reaction on the inbound message while a reply runs | docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | none |
 | 519 | Mattermost chatmode oncall | docs/gateway/config-channels/workplace-chat.md "Mattermost" | ambient | none |
 | 520 | Mattermost chatmode onmessage | docs/gateway/config-channels/workplace-chat.md "Mattermost" | ambient | none |
@@ -772,7 +772,7 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 544 | A proven no-send keeps its durable retry owner and failedBeforeSend receipt without caption or final fallback | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract" | event | channel-telegram-shim, channel-probe-conversations |
 | 545 | Delayed native finalization settles one logical payload with finalized content and provider identity observed once | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract" | event | none |
 | 546 | A native command record-session override updates its routed target metadata without changing the dispatch route | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract" | event | channel-telegram-shim |
-| 547 | Inbound while agent database awaits startup inspection rejected, transport retries | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract"; docs/gateway/restart-recovery.md "How interrupted work is detected" | event | channel-telegram-shim, channel-probe-conversations |
+| 547 | Low-level inbound session recording during pending database inspection rejects before dispatch so transport can retry | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract" | event | channel-telegram-shim, channel-probe-conversations |
 | 548 | Inbound metadata write failure reports the record error while the turn continues | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract" | event | channel-probe-conversations |
 | 549 | Native send that never started emits no message_sent | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract" | event | channel-telegram-shim, channel-probe-conversations |
 | 550 | Payload-rewriting hooks registered, previews buffered | docs/plugins/sdk-channel-inbound.md "Delivery settlement contract" | ambient | plugin-message-hooks |
@@ -828,7 +828,7 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 600 | Controls over action limits drop lower priorities and retain labels as text when no controls fit | docs/plugins/message-presentation.md "Contract"; docs/plugins/message-presentation.md "Renderer contract" | event | channel-interactive-message, channel-telegram-shim |
 | 601 | Adapter cannot render a presentation, conservative text fallback | docs/plugins/message-presentation.md "Core render flow"; docs/plugins/message-presentation.md "Button value fallback visibility"; docs/plugins/message-presentation.md "Provider mapping" | event | channel-interactive-message, channel-probe-conversations |
 | 602 | Unsupported controls show command text and URLs while callback and legacy values stay label-only | docs/plugins/message-presentation.md "Core render flow"; docs/plugins/message-presentation.md "Button value fallback visibility"; docs/plugins/message-presentation.md "Provider mapping" | event | channel-interactive-message, channel-probe-conversations |
-| 603 | Authored fallback text is dropped for native data rendering and sent verbatim when all data blocks degrade | docs/plugins/message-presentation.md "Degradation rules" | event | channel-interactive-message, channel-probe-conversations |
+| 603 | Authored fallback text is omitted for native rendering and directly retained when all data blocks degrade with no original interactive blocks | docs/plugins/message-presentation.md "Degradation rules" | event | channel-interactive-message, channel-probe-conversations |
 | 604 | Telegram inline buttons unavailable, text fallback | docs/plugins/message-presentation.md "Degradation rules" | ambient | config-telegram-inline-buttons-off |
 | 605 | Optional delivery pin failing leaves message intact | docs/plugins/message-presentation.md "Degradation rules" | event | channel-telegram-shim |
 | 606 | Required delivery pin failing reported as partial failure | docs/plugins/message-presentation.md "Degradation rules" | event | channel-telegram-shim |
@@ -848,23 +848,23 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 620 | Lifecycle status reactions enabled | docs/gateway/config-agents/messages-and-talk.md "Ack reaction" | ambient | config-status-reactions |
 | 621 | Retired WhatsApp inbound messagePrefix awaiting doctor move to responsePrefix | docs/gateway/config-agents/messages-and-talk.md "Other message keys" | ambient | none |
 | 622 | Per-reply usage footer (messages.responseUsage) | docs/gateway/config-agents/messages-and-talk.md "Other message keys" | ambient | config-response-usage |
-| 623 | Message-tool-only turn without durable ingress claim at recovery tombstoned | docs/gateway/restart-recovery.md "Restart recovery"; docs/gateway/restart-recovery.md "Automatic resume" | event | channel-group-allowlisted, config-visible-replies-tool, mock-provider-held-turn |
+| 623 | Message-tool-only recovery without reconstructable durable channel authority is tombstoned with replacement guidance | docs/gateway/restart-recovery.md "Restart recovery"; docs/gateway/restart-recovery.md "Automatic resume" | event | channel-group-allowlisted, config-visible-replies-tool, mock-provider-held-turn |
 | 624 | Queued outbound deliveries drained and undelivered replies retried after restart | docs/gateway/restart-recovery.md "What survives a restart" | event | channel-telegram-shim, channel-probe-conversations |
-| 625 | Delivery exhausting retry budget settles its session without resending | docs/gateway/restart-recovery.md "What survives a restart" | event | channel-telegram-shim, channel-probe-conversations |
-| 626 | Crash after detached completion entered a parent turn with a channel route | docs/gateway/restart-recovery.md "What survives a restart" | event | channel-real-accounts |
-| 627 | Pending final with uncertain delivery outcome noticed on next turn | docs/gateway/restart-recovery.md "What survives a restart"; docs/gateway/restart-recovery.md "Automatic resume" | event | channel-telegram-shim, channel-probe-conversations |
-| 628 | Requested restart fences new work while active turns drain | docs/gateway/restart-recovery.md "Graceful restarts drain first" | event | channel-probe-conversations, mock-provider-held-turn |
+| 625 | Delivery retry exhaustion across restarts reclaims expired custody settles its owning session and discards the failed payload without resending | docs/gateway/restart-recovery.md "What survives a restart" | event | channel-telegram-shim, channel-probe-conversations |
+| 626 | Detached completion admitted to a channel-routed parent continues after a crash without restarting the child or treating uncertain sends as delivered | docs/gateway/restart-recovery.md "What survives a restart" | event | channel-real-accounts |
+| 627 | Pending final with no remaining queue owner and uncertain outcome records one notice for the next turn on the same route | docs/gateway/restart-recovery.md "What survives a restart"; docs/gateway/restart-recovery.md "Automatic resume" | event | channel-telegram-shim, channel-probe-conversations |
+| 628 | Requested restart fences new work while active turns and pending replies drain within five minutes then marks interrupted work for recovery | docs/gateway/restart-recovery.md "Graceful restarts drain first" | event | channel-probe-conversations, mock-provider-held-turn |
 | 629 | Interrupted external restart skips channel and plugin teardown for stop deadline | docs/gateway/restart-recovery.md "Systemd stop deadlines" | event | channel-probe-conversations |
 | 630 | Gateway suspended through gateway.suspend, channel recovery deferred | docs/gateway/restart-recovery.md "Host sleep and process freezes" | event | channels-test-accounts |
-| 631 | Channel turn in flight on a main session records recovery delivery claim | docs/gateway/restart-recovery.md "How interrupted work is detected" | ambient | mock-provider-held-turn |
-| 632 | Unacknowledged inbound replayed after crash waits for writable admission | docs/gateway/restart-recovery.md "How interrupted work is detected" | event | channel-probe-admission, channel-probe-conversations |
+| 631 | A main-session channel turn records its recovery delivery claim when the prepared turn adopts its run | docs/gateway/restart-recovery.md "How interrupted work is detected" | ambient | mock-provider-held-turn |
+| 632 | Unacknowledged inbound replay waits for its agent writable admission while other agents remain available and channel stop cancels the wait | docs/gateway/restart-recovery.md "How interrupted work is detected" | event | channel-probe-admission, channel-probe-conversations |
 | 633 | Final reply produced but undelivered before restart included in resumed turn | docs/gateway/restart-recovery.md "Automatic resume" | event | channel-telegram-shim |
-| 634 | Recovered turn on a channel route sends resumption notice and final on same route | docs/gateway/restart-recovery.md "Automatic resume" | event | channel-telegram-shim, mock-provider-held-turn, channel-probe-conversations |
-| 635 | Telegram typing renewed while a recovered turn runs | docs/gateway/restart-recovery.md "Automatic resume" | event | channel-telegram-shim, mock-provider-held-turn |
+| 634 | Recovered channel turns send a best-effort live-only resumption notice and final reply on the same account and topic after reply hooks | docs/gateway/restart-recovery.md "Automatic resume" | event | channel-telegram-shim, mock-provider-held-turn, channel-probe-conversations |
+| 635 | Telegram recovery typing renews until settlement or recovery-owner change and honors typingMode never | docs/gateway/restart-recovery.md "Automatic resume" | event | channel-telegram-shim, mock-provider-held-turn |
 | 636 | Channel without guarded typing hook during recovery sends notice only | docs/gateway/restart-recovery.md "Automatic resume" | ambient | channel-probe-conversations |
-| 637 | Channel message to a tombstoned session gets one recovery reminder | docs/gateway/restart-recovery.md "Automatic resume" | event | session-tombstoned, channel-probe-conversations |
-| 638 | Message-tool send with unknown provider outcome after crash resumed restart-safe | docs/gateway/restart-recovery.md "Automatic resume" | event | config-visible-replies-tool, mock-provider-tool-calls |
-| 639 | Agent-requested restart posts outcome to originating chat | docs/gateway/restart-recovery.md "Agent-requested restarts" | event | channel-telegram-shim, mock-provider-tool-calls, channel-probe-conversations |
+| 637 | Three charged recovery attempts exhausted tombstone a channel session whose later messages receive one repeated-message-suppressed reminder | docs/gateway/restart-recovery.md "Automatic resume" | event | session-tombstoned, channel-probe-conversations |
+| 638 | A message-tool send with unknown provider outcome resumes restart-safe while a delivered terminal receipt completes without rerunning tools | docs/gateway/restart-recovery.md "Automatic resume" | event | config-visible-replies-tool, mock-provider-tool-calls |
+| 639 | Agent-requested restart posts its outcome to the originating chat and thread and dispatches its one-shot continuation there | docs/gateway/restart-recovery.md "Agent-requested restarts" | event | channel-telegram-shim, mock-provider-tool-calls, channel-probe-conversations |
 | 640 | channels.start manual override while crash-loop breaker suppresses auto-start | docs/gateway/restart-recovery.md "Safety valves and observability"; docs/channels/troubleshooting.md "Gateway up but channel never connects" | event | channel-probe-conversations |
 | 641 | Recovered replies run reply_payload_sending before channel delivery | docs/gateway/restart-recovery.md "Safety valves and observability"; docs/gateway/restart-recovery.md "Automatic resume" | event | mock-provider-held-turn, plugin-message-hooks, channel-probe-conversations |
 | 642 | Inbound during restart drain rejected with explicit restart error | docs/gateway/restart-recovery.md "What is not resumed" | event | channel-probe-conversations, mock-provider-held-turn |
@@ -1202,6 +1202,63 @@ src/plugin-sdk/plugin-state-test-runtime.ts: test-only
 | 974 | Discord timeout without duration or until clears the existing timeout | docs/cli/message.md "Moderation (Discord)" | event | none |
 | 975 | Zalouser reaction removal requires a nonempty emoji and removes that specific reaction | docs/tools/reactions.md "Channel behavior" | event | none |
 | 976 | iMessage removal with a recognized tapback kind removes one kind while an unrecognized kind removes all kinds | docs/tools/reactions.md "Channel behavior" | event | none |
+| 977 | Block chunking buffers text below minChars until a forced flush | docs/concepts/streaming.md "Chunking algorithm (low/high bounds)" | event | none |
+| 978 | Reaching the block chunk maximum forces a bounded split instead of continued buffering | docs/concepts/streaming.md "Chunking algorithm (low/high bounds)" | event | none |
+| 979 | Block chunk breaks follow the configured paragraph newline or sentence preference before safe fallback splitting | docs/concepts/streaming.md "Chunking algorithm (low/high bounds)" | ambient | none |
+| 980 | Chunk and coalescing maximum sizes are clamped to the channel text limit with minimum not exceeding maximum | docs/concepts/streaming.md "Chunking algorithm (low/high bounds)"; docs/concepts/streaming.md "Coalescing (merge streamed blocks)" | ambient | none |
+| 981 | A fitting Markdown table can force a preceding chunk below minChars to keep the table intact | docs/concepts/streaming.md "Chunking algorithm (low/high bounds)" | event | none |
+| 982 | Coalescing holds a below-minimum buffer through idle gaps but forced final flush sends its remaining text | docs/concepts/streaming.md "Coalescing (merge streamed blocks)" | event | none |
+| 983 | Coalescing flushes at its maximum and flushes an older buffer before a new block would overflow it | docs/concepts/streaming.md "Coalescing (merge streamed blocks)" | event | none |
+| 984 | Coalesced block joiners are blank line newline or space according to breakPreference | docs/concepts/streaming.md "Coalescing (merge streamed blocks)" | ambient | none |
+| 985 | Human delay skips the first block and applies only to later block dispatches rather than final replies or tool summaries | docs/concepts/streaming.md "Human-like pacing between blocks" | event | none |
+| 986 | Unset or off human-delay mode adds no block pacing pause | docs/concepts/streaming.md "Human-like pacing between blocks" | ambient | none |
+| 987 | Authored fallback with interactive blocks follows the adapted renderer path instead of the direct data-degradation bypass | docs/plugins/message-presentation.md "Degradation rules"; docs/plugins/message-presentation.md "Core render flow" | event | none |
+| 988 | Ordinary channel turns wait for their own writable database admission before recording metadata or dispatching | docs/gateway/restart-recovery.md "How interrupted work is detected" | event | none |
+| 989 | Stopping the channel or Gateway cancels an ordinary channel turn waiting for database startup admission | docs/gateway/restart-recovery.md "How interrupted work is detected" | event | none |
+| 990 | An agent awaiting database preparation does not block inbound turns for other ready agents | docs/gateway/restart-recovery.md "How interrupted work is detected" | event | none |
+| 991 | A suppressed bot pair is admitted again after its fixed cooldown without suppressed events extending that cooldown | docs/channels/bot-loop-protection.md "Bot loop protection"; docs/channels/bot-loop-protection.md "Defaults" | event | none |
+| 992 | Old events age out of the same bot pair sliding window and release its event budget | docs/channels/bot-loop-protection.md "Bot loop protection"; docs/channels/bot-loop-protection.md "Defaults" | event | none |
+| 993 | Ownerless channel setup offers an operator identity separately from DM pairing including when channel DMs are disabled | docs/channels/pairing.md "Set up an owner without DM pairing" | ambient | none |
+| 994 | Confirming the selected personal channel identity configures command ownership without granting chat access or promoting chat allowlists | docs/channels/pairing.md "Set up an owner without DM pairing" | event | none |
+| 995 | Skipping operator setup or declining its confirmation leaves command ownership unchanged | docs/channels/pairing.md "Set up an owner without DM pairing" | event | none |
+| 996 | Recovery notice delivery rechecks automatic-delivery permission immediately before the native send | docs/gateway/restart-recovery.md "Automatic resume" | event | none |
+| 997 | Recovery notice delivery rechecks the exact session recovery owner and lifecycle before the platform handoff | docs/gateway/restart-recovery.md "Automatic resume" | event | none |
+| 998 | A failed resumption notice does not restart or replay already admitted recovered work | docs/gateway/restart-recovery.md "Automatic resume" | event | none |
+| 999 | A recovered channel turn that already finished receives no late resumption notice | docs/gateway/restart-recovery.md "Automatic resume" | event | none |
+| 1000 | Recovery typing rechecks authorization after asynchronous preparation immediately before each platform request | docs/gateway/restart-recovery.md "Automatic resume" | event | none |
+| 1001 | Recovery typing honors cancellation through queued sends and stops when the Gateway closes | docs/gateway/restart-recovery.md "Automatic resume" | event | none |
+| 1002 | Resetting or deleting the failed session or restarting the Gateway clears repeated-reminder suppression | docs/gateway/restart-recovery.md "Automatic resume" | event | none |
+| 1003 | A model-locked failed channel session receives guidance to Resume in new session instead of reset commands | docs/gateway/restart-recovery.md "Automatic resume" | event | none |
+| 1004 | An ambiguous or failed reminder send retains its pre-send suppression claim instead of producing a reminder storm | docs/gateway/restart-recovery.md "Automatic resume" | event | none |
+| 1005 | Bounded recovery-reminder cache eviction can make an older failed-session reminder eligible again | docs/gateway/restart-recovery.md "Automatic resume" | event | none |
+| 1006 | A progress mirror sharing provider idempotency cannot mask the terminal reply receipt | docs/gateway/restart-recovery.md "Automatic resume" | event | none |
+| 1007 | A receipt from an older source turn cannot complete the current recovered channel turn | docs/gateway/restart-recovery.md "Automatic resume" | event | none |
+| 1008 | Recovered message-tool authority retains original requester source-delivery mode and same-conversation restrictions across another restart | docs/gateway/restart-recovery.md "Automatic resume" | event | none |
+| 1009 | Recovery preparation failure restores interrupted state and releases its attempt claim before a fresh run retries under the same original budget | docs/gateway/restart-recovery.md "How interrupted work is detected" | event | none |
+| 1010 | Settling an uncertain pending final clears recovery ownership together with its delivery claim so later turns can proceed | docs/gateway/restart-recovery.md "Automatic resume" | event | none |
+| 1011 | Pending-delivery notice and terminal deduplication evidence survive another restart without replaying completed work | docs/gateway/restart-recovery.md "Automatic resume" | event | none |
+| 1012 | Quiet progress drafts suppress ordinary intermediate tool failures and nonzero command-exit rows | docs/concepts/progress-drafts.md "Control progress lines" | event | none |
+| 1013 | A detailed progress draft with the tool log enabled retains ordinary failed-operation rows | docs/concepts/progress-drafts.md "Control progress lines"; docs/concepts/progress-drafts.md "Show the tool log" | event | none |
+| 1014 | Quiet public work status uses operation names and task labels without command text arguments child prose or results | docs/concepts/progress-drafts.md "Control progress lines"; docs/concepts/progress-drafts.md "Show the tool log" | ambient | none |
+| 1015 | The commentary lane renders a preamble without duplicating it as the model-preamble headline | docs/concepts/progress-drafts.md "Commentary lane"; docs/concepts/progress-drafts.md "Status headline" | ambient | none |
+| 1016 | A status headline hides the implicit progress label when neither label nor label pool is configured | docs/concepts/progress-drafts.md "Quick start"; docs/concepts/progress-drafts.md "What users see"; docs/concepts/progress-drafts.md "Configure labels" | ambient | none |
+| 1017 | Explicit non-disabled progress labels or label pools remain eligible beside a status headline | docs/concepts/progress-drafts.md "Configure labels"; docs/concepts/progress-drafts.md "What users see" | ambient | none |
+| 1018 | Utility narration receives compact redacted activity summaries rather than raw command output or tool results | docs/concepts/progress-drafts.md "Status headline" | ambient | none |
+| 1019 | Narration commandText status omits exec command arguments and failed-command titles from utility input | docs/concepts/progress-drafts.md "Status headline"; docs/concepts/progress-drafts.md "Command/exec text" | ambient | none |
+| 1020 | Eligible tool activity received during narration is reconsidered after that request settles without another event | docs/concepts/progress-drafts.md "Status headline" | event | none |
+| 1021 | Telegram with multiple accounts and no explicit default emits a Doctor warning | docs/gateway/config-channels/personal-messaging.md "Telegram" | ambient | none |
+| 1022 | Telegram with multiple accounts and an invalid configured default emits a Doctor warning | docs/gateway/config-channels/personal-messaging.md "Telegram" | ambient | none |
+| 1023 | Telegram local Bot API container paths map into configured trusted host roots | docs/gateway/config-channels/personal-messaging.md "Telegram" | ambient | none |
+| 1024 | iMessage transparently shaped SSH wrappers allow automatic remote-host discovery | docs/gateway/config-channels/personal-messaging.md "iMessage" | ambient | none |
+| 1025 | iMessage ambiguous SSH wrappers require an explicit remoteHost | docs/gateway/config-channels/personal-messaging.md "iMessage" | ambient | none |
+| 1026 | iMessage inbound attachments outside local or remote attachment roots retain media facts but lose the readable path | docs/gateway/config-channels/personal-messaging.md "iMessage" | ambient | none |
+| 1027 | iMessage explicit bridge send transport requires private-API delivery | docs/gateway/config-channels/personal-messaging.md "iMessage" | ambient | none |
+| 1028 | iMessage explicit applescript send transport selects the public Messages automation path | docs/gateway/config-channels/personal-messaging.md "iMessage" | ambient | none |
+| 1029 | Matrix DM sessionScope defaults to per-user grouping by routed peer rather than separate DM rooms | docs/gateway/config-channels/community-chat.md "Matrix" | ambient | none |
+| 1030 | Slack an explicitly empty typingReaction disables the temporary typing reaction | docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | none |
+| 1031 | Slack configured typingReaction shortcodes replace the quiet-progress default | docs/gateway/config-channels/workplace-chat.md "Slack" | ambient | none |
+| 1032 | Discord emoji discovery without guildId derives the current server from the channel | docs/gateway/config-channels/community-chat.md "Discord" | ambient | none |
+| 1033 | DM-specific modelByChannel peer keys do not affect group or thread model selection | docs/gateway/config-channels/shared-policies.md "Channel model overrides" | ambient | none |
 
 ## Headings walked
 docs/channels/index.md "Chat channels": none
@@ -1297,8 +1354,8 @@ docs/channels/ambient-room-events.md "Visible reply modes": 56, 71, 164, 165
 docs/channels/ambient-room-events.md "History": 106, 107, 170, 171, 905, 906, 907
 docs/channels/ambient-room-events.md "Troubleshooting": 65, 164, 165, 172
 docs/channels/ambient-room-events.md "Related": none
-docs/channels/bot-loop-protection.md "Bot loop protection": 15, 16, 173, 174, 700, 701
-docs/channels/bot-loop-protection.md "Defaults": 15, 123, 174, 698, 699
+docs/channels/bot-loop-protection.md "Bot loop protection": 15, 16, 173, 174, 700, 701, 991, 992
+docs/channels/bot-loop-protection.md "Defaults": 15, 123, 174, 698, 699, 991, 992
 docs/channels/bot-loop-protection.md "Configure shared defaults": 175, 176, 177, 702
 docs/channels/bot-loop-protection.md "Override per channel, account, or room": 177
 docs/channels/bot-loop-protection.md "Channel support": 178, 701, 702
@@ -1313,7 +1370,7 @@ docs/channels/pairing.md "Pairing": none
 docs/channels/pairing.md "1) DM pairing (inbound chat access)": 157, 186, 187, 188, 189, 190
 docs/channels/pairing.md "Approve from the Control UI": 90, 191, 192
 docs/channels/pairing.md "Approve from the CLI": 191, 193, 194
-docs/channels/pairing.md "Set up an owner without DM pairing": 191, 193
+docs/channels/pairing.md "Set up an owner without DM pairing": 193, 993, 994, 995
 docs/channels/pairing.md "Reusable sender groups": 151, 152, 153, 154
 docs/channels/pairing.md "Where the state lives": 90, 195, 196
 docs/channels/pairing.md "2) Node device pairing (iOS/Android/macOS/headless nodes)": none (owned by nodes)
@@ -1410,9 +1467,9 @@ docs/concepts/streaming.md "Streaming and chunking": 315, 332
 docs/concepts/streaming.md "Control UI startup status": none (owned by sessions)
 docs/concepts/streaming.md "Block streaming (channel messages)": 315, 316, 318, 333, 334, 335, 336
 docs/concepts/streaming.md "Media delivery with block streaming": 337, 338, 339, 340, 341
-docs/concepts/streaming.md "Chunking algorithm (low/high bounds)": 316, 342, 343
-docs/concepts/streaming.md "Coalescing (merge streamed blocks)": 344
-docs/concepts/streaming.md "Human-like pacing between blocks": 317
+docs/concepts/streaming.md "Chunking algorithm (low/high bounds)": 316, 342, 343, 977, 978, 979, 980, 981
+docs/concepts/streaming.md "Coalescing (merge streamed blocks)": 344, 980, 982, 983, 984
+docs/concepts/streaming.md "Human-like pacing between blocks": 317, 985, 986
 docs/concepts/streaming.md ""Stream chunks or everything"": 129, 315, 319, 334, 345, 346, 347, 365
 docs/concepts/streaming.md "Preview streaming modes": 318, 348, 349, 350, 351, 352, 353, 391
 docs/concepts/streaming.md "Channel mapping": 352, 353, 354, 355, 356, 357, 358
@@ -1428,17 +1485,17 @@ docs/concepts/streaming.md "Progress draft rendering": 375, 376, 377, 378, 379, 
 docs/concepts/streaming.md "Commentary progress lane": 378, 379, 382
 docs/concepts/streaming.md "Related": none
 docs/concepts/progress-drafts.md "Progress drafts": 352, 367, 381
-docs/concepts/progress-drafts.md "Quick start": 352, 380, 381
-docs/concepts/progress-drafts.md "What users see": 381
+docs/concepts/progress-drafts.md "Quick start": 352, 380, 381, 1016
+docs/concepts/progress-drafts.md "What users see": 381, 1016, 1017
 docs/concepts/progress-drafts.md "Choose a mode": 348, 349, 350, 351, 352, 391
-docs/concepts/progress-drafts.md "Configure labels": 378, 379, 382
-docs/concepts/progress-drafts.md "Control progress lines": 367, 372, 373, 374, 383, 968, 969, 970, 971
+docs/concepts/progress-drafts.md "Configure labels": 378, 379, 382, 1016, 1017
+docs/concepts/progress-drafts.md "Control progress lines": 367, 372, 373, 374, 383, 968, 969, 970, 971, 1012, 1013, 1014
 docs/concepts/progress-drafts.md "Detail mode": 384
-docs/concepts/progress-drafts.md "Command/exec text": 367, 372, 374
-docs/concepts/progress-drafts.md "Commentary lane": 378, 379, 382
-docs/concepts/progress-drafts.md "Status headline": 385, 386, 387, 388
+docs/concepts/progress-drafts.md "Command/exec text": 367, 372, 374, 1019
+docs/concepts/progress-drafts.md "Commentary lane": 378, 379, 382, 1015
+docs/concepts/progress-drafts.md "Status headline": 385, 386, 387, 388, 1015, 1018, 1019, 1020
 docs/concepts/progress-drafts.md "Line limits": 378, 379, 382
-docs/concepts/progress-drafts.md "Show the tool log": 367, 372, 374, 380
+docs/concepts/progress-drafts.md "Show the tool log": 367, 372, 374, 380, 1013, 1014
 docs/concepts/progress-drafts.md "Channel behavior": 353, 356, 357, 358, 389, 390, 966
 docs/concepts/progress-drafts.md "Finalization": 350, 362, 364, 368, 369, 391, 392, 393, 394, 966
 docs/concepts/progress-drafts.md "Troubleshooting": 129, 348, 349, 366, 392, 393, 394
@@ -1486,8 +1543,8 @@ docs/gateway/config-channels.md "Related": none
 docs/gateway/config-channels/commands.md "Configuration — chat commands": none
 docs/gateway/config-channels/commands.md "Commands (chat command handling)": 445, 446, 447, 448, 449, 972, 973
 docs/gateway/config-channels/community-chat.md "Configuration — community chat channels": none
-docs/gateway/config-channels/community-chat.md "Discord": 2, 3, 5, 15, 16, 21, 22, 66, 173, 174, 318, 336, 435, 436, 469, 472, 487, 488, 489, 490, 491, 492, 493, 494, 495, 496, 497, 498, 499, 500, 918, 919, 920, 921, 922, 923, 924, 925, 926, 927, 928, 929, 930, 931, 932, 933
-docs/gateway/config-channels/community-chat.md "Matrix": 2, 8, 21, 22, 501, 502, 503, 504, 505
+docs/gateway/config-channels/community-chat.md "Discord": 2, 3, 5, 15, 16, 21, 22, 66, 173, 174, 318, 336, 435, 436, 469, 472, 487, 488, 489, 490, 491, 492, 493, 494, 495, 496, 497, 498, 499, 500, 918, 919, 920, 921, 922, 923, 924, 925, 926, 927, 928, 929, 930, 931, 932, 933, 1032
+docs/gateway/config-channels/community-chat.md "Matrix": 2, 8, 21, 22, 501, 502, 503, 504, 505, 1029
 docs/gateway/config-channels/community-chat.md "IRC": 21, 22, 449, 506
 docs/gateway/config-channels/mention-gating-and-history.md "Configuration — group mention gating and history": none
 docs/gateway/config-channels/mention-gating-and-history.md "Group chat mention gating": 17, 55, 58, 70, 71, 72, 73, 76, 78, 79, 104, 106, 107, 164, 165, 450, 451, 452, 453, 454
@@ -1495,18 +1552,18 @@ docs/gateway/config-channels/mention-gating-and-history.md "DM history limits": 
 docs/gateway/config-channels/mention-gating-and-history.md "Self-chat mode": 458
 docs/gateway/config-channels/personal-messaging.md "Configuration — personal messaging channels": none
 docs/gateway/config-channels/personal-messaging.md "WhatsApp": 21, 22, 52, 471, 472, 473
-docs/gateway/config-channels/personal-messaging.md "Telegram": 2, 4, 21, 22, 52, 350, 391, 436, 472, 474, 475, 476, 477
+docs/gateway/config-channels/personal-messaging.md "Telegram": 2, 4, 21, 22, 52, 350, 391, 436, 472, 474, 475, 476, 477, 1021, 1022, 1023
 docs/gateway/config-channels/personal-messaging.md "Signal": 21, 22, 435, 449, 478, 497, 498, 499, 500
-docs/gateway/config-channels/personal-messaging.md "iMessage": 21, 22, 52, 222, 223, 449, 479, 480, 481, 482, 483, 484, 485, 486
+docs/gateway/config-channels/personal-messaging.md "iMessage": 21, 22, 52, 222, 223, 449, 479, 480, 481, 482, 483, 484, 485, 486, 1024, 1025, 1026, 1027, 1028
 docs/gateway/config-channels/personal-messaging.md "LINE": 2, 3, 4
 docs/gateway/config-channels/shared-policies.md "Configuration — shared channel policies": none
 docs/gateway/config-channels/shared-policies.md "DM and group access": 19, 54, 57, 88, 94, 95, 186, 188, 190, 459, 460, 461, 462
-docs/gateway/config-channels/shared-policies.md "Channel model overrides": 463, 464, 465
+docs/gateway/config-channels/shared-policies.md "Channel model overrides": 463, 464, 465, 1033
 docs/gateway/config-channels/shared-policies.md "Channel defaults and heartbeat": 82, 83, 84, 99, 462, 465, 466, 467, 468, 898, 899, 900, 901, 903, 904
 docs/gateway/config-channels/shared-policies.md "Multi-account (all channels)": 21, 22, 43, 256, 257, 258, 469, 470, 960, 961
 docs/gateway/config-channels/workplace-chat.md "Configuration — workplace chat channels": none
 docs/gateway/config-channels/workplace-chat.md "Google Chat": 469, 496, 507
-docs/gateway/config-channels/workplace-chat.md "Slack": 2, 16, 21, 22, 92, 173, 219, 274, 318, 356, 357, 358, 359, 435, 449, 488, 497, 498, 499, 500, 508, 509, 510, 511, 512, 513, 514, 515, 516, 517, 518
+docs/gateway/config-channels/workplace-chat.md "Slack": 2, 16, 21, 22, 92, 173, 219, 274, 318, 356, 357, 358, 359, 435, 449, 488, 497, 498, 499, 500, 508, 509, 510, 511, 512, 513, 514, 515, 516, 517, 518, 1030, 1031
 docs/gateway/config-channels/workplace-chat.md "Mattermost": 21, 22, 59, 449, 519, 520, 521, 522
 docs/gateway/config-channels/workplace-chat.md "Microsoft Teams": 449
 docs/gateway/protocol/rpc-system-and-channels.md "Gateway protocol system and channel methods": none
@@ -1565,8 +1622,8 @@ docs/plugins/message-presentation.md "Message presentation": none
 docs/plugins/message-presentation.md "Contract": 290, 592, 593, 594, 595, 596, 597, 598, 599, 600, 705, 706, 707, 709, 710, 711
 docs/plugins/message-presentation.md "Producer examples": none
 docs/plugins/message-presentation.md "Renderer contract": 363, 600, 712
-docs/plugins/message-presentation.md "Core render flow": 290, 601, 602, 713, 714
-docs/plugins/message-presentation.md "Degradation rules": 290, 603, 604, 605, 606
+docs/plugins/message-presentation.md "Core render flow": 290, 601, 602, 713, 714, 987
+docs/plugins/message-presentation.md "Degradation rules": 290, 603, 604, 605, 606, 987
 docs/plugins/message-presentation.md "Button value fallback visibility": 601, 602, 708, 715
 docs/plugins/message-presentation.md "Provider mapping": 353, 601, 602, 604, 716, 717, 718, 719, 720, 721, 722
 docs/plugins/message-presentation.md "Presentation vs InteractiveReply": 607, 608, 723, 724
@@ -1587,8 +1644,8 @@ docs/gateway/restart-recovery.md "Systemd stop deadlines": 629
 docs/gateway/restart-recovery.md "Launchd stop deadlines": none (owned by the gateway service)
 docs/gateway/restart-recovery.md "Host sleep and process freezes": 267, 268, 630
 docs/gateway/restart-recovery.md "Recovery after a failed update": none (owned by update)
-docs/gateway/restart-recovery.md "How interrupted work is detected": 547, 631, 632
-docs/gateway/restart-recovery.md "Automatic resume": 623, 627, 633, 634, 635, 636, 637, 638, 641
+docs/gateway/restart-recovery.md "How interrupted work is detected": 631, 632, 988, 989, 990, 1009
+docs/gateway/restart-recovery.md "Automatic resume": 623, 627, 633, 634, 635, 636, 637, 638, 641, 996, 997, 998, 999, 1000, 1001, 1002, 1003, 1004, 1005, 1006, 1007, 1008, 1010, 1011
 docs/gateway/restart-recovery.md "Subagents": none (owned by sessions)
 docs/gateway/restart-recovery.md "Agent-requested restarts": 639
 docs/gateway/restart-recovery.md "Safety valves and observability": 237, 238, 634, 637, 640, 641
@@ -2025,7 +2082,7 @@ The completion cross-check defines actual exec/process calls and dynamic process
 
 The WhatsApp single-slot transition now records two distinct native reaction additions on the same captured account/message identity and a separate cleanup removal. Condition 434 retains its real-account prerequisite and discovery credit.
 
-Condition 637 observes two messages to a supplied genuine native tombstoned session in event-tombstoned-session-reminder. The obsolete repeated-successful-resumption recipe and its join are removed: a started recovery runtime refreshes the failure budget, so it could not establish exhaustion. This observation validates native terminal identity and reminder delivery without claiming to create that terminal state; all historical counts and discovery credit remain.
+Condition 637 observes two messages to a supplied genuine native tombstoned session in event-tombstoned-session-reminder. The obsolete repeated-successful-resumption recipe and its join are removed: a started recovery runtime refreshes the failure budget, so it could not establish exhaustion. This observation validates native terminal identity and reminder delivery without claiming to create that terminal state; all historical counts and discovery credit remain. Condition 637 is therefore partial after restoring the original three-attempt exhaustion meaning; supplied creation provenance does not count as executing that alternative.
 
 Host-thaw observations include actual idle recovery, same-process CPU-gap classification and a separate real-time ten-minute active-work expiry flow. The ambient turn is parked only inside these state-specific cases and restored afterward. Native timing and activity evidence determine the exercised interval. Both original cases and shared cleanup include host-thaw-recovery, channel-thaw-restart and server-maintenance selectors; condition and discovery counts stay unchanged.
 
@@ -2160,7 +2217,7 @@ The presentation, ingress and inbound consumer reconciliations add 67 in-scope c
 
 The message CLI and channel-index audit adds conditions 816–847 for strict selectors, action scope and compatibility, native cleanup, delivery limits and bounded join history. The formatting audit adds conditions 848–874 for code whitespace, nested boundaries, lexical preservation, rendered sizes, default selection and formatter edits. Existing per-channel join suppression, broadcast outcome and renderer/link/default/list-prefix meanings retain their IDs and historical credit; conditions 3, 292, 406, 408, 409 and 413 are partial because supplied inputs do not cover every recorded alternative. Native block-table and code fallback observations keep condition 411 covered. Poll bounds remain provider-specific: Telegram supports up to 12 options and Discord up to 10.
 
-The current inventory has 976 conditions: 504 ambient and 472 event. Coverage is 431 fully planned and 545 wholly or partly outside reach. The current heading inventory has 269 headings. The per-round condition-heading denominators and original condition discovery credit are unchanged. Corrected named-entry totals and shares are recorded separately in comparison.md. These source corrections add no derivation run or observation helper. Plugin installation mechanics and configuration writes performed by plugin installation or automatic enabling remain outside this area; selected-channel setup and credential-resolution consequences remain included.
+The current inventory has 1033 conditions: 528 ambient and 505 event. Coverage is 415 fully planned and 618 wholly or partly outside reach. The current heading inventory has 269 headings. The per-round condition-heading denominators and original condition discovery credit are unchanged. Corrected named-entry totals and shares are recorded separately in comparison.md. These source corrections add no derivation run or observation helper. Plugin installation mechanics and configuration writes performed by plugin installation or automatic enabling remain outside this area; selected-channel setup and credential-resolution consequences remain included.
 
 The channel RPC reconciliation adds conditions 875–884 for omitted-account selection, explicit manual-parameter rejection, QR provider selection and opaque correlation, and the public/CLI pairing response and selector distinctions. Existing manual-start suppression meanings retain their original credit; condition 277 is partial because no supplied ambient-suppressed account exercises explicit bypass. The current WhatsApp provider returns no opaque sessionKey, so conditional forwarding language does not cover that missing case. Pairing codes and QR/session secrets remain memory-only; checking native response shape must occur before safe projection without retaining those values. No new provider, helper, account or derivation run is introduced.
 
@@ -2206,4 +2263,4 @@ The four separately named controls are Setup wizard confirmation: Yes, Setup wiz
 
 Original alternatives are restored on their existing condition IDs. Conditions 310, 317, 321, 344, 402, 450, 455, 457 and 492 are partial where the supplied inputs omit a recorded counterpart; condition 193 was already partial and receives no additional deduction. Native history selection uses the observed route peer to disambiguate candidate session keys; the default applies only when that evidence is missing or no longer matches. The current recipe supplies a peer, so an ambiguous static session description alone cannot establish the fallback. No command, helper, fixture or native state change is added by this inventory correction.
 
-The combined reconciliation has 976 conditions, 431 fully planned and 545 wholly or partly outside reach: 504 ambient and 472 event. The current heading inventory is 269; Moderation (Discord) is newly condition-bearing. Historical heading denominators 245/258 and original condition numerators 592/590 remain unchanged. The current source-only additions total 331 conditions beyond the original 645. Final entry shares are 413/460 (89.8%) and 383/460 (83.3%), both below nine tenths; round 1 shares are 317/339 (93.5%) and 297/339 (87.6%). The current entry inventory is 460: 317 placed and 143 excluded. Supplemental condition shares are 592/976 (60.7%) and 590/976 (60.5%). These current figures supersede the earlier stage totals while preserving every original record and explicit name credit. No new derivation, runtime input or implementation was added.
+The combined reconciliation has 1033 conditions, 415 fully planned and 618 wholly or partly outside reach: 528 ambient and 505 event. The current heading inventory is 269; historical heading denominators 245/258 and original condition numerators 592/590 remain unchanged. Current source-only additions total 388 conditions beyond the original 645. Final entry shares are 413/460 (89.8%) and 383/460 (83.3%), both below nine tenths; round 1 shares are 317/339 (93.5%) and 297/339 (87.6%). The current entry inventory is 460: 317 placed and 143 excluded. Supplemental condition shares are 592/1033 (57.3%) and 590/1033 (57.1%). Original records and discovery credit remain unchanged. The existing quote and stopped-account recipes observe their native decisions at the corrected boundary; unsupported recorded alternatives remain partial. No new derivation or template execution was performed.

@@ -6,9 +6,9 @@ Date: 2026-10-13
 State: reconciled with a known shortfall after the permitted rerun.
 The procedure's nine-tenths acceptance was not met.
 
-Union: 460 entry points, 976 conditions, 269 current condition-bearing document headings.
+Union: 460 entry points, 1033 conditions, 269 current condition-bearing document headings.
 The recorded final-round reconciliation contained 645 conditions and 258
-condition-bearing headings. Later reconciliation adds 331 in-scope current
+condition-bearing headings. Later reconciliation adds 388 in-scope current
 conditions. These additions receive no extra discovery credit. Unsupported
 dynamic-group failure and live logout ordering are restored from the earlier
 round, where they were already counted; neither final run receives credit.
@@ -138,8 +138,8 @@ credit for those restored conditions or the other current additions.
 The current inventory contains 269 condition-bearing headings. This does not
 change the historical 258-heading union or either final run’s recorded heading
 credit. Restored composites retain their original credit. Against the current
-976-condition inventory, supplemental condition-by-meaning shares use unchanged
-final-round numerators: 592/976 (60.7%) and 590/976 (60.5%). The historical
+1033-condition inventory, supplemental condition-by-meaning shares use unchanged
+final-round numerators: 592/1033 (57.3%) and 590/1033 (57.1%). The historical
 645-condition comparison and per-round condition-heading
 acceptance shares above remain unchanged. Entry-point arithmetic is corrected below. Planned coverage is a separate
 measure in coverage.md.
@@ -172,4 +172,4 @@ This source reconciliation adds 23 distinct current conditions for history-windo
 
 The four separately named controls are Setup wizard confirmation: Yes, Setup wizard confirmation: No, WhatsApp logout confirmation: Logout and WhatsApp logout confirmation: Cancel. None was individually named in the original four entry lists. Generic confirm-step fields and a logout card described as having confirmation keep their original credit but do not earn credit for these separate buttons. Each corrected round gains four source-only denominator entries, with no new discovery credit. These entries remain in their existing setup and logout operations. Existing positive WhatsApp confirmation retains its actual conditional availability; no new Cancel, Yes or No observation is supplied.
 
-The combined reconciliation has 976 conditions, 431 fully planned and 545 wholly or partly outside reach: 504 ambient and 472 event. The current heading inventory is 269; Moderation (Discord) is newly condition-bearing. Historical heading denominators 245/258 and original condition numerators 592/590 remain unchanged. The current source-only additions total 331 conditions beyond the original 645. Final entry shares are 413/460 (89.8%) and 383/460 (83.3%), both below nine tenths; round 1 shares are 317/339 (93.5%) and 297/339 (87.6%). The current entry inventory is 460: 317 placed and 143 excluded. Supplemental condition shares are 592/976 (60.7%) and 590/976 (60.5%). These current figures supersede the earlier stage totals while preserving every original record and explicit name credit. No new derivation, runtime input or implementation was added.
+The combined reconciliation has 1033 conditions, 415 fully planned and 618 wholly or partly outside reach: 528 ambient and 505 event. The current heading inventory is 269; historical heading denominators 245/258 and original condition numerators 592/590 remain unchanged. Current source-only additions total 388 conditions beyond the original 645. Final entry shares are 413/460 (89.8%) and 383/460 (83.3%), both below nine tenths; round 1 shares are 317/339 (93.5%) and 297/339 (87.6%). The current entry inventory is 460: 317 placed and 143 excluded. Supplemental condition shares are 592/1033 (57.3%) and 590/1033 (57.1%). Original records and discovery credit remain unchanged. The existing quote and stopped-account recipes observe their native decisions at the corrected boundary; unsupported recorded alternatives remain partial. No new derivation or template execution was performed.
