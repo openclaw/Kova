@@ -239,11 +239,13 @@ test("nested tool results retain newly accepted send identifiers", async () => {
     if (method === "agent.wait") return { runId, status: "ok" };
     return { messages: [{ role: "custom", __openclaw: { runId }, content: [
       { type: "toolCall", id: "nested-call", name: "sessions_send", arguments: {} },
-      { role: "toolResult", toolCallId: "nested-call", details: { status: "ok", runId: "new-send" } }
+      { role: "toolResult", toolCallId: "nested-call", details: { sessionKey: "agent:main:other" }, content: [{ type: "text", text: JSON.stringify({ status: "ok", sessionKey: "agent:main:other", runId: "new-send" }) }] }
     ] }], hasMore: false };
   });
   assert.equal(result.exitCode, 0);
   assert.deepEqual(result.output.createdIds, ["new-send"]);
+  assert.equal(result.output.toolResult.details.sessionKey, "agent:main:other");
+  assert.equal(result.output.toolResult.details.runId, "new-send");
 });
 
 test("internal background entry mode is not a public CLI flag", async () => {
@@ -308,4 +310,20 @@ test("chat delay preserves the full call budget and supports cancellation before
     assert.equal(cancelled.exitCode, 1);
     assert.equal(cancelled.output.error, "cancelled before send");
   } finally { clearTimeout(timer); }
+});
+
+
+test("synchronous environment lookup deadlines remain helper timeouts", async () => {
+  for (const delay of [0, 50]) {
+    const result = await scriptMain(resume, ["--env", "kova-scripts-probe", "--url-from", "url.json", "--timeout", "20"], {
+      context: { read: async () => ({ url: "http://127.0.0.1:18789/chat/main" }) },
+      prepare: () => {
+        if (delay) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delay);
+        throw Object.assign(new Error("environment lookup failed"), { code: "ETIMEDOUT" });
+      },
+      rpc: () => assert.fail("failed lookup must not send a request")
+    });
+    assert.equal(result.exitCode, delay ? 3 : 1);
+    assert.equal(result.output.error, delay ? "verification timeout" : "environment lookup failed");
+  }
 });

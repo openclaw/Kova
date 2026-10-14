@@ -102,7 +102,7 @@ export function validateRunPlan(plan, catalogue) {
           if (entry.id === "ocm-start" && option(tokens, "--runtime") !== "{target}") throw new Error(`${phase.id}: runtime binding must use the planned target`);
         }
       }
-      for (const flag of ["--out", "--handle", "--wait", "--from", "--session-from", "--merge-from", "--target-from", "--gateway-handle"]) {
+      for (const flag of ["--out", "--handle", "--wait", "--from", "--session-from", "--merge-from", "--target-from", "--gateway-handle", "--handoff-from", "--url-from", "--incognito-handle"]) {
         const value = option(tokens, flag);
         if (value !== undefined && (!value.startsWith("{run}/") || value.slice(6).split(/[\\/]/).some((part) => !part || part === "." || part === ".."))) throw new Error(`${phase.id}: ${flag} must stay under {run}`);
       }
@@ -198,9 +198,7 @@ function configSetPath(raw) {
 
 // The two configuration commands use dot paths and JSON-or-string values at
 // OpenClaw 7e80556f. Other message text stays with its product handler.
-function inspectSessionMessage(method, params) {
-  if (method !== "sessions.create") return;
-  const message = typeof params.task === "string" && params.task.trim() ? params.task : params.message;
+function inspectSessionMessage(message) {
   if (typeof message !== "string" || message.includes("\0")) return;
   let body = [...message.normalize("NFC")].filter((char) => {
     const code = char.charCodeAt(0);
@@ -316,7 +314,20 @@ export async function validateRunDestinations(command, context) {
     if (typeof patch?.logging?.file === "string") await context.prepareLogDestination?.(env, patch.logging.file);
     await context.observeCredentialPaths?.(env);
   };
-  for (const flag of ["--out", "--handle", "--wait", "--from", "--session-from", "--merge-from", "--target-from", "--gateway-handle"]) {
+  const validateMessage = async (message, env) => {
+    const mutation = inspectSessionMessage(message);
+    if (!mutation) return;
+    if (mutation.debug && mutation.action === "unset" && runtimeConfigPathPatterns.some((pattern) => mutation.path.every((part, index) => pattern[index] === "*" || pattern[index] === part))) throw new Error("debug storage path changes require observable runtime configuration");
+    if (mutation.debug && (mutation.action === "reset" || mutation.action === "unset" && mutation.path[0] === "logging")) {
+      const current = await context.readConfiguration?.(env);
+      await validateConfiguration({ logging: current?.logging ?? null }, env);
+    } else {
+      if (!mutation.debug && mutation.action === "set" && mutation.path.length === 1 && mutation.path[0] === "logging" && typeof mutation.value?.file !== "string") throw new Error("config replacement must preserve the owned product log destination");
+      const patch = mutation.path.reduceRight((value, key) => ({ [key]: value }), mutation.value);
+      await validateConfiguration(patch, env, { debug: mutation.debug });
+    }
+  };
+  for (const flag of ["--out", "--handle", "--wait", "--from", "--session-from", "--merge-from", "--target-from", "--gateway-handle", "--handoff-from", "--url-from", "--incognito-handle"]) {
     const value = option(tokens, flag);
     if (value !== undefined) {
       const physical = await owned(value, outputRoot);
@@ -327,22 +338,17 @@ export async function validateRunDestinations(command, context) {
       }
     }
   }
+  if (tokens[0] === "node") {
+    const helper = tokens[1];
+    const messageFlag = helper === join(context.kovaRoot ?? "", "support/verify/chat-send.mjs") ? "--message"
+      : helper === join(context.kovaRoot ?? "", "support/verify/channel-inbound-turn.mjs") ? "--text" : null;
+    if (messageFlag && option(tokens, "--wait") === undefined) await validateMessage(option(tokens, messageFlag), option(tokens, "--env"));
+  }
   if (tokens[0] === "node" && tokens[1] === join(context.kovaRoot ?? "", "support/verify/gateway-call.mjs")) {
     const options = parseGatewayCallArgs(tokens.slice(2));
     if (!options.wait) {
       const params = await resolveGatewayParams(options, { signal: context.signal });
-      const mutation = inspectSessionMessage(options.method, params);
-      if (mutation) {
-        if (mutation.debug && mutation.action === "unset" && runtimeConfigPathPatterns.some((pattern) => mutation.path.every((part, index) => pattern[index] === "*" || pattern[index] === part))) throw new Error("debug storage path changes require observable runtime configuration");
-        if (mutation.debug && (mutation.action === "reset" || mutation.action === "unset" && mutation.path[0] === "logging")) {
-          const current = await context.readConfiguration?.(options.env);
-          await validateConfiguration({ logging: current?.logging ?? null }, options.env);
-        } else {
-          if (!mutation.debug && mutation.action === "set" && mutation.path.length === 1 && mutation.path[0] === "logging" && typeof mutation.value?.file !== "string") throw new Error("config replacement must preserve the owned product log destination");
-          const patch = mutation.path.reduceRight((value, key) => ({ [key]: value }), mutation.value);
-          await validateConfiguration(patch, options.env, { debug: mutation.debug });
-        }
-      }
+      if (options.method === "sessions.create") await validateMessage(typeof params.task === "string" && params.task.trim() ? params.task : params.message, options.env);
       if (options.method === "sessions.create" && ["projectId", "catalogId", "execNode"].some((field) => params[field] != null)) throw new Error("Gateway creation requires a locally owned workspace; project, catalog and remote selectors are unsupported");
       if (["sessions.patch", "sessions.patchMany"].includes(options.method) && (params.execNode != null || params.patch?.execNode != null)) throw new Error("Gateway execution must remain local to its owned copy");
       const directPath = async (path) => {

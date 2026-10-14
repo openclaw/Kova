@@ -96,8 +96,9 @@ export async function executeScript(definition, options, dependencies = {}) {
     if (Object.hasOwn(output, "elapsedMs")) output.elapsedMs = Date.now() - startedAt;
     Object.assign(output, error?.output);
     const reason = dependencies.signal?.aborted ? dependencies.signal.reason : error;
-    output.error = timeout?.aborted ? "verification timeout" : String(reason?.message ?? reason);
-    return { output, exitCode: timeout?.aborted ? 3 : reason?.exitCode ?? 1 };
+    const timedOut = timeout?.aborted || deadline !== undefined && Date.now() >= deadline;
+    output.error = timedOut ? "verification timeout" : String(reason?.message ?? reason);
+    return { output, exitCode: timedOut ? 3 : reason?.exitCode ?? 1 };
   }
 }
 

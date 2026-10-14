@@ -35,12 +35,12 @@ export async function toolArguments(o, ctx, caller) {
 }
 
 function resultDetails(message) {
-  if (message?.details && typeof message.details === "object") return message.details;
+  const projected = message?.details && typeof message.details === "object" && !Array.isArray(message.details) ? message.details : null;
   for (const part of message?.content ?? []) {
     if (part.type !== "text") continue;
-    try { const value = JSON.parse(part.text); if (value && typeof value === "object") return value; } catch {}
+    try { const value = JSON.parse(part.text); if (value && typeof value === "object" && !Array.isArray(value)) return { ...projected, ...value }; } catch {}
   }
-  return null;
+  return projected;
 }
 
 export const definition = {

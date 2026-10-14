@@ -1030,6 +1030,37 @@ test("fixture handles stay under run outputs and cleanup time fits the command l
   await assert.rejects(validateRunDestinations(`node /helper --gateway-handle ${quoteShell(join(external, "gateway.json"))}`, { cwd: output, run: output, ownedRoots: [output] }), /owned copy/);
 });
 
+test("handoff, URL and incognito inputs share run-path ownership checks", async (t) => {
+  const f = await fixture(t), output = join(f.root, "output"), external = join(f.root, "external");
+  await mkdir(output); await mkdir(external);
+  const input = join(output, "input.json"), outside = join(external, "input.json");
+  await writeFile(input, '{}'); await writeFile(outside, '{}');
+  await symlink(external, join(output, "alias"));
+  await symlink(outside, join(output, "file-alias.json"));
+  await link(outside, join(output, "hard-alias.json"));
+  const context = { cwd: output, run: output, ownedRoots: [output], kovaRoot: repoRoot };
+  for (const [helper, flag, extra] of [
+    ["run-resume", "--handoff-from", ""],
+    ["run-resume", "--url-from", ""],
+    ["chat-send", "--incognito-handle", "--message hello"]
+  ]) {
+    const command = (root, env, path) => `node ${root}/support/verify/${helper}.mjs --env ${env} ${flag} ${path.startsWith("{run}") ? path : quoteShell(path)} ${extra} --timeout 1000`;
+    f.plan.phases[1].commands = [command("{kovaRoot}", "{env}", "{run}/input.json")];
+    f.plan.phasesSha256 = sha256(canonicalJSON(f.plan.phases));
+    assert.doesNotThrow(() => validateRunPlan(f.plan, f.catalogue));
+    for (const path of [outside, "{run}/../input.json"]) {
+      f.plan.phases[1].commands = [command("{kovaRoot}", "{env}", path)];
+      f.plan.phasesSha256 = sha256(canonicalJSON(f.plan.phases));
+      assert.throws(() => validateRunPlan(f.plan, f.catalogue), /must stay under/);
+    }
+    const allowed = command(repoRoot, "copy", input);
+    assert.equal(await validateRunDestinations(allowed, context), allowed);
+    for (const path of [outside, join(output, "alias/input.json"), join(output, "file-alias.json"), join(output, "hard-alias.json")]) {
+      await assert.rejects(validateRunDestinations(command(repoRoot, "copy", path), context), /owned copy|unaliased/);
+    }
+  }
+});
+
 test("target and phase identities refuse wrong commits, downgrades and service operations", async (t) => {
   const f = await fixture(t);
   await assert.rejects(validateTarget(`local-build:${f.source}`, "0".repeat(40), "2026.9.9"), /commit differs/);
@@ -1622,6 +1653,37 @@ test("message configuration writes share destination checks and prepare log coll
   await assert.rejects(validateRunDestinations(call({ message: "safe" }, `--merge-from ${quoteShell(source)}`), context), /owned copy/);
   await assert.rejects(validateRunDestinations(call({ task: "  ", message: `/config set logging.file=${JSON.stringify(external)}` }), context), /owned copy/);
   await admit({ sessionKey: "example", question: `/config set logging.file=${JSON.stringify(external)}` }, "sessions.companion.ask");
+});
+
+test("chat and inbound helpers reuse configuration-message admission before dispatch", async (t) => {
+  const root = await temporary(t), copy = join(root, "copy"), external = join(root, "external"), output = join(root, "output");
+  for (const path of [copy, external, output]) await mkdir(path);
+  await symlink(external, join(copy, "alias"));
+  const diskLog = join(copy, "disk.log"), nextLog = join(copy, "next.log");
+  const prepared = [];
+  const context = {
+    cwd: copy, run: output, ownedRoots: [copy], kovaRoot: repoRoot,
+    readConfiguration: async (env) => { assert.equal(env, "copy"); return { logging: { file: diskLog } }; },
+    prepareLogDestination: async (env, path) => { prepared.push({ env, path }); }
+  };
+  for (const [helper, flag, selector] of [["chat-send", "--message", "--session-key agent:main:example"], ["channel-inbound-turn", "--text", "--chat-type direct --peer example"]]) {
+    const command = (message) => `node ${quoteShell(join(repoRoot, `support/verify/${helper}.mjs`))} --env copy ${selector} ${flag} ${quoteShell(message)}`;
+    for (const message of [
+      `/config set logging.file=${JSON.stringify(join(external, "product.log"))}`,
+      `/debug set logging.file=${JSON.stringify(join(copy, "alias/product.log"))}`,
+      `/config set logging.file=${JSON.stringify(join(output, "product.log"))}`,
+      "/config unset logging.file", "/bash printf changed"
+    ]) await assert.rejects(validateRunDestinations(command(message), context), /owned|verification evidence/);
+    for (const message of ["/config get logging.file", "ordinary text", "Explain /config set logging.file=/outside", `/config set mcp.servers.probe.command=${JSON.stringify(join(external, "trusted-program"))}`, "/debug set hooks.transformsDir=custom"]) {
+      const allowed = command(message);
+      assert.equal(await validateRunDestinations(allowed, context), allowed);
+    }
+    const before = prepared.length;
+    await validateRunDestinations(command(`/config set logging.file=${JSON.stringify(nextLog)}`), context);
+    await validateRunDestinations(command("/debug unset logging.file"), context);
+    await validateRunDestinations(command("/debug reset"), context);
+    assert.deepEqual(prepared.slice(before), [{ env: "copy", path: nextLog }, { env: "copy", path: diskLog }, { env: "copy", path: diskLog }]);
+  }
 });
 
 test("trusted program selectors pass unchanged while writable mount sources stay owned", async (t) => {
