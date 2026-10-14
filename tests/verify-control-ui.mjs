@@ -9,13 +9,14 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { CallError, cleanupGatewayHandle, joinOperation, requestOperation, startOperation } from "../support/verify/background.mjs";
-import { controlUiMain, createControlUiBrowser, executeControlUi, observeControlUiSocket } from "../support/verify/control-ui.mjs";
+import { controlUiMain, createControlUiBrowser, executeControlUi, observeControlUiSocket, runRetainedBrowser } from "../support/verify/control-ui.mjs";
 import { controlUiFlows } from "../support/verify/control-ui-flows.mjs";
 import { loadGatewaySchemaAssertions } from "./helpers/gateway-schemas.mjs";
 
 const exec = promisify(execFile);
 const cli = fileURLToPath(new URL("../support/verify/control-ui.mjs", import.meta.url));
 const backgroundUrl = new URL("../support/verify/background.mjs", import.meta.url).href;
+const controlUiUrl = new URL("../support/verify/control-ui.mjs", import.meta.url).href;
 
 async function invoke(args) {
   try {
@@ -85,6 +86,46 @@ test("Control UI implements every sessions-template browser flow", async () => {
     [...command.matchAll(/--flow\s+([a-z][a-z0-9-]*)\b/g)].map((match) => match[1]))));
   assert.equal(names.size, 37);
   for (const name of names) assert.equal(typeof controlUiFlows[name], "function", name);
+});
+
+for (const stage of ["prepare", "pairing"]) {
+  for (const delayMs of [0, 60]) test(`foreground ${stage} failure ${delayMs ? "after" : "before"} the startup deadline`, async () => {
+    const calls = [];
+    const fail = () => {
+      if (delayMs) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
+      throw new Error("Synthetic startup failure");
+    };
+    const result = await executeControlUi({ env: "fixture", flow: "new-session-page", timeoutMs: 20 }, {
+      prepare: () => {
+        calls.push("prepare");
+        if (stage === "prepare") fail();
+        return { packageRoot: "/unused" };
+      },
+      ocm: () => { calls.push("pairing"); fail(); },
+      launch: async () => { assert.fail("A startup failure must not launch a browser"); },
+    });
+    assert.equal(result.exitCode, delayMs ? 3 : 1);
+    assert.equal(result.output.error, delayMs ? "Control UI timeout" : "Control UI operation failed");
+    assert.deepEqual(result.output.steps, []);
+    assert.deepEqual(calls, stage === "prepare" ? ["prepare"] : ["prepare", "pairing"]);
+  });
+}
+
+test("retained browser startup honors elapsed expiry before an abort timer can run", async () => {
+  const result = await runRetainedBrowser({ env: "fixture", flow: "open-session-keep-open", timeoutMs: 20 }, {
+    signal: new AbortController().signal,
+    operation: { expiresAt: new Date(Date.now() + 20).toISOString() },
+    publish: async () => { assert.fail("Expired startup must not publish a browser handle"); },
+  }, {
+    createBrowser: async () => {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 60);
+      throw new Error("Synthetic retained startup failure");
+    },
+  });
+  assert.equal(result.exitCode, 3);
+  assert.equal(result.output.flow, "open-session-keep-open");
+  assert.equal(result.output.error, "Control UI timeout");
+  assert.deepEqual(result.output.steps, []);
 });
 
 test("browser request recording excludes private payloads and attributes late replies to their initiating flow", () => {
@@ -318,6 +359,82 @@ test("retained Control UI expiry closes resources and makes the handle terminal"
   assert.deepEqual(await awaitJson(join(directory, "closed.json")), { count: 0, pid: started.ref.pid });
   await assert.rejects(requestOperation(handle, {}, { entry: "control-ui", env: "fixture", timeoutMs: 5000 }), /finished/);
   assert.deepEqual(await controlUiMain(["--wait", handle, "--timeout", "5000"]), stopped);
+});
+
+test("waiting for a timed-out retained follow-up preserves its evidence after browser cleanup", { timeout: 15000 }, async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "kova-ui-timeout-"));
+  const path = join(root, "browser-operation.mjs"), handle = join(root, "browser.json");
+  const directory = `${handle}.d`;
+  t.after(async () => {
+    try { await cleanupGatewayHandle(handle, { timeoutMs: 5000 }); }
+    finally { await rm(root, { recursive: true, force: true }); }
+  });
+  const failedOutput = {
+    flow: "reconnect-and-send",
+    steps: [
+      { action: "reconnect-existing-page", status: "result", elapsedMs: 1 },
+      { action: "send-after-reconnect", status: "error", elapsedMs: 999 },
+    ],
+    screens: ["synthetic-before-timeout.png"],
+    requests: [{ method: "chat.send", status: "unanswered", elapsedMs: 1000 }],
+    elapsedMs: 1000,
+    createdIds: [],
+    sessionKey: "agent:main:fixture",
+    url: null,
+    handoff: null,
+    error: "Control UI timeout",
+  };
+  await writeFile(path, `
+import { atomicJson, serveOperation } from ${JSON.stringify(backgroundUrl)};
+import { runRetainedBrowser } from ${JSON.stringify(controlUiUrl)};
+import { join } from "node:path";
+await serveOperation((options, context) => runRetainedBrowser(options, context, {
+  createBrowser: async () => {
+    let calls = 0;
+    return {
+      async run(call, controls) {
+        if (++calls === 1) return {
+          output: { flow: call.flow, steps: [{ action: "opening", status: "result" }], screens: [], requests: [], createdIds: [], elapsedMs: 0, error: null },
+          exitCode: 0,
+        };
+        await atomicJson(join(context.operation.directory, "followup-entered.json"), { flow: call.flow });
+        if (!controls.signal.aborted) await new Promise((resolve) => controls.signal.addEventListener("abort", resolve, { once: true }));
+        return { output: ${JSON.stringify(failedOutput)}, exitCode: 3 };
+      },
+      async close() {
+        await atomicJson(join(context.operation.directory, "closed.json"), { calls });
+      },
+    };
+  },
+}));
+`);
+  await startOperation(path, {
+    env: "fixture", flow: "open-session-keep-open", handle,
+    "session-key": "agent:main:fixture", "artifact-dir": join(root, "opening"),
+    timeoutMs: 10000, startupTimeoutMs: 5000,
+  }, { entry: "control-ui", method: "control-ui", lifetimeMs: 10000 });
+  const requested = requestOperation(handle, {
+    env: "fixture", flow: "reconnect-and-send", handle,
+    "session-key": "agent:main:fixture", "artifact-dir": join(root, "followup"), timeout: "1000",
+  }, { entry: "control-ui", env: "fixture", timeoutMs: 1000 }).then(
+    (result) => ({ result }),
+    (error) => ({ error }),
+  );
+  assert.deepEqual(await awaitJson(join(directory, "followup-entered.json")), { flow: "reconnect-and-send" });
+  const receipt = await requested;
+  // The caller can reach its own deadline just before the result file appears.
+  if (receipt.error) assert.equal(receipt.error.exitCode, 3);
+  else assert.equal(receipt.result.exitCode, 3);
+  const completed = await joinOperation(handle, { timeoutMs: 5000 });
+  assert.equal(completed.exitCode, 3);
+  assert.equal(completed.cleanupComplete, true);
+  assert.equal(completed.output.flow, failedOutput.flow);
+  assert.equal(completed.output.error, failedOutput.error);
+  assert.deepEqual(completed.output.steps, failedOutput.steps);
+  assert.deepEqual(completed.output.screens, failedOutput.screens);
+  assert.deepEqual(completed.output.requests, failedOutput.requests);
+  assert.deepEqual(await awaitJson(join(directory, "closed.json")), { calls: 2 });
+  assert.deepEqual(await controlUiMain(["--wait", handle, "--timeout", "5000"]), completed);
 });
 
 test("browser cancellation waits for browser.close before returning", { timeout: 10000 }, async (t) => {
