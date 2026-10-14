@@ -138,7 +138,7 @@ export async function gatewayLifecycleMain(argv, { signal } = {}) {
     if (options.action === "stop") {
       return await cleanupGatewayHandle(options.wait, { timeoutMs: options.timeoutMs }) ?? failure("gateway.stop", new CallError("Gateway handle is absent"));
     }
-    if (options.wait) return await joinOperation(options.wait, { timeoutMs: options.timeoutMs, method: "gateway.start" });
+    if (options.wait) return await joinOperation(options.wait, { timeoutMs: options.timeoutMs, method: "gateway.start", signal });
     const handle = await startOperation(filename, { ...options, startupTimeoutMs: options.timeoutMs + 1000 }, {
       entry: "foreground-gateway-start", method: "gateway.start", lifetimeMs: gatewayMaximumLifetimeMs, signal
     });

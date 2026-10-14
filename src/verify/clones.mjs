@@ -2,17 +2,61 @@ import { createReadStream } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { extract as extractTar } from "tar-stream";
 import { quoteShell as q } from "../commands.mjs";
 import { isMissingOcmResource } from "../ocm/missing-resource.mjs";
 import { captureTargetIdentity } from "../target-identity.mjs";
 import { mockAiProviderServeCommand, mockProviderPortCommand, mockProviderCleanupCommand } from "../auth.mjs";
 import { checkCatalogueCommands, parseCatalogueCommand, createCatalogueResolver } from "../catalogue.mjs";
-import { sha256 } from "./plan.mjs";
+import { canonicalJSON, sha256 } from "./plan.mjs";
 
 export async function hashFile(path) {
   const hash = createHash("sha256");
   for await (const chunk of createReadStream(path)) hash.update(chunk);
   return hash.digest("hex");
+}
+
+export async function hashEnvironmentExport(path) {
+  const raw = createHash("sha256");
+  const entries = new Map();
+  const extractor = extractTar();
+  let metadataSeen = false;
+  extractor.on("entry", (header, stream, next) => {
+    stream.on("error", () => {});
+    void (async () => {
+      const name = header.name.replace(/\/$/, "");
+      if (entries.has(name) || (name !== "meta/env.json" && name !== "root" && !name.startsWith("root/"))) throw new Error("invalid environment export entry");
+      const fields = JSON.parse(JSON.stringify(header));
+      fields.name = name;
+      const content = createHash("sha256");
+      if (name === "meta/env.json") {
+        if (metadataSeen || header.type !== "file" || header.size > 1024 * 1024) throw new Error("invalid environment export metadata");
+        const chunks = [];
+        for await (const chunk of stream) chunks.push(chunk);
+        const metadata = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        if (metadata?.kind !== "ocm-env-archive" || metadata.formatVersion !== 1 || metadata.includeState !== true || typeof metadata.exportedAt !== "string" || !metadata.env) throw new Error("invalid state-inclusive environment export metadata");
+        // OCM records capture time here; all source metadata remains significant.
+        delete metadata.exportedAt;
+        const normalized = canonicalJSON(metadata);
+        fields.size = Buffer.byteLength(normalized);
+        content.update(normalized);
+        metadataSeen = true;
+      } else {
+        for await (const chunk of stream) content.update(chunk);
+      }
+      entries.set(name, { header: fields, sha256: content.digest("hex") });
+    })().then(() => next(), (error) => next(error));
+  });
+  await pipeline(createReadStream(path), new Transform({
+    transform(chunk, encoding, callback) { raw.update(chunk); callback(null, chunk); }
+  }), extractor);
+  if (!metadataSeen || entries.get("root")?.header.type !== "directory") throw new Error("environment export is missing metadata or root directory");
+  return {
+    sha256: raw.digest("hex"),
+    contentSha256: sha256(canonicalJSON([...entries].sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)))
+  };
 }
 
 export async function readPersona(path, expectedHash, catalogue) {
@@ -75,8 +119,8 @@ export async function stagePersona(persona, directory, call) {
     const runtime = JSON.parse((await call(`ocm runtime show ${q(metadata.defaultRuntime)} --json`)).stdout);
     if (runtime.name !== metadata.defaultRuntime || typeof runtime.releaseVersion !== "string") throw new Error(`persona environment ${name} has no runtime version`);
     const path = join(directory, `persona-${extra.size}.ocm-env.tar`);
-    await call(`ocm env export ${q(name)} --out ${q(path)} --include-state --json`);
-    extra.set(name, { archive: path, sha256: await hashFile(path), metadata, version: runtime.releaseVersion });
+    await call(`ocm env export ${q(name)} --output ${q(path)} --include-state --json`);
+    extra.set(name, { archive: path, ...await hashEnvironmentExport(path), metadata, version: runtime.releaseVersion });
   }
   return { ...persona, archive, extra };
 }

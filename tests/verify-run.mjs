@@ -277,6 +277,7 @@ test("OCM operands and output files cannot escape clone or evidence ownership", 
   const f = await fixture(t);
   for (const command of [
     "ocm env exec durable -- printf %s {env}",
+    "ocm env exec {env} -- ocm env protect durable-persona off --json",
     "ocm env snapshot create durable --label {env} --json",
     "ocm env clone {env} escaped-copy --json",
     "ocm start {env} --runtime unrelated --no-service --json",
@@ -313,7 +314,9 @@ test("failed capture preserves later diagnostics and ordinary phases remain inte
   const original = f.dependencies.execute;
   f.dependencies.execute = async (command, options) => {
     if (command.includes("'--'")) assert.equal(options.finishOnShutdown, false);
-    return original(command, options);
+    const result = await original(command, options);
+    if (command.includes("'status'")) return { ...result, status: command.includes("'@change-1'") ? 2 : 0, stdout: JSON.stringify({ screen: "/outside/evidence.png" }) };
+    return result;
   };
   const result = await runVerification({ ...f.options, execute: true }, f.dependencies);
   assert.deepEqual(result.notStarted, []);

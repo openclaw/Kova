@@ -41,6 +41,16 @@ test("foreground Gateway start joins without requesting stop", async (t) => {
   await atomicJson(join(operation.directory, "operation.json"), operation);
   const pending = await gatewayLifecycleMain(["start", "--wait", handle, "--timeout", "20"]);
   assert.equal(pending.exitCode, 3);
+  const controller = new AbortController();
+  const joining = joinOperation(handle, { timeoutMs: 10000, signal: controller.signal });
+  const interrupted = assert.rejects(joining, /abort|cancel join/i);
+  await sleep(20);
+  controller.abort(new Error("cancel join"));
+  await interrupted;
+  const cancelledLifecycle = await gatewayLifecycleMain(["start", "--wait", handle, "--timeout", "10000"], { signal: controller.signal });
+  assert.equal(cancelledLifecycle.exitCode, 1);
+  const cancelledRpc = await gatewayCallMain(["--method", "gateway.start", "--wait", handle, "--timeout", "10000"], { signal: controller.signal });
+  assert.equal(cancelledRpc.exitCode, 1);
   await assert.rejects(readFile(join(operation.directory, "stop")), (error) => error.code === "ENOENT");
   const completed = { output: { method: "gateway.stop", result: { stopped: true }, error: null, elapsedMs: 10 }, exitCode: 0, cleanupComplete: true };
   await atomicJson(join(operation.directory, "result.json"), completed);
@@ -96,6 +106,10 @@ test("result files preserve selectors and reject stale or ambiguous identities",
   await atomicJson(described, { method: "sessions.describe", result: { session: { key: "session-a", sessionId: "id-a" } }, error: null });
   await atomicJson(merge, { limit: 3, custom: "value" });
   assert.deepEqual(await resolveGatewayParams({ method: "sessions.branches.list", params: {}, "session-from": session }), { sessionKey: "session-a" });
+  for (const method of ["session.members.add", "session.members.remove"]) {
+    assert.deepEqual(await resolveGatewayParams({ method, params: { identityId: "member-a" }, "session-from": session }), { sessionKey: "session-a", identityId: "member-a" });
+  }
+  await assert.rejects(resolveGatewayParams({ method: "session.member.add", params: {}, "session-from": session }), /no single-session selector/);
   assert.deepEqual(await resolveGatewayParams({ method: "chat.history", params: { limit: 4 }, "session-from": session, "merge-from": merge }), { sessionKey: "session-a", limit: 4, custom: "value" });
   assert.deepEqual(await resolveGatewayParams({ method: "sessions.setInvolvement", params: { key: "session-a", hidden: true }, from: described }), { key: "session-a", hidden: true, expectedSessionId: "id-a" });
   await assert.rejects(resolveGatewayParams({ method: "sessions.setInvolvement", params: { key: "session-b" }, from: described }), /does not describe/);

@@ -82,8 +82,8 @@ export function validateRunPlan(plan, catalogue) {
         if (tokens[1]?.startsWith("@")) {
           if (!isClone(tokens[1].slice(1))) throw new Error(`${phase.id}: OpenClaw command must target a clone`);
         } else {
-          const operands = { "ocm-env-show": 3, "ocm-env-exec": 3, "ocm-env-snapshot-create": 4, "ocm-start": 2, "ocm-logs": 2, "ocm-upgrade": 2 };
-          if (!Object.hasOwn(operands, entry.id) || !isClone(tokens[operands[entry.id]])) throw new Error(`${phase.id}: OCM operation must target an owned clone and cannot create environments`);
+          const operands = { "ocm-env-show": 3, "ocm-env-snapshot-create": 4, "ocm-start": 2, "ocm-logs": 2, "ocm-upgrade": 2 };
+          if (!Object.hasOwn(operands, entry.id) || !isClone(tokens[operands[entry.id]])) throw new Error(`${phase.id}: OCM operation must target an owned clone and cannot run arbitrary programs or create environments`);
           if (["ocm-start", "ocm-upgrade"].includes(entry.id) && option(tokens, "--runtime") !== "{target}") throw new Error(`${phase.id}: runtime binding must use the planned target`);
         }
       }
@@ -194,7 +194,7 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
     await mkdir(join(directory, ".persona"), { mode: 0o700 });
     const persona = await stagePersona(prepared.persona, join(directory, ".persona"), call);
     for (const [name, extra] of persona.extra) for (const target of Object.values(targets)) if (compareVersions(target.version, extra.version) < 0) throw new Error(`target is older than persona environment ${name}: ${extra.version}`);
-    const extras = Object.fromEntries([...persona.extra].map(([name, value]) => [name, value.sha256]));
+    const extras = Object.fromEntries([...persona.extra].map(([name, value]) => [name, value.contentSha256]));
     if (!identity.dirty) {
       await mkdir(dirname(cache), { recursive: true, mode: 0o700 });
       try { await mkdir(`${cache}.lock`, { mode: 0o700 }); cacheLocked = true; }
@@ -273,7 +273,6 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
           }
           const screens = results.flatMap((result) => { try { const value = JSON.parse(result.stdout); return typeof value.screen === "string" ? [value.screen] : Array.isArray(value.screens) ? value.screens : []; } catch { return []; } });
           const screenPath = screens.at(-1);
-          if (screenPath && (!isAbsolute(screenPath) || !inside(clone.directory, screenPath))) throw new Error("screenshot must stay under clone output directory");
           if (results.some((result) => result.status === 2)) {
             summary.incomplete.push(phase.id);
             if (!record.incomplete.includes(phase.id)) record.incomplete.push(phase.id);
@@ -285,6 +284,7 @@ async function executeRun(prepared, { execute = runCommand, home = artifactsDir,
           }
           if (!failedBeforeStart) summary.started = true;
           try {
+            if (screenPath && (!isAbsolute(screenPath) || !inside(clone.directory, screenPath))) throw new Error("screenshot must stay under clone output directory");
             await writeCheckpoint({ phase, directory: clone.directory, results, stateDirectory: metadata.stateDir, collectLogs: logs, screenPath });
             summary.phases[phase.id] = "recorded";
           } catch (error) {

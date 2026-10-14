@@ -325,7 +325,8 @@ are exported and imported separately for each copy. Their keys resolve to those
 copies. Gateway processes run in the foreground without managed services.
 Plans must begin with the standard target binding. OCM operands must name the
 owned copies, and phase output cannot replace checkpoint or background metadata.
-Plans containing `ocm service` commands are refused; update those phases to the
+Arbitrary `ocm env exec`, environment creation, and `ocm service` commands are
+refused in phase commands; update those phases to the
 foreground catalogue entries before running them.
 
 Results are under `$KOVA_HOME/artifacts/verify/<id>/`, including `run.json`, the
