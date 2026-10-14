@@ -6,6 +6,17 @@ import {
 
 const COMMANDS = [
   {
+    id: "persona", title: "kova persona",
+    blurb: "Build a durable OpenClaw persona and check its export on a clone.",
+    usage: [
+      "kova persona build --definition <file> --out <dir> [--execute] [--json|--plain]",
+      "kova persona verify --persona <manifest> [--json|--plain]",
+      "kova persona show --persona <manifest> [--json|--plain]",
+    ],
+    flags: [["--definition <file>", "persona definition"], ["--out <dir>", "empty output directory"], ["--persona <file>", "built manifest"], ["--execute", "create the durable environment"], ["--json|--plain", "machine output / plain text"]],
+    examples: ["kova persona build --definition personas/openclaw-verification-user.json --out exports/openclaw --execute"],
+  },
+  {
     id: "version", title: "kova version",
     blurb: "Print Kova version and runtime info.",
     usage: ["kova version [--json]", "kova --version"],

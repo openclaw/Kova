@@ -449,6 +449,10 @@
         "--force": {
           "description": "acknowledge a non-ClawHub source and allow replacement of an existing plugin or hook pack",
           "value": "none"
+        },
+        "--accept-capabilities": {
+          "description": "Accept the plugin's declared capabilities",
+          "value": "none"
         }
       },
       "prints": [],
@@ -1995,7 +1999,7 @@
       ],
       "side": "read",
       "background": false,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -6409,6 +6413,210 @@
       "background": true,
       "status": "toWrite",
       "creates": []
+    },
+    {
+      "id": "config-set",
+      "kind": "product",
+      "wraps": "openclaw config set",
+      "command": "ocm @{env} -- config set <path> <value>",
+      "flags": {
+        "--strict-json": {
+          "description": "Require a valid JSON value",
+          "value": "none"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "agents-set-identity",
+      "kind": "product",
+      "wraps": "openclaw agents set-identity",
+      "command": "ocm @{env} -- agents set-identity --agent <id> --name <name> --json",
+      "flags": {
+        "--agent": {
+          "description": "Agent id to update",
+          "value": "required"
+        },
+        "--name": {
+          "description": "Identity name",
+          "value": "required"
+        },
+        "--json": {
+          "description": "Print JSON summary",
+          "value": "none"
+        }
+      },
+      "prints": [
+        "agentId",
+        "identity",
+        "workspace",
+        "storedWorkspace",
+        "identityFile"
+      ],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "plugins-enable",
+      "kind": "product",
+      "wraps": "openclaw plugins enable",
+      "command": "ocm @{env} -- plugins enable <ids...>",
+      "flags": {},
+      "prints": [],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-add-agent",
+      "kind": "script",
+      "wraps": "openclaw agents add with an environment-local workspace",
+      "command": "node {kovaRoot}/support/persona/add-agent.mjs --env {env} --name <name>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--name": {
+          "description": "Agent name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "agentId",
+        "workspace",
+        "agentDir"
+      ],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-write-mock-script",
+      "kind": "script",
+      "wraps": "write the deterministic mock reply table",
+      "command": "node {kovaRoot}/support/persona/write-mock-script.mjs --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "path"
+      ],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-check-agents",
+      "kind": "script",
+      "wraps": "read the agents-three-configured persona keys",
+      "command": "node {kovaRoot}/support/persona/check-agents.mjs --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "mainAgentId",
+        "secondAgentId",
+        "thirdAgentId"
+      ],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-check-mock-provider",
+      "kind": "script",
+      "wraps": "read the mock-provider-scripted persona keys",
+      "command": "node {kovaRoot}/support/persona/check-mock-provider.mjs --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "modelId"
+      ],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-check-channels",
+      "kind": "script",
+      "wraps": "read the channels-test-accounts persona keys",
+      "command": "node {kovaRoot}/support/persona/check-channels.mjs --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--timeout": {
+          "description": "Maximum wait for channel status in milliseconds",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "dmChannel",
+        "groupChannel"
+      ],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-check-plugins",
+      "kind": "script",
+      "wraps": "read the plugins-bundled-and-external persona keys",
+      "command": "node {kovaRoot}/support/persona/check-plugins.mjs --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "externalPluginId"
+      ],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-check-config",
+      "kind": "script",
+      "wraps": "read the config-hand-edited persona keys",
+      "command": "node {kovaRoot}/support/persona/check-config.mjs --env {env}",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        }
+      },
+      "prints": [],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "existing"
     }
   ]
 }

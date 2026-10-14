@@ -4,6 +4,8 @@
    OpenClaw runtime validation lab              kova help <command>  for details
 
 ─── commands ───────────────────────────────────────────────────────────────────
+  ◆ kova persona      Build a durable OpenClaw persona and check its export on a
+  clone.
   ◆ kova version      Print Kova version and runtime info.
   ◆ kova setup        Verify prerequisites, configure auth, and prepare
   directories.

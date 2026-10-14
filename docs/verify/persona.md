@@ -6,13 +6,12 @@ from that export for every run.
 Templates name what they need from it as traits; phases read concrete values
 from it through `{persona:<trait>:<key>}`.
 
-The OpenClaw persona, `openclaw-verification-user`, is a user who has run
-OpenClaw for months: history across several agents, saved and shared sessions,
-bundled plugins and an external plugin with its install records, an agent
-database at an older schema, a channel on Kova's conformance channel, a
-scheduled job,
-hand-edited config and a workspace with files. It is built from real content
-produced through OpenClaw's own commands, not from markers.
+The OpenClaw persona, `openclaw-verification-user`, initially contains five
+foundation traits: three agents, a scripted mock model provider, Kova's
+conformance channel, bundled and external plugins with an install record, and
+custom configuration. Session history, saved sessions, older database content and
+scheduled jobs are future additions. Content is produced through OpenClaw's
+commands and Kova's existing mock support.
 
 Persona traits are separate from the `traits` of Kova states in `states/*.json`.
 A state models one user condition for one scenario and is set up inside a
@@ -71,6 +70,8 @@ environment that every verification clones.
    value from Kova's credential store (`kova setup`), and the value never
    appears in a definition, a manifest or a repository. The exported
    environment is still treated as secret-bearing and is never committed.
+   The initial build command accepts only an empty `credentials` list; credential
+   store integration is not implemented.
 5. Keys are resolved from the manifest, never guessed, and a build refuses a
    key value outside the allowed characters. A phase whose
    `requires` lists a trait the manifest lacks, or whose commands name a trait
@@ -137,15 +138,34 @@ commands (see [Commands](plan-and-verdict.md#commands)).
   "schema": "kova.verify.persona-manifest.v1",
   "persona": "openclaw-verification-user",
   "version": "<build time as YYYYMMDDTHHMMSSZ>",
-  "runtime": { "selector": "npm:2026.9.9", "resolved": "<exact version and digest>" },
+  "runtime": {
+    "selector": "npm:2026.9.9",
+    "resolved": "<exact version and digest>",
+    "ocm": {
+      "binary": "<absolute path to the native OCM executable>",
+      "version": "<OCM --version output>",
+      "sha256": "<hash of that executable>",
+      "commit": "<commit reported by the executable, when available>"
+    }
+  },
   "definition": { "path": "<the file given to --definition>", "sha256": "<its hash>" },
-  "env": { "name": "<durable env name>", "export": "<path to the .ocm-env.tar>", "sha256": "<hash>" },
+  "env": { "name": "<durable env name>", "root": "<original environment root>", "export": "<path to the .ocm-env.tar>", "includeState": true, "sha256": "<hash>" },
   "doctor": "<Doctor output after the build>",
   "traits": {
     "<trait id>": { "keys": { "<key>": "<value>" }, "checkedAt": "<time>" }
   }
 }
 ```
+
+`runtime.ocm` is recorded by the build itself. This corrects the earlier manifest
+form, which identified the OpenClaw runtime but omitted the OCM used to create and
+export it. `binary` resolves symlinks and the supported npm launcher to the native
+executable; an OCM transport is inspected under its configured user, environment
+and working directory. Unknown script launchers are refused. `version` preserves
+the executable's trimmed `--version` output, and `commit` is omitted unless that
+output reports a commit. The build never infers a commit from a nearby checkout.
+`show` includes this saved record; it does not validate or select the recorded OCM
+for later invocations. Older manifests without `runtime.ocm` remain readable.
 
 ## Commands
 
@@ -157,8 +177,16 @@ kova persona show   --persona <manifest> --json
 
 - `build` is the only command that creates a durable environment. Without
   `--execute` it prints what it would do.
+  Its output directory must be empty. The generated environment name begins with
+  `kova-persona-`. Failed builds remove their incomplete environment; a successful
+  build keeps it protected and stopped. Cleanup failure is reported with the
+  affected environment name. SIGINT and SIGTERM stop new work, let the current
+  command settle, and await cleanup of the owned Gateway, mock provider and
+  incomplete environment.
 - `verify` checks the export's hash, imports it into a clone, runs every check
   of the definition the manifest records on the clone, and destroys the clone. It
+  rebinds the saved mock provider's loopback URL while retaining the model defaults
+  and agent overrides that the checks inspect. It
   refuses a definition whose hash differs from the manifest's. The scheduled
   maintenance pass runs it, and `kova verify run` runs the same checks on its
   clones before the first phase, so a drifted persona is caught before a
@@ -187,16 +215,36 @@ kova persona show   --persona <manifest> --json
 
 What `kova persona build` does:
 
-1. Create a fresh environment on the pinned runtime with the service
-   installed, the Gateway started and the mock provider configured.
+1. Record the selected OCM executable before creating an environment. Create a
+   fresh environment on the pinned runtime, configure the mock provider
+   and start a foreground Gateway owned by the build process. No OCM service is
+   installed or started. Restart that Gateway after each trait builder so checks
+   observe its current configuration.
 2. Order traits by `needs`; refuse a cycle.
 3. For each trait, run its builder, then its check, and record the keys. A
    failed check stops the build and names the trait; no manifest is written.
 4. Stop the Gateway cleanly, run Doctor and record its output in the manifest.
-5. Protect the environment, create a named OCM snapshot, export it, hash the
-   export and write the manifest.
+5. Protect the environment, create a named OCM snapshot, export it with
+   `ocm env export <env> --include-state --output <file>`, and hash the export.
+   This requires OCM with state-inclusive config and plugin-path relocation
+   ([source revision d92fa50](https://github.com/openclaw/ocm/commit/d92fa50edc0a031d54ef14bd4ae52e3a0ab8c769)
+   or a release containing it; OCM 0.3.3 is insufficient). The archive preserves
+   durable state with coherent SQLite snapshots, including plugin install records.
+   Record `env.includeState: true` in the manifest.
 6. Verify once from a clone: import the export into a throwaway environment,
    start it, run every check and destroy it.
+
+The final `persona.json` is published only after that import check succeeds and
+the OCM executable's path, version and hash still match the initial record.
+`runtime.resolved` is `<exact version>@<npm sha512 integrity>` from OCM's runtime
+receipt. Definition and export paths are absolute when built; readers also accept
+paths relative to the manifest. Each check prints exactly its declared keys as
+strings. A check that exits unsuccessfully, prints malformed JSON, omits a key or
+returns an unsafe value refuses the build. Clone verification compares stable
+identifiers with the manifest. For absolute keys inside `env.root`, verification
+changes only that root to the imported environment root and compares the remaining
+path. Other keys must match exactly. Older manifests without `env.root` are accepted
+only when they contain no absolute keys.
 
 ## Maintenance
 

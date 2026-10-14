@@ -23,6 +23,9 @@ options accept only a bare flag, `=true`, or `=false`.
 | `kova inventory repeated-work` | Find duplicate scenario commands and collector pressure. |
 | `kova catalogue list` | List the fixed command forms for a product. |
 | `kova catalogue check` | Check template and persona commands against a product catalogue. |
+| `kova persona build` | Build a protected OpenClaw environment and checked export. |
+| `kova persona verify` | Import an export, check its traits and destroy the copy. |
+| `kova persona show` | Print a built persona manifest. |
 | `kova run --scenario <id>` | Plan or execute one scenario against one target. |
 | `kova matrix plan --profile <id>` | Resolve a profile without executing it. |
 | `kova matrix run --profile <id>` | Plan or execute a profile matrix. |
@@ -33,7 +36,32 @@ options accept only a bare flag, `=true`, or `=false`.
 | `kova report paste <run-id>` | Create a fixer-ready handoff. |
 | `kova cleanup` | Remove stale Kova-owned environments or artifacts. |
 
-The `kova verify` and `kova persona` commands are forthcoming; [Kova Verify](verify/README.md) describes them.
+The `kova verify` commands are forthcoming; [Kova Verify](verify/README.md) describes them.
+
+## Personas
+
+```sh
+kova persona build --definition personas/openclaw-verification-user.json --out exports/openclaw --execute
+kova persona verify --persona exports/openclaw/persona.json --json
+kova persona show --persona exports/openclaw/persona.json --json
+```
+
+Without `--execute`, build prints the runtime, output location and dependency-ordered
+builders and checks without creating files or environments. Execution requires an
+empty output directory and OCM with state-inclusive config and plugin-path
+relocation (see the persona contract below). The
+provided definition pins OpenClaw 2026.9.9 and uses the local mock provider and Kova conformance channel; no external credentials
+are required. Definitions are trusted executable input, checked against the
+catalogue before any environment is created.
+
+The durable environment is protected and stopped after a successful build. Its
+Gateway runs as an owned foreground process; no OCM service is installed. Keep
+its definition and export with the manifest: verify checks both hashes before
+importing, starts only the new copy and removes it afterward. A failed build names
+the trait, removes its incomplete environment and produces no `persona.json`.
+Cleanup errors name the environment that still needs attention. Exports may contain
+private installation data and are ignored by Git. See the [persona contract](verify/persona.md)
+for the definition, manifest and lifecycle.
 
 ## Target selectors
 
