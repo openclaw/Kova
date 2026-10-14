@@ -180,7 +180,7 @@ test("sessions identity consumers distinguish callers, children and lifecycle ta
   const { templates, catalogue } = await loadPlanInputs();
   const sessions = templates.find((item) => item.id === "sessions");
   const outputs = new Map();
-  let consumers = 0, waits = 0, restores = 0, childReads = 0;
+  let consumers = 0, waits = 0, restores = 0, childReads = 0, createdTargets = 0;
   for (const phase of sessions.phases) for (const command of phase.commands) {
     const { tokens } = parseCatalogueCommand(command);
     const flag = (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined;
@@ -188,6 +188,9 @@ test("sessions identity consumers distinguish callers, children and lifecycle ta
       const params = JSON.parse(flag("--params") ?? "{}");
       if (flag("--method") === "sessions.describe" && flag("--out")) {
         outputs.set(flag("--out"), { method: "sessions.describe", result: { session: { key: params.key, sessionId: "fixture-target-id" } } });
+      }
+      if (flag("--method") === "sessions.create" && flag("--out")) {
+        outputs.set(flag("--out"), { method: "sessions.create", result: { key: params.key ?? "agent:main:created" } });
       }
       const producer = outputs.get(flag("--session-from"));
       if (producer?.tool === "sessions_spawn") {
@@ -205,7 +208,12 @@ test("sessions identity consumers distinguish callers, children and lifecycle ta
     assert.ok(caller, phase.id);
     if (flag("--from")) {
       const producer = outputs.get(flag("--from"));
-      if (tool === "sessions" && args.action === "patch" && typeof args.archived === "boolean") {
+      if (producer?.method === "sessions.create") {
+        assert.ok(["sessions_send", "session_status"].includes(tool), phase.id);
+        assert.equal(args.sessionKey, undefined, phase.id);
+        args.sessionKey = producer.result.key;
+        createdTargets += 1;
+      } else if (tool === "sessions" && args.action === "patch" && typeof args.archived === "boolean") {
         assert.equal(producer?.method, "sessions.describe", phase.id);
         assert.equal(producer.result.session.key, args.sessionKey, phase.id);
         assert.equal(args.expectedSessionId, undefined, phase.id);
@@ -245,10 +253,36 @@ test("sessions identity consumers distinguish callers, children and lifecycle ta
   assert.equal(waits, 3);
   assert.equal(restores, 1);
   assert.equal(childReads, 1);
+  assert.equal(createdTargets, 3);
   const entry = catalogue.entries.find((item) => item.id === "agent-tool-turn");
   assert.ok(entry.flags["--from"]);
   assert.ok(entry.prints.includes("sessionKey"));
   assert.ok(entry.prints.includes("callerSessionKey"));
+});
+
+test("reindex searches follow actual import and rewind operations on recorded targets", async () => {
+  const { templates } = await loadPlanInputs();
+  const phase = templates.find((item) => item.id === "sessions").phases.find((item) => item.id === "event-search-reindex-after-import");
+  const outputs = new Map(), rewound = new Set(), searched = new Map();
+  for (const command of phase.commands) {
+    const { tokens } = parseCatalogueCommand(command);
+    const flag = (name) => tokens.includes(name) ? tokens[tokens.indexOf(name) + 1] : undefined;
+    const method = flag("--method");
+    if (method === "sessions.rewind") {
+      const input = flag("--session-from");
+      assert.equal(outputs.get(input), "sessions.create");
+      assert.equal(JSON.parse(flag("--params")).sessionKey, undefined);
+      rewound.add(input);
+    }
+    if (method === "sessions.search") {
+      const input = flag("--from"), producer = outputs.get(input);
+      assert.ok(producer === "sessions.catalog.import" || (producer === "sessions.create" && rewound.has(input)), "search must follow its import or rewind");
+      searched.set(producer, (searched.get(producer) ?? 0) + 1);
+    }
+    if (flag("--out")) outputs.set(flag("--out"), method);
+  }
+  assert.equal(searched.get("sessions.catalog.import"), 2);
+  assert.equal(searched.get("sessions.create"), 2);
 });
 
 test("spawn output resolves the child through the Gateway session-file reader", async (t) => {
@@ -378,12 +412,24 @@ test("sessions Gateway requests match the pinned OpenClaw schemas", async (t) =>
     if (flag("--from")) {
       const source = outputs.get(flag("--from"));
       assert.equal(source?.phase, phase.id, `${label}: input must be written earlier in this phase`);
-      assert.equal(source.params.key, params.key, `${label}: input belongs to another session`);
-      if (method === "sessions.setInvolvement") {
+      if (method === "sessions.patchMany") {
+        assert.equal(source.method, "sessions.describe", label);
+        const matches = params.targets.filter((target) => target.key === source.result.session.key);
+        assert.equal(matches.length, 1, `${label}: described target must match exactly once`);
+        assert.equal(matches[0].expectedSessionId, undefined, label);
+        matches[0].expectedSessionId = source.result.session.sessionId;
+      } else if (method === "sessions.search") {
+        assert.ok(["sessions.create", "sessions.catalog.import"].includes(source.method), label);
+        assert.equal(params.sessionKeys, undefined, label);
+        assert.equal(params.scope, undefined, label);
+        params.sessionKeys = [source.result.key ?? source.result.sessionKey];
+      } else if (method === "sessions.setInvolvement") {
+        assert.equal(source.params.key, params.key, `${label}: input belongs to another session`);
         assert.equal(source.method, "sessions.describe", label);
         assert.equal(params.expectedSessionId, undefined, `${label}: identity must come from the read`);
         params.expectedSessionId = source.result.session.sessionId;
       } else if (method === "sessions.processes.stop") {
+        assert.equal(source.params.key, params.key, `${label}: input belongs to another session`);
         assert.equal(source.method, "sessions.processes.list", label);
         assert.equal(source.result.sessionId, params.sessionId, label);
         assert.equal(source.result.truncated, false, label);
@@ -398,6 +444,8 @@ test("sessions Gateway requests match the pinned OpenClaw schemas", async (t) =>
     if (flag("--out")) {
       // Synthetic read results exercise the declared input mapping, not live handlers.
       const result = method === "sessions.describe" ? { session: { key: params.key, sessionId: "fixture-session" } }
+        : method === "sessions.create" ? { ok: true, key: params.key ?? "agent:main:created", sessionId: "fixture-created" }
+        : method === "sessions.catalog.import" ? { sessionKey: "agent:main:imported", importedItems: 1, totalItems: 1, complete: true, created: true }
         : method === "sessions.processes.list" ? {
           sessionId: "{persona:session-workspace-changes:sessionId}",
           processes: [{ processId: "fixture-process", instanceId: "fixture-incarnation", name: "fixture", status: "running", startedAt: 1, tail: "", truncated: false, canStop: true }],
@@ -409,11 +457,19 @@ test("sessions Gateway requests match the pinned OpenClaw schemas", async (t) =>
       }
       outputs.set(flag("--out"), { phase: phase.id, method, params, result });
     }
+    // sessions-patch-admission.ts requires identities beyond the permissive parameter schema.
+    if (["sessions.patch", "sessions.patchMany"].includes(method)) {
+      const patch = method === "sessions.patchMany" ? params.patch : params;
+      if (typeof patch.archived === "boolean" || Object.hasOwn(patch, "snoozedUntil")) {
+        const targets = method === "sessions.patchMany" ? params.targets.map((target) => ({ ...patch, ...target })) : [params];
+        for (const target of targets) assert.ok(typeof target.expectedSessionId === "string" && target.expectedSessionId.length, `${label}: lifecycle identity required`);
+      }
+    }
     if (!validators.has(name)) validators.set(name, Compile(schema));
     const validator = validators.get(name);
     if (!validator.Check(params)) failures.push(`${label}: ${JSON.stringify(validator.Errors(params))}`);
   }
-  assert.equal(requests, 178);
+  assert.equal(requests, 184);
   assert.equal(joins, 2);
   t.diagnostic(`${requests} Gateway requests and ${joins} handle joins checked at ${revision}`);
   assert.deepEqual(failures, []);

@@ -1195,7 +1195,7 @@
           "value": "required"
         },
         "--from": {
-          "description": "Read an earlier result under {run}: for accepted sessions_spawn from this entry, require callerSessionKey to match the caller and read toolResult.details.runId into subagents cancel runId or wait runIds (one item), or toolResult.details.childSessionKey into sessions_send sessionKey; for sessions patch with archived, require an error-free sessions.describe result whose result.session.key matches args.sessionKey and copy result.session.sessionId into expectedSessionId; refuse missing, mismatched or conflicting identities",
+          "description": "Read an earlier result under {run}: for accepted sessions_spawn from this entry, require callerSessionKey to match the caller and read toolResult.details.runId into subagents cancel runId or wait runIds (one item), or toolResult.details.childSessionKey into sessions_send sessionKey; for sessions patch with archived, require an error-free sessions.describe result whose result.session.key matches args.sessionKey and copy result.session.sessionId into expectedSessionId; refuse missing, mismatched or conflicting identities; for sessions_send or session_status consuming an error-free sessions.create output, read result.key into args.sessionKey and refuse a conflicting target",
           "value": "required"
         }
       },
@@ -5427,6 +5427,10 @@
         "--env": {
           "description": "OCM environment name",
           "value": "required"
+        },
+        "--from": {
+          "description": "Earlier error-free sessions.describe output under {run}; find exactly one targets row whose key equals result.session.key and supply that row expectedSessionId from result.session.sessionId, refusing a missing match or conflicting identity; other lifecycle targets supply their own expectedSessionId",
+          "value": "required"
         }
       },
       "prints": [
@@ -5926,6 +5930,10 @@
         },
         "--env": {
           "description": "OCM environment name",
+          "value": "required"
+        },
+        "--from": {
+          "description": "Earlier error-free sessions.create or sessions.catalog.import output under {run}; read result.key or result.sessionKey into a one-item sessionKeys array, refusing missing, ambiguous or conflicting selectors and refusing scope",
           "value": "required"
         }
       },

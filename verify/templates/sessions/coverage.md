@@ -90,7 +90,7 @@ These descriptions are retained from the historical derivation. A plan checks th
 
 Historical limits:
 - The totals above describe the reconciled historical coverage, not executed proof. The current heading-based comparison has missing figures, recorded in comparison.md.
-- The 60 historical phases are represented by 67 current phases: the three setup sequences are divided into seven bounded setup phases, three persona-read groups are separated from runtime-result consumers, and longer operation and event phases use explicit slow bounds. Background lifetimes are preserved. The schema corrections below supersede the original command forms.
+- The 60 historical phases are represented by 68 current phases: the three setup sequences are divided into seven bounded setup phases, three persona-read groups are separated from runtime-result consumers, and longer operation and event phases use explicit slow bounds. Background lifetimes are preserved. The schema corrections below supersede the original command forms.
 - The recorded broadcast-event and manual-operation classifications predate the current derivation rules and remain identified in derivation.md.
 
 ## Current schema requirements and limits
@@ -137,7 +137,7 @@ Historical limits:
   read-before-destroy constraints without changing the planner's ordering rules
   or any catalogue side classification.
 
-The current 178 Gateway requests include two added identity reads and exclude
+The current 184 Gateway requests include two added identity reads and exclude
 the two GitHub status requests and a duplicate transcript search already present
 in `search-history`. Deletion still records its response, the deleted transcript
 read and the agent database checkpoint. The two existing background joins remain.
@@ -161,3 +161,22 @@ also exposes its child as top-level `sessionKey`, matching Gateway
 The restore tool call reads `expectedSessionId` from the existing
 `archive-describe.json` result, requiring its target key to match. These are
 declared contracts for the unfinished helper, not live execution claims.
+
+## Creation and mutation prerequisites
+
+`setup-rpc-session` creates or adopts the explicitly named RPC-send target and
+writes its canonical key once. Cross-session sends and status queries read that
+key through `--from`, so selecting them also selects their producer. Existing
+commands using that explicit name run after the same setup.
+
+The reindex phase now performs its own catalog import or re-import and searches
+that returned session twice. It then forks a run-owned copy of the long session,
+rewinds the copy and searches that returned session twice. Import receipts
+record whether content was newly imported; the phase does not assume a re-import
+necessarily changes content or that indexing remains in progress. These
+operations and their file dependencies precede the observations they support.
+
+Archive and snooze mutations require `expectedSessionId` beyond their parameter
+schemas. Bulk archive reads the RPC target's id from its earlier description,
+and the stored archived target uses its matching persona id. Every lifecycle
+row is checked, including bulk rows, against that pinned admission requirement.

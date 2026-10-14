@@ -110,7 +110,7 @@
       "support/verify/chat-send.mjs  (chat.send then chat.history for the reply; --session-key --message --queue-mode --intent --expected-leaf --incognito-handle --timeout --background --handle --wait --session-from --after-ms --env)",
       "support/verify/control-ui.mjs  (one named Control UI flow in a headless browser; --flow --session-key --incognito-handle --locale --gateway-env --artifact-dir --out --timeout --session-from --env)",
       "support/verify/cron-isolated-run.mjs  (cron.run of an isolated job; --job-id --timeout --env)",
-      "support/verify/gateway-call.mjs  (Gateway methods named by --method; --method --params --timeout --out --background --handle --wait --session-from --merge-from --after-ms --env; --from for sessions.processes.stop and sessions.setInvolvement)",
+      "support/verify/gateway-call.mjs  (Gateway methods named by --method; --method --params --timeout --out --background --handle --wait --session-from --merge-from --after-ms --env; --from for sessions.processes.stop, sessions.setInvolvement, sessions.patchMany and sessions.search)",
       "support/verify/goal-control.mjs  (sessions.goal.update and sessions.goal.clear with fresh operation ids; --session-key --action --goal-id --note --replay --timeout --env)",
       "support/verify/heartbeat-wake.mjs  (heartbeat wake of the main session; --timeout --env)",
       "support/verify/public-thread-read.mjs  (anonymous HTTP read of a public session thread and its share preview; --session-key --env)",
@@ -315,6 +315,28 @@
       ],
       "timeoutMs": 200000,
       "browser": true,
+      "slow": false
+    },
+    {
+      "id": "setup-rpc-session",
+      "kind": "setup",
+      "intent": "Create the named RPC-send session and record its canonical identity before any message, watch or lifecycle operation uses it.",
+      "paths": [
+        "src/gateway/server-methods/sessions-create.ts",
+        "src/gateway/server-methods/sessions-messaging.ts",
+        "src/agents/tools/sessions-send*.ts"
+      ],
+      "requires": [],
+      "commands": [
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"key\":\"agent:main:kova-rpc-send\",\"agentId\":\"main\"}' --out {run}/rpc-session.json --timeout 60000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing"
+      ],
+      "timeoutMs": 60000,
+      "browser": false,
       "slow": false
     },
     {
@@ -757,7 +779,7 @@
         "ocm @{env} -- sessions archive agent:main:kova-rpc-send --dry-run --json",
         "ocm @{env} -- sessions archive agent:main:kova-rpc-send agent:main:main --json",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.patch --params '{\"key\":\"agent:main:kova-rpc-send\",\"archived\":false}' --merge-from {run}/archive-describe.json --timeout 60000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.patchMany --params '{\"targets\":[{\"key\":\"agent:main:kova-rpc-send\"},{\"key\":\"{persona:sessions-organized-mixed:archivedKey}\"}],\"patch\":{\"archived\":true}}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.patchMany --params '{\"targets\":[{\"key\":\"agent:main:kova-rpc-send\"},{\"key\":\"{persona:sessions-organized-mixed:archivedKey}\",\"expectedSessionId\":\"{persona:sessions-organized-mixed:archivedSessionId}\"}],\"patch\":{\"archived\":true}}' --from {run}/archive-describe.json --timeout 120000",
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/new-session.json --tool sessions --args '{\"action\":\"patch\",\"sessionKey\":\"agent:main:kova-rpc-send\",\"archived\":false}' --from {run}/archive-describe.json --timeout 200000",
         "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{\"agentId\":\"main\",\"archived\":\"all\",\"search\":\"kova\",\"limit\":50}' --timeout 60000",
         "node {kovaRoot}/support/verify/control-ui.mjs --env {env} --flow archive-undo-restore --session-key agent:main:kova-rpc-send --artifact-dir {run}/ui/archive --timeout 150000",
@@ -890,9 +912,9 @@
       ],
       "commands": [
         "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-key {persona:session-pair-watched:keyA} --tool sessions_send --args '{\"sessionKey\":\"{persona:session-pair-watched:keyB}\",\"message\":\"Reply with exact ASCII text KOVA_PEER_OK only.\",\"timeoutSeconds\":60}' --timeout 120000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/new-session.json --tool sessions_send --args '{\"sessionKey\":\"agent:main:kova-rpc-send\",\"message\":\"Reply with exact ASCII text KOVA_AGENT_OK only.\",\"timeoutSeconds\":120,\"watch\":true}' --timeout 250000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/new-session.json --tool sessions_send --args '{\"sessionKey\":\"agent:main:kova-rpc-send\",\"message\":\"Kova notify only\",\"mode\":\"notify\",\"timeoutSeconds\":0}' --timeout 200000",
-        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/new-session.json --tool session_status --args '{\"sessionKey\":\"agent:main:kova-rpc-send\"}' --out {run}/watched-status.json --timeout 200000"
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/new-session.json --tool sessions_send --args '{\"message\":\"Reply with exact ASCII text KOVA_AGENT_OK only.\",\"timeoutSeconds\":120,\"watch\":true}' --from {run}/rpc-session.json --timeout 250000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/new-session.json --tool sessions_send --args '{\"message\":\"Kova notify only\",\"mode\":\"notify\",\"timeoutSeconds\":0}' --from {run}/rpc-session.json --timeout 200000",
+        "node {kovaRoot}/support/verify/agent-tool-turn.mjs --env {env} --session-from {run}/new-session.json --tool session_status --args '{}' --out {run}/watched-status.json --from {run}/rpc-session.json --timeout 200000"
       ],
       "checkpoint": [
         "responses",
@@ -1160,32 +1182,6 @@
       "timeoutMs": 510000,
       "browser": true,
       "slow": true
-    },
-    {
-      "id": "event-search-reindex-after-import",
-      "kind": "event",
-      "intent": "A search runs right after a transcript import and after a rewind, so the background reconciliation starts and the indexing flag on the first and a repeated search is observed.",
-      "paths": [
-        "src/gateway/server-methods/sessions-read.ts",
-        "src/gateway/server-methods/sessions-search-*.ts",
-        "src/agents/sessions/**"
-      ],
-      "requires": [
-        "catalog-claude-transcript",
-        "session-long-compacted"
-      ],
-      "commands": [
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"agentId\":\"main\",\"query\":\"{persona:catalog-claude-transcript:searchWord}\",\"limit\":20}' --timeout 60000",
-        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"agentId\":\"main\",\"query\":\"{persona:session-long-compacted:searchWord}\",\"limit\":20}' --timeout 60000"
-      ],
-      "checkpoint": [
-        "responses",
-        "logs",
-        "timing"
-      ],
-      "timeoutMs": 200000,
-      "browser": false,
-      "slow": false
     },
     {
       "id": "event-auto-compaction",
@@ -1668,6 +1664,37 @@
       ],
       "timeoutMs": 600000,
       "browser": true,
+      "slow": true
+    },
+    {
+      "id": "event-search-reindex-after-import",
+      "kind": "event",
+      "intent": "Import or re-import the catalog transcript and search that returned session twice; fork a run-owned copy of the retained long session, rewind the copy, and search it twice, recording reconciliation and indexing immediately after the actual operations without rewinding the persona session.",
+      "paths": [
+        "src/gateway/server-methods/sessions-read.ts",
+        "src/gateway/server-methods/sessions-search-*.ts",
+        "src/agents/sessions/**"
+      ],
+      "requires": [
+        "catalog-claude-transcript",
+        "session-long-compacted"
+      ],
+      "commands": [
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.catalog.import --params '{\"catalogId\":\"{persona:catalog-claude-transcript:catalogId}\",\"hostId\":\"{persona:catalog-claude-transcript:hostId}\",\"threadId\":\"{persona:catalog-claude-transcript:threadId}\",\"agentId\":\"main\",\"displayName\":\"Kova imported thread\"}' --out {run}/reindex-imported.json --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"agentId\":\"main\",\"query\":\"{persona:catalog-claude-transcript:searchWord}\",\"limit\":20}' --from {run}/reindex-imported.json --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"agentId\":\"main\",\"query\":\"{persona:catalog-claude-transcript:searchWord}\",\"limit\":20}' --from {run}/reindex-imported.json --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.create --params '{\"agentId\":\"main\",\"parentSessionKey\":\"{persona:session-long-compacted:key}\",\"fork\":true,\"forkFrom\":\"last-completed\",\"label\":\"kova-reindex-copy\"}' --out {run}/reindex-session.json --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.rewind --session-from {run}/reindex-session.json --params '{\"entryId\":\"{persona:session-long-compacted:anchorMessageId}\"}' --timeout 120000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"agentId\":\"main\",\"query\":\"{persona:session-long-compacted:searchWord}\",\"limit\":20}' --from {run}/reindex-session.json --timeout 60000",
+        "node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.search --params '{\"agentId\":\"main\",\"query\":\"{persona:session-long-compacted:searchWord}\",\"limit\":20}' --from {run}/reindex-session.json --timeout 60000"
+      ],
+      "checkpoint": [
+        "responses",
+        "logs",
+        "timing"
+      ],
+      "timeoutMs": 600000,
+      "browser": false,
       "slow": true
     },
     {

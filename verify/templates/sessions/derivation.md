@@ -550,7 +550,7 @@ The area input now records search symbols and literals recovered from the entry 
 
 Each phase lists the persona traits named by its placeholders and the additional provider, configuration and ambient state its intent requires. The header is their union. Script flags and status follow catalogue/openclaw.json; historical --timeout-ms spellings use --timeout, sessions list uses sessions, and the all-agent tail form places tail before its flags. Embedded JSON newlines are escaped.
 
-All 60 historical phases and their command variants are represented in 67 current phases. The initial conversion produced 64 phases; subsequent contract corrections separate three persona-read groups from runtime-result consumers and order the records by their dependencies. An identical transcript-search command is retained once in search-history instead of repeated after deletion. No new derivation or coverage share is claimed. To satisfy the current timeout-sum rule, the three setup sequences are divided at existing command boundaries into seven setup phases. Their first segments retain the original identifiers; later segments have descriptive suffixes. At that conversion, commands, their order, background lifetimes and shared result files were unchanged, and original checkpoints remain on each sequence's final segment. Operation and event bounds are raised to their explicit command-timeout sums where needed, with slow set when the result exceeds 300000 milliseconds. Conditions assumed to persist across later phases remain historical assumptions rather than demonstrated execution evidence.
+All 60 historical phases and their command variants are represented in 68 current phases. The initial conversion produced 64 phases; subsequent contract corrections separate three persona-read groups from runtime-result consumers and add an explicit RPC target setup before ordering the records by their dependencies. An identical transcript-search command is retained once in search-history instead of repeated after deletion. No new derivation or coverage share is claimed. To satisfy the current timeout-sum rule, the three setup sequences are divided at existing command boundaries into seven setup phases. Their first segments retain the original identifiers; later segments have descriptive suffixes. At that conversion, commands, their order, background lifetimes and shared result files were unchanged, and original checkpoints remain on each sequence's final segment. Operation and event bounds are raised to their explicit command-timeout sums where needed, with slow set when the result exceeds 300000 milliseconds. Conditions assumed to persist across later phases remain historical assumptions rather than demonstrated execution evidence.
 
 ## Gateway parameter checks
 
@@ -576,3 +576,10 @@ the declared spawn output through an available Gateway caller, set
 `KOVA_GATEWAY_CALLER` to `support/verify/gateway-call.mjs` in that checkout.
 That optional test calls its actual session-file parameter resolver; it skips
 when the helper is absent. It does not execute a model or a live phase.
+
+The runtime-identity correction also makes the reindex condition self-contained:
+an import or re-import and a rewind of a run-owned fork precede the searches of
+their returned session keys. A lifecycle-admission check requires an observed
+`expectedSessionId` for archive/snooze patches, including every bulk target.
+The explicit RPC-send setup supplies the cross-session target and records its
+canonical key instead of relying on another independently selected phase.

@@ -97,8 +97,9 @@ Known shortfall: C's entry-point share is 87.0% and D's is 86.4%; missing
 heading records prevent measuring the other required share. Historical counts
 also include classifications the current procedure treats differently,
 including broadcast events as entry points and manual actions as conditions.
-The converted template represents all 60 recorded phases in 67 current phases
+The converted template represents all 60 recorded phases in 68 current phases
 after dividing the three setup sequences into seven bounded setup phases and
-separating three persona-read groups from runtime-result consumers. The phase
+separating three persona-read groups from runtime-result consumers, plus an
+explicit RPC target setup. The phase
 order follows the planner dependencies, and the duplicate deletion-time search
 is covered by the identical search-history command. The template labels these limits; it does not claim a fresh source enumeration or current-rule acceptance.
