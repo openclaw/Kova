@@ -161,8 +161,9 @@ kova persona show   --persona <manifest> --json
   Its output directory must be empty. The generated environment name begins with
   `kova-persona-`. Failed builds remove their incomplete environment; a successful
   build keeps it protected and stopped. Cleanup failure is reported with the
-  affected environment name. SIGINT and SIGTERM stop new work and await cleanup
-  of the owned Gateway, mock provider and incomplete environment.
+  affected environment name. SIGINT and SIGTERM stop new work, let the current
+  command settle, and await cleanup of the owned Gateway, mock provider and
+  incomplete environment.
 - `verify` checks the export's hash, imports it into a clone, runs every check
   of the definition the manifest records on the clone, and destroys the clone. It
   rebinds the saved mock provider's loopback URL while retaining the model defaults

@@ -22,9 +22,9 @@ export async function hashFile(path) {
 }
 
 function executor(execute = runCommand, signal) {
-  return async (command, label = "persona command", missingEnvironment) => {
+  return async (command, label = "persona command", { missingEnvironment } = {}) => {
     signal?.throwIfAborted();
-    const result = await execute(command, { timeoutMs: signal ? 300000 : 30000, shutdownCleanup: !signal, maxOutputChars: 1000000, env: { KOVA_OPENCLAW_CONFIG_CONTRACT: "canonical" } });
+    const result = await execute(command, { timeoutMs: signal ? 300000 : 30000, finishOnShutdown: true, maxOutputChars: 1000000, env: { KOVA_OPENCLAW_CONFIG_CONTRACT: "canonical" } });
     signal?.throwIfAborted();
     if (missingEnvironment && result.status !== 0 && !result.signal && !result.timedOut && !result.outputBudget?.truncated && isMissingOcmResource(result, "environment", missingEnvironment)) return null;
     if (result.status !== 0 || result.signal || result.timedOut || result.outputBudget?.truncated) throw new Error(`${label} failed (exit ${result.status}): ${result.stderr?.trim() || result.stdout?.trim() || "no output"}`);
@@ -33,7 +33,7 @@ function executor(execute = runCommand, signal) {
 }
 
 async function environmentExists(env, call) {
-  const result = await call(`ocm env show ${q(env)} --json`, "inspect persona environment", env);
+  const result = await call(`ocm env show ${q(env)} --json`, "inspect persona environment", { missingEnvironment: env });
   if (result === null) return false;
   if (JSON.parse(result.stdout).name !== env) throw new Error("OCM returned a different environment");
   return true;

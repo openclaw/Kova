@@ -252,7 +252,7 @@ test("an unrelated listening Gateway is rejected without stopping it", async (t)
   assert.equal(server.listening, true);
 });
 
-for (const mode of ["build", "verify", "verify-cleanup"]) {
+for (const mode of ["build", "verify", "verify-cleanup", "build-create", "verify-import"]) {
   test(`SIGTERM awaits ${mode} environment and provider cleanup between commands`, async (t) => {
     const f = await fixture(t), built = join(f.root, "built");
     await buildPersona(f.path, built, { executeBuild: true, execute: f.execute, gatewayFactory: f.gatewayFactory });
@@ -272,6 +272,14 @@ for (const mode of ["build", "verify", "verify-cleanup"]) {
         const op = c[0] === 'ocm' && c[1] === 'env' ? c[2] : null;
         let stdout = c[0] === 'cat' ? '12345' : '';
         if (op === 'create' || op === 'import') {
+          if (mode === 'build-create' || mode === 'verify-import') {
+            const script = "setTimeout(()=>require('fs').writeFileSync(" + JSON.stringify(join(root, 'provision-child-finished')) + ",'done'),400)";
+            const pending = runCommand(quoteShell(process.execPath) + ' -e ' + quoteShell(script), options);
+            waiting = true;
+            await writeFile(join(root, 'waiting'), 'yes');
+            const result = await pending;
+            if (result.status !== 0) return result;
+          }
           exists = true; name = op === 'create' ? c[3] : c[c.indexOf('--name') + 1];
           await writeFile(join(root, 'state.json'), JSON.stringify({name}));
           if (op === 'import') await writeFile(join(root, 'copy.json'), JSON.stringify({run: dirname(c[3])}));
@@ -308,11 +316,11 @@ for (const mode of ["build", "verify", "verify-cleanup"]) {
       };
       const options = {execute, gatewayFactory: () => ({start:async()=>{},stop:async()=>{},assertOwned:async()=>{}})};
       try {
-        if (mode === 'build') await buildPersona(input, join(root, 'output'), {...options,executeBuild:true});
+        if (mode.startsWith('build')) await buildPersona(input, join(root, 'output'), {...options,executeBuild:true});
         else await verifyPersona(input, options);
       } catch (error) { process.stderr.write(error.message); process.exitCode = 1; }
     `;
-    const child = spawn(process.execPath, ["--input-type=module", "-e", driver, mode, mode === "build" ? f.path : join(built, "persona.json"), root], { stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(process.execPath, ["--input-type=module", "-e", driver, mode, mode.startsWith("build") ? f.path : join(built, "persona.json"), root], { stdio: ["ignore", "pipe", "pipe"] });
     t.after(() => child.kill("SIGKILL"));
     let output = "";
     child.stdout.on("data", (chunk) => { output += chunk; });
@@ -331,8 +339,9 @@ for (const mode of ["build", "verify", "verify-cleanup"]) {
     assert.equal(result.code, 143, output);
     await access(join(root, "destroyed"));
     await access(join(root, "provider-stopped"));
+    if (mode === "build-create" || mode === "verify-import") await access(join(root, "provision-child-finished"));
     await assert.rejects(access(join(root, "state.json")));
-    if (mode !== "build") {
+    if (!mode.startsWith("build")) {
       const copy = JSON.parse(await readFile(join(root, "copy.json"), "utf8"));
       await assert.rejects(access(copy.run));
       if (mode === "verify-cleanup") await access(join(root, "cleanup-child-finished"));

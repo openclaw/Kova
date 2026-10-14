@@ -15,7 +15,7 @@ const shutdownTerminationGraceMs = 1000;
 const redactionMarker = "[REDACTED]";
 const shutdownSignals = ["SIGHUP", "SIGINT", "SIGQUIT", "SIGTERM"];
 const activeDetachedChildren = new Set();
-const cleanupChildren = new Set();
+const shutdownProtectedChildren = new Set();
 const shutdownScopes = new Set();
 const shutdownSignalHandlers = new Map(
   shutdownSignals.map((signal) => [signal, () => {
@@ -111,7 +111,7 @@ export function runCommand(command, options = {}) {
       stdio: accountCpu ? ["ignore", "pipe", "pipe", "ipc"] : ["ignore", "pipe", "pipe"],
       detached: process.platform !== "win32"
     });
-    const stopTrackingChild = trackDetachedChild(child, options.shutdownCleanup === true);
+    const stopTrackingChild = trackDetachedChild(child, options.finishOnShutdown === true);
 
     const createSampler = () => options.resourceSample
       ? startResourceSampler(child.pid, {
@@ -273,12 +273,12 @@ export function spawnOwnedProcess(command, args, options = {}) {
   };
 }
 
-function trackDetachedChild(child, cleanup = false) {
+function trackDetachedChild(child, finishOnShutdown = false) {
   if (process.platform === "win32") {
     return () => {};
   }
   activeDetachedChildren.add(child);
-  if (cleanup) cleanupChildren.add(child);
+  if (finishOnShutdown) shutdownProtectedChildren.add(child);
   installShutdownHandlers();
   let tracked = true;
   return () => {
@@ -287,7 +287,7 @@ function trackDetachedChild(child, cleanup = false) {
     }
     tracked = false;
     activeDetachedChildren.delete(child);
-    cleanupChildren.delete(child);
+    shutdownProtectedChildren.delete(child);
     if (activeDetachedChildren.size === 0 && shutdownScopes.size === 0 && !shutdownInProgress) {
       uninstallShutdownHandlers();
     }
@@ -323,7 +323,7 @@ async function forwardShutdownSignal(signal) {
   shutdownInProgress = true;
   const scopes = [...shutdownScopes];
   for (const scope of scopes) scope.controller.abort(new Error(`interrupted by ${signal}`));
-  const children = [...activeDetachedChildren].filter((child) => !scopes.length || !cleanupChildren.has(child));
+  const children = [...activeDetachedChildren].filter((child) => !scopes.length || !shutdownProtectedChildren.has(child));
   for (const child of children) {
     try {
       signalProcessTree(child, signal);
