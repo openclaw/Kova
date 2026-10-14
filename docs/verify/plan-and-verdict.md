@@ -287,6 +287,17 @@ any other difference in the same phase and signal is classed on its own.
 
 ## Running The Plan
 
+The persona definition is trusted configuration, supplied by the operator with
+no credentials, only the mock provider and Kova's own plugins. `verify run`
+separates each clone's environment, store and ports. It provides no OS-level
+execution boundary and does not reject configuration because it can run
+programs. Programs configured by the definition, including MCP servers, hooks
+and executable providers, run with the host user's permissions; they can access
+files and services outside the clone. This applies during persona checks,
+phases and Doctor as well as Gateway startup. Working directories and checks on
+known destination fields do not restrict those programs' effects. Use only
+definitions and configured programs you trust.
+
 `kova verify run --plan plan.json --target-baseline local-build:<path>
 --target-change local-build:<path> --execute`:
 
