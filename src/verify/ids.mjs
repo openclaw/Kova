@@ -107,7 +107,9 @@ function entryName(header, seen) {
 
 async function scanFile(stream, name, scan, standard, scratch) {
   const raw = scan.stream();
-  let decided = /\.json(?:5|l)?$/i.test(name), decode = decided, prefix = Buffer.alloc(0);
+  const extension = /\.(jsonl|json5?)(?:\.(?:bak|reset|deleted|pre-update)(?:\.[^/]+)?)?$/i.exec(name)?.[1].toLowerCase();
+  let format = extension === "jsonl" ? "jsonl" : extension ? "auto" : undefined;
+  let decided = Boolean(format), decode = decided, prefix = Buffer.alloc(0);
   let directory, file, path;
   const write = async (chunk) => {
     if (!file) {
@@ -128,10 +130,17 @@ async function scanFile(stream, name, scan, standard, scratch) {
         remaining = chunk.subarray(take);
         if (prefix.length < 16) continue;
         decided = true;
-        decode = prefix.equals(Buffer.from("SQLite format 3\0"));
+        const sqlite = prefix.equals(Buffer.from("SQLite format 3\0"));
+        const beginning = new TextDecoder().decode(prefix, { stream: true }).trimStart();
+        decode = sqlite || !beginning || ["{", "[", "\"", "'", "/"].includes(beginning[0]);
+        if (decode && !sqlite) format = "auto";
         if (decode) await write(prefix);
       }
       if (decode) await write(remaining);
+    }
+    if (!decided && prefix.length && !scan.complete()) {
+      const beginning = new TextDecoder().decode(prefix).trimStart();
+      if (!beginning || ["{", "[", "\"", "'", "/"].includes(beginning[0])) { format = "auto"; await write(prefix); }
     }
     if (file) { await file.close(); file = null; }
     if (path && !scan.complete()) {
@@ -139,7 +148,7 @@ async function scanFile(stream, name, scan, standard, scratch) {
       const { stateFile } = await import("./rows.mjs");
       const logical = name.replace(/^root\/\.openclaw\//, "");
       try {
-        for await (const decoded of stateFile(path, logical, standard)) {
+        for await (const decoded of stateFile(path, logical, standard, format)) {
           if (decoded.kind === "sqlite") {
             scan.text(decoded.table);
             for (const row of decoded.rows) for (const [column, cell] of Object.entries(row.values)) {

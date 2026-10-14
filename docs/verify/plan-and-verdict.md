@@ -714,6 +714,10 @@ as it is. There are two declarations:
   The token names the owning record; only ties depend on rowid order. A record key that is
   itself a generated id must be declared too, and is replaced first.
 
+Original-ID lookup also decodes retained JSONL reset/deleted/bak archives,
+rotating JSON/JSON5 configuration backups, and recognizable structured content
+whose filename no longer carries its format.
+
 Ids present in the persona export are never replaced, whatever declares them,
 so an existing id that a change wrongly replaces still shows as a
 difference.

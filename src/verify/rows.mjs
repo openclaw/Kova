@@ -81,7 +81,7 @@ export async function* stateFiles(directory, standard, prefix = "", selected = n
   }
 }
 
-export async function* stateFile(file, path, standard) {
+export async function* stateFile(file, path, standard, format) {
   if ((await readBytes(file, 16)).equals(Buffer.from("SQLite format 3\0"))) {
     const { DatabaseSync } = await import("node:sqlite");
     const db = new DatabaseSync(file, { readOnly: true });
@@ -136,7 +136,13 @@ export async function* stateFile(file, path, standard) {
     return;
   }
   const bytes = await readBytes(file);
-  if (/\.jsonl$/i.test(path)) {
+  // Persona backups retain structured values after their original suffix moves.
+  // This source-only hint does not alter checkpoint item formats or paths.
+  if (format === "auto") {
+    try { yield { path, kind: "json", value: JSON5.parse(bytes.toString("utf8")) }; return; }
+    catch { format = "jsonl"; }
+  }
+  if (format === "jsonl" || /\.jsonl$/i.test(path)) {
     const value = [], malformed = new Set(), binary = new Map();
     const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
     for (let start = 0; start <= bytes.length;) {
