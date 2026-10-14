@@ -627,7 +627,7 @@ test("status measurements are excluded while health outcomes, bounds and setting
   const phase = { id: phaseId, from: "template:sessions", commands: [status], checkpoint: ["responses", "timing"] };
   const f = await fixture(t, { phases: [phase], copies: Object.fromEntries(names.map((name, index) => {
     const ms = name.startsWith("change") ? index + 11 : 10;
-    return [name, { response: { gateway: { connectLatencyMs: ms, reachable: true }, eventLoop: { degraded: false, reasons: [], intervalMs: ms, delayMaxMs: ms, delayP99Ms: ms, utilization: ms / 100, cpuCoreRatio: ms / 100, cpuBreakdown: { hostUtilization: ms / 100, hostCpuCount: 8 } }, health: { durationMs: ms, channels: { example: { probe: { elapsedMs: ms, ok: true } } } }, lastHeartbeat: { durationMs: ms }, settings: { connectLatencyMs: 10 } } }];
+    return [name, { response: { gateway: { connectLatencyMs: name === "baseline" ? null : ms, reachable: true }, eventLoop: { degradedSinceMs: name === "baseline" ? null : ms, degraded: false, reasons: [], intervalMs: ms, delayMaxMs: ms, delayP99Ms: ms, utilization: ms / 100, cpuCoreRatio: ms / 100, cpuBreakdown: { hostUtilization: ms / 100, hostCpuCount: 8 } }, health: { durationMs: ms, eventLoop: { degradedSinceMs: name === "baseline" ? null : ms }, channels: { example: { authAgeMs: name === "baseline" ? null : ms, probe: { elapsedMs: ms, ok: true } } } }, lastHeartbeat: { durationMs: ms }, settings: { connectLatencyMs: 10 } } }];
   })) });
   await writeJSON(join(f.directory, "catalogue.json"), JSON.parse(await readFile(new URL("../catalogue/openclaw.json", import.meta.url))));
   assert.equal((await f.compare()).verdict, "good-to-go");
@@ -1179,7 +1179,7 @@ test("persisted execution measurements do not hide outcomes, bounds or user payl
 
 test("persisted exec tool measurements stay separate from user and media durations", async (t) => {
   const phase = { id: phaseId, from: "template:sessions", commands: [command], checkpoint: ["state:agents"] };
-  for (const mode of ["measurement", "payload", "waiting", "corrupt-length"]) {
+  for (const mode of ["measurement", "payload", "waiting", "web-result", "status-outcome", "corrupt-length", "corrupt-navigation"]) {
     const f = await fixture(t, { phases: [phase], state: async (files, name) => {
       const root = join(files, "../agents/main");
       await mkdir(join(root, "sessions"), { recursive: true });
@@ -1194,14 +1194,23 @@ test("persisted exec tool measurements stay separate from user and media duratio
       const subagents = { action: "list", status: "ok", active: [], recent: [{ index: 1, label: "task", runtimeMs: duration, runtime: `${duration}ms`, execution: { state: "completed" } }], text: `active subagents:\n(none)\n\nrecent (last 30m):\n1. task (model, ${duration}ms) done` };
       messages.push({ type: "message", message: { role: "toolResult", toolName: "subagents", details: subagents, content: [{ type: "text", text: JSON.stringify(subagents) }] } });
       messages.push({ type: "message", message: { role: "toolResult", toolName: "process", details: { status: "running", sessionId: "existing", ...input }, content: [{ type: "text", text: "same output" }] } });
+      const fetch = { url: "https://example.com/", status: changed && mode === "web-result" ? 500 : 200, tookMs: duration, text: "fixed page", length: 10 };
+      const search = { kind: "results", tookMs: duration, results: [{ title: "fixed result" }] };
+      for (const [toolName, payload] of [["web_fetch", fetch], ["web_search", search], ["web_search", { kind: "raw", data: { tookMs: mode === "web-result" ? duration : 10 } }]])
+        messages.push({ type: "message", message: { role: "toolResult", toolName, details: payload, content: [{ type: "text", text: JSON.stringify(payload, null, 2) }] } });
+      const elapsed = changed ? "3m 20s" : "10s";
+      const statusText = [`⏱️ Uptime: gateway ${elapsed} · system ${elapsed}`, `🧵 Session: existing • duration ${elapsed} • updated ${changed ? "2m ago" : "just now"}`, "🤖 Subagents: 1 active", `  • existing task · ${elapsed} · ${changed && mode === "status-outcome" ? "waiting · 2 children pending" : "running · 1 child pending"}`, `🎞️ Media: clip ${changed && mode === "status-outcome" ? "13s" : "12s"}`, "Queue debounce: 5000ms"].join("\n");
+      messages.push({ type: "message", message: { role: "toolResult", toolName: "session_status", details: { statusText }, content: [{ type: "text", text: statusText }] } });
       for (const filename of ["existing.jsonl", "existing.jsonl.bak", "existing.jsonl.reset.2026-10-14", "existing.jsonl.deleted.2026-10-14"])
         await writeFile(join(root, "sessions", filename), messages.map((message) => JSON.stringify(message)).join("\n"));
       const db = new DatabaseSync(join(root, "agent/openclaw-agent.sqlite"));
       try {
-        db.exec("CREATE TABLE transcript_events (seq INTEGER PRIMARY KEY, event_json TEXT, event_zstd BLOB, event_utf8_bytes INTEGER)");
+        db.exec("CREATE TABLE transcript_events (seq INTEGER PRIMARY KEY, event_json TEXT, event_zstd BLOB, event_utf8_bytes INTEGER, navigation_json TEXT)");
         for (const [index, event] of messages.entries()) {
           const raw = JSON.stringify(event);
-          db.prepare("INSERT INTO transcript_events VALUES (?, ?, ?, ?)").run(index, index % 2 === 0 ? raw : null, index % 2 === 1 ? zstdCompressSync(Buffer.from(raw)) : null, Buffer.byteLength(raw) + (mode === "corrupt-length" && changed ? 1 : 0));
+          const model = event.message.role === "toolResult" ? db.prepare("SELECT json_remove(?, '$.message.__openclaw.upstreamUserText', '$.message.details') AS value").get(raw).value : db.prepare("SELECT json_remove(?, '$.message.__openclaw.upstreamUserText') AS value").get(raw).value;
+          const navigation = { version: 1, withoutCustomDataBytes: db.prepare("SELECT octet_length(json_remove(?, '$.data')) AS size").get(raw).size, modelBytes: Buffer.byteLength(model), modelWithoutCheckpointBytes: db.prepare("SELECT octet_length(json_remove(?, '$.message.providerReplay')) AS size").get(model).size + (mode === "corrupt-navigation" && changed ? 1 : 0) };
+          db.prepare("INSERT INTO transcript_events VALUES (?, ?, ?, ?, ?)").run(index, index % 2 === 0 ? raw : null, index % 2 === 1 ? zstdCompressSync(Buffer.from(raw)) : null, Buffer.byteLength(raw) + (mode === "corrupt-length" && changed ? 1 : 0), JSON.stringify(navigation));
         }
       } finally { db.close(); }
     }, compressed: [{ path: "agents/*/agent/openclaw-agent.sqlite", table: "transcript_events", column: "event_zstd", codec: "zstd" }] });
@@ -1212,13 +1221,18 @@ test("persisted exec tool measurements stay separate from user and media duratio
       assert.ok(result.rows.some((row) => row.at.endsWith("/durationMs")));
       assert.ok(result.rows.every((row) => row.at.includes("/1/")));
     } else if (mode === "waiting") assert.ok(result.rows.some((row) => row.at.endsWith("/waitingForInput")));
+    else if (mode === "web-result") {
+      assert.ok(result.rows.some((row) => row.at.endsWith("/status")));
+      assert.ok(result.rows.some((row) => row.at.endsWith("/data/tookMs")));
+    } else if (mode === "status-outcome") assert.ok(result.rows.some((row) => row.at.endsWith("/statusText")));
+    else if (mode === "corrupt-navigation") assert.ok(result.rows.every((row) => row.at.endsWith("/navigation_json/modelWithoutCheckpointBytes")));
     else assert.ok(result.rows.every((row) => row.at.endsWith("/event_utf8_bytes")));
   }
 });
 
 test("derived measurement hashes retain counts and corruption evidence", async (t) => {
   const phase = { id: phaseId, from: "template:sessions", commands: [command], checkpoint: ["state:agents", "state:state"] };
-  for (const mode of ["measurements", "count", "corrupt"]) {
+  for (const mode of ["measurements", "count", "corrupt", "corrupt-anchor", "corrupt-size", "missing-source"]) {
     const f = await fixture(t, { phases: [phase], state: async (files, name) => {
       const root = join(files, "..");
       const changed = name.startsWith("change"), duration = changed ? 200 : 10;
@@ -1228,8 +1242,14 @@ test("derived measurement hashes retain counts and corruption evidence", async (
         db.exec("CREATE TABLE cache_entries (scope TEXT, key TEXT, value_json TEXT, blob BLOB, PRIMARY KEY(scope, key))");
         const rollup = { buckets: { "0": { timestampMs: 1, latency: { count: mode === "count" && changed ? 2 : 1, min: duration, max: duration, sum: duration, centroids: [{ count: 1, value: duration }] }, messageCounts: { total: 1 } } }, untimestamped: {} };
         const json = JSON.stringify(rollup), raw = Buffer.from(json), blob = zstdCompressSync(raw);
-        const envelope = { version: 6, format: 1, pricingFingerprint: "sample", checkpoint: { kind: "sqlite", maxSeq: 1, eventCount: 1, size: 10, mtimeMs: 1, anchorHash: "stable" }, scannedAt: 1, parsedRecords: 1, countedRecords: 1, body: { encoding: "zstd", bytes: raw.length, storedBytes: blob.length, utf16Length: json.length, sha256: mode === "corrupt" && changed ? "0".repeat(64) : sha256(raw) } };
-        db.prepare("INSERT INTO cache_entries VALUES (?, ?, ?, ?)").run("session-cost-usage-rollup-v3", "existing", JSON.stringify(envelope), blob);
+        const event = JSON.stringify({ type: "message", message: { role: "toolResult", toolName: "exec", details: { durationMs: duration, exitCode: 0 }, content: [{ type: "text", text: "done" }] } });
+        if (mode !== "missing-source") {
+          db.exec("CREATE TABLE transcript_events (session_id TEXT, seq INTEGER, event_json TEXT, event_utf8_bytes INTEGER, PRIMARY KEY(session_id,seq))");
+          db.prepare("INSERT INTO transcript_events VALUES (?, ?, ?, ?)").run("existing", 1, event, Buffer.byteLength(event));
+        }
+        const anchor = mode === "corrupt-anchor" && changed ? "invalid-anchor" : Buffer.from(sha256(event), "hex").toString("base64url");
+        const envelope = { version: 6, format: 1, pricingFingerprint: "sample", checkpoint: { kind: "sqlite", maxSeq: 1, eventCount: 1, size: Buffer.byteLength(event) + (mode === "corrupt-size" && changed ? 1 : 0), mtimeMs: 1, anchorHash: anchor }, scannedAt: 1, parsedRecords: 1, countedRecords: 1, body: { encoding: "zstd", bytes: raw.length, storedBytes: blob.length, utf16Length: json.length, sha256: mode === "corrupt" && changed ? "0".repeat(64) : sha256(raw) } };
+        db.prepare("INSERT INTO cache_entries VALUES (?, ?, ?, ?)").run("session-cost-usage-rollup-v3", "sqlite:main:existing:/recorded/.openclaw/agents/main/agent/openclaw-agent.sqlite", JSON.stringify(envelope), blob);
         db.prepare("INSERT INTO cache_entries VALUES (?, ?, ?, ?)").run("session-cost-usage-rollup-v2", "existing", JSON.stringify({ rollup }), null);
       } finally { db.close(); }
       await mkdir(join(root, "state"), { recursive: true });
@@ -1245,6 +1265,8 @@ test("derived measurement hashes retain counts and corruption evidence", async (
     assert.equal(result.verdict, mode === "measurements" ? "good-to-go" : "breaks");
     if (mode === "count") assert.ok(result.rows.some((row) => row.at.endsWith("/latency/count")));
     if (mode === "corrupt") assert.ok(result.rows.some((row) => row.at.includes("diagnostic_events")));
+    if (["corrupt-anchor", "missing-source"].includes(mode)) assert.ok(result.rows.some((row) => row.at.endsWith("/checkpoint/anchorHash")));
+    if (mode === "corrupt-size") assert.ok(result.rows.some((row) => row.at.endsWith("/checkpoint/size")));
   }
 });
 
@@ -1255,7 +1277,33 @@ test("malformed response measurements remain comparable", async (t) => {
     const f = await fixture(t, { phases: [phase], copies: Object.fromEntries(names.map((name) => [name, { response: { gateway: { reachable: true, connectLatencyMs: name.startsWith("change") ? latency : 10 } } }])) });
     await writeJSON(join(f.directory, "catalogue.json"), JSON.parse(await readFile(new URL("../catalogue/openclaw.json", import.meta.url))));
     const result = await f.compare();
-    assert.equal(result.verdict, typeof latency === "number" ? "good-to-go" : "breaks");
-    if (typeof latency !== "number") assert.ok(result.rows.some((row) => row.at === "0/gateway/connectLatencyMs"));
+    assert.equal(result.verdict, typeof latency === "number" || latency === null ? "good-to-go" : "breaks");
+    if (typeof latency !== "number" && latency !== null) assert.ok(result.rows.some((row) => row.at === "0/gateway/connectLatencyMs"));
+  }
+});
+
+test("JSONL cache anchors use selected transcript bytes and preserve inconsistent references", async (t) => {
+  for (const mode of ["measurements", "corrupt-anchor", "content", "unselected"]) {
+    const phase = { id: phaseId, from: "template:sessions", commands: [command], checkpoint: ["state:agents/main/agent", ...(mode === "unselected" ? [] : ["state:agents/main/sessions"])] };
+    const f = await fixture(t, { phases: [phase], state: async (files, name) => {
+      const root = join(files, "../agents/main"), changed = name.startsWith("change");
+      await mkdir(join(root, "agent"), { recursive: true });
+      await mkdir(join(root, "sessions"), { recursive: true });
+      const event = { type: "message", message: { role: "toolResult", toolName: "exec", content: [{ type: "text", text: "𝌆".repeat(1200) + (mode === "content" && changed ? " changed" : "") }], details: { durationMs: changed ? 200 : 10, exitCode: 0 } } };
+      const transcript = Buffer.from(`${JSON.stringify(event)}\n`);
+      await writeFile(join(root, "sessions/existing.jsonl"), transcript);
+      const blob = Buffer.from(JSON.stringify({ buckets: {}, untimestamped: {} }));
+      const anchorHash = mode === "corrupt-anchor" && changed ? "invalid-anchor" : Buffer.from(sha256(transcript.subarray(Math.max(0, transcript.length - 4096))), "hex").toString("base64url");
+      const envelope = { version: 6, format: 1, pricingFingerprint: "sample", checkpoint: { kind: "jsonl", parsedOffset: transcript.length, observedSize: transcript.length, observedMtimeMs: 1, device: 1, inode: 1, anchorHash }, scannedAt: 1, parsedRecords: 1, countedRecords: 1, body: { encoding: "identity", bytes: blob.length, storedBytes: blob.length, utf16Length: blob.toString().length, sha256: sha256(blob) } };
+      const db = new DatabaseSync(join(root, "agent/openclaw-agent.sqlite"));
+      try {
+        db.exec("CREATE TABLE cache_entries (scope TEXT,key TEXT,value_json TEXT,blob BLOB,PRIMARY KEY(scope,key))");
+        db.prepare("INSERT INTO cache_entries VALUES (?,?,?,?)").run("session-cost-usage-rollup-v3", "/recorded/.openclaw/agents/main/sessions/existing.jsonl", JSON.stringify(envelope), blob);
+      } finally { db.close(); }
+    } });
+    const result = await f.compare();
+    assert.equal(result.verdict, mode === "measurements" ? "good-to-go" : "breaks");
+    if (["corrupt-anchor", "unselected"].includes(mode)) assert.ok(result.rows.some((row) => row.at.endsWith("/checkpoint/anchorHash")));
+    if (mode === "content") assert.ok(result.rows.some((row) => row.at.endsWith("/message/content/0/text")));
   }
 });
