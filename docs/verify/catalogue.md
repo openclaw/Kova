@@ -262,8 +262,8 @@ service is started or stopped.
 For `channel-inbound-turn`, a group peer is `group:<id>` (or just `<id>`).
 A thread peer is `group:<parent-id>/thread:<thread-id>`. Group routing passes the
 actual group type into OpenClaw; `@bot` is the probe's explicit mention marker.
-The output records the resulting route and delivery observations. Group and
-thread admission uses the installed probe's command normalization before checking
+The output records the resulting route and delivery observations. Inbound
+channel admission uses the installed probe's command normalization before checking
 writable destinations. Rebuild personas containing an older probe before using
 these forms through `verify run`.
 

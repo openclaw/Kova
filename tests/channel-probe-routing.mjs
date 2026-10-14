@@ -307,3 +307,34 @@ test("probe normalization and injection stop when the binding owner is unavailab
   assert.equal(probe.commandCalls.length, 0);
   assert.equal(probe.dispatchCalls.length, 0);
 });
+
+test("direct probe commands remove their known sender prefix before SDK normalization", async (t) => {
+  const probe = await createProbe(t, { mentionRegexes: [/@bot/i] });
+  for (const [message, commandBody] of [
+    ["Kova Probe User: /config set logging.file=/outside", "/config set logging.file=/outside"],
+    ["[timestamp] kOvA pRoBe UsEr: /debug set logging.file=/outside", "/debug set logging.file=/outside"],
+    ["Kova Probe User: @bot /config set logging.file=/outside", "@bot /config set logging.file=/outside"],
+    ["Kova Probe User: @123456 /config set logging.file=/outside", "@123456 /config set logging.file=/outside"]
+  ]) {
+    const result = await probe.normalize({ chatType: "direct", targetId: "dm:kova-probe-user", message });
+    assert.deepEqual(result, { ok: true, agentId: "probe-agent", sessionKey: "sdk-base-session", commandBody });
+    assert.equal(probe.commandCalls.at(-1), commandBody);
+    assert.deepEqual(probe.routeCalls.at(-1).peer, { kind: "direct", id: "dm:kova-probe-user" });
+  }
+  assert.equal(probe.mentionCalls.length, 0);
+  assert.equal(probe.dispatchCalls.length, 0);
+});
+
+test("direct newlines reach the command SDK while group newlines and mentions are stripped first", async (t) => {
+  const probe = await createProbe(t, { mentionRegexes: [/@bot/i] });
+  await probe.normalize({ chatType: "direct", message: "Kova Probe User: /config\r\nset logging.file=/outside" });
+  assert.equal(probe.commandCalls.at(-1), "/config\nset logging.file=/outside");
+  assert.equal(probe.mentionCalls.length, 0);
+  await probe.normalize({ chatType: "direct", message: "Kova Probe User: @bot /config\nset logging.file=/outside" });
+  assert.equal(probe.commandCalls.at(-1), "@bot /config\nset logging.file=/outside");
+  assert.equal(probe.mentionCalls.length, 0);
+  await probe.normalize({ chatType: "group", targetId: "group:kova-probe-group", message: "Kova Probe User: @bot /config\nset logging.file=/outside" });
+  assert.equal(probe.commandCalls.at(-1), "/config set logging.file=/outside");
+  assert.equal(probe.mentionCalls.length, 2);
+  assert.equal(probe.dispatchCalls.length, 0);
+});

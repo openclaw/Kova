@@ -355,11 +355,10 @@ export async function validateRunDestinations(command, context) {
     const messageFlag = helper === join(context.kovaRoot ?? "", "support/verify/chat-send.mjs") ? "--message"
       : helper === join(context.kovaRoot ?? "", "support/verify/channel-inbound-turn.mjs") ? "--text" : null;
     if (messageFlag && option(tokens, "--wait") === undefined) {
-      const group = messageFlag === "--text" && ["group", "thread"].includes(option(tokens, "--chat-type"));
       const env = option(tokens, "--env");
       let message = option(tokens, messageFlag);
-      if (group) {
-        if (typeof context.normalizeProbeCommand !== "function") throw new Error("group and thread commands require probe command normalization");
+      if (messageFlag === "--text") {
+        if (typeof context.normalizeProbeCommand !== "function") throw new Error("channel commands require probe command normalization");
         const normalized = await context.normalizeProbeCommand(env, inboundParams({ text: message, peer: option(tokens, "--peer"), "chat-type": option(tokens, "--chat-type") }));
         if (normalized?.ok !== true || typeof normalized.commandBody !== "string" || typeof normalized.agentId !== "string" || !normalized.agentId || typeof normalized.sessionKey !== "string" || !normalized.sessionKey) throw new Error("probe command normalization is unavailable");
         message = normalized.commandBody;
