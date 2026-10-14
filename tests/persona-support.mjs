@@ -10,7 +10,7 @@ import { loadCatalogue, resolveCatalogueEntry } from "../src/catalogue.mjs";
 
 const definition = JSON.parse(await readFile(new URL("../personas/openclaw-verification-user.json", import.meta.url), "utf8"));
 const { catalogue } = await loadCatalogue("openclaw");
-const scripts = ["add-agent", "write-mock-script", "check-agents", "check-mock-provider", "check-channels", "check-plugins", "check-config", "check-mock-script", "make-session", "session-keys"];
+const scripts = ["add-agent", "write-mock-script", "check-agents", "check-mock-provider", "check-channels", "check-plugins", "check-config", "check-mock-script", "make-session", "populate-session", "session-keys"];
 function invoke(name, args, env = process.env) {
   return spawnSync(process.execPath, [new URL(`../support/persona/${name}.mjs`, import.meta.url).pathname, ...args], { env, encoding: "utf8", timeout: 10000 });
 }
@@ -19,6 +19,25 @@ test("each persona check has a distinct catalogue head and exactly its declared 
   const entries = definition.traits.map((trait) => resolveCatalogueEntry(catalogue, trait.check));
   assert.equal(new Set(entries.map((entry) => entry.id)).size, definition.traits.length);
   definition.traits.forEach((trait, index) => assert.deepEqual(entries[index].prints, Object.keys(trait.keys)));
+});
+
+test("session creation declares generated identities and content operations have fixed catalogue heads", () => {
+  const creation = catalogue.entries.find((entry) => entry.id === "persona-make-session");
+  assert.deepEqual(creation.creates, ["/key", "/sessionId"]);
+  assert.equal(creation.flags["--kind"], undefined);
+  const commands = definition.traits.flatMap((trait) => trait.builder);
+  assert.ok(commands.every((command) => !command.includes(" --kind ")));
+  const content = commands.filter((command) => command.includes("/populate-session.mjs "));
+  assert.equal(content.length, 7);
+  assert.equal(new Set(content.map((command) => resolveCatalogueEntry(catalogue, command).id)).size, 7);
+  for (const id of ["config-reset-idle-short", "config-subagent-archive-fast"]) {
+    const trait = definition.traits.find((value) => value.id === id);
+    for (const command of trait.builder.slice(1)) {
+      const entry = resolveCatalogueEntry(catalogue, command);
+      assert.equal(entry.kind, "product");
+      assert.equal(entry.wraps, "openclaw config set");
+    }
+  }
 });
 
 test("persona support commands report malformed calls as JSON with exit 2", () => {
@@ -34,6 +53,10 @@ test("persona support commands report malformed calls as JSON with exit 2", () =
     ["make-session", ["--env", "unused", "--messages", "1"]],
     ["make-session", ["--env", "unused", "--messages", "1", "--key", "agent:main:example", "--kind", "unknown"]],
     ["make-session", ["--env", "unused", "--messages", "1", "--key", "agent:main:example", "--kind", "session-idle-expired"]],
+    ["populate-session", ["unknown", "--env", "unused", "--key", "agent:main:example"]],
+    ["populate-session", ["create-goal", "--env", "unused", "--key", "agent:main:example"]],
+    ["populate-session", ["put-progress-card", "--env", "unused", "--key", "agent:main:example", "--tool-model", "openai/mock-tools"]],
+    ["populate-session", ["expire-idle", "--env", "unused", "--key", "agent:main:example"]],
     ["session-keys", ["unknown", "--env", "unused", "--key", "agent:main:example"]],
   ]) {
     const malformed = invoke(name, args);

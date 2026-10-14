@@ -30,6 +30,16 @@ tens of minutes; each builder has a two-hour limit. Checks inspect real saved
 history through a bounded, read-only SQLite snapshot, including compressed
 records. The session-content builders and checks require Node.js 22.19.0 or newer.
 
+`support/persona/make-session.mjs` creates and populates one session, returning
+its `key` and `sessionId`; the catalogue declares both generated identifiers.
+Further content uses fixed operations on `support/persona/populate-session.mjs`:
+`fill-to-threshold`, `prune-tool-results`, `create-goal`, `put-progress-card`,
+`interrupt-inputs`, `enable-public-share` and `expire-idle`. Each has its own
+catalogue entry and appears separately in the definition's builder lists.
+Reset and archive policies use the existing OpenClaw `config set` command.
+Public-sharing failures omit bearer data while retaining timeout exit code 3;
+ordinary product errors use exit code 1.
+
 Persona traits are separate from the `traits` of Kova states in `states/*.json`.
 A state models one user condition for one scenario and is set up inside a
 disposable environment; a persona holds many traits at once in one durable

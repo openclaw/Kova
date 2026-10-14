@@ -169,7 +169,8 @@
         "mock-provider-scripted"
       ],
       "builder": [
-        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-near-cap --messages 1 --kind session-at-compaction-threshold"
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-near-cap --messages 1",
+        "node {kovaRoot}/support/persona/populate-session.mjs fill-to-threshold --env {env} --key agent:main:verify-near-cap"
       ],
       "check": "node {kovaRoot}/support/persona/session-keys.mjs session-at-compaction-threshold --env {env} --key agent:main:verify-near-cap"
     },
@@ -184,7 +185,8 @@
         "mock-provider-tool-calls"
       ],
       "builder": [
-        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-pruned --messages 2 --kind session-pruned-projections --tool-model {persona:mock-provider-tool-calls:modelId}"
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-pruned --messages 2",
+        "node {kovaRoot}/support/persona/populate-session.mjs prune-tool-results --env {env} --key agent:main:verify-pruned --tool-model {persona:mock-provider-tool-calls:modelId}"
       ],
       "check": "node {kovaRoot}/support/persona/session-keys.mjs session-pruned-projections --env {env} --key agent:main:verify-pruned"
     },
@@ -199,7 +201,8 @@
         "mock-provider-tool-calls"
       ],
       "builder": [
-        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-goal --messages 3 --kind session-goal-active --tool-model {persona:mock-provider-tool-calls:modelId}"
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-goal --messages 3",
+        "node {kovaRoot}/support/persona/populate-session.mjs create-goal --env {env} --key agent:main:verify-goal --tool-model {persona:mock-provider-tool-calls:modelId}"
       ],
       "check": "node {kovaRoot}/support/persona/session-keys.mjs session-goal-active --env {env} --key agent:main:verify-goal"
     },
@@ -213,7 +216,8 @@
         "mock-provider-scripted"
       ],
       "builder": [
-        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-card --messages 2 --kind session-progress-card"
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-card --messages 2",
+        "node {kovaRoot}/support/persona/populate-session.mjs put-progress-card --env {env} --key agent:main:verify-card"
       ],
       "check": "node {kovaRoot}/support/persona/session-keys.mjs session-progress-card --env {env} --key agent:main:verify-card"
     },
@@ -227,7 +231,8 @@
         "mock-provider-held-turn"
       ],
       "builder": [
-        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-pending --messages 1 --kind session-interrupted-inputs"
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-pending --messages 1",
+        "node {kovaRoot}/support/persona/populate-session.mjs interrupt-inputs --env {env} --key agent:main:verify-pending"
       ],
       "check": "node {kovaRoot}/support/persona/session-keys.mjs session-interrupted-inputs --env {env} --key agent:main:verify-pending"
     },
@@ -241,7 +246,8 @@
         "mock-provider-scripted"
       ],
       "builder": [
-        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-public --messages 6 --kind session-public-shared"
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-public --messages 6",
+        "node {kovaRoot}/support/persona/populate-session.mjs enable-public-share --env {env} --key agent:main:verify-public"
       ],
       "check": "node {kovaRoot}/support/persona/session-keys.mjs session-public-shared --env {env} --key agent:main:verify-public"
     },
@@ -255,7 +261,8 @@
         "mock-provider-tool-calls"
       ],
       "builder": [
-        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-parent --messages 2 --kind config-subagent-archive-fast"
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-parent --messages 2",
+        "ocm @{env} -- config set agents.defaults.subagents.archiveAfterMinutes 1 --strict-json"
       ],
       "check": "node {kovaRoot}/support/persona/session-keys.mjs config-subagent-archive-fast --env {env} --key agent:main:verify-parent"
     },
@@ -269,7 +276,10 @@
         "mock-provider-scripted"
       ],
       "builder": [
-        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-idle:thread:idle --messages 3 --kind config-reset-idle-short"
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-idle:thread:idle --messages 3",
+        "ocm @{env} -- config set session.reset '{\"mode\":\"none\"}' --strict-json",
+        "ocm @{env} -- config set session.resetByType '{\"direct\":{\"mode\":\"none\"},\"group\":{\"mode\":\"none\"},\"thread\":{\"mode\":\"idle\",\"idleMinutes\":1}}' --strict-json",
+        "ocm @{env} -- config set session.resetByChannel '{}' --strict-json"
       ],
       "check": "node {kovaRoot}/support/persona/session-keys.mjs config-reset-idle-short --env {env} --key agent:main:verify-idle:thread:idle"
     },
@@ -283,7 +293,8 @@
         "config-reset-idle-short"
       ],
       "builder": [
-        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-idle-old:thread:idle --messages 3 --kind session-idle-expired"
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-idle-old:thread:idle --messages 3",
+        "node {kovaRoot}/support/persona/populate-session.mjs expire-idle --env {env} --key agent:main:verify-idle-old:thread:idle"
       ],
       "check": "node {kovaRoot}/support/persona/session-keys.mjs session-idle-expired --env {env} --key agent:main:verify-idle-old:thread:idle"
     }
@@ -302,7 +313,8 @@
       "support/write-mock-ai-provider-script.mjs",
       "support/persona/make-session.mjs",
       "support/persona/session-keys.mjs",
-      "support/persona/check-mock-trait.mjs"
+      "support/persona/check-mock-trait.mjs",
+      "support/persona/populate-session.mjs"
     ],
     "toWrite": [],
     "fixtures": []

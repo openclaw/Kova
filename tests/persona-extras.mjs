@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildSessionExtras, checkSessionExtra, extraRequests } from "../support/persona/session-extras.mjs";
+import { EntryError } from "../support/persona/common.mjs";
 
 const key = "agent:main:persona-example";
 const sessionId = "persisted-session-id";
@@ -84,8 +85,19 @@ test("public sharing checks never return bearer tokens or propagate token-bearin
   const built = await buildSessionExtras({ rpc, key, options: { kind: "session-public-shared" } });
   assert.deepEqual(built, { key });
   assert.ok(!JSON.stringify(built).includes(token));
-  const rejected = fixture(async () => { throw new Error(token); });
-  await assert.rejects(checkSessionExtra({ rpc: rejected, key, kind: "session-public-shared" }), (error) => !error.message.includes(token) && /could not read/.test(error.message));
+  for (const [failure, exitCode] of [[new Error(token), 1], [new EntryError(token, 3), 3]]) {
+    const rejected = fixture(async () => { throw failure; });
+    for (const [operation, message] of [
+      [() => buildSessionExtras({ rpc: rejected, key, options: { kind: "session-public-shared" } }), "Gateway could not enable the saved public session share"],
+      [() => checkSessionExtra({ rpc: rejected, key, kind: "session-public-shared" }), "Gateway could not read the saved public session share"],
+    ]) await assert.rejects(operation, (error) => {
+      assert.equal(error.message, message);
+      assert.equal(error.exitCode, exitCode);
+      assert.ok(!JSON.stringify(error).includes(token));
+      assert.equal(error.cause, undefined);
+      return true;
+    });
+  }
 });
 
 test("idle check requires elapsed time and a saved completed turn", async () => {

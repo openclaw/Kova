@@ -1826,7 +1826,7 @@
     {
       "id": "persona-make-session",
       "kind": "script",
-      "wraps": "sessions.create and sessions.send through the mock, with persona options",
+      "wraps": "Create and populate one saved session through OpenClaw",
       "command": "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key <key> --messages <n>",
       "flags": {
         "--key": {
@@ -1861,14 +1861,6 @@
           "description": "Label for a generated session key",
           "value": "required"
         },
-        "--kind": {
-          "description": "Saved session content kind",
-          "value": "required"
-        },
-        "--tool-model": {
-          "description": "Configured local model for tool requests",
-          "value": "required"
-        },
         "--next-model": {
           "description": "Model to bind after creating the saved session content",
           "value": "required"
@@ -1881,7 +1873,10 @@
       "side": "write",
       "background": false,
       "status": "existing",
-      "creates": []
+      "creates": [
+        "/key",
+        "/sessionId"
+      ]
     },
     {
       "id": "persona-session-keys",
@@ -6901,6 +6896,178 @@
       ],
       "creates": [],
       "side": "read",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-fill-to-threshold",
+      "kind": "script",
+      "wraps": "Fill an existing session to its measured pre-compaction range",
+      "command": "node {kovaRoot}/support/persona/populate-session.mjs fill-to-threshold --env {env} --key <key>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--key": {
+          "description": "Existing session key",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key"
+      ],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-prune-tool-results",
+      "kind": "script",
+      "wraps": "Prepare retained tool-result pruning projections in an existing session",
+      "command": "node {kovaRoot}/support/persona/populate-session.mjs prune-tool-results --env {env} --key <key> --tool-model <model>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--key": {
+          "description": "Existing session key",
+          "value": "required"
+        },
+        "--tool-model": {
+          "description": "Configured local model for tool requests",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key"
+      ],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-create-goal",
+      "kind": "script",
+      "wraps": "Create the saved notebook goal through its session tool",
+      "command": "node {kovaRoot}/support/persona/populate-session.mjs create-goal --env {env} --key <key> --tool-model <model>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--key": {
+          "description": "Existing session key",
+          "value": "required"
+        },
+        "--tool-model": {
+          "description": "Configured local model for tool requests",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key",
+        "goalId"
+      ],
+      "creates": [
+        "/goalId"
+      ],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-put-progress-card",
+      "kind": "script",
+      "wraps": "Publish the saved notebook progress card",
+      "command": "node {kovaRoot}/support/persona/populate-session.mjs put-progress-card --env {env} --key <key>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--key": {
+          "description": "Existing session key",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key"
+      ],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-interrupt-inputs",
+      "kind": "script",
+      "wraps": "Prepare cancelled and shutdown-interrupted session inputs",
+      "command": "node {kovaRoot}/support/persona/populate-session.mjs interrupt-inputs --env {env} --key <key>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--key": {
+          "description": "Existing session key",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key"
+      ],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-enable-public-share",
+      "kind": "script",
+      "wraps": "Enable a saved session public-read grant without exposing its token",
+      "command": "node {kovaRoot}/support/persona/populate-session.mjs enable-public-share --env {env} --key <key>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--key": {
+          "description": "Existing session key",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key"
+      ],
+      "creates": [],
+      "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-expire-idle",
+      "kind": "script",
+      "wraps": "Populate a completed notebook turn and wait for its idle expiry",
+      "command": "node {kovaRoot}/support/persona/populate-session.mjs expire-idle --env {env} --key <key>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--key": {
+          "description": "Existing session key",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key"
+      ],
+      "creates": [],
+      "side": "write",
       "background": false,
       "status": "existing"
     }

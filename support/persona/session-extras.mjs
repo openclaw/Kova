@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { realpath } from "node:fs/promises";
 import { dirname } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { EntryError, productCommand } from "./common.mjs";
+import { EntryError } from "./common.mjs";
 import { sendSessionMessage, sessionRequests } from "./session-content.mjs";
 
 export const sessionExtraKinds = [
@@ -152,9 +152,10 @@ async function idleFacts(rpc, key) {
 }
 
 /** Extend an already-created session through its product producers. */
-export async function buildSessionExtras({ rpc, key, options, env, state }) {
+export async function buildSessionExtras({ rpc, key, options, state }) {
   const kind = options?.kind;
   requireKind(kind);
+  if (kind.startsWith("config-")) throw new EntryError("configuration content uses the product config set command", 2);
   const session = await describe(rpc, key);
   if (kind === "session-goal-active") {
     if (typeof options.toolModel !== "string" || !options.toolModel) throw new EntryError("active goal content requires the mock tool model", 2);
@@ -175,20 +176,8 @@ export async function buildSessionExtras({ rpc, key, options, env, state }) {
     try {
       const response = await rpc(extraRequests.publicShare(key, session.sessionId));
       enabled = response?.ok === true && response.sessionKey === key && typeof response.publicShare?.token === "string" && response.publicShare.token.length > 0;
-    } catch { throw new Error("Gateway could not enable the saved public session share"); }
+    } catch (error) { throw new EntryError("Gateway could not enable the saved public session share", error?.exitCode === 3 ? 3 : 1); }
     if (!enabled) throw new Error("Gateway did not create the public session share");
-  } else {
-    const name = typeof env === "string" ? env : env?.name;
-    if (!name) throw new EntryError("configuration content requires an environment name", 2);
-    if (kind === "config-reset-idle-short") {
-      await productCommand(name, ["config", "set", "session.reset", JSON.stringify({ mode: "none" }), "--strict-json"]);
-      await productCommand(name, ["config", "set", "session.resetByType", JSON.stringify({ direct: { mode: "none" }, group: { mode: "none" }, thread: { mode: "idle", idleMinutes } }), "--strict-json"]);
-      await productCommand(name, ["config", "set", "session.resetByChannel", "{}", "--strict-json"]);
-    } else {
-      await productCommand(name, ["config", "set", "agents.defaults.subagents.archiveAfterMinutes", "1", "--strict-json"]);
-    }
-    // The persona lifecycle restarts the Gateway before checking newly saved settings.
-    return kind === "config-reset-idle-short" ? { key } : { parentKey: key };
   }
   return checkSessionExtra({ rpc, key, kind, state });
 }
@@ -220,7 +209,7 @@ export async function checkSessionExtra({ rpc, key, kind, state }) {
     try {
       const result = await rpc(extraRequests.publicMembers(key));
       present = result?.sessionKey === key && typeof result.publicShare?.token === "string" && result.publicShare.token.length > 0 && Number.isFinite(result.publicShare.createdAt);
-    } catch { throw new Error("Gateway could not read the saved public session share"); }
+    } catch (error) { throw new EntryError("Gateway could not read the saved public session share", error?.exitCode === 3 ? 3 : 1); }
     if (!present) throw new Error("saved public session share is absent");
   } else if (kind === "config-reset-idle-short") {
     requireIdlePolicy(await config(rpc, state), key);
