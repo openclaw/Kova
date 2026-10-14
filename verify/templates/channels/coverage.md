@@ -351,7 +351,7 @@ Every listed key identifies a value containing only letters, digits and . _ - : 
 - mock-provider-markdown-reply: scripted replies with Markdown styles, links, spoilers, details, inline HTML, stray <final> markers, image syntax and tables, and a Telegram chat bound to it (chatId, linksMarker, marker, spoilerMarker, tablesMarker)
 - mock-provider-media-reply: scripted replies that return media, media streamed early and repeated, a duplicate final, and NO_REPLY with tool media (marker)
 - mock-provider-no-reply: a scripted NO_REPLY answer (marker)
-- plugin-message-hooks: a plugin registering message_sending, reply_payload_sending and before_agent_finalize hooks, with a peer whose sends it cancels and Telegram chats it applies to; and a plugin registering message_sending and reply_payload_sending hooks that cancel, rewrite or defer payloads carrying marker strings (accountId, cancelMarker, deferMarker, finalizeChatId, peer, rewriteMarker, telegramChatId)
+- plugin-message-hooks: The existing supplied hook-only plugin and dormant marker/gate definitions are available but disabled between observations: authored plugins.entries[pluginId].enabled:false. It is separate from the conformance channel, mock providers, Discord/Telegram adapters and ambient controller, with its existing trusted permission configuration already supplied. Explicit --message-hooks owners temporarily enable it through native config.patch, capture registration/runtime adoption, run the original hook input, then join work and restore false through actual native registry replacement. api.on has no unregister handle; predicates alone never count as retirement. Keep all existing marker/account/peer and prepared-final keys. No new plugin installation, permission widening, account, secondary environment or product API is introduced. (accountId, cancelMarker, deferMarker, finalizeChatId, peer, rewriteMarker, telegramChatId, lifecycleFile). lifecycleFile: Nonsecret descriptor of the already installed hook-only fixture pluginId, expected installation/source identity, existing private fixture control/registration/disposal receipt channel and allowed case predicates. It contains no credential, source config backup, new product method, install command or foreign environment. Existing preparedFinalGateFile identifies this same plugin/controller, not a second global hook source.
 - channels-test-accounts: existing trait; these phases additionally read accountId, peer (the same identifier-value rule applies)
 - dm-scope-isolated: existing trait; these phases additionally read accountId (the same identifier-value rule applies)
 - mock-provider-tool-calls: existing trait; these phases additionally read cardClearMarker, chatId, manyToolsMarker, progressMarker, restartMarker, slowFetchMarker (the same identifier-value rule applies)
@@ -362,7 +362,7 @@ Every listed key identifies a value containing only letters, digits and . _ - : 
 Limits:
 - Phases that drive Kova's conformance channel (support/plugins/kova-channel-probe) cannot record at this revision, because the plugin imports openclaw/plugin-sdk/channel-message, which OpenClaw removed in favour of openclaw/plugin-sdk/channel-outbound; they are written as they will run once the plugin is updated.
 - In an isolated Kova home under /tmp with OCM 0.2.48 and Node 24.21.0, nine media and source-visible delivery rows of the probe scenario reported fewer deliveries than expected on OpenClaw 2026.9.9 and 2026.10.3, while the same code passed them with OCM 0.3.0 in an existing OCM store. The cause is not established (possibly /tmp to /private/tmp path resolution or the OCM version), so differences recorded by phases that drive media or source-visible delivery under such a setup are not yet attributable to the change.
-- The template declares 118 product-command or unavailable-wrapper forms; only the Gateway-start helper is an existing callable script here. The command catalogue is absent in this checkout. The template is a derived plan, and these dependencies must be implemented and registered before it can record observations.
+- The template declares 119 product-command or unavailable-wrapper forms; only the Gateway-start helper is an existing callable script here. The command catalogue is absent in this checkout. The template is a derived plan, and these dependencies must be implemented and registered before it can record observations.
 - Run 2 found 379/437 entry points, below the required nine-tenths share. The final condition-heading shares are 246/258 and 248/258, both above nine tenths; the finer condition-by-meaning shares are recorded separately in comparison.md. This reconciliation does not resolve the entry-enumeration acceptance gap.
 - The background held-turn contract bounds admission separately from its lifetime and releases on join. Gateway restarts can interrupt that ambient condition; later phases must record interruption, and the dedicated restart flows create their own handles where recorded. Runtime continuity and cancellation have not been demonstrated.
 - Repairing the conformance plugin import alone is insufficient for account, group, allowlist, mention and command-authorization observations. The present probe fixes default-account direct-chat facts and sets CommandAuthorized to true. The channel-probe-admission capability and --admission sdk wrapper path are additional unavailable prerequisites for those flows.
@@ -509,12 +509,12 @@ Each named fixture scenario owns adoption, completion and restoration of these s
 
 Pairing fixture content:
 - channel-pairing-fixtures: A nonsecret fixture manifest containing the initial retention cohort and independently owned per-case accounts, synthetic sender/peer identities and expected ownership facts. Retention has at least one genuinely expired canonical request and more than three currently unexpired canonical requests on the same configured conformance account, with distinct lastSeenAt values and enough remaining TTL for the bounded observation; this is a supplied schema-valid compatibility fixture, not something the helper creates by bypassing native admission. Manifest identifies its exclusive rows and the unknown fourth sender. Later cases have no stored live codes: use dedicated configured pairing accounts/senders, initially absent requests/allow entries, explicit account routing, and real native creation/capture just before consumption. Telegram accounts use their own distinct synthetic fixture tokens already provisioned through the persona. UI approval/dismissal targets and offline/refusal targets are disjoint from all other cases. Owner-bootstrap scenarios save/restore global owner configuration rather than assuming it remains absent after another approval. No live credentials in the manifest. (manifest)
-- channel-pairing-cap: Distinguish the initial greater-than-three unexpired same-account pruning fixture from the ordinary exactly-three admission-cap state. Three rows alone cannot show excess pruning. Both are observed in initial-retention: raw snapshot then native list to three, then one fourth-sender request before any approval frees a slot.
+- channel-pairing-cap: Distinguish the initial greater-than-three unexpired same-account pruning fixture from the ordinary exactly-three admission-cap state. Three rows alone cannot show excess pruning. Both are observed in initial-retention: allowlisted pairing projection then native list to three, then one fourth-sender request before any approval frees a slot.
 - channel-pairing-pending: Its aged/static request rows are exclusively initial-retention inputs. Retire code/pendingPeer/secondRequestId/thirdRequestId as live approval/repeat targets; later helpers capture fresh native request identities in their own case.
 - channel-dm-pairing: Retain policy/account fixtures and the dedicated allowlist test sender. Retire pendingCode, offlineCode, uncertainReplyCode, pendingRequestId and pendingSender as cross-phase consumption inputs; expiredCode, if retained, belongs only to the initial read-only retention snapshot and subsequent rejection attempt. Fresh case identities come from channel-pairing-fixtures. Do not reuse unknownPeer or unknownUserId between pairing, start, callback and approval cases.
 - channel-ambient-turn: Setup uses its already-authorized dedicated account/sender and must not upsert a pairing request before initial-retention. If startup has already consumed retention data, initial-retention reports unavailable rather than recording an already-pruned list as pruning.
 
-Pairing retention is observed immediately after setup, before any selected Channels UI or ordinary pairing consumer. A raw before snapshot must show the supplied expired and excess canonical cohort. Later approval, repeat, dismissal, callback, refusal and offline cases capture fresh native requests in their own bounded lifecycles; preloaded live codes are not reused. Missing or previously consumed retention state is unavailable, not evidence of a pruning transition.
+Pairing retention is observed immediately after setup, before any selected Channels UI or ordinary pairing consumer. An allowlisted before projection must show the supplied expired and excess canonical cohort without retaining pairing codes or metadata bodies. Later approval, repeat, dismissal, callback, refusal and offline cases capture fresh native requests in their own bounded lifecycles; preloaded live codes are not reused. Missing or previously consumed retention state is unavailable, not evidence of a pruning transition.
 
 The live preview cases require mattermostPreviewFixtureFile and matrixPreviewFixtureFile in channel-real-accounts, plus dedicated mattermostPreviewAccountId and matrixPreviewAccountId. Files contain only nonsecret identity/capability facts, owned native anchor captures and configured/named credential references. The supplied routes have partial streaming, block output disabled, automatic visible replies and no preview-disabling modifiers; Matrix also has replyToMode all and threadReplies off. The provider fixture must emit a correlated partial and hold its final; Matrix media-only final additionally requires native tool-progress output followed by media-only terminal content. These extensions are unavailable. Mattermost deletion targets only the captured new bot preview. Matrix reply-target mismatch and media-only redaction are separate; the error-final variant remains unexercised. Native cleanup is recorded separately from product redaction, and unrelated history is never retained.
 
@@ -883,7 +883,7 @@ The inbound-helper reconciliation compares actual command options, message shape
 
 - channel-ingress-monitor-fixture: Retain the native runtime-supplied queue and native monitor. Repeated admission and deferred/abandoned callbacks use the public API. The two mismatch cases intentionally supply inconsistent caller-owned codec output, a distinct input contract; no queue identity is edited. This fixture supplies no native append-write failure or stolen/dropped-claim capability.
 
-- plugin-message-hooks: The atomic suppression/empty-transform cases register only an invocation-bound predicate matching the actual account/canonical target and unique scripted final payload, and record actual public hook invocation. Suppression returns cancel:true; empty transform returns an empty payload. Cleanup removes only that predicate, not the global hook or other marker rules.
+- plugin-message-hooks: The atomic suppression/empty-transform cases temporarily activate the supplied hook-only plugin under the shared registration-lifetime owner. Their predicates remain bound to actual account, target and payload. After the native work settles, cleanup removes predicates and restores enabled:false through native plugin replacement; it awaits the disabled runtime generation and fixture disposal before later previews. No inert global modifier registrations remain between observations.
 
 - channel-access-groups: For the declared Discord audience-failure case, the supplied or explicitly owned temporary group is native type discord.channelAudience with the actual guildId/channelId and membership canViewChannel, referenced by the selected account's real DM allowlist. It has no unrelated permissive alternate group and its synthetic sender differs from ambient/moderation subjects. Configuration is restored exactly; missing supported fixture lookup remains a pre-input prerequisite, not permission to synthesize a membership decision.
 
@@ -966,3 +966,382 @@ Condition387 is planned through two independent native Discord turns on the exis
 - channel-discord-fixture: The existing streamingScenarioAccountId/channelId pair supplies an ordinary native Discord progress-draft route, access and working create/edit/delete message operations. It is not a room_event or group-owned thread, and its supplied runtime does not have preview-blocking outbound modifier hooks. All four narration cases use this route and restore its exact settings. Missing route/utility/script capability is unavailable, not evidence of a disabled narrator.
 - channel-discord-fixture:narrationAgentId: Already configured dedicated agent selected by the actual binding of streamingScenarioAccountId and channelId, with normal unlocked native source session and permitted existing bounded work-tool recipe. It does not share the ambient request or utility route.
 - channel-discord-fixture:narrationUtilityModel: Nonempty actual configured mock-provider model reference used by native utility completion. Its existing provider can return one short status or hold/cancel its actual request for the late case; no new provider, credentials or fallback model is installed.
+
+Native selected-history observation: event-platform-history-window uses a successful Discord guild REST history window, followed by the distinct scoped failed-fetch case. Its real native prelude puts a canonical-only sentinel into the same session; the successful bounded platform response contains two different owned markers and omits that sentinel. Evidence records membership/order in the current trigger's inbound-history content within the actual provider input, without retaining raw prompts or requiring the sentinel to disappear from earlier conversation messages. Native Discord sets recent-history mode; no fixture supplies that internal field. Telegram rolling-history remains its pending/canonical-enrichment observation and is not credited as condition533.
+
+- channel-discord-fixture: For platform-history-window the existing accountId/guildId/channelId/userId identify one exclusive fixture-owned guild conversation and admitted human sender, disjoint from ambient activity and moderation subjects. The declared fixture must support actual MESSAGE_CREATE Gateway frames and the normal channelMessages REST route with scoped owned history rows, monotonic native ids/timestamps, genuine native canonical-turn capture and marker-only provider-input inspection. Native historyLimit2 and no autoThread diversion are captured after scoped adoption. Missing native protocol/capture support remains explicitly unavailable; this persona does not add a live account, external service, private product hook, transcript writer or historyKind override.
+
+- channel-group-history: Telegram rolling-history retains actual native pending/skipped input and permitted canonical enrichment; it does not supply the recent-window no-enrichment semantics assigned to Discord533.
+
+Hook observations and native previews share one explicit fixture-registration lifetime. The supplied hook-only plugin is disabled at baseline. Only the marked hook owners activate it; each restores the exact disabled source entry and waits for native replacement/disposal before returning. Crash/recovery owners retain registration through their actual recovered hook delivery and then retire it. The Discord narration and Telegram preview guards remain unchanged, and their ordinary inputs run after real registration removal, not predicate deactivation. Existing live-account limitations, partial conditions and coverage counts are unchanged.
+
+channel-safe-state:
+- manifest: Nonsecret per-phase scope manifest for the existing channel-state-observe helper declaration. The compiled case registry alone selects projection profiles. The manifest supplies only exact task-owned account/sender/profile/agent/session/event/delivery/job/binding identities and approved native capture fields under the current run; it cannot name or override profiles. It contains no SQL, arbitrary paths, credentials, pairing codes, claim tokens, message bodies or hidden configuration. Unknown dynamic identities must be captured by the original native owner; they are never guessed from a room label or another phase.
+- Whole shared-state and agent databases are not channel evidence artifacts. All state observations use the closed structural/status allowlist before output. The same projection applies inside native lifecycle helpers at existing pre-input, held and post-cleanup boundaries. Scope/schema absence is unavailable; row absence within a proven scope remains an observation. Native checkpoints retain responses/logs/timing and applicable screen/Doctor evidence; no raw state file is copied.
+- Keep correlation, lifetime, retry, routing and cleanup distinctions through timestamps, counts, closed enums, approved native IDs and private-owner equality predicates. Text/JSON/BLOB bodies, secrets, tokens, opaque grant material and free-form errors never enter retained state evidence. Generic secret-name redaction and whole-row hashing are not acceptable replacements.
+- ownerScopes.ingressAgedRetry: fixed nonsecret external-cohort slot naming the environment role, native channel/account/queue and eventId for ingress-aged-retry. The helper receives this manifest explicitly via --scope-file before any input or state capture; the value must match channel-ingress-aged-pending:eventId. No implicit phase/global lookup is permitted.
+
+
+Nonsecret state projection catalogue:
+
+These are closed allowed fields, not arbitrary query arguments. Every string still requires a compiled enum or exact task-owned identifier check before output; unknown values are reported as unsupported projection. JSON paths below are fixed implementation expressions returning only typed scalars or comparisons inside SQLite. No container is returned for later redaction.
+
+**pairing**
+
+- `channel_pairing_requests`: `channel_key`, `account_id`, `request_id`, `created_at`, `last_seen_at`.
+- `channel_pairing_allow_entries`: `channel_key`, `account_id`, `entry`, `sort_order`, `updated_at`.
+- Additional allowed comparisons: request exists/count within the explicit case cohort; code present as boolean only; same request / created_at / changed last_seen_at comparisons; allow-entry membership against explicitly owned sender IDs.
+- Scope: Exact channel/account and manifest-owned request/sender cohort. Retention reads occur before any native pruning/list operation; later fresh requests come only from that case producer.
+- Excluded: code, meta_json, all unrelated request/allow rows.
+
+**identity-links**
+
+- `user_profile_identities`: `provider`, `profile_id`, `created_at`.
+- `user_profiles`: `id`, `role`, `created_at`, `updated_at`.
+- Additional allowed comparisons: link exists for provider=channel.identity and the exact parameterized subject tuple; linked profile equals the declared task-owned profile; authorization binding present (boolean only).
+- Scope: Only exact supplied channel/account/sender tuples and profile IDs; use subject solely as a bound WHERE value, never emit its arbitrary stored representation.
+- Excluded: canonical_login, authorization_id, authorization_basis_json, display_name, avatar, user_profile_emails.
+
+**join-dedupe**
+
+- `plugin_state_entries`: `plugin_id`, `namespace`, `entry_key`, `created_at`, `expires_at`.
+- Fixed projections from `value_json`: $.seenAt as bounded timestamp; $.key equals the exact known join key as boolean.
+- Scope: Only the native channel-join-intro namespace and exact key derived by the pinned codecs from task-owned channel/account/conversation; never scan another plugin namespace.
+- Excluded: value_json as a value, arbitrary plugin state.
+
+**replay-dedupe**
+
+- `plugin_state_entries`: `plugin_id`, `namespace`, `entry_key`, `created_at`, `expires_at`.
+- Fixed projections from `value_json`: $.seenAt as bounded timestamp; $.key equals captured native logical-message key as boolean.
+- Scope: Only task-owned Telegram message-dispatch dedupe keys captured by the real producer and their pinned native namespace codec.
+- Excluded: value_json as a value, unrelated replay keys.
+
+**session-topology**
+
+- `session_nodes`: `session_key`, `current_session_id`, `snapshot_revision`, `entry_valid`, `updated_at`, `status`, `created_at`, `created_via`, `created_actor_type`, `owner_actor_type`, `owner_assigned_at`, `parent_session_key`, `spawned_by`, `fork_source_session_key`, `fork_source_session_id`, `archived_at`, `last_activity_at`.
+- `session_windows`: `session_id`, `session_key`, `previous_session_id`, `reason`, `session_scope`, `created_at`, `updated_at`, `transcript_updated_at`, `session_entry_provenance`, `acp_owned`, `started_at`, `ended_at`, `status`, `chat_type`, `channel`, `account_id`, `primary_conversation_id`, `parent_session_key`, `spawned_by`.
+- `session_conversations`: `session_id`, `conversation_id`, `role`, `first_seen_at`, `last_seen_at`.
+- Fixed projections from `session_nodes.entry_json`: $.delivery.kind as the closed none/internal/external enum; $.delivery.context.channel, $.delivery.context.to, $.delivery.context.accountId, $.delivery.context.threadId only as exact task-route membership/equality when kind is external; $.abortedLastRun boolean; $.activeWriterRunId, $.lifecycleRunId, $.lastRunId only as captured task run references.
+- Additional allowed comparisons: exact requested session row exists or absent; task route/session/conversation references and parent-child equality; display_name and label length plus equality to explicit nonsecret fixture labels, without returning their text.
+- Scope: Resolve actual captured routed agent/database, not hardcoded main; exact task session keys and captured incarnations. No all-agent or all-session scan.
+- Excluded: entry_json as a value, label/display_name text, route_context_json, session_entry_snapshots, transcript/event/navigation bodies or compressed data.
+
+**participants**
+
+- `session_participants`: `session_key`, `identity_namespace`, `actor_id`, `contribution_count`, `first_prompted_at`, `last_prompted_at`.
+- Scope: Only selected session keys and manifest-owned participant IDs; serialize participant role aliases, not arbitrary identities.
+- Excluded: unrelated participants, profile display data.
+
+**delegation**
+
+- `subagent_runs`: `run_id`, `child_session_key`, `controller_session_key`, `requester_session_key`, `created_at`.
+- Fixed projections from `session_nodes.entry_json`: $.spawnDepth nonnegative integer; $.subagentRole closed enum; $.subagentControlScope closed enum; $.inheritedToolPolicyVersion integer; $.inheritedToolPolicySource closed enum; membership of each declared nonsecret tool name in $.inheritedToolAllow / $.inheritedToolDeny as booleans.
+- Scope: Only captured parent/child run and session identities; per-tool predicates use the case manifest approved tool names.
+- Excluded: payload_json, arbitrary inherited tool arrays, controller/requester filesystem paths.
+
+**ingress**
+
+- `channel_ingress_events`: `queue_name`, `event_id`, `channel_id`, `account_id`, `status`, `lane_key`, `received_at`, `updated_at`, `claimed_at`, `attempts`, `last_attempt_at`, `failed_at`, `completed_at`.
+- Additional allowed comparisons: payload/metadata/completed-metadata presence, type and supported-schema availability only; claim token/owner present booleans; same captured claim / changed claim / claim absent and actual custody transition booleans or owner-local opaque references; failure reason mapped to the pinned native closed reason set; unknown value becomes unsupported-projection, never free text.
+- Scope: Exact task account and captured event IDs; lane values only match declared/captured task lanes. Claims remain private in the native operation owner.
+- Excluded: payload_json, metadata_json, completed_metadata_json, claim_token, claim_owner, last_error, free-form failed_reason.
+
+**outbound**
+
+- `delivery_queue_entries`: `queue_name`, `id`, `status`, `entry_kind`, `session_key`, `channel`, `target`, `account_id`, `retry_count`, `last_attempt_at`, `recovery_state`, `platform_send_started_at`, `enqueued_at`, `updated_at`, `failed_at`.
+- Fixed projections from `entry_json`: $.availableAt bounded timestamp; $.requiresProducerClaim boolean; $.attemptCount nonnegative integer; $.acknowledgedAt bounded timestamp; $.retainOnFailure boolean; $.producerClaimId and $.platformSendAttemptId presence and equality to private captured values only.
+- Additional allowed comparisons: captured delivery row exists/absent; native status/recovery enum; same/changed owner and lease-expiry comparisons; no raw capability token; for prepared-final ownership checks: exact captured IDs across ALL queue_name values, returning only projected row identity/status/recovery; never narrow to a convenient namespace list.
+- Scope: Exact fresh task-created delivery IDs captured by the native owner; selected account/target membership checked before output. No unrelated queue rows or message payloads.
+- Excluded: entry_json as a value, last_error, payloads, bodies, media URLs, credential refs, raw producer/platform ownership tokens.
+
+**recovery**
+
+- `session_nodes`: `session_key`, `current_session_id`, `status`, `updated_at`, `snapshot_revision`.
+- Fixed projections from `entry_json`: $.abortedLastRun boolean; $.restartRecoveryDeliveryReceiptState closed enum; $.restartRecoveryBeforeAgentReplyState closed enum; $.restartRecoverySourceIngress closed enum; $.restartRecoveryForceSafeTools boolean; $.restartRecoveryDisableMessageTool boolean; $.restartRecoverySuppressTextDelivery boolean; $.restartRecoveryDeliveryRunId / $.restartRecoveryDeliverySourceRunId / $.restartRecoveryDeliveryToolCallId as captured task references; $.pendingFinalDelivery.kind closed enum; $.pendingFinalDelivery.createdAt bounded timestamp; $.pendingFinalDelivery.intentId as captured task reference; $.pendingFinalDelivery.deliveries[*].id/state as separately projected captured-ID/enum columns; $.pendingFinalDelivery.text presence and equality to explicitly controlled nonsecret expected fixture text ONLY as boolean; $.pendingDeliveryNotice.state / $.pendingDeliveryNotice.createdAt and captured intent reference; $.mainRestartRecovery.cycleId as captured cycle reference; $.mainRestartRecovery.revision / chargedAttempts / startedAttempt as bounded integers; $.mainRestartRecovery.reservation.runId / attempt / lifecycleGeneration as captured references and bounded integer; $.mainRestartRecovery.foregroundClaims presence/count and equality predicates only, never tokens or whole maps; $.restartRecoveryRuns[*].runId/lifecycleGeneration as captured references; $.mainRestartRecovery.tombstone presence, reason-present/controlled expected-reason equality booleans, and captured successor references only.
+- Scope: Only exact captured session/agent/incarnation and native recovery cycle. Bracket cross-database projections with the original held boundary and preserve its native deadlines.
+- Excluded: entry_json as a value, pending final/notice text, deliveryContext JSON, request fingerprints, executionIdentity tokens, foregroundClaims tokens/maps, terminal evidence payloads/mediaUrls, recovery operator source and arbitrary tombstone reason text.
+
+**tool-outcome**
+
+- `message_tool_run_outcomes`: `id`, `run_id`, `session_key`, `agent_id`, `outcome`, `run_status`, `occurred_at`.
+- Scope: Exact captured task tool run/session only; provider/model labels are unnecessary and omitted.
+- Excluded: tool args/results, provider/model config or credentials.
+
+**jobs**
+
+- `cron_jobs`: `store_key`, `job_id`, `owner_agent_id`, `enabled`, `agent_id`, `payload_kind`, `updated_at`.
+- `cron_run_receipts`: `receipt_id`, `store_key`, `job_id`, `agent_id`, `request_run_id`, `delivery_attempt_state`, `status`, `owner_pid`, `owner_start_time`, `started_at_ms`, `finished_at_ms`.
+- `subagent_runs`: `run_id`, `child_session_key`, `controller_session_key`, `requester_session_key`, `created_at`.
+- Scope: Only manifest-owned cron job IDs and actual captured child/requester run IDs.
+- Excluded: job_json, state_json, name, description, error_text, payload_json, private filesystem paths.
+
+**binding-authority**
+
+- `acp_sessions`: `session_key`, `session_id`, `backend`, `agent`, `mode`, `state`, `last_activity_at`, `updated_at`.
+- `current_conversation_bindings`: `binding_key`, `binding_id`, `target_session_key`, `channel`, `account_id`, `conversation_kind`, `parent_conversation_id`, `conversation_id`, `target_kind`, `status`, `bound_at`, `expires_at`, `updated_at`.
+- Additional allowed comparisons: native runtime-options presence and equality of explicitly declared harmless fixed options only; captured command-owner availability/refusal comes from existing native callback/config observations, not reading credential or grant stores.
+- Scope: Only the exact captured binding and ACP session owned by the revocation helper.
+- Excluded: identity_json, runtime_options_json, record_json, metadata_json, cwd, last_error, authorization grant/token data.
+
+**heartbeat**
+
+- `heartbeat_outcomes`: `session_key`, `run_session_key`, `outcome`, `priority`, `occurred_at`, `context_run_id`, `context_claimed_at`, `updated_at`.
+- Scope: Only the actual captured manual-heartbeat owner/run and task-owned session.
+- Excluded: summary, response_reason, next_check, task_names_json, wake_reason.
+
+The case parameter selects this fixed profile map; the manifest may narrow identities but cannot add profiles, columns, expressions or scope.
+
+| Existing phase | Projection profiles |
+| --- | --- |
+| `event-pairing-list-prunes` | pairing |
+| `approve-dm-access-request-ui` | pairing |
+| `change-allowed-senders` | pairing |
+| `change-allowed-senders-under-states` | pairing |
+| `decide-dm-access-allowlist-command` | pairing |
+| `decide-dm-access-cli` | pairing |
+| `link-sender-to-user` | identity-links |
+| `message-agent-group-threads` | session-topology |
+| `message-agent-group-context` | session-topology, participants |
+| `message-agent-dm-isolated` | session-topology, identity-links |
+| `message-agent-broadcast-group` | session-topology, participants |
+| `join-groups-with-intro-settings` | join-dedupe |
+| `route-chats-by-binding` | session-topology |
+| `deliver-from-jobs-and-agents` | jobs, session-topology, outbound |
+| `recover-pending-deliveries` | outbound, recovery |
+| `ingress-async-preference` | ingress |
+| `ingress-legacy-host-sync-fallback` | ingress |
+| `ingress-standard-raw-sync` | ingress |
+| `event-join-intro` | join-dedupe |
+| `event-send-receipt-failed-suppressed-dryrun` | session-topology, outbound |
+| `event-send-partial-confirmed` | session-topology, outbound |
+| `event-non-owner-dm-pinned-main-route` | session-topology |
+| `event-guarded-inbound-record-no-session` | session-topology |
+| `event-bot-replies-in-foreign-thread` | session-topology |
+| `event-restricted-turn-delegated` | session-topology, delegation, participants |
+| `event-mention-selects-participants` | session-topology, participants |
+| `event-pairing-unknown-sender` | pairing |
+| `event-pairing-repeat` | pairing |
+| `approve-dm-access-request` | pairing |
+| `event-dismissed-sender-requests-again` | pairing |
+| `event-tg-start-no-reply` | pairing |
+| `event-inbound-retry-exhausted` | ingress |
+| `event-pairing-owner-refusal` | pairing |
+| `event-redelivery-deduped` | ingress, outbound, replay-dedupe |
+| `event-required-answer-undelivered` | outbound |
+| `event-send-started-lease-expired` | outbound |
+| `event-command-auth-revoked` | binding-authority |
+| `event-internal-wake-through-inbound` | session-topology, heartbeat |
+| `event-ambiguous-native-send` | outbound |
+| `event-send-transform-suppressed` | outbound |
+| `event-proven-no-send-kept` | outbound |
+| `event-native-command-other-session` | session-topology |
+| `event-callback-no-pair` | pairing |
+| `event-ingress-duplicate-admission` | ingress |
+| `inspect-resubmit-dead-letters` | ingress |
+| `resubmit-failed-inbound` | ingress |
+| `event-dead-letter-resubmit-telegram-claimed` | ingress |
+| `event-dead-letter-resubmit-probe-claimed` | ingress |
+| `event-dead-letter-resubmit-completed` | ingress |
+| `event-ingress-defer-delivery` | ingress, outbound |
+| `event-ingress-abandon-delivery` | ingress, outbound |
+| `event-ingress-fan-in` | ingress |
+| `event-ingress-deferred-slots` | ingress |
+| `event-ingress-adoption-watchdog` | ingress |
+| `event-preflight-rejection` | outbound |
+| `event-delivery-queued-response` | outbound |
+| `event-deferred-delivery-rejected` | outbound |
+| `event-delivery-retry-exhausted` | outbound |
+| `ingress-async-admission-order` | ingress |
+| `ingress-admission-inspection-stop-join` | ingress |
+| `ingress-claim-inspection-stop-grace` | ingress |
+| `ingress-claim-inspection-shutdown` | ingress |
+| `ingress-claim-inspection-cancel` | ingress |
+| `ingress-claim-inspection-capacity` | ingress |
+| `ingress-claim-inspection-activity` | ingress |
+| `event-dead-letter-resubmit-telegram-pending` | ingress |
+| `event-dead-letter-resubmit-probe-pending` | ingress |
+| `decide-dm-access-offline` | pairing |
+| `recover-undelivered-replies` | outbound, recovery |
+| `event-delivery-producer-vanished` | outbound |
+| `event-producer-vanished` | outbound |
+| `event-gateway-stall-under-lease-prepare` | outbound |
+| `event-gateway-stall-under-lease` | outbound |
+| `event-ingress-lane-mismatch` | ingress |
+| `event-shutdown-with-unadopted-ingress` | ingress |
+| `event-ingress-shutdown` | ingress |
+| `event-restart-with-queued-deliveries` | outbound |
+| `event-delivery-retry-budget-exhausted` | outbound |
+| `event-delivery-uncertainty-notice` | outbound, recovery |
+| `event-restart-drains-channel-turns` | session-topology, recovery |
+| `event-crash-replays-unacked-inbound` | outbound, recovery, ingress |
+| `event-inbound-replay-after-crash-prepare` | outbound, recovery, ingress |
+| `event-inbound-replay-after-crash` | outbound, recovery, ingress |
+| `event-send-started-uncertain-capture` | outbound, recovery |
+| `event-send-started-uncertain` | outbound, recovery |
+| `event-prepared-final-recovery` | recovery, outbound |
+| `event-recovered-turn-resumption-notice` | outbound, recovery |
+| `event-crash-between-tool-send-and-outcome` | outbound, recovery, tool-outcome |
+| `event-message-tool-intent-unknown-prepare` | outbound, recovery, tool-outcome |
+| `event-message-tool-intent-unknown` | outbound, recovery, tool-outcome |
+| `event-recovered-reply-hook-prepare` | outbound, recovery |
+
+Read file existence before opening. An absent or disabled native database is recorded as such without creating it. Existing table with zero scoped rows, missing schema, absent database and unavailable scope are different outcomes. Database availability cannot substitute for required positive native boundary evidence.
+
+Internal helper operation registry:
+
+Internal state observations use the following fixed allowed profile sets and the owner scope specified here. These are maximum permissions for already-required observations, not instructions to add database reads. The standalone --case map above is not consulted by internal helpers.
+
+**support/verify/channel-pairing-lifecycle.mjs**
+
+The already passed --fixture manifest supplies the fixed retention/request/sender cohort for initial-retention and the configured account/actors for other cases. Fresh request IDs come from this owner's native operations. No implicit channel-safe-state manifest lookup.
+
+- `--case allowlist-roundtrip`, `--case callback-no-pair`, `--case cli-rpc-resolve`, `--case dismiss-rerequest`, `--case initial-retention`, `--case offline-approve`, `--case owner-refusal`, `--case pending-repeat`, `--case telegram-cli-approve`, `--case telegram-start`, `--case ui-review`, `--case unknown-sender`: pairing.
+
+**support/verify/channel-inbound-turn.mjs**
+
+Use only this invocation's captured native environment/route/account/session/event/delivery/run IDs. No external manifest is required for fresh owned native records; no state query runs until the exact corresponding keys exist.
+
+- `--ensure-active`, `--event detached-completion-crash`, `--wait`: session-topology, ingress, outbound, recovery.
+- `--event callback`, `--event member-online`, `--event native-command`, `--event presence`, `--event question-reply`, `--event reaction`, `default`: session-topology, ingress, outbound.
+- `--event join`: join-dedupe.
+
+**support/verify/channel-configured-turn.mjs**
+
+Use only this invocation's captured native environment/route/account/session/event/delivery/run IDs. No external manifest is required for fresh owned native records; no state query runs until the exact corresponding keys exist.
+
+- `--case denied-config-write`, `--case live-cli-patch`, `--case mid-turn-cli-patch`, `--case stopped-account-cli-patch`, `default`: session-topology, ingress, outbound.
+
+**support/verify/channel-probe-observe.mjs**
+
+Use only this invocation's captured native environment/route/account/session/event/delivery/run IDs. No external manifest is required for fresh owned native records; no state query runs until the exact corresponding keys exist.
+
+- `--case completion-handoff.image.generated-direct`, `--case durable-batch.mixed-outcomes`, `--case durable-batch.partial-confirmed`, `--case failure-visible-once.provider-error`, `--case ingress-authentication-missing-field`, `--case ingress-context-scope-mismatch`, `--case ingress-provider-config-absent`, `--case live-preview.ambiguous-send-retained`, `--case live-preview.partial-final-edit`, `--case live-preview.progress-normal-fallback`, `--case media-final`, `--case no-self-trigger.bot-authored-echo`, `--case receive-ack.after-agent-dispatch`, `--case receive-ack.after-durable-send`, `--case receive-ack.after-receive-record`, `--case receive-ack.manual`, `--case source-visible-delivery.attachment.message-tool-only`, `--case source-visible-delivery.text.message-tool-only,source-visible-delivery.payload.message-tool-only,silent-final`, `--case text-final`, `--case text-reply-current-final`, `--case thread-final`: session-topology, ingress, outbound.
+- `--case native-action.edit,native-action.delete`, `--case native-action.poll`, `--case native-action.react`, `--case native-action.send.presentation-pin`, `--case native-action.topic-create,native-action.topic-edit`: outbound.
+
+**support/verify/channel-ingress-lifecycle.mjs**
+
+Use only this invocation's captured native environment/route/account/session/event/delivery/run IDs. No external manifest is required for fresh owned native records; no state query runs until the exact corresponding keys exist.
+
+- `--case abandoned-delivery`, `--case admission-inspection-stop-join`, `--case adoption-watchdog`, `--case async-admission-order`, `--case async-preference`, `--case claim-inspection-activity`, `--case claim-inspection-cancel`, `--case claim-inspection-capacity`, `--case claim-inspection-shutdown`, `--case claim-inspection-stop-grace`, `--case decoded-identity-mismatch`, `--case deferred-delivery`, `--case deferred-slots-lane-policy`, `--case legacy-host-sync-fallback`, `--case probe-pre-adoption-stop-start`, `--case repeated-admission`, `--case standard-raw-sync`, `--case telegram-pre-adoption-restart`: ingress.
+
+**support/verify/channel-delivery-exhaustion.mjs**
+
+Use only this invocation's captured native environment/route/account/session/event/delivery/run IDs. No external manifest is required for fresh owned native records; no state query runs until the exact corresponding keys exist.
+
+- `--mode observe-no-send`, `--mode observe-owned-confirmation`, `--mode observe-queued-response`, `--mode recover`, `default`: outbound, recovery.
+
+**support/verify/channel-interrupt-at-boundary.mjs**
+
+Use only this invocation's captured native environment/route/account/session/event/delivery/run IDs. No external manifest is required for fresh owned native records; no state query runs until the exact corresponding keys exist.
+
+- `--boundary active-turn-recovery-claim`, `--boundary recorded-unacknowledged-input`: outbound, recovery, ingress.
+- `--boundary native-send-expired-lease`, `--boundary native-send-live-lease`, `--boundary native-send-started`, `--boundary pending-final-uncertain`, `--boundary prepared-final-before-delivery`: outbound, recovery.
+- `--boundary tool-send-outcome-pending`: outbound, recovery, tool-outcome.
+
+**support/verify/channel-tombstone-reminder.mjs**
+
+The already passed --fixture file supplies the exact native tombstoned session/account/agent/cycle identity before input. Use recovery projection without copying its row; no global manifest lookup.
+
+- `default`: session-topology, recovery.
+
+**support/verify/channel-native-binding-revocation.mjs**
+
+The already passed --binding-file and explicit channel/account/peer/sender define the case. Only the native preparation result can supply the actual session/binding IDs.
+
+- `default`: binding-authority.
+
+**support/verify/channel-restart-overlap.mjs**
+
+Use only this invocation's captured native environment/route/account/session/event/delivery/run IDs. No external manifest is required for fresh owned native records; no state query runs until the exact corresponding keys exist.
+
+- `default`: session-topology, ingress, outbound, recovery.
+
+**support/verify/heartbeat-wake.mjs**
+
+Use only this invocation's captured native environment/route/account/session/event/delivery/run IDs. No external manifest is required for fresh owned native records; no state query runs until the exact corresponding keys exist.
+
+- `default`: session-topology, heartbeat, recovery.
+
+**support/verify/agent-tool-turn.mjs**
+
+Use only this invocation's captured native environment/route/account/session/event/delivery/run IDs. No external manifest is required for fresh owned native records; no state query runs until the exact corresponding keys exist.
+
+- `--tool ask_user`, `--tool exec`: session-topology.
+- `--tool message`: session-topology, outbound, tool-outcome.
+- `--tool sessions_spawn`: session-topology, delegation, participants, binding-authority.
+- `--wait`: session-topology, outbound, tool-outcome, delegation, participants, binding-authority.
+
+**support/verify/telegram-shim-scenario.mjs**
+
+Use only this invocation's captured native environment/route/account/session/event/delivery/run IDs. No external manifest is required for fresh owned native records; no state query runs until the exact corresponding keys exist.
+
+- `--scenario ambiguous-send-not-replayed`, `--scenario answer-question-choice`, `--scenario api-root-suffix`, `--scenario batch-conflicting-threads`, `--scenario choose-select-option`, `--scenario chunked-send-later-part-fails`, `--scenario composite-media-followup-fails`, `--scenario controls-over-limits`, `--scenario delayed-finalization`, `--scenario disabled-control`, `--scenario edit-delete-cli`, `--scenario env-token-non-default`, `--scenario final-edit-fails`, `--scenario flood-control-retry`, `--scenario getme-401`, `--scenario hook-blocks-preview`, `--scenario html-parse-error-fallback`, `--scenario idempotent-edit-retried`, `--scenario inbound-location`, `--scenario inline-buttons-off`, `--scenario late-operation-completion`, `--scenario local-bot-api`, `--scenario long-final-reuses-preview`, `--scenario long-paste`, `--scenario message-between-draft-and-answer`, `--scenario mini-app-button-group`, `--scenario native-command-plugin`, `--scenario native-command-record-override`, `--scenario native-command-status`, `--scenario native-menu`, `--scenario optional-pin-fails`, `--scenario outbound-location-invalid`, `--scenario pin-chunked-message`, `--scenario pin-owner-closes`, `--scenario poll-cli`, `--scenario polling-stall`, `--scenario press-callback-button`, `--scenario press-command-button`, `--scenario preview-cleanup-fails`, `--scenario privacy-mode-on`, `--scenario question-answered-or-expired`, `--scenario quote-reply-skips-preview`, `--scenario react-cli`, `--scenario reaction-notify-all`, `--scenario reaction-notify-off`, `--scenario reaction-notify-own`, `--scenario reactions-disabled`, `--scenario reasoning-stream`, `--scenario reply-details-plain`, `--scenario reply-details-rich`, `--scenario reply-formatted-chunks`, `--scenario reply-inline-html`, `--scenario reply-markdown-image`, `--scenario reply-spoiler`, `--scenario required-final-send-5xx`, `--scenario required-pin-fails`, `--scenario reusable-control`, `--scenario rich-messages`, `--scenario rolling-history`, `--scenario send-by-uncached-name`, `--scenario send-default-account`, `--scenario send-force-document`, `--scenario send-network-error`, `--scenario send-photo-album`, `--scenario send-presentation-buttons`, `--scenario send-text`, `--scenario send-topic-thread`, `--scenario set-my-commands-too-much`, `--scenario short-initial-preview`, `--scenario supergroup-migration`, `--scenario token-file-symlink`, `--scenario topic-create`, `--scenario username-allowlist`: session-topology, ingress, outbound.
+- `--scenario join-disallowed-group`, `--scenario join-injected-metadata`, `--scenario join-intro-disabled`, `--scenario join-no-history`, `--scenario rejoin-after-claim`: join-dedupe.
+- `--scenario message-tool-send`: session-topology, ingress, outbound, tool-outcome.
+- `--scenario progress-draft-yield-subagents`: session-topology, ingress, outbound, delegation, participants.
+
+**support/verify/discord-fixture-scenario.mjs**
+
+Use only this invocation's captured native environment/route/account/session/event/delivery/run IDs. No external manifest is required for fresh owned native records; no state query runs until the exact corresponding keys exist.
+
+- `--scenario action-groups`, `--scenario ambient-without-message-tool`, `--scenario audience-lookup-missing-access`, `--scenario bots-without-allowbots`, `--scenario channels-map-allowlist`, `--scenario env-token`, `--scenario error-final-progress`, `--scenario explicit-token-send`, `--scenario group-dm`, `--scenario guild-not-allowed`, `--scenario history-fetch-fails`, `--scenario ignore-other-mentions`, `--scenario mention-alias`, `--scenario mention-gated`, `--scenario message-content-intent-off`, `--scenario name-matching`, `--scenario narration-disabled`, `--scenario narration-filler`, `--scenario narration-late`, `--scenario narration-utility-disabled`, `--scenario native-commands-off`, `--scenario platform-history-window`, `--scenario react-track-tool-calls`, `--scenario reaction-notify-allowlist`, `--scenario send-retry`, `--scenario suppress-embeds`, `--scenario tall-reply`, `--scenario typing-without-message`, `--scenario ws-reconnect-loop`: session-topology, ingress, outbound.
+- `--scenario adopt-thread-from-delivery`, `--scenario guild-role-binding`: session-topology, ingress, outbound, binding-authority.
+- `--scenario join-no-text-channel`, `--scenario stale-server-available`: no database state collection.
+
+**support/verify/control-ui.mjs**
+
+Use the current selected native UI environment and actually captured session ID for the reaction flow. Other current UI flows perform no database state collection; native rendered UI/API observations remain separate. A later DB need requires a fixed mapping before capture, not generic row dumping.
+
+- `--flow channels-config-edit`, `--flow channels-hub`, `--flow channels-nostr-profile`, `--flow channels-setup-wizard`, `--flow channels-whatsapp-logout`, `--flow channels-whatsapp-qr`: no database state collection.
+- `--flow session-reaction-channel-origin`: session-topology.
+
+**support/verify/channel-guarded-record.mjs**
+
+Use only this invocation's captured native environment/route/account/session/event/delivery/run IDs. No external manifest is required for fresh owned native records; no state query runs until the exact corresponding keys exist.
+
+- `default`: session-topology.
+
+**support/verify/ingress-aged-retry.mjs**
+
+Receive the new explicit --scope-file pointing to channel-safe-state:manifest. Read only its fixed ownerScopes.ingressAgedRetry slot: environment role, channel, account, native queue and the same eventId supplied on the command. This slot carries no profile/SQL/column selection. Refuse disagreement before native retry input or a state read.
+
+- `default`: ingress.
+
+**support/verify/channel-dead-letter-resubmit.mjs**
+
+Use explicit channel/account/event-id and the runtime-resolved queue belonging to that account. Refuse ambiguous or mismatched queues; no event-id-only global search. Existing supplied failed-row fixture remains the producer.
+
+- `--state claimed`, `--state pending`: ingress.
+
+**support/verify/channel-debounce-overlap.mjs**
+
+Use explicit channel/account/peer/sender, the already passed --fixture when present, and exact native event/claim IDs captured by the SDK or Telegram producer. No added manifest for normal or legacy Telegram cases.
+
+- `--case sdk-config-change`, `--case sdk-text`, `--case telegram-text`, `--second-kind command`, `--second-kind media`: ingress, session-topology.
+
+**support/verify/cron-isolated-run.mjs**
+
+Use explicit --job-id plus the native configured cron store and actual captured receipt/run/session IDs. Do not search unrelated cron stores or serialize job_json/state_json.
+
+- `default`: jobs, outbound, session-topology.
+
+Closed projected status/error enums:
+
+- projectionOutcome: `observed`, `not-applicable`, `database-absent`, `database-disabled`, `unavailable`, `incomplete`.
+- projectionErrorCode: `scope-missing`, `scope-mismatch`, `scope-ambiguous`, `stale-capture`, `path-refused`, `database-unavailable`, `schema-unsupported`, `readonly-unavailable`, `read-busy`, `read-timeout`, `row-bound-exceeded`, `byte-bound-exceeded`, `value-type-unsupported`, `enum-value-unsupported`, `generation-changed`, `projection-failed`.
+- ingressStatus: `pending`, `claimed`, `completed`, `failed`.
+- ingressFailureCode: `corrupt_payload`, `corrupt_claim`, `restart-recovery-tombstone`, `session-start-conflict-retry-limit`, `retry-limit-exceeded`.
+- outboundStatus: `pending`, `completed`, `failed`.
+- outboundRecoveryState: `producer_claimed`, `send_attempt_started`, `unknown_after_send`, `settlement_pending`, `completed_permanent`, `completed_bounded`.
+- sessionDeliveryKind: `none`, `internal`, `external`.
+- sessionStatus: `running`, `done`, `failed`, `killed`, `timeout`.
+- pendingFinalKind: `replayable`, `transport-only`.
+- pendingFinalDeliveryState: `prepared`, `queued`, `delivered`, `suppressed`, `unknown`.
+- pendingNoticeState: `owed`, `unresolved`, `acknowledged`.
+- toolOutcome: `tool_delivered`, `mute`.
+- toolRunStatus: `completed`, `errored`, `aborted`.
+- cronStatus: `running`, `ok`, `error`, `skipped`, `interrupted`, `superseded`.
+- cronDeliveryAttemptState: `unknown`, `not-started`, `started`.
+- heartbeatOutcome: `progress`, `done`, `blocked`, `needs_attention`.
+
+Stored error/message/diagnostic strings are never returned. SQL CASE may emit an ingressFailureCode or outboundRecoveryState only on exact equality to a compiled literal listed here; it returns that constant, not the original cell. NULL/absence is separate. Unrecognized values return enum-value-unsupported plus a presence/type flag without text, prefix, suffix, hash or byte sample. If that unknown value is needed for the case distinction, evidence is incomplete. The manifest cannot extend these enums. Unrestricted tombstone reasons are represented only by reason-present and an optional equality predicate against an explicitly controlled nonsecret fixture literal; no reason text is emitted. Driver/SQL exceptions map to projectionErrorCode, never exception.message, stack, SQL or parameters.
