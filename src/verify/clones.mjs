@@ -13,7 +13,7 @@ import { captureTargetIdentity } from "../target-identity.mjs";
 import { mockAiProviderServeCommand, mockProviderPortCommand, mockProviderCleanupCommand } from "../auth.mjs";
 import { checkCatalogueCommands, parseCatalogueCommand, createCatalogueResolver } from "../catalogue.mjs";
 import { canonicalJSON, sha256 } from "./plan.mjs";
-import { createLogCollector } from "./checkpoint.mjs";
+import { combineLogCollectors, createLogCollector } from "./checkpoint.mjs";
 
 function within(root, path) {
   const suffix = relative(root, path);
@@ -198,7 +198,7 @@ export async function stagePersona(persona, directory, call) {
   return { ...persona, archive, extra };
 }
 
-export function createClone({ name, directory, persona, root, call, cleanupCall, cleanupHandle, signal }) {
+export function createClone({ name, directory, persona, root, call, cleanupCall, cleanupHandle, signal, validateCommand }) {
   const environments = [];
   const handles = new Set();
   const mocks = [];
@@ -258,20 +258,7 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
   return {
     name, directory, handles, context,
     contexts() { return copies.map((copy, index) => ({ ...context(), env: copy.name, cwd: copy.workspaceDir ?? copy.root, run: index ? join(directory, `extra-${index}`) : directory })); },
-    async collectProductLogs() {
-      const captures = [];
-      let remaining = 16 * 1024 * 1024;
-      for (const collect of productLogs.values()) {
-        const capture = await collect.prepare({ maxBytes: remaining });
-        if (capture.bytes > 0) {
-          remaining -= capture.bytes + (captures.some((value) => value.bytes > 0) ? 1 : 0);
-          if (remaining < 0) throw new Error("log capture exceeds the 16 MiB output budget");
-        }
-        captures.push(capture);
-      }
-      for (const capture of captures) capture.commit();
-      return captures.map((capture) => capture.text).filter(Boolean).join("\n");
-    },
+    collectProductLogs: combineLogCollectors(() => productLogs.values()),
     get metadata() { return metadata; },
     async prepare() {
       await mkdir(directory, { recursive: true, mode: 0o700 });
@@ -307,7 +294,10 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
         }
         for (const trait of persona.definition.traits) {
           signal?.throwIfAborted();
-          const result = await call(resolveRunCommand(trait.check, context()));
+          const commandContext = context();
+          const command = resolveRunCommand(trait.check, commandContext);
+          await validateCommand?.(command, commandContext);
+          const result = await call(command, { cwd: commandContext.cwd });
           const keys = JSON.parse(result.stdout);
           if (JSON.stringify(Object.keys(keys).sort()) !== JSON.stringify(Object.keys(trait.keys).sort())) throw new Error(`trait ${trait.id}: check keys differ from definition`);
           for (const key of Object.keys(keys)) if (keys[key] !== traits[trait.id].keys[key]) throw new Error(`trait ${trait.id}: key ${key} differs from persona`);

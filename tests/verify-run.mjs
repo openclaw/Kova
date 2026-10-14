@@ -241,28 +241,39 @@ test("first-phase failure is not started, while exit 2 on one later copy is inco
   assert.deepEqual(incomplete.incomplete, ["standard/second"]);
 });
 
-test("copies sharing a runtime serialize bindings without serializing unrelated phase work", { timeout: 5000 }, async (t) => {
-  const f = await fixture(t);
-  f.plan.phases[0].commands = ["ocm start {env} --runtime {target} --no-service --json"];
-  await f.save();
-  const original = f.dependencies.execute;
-  const active = new Set();
-  let simultaneous = 0;
-  let bothActive;
-  const joined = new Promise((resolve) => { bothActive = resolve; });
+test("imports and runtime preparation share admission while product commands remain concurrent", { timeout: 5000 }, async (t) => {
+  const f = await fixture(t), original = f.dependencies.execute, makeClone = f.dependencies.cloneFactory;
+  let preparing = 0, operations = 0, productCommands = 0;
+  let allProducts;
+  const joined = new Promise((resolve) => { allProducts = resolve; });
+  f.dependencies.cloneFactory = (options) => {
+    const clone = makeClone(options), prepare = clone.prepare;
+    clone.prepare = async () => {
+      await options.call(`ocm env import fixture --name ${options.name} --json`);
+      await options.call(`ocm start ${options.name} --version 2026.9.9 --no-service --json`);
+      await options.call(`ocm env import extra --name ${options.name}-extra --json`);
+      await options.call(`ocm upgrade ${options.name}-extra --runtime alias --no-service --json`);
+      return prepare();
+    };
+    return clone;
+  };
   f.dependencies.execute = async (command) => {
-    if (!command.startsWith("'ocm' 'start'")) return original(command);
-    const runtime = command.match(/'--runtime' '([^']+)'/)[1];
-    assert.equal(active.has(runtime), false, "OCM refuses concurrent binding to this runtime");
-    active.add(runtime); simultaneous = Math.max(simultaneous, active.size);
-    if (active.size === 2) bothActive();
-    await joined;
-    active.delete(runtime);
+    const tokens = parseCatalogueCommand(command, { standard: true }).tokens;
+    if (tokens[0] === "ocm" && (["start", "upgrade"].includes(tokens[1]) || tokens[1] === "env" && tokens[2] === "import")) {
+      assert.equal(preparing++, 0, "OCM runtime admission refuses overlapping imports or preparation");
+      operations++;
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      preparing--;
+    } else if (tokens[1]?.startsWith("@")) {
+      if (++productCommands === 5) allProducts();
+      await joined;
+    }
     return original(command);
   };
   const result = await runVerification({ ...f.options, execute: true }, f.dependencies);
   assert.deepEqual(result.notStarted, []);
-  assert.equal(simultaneous, 2);
+  assert.equal(operations, 25);
+  assert.equal(productCommands, 5);
   assert.equal(f.removed.length, 5);
 });
 
@@ -364,4 +375,41 @@ test("the runner confines product destinations before execution and routes each 
   assert.equal(f.calls.some((command) => command.includes("'export-trajectory'")), false);
   for (const copy of Object.values(result.clones)) assert.match(copy.error, /owned copy/);
   assert.equal(f.removed.length, 5);
+});
+
+
+test("destination validation rejects duplicate flags and config path escapes before execution", async (t) => {
+  const root = await temporary(t), copy = join(root, "copy"), durable = join(root, "durable");
+  await mkdir(copy); await mkdir(durable);
+  const context = { cwd: copy, run: copy, ownedRoots: [copy] };
+  for (const flag of ["--workspace", "--output"]) {
+    await assert.rejects(validateRunDestinations(`ocm @copy -- sessions export-trajectory --session-key existing ${flag} safe ${flag} ${quoteShell(durable)}`, context), /repeated/);
+  }
+  const path = join(copy, "patch.json5"), command = `ocm @copy -- config patch --file ${quoteShell(path)}`;
+  for (const patch of [
+    { logging: { file: `${root}/./durable/injected.log` } },
+    { logging: { file: "~/shared.log" } },
+    { logging: { file: "../shared.log" } },
+    { logging: { file: null } },
+    { logging: null },
+    { agents: { defaults: { workspace: durable } } },
+    { $include: join(copy, "other.json") }
+  ]) {
+    await writeFile(path, JSON.stringify(patch));
+    await assert.rejects(validateRunDestinations(command, context), /owned|ownership/);
+  }
+  await writeFile(path, JSON.stringify({ logging: { file: join(copy, "product.log"), level: "debug" }, profile: "default" }));
+  await validateRunDestinations(command, context);
+});
+
+test("persona checks receive the same command admission as phase commands", async (t) => {
+  const f = await fixture(t), manifestPath = join(f.root, "persona.json");
+  const definitionPath = join(f.root, "definition.json"), definition = await readJSON(definitionPath);
+  definition.traits[0].check = `node {kovaRoot}/support/verify/gateway-call.mjs --env {env} --method sessions.list --params '{}' --out ${f.root}/./durable/check.json`;
+  const bytes = JSON.stringify(definition); await writeFile(definitionPath, bytes);
+  const manifest = await readJSON(manifestPath); manifest.definition.sha256 = sha256(bytes);
+  const saved = JSON.stringify(manifest); await writeFile(manifestPath, saved);
+  f.plan.persona.sha256 = sha256(saved); await f.save();
+  await assert.rejects(runVerification({ ...f.options, execute: true }, f.dependencies), /--out must stay/);
+  assert.deepEqual(f.created, []); assert.deepEqual(f.calls, []);
 });
