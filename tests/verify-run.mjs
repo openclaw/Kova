@@ -1,13 +1,13 @@
 import { parseCatalogueCommand } from "../src/catalogue.mjs";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile, appendFile, rename } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, writeFile, appendFile, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { execFileSync } from "node:child_process";
 import { createLogCollector, recordPhase, snapshotState, writeCheckpoint } from "../src/verify/checkpoint.mjs";
-import { quoteShell } from "../src/commands.mjs";
-import { runVerification, compareVersions, prepareRun, validateRunPlan, validateTarget } from "../src/verify/run.mjs";
+import { quoteShell, runCommand } from "../src/commands.mjs";
+import { runVerification, compareVersions, prepareRun, validateRunPlan, validateTarget, validateRunDestinations } from "../src/verify/run.mjs";
 import { resolveRunCommand } from "../src/verify/clones.mjs";
 import { canonicalJSON, sha256 } from "../src/verify/plan.mjs";
 import { repoRoot } from "../src/paths.mjs";
@@ -326,4 +326,42 @@ test("failed capture preserves later diagnostics and ordinary phases remain inte
     assert.equal(copy.phases["standard/diagnostic"], "recorded");
   }
   assert.equal(f.calls.filter((command) => command.includes("'doctor'")).length, 5);
+});
+
+
+test("commands run in distinct owned working directories and reject aliased destinations", async (t) => {
+  const root = await temporary(t), first = join(root, "first"), second = join(root, "second"), durable = join(root, "durable");
+  for (const path of [first, second, durable]) await mkdir(path);
+  const probe = `${quoteShell(process.execPath)} -e ${quoteShell("console.log(process.cwd())")}`;
+  for (const cwd of [first, second]) assert.equal((await runCommand(probe, { cwd })).stdout.trim(), await realpath(cwd));
+  const command = "ocm @copy -- sessions export-trajectory --session-key existing --output result --json";
+  const context = { cwd: first, run: first, ownedRoots: [first] };
+  await validateRunDestinations(command, context);
+  await assert.rejects(validateRunDestinations(`${command} --workspace ${quoteShell(`${root}/./durable`)}`, context), /owned copy/);
+  await symlink(durable, join(first, "linked"));
+  await assert.rejects(validateRunDestinations(`${command} --workspace ${quoteShell(join(first, "linked"))}`, context), /owned copy/);
+  await mkdir(join(first, ".openclaw"));
+  await symlink(durable, join(first, ".openclaw", "trajectory-exports"));
+  await assert.rejects(validateRunDestinations(command, context), /owned copy/);
+  await assert.rejects(validateRunDestinations("node /helper --out " + quoteShell(join(first, "linked", "result.json")), context), /owned copy/);
+});
+
+
+test("the runner confines product destinations before execution and routes each copy's cwd", async (t) => {
+  const f = await fixture(t), seen = new Set();
+  const original = f.dependencies.execute;
+  f.dependencies.execute = async (command, options) => {
+    if (command.startsWith("'ocm'")) {
+      assert.ok(options.cwd);
+      seen.add(options.cwd);
+    }
+    return original(command, options);
+  };
+  f.plan.phases[1].commands = [`ocm @{env} -- sessions export-trajectory --session-key existing --workspace ${quoteShell(`${f.source}/../source`)} --output proof --json`];
+  await f.save();
+  const result = await runVerification({ ...f.options, execute: true }, f.dependencies);
+  assert.equal(seen.size, 5);
+  assert.equal(f.calls.some((command) => command.includes("'export-trajectory'")), false);
+  for (const copy of Object.values(result.clones)) assert.match(copy.error, /owned copy/);
+  assert.equal(f.removed.length, 5);
 });

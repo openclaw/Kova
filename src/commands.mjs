@@ -106,7 +106,7 @@ export function runCommand(command, options = {}) {
       ? linuxCommandOwnerInvocation(process.execPath, accountingArgs, childEnv.KOVA_HOME || kovaHome, accountingEnv)
       : { file: shell, args: ["-c", command] };
     const child = spawn(invocation.file, invocation.args, {
-      cwd: repoRoot,
+      cwd: options.cwd ?? repoRoot,
       env: accountingEnv ?? childEnv,
       stdio: accountCpu ? ["ignore", "pipe", "pipe", "ipc"] : ["ignore", "pipe", "pipe"],
       detached: process.platform !== "win32"

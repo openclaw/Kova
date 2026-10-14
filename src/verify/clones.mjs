@@ -1,16 +1,89 @@
 import { createReadStream } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { copyFile, lstat, mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { Transform } from "node:stream";
+import { isDeepStrictEqual } from "node:util";
 import { pipeline } from "node:stream/promises";
 import { extract as extractTar } from "tar-stream";
+import JSON5 from "json5";
 import { quoteShell as q } from "../commands.mjs";
 import { isMissingOcmResource } from "../ocm/missing-resource.mjs";
 import { captureTargetIdentity } from "../target-identity.mjs";
 import { mockAiProviderServeCommand, mockProviderPortCommand, mockProviderCleanupCommand } from "../auth.mjs";
 import { checkCatalogueCommands, parseCatalogueCommand, createCatalogueResolver } from "../catalogue.mjs";
 import { canonicalJSON, sha256 } from "./plan.mjs";
+import { createLogCollector } from "./checkpoint.mjs";
+
+function within(root, path) {
+  const suffix = relative(root, path);
+  return suffix === "" || (!isAbsolute(suffix) && suffix !== ".." && !suffix.startsWith(`..${sep}`));
+}
+
+async function ownedCloneFile(metadata, path) {
+  if (typeof path !== "string" || !isAbsolute(path) || path.includes("\0") || path.includes("${")) throw new Error("product log capture requires a direct absolute clone-owned file path");
+  const rootStat = await lstat(metadata.root);
+  if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) throw new Error("product log capture requires an unaliased clone root");
+  const root = await realpath(metadata.root);
+  const requested = resolve(path);
+  const relativePath = within(resolve(metadata.root), requested) ? relative(resolve(metadata.root), requested) : within(root, requested) ? relative(root, requested) : null;
+  if (!relativePath) throw new Error("product log path must stay inside its clone root");
+  let current = root;
+  const parts = relativePath.split(sep);
+  for (const [index, part] of parts.entries()) {
+    current = join(current, part);
+    let stat;
+    try { stat = await lstat(current); } catch (error) { if (error.code === "ENOENT") continue; throw error; }
+    if (stat.isSymbolicLink() || (stat.isFile() && stat.nlink !== 1)) throw new Error("product log capture refuses aliased paths");
+    if (index < parts.length - 1 ? !stat.isDirectory() : !stat.isFile()) throw new Error("product log capture requires regular files and directories");
+  }
+  return current;
+}
+
+async function readCloneLogging(metadata, { allowDefault = false } = {}) {
+  const configPath = await ownedCloneFile(metadata, metadata.configPath ?? join(metadata.stateDir, "openclaw.json"));
+  const config = JSON5.parse(await readFile(configPath, "utf8"));
+  const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+  if (!isObject(config) || Object.hasOwn(config, "$include") || (config.logging !== undefined && !isObject(config.logging))) throw new Error("product log capture requires a directly authored logging configuration");
+  const logging = config.logging ?? {};
+  const hasInclude = (value) => value !== null && typeof value === "object" && (Object.hasOwn(value, "$include") || Object.values(value).some(hasInclude));
+  if (hasInclude(logging)) throw new Error("product log capture does not resolve logging includes");
+  if (logging.file === undefined && !allowDefault) throw new Error("product logging.file is missing; shared default logs cannot be captured");
+  const file = await ownedCloneFile(metadata, logging.file === undefined ? join(metadata.stateDir, "logs/kova-product.log") : logging.file);
+  return { config, configPath, file, defaulted: logging.file === undefined };
+}
+
+function activeLogFile(file) {
+  if (!/^openclaw-(?:YYYY-MM-DD|\d{4}-\d{2}-\d{2})\.log$/.test(basename(file))) return file;
+  const date = new Date();
+  const today = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  return join(dirname(file), `openclaw-${today}.log`);
+}
+
+async function prepareProductLogs(metadata) {
+  const settings = await readCloneLogging(metadata, { allowDefault: true });
+  if (settings.defaulted) {
+    settings.config.logging = { ...settings.config.logging, file: settings.file };
+    const temporary = join(dirname(settings.configPath), `.kova-log-config-${randomUUID()}.json`);
+    try {
+      const serialized = JSON.stringify(settings.config, null, 2);
+      if (!isDeepStrictEqual(JSON.parse(serialized), settings.config)) throw new Error("clone logging configuration cannot be represented without changing values");
+      await writeFile(temporary, `${serialized}\n`, { flag: "wx", mode: 0o600 });
+      await rename(temporary, settings.configPath);
+    } finally { await rm(temporary, { force: true }); }
+  }
+  const files = new Set();
+  const collect = createLogCollector(async () => {
+    files.add(activeLogFile((await readCloneLogging(metadata)).file));
+    return [...files].flatMap((file) => {
+      const extension = extname(file), base = file.slice(0, file.length - extension.length);
+      return [...[5, 4, 3, 2, 1].map((index) => `${base}.${index}${extension}`), file];
+    });
+  }, { validatePath: (path) => ownedCloneFile(metadata, path), trackIdentity: true });
+  // Imported history predates this copy's product commands.
+  (await collect.prepare({ skipExisting: true })).commit();
+  return collect;
+}
 
 export async function hashFile(path) {
   const hash = createHash("sha256");
@@ -132,6 +205,7 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
   const traits = structuredClone(persona.manifest.traits);
   const roots = [];
   const copies = [];
+  const productLogs = new Map();
   let metadata;
   const inspect = async (env, invoke) => {
     const result = await invoke(`ocm env show ${q(env)} --json`, { allowFailure: true });
@@ -149,6 +223,15 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
     environments.push(env); // Retain ownership if import succeeds but its response is interrupted.
     await call(`ocm env import ${q(archive)} --name ${q(env)} --json`);
     await call(`ocm env protect ${q(env)} off --json`);
+    const imported = await inspect(env, call);
+    if (!imported) throw new Error("imported clone is missing");
+    const importedRoot = await realpath(imported.root);
+    for (const source of [persona.manifest.env.root, ...[...persona.extra.values()].map((value) => value.metadata.root)].filter(Boolean)) {
+      let sourcePath;
+      try { sourcePath = await realpath(source); } catch (error) { if (error.code !== "ENOENT") throw error; sourcePath = resolve(source); }
+      if (within(sourcePath, importedRoot) || within(importedRoot, sourcePath)) throw new Error("imported clone root overlaps a persona source");
+    }
+    productLogs.set(env, await prepareProductLogs(imported));
     const command = `ocm start ${q(env)} ${runtime} --no-service --json`;
     const binding = await call(command);
     const value = await inspect(env, call);
@@ -156,7 +239,7 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
     if (sourceRoot) roots.push([sourceRoot, value.root]);
     return { metadata: value, binding: { ...binding, command } };
   }
-  const context = () => ({ env: metadata.name, run: directory, kovaRoot: root, traits, roots });
+  const context = () => ({ env: metadata.name, run: directory, kovaRoot: root, traits, roots, cwd: metadata.workspaceDir ?? metadata.root, ownedRoots: copies.map((copy) => copy.root) });
   async function mockProvider(value) {
     const saved = join(value.workspaceDir ?? join(value.stateDir, "workspace"), "kova-persona/mock-script.json");
     let script;
@@ -174,7 +257,21 @@ export function createClone({ name, directory, persona, root, call, cleanupCall,
   }
   return {
     name, directory, handles, context,
-    contexts() { return copies.map((copy, index) => ({ ...context(), env: copy.name, run: index ? join(directory, `extra-${index}`) : directory })); },
+    contexts() { return copies.map((copy, index) => ({ ...context(), env: copy.name, cwd: copy.workspaceDir ?? copy.root, run: index ? join(directory, `extra-${index}`) : directory })); },
+    async collectProductLogs() {
+      const captures = [];
+      let remaining = 16 * 1024 * 1024;
+      for (const collect of productLogs.values()) {
+        const capture = await collect.prepare({ maxBytes: remaining });
+        if (capture.bytes > 0) {
+          remaining -= capture.bytes + (captures.some((value) => value.bytes > 0) ? 1 : 0);
+          if (remaining < 0) throw new Error("log capture exceeds the 16 MiB output budget");
+        }
+        captures.push(capture);
+      }
+      for (const capture of captures) capture.commit();
+      return captures.map((capture) => capture.text).filter(Boolean).join("\n");
+    },
     get metadata() { return metadata; },
     async prepare() {
       await mkdir(directory, { recursive: true, mode: 0o700 });

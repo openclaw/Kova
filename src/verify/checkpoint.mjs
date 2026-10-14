@@ -1,4 +1,4 @@
-import { createReadStream } from "node:fs";
+import { constants } from "node:fs";
 import { copyFile, lstat, mkdir, mkdtemp, open, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { runCommand } from "../commands.mjs";
@@ -142,22 +142,41 @@ export async function recordPhase(options) {
   return { ...await writeCheckpoint({ ...options, results }), results };
 }
 
-export function createLogCollector(paths) {
+export function createLogCollector(paths, { validatePath, trackIdentity = false } = {}) {
   const offsets = new Map();
-  return async () => {
+  const prepare = async ({ maxBytes = 16 * 1024 * 1024, skipExisting = false } = {}) => {
     const chunks = [];
-    for (const path of paths) {
-      let metadata;
-      try { metadata = await lstat(path); }
-      catch (error) { if (error.code === "ENOENT") continue; throw error; }
-      if (!metadata.isFile()) throw new Error(`log is not a regular file: ${path}`);
-      const previous = offsets.get(path);
-      const start = previous && previous.ino === metadata.ino && previous.size <= metadata.size ? previous.size : 0;
-      if (metadata.size > start) {
-        for await (const chunk of createReadStream(path, { start, end: metadata.size - 1 })) chunks.push(chunk);
+    const pendingOffsets = new Map(offsets);
+    let bytes = 0;
+    const selected = typeof paths === "function" ? await paths() : paths;
+    for (const path of new Set(selected)) {
+      await validatePath?.(path);
+      let file;
+      try {
+        if (!(await lstat(path)).isFile()) throw new Error(`log is not a regular file: ${path}`);
+        file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
       }
-      offsets.set(path, { ino: metadata.ino, size: metadata.size });
+      catch (error) { if (error.code === "ENOENT") continue; throw error; }
+      try {
+        const metadata = await file.stat();
+        if (!metadata.isFile() || (validatePath && metadata.nlink !== 1)) throw new Error(`log is not an unaliased regular file: ${path}`);
+        const key = trackIdentity ? `${metadata.dev}:${metadata.ino}:${metadata.birthtimeMs}` : path;
+        const previous = pendingOffsets.get(key);
+        const start = skipExisting ? metadata.size : previous && previous.dev === metadata.dev && previous.ino === metadata.ino && previous.size <= metadata.size ? previous.size : 0;
+        bytes += metadata.size - start;
+        if (bytes > maxBytes) throw new Error("log capture exceeds the 16 MiB output budget");
+        if (metadata.size > start) {
+          for await (const chunk of file.createReadStream({ start, end: metadata.size - 1, autoClose: false })) chunks.push(chunk);
+        }
+        pendingOffsets.set(key, { dev: metadata.dev, ino: metadata.ino, size: metadata.size });
+      } finally {
+        await file.close();
+      }
     }
-    return Buffer.concat(chunks).toString("utf8");
+    const text = Buffer.concat(chunks).toString("utf8");
+    bytes = Buffer.byteLength(text);
+    if (bytes > maxBytes) throw new Error("log capture exceeds the 16 MiB output budget");
+    return { text, bytes, commit() { for (const [key, value] of pendingOffsets) offsets.set(key, value); } };
   };
+  return Object.assign(async () => { const result = await prepare(); result.commit(); return result.text; }, { prepare });
 }
