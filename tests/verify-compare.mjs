@@ -1083,3 +1083,23 @@ test("invalid JSONL decoding does not invent replacement-character identities", 
     assert.equal((await f.compare()).verdict, history[0] === 255 ? "good-to-go" : "breaks");
   }
 });
+
+test("retained archives and config backups preserve escaped persona IDs", async (t) => {
+  const escaped = String.raw`{"id":"persona\u002dexisting\u002did"}` + "\n";
+  const cases = {
+    "agents/main/sessions/history.jsonl.reset.2026-10-14T00-00-00.000Z": escaped,
+    "agents/main/sessions/history.jsonl.deleted.2026-10-14T00-00-00.000Z": `broken\n${escaped}`,
+    "agents/main/sessions/history.jsonl.bak.2026-10-14T00-00-00.000Z": escaped,
+    "openclaw.json.bak.1": escaped,
+    "openclaw.json.pre-update": String.raw`{ id: 'persona\u002dexisting\u002did', }`,
+    "backup/original": `// retained configuration\n${escaped}`,
+    "other-format.history": `${escaped}${escaped}`,
+  };
+  for (const [path, bytes] of Object.entries(cases)) {
+    const f = await fixture(t, { creates: ["/id"], originalFiles: { [path]: bytes }, copies: Object.fromEntries(names.map(name => [name, { response: { id: name.startsWith("change") ? "persona-existing-id" : `generated-${name}` } }])) });
+    const result = await f.compare();
+    assert.equal(result.verdict, "breaks", path); assert.equal(result.rows[0].change, "persona-existing-id");
+  }
+  const f = await fixture(t, { creates: ["/id"], originalFiles: { "short-backup": String.raw`"\u004fLD"` }, copies: Object.fromEntries(names.map(name => [name, { response: { id: name.startsWith("change") ? "OLD" : `generated-${name}` } }])) });
+  assert.equal((await f.compare()).verdict, "breaks");
+});
