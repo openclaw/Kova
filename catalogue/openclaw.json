@@ -1864,6 +1864,10 @@
         "--next-model": {
           "description": "Model to bind after creating the saved session content",
           "value": "required"
+        },
+        "--worktree": {
+          "description": "Create a managed worktree from an environment-owned Git fixture",
+          "value": "none"
         }
       },
       "prints": [
@@ -2046,16 +2050,12 @@
     {
       "id": "persona-workspace-changes",
       "kind": "script",
-      "wraps": "workspace files, an HTML asset pair, uncommitted edits, a long process",
-      "command": "node {kovaRoot}/support/persona/workspace-changes.mjs --env {env} --key <key> --start-process",
+      "wraps": "Write the saved workspace edits through sessions.files.set",
+      "command": "node {kovaRoot}/support/persona/workspace-changes.mjs --env {env} --key <key>",
       "flags": {
         "--key": {
           "description": "session",
           "value": "required"
-        },
-        "--start-process": {
-          "description": "start a long process",
-          "value": "none"
         },
         "--env": {
           "description": "OCM environment name",
@@ -2063,14 +2063,15 @@
         }
       },
       "prints": [
+        "key",
+        "sessionId",
         "filePath",
         "fileHash",
-        "htmlPath",
-        "processId"
+        "htmlPath"
       ],
       "side": "write",
       "background": false,
-      "status": "toWrite",
+      "status": "existing",
       "creates": []
     },
     {
@@ -7068,6 +7069,57 @@
       ],
       "creates": [],
       "side": "write",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-check-session-with-worktree",
+      "kind": "script",
+      "wraps": "Read the session-with-worktree saved content and keys",
+      "command": "node {kovaRoot}/support/persona/session-keys.mjs session-with-worktree --env {env} --key <key>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--key": {
+          "description": "Saved session key",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key",
+        "workspaceDir"
+      ],
+      "creates": [],
+      "side": "read",
+      "background": false,
+      "status": "existing"
+    },
+    {
+      "id": "persona-check-session-workspace-changes",
+      "kind": "script",
+      "wraps": "Read the session-workspace-changes saved content and keys",
+      "command": "node {kovaRoot}/support/persona/session-keys.mjs session-workspace-changes --env {env} --key <key>",
+      "flags": {
+        "--env": {
+          "description": "OCM environment name",
+          "value": "required"
+        },
+        "--key": {
+          "description": "Saved session key",
+          "value": "required"
+        }
+      },
+      "prints": [
+        "key",
+        "sessionId",
+        "filePath",
+        "fileHash",
+        "htmlPath"
+      ],
+      "creates": [],
+      "side": "read",
       "background": false,
       "status": "existing"
     }

@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import { sessionRequests, makeSession, readSessionKeys, sendSessionMessage } from "../support/persona/session-content.mjs";
 import { extraRequests } from "../support/persona/session-extras.mjs";
+import { workspaceRequests, workspaceSetRequest } from "../support/persona/workspace-content.mjs";
 
 const revision = "7e80556f503d26ddde64e274bfb50cbbec7830f5";
 const key = "agent:main:persona-schema";
@@ -13,7 +14,7 @@ const sessionId = "persona-schema-session";
 const runId = "persona-schema-run";
 
 const sessionCases = {
-  create: [[key], [undefined, "kova-schema-label"]],
+  create: [[key], [undefined, "kova-schema-label"], [key, undefined, "/tmp/persona-repository"], [undefined, "kova-schema-worktree", "/tmp/persona-repository"]],
   resolveLabel: [["kova-schema-label"]],
   resolveShort: [["12345678"]],
   describe: [[key]],
@@ -78,6 +79,10 @@ test("persona Gateway requests match the pinned OpenClaw schemas", async (t) => 
     publicMembers: [[key]],
     configGet: [[]],
   }, "extraRequests");
+  for (const [name, value] of Object.entries(workspaceRequests(key))) {
+    (Array.isArray(value) ? value : [value]).forEach((request, index) => check(request, `workspaceRequests.${name}[${index}]`));
+  }
+  check(workspaceSetRequest({ key, path: "notes.txt", content: "Saved notebook content.\n", expectedHash: "a".repeat(64) }), "workspaceSetRequest");
 
   let messagesAfterReset = 0;
   const rpc = async (request) => {
@@ -94,6 +99,7 @@ test("persona Gateway requests match the pinned OpenClaw schemas", async (t) => 
     }
   };
   await makeSession(rpc, { key, messages: 1, nextModel: "openai/mock-overflow" });
+  await makeSession(rpc, { key, messages: 2, cwd: "/tmp/persona-repository" });
   await makeSession(rpc, { key, messages: 4, compactEvery: 2, resetOnce: true, plantWord: "PERSONA_WORD", plantPrefix: "PERSONA_PREFIX" });
   await readSessionKeys(rpc, key);
   assert.ok(requests.some((request) => request.method === "sessions.send" && request.params.message.includes("PERSONA_WORD")));

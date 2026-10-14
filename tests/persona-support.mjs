@@ -1,5 +1,6 @@
 import "./persona-store-read.mjs";
 import "./persona-gateway-schema.mjs";
+import "./persona-workspace.mjs";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mkdtemp, writeFile, rm, mkdir, readFile } from "node:fs/promises";
@@ -10,7 +11,7 @@ import { loadCatalogue, resolveCatalogueEntry } from "../src/catalogue.mjs";
 
 const definition = JSON.parse(await readFile(new URL("../personas/openclaw-verification-user.json", import.meta.url), "utf8"));
 const { catalogue } = await loadCatalogue("openclaw");
-const scripts = ["add-agent", "write-mock-script", "check-agents", "check-mock-provider", "check-channels", "check-plugins", "check-config", "check-mock-script", "make-session", "populate-session", "session-keys"];
+const scripts = ["add-agent", "write-mock-script", "check-agents", "check-mock-provider", "check-channels", "check-plugins", "check-config", "check-mock-script", "make-session", "populate-session", "workspace-changes", "session-keys"];
 function invoke(name, args, env = process.env) {
   return spawnSync(process.execPath, [new URL(`../support/persona/${name}.mjs`, import.meta.url).pathname, ...args], { env, encoding: "utf8", timeout: 10000 });
 }

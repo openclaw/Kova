@@ -4,7 +4,7 @@ import { openDirectGatewayRpcClient } from "../openclaw-runtime.mjs";
 import { EntryError } from "./common.mjs";
 
 export const sessionRequests = {
-  create: (key, label) => ({ method: "sessions.create", params: { ...(key ? { key } : {}), ...(label ? { label } : {}) } }),
+  create: (key, label, cwd) => ({ method: "sessions.create", params: { ...(key ? { key } : {}), ...(label ? { label } : {}), ...(cwd ? { cwd, worktree: true } : {}) } }),
   resolveLabel: (label) => ({ method: "sessions.resolve", params: { label } }),
   resolveShort: (shortId) => ({ method: "sessions.resolve", params: { shortId } }),
   describe: (key) => ({ method: "sessions.describe", params: { key } }),
@@ -57,7 +57,7 @@ async function settledMutation(rpc, request) {
 }
 
 export async function makeSession(rpc, options) {
-  const created = await rpc(sessionRequests.create(options.key, options.label));
+  const created = await rpc(sessionRequests.create(options.key, options.label, options.cwd));
   const key = created?.key;
   if (typeof key !== "string" || !key || typeof created.sessionId !== "string") throw new Error("session creation returned incomplete identity");
   const resetAt = options.resetOnce ? Math.floor(options.messages / 2) : -1;

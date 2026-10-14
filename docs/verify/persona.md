@@ -7,7 +7,7 @@ Templates name what they need from it as traits; phases read concrete values
 from it through `{persona:<trait>:<key>}`.
 
 The OpenClaw persona, `openclaw-verification-user`, contains five foundation
-traits and fourteen session, configuration and mock-provider traits. Its saved
+traits and sixteen session, configuration and mock-provider traits. Its saved
 content includes long compacted history with a reset boundary, a measured
 pre-compaction context, pruned tool-result projections, an active goal, a
 progress card, cancelled and interrupted inputs, an expired idle session and a
@@ -19,11 +19,16 @@ retain their prepared context. The overflow session selects `openai/mock-overflo
 first provider request overflows, and recovery replies with `KOVA_AGENT_OK`.
 Content is produced through OpenClaw's commands and checked again on an import.
 
-`session-with-worktree` and `session-workspace-changes` remain pending until OCM
-relocates their stored paths during import. They are not in the build definition
-and phases requiring them remain withheld. `session-shared-readonly` also awaits
-its multi-user identity prerequisite. Live queued inputs and process identifiers
-belong to each verification run rather than the durable persona.
+The workspace traits share one session bound to a managed Git worktree. Its
+repository lives inside the persona environment and contains edited notes plus
+an HTML page with a relative SVG asset. Checks verify the saved bytes, hashes,
+uncommitted diff, worktree ownership and Git metadata through the current
+environment's paths. State-inclusive import needs OCM's stored-path relocation
+support ([OCM #367](https://github.com/openclaw/ocm/pull/367)); an import that still
+points at the source environment fails the checks instead of repairing it.
+`session-shared-readonly` still awaits its multi-user identity prerequisite.
+Live queued inputs and process identifiers belong to each verification run
+rather than the durable persona.
 
 Large history is built from five thousand completed mock turns. Builds can take
 tens of minutes; each builder has a two-hour limit. Checks inspect real saved
@@ -32,6 +37,9 @@ records. The session-content builders and checks require Node.js 22.19.0 or newe
 
 `support/persona/make-session.mjs` creates and populates one session, returning
 its `key` and `sessionId`; the catalogue declares both generated identifiers.
+The `--worktree` flag prepares an environment-owned repository and asks
+OpenClaw to create its managed checkout as part of session creation.
+`support/persona/workspace-changes.mjs` applies the saved file edits separately.
 Further content uses fixed operations on `support/persona/populate-session.mjs`:
 `fill-to-threshold`, `prune-tool-results`, `create-goal`, `put-progress-card`,
 `interrupt-inputs`, `enable-public-share` and `expire-idle`. Each has its own

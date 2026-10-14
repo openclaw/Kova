@@ -297,6 +297,39 @@
         "node {kovaRoot}/support/persona/populate-session.mjs expire-idle --env {env} --key agent:main:verify-idle-old:thread:idle"
       ],
       "check": "node {kovaRoot}/support/persona/session-keys.mjs session-idle-expired --env {env} --key agent:main:verify-idle-old:thread:idle"
+    },
+    {
+      "id": "session-with-worktree",
+      "content": "A session bound to an environment-owned managed Git worktree.",
+      "keys": {
+        "key": "session key",
+        "workspaceDir": "the managed worktree path"
+      },
+      "needs": [
+        "mock-provider-scripted"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/make-session.mjs --env {env} --key agent:main:verify-worktree --messages 2 --worktree"
+      ],
+      "check": "node {kovaRoot}/support/persona/session-keys.mjs session-with-worktree --env {env} --key agent:main:verify-worktree"
+    },
+    {
+      "id": "session-workspace-changes",
+      "content": "The managed session workspace contains edited notes and an HTML page with a relative SVG asset, retained as uncommitted Git changes.",
+      "keys": {
+        "key": "session key",
+        "sessionId": "current session id",
+        "filePath": "the edited notes path",
+        "fileHash": "the notes content hash",
+        "htmlPath": "the HTML preview path"
+      },
+      "needs": [
+        "session-with-worktree"
+      ],
+      "builder": [
+        "node {kovaRoot}/support/persona/workspace-changes.mjs --env {env} --key {persona:session-with-worktree:key}"
+      ],
+      "check": "node {kovaRoot}/support/persona/session-keys.mjs session-workspace-changes --env {env} --key {persona:session-with-worktree:key}"
     }
   ],
   "support": {
@@ -314,7 +347,8 @@
       "support/persona/make-session.mjs",
       "support/persona/session-keys.mjs",
       "support/persona/check-mock-trait.mjs",
-      "support/persona/populate-session.mjs"
+      "support/persona/populate-session.mjs",
+      "support/persona/workspace-changes.mjs"
     ],
     "toWrite": [],
     "fixtures": []
