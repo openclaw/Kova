@@ -11,7 +11,8 @@ export const valueOf = (item) => item ? item.value : absent;
 export const pointerPart = (value) => String(value).replaceAll("~", "~0").replaceAll("/", "~1");
 export const equal = (a, b) => canonicalJSON(a) === canonicalJSON(b);
 const quote = (name) => `"${name.replaceAll('"', '""')}"`;
-const sqlValue = (value) => typeof value === "bigint" ? (value >= Number.MIN_SAFE_INTEGER && value <= Number.MAX_SAFE_INTEGER ? Number(value) : { integer: String(value) }) : value instanceof Uint8Array ? { sha256: sha256(value) } : value;
+const finiteValue = (value) => typeof value === "number" && !Number.isFinite(value) ? { number: String(value) } : value;
+const sqlValue = (value) => typeof value === "bigint" ? (value >= Number.MIN_SAFE_INTEGER && value <= Number.MAX_SAFE_INTEGER ? Number(value) : { integer: String(value) }) : value instanceof Uint8Array ? { sha256: sha256(value) } : finiteValue(value);
 
 export async function readBytes(path, prefixLength) {
   const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
@@ -141,7 +142,7 @@ export function rowBuilder(normalize = (value) => value) {
     const at = segments.join("/");
     const key = itemKey(signal, at);
     if (items.has(key)) throw new Error(`normalization produced duplicate item: ${signal}/${at}`);
-    items.set(key, { signal, at, value, failure, segments, dynamic, summary });
+    items.set(key, { signal, at, value: finiteValue(value), failure, segments, dynamic, summary });
   }
   function nodes(signal, value, segments, dynamic = []) {
     if (value && typeof value === "object") {
@@ -153,6 +154,38 @@ export function rowBuilder(normalize = (value) => value) {
     } else add(signal, segments, typeof value === "string" ? normalize(value) : value, { dynamic });
   }
   return { items, add, nodes };
+}
+
+function responseData(value, entry) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const paths = ["gateway", "script"].includes(entry?.kind) ? ["elapsedMs", "durationMs"] : [];
+  if (["status", "channels-status"].includes(entry?.id)) {
+    // Pinned status/health observations, not similarly named configuration or payload fields.
+    const eventLoop = ["degradedSinceMs", "intervalMs", "delayP99Ms", "delayMaxMs", "utilization", "cpuCoreRatio", "cpuBreakdown.mainThreadCoreRatio", "cpuBreakdown.workerCoreRatio", "cpuBreakdown.otherThreadsCoreRatio", "cpuBreakdown.hostUtilization"];
+    paths.push(...eventLoop.map((path) => `eventLoop.${path}`));
+    const channels = entry.id === "status" ? ["health.channels.*", "health.channels.*.accounts.*"] : ["channels.*", "channelAccounts.*.*"];
+    paths.push(...channels.flatMap((path) => [`${path}.probe.elapsedMs`, `${path}.probe.latencyMs`, `${path}.audit.elapsedMs`, `${path}.authAgeMs`]));
+    if (entry.id === "status") paths.push("gateway.connectLatencyMs", "health.durationMs", "lastHeartbeat.durationMs", ...eventLoop.map((path) => `health.eventLoop.${path}`), "agents.agents.*.lastActiveAgeMs", "sessions.recent.*.age", "sessions.byAgent.*.recent.*.age", "linkChannel.authAgeMs", "health.sessions.recent.*.age", "health.agents.*.sessions.recent.*.age");
+  }
+  const operationPaths = {
+    "sessions-list": ["sessions.*.ageMs"],
+    "gateway-sessions-list": ["result.sessions.*.runtimeMs"],
+    "gateway-sessions-describe": ["result.session.runtimeMs"],
+    "gateway-sessions-subscribe": ["result.list.sessions.*.runtimeMs"],
+    "gateway-sessions-patch": ["result.entry.runtimeMs"],
+    "cron-list": ["jobs.*.state.lastDurationMs"]
+  };
+  paths.push(...(operationPaths[entry?.id] ?? []));
+  if (!paths.length) return value;
+  const result = structuredClone(value);
+  const remove = (object, [part, ...rest]) => {
+    if (!object || typeof object !== "object") return;
+    for (const key of part === "*" ? Object.keys(object) : [part]) {
+      if (rest.length) remove(object[key], rest); else delete object[key];
+    }
+  };
+  for (const path of paths) remove(result, path.split("."));
+  return result;
 }
 
 export async function checkpointRows(directory, phase, standard, normalization, commandCount = phase.commands.length, commandEntries = []) {
@@ -180,10 +213,7 @@ export async function checkpointRows(directory, phase, standard, normalization, 
       if (!responses || typeof responses !== "object" || Array.isArray(responses) || Object.keys(responses).length !== expected.length || expected.some((index) => !Object.hasOwn(responses, index))) throw new Error(`${phase.id}: invalid response checkpoint command indices`);
       for (const [index, value] of Object.entries(responses)) {
         const entry = commandEntries[Number(index) % phase.commands.length];
-        // These are Kova helper envelope measurements, not product payloads.
-        const comparable = ["gateway", "script"].includes(entry?.kind) && value && typeof value === "object" && !Array.isArray(value)
-          ? Object.fromEntries(Object.entries(value).filter(([key]) => !["elapsedMs", "durationMs"].includes(key))) : value;
-        b.nodes("responses", comparable, [index]);
+        b.nodes("responses", responseData(value, entry), [index]);
       }
     } else if (signal === "timing") {
       const timing = await readJSON(join(directory, "timing.json"));
